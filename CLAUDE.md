@@ -2246,16 +2246,26 @@ this is the short one.
   every host the renderer knows (the session store holds each connected
   or mirrored host's rows; `batch.get`'s `children` list, when the host
   sends one, overrides a row's host and status, `mergeBatchChildren`); a
-  row on another host than the master's carries that host's dot and name
-  in its model mark (`rowHost`, the chip's `hostTone`) and sits under the
-  offline tint while that host's link is not open. A row whose thread has
+  row on another host than the master's carries that host's glyph after
+  its title, its name on hover (`rowHost`), and sits under the
+  offline tint while that host's link is not open. A row is two lines on
+  `Item` (master/MasterRow.tsx, the rule `rowStatus` in master/rowBody.ts):
+  the type glyph (its word in a tooltip), the title, the host glyph and the
+  model mark; then `StatusMark`'s glyph with what the state is about (the
+  task in hand, the question or "approve Bash" in amber, the failure in
+  red, "Landed 12:08", a settled research thread's summary) and the task
+  tally `3/7` at the end; the sections read Needs you, Working, Queued,
+  Done with no counts, and the board holds no task list or progress bar.
+  On hover the model mark gives way to Message, the state's one verb
+  (Pause, Resume, Start now) and ⋯, the row's menu, where Stop, Archive
+  and a queued thread's Remove from queue live. A row whose thread has
   live subagents lists them under its two lines, one line each: the status
-  glyph, the role's glyph, the title, what it is doing in the board row's
-  own words (`whatLine` over `digestLine`: the activity, "waiting for
-  approval — …" in amber, the failure in red) and the host's glyph; the
+  glyph, the role's glyph, the title, what its state is about in the board
+  row's own words (`rowStatus`: the activity, "approve Bash" in amber, the
+  failure in red) and the host's glyph; the
   whole tree by the parentId chain, archived ones out, a far child's from
   its host's rows, the person's first (waiting, failed, working, then
-  paused or queued), at most three, then one quiet "and 2 more · 3 done";
+  paused or queued), at most three, then one quiet "and 2 more, 3 done";
   agents that all settled show nothing. A line opens the agent in the
   board's place like a row (`underRow` keeps it open)
   (`master/agentSummary.ts`: one parent index per meta change, a row
@@ -2264,13 +2274,15 @@ this is the short one.
   thread screen, the tail "and 2 more, 3 done"). A row's click puts the
   child's full view in the whole pane with one Back control
   (`master/ChildPane.tsx`, given the row's host; Escape and ⌘↩ outside
-  the composer go back; the board keeps its scroll), over the same
+  the composer go back; the board keeps its scroll; the header is Back and
+  the title), over the same
   transcript, strip and composer a tab has (`surfaces/threadChat.tsx`:
   `ThreadComposer` and `useThreadChat`, shared with SessionPane; App's
   handlers through `SessionActionsContext`). A right-click on a row or a
   subagent line is that thread's menu (`master/rowMenu.ts`: New pass…,
-  Open, then the tab's `chipMenuItems` the board answers and the host
-  moves); New pass… is a Modal (`master/NewPassDialog.tsx`) with the
+  Open, Start now for a queued thread, then the tab's `chipMenuItems` the
+  board answers and the host moves, Remove from queue in a queued
+  thread's Archive place); New pass… is a Modal (`master/NewPassDialog.tsx`) with the
   thread's title, its status and activity or last words on one line
   (`passLine`) and that composer, closing on send; the draft stays per
   thread. The title bar's ⋯ menu is the batch's
@@ -2284,11 +2296,18 @@ this is the short one.
   `masterId` and `startedBy` = the master) and Add existing thread…
   (the project's roots in no batch on this host and its paired copies,
   `pairedProjectIds`; one `batch.adopt` on the master's host, a remote
-  thread as `<envId>:<id>`, refusals read back in the sheet). The foot and the rules dialog read the steps as the master's
+  thread as `<envId>:<id>`, refusals read back in the sheet). The board's
+  header is SplitShell's: the master's title, its summary line, ⋯ and
+  + Thread. The foot is rows: "When done" with Edit, one row per step
+  (`StatusMark` through `stepState`, the name, `stepDetail`, the time,
+  Stop on the running one), the running step's console opening under its
+  own row (`Collapsible`; a shell step's command shows once, as the
+  console's first line), and "Then notify you" or "Then archive the
+  threads"; a `Skeleton` until `batch.board` answers. The foot and the
+  rules dialog read the steps as the master's
   list: `master/steps.ts` joins `rules.steps` with `state.steps` by id (a
   step the rules name that the host has not seen is pending at the end),
-  the console is the same for a shell step (its command in mono) as for a
-  publish, Stop is `batch.stopStep { stepId }`, and the dialog
+  Stop is `batch.stopStep { stepId }`, and the dialog
   (`master/rulesEdit.ts`) reorders, renames, adds a built-in kind or a
   shell command with a cwd and removes steps; no step name is written in
   the renderer. A Popover sits on the popover layer, above every dialog

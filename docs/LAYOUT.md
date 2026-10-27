@@ -462,49 +462,51 @@ project may have any number of masters, each with its own batch, and the
 tab's or the rail row's menu makes one ("Make master thread" / "Not a
 master", `session.setMaster`). The board | sash | chat recipe (SplitShell):
 the batch on the left, the master's own chat on the right, folding from
-the toggle at the end of the board's own header. Until the first child the chat is the whole view. A child of the
+the toggle at the end of the view header. Until the first child the chat is the whole view. A child of the
 batch is never a tab: it lives on the board, and a click puts its full view
 in the whole pane, with Back.
 
 ```
-┌ iOS batch 2                                            ⋯  [+ Thread ▾] ┐
-│ Needs you  1                                                           │
-│  ☷  Live Activity strip  Implementation                                │
-│  ●  has a question — Ad Hoc or Debug?        (hover: ✉ ⏸ ■ ✕ at right) │
-│ Running  3                                                             │
-│  ☷  Home: Needs you, Running, Workspaces  Implementation  3/7 ▬▬▬░░░░ ›│
-│  ▦  Running ios:test:client           ✺ Claude Fable 5.1  high 1M      │
-│       ✓ Read docs/IOS-DESIGN.md and the home model                     │
-│       ▦ Workspaces list with the project headers                       │
-│       ○ Snapshot tests for the three sections                          │
-│  ⌕  Pricing survey  Research                                           │
-│  ▦  Reading the third source                  ◉ gpt-6.1-sol  xhigh     │
-│       Two of five pricing pages read; Stripe and Paddle left           │
-│  ☷  Search screen  Implementation  0/3 ░░░░░░░ ›                       │
-│  ▦  Writing SearchScreen.swift        ✺ Claude Fable 5.1  medium 1M    │
-│       ▦ Results list on the search model                               │
-│ Queued  1                                                              │
-│  ☷  Inbox swipe actions  Implementation                                │
-│  ◌  Queued · waiting for Home             ✺ Claude Fable 5.1  high 1M  │
-│ Done  1                                                                │
-│  ☷  Design foundations  Implementation                                 │
-│  ✓  Landed 12:08                          ✺ Claude Fable 5.1  high 1M  │
-├ When the threads are done                                        Edit ─┤
-│ Land all seven, gate once, release, then tell me                       │
-│ Branches land as they finish, then one gate on the merged tree, a      │
-│ release and a deploy to the box. Then you are notified.                │
-│ ✓ Merging 2m   ▦ Gate 1m 12s  3 of 7 vitest                     Stop  │
-│ ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬░░░░░░░░░░░░░░                                        │
-│ │ ✓ typecheck 12s                                                      │
-│ │ vitest  src/main/server/batch.test.ts (14 tests) 120ms              │
-│ ○ Release   ○ Deploy to dev  ./deploy.sh dev   ○ Smoke test            │
+┌ iOS batch 2  Land all seven, gate once, release      ⋯  [+ Thread ▾]  ✉ ┐
+│ Needs you                                                              │
+│  ☷  Live Activity strip                   ✺ Claude Fable 5.1  high 1M │
+│     ◉ Ad Hoc or Debug?               (hover: ✉ Message  ⏸ Pause  ⋯)   │
+│ Working                                                                │
+│  ☷  Home: Needs you, Working, Workspaces  ✺ Claude Fable 5.1  high 1M │
+│     ⠿ Workspaces list with the project headers                    3/7 │
+│        ◉ ⚒ Run the tests  approve Bash                                 │
+│        ⠿ ⚒ Rail rows  Editing Rail.tsx                                 │
+│       1 done                                                           │
+│  ⌕  Pricing survey                         ◉ gpt-6.1-sol  xhigh       │
+│     ⠿ Reading the third source                                         │
+│  ▢  Tabs or spaces                         ✺ Claude Fable 5.1  medium │
+│     ⏸                                                                  │
+│ Queued                                                                 │
+│  ☷  Inbox swipe actions                   ✺ Claude Fable 5.1  high 1M │
+│     ◌ waiting for Home                                                 │
+│ Done                                                                   │
+│  ☷  Design foundations                    ✺ Claude Fable 5.1  high 1M │
+│     ✓ Landed 12:08                                                4/4 │
+├────────────────────────────────────────────────────────────────────────┤
+│ When done                                                         Edit │
+│ ✓ Land        2 of 7 landed                                     1m 30s │
+│ ⠿ Gate        3 of 7  vitest                           1m 12s   ■ Stop │
+│     ✓ typecheck 12s                                                    │
+│     vitest  src/main/server/batch.test.ts (14 tests) 120ms             │
+│ ◌ Release                                                              │
+│ ◌ Deploy to the box                                                    │
+│ Then notify you                                                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Title bar**: the batch name (the master's title), a quiet ⋯ and
-  + Thread ▾. The ⋯ menu is the batch's fleet switches
+- **Header**: SplitShell's 36px view header (`title`, `detail`,
+  `actions`): the batch name (the master's title), the master's summary
+  line (`rules.summary`) as its muted detail when it wrote one, then ⋯
+  (a ghost icon button, "Batch actions") and + Thread ▾ (a ghost button)
+  before the conversation toggle. The ⋯ menu is the batch's fleet switches
   (`master/boardActions.ts`), counting the rows of every host: Pause all
-  (the running-turn rule, confirmed with the live count) and Resume all go
+  (the running-turn rule, confirmed with the live count and one line,
+  "Each turn holds where it is.") and Resume all go
   to each row's own host through its `session.batch`; Archive done… and
   Archive all… (`master/ArchiveBatchDialog.tsx`: "Archive 3 done threads?"
   / "Archive all 7 threads?" with the live count, the resources checkbox
@@ -520,11 +522,13 @@ in the whole pane, with Back.
   lib/projectPairs.ts), one checkbox row each with the host's name at the
   right when they span hosts; Add is one `batch.adopt` on the master's
   host, a thread of another host named `<envId>:<id>`, the host's
-  refusals read back by title in the sheet). No counts sentence: the
-  sections carry their counts.
-- **Sections**, each a muted 12px label with its count, in this order: Needs
-  you (waiting, error), Running (starting, running, watching, paused), Queued
-  (waiting for a sibling: there is no running cap), Done (idle, stopped). An
+  refusals read back by title in the sheet). No counts anywhere: the rows
+  say them.
+- **Sections**, each a 12px medium muted heading in the status
+  vocabulary's words and no count, in this order: Needs you (waiting,
+  error), Working (starting, running, watching, paused), Queued (waiting
+  for a sibling or the running cap), Done (idle, stopped). The heading
+  says the state's word once, so the rows under it never repeat it. An
   empty section is not drawn. Rows oldest first within a section; nothing
   animates a reorder. The rows are the batch's children on every host the
   renderer knows (`masterChildrenOf` over the whole session store, which
@@ -534,51 +538,45 @@ in the whole pane, with Back.
   authority on a row's host and status and the session rows keep the
   bodies (`mergeBatchChildren`; a child the store has no row for becomes
   a plain row with the list's title and type).
-- **A row** (`master/MasterRow.tsx`, the rules in `master/rowBody.ts`) is two
-  lines on a 16px glyph column, and nothing on it is separated by a dot.
-  Line one: the type's glyph in its tint (`THREAD_GLYPHS`), the
-  13px medium title, the type word, then the task tally once the thread has
-  a list: "3/7" and a 2px bar filled to done of total (the foot's meter at
-  row scale, `taskProgress` in rowBody.ts), inline after the type word,
-  never pinned to the right. The title bar carries no batch total:
-  the rows say it. Line two: the status glyph (the matrix spinner, an
-  amber or red dot, a dashed ring while queued, a pause mark, a check once
-  done) beside what the thread is doing (its `activity` while queued or
-  working, the question or failure in amber or red while it needs you,
-  "Landed 12:08" once the batch lists it, "Done" otherwise), and at the
-  right the provider's mark, the model's name, then its effort and context
-  in a quieter gray; first, when the thread runs on another host than the
-  master, that host's dot and name (`rowHost`: the dot's tone from `hostTone`, muted, once per row,
-  nothing on a row at home). A row of a host whose link is not open sits
-  under the offline tint (`opacity-50`, `data-host-offline`): its row is
-  the launch mirror's and lifts when the host is back.
+- **A row** (`master/MasterRow.tsx`: `MasterRowView` draws from props
+  alone, `MasterRow` wires it to the store; the rule is `rowStatus` in
+  `master/rowBody.ts`) is an `Item` (a `div role="button"`, `rounded-md`,
+  hover `foreground/5`, no border) with two lines on a 16px glyph column,
+  and nothing on it is separated by a dot. Line one: the type's glyph
+  (`THREAD_GLYPHS`, muted; its word in a tooltip and as its accessible
+  name, never printed beside the title), the 13px medium title (muted
+  while the row sits in Done or Queued), the host's glyph, and at the end
+  the provider's mark, the model's name, then its effort and context. Line
+  two: `StatusMark`'s glyph for the thread's state (`threadStateOf`, an
+  idle row being done) with what the state is about, and the task tally
+  (`3/7`, `tabular-nums`, no bar) at the end once the thread has a list.
+  The detail: working, an implementation's task in hand (its `in_progress`
+  todo), else the activity; waiting, the open question, else "approve"
+  and what it was doing; failed, the failure; watching and queued, the
+  activity without the lead the word says ("Waiting on ", "Queued · ");
+  paused and stopped, nothing (the glyph and the heading say it); done,
+  "Landed 12:08" once the batch lists it, else a research or orchestration
+  thread's summary (the notes' State line, else its last words). Amber and
+  red details take the state's tone; every other detail is the mark's
+  muted detail. No task list, third line or progress bar: the child pane
+  has the list, one click away. A row of a host whose link is not open
+  sits under the offline tint (`opacity-50`, `data-host-offline`): its row
+  is the launch mirror's and lifts when the host is back.
   Under the lines, the thread's live subagents, one 20px line each in the
-  text column: the status glyph (`StatusGlyph`), the role's glyph
-  (`AGENT_GLYPHS`, muted), the title, what it is doing in the board row's
-  words and tones (`whatLine` over `digestLine` from the meta: the
-  activity, "waiting for approval — Bash" in amber, the failure in red,
-  "Paused") and the host's glyph. Its whole tree by the parentId chain
-  (archived ones left out, a far child's from that host's rows in the
-  store), the person's first (waiting, failed, working, then paused or
+  text column: `StatusMark`'s glyph, the role's glyph (`AGENT_GLYPHS`,
+  muted), the title, what its state is about in the board row's own words
+  (`rowStatus` from the meta: the activity, "approve Bash" in amber, the
+  failure in red) and the host's glyph. Its whole tree by the parentId
+  chain (archived ones left out, a far child's from that host's rows in
+  the store), the person's first (waiting, failed, working, then paused or
   queued, oldest first within each), at most three (`AGENT_LINES`), then
-  one quiet line, "and 2 more · 3 done", amber when one past the cap
+  one quiet line, "and 2 more, 3 done", amber when one past the cap
   waits; a thread whose agents all settled shows nothing. A line opens
   the agent in the board's place as a row opens its thread, and its click
   never reaches the row (`master/agentSummary.ts`). The board builds one
   parent index of the store per meta change and one entry per row
   (`AgentSummaries`, `useAgentSummaries`); a row reads its own
   (`useRowAgents`) and re-renders only when its lines changed.
-  Under them, by type: an implementation its task list from its digest
-  (the host's task fold, `batch.board`), a check once done, the spinner on
-  the one in hand, a hollow ring ahead. The list is open while the thread
-  works or needs you and folded once it sits in Done (`tasksOpenByDefault`);
-  the tally is its disclosure, a chevron at its end turning when open, its
-  click never reaching the row, and the person's own open or close holds
-  while the row is on screen. The fold is the app's one fold
-  (`Collapsible`, a fade under reduced motion); a research or orchestration thread
-  one summary line, the first line under `## State` in its notes, else its
-  last words (both from the digest), never the line two already says. Chat
-  and plan rows carry the two lines only. Done and queued rows are dimmed.
 - **The list paints from one answer.** `batch.board` on the master's host
   answers its children there, a digest per child (`BoardDigest`: todos,
   last words, State line, the question it waits on, the failure) and the
@@ -595,17 +593,18 @@ in the whole pane, with Back.
 - **A plan and its build are one row** (`foldRows` in `useMasterModel.ts`):
   a build whose `planThreadId` names a thread of the batch takes that plan's
   row, keyed by the plan's id and titled with the plan's title, so the row
-  stays in place when the build starts and the type word turns from Plan to
-  Implementation; the plan, archived after the start or not, is never a
+  stays in place when the build starts and the type glyph turns from the
+  plan's to the implementation's; the plan, archived after the start or not, is never a
   second row.
-- **Hover** trades the tally and the model mark for the action cluster
-  (1.5px strokes, tooltips): Message (opens the thread's full view with the
-  composer focused), Pause or Resume, Stop, Remove (archive with the
-  resources offer, ArchiveThreadDialog). A queued row offers Start now
-  (`session.start`, past `after`) and "Remove from queue" (the fleet
-  switches' Stop on a queued root, which archives it). Every action goes
-  to the row's own host: the commands route by the thread's id through
-  the store's link for it.
+- **Hover** (and focus inside the row) fades the model mark out and the
+  row's actions in where it sat, ghost icon buttons with tooltips and no
+  box around them: Message (opens the thread's full view with the
+  composer focused), the one verb the state calls for (Pause while a turn
+  runs anywhere in its tree, Resume when paused or stopped, Start now when
+  queued, which is `session.start` past `after`; nothing otherwise), and ⋯,
+  the row's menu at the button. Stop, Archive and Remove from queue live in
+  that menu. Every action goes to the row's own host: the commands route
+  by the thread's id through the store's link for it.
 - **Click** opens the thread's full view in the board's place
   (`master/ChildPane.tsx`, given the row's `environmentId`): the whole
   pane, board and master chat gone, becomes the thread's own view, the one
@@ -618,8 +617,8 @@ in the whole pane, with Back.
   handlers reach it through `SessionActionsContext`. A child on another
   host opens against that host the way a rail row of that host does (the
   store holds every host's rows by id, `data-child-host` names it). The
-  header is one Back control on the same 40px bar as the board's title;
-  Escape, or ⌘↩ outside the composer (inside it ⌘↩ is the composer's
+  header is 36px: Back (a ghost button whose tooltip says "Back to the
+  board" with Esc) and the thread's title; Escape, or ⌘↩ outside the composer (inside it ⌘↩ is the composer's
   own), goes back, and the board returns at the scroll it was left at.
   Nothing opens a tab; the strip never lists a child (`isBatchChild` in
   lib/threadStripModel.ts).
@@ -627,7 +626,9 @@ in the whole pane, with Back.
   thread's menu (`master/rowMenu.ts`): New pass… first, Open, then the
   tab's own thread actions (`chipMenuItems`: Rename, Continue or Pause,
   Compact, Stop, the master pin, Archive) with the thread chip's host
-  moves before Archive; the tab's type options, Mac bridge, resources and
+  moves before Archive; a queued thread's menu has Start now after Open,
+  Remove from queue (the fleet switches' Stop on a queued root, which
+  archives it) in Archive's place and no Compact; the tab's type options, Mac bridge, resources and
   delete stay on the tab. New pass… is a dialog (`master/NewPassDialog.tsx`,
   the Modal at `lg`): the thread's title, one quiet line with its status
   glyph and the board row's own words for what it does now, else its last
@@ -638,34 +639,36 @@ in the whole pane, with Back.
   A popover or the composer's `@`/`/` list open inside a Modal takes
   Escape first: each stops the key before the dialog hears it.
 - **The foot** (`master/BatchFoot.tsx`, the step rules in `master/steps.ts`)
-  stays put under the scrolling list: "When the threads are done", the
-  master's summary line when it wrote one, the rules as one sentence
-  (`rulesSentence`: how branches land, then the steps by the names the
-  master gave them, then notify or archive) with Edit beside it, and the
-  blocked line in red when a child blocks the batch's end. Then the steps:
-  the master's list (`rules.steps`, a `BatchStepSpec` each: id, name, kind,
-  a shell step's command and cwd) joined by id with the host's telemetry
-  (`state.steps`; `liveSteps` in `master/steps.ts`), in the state's order,
-  a step the rules name that the host has not seen yet pending at the end;
-  the renderer writes no step name of its own. Two sizes. Idle: one quiet
-  row, each step its glyph, name and, once finished, how long it took
-  ("Gate 4m 12s"; "skipped" after one the engine passed over). The moment
-  a step runs the foot grows to its console, the same for a shell step
-  (its command in mono after the name) as for a publish: the steps before
-  it in a line above with their state and time; the running step's name
-  with its elapsed ticking every second from `startedAt`, its progress as
-  "3 of 7" with the host's label and a 2px bar when the total is known,
-  Stop at the right (`batch.stopStep` with the step's id); its console lines in the
-  app's monospace, newest at the bottom, following until the person scrolls
-  up (back at the bottom, it follows again); the steps still ahead in a
-  muted row below. A failed step stays open with its last lines and the
-  failure in red until Hide folds it. Every step done, the foot shrinks
-  back to the row. The grow and shrink are the app's one fold
-  (`Collapsible`: `--dur-slow` open, `--dur-base` closed, a fade under reduced motion),
-  the idle row and the console both mounted so either can tween shut, the
-  hidden one inert. Read from the `batch.board` answer and the `batch` push
-  (each step's log as the lines since the last push, `foldBatchPush`; a
-  push past what is held asks `batch.get` for the whole state).
+  stays put under the scrolling list, always rows, at the rows' 20px
+  inset: a "When done" heading (12px medium muted) with Edit, the blocked
+  line in red when a child blocks the batch's end, then one 28px row per
+  step: the master's list (`rules.steps`, a `BatchStepSpec` each: id,
+  name, kind, a shell step's command and cwd) joined by id with the host's
+  telemetry (`state.steps`; `liveSteps`), in the state's order, a step the
+  rules name that the host has not seen yet pending at the end; the
+  renderer writes no step name of its own. A row is `StatusMark`'s glyph
+  (`stepState`: pending queued, running working, passed done, failed
+  failed, skipped idle), the name (muted while pending or skipped), what
+  it is about (`stepDetail`: the land step "as they finish" or "all at
+  once" until it runs, then "2 of 5 landed"; a running step "12 of 31"
+  and the host's label apart by margin; "skipped" or the host's reason; a
+  failed step's detail in red), its time (`tabular-nums`, ticking every
+  second from `startedAt` while it runs), and Stop on the running step
+  (`batch.stopStep` with the step's id), Hide and Show on a failed one.
+  The running step's console opens under its own row through
+  `Collapsible` (the standard's fold, opacity under reduced motion),
+  indented to the name: 12px mono on `card`, 60px to 176px tall, newest
+  line at the bottom, following until the person scrolls up (back at the
+  bottom, it follows again), "Starting…" before the first line; a shell
+  step's command shows once, as its console's first line (`$ <run>`, the
+  host writes it). A failed step's console stays open with its last lines
+  and the failure in red until Hide. No progress bar: the row's detail
+  says the count. The last line says what happens then: "Then notify you"
+  or "Then archive the threads". Until `batch.board` answers the foot is
+  a `Skeleton` of the heading and three rows. Read from the `batch.board`
+  answer and the `batch` push (each step's log as the lines since the last
+  push, `foldBatchPush`; a push past what is held asks `batch.get` for the
+  whole state).
 - **Edit** opens the rules (`master/RulesDialog.tsx`, Modal md; the pure
   moves in `master/rulesEdit.ts`): Branches land (As they finish / All at
   once, shown while a merge step is in the list), then the steps in order,

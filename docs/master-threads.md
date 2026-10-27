@@ -489,38 +489,45 @@ rows, the foot and the add sheet are the UI thread's
 
 - **Borrowed.** The board | sash | chat recipe (SplitShell) every board
   thread uses, the chat on the right folding from a header toggle. A child row
-  shares the fleet's status glyph (`StatusGlyph`, fleet/rowBits.tsx). The
-  unfolded row is the agent detail's feed, docked in place instead of a
-  modal. The settle rows in the chat are the reports the master already
+  is an `Item` with the status vocabulary's `StatusMark`, the one map every
+  row in the app reads. The opened row is the thread's own view, docked in
+  place instead of a modal. The settle rows in the chat are the reports the master already
   receives.
-- **Grouping by what the row needs from you.** Needs you, Running, Queued,
-  Done. With ten children the question you ask the board is "who is
-  blocked on me", so that group leads, and the title bar repeats the
-  counts only as a sentence.
+- **Grouping by what the row needs from you.** Needs you, Working, Queued,
+  Done, the vocabulary's words with no counts. With ten children the
+  question you ask the board is "who is blocked on me", so that group
+  leads; the heading says the state's word once and each row says only
+  what its state is about.
 - **Queued as a visible state.** The row exists, dimmed, with the sibling
   it waits for, and the master never has to retry.
-- **The batch's own work under the list.** The steps the master wrote,
-  with a live console per running step, not a panel, because they are the
-  batch's state and not a child's. They stay put while the list scrolls.
+- **The batch's own work under the list.** The steps the master wrote, one
+  row each, the running step's console opening under its own row, not a
+  panel, because they are the batch's state and not a child's. They stay
+  put while the list scrolls; the last line says what happens then.
 - **One sheet for a child's identity.** Type, model, effort, context, host
   and an optional sibling to wait for. The same shape serves the button
   and the master's own tool call.
 - **Every host on one board.** The rows are the batch's children on every
   host the renderer knows, a child on the box beside one at home; a row
-  away from the master's host carries that host's dot and name, and sits under the offline tint while
+  away from the master's host carries that host's glyph, and sits under the offline tint while
   that host is out of reach. Every action, the menus and the archive go to
   the row's own host; the add sheet starts a child on any linked host.
-- **Left out on purpose.** No cost column, no provider logos, no per-row
-  progress bars, no badges on the title. The type reads as one muted word
-  after the title.
+- **Left out on purpose.** No cost column, no per-row progress bars or task
+  lists (the child pane has the list; the row says the task in hand and
+  `3/7`), no counts, no badges on the title. The type is the row's glyph,
+  its word in a tooltip. On hover the row offers Message, the one verb its
+  state calls for and ⋯; everything else is the row's menu.
 
 Files: surfaces/threads/MasterView.tsx (routed when the session is a
 master, whatever its type), master/useMasterModel.ts (the
-grouping, the sentence, `useBoard`: `batch.board` on mount and every 45 s
+grouping, the rules sentence for the dialog, `useBoard`: `batch.board` on mount and every 45 s
 while the pane shows, then the `board` and `batch` pushes through
 `batchFromPush` and `foldBatchPush`; `boardLayout`, the list's rows that
 change only when one joins, leaves or moves section, plan or host),
-master/MasterRow.tsx, master/BatchFoot.tsx, master/steps.ts,
+master/MasterRow.tsx and master/rowBody.ts (`rowStatus`, the row's state
+and detail), master/BatchFoot.tsx, master/steps.ts (`stepState`,
+`stepDetail`), master/board.preview.tsx over master/boardFixture.ts (the
+static preview for `ui:preview`),
 master/AddThreadDialog.tsx, lib/masterThread.ts (`isMasterThread`, the
 renderer's read of the flag on the thread).
 
