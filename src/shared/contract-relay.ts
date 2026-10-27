@@ -330,7 +330,9 @@ export const RelayNoticeSchema = z.object({
   /** The approval a phone may decide from the notification (kind `approval`), on the host the notice names. */
   requestId: z.string().max(200).optional(),
   /** The host's own name: the phone adds it to the subtitle when several hosts are paired. */
-  hostName: z.string().max(120).optional()
+  hostName: z.string().max(120).optional(),
+  /** A window on the host shows the thread to its person now: the box tells its webhooks, not the phone. */
+  onScreen: z.literal(true).optional()
 })
 export type RelayNotice = z.infer<typeof RelayNoticeSchema>
 export const RelayRequestSchemas = [

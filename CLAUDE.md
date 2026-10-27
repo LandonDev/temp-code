@@ -1798,9 +1798,9 @@ proof and the sizing rules; the pieces, by name:
   sends no Done (the master's batch notice covers it, and the master's
   idle after it is not a second Done), a plan whose build started sends
   nothing, and a root a desktop window names to its person right now
-  (`FocusSet.isNamed`, unwidened) is stamped `onScreen`, which the hub,
-  local APNs and the relay skip while key webhooks and the Live Activity
-  reason still take it. The alert
+  (`FocusSet.isNamed`, unwidened) is stamped `onScreen`, which the hub and
+  local APNs skip (on this host, and on the box for a relayed notice) while
+  key webhooks and the Live Activity reason still take it. The alert
   (remote/apnsPayload.ts, identical in infra/hub/src/delivery.ts) has the
   subtitle, `thread-id` and `summary-arg` per thread, `relevance-score`
   (needs_you 1, failed 0.8, stuck 0.6, finished 0.4), sound only for

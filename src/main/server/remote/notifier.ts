@@ -128,15 +128,18 @@ const basename = (path: string): string => path.replace(/[\\/]+$/, '').split(/[\
 
 /**
  * An approval as the question the person answers: "Run bun test?",
- * "Read types.ts?", "Use linear?". The harness's own sentence when it
- * gives one ("Claude wants to read foo.txt" → "Read foo.txt?"), else a
- * verb by tool name; the detail is cut at 90 characters.
+ * "Read types.ts?", "Use linear?". The harness's own title when it gives
+ * one ("Claude wants to read foo.txt" → "Read foo.txt?", OpenCode's "Run
+ * rm -rf build" → "Run rm -rf build?", a Pi extension's own question
+ * as asked), else a verb by tool name; the detail is cut at 90 characters.
  */
 export function approvalLine(toolName: string, input: unknown, title?: string): string {
-  const said = title ? /\bwants to\s+(.+)$/is.exec(oneLine(title)) : null
-  if (said) {
-    const action = said[1].replace(/`/g, '').replace(/[.\s]+$/, '')
-    if (action) return `${cut(action[0].toUpperCase() + action.slice(1), DETAIL_CHARS + 10)}?`
+  // The harness's own words: "<who> wants to <action>" gives the action, any other title is the question itself.
+  const sentence = oneLine(title ?? '')
+  const action = (/\bwants to\s+(.+)$/i.exec(sentence)?.[1] ?? sentence).replace(/`/g, '').replace(/[.\s]+$/, '')
+  if (action) {
+    const line = cut(action[0].toUpperCase() + action.slice(1), DETAIL_CHARS + 10)
+    return line.includes('?') ? line : `${line}?`
   }
   const rec = input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {}
   const str = (...keys: string[]): string | null => {

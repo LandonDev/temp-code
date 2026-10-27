@@ -476,6 +476,9 @@ describe('approvalLine', () => {
   it('asks the action as a question, from the harness sentence when it gives one', () => {
     expect(approvalLine('Read', { file_path: '/a/b/types.ts' }, 'Claude wants to read types.ts')).toBe('Read types.ts?')
     expect(approvalLine('Bash', { command: 'bun test' }, 'Claude wants to run `bun test`.')).toBe('Run bun test?')
+    // OpenCode's title carries the command; a Pi extension's title is its whole question.
+    expect(approvalLine('bash', { path: 'rm -rf build' }, 'Run rm -rf build')).toBe('Run rm -rf build?')
+    expect(approvalLine('Pi extension', {}, 'Delete the build folder? This cannot be undone.')).toBe('Delete the build folder? This cannot be undone')
   })
   it('names each tool family by its verb', () => {
     expect(approvalLine('Bash', { command: 'bun test' })).toBe('Run bun test?')

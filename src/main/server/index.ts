@@ -745,8 +745,9 @@ export async function startServer(
       // An older host sends no kind: read it off the event.
       const n = { ...relayed, kind: relayed.kind ?? (relayed.event === 'needs_you' ? ('waiting' as const) : relayed.event) }
       const jobs: Promise<unknown>[] = []
-      if (hub) jobs.push(hub.notify({ ...n, environmentId: from }))
-      if (apns) jobs.push(pushRegistry.deliver({ ...n, environmentId: from }))
+      // A thread its person is looking at on that host: the phones hear nothing, the webhooks everything.
+      if (hub && !n.onScreen) jobs.push(hub.notify({ ...n, environmentId: from }))
+      if (apns && !n.onScreen) jobs.push(pushRegistry.deliver({ ...n, environmentId: from }))
       const targets = remoteAuth.webhookTargets(n.event)
       if (targets.length > 0) jobs.push(deliverWebhooks(targets, webhookPayload(n, hostId, from)))
       await Promise.all(jobs)
@@ -2860,7 +2861,7 @@ export async function startServer(
     // A thread a window shows its person right now: the phone hears nothing of it (attention.ts, FocusSignal).
     onScreen: (id) => focus.isNamed(id)
   })
-  // The person-facing sinks (the hub, local APNs, the relay) skip an onScreen notice; webhooks and the Live Activity take every one.
+  // The person-facing sinks (the hub, local APNs) skip an onScreen notice; webhooks, the relay (its carrier's webhooks) and the Live Activity take every one.
   if (hub) {
     notifier.onNotice(
       (n) =>
