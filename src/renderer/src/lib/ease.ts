@@ -29,9 +29,6 @@ export const SPRING_LAYOUT = {
   mass: 0.6,
 } as const;
 
-/** The same spring under its older name; new code says SPRING_LAYOUT. */
-export const SPRING_SWAP = SPRING_LAYOUT;
-
 /**
  * The durations, in seconds for Motion, mirroring the CSS tokens in
  * index.css (`--dur-fast`, `--dur-base`, `--dur-slow`, `--dur-drawer`);
@@ -39,7 +36,7 @@ export const SPRING_SWAP = SPRING_LAYOUT;
  */
 export const DUR = { fast: 0.12, base: 0.18, slow: 0.24, drawer: 0.3 } as const;
 
-/** Long, settled travel: a sidebar reopening, a card gliding home. */
+/** A released drag settling: a sash let go, a reordered row dropping home. */
 export const SPRING_GLIDE = {
   type: "spring",
   stiffness: 700,
@@ -59,9 +56,6 @@ export const EASE_DRAWER = [0.32, 0.72, 0, 1] as const;
 /** EASE_OUT as a CSS timing function, for keyframes and transitions. */
 export const EASE_OUT_CSS = "cubic-bezier(0.16, 1, 0.3, 1)";
 
-/** EASE_DRAWER as a CSS timing function, for the push panels' width transitions. */
-export const EASE_DRAWER_CSS = "cubic-bezier(0.32, 0.72, 0, 1)";
-
 /** A closing overlay's curve, as CSS `--ease-exit`. */
 export const EASE_EXIT = [0.4, 0, 0.6, 1] as const;
 
@@ -74,3 +68,36 @@ export const ENTER = {
 
 /** The one exit: a fade over DUR.fast. */
 export const FADE_OUT = { opacity: 0, transition: { duration: DUR.fast, ease: EASE_OUT } } as const;
+
+type Spring = { readonly stiffness: number; readonly damping: number; readonly mass: number };
+
+/**
+ * A spring as a CSS curve: its step response from 0 to 1 at rest, integrated
+ * in 1 ms steps, sampled into `linear(0, …, 1)`. `ms` is the first instant
+ * after which the spring stays within `rest` of 1 (0.005: half a pixel per
+ * 100px of travel), rounded up to 10 ms. CSS transitions on this curve glide
+ * like the Motion spring and need no JavaScript.
+ */
+export function springEasing(spring: Spring, points = 32, rest = 0.005): { ms: number; easing: string } {
+  const { stiffness: k, damping: c, mass: m } = spring;
+  const xs = [0];
+  let x = 0;
+  let v = 0;
+  let settled = 0;
+  for (let t = 1; t <= 5000; t++) {
+    v += ((-k * (x - 1) - c * v) / m) * 0.001;
+    x += v * 0.001;
+    xs.push(x);
+    if (Math.abs(1 - x) >= rest) settled = t;
+  }
+  const ms = Math.ceil((settled + 1) / 10) * 10;
+  const samples = Array.from({ length: points }, (_, i) => {
+    if (i === 0) return 0;
+    if (i === points - 1) return 1;
+    return Number(xs[Math.round((i / (points - 1)) * ms)].toFixed(4));
+  });
+  return { ms, easing: `linear(${samples.join(", ")})` };
+}
+
+/** SPRING_LAYOUT as a CSS curve and its duration. */
+export const SPRING_LAYOUT_CSS = springEasing(SPRING_LAYOUT);

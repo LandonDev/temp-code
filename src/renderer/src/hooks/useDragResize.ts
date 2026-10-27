@@ -6,7 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { animate } from "motion/react";
-import { SPRING_LAYOUT } from "../lib/ease";
+import { SPRING_GLIDE } from "../lib/ease";
 import { suppressTextSelection } from "../lib/drag";
 
 type Options = {
@@ -91,7 +91,7 @@ export function useDragResize({
       return;
     }
     // Spring from the stretched (or previous) width to the committed one.
-    settle.current = animate(pane, { width: [`${from}px`, `${value}px`] }, SPRING_LAYOUT);
+    settle.current = animate(pane, { width: [`${from}px`, `${value}px`] }, SPRING_GLIDE);
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
