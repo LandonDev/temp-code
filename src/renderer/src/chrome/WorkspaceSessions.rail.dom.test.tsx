@@ -7,7 +7,7 @@ import { sessionStore } from "../lib/tcserver/store";
 import { menuChunk, virtualChunk } from "../surfaces/chunks";
 import { resetMenus, warmMenus } from "./menuRows";
 
-const h = vi.hoisted(() => ({ metas: [] as SessionMeta[] }));
+const h = vi.hoisted(() => ({ metas: [] as SessionMeta[], renamed: [] as [string, string][] }));
 vi.mock("../lib/tcserver/store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/tcserver/store")>()),
   useSessionMetas: () => h.metas,
@@ -71,7 +71,7 @@ function Column({ shown }: { shown: boolean }) {
         onOpenSession={() => {}}
         onNewChat={() => {}}
         onNewProject={() => {}}
-        onRenameSession={() => {}}
+        onRenameSession={(id, title) => h.renamed.push([id, title])}
         onDeleteSession={() => {}}
         scroller={scroller}
       />
@@ -87,6 +87,7 @@ beforeEach(() => {
   resetMenus();
   vi.spyOn(sessionStore, "metaOf").mockImplementation((id) => h.metas.find((m) => m.id === id) ?? null);
   h.metas = Array.from({ length: 40 }, (_, i) => chat(i));
+  h.renamed = [];
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
   const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
@@ -182,5 +183,25 @@ describe("the workspace column across a remount", () => {
     expect(again.scrollTop).toBe(248);
     expect(shownChats()).toBe(40);
     expect(screen.queryByText("8 more")).toBeNull();
+  });
+});
+
+describe("an inline rename of a rail thread ended from the keyboard", () => {
+  it("gives focus back to the row's More: Escape saves nothing, Enter saves once", async () => {
+    render(<Column shown />);
+    const row = () => screen.getByText("Chat 3").closest<HTMLElement>("[data-thread-row]")!;
+    const field = () => screen.getByRole("textbox") as HTMLInputElement;
+    fireEvent.doubleClick(row());
+    fireEvent.keyDown(field(), { key: "Escape" });
+    await act(async () => {});
+    expect(document.activeElement).toBe(row().querySelector('[aria-label="More"]'));
+    expect(h.renamed).toEqual([]);
+    fireEvent.doubleClick(row());
+    fireEvent.change(field(), { target: { value: "Chat three" } });
+    fireEvent.keyDown(field(), { key: "Enter" });
+    await act(async () => {});
+    expect(h.renamed).toEqual([["c3", "Chat three"]]);
+    // The store has not heard the new title: the row still reads the old one.
+    expect(document.activeElement).toBe(row().querySelector('[aria-label="More"]'));
   });
 });

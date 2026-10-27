@@ -494,3 +494,59 @@ describe('the host glyph on rail rows', () => {
   })
 })
 
+
+describe('an inline rename ended from the keyboard', () => {
+  const mountProject = (onRename: (id: string, name: string) => void) =>
+    mountProbe(
+      <ProjectRow
+        group={{ project: project(), threads: [], latest: 100, archivedCount: 0 }}
+        selected={false}
+        lastSeen={{}}
+        seenFloor={0}
+        rows={{ ...actions, focusedTree: new Set<string>() }}
+        requested={SESSION_LIST_PAGE}
+        onMore={() => {}}
+        onSelect={() => {}}
+        onNewChat={() => {}}
+        onRename={onRename}
+        onSettings={() => {}}
+        onPreamble={() => {}}
+        onArchive={() => {}}
+        onDelete={() => {}}
+      />
+    )
+  const field = () => screen.getByRole('textbox') as HTMLInputElement
+  const more = (root: HTMLElement) => root.querySelector<HTMLElement>('[data-project-row] [aria-label="More"]')
+
+  it("gives a project row's focus back to its More: Escape saves nothing, Enter saves once", async () => {
+    const onRename = vi.fn()
+    const probe = mountProject(onRename)
+    const row = probe.container.querySelector<HTMLElement>('[data-project-row]')!
+    fireEvent.doubleClick(row)
+    fireEvent.keyDown(field(), { key: 'Escape' })
+    await act(async () => {})
+    expect(document.activeElement).toBe(more(probe.container))
+    expect(onRename).not.toHaveBeenCalled()
+    fireEvent.doubleClick(row)
+    fireEvent.change(field(), { target: { value: 'Renamed' } })
+    fireEvent.keyDown(field(), { key: 'Enter' })
+    await act(async () => {})
+    expect(document.activeElement).toBe(more(probe.container))
+    expect(onRename).toHaveBeenCalledOnce()
+    expect(onRename).toHaveBeenCalledWith('p1', 'Renamed')
+    probe.unmount()
+  })
+
+  it('leaves focus where a blur put it', async () => {
+    const probe = mountProject(() => {})
+    const outside = document.createElement('button')
+    document.body.append(outside)
+    fireEvent.doubleClick(probe.container.querySelector<HTMLElement>('[data-project-row]')!)
+    outside.focus()
+    fireEvent.blur(field())
+    await act(async () => {})
+    expect(document.activeElement).toBe(outside)
+    outside.remove()
+    probe.unmount()
+  })
+})

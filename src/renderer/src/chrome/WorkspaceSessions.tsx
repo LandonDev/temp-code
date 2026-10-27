@@ -171,6 +171,18 @@ function InlineRename({
 }) {
   const [draft, setDraft] = useState(value);
   const done = useRef(false);
+  // Ended from the keyboard, focus goes to the row's More, which mounts
+  // again in the same commit that removes the field; a blur leaves focus
+  // where the person put it.
+  const field = useRef<HTMLInputElement>(null);
+  const byKey = useRef(false);
+  useLayoutEffect(() => {
+    const row = field.current?.closest<HTMLElement>("[data-thread-row], [data-project-row]") ?? null;
+    return () => {
+      if (!byKey.current || !row) return;
+      queueMicrotask(() => row.querySelector<HTMLElement>('[aria-label="More"]')?.focus());
+    };
+  }, []);
   const commit = () => {
     if (done.current) return;
     done.current = true;
@@ -179,14 +191,19 @@ function InlineRename({
     else onCancel();
   };
   const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") commit();
+    if (e.key === "Enter") {
+      byKey.current = !done.current;
+      commit();
+    }
     if (e.key === "Escape") {
+      byKey.current = !done.current;
       done.current = true;
       onCancel();
     }
   };
   return (
     <Input
+      ref={field}
       autoFocus
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
