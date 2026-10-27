@@ -362,7 +362,8 @@ class WorkspaceStore {
 export const workspaceStore = new WorkspaceStore();
 
 export function useWorkspaceCatalog(): WorkspaceCatalog {
-  return useSyncExternalStore(workspaceStore.subscribe, workspaceStore.getSnapshot);
+  // The same snapshot serves a static render (bun run ui:preview).
+  return useSyncExternalStore(workspaceStore.subscribe, workspaceStore.getSnapshot, workspaceStore.getSnapshot);
 }
 
 export function useWorkspaces(): WorkspaceMeta[] {

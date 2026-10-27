@@ -85,7 +85,9 @@ export function subscribeEditorState(listener: () => void): () => void {
 }
 
 export function useEditorState<T>(selector: (s: EditorState) => T): T {
-  return useSyncExternalStore(subscribeEditorState, () => selector(state));
+  const read = () => selector(state);
+  // The same read serves a static render (bun run ui:preview).
+  return useSyncExternalStore(subscribeEditorState, read, read);
 }
 
 export function clearReveal(): void {

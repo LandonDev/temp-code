@@ -77,7 +77,7 @@ export default [
           chip("m", "Release batch", { status: "watching" }, { threadType: "orchestration" }),
         ],
       },
-      // trailing: the chooser joins once it renders statically
+      trailing: <NewThreadChooser workspaceId={null} empty={false} onStart={() => {}} />,
     },
   },
   {
@@ -85,7 +85,7 @@ export default [
     props: {
       ...common,
       model: { activeId: null, live: [], dormant: [] },
-      // trailing (empty)
+      trailing: <NewThreadChooser workspaceId={null} empty onStart={() => {}} />,
     },
   },
 ];

@@ -1,3 +1,4 @@
+import { MOD } from "../lib/platform";
 import { GripVertical, Terminal, X } from "./icons";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -241,7 +242,7 @@ export function SurfaceTabs({
                         <X />
                       </TooltipTrigger>
                       <TooltipContent>
-                        Close <Kbd>⌘W</Kbd>
+                        Close <Kbd>{MOD}W</Kbd>
                       </TooltipContent>
                     </Tooltip>
                   ) : dirty ? (
