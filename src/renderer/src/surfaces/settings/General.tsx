@@ -28,12 +28,10 @@ import {
 import { BUNDLED_RELEASE } from "../../lib/releaseNotes";
 import {
   loadComposerRunner,
-  loadGridArcadeEnabled,
   loadMidTurnDefault,
   loadLiveAgentsEnabled,
   loadNotesEnabled,
   saveComposerRunner,
-  saveGridArcadeEnabled,
   saveMidTurnDefault,
   saveLiveAgentsEnabled,
   saveNotesEnabled,
@@ -91,7 +89,6 @@ export function GeneralPage({
   const [notesEnabled, setNotesEnabled] = useStoredFlag(loadNotesEnabled, saveNotesEnabled);
   const [liveAgentsEnabled, setLiveAgentsEnabled] = useStoredFlag(loadLiveAgentsEnabled, saveLiveAgentsEnabled);
   const [soundsEnabled, setSoundsEnabled] = useStoredFlag(loadSoundsEnabled, saveSoundsEnabled);
-  const [gridArcadeEnabled, setGridArcadeEnabled] = useStoredFlag(loadGridArcadeEnabled, saveGridArcadeEnabled);
 
   // The menu flips the anchor too; follow it while the page is open.
   useEffect(() => {
@@ -165,12 +162,6 @@ export function GeneralPage({
           description="Short cues for finished turns, inbox items and updates."
           on={soundsEnabled}
           onChange={setSoundsEnabled}
-        />
-        <SwitchRow
-          title="Empty session games"
-          description="Pac-man and snake idle on the empty-session grid."
-          on={gridArcadeEnabled}
-          onChange={setGridArcadeEnabled}
         />
       </PageSection>
 

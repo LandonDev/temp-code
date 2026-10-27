@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   COMPOSER_RUNNER_DEFAULT,
-  GRID_ARCADE_ENABLED_DEFAULT,
   filterKeybindings,
   isSettingsSectionId,
   KEYBINDING_GROUPS,
@@ -12,14 +11,12 @@ import {
   settingsSectionLabel,
   LIVE_AGENTS_ENABLED_DEFAULT,
   loadComposerRunner,
-  loadGridArcadeEnabled,
   loadLiveAgentsEnabled,
   loadMidTurnDefault,
   loadNotesEnabled,
   MID_TURN_DEFAULT,
   NOTES_ENABLED_DEFAULT,
   saveComposerRunner,
-  saveGridArcadeEnabled,
   saveLiveAgentsEnabled,
   saveMidTurnDefault,
   saveNotesEnabled,
@@ -28,7 +25,6 @@ import {
 const KEY = "monocode.composerRunner";
 const NOTES_KEY = "monocode.notesEnabled";
 const LIVE_AGENTS_KEY = "monocode.liveAgentsEnabled";
-const GRID_ARCADE_KEY = "monocode.gridArcadeEnabled";
 
 function mockLocalStorage() {
   const data = new Map<string, string>();
@@ -111,26 +107,6 @@ describe("live agents enabled setting", () => {
     expect(loadLiveAgentsEnabled()).toBe(false);
     saveLiveAgentsEnabled(true);
     expect(loadLiveAgentsEnabled()).toBe(true);
-  });
-});
-
-describe("grid arcade enabled setting", () => {
-  beforeEach(mockLocalStorage);
-  afterEach(() => {
-    localStorage.removeItem(GRID_ARCADE_KEY);
-  });
-
-  it("defaults to on", () => {
-    expect(GRID_ARCADE_ENABLED_DEFAULT).toBe(true);
-    expect(loadGridArcadeEnabled()).toBe(true);
-  });
-
-  it("persists an off switch", () => {
-    saveGridArcadeEnabled(false);
-    expect(localStorage.getItem(GRID_ARCADE_KEY)).toBe("0");
-    expect(loadGridArcadeEnabled()).toBe(false);
-    saveGridArcadeEnabled(true);
-    expect(loadGridArcadeEnabled()).toBe(true);
   });
 });
 
