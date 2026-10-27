@@ -115,7 +115,12 @@ export const MENU_TREE: MenuSection[] = [
       sep,
       cmd('zoom_in', 'Zoom In', 'CmdOrCtrl+='),
       cmd('zoom_out', 'Zoom Out', 'CmdOrCtrl+-'),
-      cmd('zoom_reset', 'Actual Size', 'CmdOrCtrl+0')
+      cmd('zoom_reset', 'Actual Size', 'CmdOrCtrl+0'),
+      sep,
+      // A window whose renderer broke (a blank page, a stuck surface) comes
+      // back without quitting the app.
+      role('reload'),
+      role('forceReload')
     ]
   },
   { label: 'Window', role: 'windowMenu', items: [] },

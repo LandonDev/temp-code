@@ -115,6 +115,9 @@ export async function toServerAttachments(
 export async function ensureCreated(session: Session): Promise<SessionMeta> {
   const existing = sessionStore.metaOf(session.id);
   if (existing) return existing;
+  // A tab opened on an id whose meta has not come is a thread that exists
+  // somewhere, never a draft: creating it would mint a second one.
+  if (sessionStore.isProvisional(session.id)) throw new Error("This thread is still loading");
   const link = linkOfSession(session);
   const wire = await link.request<WireSessionMeta>("session.create", {
     id: session.id,

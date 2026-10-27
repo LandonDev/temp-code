@@ -1018,3 +1018,12 @@ export function placePane(
   }
   return wrapBeside(node, toId, incoming, dir, place);
 }
+
+/**
+ * The board's class: in the flow while it shows, parked (`.board-parked`:
+ * out of the flow, kept laid out, never painted or hit) under a full-screen
+ * view, so coming back re-lays-out nothing.
+ */
+export function boardClass(viewOpen: boolean): string {
+  return viewOpen ? "board-parked flex min-h-0 min-w-0 flex-col" : "flex min-h-0 min-w-0 flex-1 flex-col";
+}

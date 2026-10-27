@@ -1,5 +1,5 @@
 import React from "react";
-import { act, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineChunk, preloadWhenIdle } from "./lazyChunk";
 
@@ -24,6 +24,7 @@ function controlled() {
 const tick = () => act(async () => {});
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
 });
 
@@ -86,6 +87,83 @@ describe("defineChunk", () => {
     expect(chunk.started()).toBe(false);
     chunk.preload();
     expect(calls.n).toBe(2);
+  });
+});
+
+describe("a surface that fails", () => {
+  it("a failed import shows the fallback with Retry; Retry calls the loader again and mounts the component", async () => {
+    const { chunk, calls, reject, resolve } = controlled();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const Thing = chunk.surface("Thing", <div data-fallback data-surface-skeleton="pane" />);
+    const { container } = render(<Thing label="back" />);
+    await act(async () => reject(new Error("chunk missing")));
+    await tick();
+    expect(container.querySelector("[data-fallback]")).not.toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("Couldn't load");
+    expect(calls.n).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await tick();
+    expect(calls.n).toBe(2);
+    expect(screen.queryByRole("alert")).toBeNull();
+    await act(async () => resolve());
+    await tick();
+    expect(container.querySelector("[data-thing]")?.textContent).toBe("back");
+    expect(container.querySelector("[data-fallback]")).toBeNull();
+  });
+
+  it("a later mount of a failed surface asks the loader again instead of rethrowing the old failure", async () => {
+    const { chunk, calls, reject, resolve } = controlled();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const Thing = chunk.surface("Thing", <div data-fallback />);
+    const first = render(<Thing label="a" />);
+    await act(async () => reject(new Error("chunk missing")));
+    await tick();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    first.unmount();
+    expect(calls.n).toBe(2);
+    await act(async () => resolve());
+    const second = render(<Thing label="b" />);
+    await tick();
+    expect(second.container.querySelector("[data-thing]")?.textContent).toBe("b");
+  });
+
+  it("the rail beside a failed surface stays mounted", async () => {
+    const { chunk, reject } = controlled();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const Thing = chunk.surface("Thing", <div data-fallback />);
+    const { container } = render(
+      <div>
+        <nav data-rail>rail</nav>
+        <Thing label="x" />
+      </div>,
+    );
+    await act(async () => reject(new Error("chunk missing")));
+    await tick();
+    expect(container.querySelector("[data-rail]")?.textContent).toBe("rail");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("a surface that throws while rendering is held in its own boundary too", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const Boom = (): React.JSX.Element => {
+      throw new Error("render broke");
+    };
+    const chunk = defineChunk("boom", async () => ({ Boom }));
+    const Surface = chunk.surface("Boom", <div data-fallback />);
+    const { container } = render(
+      <div>
+        <nav data-rail>rail</nav>
+        <Surface />
+      </div>,
+    );
+    await tick();
+    await tick();
+    expect(container.querySelector("[data-rail]")).not.toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("Couldn't load");
   });
 });
 

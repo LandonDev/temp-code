@@ -37,6 +37,7 @@ import { sessionStore, useSession } from "../lib/tcserver/store";
 import { FilePane } from "./FilePane";
 import { holdWhileHidden, paneTreePropsEqual } from "./paneTreeProps";
 import { SessionPane } from "./SessionPane";
+import { SessionGone } from "./SessionGone";
 
 type Props = {
   tabId: string;
@@ -80,7 +81,7 @@ type SessionLeafProps = Omit<ComponentProps<typeof SessionPane>, "session"> & { 
  *  `visible` is false, this keeps handing `SessionPane` the same frozen
  *  reference, so its memo bails out and the subtree does nothing until
  *  the tab is shown again. */
-function SessionLeaf({ id, visible, ...props }: SessionLeafProps) {
+export function SessionLeaf({ id, visible, ...props }: SessionLeafProps) {
   const live = useSession(id);
   const frozen = useRef<Session | undefined>(undefined);
   const session = holdWhileHidden(visible, live, frozen.current);
@@ -94,7 +95,10 @@ function SessionLeaf({ id, visible, ...props }: SessionLeafProps) {
     // A failed load retries by itself (store.ts); the pane reads its phase.
     if (!loaded) void sessionStore.ensureLoaded(id, "pane").catch(() => undefined);
   }, [id, loaded]);
-  if (!session) return null;
+  if (session?.load?.phase === "gone") return <SessionGone id={id} host={session.environmentId} onClose={props.onClose} />;
+  // A thread the store does not hold once the hosts have listed: the host
+  // stopped listing it. Before that it may still be on its way.
+  if (!session) return sessionStore.hasListed() ? <SessionGone id={id} onClose={props.onClose} /> : null;
   return <SessionPane session={session} visible={visible} {...props} />;
 }
 

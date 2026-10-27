@@ -60,6 +60,12 @@ describe('menu tree', () => {
     expect(RENDERER_MENU_IDS).not.toContain('profile_host')
   })
 
+  it('the View menu can reload the window, plain and forced', () => {
+    const view = MENU_TREE.find((s) => s.label === 'View')!
+    const roles = view.items.flatMap((i) => (i.kind === 'role' ? [i.role] : []))
+    expect(roles).toEqual(['reload', 'forceReload'])
+  })
+
   it('has no duplicate ids', () => {
     const ids = MENU_COMMANDS.map((c) => c.id)
     expect(new Set(ids).size).toBe(ids.length)

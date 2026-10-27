@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { noteBootResume } from "../bootResume";
 import type { Attachment, Block, HarnessId, LoadState, Session } from "../session";
-import { HARNESSES } from "../session";
+import { HARNESSES, newSession } from "../session";
 import { resolveModel } from "../models";
 import {
   ConnectionLostError,
@@ -12,6 +12,7 @@ import {
   isConnectionFailure,
   retryDelay,
   type Link,
+  type LinkRequestOptions,
 } from "../connection";
 import { modeForPolicy } from "./access";
 import { applyRowBody, emptyFold, foldEvent, foldOptimisticUser, type FoldState } from "./fold";
@@ -151,6 +152,9 @@ type Entry = {
   loading: Promise<void> | null;
   /** The first load's phase, mirrored on `session.load`. */
   load: LoadState;
+  /** A tab opened on the id alone, its meta still being asked for
+   *  (`provisional`): never a draft to create, filled whole by the meta. */
+  provisional?: boolean;
   /** Someone asked for the transcript (a pane, a prefetch): a load that
    *  could not start or failed is retried until it lands or the entry leaves
    *  the mounted set. */
@@ -768,7 +772,11 @@ class SessionStore {
   /** `session.list`, whole. A local socket answers the array; a remote one
    *  a page at a time (working threads first), each merged as it lands so
    *  the shell paints from the first page while the rest walk in. */
-  private async fetchList(link: Link, params: Record<string, unknown> | undefined): Promise<SessionMeta[]> {
+  private async fetchList(
+    link: Link,
+    params: Record<string, unknown> | undefined,
+    options?: LinkRequestOptions,
+  ): Promise<SessionMeta[]> {
     const environmentId = link.environmentId;
     const all: SessionMeta[] = [];
     let cursor: string | null = null;
@@ -776,6 +784,7 @@ class SessionStore {
       const result: WireSessionMeta[] | SessionPage = await link.request<WireSessionMeta[] | SessionPage>(
         "session.list",
         cursor ? { ...(params ?? {}), cursor } : params,
+        options,
       );
       if (Array.isArray(result)) return result.map((meta) => ({ ...meta, environmentId }));
       for (const wire of result.sessions ?? []) {
@@ -790,15 +799,16 @@ class SessionStore {
   }
 
   /** Fetch the archived metas of one project (or all) on one environment,
-   *  once per socket. */
-  ensureArchived(environmentId: string, projectId?: string): Promise<void> {
+   *  once per socket. `retry: false` asks once: a socket that drops or a late
+   *  answer ends it instead of the safe read's backoff. */
+  ensureArchived(environmentId: string, projectId?: string, options?: { retry?: boolean }): Promise<void> {
     const link = this.attached.get(environmentId)?.link;
     const scope = `${environmentId}|${projectId ? `proj:${projectId}` : "*"}`;
     if (!link || this.archivedScopes.has(scope) || this.archivedScopes.has(`${environmentId}|*`))
       return Promise.resolve();
     const inFlight = this.archivedLoads.get(scope);
     if (inFlight) return inFlight;
-    const load = this.fetchList(link, this.archivedParams(scope))
+    const load = this.fetchList(link, this.archivedParams(scope), options?.retry === undefined ? undefined : { retry: options.retry })
       .then((metas) => {
         for (const meta of metas ?? []) this.mergeMeta(meta);
         this.archivedScopes.add(scope);
@@ -810,12 +820,91 @@ class SessionStore {
     return load;
   }
 
-  /** The meta for `id`, fetching every environment's archived set when the
-   *  live lists lack it (a tab or link to a thread archived since). */
-  async ensureMeta(id: string): Promise<SessionMeta | null> {
-    if (!this.metaOf(id))
-      await Promise.all(this.environmentIds().map((environmentId) => this.ensureArchived(environmentId)));
+  /**
+   * The meta for `id`, asking the archived sets when the live lists lack it
+   * (a tab or link to a thread archived since). The owning host goes first
+   * when it is known (the entry's host, a launch-mirror row's, or `hostId`:
+   * an `@thread:<env>:<id>` reference's), then the other hosts; only a
+   * connected host is asked, once, with no retry, so a host that is down or
+   * stalled never holds the open.
+   */
+  async ensureMeta(id: string, hostId?: string): Promise<SessionMeta | null> {
+    const known = this.metaOf(id);
+    if (known) return known;
+    const connected = (environmentId: string): boolean => !!this.attached.get(environmentId)?.link.connected;
+    const named = hostId ?? this.environmentOf(id);
+    const owner = named ? this.attachedEnvironmentFor(named) : undefined;
+    if (owner && connected(owner)) {
+      await this.ensureArchived(owner, undefined, { retry: false });
+      const found = this.metaOf(id);
+      if (found) return found;
+    }
+    const rest = this.environmentIds().filter((environmentId) => environmentId !== owner && connected(environmentId));
+    await Promise.all(rest.map((environmentId) => this.ensureArchived(environmentId, undefined, { retry: false })));
     return this.metaOf(id);
+  }
+
+  /**
+   * A tab for `id` before its meta has come: the entry reads `loading` (the
+   * pane draws its skeleton, `slow` after SLOW_MS), knows nothing of the
+   * thread but its host and where it was opened from (`here`, so the window
+   * stays put), and is never a draft to create. The meta, when it lands,
+   * fills it whole; `markGone` when no host knows the id.
+   */
+  provisional(id: string, environmentId: string, here?: Pick<Session, "cwd" | "projectId" | "workspaceId">): Session {
+    const existing = this.entries.get(id);
+    if (existing) return existing.session;
+    const load = loadingState();
+    const session: Session = {
+      ...newSession(environmentId, "claude", here?.cwd ?? "~"),
+      id,
+      title: "",
+      projectId: here?.projectId ?? null,
+      workspaceId: here?.workspaceId ?? null,
+      loaded: false,
+      load,
+    };
+    const entry: Entry = {
+      session,
+      meta: null,
+      provisional: true,
+      lastSeq: 0,
+      nextId: 1,
+      loaded: false,
+      loading: null,
+      load,
+      wanted: false,
+      slowTimer: null,
+      retryTimer: null,
+      coldOpen: false,
+      answered: false,
+      held: null,
+      head: null,
+      rows: null,
+    };
+    this.entries.set(id, entry);
+    this.armSlow(entry);
+    this.bump();
+    return session;
+  }
+
+  /** Whether a host's first list has landed this run (the store's word on
+   *  a missing id is worth reading only then). */
+  hasListed(): boolean {
+    return this.readyDone;
+  }
+
+  /** Whether `id` is a provisional entry still waiting on its meta. */
+  isProvisional(id: string): boolean {
+    return !!this.entries.get(id)?.provisional;
+  }
+
+  /** No host knew a provisional entry's id: its pane says so. */
+  markGone(id: string): void {
+    const entry = this.entries.get(id);
+    if (!entry?.provisional) return;
+    this.stopTimers(entry);
+    this.setLoad(entry, { phase: "gone", since: entry.load.since, attempt: 0 });
   }
 
   private archivedScopeLoaded(meta: SessionMeta): boolean {
@@ -1798,6 +1887,15 @@ class SessionStore {
         head: null,
         rows: null,
       });
+      return;
+    }
+    if (entry.provisional) {
+      // A tab opened on the id alone: the meta is the whole of what it knew.
+      entry.provisional = false;
+      if (entry.load.phase === "gone") entry.load = loadingState();
+      entry.meta = meta;
+      entry.session = { ...sessionFromMeta(meta), loaded: false, load: entry.load };
+      if (entry.load.phase === "loading" && !entry.slowTimer) this.armSlow(entry);
       return;
     }
     if (!entry.meta) {

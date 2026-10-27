@@ -1,9 +1,13 @@
 import {
+  Component,
   lazy,
   Suspense,
+  useState,
   type ComponentType,
+  type LazyExoticComponent,
   type ReactNode,
 } from "react";
+import { Button } from "@renderer/components/ui/button";
 
 /**
  * A loading boundary around one dynamic import: the renderer's index bundle
@@ -20,6 +24,13 @@ import {
  * landed, the lazy initializer resolves synchronously (a settled thenable
  * whose `then` calls back at once), so the first mount after a preload
  * commits in one pass instead of suspending for a microtask.
+ *
+ * A surface that throws (its import failed, or it threw while rendering)
+ * stays inside its own boundary (`ChunkBoundary`): the fallback stays, still,
+ * with "Couldn't load" and Retry over it, and everything beside it (the
+ * rail, the other panes) keeps running. React.lazy remembers a rejection for
+ * good, so Retry drops the surface's lazy and the chunk's promise and mounts
+ * a fresh one, which calls the loader again.
  */
 
 type AnyProps = Record<string, unknown>;
@@ -94,12 +105,31 @@ export function defineChunk<M extends object>(name: string, load: () => Promise<
       const cached = surfaces.get(key);
       if (cached) return cached as ComponentType<PropsOf<M[typeof key]>>;
       const pick = (m: M) => ({ default: m[key] as unknown as ComponentType<AnyProps> });
-      const Lazy = lazy(() => (module ? settled(pick(module)) : start().then(pick)) as Promise<{ default: ComponentType<AnyProps> }>);
+      const makeLazy = () =>
+        lazy(() => (module ? settled(pick(module)) : start().then(pick)) as Promise<{ default: ComponentType<AnyProps> }>);
+      // One lazy per surface, shared by every mount; a retry replaces it.
+      let current: LazyExoticComponent<ComponentType<AnyProps>> = makeLazy();
+      const retry = () => {
+        current = makeLazy();
+        if (!module) promise = null;
+      };
       function Surface(props: AnyProps) {
+        // The lazy this mount renders, read again after each retry.
+        const [, setAttempt] = useState(0);
+        const Lazy = current;
         return (
-          <Suspense fallback={fallback}>
-            <Lazy {...props} />
-          </Suspense>
+          <ChunkBoundary
+            name={`${name}.${String(key)}`}
+            fallback={fallback}
+            onRetry={() => {
+              if (Lazy === current) retry();
+              setAttempt((n) => n + 1);
+            }}
+          >
+            <Suspense fallback={fallback}>
+              <Lazy {...props} />
+            </Suspense>
+          </ChunkBoundary>
         );
       }
       Surface.displayName = `Chunk(${name}.${String(key)})`;
@@ -108,6 +138,55 @@ export function defineChunk<M extends object>(name: string, load: () => Promise<
     },
   };
   return chunk;
+}
+
+interface BoundaryProps {
+  /** The chunk and surface, for the element's data attribute. */
+  name: string;
+  fallback: ReactNode;
+  onRetry: () => void;
+  children: ReactNode;
+}
+
+/**
+ * One surface's error boundary: on a throw, the surface's fallback held
+ * still (no pulse: nothing is loading) with one line and Retry over it.
+ * Retry asks the owner to replace the lazy, then remounts the children.
+ */
+export class ChunkBoundary extends Component<BoundaryProps, { failed: boolean; attempt: number }> {
+  state = { failed: false, attempt: 0 };
+
+  static getDerivedStateFromError(): Partial<{ failed: boolean }> {
+    return { failed: true };
+  }
+
+  private retry = (): void => {
+    this.props.onRetry();
+    this.setState((s) => ({ failed: false, attempt: s.attempt + 1 }));
+  };
+
+  render(): ReactNode {
+    if (!this.state.failed) return <ChunkAttempt key={this.state.attempt}>{this.props.children}</ChunkAttempt>;
+    return (
+      <div
+        data-chunk-failed={this.props.name}
+        className="relative flex h-full min-h-0 w-full min-w-0 flex-1 flex-col [&_[data-surface-skeleton]]:animate-none"
+      >
+        {this.props.fallback}
+        <div role="alert" className="absolute inset-0 flex items-center justify-center gap-3">
+          <span className="text-[13px] text-muted-foreground">Couldn't load</span>
+          <Button variant="secondary" size="sm" onClick={this.retry}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+}
+
+/** A keyed pass-through: a new attempt is a fresh subtree. */
+function ChunkAttempt({ children }: { children: ReactNode }) {
+  return children;
 }
 
 /** `preload()` in an idle slot (requestIdleCallback, else a short timer), never during the open. */

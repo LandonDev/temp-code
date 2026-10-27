@@ -40,7 +40,12 @@ class FakeLink implements Link {
   holdTail: Promise<void> | null = null;
   /** What the host's own search answers (session.search). */
   searchHits: unknown[] = [];
+  /** Archived metas, answered once `holdArchived` (when set) resolves. */
+  archivedMetas: Omit<SessionMeta, "environmentId">[] = [];
+  holdArchived: Promise<void> | null = null;
   request<T>(method: string, params?: unknown): Promise<T> {
+    if (method === "session.list" && (params as { archived?: boolean } | undefined)?.archived)
+      return (this.holdArchived ?? Promise.resolve()).then(() => this.archivedMetas as T);
     if (method === "session.list") return Promise.resolve(this.metas as T);
     if (method === "session.search") return Promise.resolve({ hits: this.searchHits, truncated: false } as T);
     if (method === "session.events") {
@@ -214,6 +219,34 @@ describe("openableSession", () => {
     release();
     await vi.waitFor(() => expect(sessionStore.get("a")?.load?.phase).toBe("loaded"));
     expect(sessionStore.get("a")?.blocks.map((b) => b.text)).toEqual(["hi"]);
+  });
+
+  it("a thread whose meta is late opens at once on a provisional entry, which the meta fills and its rows follow", async () => {
+    link.archivedMetas = [wireMeta({ id: "old", title: "Archived plan", archived: true })];
+    link.events.set("old", rows("old"));
+    let release!: () => void;
+    link.holdArchived = new Promise<void>((r) => (release = r));
+    sessionStore.attach(link);
+    const here = { cwd: "/here", projectId: "p-here", workspaceId: null };
+    const s = await openableSession("old", 20, { here });
+    expect(s?.id).toBe("old");
+    expect(s?.cwd).toBe("/here");
+    expect(s?.load?.phase).toBe("loading");
+    expect(sessionStore.isProvisional("old")).toBe(true);
+    release();
+    await vi.waitFor(() => expect(sessionStore.get("old")?.load?.phase).toBe("loaded"));
+    expect(sessionStore.get("old")?.title).toBe("Archived plan");
+    expect(sessionStore.get("old")?.blocks.map((b) => b.text)).toEqual(["hi"]);
+  });
+
+  it("a provisional entry no host turns out to know reads gone", async () => {
+    let release!: () => void;
+    link.holdArchived = new Promise<void>((r) => (release = r));
+    sessionStore.attach(link);
+    const s = await openableSession("ghost", 20);
+    expect(s?.load?.phase).toBe("loading");
+    release();
+    await vi.waitFor(() => expect(sessionStore.get("ghost")?.load?.phase).toBe("gone"));
   });
 
   it("is null for a thread no host knows", async () => {

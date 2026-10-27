@@ -319,6 +319,19 @@ html.theme-switching *::after {
   pointer-events: none;
 }
 
+/*
+ * The board (tabs, panes, the title bar) under a full-screen view (Search,
+ * Inbox, Notes, Accounts, Settings) is parked the same way, out of the flow
+ * so the view takes the space: coming back finds every pane laid out and
+ * every transcript where it was. Its parent (.body-glass) is positioned.
+ */
+.board-parked {
+  position: absolute;
+  inset: 0;
+  content-visibility: hidden;
+  pointer-events: none;
+}
+
 
 /* Every popover, menu, dialog and floating panel shares this surface: the
  * blur, tint and border in one place. `.glass-surface--sm|md|xl` pick the

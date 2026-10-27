@@ -123,6 +123,13 @@ describe("send", () => {
     expect(sessionStore.get(draft.id)!.blocks[0]).toMatchObject({ role: "user", text: "hello" });
   });
 
+  it("a provisional entry is never created: a send into it fails instead of minting a second thread", async () => {
+    const shown = sessionStore.provisional("elsewhere", "local");
+    await expect(send(shown, "hello", [], undefined, undefined)).rejects.toThrow("still loading");
+    expect(link.of("session.create")).toHaveLength(0);
+    expect(link.of("session.send")).toHaveLength(0);
+  });
+
   it("sends only what differs from the server meta", async () => {
     link.push({ push: "session", session: wireMeta({ id: "s1", provider: "claude", model: "claude-sonnet-5-5", reasoning: "medium" }) });
     const session = { ...sessionStore.get("s1")!, model: "claude:opus-5", modelSettings: { effort: "max" } };

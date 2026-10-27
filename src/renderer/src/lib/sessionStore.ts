@@ -224,18 +224,48 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
  * The session to open a tab on: with its last turns when they come within
  * `waitMs`, else as its meta describes it, its load still going (the pane
  * draws the skeleton and says when the host is slow or did not answer).
- * Null when no host knows the thread.
+ * When even the meta has not come within `waitMs` (a thread the live lists
+ * lack, asked of the archived sets), the tab opens on a provisional entry
+ * (`sessionStore.provisional`) at once: the meta fills it when it lands and
+ * its transcript loads then, or it reads `gone` when no host knows the id.
+ * Null when every host answered in time and none knows the thread.
+ *
+ * `hostId` names the host when the caller knows it (an `@thread:<env>:<id>`
+ * reference); `here` is where the tab is opened from, for a provisional
+ * entry to stand in until the meta says where the thread lives.
  */
-export async function openableSession(sessionId: string, waitMs: number): Promise<Session | null> {
+export async function openableSession(
+  sessionId: string,
+  waitMs: number,
+  options: { hostId?: string; here?: Pick<Session, "cwd" | "projectId" | "workspaceId"> } = {},
+): Promise<Session | null> {
   await sessionStore.ready();
-  if (!sessionStore.get(sessionId)) await sessionStore.ensureMeta(sessionId);
-  if (!sessionStore.get(sessionId)) return null;
+  const deadline = Date.now() + waitMs;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const within = (ms: number) =>
+    new Promise<"late">((resolve) => (timer = setTimeout(() => resolve("late"), Math.max(0, ms))));
+  // A provisional entry left from an earlier open asks again.
+  if (!sessionStore.get(sessionId) || sessionStore.isProvisional(sessionId)) {
+    const asked = sessionStore.ensureMeta(sessionId, options.hostId);
+    const first = await Promise.race([asked, within(waitMs)]);
+    clearTimeout(timer);
+    if (first === "late") {
+      const named = options.hostId ? sessionStore.attachedEnvironmentFor(options.hostId) : undefined;
+      const environmentId = named ?? sessionStore.environmentOf(sessionId) ?? sessionStore.environmentIds()[0] ?? "local";
+      sessionStore.provisional(sessionId, environmentId, options.here);
+      void asked.then(
+        (meta) => {
+          if (meta) void sessionStore.ensureLoaded(sessionId, "load").catch(() => undefined);
+          else sessionStore.markGone(sessionId);
+        },
+        () => sessionStore.markGone(sessionId),
+      );
+      return sessionStore.get(sessionId) ?? null;
+    }
+    if (!sessionStore.get(sessionId)) return null;
+  }
   if (!sessionStore.isDraft(sessionId)) {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([
-      sessionStore.ensureLoaded(sessionId, "load").catch(() => undefined),
-      new Promise<void>((resolve) => (timer = setTimeout(resolve, waitMs))),
-    ]);
+    await Promise.race([sessionStore.ensureLoaded(sessionId, "load").catch(() => undefined), within(deadline - Date.now())]);
     clearTimeout(timer);
   }
   return sessionStore.get(sessionId) ?? null;

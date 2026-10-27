@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  boardClass,
   closeLeaf,
   editorTabKey,
   isDebugTab,
@@ -448,5 +449,14 @@ describe("review requests", () => {
     expect(editorTabKey(tab)).toBe("review@abc123:/repo/src/a.ts");
     expect(newFileTab("/repo/src/a.ts", "/repo").diffBase).toBeUndefined();
     clearReviewRequest();
+  });
+});
+
+describe("boardClass", () => {
+  it("parks the board under a view instead of hiding it, and puts it back in the flow after", () => {
+    expect(boardClass(true).split(" ")).toContain("board-parked");
+    expect(boardClass(true).split(" ")).not.toContain("hidden");
+    expect(boardClass(false).split(" ")).not.toContain("board-parked");
+    expect(boardClass(false).split(" ")).toContain("flex-1");
   });
 });

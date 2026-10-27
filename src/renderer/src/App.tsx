@@ -53,6 +53,7 @@ import {
   resolveOpenablePath,
 } from "./lib/fileIndex";
 import {
+  boardClass,
   closeLeaf,
   findSurfacePane,
   firstLeafId,
@@ -1754,8 +1755,12 @@ export default function App() {
 
       // The last turns are enough to open on; the rest of the log folds
       // behind. A host slow to answer opens on the skeleton instead of
-      // holding the click until its rows arrive.
-      const loaded = await openableSession(sessionId, OPEN_WAIT_MS).catch(() => null);
+      // holding the click until its rows arrive, and a thread whose meta is
+      // still being asked for opens where the window already is.
+      const { projectCwd, selectedProjectId } = projectStore.getState();
+      const loaded = await openableSession(sessionId, OPEN_WAIT_MS, {
+        here: { cwd: projectCwd, projectId: selectedProjectId, workspaceId: null },
+      }).catch(() => null);
       if (!loaded) {
         void refreshHistory(sidebarCwd);
         return null;
@@ -3606,13 +3611,9 @@ export default function App() {
         onOpenWhatsNew={onOpenWhatsNew}
       />
 
-      <div className="body-glass flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="body-glass relative flex min-h-0 min-w-0 flex-1 flex-col">
         <div
-          className={
-            searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || !!accountsPage
-              ? "hidden"
-              : "flex min-h-0 min-w-0 flex-1 flex-col"
-          }
+          className={boardClass(searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || !!accountsPage)}
           aria-hidden={searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || !!accountsPage}
           inert={searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || !!accountsPage || undefined}
         >

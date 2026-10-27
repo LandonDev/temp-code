@@ -25,6 +25,8 @@ import { warmRecentTabsAtBoot } from "./lib/sessionPrefetch";
 import { updateStore } from "./lib/updateStore";
 import { initAppshots } from "./lib/appshots";
 import { recordCommit } from "./lib/renderProfile";
+import { reportRendererError } from "./lib/rendererErrors";
+import { RootBoundary } from "./chrome/RootBoundary";
 import "./index.css";
 
 // Before App mounts its own window listener: the editor claims its chords first.
@@ -125,9 +127,17 @@ void Promise.all([loadBootWorkspace(), runningVersion]).then(
     });
     // The stores are full; the effects that follow them start before the first render.
     installSubscriptions();
-    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    // Every render error reaches stalls.log as one line; one no surface's
+    // boundary held leaves "Something broke" and Reload window, never a
+    // blank window.
+    ReactDOM.createRoot(document.getElementById("root") as HTMLElement, {
+      onUncaughtError: (error) => reportRendererError("uncaught", error),
+      onCaughtError: (error) => reportRendererError("caught", error),
+    }).render(
       <React.StrictMode>
-        <Root />
+        <RootBoundary>
+          <Root />
+        </RootBoundary>
       </React.StrictMode>,
     );
     warmRecentTabsAtBoot();

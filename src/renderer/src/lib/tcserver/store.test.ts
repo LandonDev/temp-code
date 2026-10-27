@@ -52,7 +52,7 @@ class FakeLink implements Link {
   environmentId = "local";
   profile = "local" as const;
   connected = true;
-  calls: { method: string; params: unknown }[] = [];
+  calls: { method: string; params: unknown; options?: { retry?: boolean } }[] = [];
   metas: Omit<SessionMeta, "environmentId">[] = [];
   events = new Map<string, EventRow[]>();
   /** When set, head (beforeSeq) fetches wait on it. */
@@ -67,8 +67,8 @@ class FakeLink implements Link {
   /** Archived metas, served only to a `session.list` that asks for them. */
   archivedMetas: Omit<SessionMeta, "environmentId">[] = [];
 
-  request<T>(method: string, params?: unknown): Promise<T> {
-    this.calls.push({ method, params });
+  request<T>(method: string, params?: unknown, options?: { retry?: boolean }): Promise<T> {
+    this.calls.push({ method, params, ...(options ? { options } : {}) });
     if (method === "session.list") {
       const p = (params ?? {}) as { archived?: boolean; projectId?: string };
       if (!p.archived) return Promise.resolve(this.metas as T);
@@ -810,6 +810,65 @@ describe("archived metas on demand", () => {
     await sessionStore.ensureArchived("local");
     await sessionStore.resync(link);
     expect(sessionStore.metaOf("a")).toBeNull();
+  });
+});
+
+describe("a thread the live lists lack", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const archivedAsks = (l: FakeLink) =>
+    l.calls.filter((c) => c.method === "session.list" && (c.params as { archived?: boolean } | undefined)?.archived);
+
+  it("ensureMeta asks the owning host first and never a disconnected one", async () => {
+    const box = new FakeLink();
+    box.environmentId = "box";
+    box.archivedMetas = [wireMeta({ id: "x", archived: true })];
+    const down = new FakeLink();
+    down.environmentId = "down";
+    down.connected = false;
+    sessionStore.attach(link);
+    sessionStore.attach(box);
+    sessionStore.attach(down);
+    await sessionStore.ready();
+    // The reference names the box: the box answers and nobody else is asked.
+    expect((await sessionStore.ensureMeta("x", "box"))?.environmentId).toBe("box");
+    expect(archivedAsks(box)).toHaveLength(1);
+    expect(archivedAsks(box)[0].options).toEqual({ retry: false });
+    expect(archivedAsks(link)).toHaveLength(0);
+    expect(down.calls).toHaveLength(0);
+    // An id nobody holds: every connected host once, with no retry; the one down never.
+    expect(await sessionStore.ensureMeta("nobody")).toBeNull();
+    expect(archivedAsks(link)).toHaveLength(1);
+    expect(archivedAsks(link)[0].options).toEqual({ retry: false });
+    expect(down.calls).toHaveLength(0);
+  });
+
+  it("a provisional entry fills on the meta and reads gone when nobody knows it", async () => {
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    const here = { cwd: "/where/i/am", projectId: "p-here", workspaceId: null };
+    const shown = sessionStore.provisional("late", "local", here);
+    expect(shown.load?.phase).toBe("loading");
+    expect(shown.cwd).toBe("/where/i/am");
+    expect(sessionStore.isProvisional("late")).toBe(true);
+    // Never a draft to create, and never asked for a transcript it cannot name.
+    expect(sessionStore.metaOf("late")).toBeNull();
+    // The meta lands: the entry is the thread, whole.
+    link.push({ push: "session", session: wireMeta({ id: "late", title: "The real one", cwd: "/repo", projectId: "p1" }) });
+    await flush();
+    expect(sessionStore.isProvisional("late")).toBe(false);
+    const filled = sessionStore.get("late")!;
+    expect(filled.title).toBe("The real one");
+    expect(filled.cwd).toBe("/repo");
+    expect(filled.projectId).toBe("p1");
+    expect(filled.load?.phase).toBe("loading");
+    expect(sessionStore.metaOf("late")?.id).toBe("late");
+    // Another that no host knows reads gone.
+    sessionStore.provisional("ghost", "local");
+    sessionStore.markGone("ghost");
+    expect(sessionStore.get("ghost")?.load?.phase).toBe("gone");
+    // markGone never touches a thread the store knows.
+    sessionStore.markGone("late");
+    expect(sessionStore.get("late")?.load?.phase).toBe("loading");
   });
 });
 

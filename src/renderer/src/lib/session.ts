@@ -355,9 +355,11 @@ export type Session = {
  * SLOW_MS pass without one, `failed` with the error while a retry waits
  * (`retryAt`), `loaded` once the rows are in. `since` is when this load
  * began; `attempt` counts the failed tries so far. `empty` on a loaded
- * transcript is the host's word that the thread has no rows yet.
+ * transcript is the host's word that the thread has no rows yet. `gone`
+ * is a tab opened on a thread before its meta came (a provisional entry)
+ * that no connected host turned out to know.
  */
-export type LoadPhase = "loading" | "loaded" | "slow" | "failed";
+export type LoadPhase = "loading" | "loaded" | "slow" | "failed" | "gone";
 export type LoadState = {
   phase: LoadPhase;
   since: number;
