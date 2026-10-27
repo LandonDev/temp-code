@@ -26,10 +26,13 @@ vi.mock("../lib/tcserver/defaults", async (original) => ({
 vi.mock("../lib/reviewScope", async (original) => ({
   ...(await original<typeof import("../lib/reviewScope")>()),
   reviewerModel: () => null,
-  reviewerModelOptions: () => [{ value: "gpt-6.1-sol", label: "GPT-6.1 Sol" }],
+  reviewerModelOptions: (provider: string) =>
+    provider === "codex" ? [{ value: "gpt-6.1-sol", label: "GPT-6.1 Sol" }] : [{ value: "claude-opus-5-5", label: "Opus 5.5" }],
 }));
 
 const { ReviewsPage } = await import("./ReviewSettings");
+// ChoiceSelect rides a lazy chunk; load it so the comboboxes render at once.
+await (await import("./chunks")).selectChunk.load();
 const { ReviewFields } = await import("../chrome/ReviewFields");
 
 const SETTINGS: ReviewSettings = {
@@ -96,6 +99,20 @@ describe("Reviews page", () => {
       fireEvent.click(option);
     });
     expect(lastSet().blockOn).toBe("any");
+  });
+
+  it("picks the reviewer from one list over both providers", async () => {
+    answer({ ...SETTINGS, beforeMerge: true });
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("combobox", { name: "Reviewer" }));
+    });
+    const option = await screen.findByRole("option", { name: "Opus 5.5" });
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse" });
+      fireEvent.click(option);
+    });
+    expect(lastSet()).toMatchObject({ provider: "claude", model: "claude-opus-5-5" });
   });
 
   it("commits the time limit on Enter and reverts what is out of range", async () => {

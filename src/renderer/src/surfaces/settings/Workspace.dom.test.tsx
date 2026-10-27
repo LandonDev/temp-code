@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   projects: [] as { id: string; workspaceId: string; name: string; archived: boolean; accountPins?: Record<string, string> }[],
   overridden: false,
   focus: false,
+  rulesFocus: false,
   setAccounts: vi.fn(async () => {}),
 }));
 
@@ -32,8 +33,14 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
   useProjects: () => state.projects,
 }));
 vi.mock("../../lib/tcserver/rules", () => ({
-  useRulesScope: () => ({ scope: { rules: {}, overridden: state.overridden }, catalog: null }),
-  openOrchestrationSettings: vi.fn(),
+  takeRequestedRulesFocus: () => {
+    const focus = state.rulesFocus;
+    state.rulesFocus = false;
+    return focus;
+  },
+}));
+vi.mock("../../chrome/OrchestrationRules", () => ({
+  OrchestrationRulesEditor: ({ workspaceId }: { workspaceId: string }) => <h2>Orchestration {workspaceId}</h2>,
 }));
 vi.mock("../../lib/tcserver/projects", () => ({
   setWorkspaceAccounts: (...a: unknown[]) => state.setAccounts(...(a as [])),
@@ -51,6 +58,11 @@ vi.mock("../../stores/accounts", () => ({
 }));
 
 const { WorkspacePage } = await import("./Workspace");
+// ChoiceSelect rides a lazy chunk; load it so the comboboxes render at once.
+await (await import("../chunks")).selectChunk.load();
+
+const projectRows = () =>
+  [...document.querySelectorAll<HTMLElement>("[data-slot=page-row]")].filter((row) => row.querySelector("[aria-label$=' settings']"));
 
 async function choose(trigger: HTMLElement, name: string) {
   await act(async () => {
@@ -68,6 +80,7 @@ beforeEach(() => {
   state.projects = [];
   state.overridden = false;
   state.focus = false;
+  state.rulesFocus = false;
   state.setAccounts.mockClear();
 });
 afterEach(cleanup);
@@ -81,7 +94,7 @@ describe("Workspace page", () => {
       "Completed turn",
       "Accounts",
       "Build",
-      "Orchestration",
+      "Orchestration w1",
       "Projects",
     ]);
   });
@@ -103,13 +116,13 @@ describe("Workspace page", () => {
     expect(screen.getByRole("combobox", { name: "Claude Code account" }).textContent).toContain("gone (not in Aliax)");
   });
 
-  it("says where the rules stand", () => {
-    const { unmount } = render(<WorkspacePage workspaceId="w1" />);
-    expect(screen.getByText("Following the global rules.")).toBeTruthy();
-    unmount();
-    state.overridden = true;
+  it("shows a failed pin under its row", async () => {
+    state.setAccounts.mockImplementationOnce(async () => {
+      throw new Error("refused: offline");
+    });
     render(<WorkspacePage workspaceId="w1" />);
-    expect(screen.getByText("This workspace overrides the global rules.")).toBeTruthy();
+    await choose(screen.getByRole("combobox", { name: "Claude Code account" }), "bob");
+    expect(screen.getByText("refused: offline").className).toContain("text-destructive");
   });
 
   it("lists this workspace's live projects with their pins", () => {
@@ -120,11 +133,11 @@ describe("Workspace page", () => {
       { id: "p4", workspaceId: "w2", name: "Elsewhere", archived: false },
     ];
     render(<WorkspacePage workspaceId="w1" />);
-    const rows = [...document.querySelectorAll<HTMLElement>("[data-slot=project-row]")];
+    const rows = projectRows();
     expect(rows.map((r) => r.querySelector("[data-slot=item-title]")?.textContent)).toEqual(["App", "Docs"]);
     expect(rows[0].textContent).toContain("alice");
     expect(rows[0].textContent).toContain("carol");
-    expect(rows[1].querySelector("[data-slot=item-description]")?.textContent).toBe("Auto");
+    expect(rows[1].querySelector("[data-slot=item-description]")).toBeNull();
   });
 
   it("shows the workspace's pin on a project that pins nothing itself", () => {
@@ -134,16 +147,16 @@ describe("Workspace page", () => {
       { id: "p2", workspaceId: "w1", name: "Docs", archived: false },
     ];
     render(<WorkspacePage workspaceId="w1" />);
-    const [app, docs] = [...document.querySelectorAll<HTMLElement>("[data-slot=project-row] [data-slot=item-description]")];
-    expect(app.textContent).toBe("bob");
-    expect(docs.textContent).toBe("alice");
+    const [app, docs] = projectRows().map((r) => r.querySelector("[data-slot=item-description]")?.textContent);
+    expect(app).toBe("bob");
+    expect(docs).toBe("alice");
   });
 
   it("opens a project's settings from its row", async () => {
     state.projects = [{ id: "p1", workspaceId: "w1", name: "App", archived: false }];
     render(<WorkspacePage workspaceId="w1" />);
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /App/ }));
+      fireEvent.click(screen.getByRole("button", { name: "App settings" }));
     });
     expect(screen.getByRole("dialog").textContent).toBe("App settings");
   });
@@ -156,5 +169,12 @@ describe("Workspace page", () => {
     expect(scroll).toHaveBeenCalledWith({ block: "start" });
     expect(scroll.mock.contexts[0]).toBe(document.getElementById("settings-build"));
     expect(document.activeElement).toBe(document.getElementById("settings-build"));
+  });
+
+  it("focuses the rules when the workspace menu asked for them", () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    state.rulesFocus = true;
+    render(<WorkspacePage workspaceId="w1" />);
+    expect(document.activeElement).toBe(document.getElementById("settings-orchestration"));
   });
 });

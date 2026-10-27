@@ -1,4 +1,3 @@
-import { MoreHorizontal } from "../../chrome/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { RemoveProjectDialog } from "../../chrome/RemoveProjectDialog";
@@ -29,10 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { Input } from "../../components/ui/input";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 
 function useArchivedProjects(): ArchivedProject[] {
   const [items, setItems] = useState(loadArchivedProjects);
@@ -124,14 +120,15 @@ export function ArchivePage({
 
   return (
     <>
+      <PageSection>
+        <PageRow title="Show archived in the sidebar">
+          <SettingSwitch label="Show archived in the sidebar" on={filters.showArchived} onChange={onShowArchived} />
+        </PageRow>
+      </PageSection>
+
       <PageSection title="Archived projects">
         {archivedProjects.length === 0 ? (
-          <Empty className="py-8">
-            <EmptyHeader>
-              <EmptyTitle>No archived projects</EmptyTitle>
-              <EmptyDescription>Archive a project from the rail to keep it out of the sidebar.</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
+          <p className="py-3 text-[12px] text-muted-foreground">No archived projects.</p>
         ) : (
           archivedProjects.map((project) => (
             <PageRow
@@ -139,30 +136,19 @@ export function ArchivePage({
               title={archivedProjectLabel(project.path)}
               description={<span className="font-mono">{prettyCwd(project.path)}</span>}
             >
-              {onRestoreProject ? (
-                <Button variant="secondary" size="sm" onClick={() => onRestoreProject(project.path)}>
-                  Restore
-                </Button>
-              ) : null}
-              {onDeleteProject ? (
-                <RowMenu label="Project actions" onDelete={() => setDeleting(project)} />
-              ) : null}
+              <RowActions
+                name={archivedProjectLabel(project.path)}
+                onRestore={onRestoreProject ? () => onRestoreProject(project.path) : undefined}
+                onDelete={onDeleteProject ? () => setDeleting(project) : undefined}
+              />
             </PageRow>
           ))
         )}
       </PageSection>
 
       <PageSection title="Archived threads">
-        <PageRow title="Show archived in the sidebar">
-          <SettingSwitch label="Show archived in the sidebar" on={filters.showArchived} onChange={onShowArchived} />
-        </PageRow>
         {archived.length === 0 ? (
-          <Empty className="py-8">
-            <EmptyHeader>
-              <EmptyTitle>Nothing archived</EmptyTitle>
-              <EmptyDescription>Right-click a tab to archive it.</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
+          <p className="py-3 text-[12px] text-muted-foreground">No archived threads. Right-click a tab to archive it.</p>
         ) : (
           <>
             <Input
@@ -174,7 +160,7 @@ export function ArchivePage({
               }}
               placeholder="Search archived threads"
               aria-label="Search archived threads"
-              className="mt-3 mb-1"
+              className="mb-1"
             />
             {shown.length === 0 ? (
               <p className="py-3 text-[12px] text-muted-foreground">No archived thread matches</p>
@@ -186,11 +172,12 @@ export function ArchivePage({
                   title={sessionDisplayTitle(meta.title, meta.provider)}
                   description={nameOf(meta) || undefined}
                 >
+                  <RowActions
+                    name={sessionDisplayTitle(meta.title, meta.provider)}
+                    onRestore={() => restore(meta)}
+                    onDelete={() => setDeletingThread(meta)}
+                  />
                   <span className="text-[12px] text-muted-foreground tabular-nums">{formatDate(meta.updatedAt)}</span>
-                  <Button variant="secondary" size="sm" onClick={() => restore(meta)}>
-                    Restore
-                  </Button>
-                  <RowMenu label="Thread actions" onDelete={() => setDeletingThread(meta)} />
                 </PageRow>
               ))
             )}
@@ -260,22 +247,21 @@ export function DeleteThreadDialog({
   );
 }
 
-/** A row's ⋯: one menu holding Delete…, which confirms. */
-function RowMenu({ label, onDelete }: { label: string; onDelete: () => void }) {
+/** Restore and Delete…, shown while the row is hovered or holds focus. */
+function RowActions({ name, onRestore, onDelete }: { name: string; onRestore?: () => void; onDelete?: () => void }) {
   return (
-    <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} />} />}>
-          <MoreHorizontal />
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent size="sm" align="end">
-        <DropdownMenuItem variant="destructive" onClick={onDelete}>
+    <span className="flex items-center gap-1 opacity-0 transition-opacity duration-(--dur-fast) group-hover/item:opacity-100 group-focus-within/item:opacity-100">
+      {onRestore ? (
+        <Button variant="ghost" size="sm" aria-label={`Restore ${name}`} onClick={onRestore}>
+          Restore
+        </Button>
+      ) : null}
+      {onDelete ? (
+        <Button variant="ghost" size="sm" aria-label={`Delete ${name}…`} onClick={onDelete}>
           Delete…
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </Button>
+      ) : null}
+    </span>
   );
 }
 

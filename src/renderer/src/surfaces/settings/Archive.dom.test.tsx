@@ -53,12 +53,9 @@ const handlers = () => ({
   onDeleteProject: vi.fn(),
 });
 
-async function openMenu(row: HTMLElement, label: string) {
+async function clickDelete(row: HTMLElement) {
   await act(async () => {
-    fireEvent.click(within(row).getByRole("button", { name: label }));
-  });
-  await act(async () => {
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete…" }));
+    fireEvent.click(within(row).getByRole("button", { name: /^Delete .*…$/ }));
   });
 }
 
@@ -75,8 +72,8 @@ afterEach(cleanup);
 describe("Archive page", () => {
   it("shows an empty state for each list", () => {
     render(<ArchivePage {...handlers()} />);
-    expect(screen.getByText("No archived projects")).toBeTruthy();
-    expect(screen.getByText("Nothing archived")).toBeTruthy();
+    expect(screen.getByText("No archived projects.")).toBeTruthy();
+    expect(screen.getByText("No archived threads. Right-click a tab to archive it.")).toBeTruthy();
   });
 
   it("restores a thread and opens it", async () => {
@@ -84,7 +81,7 @@ describe("Archive page", () => {
     const h = handlers();
     render(<ArchivePage {...h} />);
     await act(async () => {
-      fireEvent.click(within(rowOf("Fix the build")).getByRole("button", { name: "Restore" }));
+      fireEvent.click(within(rowOf("Fix the build")).getByRole("button", { name: "Restore Fix the build" }));
     });
     expect(h.onArchiveSession).toHaveBeenCalledWith("t1", false);
     expect(h.onOpenSession).toHaveBeenCalledWith("t1");
@@ -106,11 +103,11 @@ describe("Archive page", () => {
   it("shows the next hundred on Show more", async () => {
     state.metas = Array.from({ length: 150 }, (_, i) => meta(`t${i}`, `Thread ${i}`, "p1", 1000 - i));
     render(<ArchivePage {...handlers()} />);
-    expect(screen.getAllByRole("button", { name: "Restore" })).toHaveLength(100);
+    expect(screen.getAllByRole("button", { name: /^Restore / })).toHaveLength(100);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Show more" }));
     });
-    expect(screen.getAllByRole("button", { name: "Restore" })).toHaveLength(150);
+    expect(screen.getAllByRole("button", { name: /^Restore / })).toHaveLength(150);
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 
@@ -118,7 +115,7 @@ describe("Archive page", () => {
     state.metas = [meta("t1", "Fix the build", "p1")];
     const h = handlers();
     render(<ArchivePage {...h} />);
-    await openMenu(rowOf("Fix the build"), "Thread actions");
+    await clickDelete(rowOf("Fix the build"));
     const confirm = await screen.findByRole("alertdialog");
     expect(confirm.textContent).toContain("Delete Fix the build?");
     expect(h.onDeleteSession).not.toHaveBeenCalled();
@@ -131,7 +128,7 @@ describe("Archive page", () => {
   it("opens the remove dialog for a project's Delete…", async () => {
     state.projects = [{ path: "/w/old" }];
     render(<ArchivePage {...handlers()} />);
-    await openMenu(rowOf("old"), "Project actions");
+    await clickDelete(rowOf("old"));
     expect(screen.getByRole("dialog").textContent).toBe("Remove old");
   });
 

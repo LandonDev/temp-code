@@ -9,7 +9,6 @@ import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -74,29 +73,36 @@ const providersOf = (catalog: RulesCatalog | null): SpawnProviderId[] =>
 const effortChoices = (levels: readonly Reasoning[]): Choice<Reasoning>[] =>
   levels.map((level) => ({ value: level, label: EFFORT_LABELS[level] }));
 
-/** Rows standing in for the Conduct section while the scope loads. */
-export function RulesSkeleton() {
+/** The Conduct section's rows while the scope loads, under its real heading. */
+export function RulesSkeleton({ workspaceId }: { workspaceId: string | null }) {
   return (
-    <div data-testid="rules-skeleton" aria-hidden className="flex flex-col">
-      <Skeleton className="h-3 w-24" />
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="flex items-center gap-3 py-3">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Skeleton className="h-3.5 w-32" />
-            <Skeleton className="h-3 w-56" />
+    <PageSection title={titlesFor(workspaceId).conduct}>
+      <div data-testid="rules-skeleton" aria-hidden className="flex flex-col">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="flex items-center gap-3 py-3">
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Skeleton className="h-3.5 w-32" />
+              <Skeleton className="h-3 w-56" />
+            </div>
+            <Skeleton className="h-5 w-8 rounded-full" />
           </div>
-          <Skeleton className="h-5 w-8 rounded-full" />
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </PageSection>
   );
 }
+
+/** On a workspace's page the sections sit among others, so they name what they are about. */
+const titlesFor = (workspaceId: string | null) =>
+  workspaceId
+    ? { conduct: "Orchestration", models: "Subagent models", routing: "Subagent routing" }
+    : { conduct: "Conduct", models: "Models", routing: "Routing" };
 
 export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string | null }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
   // Global app settings belong to this machine.
   const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
-  if (!environmentId) return <RulesSkeleton />;
+  if (!environmentId) return <RulesSkeleton workspaceId={workspaceId} />;
   return <RulesEditor key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
 }
 
@@ -104,7 +110,8 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
   const { scope, catalog } = useRulesScope(environmentId, workspaceId);
   const [editing, setEditing] = useState<RoutingRule | "new" | null>(null);
 
-  if (!scope) return <RulesSkeleton />;
+  if (!scope) return <RulesSkeleton workspaceId={workspaceId} />;
+  const titles = titlesFor(workspaceId);
   const { rules, overridden } = scope;
 
   // Settings semantics: every change persists immediately.
@@ -141,7 +148,7 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
 
   return (
     <>
-      <PageSection title="Conduct" description={conductState} action={conductAction}>
+      <PageSection title={titles.conduct} description={conductState} action={conductAction}>
         <PageRow title="Delegation" description={DELEGATION_HINTS[rules.conduct.delegation]}>
           <ChoiceSelect
             label="Delegation"
@@ -173,7 +180,7 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
         </PageRow>
       </PageSection>
 
-      <PageSection title="Models" description="Applies to subagents. A thread may run any model.">
+      <PageSection title={titles.models} description="Applies to subagents. A thread may run any model.">
         <Table>
           <TableHeader>
             <TableRow>
@@ -209,7 +216,7 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
       </PageSection>
 
       <PageSection
-        title="Routing"
+        title={titles.routing}
         description="The first rule that matches decides provider, model and effort."
         action={
           <Button variant="ghost" size="sm" onClick={() => setEditing("new")}>
@@ -233,12 +240,7 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
           />
         ))}
         {rules.routing.length === 0 ? (
-          <Empty className="py-8">
-            <EmptyHeader>
-              <EmptyTitle>No rules</EmptyTitle>
-              <EmptyDescription>Subagents use each provider's default model.</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
+          <p className="py-3 text-[12px] text-muted-foreground">No rules. Subagents use each provider's default model.</p>
         ) : null}
       </PageSection>
 
@@ -372,7 +374,7 @@ function RuleRow({
         <span className="flex flex-wrap items-center gap-2">
           <span>{model?.label ?? modelId}</span>
           {model?.reasoning.length ? <span>{EFFORT_LABELS[rule.reasoning]}</span> : null}
-          {orchestratorsOnly ? <span>Orchestrators only</span> : !approved ? <span className="text-destructive">Not approved</span> : null}
+          {orchestratorsOnly ? <span>Orchestrators only</span> : !approved ? <span className="text-warning">Not approved</span> : null}
         </span>
       }
     >
@@ -513,7 +515,7 @@ export function RuleDialog({
           </div>
           <DialogFooter className="items-center">
             {onDelete ? (
-              <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" onClick={onDelete}>
+              <Button type="button" variant="destructive" onClick={onDelete}>
                 Delete
               </Button>
             ) : null}

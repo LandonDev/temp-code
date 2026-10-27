@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import type { ReviewSettings } from "@server/shared/review";
 import { registry } from "../lib/connection";
-import { HARNESS_TITLE, type HarnessId } from "../lib/session";
+import type { HarnessId } from "../lib/session";
 import { EFFORT_LABELS, effortLadder, type Reasoning } from "../lib/tcserver/defaults";
 import { resolveModel } from "../lib/models";
 import { useRulesScope } from "../lib/tcserver/rules";
@@ -30,7 +30,7 @@ export const BLOCK_OPTIONS: { value: ReviewSettings["blockOn"]; label: string }[
 ];
 
 const COPY = {
-  before: { label: "Review before merge", hint: undefined },
+  before: { label: "Review before merge" },
   model: { label: "Reviewer", hint: "Models the orchestration rules approve." },
   blockOn: { label: "Hold the merge on", hint: "Confirmed means the reviewer verified it." },
   minutes: { label: "Time limit", hint: "Past it the merge goes ahead." },
@@ -75,18 +75,22 @@ export function ReviewFields({
   value: ReviewSettings;
   onChange: (next: ReviewSettings) => void;
   environmentId: string;
-  /** Stacked, tighter rows for dialogs; the default is a settings page. */
+  /** The project sheet: the same rows without their hints. */
   compact?: boolean;
 }) {
   const { scope } = useRulesScope(environmentId, null);
   const rules = scope?.rules;
   const model = reviewerModel(value, environmentId);
   const ladder = model ? effortLadder(model) : [];
-  const options = reviewerModelOptions(value.provider, environmentId, rules);
   const current = model ? (model.nativeId ?? model.id) : value.model;
-  const modelOptions = options.some((o) => o.value === current)
+  // One list over every reviewer provider; a value is `provider:model`.
+  const options = REVIEWER_PROVIDERS.flatMap((provider) =>
+    reviewerModelOptions(provider, environmentId, rules).map((o) => ({ value: `${provider}:${o.value}`, label: o.label })),
+  );
+  const chosen = `${value.provider}:${current}`;
+  const modelOptions = options.some((o) => o.value === chosen)
     ? options
-    : [{ value: current, label: model ? `${model.name} (not approved)` : current }, ...options];
+    : [{ value: chosen, label: model ? `${model.name} (not approved)` : current }, ...options];
   const set = (patch: Partial<ReviewSettings>) => {
     const next = { ...value, ...patch };
     const m = resolveModel(next.provider as HarnessId, next.model || undefined, environmentId);
@@ -104,83 +108,57 @@ export function ReviewFields({
     if (Number.isFinite(n) && n >= 1 && n <= 240) set({ maxMinutes: n });
     else setMinutes(String(value.maxMinutes));
   };
+  const hint = (text: string) => (compact ? undefined : text);
 
-  const toggle = <SettingSwitch label={COPY.before.label} on={value.beforeMerge} onChange={(beforeMerge) => set({ beforeMerge })} />;
-  const reviewer = (
-    <div className="flex flex-wrap justify-end gap-2">
-      <ChoiceSelect
-        size="sm"
-        label="Provider"
-        value={value.provider}
-        options={REVIEWER_PROVIDERS.map((id) => ({ value: id, label: HARNESS_TITLE[id] }))}
-        onChange={(p) => set({ provider: p as ReviewSettings["provider"], model: "" })}
-      />
-      <ChoiceSelect size="sm" label="Model" value={current} options={modelOptions} onChange={(m) => set({ model: m })} />
-      {ladder.length > 1 ? (
-        <ChoiceSelect
-          size="sm"
-          label="Reasoning"
-          value={value.reasoning}
-          options={ladder.map((level) => ({ value: level, label: EFFORT_LABELS[level] }))}
-          onChange={(reasoning) => set({ reasoning: reasoning as ReviewSettings["reasoning"] })}
-        />
-      ) : null}
-    </div>
-  );
-  const blockOn = (
-    <ChoiceSelect label={COPY.blockOn.label} value={value.blockOn} options={BLOCK_OPTIONS} onChange={(blockOn) => set({ blockOn })} />
-  );
-  const limit = (
-    <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
-      <Input
-        aria-label={COPY.minutes.label}
-        inputMode="numeric"
-        value={minutes}
-        onChange={(e) => setMinutes(e.target.value)}
-        onBlur={commitMinutes}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        }}
-        className="w-16 text-right tabular-nums"
-      />
-      min
-    </span>
-  );
-
-  const Row = compact ? CompactRow : PageFieldRow;
   return (
-    <div data-slot="review-fields" className={compact ? "flex flex-col gap-3" : "flex flex-col"}>
-      <Row {...COPY.before}>{toggle}</Row>
+    <div data-slot="review-fields" className="flex flex-col">
+      <PageRow title={COPY.before.label}>
+        <SettingSwitch label={COPY.before.label} on={value.beforeMerge} onChange={(beforeMerge) => set({ beforeMerge })} />
+      </PageRow>
       {value.beforeMerge ? (
         <>
-          <Row {...COPY.model}>{reviewer}</Row>
-          <Row {...COPY.blockOn}>{blockOn}</Row>
-          <Row {...COPY.minutes}>{limit}</Row>
+          <PageRow title={COPY.model.label} description={hint(COPY.model.hint)}>
+            <ChoiceSelect
+              label={COPY.model.label}
+              value={chosen}
+              options={modelOptions}
+              onChange={(next) => {
+                const at = next.indexOf(":");
+                set({ provider: next.slice(0, at) as ReviewSettings["provider"], model: next.slice(at + 1) });
+              }}
+            />
+          </PageRow>
+          {ladder.length > 1 ? (
+            <PageRow title="Effort">
+              <ChoiceSelect
+                label="Effort"
+                value={value.reasoning}
+                options={ladder.map((level) => ({ value: level, label: EFFORT_LABELS[level] }))}
+                onChange={(reasoning) => set({ reasoning: reasoning as ReviewSettings["reasoning"] })}
+              />
+            </PageRow>
+          ) : null}
+          <PageRow title={COPY.blockOn.label} description={hint(COPY.blockOn.hint)}>
+            <ChoiceSelect label={COPY.blockOn.label} value={value.blockOn} options={BLOCK_OPTIONS} onChange={(blockOn) => set({ blockOn })} />
+          </PageRow>
+          <PageRow title={COPY.minutes.label} description={hint(COPY.minutes.hint)}>
+            <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
+              <Input
+                aria-label={COPY.minutes.label}
+                inputMode="numeric"
+                value={minutes}
+                onChange={(e) => setMinutes(e.target.value)}
+                onBlur={commitMinutes}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                }}
+                className="w-16 text-right tabular-nums"
+              />
+              min
+            </span>
+          </PageRow>
         </>
       ) : null}
-    </div>
-  );
-}
-
-type FieldRowProps = { label: string; hint?: string; children: ReactNode };
-
-function PageFieldRow({ label, hint, children }: FieldRowProps) {
-  return (
-    <PageRow title={label} description={hint}>
-      {children}
-    </PageRow>
-  );
-}
-
-/** The project sheet's row: a 13px title, its 12px hint, the control at the end. */
-function CompactRow({ label, hint, children }: FieldRowProps) {
-  return (
-    <div className="flex items-center gap-4">
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-medium text-foreground">{label}</div>
-        {hint ? <div className="text-[12px] text-muted-foreground">{hint}</div> : null}
-      </div>
-      {children}
     </div>
   );
 }

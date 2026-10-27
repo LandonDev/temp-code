@@ -81,6 +81,7 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
   const environmentId = workspace?.environmentId;
   const [config, setConfig] = useState<BuildConfig | undefined>(undefined);
   const [detected, setDetected] = useState<BuildConfig | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -107,7 +108,11 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
     setConfig(next);
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
-      void registry.linkOf(environmentId).request("build.set", { workspaceId, config: buildOrNull(next) });
+      setError(null);
+      registry
+        .linkOf(environmentId)
+        .request("build.set", { workspaceId, config: buildOrNull(next) })
+        .catch((err) => setError(err instanceof Error ? err.message : String(err)));
     }, 500);
   };
 
@@ -126,7 +131,12 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
       </div>
     );
   }
-  return <BuildFields value={config} onChange={push} detected={detected} />;
+  return (
+    <>
+      <BuildFields value={config} onChange={push} detected={detected} />
+      {error ? <p className="pt-2 text-[12px] text-destructive">{error}</p> : null}
+    </>
+  );
 }
 
 // ── deep link from the Build rail tab ─────────────────────────────────

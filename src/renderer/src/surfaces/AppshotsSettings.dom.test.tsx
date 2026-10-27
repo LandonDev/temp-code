@@ -21,6 +21,8 @@ vi.mock("../lib/appshots", () => ({
 }));
 
 const { AppshotsPage } = await import("./AppshotsSettings");
+// ChoiceSelect rides a lazy chunk; load it so the comboboxes render at once.
+await (await import("./chunks")).selectChunk.load();
 
 beforeEach(() => {
   state.perms = null;
@@ -42,13 +44,16 @@ describe("Appshots page", () => {
     expect(screen.getAllByTestId("permission-skeleton")).toHaveLength(2);
   });
 
-  it("offers Grant and System Settings only for a missing grant", () => {
+  it("offers one Grant button, only for a missing grant, opening its System Settings pane", async () => {
     state.perms = { available: true, screen: true, ax: false };
     render(<AppshotsPage />);
     expect(screen.getByText("Granted")).toBeTruthy();
     expect(screen.getByText("Not granted").className).toContain("text-warning");
-    expect(screen.getAllByRole("button", { name: "Grant" })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: "System Settings" })).toHaveLength(1);
+    const grants = screen.getAllByRole("button", { name: /^Grant/ });
+    expect(grants.map((b) => b.getAttribute("aria-label"))).toEqual(["Grant Accessibility in System Settings"]);
+    const { openUrl } = await import("../lib/native");
+    fireEvent.click(grants[0]);
+    expect(openUrl).toHaveBeenCalledWith(expect.stringContaining("Privacy_Accessibility"));
   });
 
   it("asks for a missing grant when capture turns on", async () => {

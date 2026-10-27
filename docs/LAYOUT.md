@@ -112,14 +112,19 @@ row. Add host sits at the page's foot (desktop only).
 Each workspace has its own page (section id `ws:<workspace id>`,
 surfaces/settings/Workspace.tsx), its sections in this order: New threads,
 Completed turn, Accounts (a `ChoiceSelect` per routed provider), Build (the
-command and outputs; the Build rail tab's settings link opens this page and
-scrolls here, `openBuildSettings` → `takeRequestedBuildFocus`), Orchestration
-(where the workspace's rules stand, Edit rules) and Projects (one row per
-live project, its pinned accounts or Auto as the muted line, opening the
-project's settings dialog). There is no separate Build page. Orchestration,
-Reviews, Appshots and Archive are pages on the same frame (`Page`,
-`PageSection`, `PageRow`); Orchestration's models are one flat `Table` with a
-group row per provider.
+command and outputs; the Build rail tab's settings link opens this page,
+scrolls here and focuses the section, `openBuildSettings` →
+`takeRequestedBuildFocus`), the workspace's orchestration override
+(Orchestration, Subagent models, Subagent routing; the workspace menu's
+rules item lands here the same way, `openOrchestrationSettings` →
+`takeRequestedRulesFocus`) and Projects (one row per live project, the
+accounts its threads spend from, its pins over the workspace's, as the muted
+line, and Settings… opening the project's settings dialog). There is no
+separate Build page, and the Orchestration page holds the global rules only.
+Orchestration, Reviews, Appshots and Archive are pages on the same frame
+(`Page`, `PageSection`, `PageRow`); Orchestration's models are one flat
+`Table` with a group row per provider. An empty list is one 12px muted line
+in its section.
 
 ### The right side
 

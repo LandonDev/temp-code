@@ -1,17 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { HARNESS_TITLE, type HarnessId } from "../../lib/session";
 import { BuildEditor, takeRequestedBuildFocus } from "../../chrome/rail/buildSettings";
 import { ThreadDefaultsEditor } from "../../chrome/ThreadDefaultsDialog";
 import { TurnPassEditor } from "../../chrome/TurnPassFields";
 import { ProjectSettingsDialog } from "../../chrome/ProjectDialogs";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
-import { ChevronRight } from "../../chrome/icons";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageRow, PageSection } from "../../components/page";
 import { Button } from "../../components/ui/button";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "../../components/ui/item";
-import { registry } from "../../lib/connection";
-import { openOrchestrationSettings, useRulesScope } from "../../lib/tcserver/rules";
+import { takeRequestedRulesFocus } from "../../lib/tcserver/rules";
+import { OrchestrationRulesEditor } from "../../chrome/OrchestrationRules";
 import { useProjects, useWorkspaces } from "../../lib/tcserver/workspaces";
 import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { setWorkspaceAccounts } from "../../lib/tcserver/projects";
@@ -21,19 +19,20 @@ import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
 
 /**
  * One workspace's page: its overrides (anything untouched inherits the
- * global setting), its build, where its orchestration rules stand, and its
- * projects. The Build rail tab deep-links here with the Build section in
- * view.
+ * global setting), its build, its orchestration rules and its projects.
+ * The Build rail tab and the workspace menu's rules item deep-link here
+ * with their section in view.
  */
 export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
   const build = useRef<HTMLDivElement>(null);
+  const rules = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    // A jump the person asked for: no smooth scroll.
-    if (!takeRequestedBuildFocus()) return;
-    build.current?.scrollIntoView({ block: "start" });
-    // Focus lands on the section, so the next Tab reaches Command.
-    build.current?.focus({ preventScroll: true });
+    // A jump the person asked for: no smooth scroll. Focus lands on the
+    // section, so the next Tab reaches its first control.
+    const target = takeRequestedBuildFocus() ? build.current : takeRequestedRulesFocus() ? rules.current : null;
+    target?.scrollIntoView({ block: "start" });
+    target?.focus({ preventScroll: true });
   }, []);
   return (
     <>
@@ -45,7 +44,9 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
           <BuildEditor workspaceId={workspaceId} />
         </PageSection>
       </div>
-      <OrchestrationSection workspaceId={workspaceId} environmentId={workspace?.environmentId ?? registry.primary().environmentId} />
+      <div id="settings-orchestration" ref={rules} tabIndex={-1} className="flex flex-col gap-6 outline-none">
+        <OrchestrationRulesEditor workspaceId={workspaceId} />
+      </div>
       {workspace ? <ProjectsSection workspace={workspace} /> : null}
     </>
   );
@@ -59,6 +60,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
 function AccountsSection({ workspace }: { workspace: WorkspaceMeta }) {
   const { snapshot } = useAccounts(workspace.environmentId);
   const pins = workspace.accountPins ?? {};
+  const [error, setError] = useState<{ provider: string; message: string } | null>(null);
   return (
     <PageSection title="Accounts" description="Auto picks by model and moves a thread when its account runs out.">
       {ROUTED_PROVIDERS.map((provider) => {
@@ -70,6 +72,7 @@ function AccountsSection({ workspace }: { workspace: WorkspaceMeta }) {
             key={provider}
             media={<HarnessIcon harness={provider as HarnessId} className="size-4 shrink-0" />}
             title={HARNESS_TITLE[provider]}
+            error={error?.provider === provider ? error.message : undefined}
           >
             <ChoiceSelect
               label={`${HARNESS_TITLE[provider]} account`}
@@ -79,7 +82,10 @@ function AccountsSection({ workspace }: { workspace: WorkspaceMeta }) {
                 const updated = { ...pins };
                 if (next) updated[provider] = next;
                 else delete updated[provider];
-                void setWorkspaceAccounts(workspace.id, updated).catch(() => {});
+                setError(null);
+                void setWorkspaceAccounts(workspace.id, updated).catch((err) =>
+                  setError({ provider, message: err instanceof Error ? err.message : String(err) }),
+                );
               }}
               options={[
                 { value: "", label: "Auto" },
@@ -94,23 +100,8 @@ function AccountsSection({ workspace }: { workspace: WorkspaceMeta }) {
   );
 }
 
-function OrchestrationSection({ workspaceId, environmentId }: { workspaceId: string; environmentId: string }) {
-  const { scope } = useRulesScope(environmentId, workspaceId);
-  return (
-    <PageSection title="Orchestration">
-      <PageRow
-        title="Rules"
-        description={scope ? (scope.overridden ? "This workspace overrides the global rules." : "Following the global rules.") : undefined}
-      >
-        <Button variant="secondary" size="sm" onClick={() => openOrchestrationSettings(workspaceId)}>
-          Edit rules
-        </Button>
-      </PageRow>
-    </PageSection>
-  );
-}
-
 function ProjectsSection({ workspace }: { workspace: WorkspaceMeta }) {
+  const { snapshot } = useAccounts(workspace.environmentId);
   const projects = useProjects()
     .filter((p) => p.workspaceId === workspace.id && !p.archived)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -119,37 +110,29 @@ function ProjectsSection({ workspace }: { workspace: WorkspaceMeta }) {
   return (
     <PageSection title="Projects">
       {projects.map((project) => (
-        <Item
+        <PageRow
           key={project.id}
-          data-slot="project-row"
-          render={<button type="button" onClick={() => setOpen(project)} />}
-          className="-mx-2 w-[calc(100%+1rem)] cursor-default border-0 px-2 py-2.5 text-start hover:bg-muted"
+          title={project.name}
+          description={pinsLine({ ...workspace.accountPins, ...project.accountPins }, snapshot)}
         >
-          <ItemContent className="min-w-0">
-            <ItemTitle>{project.name}</ItemTitle>
-            <ItemDescription>
-              <ProjectPins pins={{ ...workspace.accountPins, ...project.accountPins }} environmentId={workspace.environmentId} />
-            </ItemDescription>
-          </ItemContent>
-          <ItemActions>
-            <ChevronRight className="size-3.5 text-muted-foreground" />
-          </ItemActions>
-        </Item>
+          <Button variant="ghost" size="sm" aria-label={`${project.name} settings`} onClick={() => setOpen(project)}>
+            Settings…
+          </Button>
+        </PageRow>
       ))}
       {open ? <ProjectSettingsDialog project={open} workspace={workspace} onClose={() => setOpen(null)} /> : null}
     </PageSection>
   );
 }
 
-/** The accounts a project's threads spend from (its pins over the workspace's), one span per provider; "Auto" with none. */
-function ProjectPins({ pins, environmentId }: { pins: AccountPins | undefined; environmentId: string }) {
-  const { snapshot } = useAccounts(environmentId);
-  const pinned = ROUTED_PROVIDERS.filter((provider) => pins?.[provider]);
-  if (pinned.length === 0) return <span>Auto</span>;
+/** The accounts a project's threads spend from (its pins over the workspace's), one span per provider; nothing when none is pinned. */
+function pinsLine(pins: AccountPins, snapshot: ReturnType<typeof useAccounts>["snapshot"]): ReactNode {
+  const pinned = ROUTED_PROVIDERS.filter((provider) => pins[provider]);
+  if (pinned.length === 0) return undefined;
   return (
     <span className="flex flex-wrap items-center gap-2">
       {pinned.map((provider) => {
-        const name = pins![provider]!;
+        const name = pins[provider]!;
         const profile = snapshot.providers[provider].profiles.find((p) => p.name === name);
         return (
           <span key={provider} className="inline-flex items-center gap-1">

@@ -88,15 +88,13 @@ export function AppshotsPage() {
           description="Captures the window image."
           granted={perms ? perms.screen : null}
           pane="Privacy_ScreenCapture"
-          onPrompt={prompt}
-        />
+          />
         <PermissionRow
           label="Accessibility"
           description="Reads the window's text and hears the double-⌘."
           granted={perms ? perms.ax : null}
           pane="Privacy_Accessibility"
-          onPrompt={prompt}
-        />
+          />
       </PageSection>
     </>
   );
@@ -107,13 +105,11 @@ function PermissionRow({
   description,
   granted,
   pane,
-  onPrompt,
 }: {
   label: string;
   description: string;
   granted: boolean | null;
   pane: string;
-  onPrompt: () => void;
 }) {
   return (
     <PageRow title={label} description={description}>
@@ -124,11 +120,9 @@ function PermissionRow({
       ) : (
         <>
           <span className="text-[12px] text-warning">Not granted</span>
-          <Button variant="secondary" size="sm" onClick={onPrompt}>
-            Grant
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => void openUrl(PANE_URL + pane)}>
-            System Settings
+          {/* macOS prompts once; after a denial only System Settings can grant it. */}
+          <Button variant="secondary" size="sm" aria-label={`Grant ${label} in System Settings`} onClick={() => void openUrl(PANE_URL + pane)}>
+            Grant…
           </Button>
         </>
       )}

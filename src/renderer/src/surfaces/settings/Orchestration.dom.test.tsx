@@ -17,11 +17,15 @@ vi.mock("../../lib/tcserver/workspaces", () => ({ useWorkspaces: () => state.wor
 vi.mock("../../lib/tcserver/rules", async (original) => ({
   ...(await original<typeof import("../../lib/tcserver/rules")>()),
   useRulesScope: () => ({ scope: state.scope, catalog: state.catalog }),
-  takeRequestedScope: () => state.workspaces[0]?.id,
   rulesStore: { save: (...a: unknown[]) => state.save(...(a as [])), clear: (...a: unknown[]) => state.clear(...(a as [])) },
 }));
 
 const { OrchestrationPage } = await import("./Orchestration");
+const { OrchestrationRulesEditor } = await import("../../chrome/OrchestrationRules");
+const { openOrchestrationSettings, takeRequestedRulesFocus } = await import("../../lib/tcserver/rules");
+const { OPEN_SETTINGS_EVENT } = await import("../../lib/monaco/debugTab");
+// ChoiceSelect rides a lazy chunk; load it so the comboboxes render at once.
+await (await import("../chunks")).selectChunk.load();
 
 const CATALOG: RulesCatalog = {
   claude: {
@@ -88,11 +92,18 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Orchestration page", () => {
-  it("shows skeleton rows before the scope loads", () => {
+  it("shows skeleton rows under the real heading before the scope loads", () => {
     state.scope = undefined;
     render(<OrchestrationPage />);
     expect(screen.getByTestId("rules-skeleton")).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Conduct" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Conduct" })).toBeTruthy();
+  });
+
+  it("is the global rules alone: no scope picker", () => {
+    state.workspaces = [{ id: "w1", name: "Alpha", environmentId: "local" }];
+    render(<OrchestrationPage />);
+    expect(screen.queryByRole("combobox", { name: "Rules for" })).toBeNull();
+    expect(state.save).not.toHaveBeenCalled();
   });
 
   it("saves a Conduct switch through the rules store", async () => {
@@ -123,13 +134,13 @@ describe("Orchestration page", () => {
   it("offers Remove override only on an overriding workspace", () => {
     state.workspaces = [{ id: "w1", name: "Alpha", environmentId: "local" }];
     state.scope = { rules: rules(), overridden: true };
-    const { unmount } = render(<OrchestrationPage />);
-    expect(screen.getByRole("combobox", { name: "Rules for" }).textContent).toContain("Alpha");
+    const { unmount } = render(<OrchestrationRulesEditor workspaceId="w1" />);
+    expect(screen.getByRole("region", { name: "Orchestration" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Remove override" })).toBeTruthy();
     expect(screen.getByText("This workspace overrides the global rules.")).toBeTruthy();
     unmount();
     state.scope = { rules: rules(), overridden: false };
-    render(<OrchestrationPage />);
+    render(<OrchestrationRulesEditor workspaceId="w1" />);
     expect(screen.queryByRole("button", { name: "Remove override" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
     expect(screen.getByText("Following the global rules. A change makes an override.")).toBeTruthy();
@@ -163,7 +174,7 @@ describe("Orchestration page", () => {
   it("says Not approved on a rule whose model is off", () => {
     render(<OrchestrationPage />);
     const row = ruleRow("Bulk work");
-    expect(within(row).getByText("Not approved").className).toContain("text-destructive");
+    expect(within(row).getByText("Not approved").className).toContain("text-warning");
     expect(within(ruleRow("Reviews")).queryByText("Not approved")).toBeNull();
   });
 
@@ -199,7 +210,19 @@ describe("Orchestration page", () => {
   it("shows an empty state with no rules", () => {
     state.scope = { rules: rules({ routing: [] }), overridden: false };
     render(<OrchestrationPage />);
-    expect(screen.getByText("No rules")).toBeTruthy();
-    expect(screen.getByText("Subagents use each provider's default model.")).toBeTruthy();
+    expect(screen.getByText("No rules. Subagents use each provider's default model.")).toBeTruthy();
+  });
+
+  it("opens a workspace's rules on its page, and the global rules on this one", () => {
+    const seen: string[] = [];
+    const listen = (event: Event) => seen.push((event as CustomEvent<string>).detail);
+    window.addEventListener(OPEN_SETTINGS_EVENT, listen);
+    openOrchestrationSettings("w1");
+    expect(takeRequestedRulesFocus()).toBe(true);
+    expect(takeRequestedRulesFocus()).toBe(false);
+    openOrchestrationSettings(null);
+    expect(takeRequestedRulesFocus()).toBe(false);
+    window.removeEventListener(OPEN_SETTINGS_EVENT, listen);
+    expect(seen).toEqual(["ws:w1", "orchestration"]);
   });
 });

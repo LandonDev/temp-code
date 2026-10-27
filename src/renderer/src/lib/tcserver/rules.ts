@@ -261,17 +261,20 @@ export function useRulesScope(
 
 // ── deep link from the workspace menu ─────────────────────────────────
 
-let requestedScope: string | null | undefined;
+let requestedFocus = false;
 
-/** Open Settings on the Orchestration page with this workspace's override selected. */
+/** Open Settings on the global rules, or on a workspace's page with its
+ *  orchestration sections in view. */
 export function openOrchestrationSettings(workspaceId: string | null): void {
-  requestedScope = workspaceId;
-  window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_EVENT, { detail: "orchestration" }));
+  requestedFocus = workspaceId !== null;
+  window.dispatchEvent(
+    new CustomEvent(OPEN_SETTINGS_EVENT, { detail: workspaceId === null ? "orchestration" : `ws:${workspaceId}` }),
+  );
 }
 
-/** The scope a deep link asked for, consumed once. */
-export function takeRequestedScope(): string | null | undefined {
-  const scope = requestedScope;
-  requestedScope = undefined;
-  return scope;
+/** Whether a deep link asked for a workspace's orchestration sections, consumed once. */
+export function takeRequestedRulesFocus(): boolean {
+  const focus = requestedFocus;
+  requestedFocus = false;
+  return focus;
 }

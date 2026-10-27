@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   config: null as BuildConfig | null | "pending",
   detected: { command: "bun run build", outputs: "out/**" } as BuildConfig | null,
   set: vi.fn(),
+  failSet: false,
 }));
 
 vi.mock("../../lib/tcserver/workspaces", () => ({
@@ -19,7 +20,7 @@ vi.mock("../../lib/connection", () => ({
         if (method === "build.get") return state.config === "pending" ? new Promise(() => {}) : Promise.resolve(state.config);
         if (method === "build.detect") return Promise.resolve(state.detected);
         state.set(method, params);
-        return Promise.resolve(null);
+        return state.failSet ? Promise.reject(new Error("build.set refused")) : Promise.resolve(null);
       },
     }),
   },
@@ -30,6 +31,7 @@ const { OPEN_SETTINGS_EVENT } = await import("../../lib/monaco/debugTab");
 
 beforeEach(() => {
   state.config = null;
+  state.failSet = false;
   state.set.mockClear();
 });
 afterEach(() => {
@@ -66,6 +68,21 @@ describe("BuildEditor", () => {
     });
     expect(state.set).toHaveBeenCalledTimes(1);
     expect(state.set).toHaveBeenCalledWith("build.set", { workspaceId: "w1", config: { command: "make all", outputs: "" } });
+  });
+});
+
+describe("BuildEditor errors", () => {
+  it("shows a failed save under the fields", async () => {
+    state.failSet = true;
+    render(<BuildEditor workspaceId="w1" />);
+    const command = await screen.findByRole("textbox", { name: "Build command" });
+    vi.useFakeTimers();
+    fireEvent.change(command, { target: { value: "make" } });
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+    vi.useRealTimers();
+    expect((await screen.findByText("build.set refused")).className).toContain("text-destructive");
   });
 });
 
