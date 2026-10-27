@@ -127,7 +127,10 @@ describe("tabThreadActions", () => {
     expect(tabThreadActions("starting")).toEqual(["pause", "stop"]);
     expect(tabThreadActions("paused")).toEqual(["resume", "stop"]);
     expect(tabThreadActions("waiting")).toEqual(["stop"]);
+    expect(tabThreadActions("watching")).toEqual(["stop"]);
     expect(tabThreadActions("idle")).toEqual([]);
+    // Settled, failed or stopped: nothing to pause or stop.
+    for (const status of ["done", "error", "stopped"] as const) expect(tabThreadActions(status)).toEqual([]);
     // Created, not booted: nothing to pause or stop yet.
     expect(tabThreadActions("queued")).toEqual([]);
     expect(tabThreadActions(undefined)).toEqual([]);

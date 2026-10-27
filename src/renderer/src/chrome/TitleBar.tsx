@@ -71,6 +71,7 @@ import { useSortable, type SortableDropTarget } from "../hooks/useSortable";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { HarnessIcon } from "./HarnessIcon";
 import { TabIndicator, type TabThread } from "./TabIndicator";
+import { threadStateOf } from "../components/ui/status";
 import { ThreadHeader, type ThreadHeaderProps } from "./ThreadHeader";
 import type { ThreadType } from "../lib/tcserver/types";
 import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS } from "../surfaces/threads/threadTypes";
@@ -121,11 +122,19 @@ function threadActionItems(status: TabThread["status"] | undefined): ExplorerMen
   }));
 }
 
+/** The verbs by the thread's state in the one vocabulary (`threadStateOf`). */
 export function tabThreadActions(status: TabThread["status"] | undefined): TabThreadAction[] {
-  if (status === "running" || status === "starting") return ["pause", "stop"];
-  if (status === "paused") return ["resume", "stop"];
-  if (status === "waiting" || status === "watching") return ["stop"];
-  return [];
+  switch (threadStateOf(status)) {
+    case "working":
+      return ["pause", "stop"];
+    case "paused":
+      return ["resume", "stop"];
+    case "waiting":
+    case "watching":
+      return ["stop"];
+    default:
+      return [];
+  }
 }
 
 /** The group menu's "New …" rows for the four non-chat thread types;
