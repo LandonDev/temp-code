@@ -2151,9 +2151,14 @@ project by file name and file content (`search.project`, within the linked
 project; see below), and its notes (`notes.search`, new, capability read).
 Hosts answer in parallel and the rows land as each one does
 (`runCrossHostSearch` in src/renderer/src/lib/crossHostSearch.ts streams a
-snapshot after every answer); the footer says how long each host took
-("box: 1.2 s", muted) and names a host that was skipped (its socket is not
-open) or failed (no source answered). The ranking never looks at the host:
+snapshot after every answer); with two or more hosts paired the footer says
+how long each host took ("box: 1.2 s", muted) and names a host that was
+skipped (its socket is not open) or failed (no source answered). A file is
+one row: its matching lines fold into the first with "+N more" for the
+others, and a file whose name matched too keeps its name row, opening at
+the first line (`foldFileHits`). A filter typed with no words lists its
+scope instead (`browseHits`: the newest threads, recent files, notes and
+recent projects), so the Notes command's `type:note` opens on the notes. The ranking never looks at the host:
 a message's score is its match quality (the best bm25 among the hits is 1,
 a row a host had to scan or a loaded transcript matched in memory sits in
 the middle) plus recency; titles and files keep their fuzzy scores.

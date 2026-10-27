@@ -1120,15 +1120,20 @@ routed to (aliax-core's `forward`). Two listeners:
   linked project (src/renderer/src/lib/projectPairs.ts: one `linkId`, else
   the linker's own rule of same GitHub repo, else same folder name, for rows
   it has not stamped yet) into one row on the newer copy (`search.project`
-  matches carry `mtime`), marks each hit with the host glyph when more than
-  one host is paired, and says "box: 1.2 s" per host at the foot (skipped when
-  offline). Filters are typed in the box (`host:` and `type:` take a
+  matches carry `mtime`), folds each file's name and matching lines into
+  one row (`foldFileHits`: the first line, `+N more` for the others; a name
+  hit opens at its first line), marks each hit with the host glyph when more
+  than one host is paired, and, with two or more hosts paired, says "box:
+  1.2 s" per host at the foot (skipped when offline). Filters are typed in the box (`host:` and `type:` take a
   comma list, `project:` a name) or ticked in the field's filter menu
   (chrome/SearchFiltersMenu.tsx), which writes the same tokens
   (`setQueryToken`); no other chrome. Each host token first matches a whole
   name or id; `mac` on macOS names the local host alone. Substrings apply
   only when that token has no exact match. A command may open search with
-  tokens already typed (`initialQuery`: `type:note`, `type:file`). Enter
+  tokens already typed (`initialQuery`: `type:note`, `type:file`). A
+  filter with no words lists its scope instead of searching (`browseHits`:
+  the newest threads, this project's recent files, each online host's
+  notes, the recent projects; no host search, spinner or foot). Enter
   opens where the hit lives, ⌘↩ in a new pane; nothing in the list
   animates.
 - `session.search` runs on an FTS5 index per host (src/main/server/
