@@ -1180,7 +1180,6 @@ public enum Methods {
                 try value.encode(to: encoder)
             }
         }
-        public typealias Output = Output
     }
 
     public enum QueueRemove: ContractMethod {

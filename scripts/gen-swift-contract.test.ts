@@ -74,6 +74,24 @@ describe('the subset', () => {
     const subset = [type('Thing', z.object({ a: z.string() })), method('session.rename', z.object({ a: z.string() }).nullable())]
     expect(() => generate(subset)).not.toThrow()
   })
+  it('never aliases a type to itself', () => {
+    for (const [file, text] of Object.entries(files))
+      for (const [, a, b] of text.matchAll(/typealias (\w+) = ([\w.]+)$/gm)) expect(`${file}: ${a}`).not.toBe(`${file}: ${b}`)
+    // queue.add answers a tagged union: it is declared as the Output, with no alias
+    const queueAdd = files['Methods.swift'].split('public enum QueueAdd: ContractMethod')[1].split('public enum QueueRemove')[0]
+    expect(queueAdd).toContain('public enum Output: Codable, Hashable, Sendable')
+    expect(queueAdd).not.toContain('typealias Output')
+  })
+  it('names a wrapped anonymous output Value, never Output', () => {
+    const union = z.discriminatedUnion('kind', [z.object({ kind: z.literal('a'), x: z.string() }), z.object({ kind: z.literal('b') })])
+    const of = (out: z.ZodType) => generate([method('session.rename', out)])['Methods.swift']
+    expect(of(union)).toContain('public enum Output: Codable')
+    expect(of(union)).not.toMatch(/typealias Output/)
+    expect(of(union.nullable())).toContain('public enum Value: Codable')
+    expect(of(union.nullable())).toContain('public typealias Output = Value?')
+    expect(of(z.array(union))).toContain('public typealias Output = [Value]')
+    expect(of(z.enum(['x', 'y']).nullable())).toContain('public typealias Output = Value?')
+  })
   it('names the method types siblings code against', () => {
     const methods = files['Methods.swift']
     for (const name of [

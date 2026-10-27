@@ -13,7 +13,9 @@ builds on this.
   workspaces, bodies, remote keys, the HTTP bodies), `AgentEvent.swift`
   (every row kind), `ServerPush.swift` (every push a remote socket gets),
   `Methods.swift` (one type per request method with `Params`, `Output` and
-  the wire `name`), `Contract.swift` (`contractVersion`, what the server
+  the wire `name`; an anonymous union or enum answer is declared as `Output`
+  itself, and as `Value` under `Output = Value?` or `[Value]`, never as an
+  alias of its own name), `Contract.swift` (`contractVersion`, what the server
   sends in `hello.contract`).
 - `JSONValue.swift` — any JSON value, for `unknown` slots, for the unknown
   case of every union, and for canonical comparison in tests.
