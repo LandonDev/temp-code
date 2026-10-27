@@ -51,6 +51,8 @@ const run = (over: Partial<DevRun> = {}): DevRun => ({
 describe('DevServerPanel', () => {
   let probe: ReturnType<typeof mountProbe> | null = null
   const requests: [string, string, unknown][] = []
+  /** What the fake host answers `devServer.start` with when set (the one-per-thread question). */
+  let startAnswer: unknown = null
   beforeEach(async () => {
     // The target Select rides its own chunk; load it so it mounts at once.
     await selectChunk.load()
@@ -66,6 +68,7 @@ describe('DevServerPanel', () => {
       { environmentId: 'env_box', name: 'box', projectId: 'p2' }
     ]
     requests.length = 0
+    startAnswer = null
     vi.spyOn(registry, 'linkOf').mockImplementation(
       (env: string) =>
         ({
@@ -75,7 +78,7 @@ describe('DevServerPanel', () => {
               return env === 'env_box'
                 ? { targets: [target('apps/web#dev'), target('apps/docs#dev', { name: 'docs', dir: 'apps/docs', framework: 'astro' })], runs: [] }
                 : { targets: [target('apps/web#dev')], runs: devServerStore.getState().runs[`${env}/${(params as { projectId: string }).projectId}`] ?? [] }
-            if (method === 'devServer.start') return { run: run({ projectId: (params as { projectId: string }).projectId, ports: [] }) }
+            if (method === 'devServer.start') return startAnswer ?? { run: run({ projectId: (params as { projectId: string }).projectId, ports: [] }) }
             if (method === 'devServer.log') return { run: run(), lines: [] }
             if (method === 'devServer.stop') return { run: run({ status: 'stopped', endedAt: Date.now(), ports: [] }) }
             throw new Error(method)
@@ -145,7 +148,7 @@ describe('DevServerPanel', () => {
     expect(requests.map(([, m, p]) => [m, p])).toEqual(
       expect.arrayContaining([
         ['devServer.stop', { runId: 'run1' }],
-        ['devServer.start', { projectId: 'p1', targetId: 'apps/web#dev', sessionId: 't1' }]
+        ['devServer.start', { projectId: 'p1', targetId: 'apps/web#dev', sessionId: 't1', replace: true }]
       ])
     )
     expect(requests.findIndex(([, m]) => m === 'devServer.stop')).toBeLessThan(requests.findIndex(([, m]) => m === 'devServer.start'))
@@ -162,7 +165,25 @@ describe('DevServerPanel', () => {
     await probe.act(async () => button('Start another').click())
     await flush()
     expect(requests.some(([, m]) => m === 'devServer.stop')).toBe(false)
+    expect(requests).toContainEqual(['env_mac', 'devServer.start', { projectId: 'p1', targetId: 'apps/web#dev', sessionId: 't1', another: true }])
+  })
+
+  it("asks the same question when the host answers Run with the thread's existing server this pane did not know of", async () => {
+    vi.spyOn(sessionStore, 'environmentOf').mockReturnValue('env_mac')
+    startAnswer = { replace: true, existing: [{ runId: null, resourceId: 'res9', label: 'npx vite' }] }
+    probe = mountProbe(<DevServerPanel projectId="p1" />)
+    await flush()
+    const button = (name: string) => [...probe!.container.querySelectorAll('button')].find((b) => b.textContent?.trim() === name) as HTMLElement
+    await probe.act(async () => button('Run').click())
+    await flush()
     expect(requests).toContainEqual(['env_mac', 'devServer.start', { projectId: 'p1', targetId: 'apps/web#dev', sessionId: 't1' }])
+    expect(probe.container.textContent).toContain('This thread already runs a dev server. Replace it, or start another for a different feature?')
+    expect(devPaneStore.getState().open).toBe(false)
+    startAnswer = null
+    await probe.act(async () => button('Start another').click())
+    await flush()
+    expect(requests).toContainEqual(['env_mac', 'devServer.start', { projectId: 'p1', targetId: 'apps/web#dev', sessionId: 't1', another: true }])
+    expect(devPaneStore.getState()).toMatchObject({ open: true, picked: 'env_mac/run1' })
   })
 
   it('does not start the new server when the old one did not stop, and says why', async () => {

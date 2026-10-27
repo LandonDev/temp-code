@@ -55,6 +55,8 @@ class FakeLink implements Link {
   calls: { method: string; params: unknown; options?: { retry?: boolean } }[] = [];
   metas: Omit<SessionMeta, "environmentId">[] = [];
   events = new Map<string, EventRow[]>();
+  /** Rows per page at most, as a byte cap would cut them; 0 is no cap. */
+  pageCap = 0;
   /** When set, head (beforeSeq) fetches wait on it. */
   holdHead: Promise<void> | null = null;
   /** When set, a resume or tail fetch waits on it. */
@@ -85,7 +87,8 @@ class FakeLink implements Link {
       };
       let rows = (this.events.get(sessionId) ?? []).filter((r) => r.seq > afterSeq && r.seq < beforeSeq);
       const { limit } = params as { limit?: number };
-      if (limit) rows = rows.slice(0, limit);
+      // The host reads 4 MiB pages: `pageCap` cuts a page short of `limit` the way bytes do.
+      if (limit) rows = rows.slice(0, this.pageCap ? Math.min(limit, this.pageCap) : limit);
       if (tail) {
         // Row budget, as the server counts it: a prompt or a message is a row.
         const starts = rows.filter((r) => r.event.type === "user-text" || r.event.type === "assistant-text").slice(-(tail + 1));
@@ -1019,6 +1022,20 @@ describe("the mounted set", () => {
     const head = calls.slice(1);
     expect(head.map((c) => c.limit)).toEqual([4000, 4000, 4000]);
     expect(head.map((c) => c.afterSeq)).toEqual([0, 4000, 8000]);
+    expect(sessionStore.get("s1")?.blocks).toHaveLength(9000);
+  });
+
+  it("a head page cut short by bytes is followed by the next slice until the tail: a short page is not the end", async () => {
+    link.metas = [wireMeta()];
+    link.pageCap = 1500;
+    const rows: EventRow[] = [];
+    for (let i = 0; i < 9000; i++) rows.push(row("s1", i + 1, { type: "user-text", text: `q${i}` }));
+    link.events.set("s1", rows);
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await sessionStore.ensureComplete("s1");
+    const head = link.calls.filter((c) => c.method === "session.events").slice(1).map((c) => c.params as Record<string, unknown>);
+    expect(head.map((c) => c.afterSeq)).toEqual([0, 1500, 3000, 4500, 6000, 7500]);
     expect(sessionStore.get("s1")?.blocks).toHaveLength(9000);
   });
 });

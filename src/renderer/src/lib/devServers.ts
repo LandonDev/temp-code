@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { useStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
-import type { DevRun, DevRunPush, DevTarget } from '@server/shared/contract-devservers'
+import type { DevRun, DevRunPush, DevServerExisting, DevServerStartResult, DevTarget } from '@server/shared/contract-devservers'
 import type { ThreadResource } from '@server/shared/contract-resources'
 import type { PortForwardInfo } from '@server/shared/contract-ports'
 import { notDevServer } from '@server/shared/devServerRules'
@@ -121,15 +121,41 @@ export async function loadDevLog(environmentId: string, runId: string): Promise<
   applyDevRunPush(environmentId, { push: 'dev-run', projectId: run.projectId, run, lines: [] })
 }
 
-async function act(environmentId: string, method: 'devServer.start' | 'devServer.stop' | 'devServer.restart', params: object): Promise<DevRun> {
+async function act(environmentId: string, method: 'devServer.stop' | 'devServer.restart', params: object): Promise<DevRun> {
   startDevServers()
   const { run } = await registry.linkOf(environmentId).request<{ run: DevRun }>(method, params)
   applyDevRunPush(environmentId, { push: 'dev-run', projectId: run.projectId, run, lines: [] })
   return run
 }
 
-export const startDevServer = (environmentId: string, projectId: string, targetId: string, sessionId?: string | null) =>
-  act(environmentId, 'devServer.start', { projectId, targetId, ...(sessionId ? { sessionId } : {}) })
+/** The host's answer to Run: the run, or its question when the thread already has a server this pane did not know of. */
+export type DevServerStartAnswer = DevRun | { replace: true; existing: DevServerExisting[] }
+
+/**
+ * Start a target for a thread. The host holds the one-per-thread rule
+ * (`devServer.start`): `replace` has it stop the thread's servers first,
+ * `another` starts beside them, and with neither a thread that has one is
+ * answered `{ replace: true, existing }` instead of a run.
+ */
+export async function startDevServer(
+  environmentId: string,
+  projectId: string,
+  targetId: string,
+  sessionId?: string | null,
+  opts: { replace?: boolean; another?: boolean } = {}
+): Promise<DevServerStartAnswer> {
+  startDevServers()
+  const answer = await registry.linkOf(environmentId).request<DevServerStartResult>('devServer.start', {
+    projectId,
+    targetId,
+    ...(sessionId ? { sessionId } : {}),
+    ...(opts.replace ? { replace: true } : {}),
+    ...(opts.another ? { another: true } : {})
+  })
+  if ('replace' in answer) return answer
+  applyDevRunPush(environmentId, { push: 'dev-run', projectId: answer.run.projectId, run: answer.run, lines: [] })
+  return answer.run
+}
 export const stopDevServer = (environmentId: string, runId: string) => act(environmentId, 'devServer.stop', { runId })
 export const restartDevServer = (environmentId: string, runId: string) => act(environmentId, 'devServer.restart', { runId })
 

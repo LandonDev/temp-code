@@ -72,13 +72,18 @@ export function useDevStarter(projectId: string | null): DevStarterState {
   // The question is about the thread it was asked for: switching threads drops it.
   useEffect(() => setAsking(false), [sessionId]);
 
-  const start = async (replace: boolean): Promise<void> => {
+  const start = async (mode: "plain" | "replace" | "another"): Promise<void> => {
     if (!envId || !copyId || !target) return;
     setStarting(true);
     setError(null);
     try {
-      if (replace) await Promise.all(servers.filter((s) => s.sessionId === sessionId).map((s) => stopLiveServer(s)));
-      const started = await startDevServer(envId, copyId, target.id, sessionId);
+      if (mode === "replace") await Promise.all(servers.filter((s) => s.sessionId === sessionId).map((s) => stopLiveServer(s)));
+      const started = await startDevServer(envId, copyId, target.id, sessionId, mode === "replace" ? { replace: true } : mode === "another" ? { another: true } : {});
+      // The host knows a server of this thread the pane did not (a port row filed since): the same question.
+      if ("replace" in started) {
+        setAsking(true);
+        return;
+      }
       devPane.open(`${envId}/${started.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -107,11 +112,11 @@ export function useDevStarter(projectId: string | null): DevStarterState {
     asking,
     run: async () => {
       if (runChoice(servers, sessionId) === "ask") setAsking(true);
-      else await start(false);
+      else await start("plain");
     },
     answer: async (choice) => {
       setAsking(false);
-      if (choice !== "cancel") await start(choice === "replace");
+      if (choice !== "cancel") await start(choice === "replace" ? "replace" : "another");
     },
   };
 }

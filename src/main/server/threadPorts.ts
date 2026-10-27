@@ -19,9 +19,13 @@ import { announcedPorts, byPort, descendants, parseArgs, parseLsof, parsePs, par
  *    POLL_MS. Listeners already under the harness when the thread's first
  *    call starts (an MCP server) are the baseline and never recorded.
  *
- * While the host has live port rows a slower sweep (LIVE_MS) stamps the ones
- * nothing listened on in two sweeps running ("stopped listening") and follows a listener
- * that changed pid (a watcher restarted the server).
+ * While the host has live port rows (from boot: index.ts arms the poll) a
+ * slower sweep (LIVE_MS) ends a row the moment nothing listens on its port
+ * ("stopped listening") or its process is gone ("its process is gone"),
+ * except that a listener under the thread's own harness that took the port
+ * is followed (a watcher restarted the server). One live row per port on a
+ * host: the ledger's unique index (db.ts thread_resources_live) collapses a
+ * second detection, and a cluster listening on one port is one row.
  */
 
 export interface Scan {
@@ -103,8 +107,6 @@ export class ThreadPorts {
   private readonly log: (line: string) => void
   private timer: NodeJS.Timeout | null = null
   private lastLive = 0
-  /** Live sweeps in a row that found nothing on a row's port: two stamp it (a watcher's restart is one). */
-  private readonly missed = new Map<string, number>()
   private ticking: Promise<void> | null = null
   private readonly endListeners = new Set<(sessionId: string, callId: string) => void>()
 
@@ -280,18 +282,24 @@ export class ThreadPorts {
     const ports = new Map<number, Listener[]>()
     for (const l of scan.listeners) ports.set(l.port, [...(ports.get(l.port) ?? []), l])
     for (const r of rows) {
-      const on = ports.get(Number(r.identifier))
+      const port = Number(r.identifier)
+      const on = ports.get(port)
       if (!on?.length) {
-        const n = (this.missed.get(r.id) ?? 0) + 1
-        this.missed.set(r.id, n)
-        if (n < 2) continue
-        this.missed.delete(r.id)
         this.deps.resources.ended(this.deps.environmentId, 'port', r.identifier, 'stopped listening')
         this.log(`port ${r.identifier} stopped listening`)
         continue
       }
-      this.missed.delete(r.id)
-      if (r.pid && !on.some((l) => l.pid === r.pid) && !scan.parents.has(r.pid)) this.deps.resources.setPid(r.id, on[0].pid)
+      if (!r.pid || on.some((l) => l.pid === r.pid) || scan.parents.has(r.pid)) continue
+      // The row's process is gone. A listener under the thread's own harness took the port (a watcher's restart): the row follows it; anyone else's is not this server.
+      const harness = this.deps.harnessPid(r.sessionId)
+      const own = harness ? this.under(scan, harness).find((l) => l.port === port) : undefined
+      if (own) {
+        this.deps.resources.setPid(r.id, own.pid)
+        this.log(`port ${r.identifier}: pid ${r.pid} is gone, following ${own.pid}`)
+      } else {
+        this.deps.resources.ended(this.deps.environmentId, 'port', r.identifier, 'its process is gone')
+        this.log(`port ${r.identifier}: pid ${r.pid} is gone`)
+      }
     }
   }
 

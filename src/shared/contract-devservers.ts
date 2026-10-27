@@ -72,8 +72,15 @@ export const DevServerRequestSchemas = [
   request('devServer.targets', z.object({ projectId: id })),
   /** → { runs: DevRun[] }: every running run on this host, any project (the Dev servers pane's list). */
   request('devServer.runs', z.object({})),
-  /** → { run: DevRun }: start a target for a thread (`sessionId`, the one on screen); a target may run several times at once (each run picks its own port). */
-  request('devServer.start', z.object({ projectId: id, targetId: id, sessionId: id.optional() })),
+  /**
+   * → DevServerStartResult: start a target for a thread (`sessionId`, the one
+   * on screen); a target may run several times at once (each run picks its
+   * own port). One dev server per thread: a thread that already has a live
+   * run or a `port` row on its ledger is answered `{ replace: true, existing }`
+   * unless the request says `another` (start beside it) or `replace` (the
+   * host stops the old ones first; a server that will not stop fails the start).
+   */
+  request('devServer.start', z.object({ projectId: id, targetId: id, sessionId: id.optional(), replace: z.boolean().optional(), another: z.boolean().optional() })),
   /** → { run: DevRun }: SIGTERM the run's process group, SIGKILL after 5 s. */
   request('devServer.stop', z.object({ runId: id })),
   /** → { run: DevRun }: stop it, then start the same target again (a new run id). */
@@ -87,6 +94,16 @@ export const DevServerRequestSchemas = [
    */
   request('devServer.portLog', z.object({ resourceId: id, from: z.number().int().min(0).optional() }))
 ] as const
+
+/** A dev server the thread already has: a Dev Server run, or a `port` row its shell opened. */
+export interface DevServerExisting {
+  runId: string | null
+  resourceId: string | null
+  label: string
+}
+
+/** `devServer.start`'s answer: the run, or the question (the thread has one; say `replace` or `another`). */
+export type DevServerStartResult = { run: DevRun } | { replace: true; existing: DevServerExisting[] }
 
 /** A run's state and any new log lines (batched ~100 ms). A new run id means a fresh log. `end` counts every line the run wrote, these included. */
 export type DevRunPush = { push: 'dev-run'; projectId: string; run: DevRun; lines: string[]; end?: number }

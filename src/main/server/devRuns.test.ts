@@ -106,3 +106,59 @@ describe('DevRuns', () => {
     await expect(runs.start('nope', 'serve')).rejects.toThrow('unknown project')
   })
 })
+
+describe('one dev server per thread (startFor)', () => {
+  const mine = (sessionId: string) => runs.running().filter((r) => r.sessionId === sessionId)
+
+  it('answers the question for a thread that already has a run, starts beside it with another, and replaces with replace', async () => {
+    const first = await runs.startFor('p1', 'serve', 't1')
+    if (!('run' in first)) throw new Error('expected a run')
+    await until(() => runs.history(first.run.id).run.ports.length > 0 || runs.history(first.run.id).run.status !== 'running')
+    expect(await runs.startFor('p1', 'serve', 't1')).toEqual({ replace: true, existing: [{ runId: first.run.id, resourceId: null, label: 'Node server' }] })
+    expect(mine('t1')).toHaveLength(1)
+    const second = await runs.startFor('p1', 'serve', 't1', { another: true })
+    expect('run' in second).toBe(true)
+    expect(mine('t1')).toHaveLength(2)
+    const third = await runs.startFor('p1', 'serve', 't1', { replace: true })
+    if (!('run' in third)) throw new Error('expected a run')
+    expect(mine('t1').map((r) => r.id)).toEqual([third.run.id])
+    // The replaced runs are stopped (and pruned with the target's history once a new run starts).
+    expect(runs.running().some((r) => r.id === first.run.id)).toBe(false)
+    // Another thread, or no thread, is never asked.
+    expect('run' in (await runs.startFor('p1', 'serve', 't2'))).toBe(true)
+    expect('run' in (await runs.startFor('p1', 'serve', null))).toBe(true)
+  })
+
+  it("a port row of the thread counts, replace removes it first, and a row that would not go fails the start with its note", async () => {
+    const removals: string[][] = []
+    let outcome = 'removed'
+    const own = new DevRuns({
+      project: (id) => (id === 'p1' ? { id, name: 'site', cwd: dir } : null),
+      scanner: new SharedScanner(),
+      forwardsOf: () => [],
+      offersChanged: () => {},
+      detect: async () => targets,
+      platform: 'linux',
+      portRowsOf: (sessionId) => (sessionId === 't1' ? [{ id: 'res1', label: 'npx vite' }] : []),
+      stopPorts: async (_sessionId, ids) => {
+        removals.push(ids)
+        return ids.map((id) => ({ id, outcome, note: outcome === 'failed' ? 'kill: permission denied' : null }))
+      },
+      log: () => {}
+    })
+    try {
+      expect(await own.startFor('p1', 'serve', 't1')).toEqual({ replace: true, existing: [{ runId: null, resourceId: 'res1', label: 'npx vite' }] })
+      expect(removals).toEqual([])
+      outcome = 'failed'
+      await expect(own.startFor('p1', 'serve', 't1', { replace: true })).rejects.toThrow("the thread's dev server did not stop: kill: permission denied")
+      expect(removals).toEqual([['res1']])
+      expect(own.running()).toEqual([])
+      outcome = 'removed'
+      const started = await own.startFor('p1', 'serve', 't1', { replace: true })
+      expect('run' in started).toBe(true)
+      expect(removals).toEqual([['res1'], ['res1']])
+    } finally {
+      own.disposeAll()
+    }
+  })
+})

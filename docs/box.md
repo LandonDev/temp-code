@@ -1648,10 +1648,15 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   process tree (`ss -ltnpH` on Linux, `lsof -nP -iTCP -sTCP:LISTEN` on
   macOS, the tree from `ps`), polled every 2 s while a shell call runs and
   for 10 s after the last one. Listeners under the harness when its first
-  call starts (an MCP server) are the baseline and never recorded. A port
-  nothing listens on in two sweeps running (10 s apart) is stamped removed
-  ("stopped listening"); a listener that changed pid (a watcher's restart)
-  moves the row to the new pid. Removal (Stop in the panel, or archiving
+  call starts (an MCP server) are the baseline and never recorded. While
+  the host has live port rows a sweep every 10 s, armed at boot, ends a row
+  the moment nothing listens on its port ("stopped listening") or its
+  process is gone ("its process is gone"); a listener under the thread's own
+  harness that took the port (a watcher's restart) moves the row to the new
+  pid instead. One live row per port on a host (the ledger's unique index):
+  a second detection and a cluster listening on one port make no second
+  row. The `ports` push to the Mac is the live rows alone, so a forward
+  closes with its row. Removal (Stop in the panel, or archiving
   the thread with its resources) sends SIGTERM to the pid only while it
   still holds the port, waits 3 s and sends SIGKILL.
 - **The sweep.** Agents mostly start a dev server with a background shell
@@ -1707,8 +1712,13 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   `DevRun.sessionId`, a subagent's root). One dev server per thread: Run
   for a thread that already has one asks "Replace it, or start another for
   a different feature?" (Replace stops the first; a thread's own `port`
-  rows count), and a thread whose shell opens a second hears it from the
-  host's dev-server line (portTail.ts `oneServerLine`). A row is a running
+  rows count), the host holds the same rule (`devServer.start` for a thread
+  with a live run or `port` row answers `{ replace: true, existing }` unless
+  the request says `another`, or `replace`, which stops its runs and removes
+  its port rows first and fails the start when one would not go; the pane
+  asks the question on that answer too), and a thread whose shell opens a
+  second hears it from the host's dev-server line (portTail.ts
+  `oneServerLine`). A row is a running
   Dev Server run (each host's `devServer.runs` at link-up, then its
   `dev-run` pushes) or a `port` row on a thread's ledger that is not
   removed and still passes the shared rules (a port a run holds is the

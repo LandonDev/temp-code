@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import { nanoid } from 'nanoid'
-import type { DevRun, DevRunPush, DevTarget } from '@shared/contract-devservers'
+import type { DevRun, DevRunPush, DevTarget, DevServerStartResult } from '@shared/contract-devservers'
 import type { ForwardedPort, PortForwardInfo } from '@shared/contract-ports'
 import { detectDevTargets } from './devTargets'
 import { loginShell } from './loginShell'
@@ -41,6 +41,10 @@ export interface DevRunsDeps {
   platform?: NodeJS.Platform
   /** Detection, for tests. */
   detect?: (cwd: string, name: string) => Promise<DevTarget[]>
+  /** The thread's own dev servers on the ledger (its `port` rows that pass the shared rules), for the one-per-thread rule. */
+  portRowsOf?: (sessionId: string) => { id: string; label: string }[]
+  /** Remove the thread's port rows (resources.remove): the replace path stops the old server first. */
+  stopPorts?: (sessionId: string, ids: string[]) => Promise<{ id: string; outcome: string; note?: string | null }[]>
   log?: (line: string) => void
 }
 
@@ -120,6 +124,38 @@ export class DevRuns {
   history(runId: string): { run: DevRun; lines: string[]; end: number } {
     const s = this.slot(runId)
     return { run: this.view(s), lines: s.lines.slice(), end: s.total }
+  }
+
+  /**
+   * `devServer.start`'s answer (contract-devservers.ts): one dev server per
+   * thread. A thread that already has a live run or a `port` row is asked
+   * (`{ replace: true, existing }`) unless the caller said `another` (start
+   * beside it) or `replace` (its runs are stopped and its port rows removed
+   * first; a row that would not go fails the start with its note).
+   */
+  async startFor(projectId: string, targetId: string, sessionId: string | null, opts: { replace?: boolean; another?: boolean } = {}): Promise<DevServerStartResult> {
+    if (sessionId && !opts.another) {
+      const runs = this.running().filter((r) => r.sessionId === sessionId)
+      const ports = this.deps.portRowsOf?.(sessionId) ?? []
+      if (runs.length || ports.length) {
+        if (!opts.replace) {
+          return {
+            replace: true,
+            existing: [
+              ...runs.map((r) => ({ runId: r.id, resourceId: null, label: r.what ?? r.name })),
+              ...ports.map((p) => ({ runId: null, resourceId: p.id, label: p.label }))
+            ]
+          }
+        }
+        for (const r of runs) await this.stop(r.id)
+        if (ports.length) {
+          const results = (await this.deps.stopPorts?.(sessionId, ports.map((p) => p.id))) ?? []
+          const failed = results.find((r) => r.outcome !== 'removed')
+          if (failed) throw new Error(`the thread's dev server did not stop: ${failed.note ?? failed.outcome}`)
+        }
+      }
+    }
+    return { run: await this.start(projectId, targetId, sessionId) }
   }
 
   /** Start a target; `sessionId` is the thread it is started for (the thread on screen when the person pressed Run). */

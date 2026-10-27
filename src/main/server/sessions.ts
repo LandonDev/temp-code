@@ -2081,6 +2081,11 @@ export class SessionRegistry {
     return this.store.events(sessionId, opts)
   }
 
+  /** The same page read on the reader worker, cut at 4 MiB (the local profile's `session.events`); a short page is not the end. */
+  eventsAsync(sessionId: string, opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number }): Promise<EventRow[]> {
+    return this.store.eventsAsync(sessionId, opts)
+  }
+
   /** The newest `limit` rows, oldest first (a pending prompt sits here). */
   lastEvents(sessionId: string, limit: number): EventRow[] {
     return this.store.lastEvents(sessionId, limit)

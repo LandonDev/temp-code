@@ -118,23 +118,65 @@ describe('ThreadPorts', () => {
     expect(ledger.listAll({ kind: 'port' }).map((r) => r.identifier)).toEqual(['5174'])
   })
 
-  it('stamps a port that stopped listening on two sweeps, and follows a new pid', async () => {
+  it('ends a port that stopped listening on the first sweep, and follows a restart under the harness', async () => {
     call('root', 'c1', 'bun run dev')
     await flush()
     spawnServer(5173, 201)
     spawnServer(5180, 210)
     await ports.settle('root', 'c1', 'Local: http://localhost:5173/\nready on http://localhost:5180')
-    // 5173's server restarted under a new pid; 5180 went away.
+    // 5173's server restarted under a new pid (a watcher, still under the harness); 5180 went away.
     listeners = listeners.filter((l) => l.pid !== 201 && l.pid !== 210)
     parents.delete(201)
-    listeners.push({ port: 5173, pid: 202, address: '*', command: 'node' })
+    parents.delete(210)
+    spawnServer(5173, 202)
     now += GRACE_PAST
     await ports.tick()
-    expect(ledger.listAll({ kind: 'port' }).map((r) => [r.identifier, r.pid]).sort()).toEqual([['5173', 202], ['5180', 210]])
-    now += LIVE_MS
-    await ports.tick()
-    expect(ledger.listAll({ kind: 'port' }).map((r) => r.identifier)).toEqual(['5173'])
+    expect(ledger.listAll({ kind: 'port' }).map((r) => [r.identifier, r.pid])).toEqual([['5173', 202]])
     expect(ledger.list('root', true).find((r) => r.identifier === '5180')?.note).toBe('stopped listening')
+  })
+
+  it("ends a row whose process is gone when the port's new listener is not the thread's", async () => {
+    call('root', 'c1', 'bun run dev')
+    await flush()
+    spawnServer(5173, 201)
+    await ports.settle('root', 'c1', 'Local: http://localhost:5173/')
+    // 201 died; a stranger (under init, not the harness) took the port.
+    listeners = listeners.filter((l) => l.pid !== 201)
+    parents.delete(201)
+    parents.set(900, 1)
+    listeners.push({ port: 5173, pid: 900, address: '*', command: 'python' })
+    now += GRACE_PAST
+    await ports.tick()
+    expect(ledger.listAll({ kind: 'port' })).toEqual([])
+    expect(ledger.list('root', true).find((r) => r.identifier === '5173')?.note).toBe('its process is gone')
+  })
+
+  it('a row from before a restart whose server is gone leaves on the first sweep of the poll the host arms at boot', async () => {
+    // The ledger as a restarted host finds it: a port row, pid 777 (reparented and dead), nothing listening.
+    ledger.record('root', ME, { created: [{ kind: 'port', identifier: '5190', label: 'http://localhost:5190', branch: null, pid: 777, callId: 'old' }], removed: [] })
+    expect(ledger.listAll({ kind: 'port' })).toHaveLength(1)
+    vi.useFakeTimers()
+    try {
+      ports.arm()
+      now += LIVE_MS
+      await vi.advanceTimersByTimeAsync(LIVE_MS)
+      expect(ledger.listAll({ kind: 'port' })).toEqual([])
+      expect(ledger.list('root', true)[0]?.note).toBe('stopped listening')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('one live row per port on a host: a cluster listening on one port, and a second detection, make one row', async () => {
+    call('root', 'c1', 'bun run dev')
+    await flush()
+    spawnServer(5173, 201)
+    spawnServer(5173, 203)
+    await ports.settle('root', 'c1', 'Local: http://localhost:5173/')
+    call('child', 'c2', 'curl localhost:5173')
+    await flush()
+    await ports.settle('child', 'c2', 'Local: http://localhost:5173/')
+    expect(ledger.listAll({ kind: 'port' }).map((r) => r.identifier)).toEqual(['5173'])
   })
 
   it('never stamps rows from a scan that saw no listeners at all', async () => {

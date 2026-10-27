@@ -892,9 +892,11 @@ routed to (aliax-core's `forward`). Two listeners:
   infrastructure, proxies, MCP servers, test runs and the gate's workers
   (src/shared/devServerRules.ts, which threadPorts.ts and the renderer apply
   too) and ports bound before a thread worked there
-  (`bun scripts/port-sweep-dry-run.ts` prints its verdicts live); it leaves
-  the ledger when nothing listens, and removal SIGTERMs then SIGKILLs the
-  pid. The box sends its live ports (the ledger's and the Dev
+  (`bun scripts/port-sweep-dry-run.ts` prints its verdicts live); a sweep
+  every 10 s, armed at boot, ends a row the moment nothing listens or its
+  process is gone (a listener under the thread's own harness is followed as
+  a watcher's restart), one live row per port on a host, and removal
+  SIGTERMs then SIGKILLs the pid. The box sends its live ports (the ledger's and the Dev
   Server button's runs) to every registered Mac (`push: 'ports'`,
   remote/portForward.ts); the Mac binds 127.0.0.1 on the same number, else
   the next free one above (its own dev instance keeps 5173), answers
@@ -917,7 +919,10 @@ routed to (aliax-core's `forward`). Two listeners:
   the box's copy of the project, for the thread on screen
   (`devServer.start { sessionId }`, `DevRun.sessionId`). One dev server per
   thread: Run for a thread that has one asks "Replace it, or start another
-  for a different feature?" (`runChoice`; Replace stops the first), and a
+  for a different feature?" (`runChoice`; Replace stops the first), the
+  host holds the rule too (`devServer.start` for a thread with a live run
+  or `port` row answers `{ replace: true, existing }` unless the request
+  says `another` or `replace`, which stops the old ones first), and a
   thread's shell opening a second hears the same from the host's dev-server
   line (portTail.ts `oneServerLine`; a port the shared rules say is not a
   dev server, such as the gate's workers, is never announced). What runs
@@ -1350,7 +1355,10 @@ names the far child).
   the store keeps the last `KEEP_RECENT` (6) transcripts whose panes left
   loaded and subscribed, so a switch back sends nothing; the markdown
   worker parses one commit's texts newest first. docs/TRANSCRIPT.md
-  "Opening a thread on another host" has the numbers.
+  "Opening a thread on another host" has the numbers. The local profile's
+  `session.events` reads on the reader worker in 4 MiB pages
+  (`registry.eventsAsync`), so the renderer's head walk ends on an empty
+  page or at the tail's first row, never on a page shorter than it asked for.
 - Measure with `bun run script:measure-transcript-seed` once, then
   `TEMP_CODE_PROFILE=1 electron-vite build` and
   `bun scripts/measure-transcript.ts --label <name>` (an isolated instance

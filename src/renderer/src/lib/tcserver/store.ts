@@ -1705,8 +1705,12 @@ class SessionStore {
         for (const row of rows.slice(i, i + HEAD_CHUNK)) state = foldEvent(state, row, cwd);
         if (i + HEAD_CHUNK < rows.length) await new Promise((r) => setTimeout(r, 0));
       }
-      if (rows.length < HEAD_FETCH) break;
+      // A page can be cut short by bytes (the host reads 4 MiB pages), not
+      // only by rows: only an empty page, or one that reached the tail's
+      // first row, is the end of the head.
+      if (rows.length === 0) break;
       cursor = rows[rows.length - 1].seq;
+      if (cursor >= head.beforeSeq - 1) break;
       await new Promise((r) => setTimeout(r, 0));
     }
     if (!live()) return;

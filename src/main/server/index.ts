@@ -817,6 +817,8 @@ export async function startServer(
   const listenerScanner = new SharedScanner()
   const threadPorts = new ThreadPorts({ resources, environmentId, harnessPid: (id) => registry.harnessPid(id), scanner: listenerScanner })
   registry.onEvent((row) => threadPorts.observeEvent(row))
+  // The live poll runs from boot while rows exist: a row from before a restart whose server is gone leaves on the first sweep.
+  threadPorts.arm()
   const threadTitle = (id: string): string => registry.get(id)?.title ?? 'Thread'
   /** A dev run's ports (devRuns below fills it in). */
   const devPortOffers: { current: () => ForwardedPort[]; bound: (ids: string[]) => void } = { current: () => [], bound: () => {} }
@@ -845,7 +847,14 @@ export async function startServer(
     scanner: listenerScanner,
     forwardsOf: (id) => portHost.forwardsOf(id),
     offersChanged: () => portHost.refresh(),
-    env: () => harnessEnv()
+    env: () => harnessEnv(),
+    // One dev server per thread: its own port rows count, and Replace removes them first.
+    portRowsOf: (sessionId) =>
+      resources
+        .list(resources.ownerOf(sessionId))
+        .filter((r) => r.kind === 'port' && r.environmentId === environmentId && !r.removeRequestedAt && !notDevServer(Number(r.identifier), null, r.label))
+        .map((r) => ({ id: r.id, label: r.label })),
+    stopPorts: (sessionId, ids) => resources.remove(sessionId, ids)
   })
   devPortOffers.current = () => devRuns.offers()
   // The host-wide sweep (portSweep.ts): servers a background shell started, reparented to init.
@@ -2199,7 +2208,11 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: { runs: devRuns.running() } })
             break
           case 'devServer.start':
-            sendFrame({ id: req.id, ok: true, result: { run: await devRuns.start(req.params.projectId, req.params.targetId, req.params.sessionId ?? null) } })
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await devRuns.startFor(req.params.projectId, req.params.targetId, req.params.sessionId ?? null, { replace: req.params.replace, another: req.params.another })
+            })
             break
           case 'devServer.stop':
             sendFrame({ id: req.id, ok: true, result: { run: await devRuns.stop(req.params.runId) } })
@@ -2339,7 +2352,7 @@ export async function startServer(
             if (profile === 'remote') {
               const page = eventsPage(registry, req.params)
               sendFrame({ id: req.id, ok: true, result: req.params.subscribe ? { ...page, subscribed: true } : page })
-            } else sendFrame({ id: req.id, ok: true, result: registry.events(req.params.sessionId, req.params) })
+            } else sendFrame({ id: req.id, ok: true, result: await registry.eventsAsync(req.params.sessionId, req.params) })
             break
           }
           case 'session.rowBody': {
