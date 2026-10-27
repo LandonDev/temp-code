@@ -745,14 +745,13 @@ Mac's home comes from its manifest. Hooks in `settings.json` that call
 macOS-only tools just fail here; each landing of `settings.json` logs one
 `[harness-sync]` line naming the hook executables not on the box's PATH.
 
-Status: Settings → Remote access on the Mac has a Harness config section, one
-row per host: `Harness config: 143 files (Claude skills 80, Claude commands
-4, Claude settings 1, Codex skills 12, Codex config 1, Codex hooks 1, Shared
-skills 44), synced 2m ago` (every set with files, in the set's order, from
-`sets` of `harness.status`), `never synced`, or the last error, with Sync now
-(`harness.status` and `harness.sync` on the Mac's own socket). Below the rows,
-how many files stay on the Mac (over 16 MiB, a symlink out of reach, or a
-macOS binary). On the box, the `[harness-sync]` lines in the service's
+Status: Settings → Hosts on the Mac. This Mac's Sync group has the Harness
+config switch, with how many files stay on the Mac (over 16 MiB, a symlink
+out of reach, or a macOS binary) under it; each paired host's Sync group has
+a Harness config row, `143 files  synced 2m ago` (every set with files, in
+the set's order, from `sets` of `harness.status`, in its tooltip), `Never
+synced`, or the last error, and Sync now at the group's heading
+(`harness.status` and `harness.sync` on the Mac's own socket). On the box, the `[harness-sync]` lines in the service's
 journal say what landed. Proof:
 `bun run script:e2e-harness-sync` (two headless instances with their own
 HOMEs, paired over the fixed port; runs on the box under `xvfb-run`).
@@ -816,10 +815,10 @@ down the Mac's link and the Mac syncs), and from Sync now. A round that
 made something the other side should have (a union result, a conflict copy)
 runs one more at once.
 
-Status: Settings → Remote access on the Mac, under each host's Harness
-config line: `Memory: 42 files, synced 2m ago, 1 conflict`, with "Show
-conflict copies" opening the list of copies on this machine (the file it
-sits beside, whose copy, when, and Reveal); the Sync memory switch is the
+Status: Settings → Hosts on the Mac, a Memory row under each paired host's
+Harness config row: `42 files  synced 2m ago  1 conflict`; This Mac's Sync
+group folds the conflict copies on this machine open under its Memory switch
+(the file it sits beside, whose copy, when, and Reveal); that switch is the
 `memory.sync.enabled` setting (on by default). `memory.status`,
 `memory.sync` and `memory.settings.set` on the host's own socket; on the
 box, `tc-local memory.status` and the `[memory-sync]` lines in the journal.
@@ -936,7 +935,7 @@ Limit: `attachment.maxBytes` in the host's settings table, default 200 MB per
 file, read with `attachment.settings` and set with `attachment.settings.set
 {maxBytes}` (admin; null for the default). The composer checks a file it will
 copy against the thread host's limit when it is attached and says so; begin
-refuses it too. Settings → Remote access edits this machine's limit; on the
+refuses it too. Settings → Hosts (Attachment limit) edits this machine's limit; on the
 box: `tc-local attachment.settings.set '{"maxBytes":524288000}'`.
 
 Fence: for a remote caller, every `session.send` and `queue.add` attachment
@@ -1213,7 +1212,8 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
   default), `read`, `read+run` or `full` (Settings: Off, Read, Read and run,
   Full access); `macBridge.shared.<envId>` lists shared
   folders: absolute, real paths, never `/`, the home directory or a directory
-  above it. Settings → Remote access → Mac bridge edits both.
+  above it. Settings → Hosts edits both: the policy in the host's Mac bridge
+group, the folders in its Mac bridge settings dialog.
 - Reads, listings and fetches inside the Mac's own managed roots (its
   projects, workspaces and work root) or a shared folder go through without a
   prompt. A path is judged by its real spelling: a symlink out of a shared
@@ -1254,8 +1254,8 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
   only, nothing about what is admitted). A command or job admitted without
   a prompt (remembered, or from a full-access thread) shows on the Mac as a
   running card with Stop only while the host's **Show running commands**
-  (`macBridge.showRunning.<envId>`, the toggle beside the policy in Settings
-  → Remote access → Mac bridge) is on: off by default under `full`, on
+  (`macBridge.showRunning.<envId>`, a switch in the host's Mac bridge
+  settings on Settings → Hosts) is on: off by default under `full`, on
   otherwise, and pinned either way once toggled. Off, the request is
   `quiet`: no card, no toast, nothing opens; the only trace is the running
   list under that host's row in the pane ("n commands running on this Mac
@@ -1287,7 +1287,7 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
     limit, the cores, the host's cap and running count), re-pushed on every
     change of standing, and the box thread's tool result is simply later.
     On the Mac it is a row after the running ones in the host's running
-    list (Settings → Remote access → Mac bridge) and in the thread's "Mac
+    list (the host's Mac bridge on Settings → Hosts) and in the thread's "Mac
     approvals…" dialog, never a card: "Waiting for the Mac · load 12.3 of
     8 · 3rd in line" (or "4 of 4 running"), with Stop, which takes it out of
     the line and fails the call as stopped. The count line says "n commands
@@ -1337,8 +1337,8 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
   macBridgeRules.ts, the one place to change them. Nothing is persisted:
   `macBridge.rules.list {sessionId?}` and `macBridge.rules.forget
   {sessionId, ruleId?}` (local) back the thread menu's "Mac approvals…"
-  (each rule with Remove, and Forget all) and the list under Settings →
-  Remote access → Mac bridge. A thread's rules also go when its host pushes
+  (each rule with Remove, and Forget all) and the Remembered approvals group
+  in This Mac's section of Settings → Hosts. A thread's rules also go when its host pushes
   `session-removed` or `session-moved` for it (the Mac cannot otherwise see a
   box thread end), and all of them when the app quits.
 - A command runs through the Mac's login shell (`loginShell.ts`, `-lc`; argv
@@ -1465,7 +1465,7 @@ need no prompt (a shared, managed or remembered folder, or full access); one
 that would have asked is refused with the same text and raises no card. The
 Mac lists what the box holds (`mac.held` carries the thread's whole held set
 on every change) as `paused` rows (`mb_held_<id>`, status `paused`) in the
-host's running list in Settings → Remote access and in the thread's "Mac
+host's running list on Settings → Hosts and in the thread's "Mac
 approvals…" dialog, with "Paused" where Stop would be, never as a card; they
 go when the box releases or refuses them, or the link drops. The box pushes
 `macBridge.held` (the count under the root) to its own clients and answers it
@@ -1512,8 +1512,7 @@ Fifteen threads need one click, not fifteen. Every scope has the same five
 rows, Mark all read first: a project's menu (the rail's row and the project
 header; for a workspace linked across hosts the row's menu acts on every
 copy, one `session.batch` per host), a host's menu (the host's row at the
-rail's foot when more than one host is paired, `chrome/HostRows.tsx`, and
-the host's menu in Settings → Remote access), and the
+rail's foot when more than one host is paired, `chrome/HostRows.tsx`), and the
 View menu for every host at once (Pause All Threads, Resume All Threads, Stop
 All Threads, Archive Finished Threads). No shortcuts: menu rows only. A row
 with nothing to act on is disabled, not hidden. The phone has the same four
@@ -1720,11 +1719,12 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   holds more than 1 MiB unsent, or the Mac has 32 frames unanswered, and
   resumes below 256 KiB and half that. The box side is
   remote/portForward.ts.
-- **The switch.** "Forward dev servers" under each Mac bridge host row in
-  Settings → Remote access (`ports.forward.<envId>`, on by default; RPCs
+- **The switch.** "Forward dev servers" in each host's Mac bridge settings
+  on Settings → Hosts (`ports.forward.<envId>`, on by default; RPCs
   `ports.forwards` and `ports.setForwarding`, local). Off closes every
-  forward of that host. The row lists what is forwarded, with the number
-  here and, when it moved, which one was taken.
+  forward of that host. The host's Mac bridge group lists what is
+  forwarded, one row each with Open, the number here and, when it moved,
+  which one was taken.
 - **Where it shows.** A shell call's transcript row ends with "Open on the
   Mac :5174" for the port its command opened (src/renderer/src/surfaces/
   CallPortLink.tsx; "Open in browser" for a Mac thread's own server); the
@@ -1851,7 +1851,7 @@ gets a worktree there as it would locally. Such a child is not archived
 with its parent (the parent is not here); archive it from here, or through
 the batch. Admission: on a Mac the Mac bridge's thread cap
 (`MacBridge.admitThread`, `macBridge.maxThreads.<envId>`, default 2, the
-"threads" field on the host's row in Settings → Remote access); on the box
+"Threads at once" in the host's Mac bridge settings on Settings → Hosts); on the box
 its own `crossHost.maxThreads.<envId>` (default 4, cap 32, a settings row,
 no pane), counting the threads that host started here that are live now
 (`liveThreadsOf`); at the cap the start fails with the count and the key,
@@ -2346,8 +2346,8 @@ macOS. The per-process figure is the median RSS of the live harnesses,
 450 MB until five samples exist. Admission pauses while free memory is
 under 10% of the budget. On the box that is near 120 threads; on a 48 GiB
 Mac, near 54. Every harness process counts, roots and subagents; Start
-now and the focused thread's sends go past it. Settings → Remote access
-shows each host's line: "Running 118 of 120 · 7 queued".
+now and the focused thread's sends go past it. Settings → Hosts has a
+Running threads row in each host's section: "118 of 120 running  7 queued".
 
 ## Profiling the host
 
@@ -2378,8 +2378,8 @@ its `ewmaMs`, and all `inFlight` requests with their method and age in ms.
 
 ## Updating
 
-For a ref already on GitHub, press "Deploy master to the box" in the Mac
-app's Settings → Remote access (below, "Deploy from the app"), or run from
+For a ref already on GitHub, press "Deploy master…" in the Mac
+app's Settings → Hosts (below, "Deploy from the app"), or run from
 the Mac:
 
 ```sh
@@ -2470,7 +2470,7 @@ main process's peer links keep each host's `build` on their state. The
 renderer's `useDeployDrift(environmentId)` (`lib/deployDrift.ts`) yields
 `{ behind, deployedVersion, masterVersion }` and `chrome/DeployDrift.tsx`
 draws a muted tabular `+3` at the trailing edge of the host's row in the
-environment switcher, the rail's host rows and Settings → Remote access,
+rail's host rows and the host's header on Settings → Hosts,
 with the tooltip
 "3 releases behind master (runs v1.0.270, master is v1.0.273). Deploy
 with: ssh box 'box-update master'" (a Mac host says "Publish with: bun run
@@ -2558,8 +2558,7 @@ follows the tail through the box's restart).
 
 ### Deploy from the app
 
-"Deploy master to the box" in Settings → Remote access → Deploy and publish
-is the same `box-update master`, pressed in the app with the log streamed
+"Deploy master…" on the box's Deploy row in Settings → Hosts is the same `box-update master`, pressed in the app with the log streamed
 back. `box-update` must run as root and the host runs as agents, so the app
 never runs it: the root-owned trigger of stage 87
 (scripts/box/87-deploy-trigger.sh) does. One-time install, from the Mac

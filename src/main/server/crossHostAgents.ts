@@ -205,7 +205,7 @@ export class CrossHostAgents {
       const linked = reachable.filter((r) => r.via === 'link')
       if (linked.length === 1) return linked[0].id
       if (linked.length === 0)
-        throw new Error('no host is linked from here right now: save the box under Settings → Remote access, or name a host registered here by its environment id')
+        throw new Error('no host is linked from here right now: save the box under Settings → Hosts, or name a host registered here by its environment id')
       throw new Error(`several hosts are linked from here (${linked.map((r) => r.id).join(', ')}): pass environmentId`)
     }
     const bridged = this.deps.macPeerOf(sessionId)

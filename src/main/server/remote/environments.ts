@@ -247,7 +247,7 @@ export async function addEnvironment(
   return withoutKey(row)
 }
 
-/** `https://host/pair#CODE` (what Settings → Remote access hands out) → its parts. */
+/** `https://host/pair#CODE` (what Settings → Hosts hands out) → its parts. */
 export function parsePairingLink(link: string): { origin: string; code: string } {
   let url: URL
   try {

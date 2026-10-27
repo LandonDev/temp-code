@@ -68,6 +68,28 @@ ambient chrome; it earns its place because agents run in background threads
 | Host rows | `chrome/HostRows.tsx`, above Settings | only with two or more hosts: one 28px row per host, no borders, the rail rows' 12px type: the host's `HostGlyph` (12px, `text-content/45`, laptop for a Mac, server otherwise) in the rail icons' 14px box so the names share Settings' text column, the name, the connection dot (`toneOf`, its state in the tooltip), then at the right the boot-resume line while fresh and the `+N` deploy drift, which yield to `⋯` on hover; a click opens the host's menu: Add workspace here…, Mark all read, Pause all, Resume all, Stop all, Archive done, Remote access settings |
 | Bottom | connection strip (exists) + settings gear | unchanged |
 
+### Settings → Hosts
+
+One page for this machine and every host it is paired with (settings section
+id `remote`, opened with `shell.openSettings("remote")`; a saved
+`environments` section reads as it). surfaces/settings/hosts/HostsPage.tsx
+draws one section per host from `hostSections` (this machine first, then the
+paired hosts in the environments' order, then a host only the Mac bridge or
+the devices list knows), 24px apart with one `Separator` between them. A
+section is a header (the 12px `HostGlyph`, the name in 14px medium, a paired
+host's link state in words, the `+N` drift mark, a paired host's `⋯` menu:
+Retry now, Pair again…, Rename…, Routes…, Remove…) and that host's groups
+16px apart, each a 12px muted heading over `Item` rows (`Group`, `Row` in
+Group.tsx). This machine: its id, listener, public origin, stuck clock and
+attachment limit; Clients (Pair a device, New key; pairings, keys, browser
+sessions); Release (desktop); Running threads and Load limit; Sync;
+Remembered approvals; Devices. A paired host: Deploy with its log, Running
+threads, Sync with Sync now, and the Mac bridge (Access, the running and held
+calls, the forwarded ports, Settings… for the caps, show-running, forwarding
+and shared folders). Facts on one line are `Facts` spans, never dots; numbers
+are `CommitField`s; logs and conflict copies are `Collapsible`s under their
+row. Add host sits at the page's foot (desktop only).
+
 ### Project dialogs on a linked project
 
 A project whose `linkId` another host's row shares keeps its settings on

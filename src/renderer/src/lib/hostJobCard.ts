@@ -1,8 +1,8 @@
 import type { HostJob, HostJobStatus } from "@server/shared/contract-host";
 
 /**
- * The log card's one derived state (Settings → Remote access → Deploy and
- * publish), pure so the states are testable: what the header says, which
+ * A deploy's or a publish's log state (Settings → Hosts: the log under a
+ * box's Deploy row or This Mac's Publish row), pure so the states are testable: what the header says, which
  * lines show (the last TAIL_LINES), whether Stop is offered, and the
  * closing line once the job is done. The deploy job cannot be stopped once
  * the trigger has it and the card says so; the box restarting mid-deploy

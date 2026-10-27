@@ -16,7 +16,7 @@ import { quoteArgv } from './macBridge'
  * The Mac bridge's remembered approvals in the renderer (docs/box.md "The
  * Mac bridge", "Remembered approvals"). They live in this Mac's main
  * process memory; `macBridge.rules.list` / `.forget` (local) read and drop
- * them for the thread's "Mac approvals" dialog and Settings → Remote access.
+ * them for the thread's "Mac approvals" dialog and Settings → Hosts.
  * A thread removed on its host takes its rules with it: every remote link's
  * `session-removed` (and a move off the host) forgets them here.
  */

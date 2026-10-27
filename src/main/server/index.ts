@@ -1563,7 +1563,7 @@ export async function startServer(
               return sendFrame({ id: req.id, ok: true, result: portHost.close(from, req.params.streamId, req.params.seq, req.params.error) })
           }
         }
-        // This Mac's own forwards and their switch (Settings → Remote access).
+        // This Mac's own forwards and their switch (Settings → Hosts).
         if (req.method === 'ports.forwards') return sendFrame({ id: req.id, ok: true, result: { hosts: macPorts.hosts() } })
         if (req.method === 'ports.setForwarding')
           return sendFrame({ id: req.id, ok: true, result: { hosts: await macPorts.setEnabled(req.params.environmentId, req.params.enabled) } })

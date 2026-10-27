@@ -20,7 +20,7 @@ import { isWebMode } from './nativeWeb'
  *    this window can answer: the method is local-only on the server. A
  *    request marked `quiet` (admitted without a prompt while the host's
  *    "Show running commands" is off) never reaches a card: it is listed, with
- *    Stop, in Settings → Remote access → Mac bridge only (useMacBridgeRunning).
+ *    Stop, in the host's Mac bridge on Settings → Hosts only (useMacBridgeRunning).
  *  - The cards never fill the screen: `queueOf` keeps one waiting card per
  *    host (the oldest, decided first) with a count of the rest, and folds
  *    the running ones into one line per host with Stop all.
@@ -274,7 +274,7 @@ export function queueOf(requests: Iterable<MacBridgeRequest>): MacBridgeQueue {
   return { pending, more, running: [...running.values()] }
 }
 
-// ── the policy (Settings → Remote access) ────────────────────────────
+// ── the policy (Settings → Hosts) ────────────────────────────
 
 export async function refreshMacBridgeHosts(): Promise<MacBridgeHostPolicy[]> {
   const link = local()

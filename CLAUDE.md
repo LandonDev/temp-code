@@ -202,23 +202,24 @@ Two separate steps, on purpose, over one gate.
    has the phase times.
 
 3. **Both are buttons in the app too, still pressed by the user** (Settings →
-   Remote access → Deploy and publish; src/main/server/hostJobs.ts,
-   src/shared/contract-host.ts, src/renderer/src/surfaces/DeploySettings.tsx).
-   "Publish Mac release" on This Mac's row runs `bun scripts/release.ts
+   Hosts: a box's Deploy row and This Mac's Release group;
+   src/main/server/hostJobs.ts, src/shared/contract-host.ts,
+   src/renderer/src/surfaces/settings/hosts/Deploy.tsx).
+   "Publish Mac release…" on This Mac's Publish row runs `bun scripts/release.ts
    "<notes>"` then `bun run release:publish` through the login shell in the
    checkout the `release.checkout` setting names (default
    ~/IdeaProjects/temp-code, the field beside the button), the notes
    prefilled from the commit subjects since the last `v1.0.*` tag; it refuses
    a dirty tree, a branch other than master and a version the feed already
    serves before starting, and the scripts' own refusals come through as the
-   log's last lines. The log streams into a card under the rows (last 40
-   lines, following, Stop kills the scripts' process group). When the script
+   log's last lines. The log folds open under its row (last 40 lines,
+   following, Stop kills the scripts' process group; one line once it passed). When the script
    exits green the Publisher adds the `update` phase itself: the installed
    app it runs in fetches the version the total line names (`selfUpdate`)
    and the log ends `phase ✓ update 31s` once "Restart to update" is there,
    `phase – update skipped (current)` on a dev instance or an old version.
-   `host.publish*` is local-only: no key ever reaches it. "Deploy master to the box" on a
-   host's row is `host.deploy` (admin, over the box's link) and the root-owned
+   `host.publish*` is local-only: no key ever reaches it. "Deploy master…" on a
+   box's Deploy row is `host.deploy` (admin, over the box's link) and the root-owned
    trigger of docs/box.md "Deploy from the app"; its confirm names the
    versions ("v1.0.270 → v1.0.273, 3 releases").
 
@@ -559,7 +560,7 @@ routed to (aliax-core's `forward`). Two listeners:
 - `TEMP_CODE_REMOTE_PORT=<n>` overrides the port for a dev instance (so it
   never fights the installed app for 7677); `0` turns the listener off. The
   settings `remote.enabled`, `remote.port`, `remote.publicOrigin` live in the
-  settings table and the Settings → Remote access pane edits them. A port in
+  settings table and this machine's section of Settings → Hosts edits them. A port in
   use logs one `[remote]` line and leaves remote off; `remote.status` carries
   the error. `TEMP_CODE_REMOTE_TRACE=1` logs one line per request.
 - Identity: `<userData>/environment.json` holds `env_<22 chars>`, created
@@ -653,7 +654,7 @@ routed to (aliax-core's `forward`). Two listeners:
   local only; headless hosts never fetch). `useDeployDrift(environmentId)`
   in the renderer's lib/deployDrift.ts gives `{behind, deployedVersion,
   masterVersion}`; chrome/DeployDrift.tsx is the muted tabular `+N` on the
-  host's row in the environment switcher and Settings → Remote access,
+  host's row at the rail's foot and its header on Settings → Hosts,
   tooltip naming both versions and the deploy (box) or publish (Mac)
   command; nothing when current or unknown. docs/box.md "Knowing the box
   is behind". Every "ask the login shell" call goes
@@ -690,9 +691,9 @@ routed to (aliax-core's `forward`). Two listeners:
   `<name>.conflict-<host>-<time>.md` on both hosts, a project `MEMORY.md`
   is unioned, deletions travel as 30-day tombstones. Runs on link-up,
   every 5 minutes, after a thread goes idle on either host (the box nudges
-  over the Mac's link) and from Sync now. The line under each host's
-  harness line in Settings → Remote access shows files, time and conflicts
-  with the conflict list. docs/box.md "Memory: synced both ways"; proof is
+  over the Mac's link) and from Sync now. Each paired host's Sync group on
+  Settings → Hosts shows files and time for both legs, and This Mac's Sync
+  group folds the conflict copies open under its Memory switch. docs/box.md "Memory: synced both ways"; proof is
   the memory step of `bun run script:e2e-harness-sync`.
 - Attachments on a remote thread: a file from another host (or a big paste)
   is uploaded to the thread's host before the turn names it
@@ -766,8 +767,8 @@ routed to (aliax-core's `forward`). Two listeners:
   thread) shows on the Mac as a running card only while the host's "Show
   running commands" (`macBridge.showRunning.<envId>`, off by default under
   `full`, on otherwise) is on; otherwise the request is `quiet`
-  (`runPresentation`): no card, listed with Stop under the host's row in
-  Settings → Remote access. The cards are capped (`queueOf` in the renderer's
+  (`runPresentation`): no card, listed with Stop under the host's Mac
+  bridge on Settings → Hosts. The cards are capped (`queueOf` in the renderer's
   lib/macBridge.ts): one waiting card per host with "and N more", the running
   ones one line per host with Stop all. The load guard
   (`remote/macLoadGuard.ts`) sits between the decision and the spawn of
@@ -782,9 +783,12 @@ routed to (aliax-core's `forward`). Two listeners:
   own deadline. `macBridge.maxThreads.<envId>` (default 2) caps the
   Mac-local threads a host starts here: `MacBridge.admitThread(envId)`
   (also `macBridge.admitThread`, local) is asked by crossHostThreads.ts
-  before every `thread.start` and `thread.spawn`. The caps, the live counts
-  and the load with its limit are on the host row in Settings → Remote
-  access. docs/box.md "The Mac bridge: what a box thread may touch on the
+  before every `thread.start` and `thread.spawn`. On Settings → Hosts a
+  host's Mac bridge group holds its policy (a Select), its running and held
+  calls with Stop and its forwarded ports; its caps with the live counts,
+  "Show running commands", forwarding and the shared folders are in the
+  host's Mac bridge settings dialog (surfaces/settings/hosts/
+  MacBridgeHostDialog.tsx); This Mac's section has the load with its limit. docs/box.md "The Mac bridge: what a box thread may touch on the
   Mac"; proof `bun run script:e2e-mac-bridge`.
 - Thread resources: what a thread created (git worktrees, simulators, dev
   instances), on its own host or on the Mac through the bridge, is on the
@@ -827,7 +831,7 @@ routed to (aliax-core's `forward`). Two listeners:
   `ports.bound`, and carries each connection as `ports.open/data/close`
   frames (remote/macPorts.ts, portStreams.ts: in order, paused while the
   link holds 1 MiB or 32 frames are unanswered); the box dials its loopback
-  only. "Forward dev servers" per host under the Mac bridge rows
+  only. "Forward dev servers" per host in its Mac bridge settings dialog
   (`ports.forward.<envId>`, on by default). The thread hears "Forwarded to
   http://localhost:5174 on the Mac (5173 is taken there)" in the shell
   call's result (claude's PostToolUse hook; a whispered `<dev-server>` line
@@ -907,8 +911,8 @@ routed to (aliax-core's `forward`). Two listeners:
   `TEMP_CODE_E2E_PRESENCE=1`, the iOS test server's four relayed hosts
   (remote/relayLoopback.ts, `POST /presence`). docs/box.md "The relay";
   proof `bun run script:e2e-mac-relay`.
-- Devices on the Mac: Settings → Remote access, under the Mac bridge's
-  host rows, lists this Mac's simulators and iPhones with a state dot, the
+- Devices on the Mac: Settings → Hosts, a Devices group in the Mac's own
+  section, lists this Mac's simulators and iPhones with their state words, the
   booted ones' CPU, the thread that holds each (the `thread_resources`
   ledger by UDID, "—" without it), the Xcode in use and the load; Shutdown,
   Delete (confirm names the holder) and Open in Xcode act locally. The
@@ -916,7 +920,7 @@ routed to (aliax-core's `forward`). Two listeners:
   watch`, a push every 30 s, `unwatch` or the socket closing stops it); a
   box's /ui and the phone read the same methods, forwarded to the Mac as
   `host.*` peer calls under the `devices` offer (`src/main/server/devices/`,
-  `src/shared/contract-hostdevices.ts`, `surfaces/MacDevices.tsx`).
+  `src/shared/contract-hostdevices.ts`, `surfaces/settings/hosts/Devices.tsx`).
   docs/box.md "Devices on the Mac".
 - A restart mid-turn: `resume_after_boot` is a live ledger (a row per
   thread on every running status in `SessionRegistry.append`, cleared when
@@ -1774,8 +1778,7 @@ proof and the sizing rules; the pieces, by name:
 Pause all, Resume all, Stop all and Archive done sit beside Mark all read in
 a project's menu (rail row and project header; on a project linked across
 hosts they act on every copy, one `session.batch` per host), a host's row at
-the rail's foot (`chrome/HostRows.tsx`, with two or more hosts) and its menu
-in Settings → Remote access, and the View menu for everything. Roots only, subagents follow their parent; a row with nothing to
+the rail's foot (`chrome/HostRows.tsx`, with two or more hosts), and the View menu for everything. Roots only, subagents follow their parent; a row with nothing to
 act on is disabled. The rules per row, the confirm copy with its live count
 and the toast line are `src/renderer/src/lib/threadBatch.ts` (unit-tested);
 the menus' rows are `threadBatchMenu.ts`; the dialog and toast are
@@ -1979,8 +1982,9 @@ this is the short one.
   "(stopped)" / "(paused)" appended), "Queued · 120 of 120 running" or
   "Queued · waiting for memory", pushed only when it changes. RPCs
   `admission.get` (read: cap, pinned, default, running, queued, memory) and
-  `admission.set { cap | null }` (admin); Settings → Remote access →
-  Running threads shows each host's (surfaces/AdmissionSettings.tsx). The
+  `admission.set { cap | null }` (admin); a Running threads row in each
+  connected host's section of Settings → Hosts shows it
+  (surfaces/settings/hosts/Admission.tsx). The
   fleet's Stop and Archive done take a queued root as "remove from the
   queue" and archive it.
 - **The batch's rules are a steps list the master writes, and the engine

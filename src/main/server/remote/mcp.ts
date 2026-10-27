@@ -358,7 +358,7 @@ export function createMcpHandler(options: McpHandlerOptions): McpHandler {
     if (principal.audience !== 'mcp') {
       throw new HttpError(
         403,
-        `this key is for the app (audience client); /mcp takes a key made for bots (audience mcp). Make one under Settings → Remote access → New key → Bot (MCP).`
+        `this key is for the app (audience client); /mcp takes a key made for bots (audience mcp). Make one under Settings → Hosts → Clients → New key → Bot (MCP).`
       )
     }
     return principal

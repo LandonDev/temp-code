@@ -113,7 +113,7 @@ export function pairPageHtml(nonce: string): string {
 <body>
 <form id="f" autocomplete="off">
   <h1>Pair this browser</h1>
-  <p>Enter the code from the app's Remote access settings.</p>
+  <p>Enter the code from the app's Settings → Hosts.</p>
   <label>Pairing code<input id="code" name="code" required placeholder="XXXXX-XXXXX" spellcheck="false" autocapitalize="characters"></label>
   <label>Name this browser<input id="name" name="name" placeholder="Chrome on iPad"></label>
   <div id="error" role="alert"></div>

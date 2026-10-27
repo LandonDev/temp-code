@@ -27,7 +27,7 @@ on intent so the skeleton is rarely seen.
 
 | Chunk | Holds | Mount point | Warmed by |
 | --- | --- | --- | --- |
-| settings | SettingsView and every pane (Remote access, Environments, Appshots…), qrcode | App.tsx | the Settings buttons (title bar, rail, sidebar, environment switcher, connection line) |
+| settings | SettingsView and every pane (Hosts, Appshots…), qrcode | App.tsx | the Settings buttons (title bar, rail, sidebar, environment switcher, connection line) |
 | aliax | AliaxPagesView, the Accounts and Stats pages, recharts, lucide | App.tsx | the Accounts and Stats rail actions |
 | diff | DiffPane (GitChangesPanel) and the edit row's DiffBody | App.tsx, EditRow.tsx | the changes toggles (title bar diff stats, file tree); the first thread on screen, after idle |
 | editor | FileEditor, CodeMirror and its language packages, editorSearch (the find keys), editorGit | FilePane.tsx; App.tsx through `surfaces/editorFind.ts` | hovering the file tree |

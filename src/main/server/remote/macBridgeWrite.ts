@@ -281,7 +281,7 @@ export async function serveMacWrite(
   if (level === 'off') {
     host.log(`${prefix} bytes=${wire.size} → refused (bridge off)`)
     throw new Error(
-      "the Mac bridge is off for this host: turn it on in the Mac's Settings → Remote access"
+      "the Mac bridge is off for this host: turn it on in the Mac's Settings → Hosts"
     )
   }
   const dest = writeTarget(wire.path, host.home)

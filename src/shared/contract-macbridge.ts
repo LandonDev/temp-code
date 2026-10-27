@@ -400,7 +400,7 @@ export interface MacBridgeThreadAdmission {
   reason?: string
 }
 
-/** One saved host, as Settings → Remote access shows its bridge row. */
+/** One saved host, as its Mac bridge group on Settings → Hosts shows it. */
 export interface MacBridgeHostPolicy {
   environmentId: string
   name: string

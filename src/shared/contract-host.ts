@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 // Deploy and publish from the app (docs/box.md "Updating" → "Deploy from the
 // app"; CLAUDE.md "Releases"). Two jobs, one per host kind, each pressed by
-// the user in Settings → Remote access and streamed back as a log:
+// the user in Settings → Hosts and streamed back as a log:
 //
 //  - `deploy` on the box: `host.deploy {ref}` drops the ref into the
 //    root-owned trigger directory (`/run/temp-code/deploy/request`), where

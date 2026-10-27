@@ -8,7 +8,7 @@ import { HarnessEntrySchema } from './contract-harness'
 // `memory.files` are what one host's main process (the driver, the one
 // holding the link) asks of the other (the receiver, which decides per
 // file; memoryMerge.ts). `memory.status`, `.sync` and `.settings.set` are
-// the Settings → Remote access pane's. All admin. relPaths are relative to
+// the Settings → Hosts page's. All admin. relPaths are relative to
 // the sender's HOME and checked against the memory set on both ends; the
 // receiver translates an encoded project dir through its path map.
 

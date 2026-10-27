@@ -9,7 +9,7 @@ import { isWebMode } from './nativeWeb'
  * This Mac's dev server forwards (docs/box.md "Dev servers on the box"): per
  * linked host, its switch and what it forwards here now, read from the local
  * server (`ports.forwards`) and kept current by its `port-forwards` push.
- * Settings → Remote access shows them under each Mac bridge host row.
+ * Settings → Hosts lists them in each host's Mac bridge group.
  */
 
 const store = createStore<{ hosts: ForwardHost[] }>(() => ({ hosts: [] }))

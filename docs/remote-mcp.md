@@ -8,7 +8,7 @@ temp-code threads.
 - Endpoint: `https://tempcode.landonhale.com/mcp` (MCP streamable HTTP, JSON-RPC
   over POST; the server answers in the response, no server stream).
 - Auth: header `x-api-key: tc_…` (or `Authorization: Bearer tc_…`). The key is a
-  bot key (audience `mcp`) made in temp-code under Settings → Remote access →
+  bot key (audience `mcp`) made in temp-code under Settings → Hosts → Clients →
   New key → Bot (MCP). Keys can be revoked there at any time.
 - Limits: a bucket of 120 requests per key, refilled at two per second;
   256 KiB per request body. HTTP rejects bad keys with 401, app-audience
@@ -93,7 +93,7 @@ to tell the user to answer it in temp-code. It also cannot start a session with
 ## Webhook
 
 These two onboarding keys have no webhook yet. Once a bot gives you its
-HTTPS callback URL, open the **box host’s** Settings → Remote access → New
+HTTPS callback URL, open the **box host’s** Settings → Hosts → Clients → New
 key → Bot (MCP). Existing keys cannot be edited: create a replacement with
 the same bot name, read + operate, its Webhook URL, and Signing secret
 (blank generates one); the default events are all four below. Give the bot

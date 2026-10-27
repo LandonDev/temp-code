@@ -187,7 +187,7 @@ struct AddEnvironmentSheet: View {
                 return "Pairs with \(parsed.origin.host ?? parsed.origin.absoluteString)."
             }
             return link.isEmpty
-                ? "Make a link in the host's Settings → Remote access, then paste it here."
+                ? "Make a link in the host's Settings → Hosts, then paste it here."
                 : "A pairing link looks like https://host/pair#XXXXX-XXXXX."
         case .key:
             return "A key made in the host's Remote access pane, with the host's address."

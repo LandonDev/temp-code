@@ -323,7 +323,7 @@ export class MacJobs {
         if (ctx.policy === 'read') {
           ctx.line('refused (policy read)')
           throw new Error(
-            "this host may read on the Mac but not run commands (the Mac's Settings → Remote access)"
+            "this host may read on the Mac but not run commands (the Mac's Settings → Hosts)"
           )
         }
         return this.start(env, thread, raw, ctx.deadlineAt, ctx.line, ctx.callId)

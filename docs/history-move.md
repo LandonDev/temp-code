@@ -3,7 +3,7 @@
 Status: 2026-10-20 UTC, F3 fixes and rehearsals complete; the history is still staged on both hosts. Cutover has NOT run and waits for the user's go. The box's
 database becomes the one every client attaches to; the Mac keeps a small
 local database for Apple-only work and shows the box's threads through its
-environment link (Settings → Environments).
+environment link (Settings → Hosts).
 
 ## Inventory (2026-10-19, from VACUUM INTO copies, never the live files)
 

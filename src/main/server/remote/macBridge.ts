@@ -498,8 +498,8 @@ export class MacBridge {
       max,
       reason:
         max === 0
-          ? `the Mac takes no threads from this host (threads 0 in the Mac's Settings → Remote access → Mac bridge)`
-          : `the Mac already runs ${live} ${live === 1 ? 'thread' : 'threads'} from this host, its cap of ${max}: wait for one to finish and retry (never start the work on the box instead), or ask the person to raise "threads" in the Mac's Settings → Remote access → Mac bridge`
+          ? `the Mac takes no threads from this host (Threads at once is 0 in the host's Mac bridge settings, the Mac's Settings → Hosts)`
+          : `the Mac already runs ${live} ${live === 1 ? 'thread' : 'threads'} from this host, its cap of ${max}: wait for one to finish and retry (never start the work on the box instead), or ask the person to raise "Threads at once" in the host's Mac bridge settings (the Mac's Settings → Hosts)`
     }
   }
 
@@ -902,7 +902,7 @@ export class MacBridge {
     if (policy === 'off') {
       line('refused (bridge off)')
       throw new Error(
-        "the Mac bridge is off for this host: turn it on in the Mac's Settings → Remote access"
+        "the Mac bridge is off for this host: turn it on in the Mac's Settings → Hosts"
       )
     }
     if (isMacJobPeerMethod(method))
@@ -916,7 +916,7 @@ export class MacBridge {
       if (policy !== 'read+run' && policy !== 'full') {
         line('refused (policy read)')
         throw new Error(
-          "this host may read on the Mac but not run commands (the Mac's Settings → Remote access)"
+          "this host may read on the Mac but not run commands (the Mac's Settings → Hosts)"
         )
       }
       return this.run(env, thread, params.args, ctx.deadlineAt, line, ctx.progress, ctx.callId)
