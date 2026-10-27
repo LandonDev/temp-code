@@ -4,7 +4,6 @@ import { loadSelectedProject, saveLastSession, saveSelectedProject } from "../li
 import { newSession, type Session } from "../lib/session";
 import { markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
 import { listSessionsByProject, saveWorkspaceSnapshot } from "../lib/sessionStore";
-import { loadSidebarLayout } from "../lib/appearance";
 import { loadNotesEnabled } from "../lib/settings";
 import { withDockOpen } from "../lib/projectTerminal";
 import { environment, environmentStore } from "./environment";
@@ -81,10 +80,6 @@ vi.mock("../lib/sessionStore", async (importOriginal) => ({
   saveWorkspaceSnapshot: vi.fn(() => Promise.resolve()),
   listSessionsByProject: vi.fn(() => Promise.resolve([])),
   subscribeSessionHistory: vi.fn(() => () => {}),
-}));
-vi.mock("../lib/appearance", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../lib/appearance")>()),
-  loadSidebarLayout: vi.fn((): "classic" | "deck" => "classic"),
 }));
 vi.mock("../lib/settings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/settings")>()),
@@ -731,7 +726,6 @@ describe("installNotesGate", () => {
 
 describe("installLayoutSync", () => {
   it("drops the dock's focus once its dock is not on screen", async () => {
-    vi.mocked(loadSidebarLayout).mockReturnValue("deck");
     terminals.openTerminal("/repo", newTerminalFile("/repo", "zsh"));
     focus.enterProjectTerminal();
     teardown = installLayoutSync();
@@ -741,8 +735,9 @@ describe("installLayoutSync", () => {
     expect(focusStore.getState().projectTerminalFocused).toBe(false);
   });
 
-  it("a dock in classic never holds focus", () => {
+  it("a dock that is closed never holds focus", () => {
     terminals.openTerminal("/repo", newTerminalFile("/repo", "zsh"));
+    terminals.updateDock("/repo", (dock) => withDockOpen(dock, false));
     focus.enterProjectTerminal();
     teardown = installLayoutSync();
     expect(focusStore.getState().projectTerminalFocused).toBe(false);

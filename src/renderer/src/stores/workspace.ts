@@ -1,7 +1,6 @@
 import { useStore } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { createStore } from "zustand/vanilla";
-import { loadSidebarLayout } from "../lib/appearance";
 import { leafIds, type WorkspaceTab } from "../lib/layout";
 import {
   emptyTabVisitHistory,
@@ -143,9 +142,9 @@ export function currentActiveTab(): WorkspaceTab | undefined {
   return tabs.find((tab) => tab.id === activeTabId);
 }
 
-/** Whether the sidebar is in its deck layout, as of now, for callbacks. */
+/** Whether the sidebar is in its deck layout: always, since Classic left. */
 export function currentDeckLayout(): boolean {
-  return loadSidebarLayout() === "deck";
+  return true;
 }
 
 export const workspace = {

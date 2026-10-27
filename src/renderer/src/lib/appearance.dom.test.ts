@@ -7,7 +7,6 @@ import {
   editorFontOptions,
   initAppearance,
   loadEditorFontSize,
-  loadSidebarLayout,
   saveEditorFontSize,
 } from "./appearance";
 
@@ -73,9 +72,11 @@ describe("initAppearance", () => {
     expect(root.classList.contains("glass")).toBe(false);
   });
 
-  it("reads every window as the deck", () => {
-    localStorage.setItem("monocode.sidebarLayout", "classic");
-    expect(loadSidebarLayout()).toBe("deck");
+  it("keeps no sidebar layout setting: no key is read and none is exported", async () => {
+    const appearance = await import("./appearance");
+    for (const name of ["loadSidebarLayout", "saveSidebarLayout", "SIDEBAR_LAYOUT_DEFAULT", "LAYOUT_CHANGE_EVENT"]) {
+      expect(name in appearance).toBe(false);
+    }
   });
 });
 

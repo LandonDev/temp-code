@@ -24,6 +24,7 @@ const RETIRED_KEYS = [
 
 export type ColorScheme = "dark" | "light";
 export type ThemePreference = ColorScheme | "system";
+/** The shell store's layout parameter; every window is the deck since Classic left. */
 export type SidebarLayout = "classic" | "deck";
 
 export const THEME_PREFERENCE_DEFAULT: ThemePreference = "dark";
@@ -31,11 +32,7 @@ export const THEME_PREFERENCE_DEFAULT: ThemePreference = "dark";
 /** Fired on `window` whenever the color scheme flips (detail: ColorScheme). */
 export const SCHEME_CHANGE_EVENT = "monocode:schemechange";
 
-/** Fired on `window` whenever the sidebar layout flips (detail: SidebarLayout).
- *  Nothing flips it since Classic left; A1 deletes it with the Classic path. */
-export const LAYOUT_CHANGE_EVENT = "monocode:layoutchange";
 
-export const SIDEBAR_LAYOUT_DEFAULT: SidebarLayout = "deck";
 
 export const TRANSCRIPT_ANCHOR_DEFAULT = true;
 
@@ -253,11 +250,6 @@ export function saveProjectRailWidth(value: number) {
       clamp(value, PROJECT_RAIL_WIDTH_MIN, PROJECT_RAIL_WIDTH_MAX),
     ),
   );
-}
-
-/** Classic is retired: every window is the deck. */
-export function loadSidebarLayout(): SidebarLayout {
-  return SIDEBAR_LAYOUT_DEFAULT;
 }
 
 export function loadTranscriptAnchor(): boolean {

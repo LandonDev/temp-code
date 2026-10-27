@@ -1,5 +1,5 @@
 import { registry } from "../lib/connection";
-import { LAYOUT_CHANGE_EVENT, loadSidebarLayout, type SidebarLayout } from "../lib/appearance";
+import type { SidebarLayout } from "../lib/appearance";
 import { isAppQuitting } from "../lib/appLifecycle";
 import { syncDockBadge } from "../lib/dockBadge";
 import { sessionChildHarnesses } from "../lib/handoff";
@@ -418,41 +418,24 @@ export function installNotesGate(): Teardown {
 }
 
 /**
- * The sidebar layout: a switch closes every diff and drops the terminal
- * focus when the dock leaves with classic; the sidebar tab settles to one
- * the layout has; a dock that is not on screen cannot hold focus.
+ * The deck's sidebar tab settles to one it has, and a dock that is not on
+ * screen cannot hold the terminal's focus.
  */
 export function installLayoutSync(): Teardown {
-  // The event carries the layout; storage is only the fallback at install,
-  // since a failed write still dispatches and the React tree follows the event.
-  let layout: SidebarLayout = loadSidebarLayout();
-  const onLayoutChange = (event: Event) => {
-    layout = (event as CustomEvent<SidebarLayout>).detail === "deck" ? "deck" : "classic";
-    shell.applyLayoutChange(layout);
-    if (layout === "classic") focus.projectTerminal(false);
-  };
+  const layout: SidebarLayout = "deck";
   const settleTab = afterWrites(() => shell.settleSidebarTab(layout));
-  const dockVisible = () => layout === "deck" && !!currentDock(currentDockCwd())?.open;
+  const dockVisible = () => !!currentDock(currentDockCwd())?.open;
   const guardDock = afterWrites(() => {
     if (!dockVisible()) focus.projectTerminal(false);
   });
   shell.settleSidebarTab(layout);
   if (!dockVisible()) focus.projectTerminal(false);
-  const offs = [
+  return teardownAll([
     shellStore.subscribe((s) => s.sidebarTab, settleTab),
     terminalsStore.subscribe(guardDock),
     projectStore.subscribe(guardDock),
     workspaceStore.subscribe(guardDock),
-  ];
-  if (typeof window !== "undefined") {
-    const onLayout = (event: Event) => {
-      onLayoutChange(event);
-      guardDock();
-    };
-    window.addEventListener(LAYOUT_CHANGE_EVENT, onLayout);
-    offs.push(() => window.removeEventListener(LAYOUT_CHANGE_EVENT, onLayout));
-  }
-  return teardownAll(offs);
+  ]);
 }
 
 /** Once per window: the dock badge, checkpoints, the default folder and the harness catalogs. */
