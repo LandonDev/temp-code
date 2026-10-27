@@ -2656,7 +2656,11 @@ export default function App() {
    *  type at once, so its rules and tune have somewhere to live. */
   const onThreadTypeChange = useCallback((sessionId: string, threadType: ThreadType) => {
     const session = sessionStore.getSnapshot().find((s) => s.id === sessionId);
-    if (!session) return;
+    if (!session) {
+      // A thread with no open pane (the header's thread menu): the host retypes it.
+      if (sessionStore.metaOf(sessionId)) void serverCommands.retype(sessionId, threadType).catch(() => undefined);
+      return;
+    }
     // An untouched draft switched to research moves to claude, where
     // research runs (the next send carries the provider to the server).
     const resolved =

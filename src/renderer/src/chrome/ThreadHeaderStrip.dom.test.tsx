@@ -108,12 +108,20 @@ describe("ThreadHeaderStrip row", () => {
     const { rerender } = mount();
     const row = document.querySelector('[role="tablist"]')!;
     fireEvent.pointerEnter(row);
-    const settled = { ...model, live: model.live.filter((c) => c.id !== "b") };
+    const settled = { ...model, live: model.live.filter((c) => c.id !== "b"), dormant: [chip("b", "Beta")] };
     rerender(strip({ model: settled }));
     expect(screen.getAllByRole("tab")).toHaveLength(3);
     fireEvent.pointerLeave(row);
     expect(screen.getAllByRole("tab")).toHaveLength(2);
     expect(screen.queryByRole("tab", { name: /Beta/ })).toBeNull();
+  });
+
+  it("a project switch with the pointer over the strip shows only the new project's chips", () => {
+    const { rerender } = mount();
+    fireEvent.pointerEnter(document.querySelector('[role="tablist"]')!);
+    const other = { live: [chip("x", "Other")], dormant: [], activeId: "x" };
+    rerender(strip({ model: other }));
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([expect.stringContaining("Other")]);
   });
 });
 

@@ -127,3 +127,12 @@ describe("chipMenuItems: Type", () => {
     expect(type.items.filter((i) => i.kind === "item" && i.checked).map((i) => i.kind === "item" && i.id)).toEqual(["type:planning"]);
   });
 });
+
+describe("chipMenuItems: Type while live", () => {
+  it("disables Type while the thread works, waits, watches or is paused, since a retype drops its harness", () => {
+    for (const status of ["running", "waiting", "watching", "paused"] as const) {
+      expect(chipMenuItems(chip(status))[1]).toMatchObject({ kind: "sub", id: "type", disabled: true });
+    }
+    expect(chipMenuItems(chip("idle"))[1]).toMatchObject({ kind: "sub", id: "type", disabled: false });
+  });
+});

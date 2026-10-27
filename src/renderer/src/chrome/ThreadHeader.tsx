@@ -73,20 +73,22 @@ export function chipMenuItems(
 ): ThreadMenuItem[] {
   const t = chip.thread;
   const items: ThreadMenuItem[] = [{ kind: "item", id: "rename", label: "Rename" }];
-  // The type, here once the composer's picker has left (a thread with a message).
-  const type = t.threadType ?? "chat";
-  items.push({
-    kind: "sub",
-    id: "type",
-    label: "Type",
-    items: THREAD_TYPES.map((each) => ({ kind: "item", id: `type:${each}`, label: THREAD_LABELS[each], checked: each === type })),
-  });
   if (t.threadType && TUNABLE.has(t.threadType))
     items.push({ kind: "item", id: "tune", label: `${THREAD_LABELS[t.threadType]} options…` });
   const paused = chip.status === "paused" || !!t.treeHasPaused;
   const stopped = chip.status === "stopped";
   const working = !!t.treeHasLiveWork || chip.status === "running" || chip.status === "starting";
   const live = working || paused || chip.status === "waiting" || chip.status === "watching";
+  // The type, here once the composer's picker has left (a thread with a message).
+  // A retype drops the harness, so a live thread waits until it settles.
+  const type = t.threadType ?? "chat";
+  items.splice(1, 0, {
+    kind: "sub",
+    id: "type",
+    label: "Type",
+    disabled: live,
+    items: THREAD_TYPES.map((each) => ({ kind: "item", id: `type:${each}`, label: THREAD_LABELS[each], checked: each === type })),
+  });
   if (paused) items.push({ kind: "item", id: "resume", label: "Continue" });
   // The harness is gone: the same resume boots a fresh one on the transcript.
   else if (stopped) items.push({ kind: "item", id: "resume", label: "Resume" });

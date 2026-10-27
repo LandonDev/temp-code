@@ -46,7 +46,9 @@ import { chipTitle, type ArchivedThread, type StripChip } from "./ThreadHeaderSt
 export type MenuRowsKind = "dropdown" | "context";
 
 /** A thread's row: an item, a separator, or a submenu of items (Type). */
-export type ThreadMenuItem = ExplorerMenuItem | { kind: "sub"; id: string; label: string; items: ExplorerMenuItem[] };
+export type ThreadMenuItem =
+  | ExplorerMenuItem
+  | { kind: "sub"; id: string; label: string; items: ExplorerMenuItem[]; disabled?: boolean };
 
 /** The one renderer for a thread's rows, in the ⋯ menu and the chip's
  *  right-click alike, so the two never drift. */
@@ -72,7 +74,7 @@ export function MenuRows({
         if (item.kind === "sub") {
           return (
             <Sub key={item.id}>
-              <SubTrigger>{item.label}</SubTrigger>
+              <SubTrigger disabled={item.disabled}>{item.label}</SubTrigger>
               <SubContent>
                 <MenuRows items={item.items} onPick={onPick} kind={kind} />
               </SubContent>

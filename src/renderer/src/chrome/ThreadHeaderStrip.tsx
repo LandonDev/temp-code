@@ -110,7 +110,7 @@ export function ThreadHeaderStrip({
   end?: ReactNode;
 }) {
   const activeId = model.activeId;
-  const held = useHeldChips(model.live);
+  const held = useHeldChips(model.live, model.dormant);
   const focusable = held.chips.some((c) => c.id === activeId) ? activeId : held.chips[0]?.id;
   return (
     <div className="flex min-w-0 flex-1 items-center">
@@ -151,20 +151,21 @@ export function ThreadHeaderStrip({
  * left the row stays in its place (a click never shifts the row under the
  * cursor); when the pointer leaves, the departures go.
  */
-function useHeldChips(next: StripChip[]): { chips: StripChip[]; hold: () => void; release: () => void } {
+function useHeldChips(
+  next: StripChip[],
+  settled: StripChip[],
+): { chips: StripChip[]; hold: () => void; release: () => void } {
   const [holding, setHolding] = useState(false);
   const shown = useRef<StripChip[]>(next);
+  // Only a chip whose thread settled in this project holds; another project's never does.
+  const byId = new Map(settled.map((chip) => [chip.id, chip]));
+  for (const chip of next) byId.set(chip.id, chip);
   const ids = holdDepartures(
-    shown.current.map((chip) => chip.id),
+    shown.current.map((chip) => chip.id).filter((id) => byId.has(id)),
     next.map((chip) => chip.id),
     holding,
   );
-  let chips = next;
-  if (ids.length !== next.length) {
-    const byId = new Map(shown.current.map((chip) => [chip.id, chip]));
-    for (const chip of next) byId.set(chip.id, chip);
-    chips = ids.map((id) => byId.get(id)!);
-  }
+  const chips = ids.length === next.length ? next : ids.map((id) => byId.get(id)!);
   shown.current = chips;
   return { chips, hold: () => setHolding(true), release: () => setHolding(false) };
 }
