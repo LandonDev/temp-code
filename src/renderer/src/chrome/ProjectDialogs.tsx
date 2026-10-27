@@ -25,7 +25,7 @@ import { ChoiceSelect } from "../components/choice-select";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@renderer/components/ui/toggle-group";
+import { ChoiceToggle } from "../components/choice-toggle";
 import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
 import { ConfirmDialog, DialogFooter as Footer, ErrorLine, errorText } from "./ConfirmDialog";
 import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
@@ -414,21 +414,15 @@ export function NewProjectDialog({
               label="Mode"
               description={mode === "worktree" ? "Own branch and folder, isolated from your checkout." : `Works directly in ${workspace.name}.`}
             >
-              <ToggleGroup
-                spacing={0}
-                variant="outline"
-                size="sm"
-                value={[mode]}
-                onValueChange={(next) => {
-                  const picked = next.at(-1);
-                  if (picked === "worktree" || picked === "local") setMode(picked);
-                }}
-              >
-                <ToggleGroupItem value="worktree" disabled={!workspace.git}>
-                  Worktree
-                </ToggleGroupItem>
-                <ToggleGroupItem value="local">Local</ToggleGroupItem>
-              </ToggleGroup>
+              <ChoiceToggle
+                label="Mode"
+                value={mode}
+                onChange={setMode}
+                options={[
+                  { value: "worktree", label: "Worktree", disabled: !workspace.git, note: workspace.git ? undefined : "Needs a git repository" },
+                  { value: "local", label: "Local" },
+                ]}
+              />
             </FieldRow>
             {mode === "worktree" ? (
               <>
