@@ -201,9 +201,10 @@ export function installIdleSweep(): Teardown {
  * project selection, and where its project and workspace land next time.
  */
 export function installActiveSessionSync(): Teardown {
-  // The active pane picks the project. A move to another workspace already
-  // loaded that folder's remembered selection, so the pass that moved does
-  // not let the landing thread overwrite it.
+  // The active pane picks the project. A move to another workspace loads
+  // that folder's remembered selection; it stands only when the pane on
+  // screen did not change in the same pass. A pane that changed wins, so a
+  // switch that crosses folders lands on the thread's own project.
   let selectionCwd = projectStore.getState().projectCwd;
   let selectionKey: string | undefined;
   const syncSelection = () => {
@@ -211,10 +212,11 @@ export function installActiveSessionSync(): Teardown {
     const active = currentActiveSession();
     const key = `${active?.id ?? ""}\n${active?.projectId ?? ""}`;
     const moved = selectionCwd !== projectCwd;
-    if (!moved && key === selectionKey) return;
+    const changed = key !== selectionKey;
+    if (!moved && !changed) return;
     selectionCwd = projectCwd;
     selectionKey = key;
-    if (moved || !active) return;
+    if (!active || !changed) return;
     if (!active.projectId && sessionStore.isDraft(active.id)) return;
     project.selectProject(active.projectId ?? null);
   };

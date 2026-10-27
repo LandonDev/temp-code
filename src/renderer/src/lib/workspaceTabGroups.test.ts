@@ -222,6 +222,25 @@ describe("tabProjectKey", () => {
     expect(tabProjectKey(tab("t", "missing"), sessions)).toBeNull();
   });
 
+  it("a split tab belongs to its focused pane's project", () => {
+    const both = [...sessions, session("o1", "/projects/other")];
+    const split: WorkspaceTab = {
+      ...tab("s", "m1"),
+      layout: {
+        type: "split",
+        id: "root",
+        dir: "right",
+        children: [leaf("m1"), leaf("o1")],
+        sizes: [0.5, 0.5],
+      },
+      focusedId: "o1",
+    };
+    expect(filterTabsForProjectId([split], both, "p:/projects/other").map((t) => t.id)).toEqual(["s"]);
+    expect(filterTabsForProjectId([split], both, "p:/projects/monocode")).toEqual([]);
+    // A focused pane with no project falls back to the first that has one.
+    expect(tabProjectKey({ ...split, focusedId: "missing" }, both)).toBe("p:/projects/monocode");
+  });
+
   it("filters tabs to one project", () => {
     const tabs = [tab("a", "m1"), tab("b", "loose"), tab("c", "blank")];
     expect(
@@ -419,7 +438,7 @@ describe("applyPlaceSessionOnPane", () => {
     expect(leafIds(next!.tabs[0]!.layout)).toEqual(["m2", "m1"]);
   });
 
-  it("keeps the last tab of a project and fills it with a replacement", () => {
+  it("moves a project's last tab into another project's tab, which its focused pane now keys", () => {
     const next = applyPlaceSessionOnPane({
       tabs: [tab("tr1", "r1"), tab("tm1", "m1")],
       sessions,
@@ -430,9 +449,9 @@ describe("applyPlaceSessionOnPane", () => {
       scope: "project",
       createReplacement: replacementFrom,
     });
-    expect(next?.tabs.map((entry) => entry.id)).toEqual(["tr1", "tm1"]);
+    expect(next?.tabs.map((entry) => entry.id)).toEqual(["tr1"]);
     expect(leafIds(next!.tabs[0]!.layout)).toEqual(["r1", "m1"]);
-    expect(next?.tabs[1]?.focusedId).toBe("replacement");
+    expect(tabProjectKey(next!.tabs[0]!, sessions)).toBe("p:/projects/monocode");
   });
 });
 

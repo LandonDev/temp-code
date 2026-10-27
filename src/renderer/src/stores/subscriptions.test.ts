@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { leaf, newFileTab, newTab, newTerminalFile, type WorkspaceTab } from "../lib/layout";
-import { saveLastSession } from "../lib/projectContext";
+import { loadSelectedProject, saveLastSession, saveSelectedProject } from "../lib/projectContext";
 import { newSession, type Session } from "../lib/session";
 import { markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
 import { listSessionsByProject, saveWorkspaceSnapshot } from "../lib/sessionStore";
@@ -186,6 +186,7 @@ beforeEach(() => {
   setTabs([]);
   skipForgetSessionIds.clear();
   vi.clearAllMocks();
+  vi.mocked(loadSelectedProject).mockImplementation(() => null);
   vi.spyOn(registry, "primary").mockReturnValue({
     environmentId: "local", connected: true, profile: "local",
     request: () => Promise.resolve(null),
@@ -413,7 +414,7 @@ describe("installActiveSessionSync", () => {
     expect(projectStore.getState().selectedProjectId).toBe("p2");
   });
 
-  it("keeps the selection a workspace move just loaded from the landing thread", async () => {
+  it("a folder move that lands on another project's thread selects that thread's project", async () => {
     setTabs([tab("a"), tab("b")], "a");
     sessionStore.mutate([session("s-a", { projectId: "p1" }), session("s-b", { projectId: "p2" })]);
     teardown = installActiveSessionSync();
@@ -421,10 +422,41 @@ describe("installActiveSessionSync", () => {
     workspace.setActiveTabId("b");
     await microtasks();
     expect(projectStore.getState().projectCwd).toBe("/other");
-    expect(projectStore.getState().selectedProjectId).toBeNull();
-    workspace.setActiveTabId("a");
-    await microtasks();
+    expect(projectStore.getState().selectedProjectId).toBe("p2");
+    // Remembered for the folder the window is on now.
+    expect(saveSelectedProject).toHaveBeenLastCalledWith("/other", "p2");
+  });
+
+  it("a folder move with the same thread on screen keeps the folder's remembered project", async () => {
+    vi.mocked(loadSelectedProject).mockImplementation((cwd) => (cwd === "/other" ? "p9" : null));
+    setTabs([tab("a")], "a");
+    sessionStore.mutate([session("s-a", { projectId: "p1" })]);
+    teardown = installActiveSessionSync();
     expect(projectStore.getState().selectedProjectId).toBe("p1");
+    project.enterWorkspace("/other");
+    await microtasks();
+    expect(projectStore.getState().selectedProjectId).toBe("p9");
+  });
+
+  it("a thread of a linked copy on another path selects its own project after the move", async () => {
+    vi.mocked(loadSelectedProject).mockImplementation((cwd) =>
+      cwd === "/srv/agents/work/repo" ? "p-box-other" : null,
+    );
+    setTabs([tab("a"), tab("b")], "a");
+    sessionStore.mutate([
+      session("s-a", { projectId: "p-mac", cwd: "/repo" }),
+      session("s-b", { projectId: "p-box", cwd: "/srv/agents/work/repo" }),
+    ]);
+    teardown = installActiveSessionSync();
+    expect(projectStore.getState().selectedProjectId).toBe("p-mac");
+    workspace.setActiveTabId("b");
+    project.enterWorkspace("/srv/agents/work/repo");
+    await microtasks();
+    expect(projectStore.getState().selectedProjectId).toBe("p-box");
+    workspace.setActiveTabId("a");
+    project.enterWorkspace("/repo");
+    await microtasks();
+    expect(projectStore.getState().selectedProjectId).toBe("p-mac");
   });
 
   it("drops a selection whose project was archived", async () => {

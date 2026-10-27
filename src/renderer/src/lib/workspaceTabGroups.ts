@@ -66,14 +66,18 @@ export function filterTabsForProject(
 }
 
 /**
- * The server project a tab belongs to: the first session leaf's `projectId`.
- * Null for loose chats, projectless drafts and file-only tabs.
+ * The server project a tab belongs to: the focused session leaf's
+ * `projectId`, else the first leaf's that has one. Null for loose chats,
+ * projectless drafts and file-only tabs.
  */
 export function tabProjectKey(
   tab: WorkspaceTab,
   sessions: readonly Pick<Session, "id" | "projectId">[],
 ): string | null {
-  for (const id of leafIds(tab.layout)) {
+  const ids = leafIds(tab.layout);
+  const focused = ids.indexOf(tab.focusedId);
+  if (focused > 0) ids.unshift(...ids.splice(focused, 1));
+  for (const id of ids) {
     const session = sessions.find((entry) => entry.id === id);
     if (session?.projectId) return session.projectId;
   }
