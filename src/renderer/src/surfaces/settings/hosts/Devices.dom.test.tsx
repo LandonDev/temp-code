@@ -46,6 +46,7 @@ function mount(over: Partial<Props> = {}) {
     onDelete: vi.fn(async () => {}),
     onOpenXcode: vi.fn(async () => {}),
     onOpenSession: vi.fn(),
+    loadElsewhere: true,
     ...over,
   };
   const view = render(<DevicesBlock {...props} />);
@@ -73,8 +74,8 @@ describe("DevicesBlock", () => {
     expect(root.textContent).not.toContain("·");
   });
 
-  it("a linked Mac keeps its load in the heading: it has no Load limit row on this page", () => {
-    const { root } = mount({ host: { ...host, local: false } });
+  it("a Mac with no Load limit row on the page (a linked Mac, or the Mac serving a web page) keeps its load in the heading", () => {
+    const { root } = mount({ loadElsewhere: false });
     expect(facts(root.querySelector("[data-summary]"))).toEqual(["iPhone 17 Pro Max connected", "load 2.1 / 10 cores", "Xcode-beta 27.0"]);
   });
 

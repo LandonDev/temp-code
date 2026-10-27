@@ -12,6 +12,7 @@ import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { ConfirmDialog, errorText } from "../../../chrome/ConfirmDialog";
 import { deleteSimulator, openXcodeDevices, refreshHostDevicesHosts, shutdownSimulator, useHostDevices } from "../../../lib/hostDevices";
+import { isWebMode } from "../../../lib/nativeWeb";
 import { Facts, splitFacts } from "./Facts";
 import { Group, Row } from "./Group";
 
@@ -44,6 +45,7 @@ export function DevicesGroup({ host, onOpenSession }: { host: HostDevicesHost; o
       onShutdown={(udid) => shutdownSimulator(id, udid)}
       onDelete={(udid) => deleteSimulator(id, udid)}
       onOpenXcode={() => openXcodeDevices(id)}
+      loadElsewhere={host.local && !isWebMode()}
     />
   );
 }
@@ -56,10 +58,12 @@ export interface DevicesBlockProps {
   onShutdown: (udid: string) => Promise<unknown>;
   onDelete: (udid: string) => Promise<unknown>;
   onOpenXcode: () => Promise<unknown>;
+  /** The page shows this Mac's load in its Load limit row (the desktop's own Mac); else the heading keeps it. */
+  loadElsewhere?: boolean;
 }
 
 /** The group itself, with everything it shows passed in (the dom test renders this). */
-export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, onDelete, onOpenXcode }: DevicesBlockProps) {
+export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, onDelete, onOpenXcode, loadElsewhere = false }: DevicesBlockProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Simulator | null>(null);
@@ -76,10 +80,10 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
   }, []);
 
   // The heading says what the rows cannot: the phones' state and the Xcode in use. The simulator count is the
-  // rows themselves; this Mac's load is its Load limit row's, a linked Mac's (web mode) has no other home.
+  // rows themselves; the load is the Load limit row's when the page has one for this Mac.
   const summaryParts = report
     ? [
-        ...splitFacts(devicesSummary(report)).filter((part) => !/^(No simulators|\d+ simulators?)/.test(part) && !(host.local && part.startsWith("load "))),
+        ...splitFacts(devicesSummary(report)).filter((part) => !/^(No simulators|\d+ simulators?)/.test(part) && !(loadElsewhere && part.startsWith("load "))),
         ...(report.xcode ? [`${report.xcode.name}${report.xcode.version ? ` ${report.xcode.version}` : ""}`] : []),
         ...(report.xcode?.from === "developerDir" ? ["DEVELOPER_DIR"] : []),
         ...report.problems,
