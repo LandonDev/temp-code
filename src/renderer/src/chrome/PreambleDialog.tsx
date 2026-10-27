@@ -113,6 +113,9 @@ function PreambleForm({
   const [text, setText] = useState(saved);
   const [enabled, setEnabled] = useState(savedEnabled);
   const [error, setError] = useState<string | null>(null);
+  // The focused variable's meaning, shown at the line's end: the tooltip is
+  // a pointer's help, this is the keyboard's.
+  const [meaning, setMeaning] = useState<string | null>(null);
   const close = useModalClose();
 
   const normalized = normalizePreamble(text);
@@ -188,10 +191,20 @@ function PreambleForm({
           <p className="flex gap-2 font-mono text-[11px] text-muted-foreground" data-preamble-variables>
             {PREAMBLE_VARIABLES.map((v) => (
               <Tip key={v.name} label={`${v.meaning}, filled in when the thread starts`}>
-                {/* Focusable, and named for its meaning, so the help is not hover-only. */}
-                <code tabIndex={0} aria-label={`{{${v.name}}}: ${v.meaning}`} className="rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">{`{{${v.name}}}`}</code>
+                <code
+                  tabIndex={0}
+                  aria-label={`{{${v.name}}}: ${v.meaning}`}
+                  onFocus={() => setMeaning(v.meaning)}
+                  onBlur={() => setMeaning(null)}
+                  className="rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >{`{{${v.name}}}`}</code>
               </Tip>
             ))}
+            {meaning ? (
+              <span data-preamble-meaning className="font-sans text-xs">
+                {meaning}
+              </span>
+            ) : null}
           </p>
           {scope.kind === "project" && normalized ? (
             <Button type="button" variant="link" size="xs" className="h-auto px-0 text-muted-foreground hover:text-foreground" onClick={() => setText("")}>

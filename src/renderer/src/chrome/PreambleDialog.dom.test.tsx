@@ -105,6 +105,17 @@ describe("PreambleDialog", () => {
     expect(document.querySelector("[title]")).toBeNull();
   });
 
+  it("a variable's meaning shows on keyboard focus, with the tooltips still cold", () => {
+    render(<PreambleDialog scope={{ kind: "project", project: project(), workspace: WS }} onClose={() => {}} />);
+    const worktree = screen.getByLabelText(/^\{\{worktree\}\}:/);
+    expect(document.querySelector("[data-preamble-meaning]")).toBeNull();
+    fireEvent.focus(worktree);
+    const meaning = document.querySelector("[data-preamble-meaning]") as HTMLElement;
+    expect(meaning.textContent).toBe(worktree.getAttribute("aria-label")!.replace("{{worktree}}: ", ""));
+    fireEvent.blur(worktree);
+    expect(document.querySelector("[data-preamble-meaning]")).toBeNull();
+  });
+
   it("Save writes the project's text and closes once", async () => {
     const onClose = vi.fn();
     render(<PreambleDialog scope={{ kind: "project", project: project(), workspace: WS }} onClose={onClose} />);
