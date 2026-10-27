@@ -32,6 +32,12 @@ function dispatch(id: string): void {
     app.quit()
     return
   }
+  if (id === 'force_reload') {
+    // In main, so a renderer that stopped answering still reloads, its cache skipped.
+    const win = BrowserWindow.getFocusedWindow() ?? debugTarget
+    if (win && !win.isDestroyed()) win.webContents.reloadIgnoringCache()
+    return
+  }
   const win = BrowserWindow.getFocusedWindow() ?? debugTarget
   if (!win || win.isDestroyed()) {
     if (id === 'new_window') createWindow()

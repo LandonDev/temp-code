@@ -277,6 +277,7 @@ import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
 import { aliaxChunk, dialogsChunk, inboxChunk, notesChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
+import { BUNDLED_RELEASE } from "./lib/releaseNotes";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
@@ -3138,6 +3139,8 @@ export default function App() {
         case "open_notes": return go(a.onOpenNotes);
         case "open_settings": return go(() => a.openSettings());
         case "check_for_updates": return go(() => void updateStore.check(true));
+        // The running build's notes, as Settings → General's Updates row opens them.
+        case "whats_new": return go(() => onOpenWhatsNew(BUNDLED_RELEASE.version, BUNDLED_RELEASE.notes));
         case "find_in_project": return go(a.onFindInProject);
         case "new_window": return go(() => void invoke("open_new_window").catch(() => {}));
         case "find": return go(() => openFindInActiveEditor());
@@ -3161,7 +3164,7 @@ export default function App() {
         case "activate_environment": return go(() => a.onActivateEnvironment(cmd.index ?? 0));
       }
     },
-    [run],
+    [run, onOpenWhatsNew],
   );
 
   // Dev-only `window.__app` (lib/appFacade.ts): CDP scripts drive the app

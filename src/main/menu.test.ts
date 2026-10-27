@@ -124,6 +124,20 @@ describe('show logs', () => {
   })
 })
 
+describe('force reload', () => {
+  it('reloads the focused window past its cache, in main', () => {
+    const reloadIgnoringCache = vi.fn()
+    const send = vi.fn()
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue({ isDestroyed: () => false, webContents: { reloadIgnoringCache, send } } as never)
+    const item = menu('View').find((row) => row.id === 'force_reload')!
+    expect(item.label).toBe('Force Reload')
+    expect(item.accelerator).toBeUndefined()
+    ;(item.click as () => void)()
+    expect(reloadIgnoringCache).toHaveBeenCalledTimes(1)
+    expect(send).not.toHaveBeenCalled()
+  })
+})
+
 describe('menu state', () => {
   type Contents = { id: number; once: (event: string, cb: () => void) => void; destroy: () => void }
   function contents(id: number): Contents {

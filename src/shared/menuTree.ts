@@ -131,6 +131,8 @@ export const MENU_TREE: MenuSection[] = [
       ]),
       sep,
       role('reload', 'Reload Window'),
+      // No key: Electron's forceReload role brings ⇧⌘R, which Show Panel owns.
+      cmd('force_reload', 'Force Reload'),
       sep,
       cmd('zoom_in', 'Zoom In', 'CmdOrCtrl+='),
       cmd('zoom_out', 'Zoom Out', 'CmdOrCtrl+-'),
@@ -176,6 +178,8 @@ export const MENU_TREE: MenuSection[] = [
     label: 'Help',
     role: 'help',
     items: [
+      cmd('whats_new', "What's New"),
+      sep,
       cmd('show_logs', 'Show Logs'),
       cmd('profile_host', 'Profile the Host for 10 Seconds'),
       role('toggleDevTools', 'Developer Tools', 'Alt+CmdOrCtrl+I')
@@ -193,9 +197,10 @@ export function commandsOf(items: MenuNode[]): MenuCommand[] {
 /** Every custom item, in menu order. */
 export const MENU_COMMANDS: MenuCommand[] = MENU_TREE.flatMap((section) => commandsOf(section.items))
 
-/** Quit, the logs and profiling act in main; other commands go to the focused
- *  renderer (New Window falls back to main only when no window is there to take it). */
-export const MAIN_MENU_IDS = ['quit', 'profile_host', 'show_logs'] as const
+/** Quit, the logs, profiling and Force Reload act in main (a hung renderer
+ *  cannot reload itself); other commands go to the focused renderer (New
+ *  Window falls back to main only when no window is there to take it). */
+export const MAIN_MENU_IDS = ['quit', 'profile_host', 'show_logs', 'force_reload'] as const
 
 export const RENDERER_MENU_IDS: string[] = MENU_COMMANDS.map((c) => c.id).filter(
   (id) => !(MAIN_MENU_IDS as readonly string[]).includes(id)

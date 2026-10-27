@@ -123,6 +123,7 @@ describe('menu tree', () => {
       ['Focus Pane', [['Left', 'Alt+Cmd+Left'], ['Right', 'Alt+Cmd+Right'], ['Up', 'Alt+Cmd+Up'], ['Down', 'Alt+Cmd+Down']]],
       '—',
       ['Reload Window', 'Cmd+R'],
+      ['Force Reload'],
       '—',
       ['Zoom In', 'Cmd+='],
       ['Zoom Out', 'Cmd+-'],
@@ -157,7 +158,7 @@ describe('menu tree', () => {
       ['Archive Done']
     ])
     expect(section('Window')).toEqual([])
-    expect(section('Help')).toEqual([['Show Logs'], ['Profile the Host for 10 Seconds'], ['Developer Tools', 'Alt+Cmd+I']])
+    expect(section('Help')).toEqual([["What's New"], '—', ['Show Logs'], ['Profile the Host for 10 Seconds'], ['Developer Tools', 'Alt+Cmd+I']])
   })
 
   it('gives Open Project ⌘O, the key the renderer\'s resolver maps to it, and Go to Symbol ⌘⇧O', () => {
@@ -165,9 +166,10 @@ describe('menu tree', () => {
     expect(MENU_COMMANDS.find((c) => c.id === 'go_to_symbol')!.accelerator).toBe('CmdOrCtrl+Shift+O')
   })
 
-  it('has no Force Reload, no Appearance… and no New Terminal Tab', () => {
+  it('runs Force Reload as its own keyless command, never the role that brings ⇧⌘R, and has no Appearance… or New Terminal Tab', () => {
     const roles = MENU_TREE.flatMap((s) => s.items).filter((i) => i.kind === 'role').map((i) => (i as { role: string }).role)
     expect(roles).not.toContain('forceReload')
+    expect(MENU_COMMANDS.find((c) => c.id === 'force_reload')?.accelerator).toBeUndefined()
     expect(MENU_COMMANDS.map((c) => c.id)).not.toContain('sidebar_opacity')
     expect(MENU_COMMANDS.map((c) => c.id)).not.toContain('new_terminal_tab')
   })
@@ -204,8 +206,9 @@ describe('menu tree', () => {
     }
   })
 
-  it('keeps quit, the logs and profiling in main', () => {
-    expect(MAIN_MENU_IDS).toEqual(['quit', 'profile_host', 'show_logs'])
+  it('keeps quit, the logs, profiling and Force Reload in main', () => {
+    expect(MAIN_MENU_IDS).toEqual(['quit', 'profile_host', 'show_logs', 'force_reload'])
+    expect(RENDERER_MENU_IDS).toContain('whats_new')
     expect(RENDERER_MENU_IDS).toContain('new_window')
     for (const id of MAIN_MENU_IDS) expect(RENDERER_MENU_IDS).not.toContain(id)
   })

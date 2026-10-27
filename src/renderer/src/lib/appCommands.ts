@@ -65,6 +65,7 @@ export const APP_COMMANDS = [
   "open_notes",
   "open_settings",
   "check_for_updates",
+  "whats_new",
   "find_in_project",
   "new_window",
   "find",
