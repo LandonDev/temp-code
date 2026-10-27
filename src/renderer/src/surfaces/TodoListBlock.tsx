@@ -23,8 +23,8 @@ export const TodoListBlock = memo(function TodoListBlock({ block }: { block: Blo
 export function TodoList({ items }: { items: TodoItem[] }) {
   const done = items.filter((t) => t.status === "completed").length;
   return (
-      <div className="rounded-[10px] border border-content/10 bg-content/6 px-3 py-2 font-sans text-[13px]">
-        <div className="mb-1 flex items-center justify-between text-[11px] text-content/40">
+      <div className="rounded-[10px] border border-border bg-foreground/6 px-3 py-2 font-sans text-[13px]">
+        <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
           <span>Todo</span>
           <span className="tabular-nums">
             {done}/{items.length}
@@ -35,10 +35,10 @@ export function TodoList({ items }: { items: TodoItem[] }) {
             <li
               key={n}
               className={`flex items-start gap-2 leading-[18px] ${
-                t.status === "completed" ? "text-content/40 line-through" : "text-content"
+                t.status === "completed" ? "text-muted-foreground line-through" : "text-foreground"
               }`}
             >
-              <span className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center text-content/40">
+              <span className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">
                 {t.status === "completed" ? (
                   <Check className="size-3.5" strokeWidth={1.75} />
                 ) : t.status === "in_progress" ? (

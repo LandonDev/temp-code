@@ -38,10 +38,10 @@ export function ConnectionLine({ environmentId }: { environmentId: string }) {
     <div
       role="status"
       data-connection-line={degraded.kind}
-      className="mb-1.5 flex h-6 items-center gap-2 px-1 text-[11px] text-content/50"
+      className="mb-1.5 flex h-6 items-center gap-2 px-1 text-[11px] text-muted-foreground"
     >
       {unauthorized || degraded.kind === "offline" ? (
-        <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${unauthorized ? "bg-danger" : "bg-content/25"}`} />
+        <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${unauthorized ? "bg-danger" : "bg-foreground/25"}`} />
       ) : (
         <Spinner aria-hidden className="size-3 text-muted-foreground" />
       )}

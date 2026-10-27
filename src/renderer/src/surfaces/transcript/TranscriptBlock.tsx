@@ -117,7 +117,7 @@ export const TranscriptBlock = memo(function TranscriptBlock({
     <div
       data-block={block.id}
       data-selectable-agent-response={block.streaming ? undefined : block.id}
-      className={`min-w-0 pb-1 text-content ${compactTop ? "pt-2" : "pt-3"}`}
+      className={`min-w-0 pb-1 text-foreground ${compactTop ? "pt-2" : "pt-3"}`}
     >
       <AgentMarkdown
         text={block.text}

@@ -25,9 +25,9 @@ type Tick = {
 
 const TICK: Record<TickKind, { width: number; className: string; who: string }> = {
   user: { width: 14, className: "bg-info", who: "You" },
-  reply: { width: 12, className: "bg-content/50", who: "Agent" },
+  reply: { width: 12, className: "bg-foreground/50", who: "Agent" },
   edit: { width: 12, className: "bg-success/60", who: "Edit" },
-  tool: { width: 7, className: "bg-content/20", who: "Tool" },
+  tool: { width: 7, className: "bg-foreground/20", who: "Tool" },
   alert: { width: 12, className: "bg-warning", who: "Error" },
 };
 
@@ -139,7 +139,7 @@ export const TranscriptMinimap = memo(function TranscriptMinimap({
       <div
         ref={windowRef}
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 rounded-md bg-content/8"
+        className="pointer-events-none absolute inset-x-0 top-0 rounded-md bg-foreground/8"
       />
       {shown.map(({ tick, index }) => {
         const spec = TICK[tick.kind];
@@ -172,10 +172,10 @@ export const TranscriptMinimap = memo(function TranscriptMinimap({
             ),
           }}
         >
-          <div className="mb-0.5 text-[10px] font-medium tracking-wide text-content/40 uppercase">
+          <div className="mb-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
             {TICK[hover.kind].who}
           </div>
-          <div className="line-clamp-2 text-content/70">{hover.text.trim()}</div>
+          <div className="line-clamp-2 text-muted-foreground">{hover.text.trim()}</div>
         </div>
       ) : null}
     </div>

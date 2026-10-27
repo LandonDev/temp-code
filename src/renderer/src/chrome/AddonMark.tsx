@@ -41,7 +41,7 @@ export function AddonMark({
       </svg>
     );
   }
-  const cls = `shrink-0 text-content/50 ${className}`;
+  const cls = `shrink-0 text-muted-foreground ${className}`;
   const px = { width: size, height: size };
   switch (command.source) {
     case "plugin":

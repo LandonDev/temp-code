@@ -78,7 +78,7 @@ export function AccountsPopover({
     >
       <div role="listbox" aria-label={`${provider} accounts`} aria-readonly data-account-picker style={{ width: `${width / REM}rem` }}>
         {scope ? (
-          <p className="px-2.5 pb-1.5 pt-1 text-[11px] text-content/50">{sourceLine(scope)}</p>
+          <p className="px-2.5 pb-1.5 pt-1 text-[11px] text-muted-foreground">{sourceLine(scope)}</p>
         ) : null}
         {accounts.profiles.map((profile) => (
           <AccountRow
@@ -93,7 +93,7 @@ export function AccountsPopover({
           />
         ))}
         {accounts.note ? (
-          <p className="px-2.5 pb-1 pt-2 text-[11px] text-content/50">{accounts.note}</p>
+          <p className="px-2.5 pb-1 pt-2 text-[11px] text-muted-foreground">{accounts.note}</p>
         ) : null}
       </div>
     </LazyPopover>
@@ -126,27 +126,27 @@ function AccountRow({
       role="option"
       aria-selected={checked}
       aria-disabled
-      className="flex w-full items-center gap-6 rounded-lg px-2.5 py-2.5 text-left text-[12px] leading-none text-content"
+      className="flex w-full items-center gap-6 rounded-lg px-2.5 py-2.5 text-left text-[12px] leading-none text-foreground"
     >
       <span className="flex min-w-0 flex-1 items-start gap-2.5">
         <span
           aria-hidden
-          className={`mt-0.5 size-2 shrink-0 rounded-full ${profile.color ? "" : "bg-content/30"}`}
+          className={`mt-0.5 size-2 shrink-0 rounded-full ${profile.color ? "" : "bg-foreground/30"}`}
           style={profile.color ? { background: profile.color } : undefined}
         />
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">
           <span className="flex items-center gap-1.5">
             <span className={`truncate ${checked ? "font-medium" : ""}`}>{displayName(profile)}</span>
             {profile.duplicate ? <span className="shrink-0 text-[10px] text-warning">duplicate</span> : null}
-            {checked ? <Check className="size-3 shrink-0 text-content/50" aria-label="In use" /> : null}
+            {checked ? <Check className="size-3 shrink-0 text-muted-foreground" aria-label="In use" /> : null}
             {inherited ? (
-              <Pin className="size-3 shrink-0 text-content/50" aria-label={`Pinned by the ${inherited}`} />
+              <Pin className="size-3 shrink-0 text-muted-foreground" aria-label={`Pinned by the ${inherited}`} />
             ) : null}
           </span>
           {report?.plan ? <PlanLine plan={report.plan} now={now} /> : null}
           {status ? <span className={`truncate text-[11px] ${status.tone}`}>{status.text}</span> : null}
           {report?.banked ? (
-            <span className="text-[11px] text-content/50">
+            <span className="text-[11px] text-muted-foreground">
               {report.banked} banked reset{report.banked === 1 ? "" : "s"}
             </span>
           ) : null}
@@ -201,7 +201,7 @@ function PlanLine({ plan, now }: { plan: PlanInfo; now: number }) {
   else if (plan.renewsAt !== undefined && plan.renewsAt > now)
     tail = { text: `renews ${shortDate(plan.renewsAt)}`, warn: false };
   return (
-    <span className="truncate text-[11px] text-content/50">
+    <span className="truncate text-[11px] text-muted-foreground">
       {parts.join(" · ")}
       {tail ? (
         <>
@@ -235,14 +235,14 @@ function UsageBlock({ report, now, slots }: { report: UsageReport | undefined; n
   };
   if (!report) {
     return (
-      <span className="flex shrink-0 items-center text-content/40" style={style}>
+      <span className="flex shrink-0 items-center text-muted-foreground" style={style}>
         <Skeleton className="h-2 w-8" />
       </span>
     );
   }
   if (report.windows.length === 0) {
     return (
-      <span className="flex shrink-0 items-center text-[11px] text-content/40" style={style}>
+      <span className="flex shrink-0 items-center text-[11px] text-muted-foreground" style={style}>
         {report.rateLimit ? "No usage recorded yet" : (report.note ?? report.extra ?? "Usage unavailable")}
       </span>
     );
@@ -275,13 +275,13 @@ function UsageCell({ group, now }: { group: UsageWindow[]; now: number }) {
       {group.map((w) => (
         <WindowLine key={w.label} w={w} now={now} />
       ))}
-      <span className="flex h-3 items-center gap-1.5 text-[11px] text-content/50">
+      <span className="flex h-3 items-center gap-1.5 text-[11px] text-muted-foreground">
         {refills ? (
           <>
             {period ? <CycleRing fraction={cycleFraction(head.resetsAt as number, period, now)} /> : null}
             <span className="truncate">
               in {untilLabel(head.resetsAt as number, now)}
-              <span className="text-content/35"> · {resetPoint(head.resetsAt as number, now)}</span>
+              <span className="text-muted-foreground"> · {resetPoint(head.resetsAt as number, now)}</span>
             </span>
           </>
         ) : null}
@@ -308,7 +308,7 @@ function WindowLine({ w, now }: { w: UsageWindow; now: number }) {
   return (
     <span className="flex flex-col gap-1.5" data-window={w.label}>
       <span className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-[11px] text-content/50">{w.label}</span>
+        <span className="truncate text-[11px] text-muted-foreground">{w.label}</span>
         <span className={`text-[12px] font-medium tabular-nums ${toneFor(w, now)}`}>{formatPercent(left)}</span>
       </span>
       <Bar w={w} now={now} height="h-1.5" />
@@ -329,7 +329,7 @@ function CycleRing({ fraction }: { fraction: number }) {
   const c = 2 * Math.PI * r;
   return (
     <svg viewBox="0 0 14 14" aria-hidden className="size-3.5 shrink-0 -rotate-90">
-      <circle cx="7" cy="7" r={r} fill="none" strokeWidth="2.5" className="stroke-content/15" />
+      <circle cx="7" cy="7" r={r} fill="none" strokeWidth="2.5" className="stroke-foreground/15" />
       <circle
         cx="7"
         cy="7"
@@ -339,7 +339,7 @@ function CycleRing({ fraction }: { fraction: number }) {
         strokeLinecap="round"
         strokeDasharray={c}
         strokeDashoffset={c * (1 - Math.max(0.04, fraction))}
-        className="stroke-content/70"
+        className="stroke-foreground/70"
       />
     </svg>
   );
@@ -357,7 +357,7 @@ export function Bar({ w, now, height }: { w: UsageWindow; now: number; height: s
       aria-valuemin={0}
       aria-valuemax={100}
       aria-label={`${w.label}: ${Math.round(left)} percent left`}
-      className={`relative block w-full overflow-visible rounded-full bg-content/10 ${height}`}
+      className={`relative block w-full overflow-visible rounded-full bg-foreground/10 ${height}`}
     >
       <span
         className={`block h-full rounded-full ${fillFor(w, now)}`}
@@ -367,7 +367,7 @@ export function Bar({ w, now, height }: { w: UsageWindow; now: number; height: s
         <span
           aria-hidden
           data-tick
-          className={`absolute -top-0.5 -bottom-0.5 w-0.5 rounded-full ${ahead ? "bg-content/35" : "bg-content/70"}`}
+          className={`absolute -top-0.5 -bottom-0.5 w-0.5 rounded-full ${ahead ? "bg-foreground/35" : "bg-foreground/70"}`}
           style={{ left: `calc(${budget}% - 1px)` }}
         />
       ) : null}

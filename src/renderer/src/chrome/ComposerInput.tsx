@@ -70,7 +70,7 @@ function chipElement(chip: ComposerChip): HTMLElement {
   el.dataset.name = chip.name
   el.contentEditable = 'false'
   el.className =
-    'inline-flex select-none items-center gap-1 rounded-[5px] bg-accent/20 px-1 align-baseline font-medium text-content'
+    'inline-flex select-none items-center gap-1 rounded-[5px] bg-accent/20 px-1 align-baseline font-medium text-foreground'
   const brand = brandOf(chip.name)
   if (brand && 'img' in brand) {
     el.innerHTML = `<img src="${brand.img}" alt="" draggable="false" width="11" height="11" class="shrink-0 object-contain">`

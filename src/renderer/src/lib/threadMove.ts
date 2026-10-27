@@ -75,10 +75,10 @@ export function moveTargets(
 
 /** The status dot's tone for one environment's link. */
 export function hostTone(status: Pick<EnvironmentStatus, "transport" | "fresh"> | undefined): string {
-  if (!status) return "bg-content/25";
+  if (!status) return "bg-foreground/25";
   if (status.transport === "open") return status.fresh ? "bg-success" : "bg-success/50";
   if (status.transport === "unauthorized") return "bg-danger";
-  if (status.transport === "offline") return "bg-content/25";
+  if (status.transport === "offline") return "bg-foreground/25";
   return "bg-warning";
 }
 

@@ -430,7 +430,7 @@ export function ProjectRail({
     <nav
       ref={resize.setPaneRef}
       aria-label="Workspaces"
-      className="sidebar-glass relative flex shrink-0 flex-col border-r border-content/10"
+      className="sidebar-glass relative flex shrink-0 flex-col border-r border-border"
     >
       <div
         className="flex h-10 shrink-0 select-none items-center pr-1.5"
@@ -592,7 +592,7 @@ export function ProjectRail({
         aria-valuemin={PROJECT_RAIL_WIDTH_MIN}
         aria-valuemax={PROJECT_RAIL_WIDTH_MAX}
         className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none ${
-          resize.dragging ? "bg-content/15" : "hover:bg-content/10"
+          resize.dragging ? "bg-foreground/15" : "hover:bg-foreground/10"
         }`}
         onPointerDown={resize.onPointerDown}
         onDoubleClick={resize.onDoubleClick}

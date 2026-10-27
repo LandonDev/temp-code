@@ -34,8 +34,8 @@ function readTheme(appearance: HtmlRenderAppearance): HtmlRenderTheme {
   const style = getComputedStyle(document.documentElement);
   const read = (name: string, or: string) => style.getPropertyValue(name).trim() || or;
   const tokens: HtmlRenderTokens = {
-    background: read("--color-background-base", fallback.background),
-    foreground: read("--color-content", fallback.foreground),
+    background: read("--background", fallback.background),
+    foreground: read("--foreground", fallback.foreground),
     accent: read("--color-accent", fallback.accent),
     link: read("--link-color", fallback.link),
     success: read("--thread-success", fallback.success),
