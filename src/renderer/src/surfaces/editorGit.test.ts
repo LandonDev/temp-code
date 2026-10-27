@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Chunk } from "@codemirror/merge";
 import {
   findChunk,
+  gitThemeSpec,
   revertChunkText,
   stageChunkText,
   deletedLineTexts,
@@ -215,5 +216,25 @@ describe("stateWithGitOriginal", () => {
       additions: 0,
       deletions: 0,
     });
+  });
+});
+
+describe("gitThemeSpec", () => {
+  const values = Object.values(gitThemeSpec).flatMap((rule) => Object.values(rule as Record<string, string>));
+
+  it("is written in tokens: no hex colour and no inset left bar", () => {
+    for (const value of values) {
+      expect(value).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+      expect(value).not.toContain("inset 3px");
+    }
+  });
+
+  it("tints added and removed lines with success and destructive at 10%", () => {
+    expect(gitThemeSpec[".cm-gitInsertedLine"].backgroundColor).toBe(
+      "color-mix(in srgb, var(--color-success) 10%, transparent)",
+    );
+    expect(gitThemeSpec[".cm-gitDeletedLine"].backgroundColor).toBe(
+      "color-mix(in srgb, var(--color-destructive) 10%, transparent)",
+    );
   });
 });

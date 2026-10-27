@@ -942,7 +942,13 @@ function hunkScreenBounds(
   };
 }
 
-const gitTheme = EditorView.theme({
+const tint = (token: string, percent: number) =>
+  `color-mix(in srgb, var(${token}) ${percent}%, transparent)`;
+
+/** The review tab's diff look, on the tokens: added and removed lines
+ *  tinted at 10% with the gutter mark beside them (no left bar), the hunk
+ *  bar a floating layer. */
+export const gitThemeSpec = {
   "&": {
     position: "relative",
   },
@@ -962,11 +968,10 @@ const gitTheme = EditorView.theme({
     height: "100%",
   },
   ".cm-gitAdd": {
-    backgroundColor: "#34d399",
+    backgroundColor: "var(--color-success)",
   },
   ".cm-gitInsertedLine": {
-    backgroundColor: "color-mix(in srgb, #34d399 18%, transparent)",
-    boxShadow: "inset 3px 0 0 #34d399",
+    backgroundColor: tint("--color-success", 10),
   },
   ".cm-gitDeletedChunk": {
     position: "relative",
@@ -974,8 +979,7 @@ const gitTheme = EditorView.theme({
   },
   ".cm-gitDeletedLine": {
     padding: "0 12px 0 6px",
-    backgroundColor: "color-mix(in srgb, #f87171 16%, transparent)",
-    boxShadow: "inset 3px 0 0 #f87171",
+    backgroundColor: tint("--color-destructive", 10),
     whiteSpace: "pre-wrap",
     overflowWrap: "anywhere",
   },
@@ -997,15 +1001,16 @@ const gitTheme = EditorView.theme({
     pointerEvents: "none",
   },
   ".cm-gitOverview-add": {
-    backgroundColor: "#34d399",
+    backgroundColor: "var(--color-success)",
   },
   ".cm-gitOverview-del": {
-    backgroundColor: "#f87171",
+    backgroundColor: "var(--color-destructive)",
   },
   ".cm-gitOverview-mod": {
     display: "flex",
     flexDirection: "row",
-    background: "linear-gradient(to right, #f87171 0 50%, #34d399 50% 100%)",
+    background:
+      "linear-gradient(to right, var(--color-destructive) 0 50%, var(--color-success) 50% 100%)",
   },
   ".cm-gitHunkBar": {
     position: "absolute",
@@ -1014,12 +1019,10 @@ const gitTheme = EditorView.theme({
     flexDirection: "column",
     overflow: "hidden",
     userSelect: "none",
-    borderRadius: "4px",
-    color: "var(--color-content)",
-    background:
-      "color-mix(in srgb, var(--color-background-base) 92%, transparent)",
-    boxShadow:
-      "0 0 0 1px color-mix(in srgb, var(--color-content) 14%, transparent), 0 6px 16px color-mix(in srgb, #000 22%, transparent)",
+    borderRadius: "6px",
+    color: "var(--color-foreground)",
+    background: "var(--color-popover)",
+    boxShadow: "0 0 0 1px var(--color-border), var(--shadow-overlay)",
   },
   ".cm-gitHunkBtn": {
     display: "grid",
@@ -1033,14 +1036,15 @@ const gitTheme = EditorView.theme({
     cursor: "pointer",
   },
   ".cm-gitHunkBtn:hover": {
-    backgroundColor:
-      "color-mix(in srgb, var(--color-content) 12%, transparent)",
+    backgroundColor: tint("--color-foreground", 7),
   },
   ".cm-gitHunkBtn:focus-visible": {
     outline: "1px solid var(--color-accent)",
     outlineOffset: "-1px",
   },
-});
+};
+
+const gitTheme = EditorView.theme(gitThemeSpec);
 
 const UNDO_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>';
