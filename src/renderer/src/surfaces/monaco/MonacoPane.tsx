@@ -8,6 +8,7 @@ import { toggleBreakpoint } from "../../lib/monaco/breakpoints";
 import type { EditorNavigationTarget, OpenFileFn } from "../../lib/search";
 import { projectForCwd } from "../../lib/tcserver/projects";
 import { SurfaceSkeleton } from "../SurfaceSkeleton";
+import { FileHeader, fileFolder } from "../FileHeader";
 import { ConflictBar } from "../ConflictBar";
 import { EditorAlert } from "../FileNoteBar";
 import { DiffSurface } from "./DiffSurface";
@@ -44,8 +45,7 @@ const viewStates = new Map<string, monaco.editor.ICodeEditorViewState>();
 
 /**
  * One Monaco editor over one registry model, with FileEditor's prop
- * contract. The buffer is the hero: no chrome beyond the one-line conflict
- * bar and a status line while the language server indexes.
+ * contract. The shared file header keeps the folder visible above the buffer.
  */
 export default function MonacoPane(props: Props) {
   const { path, cwd, environmentId, active, showDiff = false, diffBase, navigation, onDirtyChange, onErrorCountChange, onOpenFile, readOnly = false } = props;
@@ -255,6 +255,7 @@ export default function MonacoPane(props: Props) {
           }}
         />
       ) : null}
+      <FileHeader folder={fileFolder(path, cwd)} />
       {needsEula && project ? (
         <EditorAlert
           tone="info"
@@ -279,7 +280,7 @@ export default function MonacoPane(props: Props) {
 
 function Stub({ text }: { text: string }) {
   return (
-    <div className="flex flex-1 items-center justify-center px-6 text-center text-[12px] text-content/50">
+    <div className="flex flex-1 items-center justify-center px-6 text-center text-[12px] text-muted-foreground">
       {text}
     </div>
   );

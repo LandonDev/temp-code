@@ -6,6 +6,7 @@ import { displayPath } from "../../lib/paths";
 import { registry } from "../../lib/connection";
 import { hostOfCwd, projectForCwd } from "../../lib/tcserver/projects";
 import { SurfaceSkeleton } from "../SurfaceSkeleton";
+import { FileHeader, fileFolder } from "../FileHeader";
 import { ConflictBar } from "../ConflictBar";
 import { trackEditor } from "./keys";
 import { ensureForModel } from "./lsp/idea";
@@ -52,6 +53,8 @@ export function DiffSurface({
   const modifiedRef = useRef<monaco.editor.ICodeEditor | null>(null);
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
   const [fileState, setFileState] = useState<FileState>({ pending: false, conflict: null });
+  const [changes, setChanges] = useState<monaco.editor.ILineChange[]>([]);
+  const [changeIndex, setChangeIndex] = useState(0);
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
 
@@ -102,6 +105,16 @@ export function DiffSurface({
         cleanups.push(trackEditor(modified));
         modified.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void saveNow(path));
         modifiedRef.current = modified;
+        const syncChanges = () => {
+          const next = editor?.getLineChanges() ?? [];
+          const line = modified.getPosition()?.lineNumber ?? 1;
+          setChanges(next);
+          setChangeIndex(Math.max(0, next.findLastIndex((change) => Math.max(1, change.modifiedStartLineNumber) <= line)));
+        };
+        cleanups.push(() => diffListener.dispose(), () => cursorListener.dispose());
+        const diffListener = editor.onDidUpdateDiff(syncChanges);
+        const cursorListener = modified.onDidChangeCursorPosition(syncChanges);
+        syncChanges();
         const project = projectForCwd(cwd);
         if (project) ensureForModel(project, opened.model);
         setPhase("ready");
@@ -117,8 +130,22 @@ export function DiffSurface({
       original?.dispose();
       handle?.release();
       setPhase("loading");
+      setChanges([]);
+      setChangeIndex(0);
     };
   }, [path, cwd, base]);
+
+  const stepToChange = (delta: -1 | 1) => {
+    const index = Math.max(0, Math.min(changes.length - 1, changeIndex + delta));
+    const change = changes[index];
+    const modified = modifiedRef.current;
+    if (!change || !modified) return;
+    const lineNumber = Math.max(1, change.modifiedStartLineNumber);
+    modified.setPosition({ lineNumber, column: 1 });
+    modified.revealLineInCenter(lineNumber);
+    modified.focus();
+    setChangeIndex(index);
+  };
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col">
@@ -135,13 +162,24 @@ export function DiffSurface({
           }}
         />
       ) : null}
+      <FileHeader
+        folder={fileFolder(path, cwd)}
+        diff={{
+          additions: changes.reduce((sum, change) => sum + (change.modifiedEndLineNumber === 0 ? 0 : change.modifiedEndLineNumber - change.modifiedStartLineNumber + 1), 0),
+          deletions: changes.reduce((sum, change) => sum + (change.originalEndLineNumber === 0 ? 0 : change.originalEndLineNumber - change.originalStartLineNumber + 1), 0),
+          index: changeIndex,
+          total: changes.length,
+          onPrev: () => stepToChange(-1),
+          onNext: () => stepToChange(1),
+        }}
+      />
       {phase === "loading" ? (
         <div className="flex min-h-0 flex-1">
           <SurfaceSkeleton kind="diff" label="Loading file" />
         </div>
       ) : null}
       {phase === "error" ? (
-        <div className="flex flex-1 items-center justify-center text-[12px] text-content/50">
+        <div className="flex flex-1 items-center justify-center text-[12px] text-muted-foreground">
           Could not open this diff.
         </div>
       ) : null}

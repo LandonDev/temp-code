@@ -72,8 +72,8 @@ export function readPalette(dark: boolean): Record<string, string> {
     const hex = cssToHex(v(name)) ?? fallback;
     return hex.slice(0, 7);
   };
-  const base = solid("--color-background-base", dark ? "#171717" : "#f7f7f7");
-  const content = solid("--color-content", dark ? "#ebebeb" : "#2e2e2e");
+  const base = solid("--background", dark ? "#171717" : "#f7f7f7");
+  const content = solid("--foreground", dark ? "#ebebeb" : "#2e2e2e");
   const accent = solid("--color-accent", "#4c9aff");
   const withAlpha = (hex: string, alpha: number) =>
     hex.slice(0, 7) + Math.round(alpha * 255).toString(16).padStart(2, "0");
