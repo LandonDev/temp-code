@@ -1,24 +1,15 @@
 import { motion, useReducedMotion } from "motion/react";
-import type { OpenFileFn } from "../../../lib/search";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { X } from "../../../chrome/icons";
+import { Button } from "../../../components/ui/button";
 import { DUR, EASE_OUT, FADE_OUT, SPRING_PANEL } from "../../../lib/ease";
-import { HarnessIcon } from "../../../chrome/HarnessIcon";
-import { HostGlyph } from "../../../chrome/HostGlyph";
-import { ArrowUp, GitBranch, X } from "../../../chrome/icons";
-import { respondHarnessApproval } from "../../../lib/harness";
-import { isLiveStatus, modelLabel, useMetaById, useSessionById } from "../../../lib/threads/agents";
-import * as commands from "../../../lib/tcserver/commands";
-import { asHarness } from "../../../lib/tcserver/store";
-import { AgentTranscript } from "../../AgentTranscript";
-import { StatusDot } from "../bits";
-import { AgentStatsLine } from "./rowBits";
-import { useContextReading } from "./contextCache";
-import { fleetStats } from "./useFleetModel";
+import type { OpenFileFn } from "../../../lib/search";
+import { useMetaById } from "../../../lib/threads/agents";
+import { AgentDetailBody } from "./AgentDetailBody";
 
 /**
- * A subagent's transcript in a pane-scoped overlay: header with its
- * identity and tallies, the live transcript, and a one-line footer that
- * sends when idle or steers while it runs. "Open" splits it beside the parent.
+ * A subagent in a pane-scoped overlay: the container for its content
+ * (AgentDetailBody: header, transcript, steer field), with the close button.
  *
  * The panel is a sheet at the pane's right edge: it slides in from off the
  * right on the panel spring (no bounce) at its final width from the first
@@ -43,13 +34,6 @@ export function AgentDetail({
   onOpenDiff?: (path?: string) => void;
 }) {
   const meta = useMetaById(agentId);
-  const session = useSessionById(agentId);
-  const live = isLiveStatus(meta?.status);
-  const reading = useContextReading(agentId, live);
-  const stats = useMemo(() => fleetStats(session, reading), [session, reading]);
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const reduce = useReducedMotion();
   const [settled, setSettled] = useState(false);
 
@@ -94,23 +78,6 @@ export function AgentDetail({
   }, [onClose]);
 
   if (!meta) return null;
-  const harness = asHarness(meta.provider);
-  const branch = meta.cwd && meta.cwd !== parentCwd ? meta.cwd.split("/").filter(Boolean).pop() : null;
-  const cost = session?.thread?.cost;
-
-  const submit = async () => {
-    const body = text.trim();
-    if (!body || !session || sending) return;
-    setSending(true);
-    setText("");
-    try {
-      if (live) await commands.steer(session, body);
-      else await commands.send(session, body);
-    } finally {
-      setSending(false);
-      inputRef.current?.focus();
-    }
-  };
 
   return (
     <div className="absolute inset-0 z-40 flex justify-end overflow-hidden">
@@ -130,95 +97,18 @@ export function AgentDetail({
         }}
         className="relative flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-content/10 shadow-2xl glass-surface floating-surface"
       >
-        <div className="flex shrink-0 items-start gap-3 border-b border-content/10 px-4 py-3">
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <StatusDot status={meta.status} />
-              <span className="truncate text-[13px] font-medium text-content">{meta.title || "Subagent"}</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-content/40">
-              <span className="inline-flex items-center gap-1">
-                <HostGlyph environmentId={meta.environmentId} className="mr-0.5" />
-                <HarnessIcon harness={harness} className="size-3.5" />
-                {meta.agentType} · {modelLabel(meta.provider, meta.model)} · {meta.reasoning}
-              </span>
-              {branch && (
-                <span className="inline-flex items-center gap-1">
-                  <GitBranch className="size-3.5" strokeWidth={1.75} />
-                  {branch}
-                </span>
-              )}
-              <AgentStatsLine stats={stats} />
-              {cost !== undefined && <span className="tabular-nums">${cost.toFixed(2)}</span>}
-            </div>
-          </div>
-          {onOpenSession && (
-            <button
-              type="button"
-              onClick={() => {
-                close();
-                onOpenSession(agentId);
-              }}
-              className="pressable h-7 shrink-0 rounded-md px-2 text-xs font-medium text-content/50 hover:bg-content/5 hover:text-content"
-            >
-              Open
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={close}
-            aria-label="Close"
-            className="pressable grid size-7 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
-          >
-            <X className="size-3.5" strokeWidth={1.75} />
-          </button>
-        </div>
-        <div className="relative min-h-0 flex-1" style={{ minHeight: 240 }}>
-          {settled ? (
-            <motion.div
-              initial={reduce ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: DUR.fast, ease: EASE_OUT }}
-              className="absolute inset-0"
-            >
-              <AgentTranscript
-                sessionId={agentId}
-                blocks={session?.blocks ?? []}
-                busy={!!session?.busy}
-                visible
-                cwd={meta.cwd || parentCwd}
-                harness={harness}
-                onApproval={(requestId, decision) => respondHarnessApproval(harness, agentId, requestId, decision)}
-                onOpenFile={onOpenFile}
-                onOpenDiff={onOpenDiff}
-              />
-            </motion.div>
-          ) : null}
-        </div>
-        <form
-          className="flex shrink-0 items-center gap-2 border-t border-content/10 px-4 py-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit();
-          }}
-        >
-          <input
-            ref={inputRef}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={live ? "Steer this agent…" : "Send to this agent…"}
-            disabled={!session}
-            className="h-7 min-w-0 flex-1 rounded-lg border border-content/10 bg-content/5 px-2 text-[12px] text-content outline-none placeholder:text-content/40 disabled:cursor-default"
-          />
-          <button
-            type="submit"
-            disabled={!text.trim() || !session || sending}
-            aria-label="Send"
-            className="pressable grid size-7 shrink-0 place-items-center rounded-md bg-content text-background-base disabled:opacity-40"
-          >
-            <ArrowUp className="size-3.5" strokeWidth={2} />
-          </button>
-        </form>
+        <AgentDetailBody
+          agentId={agentId}
+          parentCwd={parentCwd}
+          ready={settled}
+          onOpenSession={onOpenSession}
+          onOpenFile={onOpenFile}
+          onOpenDiff={onOpenDiff}
+          onClose={close}
+        />
+        <Button variant="ghost" size="icon-sm" onClick={close} aria-label="Close" className="absolute top-3.5 right-3">
+          <X />
+        </Button>
       </motion.div>
     </div>
   );

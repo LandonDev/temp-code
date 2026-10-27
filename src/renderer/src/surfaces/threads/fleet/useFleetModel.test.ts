@@ -1,19 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Block, Session } from "../../../lib/session";
-import {
-  fleetActive,
-  fleetLine,
-  fleetStats,
-  isCompacting,
-  statsParts,
-} from "./useFleetModel";
-
-const block = (role: Block["role"], text: string, extra: Partial<Block> = {}): Block => ({
-  id: `${role}:${text}`,
-  role,
-  text,
-  ...extra,
-});
+import type { Session } from "../../../lib/session";
+import { agentNumbers, fleetActive, fleetStats, isCompacting } from "./useFleetModel";
 
 const session = (extra: Partial<Session> = {}): Session => ({ id: "s", blocks: [], ...extra }) as unknown as Session;
 
@@ -43,41 +30,27 @@ describe("fleetStats", () => {
   });
 });
 
-describe("statsParts", () => {
+describe("agentNumbers", () => {
   const base = { adds: 0, dels: 0, tasksDone: 0, tasksTotal: 0, ctxPct: null, cost: undefined, compacting: false };
 
   it("is empty with nothing to say", () => {
-    expect(statsParts(base)).toEqual([]);
+    expect(agentNumbers(base, undefined, null)).toEqual([]);
+    expect(agentNumbers(base, 0, 0)).toEqual([]);
   });
 
-  it("shows the task fraction with its percent and the ring", () => {
-    expect(statsParts({ ...base, adds: 12, dels: 3, tasksDone: 3, tasksTotal: 7, ctxPct: 42 })).toEqual([
-      { key: "diff", adds: 12, dels: 3 },
-      { key: "tasks", done: 3, total: 7, pct: 43 },
-      { key: "ctx", pct: 42 },
+  it("gives every part in order: diff, tasks, context, cost, elapsed", () => {
+    expect(agentNumbers({ ...base, adds: 140, dels: 12, tasksDone: 3, tasksTotal: 7, ctxPct: 42 }, 0.123, 252_000)).toEqual([
+      { key: "diff", adds: 140, dels: 12 },
+      { key: "tasks", text: "3/7 tasks" },
+      { key: "context", text: "42% context" },
+      { key: "cost", text: "$0.12" },
+      { key: "elapsed", text: "4m 12s" },
     ]);
   });
 
-  it("replaces the ring with compacting while compaction runs", () => {
-    expect(statsParts({ ...base, ctxPct: 90, compacting: true })).toEqual([{ key: "compact" }]);
-  });
-});
-
-describe("fleetLine", () => {
-  it("says compacting only while live", () => {
-    const s = session({
-      thread: thread({ compacting: true }),
-      blocks: [block("assistant", "done here")],
-    });
-    expect(fleetLine("running", s).text).toBe("compacting the context…");
-    expect(fleetLine("idle", s).text).toBe("done here");
-  });
-
-  it("falls through to the agent line otherwise", () => {
-    const s = session({
-      blocks: [block("tool", "", { tool: { name: "Bash", input: { command: "ls" } } as Block["tool"] })],
-    });
-    expect(fleetLine("running", s).text).toContain("ls");
-    expect(fleetLine("waiting", s)).toEqual({ text: "waiting for approval", tone: "warning" });
+  it("says Compacting over the context while compaction runs", () => {
+    expect(agentNumbers({ ...base, ctxPct: 90, compacting: true }, undefined, null)).toEqual([
+      { key: "context", text: "Compacting" },
+    ]);
   });
 });

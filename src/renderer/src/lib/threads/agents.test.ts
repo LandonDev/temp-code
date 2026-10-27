@@ -2,14 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { Block, Session } from "../session";
 import type { SessionMeta } from "../tcserver/types";
 import {
-  activityLine,
-  agentLine,
   agentRank,
   agentStats,
+  agentStatus,
   childrenOf,
   fleetCounts,
-  FLEET_EAGER_LOAD,
-  lastAssistantLine,
+  fleetSentence,
+  leadStripped,
   loadsTranscript,
   sortAgents,
   taskTitle,
@@ -104,67 +103,88 @@ describe("fleetCounts", () => {
   });
 });
 
-describe("transcript lines", () => {
-  const blocks: Block[] = [
-    block("user", "Refactor the auth module\nwith care"),
-    block("assistant", "Sure, starting now.\nMore detail."),
-    block("tool", "", { tool: { name: "Bash", input: { command: "npm test\n--watch" } } }),
-    block("reasoning", "hmm"),
-  ];
-
-  it("activityLine names the latest tool and its detail", () => {
-    expect(activityLine(blocks)).toBe("Bash · npm test");
-    expect(activityLine(blocks.slice(0, 2))).toBe("Sure, starting now.");
-    expect(activityLine([...blocks, block("system", "boom", { id: "err:9" })])).toBe("boom");
-    expect(activityLine([])).toBe("");
-  });
-
-  it("prefers the tool's own detail over its input", () => {
-    expect(
-      activityLine([block("tool", "", { tool: { name: "Read", detail: "src/a.ts", input: { file_path: "x" } } })]),
-    ).toBe("Read · src/a.ts");
-  });
-
-  it("lastAssistantLine skips tools and reasoning", () => {
-    expect(lastAssistantLine(blocks)).toBe("Sure, starting now.");
-    expect(lastAssistantLine([block("assistant", "  ")])).toBe("");
-  });
-
-  it("taskTitle is the first user line", () => {
-    expect(taskTitle(blocks)).toBe("Refactor the auth module");
+describe("taskTitle", () => {
+  it("is the first user line", () => {
+    expect(taskTitle([block("assistant", "hi"), block("user", "Refactor the auth module\nwith care")])).toBe(
+      "Refactor the auth module",
+    );
     expect(taskTitle([])).toBe("");
   });
 });
 
-describe("agentLine", () => {
-  it("says a watching agent waits on background work", () => {
-    expect(agentLine("watching", [])).toEqual({ text: "waiting on background work", tone: "muted" });
-  });
+describe("agentStatus", () => {
+  const failure: SessionMeta["failure"] = { kind: "quota", account: null, summary: "usage cap", cause: "" };
 
-  it("shows the question while waiting", () => {
-    const q = block("assistant", "", {
-      question: {
-        sessionId: "s",
-        requestId: "r",
-        questions: [{ question: "Which db?\nmore", options: [] }],
-      },
+  it("a working agent says the host's phrase in place of the word", () => {
+    expect(agentStatus({ status: "running", activity: " Editing HomeView.swift " })).toEqual({
+      state: "working",
+      detail: "Editing HomeView.swift",
+      phrase: true,
     });
-    expect(agentLine("waiting", [q])).toEqual({ text: "has a question — Which db?", tone: "warning" });
+    expect(agentStatus({ status: "running" })).toEqual({ state: "working", detail: "Thinking", phrase: true });
+    expect(agentStatus({ status: "starting", activity: null })).toEqual({ state: "working", detail: "Starting", phrase: true });
   });
 
-  it("shows the pending approval while waiting", () => {
+  it("watching and queued drop the lead their word already says", () => {
+    expect(agentStatus({ status: "watching", activity: "Waiting on bun test" })).toEqual({
+      state: "watching",
+      detail: "bun test",
+      phrase: false,
+    });
+    expect(agentStatus({ status: "queued", activity: "Queued · 120 of 120 running" })).toEqual({
+      state: "queued",
+      detail: "120 of 120 running",
+      phrase: false,
+    });
+  });
+
+  it("a waiting agent quotes its question, else the approval it needs", () => {
+    const q = block("assistant", "", {
+      question: { sessionId: "s", requestId: "r", questions: [{ question: "Which db?\nmore", options: [] }] },
+    });
+    expect(agentStatus({ status: "waiting" }, [q])).toEqual({ state: "waiting", detail: "Which db?", phrase: false });
     const a = block("approval", "", { approval: { requestId: 1 }, tool: { title: "rm -rf build" } });
-    expect(agentLine("waiting", [a])).toEqual({ text: "waiting for approval — rm -rf build", tone: "warning" });
-    expect(agentLine("waiting", [])).toEqual({ text: "waiting for approval", tone: "warning" });
+    expect(agentStatus({ status: "waiting" }, [a]).detail).toBe("approve rm -rf build");
+    const decided = block("approval", "", { approval: { requestId: 1, decided: "allow" }, tool: { title: "ls" } });
+    expect(agentStatus({ status: "waiting" }, [decided]).detail).toBe("");
+    expect(agentStatus({ status: "waiting" })).toEqual({ state: "waiting", detail: "", phrase: false });
   });
 
-  it("shows the error, activity, or last words by status", () => {
-    const err = block("system", "Rate limited", { id: "err:1" });
-    expect(agentLine("error", [err])).toEqual({ text: "Rate limited", tone: "danger" });
-    expect(agentLine("error", [])).toEqual({ text: "failed", tone: "danger" });
-    const tool = block("tool", "", { tool: { name: "Grep", input: { pattern: "foo" } } });
-    expect(agentLine("running", [block("assistant", "hi"), tool])).toEqual({ text: "Grep · foo", tone: "muted" });
-    expect(agentLine("idle", [block("assistant", "Done."), tool])).toEqual({ text: "Done.", tone: "muted" });
+  it("a failed agent says the host's summary over the transcript's error line", () => {
+    const err = block("system", "Rate limited\nstack", { id: "err:1" });
+    expect(agentStatus({ status: "error", failure }, [err]).detail).toBe("usage cap");
+    expect(agentStatus({ status: "error" }, [err])).toEqual({ state: "failed", detail: "Rate limited", phrase: false });
+    expect(agentStatus({ status: "error" }).detail).toBe("");
+  });
+
+  it("idle and done are done; paused and stopped say only their word", () => {
+    expect(agentStatus({ status: "idle", activity: "stale" })).toEqual({ state: "done", detail: "", phrase: false });
+    expect(agentStatus({ status: "done" })).toEqual({ state: "done", detail: "", phrase: false });
+    expect(agentStatus({ status: "paused" })).toEqual({ state: "paused", detail: "", phrase: false });
+    expect(agentStatus({ status: "stopped" })).toEqual({ state: "stopped", detail: "", phrase: false });
+  });
+});
+
+describe("leadStripped", () => {
+  it("takes off only the lead of its own state", () => {
+    expect(leadStripped("Waiting on 3 subagents, a monitor", "watching")).toBe("3 subagents, a monitor");
+    expect(leadStripped("Queued · waiting for Sibling", "queued")).toBe("waiting for Sibling");
+    expect(leadStripped("Waiting on x", "queued")).toBe("Waiting on x");
+    expect(leadStripped("Editing a.ts", "working")).toBe("Editing a.ts");
+  });
+});
+
+describe("fleetSentence", () => {
+  it("says the nonzero counts in order, with the tones that mean something", () => {
+    expect(fleetSentence({ working: 2, waiting: 1, failed: 0, done: 3 })).toEqual([
+      { text: "2 working", tone: undefined },
+      { text: "1 needs you", tone: "text-warning" },
+      { text: "3 done", tone: undefined },
+    ]);
+    expect(fleetSentence({ working: 0, waiting: 0, failed: 1, done: 0 })).toEqual([
+      { text: "1 failed", tone: "text-destructive" },
+    ]);
+    expect(fleetSentence({ working: 0, waiting: 0, failed: 0, done: 0 })).toEqual([]);
   });
 });
 
@@ -210,19 +230,12 @@ describe("agentStats", () => {
 });
 
 describe("loadsTranscript", () => {
-  it("loads every row of a small fleet", () => {
-    expect(loadsTranscript({ status: "done" }, FLEET_EAGER_LOAD)).toBe(true);
-    expect(loadsTranscript({ status: "idle" }, 1)).toBe(true);
-  });
-
-  it("in a large fleet only rows still working, waiting or failed load; settled rows wait to be opened", () => {
-    const big = FLEET_EAGER_LOAD + 1;
-    expect(loadsTranscript({ status: "running" }, big)).toBe(true);
-    expect(loadsTranscript({ status: "starting" }, big)).toBe(true);
-    expect(loadsTranscript({ status: "waiting" }, big)).toBe(true);
-    expect(loadsTranscript({ status: "error" }, big)).toBe(true);
-    expect(loadsTranscript({ status: "done" }, big)).toBe(false);
-    expect(loadsTranscript({ status: "idle" }, big)).toBe(false);
-    expect(loadsTranscript({ status: "watching" }, big)).toBe(false);
+  it("loads only to quote a waiting agent, or a failure the meta lacks", () => {
+    expect(loadsTranscript({ status: "waiting" })).toBe(true);
+    expect(loadsTranscript({ status: "error" })).toBe(true);
+    expect(loadsTranscript({ status: "error", failure: { kind: "unknown", account: null, summary: "x", cause: "" } })).toBe(false);
+    for (const status of ["running", "starting", "watching", "done", "idle", "queued", "paused"] as const) {
+      expect(loadsTranscript({ status })).toBe(false);
+    }
   });
 });

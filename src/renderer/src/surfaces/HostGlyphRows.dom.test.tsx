@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The host glyph (chrome/HostGlyph.tsx) wherever agents and Inbox items are
- * listed outside the rail: the fleet panel's row and detail, the
+ * listed outside the rail: the right panel's Agents rows (the detail's case
+ * is AgentDetailBody.dom.test.tsx), the
  * orchestrator's spawn row (a cross-host child before its row is known),
  * and the Inbox row, which drew the host's name before.
  */
@@ -26,10 +27,6 @@ vi.mock("../lib/threads/agents", async (importOriginal) => ({
   useMetaById: (id: string | null) => (id ? (h.metas.get(id) ?? null) : null),
   useSessionById: () => null,
 }));
-vi.mock("./threads/fleet/useFleetModel", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./threads/fleet/useFleetModel")>()),
-  useAgentModel: () => ({ session: null, live: false, idle: true, line: { text: "", tone: "muted" }, stats: { adds: 0, dels: 0, tasksDone: 0, tasksTotal: 0, ctxPct: null }, elapsed: 0 }),
-}));
 vi.mock("./threads/fleet/contextCache", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./threads/fleet/contextCache")>()),
   useContextReading: () => null,
@@ -37,7 +34,6 @@ vi.mock("./threads/fleet/contextCache", async (importOriginal) => ({
 vi.mock("./AgentTranscript", () => ({ AgentTranscript: () => null }));
 
 import { AgentRow } from "./threads/fleet/AgentRow";
-import { AgentDetail } from "./threads/fleet/AgentDetail";
 import { AgentSpawnRow, hostOfAgentId } from "./AgentSpawnRow";
 import { InboxRow } from "./InboxView";
 
@@ -72,13 +68,11 @@ afterEach(() => {
 });
 
 describe("the host glyph beside agents and Inbox items", () => {
-  it("the fleet row and the agent's detail name the child's host", () => {
+  it("the agent row names the child's host", () => {
     h.metas.set("a1", agent());
-    const row = render(<AgentRow agent={agent()} now={10} onOpen={() => {}} />);
+    const row = render(<AgentRow agent={agent()} onOpen={() => {}} />);
     expect(glyphOf(row.container)?.getAttribute("title")).toBe("The box");
     expect(glyphOf(row.container)?.getAttribute("data-host-kind")).toBe("server");
-    const detail = render(<AgentDetail agentId="a1" parentCwd="/srv/repo" onClose={() => {}} />);
-    expect(glyphOf(detail.container)?.getAttribute("title")).toBe("The box");
   });
 
   it("the spawn row names the child's host, from the row or from a cross-host id", () => {
@@ -94,7 +88,7 @@ describe("the host glyph beside agents and Inbox items", () => {
     const saved = h.environments;
     h.environments = [saved[0]];
     try {
-      const row = render(<AgentRow agent={agent()} now={10} onOpen={() => {}} />);
+      const row = render(<AgentRow agent={agent()} onOpen={() => {}} />);
       expect(glyphOf(row.container)).toBeNull();
     } finally {
       h.environments = saved;

@@ -11,7 +11,6 @@ import {
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import type { OpenFileFn } from "../../lib/search";
 import { DUR, EASE_OUT, ENTER, SPRING_PANEL } from "../../lib/ease";
-import { GLIDE_MAX_ROWS } from "../../lib/listGlide";
 import { TweenHeight } from "../../motion";
 import { FilePreview } from "../../chrome/FilePreview";
 import { Check, ChevronRight, Circle } from "../../chrome/icons";
@@ -22,7 +21,7 @@ import { resolveModel } from "../../lib/models";
 import type { Block, Session } from "../../lib/session";
 import { useLiveEdits, type LiveEditState } from "../../lib/tcserver/store";
 import { emptyThread, type TodoItem, type TodoStatus, type UsageMark } from "../../lib/tcserver/todos";
-import { isLiveStatus, useAgents } from "../../lib/threads/agents";
+import { useAgents } from "../../lib/threads/agents";
 import { planHeading } from "../../lib/threads/planDoc";
 import {
   ACT_KINDS,
@@ -100,8 +99,6 @@ export function ImplementationView(props: ThreadViewProps) {
   // each morphing open into its detail on click.
   const agents = useAgents(session.id);
   const [openAgentId, setOpenAgentId] = useState<string | null>(null);
-  const anyAgentLive = agents.some((a) => isLiveStatus(a.status));
-  const agentNow = useNow(anyAgentLive);
 
   // Rounds (follow-ups): each user request that opened a new turn is its
   // own board section — its todo list, its work, its timers. Nothing
@@ -291,8 +288,7 @@ export function ImplementationView(props: ThreadViewProps) {
                 <AgentRow
                   key={agent.id}
                   agent={agent}
-                  now={agentNow}
-                  glide={agents.length <= GLIDE_MAX_ROWS}
+                  selected={openAgentId === agent.id}
                   onOpen={() => setOpenAgentId(agent.id)}
                 />
               ))}

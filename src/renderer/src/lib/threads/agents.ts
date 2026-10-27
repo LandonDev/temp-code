@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { contextPercent } from "../contextUsage";
+import { threadStateOf, type ThreadState } from "../../components/ui/status";
 import { findModel } from "../models";
 import type { Block, Session } from "../session";
 import { asHarness, pickerModelId, sessionStore } from "../tcserver/store";
@@ -7,8 +8,8 @@ import { tallyOf } from "../tcserver/todos";
 import type { SessionMeta, SessionStatus } from "../tcserver/types";
 
 /**
- * Fleet selectors: which children a thread has, how they rank, and the one
- * line + stats a row shows for each. Pure functions first, hooks after.
+ * Fleet selectors: which children a thread has, how they rank, the status
+ * a row shows for each and the stats its detail shows. Pure functions first, hooks after.
  */
 
 // ── rank and order ─────────────────────────────────────────────────────
@@ -60,15 +61,23 @@ export function fleetCounts(agents: { status: SessionStatus }[]): FleetCounts {
  *  sidebar's agent counts). */
 export const FLEET_WORDS: Record<keyof FleetCounts, string> = {
   working: "working",
-  waiting: "needs approval",
+  waiting: "needs you",
   failed: "failed",
   done: "done",
 };
 
 export const FLEET_TONES: Partial<Record<keyof FleetCounts, string>> = {
   waiting: "text-warning",
-  failed: "text-danger",
+  failed: "text-destructive",
 };
+
+/** The fleet's counts as one sentence, nonzero parts in order working,
+ *  needs you, failed, done; the renderer joins them with ", ". */
+export function fleetSentence(c: FleetCounts): { text: string; tone?: string }[] {
+  return (["working", "waiting", "failed", "done"] as const)
+    .filter((k) => c[k] > 0)
+    .map((k) => ({ text: `${c[k]} ${FLEET_WORDS[k]}`, tone: FLEET_TONES[k] }));
+}
 
 /** A row's subagents: the count and the live states in the fleet's buckets. */
 export type AgentSummary = { total: number; working: number; waiting: number; failed: number };
@@ -81,7 +90,7 @@ export function agentSummary(agents: readonly { status: SessionStatus }[]): Agen
 }
 
 /** "4 agents", then each nonzero live state in the fleet header's words
- *  and tones: 4 agents · 2 working · 1 needs approval. Done ones are in
+ *  and tones: 4 agents · 2 working · 1 needs you. Done ones are in
  *  the count only. */
 export function agentSummaryParts(s: AgentSummary): { text: string; tone?: string }[] {
   const parts: { text: string; tone?: string }[] = [{ text: `${s.total} ${s.total === 1 ? "agent" : "agents"}` }];
@@ -102,40 +111,6 @@ function firstLine(text: string): string {
   return text.trim().split("\n")[0]?.trim() ?? "";
 }
 
-function toolDetail(input: unknown): string {
-  if (!input || typeof input !== "object") return "";
-  const rec = input as Record<string, unknown>;
-  for (const key of ["command", "file_path", "path", "pattern", "description", "query"]) {
-    const v = rec[key];
-    if (typeof v === "string" && v.trim()) return firstLine(v);
-  }
-  return "";
-}
-
-/** What the agent is doing right now: its latest tool call, else its
- *  latest words, else its latest error. */
-export function activityLine(blocks: Block[]): string {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const b = blocks[i];
-    if (b.role === "tool") {
-      const name = b.tool?.name ?? b.tool?.title ?? "tool";
-      const detail = b.tool?.detail || toolDetail(b.tool?.input);
-      return detail ? `${name} · ${detail}` : name;
-    }
-    if (b.role === "assistant" && b.text.trim()) return firstLine(b.text);
-    if (b.role === "system" && b.id.startsWith("err:") && b.text.trim()) return firstLine(b.text);
-  }
-  return "";
-}
-
-export function lastAssistantLine(blocks: Block[]): string {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const b = blocks[i];
-    if (b.role === "assistant" && b.text.trim()) return firstLine(b.text);
-  }
-  return "";
-}
-
 /** The task the agent was handed: its first user message. */
 export function taskTitle(blocks: Block[]): string {
   const first = blocks.find((b) => b.role === "user" && b.text.trim());
@@ -154,25 +129,74 @@ export type AgentTone = "warning" | "danger" | "muted";
 
 export const TONE_CLASS: Record<AgentTone, string> = {
   warning: "text-warning",
-  danger: "text-danger",
-  muted: "text-content/50",
+  danger: "text-destructive",
+  muted: "text-muted-foreground",
 };
 
-/** The row's one-line status and its colour. */
-export function agentLine(status: SessionStatus | undefined, blocks: Block[]): { text: string; tone: AgentTone } {
-  if (status === "waiting") {
-    const last = [...blocks].reverse().find((b) => b.question || (b.approval && !b.approval.decided));
-    if (last?.question) {
-      const q = last.question.questions[0]?.question ?? "";
-      return { text: q ? `has a question — ${firstLine(q)}` : "has a question", tone: "warning" };
+// ── status ─────────────────────────────────────────────────────────────
+
+/** The prefixes the host writes that the state's word already says:
+ *  "Waiting on 3 subagents" under Watching, "Queued · 120 of 120 running"
+ *  under Queued (sessions.ts `watchLine`, scheduler.ts). */
+const LEADS: Partial<Record<ThreadState, string>> = {
+  watching: "Waiting on ",
+  queued: "Queued · ",
+};
+
+/** The activity with the lead its state's word repeats taken off. */
+export function leadStripped(text: string, state: ThreadState): string {
+  const lead = LEADS[state];
+  const t = text.trim();
+  return lead && t.startsWith(lead) ? t.slice(lead.length).trim() : t;
+}
+
+/** What a waiting agent asks: its open question's first line, else
+ *  "approve <tool>" from the undecided approval. */
+function waitingDetail(blocks: Block[]): string {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (b.question) return firstLine(b.question.questions[0]?.question ?? "");
+    if (b.approval && !b.approval.decided) {
+      const title = b.tool?.title ?? b.tool?.name ?? "";
+      return title ? `approve ${firstLine(title)}` : "";
     }
-    const title = last?.tool?.title ?? last?.tool?.name ?? "";
-    return { text: title ? `waiting for approval — ${title}` : "waiting for approval", tone: "warning" };
   }
-  if (status === "error") return { text: lastErrorLine(blocks) || "failed", tone: "danger" };
-  if (status === "watching") return { text: "waiting on background work", tone: "muted" };
-  if (isLiveStatus(status)) return { text: activityLine(blocks), tone: "muted" };
-  return { text: lastAssistantLine(blocks), tone: "muted" };
+  return "";
+}
+
+export type AgentStatus = {
+  state: ThreadState;
+  /** What the state is about; for a working agent, the host's phrase itself. */
+  detail: string;
+  /** The detail stands in for the word ("Editing HomeView.swift", not "Working"). */
+  phrase: boolean;
+};
+
+/**
+ * A subagent's status in the vocabulary, from its meta: the host's phrase
+ * while it works, the question while it waits, the failure's summary. The
+ * transcript is read only for what the meta does not carry (`blocks`, when
+ * `loadsTranscript` fetched it). A subagent's idle is done.
+ */
+export function agentStatus(
+  meta: Pick<SessionMeta, "status" | "activity" | "failure">,
+  blocks: Block[] = [],
+): AgentStatus {
+  const state = threadStateOf(meta.status, { settled: true });
+  const activity = meta.activity?.trim() ?? "";
+  switch (state) {
+    case "working":
+      return { state, detail: activity || (meta.status === "starting" ? "Starting" : "Thinking"), phrase: true };
+    case "watching":
+    case "queued":
+      return { state, detail: leadStripped(activity, state), phrase: false };
+    case "waiting":
+      return { state, detail: waitingDetail(blocks), phrase: false };
+    case "failed":
+      return { state, detail: meta.failure?.summary.trim() || lastErrorLine(blocks), phrase: false };
+    default:
+      return { state, detail: "", phrase: false };
+  }
 }
 
 // ── stats ──────────────────────────────────────────────────────────────
@@ -229,15 +253,11 @@ export function useAgents(parentId: string): SessionMeta[] {
   });
 }
 
-/** Fleets at or under this size load every row's transcript for its line
- *  and stats; above it only rows still working, waiting or failed do, and
- *  a settled row loads when opened. */
-export const FLEET_EAGER_LOAD = 24;
-
-/** Whether a fleet row fetches its transcript on mount. */
-export function loadsTranscript(agent: Pick<SessionMeta, "status">, fleetSize: number): boolean {
-  if (fleetSize <= FLEET_EAGER_LOAD) return true;
-  return isLiveStatus(agent.status) || agent.status === "waiting" || agent.status === "error";
+/** Whether a fleet row fetches its transcript: only to quote what a waiting
+ *  agent asks, or a failure the meta does not carry. Everything else a row
+ *  shows is on the meta (`activity`, `failure`). */
+export function loadsTranscript(agent: Pick<SessionMeta, "status" | "failure">): boolean {
+  return agent.status === "waiting" || (agent.status === "error" && !agent.failure);
 }
 
 /** One session's folded state, loading its transcript on first use. */

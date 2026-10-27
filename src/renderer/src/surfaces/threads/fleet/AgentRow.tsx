@@ -1,80 +1,76 @@
-import { motion, useReducedMotion } from "motion/react";
-import { ENTER, SPRING_PANEL } from "../../../lib/ease";
-import { HarnessIcon } from "../../../chrome/HarnessIcon";
 import { HostGlyph } from "../../../chrome/HostGlyph";
-import { TONE_CLASS, modelLabel } from "../../../lib/threads/agents";
-import { asHarness } from "../../../lib/tcserver/store";
+import { Item } from "../../../components/ui/item";
+import { StatusMark } from "../../../components/ui/status";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
+import { cn } from "../../../lib/cn";
+import type { AgentStatus } from "../../../lib/threads/agents";
 import type { SessionMeta } from "../../../lib/tcserver/types";
-import { duration } from "../bits";
-import { AgentStatsLine, StatusGlyph } from "./rowBits";
-import { useAgentModel } from "./useFleetModel";
+import { AGENT_GLYPHS } from "../bits";
+import { useAgentStatus } from "./useFleetModel";
 
 /**
- * One subagent as a row: status glyph, title, what it is doing, its edit
- * and task tallies, and on the right its host's glyph (with two or more
- * hosts) and model, elapsed time and cost.
- * The pieces are rowBits.tsx, shared with the master board's rows.
+ * One subagent as one 36px line: its role glyph, the title (at most half
+ * the row), the host glyph (two or more hosts), and at the right edge its
+ * status: the host's phrase while it works ("Editing HomeView.swift"),
+ * otherwise the state's word and what it is about ("Needs you  approve
+ * rm -rf build"). A finished agent says Done alone. The numbers live in
+ * the agent's detail; nothing in the row moves.
  */
-
-/**
- * One subagent's row. `glide` lets the row animate reorders; parents pass
- * it only while the list is at or under GLIDE_MAX_ROWS.
- */
-export function AgentRow({
-  agent,
-  now,
-  glide = false,
-  fleetSize = 1,
+export function AgentRowView({
+  meta,
+  status,
+  selected = false,
   onOpen,
 }: {
-  agent: SessionMeta;
-  now: number;
-  glide?: boolean;
-  /** How many rows the board shows; large fleets load settled rows on open only. */
-  fleetSize?: number;
+  meta: Pick<SessionMeta, "title" | "agentType" | "environmentId">;
+  status: AgentStatus;
+  selected?: boolean;
   onOpen: () => void;
 }) {
-  const reduce = useReducedMotion();
-  const { session, live, idle, line, stats, elapsed } = useAgentModel(agent, now, fleetSize);
-  const cost = session?.thread?.cost;
-
+  const Glyph = AGENT_GLYPHS[meta.agentType];
+  const mark = status.phrase ? (
+    <StatusMark state={status.state} word={status.detail} className="min-w-0" />
+  ) : (
+    <StatusMark state={status.state} detail={status.detail} className="min-w-0" />
+  );
   return (
-    <motion.button
-      type="button"
-      layout={glide && !reduce}
-      transition={{ ...SPRING_PANEL, opacity: ENTER.transition, y: ENTER.transition }}
-      initial={reduce ? false : ENTER.initial}
-      animate={ENTER.animate}
+    <Item
+      size="xs"
+      render={<button type="button" />}
       onClick={onOpen}
-      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-content/5 active:bg-content/10"
+      aria-current={selected || undefined}
+      className={cn(
+        "h-9 flex-nowrap rounded-md px-3 text-left text-[13px] hover:bg-foreground/5",
+        selected && "bg-muted hover:bg-muted",
+      )}
     >
-      <span className="flex size-4 shrink-0 items-center justify-center">
-        <StatusGlyph status={agent.status} />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className={`truncate text-[13px] font-medium ${idle ? "text-content/50" : "text-content"}`}>
-          {agent.title || "Subagent"}
-        </span>
-        {line.text ? (
-          <span className={`truncate text-xs leading-4 ${TONE_CLASS[line.tone]}`}>{line.text}</span>
-        ) : live ? (
-          <span className="text-xs leading-4 text-content/40 italic">starting up</span>
-        ) : null}
-        <AgentStatsLine stats={stats} />
-      </span>
-      <span className="flex shrink-0 flex-col items-end gap-0.5 text-xs tabular-nums text-content/40">
-        <span className="inline-flex items-center gap-1">
-          <HostGlyph environmentId={agent.environmentId} className="mr-0.5" />
-          <HarnessIcon harness={asHarness(agent.provider)} className="size-3.5" />
-          {modelLabel(agent.provider, agent.model)}
-        </span>
-        {(elapsed > 2000 || cost !== undefined) && (
-          <span>
-            {elapsed > 2000 ? duration(elapsed) : null}
-            {cost !== undefined ? `${elapsed > 2000 ? " · " : ""}$${cost.toFixed(2)}` : null}
-          </span>
+      {Glyph ? <Glyph className="size-4 shrink-0 text-muted-foreground" /> : null}
+      <span className="max-w-1/2 shrink-0 truncate font-medium text-foreground">{meta.title || "Subagent"}</span>
+      <HostGlyph environmentId={meta.environmentId} className="shrink-0" />
+      <span className="ml-auto flex min-w-0 justify-end">
+        {status.detail ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="flex min-w-0" />}>{mark}</TooltipTrigger>
+            <TooltipContent className="max-w-sm">{status.detail}</TooltipContent>
+          </Tooltip>
+        ) : (
+          mark
         )}
       </span>
-    </motion.button>
+    </Item>
   );
+}
+
+/** A subagent's row, its status read from the session store. */
+export function AgentRow({
+  agent,
+  onOpen,
+  selected = false,
+}: {
+  agent: SessionMeta;
+  onOpen: () => void;
+  selected?: boolean;
+}) {
+  const status = useAgentStatus(agent);
+  return <AgentRowView meta={agent} status={status} selected={selected} onOpen={onOpen} />;
 }

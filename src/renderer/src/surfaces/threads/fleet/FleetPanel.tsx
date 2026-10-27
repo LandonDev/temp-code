@@ -2,7 +2,6 @@ import { AnimatePresence, LayoutGroup, MotionConfig } from "motion/react";
 import { useId } from "react";
 import type { OpenFileFn } from "../../../lib/search";
 import { fleetCounts, isLiveStatus, useAgents, useMetaById } from "../../../lib/threads/agents";
-import { GLIDE_MAX_ROWS } from "../../../lib/listGlide";
 import { MatrixSpinner, StatusDot } from "../bits";
 import { AgentDetail } from "./AgentDetail";
 import { AgentRow } from "./AgentRow";
@@ -29,7 +28,7 @@ export function FleetList({
 }) {
   const fleet = useFleetModel(sessionId);
   const scope = useId();
-  const { agents, detailId, now } = fleet;
+  const { agents, detailId } = fleet;
 
   return (
     <MotionConfig reducedMotion="user">
@@ -40,9 +39,7 @@ export function FleetList({
             <AgentRow
               key={agent.id}
               agent={agent}
-              now={now}
-              glide={agents.length <= GLIDE_MAX_ROWS}
-              fleetSize={agents.length}
+              selected={detailId === agent.id}
               onOpen={() => fleet.setDetailId(agent.id)}
             />
           ))}

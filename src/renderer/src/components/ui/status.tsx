@@ -181,7 +181,11 @@ export function StatusMark({
       <span key={state} className={cn("flex", LIVE.has(state) && "status-breathe")}>
         <Glyph state={state} />
       </span>
-      {text}
+      {text !== null ? (
+        <span data-slot="status-word" className={detail != null && detail !== "" ? "shrink-0" : "min-w-0 truncate"}>
+          {text}
+        </span>
+      ) : null}
       {detail != null && detail !== "" ? (
         <span data-slot="status-detail" className="min-w-0 truncate font-normal text-muted-foreground tabular-nums">
           {detail}
