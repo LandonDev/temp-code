@@ -12,7 +12,6 @@ import { editorPathsEqual } from "../lib/search";
 import { editorChunk, mediaChunk, releaseNotesChunk, terminalChunk } from "./chunks";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
 import { FileNoteBar } from "./FileNoteBar";
-import { MatrixSpinner } from "./threads/spinners";
 
 // Monaco, shiki, and the LSP client live behind this boundary; the first
 // Monaco tab pulls the chunk in, never app start.
@@ -23,14 +22,6 @@ const MediaGate = mediaChunk.surface("MediaGate", <SurfaceSkeleton kind="frame" 
 const MediaReview = mediaChunk.surface("MediaReview", <SurfaceSkeleton kind="frame" label="Loading file" />);
 const ReleaseNotesSurface = releaseNotesChunk.surface("ReleaseNotesSurface", <SurfaceSkeleton kind="pane" label="Loading release notes" />);
 const TerminalView = terminalChunk.surface("TerminalView", <SurfaceSkeleton kind="terminal" label="Loading terminal" />);
-
-function ChunkSpinner() {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <MatrixSpinner />
-    </div>
-  );
-}
 
 type Props = {
   pane: EditorPane;
@@ -133,7 +124,7 @@ function FilePaneComponent({
                   >
                     {() =>
                       file.editor === "monaco" ? (
-                        <Suspense fallback={<ChunkSpinner />}>
+                        <Suspense fallback={<SurfaceSkeleton kind="pane" label="Loading editor" />}>
                           <MonacoPane
                             path={file.path}
                             cwd={file.cwd}

@@ -7,7 +7,7 @@ import { setFileOpener } from "../../lib/monaco/opener";
 import { toggleBreakpoint } from "../../lib/monaco/breakpoints";
 import type { EditorNavigationTarget, OpenFileFn } from "../../lib/search";
 import { projectForCwd } from "../../lib/tcserver/projects";
-import { MatrixSpinner } from "../threads/spinners";
+import { SurfaceSkeleton } from "../SurfaceSkeleton";
 import { ConflictBar } from "../ConflictBar";
 import { EditorAlert } from "../FileNoteBar";
 import { DiffSurface } from "./DiffSurface";
@@ -260,8 +260,8 @@ export default function MonacoPane(props: Props) {
         />
       ) : null}
       {phase === "loading" ? (
-        <div className="flex flex-1 items-center justify-center">
-          <MatrixSpinner />
+        <div className="flex min-h-0 flex-1">
+          <SurfaceSkeleton kind="pane" label="Loading file" />
         </div>
       ) : null}
       {phase === "unreadable" ? (

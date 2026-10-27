@@ -5,7 +5,7 @@ import type { FileState } from "../../lib/monaco/editorState";
 import { displayPath } from "../../lib/paths";
 import { registry } from "../../lib/connection";
 import { hostOfCwd, projectForCwd } from "../../lib/tcserver/projects";
-import { MatrixSpinner } from "../threads/spinners";
+import { SurfaceSkeleton } from "../SurfaceSkeleton";
 import { ConflictBar } from "../ConflictBar";
 import { trackEditor } from "./keys";
 import { ensureForModel } from "./lsp/idea";
@@ -132,8 +132,8 @@ export function DiffSurface({
         />
       ) : null}
       {phase === "loading" ? (
-        <div className="flex flex-1 items-center justify-center">
-          <MatrixSpinner />
+        <div className="flex min-h-0 flex-1">
+          <SurfaceSkeleton kind="diff" label="Loading file" />
         </div>
       ) : null}
       {phase === "error" ? (

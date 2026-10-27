@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
-import { act, render, renderHook, screen } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TerminalSpinner } from "../chrome/TerminalSpinner";
 import { useNow } from "../lib/duration";
 import { PaneVisibilityContext } from "./paneVisibility";
 
@@ -34,16 +33,6 @@ describe("pane visibility gate", () => {
       vi.advanceTimersByTime(2500);
     });
     expect(result.current).toBe(first);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it("TerminalSpinner holds one frame in a parked pane", () => {
-    render(<TerminalSpinner />, { wrapper: parked });
-    const frame = screen.getByText(/./).textContent;
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
-    expect(screen.getByText(/./).textContent).toBe(frame);
     expect(vi.getTimerCount()).toBe(0);
   });
 });

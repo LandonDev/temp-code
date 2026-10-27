@@ -6,7 +6,8 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { LoaderCircle, X } from "../chrome/icons";
+import { X } from "../chrome/icons";
+import { Spinner } from "../components/ui/spinner";
 import {
   formatRelativeTime,
   githubReviewStateLabel,
@@ -89,10 +90,7 @@ export function InboxComments({
           <span>Latest comments · more on {moreOn}</span>
         ) : null}
         {loading ? (
-          <LoaderCircle
-            className="size-3 motion-safe:animate-spin text-content/40"
-            strokeWidth={1.75}
-          />
+          <Spinner className="size-3 text-content/40" />
         ) : null}
       </div>
       {error ? <p className="text-[12px] text-content/40">{error}</p> : null}
@@ -218,7 +216,7 @@ export function InboxCommentForm({
 function CommentsPending() {
   return (
     <div className="flex items-center gap-2 border-t border-content/10 pt-5 text-[12px] text-content/40">
-      <LoaderCircle className="size-3.5 motion-safe:animate-spin" strokeWidth={1.75} />
+      <Spinner aria-hidden className="size-3.5" />
       Loading comments
     </div>
   );

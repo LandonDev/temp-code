@@ -25,7 +25,6 @@ const ALLOWED: Record<string, { owner: string; count: number }> = {
   "components/ui/spinner.tsx": { owner: "shell", count: 1 },
   "lib/composerHeight.ts": { owner: "A10", count: 2 },
   "surfaces/TranscriptMinimap.tsx": { owner: "A7", count: 1 },
-  "surfaces/threads/spinners.tsx": { owner: "A21", count: 1 },
 };
 
 /** CSS rules allowed literal timings, as "<file> <selector>": the owning area. */
@@ -51,7 +50,6 @@ const KEYFRAMES: Record<string, string> = {
   "mascot-rest": "chrome/ComposerRunner.tsx",
   "mascot-talk": "chrome/ComposerRunner.tsx",
   "popover-open": "chrome/Popover.tsx",
-  "z-matrix": "surfaces/threads/spinners.tsx",
   "z-fade-quick": "surfaces/AgentTranscript.tsx",
   "reveal-flash": "surfaces/monaco/MonacoPane.tsx",
   "bubble-send-in": "surfaces/transcript/UserMessage.tsx",

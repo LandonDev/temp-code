@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MatrixSpinner } from "../threads/spinners";
+import { SurfaceSkeleton } from "../SurfaceSkeleton";
 import { registerProviders } from "./lsp/providers";
 import { openFile, type OpenedFile } from "./models";
 import { EDITOR_OPTIONS, editorFontFamily, followEditorFont, monaco, tabSizeForPath } from "./monaco";
@@ -98,8 +98,8 @@ export default function InlineEditor({
     <div className="relative h-80">
       <div ref={host} className="absolute inset-0" />
       {phase === "loading" ? (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <MatrixSpinner />
+        <div className="absolute inset-0">
+          <SurfaceSkeleton kind="pane" label="Loading file" />
         </div>
       ) : phase === "error" ? (
         <div className="absolute inset-0 flex items-center justify-center text-xs text-content/50">

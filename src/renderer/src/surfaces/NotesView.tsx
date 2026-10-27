@@ -1,5 +1,6 @@
 import { Plus, Search, File, Trash2 } from "../chrome/icons";
-import { MatrixSpinner } from "./threads/spinners";
+import { Spinner } from "../components/ui/spinner";
+import { SurfaceSkeleton } from "./SurfaceSkeleton";
 import { ConfirmDialog } from "../chrome/ConfirmDialog";
 import {
   Fragment,
@@ -235,7 +236,7 @@ export function NotesView({
           className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
         >
           {creating ? (
-            <MatrixSpinner cell={1.5} />
+            <Spinner className="size-3.5" />
           ) : (
             <Plus className="size-3.5" strokeWidth={1.75} />
           )}
@@ -248,9 +249,7 @@ export function NotesView({
         {error && notes.length === 0 ? (
           <p className="px-3 py-2 text-[12px] text-danger">{error}</p>
         ) : loading && notes.length === 0 ? (
-          <div className="flex justify-center py-10">
-            <MatrixSpinner />
-          </div>
+          <SurfaceSkeleton kind="rows" count={6} label="Loading notes" />
         ) : visible.length === 0 ? (
           <p className="px-3 py-2 text-[12px] text-content/50">
             {query.trim()

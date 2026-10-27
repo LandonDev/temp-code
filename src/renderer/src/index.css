@@ -673,24 +673,6 @@ header[data-tauri-drag-region] button {
   }
 }
 
-/* z-matrix: surfaces/threads/spinners.tsx's 3×3 matrix spinner, a diagonal
-   wave (A21 replaces it with Spinner and deletes this). */
-@keyframes z-matrix {
-  0%,
-  100% {
-    opacity: 0.15;
-  }
-  40% {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .z-matrix-cell {
-    animation: none;
-  }
-}
-
 /* z-fade-quick: the transcript's row fade (.z-fade-in, AgentTranscript.tsx)
    and the minimap's hover card (.z-fade-quick, TranscriptMinimap.tsx), one
    150ms fade on first appearance, opacity only (A7). */
