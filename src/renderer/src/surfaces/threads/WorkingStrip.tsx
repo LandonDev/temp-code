@@ -1,62 +1,32 @@
-import { memo, useMemo, useState, type ReactNode } from "react";
-import { isStaleWatch, watchPhrase } from "@server/shared/watch";
+import { memo, useState, type ReactNode } from "react";
+import { isStaleWatch } from "@server/shared/watch";
 import { Button } from "@renderer/components/ui/button";
-import { StatusMark } from "@renderer/components/ui/status";
 import { cn } from "@renderer/lib/cn";
 import { usePaneVisible } from "../../hooks/paneVisibility";
-import { Pause, Square } from "../../chrome/icons";
-import type { Session } from "../../lib/session";
+import { ThreadStatusMark } from "../../chrome/TabIndicator";
 import { stopAll } from "../../lib/activity";
+import { pendingApprovalForSession } from "../../lib/approvalToast";
+import type { ApprovalDecision } from "../../lib/harness";
+import type { Session } from "../../lib/session";
+import { hasPendingQuestion, threadStatus } from "../../lib/threadStripModel";
 import { useClock, useSlowClock } from "../../lib/turnClock";
-import { MatrixSpinner, duration } from "./bits";
+import { duration } from "./bits";
 
 /**
- * The working indicator, in a permanently reserved 28px strip above the
- * composer — the composer never shifts when work starts or stops.
- * `Sending…` bridges send → turn-start; then the matrix spinner, a
- * rotating flavour word, and elapsed `1m 32s`. A paused run fills the
- * slot with one warning-tinted row at composer width: the glyph, Paused,
- * the frozen elapsed, and Stop / Continue on the right. A stopped run (the
- * harness behind the turn is gone: the host restarted without resuming it,
- * or the process died) fills it the same way in neutral: a square, Stopped,
- * why, the frozen elapsed, and Resume. A queued thread (created, not
- * booted: over the host's cap or waiting for a sibling) reads its reason
- * from the row's activity line and offers one quiet Start now. A watching
- * thread (its turn ended, background work is live) says what it watches,
- * "Watching  3 subagents, a monitor", with the stretch's age at the end;
- * past 30 minutes the age turns amber and Stop all appears. The line opens
- * the Activity section. Only opacity animates in and out (120ms); the slot
- * never changes height.
+ * The thread's status above the composer, in a permanently reserved 28px
+ * slot: the composer never shifts when work starts or stops. Every state is
+ * one row with no box or wash: the status mark (its word, what it is about,
+ * the round's tally), a time where the state has one, and the actions at
+ * the end. Working says what it does and the stretch's elapsed time; a
+ * pending approval reads "Needs you  approve Bash" with Deny and Allow (the
+ * transcript's card keeps its own); a question says so and leaves the choice
+ * to its card; paused keeps its frozen time with Stop and Continue; stopped
+ * (the harness behind the turn is gone) offers Resume; queued gives the
+ * host's reason and Start now; watching says what it watches with the
+ * stretch's age, amber with Stop all past 30 minutes, and opens the Activity
+ * section. Failed, done and idle leave the slot empty. Only opacity animates
+ * in and out (120ms).
  */
-
-const FLAVOUR_WORDS = [
-  "Thinking",
-  "Pondering",
-  "Scheming",
-  "Brewing",
-  "Weaving",
-  "Tinkering",
-  "Musing",
-  "Composing",
-  "Sifting",
-  "Untangling",
-  "Distilling",
-  "Sketching",
-  "Plotting",
-  "Riffing",
-  "Combobulating",
-  "Percolating",
-  "Marinating",
-  "Noodling",
-  "Puzzling",
-  "Conjuring",
-] as const;
-
-const seedOf = (s: string): number => {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
-};
 
 /** When the current working stretch began: server-stamped, else the last user turn. */
 export function turnStartOf(session: Session): number | undefined {
@@ -73,6 +43,7 @@ export const WorkingStrip = memo(function WorkingStrip({
   onStop,
   onResume,
   onStart,
+  onApproval,
   onOpenActivity,
 }: {
   session: Session;
@@ -80,36 +51,41 @@ export const WorkingStrip = memo(function WorkingStrip({
   onResume: () => Promise<void> | void;
   /** Start a queued thread now (session.start); absent, the strip only says Queued. */
   onStart?: () => Promise<void> | void;
+  /** Allow or Deny the pending approval; absent, the strip only says what it waits on. */
+  onApproval?: (requestId: string | number, decision: ApprovalDecision) => void;
   /** A watching line's click: the right panel's Activity section. */
   onOpenActivity?: () => void;
 }) {
-  const status = session.status ?? (session.busy ? "running" : "idle");
-  const running = status === "running" || (status !== "starting" && status !== "paused" && !!session.busy);
-  const starting = status === "starting";
-  const paused = status === "paused";
-  const stopped = status === "stopped";
-  // Created, not booted (CLAUDE.md "Master threads"): one quiet word, no clock.
-  const queued = status === "queued";
-  const watching = status === "watching";
-  const active = running || starting;
-  const visible = active || paused || stopped || queued || watching;
-  const turnStart = turnStartOf(session);
+  const raw = session.status ?? (session.busy ? "running" : "idle");
+  // A busy session whose row has not caught up still works.
+  const status = session.busy && (raw === "idle" || raw === "done") ? "running" : raw;
+  const approval = status === "waiting" ? pendingApprovalForSession(session) : null;
+  const shownStatus = threadStatus({
+    status,
+    activity: session.activity,
+    tasks: session.tasks,
+    waitingOn: approval?.label ?? null,
+    asking: status === "waiting" && hasPendingQuestion(session.blocks),
+    background: session.background,
+  });
+  const { state } = shownStatus;
+  const active = state === "working";
+  const frozen = state === "paused" || state === "stopped";
+  const visible = active || frozen || state === "waiting" || state === "queued" || state === "watching";
 
   const shown = usePaneVisible();
-  // The shared second hand, only while the strip is live and on screen; a
+  // The shared second hand, only while the strip works and is on screen; a
   // parked pane reads 0 and catches up on its first visible tick.
   const now = useClock(active && shown);
   // The watching age moves by minutes: the half-minute clock, only while watching.
-  const slowNow = useSlowClock(watching && shown);
-  const elapsed = paused || stopped
+  const slowNow = useSlowClock(state === "watching" && shown);
+  const turnStart = turnStartOf(session);
+  const elapsed = frozen
     ? Math.max(0, session.frozenActiveElapsed ?? 0)
-    : active
+    : active && now > 0
       ? Math.max(0, now - (turnStart ?? now))
       : 0;
 
-  const seed = useMemo(() => seedOf(session.id), [session.id]);
-  // The word turns every seven seconds on the same clock as the elapsed label.
-  const word = FLAVOUR_WORDS[(seed + Math.floor(now / 7000)) % FLAVOUR_WORDS.length];
   const [resumeBusy, setResumeBusy] = useState(false);
   const resume = (): void => {
     if (resumeBusy) return;
@@ -129,115 +105,121 @@ export const WorkingStrip = memo(function WorkingStrip({
     stopAll(session.id).finally(() => setStopBusy(false));
   };
   const watchSince = session.background?.watchingSince ?? null;
-  const stale = watching && slowNow > 0 && isStaleWatch({ status, background: session.background }, slowNow);
-  // "Queued · waiting for X": the host's line for the row.
-  const queuedLine = queued && session.activity?.startsWith("Queued") ? session.activity : "Queued";
+  const stale = state === "watching" && slowNow > 0 && isStaleWatch({ status, background: session.background }, slowNow);
 
-  return (
-    <div className="mx-auto h-7 w-full max-w-4xl shrink-0">
-      <div
-        className={`flex h-full items-center gap-2 transition-opacity duration-[120ms] ease-[var(--ease-out)] ${
-          visible ? "opacity-100" : "opacity-0"
-        } ${
-          paused
-            ? "rounded-lg border border-warning/20 bg-warning/10 px-3"
-            : stopped
-              ? "rounded-lg border border-content/10 bg-content/5 px-3"
-              : "px-4 text-xs text-content/50"
-        }`}
-        aria-live="polite"
-      >
-        {stopped ? (
+  const time = (ms: number, className?: string) => (
+    <span className={cn("shrink-0 tabular-nums text-muted-foreground", className)}>{duration(ms)}</span>
+  );
+  const row = ((): ReactNode => {
+    if (!visible) return null;
+    const mark = <ThreadStatusMark status={shownStatus} />;
+    switch (state) {
+      case "working":
+        return (
           <>
-            <Square className="size-3 shrink-0 fill-current text-content/50" strokeWidth={1.75} />
-            <span className="text-[12px] font-medium text-content">
-              Stopped
-              <span className="font-normal text-content/50"> · the harness is gone</span>
-            </span>
-            {elapsed > 0 ? (
-              <span className="text-[11px] tabular-nums text-content/50">{duration(elapsed)}</span>
-            ) : null}
-            <button
-              type="button"
-              onClick={resume}
-              disabled={resumeBusy}
-              className="pressable ml-auto h-6 rounded-md bg-content px-2.5 text-[11px] font-medium text-background-base disabled:cursor-default disabled:opacity-60"
-            >
-              {resumeBusy ? "Resuming…" : "Resume"}
-            </button>
+            {mark}
+            {elapsed >= 1000 ? time(elapsed) : null}
           </>
-        ) : paused ? (
+        );
+      case "waiting":
+        return (
           <>
-            <Pause className="size-3.5 shrink-0 text-warning" strokeWidth={1.75} />
-            <span className="text-[12px] font-medium text-content">Paused</span>
-            <span className="text-[11px] tabular-nums text-content/50">{duration(elapsed)}</span>
-            <button
-              type="button"
-              onClick={onStop}
-              className="pressable ml-auto h-6 rounded-md px-2 text-[11px] text-content/60 hover:bg-content/8 hover:text-danger"
-            >
-              Stop
-            </button>
-            <button
-              type="button"
-              onClick={resume}
-              disabled={resumeBusy}
-              className="pressable h-6 rounded-md bg-warning px-2.5 text-[11px] font-medium text-background-base disabled:cursor-default disabled:opacity-60"
-            >
-              {resumeBusy ? "Continuing…" : "Continue"}
-            </button>
-          </>
-        ) : watching ? (
-          <>
-            <WatchLine onOpen={onOpenActivity}>
-              <StatusMark state="watching" className="font-normal" />
-              <span className="ml-2 min-w-0 truncate">{watchPhrase(session.background)}</span>
-            </WatchLine>
-            {watchSince && slowNow > 0 ? (
-              <span className={cn("ml-auto shrink-0 tabular-nums", stale ? "text-warning" : "text-muted-foreground")}>
-                {duration(Math.max(0, slowNow - watchSince))}
-              </span>
+            {mark}
+            {approval && onApproval ? (
+              <Actions>
+                <Button variant="ghost" size="xs" onClick={() => onApproval(approval.requestId, "deny")}>
+                  Deny
+                </Button>
+                <Button variant="secondary" size="xs" onClick={() => onApproval(approval.requestId, "allow")}>
+                  Allow
+                </Button>
+              </Actions>
             ) : null}
+          </>
+        );
+      case "paused":
+        return (
+          <>
+            {mark}
+            {time(elapsed)}
+            <Actions>
+              <Button variant="ghost" size="xs" onClick={onStop}>
+                Stop
+              </Button>
+              <Button variant="secondary" size="xs" onClick={resume} disabled={resumeBusy}>
+                {resumeBusy ? "Continuing…" : "Continue"}
+              </Button>
+            </Actions>
+          </>
+        );
+      case "stopped":
+        return (
+          <>
+            {mark}
+            {elapsed > 0 ? time(elapsed) : null}
+            <Actions>
+              <Button variant="secondary" size="xs" onClick={resume} disabled={resumeBusy}>
+                {resumeBusy ? "Resuming…" : "Resume"}
+              </Button>
+            </Actions>
+          </>
+        );
+      case "queued":
+        return (
+          <>
+            {mark}
+            {onStart ? (
+              <Actions>
+                <Button variant="ghost" size="xs" onClick={start} disabled={startBusy}>
+                  {startBusy ? "Starting…" : "Start now"}
+                </Button>
+              </Actions>
+            ) : null}
+          </>
+        );
+      case "watching":
+        return (
+          <>
+            <WatchLine onOpen={onOpenActivity}>{mark}</WatchLine>
+            {watchSince && slowNow > 0 ? time(Math.max(0, slowNow - watchSince), cn("ml-auto", stale && "text-warning")) : null}
             {stale ? (
               <Button variant="ghost" size="xs" className="shrink-0" onClick={stopEverything} disabled={stopBusy}>
                 {stopBusy ? "Stopping…" : "Stop all"}
               </Button>
             ) : null}
           </>
-        ) : starting ? (
-          <span>Sending…</span>
-        ) : queued ? (
-          <>
-            <span className="min-w-0 truncate">{queuedLine}</span>
-            {onStart ? (
-              <button
-                type="button"
-                onClick={start}
-                disabled={startBusy}
-                className="pressable ml-auto h-6 shrink-0 rounded-md px-2 text-[11px] text-content/60 hover:bg-content/8 hover:text-content disabled:cursor-default disabled:opacity-60"
-              >
-                {startBusy ? "Starting…" : "Start now"}
-              </button>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <MatrixSpinner tint={session.activityKind} />
-            <span>{word}</span>
-            <span className="tabular-nums text-content/40">{duration(elapsed)}</span>
-          </>
+        );
+      default:
+        return null;
+    }
+  })();
+
+  return (
+    <div className="mx-auto h-7 w-full max-w-4xl shrink-0">
+      <div
+        className={cn(
+          "flex h-full items-center gap-2 px-4 text-xs transition-opacity duration-(--dur-fast) ease-(--ease-out)",
+          visible ? "opacity-100" : "opacity-0",
         )}
+        aria-live="polite"
+      >
+        {row}
       </div>
     </div>
   );
 });
 
+/** The row's actions, at its end. */
+function Actions({ children }: { children: ReactNode }) {
+  return <span className="ml-auto flex shrink-0 items-center gap-1">{children}</span>;
+}
+
 /** The watching line: a button onto the Activity section when there is one to open. */
 function WatchLine({ onOpen, children }: { onOpen?: () => void; children: ReactNode }) {
-  const row = "flex min-w-0 items-center text-xs text-muted-foreground";
+  const row = "flex min-w-0 items-center";
   if (!onOpen) return <span className={row}>{children}</span>;
   return (
-    <Button variant="ghost" size="xs" onClick={onOpen} className={cn(row, "-ml-2 shrink justify-start font-normal")}>
+    <Button variant="ghost" size="xs" onClick={onOpen} className={cn(row, "-ml-2 shrink justify-start")}>
       {children}
     </Button>
   );

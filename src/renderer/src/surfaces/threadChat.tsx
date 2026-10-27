@@ -405,6 +405,7 @@ export function useThreadChat({
           onStop={() => onStop(sessionId)}
           onResume={resume}
           onStart={() => serverCommands.startNow(sessionId).catch(() => undefined)}
+          onApproval={approve}
           onOpenActivity={() => rightPanel.open(sessionId, "activity")}
         />
       ) : null,
