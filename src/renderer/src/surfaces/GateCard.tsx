@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { GateNotice } from "@server/shared/gate";
-import { failedGateStep, typecheckErrorCount } from "@server/shared/gate";
+import { gateReason, typecheckErrorCount } from "@server/shared/gate";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { StatusMark } from "../components/ui/status";
 import type { Block } from "../lib/session";
@@ -52,15 +52,15 @@ function leadOf(gate: GateNotice): string {
   return `${STEP[gate.step]} ${gate.ok ? "passed" : "failed"}`;
 }
 
-/** ["feature", "3 errors"], ["master", "at vitest"], ["master", "release-277"] */
+/** ["feature", "3 errors"], ["master", "at vitest"], ["master", "error: Module not found"], ["master", "release-277"] */
 export function detailOf(gate: GateNotice): string[] {
   const parts = [gate.branch];
   if (!gate.ok && gate.step === "typecheck") {
     const n = typecheckErrorCount(gate.log);
     if (n) parts.push(`${n} ${n === 1 ? "error" : "errors"}`);
-  } else if (!gate.ok && gate.step === "gate") {
-    const step = failedGateStep(gate.log);
-    if (step) parts.push(`at ${step}`);
+  } else if (!gate.ok) {
+    const reason = gateReason(gate.log);
+    if (reason) parts.push(reason);
   } else if (gate.ok && gate.step === "release") {
     const tag = /tag (release-\d+)/.exec(gate.log)?.[1];
     if (tag) parts.push(tag);

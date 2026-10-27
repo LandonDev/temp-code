@@ -37,4 +37,14 @@ describe("GateCard", () => {
     const tagged = render(<GateCard block={block({ step: "release", branch: "master", ok: true, log: "released v277 (tag release-277, package.json 1.0.277)", at: 1 })} />);
     expect(parts(tagged.container)).toEqual(["Release passed", "master", "release-277"]);
   });
+
+  it("a gate that never ran names its log's last line, as does a red release", () => {
+    const missing = render(
+      <GateCard block={block({ step: "gate", branch: "master", ok: false, log: '$ bun scripts/gate.ts\nerror: Module not found "scripts/gate.ts"', at: 1 })} />,
+    );
+    expect(parts(missing.container).slice(0, 3)).toEqual(["Gate failed", "master", 'error: Module not found "scripts/gate.ts"']);
+    missing.unmount();
+    const release = render(<GateCard block={block({ step: "release", branch: "master", ok: false, log: "tree is dirty", at: 1 })} />);
+    expect(parts(release.container).slice(0, 3)).toEqual(["Release failed", "master", "tree is dirty"]);
+  });
 });

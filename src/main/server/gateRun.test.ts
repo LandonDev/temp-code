@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { failedGateStep, gateLine, typecheckErrorCount } from '@shared/gate'
+import { failedGateStep, gateLine, gateReason, typecheckErrorCount } from '@shared/gate'
 import { gateCommand, gateEnv, nodeBinary, parseGateStub, runGateStep, tailOf } from './gateRun'
 
 describe('gateRun', () => {
@@ -69,6 +69,12 @@ describe('gate lines', () => {
     expect(typecheckErrorCount('clean')).toBe(0)
     expect(failedGateStep('✓ typecheck 2s passed\n✗ vitest 40s failed')).toBe('vitest')
     expect(failedGateStep('✓ typecheck 2s')).toBeNull()
+  })
+  it('says why a gate failed: the step, else the last line of the log', () => {
+    expect(gateReason('✓ typecheck 2s passed\n✗ vitest 40s failed\n')).toBe('at vitest')
+    expect(gateReason('$ bun scripts/gate.ts\nerror: Module not found "scripts/gate.ts"\n\n')).toBe('error: Module not found "scripts/gate.ts"')
+    expect(gateReason('\x1b[31m  fatal: not a git repository  \x1b[0m')).toBe('fatal: not a git repository')
+    expect(gateReason('  \n')).toBeNull()
   })
   it('reads as one line', () => {
     expect(gateLine({ step: 'typecheck', branch: 'b', ok: false, log: 'Found 3 errors.', at: 1 })).toBe('Typecheck failed on b · 3 errors')
