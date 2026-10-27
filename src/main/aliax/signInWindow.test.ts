@@ -37,7 +37,8 @@ vi.mock('electron', () => ({
   }
 }))
 
-import { failureLine, FIRST_PAINT_TIMEOUT_MS, NO_ANSWER, openSignInWindow, placeOver, UNREACHABLE } from './signInWindow'
+import { failureLine, FIRST_PAINT_TIMEOUT_MS, openSignInWindow, placeOver } from './signInWindow'
+import { NO_ANSWER, UNREACHABLE } from './signInWords'
 
 /** Settles to the line, or 'pending' when nothing has settled yet. */
 async function state(failed: Promise<string>): Promise<string> {

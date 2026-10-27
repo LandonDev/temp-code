@@ -1,5 +1,6 @@
 import { net, shell } from 'electron'
 import { cancelClaudeWebLogin, claudeWebLogin } from './claude-web-login'
+import { exchangeRefused, NO_ACCOUNT } from './signInWords'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { promisify } from 'node:util'
@@ -30,7 +31,7 @@ function pkce(): { verifier: string; challenge: string } {
  * Returns null when the user closes the window or presses Cancel; throws the
  * line the sign-in dialog shows when claude.ai never loaded.
  */
-export async function claudeSignIn(loginHint?: string): Promise<Captured | null> {
+export async function claudeSignIn(loginHint?: string): Promise<(Captured & { hasSession: boolean }) | null> {
   const result = await claudeWebLogin(loginHint)
   if (result.kind === 'closed') return null
   if (result.kind === 'failed') throw new Error(result.line)
@@ -47,7 +48,7 @@ export async function claudeSignIn(loginHint?: string): Promise<Captured | null>
       code_verifier: result.verifier
     })
   })
-  if (!res.ok) throw new Error(`sign-in failed (${res.status})`)
+  if (!res.ok) throw new Error(exchangeRefused(res.status))
 
   const data = (await res.json()) as {
     access_token: string
@@ -58,7 +59,7 @@ export async function claudeSignIn(loginHint?: string): Promise<Captured | null>
     organization?: { uuid?: string; name?: string }
   }
   const accountId = data.account?.uuid
-  if (!accountId) throw new Error('no account in token response')
+  if (!accountId) throw new Error(NO_ACCOUNT)
 
   const keychain = JSON.stringify({
     claudeAiOauth: {
@@ -78,7 +79,7 @@ export async function claudeSignIn(loginHint?: string): Promise<Captured | null>
   return {
     accountId,
     email: data.account?.email_address,
-    note: hasApp ? 'CLI and app both linked' : 'app half missing. Sign in again through Aliax',
+    hasSession: hasApp,
     blob: JSON.stringify({ keychain, oauthAccount, appSession: hasApp ? result.cookies : null })
   }
 }

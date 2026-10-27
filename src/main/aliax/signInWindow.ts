@@ -1,4 +1,5 @@
 import { BrowserWindow, screen, type Rectangle, type WebPreferences } from 'electron'
+import { NO_ANSWER, UNREACHABLE } from './signInWords'
 
 /**
  * The "Sign in to Claude" window, one factory for adding an account and for
@@ -19,8 +20,6 @@ export const SIGN_IN_WINDOW = {
 /** A dead network, not a slow sign-in: the count stops at the first paint. */
 export const FIRST_PAINT_TIMEOUT_MS = 30_000
 
-export const UNREACHABLE = "Couldn't reach claude.ai"
-export const NO_ANSWER = "claude.ai didn't answer"
 
 /** Chromium's ERR_ABORTED: a navigation replaced by the next hop. */
 const ERR_ABORTED = -3

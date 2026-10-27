@@ -6,6 +6,7 @@ import { accounts, adapter, vault, type ActionResult, type ServiceId } from 'ali
 import { appSessionEmail } from 'aliax-core/adapters/claude'
 import * as login from './aliax/login'
 import { mintInWindow } from './aliax/staticMint'
+import { CANCELLED, cliRepairNote, signInNotes } from './aliax/signInWords'
 import { StaticTokens } from './aliax/staticTokens'
 import type { AccountSync } from './server/remote/accountSync'
 import { indexAll, indexProgress } from './aliax/stats/indexer'
@@ -78,7 +79,7 @@ async function loginStart(serviceId: ServiceId, loginHint?: string): Promise<Act
       // CLI tokens. Both halves, no code to paste. A hint pre-fills the address
       // when an expired account signs itself back in.
       const captured = await login.claudeSignIn(loginHint)
-      if (!captured) return { ok: false, error: 'sign-in cancelled' }
+      if (!captured) return { ok: false, error: CANCELLED }
       const already = vault.profiles(serviceId).find((p) => p.accountId === captured.accountId)
       // A full sign-in always carries credentials, so this never skips.
       const name = accounts.saveCaptured(serviceId, captured) ?? undefined
@@ -87,10 +88,7 @@ async function loginStart(serviceId: ServiceId, loginHint?: string): Promise<Act
       // cache clear strips it.
       const wasExpired = name ? accounts.reportedExpired(serviceId, name) : false
       accounts.clearUsageCache(serviceId, name)
-      const notes = [
-        captured.note ?? '',
-        already ? 'this account was already saved, so it was refreshed' : ''
-      ].filter(Boolean)
+      const notes = signInNotes({ hasSession: captured.hasSession, alreadySaved: !!already })
       // Re-signing the account the CLI is already on, while its sign-in is dead
       // (token past expiry, or revoked early per the last poll): install the
       // fresh credentials too. The account does not change, so this is a
@@ -107,11 +105,7 @@ async function loginStart(serviceId: ServiceId, loginHint?: string): Promise<Act
         (wasExpired || (await a.liveCredentialExpired?.().catch(() => false)))
       ) {
         const repaired = await accounts.activate(serviceId, name)
-        notes.push(
-          repaired.ok
-            ? 'CLI sign-in repaired'
-            : `saved, but the CLI still holds a dead sign-in (${repaired.error})`
-        )
+        notes.push(cliRepairNote(repaired))
       }
       return { ok: true, name, notes }
     }
