@@ -404,6 +404,12 @@ nothing under it repeats them.
   that failed), is one `Alert` above everything (surfaces/FileNoteBar.tsx):
   info for a read-only preview, error for a launcher that fell back or an
   action that failed, "Read-only" after the text, the one action at the end.
+- **The conflict bar** (surfaces/ConflictBar.tsx, the note's shape through
+  `EditorAlert`) sits under the note and above the header, in both editors.
+  A disk change under unsaved edits merges in when it touches other lines
+  (lib/diskRace.ts); when it touches the lines being edited nothing is
+  written and the bar asks: "Changed on disk where you were editing" with
+  Reload and Keep mine (⌘S), or "Deleted on disk" with Restore.
 - **The header** (surfaces/FileHeader.tsx) is one 32px row on every file
   tab: the folder in mono, cut from the left; on a review tab `+n −n`;
   then "Saving…" or "Save failed" while that is so, Preview and Source on a
