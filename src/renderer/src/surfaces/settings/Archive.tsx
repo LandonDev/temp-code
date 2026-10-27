@@ -1,4 +1,4 @@
-import { Search } from "../../chrome/icons";
+import { MoreHorizontal } from "../../chrome/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { RemoveProjectDialog } from "../../chrome/RemoveProjectDialog";
@@ -15,24 +15,24 @@ import { loadTabGroupLabels, resolveTabGroupLabel } from "../../lib/tabGroups";
 import { useSessionMetas } from "../../lib/tcserver/store";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import type { SessionMeta } from "@shared/events";
+import { useWorkspaces, workspaceLabelKey } from "../../lib/tcserver/workspaces";
+import { PageRow, PageSection } from "../../components/page";
+import { SettingSwitch } from "../../components/setting-switch";
+import { Button } from "../../components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "../../components/ui/dialog";
-import { useWorkspaces, workspaceLabelKey } from "../../lib/tcserver/workspaces";
-import {
-  Heading,
-  Row,
-  SecondaryButton,
-  Toggle,
-} from "../settingsBits";
-import { DANGER } from "../../chrome/ConfirmDialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
+import { Input } from "../../components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 
 function useArchivedProjects(): ArchivedProject[] {
   const [items, setItems] = useState(loadArchivedProjects);
@@ -124,121 +124,86 @@ export function ArchivePage({
 
   return (
     <>
-      <Heading title="Archived projects" first />
-      {archivedProjects.length === 0 ? (
-        <p className="py-3 text-[12px] text-content/40">
-          Archive a project from the rail to keep its chats out of the sidebar.
-        </p>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-content/10">
-          {archivedProjects.map((project) => (
-            <div
+      <PageSection title="Archived projects">
+        {archivedProjects.length === 0 ? (
+          <Empty className="py-8">
+            <EmptyHeader>
+              <EmptyTitle>No archived projects</EmptyTitle>
+              <EmptyDescription>Archive a project from the rail to keep it out of the sidebar.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          archivedProjects.map((project) => (
+            <PageRow
               key={project.path}
-              className="flex items-center gap-3 border-b border-content/5 px-3 py-2 last:border-b-0"
+              title={archivedProjectLabel(project.path)}
+              description={<span className="font-mono">{prettyCwd(project.path)}</span>}
             >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px]">
-                  {archivedProjectLabel(project.path)}
-                </div>
-                <div className="truncate text-[11px] text-content/40">
-                  {prettyCwd(project.path)}
-                </div>
-              </div>
               {onRestoreProject ? (
-                <SecondaryButton onClick={() => onRestoreProject(project.path)}>
+                <Button variant="secondary" size="sm" onClick={() => onRestoreProject(project.path)}>
                   Restore
-                </SecondaryButton>
+                </Button>
               ) : null}
               {onDeleteProject ? (
-                <button type="button" onClick={() => setDeleting(project)} className={DANGER}>
-                  Delete
-                </button>
+                <RowMenu label="Project actions" onDelete={() => setDeleting(project)} />
               ) : null}
-            </div>
-          ))}
-        </div>
-      )}
+            </PageRow>
+          ))
+        )}
+      </PageSection>
 
-      <Row
-        label="Show archived in the sidebar"
-        description="Keep archived conversations listed alongside the active ones."
-      >
-        <Toggle
-          label="Show archived in the sidebar"
-          on={filters.showArchived}
-          onChange={onShowArchived}
-        />
-      </Row>
-
-      <Heading title="Archived threads" />
-
-      {archived.length === 0 ? (
-        <p className="py-3 text-[12px] text-content/40">
-          Nothing archived. Right-click a tab to archive it.
-        </p>
-      ) : (
-        <>
-          <label className="mb-3 flex h-7 items-center gap-2 rounded-lg border border-content/10 bg-content/5 px-2 text-[12px] text-content/40 focus-within:border-content/20">
-            <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
-            <input
+      <PageSection title="Archived threads">
+        <PageRow title="Show archived in the sidebar">
+          <SettingSwitch label="Show archived in the sidebar" on={filters.showArchived} onChange={onShowArchived} />
+        </PageRow>
+        {archived.length === 0 ? (
+          <Empty className="py-8">
+            <EmptyHeader>
+              <EmptyTitle>Nothing archived</EmptyTitle>
+              <EmptyDescription>Right-click a tab to archive it.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <>
+            <Input
               type="search"
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value);
                 setLimit(ARCHIVE_PAGE);
               }}
-              placeholder="Search…"
+              placeholder="Search archived threads"
               aria-label="Search archived threads"
-              className="min-w-0 flex-1 bg-transparent text-content outline-none placeholder:text-content/40"
+              className="mt-3 mb-1"
             />
-          </label>
-          {shown.length === 0 ? (
-            <p className="py-3 text-[12px] text-content/40">
-              No archived thread matches.
-            </p>
-          ) : (
-            <div className="overflow-hidden rounded-lg border border-content/10">
-              {shown.slice(0, limit).map((meta) => (
-                <div
+            {shown.length === 0 ? (
+              <p className="py-3 text-[12px] text-muted-foreground">No archived thread matches</p>
+            ) : (
+              shown.slice(0, limit).map((meta) => (
+                <PageRow
                   key={meta.id}
-                  className="flex items-center gap-3 border-b border-content/5 px-3 py-2 last:border-b-0"
+                  media={<HarnessIcon harness={meta.provider} className="size-4 shrink-0" />}
+                  title={sessionDisplayTitle(meta.title, meta.provider)}
+                  description={nameOf(meta) || undefined}
                 >
-                  <HarnessIcon
-                    harness={meta.provider}
-                    className="size-3.5 shrink-0"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px]">
-                      {sessionDisplayTitle(meta.title, meta.provider)}
-                    </span>
-                    {nameOf(meta) ? (
-                      <span className="block truncate text-[11px] text-content/40">
-                        {nameOf(meta)}
-                      </span>
-                    ) : null}
-                  </div>
-                  <span className="shrink-0 text-[11px] text-content/40 tabular-nums">
-                    {formatDate(meta.updatedAt)}
-                  </span>
-                  <SecondaryButton onClick={() => restore(meta)}>
+                  <span className="text-[12px] text-muted-foreground tabular-nums">{formatDate(meta.updatedAt)}</span>
+                  <Button variant="secondary" size="sm" onClick={() => restore(meta)}>
                     Restore
-                  </SecondaryButton>
-                  <button type="button" onClick={() => setDeletingThread(meta)} className={DANGER}>
-                    Delete
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          {shown.length > limit ? (
-            <div className="mt-3">
-              <SecondaryButton onClick={() => setLimit((n) => n + ARCHIVE_PAGE)}>
-                Show more
-              </SecondaryButton>
-            </div>
-          ) : null}
-        </>
-      )}
+                  </Button>
+                  <RowMenu label="Thread actions" onDelete={() => setDeletingThread(meta)} />
+                </PageRow>
+              ))
+            )}
+            {shown.length > limit ? (
+              <div className="mt-3">
+                <Button variant="secondary" size="sm" onClick={() => setLimit((n) => n + ARCHIVE_PAGE)}>
+                  Show more
+                </Button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </PageSection>
 
       {deleting ? (
         <RemoveProjectDialog
@@ -280,18 +245,37 @@ export function DeleteThreadDialog({
   return (
     <AlertDialog open={thread !== null} onOpenChange={(open) => (open ? null : onCancel())}>
       <AlertDialogContent>
-        <DialogHeader>
-          <DialogTitle>Delete {meta ? clampTitle(sessionDisplayTitle(meta.title, meta.provider)) : "thread"}?</DialogTitle>
-          <DialogDescription>The thread and its whole transcript are gone for good.</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete {meta ? clampTitle(sessionDisplayTitle(meta.title, meta.provider)) : "thread"}?</AlertDialogTitle>
+          <AlertDialogDescription>Its transcript is gone for good.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction variant="destructive" onClick={() => meta && onConfirm(meta)}>
             Delete thread
           </AlertDialogAction>
-        </DialogFooter>
+        </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+/** A row's ⋯: one menu holding Delete…, which confirms. */
+function RowMenu({ label, onDelete }: { label: string; onDelete: () => void }) {
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} />} />}>
+          <MoreHorizontal />
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent size="sm" align="end">
+        <DropdownMenuItem variant="destructive" onClick={onDelete}>
+          Delete…
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

@@ -126,15 +126,13 @@ export function SettingsView({
           {section === "appshots" ? <AppshotsPage /> : null}
           {section === "remote" ? <HostsPage onOpenSession={onOpenSession} /> : null}
           {section === "archive" ? (
-            <div>
-              <ArchivePage
-                onOpenSession={onOpenSession}
-                onArchiveSession={onArchiveSession}
-                onDeleteSession={onDeleteSession}
-                onRestoreProject={onRestoreProject}
-                onDeleteProject={onDeleteProject}
-              />
-            </div>
+            <ArchivePage
+              onOpenSession={onOpenSession}
+              onArchiveSession={onArchiveSession}
+              onDeleteSession={onDeleteSession}
+              onRestoreProject={onRestoreProject}
+              onDeleteProject={onDeleteProject}
+            />
           ) : null}
         </Page>
       </div>

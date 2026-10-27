@@ -67,8 +67,7 @@ export const SETTINGS_SECTIONS: {
     id: "archive",
     group: "threads",
     label: "Archive",
-    description:
-      "Archived projects and threads from every project. Restore one to keep working in it.",
+    description: "Projects and threads you archived.",
   },
 ];
 
