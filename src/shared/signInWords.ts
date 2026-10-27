@@ -12,11 +12,14 @@ export function exchangeRefused(status: number): string {
   return `Claude refused the sign-in (HTTP ${status})`
 }
 
+/** The note of a sign-in to an account already saved; the page toasts "Updated <name>" for it. */
+export const SIGN_IN_REFRESHED = 'Sign-in refreshed'
+
 /** Both halves captured and a new account: nothing to say. */
 export function signInNotes(input: { hasSession: boolean; alreadySaved: boolean }): string[] {
   return [
     input.hasSession ? '' : 'Saved without its claude.ai session',
-    input.alreadySaved ? 'Sign-in refreshed' : ''
+    input.alreadySaved ? SIGN_IN_REFRESHED : ''
   ].filter(Boolean)
 }
 

@@ -6,7 +6,7 @@ import { accounts, adapter, vault, type ActionResult, type ServiceId } from 'ali
 import { appSessionEmail } from 'aliax-core/adapters/claude'
 import * as login from './aliax/login'
 import { mintInWindow } from './aliax/staticMint'
-import { CANCELLED, cliRepairNote, signInNotes } from './aliax/signInWords'
+import { CANCELLED, cliRepairNote, signInNotes } from '@shared/signInWords'
 import { StaticTokens } from './aliax/staticTokens'
 import type { AccountSync } from './server/remote/accountSync'
 import { indexAll, indexProgress } from './aliax/stats/indexer'

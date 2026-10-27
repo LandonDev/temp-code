@@ -1,6 +1,6 @@
 import { net, shell } from 'electron'
 import { cancelClaudeWebLogin, claudeWebLogin } from './claude-web-login'
-import { exchangeRefused, NO_ACCOUNT } from './signInWords'
+import { exchangeRefused, NO_ACCOUNT } from '@shared/signInWords'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { promisify } from 'node:util'

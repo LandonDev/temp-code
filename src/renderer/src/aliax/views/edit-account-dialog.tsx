@@ -1,96 +1,93 @@
-import { useEffect, useState } from 'react'
-import { Check } from 'lucide-react'
-import type { ProfileView, ServiceId } from 'aliax-core/shared/types'
-import { Button } from '@aliax/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@aliax/components/ui/dialog'
-import { Input } from '@aliax/components/ui/input'
-import { Label } from '@aliax/components/ui/label'
-import { ACCOUNT_COLORS, DEFAULT_COLOR } from '@aliax/lib/accounts'
+import { useEffect, useId, useState } from "react";
+import type { ProfileView, ServiceId } from "aliax-core/shared/types";
+import { Button } from "@renderer/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@renderer/components/ui/dialog";
+import { Input } from "@renderer/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@renderer/components/ui/toggle-group";
+import { ACCOUNT_COLORS, DEFAULT_COLOR } from "@aliax/lib/accounts";
 
+/** An account's nickname and colour; the colour is the row's identity dot. */
 export function EditAccountDialog({
   open,
   onOpenChange,
   serviceId,
   profile,
-  onSaved
+  onSaved,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  serviceId: ServiceId
-  profile: ProfileView
-  onSaved: () => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  serviceId: ServiceId;
+  profile: ProfileView;
+  onSaved: () => void;
 }) {
-  const [nickname, setNickname] = useState(profile.nickname ?? '')
-  const [color, setColor] = useState(profile.color ?? DEFAULT_COLOR)
+  const [nickname, setNickname] = useState(profile.nickname ?? "");
+  const [color, setColor] = useState(profile.color ?? DEFAULT_COLOR);
+  const nicknameId = useId();
+  const colourId = useId();
 
   useEffect(() => {
-    if (!open) return
-    setNickname(profile.nickname ?? '')
-    setColor(profile.color ?? DEFAULT_COLOR)
-  }, [open, profile.nickname, profile.color])
+    if (!open) return;
+    setNickname(profile.nickname ?? "");
+    setColor(profile.color ?? DEFAULT_COLOR);
+  }, [open, profile.nickname, profile.color]);
 
   const save = async () => {
-    await window.aliax.updateProfile(serviceId, profile.name, { nickname, color })
-    onOpenChange(false)
-    onSaved()
-  }
+    await window.aliax.updateProfile(serviceId, profile.name, { nickname, color });
+    onOpenChange(false);
+    onSaved();
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>Edit account</DialogTitle>
           {/* The row hides the email once a nickname exists; this is where it lives. */}
           <DialogDescription>{profile.email ?? profile.name}</DialogDescription>
         </DialogHeader>
-
-        <div className="space-y-5">
-          <div className="space-y-2">
-            <Label htmlFor="nickname">Nickname</Label>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={nicknameId} className="text-xs font-medium text-muted-foreground">
+              Nickname
+            </label>
             <Input
-              id="nickname"
+              id={nicknameId}
               autoFocus
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && save()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void save();
+              }}
               placeholder={profile.email ?? profile.name}
             />
           </div>
-
-          <div className="space-y-2">
-            <Label>Color</Label>
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-1.5">
+            <span id={colourId} className="text-xs font-medium text-muted-foreground">
+              Colour
+            </span>
+            <ToggleGroup
+              aria-labelledby={colourId}
+              size="xs"
+              value={[color]}
+              onValueChange={(value) => {
+                if (value[0]) setColor(value[0]);
+              }}
+            >
               {ACCOUNT_COLORS.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  aria-label={c.id}
-                  aria-pressed={color === c.value}
-                  onClick={() => setColor(c.value)}
-                  style={{ backgroundColor: c.value }}
-                  className="grid size-8 place-items-center rounded-lg text-zinc-900 outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover active:scale-[0.96]"
-                >
-                  {color === c.value && <Check className="size-4" strokeWidth={3} />}
-                </button>
+                <ToggleGroupItem key={c.id} value={c.value} aria-label={c.id}>
+                  <span aria-hidden className="size-3.5 rounded-full" style={{ backgroundColor: c.value }} />
+                </ToggleGroupItem>
               ))}
-            </div>
+            </ToggleGroup>
           </div>
         </div>
-
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={save}>Save</Button>
+          <Button onClick={() => void save()}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

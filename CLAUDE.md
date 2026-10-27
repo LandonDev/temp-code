@@ -469,7 +469,7 @@ routed to (aliax-core's `forward`). Two listeners:
   (`StaticTokens.repairLive`). The "Sign in to Claude" window
   (src/main/aliax/signInWindow.ts) appears once claude.ai has painted,
   closes the moment the code arrives, and a failure is one line in the
-  app's sign-in dialog (src/main/aliax/signInWords.ts). With no Claude
+  app's sign-in dialog (src/shared/signInWords.ts). With no Claude
   or Codex account on this machine the rail's foot leads with "Sign in to
   Claude" (chrome/SignInRow.tsx), which leaves once a profile arrives
   (docs/LAYOUT.md "First run"). Sign

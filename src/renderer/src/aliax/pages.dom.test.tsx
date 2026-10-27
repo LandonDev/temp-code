@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { ServiceView, UsageReport } from 'aliax-core/shared/types'
 import type { StatsBundle } from '@shared/aliaxStats'
 import { emptyAccounts, type AccountsSnapshot } from '@server/shared/accounts'
@@ -9,6 +9,9 @@ import type { ServerPush } from '@renderer/lib/tcserver/types'
 import { registry } from '@renderer/lib/connection'
 import { accountsStore } from '@renderer/stores/accounts'
 import { AccountsPage, StatsPage } from './pages'
+
+const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
+vi.mock('sonner', () => ({ toast: toasts }))
 
 // jsdom has no layout, so ResponsiveContainer would measure 0×0 and draw nothing.
 vi.mock('recharts', async (importOriginal) => {
@@ -132,27 +135,78 @@ beforeEach(async () => {
 
 afterEach(() => {
   cleanup()
+  toasts.success.mockReset()
+  toasts.error.mockReset()
   vi.unstubAllGlobals()
   accountsStore.reset()
   vi.restoreAllMocks()
 })
 
 describe('AccountsPage', () => {
-  it('renders each service panel with the live usage from the shared snapshot', async () => {
+  it('renders each service section with the live usage from the shared snapshot', async () => {
     const { container } = render(<AccountsPage />)
     await act(flush)
 
-    expect(container.querySelector('.aliax-root')).not.toBeNull()
+    expect(container.querySelector('.aliax-root')).toBeNull()
+    expect(screen.getByRole('heading', { level: 1, name: 'Accounts' })).toBeTruthy()
     expect(screen.getByText('Claude Code')).toBeTruthy()
     expect(screen.getByText('Codex')).toBeTruthy()
     expect(screen.getByText('Main')).toBeTruthy()
 
     const bar = screen.getByRole('progressbar', { name: '5h: 70 percent left' })
+    expect(bar.getAttribute('data-fill')).toBe('muted')
     const fill = bar.querySelector('[data-slot="progress-indicator"]') as HTMLElement
-    expect(fill.style.transform).toBe('translateX(-30%)')
+    expect(fill.style.transform).toBe('scaleX(0.7)')
 
     // One read on mount; the snapshot and the mount do not both fire it.
     expect(aliax.listServices).toHaveBeenCalledTimes(1)
+  })
+
+  const addClaude = async () => {
+    render(<AccountsPage />)
+    await act(flush)
+    const section = screen.getByRole('region', { name: 'Claude Code' })
+    await act(async () => {
+      fireEvent.click(within(section).getByRole('button', { name: 'Add account' }))
+    })
+    await act(flush)
+  }
+
+  it('a cancelled sign-in closes the dialog and says nothing', async () => {
+    aliax.loginStart.mockResolvedValue({ ok: false, error: 'cancelled' })
+    await addClaude()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(toasts.error).not.toHaveBeenCalled()
+    expect(toasts.success).not.toHaveBeenCalled()
+  })
+
+  it('a failed sign-in keeps the dialog with the error and Try again, never a toast', async () => {
+    aliax.loginStart.mockResolvedValue({ ok: false, error: "Couldn't reach claude.ai" })
+    await addClaude()
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText("Couldn't reach claude.ai")).toBeTruthy()
+    expect(toasts.error).not.toHaveBeenCalled()
+    aliax.loginStart.mockReturnValue(new Promise(() => {}))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Try again' }))
+    await act(flush)
+    expect(aliax.loginStart).toHaveBeenCalledTimes(2)
+    expect(aliax.loginStart).toHaveBeenLastCalledWith('claude-code', undefined)
+    expect(within(screen.getByRole('dialog')).getByText('Waiting for sign-in')).toBeTruthy()
+  })
+
+  it('a refreshed sign-in says Updated, and a new one Added with Switch to it', async () => {
+    aliax.loginStart.mockResolvedValue({ ok: true, name: 'Main', notes: ['Sign-in refreshed'] })
+    await addClaude()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(toasts.success).toHaveBeenCalledWith('Updated Main', { description: undefined })
+    cleanup()
+
+    aliax.loginStart.mockResolvedValue({ ok: true, name: 'New', notes: ['Saved without its claude.ai session'] })
+    await addClaude()
+    const [text, options] = toasts.success.mock.calls.at(-1) as [string, { description?: string; action?: { label: string } }]
+    expect(text).toBe('Added New')
+    expect(options.description).toBe('Saved without its claude.ai session')
+    expect(options.action?.label).toBe('Switch to it')
   })
 })
 

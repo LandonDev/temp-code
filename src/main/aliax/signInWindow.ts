@@ -1,5 +1,5 @@
 import { BrowserWindow, screen, type Rectangle, type WebPreferences } from 'electron'
-import { NO_ANSWER, UNREACHABLE } from './signInWords'
+import { NO_ANSWER, UNREACHABLE } from '@shared/signInWords'
 
 /**
  * The "Sign in to Claude" window, one factory for adding an account and for
