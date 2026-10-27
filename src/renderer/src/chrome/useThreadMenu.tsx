@@ -147,6 +147,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
         side: !!sidePane(id),
         close: actions?.onCloseTab ? closeFact(id) : undefined,
         dev: own ? dev : null,
+        draft: sessionStore.isDraft(id),
       },
       extra,
     );

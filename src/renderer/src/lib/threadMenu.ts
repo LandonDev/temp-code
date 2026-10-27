@@ -62,6 +62,8 @@ export type ThreadMenuFacts = {
   /** The Dev server row, checked while the Dev servers pane is open; null (or absent)
    *  when no host can serve the thread's project and none of its servers runs. */
   dev?: { open: boolean } | null;
+  /** Minted here and never sent: the host does not know it yet. */
+  draft?: boolean;
 };
 
 export type ThreadMenuExtra = { open?: boolean; newPass?: boolean };
@@ -147,7 +149,15 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
     icon: Blocks,
     ...(facts.removable ? { hint: String(facts.removable) } : { disabled: true }),
   });
-  if (facts.projectId && !facts.parentId) rows.push({ kind: "item", id: "master", label: masterMenuLabel(facts.master), icon: Star });
+  if (facts.projectId && !facts.parentId)
+    rows.push({
+      kind: "item",
+      id: "master",
+      label: masterMenuLabel(facts.master),
+      icon: Star,
+      // The host pins only a thread it knows: a draft becomes one on its first message.
+      ...(facts.draft ? { disabled: true, description: "Send a message first" } : {}),
+    });
   rows.push({ kind: "sep" }, ...facts.moves, { kind: "sep" });
 
   // A queued thread leaves by leaving the queue (the fleet's Stop on a queued root).

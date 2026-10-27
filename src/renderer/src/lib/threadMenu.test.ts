@@ -98,6 +98,13 @@ describe("threadMenuRows: the master pin", () => {
     expect(row(threadMenuRows(facts({ master: true })), "master")).toMatchObject({ label: "Not a master" });
     expect(ids(threadMenuRows(facts({ projectId: null })))).not.toContain("master");
     expect(ids(threadMenuRows(facts({ parentId: "root" })))).not.toContain("master");
+    // A draft the host has never seen cannot be pinned yet: the row says why.
+    expect(row(threadMenuRows(facts({ draft: true })), "master")).toMatchObject({
+      label: "Make master thread",
+      disabled: true,
+      description: "Send a message first",
+    });
+    expect(row(threadMenuRows(facts()), "master")).not.toHaveProperty("disabled");
   });
 });
 

@@ -65,21 +65,25 @@ const actions = {
   onApproval: noop,
   onNewTerminal: noop,
 };
-function pane(s: Session, split: { inSplit?: boolean; focused?: boolean; onClose?: (id: string) => void } = {}) {
+type Split = { inSplit?: boolean; focused?: boolean; onClose?: (id: string) => void };
+function paneProps(s: Session, split: Split = {}) {
+  return {
+    session: s,
+    visible: true,
+    focused: split.focused ?? true,
+    inSplit: split.inSplit ?? false,
+    composerFocused: false,
+    recents: [],
+    onFocus: noop,
+    onClose: split.onClose ?? noop,
+    onOpenFile: noop,
+    onOpenDiff: noop,
+  };
+}
+function pane(s: Session, split: Split = {}) {
   return render(
     <SessionActionsContext.Provider value={actions}>
-      <SessionPane
-        session={s}
-        visible
-        focused={split.focused ?? true}
-        inSplit={split.inSplit ?? false}
-        composerFocused={false}
-        recents={[]}
-        onFocus={noop}
-        onClose={split.onClose ?? noop}
-        onOpenFile={noop}
-        onOpenDiff={noop}
-      />
+      <SessionPane {...paneProps(s, split)} />
     </SessionActionsContext.Provider>,
   );
 }
@@ -124,6 +128,24 @@ describe("the pane while a transcript loads", () => {
   it("loaded and the host says it has no rows: the empty state", () => {
     pane(session({ phase: "loaded", since: NOW, attempt: 0, empty: true }));
     expect(screen.getByTestId("empty-session")).toBeTruthy();
+  });
+
+  it("an empty thread pinned as master opens its own view (the board), loaded or not", () => {
+    const empty = session({ phase: "loaded", since: NOW, attempt: 0, empty: true });
+    const { rerender } = pane(empty);
+    expect(screen.getByTestId("empty-session")).toBeTruthy();
+    // The host's meta push lands the pin on the same empty session.
+    rerender(
+      <SessionActionsContext.Provider value={actions}>
+        <SessionPane {...paneProps({ ...empty, isMaster: true })} />
+      </SessionActionsContext.Provider>,
+    );
+    expect(screen.getByTestId("thread-view")).toBeTruthy();
+    expect(screen.queryByTestId("empty-session")).toBeNull();
+    cleanup();
+    pane({ ...session({ phase: "loading", since: NOW, attempt: 0 }), isMaster: true });
+    expect(screen.getByTestId("thread-view")).toBeTruthy();
+    expect(skeleton()).toBeNull();
   });
 
   it("rows on screen win over any phase", () => {
