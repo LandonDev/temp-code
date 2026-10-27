@@ -54,7 +54,7 @@ export function ReviewSkeleton() {
 }
 
 export async function loadReviewScope(environmentId: string, projectId: string | null): Promise<ReviewScope> {
-  const raw = await registry.linkOf(environmentId).request("review.get", { projectId });
+  const raw = await registry.linkOf(environmentId).request("review.get", { projectId }, { retry: true });
   return parseReviewScope(raw);
 }
 

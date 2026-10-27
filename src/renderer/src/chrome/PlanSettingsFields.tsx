@@ -7,6 +7,7 @@ import { EFFORT_LABELS, REASONING_LEVELS, effortLadder } from "../lib/tcserver/d
 import {
   savePlanSettings,
   usePlanSettings,
+  usePlanSettingsError,
 } from "../lib/tcserver/plans";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
@@ -124,6 +125,7 @@ export function PlanSettingsSummary({ settings, extra }: { settings: PlanSetting
 export function PlanSettingsEditor() {
   const environmentId = registry.primary().environmentId;
   const scope = usePlanSettings(environmentId, null);
+  const failure = usePlanSettingsError(environmentId, null);
   const [error, setError] = useState<string | null>(null);
   const save = (next: PlanSettings | null) => {
     setError(null);
@@ -137,15 +139,19 @@ export function PlanSettingsEditor() {
           <Button variant="ghost" size="sm" onClick={() => save(null)}>
             Reset
           </Button>
+        ) : failure ? (
+          <Button variant="ghost" size="sm" onClick={failure.retry}>
+            Retry
+          </Button>
         ) : null
       }
     >
       {scope ? (
         <PlanSettingsFields value={scope.settings} onChange={save} environmentId={environmentId} />
-      ) : (
+      ) : failure ? null : (
         <PageRowsSkeleton rows={5} />
       )}
-      {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
+      {error || failure ? <p className="pt-2 text-xs text-destructive">{error ?? failure?.error}</p> : null}
     </PageSection>
   );
 }

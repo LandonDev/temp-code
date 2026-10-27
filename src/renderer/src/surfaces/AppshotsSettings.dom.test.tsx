@@ -7,6 +7,8 @@ type Perms = { available: boolean; screen: boolean; ax: boolean };
 const state = vi.hoisted(() => ({
   perms: null as Perms | null,
   settings: { enabled: false, destination: "automatic", sound: true },
+  status: { loaded: true, loadError: null as string | null, writeError: null as null | { key: string; message: string } },
+  load: vi.fn(async () => {}),
   set: vi.fn(),
   refresh: vi.fn(async (_prompt?: boolean) => ({})),
 }));
@@ -16,6 +18,8 @@ vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
 vi.mock("../lib/native", () => ({ openUrl: vi.fn() }));
 vi.mock("../lib/appshots", () => ({
   useAppshotSettings: () => state.settings,
+  useAppshotSettingsStatus: () => state.status,
+  loadAppshotSettings: () => state.load(),
   useAppshotPermissions: () => state.perms,
   setAppshotSettings: (patch: unknown) => state.set(patch),
   refreshAppshotPermissions: (prompt?: boolean) => state.refresh(prompt),
@@ -25,6 +29,8 @@ const { AppshotsPage } = await import("./AppshotsSettings");
 
 beforeEach(() => {
   state.perms = null;
+  state.status = { loaded: true, loadError: null, writeError: null };
+  state.load.mockClear();
   state.set.mockClear();
   state.refresh.mockClear();
 });
@@ -78,5 +84,27 @@ describe("Appshots page", () => {
       fireEvent.click(option);
     });
     expect(state.set).toHaveBeenCalledWith({ destination: "new-chat" });
+  });
+
+  it("holds the settings in their shape until the host answers, so no default is shown or saved", () => {
+    state.status = { loaded: false, loadError: null, writeError: null };
+    render(<AppshotsPage />);
+    expect(screen.queryByRole("switch", { name: "Shutter sound" })).toBeNull();
+    expect(document.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(3);
+  });
+
+  it("says why the load failed, and Retry asks again", () => {
+    state.status = { loaded: false, loadError: "not connected", writeError: null };
+    render(<AppshotsPage />);
+    expect(screen.getByText("not connected").className).toContain("text-destructive");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(state.load).toHaveBeenCalled();
+  });
+
+  it("puts a failed write's reason under the row that changed", () => {
+    state.status = { loaded: true, loadError: null, writeError: { key: "sound", message: "host refused" } };
+    render(<AppshotsPage />);
+    const row = screen.getByRole("switch", { name: "Shutter sound" }).closest("[data-slot=page-row]");
+    expect(row?.textContent).toContain("host refused");
   });
 });

@@ -54,21 +54,61 @@ export function useAppshotSettings(): AppshotSettings {
   return useSyncExternalStore(subscribe, () => settings)
 }
 
-/** Optimistic: the page flips at once, the server row follows. */
-export function setAppshotSettings(patch: Partial<AppshotSettings>): void {
-  settings = { ...settings, ...patch }
-  emit()
-  // Appshots are this Mac's feature: its settings and chats live on the local server.
-  void registry.primary().request('appshots.set', { settings }).catch(() => undefined)
+/** Whether the host's settings have answered, why the load or the last
+ *  write failed, and which setting that write changed. */
+export type AppshotSettingsStatus = {
+  loaded: boolean
+  loadError: string | null
+  writeError: { key: keyof AppshotSettings; message: string } | null
 }
 
-async function loadSettings(): Promise<void> {
+let status: AppshotSettingsStatus = { loaded: false, loadError: null, writeError: null }
+
+function setStatus(patch: Partial<AppshotSettingsStatus>): void {
+  status = { ...status, ...patch }
+  emit()
+}
+
+export function useAppshotSettingsStatus(): AppshotSettingsStatus {
+  return useSyncExternalStore(subscribe, () => status)
+}
+
+const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+
+/** Optimistic: the page flips at once, the server row follows. A write is
+ *  refused until the stored settings have loaded (it would send defaults
+ *  over them); a failed one puts the changed settings back. */
+export function setAppshotSettings(patch: Partial<AppshotSettings>): void {
+  if (!status.loaded) return
+  const before = settings
+  settings = { ...settings, ...patch }
+  setStatus({ writeError: null })
+  // Appshots are this Mac's feature: its settings and chats live on the local server.
+  registry
+    .primary()
+    .request('appshots.set', { settings })
+    .catch((err: unknown) => {
+      const keys = Object.keys(patch) as (keyof AppshotSettings)[]
+      settings = { ...settings, ...Object.fromEntries(keys.map((k) => [k, before[k]])) }
+      setStatus({ writeError: { key: keys[0], message: message(err) } })
+    })
+}
+
+/** Ask the host for the stored settings, waiting for the link to open. */
+export async function loadAppshotSettings(): Promise<void> {
+  setStatus({ loadError: null })
   try {
-    settings = await registry.primary().request<AppshotSettings>('appshots.get', {})
-    emit()
-  } catch {
-    // The server fills in defaults; the page shows them until it answers.
+    settings = await registry.primary().request<AppshotSettings>('appshots.get', {}, { retry: true })
+    setStatus({ loaded: true })
+  } catch (err) {
+    setStatus({ loadError: message(err) })
   }
+}
+
+/** Test seam. */
+export function resetAppshotSettingsForTests(): void {
+  settings = DEFAULT_APPSHOT_SETTINGS
+  status = { loaded: false, loadError: null, writeError: null }
 }
 
 // ── permissions ──────────────────────────────────────────────────────
@@ -226,7 +266,7 @@ const PERMISSION_CODES = new Set(['screen-permission', 'ax-permission'])
 
 /** Mount once at boot: the listener's mount also flushes main's queue. */
 export function initAppshots(): () => void {
-  void loadSettings()
+  void loadAppshotSettings()
   const offCapture = bridge.onCapture((capture) => {
     void appshotArrived(capture)
   })

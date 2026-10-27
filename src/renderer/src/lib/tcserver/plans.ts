@@ -20,8 +20,9 @@ export type PlanScope = { settings: PlanSettings; overridden: boolean };
 export const BUILT_IN_PLAN_SCOPE: PlanScope = { settings: DEFAULT_PLAN_SETTINGS, overridden: false };
 
 const scopes = new Map<string, PlanScope>();
+const errors = new Map<string, string>();
 const listeners = new Set<() => void>();
-const loading = new Set<string>();
+const inflight = new Map<string, Promise<PlanScope>>();
 let version = 0;
 
 const key = (environmentId: string, projectId: string | null): string => `${environmentId}|${projectId ?? ""}`;
@@ -37,19 +38,32 @@ function coerce(raw: unknown): PlanScope {
   return { settings: parsed.success ? parsed.data : DEFAULT_PLAN_SETTINGS, overridden: r.overridden === true };
 }
 
-export async function loadPlanSettings(environmentId: string, projectId: string | null): Promise<PlanScope> {
+/** Ask the host for a scope's set. The read waits for the link (it may be
+ *  asked before the window's socket opens); a second caller while it is
+ *  in flight shares the one request. A final failure is kept as the
+ *  scope's error until the next load. */
+export function loadPlanSettings(environmentId: string, projectId: string | null): Promise<PlanScope> {
   const k = key(environmentId, projectId);
-  if (loading.has(k)) return scopes.get(k) ?? BUILT_IN_PLAN_SCOPE;
-  loading.add(k);
-  try {
-    const raw = await registry.linkOf(environmentId).request("plans.get", { projectId });
-    const scope = coerce(raw);
-    scopes.set(k, scope);
-    emit();
-    return scope;
-  } finally {
-    loading.delete(k);
-  }
+  const running = inflight.get(k);
+  if (running) return running;
+  if (errors.delete(k)) emit();
+  const load = (async () => {
+    try {
+      const raw = await registry.linkOf(environmentId).request("plans.get", { projectId }, { retry: true });
+      const scope = coerce(raw);
+      scopes.set(k, scope);
+      emit();
+      return scope;
+    } catch (err) {
+      errors.set(k, err instanceof Error ? err.message : String(err));
+      emit();
+      throw err;
+    } finally {
+      inflight.delete(k);
+    }
+  })();
+  inflight.set(k, load);
+  return load;
 }
 
 /** Store a set at the scope, or null to clear it: a project falls back to
@@ -83,11 +97,24 @@ const subscribe = (cb: () => void): (() => void) => {
 /** A scope's plan settings on one host, loaded the first time they are asked for. */
 export function usePlanSettings(environmentId: string | undefined, projectId: string | null): PlanScope | undefined {
   useSyncExternalStore(subscribe, () => version);
-  const scope = environmentId ? scopes.get(key(environmentId, projectId)) : undefined;
+  const k = environmentId ? key(environmentId, projectId) : null;
+  const scope = k ? scopes.get(k) : undefined;
+  const failed = k ? errors.has(k) : false;
   useEffect(() => {
-    if (environmentId && !scope) void loadPlanSettings(environmentId, projectId).catch(() => {});
-  }, [scope, environmentId, projectId]);
+    if (environmentId && !scope && !failed) void loadPlanSettings(environmentId, projectId).catch(() => {});
+  }, [scope, failed, environmentId, projectId]);
   return scope;
+}
+
+/** Why a scope's last load failed, with a retry; null while it loads or once it has. */
+export function usePlanSettingsError(
+  environmentId: string | undefined,
+  projectId: string | null,
+): { error: string; retry: () => void } | null {
+  useSyncExternalStore(subscribe, () => version);
+  const error = environmentId ? errors.get(key(environmentId, projectId)) : undefined;
+  if (!environmentId || error === undefined) return null;
+  return { error, retry: () => void loadPlanSettings(environmentId, projectId).catch(() => {}) };
 }
 
 export const samePlanSettings = (a: PlanSettings, b: PlanSettings): boolean =>
@@ -100,7 +127,8 @@ export const samePlanSettings = (a: PlanSettings, b: PlanSettings): boolean =>
 /** Test seam. */
 export function resetPlanSettingsForTests(): void {
   scopes.clear();
-  loading.clear();
+  errors.clear();
+  inflight.clear();
 }
 
 export type ImplementPlanParams = {

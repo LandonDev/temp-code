@@ -13,7 +13,8 @@ vi.mock("../lib/connection", () => ({
   registry: {
     primary: () => ({ environmentId: "local" }),
     linkOf: () => ({
-      request: (method: string, params: unknown) => (method === "review.get" ? state.get!(params) : state.set(params)),
+      request: (method: string, params: unknown, options?: unknown) =>
+        method === "review.get" ? state.get!({ params, options }) : state.set(params),
     }),
   },
 }));
@@ -66,6 +67,30 @@ describe("Reviews page", () => {
     state.get = () => new Promise(() => {});
     render(<ReviewsPage />);
     expect(screen.getByTestId("review-skeleton")).toBeTruthy();
+  });
+
+  it("asks with the link's retry, so a read before the socket opens lands once it does", async () => {
+    const asked: unknown[] = [];
+    state.get = async (call) => {
+      asked.push(call);
+      return { override: null, global: SETTINGS, settings: SETTINGS, source: "global" };
+    };
+    await renderPage();
+    expect(asked[0]).toMatchObject({ options: { retry: true } });
+  });
+
+  it("says why the load failed, and Retry asks again", async () => {
+    state.get = async () => {
+      throw new Error("not connected");
+    };
+    await renderPage();
+    expect(screen.getByText("not connected").className).toContain("text-destructive");
+    answer(SETTINGS);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    });
+    expect(screen.getByRole("switch", { name: "Review before merge" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("shows one row while off and four while on", async () => {

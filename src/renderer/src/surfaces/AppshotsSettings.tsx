@@ -1,14 +1,16 @@
 import { useCallback, useEffect } from "react";
 import type { AppshotDestination } from "@server/shared/appshots";
 import {
+  loadAppshotSettings,
   refreshAppshotPermissions,
   setAppshotSettings,
   useAppshotPermissions,
   useAppshotSettings,
+  useAppshotSettingsStatus,
 } from "../lib/appshots";
 import { openUrl } from "../lib/native";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
-import { PageRow, PageSection } from "../components/page";
+import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
@@ -26,6 +28,8 @@ const POLL_MS = 5000;
 /** Settings › Appshots: the capture switch, where a shot lands, and the two macOS grants it needs. */
 export function AppshotsPage() {
   const settings = useAppshotSettings();
+  const { loaded, loadError, writeError } = useAppshotSettingsStatus();
+  const errorOf = (key: keyof typeof settings) => (writeError?.key === key ? writeError.message : undefined);
   const perms = useAppshotPermissions();
 
   // Grants flip in System Settings, outside our window: poll while the page
@@ -56,30 +60,46 @@ export function AppshotsPage() {
 
   return (
     <>
-      <PageSection>
-        <PageRow title="Capture on double-⌘">
-          <SettingSwitch
-            label="Capture on double-⌘"
-            on={settings.enabled}
-            onChange={(on) => {
-              setAppshotSettings({ enabled: on });
-              // The hotkey monitor hears nothing until Accessibility is granted,
-              // so turning the feature on asks for what is missing right away.
-              if (on && perms && !(perms.screen && perms.ax)) prompt();
-            }}
-          />
-        </PageRow>
-        <PageRow title="Destination" description="Automatic uses the open chat, else a new one.">
-          <ChoiceSelect
-            label="Destination"
-            value={settings.destination}
-            options={DESTINATIONS}
-            onChange={(destination) => setAppshotSettings({ destination })}
-          />
-        </PageRow>
-        <PageRow title="Shutter sound">
-          <SettingSwitch label="Shutter sound" on={settings.sound} onChange={(sound) => setAppshotSettings({ sound })} />
-        </PageRow>
+      <PageSection
+        action={
+          !loaded && loadError ? (
+            <Button variant="ghost" size="sm" onClick={() => void loadAppshotSettings()}>
+              Retry
+            </Button>
+          ) : null
+        }
+      >
+        {loaded ? (
+          <>
+            <PageRow title="Capture on double-⌘" error={errorOf("enabled")}>
+              <SettingSwitch
+                label="Capture on double-⌘"
+                on={settings.enabled}
+                onChange={(on) => {
+                  setAppshotSettings({ enabled: on });
+                  // The hotkey monitor hears nothing until Accessibility is granted,
+                  // so turning the feature on asks for what is missing right away.
+                  if (on && perms && !(perms.screen && perms.ax)) prompt();
+                }}
+              />
+            </PageRow>
+            <PageRow title="Destination" description="Automatic uses the open chat, else a new one." error={errorOf("destination")}>
+              <ChoiceSelect
+                label="Destination"
+                value={settings.destination}
+                options={DESTINATIONS}
+                onChange={(destination) => setAppshotSettings({ destination })}
+              />
+            </PageRow>
+            <PageRow title="Shutter sound" error={errorOf("sound")}>
+              <SettingSwitch label="Shutter sound" on={settings.sound} onChange={(sound) => setAppshotSettings({ sound })} />
+            </PageRow>
+          </>
+        ) : loadError ? (
+          <p className="text-xs text-destructive">{loadError}</p>
+        ) : (
+          <PageRowsSkeleton rows={3} />
+        )}
       </PageSection>
 
       <PageSection title="Permissions">

@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_PLAN_SETTINGS } from "@shared/plans";
 
-const plans = vi.hoisted(() => ({ scope: null as null | { settings: unknown; overridden: boolean } }));
+const plans = vi.hoisted(() => ({
+  scope: null as null | { settings: unknown; overridden: boolean },
+  failure: null as null | { error: string; retry: () => void },
+}));
 vi.mock("../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
-vi.mock("../lib/tcserver/plans", () => ({ usePlanSettings: () => plans.scope, savePlanSettings: async () => {} }));
+vi.mock("../lib/tcserver/plans", () => ({
+  usePlanSettings: () => plans.scope,
+  usePlanSettingsError: () => plans.failure,
+  savePlanSettings: async () => {},
+}));
 vi.mock("../lib/models", () => ({ allModels: () => [], findModel: () => ({ name: "Opus 5.5" }), nativeModelId: (m: { id: string }) => m.id }));
 vi.mock("../components/choice-select", async () => await import("../components/choice-select-body"));
 
@@ -19,6 +26,19 @@ describe("Plans", () => {
     render(<PlanSettingsEditor />);
     expect(screen.getByRole("region", { name: "Plans" }).querySelectorAll("[data-slot=page-row-skeleton]").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
+  });
+
+  it("says why the set did not load, with Retry in the heading, and no rows forever", () => {
+    plans.scope = null;
+    const retry = vi.fn();
+    plans.failure = { error: "not connected", retry };
+    render(<PlanSettingsEditor />);
+    const section = screen.getByRole("region", { name: "Plans" });
+    expect(section.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(0);
+    expect(screen.getByText("not connected").className).toContain("text-destructive");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalled();
+    plans.failure = null;
   });
 
   it("draws the loaded set's rows", () => {

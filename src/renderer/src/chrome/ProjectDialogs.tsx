@@ -30,7 +30,7 @@ import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
 import { ConfirmDialog, DialogFooter as Footer, ErrorLine, errorText } from "./ConfirmDialog";
 import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
 import { PlanSettingsFields } from "./PlanSettingsFields";
-import { savePlanSettings, samePlanSettings, usePlanSettings } from "../lib/tcserver/plans";
+import { savePlanSettings, samePlanSettings, usePlanSettings, usePlanSettingsError } from "../lib/tcserver/plans";
 import type { PlanSettings } from "@server/shared/plans";
 import { ReviewFields, loadReviewScope, saveReviewSettings, type ReviewScope } from "./ReviewFields";
 import { DEFAULT_REVIEW_SETTINGS, type ReviewSettings } from "@server/shared/review";
@@ -558,6 +558,9 @@ function ProjectSettingsBody({
   // Plans: the project's override, else what it inherits from the host's global set.
   const planScope = usePlanSettings(home.environmentId, home.id);
   const globalPlans = usePlanSettings(home.environmentId, null);
+  const projectPlansFailure = usePlanSettingsError(home.environmentId, home.id);
+  const globalPlansFailure = usePlanSettingsError(home.environmentId, null);
+  const plansFailure = projectPlansFailure ?? globalPlansFailure;
   const [plans, setPlans] = useState<PlanSettings | null | undefined>(undefined);
   useEffect(() => {
     if (planScope && plans === undefined) setPlans(planScope.overridden ? planScope.settings : null);
@@ -667,6 +670,11 @@ function ProjectSettingsBody({
               <Section label="Plans">
                 {shownPlans ? (
                   <PlanSettingsFields value={shownPlans} onChange={setPlans} environmentId={home.environmentId} compact />
+                ) : plansFailure ? (
+                  <>
+                    <p className="text-xs text-destructive">{plansFailure.error}</p>
+                    {linkButton("Retry", plansFailure.retry)}
+                  </>
                 ) : (
                   <Skeleton className="h-16 w-full rounded-lg" />
                 )}
