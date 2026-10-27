@@ -1,5 +1,6 @@
 import { memo, useState, type ReactNode } from "react";
 import { isStaleWatch } from "@server/shared/watch";
+import { toast } from "sonner";
 import { Button } from "@renderer/components/ui/button";
 import { cn } from "@renderer/lib/cn";
 import { usePaneVisible } from "../../hooks/paneVisibility";
@@ -106,7 +107,9 @@ export const WorkingStrip = memo(function WorkingStrip({
   const stopEverything = (): void => {
     if (stopBusy) return;
     setStopBusy(true);
-    stopAll(session.id).finally(() => setStopBusy(false));
+    stopAll(session.id)
+      .catch(() => toast.error("Couldn't stop the background work"))
+      .finally(() => setStopBusy(false));
   };
   const watchSince = session.background?.watchingSince ?? null;
   const stale = state === "watching" && slowNow > 0 && isStaleWatch({ status, background: session.background }, slowNow);

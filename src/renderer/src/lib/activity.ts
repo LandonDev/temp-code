@@ -49,7 +49,8 @@ export interface ActivitySources {
   macCalls: MacBridgeRequest[];
 }
 
-const LOG_KINDS: ReadonlySet<ActivityKind> = new Set(["shell", "monitor", "agent", "workflow"]);
+/** Only a background shell writes an output file the host can tail; a monitor's events go to the model alone. */
+const LOG_KINDS: ReadonlySet<ActivityKind> = new Set(["shell"]);
 const upperFirst = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** The rows, subagents and batch first, then oldest first. */
@@ -68,11 +69,14 @@ export function activityRows(src: ActivitySources): ActivityRow[] {
       open: "agents",
     });
   }
-  if (bg?.batch && bg.batch.out > 0) {
+  // A master watching with every batch thread done and nothing else live waits on its batch's steps
+  // (a finished batch keeps its tally, so its own monitor alone is no steps row).
+  const steps = src.meta.status === "watching" && !bg?.tasks.length && !bg?.agents.length;
+  if (bg?.batch && (bg.batch.out > 0 || steps)) {
     head.push({
       key: "batch",
       kind: "batch",
-      label: `${bg.batch.out} of ${bg.batch.total} batch threads`,
+      label: bg.batch.out > 0 ? `${bg.batch.out} of ${bg.batch.total} batch threads` : "Batch steps",
       since: bg.watchingSince ?? Date.now(),
     });
   }

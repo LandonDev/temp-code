@@ -31,8 +31,19 @@ export function watchPhrase(bg: BackgroundWork | null | undefined): string {
   return parts.join(', ')
 }
 
-/** Watching for longer than STALE_WATCH_MS without waking. */
+/** What a watching thread waits on, never empty: the counted phrase, else
+ *  a master's batch steps (every batch thread is done), else background work. */
+export function watchSubject(bg: BackgroundWork | null | undefined): string {
+  return watchPhrase(bg) || (bg?.batch ? "the batch's steps" : 'background work')
+}
+
+/** Watching for longer than STALE_WATCH_MS without waking, on nothing but
+ *  its own tasks: live subagents and a master's batch (its threads, its
+ *  steps) have liveness of their own, so a wait on them is never stale (and
+ *  Stop all, which ends the thread's own background work, could not stop them). */
 export function isStaleWatch(meta: Pick<SessionMeta, 'status' | 'background'>, now: number): boolean {
-  const since = meta.background?.watchingSince
-  return meta.status === 'watching' && since != null && now - since > STALE_WATCH_MS
+  const bg = meta.background
+  const since = bg?.watchingSince
+  if (meta.status !== 'watching' || since == null || now - since <= STALE_WATCH_MS) return false
+  return !bg?.agents.length && !bg?.batch
 }

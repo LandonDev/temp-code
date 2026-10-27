@@ -1190,13 +1190,18 @@ names the far child).
   then oldest first; `rowStale`, `hasActivity`, `stopActivity`, `stopAll` =
   `session.killBackground`). `surfaces/threads/ActivitySection.tsx` is the
   right panel's Activity section: 28px rows (glyph, label, a shell's
-  command under it, the age, Stop), a shell, monitor, agent or workflow row
-  folding open onto its `session.taskLog` output, the subagents row opening
-  the Agents section, a dev server row the dev servers pane. The working
-  strip's watching case says "Watching  <watchPhrase>" with the stretch's
-  age (amber with Stop all past `STALE_WATCH_MS`) and opens the section;
+  command under it, the age, Stop; a failed Stop toasts), a shell row
+  folding open onto its `session.taskLog` output (a monitor writes no file
+  the host can read, so it opens nothing; a failed read says so), the
+  subagents row opening the Agents section, a dev server row the dev
+  servers pane. The working strip's watching case says "Watching
+  <watchSubject>" with the stretch's age and opens the section. A watch is
+  stale (`isStaleWatch`: amber, Stop all, the banner) only past
+  `STALE_WATCH_MS` on the thread's own tasks alone: live subagents and a
+  master's batch have their own liveness, and Stop all
+  (`session.killBackground`) ends only the thread's own background work;
   `chrome/ThreadBanners.tsx` `staleWatchers` adds one banner for the other
-  roots of the project watching that long.
+  roots of the project watching stale.
 
 ## Review before merge: an optional second model between the gate and the merge
 - Off by default. Settings → Reviews holds the global set; a project's

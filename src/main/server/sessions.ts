@@ -31,7 +31,7 @@ import type {
   SessionMeta,
   SessionStatus
 } from '@shared/events'
-import { watchPhrase } from '@shared/watch'
+import { watchSubject } from '@shared/watch'
 import { classifyFailure, type GatewayRefusal } from './failureKind'
 import {
   LIVE_STATUSES,
@@ -286,15 +286,8 @@ export function foreignReference(text: string, tokens: string[], name: string, r
  *  named in the model's words; anything more is counted (watchPhrase). */
 const WATCH_LINE_MAX = 120
 export function watchLine(bg: BackgroundWork | null | undefined): string {
-  const phrase = watchPhrase(bg)
   const lone = bg && bg.tasks.length === 1 && !bg.agents.length && !(bg.batch && bg.batch.out > 0)
-  const line = lone
-    ? `Waiting on ${bg.tasks[0].label}`
-    : phrase
-      ? `Waiting on ${phrase}`
-      : bg?.batch
-        ? "Waiting on the batch's steps"
-        : 'Waiting on background work'
+  const line = `Waiting on ${lone ? bg.tasks[0].label : watchSubject(bg)}`
   return line.length > WATCH_LINE_MAX ? `${line.slice(0, WATCH_LINE_MAX - 1)}…` : line
 }
 

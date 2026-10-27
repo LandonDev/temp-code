@@ -13,6 +13,8 @@ const { stopTask, taskLog, stopLiveServer } = vi.hoisted(() => ({
 vi.mock("../../lib/tcserver/commands", () => ({ stopTask, taskLog, killBackground: vi.fn() }));
 vi.mock("../../lib/devServers", () => ({ stopLiveServer, useLiveDevServers: () => [] }));
 vi.mock("../../lib/macBridge", () => ({ stopMacBridgeAll: vi.fn(), useMacBridgeRunning: () => [] }));
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
+vi.mock("sonner", () => ({ toast: { error: toastError } }));
 vi.mock("../../lib/tcserver/store", () => ({ useSessionMeta: () => null, useSessionMetas: () => [] }));
 
 // jsdom has no Web Animations; Base UI's collapsible asks the panel for its running ones.
@@ -63,7 +65,8 @@ describe("ActivitySection", () => {
     expect(rowOf("subagents").textContent).toContain("3 subagents");
     expect(rowOf("shell").textContent).toContain("bun run dev --port 5173");
     expect(rowOf("dev").textContent).toContain("Dev server :5173");
-    expect(rowOf("monitor").querySelector(".text-warning")?.textContent).toBe("1h");
+    // Live subagents carry the wait, so nothing is stale yet.
+    expect(rowOf("monitor").querySelector(".text-warning")).toBeNull();
     expect(rowOf("shell").querySelector(".text-warning")).toBeNull();
     expect(rowOf("shell").textContent).toContain("10m");
     // The subagents row has no Stop; its slot stays so the ages line up.
@@ -98,5 +101,22 @@ describe("ActivitySection", () => {
     expect(ageText(12 * 60_000)).toBe("12m");
     expect(ageText((2 * 60 + 14) * 60_000)).toBe("2h 14m");
     expect(ageText(3 * 3_600_000)).toBe("3h");
+  });
+
+  it("turns an old task's age amber once the thread waits on its own tasks alone", () => {
+    const alone = { ...meta, background: { ...background, agents: [] } };
+    render(<ActivityRows threadId="s1" rows={activityRows({ meta: alone, agents: [], devServers: [], macCalls: [] })} meta={alone} />);
+    expect(rowOf("monitor").querySelector(".text-warning")?.textContent).toBe("1h");
+    expect(rowOf("shell").querySelector(".text-warning")).toBeNull();
+  });
+
+  it("says a failed log read and a failed Stop instead of looking quiet", async () => {
+    taskLog.mockImplementationOnce(() => Promise.reject(new Error("linkDown")));
+    stopTask.mockImplementationOnce(() => Promise.reject(new Error("no live harness")));
+    mount();
+    fireEvent.click(rowOf("shell"));
+    expect(await screen.findByText("Couldn't read the output")).toBeTruthy();
+    fireEvent.click(rowOf("shell").querySelector('[aria-label="Stop"]')!);
+    await vi.waitFor(() => expect(toastError).toHaveBeenCalledWith("Couldn't stop it", { description: "Serve the app" }));
   });
 });

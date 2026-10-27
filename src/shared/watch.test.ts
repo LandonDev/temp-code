@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BackgroundTask, BackgroundWork } from './events'
-import { STALE_WATCH_MS, isStaleWatch, watchPhrase } from './watch'
+import { STALE_WATCH_MS, isStaleWatch, watchPhrase, watchSubject } from './watch'
 
 const task = (kind: BackgroundTask['kind'], id: string = kind): BackgroundTask => ({ id, label: id, kind, startedAt: 0 })
 const bg = (over: Partial<BackgroundWork>): BackgroundWork => ({
@@ -54,5 +54,22 @@ describe('isStaleWatch', () => {
     expect(isStaleWatch({ status: 'idle', background: old }, now)).toBe(false)
     expect(isStaleWatch({ status: 'watching', background: bg({}) }, now)).toBe(false)
     expect(isStaleWatch({ status: 'watching', background: null }, now)).toBe(false)
+  })
+
+  it("is never true while live subagents or a master's batch carry the wait", () => {
+    const since = now - STALE_WATCH_MS - 1
+    const tasks = [task('monitor')]
+    expect(isStaleWatch({ status: 'watching', background: bg({ watchingSince: since, tasks, agents: ['c'] }) }, now)).toBe(false)
+    expect(isStaleWatch({ status: 'watching', background: bg({ watchingSince: since, tasks, batch: { out: 1, total: 2 } }) }, now)).toBe(false)
+    expect(isStaleWatch({ status: 'watching', background: bg({ watchingSince: since, batch: { out: 0, total: 2 } }) }, now)).toBe(false)
+  })
+})
+
+describe('watchSubject', () => {
+  it('is the phrase, else the batch steps, else background work', () => {
+    expect(watchSubject(bg({ agents: ['a'] }))).toBe('a subagent')
+    expect(watchSubject(bg({ batch: { out: 0, total: 3 } }))).toBe("the batch's steps")
+    expect(watchSubject(bg({}))).toBe('background work')
+    expect(watchSubject(null)).toBe('background work')
   })
 })

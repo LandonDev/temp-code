@@ -72,6 +72,23 @@ describe("activityRows", () => {
     expect(byKind.batch.stop).toBeUndefined();
     expect(byKind.dev).toMatchObject({ open: "dev", devKey: "env/r1", stop: { type: "dev" } });
     expect(byKind.monitor.detail).toBeUndefined();
+    // A monitor has no output file to tail, so it opens nothing.
+    expect(byKind.monitor.open).toBeUndefined();
+  });
+
+  it("keeps a batch-steps row while a master watches with every batch thread done", () => {
+    const master = (status: "watching" | "idle") =>
+      activityRows({ meta: { id: "m", status, background: bg({ batch: { out: 0, total: 3 }, watchingSince: 5 }) }, agents: [], devServers: [], macCalls: [] });
+    expect(master("watching").map((r) => [r.kind, r.label])).toEqual([["batch", "Batch steps"]]);
+    expect(master("idle")).toEqual([]);
+    // A finished batch keeps its tally: a master watching only its own monitor shows the monitor alone.
+    const monitorOnly = activityRows({
+      meta: { id: "m", status: "watching", background: bg({ batch: { out: 0, total: 3 }, tasks: [{ id: "t", label: "tail", kind: "monitor", startedAt: 1 }] }) },
+      agents: [],
+      devServers: [],
+      macCalls: [],
+    });
+    expect(monitorOnly.map((r) => r.kind)).toEqual(["monitor"]);
   });
 
   it("is empty with nothing live, and hasActivity says so", () => {

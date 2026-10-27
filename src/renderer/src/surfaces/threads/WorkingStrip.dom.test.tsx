@@ -89,12 +89,12 @@ describe('WorkingStrip: a queued thread', () => {
 })
 
 describe('WorkingStrip: a watching thread', () => {
-  const watching = (since: number) =>
+  const watching = (since: number, agents = ['c1', 'c2', 'c3']) =>
     session({
       status: 'watching',
       background: {
         tasks: [{ id: 'm1', label: 'tail the log', kind: 'monitor', startedAt: since }],
-        agents: ['c1', 'c2', 'c3'],
+        agents,
         batch: null,
         watchingSince: since,
       },
@@ -122,7 +122,8 @@ describe('WorkingStrip: a watching thread', () => {
   })
 
   it('turns the age amber past 30 minutes and Stop all stops the background work', async () => {
-    const stale = watching(Date.now() - 45 * 60_000)
+    // Its own tasks alone: a wait on live subagents is never stale.
+    const stale = watching(Date.now() - 45 * 60_000, [])
     const probe = mountProbe(
       <Probe id="strip">
         <WorkingStrip session={stale} onStop={() => {}} onResume={() => {}} />
@@ -136,6 +137,33 @@ describe('WorkingStrip: a watching thread', () => {
       stop!.click()
     })
     expect(killBackground).toHaveBeenCalledWith(stale.id)
+    probe.unmount()
+  })
+
+  it('stays quiet while live subagents carry an old wait', () => {
+    const probe = mountProbe(
+      <Probe id="strip">
+        <WorkingStrip session={watching(Date.now() - 45 * 60_000)} onStop={() => {}} onResume={() => {}} />
+      </Probe>,
+    )
+    expect(probe.container.querySelector('.text-warning')).toBeNull()
+    expect([...probe.container.querySelectorAll('button')].some((b) => b.textContent === 'Stop all')).toBe(false)
+    probe.unmount()
+  })
+
+  it("names a master's batch steps once every batch thread is done", () => {
+    const master = session({
+      status: 'watching',
+      // The host's line for it (sessions.ts watchLine over watchSubject).
+      activity: "Waiting on the batch's steps",
+      background: { tasks: [], agents: [], batch: { out: 0, total: 3 }, watchingSince: Date.now() },
+    })
+    const probe = mountProbe(
+      <Probe id="strip">
+        <WorkingStrip session={master} onStop={() => {}} onResume={() => {}} />
+      </Probe>,
+    )
+    expect(probe.container.textContent).toContain("the batch's steps")
     probe.unmount()
   })
 })

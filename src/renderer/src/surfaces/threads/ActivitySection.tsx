@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState, type ComponentType } from "react";
+import { toast } from "sonner";
 import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
 import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
@@ -18,9 +19,9 @@ import { useSlowClock } from "../../lib/turnClock";
  * The right panel's Activity section: what a thread has running in the
  * background, one 28px row each (docs/DESIGN.md "Panels"). No heading, no
  * card, no separators. A row carries its kind's glyph, the work in the
- * model's words (a shell's command under it), its age, and Stop. A shell,
- * monitor, agent or workflow row opens its live output under it
- * (session.taskLog, every 1.5 s while open and on screen); the subagents
+ * model's words (a shell's command under it), its age, and Stop. A shell
+ * row opens its live output under it (session.taskLog, every 1.5 s while
+ * open and on screen; a read that fails says so and keeps what it had); the subagents
  * row opens the Agents section; a dev server opens the dev servers pane.
  * Rows have no enter or leave motion: a row leaves when its push says the
  * work ended, and an open log closes with it.
@@ -96,20 +97,22 @@ export const ActivityRows = memo(function ActivityRows({
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col px-1 py-3" data-slot="activity-section">
-        {rows.map((row) => (
-          <Row
-            key={row.key}
-            threadId={threadId}
-            row={row}
-            now={now}
-            stale={now > 0 && rowStale(row, meta, now)}
-            expanded={open === row.key}
-            onActivate={row.open && (row.open !== "agents" || onOpenAgents) ? () => activate(row) : undefined}
-            live={shown}
-          />
-        ))}
-      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="flex flex-col px-1 py-3" data-slot="activity-section">
+          {rows.map((row) => (
+            <Row
+              key={row.key}
+              threadId={threadId}
+              row={row}
+              now={now}
+              stale={now > 0 && rowStale(row, meta, now)}
+              expanded={open === row.key}
+              onActivate={row.open && (row.open !== "agents" || onOpenAgents) ? () => activate(row) : undefined}
+              live={shown}
+            />
+          ))}
+        </div>
+      </ScrollArea>
     </TooltipProvider>
   );
 });
@@ -136,7 +139,9 @@ function Row({
   const stop = (): void => {
     if (stopping) return;
     setStopping(true);
-    stopActivity(row).finally(() => setStopping(false));
+    stopActivity(row)
+      .catch(() => toast.error("Couldn't stop it", { description: row.label }))
+      .finally(() => setStopping(false));
   };
   const item = (
     <Item
@@ -212,6 +217,7 @@ function Row({
 /** A task's live output, pinned to its end while the reader has not scrolled up. */
 function TaskLogFold({ threadId, taskId, live }: { threadId: string; taskId: string; live: boolean }) {
   const [text, setText] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   const next = useRef<number | undefined>(undefined);
   const box = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -227,9 +233,13 @@ function TaskLogFold({ threadId, taskId, live }: { threadId: string; taskId: str
         if (!alive) return;
         // Either source answers only what is new since `from`.
         next.current = log.next;
+        setFailed(false);
         setText((prev) => ((prev ?? "") + log.data.replace(ANSI, "")).slice(-LOG_KEEP));
       } catch {
-        if (alive) setText((prev) => prev ?? "");
+        // The host is out of reach or the read failed: say so, keep what was read.
+        if (!alive) return;
+        setFailed(true);
+        setText((prev) => prev ?? "");
       }
       if (alive) timer = setTimeout(() => void poll(), LOG_POLL_MS);
     };
@@ -263,12 +273,14 @@ function TaskLogFold({ threadId, taskId, live }: { threadId: string; taskId: str
       </div>
     );
   }
-  if (!text) return <p className="px-2 py-1.5 text-xs text-muted-foreground">No output yet</p>;
+  const failure = failed ? <p className="pt-1 text-xs text-muted-foreground">Couldn't read the output</p> : null;
+  if (!text) return <div className="px-2 py-1.5 text-xs text-muted-foreground">{failure ?? "No output yet"}</div>;
   return (
     <div ref={box} className="px-2 pt-0.5 pb-2">
       <ScrollArea className="max-h-60 [&>[data-slot=scroll-area-viewport]]:max-h-60">
         <pre className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">{text}</pre>
       </ScrollArea>
+      {failure}
     </div>
   );
 }
