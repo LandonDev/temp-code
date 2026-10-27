@@ -24,76 +24,62 @@ const CONTEXT_OPTIONS = [
   { value: "1m", label: "1M" },
 ];
 
+const EFFORT_LABELS: Record<string, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+  ultra: "Ultra",
+};
+
 function effortSetting(model: ModelInfo): ModelSetting | null {
   if (model.reasoning.length === 0) return null;
   return {
     id: "effort",
-    label: "Reasoning",
+    label: "Effort",
     kind: "select",
     value: model.defaultReasoning ?? model.reasoning[0],
     options: model.reasoning.map((value) => ({
       value,
-      label: value === "xhigh" ? "Extra High" : value[0].toUpperCase() + value.slice(1),
+      label: EFFORT_LABELS[value] ?? value[0].toUpperCase() + value.slice(1),
     })),
   };
 }
 
-const FAST_OPTIONS = [
+/** The names the CLIs give their speed tiers. A tier id not here is not offered. */
+export const TIER_NAMES: Record<string, string> = {
+  priority: "Fast",
+  ultrafast: "Ultrafast",
+  fast: "Fast",
+};
+
+const TOGGLE_OPTIONS = [
   { value: "true", label: "On" },
   { value: "false", label: "Off" },
 ];
 
-const FAST_MODE: ModelSetting = {
-  id: "fast",
-  label: "Fast",
-  kind: "toggle",
-  value: "false",
-  description: "Fast mode",
-  options: FAST_OPTIONS,
-};
-
-/** Codex's Fast is priority processing (`service_tier: priority`); same
- *  `fast` id so session.tune and the queue treat both alike. */
-const PRIORITY_MODE: ModelSetting = {
-  ...FAST_MODE,
-  description: "Fast (priority processing)",
-};
-
-/** Codex's `ultrafast` service tier: offered only when the installed CLI
- *  lists it for the model on the logged-in account (speedTiers, probed by
- *  the server). Exclusive with Fast; the same toggle shape. */
-const ULTRAFAST_MODE: ModelSetting = {
-  id: "ultrafast",
-  label: "Ultrafast",
-  kind: "toggle",
-  value: "false",
-  description: "Ultrafast (fastest service tier)",
-  options: FAST_OPTIONS,
-};
-
-function codexSettings(model: ModelInfo): ModelSetting[] {
-  const tiers = model.speedTiers;
-  if (tiers?.includes("ultrafast")) return [PRIORITY_MODE, ULTRAFAST_MODE];
-  if (tiers) {
-    return [{ ...PRIORITY_MODE, description: `${PRIORITY_MODE.description} · Ultrafast is not on this account` }];
-  }
-  return [PRIORITY_MODE];
+function tierToggle(id: "fast" | "ultrafast", tier: string): ModelSetting {
+  return { id, label: TIER_NAMES[tier], kind: "toggle", value: "false", options: TOGGLE_OPTIONS };
 }
 
-/** `claude-…` models get the fast + context toggles (session.tune). */
+/** Speed settings exist only for the tiers the serving CLI lists
+ *  (`speedTiers`): codex's `priority` is the `fast` toggle and `ultrafast`
+ *  its own; claude's `fast` is the `fast` toggle. No tiers, no settings. */
+function speedSettings(harness: HarnessId, model: ModelInfo): ModelSetting[] {
+  const tiers = model.speedTiers ?? [];
+  if (harness === "claude") return tiers.includes("fast") ? [tierToggle("fast", "fast")] : [];
+  if (harness !== "codex") return [];
+  const out: ModelSetting[] = [];
+  if (tiers.includes("priority")) out.push(tierToggle("fast", "priority"));
+  if (tiers.includes("ultrafast")) out.push(tierToggle("ultrafast", "ultrafast"));
+  return out;
+}
+
+/** `claude-…` models that offer 1M get the context select (session.tune). */
 function claudeSettings(model: ModelInfo): ModelSetting[] {
-  const settings: ModelSetting[] = [];
-  if (supportsContext1m("claude", model.id)) {
-    settings.push({
-      id: "context",
-      label: "Context",
-      kind: "select",
-      value: "200k",
-      options: CONTEXT_OPTIONS,
-    });
-  }
-  if (!model.id.includes("sonnet")) settings.push(FAST_MODE);
-  return settings;
+  if (!supportsContext1m("claude", model.id)) return [];
+  return [{ id: "context", label: "Context", kind: "select", value: "200k", options: CONTEXT_OPTIONS }];
 }
 
 export function agentModelsFor(provider: ProviderInfo): AgentModel[] {
@@ -102,7 +88,7 @@ export function agentModelsFor(provider: ProviderInfo): AgentModel[] {
     const settings = [
       ...(effortSetting(model) ? [effortSetting(model)!] : []),
       ...(harness === "claude" ? claudeSettings(model) : []),
-      ...(harness === "codex" ? codexSettings(model) : []),
+      ...speedSettings(harness, model),
     ];
     return {
       id: `${harness}:${model.id}`,

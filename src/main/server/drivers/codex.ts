@@ -15,6 +15,7 @@ import { researchWriteRoots } from '../orchestration'
 import { routedEndpointFor } from '../endpoint'
 import { gateway } from '../gateway'
 import { observeCodexSnapshot } from '../gatewayObserve'
+import { serviceTierFor } from './codexTiers'
 
 /**
  * Codex driver — `codex app-server`, protocol v2 (verified live against
@@ -852,6 +853,7 @@ export const codexDriver: HarnessDriver = {
         const endpoint = routed.url
         account = routed.account
         const writeRoots = researchWriteRoots(session)
+        const serviceTier = serviceTierFor(session, session.model)
         const threadParams = {
           cwd: session.cwd,
           model: session.model,
@@ -872,14 +874,10 @@ export const codexDriver: HarnessDriver = {
               multi_agent_v2: false
             },
             // Fast = OpenAI's priority service tier, Ultrafast = its
-            // `ultrafast` tier (offered only when the account's model/list
-            // lists it). Only sent when on, so off keeps whatever the
-            // user's own codex config chooses.
-            ...(session.ultrafast
-              ? { service_tier: 'ultrafast' }
-              : session.fast
-                ? { service_tier: 'priority' }
-                : {}),
+            // `ultrafast` tier, each sent only when on and listed by the
+            // CLI's model/list for this model; otherwise the user's own
+            // codex config chooses.
+            ...(serviceTier ? { service_tier: serviceTier } : {}),
             ...(bridgeEntry ? { mcp_servers: { app: bridgeEntry } } : {}),
             // A research tree in a worktree project writes its report and
             // angle files at the workspace root, outside this cwd.

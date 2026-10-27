@@ -56,15 +56,15 @@ afterEach(() => {
 });
 
 describe("agentModelsFor", () => {
-  it("maps models to picker ids with an effort select and claude toggles", () => {
+  it("maps models to picker ids with an Effort select and the context select", () => {
     const models = agentModelsFor(claude);
     expect(models.map((m) => m.id)).toEqual(["claude:claude-opus-5", "claude:claude-sonnet-5-5"]);
     const opus = models[0];
     expect(opus.nativeId).toBe("claude-opus-5");
     expect(opus.contextWindow).toBe(1_000_000);
-    expect(opus.settings?.map((s) => s.id)).toEqual(["effort", "context", "fast"]);
-    expect(opus.settings?.[0]).toMatchObject({ value: "medium", kind: "select" });
-    expect(opus.settings?.[0].options.map((o) => o.value)).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(opus.settings?.map((s) => s.id)).toEqual(["effort", "context"]);
+    expect(opus.settings?.[0]).toMatchObject({ value: "medium", kind: "select", label: "Effort" });
+    expect(opus.settings?.[0].options.map((o) => o.label)).toEqual(["Low", "Medium", "High", "Extra high", "Max"]);
     expect(models[1].settings?.map((s) => s.id)).toEqual(["effort", "context"]);
   });
 
@@ -72,7 +72,18 @@ describe("agentModelsFor", () => {
     expect(agentModelsFor(cursor)[0].settings).toBeUndefined();
   });
 
-  it("codex gets Ultrafast beside Fast only when the probed tiers list it; unprobed rows just get Fast", () => {
+  it("claude gets Fast only when the CLI lists the fast tier for the model", () => {
+    const tiered: ProviderInfo = {
+      ...claude,
+      models: [{ ...claude.models[0], speedTiers: ["fast"] }, claude.models[1]],
+    };
+    const [opus, sonnet] = agentModelsFor(tiered);
+    expect(opus.settings?.map((s) => s.id)).toEqual(["effort", "context", "fast"]);
+    expect(opus.settings?.[2]).toMatchObject({ kind: "toggle", value: "false", label: "Fast" });
+    expect(sonnet.settings?.some((s) => s.id === "fast")).toBe(false);
+  });
+
+  it("codex speed settings follow the tiers the CLI lists; no tiers, no speed", () => {
     const codex: ProviderInfo = {
       id: "codex",
       label: "Codex",
@@ -81,15 +92,25 @@ describe("agentModelsFor", () => {
         { id: "gpt-6-astra", label: "Astra", reasoning: [], speedTiers: ["priority", "ultrafast"] },
         { id: "gpt-5.6-sol", label: "Sol", reasoning: [], speedTiers: ["priority"] },
         { id: "gpt-6-sol", label: "Sol 6", reasoning: [] },
+        { id: "odd", label: "Odd", reasoning: [], speedTiers: ["turbo"] },
       ],
     };
-    const [astra, sol, sol6] = agentModelsFor(codex);
-    expect(astra.settings?.map((s) => s.id)).toEqual(["fast", "ultrafast"]);
-    expect(astra.settings?.[1]).toMatchObject({ kind: "toggle", value: "false", label: "Ultrafast" });
-    expect(sol.settings?.map((s) => s.id)).toEqual(["fast"]);
-    expect(sol.settings?.[0].description).toContain("Ultrafast is not on this account");
-    expect(sol6.settings?.map((s) => s.id)).toEqual(["fast"]);
-    expect(sol6.settings?.[0].description).toBe("Fast (priority processing)");
+    const [astra, sol, sol6, odd] = agentModelsFor(codex);
+    expect(astra.settings?.map((s) => [s.id, s.label])).toEqual([["fast", "Fast"], ["ultrafast", "Ultrafast"]]);
+    expect(sol.settings?.map((s) => [s.id, s.label])).toEqual([["fast", "Fast"]]);
+    expect(sol6.settings).toBeUndefined();
+    expect(odd.settings).toBeUndefined();
+  });
+
+  it("no setting carries a description", () => {
+    const codex: ProviderInfo = {
+      id: "codex",
+      label: "Codex",
+      defaultModel: "a",
+      models: [{ id: "a", label: "A", reasoning: ["low"], speedTiers: ["priority", "ultrafast"] }],
+    };
+    const all = [...agentModelsFor(codex), ...agentModelsFor({ ...claude, models: [{ ...claude.models[0], speedTiers: ["fast"] }] })];
+    for (const m of all) for (const s of m.settings ?? []) expect(s.description).toBeUndefined();
   });
 });
 

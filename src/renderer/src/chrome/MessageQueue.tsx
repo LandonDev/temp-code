@@ -147,7 +147,7 @@ export function MessageQueue({
   )
 }
 
-const EFFORT_LABEL: Record<string, string> = { xhigh: 'Extra High' }
+const EFFORT_LABEL: Record<string, string> = { xhigh: 'Extra high' }
 const effortLabel = (value: string) =>
   EFFORT_LABEL[value] ?? value[0].toUpperCase() + value.slice(1)
 

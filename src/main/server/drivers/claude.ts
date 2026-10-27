@@ -42,6 +42,7 @@ import { resolveClaude } from './binaries'
 import { routedEndpointFor } from '../endpoint'
 import { gateway } from '../gateway'
 import { spawnOrAdoptClaude } from './claudeWarm'
+import { claudeFastFor, noteClaudeInit } from './claudeTiers'
 
 // Dev override: a small window (e.g. 45_000 → compaction arms at ~12k)
 // makes a real compaction reachable in one short thread for UI work.
@@ -1361,7 +1362,7 @@ export const claudeDriver: HarnessDriver = {
       // a ~150k summarization pass plus a full cache rewrite.
       extraArgs: {
         settings: JSON.stringify({
-          ...(session.fast ? { fastMode: true } : {}),
+          ...(claudeFastFor(session, session.model) ? { fastMode: true } : {}),
           autoCompactEnabled: !session.context1m,
           ...(session.context1m ? {} : { autoCompactWindow: AUTO_COMPACT_WINDOW })
         })
@@ -1546,6 +1547,7 @@ export const claudeDriver: HarnessDriver = {
         for await (const msg of q) {
           if (disposed) continue
           handleMessage(watchedCtx, state, msg)
+          if (msg.type === 'system' && msg.subtype === 'init') noteClaudeInit(q)
           if (
             msg.type === 'result' &&
             msg.subtype === 'error_during_execution' &&

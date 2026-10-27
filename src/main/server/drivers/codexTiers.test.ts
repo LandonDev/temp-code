@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CATALOG } from '@shared/catalog'
-import { applySpeedTiers, readTierCache, tiersFromModelList } from './codexTiers'
+import { applySpeedTiers, readTierCache, serviceTierFor, tiersFromModelList } from './codexTiers'
 
 const LIST = {
   data: [
@@ -40,5 +40,16 @@ describe('codex speed tiers', () => {
     expect(
       readTierCache({ getSetting: () => JSON.stringify({ last: 'a@b', accounts: { 'a@b': { x: ['ultrafast'] } } }), setSetting: () => {} })
     ).toEqual({ last: 'a@b', accounts: { 'a@b': { x: ['ultrafast'] } } })
+  })
+
+  it('sends a service tier only when the thread wants it and the catalog lists it', () => {
+    applySpeedTiers({ 'gpt-6-astra': ['priority', 'ultrafast'], 'gpt-6.1-sol': ['priority'] })
+    expect(serviceTierFor({ ultrafast: true }, 'gpt-6-astra')).toBe('ultrafast')
+    expect(serviceTierFor({ fast: true }, 'gpt-6-astra')).toBe('priority')
+    expect(serviceTierFor({ ultrafast: true }, 'gpt-6.1-sol')).toBeNull()
+    expect(serviceTierFor({ fast: true, ultrafast: true }, 'gpt-6.1-sol')).toBe('priority')
+    expect(serviceTierFor({}, 'gpt-6-astra')).toBeNull()
+    applySpeedTiers({})
+    expect(serviceTierFor({ fast: true }, 'gpt-6-astra')).toBeNull()
   })
 })

@@ -30,14 +30,14 @@ export type AgentModel = {
 const CLAUDE_FRONTIER_SETTINGS: ModelSetting[] = [
   {
     id: "effort",
-    label: "Reasoning",
+    label: "Effort",
     kind: "select",
     value: "medium",
     options: [
       { value: "low", label: "Low" },
       { value: "medium", label: "Medium" },
       { value: "high", label: "High" },
-      { value: "xhigh", label: "Extra High" },
+      { value: "xhigh", label: "Extra high" },
       { value: "max", label: "Max" },
     ],
   },
@@ -155,11 +155,11 @@ export const MODELS: AgentModel[] = [
     settings: [
       {
         id: "effort",
-        label: "Reasoning",
+        label: "Effort",
         kind: "select",
         value: "high",
         options: [
-          { value: "xhigh", label: "Extra High" },
+          { value: "xhigh", label: "Extra high" },
           { value: "high", label: "High" },
           { value: "medium", label: "Medium" },
           { value: "low", label: "Low" },
@@ -176,7 +176,7 @@ export const MODELS: AgentModel[] = [
     settings: [
       {
         id: "effort",
-        label: "Reasoning",
+        label: "Effort",
         kind: "select",
         value: "high",
         options: [

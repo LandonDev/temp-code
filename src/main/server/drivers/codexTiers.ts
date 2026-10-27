@@ -54,6 +54,19 @@ export function applySpeedTiers(tiers: Record<string, string[]>): void {
   }
 }
 
+/** Pure: the `service_tier` a codex turn sends: `ultrafast` or `priority`
+ *  only when the thread wants it and the catalog lists that tier for the
+ *  model, else none (the user's own codex config decides). */
+export function serviceTierFor(
+  session: { fast?: boolean; ultrafast?: boolean },
+  model: string
+): 'ultrafast' | 'priority' | null {
+  const tiers = CATALOG.codex.models.find((m) => m.id === model)?.speedTiers ?? []
+  if (session.ultrafast && tiers.includes('ultrafast')) return 'ultrafast'
+  if (session.fast && tiers.includes('priority')) return 'priority'
+  return null
+}
+
 export function readTierCache(store: SettingsStore): TierCache {
   try {
     const raw = store.getSetting(KEY)

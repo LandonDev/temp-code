@@ -51,9 +51,11 @@ export interface ModelInfo {
    *  claude model serves 1M natively (verified live: threads sail past
    *  250k with no beta flag, no compaction, no errors). */
   context?: number
-  /** Service tiers the installed codex CLI reports for this model on the
-   *  logged-in account (`model/list` → serviceTiers), e.g. ['priority',
-   *  'ultrafast']. Absent until probed; never assumed. */
+  /** Speed tiers the CLI that serves this model lists for it, by the CLI's
+   *  own ids: codex's `model/list` serviceTiers (e.g. ['priority',
+   *  'ultrafast']), claude's `supportedModels()` supportsFastMode (['fast']).
+   *  Optional on every provider; absent until probed, never assumed. The
+   *  drivers send a tier only when it is listed here. */
   speedTiers?: string[]
   /** The oldest codex CLI that serves this model. An older install hides
    *  the row everywhere (picker, spawn table, app tools) instead of

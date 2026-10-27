@@ -108,6 +108,7 @@ import { readPage } from './htmlRender'
 import { harnessEnv, resolveAppBridgeLaunch, runDoctor, updateProvider } from './drivers/binaries'
 import { probeCatalogs } from './drivers/catalogProbe'
 import { codexTiersReady, probeCodexTiers, startCodexTiers } from './drivers/codexTiers'
+import { forgetClaudeTiers, startClaudeTiers } from './drivers/claudeTiers'
 import { forgetCodexVersion, installedCodexVersion } from './drivers/codexVersion'
 import { backfillMirrors, cappedThreadDigest } from './mirror'
 import { bootMark } from './boot'
@@ -1235,6 +1236,7 @@ export async function startServer(
   void runDoctor() // warm the cache so the new-session modal opens ready
   void probeCatalogs() // the five probed harnesses ask their CLIs for models
   void startCodexTiers(store) // which service tiers the codex account has, per model
+  startClaudeTiers(store) // which claude models serve fast mode, cached from the last probe
   void installedCodexVersion() // hides catalog rows the installed codex cannot run
 
   // Background IntelliJ index warming: shortly after startup, then every
@@ -1690,6 +1692,7 @@ export async function startServer(
           case 'catalog.get':
             if (req.params?.refresh) {
               forgetCodexVersion()
+              forgetClaudeTiers()
               await Promise.all([probeCatalogs(true), probeCodexTiers(store), installedCodexVersion()])
             } else await Promise.all([codexTiersReady(), installedCodexVersion()])
             sendFrame({ id: req.id, ok: true, result: visibleCatalog() })
