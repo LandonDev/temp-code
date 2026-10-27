@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectPlanState } from "@server/shared/contract-projectplan";
 
@@ -10,7 +10,7 @@ vi.mock("../hooks/usePlanFile", () => ({ usePlanFile: () => null }));
 vi.mock("../lib/tcserver/store", () => ({ sessionStore: { get: () => undefined, requestOpen: vi.fn() } }));
 vi.mock("../surfaces/threads/ProjectPlanCard", () => ({ ProjectPlanOptions: () => null }));
 
-import { ProjectPlanChip } from "./ProjectPlanChip";
+import { ProjectPlanChip, planChipLabel } from "./ProjectPlanChip";
 
 const base: ProjectPlanState = {
   projectId: "p1",
@@ -50,6 +50,23 @@ describe("ProjectPlanChip", () => {
     view.unmount();
     planState = { ...base, pinned: true };
     render(<ProjectPlanChip />);
-    expect(screen.getByText("Plan · 3 of 7 milestones done")).toBeTruthy();
+    const chip = screen.getByRole("button");
+    expect(chip.textContent).toBe("Plan3/7");
+    expect(chip.textContent).not.toMatch(/ · /);
+    expect(chip.hasAttribute("title")).toBe(false);
+  });
+
+  it("labels Plan alone until the plan is kept", () => {
+    expect(planChipLabel({ ...base, pinned: false })).toEqual({ label: "Plan", tally: null });
+    expect(planChipLabel({ ...base, pinned: true })).toEqual({ label: "Plan", tally: "3/7" });
+  });
+
+  it("opens a popover whose first row opens the plan", async () => {
+    planState = base;
+    render(<ProjectPlanChip />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button"));
+    });
+    expect(await screen.findByText("Open the plan")).toBeTruthy();
   });
 });
