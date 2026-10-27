@@ -651,12 +651,8 @@ export default function App() {
         tab,
         rebaseToWorkspace(sessionStore.getSnapshot(), workspaceStore.getSnapshot()),
       );
-      if (cwd && looksLikeProject(cwd)) {
-        const normalized = normalizeProjectPath(cwd);
-        if (!sameProjectPath(normalized, projectStore.getState().projectCwd)) {
-          project.enterWorkspace(normalized);
-        }
-      }
+      // A linked project's Mac and box copies are one folder: no move.
+      if (cwd && looksLikeProject(cwd)) project.followWorkspace(normalizeProjectPath(cwd));
     }
     setComposerFocused(
       !!tab &&
@@ -1807,9 +1803,7 @@ export default function App() {
         return;
       }
       const path = normalizeProjectPath(workspacePathOfSession(session, catalog));
-      if (looksLikeProject(path) && !sameProjectPath(projectCwd, path)) {
-        project.enterWorkspace(path);
-      }
+      if (looksLikeProject(path)) project.followWorkspace(path);
     },
     [],
   );

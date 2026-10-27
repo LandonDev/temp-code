@@ -134,13 +134,43 @@ function writeMap(storageKey: string, map: Record<string, string>): void {
   }
 }
 
-export function loadSelectedProject(workspacePath: string): string | null {
-  const id = readMap(SELECTED_KEY)[normalizeProjectPath(workspacePath)];
+/** The key a folder is remembered under: the link's leader's path for a
+ *  copy on another host (lib/linkedRail.ts), else the folder itself. */
+export function folderKey(path: string, catalog: Pick<Catalog, "workspaces">): string {
+  return normalizeProjectPath(aliasKeys(catalog.workspaces).path(normalizeProjectPath(path)));
+}
+
+/** Two paths name one folder: the same path, or two copies of one link. */
+export function sameFolder(a: string, b: string, catalog: Pick<Catalog, "workspaces">): boolean {
+  return folderKey(a, catalog) === folderKey(b, catalog);
+}
+
+/** The project picked in a folder, a linked copy's path reading the
+ *  leader's memory. An entry still under a copy's own path (saved before
+ *  the link) is read once and moved under the key. */
+export function loadSelectedProject(
+  workspacePath: string,
+  catalog: Pick<Catalog, "workspaces">,
+): string | null {
+  const map = readMap(SELECTED_KEY);
+  const key = folderKey(workspacePath, catalog);
+  const raw = normalizeProjectPath(workspacePath);
+  let id = map[key];
+  if (!id && raw !== key && map[raw]) {
+    id = map[raw];
+    map[key] = id;
+    delete map[raw];
+    writeMap(SELECTED_KEY, map);
+  }
   return typeof id === "string" && id ? id : null;
 }
 
-export function saveSelectedProject(workspacePath: string, projectId: string | null): void {
-  const key = normalizeProjectPath(workspacePath);
+export function saveSelectedProject(
+  workspacePath: string,
+  projectId: string | null,
+  catalog: Pick<Catalog, "workspaces">,
+): void {
+  const key = folderKey(workspacePath, catalog);
   const next = readMap(SELECTED_KEY);
   if (projectId) next[key] = projectId;
   else delete next[key];

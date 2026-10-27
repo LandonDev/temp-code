@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   contextForCwd,
   contextOfSession,
+  folderKey,
   forgetLastSession,
   homeOrWorkspacePath,
   landingPathOfSession,
@@ -10,6 +11,7 @@ import {
   rebaseToWorkspace,
   resolveLanding,
   resolveSessionContext,
+  sameFolder,
   saveLastSession,
   saveSelectedProject,
   workspacePathOfSession,
@@ -99,12 +101,52 @@ describe("workspacePathOfSession / rebaseToWorkspace", () => {
 
 describe("selected project persistence", () => {
   beforeEach(mockLocalStorage);
+  const linked = {
+    workspaces: [
+      { ...workspaces[0], linkId: "wl_r" },
+      { environmentId: "env_box", id: "w-box", name: "repo", path: "/srv/work/repo/", git: true, createdAt: 1, linkId: "wl_r" },
+      { environmentId: "env_box", id: "w-solo", name: "solo", path: "/srv/work/solo", git: true, createdAt: 1 },
+    ],
+  };
+  const SELECTED = "monocode.tc.selectedProject";
+  const stored = () => JSON.parse(localStorage.getItem(SELECTED) ?? "{}") as Record<string, string>;
+
   it("round-trips per workspace path", () => {
-    saveSelectedProject("/home/me/repo/", "p1");
-    expect(loadSelectedProject("/home/me/repo")).toBe("p1");
-    expect(loadSelectedProject("/other")).toBeNull();
-    saveSelectedProject("/home/me/repo", null);
-    expect(loadSelectedProject("/home/me/repo")).toBeNull();
+    saveSelectedProject("/home/me/repo/", "p1", catalog);
+    expect(loadSelectedProject("/home/me/repo", catalog)).toBe("p1");
+    expect(loadSelectedProject("/other", catalog)).toBeNull();
+    saveSelectedProject("/home/me/repo", null, catalog);
+    expect(loadSelectedProject("/home/me/repo", catalog)).toBeNull();
+  });
+
+  it("keys a linked copy's path by the link's leader", () => {
+    expect(folderKey("/srv/work/repo/", linked)).toBe("/home/me/repo");
+    expect(folderKey("/home/me/repo/", linked)).toBe("/home/me/repo");
+    expect(folderKey("/srv/work/solo", linked)).toBe("/srv/work/solo");
+    expect(folderKey("/elsewhere/", linked)).toBe("/elsewhere");
+    expect(sameFolder("/srv/work/repo", "/home/me/repo", linked)).toBe(true);
+    expect(sameFolder("/srv/work/solo", "/home/me/repo", linked)).toBe(false);
+    // Without the link the two paths are two folders.
+    expect(sameFolder("/srv/work/repo", "/home/me/repo", catalog)).toBe(false);
+  });
+
+  it("a box copy's path saves and reads the leader's memory", () => {
+    saveSelectedProject("/srv/work/repo", "p-box", linked);
+    expect(stored()).toEqual({ "/home/me/repo": "p-box" });
+    expect(loadSelectedProject("/home/me/repo", linked)).toBe("p-box");
+    expect(loadSelectedProject("/srv/work/repo/", linked)).toBe("p-box");
+  });
+
+  it("reads an entry under a copy's raw path once and moves it under the key", () => {
+    localStorage.setItem(SELECTED, JSON.stringify({ "/srv/work/repo": "p-old" }));
+    expect(loadSelectedProject("/srv/work/repo", linked)).toBe("p-old");
+    expect(stored()).toEqual({ "/home/me/repo": "p-old" });
+    expect(loadSelectedProject("/home/me/repo", linked)).toBe("p-old");
+  });
+
+  it("the key's own entry wins over a stale raw one", () => {
+    localStorage.setItem(SELECTED, JSON.stringify({ "/home/me/repo": "p-mac", "/srv/work/repo": "p-wt" }));
+    expect(loadSelectedProject("/srv/work/repo", linked)).toBe("p-mac");
   });
 });
 

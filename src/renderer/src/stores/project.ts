@@ -3,7 +3,7 @@ import { useStore } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { createStore } from "zustand/vanilla";
 import { focusedFileTab, type WorkspaceTab } from "../lib/layout";
-import { loadSelectedProject, saveSelectedProject } from "../lib/projectContext";
+import { loadSelectedProject, sameFolder, saveSelectedProject } from "../lib/projectContext";
 import {
   lastProjectPath,
   loadArchivedProjects,
@@ -49,7 +49,7 @@ export function initialProjectState(
   return {
     projectCwd,
     recents: [],
-    selectedProjectId: loadSelectedProject(projectCwd),
+    selectedProjectId: loadSelectedProject(projectCwd, workspaceStore.getSnapshot()),
     ...overrides,
   };
 }
@@ -182,8 +182,15 @@ export function currentDockCwd(): string {
 const update = (reducer: (state: ProjectState) => ProjectState) =>
   projectStore.setState(reducer);
 
-const selectionFor = (state: ProjectState, cwd: string) =>
-  cwd === state.projectCwd ? state.selectedProjectId : loadSelectedProject(cwd);
+/** The selection a move to `cwd` takes: the current one while the window
+ *  stays in the folder (a linked copy's path is the same folder), else that
+ *  folder's memory. */
+const selectionFor = (state: ProjectState, cwd: string) => {
+  const catalog = workspaceStore.getSnapshot();
+  return cwd === state.projectCwd || sameFolder(cwd, state.projectCwd, catalog)
+    ? state.selectedProjectId
+    : loadSelectedProject(cwd, catalog);
+};
 
 /** The bound actions: each applies a reducer above to the live store. */
 export const project = {
@@ -202,11 +209,21 @@ export const project = {
         s.recents.length > 0 ? s.recents : rememberProject(cwd),
       ),
     ),
+  /** Open the folder a tab or thread lives in, unless the window is on it
+   *  already or on a linked copy of it (lib/linkedRail.ts): a switch between
+   *  a project's Mac and box copies moves nothing, bumps no recent and
+   *  rewrites no memory. */
+  followWorkspace: (cwd: string) => {
+    const { projectCwd } = projectStore.getState();
+    if (!sameFolder(cwd, projectCwd, workspaceStore.getSnapshot())) project.enterWorkspace(cwd);
+  },
   /** Pick a project in this workspace; the choice is remembered per folder. */
   selectProject: (projectId: string | null) => {
     const before = projectStore.getState();
     update((s) => selectProject(s, projectId));
-    if (projectStore.getState() !== before) saveSelectedProject(before.projectCwd, projectId);
+    if (projectStore.getState() !== before) {
+      saveSelectedProject(before.projectCwd, projectId, workspaceStore.getSnapshot());
+    }
   },
   setRecents: (recents: RecentProject[]) => update((s) => setRecents(s, recents)),
 };

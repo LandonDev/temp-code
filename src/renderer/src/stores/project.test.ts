@@ -3,7 +3,8 @@ import { newTab } from "../lib/layout";
 import { loadSelectedProject, saveSelectedProject } from "../lib/projectContext";
 import { loadArchivedProjects } from "../lib/recents";
 import { newDefaultSession } from "../lib/session";
-import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
+import type { ProjectMeta, WorkspaceCatalog, WorkspaceMeta } from "../lib/tcserver/types";
+import { workspaceStore } from "../lib/tcserver/workspaces";
 import {
   dockCwdOf,
   gitCwdOf,
@@ -128,7 +129,7 @@ describe("project actions", () => {
     expect(s.projectCwd).toBe("/other");
     expect(s.selectedProjectId).toBe("p7");
     expect(s.recents[0]?.path).toBe("/other");
-    expect(loadSelectedProject).toHaveBeenCalledWith("/other");
+    expect(loadSelectedProject).toHaveBeenCalledWith("/other", expect.anything());
   });
 
   it("re-entering the current workspace keeps the selection and skips the load", () => {
@@ -151,7 +152,64 @@ describe("project actions", () => {
     project.selectProject("p2");
     expect(projectStore.getState().selectedProjectId).toBe("p2");
     expect(saveSelectedProject).toHaveBeenCalledTimes(1);
-    expect(saveSelectedProject).toHaveBeenCalledWith("/repo", "p2");
+    expect(saveSelectedProject).toHaveBeenCalledWith("/repo", "p2", expect.anything());
+  });
+
+  describe("a project linked across hosts", () => {
+    const MAC = "/Users/me/repo";
+    const BOX = "/srv/agents/work/repo";
+    const linked = {
+      workspaces: [
+        { ...workspace("wM", MAC, 1), linkId: "wl_1" },
+        { ...workspace("wB", BOX, 1), environmentId: "env_box", linkId: "wl_1" },
+      ],
+      projects: [],
+      icons: new Map(),
+      defaults: new Map(),
+      loaded: true,
+    } as unknown as WorkspaceCatalog;
+
+    beforeEach(async () => {
+      const actual = await vi.importActual<typeof import("../lib/projectContext")>("../lib/projectContext");
+      vi.mocked(loadSelectedProject).mockImplementation(actual.loadSelectedProject);
+      vi.mocked(saveSelectedProject).mockImplementation(actual.saveSelectedProject);
+      vi.spyOn(workspaceStore, "getSnapshot").mockReturnValue(linked);
+      const data = new Map<string, string>();
+      vi.stubGlobal("localStorage", {
+        getItem: (k: string) => data.get(k) ?? null,
+        setItem: (k: string, v: string) => void data.set(k, String(v)),
+        removeItem: (k: string) => void data.delete(k),
+      });
+    });
+    afterEach(() => {
+      vi.mocked(loadSelectedProject).mockImplementation(() => null);
+      vi.mocked(saveSelectedProject).mockImplementation(() => {});
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    it("a box copy's path reads the leader's memory", () => {
+      localStorage.setItem("monocode.tc.selectedProject", JSON.stringify({ [MAC]: "pM" }));
+      projectStore.setState(initialProjectState({ projectCwd: "/elsewhere", selectedProjectId: null }));
+      project.enterWorkspace(BOX);
+      expect(projectStore.getState().projectCwd).toBe(BOX);
+      expect(projectStore.getState().selectedProjectId).toBe("pM");
+      // A pick on the box path is remembered for both copies.
+      project.selectProject("pB");
+      expect(JSON.parse(localStorage.getItem("monocode.tc.selectedProject")!)).toEqual({ [MAC]: "pB" });
+    });
+
+    it("following a copy's path keeps the folder, the recents and the selection", () => {
+      projectStore.setState(initialProjectState({ projectCwd: MAC, selectedProjectId: "pM" }));
+      const before = projectStore.getState();
+      vi.mocked(loadSelectedProject).mockClear();
+      project.followWorkspace(BOX);
+      expect(projectStore.getState()).toBe(before);
+      expect(loadSelectedProject).not.toHaveBeenCalled();
+      project.followWorkspace("/elsewhere");
+      expect(projectStore.getState().projectCwd).toBe("/elsewhere");
+      expect(projectStore.getState().recents[0]?.path).toBe("/elsewhere");
+    });
   });
 
   it("a plain cwd move leaves the recents alone", () => {

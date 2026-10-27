@@ -13,6 +13,7 @@ import {
 import { newDefaultSession, type Session } from "../lib/session";
 import type { SessionSummary } from "../lib/sessionStore";
 import { sessionStore } from "../lib/tcserver/store";
+import { workspaceStore } from "../lib/tcserver/workspaces";
 import type { InstalledUpdate } from "../lib/updateNotice";
 import type { WindowTransferPayload } from "../lib/windowTransfer";
 import { loadSelectedProject } from "../lib/projectContext";
@@ -117,7 +118,7 @@ export function bootstrapWorkspace(input: BootInput): BootWorkspace {
   projectStore.setState({
     projectCwd: workspace.projectCwd,
     recents: workspace.recents,
-    selectedProjectId: loadSelectedProject(workspace.projectCwd),
+    selectedProjectId: loadSelectedProject(workspace.projectCwd, workspaceStore.getSnapshot()),
   });
   workspaceTabsStore.setState(
     initialWorkspaceTabsState(workspace.tabs, workspace.activeTabId),

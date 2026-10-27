@@ -41,6 +41,11 @@ import {
 } from "./subscriptions";
 import { initialTerminalsState, terminals, terminalsStore } from "./terminals";
 import { initialWorkspaceTabsState, workspace, workspaceTabsStore } from "./workspace";
+import { workspaceActions } from "./workspaceActions";
+import { rebaseToWorkspace } from "../lib/projectContext";
+import { copiesOf } from "../lib/projectHostChoice";
+import { filterTabsForProjectId, workspaceTabCwd } from "../lib/workspaceTabGroups";
+import { looksLikeProject, normalizeProjectPath } from "../lib/recents";
 
 vi.mock("../lib/harness", () => ({
   forgetHarnessSession: vi.fn(() => Promise.resolve()),
@@ -424,7 +429,7 @@ describe("installActiveSessionSync", () => {
     expect(projectStore.getState().projectCwd).toBe("/other");
     expect(projectStore.getState().selectedProjectId).toBe("p2");
     // Remembered for the folder the window is on now.
-    expect(saveSelectedProject).toHaveBeenLastCalledWith("/other", "p2");
+    expect(saveSelectedProject).toHaveBeenLastCalledWith("/other", "p2", expect.anything());
   });
 
   it("a folder move with the same thread on screen keeps the folder's remembered project", async () => {
@@ -457,6 +462,72 @@ describe("installActiveSessionSync", () => {
     project.enterWorkspace("/repo");
     await microtasks();
     expect(projectStore.getState().selectedProjectId).toBe("p-mac");
+  });
+
+  it("activating a box-copy tab of a linked project keeps the folder and the strip", async () => {
+    const MAC = "/Users/l/IdeaProjects/temp-code";
+    const BOX = "/srv/agents/work/temp-code";
+    const actual = await vi.importActual<typeof import("../lib/projectContext")>("../lib/projectContext");
+    vi.mocked(loadSelectedProject).mockImplementation(actual.loadSelectedProject);
+    vi.mocked(saveSelectedProject).mockImplementation(actual.saveSelectedProject);
+    const data = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, String(v)),
+      removeItem: (k: string) => void data.delete(k),
+    });
+    try {
+      const ws = (id: string, environmentId: string, path: string) =>
+        ({ id, environmentId, path, name: "temp-code", git: true, linkId: "wl_1", createdAt: 1 });
+      const linked = catalog({
+        workspaces: [ws("wM", "local", MAC), ws("wB", "env_box", BOX)] as never,
+        projects: [
+          projectMeta("pM", { workspaceId: "wM", cwd: MAC, linkId: "pl_1" }),
+          projectMeta("pB", { environmentId: "env_box", workspaceId: "wB", cwd: BOX, linkId: "pl_1" }),
+          projectMeta("pWt", { environmentId: "env_box", workspaceId: "wB", cwd: `${BOX}/.claude/worktrees/auth` }),
+        ],
+      });
+      vi.spyOn(workspaceStore, "getSnapshot").mockReturnValue(linked);
+      // What each folder remembered before the link: the box path a worktree project.
+      data.set("monocode.tc.selectedProject", JSON.stringify({ [MAC]: "pM", [BOX]: "pWt" }));
+      sessionStore.mutate([
+        session("sM", { projectId: "pM", cwd: MAC }),
+        session("sB", { environmentId: "env_box", projectId: "pB", cwd: BOX }),
+      ]);
+      setTabs([{ ...newTab("sM"), id: "a" }, { ...newTab("sB"), id: "b" }], "a");
+      projectStore.setState(initialProjectState({ projectCwd: MAC, selectedProjectId: "pM" }), true);
+      teardown = installActiveSessionSync();
+      // App.tsx activateTab in the deck layout.
+      const activateTab = (id: string) => {
+        workspaceActions.activateTab(id);
+        const t = workspaceTabsStore.getState().tabs.find((entry) => entry.id === id)!;
+        const cwd = workspaceTabCwd(t, rebaseToWorkspace(sessionStore.getSnapshot(), linked));
+        if (cwd && looksLikeProject(cwd)) project.followWorkspace(normalizeProjectPath(cwd));
+      };
+      const deck = () => {
+        const selected = linked.projects.find((p) => p.id === projectStore.getState().selectedProjectId)!;
+        const scope = new Set([selected.id, ...copiesOf(linked.projects, selected.linkId).map((p) => p.id)]);
+        return filterTabsForProjectId(workspaceTabsStore.getState().tabs, sessionStore.getSnapshot(), scope).map((t) => t.id);
+      };
+      const recents = projectStore.getState().recents;
+
+      activateTab("b");
+      await microtasks();
+      expect(projectStore.getState().projectCwd).toBe(MAC);
+      expect(projectStore.getState().recents).toBe(recents);
+      expect(projectStore.getState().selectedProjectId).toBe("pB");
+      expect(deck()).toEqual(["a", "b"]);
+      // The box path's own entry was never read into the window or rewritten.
+      expect(JSON.parse(data.get("monocode.tc.selectedProject")!)).toEqual({ [MAC]: "pB", [BOX]: "pWt" });
+
+      activateTab("a");
+      await microtasks();
+      expect(projectStore.getState().projectCwd).toBe(MAC);
+      expect(projectStore.getState().selectedProjectId).toBe("pM");
+      expect(deck()).toEqual(["a", "b"]);
+    } finally {
+      vi.mocked(saveSelectedProject).mockImplementation(() => {});
+    }
   });
 
   it("drops a selection whose project was archived", async () => {
