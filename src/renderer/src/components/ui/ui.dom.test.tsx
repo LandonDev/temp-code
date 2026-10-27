@@ -105,7 +105,7 @@ describe("Switch", () => {
 });
 
 describe("StatusMark", () => {
-  const states: ThreadState[] = ["working", "waiting", "paused", "failed", "queued", "stopped", "watching", "done", "idle"];
+  const states: ThreadState[] = ["working", "waiting", "paused", "failed", "queued", "stopped", "watching", "plan-ready", "done", "idle"];
 
   it("gives every state one word and one tone", () => {
     for (const state of states) {
@@ -136,6 +136,11 @@ describe("StatusMark", () => {
     expect(threadStateOf("idle")).toBe("idle");
     expect(threadStateOf("idle", { settled: true })).toBe("done");
     expect(threadStateOf(undefined)).toBe("idle");
+    expect(threadStateOf("idle", { planReady: true })).toBe("plan-ready");
+    expect(threadStateOf("done", { planReady: true })).toBe("plan-ready");
+    expect(threadStateOf("running", { planReady: true })).toBe("working");
+    expect(threadStateOf("waiting", { planReady: true })).toBe("waiting");
+    expect(STATUS_TONE["plan-ready"]).toBe("muted");
   });
 
   it("gives a host link one word per transport, the unreachable one with its time", () => {

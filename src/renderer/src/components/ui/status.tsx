@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import type { SessionStatus } from "@shared/events";
-import { Check, Circle, CircleAlert, CircleDashed, CircleDot, Pause, Square } from "@renderer/chrome/icons";
+import { Check, Circle, CircleAlert, CircleDashed, CircleDot, FileText, Pause, Square } from "@renderer/chrome/icons";
 import { cn } from "@renderer/lib/cn";
 import { Spinner } from "./spinner";
 
@@ -12,7 +12,7 @@ import { Spinner } from "./spinner";
  * Colour carries meaning alone: amber means the person is needed, red
  * means failed; everything else is the foreground or muted.
  */
-export type ThreadState = "working" | "waiting" | "paused" | "failed" | "queued" | "stopped" | "watching" | "done" | "idle";
+export type ThreadState = "working" | "waiting" | "paused" | "failed" | "queued" | "stopped" | "watching" | "plan-ready" | "done" | "idle";
 
 export const STATUS_WORD: Record<ThreadState, string> = {
   working: "Working",
@@ -22,6 +22,7 @@ export const STATUS_WORD: Record<ThreadState, string> = {
   queued: "Queued",
   stopped: "Stopped",
   watching: "Watching",
+  "plan-ready": "Plan ready",
   done: "Done",
   idle: "Idle",
 };
@@ -36,6 +37,7 @@ export const STATUS_TONE: Record<ThreadState, StatusTone> = {
   queued: "muted",
   stopped: "muted",
   watching: "muted",
+  "plan-ready": "muted",
   done: "muted",
   idle: "muted",
 };
@@ -49,11 +51,18 @@ const TONE_CLASS: Record<StatusTone, string> = {
 
 /**
  * A session's wire status as the vocabulary's state. `starting` and
- * `running` work; `error` failed; `idle` after a completed turn is done
- * (`settled`), else idle; an undefined status (a row not yet listed) is idle.
- * Every row that shows a thread's state reads this, never a map of its own.
+ * `running` work; `error` failed; a plan written and not yet built
+ * (`planReady`) is plan-ready whatever the status short of a live one;
+ * `idle` after a completed turn is done (`settled`), else idle; an
+ * undefined status (a row not yet listed) is idle. Every row that shows a
+ * thread's state reads this, never a map of its own. A tally (3/7) is the
+ * mark's detail text beside it; unread is weight on the title, never a dot.
  */
-export function threadStateOf(status: SessionStatus | null | undefined, opts: { settled?: boolean } = {}): ThreadState {
+export function threadStateOf(
+  status: SessionStatus | null | undefined,
+  opts: { settled?: boolean; planReady?: boolean } = {},
+): ThreadState {
+  if (opts.planReady && status !== "starting" && status !== "running" && status !== "waiting" && status !== "error") return "plan-ready";
   switch (status) {
     case "starting":
     case "running":
@@ -135,6 +144,8 @@ function Glyph({ state, className }: { state: ThreadState; className?: string })
       return <Square className={cn(c, "size-3")} />;
     case "watching":
       return <Circle className={cn(c, "status-watching")} />;
+    case "plan-ready":
+      return <FileText className={c} />;
     case "done":
       return <Check className={c} />;
     case "idle":
