@@ -1,11 +1,13 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
+import { Button } from "../../../components/ui/button";
+import { Kbd } from "../../../components/ui/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { ChevronLeft } from "../../../chrome/icons";
 import type { OpenFileFn } from "../../../lib/search";
 import type { Session } from "../../../lib/session";
 import { useMetaById, useSessionById } from "../../../lib/threads/agents";
 import { useSessionActions, useThreadChat, type SessionActions } from "../../threadChat";
 import { ThreadView } from "../ThreadView";
-import { typeWord } from "./useMasterModel";
 
 /**
  * A child of the batch opened from the board (docs/LAYOUT.md "Master"):
@@ -62,18 +64,17 @@ export function ChildPane({
 
   return (
     <div ref={paneRef} tabIndex={-1} onKeyDown={onKey} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none" data-child-pane={sessionId} data-child-host={environmentId}>
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-content/10 pr-3 pl-1.5">
-        <button
-          type="button"
-          onClick={onBack}
-          title="Back to the board (Esc)"
-          className="pressable inline-flex h-6 items-center gap-0.5 rounded-md pr-2 pl-1 text-xs text-content/60 hover:bg-content/5 hover:text-content"
-        >
-          <ChevronLeft className="size-3.5" strokeWidth={1.75} />
-          Back
-        </button>
-        <span className="min-w-0 truncate pl-1 text-[13px] font-medium text-content">{meta.title || "Untitled"}</span>
-        <span className="shrink-0 text-xs text-content/40">{typeWord(meta)}</span>
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-background pr-3 pl-2">
+        <Tooltip>
+          <TooltipTrigger render={<Button variant="ghost" size="xs" onClick={onBack} />}>
+            <ChevronLeft />
+            Back
+          </TooltipTrigger>
+          <TooltipContent>
+            Back to the board <Kbd size="sm">Esc</Kbd>
+          </TooltipContent>
+        </Tooltip>
+        <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{meta.title || "Untitled"}</span>
       </div>
       <ChildThread
         session={session}

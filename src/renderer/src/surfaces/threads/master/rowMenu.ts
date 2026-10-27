@@ -9,7 +9,8 @@ import type { MoveTarget } from "../../../lib/threadMove";
  * for a subagent line under it: New pass… first, Open, then the thread's
  * own menu as its tab has it (`chipMenuItems`: rename, continue, pause,
  * compact, stop, the master pin, archive) with the host moves the thread
- * chip offers before Archive. The tab's dialogs that do not belong on a
+ * chip offers before Archive. A queued thread's menu has Start now after
+ * Open, Remove from queue in Archive's place and no Compact. The tab's dialogs that do not belong on a
  * board (the type's options, the Mac bridge, resources, delete) stay on
  * the tab.
  */
@@ -19,10 +20,12 @@ const BOARD_IDS = new Set(["rename", "resume", "pause", "compact", "killBackgrou
 
 export function rowMenuItems(meta: SessionMeta, master: boolean, moves: readonly MoveTarget[]): ExplorerMenuItem[] {
   const chip = { id: meta.id, thread: meta, status: meta.status } as unknown as StripChip;
-  const own = chipMenuItems(chip, undefined, 0, master).filter(
-    (item): item is ExplorerMenuItem => item.kind === "sep" || (item.kind === "item" && BOARD_IDS.has(item.id)),
-  );
-  const archive = own.findIndex((item) => item.kind === "item" && item.id === "archive");
+  const queued = meta.status === "queued";
+  const own = chipMenuItems(chip, undefined, 0, master)
+    .filter((item): item is ExplorerMenuItem => item.kind === "sep" || (item.kind === "item" && BOARD_IDS.has(item.id) && !(queued && item.id === "compact")))
+    // A queued thread leaves the batch by leaving the queue (the fleet's Stop on a queued root).
+    .map((item) => (queued && item.kind === "item" && item.id === "archive" ? { ...item, id: "remove-queue", label: "Remove from queue" } : item));
+  const archive = own.findIndex((item) => item.kind === "item" && (item.id === "archive" || item.id === "remove-queue"));
   const moveRows: ExplorerMenuItem[] = moves.flatMap((t): ExplorerMenuItem[] => [
     { kind: "item", id: `move:${t.environmentId}`, label: `Move to ${t.name}…`, disabled: !t.ok },
     ...(t.ok ? [] : [{ kind: "item", id: `why:${t.environmentId}`, label: t.reason, disabled: true } as const]),
@@ -31,6 +34,7 @@ export function rowMenuItems(meta: SessionMeta, master: boolean, moves: readonly
   return tidy([
     { kind: "item", id: "new-pass", label: "New pass…" },
     { kind: "item", id: "open", label: "Open" },
+    ...(queued ? [{ kind: "item", id: "start-now", label: "Start now" } as const] : []),
     { kind: "sep" },
     ...body,
   ]);

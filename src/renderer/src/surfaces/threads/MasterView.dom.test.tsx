@@ -185,9 +185,18 @@ vi.mock("./ThreadView", () => ({
 }));
 vi.mock("./SplitShell", () => ({
   ChatToggle: () => null,
-  SplitShell: ({ board, chat }: { board: React.ReactNode; chat: React.ReactNode }) => (
+  SplitShell: ({ board, chat, title, detail, actions }: { board: React.ReactNode; chat: React.ReactNode; title?: React.ReactNode; detail?: React.ReactNode; actions?: React.ReactNode }) => (
     <div>
-      <div data-board>{board}</div>
+      <div data-board>
+        {title !== undefined ? (
+          <div data-view-header>
+            <span data-view-title>{title}</span>
+            {detail ? <span data-view-detail>{detail}</span> : null}
+            {actions}
+          </div>
+        ) : null}
+        {board}
+      </div>
       <div data-chat>{chat}</div>
     </div>
   ),
@@ -612,7 +621,7 @@ describe("the master view", () => {
     expect(document.querySelector("[data-child-view='c-run']")).toBeTruthy();
     // The transcript mounts in the pane's deferred pass, a frame after the header.
     await waitFor(() => expect(document.querySelector("[data-transcript='c-run']")).toBeTruthy());
-    expect(screen.getByRole("button", { name: /Back/ }).getAttribute("title")).toBe("Back to the board (Esc)");
+    expect(screen.getByRole("button", { name: "Back" }).closest("[data-child-pane]")?.textContent).not.toContain("Implementation");
     // Nothing opened a tab.
     expect(props.onOpenSession).not.toHaveBeenCalled();
     fireEvent.keyDown(pane!, { key: "Escape" });
@@ -1091,7 +1100,7 @@ describe("the master view", () => {
     expect(headers()).toHaveLength(1);
   });
 
-  it("a queued row offers Start now on hover in place of the live actions", async () => {
+  it("a queued row offers Start now on hover and Remove from queue in its menu", async () => {
     seed([meta({ id: "c-q", title: "Inbox", status: "queued", activity: "Queued · waiting for Home", after: "c-run" })]);
     renderView();
     await flush();
@@ -1099,6 +1108,27 @@ describe("the master view", () => {
     await flush();
     expect(link.calls.some((c) => c.method === "session.start" && (c.params as { sessionId: string }).sessionId === "c-q")).toBe(true);
     expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+    fireEvent.click(within(screen.getByRole("button", { name: /Inbox/ })).getByRole("button", { name: "Thread actions" }));
+    await flush();
+    fireEvent.click(within(screen.getByRole("menu", { name: "Thread actions" })).getByText("Remove from queue"));
+    await flush();
+    expect(link.calls.find((c) => c.method === "session.batch")?.params).toMatchObject({ action: "stop", ids: ["c-q"] });
+  });
+
+  it("the header carries the master's title, its summary and the two actions", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    renderView();
+    await flush();
+    act(() => {
+      link.push({ push: "batch", state: { ...batch, rules: { ...batch.rules, summary: "Gate, release, publish" } } } as unknown as ServerPush);
+    });
+    const head = document.querySelector("[data-view-header]") as HTMLElement;
+    expect(head.querySelector("[data-view-title]")?.textContent).toBe("iOS batch 2");
+    expect(head.querySelector("[data-view-detail]")?.textContent).toBe("Gate, release, publish");
+    expect(within(head).getByRole("button", { name: "Batch actions" })).toBeTruthy();
+    expect(within(head).getByRole("button", { name: /^Thread$/ })).toBeTruthy();
+    // The foot no longer repeats the summary.
+    expect(document.querySelector("[data-batch-foot]")?.textContent).not.toContain("Gate, release, publish");
   });
 });
 

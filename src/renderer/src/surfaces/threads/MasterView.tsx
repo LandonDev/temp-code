@@ -5,6 +5,8 @@ import { ExplorerMenu } from "../../chrome/ExplorerMenu";
 import { MoveThreadConfirm } from "../../chrome/ThreadHostChip";
 import { ArchiveThreadDialog } from "../../chrome/ThreadResourcesDialog";
 import { ChevronDown, MoreHorizontal, Plus } from "../../chrome/icons";
+import { Button } from "../../components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { registry } from "../../lib/connection";
 import { useEnvironments, useEnvironmentStatuses } from "../../lib/connection/status";
 import * as commands from "../../lib/tcserver/commands";
@@ -41,7 +43,7 @@ import {
   type BoardRowRef,
   type RowHost,
 } from "./master/useMasterModel";
-import { ChatToggle, SplitShell } from "./SplitShell";
+import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 
 /**
@@ -69,11 +71,6 @@ import type { ThreadViewProps } from "./ThreadView";
  * thread's do: the right panel's Agents section and the pulse line above
  * the composer. They are never board rows.
  */
-
-const QUIET_ICON =
-  "pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content";
-const BORDERED_BUTTON =
-  "pressable inline-flex h-6 items-center gap-1 rounded-md border border-content/10 px-2 text-xs text-content hover:bg-content/5";
 
 /** The children Pause all would reach: a running turn anywhere in their
  *  tree, by the fleet switches' rule (lib/threadBatch.ts). */
@@ -293,6 +290,11 @@ export function MasterView(props: ThreadViewProps) {
     else if (pick === "pause") quiet(commands.pause(id));
     else if (pick === "stop") quiet(commands.interrupt(id));
     else if (pick === "compact") quiet(commands.compact(id));
+    else if (pick === "start-now") quiet(commands.startNow(id));
+    else if (pick === "remove-queue") {
+      const env = sessionStore.metaOf(id)?.environmentId;
+      if (env) quiet(commands.sessionBatch(env, "stop", [id]));
+    }
     else if (pick === "killBackground") quiet(commands.killBackground(id));
     else if (pick === "master") quiet(commands.setMaster(id, !masterIds.has(id)));
     else if (pick === "archive") {
@@ -307,40 +309,43 @@ export function MasterView(props: ThreadViewProps) {
   const archivingMeta = archivingId ? sessionStore.metaOf(archivingId) : null;
 
   const title = meta?.title || session.title || "Master";
+  const actions = (
+    <>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Batch actions"
+              aria-haspopup="menu"
+              aria-expanded={menu?.kind === "board" || undefined}
+              onClick={(e) => setMenu(menuAt(e.currentTarget, "board"))}
+            />
+          }
+        >
+          <MoreHorizontal />
+        </TooltipTrigger>
+        <TooltipContent>Batch actions</TooltipContent>
+      </Tooltip>
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-haspopup="menu"
+        aria-expanded={menu?.kind === "add" || undefined}
+        onClick={(e) => setMenu(menuAt(e.currentTarget, "add"))}
+      >
+        <Plus />
+        Thread
+        <ChevronDown className="text-muted-foreground" />
+      </Button>
+    </>
+  );
   const board = (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-content/10 pr-2.5 pl-3.5 whitespace-nowrap">
-        <span className="min-w-0 truncate text-[13px] font-medium text-content">{title}</span>
-        <span className="flex-1" />
-        <button
-          type="button"
-          aria-label="Batch actions"
-          title="Batch actions"
-          aria-haspopup="menu"
-          aria-expanded={menu?.kind === "board" || undefined}
-          onClick={(e) => setMenu(menuAt(e.currentTarget, "board"))}
-          className={QUIET_ICON}
-        >
-          <MoreHorizontal className="size-3.5" strokeWidth={1.75} />
-        </button>
-        <button
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={menu?.kind === "add" || undefined}
-          onClick={(e) => setMenu(menuAt(e.currentTarget, "add"))}
-          className={BORDERED_BUTTON}
-        >
-          <Plus className="size-3" strokeWidth={2} />
-          Thread
-          <ChevronDown className="-mr-0.5 size-3 text-content/50" strokeWidth={1.75} />
-        </button>
-        <span className="ml-1 flex">
-          <ChatToggle open={chatOpen} onToggle={setChatOpen} />
-        </span>
-      </div>
       <BoardDigestContext.Provider value={digests}>
         <AgentSummaryContext.Provider value={summaries}>
-          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-1 pb-3" data-board-scroller>
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3" data-board-scroller>
             <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
               {virtualizer.getVirtualItems().map((v) => {
                 const item = items[v.index];
@@ -388,6 +393,9 @@ export function MasterView(props: ThreadViewProps) {
         hasBoard
         collapsed={!chatOpen}
         onToggleChat={setChatOpen}
+        title={title}
+        detail={batch.rules.summary || undefined}
+        actions={actions}
       />
       {menu ? (
         <ExplorerMenu
@@ -451,7 +459,7 @@ export function MasterView(props: ThreadViewProps) {
       {pausing ? (
         <ConfirmDialog
           title={`Pause ${toPause.length} running thread${toPause.length === 1 ? "" : "s"}?`}
-          body="Each thread's turn is held where it is; Resume on a row brings it back."
+          body="Each turn holds where it is."
           confirmLabel="Pause all"
           onCancel={() => setPausing(false)}
           onConfirm={async () => {

@@ -25,6 +25,16 @@ describe("a board row's menu", () => {
     expect(items.find((i) => i.kind === "item" && i.id === "move:box")).toMatchObject({ label: "Move to The box…", disabled: true });
   });
 
+  it("gives a queued thread Start now after Open and Remove from queue in Archive's place, and no Compact", () => {
+    const items = rowMenuItems(meta({ status: "queued" }), false, []);
+    const got = ids(items);
+    expect(got.slice(0, 3)).toEqual(["new-pass", "open", "start-now"]);
+    expect(got[got.length - 1]).toBe("remove-queue");
+    expect(got).not.toContain("compact");
+    expect(got).not.toContain("archive");
+    expect(items.find((i) => i.kind === "item" && i.id === "remove-queue")).toMatchObject({ label: "Remove from queue" });
+  });
+
   it("gives a subagent no master pin", () => {
     expect(ids(rowMenuItems(meta({ parentId: "root" }), false, []))).not.toContain("master");
   });
