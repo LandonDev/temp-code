@@ -213,8 +213,6 @@ export type ThreadStatusInput = {
 /** A thread's state in the one vocabulary, what it is about, and its round's tally. */
 export type ThreadStatus = { state: ThreadState; detail: string | null; tally: string | null };
 
-const LIVE_STATUSES: ReadonlySet<SessionStatus> = new Set(["starting", "running", "waiting", "watching"]);
-
 /**
  * The one decision of what a thread's status row says (docs/DESIGN.md
  * "Status vocabulary"): `threadStateOf`, plus the tree's overrides (a paused
@@ -225,7 +223,8 @@ const LIVE_STATUSES: ReadonlySet<SessionStatus> = new Set(["starting", "running"
 export function threadStatus(input: ThreadStatusInput): ThreadStatus {
   const { status } = input;
   if (input.treeHasPaused) return { state: "paused", detail: null, tally: null };
-  if (input.treeCanContinue && !(status && LIVE_STATUSES.has(status)))
+  // The host clears treeCanContinue while the tree has live work.
+  if (input.treeCanContinue)
     return { state: "failed", detail: lowerFirst(input.failure), tally: null };
   const state = threadStateOf(status, { planReady: input.planReady });
   const none = { state, detail: null, tally: null };

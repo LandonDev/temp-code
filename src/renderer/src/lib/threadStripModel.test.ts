@@ -129,13 +129,12 @@ describe("threadStatus", () => {
     });
   });
 
-  it("reads a recoverable failure in the tree as failed with the host's summary, unless the root is live", () => {
+  it("reads a recoverable failure in the tree as failed with the host's summary", () => {
     expect(threadStatus({ status: "idle", treeCanContinue: true, failure: "Usage cap." })).toEqual({
       state: "failed",
       detail: "usage cap",
       tally: null,
     });
-    expect(threadStatus({ status: "running", treeCanContinue: true, activity: "Reading types.ts" }).state).toBe("working");
   });
 
   it("says what a working thread does, with its round's tally", () => {

@@ -62,6 +62,10 @@ export const WorkingStrip = memo(function WorkingStrip({
   const approval = status === "waiting" ? pendingApprovalForSession(session) : null;
   const shownStatus = threadStatus({
     status,
+    // A paused subagent pauses the root's row, as on its chip; Continue resumes the tree.
+    // A subagent carries its root's flags too, and keeps its own row.
+    treeHasPaused: !session.parentId && session.treeHasPaused,
+    treeCanContinue: !session.parentId && session.treeCanContinue,
     activity: session.activity,
     tasks: session.tasks,
     waitingOn: approval?.label ?? null,
@@ -141,7 +145,7 @@ export const WorkingStrip = memo(function WorkingStrip({
         return (
           <>
             {mark}
-            {time(elapsed)}
+            {elapsed > 0 ? time(elapsed) : null}
             <Actions>
               <Button variant="ghost" size="xs" onClick={onStop}>
                 Stop

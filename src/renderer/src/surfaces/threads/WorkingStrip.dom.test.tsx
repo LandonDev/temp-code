@@ -249,3 +249,33 @@ describe('WorkingStrip: a paused run', () => {
     probe.unmount()
   })
 })
+
+describe('WorkingStrip: a root whose tree holds a paused thread', () => {
+  it('reads Paused with Stop and Continue, idle or running, and no time of its own', () => {
+    for (const status of ['idle', 'running'] as const) {
+      const probe = mountProbe(
+        <Probe id="strip">
+          <WorkingStrip session={session({ status, treeHasPaused: true, activity: 'Running bun' })} onStop={() => {}} onResume={() => {}} />
+        </Probe>,
+      )
+      expect(probe.container.textContent).toBe('PausedStopContinue')
+      probe.unmount()
+    }
+  })
+
+  it('leaves a subagent its own row: a waiting child keeps Allow and Deny', () => {
+    const block = { id: 'b', role: 'tool', kind: 'tool', text: '', approval: { requestId: 'r', decided: false } } as unknown as Block
+    const probe = mountProbe(
+      <Probe id="strip">
+        <WorkingStrip
+          session={session({ status: 'waiting', parentId: 'root', treeHasPaused: true, blocks: [block] })}
+          onStop={() => {}}
+          onResume={() => {}}
+          onApproval={() => {}}
+        />
+      </Probe>,
+    )
+    expect([...probe.container.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Deny', 'Allow'])
+    probe.unmount()
+  })
+})
