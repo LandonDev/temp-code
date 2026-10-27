@@ -404,7 +404,7 @@ export function ModelPicker({
               const tab = next[0] as ModelPickerTab | undefined;
               if (tab) selectTab(tab);
             }}
-            className="mb-1"
+            className="mb-1 w-full"
           >
             <ProviderToggle value="favorites" title="Favorites">
               <Star fill={visibleTab === "favorites" ? "currentColor" : "none"} />
