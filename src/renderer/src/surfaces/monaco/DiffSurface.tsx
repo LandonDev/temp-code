@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { loadToast } from "../../components/ui/toaster";
 import { registerEditorFlusher } from "../../lib/editorFlush";
-import { gitFileDiff } from "../../lib/fs";
+import { gitFileDiff, gitStageContents, notifyGitChanged } from "../../lib/fs";
 import type { FileState } from "../../lib/monaco/editorState";
 import { displayPath } from "../../lib/paths";
 import { registry } from "../../lib/connection";
@@ -8,6 +9,7 @@ import { hostOfCwd, projectForCwd } from "../../lib/tcserver/projects";
 import { SurfaceSkeleton } from "../SurfaceSkeleton";
 import { FileHeader, fileFolder } from "../FileHeader";
 import { ConflictBar } from "../ConflictBar";
+import { changeOffset, minimalEdit, positionAt } from "./diffActions";
 import { trackEditor } from "./keys";
 import { ensureForModel } from "./lsp/idea";
 import { registerProviders } from "./lsp/providers";
@@ -33,10 +35,22 @@ async function baseText(path: string, cwd: string, base?: string): Promise<strin
   return diff && !diff.binary && !diff.tooLarge ? diff.original : "";
 }
 
+/** The index's text of a path, what Stage builds on; null when git cannot say. */
+async function indexText(path: string, cwd: string): Promise<string | null> {
+  const diff = await gitFileDiff(hostOfCwd(path), cwd, displayPath(path, cwd)).catch(() => null);
+  return diff && !diff.binary && !diff.tooLarge ? diff.original : null;
+}
+
+/** editorGit's chunk functions live in the editor chunk; Monaco's reaches them on use. */
+const loadEditorGit = () => import("../editorGit");
+
 /**
  * A review tab in Monaco: the base on the left, the live model on the
  * right — the same registry buffer as a file tab, so it autosaves, ⌘S
- * flushes, dirtiness reaches the tab, and a disk race shows the bar.
+ * flushes, dirtiness reaches the tab, and a disk race shows the bar. It
+ * opens on the first change; the header's Revert and Stage act on the
+ * change the caret is in (Stage only for a review against HEAD, built on
+ * the index as the Changes section stages a hunk).
  */
 export function DiffSurface({
   path,
@@ -51,6 +65,13 @@ export function DiffSurface({
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const modifiedRef = useRef<monaco.editor.ICodeEditor | null>(null);
+  const originalRef = useRef<monaco.editor.ITextModel | null>(null);
+  const [index, setIndex] = useState<string | null>(null);
+  const [staged, setStaged] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // Stage is offered against HEAD only, for a path inside the checkout.
+  const relative = displayPath(path, cwd);
+  const stageable = !base && relative !== path;
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
   const [fileState, setFileState] = useState<FileState>({ pending: false, conflict: null });
   const [changes, setChanges] = useState<monaco.editor.ILineChange[]>([]);
@@ -90,6 +111,7 @@ export function DiffSurface({
           ),
         );
         original = monaco.editor.createModel(head, languageForPath(path));
+        originalRef.current = original;
         editor = monaco.editor.createDiffEditor(hostRef.current!, {
           ...EDITOR_OPTIONS,
           fontFamily: editorFontFamily(),
@@ -105,9 +127,21 @@ export function DiffSurface({
         cleanups.push(trackEditor(modified));
         modified.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void saveNow(path));
         modifiedRef.current = modified;
+        // The first diff with changes lands the caret on the first one, unless the person moved it since the open.
+        const opening = modified.getPosition();
+        let landed = false;
         const syncChanges = () => {
           const next = editor?.getLineChanges() ?? [];
-          const line = modified.getPosition()?.lineNumber ?? 1;
+          let line = modified.getPosition()?.lineNumber ?? 1;
+          if (!landed && next.length > 0) {
+            landed = true;
+            const at = modified.getPosition();
+            if (!at || !opening || (at.lineNumber === opening.lineNumber && at.column === opening.column)) {
+              line = Math.max(1, next[0].modifiedStartLineNumber);
+              modified.setPosition({ lineNumber: line, column: 1 });
+              modified.revealLineInCenter(line);
+            }
+          }
           setChanges(next);
           // -1 while the caret is above the first change, so Next reaches it.
           setChangeIndex(next.findLastIndex((change) => Math.max(1, change.modifiedStartLineNumber) <= line));
@@ -127,6 +161,7 @@ export function DiffSurface({
       disposed = true;
       for (const cleanup of cleanups) cleanup();
       modifiedRef.current = null;
+      originalRef.current = null;
       editor?.dispose();
       original?.dispose();
       handle?.release();
@@ -135,6 +170,86 @@ export function DiffSurface({
       setChangeIndex(0);
     };
   }, [path, cwd, base]);
+
+  useEffect(() => {
+    if (!stageable) return;
+    let live = true;
+    void indexText(path, cwd).then((text) => {
+      if (live) setIndex(text);
+    });
+    return () => {
+      live = false;
+      setIndex(null);
+    };
+  }, [path, cwd, stageable]);
+
+  // Stage is off for a change the index already has.
+  const current = changes[changeIndex];
+  useEffect(() => {
+    const model = modifiedRef.current?.getModel();
+    if (!stageable || index === null || !current || !model) {
+      setStaged(false);
+      return;
+    }
+    let live = true;
+    void loadEditorGit().then(({ stageChunkText }) => {
+      const text = model.getValue(monaco.editor.EndOfLinePreference.LF);
+      if (live) setStaged(stageChunkText(index, text, changeOffset(text, current)) === null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [stageable, index, current]);
+
+  const revert = async () => {
+    const modified = modifiedRef.current;
+    const model = modified?.getModel();
+    const original = originalRef.current;
+    if (!current || !modified || !model || !original) return;
+    const { revertChunkText } = await loadEditorGit();
+    const text = model.getValue(monaco.editor.EndOfLinePreference.LF);
+    const next = revertChunkText(original.getValue(monaco.editor.EndOfLinePreference.LF), text, changeOffset(text, current));
+    if (next === null) return;
+    // One undoable edit over just the span that changes, so the caret stays put.
+    const edit = minimalEdit(text, next);
+    const from = positionAt(text, edit.start);
+    const to = positionAt(text, edit.end);
+    model.pushStackElement();
+    model.pushEditOperations(
+      null,
+      [{ range: { startLineNumber: from.lineNumber, startColumn: from.column, endLineNumber: to.lineNumber, endColumn: to.column }, text: edit.insert }],
+      () => null,
+    );
+    model.pushStackElement();
+    modified.focus();
+  };
+
+  const stage = async () => {
+    const model = modifiedRef.current?.getModel();
+    if (!current || !model || busy) return;
+    setBusy(true);
+    try {
+      const [{ stageChunkText }, fresh] = await Promise.all([loadEditorGit(), indexText(path, cwd)]);
+      if (fresh === null) throw new Error("Git could not read this file's index");
+      const text = model.getValue(monaco.editor.EndOfLinePreference.LF);
+      const contents = stageChunkText(fresh, text, changeOffset(text, current));
+      if (contents !== null) {
+        await gitStageContents(hostOfCwd(path), cwd, relative, contents);
+        notifyGitChanged();
+      }
+      setIndex(contents ?? fresh);
+      // The base is read again: a review the index moved under shows where it stands now.
+      const head = await baseText(path, cwd, base);
+      const original = originalRef.current;
+      if (original && original.getValue() !== head) original.setValue(head);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      void loadToast().then((toast) => toast.error(`Couldn't stage the change: ${message}`));
+    } finally {
+      setBusy(false);
+      modifiedRef.current?.focus();
+    }
+  };
 
   const stepToChange = (delta: -1 | 1) => {
     const index = Math.max(0, Math.min(changes.length - 1, changeIndex + delta));
@@ -172,6 +287,9 @@ export function DiffSurface({
           total: changes.length,
           onPrev: () => stepToChange(-1),
           onNext: () => stepToChange(1),
+          ...(phase === "ready" ? { onRevert: () => void revert(), ...(stageable ? { onStage: () => void stage() } : {}) } : {}),
+          staged: staged || (stageable && index === null),
+          busy,
         }}
       />
       {phase === "loading" ? (

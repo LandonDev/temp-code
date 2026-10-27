@@ -1,7 +1,8 @@
 import type { MouseEvent, ReactNode } from "react";
 import type { MarkdownViewMode } from "../chrome/MarkdownModeToggle";
-import { ChevronDown, ChevronUp } from "../chrome/icons";
+import { ChevronDown, ChevronUp, Plus, Undo2 } from "../chrome/icons";
 import { Button } from "../components/ui/button";
+import { Spinner } from "../components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { displayPath } from "../lib/paths";
@@ -17,6 +18,14 @@ export type FileHeaderDiff = {
   total: number;
   onPrev(): void;
   onNext(): void;
+  /** Revert the change the caret is in. */
+  onRevert?(): void;
+  /** Stage the change the caret is in; absent when the review is not against HEAD. */
+  onStage?(): void;
+  /** The change at the caret has nothing left to stage. */
+  staged?: boolean;
+  /** A revert or stage is running. */
+  busy?: boolean;
 };
 
 type FileHeaderProps = {
@@ -44,9 +53,10 @@ const keepFocus = (event: MouseEvent) => event.preventDefault();
 
 /**
  * The one row above a file tab's body. The tab already names the file, so
- * the row holds what the tab cannot: the folder, the diff's counts and its
- * stepper, the Markdown view, and a save that is still running or failed
- * (a finished save is the tab's dirty mark clearing).
+ * the row holds what the tab cannot: the folder, the diff's counts, Revert
+ * and Stage for the change the caret is in and the stepper, the Markdown
+ * view, and a save that is still running or failed (a finished save is the
+ * tab's dirty mark clearing).
  */
 export function FileHeader({ folder, diff, markdown, save = IDLE, children }: FileHeaderProps) {
   return (
@@ -82,6 +92,7 @@ export function FileHeader({ folder, diff, markdown, save = IDLE, children }: Fi
           </ToggleGroup>
         ) : null}
         {children}
+        {diff?.onRevert || diff?.onStage ? <ChangeActions diff={diff} /> : null}
         {diff ? <Stepper diff={diff} /> : null}
       </header>
     </TooltipProvider>
@@ -98,6 +109,26 @@ function SaveWord({ save }: { save: SaveState }) {
       </TooltipTrigger>
       <TooltipContent>{save.message}</TooltipContent>
     </Tooltip>
+  );
+}
+
+function ChangeActions({ diff }: { diff: FileHeaderDiff }) {
+  // Act on the change the caret is in: none above the first change.
+  const none = diff.index < 0 || diff.total === 0;
+  const busy = !!diff.busy;
+  return (
+    <div role="toolbar" aria-label="Change actions" aria-busy={busy || undefined} className="flex shrink-0 items-center">
+      {diff.onRevert ? (
+        <StepButton label="Revert change" disabled={none || busy} onClick={diff.onRevert}>
+          <Undo2 />
+        </StepButton>
+      ) : null}
+      {diff.onStage ? (
+        <StepButton label="Stage change" disabled={none || busy || !!diff.staged} onClick={diff.onStage}>
+          {busy ? <Spinner /> : <Plus />}
+        </StepButton>
+      ) : null}
+    </div>
   );
 }
 

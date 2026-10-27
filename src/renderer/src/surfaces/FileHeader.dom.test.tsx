@@ -57,6 +57,35 @@ describe("FileHeader", () => {
     expect(onPrev).toHaveBeenCalledOnce();
   });
 
+  it("reverts and stages the change at the caret, both off above the first change", () => {
+    const onRevert = vi.fn();
+    const onStage = vi.fn();
+    const { container, rerender } = render(
+      <FileHeader folder={null} diff={diff({ index: -1, onRevert, onStage })} save={{ status: "idle" }} />,
+    );
+    expect(button(container, "Revert change").disabled).toBe(true);
+    expect(button(container, "Stage change").disabled).toBe(true);
+    rerender(<FileHeader folder={null} diff={diff({ index: 1, onRevert, onStage })} save={{ status: "idle" }} />);
+    fireEvent.click(button(container, "Revert change"));
+    fireEvent.click(button(container, "Stage change"));
+    expect(onRevert).toHaveBeenCalledOnce();
+    expect(onStage).toHaveBeenCalledOnce();
+    // A change already staged, or a running action, keeps Stage off.
+    rerender(<FileHeader folder={null} diff={diff({ index: 1, onRevert, onStage, staged: true })} save={{ status: "idle" }} />);
+    expect(button(container, "Stage change").disabled).toBe(true);
+    expect(button(container, "Revert change").disabled).toBe(false);
+    rerender(<FileHeader folder={null} diff={diff({ index: 1, onRevert, onStage, busy: true })} save={{ status: "idle" }} />);
+    expect(button(container, "Revert change").disabled).toBe(true);
+  });
+
+  it("offers no Stage without onStage, and no actions at all without either", () => {
+    const { container, rerender } = render(<FileHeader folder={null} diff={diff({ onRevert: vi.fn() })} save={{ status: "idle" }} />);
+    expect(button(container, "Revert change")).not.toBeNull();
+    expect(button(container, "Stage change")).toBeNull();
+    rerender(<FileHeader folder={null} diff={diff()} save={{ status: "idle" }} />);
+    expect(container.querySelector('[aria-label="Change actions"]')).toBeNull();
+  });
+
   it("switches a Markdown file between preview and source", () => {
     const onModeChange = vi.fn();
     const { getByText } = render(<FileHeader folder={null} markdown={{ mode: "preview", onModeChange }} save={{ status: "idle" }} />);
