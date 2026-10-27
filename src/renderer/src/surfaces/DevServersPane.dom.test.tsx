@@ -28,7 +28,8 @@ const request = (env: string) => async (method: string, params: unknown) => {
 vi.mock('./DevConsole', () => ({
   DevConsole: ({ source }: { source: { runId?: string; resourceId?: string } }) => <div data-console={source.runId ?? source.resourceId} />
 }))
-vi.mock('../lib/tcserver/workspaces', () => ({
+vi.mock('../lib/tcserver/workspaces', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/tcserver/workspaces')>()),
   useProjects: () => [{ id: 'p9', environmentId: 'env_box', cwd: '/srv/agents/work/cosmicweb', workspaceId: 'w', name: 'cosmicweb', archived: false }],
   useWorkspaces: () => []
 }))
