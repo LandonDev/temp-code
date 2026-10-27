@@ -3,6 +3,7 @@ import type { ProjectFile } from "./fs";
 import type { SessionMeta, SlashCommand } from "./tcserver/types";
 import {
   commandTextParts,
+  triggerInsert,
   matchCommands,
   rankFiles,
   rankThreads,
@@ -174,5 +175,21 @@ describe("commandTextParts", () => {
     expect(commandTextParts("> /review", known)).toEqual([{ text: "> /review" }]);
     expect(commandTextParts("/review", new Map())).toEqual([{ text: "/review" }]);
     expect(commandTextParts("", known)).toEqual([]);
+  });
+});
+
+describe("triggerInsert", () => {
+  it("types the mark alone at the start or after a space, else after a space", () => {
+    expect(triggerInsert("", 0, "@")).toBe("@");
+    expect(triggerInsert("fix ", 4, "/")).toBe("/");
+    expect(triggerInsert("line\n", 5, "@")).toBe("@");
+    expect(triggerInsert("fix", 3, "/")).toBe(" /");
+    expect(triggerInsert("fix this", 3, "@")).toBe(" @");
+  });
+
+  it("what it types opens the list there", () => {
+    const text = "fix";
+    const typed = text + triggerInsert(text, 3, "/");
+    expect(triggerAt(typed, typed.length)).toMatchObject({ mode: "command", query: "" });
   });
 });

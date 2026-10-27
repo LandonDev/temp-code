@@ -455,13 +455,6 @@ html.is-resizing * {
   user-select: none !important;
 }
 
-.composer-toolbar {
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-}
-
 .composer-field:empty::before {
   content: attr(data-placeholder);
   pointer-events: none;
@@ -499,7 +492,6 @@ html.is-resizing * {
   );
 }
 
-.composer-toolbar::-webkit-scrollbar,
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }

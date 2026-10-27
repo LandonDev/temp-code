@@ -35,6 +35,14 @@ export function triggerAt(text: string, caret: number): Trigger | null {
   return null;
 }
 
+/** What the `+` menu types to open the `@` or `/` list at the caret: the
+ *  mark, after a space when the caret follows a word (a trigger has to
+ *  start a token). */
+export function triggerInsert(text: string, caret: number, mark: "@" | "/"): string {
+  const before = text[caret - 1];
+  return before && !/\s/.test(before) ? ` ${mark}` : mark;
+}
+
 /** Replace the trigger span `[start, caret)` with `inserted` and a space. */
 export function replaceTrigger(
   text: string,

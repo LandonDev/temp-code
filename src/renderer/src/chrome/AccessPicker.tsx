@@ -1,25 +1,12 @@
-import { Check, ChevronDown, Lock, LockOpen, Pencil, Sparkles } from "./icons";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-} from "react";
-import {
-  RUNTIME_MODE_HINT,
-  RUNTIME_MODE_LABEL,
-  RUNTIME_MODES,
-  type RuntimeMode,
-} from "../lib/session";
-import { Popover } from "./Popover";
+import { Lock, LockOpen, Pencil, Sparkles } from "./icons";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { RUNTIME_MODE_HINT, RUNTIME_MODE_LABEL, RUNTIME_MODES, type RuntimeMode } from "../lib/session";
 
 type Props = {
   value: RuntimeMode;
   onChange: (mode: RuntimeMode) => void;
   onClose?: () => void;
 };
-
-const MENU_WIDTH = 288;
 
 const ICONS: Record<RuntimeMode, typeof Lock> = {
   supervised: Lock,
@@ -28,131 +15,56 @@ const ICONS: Record<RuntimeMode, typeof Lock> = {
   "full-access": LockOpen,
 };
 
+const ITEMS = RUNTIME_MODES.map((mode) => ({ value: mode, label: RUNTIME_MODE_LABEL[mode] }));
+
+/** The permission mode, at the right end of the composer's bar: a quiet
+ *  select whose rows carry each mode's hint under its name. Closing hands
+ *  the focus back to the composer through `onClose`. */
 export function AccessPicker({ value, onChange, onClose }: Props) {
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(() =>
-    Math.max(0, RUNTIME_MODES.indexOf(value)),
-  );
-  const root = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
   const Icon = ICONS[value];
-
-  const dismiss = (restore: boolean) => {
-    setOpen(false);
-    if (restore) onCloseRef.current?.();
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    setActive(Math.max(0, RUNTIME_MODES.indexOf(value)));
-  }, [open, value]);
-
-  const pick = (mode: RuntimeMode) => {
-    onChange(mode);
-    dismiss(true);
-  };
-
-  const onMenuKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActive((i) => Math.min(RUNTIME_MODES.length - 1, i + 1));
-      return;
-    }
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActive((i) => Math.max(0, i - 1));
-      return;
-    }
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const mode = RUNTIME_MODES[active];
-      if (mode) pick(mode);
-    }
-  };
-
   return (
-    <div ref={root} className="relative">
-      <button
-        type="button"
-        title={RUNTIME_MODE_HINT[value]}
-        aria-label={RUNTIME_MODE_LABEL[value]}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => {
-          if (open) {
-            dismiss(true);
-            return;
-          }
-          setOpen(true);
-        }}
-        className={`flex h-6.5 max-w-52 items-center gap-1 rounded-md px-1.5 ${
-          open
-            ? "bg-content/10 text-content"
-            : "bg-content/10 text-content hover:bg-content/15"
-        }`}
+    <Select
+      items={ITEMS}
+      value={value}
+      onValueChange={(next) => {
+        if (next !== null && next !== value) onChange(next as RuntimeMode);
+      }}
+      onOpenChange={(open) => {
+        if (!open) onClose?.();
+      }}
+    >
+      <SelectTrigger
+        size="sm"
+        aria-label="Permission mode"
+        className="shrink-0 border-transparent text-muted-foreground hover:bg-foreground/7 hover:text-foreground data-popup-open:bg-foreground/7 data-popup-open:text-foreground [&>svg]:size-3"
       >
-        <Icon className="size-3.5 shrink-0" strokeWidth={1.75} />
-        <span className="min-w-0 truncate text-[11px]">
+        <SelectValue>
+          <Icon className="size-3.5" strokeWidth={1.5} />
           {RUNTIME_MODE_LABEL[value]}
-        </span>
-        <ChevronDown
-          className={`size-3 shrink-0 text-content/50 ${open ? "rotate-180" : ""}`}
-          strokeWidth={1.75}
-        />
-      </button>
-      {open ? (
-        <Popover
-          anchor={root}
-          side="top"
-          width={MENU_WIDTH}
-          autoFocus
-          onDismiss={(reason) => dismiss(reason === "escape")}
-          role="listbox"
-          aria-label="Access"
-          data-access-picker
-          tabIndex={-1}
-          onKeyDown={onMenuKey}
-          className="p-1"
-        >
-          {RUNTIME_MODES.map((mode, index) => {
-            const ModeIcon = ICONS[mode];
-            const selected = mode === value;
-            const highlighted = index === active;
-            return (
-              <button
-                key={mode}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                onMouseDown={(e) => e.preventDefault()}
-                onMouseEnter={() => setActive(index)}
-                onClick={() => pick(mode)}
-                className={`flex w-full items-start gap-3 rounded-lg px-2 py-2 text-left ${
-                  highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
-                }`}
-              >
-                <ModeIcon
-                  className="mt-0.5 size-3.5 shrink-0 text-content/70"
-                  strokeWidth={1.75}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-medium leading-5">
-                    {RUNTIME_MODE_LABEL[mode]}
-                  </span>
-                  <span className="mt-0.5 block text-[11px] leading-4 text-content/50">
-                    {RUNTIME_MODE_HINT[mode]}
-                  </span>
-                </span>
-                {selected ? (
-                  <Check className="mt-1 size-3.5 shrink-0" strokeWidth={2.25} />
-                ) : null}
-              </button>
-            );
-          })}
-        </Popover>
-      ) : null}
-    </div>
+        </SelectValue>
+      </SelectTrigger>
+      {/* The composer takes the focus back itself, so the trigger must not. */}
+      <SelectContent
+        side="top"
+        align="end"
+        alignItemWithTrigger={false}
+        data-access-picker
+        finalFocus={onClose ? false : undefined}
+        className="w-72 p-1"
+      >
+        {RUNTIME_MODES.map((mode) => {
+          const ModeIcon = ICONS[mode];
+          return (
+            <SelectItem key={mode} value={mode} label={RUNTIME_MODE_LABEL[mode]} className="items-start py-1.5">
+              <ModeIcon className="mt-0.5 size-3.5 text-muted-foreground" strokeWidth={1.5} />
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span>{RUNTIME_MODE_LABEL[mode]}</span>
+                <span className="whitespace-normal text-xs text-muted-foreground">{RUNTIME_MODE_HINT[mode]}</span>
+              </span>
+            </SelectItem>
+          );
+        })}
+      </SelectContent>
+    </Select>
   );
 }

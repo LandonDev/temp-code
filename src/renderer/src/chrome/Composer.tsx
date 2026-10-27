@@ -1,6 +1,5 @@
 import { registry } from '../lib/connection'
 import { environmentOfCwd, hostOfCwd } from '../lib/tcserver/projects'
-import { Plus } from './icons'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { DUR, EASE_OUT, FADE_OUT, SPRING_LAYOUT } from '../lib/ease'
 import { GLIDE_MAX_ROWS } from '../lib/listGlide'
@@ -32,6 +31,7 @@ import {
   rankFiles,
   rankThreads,
   triggerAt,
+  triggerInsert,
   type Trigger
 } from '../lib/composerTriggers'
 import type { ProjectFile } from '../lib/fs'
@@ -40,12 +40,9 @@ import type { HandoffComposerCard } from '../lib/handoff'
 import { looksLikeProject, type RecentProject } from '../lib/recents'
 import type { Attachment, HarnessId, RuntimeMode, ThreadGoal } from '../lib/session'
 import { harnessSupportsAttachments } from '../lib/session'
-import { AccessPicker } from './AccessPicker'
-import { AccountControl } from './AccountControl'
 import { GoalControl } from './GoalControl'
 import { CommandPopover, type AtMatch, type PopoverMatches } from './CommandPopover'
 import { ComposerRunner } from './ComposerRunner'
-import { ContextControl } from './ContextControl'
 import { AttachmentChip, openAttachmentImages } from './AttachmentChip'
 import {
   AttachmentUploadError,
@@ -76,7 +73,7 @@ import {
   subscribeMidTurnDefault,
   subscribeNotesEnabled
 } from '../lib/settings'
-import { SendButton } from './ComposerBar'
+import { ComposerBar, SendButton } from './ComposerBar'
 import { decideComposerAction, type ComposerIntent } from '../lib/composerAction'
 import {
   ComposerInput,
@@ -161,37 +158,6 @@ type Props = {
   children?: ReactNode
 }
 
-function ToolButton({
-  active,
-  disabled,
-  label,
-  onClick,
-  children
-}: {
-  active?: boolean
-  disabled?: boolean
-  label: string
-  onClick?: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-      className={`grid size-6.5 shrink-0 place-items-center rounded-md ${
-        active
-          ? 'bg-content/20 text-content'
-          : 'bg-content/10 text-content/50 hover:bg-content/15 hover:text-content'
-      } disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-content/50`}
-    >
-      {children}
-    </button>
-  )
-}
-
 export function Composer({
   enabled = true,
   blocked = null,
@@ -209,7 +175,6 @@ export function Composer({
   branch,
   recents = [],
   hideProjectPicker = false,
-  context,
   quoteRequest,
   initialDraft,
   inboxCard,
@@ -636,7 +601,7 @@ export function Composer({
     if (!focused) return
     if (
       document.querySelector(
-        '[data-model-picker], [data-access-picker], [data-model-settings], [data-file-picker], [data-branch-picker]'
+        '[data-model-picker], [data-access-picker], [data-add-menu], [data-model-settings], [data-file-picker], [data-branch-picker]'
       )
     )
       return
@@ -819,6 +784,15 @@ export function Composer({
     }, attachFailed)
   }
 
+  const fieldOf = () => boxRef.current?.querySelector<HTMLElement>('[data-composer-input]') ?? null
+
+  /** The `+` menu's Mention and Skills rows: type the mark at the caret so the list opens there. */
+  const insertTrigger = (mark: '@' | '/') => {
+    const input = inputRef.current
+    if (!input) return
+    input.insertText(triggerInsert(draftRef.current, caretRef.current, mark))
+  }
+
   return (
     <div
       data-composer
@@ -966,31 +940,16 @@ export function Composer({
             }}
           />
 
-          <div className="flex items-center gap-1 px-2 pb-2">
-            <ToolButton
-              label={attachmentsSupported ? 'Attach files' : 'fx does not support attachments'}
-              disabled={!attachmentsSupported}
-              onClick={attachFromPicker}
-            >
-              <Plus className="size-3.5" strokeWidth={1.75} />
-            </ToolButton>
-            <div
-              className="composer-toolbar flex min-w-0 flex-1 items-center"
-              onWheel={(e) => {
-                if (
-                  e.target instanceof Element &&
-                  e.target.closest(
-                    '[data-model-picker], [data-access-picker], [data-account-picker], [data-model-settings], [data-thread-type-picker], [data-goal-control], [data-context-control]'
-                  )
-                ) {
-                  return
-                }
-                const el = e.currentTarget
-                if (el.scrollWidth <= el.clientWidth) return
-                if (e.deltaX === 0 && e.deltaY !== 0) el.scrollLeft += e.deltaY
-              }}
-            >
-              <div className="flex shrink-0 items-center gap-1">
+          <ComposerBar
+            harness={harness}
+            runtimeMode={runtimeMode}
+            onRuntimeModeChange={onRuntimeModeChange}
+            onAttach={attachFromPicker}
+            onInsert={insertTrigger}
+            fieldOf={fieldOf}
+            onClose={() => inputRef.current?.focus()}
+            model={
+              <>
                 <ModelPicker
                   harness={harness}
                   model={model}
@@ -1007,20 +966,6 @@ export function Composer({
                   onChange={changeModelSettings}
                   onClose={() => inputRef.current?.focus()}
                 />
-                {harness !== 'fx' ? (
-                  <AccessPicker
-                    value={runtimeMode}
-                    onChange={onRuntimeModeChange}
-                    onClose={() => inputRef.current?.focus()}
-                  />
-                ) : null}
-                {sessionId ? (
-                  <AccountControl
-                    environmentId={environmentId}
-                    meta={sessionMeta}
-                    onClose={() => inputRef.current?.focus()}
-                  />
-                ) : null}
                 {sessionId ? (
                   <GoalControl
                     sessionId={sessionId}
@@ -1028,26 +973,17 @@ export function Composer({
                     onClose={() => inputRef.current?.focus()}
                   />
                 ) : null}
-                {sessionId ? (
-                  <ContextControl
-                    sessionId={sessionId}
-                    usage={context}
-                    busy={busy}
-                    onClose={() => inputRef.current?.focus()}
-                  />
-                ) : null}
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1">
+              </>
+            }
+            send={
               <SendButton
                 intent={intent}
                 disabled={!!blocked || (intent !== 'pause' && !hasValue)}
                 onSubmit={(invert) => submit(inputRef.current?.value() ?? '', invert)}
                 onPause={() => onPause?.()}
               />
-            </div>
-          </div>
+            }
+          />
         </div>
         {runnerLive && runnerEnabled ? (
           <ComposerRunner

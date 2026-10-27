@@ -1,12 +1,107 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { Button } from "../components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { Kbd } from "../components/ui/kbd";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { composerActionHint, composerActionLabel, type ComposerIntent } from "../lib/composerAction";
 import { DUR, EASE_OUT } from "../lib/ease";
 import { MOD } from "../lib/platform";
-import { ArrowUp, CornerDownRight, ListPlus, Pause } from "./icons";
+import { harnessSupportsAttachments, type HarnessId, type RuntimeMode } from "../lib/session";
+import { AccessPicker } from "./AccessPicker";
+import { ArrowUp, AtSign, CornerDownRight, ListPlus, Paperclip, Pause, Plus, Slash } from "./icons";
+
+/**
+ * The composer's one row under the field, 32px tall and never scrolling:
+ * the `+` menu and the model button on the left, the permission mode
+ * (absent for fx, which has none) and the send button on the right.
+ */
+export function ComposerBar({
+  harness,
+  model,
+  runtimeMode,
+  onRuntimeModeChange,
+  onAttach,
+  onInsert,
+  fieldOf,
+  onClose,
+  send,
+}: {
+  harness: HarnessId;
+  /** The model button and its menu. */
+  model: ReactNode;
+  runtimeMode: RuntimeMode;
+  onRuntimeModeChange: (mode: RuntimeMode) => void;
+  onAttach: () => void;
+  /** Types `@` or `/` at the caret, which opens that list. */
+  onInsert: (mark: "@" | "/") => void;
+  /** The field, where a closing menu returns the focus. */
+  fieldOf: () => HTMLElement | null;
+  onClose: () => void;
+  send: ReactNode;
+}) {
+  return (
+    <TooltipProvider>
+      <div data-composer-bar className="mx-2 mb-2 flex h-8 min-w-0 items-center gap-1">
+        <AddMenu attachable={harnessSupportsAttachments(harness)} onAttach={onAttach} onInsert={onInsert} fieldOf={fieldOf} />
+        {model}
+        <div className="ms-auto flex shrink-0 items-center gap-1">
+          {harness !== "fx" ? <AccessPicker value={runtimeMode} onChange={onRuntimeModeChange} onClose={onClose} /> : null}
+          {send}
+        </div>
+      </div>
+    </TooltipProvider>
+  );
+}
+
+/** Attach, mention and the skills list: the three ways to add to a message. */
+function AddMenu({
+  attachable,
+  onAttach,
+  onInsert,
+  fieldOf,
+}: {
+  attachable: boolean;
+  onAttach: () => void;
+  onInsert: (mark: "@" | "/") => void;
+  fieldOf: () => HTMLElement | null;
+}) {
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon-sm" aria-label="Add" className="text-muted-foreground hover:text-foreground aria-expanded:text-foreground" />}
+            />
+          }
+        >
+          <Plus className="size-4" />
+        </TooltipTrigger>
+        <TooltipContent>Add</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent size="sm" side="top" align="start" finalFocus={() => fieldOf()} data-add-menu className="w-56" aria-label="Add">
+        <DropdownMenuItem disabled={!attachable} onClick={onAttach}>
+          <Paperclip />
+          Attach files
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onInsert("@")}>
+          <AtSign />
+          Mention a file or thread
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onInsert("/")}>
+          <Slash />
+          Skills and commands
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 const GLYPH = { send: ArrowUp, queue: ListPlus, steer: CornerDownRight, pause: Pause } as const;
 

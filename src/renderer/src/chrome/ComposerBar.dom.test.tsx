@@ -1,11 +1,88 @@
 // @vitest-environment jsdom
 /**
- * The composer's bar: the send button speaks the intent Enter would carry
- * out and calls the matching handler.
+ * The composer's bar: one row of `+`, the model button, the permission
+ * mode and send (no mode for fx; no account, goal or context control for
+ * anyone); the `+` menu's three rows; the send button speaking the intent
+ * Enter would carry out.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { SendButton } from "./ComposerBar";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { ComposerBar, SendButton } from "./ComposerBar";
+import type { HarnessId } from "../lib/session";
+
+function bar(harness: HarnessId, handlers: { onAttach?: () => void; onInsert?: (mark: "@" | "/") => void } = {}) {
+  return render(
+    <ComposerBar
+      harness={harness}
+      model={<button type="button">Opus 5.5</button>}
+      runtimeMode="supervised"
+      onRuntimeModeChange={() => {}}
+      onAttach={handlers.onAttach ?? (() => {})}
+      onInsert={handlers.onInsert ?? (() => {})}
+      fieldOf={() => null}
+      onClose={() => {}}
+      send={<SendButton intent="send" disabled onSubmit={() => {}} onPause={() => {}} />}
+    />,
+  );
+}
+
+function rowNames(container: HTMLElement): string[] {
+  const row = container.querySelector<HTMLElement>("[data-composer-bar]")!;
+  return [...row.querySelectorAll("button, [role=combobox]")].map(
+    (el) => el.getAttribute("aria-label") ?? el.textContent ?? "",
+  );
+}
+
+async function openAdd() {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  });
+  return screen.getByRole("menu", { name: "Add" });
+}
+
+describe("ComposerBar", () => {
+  it("holds exactly +, the model button, the mode and send for Claude and Codex", () => {
+    for (const harness of ["claude", "codex"] as const) {
+      const { container, unmount } = bar(harness);
+      expect(rowNames(container)).toEqual(["Add", "Opus 5.5", "Permission mode", "Send"]);
+      unmount();
+    }
+  });
+
+  it("fx has no permission mode; nobody has an account, goal or context control", () => {
+    const { container } = bar("fx");
+    expect(rowNames(container)).toEqual(["Add", "Opus 5.5", "Send"]);
+    for (const name of [/account/i, /goal/i, /context/i]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+  });
+
+  it("the + menu: attach, mention and skills", async () => {
+    const onAttach = vi.fn();
+    const onInsert = vi.fn();
+    bar("claude", { onAttach, onInsert });
+    let menu = await openAdd();
+    expect(within(menu).getAllByRole("menuitem").map((el) => el.textContent)).toEqual([
+      "Attach files",
+      "Mention a file or thread",
+      "Skills and commands",
+    ]);
+    await act(async () => fireEvent.click(within(menu).getByRole("menuitem", { name: "Mention a file or thread" })));
+    expect(onInsert).toHaveBeenLastCalledWith("@");
+    menu = await openAdd();
+    await act(async () => fireEvent.click(within(menu).getByRole("menuitem", { name: "Skills and commands" })));
+    expect(onInsert).toHaveBeenLastCalledWith("/");
+    menu = await openAdd();
+    await act(async () => fireEvent.click(within(menu).getByRole("menuitem", { name: "Attach files" })));
+    expect(onAttach).toHaveBeenCalledOnce();
+  });
+
+  it("Attach files is disabled for fx", async () => {
+    bar("fx");
+    const menu = await openAdd();
+    expect(within(menu).getByRole("menuitem", { name: "Attach files" }).getAttribute("aria-disabled")).toBe("true");
+  });
+});
 
 afterEach(cleanup);
 
