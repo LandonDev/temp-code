@@ -31,15 +31,27 @@ function subscribe(listener: () => void): () => void {
     listeners.delete(listener);
   };
 }
+/** Whether a swap now would pull the rug from under the keyboard: a field
+ *  being typed in, or any focused control. */
+function focusHeld(): boolean {
+  const active = typeof document === "undefined" ? null : document.activeElement;
+  return !!active && active !== document.body;
+}
+
+/** Wakes every cold tooltip on screen; while a control has focus the swap
+ *  waits for the focus to leave, so a rename in progress keeps its text. */
+function wake(): void {
+  if (focusHeld()) {
+    document.addEventListener("focusout", () => queueMicrotask(wake), { once: true });
+    return;
+  }
+  for (const listener of listeners) listener();
+}
+
 /** Loads the primitive and wakes every cold tooltip on screen. */
 export function warmTooltips(): void {
   if (tooltipChunk.loaded()) return;
-  tooltipChunk.load().then(
-    () => {
-      for (const listener of listeners) listener();
-    },
-    () => {},
-  );
+  tooltipChunk.load().then(wake, () => {});
 }
 function usePrimitive(): typeof Primitive | null {
   return useSyncExternalStore(subscribe, tooltipChunk.loaded, tooltipChunk.loaded);

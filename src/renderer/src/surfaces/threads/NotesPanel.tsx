@@ -25,6 +25,7 @@ export function NotesBody({ session }: { session: Session }) {
   // while the person typed.
   const baseRef = useRef<string>("");
   const dirtyRef = useRef(false);
+  const draftRef = useRef("");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteChanged = editing && !!doc && doc.text !== baseRef.current;
 
@@ -54,6 +55,7 @@ export function NotesBody({ session }: { session: Session }) {
 
   const onChange = (text: string): void => {
     setDraft(text);
+    draftRef.current = text;
     dirtyRef.current = true;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => void persist(text), SAVE_DEBOUNCE_MS);
@@ -74,12 +76,15 @@ export function NotesBody({ session }: { session: Session }) {
     setDraft(doc?.text ?? emptyNotes());
   };
 
-  // A thread switch under the panel ends the edit; an unsaved draft lands first.
+  // Leaving the body (another section, the panel closing, a thread switch)
+  // lands an unsaved draft at once instead of dropping its pending save.
   useEffect(() => {
     return () => {
       if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
+      if (dirtyRef.current) void persist(draftRef.current);
     };
-  }, []);
+  }, [persist]);
   const [sawId, setSawId] = useState(session.id);
   if (sawId !== session.id) {
     setSawId(session.id);

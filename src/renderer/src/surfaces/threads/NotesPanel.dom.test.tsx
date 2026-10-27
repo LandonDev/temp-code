@@ -95,6 +95,17 @@ describe("NotesBody", () => {
     expect(field.value).toBe("## Goal\n\ntheirs\n");
   });
 
+  it("a draft still waiting on its debounce lands when the body leaves", async () => {
+    const { unmount } = render(<NotesBody session={session} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Edit notes" }));
+    const field = screen.getByLabelText("Notes source") as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: "## Goal\n\nTyped, then switched sections\n" } });
+    unmount();
+    await flush();
+    expect(request).toHaveBeenCalledWith("session.notes.set", { sessionId: "s1", text: "## Goal\n\nTyped, then switched sections\n" });
+  });
+
   it("Copy as brief puts the first message of a successor on the clipboard", async () => {
     render(<NotesBody session={session} />);
     await flush();

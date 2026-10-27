@@ -161,11 +161,11 @@ describe("StatusMark", () => {
 
   it("renders the word, the glyph alone with a label, or a given word", () => {
     const { rerender } = render(<StatusMark state="queued" />);
-    expect(screen.getByText("Queued").dataset.state).toBe("queued");
+    expect(screen.getByText("Queued").closest("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("queued");
     rerender(<StatusMark state="queued" word={false} />);
     expect(screen.getByLabelText("Queued").textContent).toBe("");
     rerender(<StatusMark state="done" word="Connected" />);
-    expect(screen.getByText("Connected").dataset.state).toBe("done");
+    expect(screen.getByText("Connected").closest("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("done");
   });
 
   it("carries a detail after the word, muted", () => {
@@ -173,7 +173,7 @@ describe("StatusMark", () => {
     const detail = document.querySelector("[data-slot=status-detail]") as HTMLElement;
     expect(detail.textContent).toBe("typecheck");
     expect(detail.className).toContain("text-muted-foreground");
-    expect(screen.getByText("Working").textContent).toBe("Workingtypecheck");
+    expect(screen.getByText("Working").closest("[data-slot=status-mark]")?.textContent).toBe("Workingtypecheck");
   });
 
   it("a live glyph breathes once on a state change; a settled one is still", () => {

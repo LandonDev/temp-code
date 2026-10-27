@@ -18,6 +18,7 @@ import { ENTER } from "../lib/ease";
 import { sessionStore } from "../lib/tcserver/store";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
 import { sessionDisplayTitle, type LoadState, type Session } from "../lib/session";
+import { rightPanel } from "../lib/rightPanel";
 import { diffChunk, inboxChunk, notesChunk, rightPanelChunk, searchChunk, selectChunk, threadViewsChunk } from "./chunks";
 import { tooltipChunk } from "../components/ui/tooltip";
 import { preloadWhenIdle } from "../lib/lazyChunk";
@@ -110,9 +111,13 @@ export const SessionPane = memo(function SessionPane({
     if (!focused || !visible) return;
     noteActiveSession(session.id);
     serverCommands.focusSignal.pane(session.environmentId, session.id);
+    // The right panel's toggle, ⌘⇧R and "show Changes" act on this thread,
+    // whether or not its panel is open (a closed panel is not mounted).
+    rightPanel.focus(session.id);
     return () => {
       noteActiveSession(null);
       serverCommands.focusSignal.left(session.id);
+      if (rightPanel.focused() === session.id) rightPanel.focus(null);
     };
   }, [focused, session.environmentId, session.id, visible]);
 

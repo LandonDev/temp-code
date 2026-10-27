@@ -58,7 +58,7 @@ describe("the store", () => {
   beforeEach(() => rightPanel.reset());
 
   it("starts closed at the default width", () => {
-    expect(rightPanel.get("t1")).toEqual({ open: false, section: null, width: PANEL_WIDTH });
+    expect(rightPanel.get("t1")).toEqual({ open: false, section: null, width: PANEL_WIDTH, debug: false });
   });
 
   it("toggles, opens on a section and closes per thread", () => {
@@ -76,7 +76,8 @@ describe("the store", () => {
     expect(rightPanel.get("t1").open).toBe(false);
     rightPanel.focus("t1");
     rightPanel.show("debug");
-    expect(rightPanel.get("t1")).toMatchObject({ open: true, section: "debug" });
+    expect(rightPanel.get("t1")).toMatchObject({ open: true, section: "debug", debug: true });
+    expect(rightPanel.get("t2").debug).toBe(false);
   });
 
   it("persists the width, clamped, and a new thread inherits the last one", () => {

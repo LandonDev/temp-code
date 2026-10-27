@@ -15,6 +15,8 @@ type Options = {
   defaultWidth: number;
   initial: number;
   onCommit?: (width: number) => void;
+  /** The edge the handle sits on: a left-edge handle widens the pane when dragged left. */
+  edge?: "left" | "right";
 };
 
 function clampTo(value: number, min: number, max: number) {
@@ -39,6 +41,7 @@ export function useDragResize({
   defaultWidth,
   initial,
   onCommit,
+  edge = "right",
 }: Options) {
   const minRef = useRef(min);
   minRef.current = min;
@@ -110,7 +113,7 @@ export function useDragResize({
 
     const onMove = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
-      apply(rubber(startW + (ev.clientX - startX), minRef.current, maxRef.current()));
+      apply(rubber(startW + (edge === "left" ? startX - ev.clientX : ev.clientX - startX), minRef.current, maxRef.current()));
     };
 
     const stop = () => {

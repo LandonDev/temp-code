@@ -84,12 +84,12 @@ export function shownSection(asked: Section | null, available: PanelSections): S
   return available.defaultSection;
 }
 
-export type PanelState = { open: boolean; section: Section | null; width: number };
+export type PanelState = { open: boolean; section: Section | null; width: number; /** "Debug this file" asked for the Debug section on this thread. */ debug: boolean };
 
 const KEY = "monocode.rightPanel";
 const MAX_THREADS = 200;
 
-type Persisted = { width: number; threads: Record<string, { open: boolean; section: Section | null; width?: number }> };
+type Persisted = { width: number; threads: Record<string, { open: boolean; section: Section | null; width?: number; debug?: boolean }> };
 
 function clampWidth(width: number): number {
   return Math.min(PANEL_MAX, Math.max(PANEL_MIN, Math.round(width)));
@@ -140,6 +140,7 @@ function stateOf(id: string): PanelState {
     open: row?.open ?? false,
     section: row?.section ?? null,
     width: clampWidth(row?.width ?? data.width),
+    debug: row?.debug ?? false,
   };
   cache.set(id, state);
   return state;
@@ -149,9 +150,9 @@ function write(id: string, patch: Partial<PanelState>): void {
   const prev = stateOf(id);
   const next: PanelState = { ...prev, ...patch };
   if (patch.width !== undefined) next.width = clampWidth(patch.width);
-  if (next.open === prev.open && next.section === prev.section && next.width === prev.width) return;
+  if (next.open === prev.open && next.section === prev.section && next.width === prev.width && next.debug === prev.debug) return;
   cache.set(id, next);
-  data.threads[id] = { open: next.open, section: next.section, width: next.width };
+  data.threads[id] = { open: next.open, section: next.section, width: next.width, ...(next.debug ? { debug: true } : {}) };
   if (patch.width !== undefined) data.width = next.width;
   save();
   emit();
@@ -178,7 +179,7 @@ export const rightPanel = {
   },
   /** Open a section on the thread on screen (⌃D's Debug, the Dev Server button). */
   show(section: Section, id: string | null = focusedId): void {
-    if (id) write(id, { open: true, section });
+    if (id) write(id, { open: true, section, ...(section === "debug" ? { debug: true } : {}) });
   },
   focused(): string | null {
     return focusedId;

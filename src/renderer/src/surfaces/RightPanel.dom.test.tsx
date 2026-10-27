@@ -24,6 +24,7 @@ vi.mock("../lib/tcserver/workspaces", () => ({
 }));
 vi.mock("../lib/tcserver/projects", () => ({ projectForCwd: (cwd: string) => (cwd === "/p" ? { id: "p1", environmentId: "local", cwd: "/p", name: "P" } : undefined) }));
 vi.mock("../lib/devServers", () => ({ useDevRunning: () => state.devRunning }));
+vi.mock("../lib/activity", () => ({ useActivity: () => ({ rows: [], meta: null }) }));
 vi.mock("../hooks/useGitFileStatuses", () => ({ useGitFileStatuses: () => ({}) }));
 vi.mock("./threads/fleet/FleetPanel", () => ({ FleetList: () => <div data-testid="agents-body">agents</div> }));
 vi.mock("./threads/ActivitySection", () => ({
@@ -94,14 +95,12 @@ describe("RightPanel", () => {
     expect(screen.queryByRole("tab")).toBeNull();
   });
 
-  it("a chat with no project has notes alone, and the frame registers as the focused thread", () => {
+  it("a chat with no project has notes alone", () => {
     const chat = { ...session, cwd: "~", projectId: null } as unknown as Session;
     rightPanel.open("s1");
     const r = render(<RightPanel session={chat} onOpenFile={noop} onOpenDiff={noop} />);
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Notes"]);
-    expect(rightPanel.focused()).toBe("s1");
     r.unmount();
-    expect(rightPanel.focused()).toBeNull();
   });
 
   it("a background task alone gives the thread its Activity section, shown first", () => {

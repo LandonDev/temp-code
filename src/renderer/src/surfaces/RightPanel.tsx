@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@renderer/components/ui/tabs";
@@ -22,6 +22,7 @@ import {
   shownSection,
   useRightPanel,
   type PanelFacts,
+  type PanelState,
   type Section,
 } from "../lib/rightPanel";
 import type { OpenFileFn } from "../lib/search";
@@ -30,13 +31,14 @@ import { projectForCwd } from "../lib/tcserver/projects";
 import type { ProjectMeta } from "../lib/tcserver/types";
 import { useProjects } from "../lib/tcserver/workspaces";
 import { fleetCounts, useAgents, useMetaById } from "../lib/threads/agents";
+import { useActivity } from "../lib/activity";
 import { ActivitySection } from "./threads/ActivitySection";
 import { FleetList } from "./threads/fleet/FleetPanel";
 import { NotesBody } from "./threads/NotesPanel";
 
 // The Debug section drives the editor chunk's DAP session; it loads with it.
 const DebugPanel = lazy(() => import("../chrome/rail/DebugPanel"));
-// Listed for a dev build; a debug setting, when one exists, joins this read.
+// Listed for a dev build, and for any thread that asked for it ("Debug this file").
 const DEBUG_SECTION = import.meta.env.DEV;
 
 export type RightPanelProps = {
@@ -58,18 +60,12 @@ export type RightPanelProps = {
 export function RightPanel(props: RightPanelProps) {
   const { session } = props;
   const state = useRightPanel(session.id);
-  const facts = usePanelFacts(session);
+  const facts = usePanelFacts(session, state);
   const available = useMemo(() => sectionsFor(facts.facts), [facts.facts]);
   const section = shownSection(state.section, available);
 
-  useEffect(() => {
-    rightPanel.focus(session.id);
-    return () => {
-      if (rightPanel.focused() === session.id) rightPanel.focus(null);
-    };
-  }, [session.id]);
-
   const resize = useDragResize({
+    edge: "left",
     min: PANEL_MIN,
     max: () => Math.min(PANEL_MAX, Math.floor(window.innerWidth * 0.5)),
     defaultWidth: PANEL_WIDTH,
@@ -141,7 +137,7 @@ export function RightPanel(props: RightPanelProps) {
 }
 
 /** The thread's state as the facts `sectionsFor` reads, and the project the sections key by. */
-function usePanelFacts(session: Session): { facts: PanelFacts; project: ProjectMeta | undefined } {
+function usePanelFacts(session: Session, state: PanelState): { facts: PanelFacts; project: ProjectMeta | undefined } {
   const agents = useAgents(session.id);
   const meta = useMetaById(session.id);
   const projects = useProjects();
@@ -149,6 +145,7 @@ function usePanelFacts(session: Session): { facts: PanelFacts; project: ProjectM
     (session.cwd && session.cwd !== "~" ? projectForCwd(session.cwd, projects) : undefined) ??
     projects.find((p) => p.id === session.projectId && p.environmentId === session.environmentId);
   const devRunning = useDevRunning(project?.id);
+  const activity = useActivity(session.id).rows;
   const counts = fleetCounts(agents);
   const status = meta?.status ?? session.status;
   const facts = useMemo<PanelFacts>(
@@ -157,12 +154,13 @@ function usePanelFacts(session: Session): { facts: PanelFacts; project: ProjectM
       project: !!project?.cwd,
       agents: agents.length,
       liveAgents: counts.working + counts.waiting,
-      backgroundTasks: meta?.background?.tasks.length ?? 0,
+      // The rows A6 joins: background tasks, subagents, a batch, dev servers and Mac bridge calls.
+      backgroundTasks: activity.length,
       watching: status === "watching",
       devRunning,
-      debug: DEBUG_SECTION,
+      debug: DEBUG_SECTION || state.debug,
     }),
-    [session, project, agents.length, counts.working, counts.waiting, status, devRunning, meta?.background?.tasks.length],
+    [session, project, agents.length, counts.working, counts.waiting, status, devRunning, activity.length, state.debug],
   );
   return { facts, project };
 }
