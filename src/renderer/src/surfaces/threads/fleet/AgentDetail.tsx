@@ -1,7 +1,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import type { OpenFileFn } from "../../../lib/search";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { EASE_OUT, SPRING_PANEL } from "../../../lib/ease";
+import { DUR, EASE_OUT, FADE_OUT, SPRING_PANEL } from "../../../lib/ease";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
 import { HostGlyph } from "../../../chrome/HostGlyph";
 import { ArrowUp, GitBranch, X } from "../../../chrome/icons";
@@ -117,8 +117,8 @@ export function AgentDetail({
       <motion.div
         initial={reduce ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
-        exit={{ opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }}
-        transition={{ duration: 0.12, ease: EASE_OUT }}
+        exit={FADE_OUT}
+        transition={{ duration: DUR.fast, ease: EASE_OUT }}
         className="absolute inset-0 bg-black/40 glass-surface glass-surface--md"
         onClick={close}
       />
@@ -178,7 +178,7 @@ export function AgentDetail({
             <motion.div
               initial={reduce ? false : { opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.12, ease: EASE_OUT }}
+              transition={{ duration: DUR.fast, ease: EASE_OUT }}
               className="absolute inset-0"
             >
               <AgentTranscript

@@ -23,7 +23,7 @@ DESIGN.md wins.
 | An option picker | `Select` (select.tsx) | Bordered trigger, list aligned on the chosen item. |
 | An option picker from a list | `ChoiceSelect` (../choice-select.tsx) | The one adapter from `{ value, label }[]` to `Select`; an empty value (Auto) round-trips. Nothing maps `SelectItem`s by hand. |
 | A settings or app page | `Page`, `PageSection`, `PageRow` (../page.tsx) | 672px column, 24px inset, one 16px title; sections 24px apart under a 12px muted heading; rows with a hairline between neighbours. A page never draws its own header or section heading. |
-| A text field | `Input`, `Textarea` (input.tsx, textarea.tsx) | 32px, hairline border, ring inside. |
+| A text field | `Input`, `Textarea` (input.tsx, textarea.tsx) | 32px, hairline border, ring inside. A field with a glyph or buttons in it (search) is `InputGroup` with `leading`/`trailing` around a `GroupInput`. |
 | A labelled field in a dialog or sheet | `Field`, `FieldRow` (chrome/DialogField.tsx) | Label, control, hint; `FieldRow` for a choice at the row's end. |
 | A setting on or off | `Switch` (switch.tsx) | The only toggle for a setting. |
 | A choice in a list | `Checkbox` (checkbox.tsx) | |
@@ -38,7 +38,7 @@ DESIGN.md wins.
 | Something is happening (text) | `TextShimmer` (text-shimmer.tsx) | The one shimmer. |
 | Nothing here | `Empty` (empty.tsx) | Title, one line, at most one action. |
 | An inline callout | `Alert` (alert.tsx) | Tinted by tone. Not for transcript notices. |
-| A thread's state | `StatusMark` (status.tsx) | One glyph, one word, one tone per state. The only status-to-colour map; `threadStateOf(status, { settled, planReady })` turns a session's wire status into the state (a written plan is `plan-ready`, muted), `linkMarkOf(transport)` a host link into its state and word. |
+| A thread's state | `StatusMark` (status.tsx) | One glyph, one word, one tone per state; `detail` is what it is about, muted after the word ("Working  typecheck", a tally). The only status-to-colour map; `threadStateOf(status, { settled, planReady })` turns a session's wire status into the state (a written plan is `plan-ready`, muted), `linkMarkOf(transport)` a host link into its state and word. |
 | A key cap | `Kbd` (kbd.tsx) | In menus, tooltips, buttons. |
 | A toast | sonner `toast()`; one `<Toaster>` (toaster.tsx) mounted lazily in main.tsx | The four custom toast stacks are retired. |
 | A question from the agent | `QuestionCard` (question-card.tsx) | Lettered options, free-form field, `multiSelect` for several picks, ⌘⏎ (keys only while focus is inside the card). |

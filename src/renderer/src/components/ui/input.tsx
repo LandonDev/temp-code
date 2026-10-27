@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import { cn } from "@renderer/lib/cn";
 
@@ -24,4 +24,46 @@ function Input({ className, type, ...props }: ComponentProps<"input">) {
   );
 }
 
-export { Input, INPUT_FIELD_CLASS };
+/**
+ * A field with a leading glyph and trailing actions: the search fields.
+ * The group draws the border and the ring; the Input inside is bare.
+ * `leading` is a glyph (16px, muted); `trailing` holds ghost icon buttons.
+ */
+function InputGroup({ className, leading, trailing, children, ...props }: ComponentProps<"div"> & { leading?: ReactNode; trailing?: ReactNode }) {
+  return (
+    <div
+      data-slot="input-group"
+      className={cn(
+        "focus-field flex h-8 min-w-0 items-center gap-2 rounded-lg border border-input bg-transparent px-2.5 has-[input:disabled]:opacity-50 has-[input[aria-invalid=true]]:border-destructive [&_svg:not([class*='size-'])]:size-4",
+        className,
+      )}
+      {...props}
+    >
+      {leading ? (
+        <span data-slot="input-group-leading" className="flex shrink-0 items-center text-muted-foreground">
+          {leading}
+        </span>
+      ) : null}
+      {children}
+      {trailing ? (
+        <span data-slot="input-group-trailing" className="-mr-1.5 flex shrink-0 items-center gap-0.5">
+          {trailing}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** The bare field inside an InputGroup: no border or ring of its own. */
+function GroupInput({ className, type, ...props }: ComponentProps<"input">) {
+  return (
+    <InputPrimitive
+      type={type}
+      data-slot="input"
+      className={cn("h-full min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed", className)}
+      {...props}
+    />
+  );
+}
+
+export { Input, InputGroup, GroupInput, INPUT_FIELD_CLASS };

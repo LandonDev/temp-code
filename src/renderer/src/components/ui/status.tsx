@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import type { SessionStatus } from "@shared/events";
 import { Check, Circle, CircleAlert, CircleDashed, CircleDot, FileText, Pause, Square } from "@renderer/chrome/icons";
 import { cn } from "@renderer/lib/cn";
@@ -160,22 +160,33 @@ const LIVE: ReadonlySet<ThreadState> = new Set(["working", "waiting", "watching"
 export function StatusMark({
   state,
   word = true,
+  detail,
   className,
   ...props
-}: ComponentProps<"span"> & { state: ThreadState; word?: boolean | string }) {
+}: ComponentProps<"span"> & {
+  state: ThreadState;
+  word?: boolean | string;
+  /** What the state is about, muted after the word: "Working  typecheck", "Needs you  approve Bash", a tally "3/7". */
+  detail?: ReactNode;
+}) {
   const text = word === true ? STATUS_WORD[state] : word === false ? null : word;
   return (
     <span
       data-slot="status-mark"
       data-state={state}
       aria-label={text === null ? STATUS_WORD[state] : undefined}
-      className={cn("inline-flex items-center gap-1.5 text-xs font-medium", TONE_CLASS[STATUS_TONE[state]], className)}
+      className={cn("inline-flex min-w-0 items-center gap-1.5 text-xs font-medium", TONE_CLASS[STATUS_TONE[state]], className)}
       {...props}
     >
       <span key={state} className={cn("flex", LIVE.has(state) && "status-breathe")}>
         <Glyph state={state} />
       </span>
       {text}
+      {detail != null && detail !== "" ? (
+        <span data-slot="status-detail" className="min-w-0 truncate font-normal text-muted-foreground tabular-nums">
+          {detail}
+        </span>
+      ) : null}
     </span>
   );
 }

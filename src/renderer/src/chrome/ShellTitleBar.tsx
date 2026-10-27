@@ -1,6 +1,8 @@
 import { memo, useEffect, useMemo, useRef, type ComponentProps } from "react";
 import { useSidebarLayout } from "../hooks/useSidebarLayout";
 import { resolveSessionContext } from "../lib/projectContext";
+import type { BackgroundWork } from "@shared/events";
+import { pendingApprovalForSession } from "../lib/approvalToast";
 import { useRightPanel } from "../lib/rightPanel";
 import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
@@ -347,7 +349,14 @@ function tabThreadOf(session: Session | undefined, planReady: Record<string, boo
     planReady: !!planReady[session.id],
     frozenElapsed: session.frozenActiveElapsed ?? null,
     failure: session.failure?.summary ?? null,
+    waitingOn: status === "waiting" ? (pendingApprovalForSession(session)?.label ?? null) : null,
+    backgroundWork: backgroundWorkOf(sessionStore.metaOf(session.id)?.background),
   };
+}
+
+/** The tasks and live subagents a thread waits on, as one count for the tab. */
+function backgroundWorkOf(background: BackgroundWork | null | undefined): number {
+  return (background?.tasks.length ?? 0) + (background?.agents.length ?? 0);
 }
 
 function sameTabThread(a: TabThread | undefined, b: TabThread | undefined): boolean {
@@ -362,7 +371,9 @@ function sameTabThread(a: TabThread | undefined, b: TabThread | undefined): bool
     (a.tasks?.total ?? -1) === (b.tasks?.total ?? -1) &&
     a.planReady === b.planReady &&
     a.frozenElapsed === b.frozenElapsed &&
-    (a.failure ?? null) === (b.failure ?? null)
+    (a.failure ?? null) === (b.failure ?? null) &&
+    (a.waitingOn ?? null) === (b.waitingOn ?? null) &&
+    (a.backgroundWork ?? 0) === (b.backgroundWork ?? 0)
   );
 }
 

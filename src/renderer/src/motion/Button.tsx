@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { EASE_OUT, SPRING_PRESS } from "../lib/ease";
+import { DUR, EASE_OUT, SPRING_PRESS } from "../lib/ease";
 import { cn } from "./cn";
 
 /**
@@ -122,7 +122,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
                 initial={{ scale: 0.05, opacity: 0.3 }}
                 animate={{ scale: 1, opacity: 0 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.4, ease: EASE_OUT }}
+                transition={{ duration: DUR.drawer, ease: EASE_OUT }}
                 onAnimationComplete={() =>
                   setRipples((prev) => prev.filter((x) => x.id !== r.id))
                 }

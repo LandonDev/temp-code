@@ -21,6 +21,10 @@ export type TabThread = {
   frozenElapsed?: number | null;
   /** failed: the host's one-line verdict, when it has one */
   failure?: string | null;
+  /** waiting: the pending approval's label, what the thread waits on ("Bash: bun test") */
+  waitingOn?: string | null;
+  /** background tasks and live subagents the thread waits on, counted */
+  backgroundWork?: number;
 };
 
 /**

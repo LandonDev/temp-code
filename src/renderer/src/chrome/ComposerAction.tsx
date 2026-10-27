@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { MouseEvent } from "react";
-import { EASE_OUT } from "../lib/ease";
+import { DUR, EASE_OUT } from "../lib/ease";
 import {
   composerActionHint,
   composerActionLabel,
@@ -48,7 +48,7 @@ export function ComposerAction({ intent, midTurnDefault, disabled, onSubmit, onP
           initial={reduce ? false : { opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={reduce ? undefined : { opacity: 0, scale: 0.9 }}
-          transition={{ duration: 0.1, ease: EASE_OUT }}
+          transition={{ duration: DUR.fast, ease: EASE_OUT }}
           className="absolute inset-0 grid place-items-center"
         >
           {glyph === "pause" ? (

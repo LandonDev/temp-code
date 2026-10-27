@@ -8,6 +8,7 @@ import { Switch } from "./switch";
 import { linkMarkOf, STATUS_TONE, STATUS_WORD, StatusMark, statusNeedsYou, threadStateOf, type ThreadState } from "./status";
 import { Kbd } from "./kbd";
 import { Skeleton } from "./skeleton";
+import { GroupInput, InputGroup } from "./input";
 
 vi.mock("@renderer/hooks/paneVisibility", () => ({ usePaneVisible: () => true }));
 
@@ -164,6 +165,14 @@ describe("StatusMark", () => {
     expect(screen.getByText("Connected").dataset.state).toBe("done");
   });
 
+  it("carries a detail after the word, muted", () => {
+    render(<StatusMark state="working" detail="typecheck" />);
+    const detail = document.querySelector("[data-slot=status-detail]") as HTMLElement;
+    expect(detail.textContent).toBe("typecheck");
+    expect(detail.className).toContain("text-muted-foreground");
+    expect(screen.getByText("Working").textContent).toBe("Workingtypecheck");
+  });
+
   it("a live glyph breathes once on a state change; a settled one is still", () => {
     const { container, rerender } = render(<StatusMark state="watching" />);
     expect(container.querySelector(".status-breathe")).not.toBeNull();
@@ -178,6 +187,22 @@ describe("Skeleton", () => {
     const block = document.querySelector("[data-slot=skeleton]") as HTMLElement;
     expect(block.className).toContain("bg-muted");
     expect(block.className).not.toMatch(/shimmer|animate/);
+  });
+});
+
+describe("InputGroup", () => {
+  it("places the glyph before the field and the actions after it", () => {
+    render(
+      <InputGroup leading={<svg data-testid="glyph" />} trailing={<button type="button">Clear</button>}>
+        <GroupInput aria-label="Search" placeholder="Search" />
+      </InputGroup>,
+    );
+    const group = document.querySelector("[data-slot=input-group]") as HTMLElement;
+    const order = [...group.querySelectorAll("[data-slot]")].map((n) => n.getAttribute("data-slot"));
+    expect(order).toEqual(["input-group-leading", "input", "input-group-trailing"]);
+    expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
+    expect(group.className).toContain("focus-field");
+    expect((screen.getByLabelText("Search") as HTMLInputElement).className).not.toContain("border");
   });
 });
 

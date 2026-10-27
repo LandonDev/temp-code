@@ -2,7 +2,7 @@ import { sessionStore } from '../lib/tcserver/store'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, useReducedMotion } from 'motion/react'
-import { EASE_DRAWER, EASE_OUT } from '../lib/ease'
+import { DUR, EASE_DRAWER, EASE_OUT } from '../lib/ease'
 import { LAYER } from '../lib/layers'
 import { clearAppshotFlash, useAppshotFlash, type AppshotFlash } from '../lib/appshots'
 import { readAttachment } from '../lib/tcserver/commands'
@@ -105,7 +105,7 @@ function Flight({ flash, environmentId }: { flash: AppshotFlash; environmentId: 
           className="absolute inset-0 bg-white"
           initial={{ opacity: 0 }}
           animate={{ opacity: [0, 0.3, 0] }}
-          transition={{ duration: 0.32, times: [0, 0.12, 1], ease: EASE_OUT }}
+          transition={{ duration: DUR.drawer, times: [0, 0.12, 1], ease: EASE_OUT }}
         />
       )}
       {src && rect ? (

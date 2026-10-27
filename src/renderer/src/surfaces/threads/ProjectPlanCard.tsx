@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { EASE_OUT } from "../../lib/ease";
+import { DUR, EASE_OUT } from "../../lib/ease";
 import type { ProjectPlanState } from "@server/shared/contract-projectplan";
 import { nextMilestone, parseProjectPlan, type Milestone } from "@server/shared/projectPlan";
 import { Check, GitFork, MapIcon, Pencil, Pin, PinOff } from "../../chrome/icons";
@@ -291,7 +291,7 @@ export function ProjectPlanCard(props: {
       // The plan settling is a rare moment: one short rise, nothing bouncy.
       initial={reduce ? false : { opacity: 0, transform: "translateY(6px)" }}
       animate={{ opacity: 1, transform: "translateY(0px)" }}
-      transition={{ duration: 0.2, ease: EASE_OUT }}
+      transition={{ duration: DUR.base, ease: EASE_OUT }}
       className="mt-6 rounded-xl border border-content/10"
     >
       <div className="flex items-center justify-between border-b border-content/10 px-3 py-2">

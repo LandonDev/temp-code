@@ -10,7 +10,7 @@ import {
 } from "react";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import type { OpenFileFn } from "../../lib/search";
-import { EASE_OUT, ENTER, SPRING_PANEL } from "../../lib/ease";
+import { DUR, EASE_OUT, ENTER, SPRING_PANEL } from "../../lib/ease";
 import { GLIDE_MAX_ROWS } from "../../lib/listGlide";
 import { TweenHeight } from "../../motion";
 import { FilePreview } from "../../chrome/FilePreview";
@@ -1105,7 +1105,7 @@ function TaskGrid({
             initial={{ height: 0 }}
             animate={{ height: "auto" }}
             exit={{ height: 0 }}
-            transition={{ duration: 0.2, ease: EASE_OUT }}
+            transition={{ duration: DUR.base, ease: EASE_OUT }}
             className="overflow-hidden px-3"
           >
             <motion.div layoutId={`chg-${openPath}`} layoutDependency={openPath} transition={SPRING_PANEL}>
