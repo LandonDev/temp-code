@@ -54,8 +54,8 @@ export function MacBridgeHostDialog({ host: initial, onClose }: { host: MacBridg
         <div className="flex flex-col gap-4">
           <Group>
             {fwd ? (
-              <Row title="Forward dev servers">
-                <SettingSwitch label={`Forward ${host.name}'s dev servers to this Mac`} on={fwd.enabled} onChange={(on) => void run(() => setForwarding(id, on))} />
+              <Row title="Dev server forwarding">
+                <SettingSwitch label="Dev server forwarding" on={fwd.enabled} onChange={(on) => void run(() => setForwarding(id, on))} />
               </Row>
             ) : null}
             {runs ? (

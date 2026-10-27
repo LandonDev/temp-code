@@ -973,7 +973,7 @@ routed to (aliax-core's `forward`). Two listeners:
   `ports.bound`, and carries each connection as `ports.open/data/close`
   frames (remote/macPorts.ts, portStreams.ts: in order, paused while the
   link holds 1 MiB or 32 frames are unanswered); the box dials its loopback
-  only. "Forward dev servers" per host in its Mac bridge settings dialog
+  only. "Dev server forwarding" per host in its Mac bridge settings dialog
   (`ports.forward.<envId>`, on by default). The thread hears "Forwarded to
   http://localhost:5174 on the Mac (5173 is taken there)" in the shell
   call's result (claude's PostToolUse hook; a whispered `<dev-server>` line

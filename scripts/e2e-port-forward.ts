@@ -21,7 +21,7 @@
  *    that announces itself; the ledger files a `port` row with its pid, mac
  *    forwards it, a GET goes through; archiving the thread with its resources
  *    kills the pid, stamps the row and closes mac's listener
- *  - the switch: mac's "Forward dev servers" off closes the forward, on binds it again
+ *  - the switch: mac's "Dev server forwarding" off closes the forward, on binds it again
  *  - the link: box gone, mac's forwards are gone
  * Run: bun scripts/e2e-port-forward.ts   (build first: electron-vite build)
  * Nothing here touches /Applications/TempCode.app, a real HOME, the real

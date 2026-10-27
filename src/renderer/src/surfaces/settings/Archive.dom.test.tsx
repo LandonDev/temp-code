@@ -137,7 +137,7 @@ describe("Archive page", () => {
   it("saves the sidebar switch", async () => {
     render(<ArchivePage {...handlers()} />);
     await act(async () => {
-      fireEvent.click(screen.getByRole("switch", { name: "Show archived in the sidebar" }));
+      fireEvent.click(screen.getByRole("switch", { name: "Archived in the sidebar" }));
     });
     expect(state.saveFilters).toHaveBeenCalledWith({ showArchived: true });
   });

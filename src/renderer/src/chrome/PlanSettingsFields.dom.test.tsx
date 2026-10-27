@@ -44,7 +44,7 @@ describe("Plans", () => {
   it("draws the loaded set's rows", () => {
     plans.scope = { settings: DEFAULT_PLAN_SETTINGS, overridden: false };
     render(<PlanSettingsEditor />);
-    expect(screen.getByRole("switch", { name: "Start the build on its own" })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Auto-start" })).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Build model" })).toBeTruthy();
   });
 

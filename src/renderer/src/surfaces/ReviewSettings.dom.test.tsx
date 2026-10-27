@@ -111,11 +111,11 @@ describe("Reviews page", () => {
     expect(document.querySelectorAll("[data-slot=page-row]")).toHaveLength(4);
   });
 
-  it("saves Hold the merge on", async () => {
+  it("saves Blocking findings", async () => {
     answer({ ...SETTINGS, beforeMerge: true });
     await renderPage();
     await act(async () => {
-      fireEvent.click(screen.getByRole("combobox", { name: "Hold the merge on" }));
+      fireEvent.click(screen.getByRole("combobox", { name: "Blocking findings" }));
     });
     const option = await screen.findByRole("option", { name: "Any finding" });
     await act(async () => {
@@ -175,10 +175,10 @@ describe("Reviews page", () => {
 describe("ReviewFields compact", () => {
   it("hides the three rows while review is off", () => {
     const { rerender } = render(<ReviewFields value={SETTINGS} onChange={() => {}} environmentId="local" compact />);
-    expect(screen.queryByRole("combobox", { name: "Hold the merge on" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Blocking findings" })).toBeNull();
     expect(screen.queryByRole("textbox", { name: "Time limit" })).toBeNull();
     rerender(<ReviewFields value={{ ...SETTINGS, beforeMerge: true }} onChange={() => {}} environmentId="local" compact />);
-    expect(screen.getByRole("combobox", { name: "Hold the merge on" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Blocking findings" })).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Time limit" })).toBeTruthy();
   });
 });

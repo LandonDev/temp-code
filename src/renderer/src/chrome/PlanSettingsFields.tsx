@@ -58,16 +58,16 @@ export function PlanSettingsFields({
   return (
     <>
       <PageRow
-        title="Start the build on its own"
+        title="Auto-start"
         description={hint("When the planner marks its plan complete, the implementation thread starts without a click.")}
       >
-        <SettingSwitch label="Start the build on its own" on={value.autoImplement} onChange={(on) => set({ autoImplement: on })} />
+        <SettingSwitch label="Auto-start" on={value.autoImplement} onChange={(on) => set({ autoImplement: on })} />
       </PageRow>
       <PageRow
-        title="Archive the plan after start"
+        title="Plan archived on start"
         description={hint("The planning thread leaves the list once its build runs; the plan file and the link stay.")}
       >
-        <SettingSwitch label="Archive the plan after start" on={value.archiveAfterStart} onChange={(on) => set({ archiveAfterStart: on })} />
+        <SettingSwitch label="Plan archived on start" on={value.archiveAfterStart} onChange={(on) => set({ archiveAfterStart: on })} />
       </PageRow>
       <PageRow title="Build model">
         <ChoiceSelect

@@ -71,9 +71,9 @@ export function AppshotsPage() {
       >
         {loaded ? (
           <>
-            <PageRow title="Capture on double-⌘" error={errorOf("enabled")}>
+            <PageRow title="Double-⌘ capture" error={errorOf("enabled")}>
               <SettingSwitch
-                label="Capture on double-⌘"
+                label="Double-⌘ capture"
                 on={settings.enabled}
                 onChange={(on) => {
                   setAppshotSettings({ enabled: on });

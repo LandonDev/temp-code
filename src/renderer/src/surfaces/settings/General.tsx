@@ -100,7 +100,7 @@ export function GeneralPage({
     <>
       <PageSection title="Transcript">
         <SwitchRow
-          title="Anchor prompts to top"
+          title="Prompt at the top"
           description="A sent prompt sits at the top and the reply grows below it."
           on={transcriptAnchor}
           onChange={(next) => {
@@ -112,7 +112,7 @@ export function GeneralPage({
 
       <PageSection title="Composer">
         <PageRow
-          title="Enter while a turn runs"
+          title="Enter during a turn"
           description={
             <>
               Queue waits for the turn, Steer sends into it;
@@ -122,7 +122,7 @@ export function GeneralPage({
           }
         >
           <ChoiceSelect
-            label="Enter while a turn runs"
+            label="Enter during a turn"
             value={midTurn}
             options={[
               { value: "queue", label: "Queue" },

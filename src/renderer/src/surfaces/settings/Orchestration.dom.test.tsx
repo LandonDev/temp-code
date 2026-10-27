@@ -108,7 +108,7 @@ describe("Orchestration page", () => {
   it("saves a Conduct switch through the rules store", async () => {
     render(<OrchestrationPage />);
     await act(async () => {
-      fireEvent.click(screen.getByRole("switch", { name: "Edit files itself" }));
+      fireEvent.click(screen.getByRole("switch", { name: "File edits" }));
     });
     expect(state.save).toHaveBeenCalledWith("local", null, expect.anything());
     expect(saved().conduct.selfEdit).toBe(true);

@@ -66,7 +66,7 @@ describe("Appshots page", () => {
     render(<AppshotsPage />);
     state.refresh.mockClear();
     await act(async () => {
-      fireEvent.click(screen.getByRole("switch", { name: "Capture on double-⌘" }));
+      fireEvent.click(screen.getByRole("switch", { name: "Double-⌘ capture" }));
     });
     expect(state.set).toHaveBeenCalledWith({ enabled: true });
     expect(state.refresh).toHaveBeenCalledWith(true);

@@ -157,10 +157,10 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
             onChange={(delegation) => patchConduct({ delegation })}
           />
         </PageRow>
-        {switchRow("Edit files itself", "Off removes its edit tools.", "selfEdit")}
-        {switchRow("Run shell commands itself", "Off removes its shell; agents gather context.", "selfShell")}
-        {switchRow("Verify agent reports", "Check results before relaying them.", "verifyResults")}
-        {switchRow("Escalate on weak output", "Rerun with a smarter model when a result misses.", "escalate")}
+        {switchRow("File edits", "Off removes its edit tools.", "selfEdit")}
+        {switchRow("Shell commands", "Off removes its shell; agents gather context.", "selfShell")}
+        {switchRow("Report checks", "Check results before relaying them.", "verifyResults")}
+        {switchRow("Escalation", "Rerun with a smarter model when a result misses.", "escalate")}
         {switchRow("Worktree isolation", "Writing agents get their own git worktree.", "useWorktrees")}
         <PageRow title="Parallel agents" description="Running at once.">
           <CapSelect

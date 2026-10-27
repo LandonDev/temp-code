@@ -97,7 +97,7 @@ describe("MacBridgeHostDialog", () => {
     const onClose = vi.fn();
     render(<MacBridgeHostDialog host={host()} onClose={onClose} />);
     expect(screen.queryByText("Show running commands")).toBeNull();
-    fireEvent.click(screen.getByLabelText("Forward box's dev servers to this Mac"));
+    fireEvent.click(screen.getByLabelText("Dev server forwarding"));
     await flush();
     expect(calls).toEqual([{ method: "forwarding", args: ["env_box", false] }]);
     fireEvent.click(screen.getByText("Done"));

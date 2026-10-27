@@ -32,7 +32,7 @@ export const BLOCK_OPTIONS: { value: ReviewSettings["blockOn"]; label: string }[
 const COPY = {
   before: { label: "Review before merge" },
   model: { label: "Reviewer", hint: "Models the orchestration rules approve." },
-  blockOn: { label: "Hold the merge on", hint: "Confirmed means the reviewer verified it." },
+  blockOn: { label: "Blocking findings", hint: "Confirmed means the reviewer verified it." },
   minutes: { label: "Time limit", hint: "Past it the merge goes ahead." },
 };
 

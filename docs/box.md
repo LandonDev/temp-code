@@ -1777,7 +1777,7 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   holds more than 1 MiB unsent, or the Mac has 32 frames unanswered, and
   resumes below 256 KiB and half that. The box side is
   remote/portForward.ts.
-- **The switch.** "Forward dev servers" in each host's Mac bridge settings
+- **The switch.** "Dev server forwarding" in each host's Mac bridge settings
   on Settings → Hosts (`ports.forward.<envId>`, on by default; RPCs
   `ports.forwards` and `ports.setForwarding`, local). Off closes every
   forward of that host. The host's Mac bridge group lists what is

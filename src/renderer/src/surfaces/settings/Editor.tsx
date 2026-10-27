@@ -272,12 +272,12 @@ export function EditorPage() {
             }}
           />
         </PageRow>
-        <PageRow title="Format Java on save">
-          <SettingSwitch label="Format Java on save" on={formatOnSave.java} onChange={(on) => onFormat({ java: on })} />
+        <PageRow title="Java formatting">
+          <SettingSwitch label="Java formatting" on={formatOnSave.java} onChange={(on) => onFormat({ java: on })} />
         </PageRow>
-        <PageRow title="Format TypeScript and JavaScript on save">
+        <PageRow title="TypeScript and JavaScript formatting">
           <SettingSwitch
-            label="Format TypeScript and JavaScript on save"
+            label="TypeScript and JavaScript formatting"
             on={formatOnSave.web}
             onChange={(on) => onFormat({ web: on })}
           />

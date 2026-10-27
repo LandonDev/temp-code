@@ -33,11 +33,11 @@ export function LocalSync({
         title="Harness config"
         description={harness.skipped > 0 ? `${harness.skipped} ${harness.skipped === 1 ? "file stays" : "files stay"} here: over 16 MB, a symlink out of reach, or a macOS binary.` : undefined}
       >
-        <SettingSwitch label="Sync harness config" on={harness.enabled} onChange={(enabled) => onAct("harness.settings.set", { enabled })} />
+        <SettingSwitch label="Harness config" on={harness.enabled} onChange={(enabled) => onAct("harness.settings.set", { enabled })} />
       </Row>
       {memory ? (
         <Row title="Memory">
-          <SettingSwitch label="Sync memory" on={memory.enabled} onChange={(enabled) => onAct("memory.settings.set", { enabled })} />
+          <SettingSwitch label="Memory" on={memory.enabled} onChange={(enabled) => onAct("memory.settings.set", { enabled })} />
         </Row>
       ) : null}
       {conflicts.length > 0 ? (

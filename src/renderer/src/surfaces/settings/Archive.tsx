@@ -121,8 +121,8 @@ export function ArchivePage({
   return (
     <>
       <PageSection>
-        <PageRow title="Show archived in the sidebar">
-          <SettingSwitch label="Show archived in the sidebar" on={filters.showArchived} onChange={onShowArchived} />
+        <PageRow title="Archived in the sidebar">
+          <SettingSwitch label="Archived in the sidebar" on={filters.showArchived} onChange={onShowArchived} />
         </PageRow>
       </PageSection>
 
