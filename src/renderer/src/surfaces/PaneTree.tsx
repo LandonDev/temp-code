@@ -148,7 +148,7 @@ function PaneTreeComponent({
   const settled = useWorkspaceTabs((s) => visible && s.activeTabId === tabId);
   const dockFocused = useFocus((s) => visible && s.projectTerminalFocused);
   const composerWanted = useFocus((s) => visible && s.composerFocused);
-  const focusedId = visible && !tab.diffFocused && !dockFocused ? tab.focusedId : "";
+  const focusedId = visible && !dockFocused ? tab.focusedId : "";
   const composerFocused = composerWanted && !dockFocused && settled;
   const treeRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef(layout);

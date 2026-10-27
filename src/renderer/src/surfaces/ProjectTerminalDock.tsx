@@ -30,7 +30,8 @@ type Props = {
   focused: boolean;
   onFocus: () => void;
   onHide: () => void;
-  onSideChange: (side: DockSide) => void;
+  /** Gone once the dock is bottom only (area A24). */
+  onSideChange?: (side: DockSide) => void;
   onSizePaint: (size: number) => void;
   onSizeCommit: (size: number) => void;
   onAddTerminal: () => void;
@@ -165,7 +166,7 @@ export function ProjectTerminalDock({
           }))}
           onPick={(id) => {
             if (id === "top" || id === "bottom" || id === "left" || id === "right") {
-              onSideChange(id);
+              onSideChange?.(id);
             }
             setMenu(null);
           }}

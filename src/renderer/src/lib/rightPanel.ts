@@ -48,6 +48,8 @@ export type PanelFacts = {
   watching: boolean;
   /** A dev server of the project runs. */
   devRunning: boolean;
+  /** A dev build, or the debug setting on: the Debug section is listed. */
+  debug: boolean;
 };
 
 export type PanelSections = { sections: Section[]; defaultSection: Section | null };
@@ -66,10 +68,10 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
   if (facts.project) sections.push("branch");
   if (facts.project) sections.push("build");
   if (facts.project) sections.push("dev");
-  if (facts.project) sections.push("debug");
+  if (facts.project && facts.debug) sections.push("debug");
   const defaultSection: Section = activity
     ? "activity"
-    : facts.liveAgents > 0
+    : facts.agents > 0 || facts.batch
       ? "agents"
       : facts.project
         ? "changes"

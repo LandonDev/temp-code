@@ -86,6 +86,8 @@ type Props = {
   initialQuery?: string;
   recents: RecentProject[];
   focusToken?: number;
+  /** The query to open with (Find in project seeds `type:file `). */
+  seed?: string | null;
   besideRail?: boolean;
   onClose: () => void;
   onToggleSidebar?: () => void;
@@ -120,6 +122,7 @@ export function SearchView({
   initialQuery,
   recents,
   focusToken = 0,
+  seed = null,
   besideRail = false,
   onClose,
   onToggleSidebar,
@@ -162,11 +165,12 @@ export function SearchView({
 
   useEffect(() => {
     if (!open) return;
+    if (seed) setQuery(seed);
     const frame = window.requestAnimationFrame(() => {
       inputRef.current?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [open, focusToken]);
+  }, [open, focusToken, seed]);
 
   useEffect(() => {
     if (!open) return;

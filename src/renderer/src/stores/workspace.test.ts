@@ -186,8 +186,6 @@ describe("workspace snapshot round-trip", () => {
       focusedId: "e1",
       editorPanes: [{ id: "e1", files: [file], activeFileId: file.id }],
       terminalPanes: [{ id: "p1", files: [term], activeFileId: term.id }],
-      diffOpen: true,
-      diffFocused: true,
       groupId: "g1",
     };
     const plain = { ...newTab("s2"), id: "t2" };

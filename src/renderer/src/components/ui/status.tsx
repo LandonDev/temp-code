@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import type { SessionStatus } from "@shared/events";
 import { Check, Circle, CircleAlert, CircleDashed, CircleDot, Pause, Square } from "@renderer/chrome/icons";
 import { cn } from "@renderer/lib/cn";
 import { Spinner } from "./spinner";
@@ -46,6 +47,72 @@ const TONE_CLASS: Record<StatusTone, string> = {
   danger: "text-destructive",
 };
 
+/**
+ * A session's wire status as the vocabulary's state. `starting` and
+ * `running` work; `error` failed; `idle` after a completed turn is done
+ * (`settled`), else idle; an undefined status (a row not yet listed) is idle.
+ * Every row that shows a thread's state reads this, never a map of its own.
+ */
+export function threadStateOf(status: SessionStatus | null | undefined, opts: { settled?: boolean } = {}): ThreadState {
+  switch (status) {
+    case "starting":
+    case "running":
+      return "working";
+    case "waiting":
+      return "waiting";
+    case "paused":
+      return "paused";
+    case "error":
+      return "failed";
+    case "queued":
+      return "queued";
+    case "stopped":
+      return "stopped";
+    case "watching":
+      return "watching";
+    case "done":
+      return "done";
+    case "idle":
+      return opts.settled ? "done" : "idle";
+    default:
+      return "idle";
+  }
+}
+
+/** What a host's link says: the transport's word, in one place. */
+export type LinkTransport = "connecting" | "open" | "reconnecting" | "offline" | "unauthorized";
+
+/**
+ * A host link as a mark: Connected (a check, muted), Connecting and
+ * Reconnecting (the spinner), Offline (stopped, muted), Unreachable since a
+ * time (amber: the person has to look), Sign in needed (red). The host
+ * rows, the environment switcher, the connection indicator and the thread
+ * header's host chip all read this; none keeps a map of its own.
+ */
+export function linkMarkOf(
+  transport: LinkTransport,
+  opts: { unreachableSince?: number | null; now?: number } = {},
+): { state: ThreadState; word: string } {
+  switch (transport) {
+    case "open":
+      return { state: "done", word: "Connected" };
+    case "connecting":
+      return { state: "working", word: "Connecting" };
+    case "reconnecting":
+      return { state: "working", word: "Reconnecting" };
+    case "unauthorized":
+      return { state: "failed", word: "Sign in needed" };
+    case "offline":
+      return opts.unreachableSince
+        ? { state: "waiting", word: `Unreachable since ${clockTime(opts.unreachableSince)}` }
+        : { state: "stopped", word: "Offline" };
+  }
+}
+
+function clockTime(at: number): string {
+  return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 /** Does the state need the person's eyes: a live dot in the rail, an unread-style weight. */
 export function statusNeedsYou(state: ThreadState): boolean {
   return state === "waiting" || state === "failed";
@@ -75,18 +142,24 @@ function Glyph({ state, className }: { state: ThreadState; className?: string })
   }
 }
 
-/** The glyph alone (`word={false}`) for tight rows, or glyph and word. */
-export function StatusMark({ state, word = true, className, ...props }: ComponentProps<"span"> & { state: ThreadState; word?: boolean }) {
+/** The glyph alone (`word={false}`) for tight rows, glyph and the state's word, or glyph and a given word (a link's). */
+export function StatusMark({
+  state,
+  word = true,
+  className,
+  ...props
+}: ComponentProps<"span"> & { state: ThreadState; word?: boolean | string }) {
+  const text = word === true ? STATUS_WORD[state] : word === false ? null : word;
   return (
     <span
       data-slot="status-mark"
       data-state={state}
-      aria-label={word ? undefined : STATUS_WORD[state]}
+      aria-label={text === null ? STATUS_WORD[state] : undefined}
       className={cn("inline-flex items-center gap-1.5 text-xs font-medium", TONE_CLASS[STATUS_TONE[state]], className)}
       {...props}
     >
       <Glyph state={state} />
-      {word ? STATUS_WORD[state] : null}
+      {text}
     </span>
   );
 }

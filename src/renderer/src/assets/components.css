@@ -66,33 +66,6 @@
   }
 }
 
-/* Skeleton: one slow sweep. */
-.skeleton-shimmer {
-  position: relative;
-  overflow: hidden;
-}
-
-.skeleton-shimmer::after {
-  position: absolute;
-  inset: 0;
-  content: "";
-  background: linear-gradient(90deg, transparent, var(--skeleton-sweep), transparent);
-  transform: translateX(-100%);
-  animation: skeleton-shimmer 1600ms linear infinite;
-}
-
-@keyframes skeleton-shimmer {
-  to {
-    transform: translateX(100%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-shimmer::after {
-    animation: none;
-  }
-}
-
 /* Switch: the thumb slides on a clip-path and grows 5px toward the other
    side on hover, so the hand knows which way it goes. */
 .t-toggle {

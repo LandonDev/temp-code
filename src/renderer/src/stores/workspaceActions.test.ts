@@ -126,11 +126,10 @@ describe("workspace actions", () => {
     expect(activateTab(s, "b").activeTabId).toBe("b");
   });
 
-  it("focusPane focuses a pane of the active tab and drops the diff focus", () => {
-    const s = state([tab("a", { layout: row("s-a", "s-a2"), diffFocused: true })]);
+  it("focusPane focuses a pane of the active tab", () => {
+    const s = state([tab("a", { layout: row("s-a", "s-a2") })]);
     const next = focusPane(s, "s-a2");
     expect(next.tabs[0].focusedId).toBe("s-a2");
-    expect(next.tabs[0].diffFocused).toBe(false);
   });
 
   it("appendTab lands beside the active tab and inherits its group when projects match", () => {
@@ -161,12 +160,11 @@ describe("workspace actions", () => {
   });
 
   it("splitBeside splits the source to the right, focused, and brings its tab forward", () => {
-    const s = state([tab("a"), tab("b", { diffFocused: true })], "a");
+    const s = state([tab("a"), tab("b")], "a");
     const next = splitBeside(s, "s-b", "s-new");
     expect(next.activeTabId).toBe("b");
     expect(leafIds(next.tabs[1].layout)).toEqual(["s-b", "s-new"]);
     expect(next.tabs[1].focusedId).toBe("s-new");
-    expect(next.tabs[1].diffFocused).toBe(false);
     expect(next.tabs[0]).toBe(s.tabs[0]);
   });
 

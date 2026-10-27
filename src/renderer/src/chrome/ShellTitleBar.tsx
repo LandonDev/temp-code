@@ -107,7 +107,7 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   const recents = useProject((s) => s.recents);
   const catalog = useWorkspaceCatalog();
   const shells = useSessionShells();
-  const { activeTab, active, sidebarCwd: cwd, gitCwd } = useProjectCwds();
+  const { active, sidebarCwd: cwd, gitCwd } = useProjectCwds();
   const activeSessionId = active?.id;
   const dirtyFiles = useEditors((s) => s.dirtyFiles);
   const sidebarOpen = useShell((s) => s.sidebarOpen);
@@ -122,9 +122,7 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   const dockCwd = dockCwdOf({ projectCwd, selectedProjectId }, catalog.projects);
   const dock = useTerminals((s) => findProjectTerminal(s.docks, dockCwd));
   const projectTerminalActive = deckLayout && !!dock && dock.pane.files.length > 0;
-  const sourceControlActive = deckLayout
-    ? sidebarOpen && sidebarTab === "changes"
-    : !!activeTab?.diffOpen;
+  const sourceControlActive = deckLayout ? sidebarOpen && sidebarTab === "changes" : railOpen;
   const headerWorkspaceId = deckLayout
     ? resolveSessionContext({
         ...catalog,

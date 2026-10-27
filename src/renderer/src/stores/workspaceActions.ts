@@ -87,7 +87,6 @@ export function splitBeside(
             ...entry,
             layout: splitPane(entry.layout, sourceId, "right", sessionId),
             focusedId: sessionId,
-            diffFocused: false,
           }
         : entry,
     ),

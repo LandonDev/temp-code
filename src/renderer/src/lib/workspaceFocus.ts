@@ -12,18 +12,7 @@ export function focusPane(
   paneId: string,
 ): WorkspaceTab[] {
   return replaceTab(tabs, activeTabId, (tab) =>
-    tab.focusedId === paneId && !tab.diffFocused
-      ? tab
-      : { ...tab, focusedId: paneId, diffFocused: false },
-  );
-}
-
-export function focusDiff(
-  tabs: WorkspaceTab[],
-  activeTabId: string,
-): WorkspaceTab[] {
-  return replaceTab(tabs, activeTabId, (tab) =>
-    tab.diffFocused ? tab : { ...tab, diffFocused: true },
+    tab.focusedId === paneId ? tab : { ...tab, focusedId: paneId },
   );
 }
 

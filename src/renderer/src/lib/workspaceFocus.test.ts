@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { newFileTab, newTab, openEditorTab, splitPane } from "./layout";
 import {
-  focusDiff,
   focusPane,
   setTabSplitRatio,
   tabSurfacePanes,
@@ -23,37 +22,17 @@ describe("focusPane", () => {
     expect(focusPane(list, "s1", "s1")).toBe(list);
   });
 
-  it("still clears the diff when the pane already holds focus", () => {
-    const list = [{ ...newTab("s1"), diffFocused: true }];
-    const next = focusPane(list, list[0].id, "s1");
-    expect(next).not.toBe(list);
-    expect(next[0].diffFocused).toBe(false);
-  });
-
   it("returns the same array for an unknown tab", () => {
     const list = tabs();
     expect(focusPane(list, "nope", "s1")).toBe(list);
   });
 
-  it("moves focus and clears the diff, touching only the active tab", () => {
+  it("moves focus, touching only the active tab", () => {
     const list = tabs();
-    const withDiff = { ...splitTab(list[0]), diffFocused: true };
-    const next = focusPane([withDiff, list[1]], withDiff.id, "s3");
+    const split = splitTab(list[0]);
+    const next = focusPane([split, list[1]], split.id, "s3");
     expect(next[0].focusedId).toBe("s3");
-    expect(next[0].diffFocused).toBe(false);
     expect(next[1]).toBe(list[1]);
-  });
-});
-
-describe("focusDiff", () => {
-  it("is identity when the diff already has focus", () => {
-    const list = [{ ...newTab("s1"), diffFocused: true }];
-    expect(focusDiff(list, list[0].id)).toBe(list);
-  });
-
-  it("marks the diff focused otherwise", () => {
-    const list = tabs();
-    expect(focusDiff(list, list[1].id)[1].diffFocused).toBe(true);
   });
 });
 

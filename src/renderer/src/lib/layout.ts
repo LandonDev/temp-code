@@ -75,8 +75,6 @@ export type WorkspaceTab = {
   focusedId: string;
   editorPanes: EditorPane[];
   terminalPanes: EditorPane[];
-  diffOpen?: boolean;
-  diffFocused?: boolean;
   /** Explicit tab group; absent means ungrouped. */
   groupId?: string;
 };
@@ -354,7 +352,6 @@ export function openEditorTab(
     return {
       ...tab,
       focusedId: existingPane.id,
-      diffFocused: false,
       editorPanes: tab.editorPanes.map((pane) =>
         pane.id === existingPane.id
           ? {
@@ -373,7 +370,6 @@ export function openEditorTab(
     return {
       ...tab,
       focusedId: targetPane.id,
-      diffFocused: false,
       editorPanes: tab.editorPanes.map((pane) =>
         pane.id === targetPane.id
           ? {
@@ -391,7 +387,6 @@ export function openEditorTab(
     ...tab,
     layout: splitPane(tab.layout, tab.focusedId, "right", editorPane.id),
     focusedId: editorPane.id,
-    diffFocused: false,
     editorPanes: [editorPane],
   };
 }
@@ -406,7 +401,6 @@ export function openEditorTabBeside(tab: WorkspaceTab, file: FilePaneTab): Works
     ...tab,
     layout: splitPane(tab.layout, tab.focusedId, "right", editorPane.id),
     focusedId: editorPane.id,
-    diffFocused: false,
     editorPanes: [...tab.editorPanes, editorPane],
   };
 }
@@ -426,7 +420,6 @@ export function openDebugTab(
     return {
       ...tab,
       focusedId: pane.id,
-      diffFocused: false,
       terminalPanes: tab.terminalPanes.map((entry) =>
         entry.id === pane.id ? { ...entry, activeFileId: existing.id } : entry,
       ),
@@ -452,7 +445,6 @@ export function openTerminalTab(
       ...tab,
       layout: replaceLeafId(tab.layout, occupyPaneId, pane.id),
       focusedId: pane.id,
-      diffFocused: false,
       terminalPanes: [...tab.terminalPanes, pane],
     };
   }
@@ -465,7 +457,6 @@ export function openTerminalTab(
     return {
       ...tab,
       focusedId: targetPane.id,
-      diffFocused: false,
       terminalPanes: tab.terminalPanes.map((pane) =>
         pane.id === targetPane.id
           ? {
@@ -483,7 +474,6 @@ export function openTerminalTab(
     ...tab,
     layout: splitPane(tab.layout, tab.focusedId, "down", pane.id),
     focusedId: pane.id,
-    diffFocused: false,
     terminalPanes: [pane],
   };
 }

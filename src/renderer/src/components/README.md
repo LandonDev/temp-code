@@ -37,10 +37,10 @@ DESIGN.md wins.
 | Something is happening (text) | `TextShimmer` (text-shimmer.tsx) | The one shimmer. |
 | Nothing here | `Empty` (empty.tsx) | Title, one line, at most one action. |
 | An inline callout | `Alert` (alert.tsx) | Tinted by tone. Not for transcript notices. |
-| A thread's state | `StatusMark` (status.tsx) | One glyph, one word, one tone per state. The only status-to-colour map. |
+| A thread's state | `StatusMark` (status.tsx) | One glyph, one word, one tone per state. The only status-to-colour map; `threadStateOf(status)` turns a session's wire status into the state, `linkMarkOf(transport)` a host link into its state and word. |
 | A key cap | `Kbd` (kbd.tsx) | In menus, tooltips, buttons. |
 | A toast | sonner `toast()`; one `<Toaster>` (toaster.tsx) mounted lazily in main.tsx | The four custom toast stacks are retired. |
-| A question from the agent | `QuestionCard` (question-card.tsx) | Lettered options, free-form field, ⌘⏎. |
+| A question from the agent | `QuestionCard` (question-card.tsx) | Lettered options, free-form field, `multiSelect` for several picks, ⌘⏎ (keys only while focus is inside the card). |
 | A plan to approve | `PlanCard` (plan-card.tsx) | To-dos, Approve ⌘⏎, optional countdown. |
 | Tasks the agent works through | `TaskList` (task-list.tsx) | Donut header, marks that draw their check. |
 | A live short line | `StreamingText` (streaming-text.tsx) | Words fade in. Not the transcript's prose. |

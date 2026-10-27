@@ -1,6 +1,6 @@
 import { RefreshCw } from "@renderer/chrome/icons";
 import { AnimatePresence, motion, MotionConfig, useReducedMotion, type Variants } from "motion/react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "@renderer/lib/cn";
 import { Button } from "./button";
 import { Kbd, KbdGroup } from "./kbd";
@@ -8,11 +8,14 @@ import { Kbd, KbdGroup } from "./kbd";
 /**
  * A question an agent needs answered before it continues: one question at
  * a time, lettered options (A, B, C…), a free-form option that opens a
- * field, Previous / Skip / Next, ⌘⏎ to continue. The reset glyph swaps
- * with a donut of how many are answered.
+ * field, Previous / Skip / Next, ⌘⏎ to continue. A `multiSelect` question
+ * takes several options and one submit. Keys work only while focus is
+ * inside the card, so ⌘⏎ in the composer never submits it. The reset
+ * glyph swaps with a donut of how many are answered. Answers come back as
+ * one array of labels per question (the typed text for a free-form pick).
  */
 export type QuestionOption = { label: string; freeform?: boolean };
-export type Question = { prompt: string; description?: string; options: Array<QuestionOption> };
+export type Question = { prompt: string; description?: string; options: Array<QuestionOption>; multiSelect?: boolean };
 
 const KEYS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -114,7 +117,7 @@ export function QuestionCard({
   icon?: ReactNode;
   title?: string;
   questions: Array<Question>;
-  onSubmitAnswers?: (answers: Array<string>) => void;
+  onSubmitAnswers?: (answers: Array<Array<string>>) => void;
   onSkip?: () => void;
   onReset?: () => void;
   className?: string;
@@ -123,7 +126,7 @@ export function QuestionCard({
   const [turns, setTurns] = useState(0);
   const [turning, setTurning] = useState(false);
   const still = useReducedMotion() ?? false;
-  const [picked, setPicked] = useState<Record<number, number>>({});
+  const [picked, setPicked] = useState<Record<number, Array<number>>>({});
   const [typed, setTyped] = useState<Record<number, string>>({});
 
   const question = questions[at];
@@ -131,8 +134,10 @@ export function QuestionCard({
   const lists = useRef<Array<HTMLUListElement | null>>([]);
 
   const hasAnswer = (index: number) => {
-    const choice = picked[index];
-    return choice !== undefined && (questions[index]?.options[choice]?.freeform !== true || (typed[index]?.trim() ?? "") !== "");
+    const choices = picked[index] ?? [];
+    if (choices.length === 0) return false;
+    const freeform = choices.some((choice) => questions[index]?.options[choice]?.freeform === true);
+    return !freeform || choices.length > 1 || (typed[index]?.trim() ?? "") !== "";
   };
   const answered = hasAnswer(at);
   const answeredCount = questions.filter((_, index) => hasAnswer(index)).length;
@@ -164,15 +169,12 @@ export function QuestionCard({
   }, [turning, turns]);
 
   const pick = (index: number) => {
-    if (picked[at] === index) {
-      setPicked((all) => {
-        const rest = { ...all };
-        delete rest[at];
-        return rest;
-      });
+    const current = picked[at] ?? [];
+    if (current.includes(index)) {
+      setPicked((all) => ({ ...all, [at]: current.filter((choice) => choice !== index) }));
       return;
     }
-    setPicked((all) => ({ ...all, [at]: index }));
+    setPicked((all) => ({ ...all, [at]: question?.multiSelect ? [...current, index].sort((a, b) => a - b) : [index] }));
     if (question?.options[index]?.freeform) window.setTimeout(() => fields.current[at]?.focus(), 0);
   };
 
@@ -183,45 +185,35 @@ export function QuestionCard({
       return;
     }
     onSubmitAnswers?.(
-      questions.map((entry, index) => {
-        const choice = picked[index];
-        if (choice === undefined) return "";
-        return entry.options[choice]?.freeform ? (typed[index] ?? "") : (entry.options[choice]?.label ?? "");
-      }),
+      questions.map((entry, index) =>
+        (picked[index] ?? []).map((choice) => (entry.options[choice]?.freeform ? (typed[index] ?? "") : (entry.options[choice]?.label ?? ""))),
+      ),
     );
   };
 
-  const state = useRef({ question, submit });
-  state.current = { question, submit };
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const { question: current, submit: send } = state.current;
-      if (!current) return;
-      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        send();
-        return;
-      }
-      const target = event.target;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      const letter = /^[a-z]$/i.test(event.key) ? event.key.toUpperCase() : undefined;
-      const index = letter === undefined ? -1 : KEYS.indexOf(letter);
-      if (index >= 0 && index < current.options.length) {
-        event.preventDefault();
-        pick(index);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [at]);
+  // Keys reach the card only from inside it: a letter picks, ⌘⏎ continues.
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!question) return;
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      submit();
+      return;
+    }
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const letter = /^[a-z]$/i.test(event.key) ? event.key.toUpperCase() : undefined;
+    const index = letter === undefined ? -1 : KEYS.indexOf(letter);
+    if (index >= 0 && index < question.options.length) {
+      event.preventDefault();
+      pick(index);
+    }
+  };
 
   if (!question) return null;
 
   return (
-    <div data-slot="question-card" className={cn("w-full max-w-lg rounded-xl border border-border bg-card p-4 text-card-foreground", className)}>
+    <div data-slot="question-card" onKeyDown={onKeyDown} className={cn("w-full max-w-lg rounded-xl border border-border bg-card p-4 text-card-foreground", className)}>
       <div className="flex items-center gap-2.5">
         {icon ? <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4">{icon}</span> : null}
         <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
@@ -252,7 +244,7 @@ export function QuestionCard({
       <div className="mt-3">
         <MorphFrame at={at}>
           {questions.map((entry, qIndex) => {
-            const choice = picked[qIndex];
+            const choices = picked[qIndex] ?? [];
             return (
               <div key={entry.prompt}>
                 <div aria-live="polite">
@@ -263,10 +255,11 @@ export function QuestionCard({
                   ref={(node) => {
                     lists.current[qIndex] = node;
                   }}
+                  aria-multiselectable={entry.multiSelect || undefined}
                   className="-mx-2.5 mt-2.5 space-y-1"
                 >
                   {entry.options.map((option, index) => {
-                    const active = choice === index;
+                    const active = choices.includes(index);
                     const key = KEYS[index];
                     return (
                       <li key={option.label}>

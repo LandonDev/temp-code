@@ -428,11 +428,6 @@ export function installLayoutSync(): Teardown {
   let layout: SidebarLayout = loadSidebarLayout();
   const onLayoutChange = (event: Event) => {
     layout = (event as CustomEvent<SidebarLayout>).detail === "deck" ? "deck" : "classic";
-    workspace.setTabs((prev) =>
-      prev.some((tab) => tab.diffOpen || tab.diffFocused)
-        ? prev.map((tab) => ({ ...tab, diffOpen: false, diffFocused: false }))
-        : prev,
-    );
     shell.applyLayoutChange(layout);
     if (layout === "classic") focus.projectTerminal(false);
   };

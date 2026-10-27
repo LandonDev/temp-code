@@ -97,9 +97,7 @@ import {
   selectDockTerminal,
   splitProjectTerminalsForMove,
   withDockOpen,
-  withDockSide,
   withDockSize,
-  type DockSide,
 } from "./lib/projectTerminal";
 import {
   addTabsToNewGroup,
@@ -440,6 +438,7 @@ export default function App() {
   const classicInbox = !deckLayout && sidebarTab === "inbox";
   const searchViewOpen = useShell((s) => s.searchViewOpen);
   const searchViewFocusToken = useShell((s) => s.searchViewFocusToken);
+  const searchSeed = useShell((s) => s.searchSeed);
   const inboxViewOpen = useShell((s) => s.inboxViewOpen);
   const notesViewOpen = useShell((s) => s.notesViewOpen);
   const accountsPage = useShell((s) => s.accountsPage);
@@ -1053,12 +1052,6 @@ export default function App() {
     setProjectTerminalFocused(false);
   }, []);
 
-  const onProjectTerminalSide = useCallback((side: DockSide) => {
-    terminals.updateDock(currentDockCwd(), (dock) =>
-      withDockSide(dock, side, { width: window.innerWidth, height: window.innerHeight }),
-    );
-  }, []);
-
   const onProjectTerminalSize = useCallback((size: number) => {
     terminals.updateDock(currentDockCwd(), (dock) =>
       withDockSize(dock, size, { width: window.innerWidth, height: window.innerHeight }),
@@ -1344,8 +1337,6 @@ export default function App() {
                       focusedId: session.id,
                       editorPanes: [],
                       terminalPanes: [],
-                      diffOpen: false,
-                      diffFocused: false,
                     }
                   : entry,
               ),
@@ -1450,8 +1441,6 @@ export default function App() {
                 focusedId: session.id,
                 editorPanes: [],
                 terminalPanes: [],
-                diffOpen: false,
-                diffFocused: false,
               }
             : entry,
         ),
@@ -1476,25 +1465,6 @@ export default function App() {
         }
       }
       if (!activeTab) return;
-      if (
-        !deckLayout &&
-        sessionId === undefined &&
-        activeTab.diffOpen &&
-        activeTab.diffFocused
-      ) {
-        setTabs((prev) =>
-          prev.map((tab) =>
-            tab.id === activeTab.id
-              ? {
-                  ...tab,
-                  diffOpen: false,
-                  diffFocused: false,
-                }
-              : tab,
-          ),
-        );
-        return;
-      }
       const focusedSurface = findSurfacePane(activeTab, activeTab.focusedId);
       if (sessionId === undefined && focusedSurface) {
         onCloseFile(focusedSurface.pane.id, focusedSurface.pane.activeFileId);
@@ -1630,36 +1600,23 @@ export default function App() {
                   ...extra,
                 })
               : tab;
-            if (currentDeckLayout()) return opened;
-            return {
-              ...opened,
-              diffOpen: true,
-              diffFocused: !resolved,
-            };
+            return opened;
           }),
         );
         if (resolved && navigation) editors.navigateTo({ path: resolved, ...navigation });
-        if (currentDeckLayout()) shell.showSidebarTab("changes");
+        rightPanel.show("changes");
         setComposerFocused(false);
       })();
     },
     [],
   );
 
-  // The classic layout's Changes: the thread panel's section (the deck's is the sidebar tab).
-  const onToggleDiff = useCallback(() => {
+  // Changes lives in the thread panel's section, in both layouts.
+  const onShowSourceControl = useCallback(() => {
     rightPanel.show("changes");
     setComposerFocused(false);
   }, []);
-
-  const onShowSourceControl = useCallback(() => {
-    shell.showSidebarTab("changes");
-  }, []);
-
-  const onToggleChanges = useCallback(() => {
-    if (deckLayout) onShowSourceControl();
-    else onToggleDiff();
-  }, [deckLayout, onShowSourceControl, onToggleDiff]);
+  const onToggleChanges = onShowSourceControl;
 
   const onReorderTabs = useCallback(
     (ids: string[], movedId?: string) => {
@@ -3742,7 +3699,6 @@ export default function App() {
                     focused={show && projectTerminalFocused}
                     onFocus={focusProjectTerminal}
                     onHide={onHideProjectTerminal}
-                    onSideChange={onProjectTerminalSide}
                     onSizePaint={paintDockSize}
                     onSizeCommit={commitDockSize}
                     onAddTerminal={() =>
@@ -3826,6 +3782,7 @@ export default function App() {
             cwd={sidebarCwd}
             recents={railRecents}
             focusToken={searchViewFocusToken}
+            seed={searchSeed}
             besideRail={deckLayout && projectRailOpen}
             onClose={onLeaveSearch}
             onToggleSidebar={deckLayout ? onToggleSidebar : undefined}

@@ -23,13 +23,13 @@ component builds each surface, and how**. Nothing here is built yet.
 ## Shell anatomy
 
 ```
-┌─ titlebar ── traffic lights ─ workspace / project ──── activity pill ─ rail toggles ─┐
+┌─ titlebar ── traffic lights ─ workspace / project ──── activity pill ─ panel toggle ─┐
 ├────────────┬───────────────────────────────────────────────────┬─────────────────────┤
-│ sidebar    │  thread strip (tabs + new-thread)                 │ right rail          │
-│            │  ───────────────────────────────────────────────  │                     │
-│ workspaces │  thread view (per type)                           │ Changes / Files     │
-│  projects  │                                                   │ (expandable tabs)   │
-│            │  prompt bar (floating)                            │                     │
+│ sidebar    │  thread strip (tabs + new-thread)                 │ right panel         │
+│            │  ───────────────────────────────────────────────  │ Activity · Agents · │
+│ workspaces │  thread view (per type)                           │ Changes · Notes …   │
+│  projects  │                                                   │ (the sections the   │
+│            │  prompt bar (floating)                            │  thread's state has)│
 │ ── conn ── │  branch · cwd meta row                            │                     │
 └────────────┴───────────────────────────────────────────────────┴─────────────────────┘
 ```
@@ -38,8 +38,8 @@ component builds each surface, and how**. Nothing here is built yet.
   dock takes `bg-background`); main view on `bg-background`; the one
   gray step + hairline `border-border` separates them (no shadows on docked
   chrome).
-- The right rail is collapsed by default and only exists where it has
-  content (implementation/orchestration threads).
+- The right side is one panel per root thread, closed by default; "The
+  right side" below.
 
 ## Region by region
 
@@ -47,8 +47,8 @@ component builds each surface, and how**. Nothing here is built yet.
 
 Drag region (`titlebar-drag`), hiddenInset traffic lights. Left: workspace /
 project breadcrumb as quiet text buttons (each opens its switcher popover,
-anchored to the text — apple-design §7 spatial anchoring). Right: rail
-toggles as ghost icon buttons. Center-right: the **activity pill** — a BeUI
+anchored to the text — apple-design §7 spatial anchoring). Right: the
+panel toggle as a ghost icon button. Center-right: the **activity pill** — a BeUI
 *Dynamic Island* adaptation showing running-agent count with a status dot;
 hover morphs it wider to a per-thread status list. This is the one piece of
 ambient chrome; it earns its place because agents run in background threads
@@ -91,6 +91,40 @@ calls, the forwarded ports, Settings… for the caps, show-running, forwarding
 and shared folders). Facts on one line are `Facts` spans, never dots; numbers
 are `CommitField`s; logs and conflict copies are `Collapsible`s under their
 row. Add host sits at the page's foot (desktop only).
+
+### The right side
+
+One panel per root thread at its pane's right edge (`surfaces/RightPanel.tsx`
+on `lib/rightPanel.ts`; a subagent has none). The six owners it replaced
+(the project rail and its tab, the fleet drawer's override, the notes
+drawer's map, the orchestrator log's state, the classic diff pane) are gone.
+
+- **Store.** `{ open, section, width }` per thread id, persisted in
+  localStorage (`monocode.rightPanel`; the width a new thread inherits is
+  the last one dragged to). `rightPanel.open/close/toggle/set/setWidth`
+  write it; `rightPanel.show(section)` opens a section on the thread on
+  screen (⌃D's Debug, the Dev servers pane's Start); `useRightPanel(id)`
+  reads it.
+- **Sections.** `sectionsFor(facts)` is pure, one line per section, in the
+  header's order: Activity when background tasks, live subagents, a
+  watching master's wait or a running dev server exist; Agents when the
+  thread has subagents or a batch; Changes when its cwd is a project
+  checkout; Notes for every root; Files, Branch, Build and Dev for a
+  project thread, and Debug for one on a dev build (or with the debug
+  setting on, once one exists). The default is Activity if it exists, else Agents when
+  the thread has subagents (live or done) or a batch, else Changes, else
+  Notes; a remembered section that no
+  longer exists falls back to the default.
+- **Frame.** A docked column, 320px by default, 260 to 480 by the sash on
+  its left edge, on `bg-sidebar` with the `border-border` hairline; a 36px
+  header of `Tabs variant="line"` and a close button; the section's body
+  below (`FleetList`, `NotesBody`, `ChangesPanel`, `FileTree`,
+  `BranchPanel`, `BuildPanel`, `DevServerPanel`, `DebugPanel`, and a
+  placeholder Activity listing what the meta says runs until area A6 lands
+  the live list). It toggles, never tweens its width; the body fades in
+  over `--dur-fast`. Closed is closed: the thread header's button, ⌘⇧R and
+  View › Toggle Thread Panel reopen it on its last section. The agent
+  detail sheet (`fleet.detailId`) still slides over the pane.
 
 ### Project dialogs on a linked project
 
@@ -163,7 +197,7 @@ sash, double-click for the default size):
   host drops leaves at once, nothing animates in or out. With nothing live
   it is one muted line, "No dev servers running". Closed until opened (the
   thread header's Dev server button, the terminal dock's Dev Servers
-  button, Run in the rail's Dev tab); open and its height persist.
+  button, Run in the panel's Dev section); open and its height persist.
 
 While the pane is open the terminal dock is hidden, its own open flag
 untouched; asking for a terminal (⌘J, the titlebar's Terminal, New
@@ -210,7 +244,7 @@ on disk, it survives threads and is editable later (see ADE ambitions).
 │ ○ 4. Commit                               │
 ├───────────────────────────────────────────┤
 │ prompt bar (compact)                      │
-└───────────────────────────────────────────┘        right rail: Changes
+└───────────────────────────────────────────┘        right panel: Changes
 ```
 
 The whole view is the todo list — no separate feed. BUI *Task Rows* (list
@@ -226,10 +260,9 @@ settled. Events map to todos by the harness's todo state: whatever todo is
 `in_progress` when an event arrives owns it (pre-first-todo events go to an
 implicit "setup" row).
 
-- **Changes**: right rail panel. File rows appear as edits land (spring in,
-  `SPRING_PANEL`): filename, `+n −m` in tabular nums (success/destructive
-  colors). Click → BUI *Diff Table* view. Rail tab shows a count that ticks
-  via BeUI *Number Animation* (rolling digit).
+- **Changes**: the right panel's section. File rows appear as edits land:
+  filename, `+n −m` in tabular nums (success/destructive colors). Click
+  opens the diff.
 
 ### Orchestration — the subagent board (the showpiece)
 
@@ -259,8 +292,9 @@ implicit "setup" row).
 - **Waiting states surface up**: a subagent's approval-request renders the
   BUI *Approval Card* inline in the capsule detail *and* flips the capsule
   amber.
-- Orchestrator's own narration is a quiet feed below the board, styled like
-  the implementation activity feed.
+- The orchestrator's own stream is the chat column the board views share
+  (`SplitShell`), folded to its edge tab by default ("Show orchestrator
+  log") so the fleet keeps the room.
 
 ### Master — the project's batch
 
@@ -541,97 +575,14 @@ paint them into a corner:
   one kind of tab; editor tabs (files) and terminal tabs join the same strip
   later. Thread views, editors, and terminals are all "surfaces" behind the
   strip — same selection model, same `SPRING_LAYOUT` indicator.
-- **Right rail is a panel registry**: Changes and Files now; Terminal later.
-  The Expandable Tabs switcher just gains entries.
-- **Files panel**: ReUI *tree* over the project cwd; clicking a file opens an
-  editor surface (CodeMirror 6 — lighter than Monaco, themes from our
-  tokens) in the strip.
+- **The right panel is a section registry** (`lib/rightPanel.ts`): a new
+  kind of content is one more `Section` and one line in `sectionsFor`.
+- **Files section**: the project tree; clicking a file opens an editor
+  surface in the strip.
 - **Terminal**: xterm.js + node-pty in the main process, one PTY per
   terminal surface, spawned in the project's worktree cwd.
 - The plan file from planning threads is the first editor customer: "edit
   plan" opens it as an editor surface.
-
-## Full inventory — every component, verdict
-
-### Beautiful UI (19) — agent semantics
-
-| Component | Verdict | Use |
-| --- | --- | --- |
-| Thinking | **use** | collapsed reasoning traces everywhere; its *Steps* variant is the expanded-todo interior in implementation threads |
-| Streaming Text | **use** | assistant deltas in chat; plan document body; muted notes in impl |
-| Tool Chips | **use** | tool call/result everywhere; step lines inside todos |
-| Approval Card | **use** | permission prompts (restyle existing) |
-| Task Rows | **use** | impl todo rows + orchestration capsules |
-| Prompt Bar | **use** | the composer, rounded style |
-| Code Block | **use** | frame/chrome; shiki keeps painting |
-| Diff Table | **use** | Changes panel diff view |
-| Loading State | **use** | agent-working shimmer + elapsed |
-| Sidebar Nav | reference | composition guide for our sidebar rows |
-| Search | reference | palette empty-state pattern |
-| Chat | reference | transcript composition guide |
-| Selection Actions | later | select transcript text → Explain/Improve |
-| Recommendation Card | skip | no suggestion surface |
-| Context Cards | skip | no RAG surface |
-| Records Table | skip | no CRM grid |
-| Filter Table | skip | ditto |
-| Insight Cards | skip | no analytics |
-| Fine-tune Card | skip | no design inspector |
-
-### BeUI motion (38)
-
-| Component | Verdict | Use |
-| --- | --- | --- |
-| Button (base/stateful/magnetic) | **in repo** | base press feedback; magnetic never |
-| Action Swap | **use** | Send↔Stop in prompt bar |
-| Tabs | **use** | thread strip (underline variant) |
-| Shared Layout Background | **use** | sidebar selection pill recipe |
-| Animated Context Menu | **use** | sidebar/tab right-click + ⋯ menus |
-| Morphing Modal | **use** (recipe) | capsule → detail morph |
-| Tooltip | **use** | icon buttons; blur+spring spawn |
-| Animated Toast Stack | **use** | errors, agent-finished notices |
-| Number Animation | **use** | changes count, cost tickers |
-| Loader | **use** | dots variant, inline waits |
-| Text Animation | **use** (shimmer only) | loading labels |
-| Input | use in forms | new project/thread dialogs |
-| Combobox | use in forms | model picker in dialogs |
-| Checkbox / Radio Group / Switch | use in forms/settings | worktree-vs-branch = radio glide |
-| Drawer | fallback | subagent detail on narrow windows |
-| Animated Badge | maybe | status dots with pulse (dots only, no text badges) |
-| Select | maybe | prompt-bar model picker if BUI's isn't enough |
-| Popover (goo) | skip — too liquid for an ADE; ReUI popover instead |
-| Center Morph Modal | skip (one morph recipe is enough) |
-| Bouncy Accordion | skip (single-open; workspaces are multi-open) |
-| Preview Rail | **in repo, repurpose maybe** | right-rail tick nav if rails multiply |
-| Theme Toggle | later | settings, View Transition repaint |
-| Bottom Sheet / Pull to Refresh / Swipe patterns | skip (desktop app) |
-| Tilt Card / Marquee / CTA Buttons / Dock / Wheel Picker / Cylinder Carousel / Shader Background / Scroll Animation / Range Slider / Table | skip — decorative, or wrong tool (virtualized transcript already exists; no sliders/tables needed) |
-
-### BeUI blocks (20)
-
-| Block | Verdict | Use |
-| --- | --- | --- |
-| Command Palette | **use** | ⌘K: threads, projects, actions; glass surface |
-| Expandable Tabs | **use** | right-rail switcher (icon → labeled pill) |
-| Dynamic Island | **use, phase 2** | titlebar activity pill |
-| File Upload | later | prompt-bar attachments |
-| Expandable Action Bar | maybe | hover actions on sidebar rows |
-| Morphing Tabs | maybe later | thread strip upgrade if reordering matters |
-| Notification Stack | skip (toast stack covers it) |
-| OTP / Sign Up / Wallet / Swap / Prediction Market / Fixtures / Availability / Masonry / Bloom Menu / Feedback / 404 | skip — different products |
-
-### ReUI (19 building blocks + base `ui/`)
-
-| Component | Verdict | Use |
-| --- | --- | --- |
-| base `ui/` set (button, dialog, dropdown, popover, scroll-area, select, separator, skeleton, spinner, textarea, tooltip, input, checkbox) | **in repo** | structural fallbacks; dialog = destructive confirms; popover = anchored pickers |
-| badge | **in repo** | only where a state means something |
-| tree | **in repo** | Files panel in right rail (later) |
-| timeline | reference | activity feed structure |
-| alert | use sparingly | inline error rows |
-| icon-stack | maybe | stacked provider glyphs on orchestration tab |
-| data-grid | later | only if a real records surface appears |
-| filters / autocomplete / sortable / scrollspy / stepper / frame | skip for now |
-| date-selector / event-calendar / gantt / kanban / number-field / phone-input / rating | skip — wrong product |
 
 ## Apple-design mapping (why the layout is shaped this way)
 

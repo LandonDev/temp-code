@@ -324,8 +324,6 @@ function sanitizeTab(raw: unknown): WorkspaceTab | null {
     focusedId,
     editorPanes,
     terminalPanes,
-    ...(value.diffOpen === true ? { diffOpen: true } : {}),
-    ...(value.diffFocused === true ? { diffFocused: true } : {}),
     ...(typeof value.groupId === "string" && value.groupId
       ? { groupId: value.groupId }
       : {}),

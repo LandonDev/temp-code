@@ -250,6 +250,29 @@ local updater itself.
 Never build into or swap /Applications/TempCode.app yourself: the installed
 app replaces itself from the feed, and only from the feed.
 
+## UI standard: Kobra on Base UI, docs/DESIGN.md wins
+- docs/DESIGN.md is the standard every renderer change follows and wins
+  every conflict with a skill, a library default or a brief;
+  `src/renderer/src/components/README.md` maps each class of UI element to
+  the one component under `src/renderer/src/components/ui` that renders it
+  (Kobra on Base UI, adapted flat to the tokens at the top of
+  `src/renderer/src/index.css`, to `chrome/icons` and to the motion tokens;
+  `StatusMark` is the one status vocabulary, `threadStateOf` turns a wire
+  status into its state; sonner is the one toast stack). Nothing in
+  src/renderer writes a literal colour, duration or curve, and no bullet
+  lists appear in the UI.
+- The right side of a thread is one panel (`lib/rightPanel.ts`,
+  `surfaces/RightPanel.tsx`; docs/LAYOUT.md "The right side"); Modal and
+  ConfirmDialog ride `components/ui/dialog.tsx`.
+- Verification for a renderer change: `bun run typecheck`, the tests you
+  touched (every new behaviour gets a jsdom test), and a static render
+  through `bun run ui:preview <module>#<Export> --props '<json>'`
+  (scripts/ui-preview.ts: the component inside the built stylesheet in dark
+  and light, written to /tmp/ui-preview, shown with `html_preview`); one
+  electron-vite build per branch for `bun run check:bundle`, never the
+  full suite or a dev instance. The renderer's prettier style differs from
+  the root config: never run prettier or `--fix` on src/renderer.
+
 ## Launch-time code caches: boot.js, the compile cache, the app scheme
 - `package.json` `main` is `out/main/boot.js` (src/main/boot.ts), a second
   main entry that in a packaged app enables Node's compile cache at
@@ -1113,10 +1136,11 @@ names the far child).
   waiting thread's needs-you row on Home reads its State line through
   `Shell/NeedsYouNotes.swift`). `session.search`
   folds notes hits in ahead of the rows (`source: 'notes'`, seq 0).
-  Renderer: `lib/threadNotes.ts` (the store on the push) feeds the Notes
-  drawer at every root thread's right edge (surfaces/threads/NotesPanel.tsx:
-  live markdown, edit with a debounced save, "Copy as brief" via
-  `notesAsBrief`), the needs-you banner's State line, and the search icon.
+  Renderer: `lib/threadNotes.ts` (the store on the push) feeds the right
+  panel's Notes section at every root thread's edge (`NotesBody` in
+  surfaces/threads/NotesPanel.tsx: live markdown, edit with a debounced
+  save, "Copy as brief" via `notesAsBrief`), the needs-you banner's State
+  line, and the search icon.
 - Proof: threadNotes.test.ts, sessions-notes.test.ts (reminders, whisper,
   compaction block, digests, plan hand-off), session-search.test.ts,
   app-bridge.test.ts, the renderer's threadNotes.test.ts,

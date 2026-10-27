@@ -65,7 +65,7 @@ describe("RightPanel", () => {
     rightPanel.open("s1");
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
-    expect(tabs).toEqual(["Activity", "Agents", "Changes", "Notes", "Files", "Branch", "Build", "Dev", "Debug"]);
+    expect(tabs).toEqual(["Activity", "Agents", "Changes", "Notes", "Files", "Branch", "Build", "Dev", "Debug"]); // a dev build (vitest) lists Debug
     expect(screen.getByText("1 subagent working")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
     expect(screen.getByTestId("agents-body")).toBeTruthy();

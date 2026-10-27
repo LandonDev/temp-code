@@ -44,6 +44,8 @@ export type ShellState = {
   searchViewOpen: boolean;
   /** Bumped to move focus into the search view. */
   searchViewFocusToken: number;
+  /** The query the search view opens with (Find in project: `type:file `); null keeps its own. */
+  searchSeed: string | null;
   inboxViewOpen: boolean;
   notesViewOpen: boolean;
   /** The Aliax page covering the board, if one is open. */
@@ -71,6 +73,7 @@ export function initialShellState(
     searchFocusToken: 0,
     searchViewOpen: false,
     searchViewFocusToken: 0,
+    searchSeed: null,
     inboxViewOpen: false,
     notesViewOpen: false,
     accountsPage: null,
@@ -139,16 +142,9 @@ export function openSymbolPicker(state: ShellState): ShellState {
   return patch(state, { ...VIEWS_CLOSED, filePickerOpen: false, symbolPickerOpen: true });
 }
 
-/** Find in project: the files tab with its search box focused. */
+/** Find in project: the search view, seeded with the file filter. */
 export function openFilesSearch(state: ShellState): ShellState {
-  return {
-    ...state,
-    ...VIEWS_CLOSED,
-    sidebarOpen: true,
-    sidebarTab: "files",
-    filesSearchOpen: true,
-    searchFocusToken: state.searchFocusToken + 1,
-  };
+  return { ...openSearchView(state), searchSeed: "type:file " };
 }
 
 export function openSearchView(state: ShellState): ShellState {
@@ -161,6 +157,7 @@ export function openSearchView(state: ShellState): ShellState {
     accountsPage: null,
     searchViewOpen: true,
     searchViewFocusToken: state.searchViewFocusToken + 1,
+    searchSeed: null,
   };
 }
 

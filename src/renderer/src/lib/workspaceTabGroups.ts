@@ -228,8 +228,6 @@ export function applyDeletedSessionToWorkspace({
       focusedId: replacement.id,
       editorPanes: [],
       terminalPanes: [],
-      diffOpen: false,
-      diffFocused: false,
     };
   }
 
@@ -284,7 +282,7 @@ export function applyPlaceSessionOnPane({
     const layout = replaceTarget
       ? replaceLeafId(tab.layout, targetId, sessionId)
       : placePane(tab.layout, sessionId, targetId, edge);
-    return { ...tab, layout, focusedId: sessionId, diffFocused: false };
+    return { ...tab, layout, focusedId: sessionId };
   });
 
   for (const tab of [...nextTabs]) {
@@ -320,8 +318,6 @@ export function applyPlaceSessionOnPane({
       focusedId: replacement.id,
       editorPanes: [],
       terminalPanes: [],
-      diffOpen: false,
-      diffFocused: false,
     };
   }
 

@@ -83,20 +83,19 @@ describe("shell reducers", () => {
     expect(openInbox(next, "classic")).toBe(next);
   });
 
-  it("find in project and search each bump their own focus token", () => {
+  it("find in project opens the search view seeded with the file filter; search alone keeps no seed", () => {
     const files = openFilesSearch({ ...base(), inboxViewOpen: true });
     expect(files).toMatchObject({
-      sidebarOpen: true,
-      sidebarTab: "files",
-      filesSearchOpen: true,
-      searchFocusToken: 1,
+      searchViewOpen: true,
+      searchViewFocusToken: 1,
+      searchSeed: "type:file ",
       inboxViewOpen: false,
     });
-    expect(openFilesSearch(files).searchFocusToken).toBe(2);
+    expect(openFilesSearch(files).searchViewFocusToken).toBe(2);
     const search = openSearchView(files);
-    expect(search.searchViewFocusToken).toBe(1);
+    expect(search.searchViewFocusToken).toBe(2);
     expect(search.searchViewOpen).toBe(true);
-    expect(search.searchFocusToken).toBe(1);
+    expect(search.searchSeed).toBeNull();
   });
 
   it("the symbol picker replaces the file picker", () => {

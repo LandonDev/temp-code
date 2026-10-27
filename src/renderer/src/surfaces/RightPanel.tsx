@@ -36,6 +36,8 @@ import { NotesBody } from "./threads/NotesPanel";
 
 // The Debug section drives the editor chunk's DAP session; it loads with it.
 const DebugPanel = lazy(() => import("../chrome/rail/DebugPanel"));
+// Listed for a dev build; a debug setting, when one exists, joins this read.
+const DEBUG_SECTION = import.meta.env.DEV;
 
 export type RightPanelProps = {
   session: Session;
@@ -159,6 +161,7 @@ function usePanelFacts(session: Session): { facts: PanelFacts; project: ProjectM
       backgroundTasks: 0,
       watching: status === "watching",
       devRunning,
+      debug: DEBUG_SECTION,
     }),
     [session, project, agents.length, counts.working, counts.waiting, status, devRunning],
   );

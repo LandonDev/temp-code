@@ -24,6 +24,9 @@
   --secondary: oklch(0.29 0.004 270);
   --input: rgb(255 255 255 / 0.12);
   --border: rgb(255 255 255 / 0.09);
+  /* The hairline on an inline image or screenshot: pure white or black at
+     10%, never a tinted neutral (it reads as dirt on the image's edge). */
+  --image-outline: rgb(255 255 255 / 0.1);
   /* Ink: foreground for what matters, muted for what supports it. */
   --foreground: oklch(0.93 0.003 270);
   --muted-foreground: oklch(0.68 0.006 270);
@@ -44,7 +47,6 @@
   --info: var(--thread-info);
   /* Floating layers: one shadow, soft. Docked chrome has none. */
   --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.5), 0 2px 6px -2px rgb(0 0 0 / 0.3);
-  --skeleton-sweep: rgb(255 255 255 / 0.07);
   /* Motion: four durations, three curves. Springs are in lib/ease.ts. */
   --dur-instant: 0ms;
   --dur-fast: 120ms;
@@ -72,13 +74,13 @@ html.theme-light {
   --secondary: oklch(0.94 0.003 80);
   --input: rgb(0 0 0 / 0.12);
   --border: rgb(0 0 0 / 0.08);
+  --image-outline: rgb(0 0 0 / 0.1);
   --foreground: oklch(0.2 0.004 270);
   --muted-foreground: oklch(0.5 0.008 270);
   --primary: oklch(0.2 0 0);
   --primary-foreground: oklch(0.99 0 0);
   --accent: hsl(211 92% 48%);
   --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.18), 0 2px 6px -2px rgb(0 0 0 / 0.1);
-  --skeleton-sweep: rgb(0 0 0 / 0.06);
 }
 
 @theme inline {
@@ -97,6 +99,7 @@ html.theme-light {
   --color-primary-foreground: var(--primary-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
+  --color-image-outline: var(--image-outline);
   --color-ring: var(--ring);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
@@ -930,6 +933,8 @@ header[data-tauri-drag-region] button {
   }
 }
 
+/* z-plan-wash and the old implementation board's rules below leave with
+   their last users (area A22, thread views). */
 @keyframes z-plan-wash {
   0% {
     background-color: color-mix(in srgb, var(--color-violet) 22%, transparent);

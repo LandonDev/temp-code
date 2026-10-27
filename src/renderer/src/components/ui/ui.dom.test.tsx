@@ -4,8 +4,9 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Button } from "./button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle, AlertDialogTrigger } from "./dialog";
 import { Switch } from "./switch";
-import { STATUS_TONE, STATUS_WORD, StatusMark, statusNeedsYou, type ThreadState } from "./status";
+import { linkMarkOf, STATUS_TONE, STATUS_WORD, StatusMark, statusNeedsYou, threadStateOf, type ThreadState } from "./status";
 import { Kbd } from "./kbd";
+import { Skeleton } from "./skeleton";
 
 vi.mock("@renderer/hooks/paneVisibility", () => ({ usePaneVisible: () => true }));
 
@@ -79,11 +80,49 @@ describe("StatusMark", () => {
     }
   });
 
-  it("renders the word, or the glyph alone with a label", () => {
+  it("maps every wire status to one state", () => {
+    expect(threadStateOf("starting")).toBe("working");
+    expect(threadStateOf("running")).toBe("working");
+    expect(threadStateOf("waiting")).toBe("waiting");
+    expect(threadStateOf("paused")).toBe("paused");
+    expect(threadStateOf("error")).toBe("failed");
+    expect(threadStateOf("queued")).toBe("queued");
+    expect(threadStateOf("stopped")).toBe("stopped");
+    expect(threadStateOf("watching")).toBe("watching");
+    expect(threadStateOf("done")).toBe("done");
+    expect(threadStateOf("idle")).toBe("idle");
+    expect(threadStateOf("idle", { settled: true })).toBe("done");
+    expect(threadStateOf(undefined)).toBe("idle");
+  });
+
+  it("gives a host link one word per transport, the unreachable one with its time", () => {
+    expect(linkMarkOf("open")).toEqual({ state: "done", word: "Connected" });
+    expect(linkMarkOf("connecting")).toEqual({ state: "working", word: "Connecting" });
+    expect(linkMarkOf("reconnecting")).toEqual({ state: "working", word: "Reconnecting" });
+    expect(linkMarkOf("offline")).toEqual({ state: "stopped", word: "Offline" });
+    expect(linkMarkOf("unauthorized")).toEqual({ state: "failed", word: "Sign in needed" });
+    const since = new Date(2026, 9, 27, 14, 2).getTime();
+    const unreachable = linkMarkOf("offline", { unreachableSince: since });
+    expect(unreachable.state).toBe("waiting");
+    expect(unreachable.word).toMatch(/^Unreachable since \d{1,2}:\d{2}/);
+  });
+
+  it("renders the word, the glyph alone with a label, or a given word", () => {
     const { rerender } = render(<StatusMark state="queued" />);
     expect(screen.getByText("Queued").dataset.state).toBe("queued");
     rerender(<StatusMark state="queued" word={false} />);
     expect(screen.getByLabelText("Queued").textContent).toBe("");
+    rerender(<StatusMark state="done" word="Connected" />);
+    expect(screen.getByText("Connected").dataset.state).toBe("done");
+  });
+});
+
+describe("Skeleton", () => {
+  it("is a still block: no sweep class, no animation", () => {
+    render(<Skeleton className="h-4 w-24" />);
+    const block = document.querySelector("[data-slot=skeleton]") as HTMLElement;
+    expect(block.className).toContain("bg-muted");
+    expect(block.className).not.toMatch(/shimmer|animate/);
   });
 });
 

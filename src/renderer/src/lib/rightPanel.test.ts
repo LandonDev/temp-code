@@ -11,6 +11,7 @@ const quiet: PanelFacts = {
   backgroundTasks: 0,
   watching: false,
   devRunning: false,
+  debug: false,
 };
 
 describe("sectionsFor", () => {
@@ -22,17 +23,19 @@ describe("sectionsFor", () => {
     expect(sectionsFor(quiet)).toEqual({ sections: ["notes"], defaultSection: "notes" });
   });
 
-  it("a project thread adds the checkout sections, changes first", () => {
+  it("a project thread adds the checkout sections, changes first; debug only for a dev build or the setting", () => {
     expect(sectionsFor({ ...quiet, project: true })).toEqual({
-      sections: ["changes", "notes", "files", "branch", "build", "dev", "debug"],
+      sections: ["changes", "notes", "files", "branch", "build", "dev"],
       defaultSection: "changes",
     });
+    expect(sectionsFor({ ...quiet, project: true, debug: true }).sections).toEqual(["changes", "notes", "files", "branch", "build", "dev", "debug"]);
+    expect(sectionsFor({ ...quiet, debug: true }).sections).toEqual(["notes"]);
   });
 
-  it("subagents add agents; live ones add activity and win the default", () => {
+  it("subagents add agents and take the default, live or done; live ones add activity and win it", () => {
     expect(sectionsFor({ ...quiet, project: true, agents: 2 })).toEqual({
-      sections: ["agents", "changes", "notes", "files", "branch", "build", "dev", "debug"],
-      defaultSection: "changes",
+      sections: ["agents", "changes", "notes", "files", "branch", "build", "dev"],
+      defaultSection: "agents",
     });
     expect(sectionsFor({ ...quiet, agents: 2, liveAgents: 1 }).sections).toEqual(["activity", "agents", "notes"]);
     expect(sectionsFor({ ...quiet, agents: 2, liveAgents: 1 }).defaultSection).toBe("activity");
