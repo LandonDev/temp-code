@@ -5,7 +5,7 @@ import { Kbd } from "../components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
 import { suppressTextSelection } from "../lib/drag";
-import type { LayoutSash } from "../lib/layout";
+import type { LayoutSash, PaneEdge } from "../lib/layout";
 import { MOD } from "../lib/platform";
 
 /**
@@ -208,6 +208,30 @@ export function Sash({
           )}
         />
       </div>
+    </div>
+  );
+}
+
+const HALF: Record<PaneEdge, string> = {
+  left: "inset-y-0 left-0 w-1/2",
+  right: "inset-y-0 right-0 w-1/2",
+  top: "inset-x-0 top-0 h-1/2",
+  bottom: "inset-x-0 bottom-0 h-1/2",
+};
+
+/**
+ * Where a dragged pane will land: the half it will take, drawn as a quiet
+ * box inset from the pane's edges. It fades in once per pane; moving to
+ * another edge redraws it in place.
+ */
+export function PaneDropHint({ edge }: { edge: PaneEdge }) {
+  return (
+    <div
+      data-pane-drop-hint
+      data-edge={edge}
+      className={cn("pointer-events-none absolute z-20 animate-in fade-in duration-(--dur-fast) ease-(--ease-out)", HALF[edge])}
+    >
+      <div className="absolute inset-1 rounded-lg border border-border bg-muted/70" />
     </div>
   );
 }

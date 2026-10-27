@@ -34,7 +34,7 @@ import type { Session } from "../lib/session";
 import { sessionStore, useSession } from "../lib/tcserver/store";
 import { FilePane } from "./FilePane";
 import { holdWhileHidden, paneTreePropsEqual } from "./paneTreeProps";
-import { Sash } from "./paneChrome";
+import { PaneDropHint, Sash } from "./paneChrome";
 import { SessionPane } from "./SessionPane";
 import { SessionGone } from "./SessionGone";
 
@@ -353,29 +353,4 @@ function PaneTreeComponent({
 }
 
 export const PaneTree = memo(PaneTreeComponent, paneTreePropsEqual);
-
-function PaneDropHint({ edge }: { edge: PaneEdge }) {
-  const wash =
-    edge === "left"
-      ? "absolute inset-y-0 left-0 w-1/2 bg-accent/15"
-      : edge === "right"
-        ? "absolute inset-y-0 right-0 w-1/2 bg-accent/15"
-        : edge === "top"
-          ? "absolute inset-x-0 top-0 h-1/2 bg-accent/15"
-          : "absolute inset-x-0 bottom-0 h-1/2 bg-accent/15";
-  const line =
-    edge === "left"
-      ? "absolute inset-y-0 left-0 w-0.5 bg-accent"
-      : edge === "right"
-        ? "absolute inset-y-0 right-0 w-0.5 bg-accent"
-        : edge === "top"
-          ? "absolute inset-x-0 top-0 h-0.5 bg-accent"
-          : "absolute inset-x-0 bottom-0 h-0.5 bg-accent";
-  return (
-    <div className="pointer-events-none absolute inset-0 z-20">
-      <div className={wash} />
-      <div className={line} />
-    </div>
-  );
-}
 

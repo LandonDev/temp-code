@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LayoutSash } from "../lib/layout";
-import { PaneHeader, Sash } from "./paneChrome";
+import { PaneDropHint, PaneHeader, Sash } from "./paneChrome";
 
 afterEach(cleanup);
 
@@ -85,5 +85,20 @@ describe("Sash", () => {
     const { el, onEqualize } = sash("right");
     fireEvent.doubleClick(el);
     expect(onEqualize).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PaneDropHint", () => {
+  it.each([
+    ["left", ["left-0", "w-1/2"]],
+    ["right", ["right-0", "w-1/2"]],
+    ["top", ["top-0", "h-1/2"]],
+    ["bottom", ["bottom-0", "h-1/2"]],
+  ] as const)("covers the %s half, neutral", (edge, classes) => {
+    const { container } = render(<PaneDropHint edge={edge} />);
+    const hint = container.querySelector<HTMLElement>("[data-pane-drop-hint]")!;
+    expect(hint.dataset.edge).toBe(edge);
+    for (const c of classes) expect(hint.classList.contains(c)).toBe(true);
+    expect(container.innerHTML).not.toMatch(/bg-accent/);
   });
 });
