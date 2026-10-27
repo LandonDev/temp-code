@@ -2,15 +2,7 @@ import { useStore } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { createStore } from "zustand/vanilla";
 import { perfMark } from "../lib/perfMarks";
-import {
-  loadProjectRailOpen,
-  loadSidebarOpen,
-  loadSidebarTabOrder,
-  saveProjectRailOpen,
-  saveSidebarOpen,
-  type SidebarLayout,
-  type SidebarTabId,
-} from "../lib/appearance";
+import { loadProjectRailOpen, saveProjectRailOpen } from "../lib/appearance";
 import {
   loadNotesEnabled,
   loadSettingsSection,
@@ -21,7 +13,7 @@ import type { InstalledUpdate } from "../lib/updateNotice";
 
 /**
  * The window chrome's own state: which panels and full-screen views are open,
- * which sidebar tab shows, which dialogs are up. Written by clicks and
+ * which dialogs are up. Written by clicks and
  * shortcuts, so rarely; read by the chrome through selectors, so a change
  * here re-renders the piece that shows it and nothing else.
  *
@@ -34,9 +26,7 @@ export type WhatsNew = { version: string; markdown?: string };
 export type AliaxPageId = "accounts" | "stats";
 
 export type ShellState = {
-  sidebarOpen: boolean;
   projectRailOpen: boolean;
-  sidebarTab: SidebarTabId;
   searchViewOpen: boolean;
   /** Bumped to move focus into the search view. */
   searchViewFocusToken: number;
@@ -62,9 +52,7 @@ export function initialShellState(
   overrides: Partial<ShellState> = {},
 ): ShellState {
   return {
-    sidebarOpen: loadSidebarOpen(),
     projectRailOpen: loadProjectRailOpen(),
-    sidebarTab: loadSidebarTabOrder()[0] ?? "sessions",
     searchViewOpen: false,
     searchViewFocusToken: 0,
     searchSeed: null,
@@ -108,17 +96,6 @@ export function closeOverlays(state: ShellState): ShellState {
   return patch(state, { ...VIEWS_CLOSED, settingsOpen: false });
 }
 
-/** Back to the board with the sessions tab up, for a thread that just started. */
-export function leaveToSessions(state: ShellState): ShellState {
-  return patch(state, { ...VIEWS_CLOSED, sidebarTab: "sessions" });
-}
-
-export function toggleSidebar(state: ShellState, layout: SidebarLayout): ShellState {
-  return layout === "deck"
-    ? patch(state, { projectRailOpen: !state.projectRailOpen })
-    : patch(state, { sidebarOpen: !state.sidebarOpen });
-}
-
 export function toggleProjectRail(state: ShellState): ShellState {
   return patch(state, { projectRailOpen: !state.projectRailOpen });
 }
@@ -150,18 +127,15 @@ export function openSearchView(state: ShellState): ShellState {
   };
 }
 
-/** Deck: the inbox view. Classic: the sidebar's inbox tab. */
-export function openInbox(state: ShellState, layout: SidebarLayout): ShellState {
-  const base = {
+export function openInbox(state: ShellState): ShellState {
+  return patch(state, {
     filePickerOpen: false,
     settingsOpen: false,
     searchViewOpen: false,
     notesViewOpen: false,
     accountsPage: null,
-  };
-  return layout === "deck"
-    ? patch(state, { ...base, inboxViewOpen: true })
-    : patch(state, { ...base, inboxViewOpen: false, sidebarOpen: true, sidebarTab: "inbox" });
+    inboxViewOpen: true,
+  });
 }
 
 export function openNotes(state: ShellState): ShellState {
@@ -175,7 +149,7 @@ export function openNotes(state: ShellState): ShellState {
   });
 }
 
-/** One of the Aliax pages covers the board, in either layout. */
+/** One of the Aliax pages covers the board. */
 export function openAccountsPage(state: ShellState, page: AliaxPageId): ShellState {
   return patch(state, {
     ...VIEWS_CLOSED,
@@ -208,35 +182,6 @@ export function leaveTopOverlay(state: ShellState): ShellState {
   return state;
 }
 
-/**
- * The layout switched. Classic has no changes tab and hosts the inbox in the
- * sidebar, so an open inbox view moves there; deck has no inbox tab.
- */
-export function applyLayoutChange(state: ShellState, layout: SidebarLayout): ShellState {
-  if (layout === "classic") {
-    const sidebarTab = state.inboxViewOpen
-      ? "inbox"
-      : state.sidebarTab === "changes"
-        ? "sessions"
-        : state.sidebarTab;
-    return patch(
-      state,
-      state.inboxViewOpen
-        ? { sidebarTab, inboxViewOpen: false, sidebarOpen: true }
-        : { sidebarTab },
-    );
-  }
-  return settleSidebarTab(state, layout);
-}
-
-/** A tab the current layout has no room for falls back to sessions. */
-export function settleSidebarTab(state: ShellState, layout: SidebarLayout): ShellState {
-  const deck = layout === "deck";
-  if (!deck && state.sidebarTab === "changes") return { ...state, sidebarTab: "sessions" };
-  if (deck && state.sidebarTab === "inbox") return { ...state, sidebarTab: "sessions" };
-  return state;
-}
-
 export const shellStore = createStore<ShellState>()(
   subscribeWithSelector(() => initialShellState()),
 );
@@ -253,7 +198,6 @@ export function anyViewOpen(state: ShellState): boolean {
 }
 
 // The panel choices survive a relaunch; the rest is per window.
-shellStore.subscribe((state) => state.sidebarOpen, (open) => saveSidebarOpen(open));
 shellStore.subscribe((state) => state.projectRailOpen, (open) => saveProjectRailOpen(open));
 shellStore.subscribe((state) => state.settingsSection, (section) => saveSettingsSection(section));
 
@@ -264,10 +208,6 @@ const update = (reducer: (state: ShellState) => ShellState) =>
 export const shell = {
   closeViews: () => update(closeViews),
   closeOverlays: () => update(closeOverlays),
-  leaveToSessions: () => update(leaveToSessions),
-  setSidebarTab: (tab: SidebarTabId) => update((s) => patch(s, { sidebarTab: tab })),
-  /** Takes the window's own layout: storage may already hold another window's. */
-  toggleSidebar: (layout: SidebarLayout) => update((s) => toggleSidebar(s, layout)),
   toggleProjectRail: () => update(toggleProjectRail),
   openFilePicker: () => update(openFilePicker),
   closeFilePicker: () => update((s) => patch(s, { filePickerOpen: false })),
@@ -279,9 +219,9 @@ export const shell = {
     update(openSearchView);
   },
   closeSearchView: () => update((s) => patch(s, { searchViewOpen: false })),
-  openInbox: (layout: SidebarLayout) => {
+  openInbox: () => {
     perfMark("page-switch", "inbox");
-    update((s) => openInbox(s, layout));
+    update(openInbox);
   },
   closeInbox: () => update((s) => patch(s, { inboxViewOpen: false })),
   openNotes: () => {
@@ -307,8 +247,6 @@ export const shell = {
     update(leaveTopOverlay);
     return shellStore.getState() !== before;
   },
-  applyLayoutChange: (layout: SidebarLayout) => update((s) => applyLayoutChange(s, layout)),
-  settleSidebarTab: (layout: SidebarLayout) => update((s) => settleSidebarTab(s, layout)),
   setUpdateNotice: (notice: InstalledUpdate | null) =>
     update((s) => patch(s, { updateNotice: notice })),
   dismissUpdate: () => update((s) => patch(s, { updateNotice: null })),

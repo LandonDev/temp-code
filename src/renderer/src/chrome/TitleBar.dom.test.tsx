@@ -34,12 +34,9 @@ function bar(over: Partial<ComponentProps<typeof TitleBar>> = {}) {
       tabs={[]}
       activeId=""
       cwd="/Users/me/repo"
-      deckLayout
+      header={header}
       onToggleSidebar={() => {}}
-      onSelect={() => {}}
       onNew={() => {}}
-      onClose={() => {}}
-      onReorder={() => {}}
       onNewTerminal={vi.fn()}
       onShowTerminal={vi.fn()}
       {...over}
@@ -49,16 +46,11 @@ function bar(over: Partial<ComponentProps<typeof TitleBar>> = {}) {
 
 afterEach(cleanup);
 
-describe("TitleBar in deck layout", () => {
-  it("with the thread header, the terminal is a row of the thread menu, not a title bar button", () => {
-    bar({ header });
+describe("TitleBar", () => {
+  it("the terminal is a row of the thread menu, not a title bar button", () => {
+    bar();
     expect(screen.queryByRole("button", { name: /Terminal/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Thread menu" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Panel" })).toBeTruthy();
-  });
-
-  it("without the thread header the terminal button stays", () => {
-    bar();
-    expect(screen.getByRole("button", { name: /Terminal/ })).toBeTruthy();
   });
 });

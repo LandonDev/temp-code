@@ -1,5 +1,4 @@
 import { registry } from "../lib/connection";
-import type { SidebarLayout } from "../lib/appearance";
 import { isAppQuitting } from "../lib/appLifecycle";
 import { syncDockBadge } from "../lib/dockBadge";
 import { sessionChildHarnesses } from "../lib/handoff";
@@ -39,7 +38,7 @@ import { environmentStore } from "./environment";
 import { focus } from "./focus";
 import { currentDockCwd, currentSidebarCwd, project, projectStore } from "./project";
 import { installStallRecorder } from "../lib/stallRecorder";
-import { shell, shellStore } from "./shell";
+import { shell } from "./shell";
 import { currentDock, terminalsStore } from "./terminals";
 import { activeSessionOf, workspace, workspaceTabsStore } from "./workspace";
 import { openSessionIds, workspaceActions } from "./workspaceActions";
@@ -417,21 +416,14 @@ export function installNotesGate(): Teardown {
   return subscribeNotesEnabled(check);
 }
 
-/**
- * The deck's sidebar tab settles to one it has, and a dock that is not on
- * screen cannot hold the terminal's focus.
- */
+/** A dock that is not on screen cannot hold the terminal's focus. */
 export function installLayoutSync(): Teardown {
-  const layout: SidebarLayout = "deck";
-  const settleTab = afterWrites(() => shell.settleSidebarTab(layout));
   const dockVisible = () => !!currentDock(currentDockCwd())?.open;
   const guardDock = afterWrites(() => {
     if (!dockVisible()) focus.projectTerminal(false);
   });
-  shell.settleSidebarTab(layout);
   if (!dockVisible()) focus.projectTerminal(false);
   return teardownAll([
-    shellStore.subscribe((s) => s.sidebarTab, settleTab),
     terminalsStore.subscribe(guardDock),
     projectStore.subscribe(guardDock),
     workspaceStore.subscribe(guardDock),

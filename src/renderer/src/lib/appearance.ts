@@ -1,16 +1,14 @@
 import { IS_MAC } from "./platform";
 
-const OPEN_KEY = "monocode.sidebarOpen";
 const PROJECT_RAIL_OPEN_KEY = "monocode.projectRailOpen";
 const SCHEME_KEY = "monocode.colorScheme";
-const SIDEBAR_TAB_ORDER_KEY = "monocode.sidebarTabOrder";
 const PROJECT_RAIL_WIDTH_KEY = "monocode.projectRailWidth";
 const TRANSCRIPT_ANCHOR_KEY = "monocode.transcriptAnchor";
 const EDITOR_FONT_SIZE_KEY = "monocode.editorFontSize";
 
 /** Keys of settings that are gone: the tint, Glass, sidebar opacity, main-pane
- *  glass, the Classic layout and the two transcript toggles A7 retired. Boot
- *  clears them. */
+ *  glass, the Classic layout with its sidebar and tab order, and the two
+ *  transcript toggles A7 retired. Boot clears them. */
 const RETIRED_KEYS = [
   "monocode.themeHue",
   "monocode.themeSaturation",
@@ -18,14 +16,14 @@ const RETIRED_KEYS = [
   "monocode.bodyGlass",
   "monocode.glass",
   "monocode.sidebarLayout",
+  "monocode.sidebarOpen",
+  "monocode.sidebarTabOrder",
   "monocode.transcriptLayout",
   "monocode.transcriptZen",
 ];
 
 export type ColorScheme = "dark" | "light";
 export type ThemePreference = ColorScheme | "system";
-/** The shell store's layout parameter; every window is the deck since Classic left. */
-export type SidebarLayout = "classic" | "deck";
 
 export const THEME_PREFERENCE_DEFAULT: ThemePreference = "dark";
 
@@ -38,15 +36,6 @@ export const TRANSCRIPT_ANCHOR_DEFAULT = true;
 
 /** Fired on `window` whenever prompt-to-top anchoring flips (detail: boolean). */
 export const TRANSCRIPT_ANCHOR_CHANGE_EVENT = "monocode:transcriptanchorchange";
-
-export type SidebarTabId = "files" | "sessions" | "changes" | "inbox";
-
-const DEFAULT_SIDEBAR_TAB_ORDER: SidebarTabId[] = [
-  "sessions",
-  "inbox",
-  "files",
-  "changes",
-];
 
 export const PROJECT_RAIL_WIDTH_MIN = 180;
 export const PROJECT_RAIL_WIDTH_MAX = 360;
@@ -182,55 +171,12 @@ export function watchSystemColorScheme() {
   });
 }
 
-function isSidebarTabId(value: unknown): value is SidebarTabId {
-  return (
-    value === "files" ||
-    value === "sessions" ||
-    value === "changes" ||
-    value === "inbox"
-  );
-}
-
-export function loadSidebarOpen(): boolean {
-  return readFlag(OPEN_KEY) ?? false;
-}
-
-export function saveSidebarOpen(value: boolean) {
-  writeFlag(OPEN_KEY, value);
-}
-
 export function loadProjectRailOpen(): boolean {
   return readFlag(PROJECT_RAIL_OPEN_KEY) ?? true;
 }
 
 export function saveProjectRailOpen(value: boolean) {
   writeFlag(PROJECT_RAIL_OPEN_KEY, value);
-}
-
-export function loadSidebarTabOrder(): SidebarTabId[] {
-  try {
-    const raw = localStorage.getItem(SIDEBAR_TAB_ORDER_KEY);
-    if (!raw) return [...DEFAULT_SIDEBAR_TAB_ORDER];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [...DEFAULT_SIDEBAR_TAB_ORDER];
-    const next = parsed.filter(isSidebarTabId);
-    for (const id of DEFAULT_SIDEBAR_TAB_ORDER) {
-      if (!next.includes(id)) next.push(id);
-    }
-    return next.length === DEFAULT_SIDEBAR_TAB_ORDER.length
-      ? next
-      : [...DEFAULT_SIDEBAR_TAB_ORDER];
-  } catch {
-    return [...DEFAULT_SIDEBAR_TAB_ORDER];
-  }
-}
-
-export function saveSidebarTabOrder(order: SidebarTabId[]) {
-  try {
-    localStorage.setItem(SIDEBAR_TAB_ORDER_KEY, JSON.stringify(order));
-  } catch {
-    // private mode / quota
-  }
 }
 
 export function loadProjectRailWidth(): number {

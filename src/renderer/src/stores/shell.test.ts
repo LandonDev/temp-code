@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { saveProjectRailOpen, saveSidebarOpen } from "../lib/appearance";
+import { saveProjectRailOpen } from "../lib/appearance";
 import { saveSettingsSection } from "../lib/settings";
 import {
-  applyLayoutChange,
   closeOverlays,
   closeViews,
   initialShellState,
-  leaveToSessions,
   leaveTopOverlay,
   openFilesSearch,
   openInbox,
@@ -15,15 +13,13 @@ import {
   openSettings,
   openSymbolPicker,
   patch,
-  settleSidebarTab,
   shell,
   shellStore,
-  toggleSidebar,
+  toggleProjectRail,
 } from "./shell";
 
 vi.mock("../lib/appearance", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/appearance")>()),
-  saveSidebarOpen: vi.fn(),
   saveProjectRailOpen: vi.fn(),
 }));
 vi.mock("../lib/settings", async (importOriginal) => ({
@@ -33,29 +29,23 @@ vi.mock("../lib/settings", async (importOriginal) => ({
 
 const base = () =>
   initialShellState({
-    sidebarOpen: false,
     projectRailOpen: true,
-    sidebarTab: "sessions",
     settingsSection: "general",
   });
 
 describe("shell reducers", () => {
   it("a change already in place returns the same state", () => {
     const state = base();
-    expect(patch(state, { sidebarOpen: false })).toBe(state);
+    expect(patch(state, { projectRailOpen: true })).toBe(state);
     expect(closeViews(state)).toBe(state);
     expect(closeOverlays(state)).toBe(state);
-    expect(leaveToSessions(state)).toBe(state);
     expect(leaveTopOverlay(state)).toBe(state);
-    expect(settleSidebarTab(state, "deck")).toBe(state);
-    expect(settleSidebarTab(state, "classic")).toBe(state);
-    expect(applyLayoutChange(state, "classic")).toBe(state);
-    expect(applyLayoutChange(state, "deck")).toBe(state);
+    expect(openInbox({ ...state, inboxViewOpen: true })).toEqual({ ...state, inboxViewOpen: true });
   });
 
   it("the views are exclusive: opening one closes the others and the pickers", () => {
     const state = { ...base(), searchViewOpen: true, filePickerOpen: true, settingsOpen: true };
-    const inbox = openInbox(state, "deck");
+    const inbox = openInbox(state);
     expect(inbox).toMatchObject({
       inboxViewOpen: true,
       searchViewOpen: false,
@@ -72,12 +62,6 @@ describe("shell reducers", () => {
     });
     expect(openSettings(settings)).toBe(settings);
     expect(openSettings(settings).settingsSection).toBe("editor");
-  });
-
-  it("classic has no inbox view: the sidebar's inbox tab opens instead", () => {
-    const next = openInbox(base(), "classic");
-    expect(next).toMatchObject({ inboxViewOpen: false, sidebarOpen: true, sidebarTab: "inbox" });
-    expect(openInbox(next, "classic")).toBe(next);
   });
 
   it("find in project opens the search view seeded with the file filter; search alone keeps no seed", () => {
@@ -100,10 +84,8 @@ describe("shell reducers", () => {
     expect(next).toMatchObject({ filePickerOpen: false, symbolPickerOpen: true });
   });
 
-  it("toggling the sidebar flips the rail in deck and the sidebar in classic", () => {
-    const state = base();
-    expect(toggleSidebar(state, "deck")).toMatchObject({ projectRailOpen: false, sidebarOpen: false });
-    expect(toggleSidebar(state, "classic")).toMatchObject({ projectRailOpen: true, sidebarOpen: true });
+  it("toggling the sidebar flips the project rail", () => {
+    expect(toggleProjectRail(base())).toMatchObject({ projectRailOpen: false });
   });
 
   it("back closes the topmost overlay, settings before the views", () => {
@@ -126,13 +108,6 @@ describe("shell reducers", () => {
     expect(leaveTopOverlay(four)).toBe(four);
   });
 
-  it("switching to classic moves an open inbox view into the sidebar", () => {
-    const next = applyLayoutChange({ ...base(), inboxViewOpen: true, sidebarTab: "changes" }, "classic");
-    expect(next).toMatchObject({ inboxViewOpen: false, sidebarOpen: true, sidebarTab: "inbox" });
-    expect(applyLayoutChange({ ...base(), sidebarTab: "changes" }, "classic").sidebarTab).toBe("sessions");
-    expect(applyLayoutChange({ ...base(), sidebarTab: "inbox" }, "deck").sidebarTab).toBe("sessions");
-    expect(applyLayoutChange({ ...base(), sidebarTab: "files" }, "deck").sidebarTab).toBe("files");
-  });
 });
 
 describe("shell store", () => {
@@ -147,7 +122,6 @@ describe("shell store", () => {
     });
     shell.closeViews();
     shell.closeSettings();
-    shell.setSidebarTab("sessions");
     shell.dismissUpdate();
     expect(fired).toBe(0);
     shell.openFilePicker();
@@ -164,20 +138,16 @@ describe("shell store", () => {
   });
 
   it("the panel choices persist, once per change, and nothing else does", () => {
-    vi.mocked(saveSidebarOpen).mockClear();
     vi.mocked(saveProjectRailOpen).mockClear();
     vi.mocked(saveSettingsSection).mockClear();
     shell.openSearchView();
     shell.openSettings();
     shell.openNotes();
-    expect(saveSidebarOpen).not.toHaveBeenCalled();
     expect(saveProjectRailOpen).not.toHaveBeenCalled();
     expect(saveSettingsSection).not.toHaveBeenCalled();
-    shell.toggleSidebar("classic");
     shell.openFilesSearch();
-    expect(saveSidebarOpen).toHaveBeenCalledTimes(1);
-    expect(saveSidebarOpen).toHaveBeenCalledWith(true);
-    shell.toggleSidebar("deck");
+    expect(saveProjectRailOpen).not.toHaveBeenCalled();
+    shell.toggleProjectRail();
     expect(saveProjectRailOpen).toHaveBeenCalledTimes(1);
     expect(saveProjectRailOpen).toHaveBeenCalledWith(false);
     shell.openSettings("editor");

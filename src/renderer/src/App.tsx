@@ -40,7 +40,6 @@ import {
   HtmlRenderOverlay,
   isHtmlRenderOverlayOpen,
 } from "./surfaces/HtmlRenderOverlay";
-import { useSidebarLayout } from "./hooks/useSidebarLayout";
 import { perfMark } from "./lib/perfMarks";
 import { IS_MAC } from "./lib/platform";
 import { updateStore } from "./lib/updateStore";
@@ -98,23 +97,10 @@ import {
   nextDockTerminalTitle,
   reorderDockTerminals,
   selectDockTerminal,
-  splitProjectTerminalsForMove,
   withDockOpen,
   withDockSize,
 } from "./lib/projectTerminal";
-import {
-  addTabsToNewGroup,
-  addTabToGroup,
-  applyGroupedReorder,
-  insertTabInGroup,
-  joinTabOnto,
-  newTabGroupId,
-  notifyTabGroupLabelsChanged,
-  removeTabFromGroup,
-  saveTabGroupLabel,
-  ungroupTabs,
-} from "./lib/tabGroups";
-import { collectWindowTransfer } from "./lib/windowTransfer";
+import { notifyTabGroupLabelsChanged, saveTabGroupLabel } from "./lib/tabGroups";
 import {
   confirmCloseTerminal,
   confirmCloseTerminals,
@@ -308,7 +294,6 @@ const AliaxPagesView = aliaxChunk.surface("AliaxPagesView", <SurfaceSkeleton kin
 // The full-body views ride their own chunks: none is in the first paint.
 const SearchView = searchChunk.surface("SearchView", <SurfaceSkeleton kind="page" label="Loading search" />);
 const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="page" label="Loading inbox" />);
-const InboxDetailPane = inboxChunk.surface("InboxDetailPane", <SurfaceSkeleton kind="pane" label="Loading inbox" />);
 const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" label="Loading notes" />);
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
 import { windowTitle } from "./lib/windowTitle";
@@ -429,19 +414,12 @@ export default function App() {
   const setComposerFocused = focus.composer;
   const projectOfTab = tabProjectOf;
   const projectRailOpen = useShell((s) => s.projectRailOpen);
-  const sidebarLayout = useSidebarLayout();
-  const deckLayout = sidebarLayout === "deck";
-  const tabCloseScope = deckLayout ? "project" : "workspace";
-  const currentProjectDock = deckLayout
-    ? findProjectTerminal(projectTerminals, dockCwd)
-    : undefined;
+  const currentProjectDock = findProjectTerminal(projectTerminals, dockCwd);
   // The Dev servers pane takes the dock's place while it is open; the terminal dock keeps its own open flag.
   const devPaneOpen = useDevPane((s) => s.open);
   const devPaneSize = useDevPane((s) => s.size);
   const dockVisible = !!currentProjectDock?.open && !devPaneOpen;
-  useNativeMenuState({ dockOpen: dockVisible, dockUsable: deckLayout && looksLikeProject(dockCwd) });
-  const sidebarTab = useShell((s) => s.sidebarTab);
-  const classicInbox = !deckLayout && sidebarTab === "inbox";
+  useNativeMenuState({ dockOpen: dockVisible, dockUsable: looksLikeProject(dockCwd) });
   const searchViewOpen = useShell((s) => s.searchViewOpen);
   const searchViewFocusToken = useShell((s) => s.searchViewFocusToken);
   const searchSeed = useShell((s) => s.searchSeed);
@@ -673,7 +651,7 @@ export default function App() {
     perfMark("tab-switch", id);
     workspaceActions.activateTab(id);
     const tab = workspaceTabsStore.getState().tabs.find((entry) => entry.id === id);
-    if (deckLayout && tab) {
+    if (tab) {
       const cwd = workspaceTabCwd(
         tab,
         rebaseToWorkspace(sessionStore.getSnapshot(), workspaceStore.getSnapshot()),
@@ -685,7 +663,7 @@ export default function App() {
       !!tab &&
         sessionStore.getSnapshot().some((session) => session.id === tab.focusedId),
     );
-  }, [deckLayout]);
+  }, []);
 
 
   /** `cwd` scopes group inheritance: a tab from another project starts alone. */
@@ -792,7 +770,7 @@ export default function App() {
   const onStartInboxItem = useCallback(
     async (item: InboxItem, body?: string) => {
       const start = (description?: string) => {
-        shell.leaveToSessions();
+        shell.closeViews();
         const ctx = item.projectPath
           ? cwdContext(item.projectPath)
           : sessionContext();
@@ -845,7 +823,7 @@ export default function App() {
   const onAddNoteToChat = useCallback(
     (card: NoteComposerCard) => {
       if (!card.id) return;
-      shell.leaveToSessions();
+      shell.closeViews();
       const ctx =
         card.sourceCwd && looksLikeProject(card.sourceCwd)
           ? cwdContext(card.sourceCwd)
@@ -962,7 +940,7 @@ export default function App() {
   const onOpenTerminal = useCallback(
     (cwd: string, asWorkspaceTab = false, occupySessionId?: string) => {
       const workdir = cwd || active?.cwd || dockCwd;
-      if (deckLayout && openProjectTerminal(workdir)) return;
+      if (openProjectTerminal(workdir)) return;
 
       if (asWorkspaceTab || !activeTab) {
         const file = newTerminalFile(workdir);
@@ -1002,7 +980,6 @@ export default function App() {
       active?.cwd,
       activeTab,
       appendTab,
-      deckLayout,
       openProjectTerminal,
       dockCwd,
     ],
@@ -1013,10 +990,6 @@ export default function App() {
   }, [active?.cwd, onOpenTerminal, dockCwd]);
 
   const onShowProjectTerminal = useCallback(() => {
-    if (!deckLayout) {
-      onOpenTerminal(active?.cwd ?? dockCwd);
-      return;
-    }
     const dock = currentDock(dockCwd);
     if (dock && dock.pane.files.length > 0) {
       if (!dock.open) terminals.updateDock(dockCwd, (entry) => withDockOpen(entry, true));
@@ -1026,7 +999,6 @@ export default function App() {
     onOpenTerminal(active?.cwd ?? dockCwd);
   }, [
     active?.cwd,
-    deckLayout,
     focusProjectTerminal,
     onOpenTerminal,
     dockCwd,
@@ -1047,7 +1019,7 @@ export default function App() {
   );
 
   const onToggleProjectTerminal = useCallback(() => {
-    if (!deckLayout || !looksLikeProject(dockCwd)) return;
+    if (!looksLikeProject(dockCwd)) return;
     const dock = currentDock(dockCwd);
     if (devPaneStore.getState().open && dock) {
       terminals.updateDock(dockCwd, (entry) => withDockOpen(entry, true));
@@ -1064,7 +1036,6 @@ export default function App() {
     else setProjectTerminalFocused(false);
   }, [
     active?.cwd,
-    deckLayout,
     focusProjectTerminal,
     openProjectTerminal,
     dockCwd,
@@ -1125,14 +1096,11 @@ export default function App() {
         tabs: current,
         sessions: sessionStore.getSnapshot(),
         closingTabId: id,
-        scope: tabCloseScope,
+        scope: "project",
       });
       const closing = current[index];
-      // Deck mode: a thread chip never closes; archive hides it instead.
-      if (
-        tabCloseScope === "project" &&
-        tabProjectKey(closing, sessionStore.getSnapshot()) !== null
-      ) {
+      // A thread chip never closes; archive hides it instead.
+      if (tabProjectKey(closing, sessionStore.getSnapshot()) !== null) {
         return;
       }
       if (closePlan.action === "keep") return;
@@ -1171,125 +1139,7 @@ export default function App() {
       }
       finishClose();
     },
-    [dirtyFiles, activateTab, sidebarCwd, tabCloseScope],
-  );
-
-  const onGroupNewTab = useCallback(
-    (groupId: string, threadType?: ThreadType) => {
-      const groupTab = workspaceTabsStore.getState().tabs.find((tab) => tab.groupId === groupId);
-      const sessionInTab = groupTab
-        ? sessionStore.getSnapshot().find((session) =>
-            leafIds(groupTab.layout).includes(session.id),
-          )
-        : undefined;
-      const ctx = sessionInTab
-        ? contextOfSession(sessionInTab, workspaceStore.getSnapshot())
-        : sessionContext();
-      const session = ctx.projectId
-        ? createSessionHere({ projectId: ctx.projectId, threadType })
-        : newDefaultSession(sessionInTab?.environmentId ?? environmentForContext(ctx), ctx.cwd, sessionDefaults?.runtimeMode, { ...ctx, threadType });
-      const tab = newTab(session.id);
-      setSessions((prev) => [...prev, session]);
-      if (threadType) void serverCommands.ensureCreated(session).catch(() => undefined);
-      setTabs((prev) => insertTabInGroup(prev, tab, groupId));
-      setActiveTabId(tab.id);
-      setComposerFocused(true);
-    },
-    [
-      active?.cwd,
-      createSessionHere,
-      projectCwd,
-      sessionDefaults?.runtimeMode,
-    ],
-  );
-
-  const onGroupCloseTabs = useCallback(
-    (tabIds: string[]) => {
-      for (const id of tabIds) onCloseTab(id);
-    },
-    [onCloseTab],
-  );
-
-  const onGroupMoveToNewWindow = useCallback(
-    async (tabIds: string[]) => {
-      const remainingAtMove = workspaceTabsStore.getState().tabs.filter(
-        (tab) => !tabIds.includes(tab.id),
-      );
-      const movingTabs = workspaceTabsStore.getState().tabs.filter((tab) =>
-        tabIds.includes(tab.id),
-      );
-      const splitDocks = splitProjectTerminalsForMove(
-        currentDocks(),
-        movingTabs,
-        remainingAtMove,
-        sessionStore.getSnapshot(),
-      );
-      const payload = collectWindowTransfer(
-        workspaceTabsStore.getState().tabs,
-        sessionStore.getSnapshot(),
-        tabIds,
-        workspaceTabsStore.getState().activeTabId,
-        dirtyFiles,
-        projectCwd,
-        splitDocks.moving,
-      );
-      if (!payload) return;
-
-      const sessionIds = new Set(payload.sessions.map((session) => session.id));
-      for (const id of sessionIds) skipForgetSessionIds.add(id);
-
-      try {
-        await invoke("stage_window_transfer", {
-          payload: JSON.stringify(payload),
-        });
-        await invoke("open_new_window");
-      } catch {
-        for (const id of sessionIds) skipForgetSessionIds.delete(id);
-        return;
-      }
-
-      terminals.setDocks(splitDocks.remaining);
-      const remainingTabs = workspaceTabsStore.getState().tabs.filter(
-        (tab) => !tabIds.includes(tab.id),
-      );
-      if (remainingTabs.length === 0) {
-        const seedSession = sessionStore.getSnapshot().find((session) =>
-          sessionIds.has(session.id),
-        );
-        const ctx = seedSession
-          ? contextOfSession(seedSession, workspaceStore.getSnapshot())
-          : sessionContext();
-        const session = newSession(
-          seedSession?.environmentId ?? environmentForContext(ctx),
-          seedSession?.harness ?? "claude",
-          ctx.cwd,
-          seedSession?.model,
-          seedSession?.runtimeMode,
-          seedSession?.modelSettings,
-          ctx,
-        );
-        const tab = newTab(session.id);
-        setSessions((prev) => [
-          ...prev.filter((entry) => !sessionIds.has(entry.id)),
-          session,
-        ]);
-        setTabs([tab]);
-        setActiveTabId(tab.id);
-      } else {
-        setTabs(remainingTabs);
-        setSessions((prev) =>
-          prev.filter((session) => !sessionIds.has(session.id)),
-        );
-        if (tabIds.includes(workspaceTabsStore.getState().activeTabId)) {
-          activateTab(remainingTabs[0]?.id ?? workspaceTabsStore.getState().activeTabId);
-        }
-      }
-
-      editors.forgetFiles(payload.dirtyFileIds);
-
-      for (const id of sessionIds) skipForgetSessionIds.delete(id);
-    },
-    [activateTab, dirtyFiles, projectCwd],
+    [dirtyFiles, activateTab, sidebarCwd],
   );
 
   const onCloseFile = useCallback(
@@ -1330,7 +1180,7 @@ export default function App() {
               tabs: workspaceTabsStore.getState().tabs,
               sessions: sessionStore.getSnapshot(),
               closingTabId: tab.id,
-              scope: tabCloseScope,
+              scope: "project",
             });
             if (closePlan.action === "close") {
               onCloseTab(
@@ -1413,74 +1263,12 @@ export default function App() {
       }
       finishClose();
     },
-    [activeTabId, dirtyFiles, onCloseTab, projectCwd, tabCloseScope],
-  );
-
-  const onClearTabSession = useCallback(
-    async (id: string) => {
-      const tab = tabs.find((entry) => entry.id === id);
-      if (!tab || isBlankWorkspaceTab(tab, sessionStore.getSnapshot())) return;
-
-      const closingFiles = [
-        ...tab.editorPanes.flatMap((pane) => pane.files),
-        ...(tab.terminalPanes ?? []).flatMap((pane) => pane.files),
-      ];
-      const unsaved = closingFiles.filter(
-        (file) => isFilesystemTab(file) && dirtyFiles.has(file.id),
-      );
-      if (
-        unsaved.length > 0 &&
-        !(await confirmAction({ title: "Close this conversation?", body: "Its unsaved files lose their changes.", action: "Close", danger: true }))
-      ) {
-        return;
-      }
-
-      const oldSessionId = leafIds(tab.layout).find((paneId) =>
-        sessionStore.getSnapshot().some((session) => session.id === paneId),
-      );
-      const oldSession = sessionStore.getSnapshot().find(
-        (session) => session.id === oldSessionId,
-      );
-      if (!oldSession) return;
-
-      const session = newSession(
-        oldSession.environmentId,
-        oldSession.harness,
-        oldSession.cwd,
-        oldSession.model,
-        oldSession.runtimeMode,
-        oldSession.modelSettings,
-        contextOfSession(oldSession, workspaceStore.getSnapshot()),
-      );
-
-      setSessions((prev) => [...prev, session]);
-      editors.forgetFiles(closingFiles.map((file) => file.id));
-      setTabs((prev) =>
-        prev.map((entry) =>
-          entry.id === id
-            ? {
-                ...entry,
-                layout: leaf(session.id),
-                focusedId: session.id,
-                editorPanes: [],
-                terminalPanes: [],
-              }
-            : entry,
-        ),
-      );
-      setComposerFocused(true);
-      void refreshHistory(sidebarCwd);
-    },
-    [tabs, dirtyFiles, sidebarCwd],
+    [activeTabId, dirtyFiles, onCloseTab, projectCwd],
   );
 
   const onClosePane = useCallback(
     (sessionId?: string) => {
-      if (
-        sessionId === undefined &&
-        deckLayout &&
-        projectTerminalFocused
-      ) {
+      if (sessionId === undefined && projectTerminalFocused) {
         const dock = currentDock(currentDockCwd());
         if (dock) {
           onCloseProjectTerminal(dock.pane.activeFileId);
@@ -1500,19 +1288,8 @@ export default function App() {
       );
       if (!sessionIds.includes(closingId)) return;
       const nextTab = closeLeaf(activeTab, closingId);
-      if (!nextTab) {
-        // Deck mode: ⌘W never removes a thread from the strip.
-        if (deckLayout) return;
-        const closePlan = planWorkspaceTabClose({
-          tabs: workspaceTabsStore.getState().tabs,
-          sessions: sessionStore.getSnapshot(),
-          closingTabId: activeTab.id,
-          scope: tabCloseScope,
-        });
-        if (closePlan.action === "keep") onClearTabSession(activeTab.id);
-        else onCloseTab(activeTab.id);
-        return;
-      }
+      // ⌘W never removes a thread from the strip.
+      if (!nextTab) return;
       setTabs((prev) =>
         prev.map((t) =>
           t.id === activeTab.id
@@ -1532,26 +1309,21 @@ export default function App() {
     },
     [
       activeTab,
-      deckLayout,
       onCloseFile,
       onCloseProjectTerminal,
-      onCloseTab,
-      onClearTabSession,
       projectTerminalFocused,
       sidebarCwd,
-      tabCloseScope,
     ],
   );
 
   /** Tabs in strip order: the live row, then the dormant shelf. */
   const cycleScope = useCallback(() => {
-    if (!deckLayout) return tabs;
     const byId = new Map(tabs.map((tab) => [tab.id, tab]));
     return headerStore
       .getState()
       .stripTabs.map((id) => byId.get(id))
       .filter((tab): tab is WorkspaceTab => tab != null);
-  }, [deckLayout, tabs]);
+  }, [tabs]);
 
   const onNext = useCallback(() => {
     const scope = cycleScope();
@@ -1640,63 +1412,6 @@ export default function App() {
     setComposerFocused(false);
   }, []);
   const onToggleChanges = onShowSourceControl;
-
-  const onReorderTabs = useCallback(
-    (ids: string[], movedId?: string) => {
-      setTabs((prev) => {
-        if (movedId) {
-          return applyGroupedReorder(prev, ids, movedId, projectOfTab) ?? prev;
-        }
-        return orderByIds(prev, ids);
-      });
-    },
-    [projectOfTab],
-  );
-
-  const onJoinTab = useCallback(
-    (draggedId: string, targetId: string) => {
-      if (deckLayout) return;
-      setTabs(
-        (prev) =>
-          joinTabOnto(prev, draggedId, targetId, undefined, projectOfTab)
-            ?.tabs ?? prev,
-      );
-    },
-    [deckLayout, projectOfTab],
-  );
-
-  const onJoinTabToGroup = useCallback(
-    (tabId: string, groupId: string) => {
-      if (deckLayout) return;
-      setTabs((prev) => addTabToGroup(prev, tabId, groupId, projectOfTab));
-    },
-    [deckLayout, projectOfTab],
-  );
-
-  const onAddToNewGroup = useCallback(
-    (tabId: string) => {
-      if (deckLayout) return;
-      const groupId = newTabGroupId();
-      setTabs((prev) => addTabsToNewGroup(prev, [tabId], groupId));
-    },
-    [deckLayout],
-  );
-
-  const onAddToGroup = useCallback(
-    (tabId: string, groupId: string) => {
-      if (deckLayout) return;
-      setTabs((prev) => addTabToGroup(prev, tabId, groupId, projectOfTab));
-    },
-    [deckLayout, projectOfTab],
-  );
-
-  const onRemoveFromGroup = useCallback((tabId: string) => {
-    setTabs((prev) => removeTabFromGroup(prev, tabId));
-  }, []);
-
-  const onUngroup = useCallback((groupId: string) => {
-    setTabs((prev) => ungroupTabs(prev, groupId));
-  }, []);
 
   const onReorderFiles = useCallback((paneId: string, ids: string[]) => {
     setTabs((prev) =>
@@ -2091,7 +1806,7 @@ export default function App() {
         sessions: sessionStore.getSnapshot(),
         sessionId,
         activeTabId: workspaceTabsStore.getState().activeTabId,
-        scope: tabCloseScope,
+        scope: "project",
         createReplacement: (seed) =>
           newSession(
             seed?.environmentId ?? environmentId ?? environmentForContext(cwdContext(summary?.cwd ?? sidebarCwd)),
@@ -2119,7 +1834,7 @@ export default function App() {
       );
       void refreshHistory(sidebarCwd);
     },
-    [activateTab, sidebarCwd, tabCloseScope],
+    [activateTab, sidebarCwd],
   );
 
   const onFocusDir = useCallback(
@@ -3126,27 +2841,23 @@ export default function App() {
     },
     [onArchiveHistorySession, onHeaderDelete],
   );
-  const headerEvents = useMemo<HeaderEvents | undefined>(
-    () =>
-      deckLayout
-        ? {
-            onSelect: onSelectHistorySession,
-            onRename: onRenameHistorySession,
-            onArchive: onHeaderArchive,
-            onDelete: onHeaderDelete,
-            onSetRules: onHeaderSetRules,
-            onRestore: onRestoreThread,
-            onNew: onHeaderNew,
-            onPauseAll: () => Promise.all(registry.environments().map((e) => serverCommands.pauseAllRunning(e.id))).then(() => undefined),
-            onToggleRail: () => {
-              const id = rightPanel.focused();
-              if (id) rightPanel.toggle(id);
-            },
-            onSetType: onThreadTypeChange,
-          }
-        : undefined,
+  const headerEvents = useMemo<HeaderEvents>(
+    () => ({
+      onSelect: onSelectHistorySession,
+      onRename: onRenameHistorySession,
+      onArchive: onHeaderArchive,
+      onDelete: onHeaderDelete,
+      onSetRules: onHeaderSetRules,
+      onRestore: onRestoreThread,
+      onNew: onHeaderNew,
+      onPauseAll: () => Promise.all(registry.environments().map((e) => serverCommands.pauseAllRunning(e.id))).then(() => undefined),
+      onToggleRail: () => {
+        const id = rightPanel.focused();
+        if (id) rightPanel.toggle(id);
+      },
+      onSetType: onThreadTypeChange,
+    }),
     [
-      deckLayout,
       onThreadTypeChange,
       onSelectHistorySession,
       onRenameHistorySession,
@@ -3157,10 +2868,7 @@ export default function App() {
       onHeaderNew,
     ],
   );
-  const onToggleSidebar = useCallback(
-    () => shell.toggleSidebar(sidebarLayout),
-    [sidebarLayout],
-  );
+  const onToggleSidebar = shell.toggleProjectRail;
   const onGoToFile = shell.openFilePicker;
   const onGoToSymbol = shell.openSymbolPicker;
 
@@ -3187,7 +2895,7 @@ export default function App() {
   const onFindInProject = shell.openFilesSearch;
   const onOpenSearch = shell.openSearchView;
   const onLeaveSearch = shell.closeSearchView;
-  const onOpenInbox = useCallback(() => shell.openInbox(sidebarLayout), [sidebarLayout]);
+  const onOpenInbox = shell.openInbox;
   const onLeaveInbox = shell.closeInbox;
   const onOpenNotes = shell.openNotes;
   const onLeaveNotes = shell.closeNotes;
@@ -3595,17 +3303,17 @@ export default function App() {
         onNewChat={onNewChat}
         onProjectCreated={onProjectCreated}
         onSelectAgent={onSelectLiveAgent}
-        onSelectProject={deckLayout ? onSelectProject : undefined}
-        onOpenProject={deckLayout ? pickProject : undefined}
-        onRemoveProject={deckLayout ? onRemoveProject : undefined}
+        onSelectProject={onSelectProject}
+        onOpenProject={pickProject}
+        onRemoveProject={onRemoveProject}
         onNew={onNew}
-        onNewTerminal={deckLayout ? desktopOnly(onNewTerminal) : undefined}
+        onNewTerminal={desktopOnly(onNewTerminal)}
         onSearch={onOpenSearch}
         onOpenInbox={onOpenInbox}
         onOpenNotes={onOpenNotes}
         onOpenAccountsPage={onOpenAccountsPage}
-        onOpenChats={deckLayout ? onOpenChats : undefined}
-        onGoToFile={deckLayout ? onGoToFile : undefined}
+        onOpenChats={onOpenChats}
+        onGoToFile={onGoToFile}
         onOpenWhatsNew={onOpenWhatsNew}
       />
 
@@ -3626,29 +3334,14 @@ export default function App() {
         <ShellTitleBar
           headerEvents={headerEvents}
           onToggleSidebar={onToggleSidebar}
-          onShowSourceControl={onToggleChanges}
-          onSelect={activateTab}
-          onGoBack={onVisitBack}
-          onGoForward={onVisitForward}
           onNew={onNew}
           onNewTerminal={desktopOnly(onNewTerminal)}
           onShowTerminal={desktopOnly(onShowProjectTerminal)}
           onOpenSettings={onOpenSettings}
           onOpenInbox={onOpenInbox}
           onOpenNotes={notesEnabled ? onOpenNotes : undefined}
-          onClose={onCloseTab}
-          onReorder={onReorderTabs}
           onGoToFile={onGoToFile}
-          onJoinTab={onJoinTab}
-          onJoinTabToGroup={onJoinTabToGroup}
-          onAddToNewGroup={onAddToNewGroup}
-          onAddToGroup={onAddToGroup}
-          onRemoveFromGroup={onRemoveFromGroup}
-          onUngroup={onUngroup}
-          onGroupNewTab={onGroupNewTab}
-          onGroupClose={onGroupCloseTabs}
-          onGroupMoveToNewWindow={onGroupMoveToNewWindow}
-          onSelectProject={deckLayout ? onSelectProject : undefined}
+          onSelectProject={onSelectProject}
         />
         <ThreadBanners
           projectId={selectedProjectId}
@@ -3663,7 +3356,6 @@ export default function App() {
           >
             {projectTerminals.map((dock) => {
               const show =
-                deckLayout &&
                 dock.open &&
                 !devPaneOpen &&
                 sameProjectPath(dock.projectPath, projectCwd);
@@ -3715,12 +3407,6 @@ export default function App() {
               className="relative flex min-h-0 min-w-0 flex-row [contain:layout_style]"
               style={{ gridArea: "main" }}
             >
-              {classicInbox ? (
-                <InboxDetailPane
-                  cwd={sidebarCwd}
-                  onStart={onStartInboxItem}
-                />
-              ) : (
                 <div className="relative min-h-0 min-w-0 flex-1">
               {tabs.map((tab) => mountedTabIds.has(tab.id) && (
                 <div
@@ -3755,7 +3441,6 @@ export default function App() {
                 </div>
               ))}
                 </div>
-              )}
             </div>
           </div>
         </main>
@@ -3767,9 +3452,9 @@ export default function App() {
             recents={railRecents}
             focusToken={searchViewFocusToken}
             seed={searchSeed}
-            besideRail={deckLayout && projectRailOpen}
+            besideRail={projectRailOpen}
             onClose={onLeaveSearch}
-            onToggleSidebar={deckLayout ? onToggleSidebar : undefined}
+            onToggleSidebar={onToggleSidebar}
             onOpenFile={onOpenFile}
             onOpenFileBeside={onOpenFileBeside}
             onOpenSession={onSelectHistorySession}
@@ -3781,26 +3466,26 @@ export default function App() {
         {inboxViewOpen ? (
           <InboxView
             cwd={sidebarCwd}
-            besideRail={deckLayout && projectRailOpen}
+            besideRail={projectRailOpen}
             onClose={onLeaveInbox}
-            onToggleSidebar={deckLayout ? onToggleSidebar : undefined}
+            onToggleSidebar={onToggleSidebar}
             onStart={onStartInboxItem}
           />
         ) : null}
         {notesViewOpen ? (
           <NotesView
-            besideRail={deckLayout && projectRailOpen}
+            besideRail={projectRailOpen}
             cwd={projectCwd}
             onClose={onLeaveNotes}
-            onToggleSidebar={deckLayout ? onToggleSidebar : undefined}
+            onToggleSidebar={onToggleSidebar}
           />
         ) : null}
         {accountsPage ? (
           <AliaxPagesView
             page={accountsPage}
-            besideRail={deckLayout && projectRailOpen}
+            besideRail={projectRailOpen}
             onClose={onLeaveAccountsPage}
-            onToggleSidebar={deckLayout ? onToggleSidebar : undefined}
+            onToggleSidebar={onToggleSidebar}
           />
         ) : null}
         {settingsOpen ? (
@@ -3888,17 +3573,6 @@ function isBlankSession(session: Session | undefined): boolean {
   if (!session.loaded && !sessionStore.isDraft(session.id)) return false;
   return !session.blocks.some((block) => block.role === "user");
 }
-
-function isBlankWorkspaceTab(tab: WorkspaceTab, sessions: Session[]): boolean {
-  if (tab.editorPanes.some((pane) => pane.files.length > 0)) return false;
-  if ((tab.terminalPanes ?? []).some((pane) => pane.files.length > 0))
-    return false;
-  const ids = leafIds(tab.layout);
-  if (ids.length !== 1) return false;
-  return isBlankSession(sessions.find((entry) => entry.id === ids[0]));
-}
-
-
 
 function dropOpenFiles(
   tab: WorkspaceTab,

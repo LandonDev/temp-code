@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registry } from "../lib/connection";
 import { invokeOn } from "../lib/native";
 import { useProjectBranchesState } from "./useProjectBranches";
-import { useProjectDiffStats } from "./useProjectDiffStats";
 import { useSlashCommands, slashCommandStore } from "../lib/tcserver/slashCommands";
 import type { Link } from "../lib/tcserver/store";
 import type { ServerPush } from "../lib/tcserver/types";
@@ -58,25 +57,6 @@ beforeEach(() => {
 afterEach(() => {
   slashCommandStore.reset();
   vi.restoreAllMocks();
-});
-
-describe("useProjectDiffStats", () => {
-  it("asks git only while enabled, and a focus while disabled asks nothing", async () => {
-    const { rerender, result } = renderHook(
-      ({ enabled }) => useProjectDiffStats("/repo-a", enabled),
-      { initialProps: { enabled: false } },
-    );
-    await settle();
-    act(() => window.dispatchEvent(new Event("focus")));
-    await settle();
-    expect(callsFor("git_diff_index")).toBe(0);
-    expect(result.current).toBeNull();
-
-    rerender({ enabled: true });
-    await settle();
-    expect(callsFor("git_diff_index")).toBe(1);
-    expect(result.current).toEqual({ files: 0, additions: 0, deletions: 0 });
-  });
 });
 
 describe("useProjectBranchesState", () => {

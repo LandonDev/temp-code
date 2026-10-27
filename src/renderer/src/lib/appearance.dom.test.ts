@@ -59,6 +59,8 @@ describe("initAppearance", () => {
       "bodyGlass",
       "glass",
       "sidebarLayout",
+      "sidebarOpen",
+      "sidebarTabOrder",
       "transcriptLayout",
       "transcriptZen",
     ]) {
