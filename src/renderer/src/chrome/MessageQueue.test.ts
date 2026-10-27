@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MessageQueue } from "./MessageQueue";
+
+/** The thread "waiting" sits in a wait_for_agent; every other id has no meta. */
+vi.mock("../lib/tcserver/store", () => ({
+  useSessionMeta: (id: string | undefined) => (id === "waiting" ? { id, awaiting: ["a1"] } : null),
+}));
 
 const noop = () => {};
 const props = { onSteer: noop, onRemove: noop, onUpdate: noop, onReorder: noop };
@@ -26,6 +31,12 @@ describe("MessageQueue", () => {
     expect(html).toContain("second");
     expect(html.match(/aria-label="Send now"/g)).toHaveLength(2);
     expect(html.match(/aria-label="Remove from queue"/g)).toHaveLength(2);
+  });
+
+  it("says the list waits for the wait when the thread sits in a wait_for_agent", () => {
+    const items = [{ id: "a", text: "x", ts: 1 }];
+    expect(renderToStaticMarkup(createElement(MessageQueue, { ...props, sessionId: "waiting", items }))).toContain("Queued until the wait finishes");
+    expect(renderToStaticMarkup(createElement(MessageQueue, { ...props, sessionId: "other", items }))).toContain("Queued · 1");
   });
 
   it("hides steer while paused", () => {

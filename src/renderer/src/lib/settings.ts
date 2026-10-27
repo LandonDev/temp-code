@@ -521,10 +521,12 @@ export function subscribeGhostText(onStoreChange: () => void) {
 
 const MID_TURN_DEFAULT_KEY = "monocode.midTurnDefault";
 
-/** What Enter does while a turn runs; ⌘Enter does the other one. */
+/** What Enter does while a turn runs; ⌘Enter does the other one. Steer by
+ *  default: a follow-up reaches the running turn now (and releases a
+ *  wait_for_agent the thread sits in); a stored preference wins. */
 export type MidTurnDefault = "queue" | "steer";
 
-export const MID_TURN_DEFAULT: MidTurnDefault = "queue";
+export const MID_TURN_DEFAULT: MidTurnDefault = "steer";
 
 /** Fired on `window` when the mid-turn default flips. */
 export const MID_TURN_DEFAULT_CHANGE_EVENT = "monocode:mid-turn-default-change";
@@ -532,7 +534,7 @@ export const MID_TURN_DEFAULT_CHANGE_EVENT = "monocode:mid-turn-default-change";
 export function loadMidTurnDefault(): MidTurnDefault {
   try {
     const raw = localStorage.getItem(MID_TURN_DEFAULT_KEY);
-    return raw === "steer" ? "steer" : MID_TURN_DEFAULT;
+    return raw === "steer" || raw === "queue" ? raw : MID_TURN_DEFAULT;
   } catch {
     return MID_TURN_DEFAULT;
   }

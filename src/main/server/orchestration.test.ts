@@ -15,6 +15,7 @@ import {
   orchCheckAgent,
   orchListAgents,
   orchSendToAgent,
+  orchWaitForAgent,
   projectPlanSpawnPrompt,
   orchSpawnAgent,
   setOrchestrationRegistry,
@@ -46,7 +47,14 @@ let sessions: Record<string, SessionMeta> = {}
 /** Projects by id. */
 let projects: Record<string, { id: string }> = {}
 const reports: { to: string; agentId: string; status: string; text: string }[] = []
+/** What a wait held on the parent's meta: `on` and `off` calls in order. */
+const awaiting: { parentId: string; ids: string[]; on: boolean }[] = []
 const stub = {
+  nextSteer: () => ({ promise: new Promise<string>(() => {}), cancel: () => {} }),
+  setAwaiting: (parentId: string, ids: string[], on: boolean) => {
+    awaiting.push({ parentId, ids, on })
+  },
+  subscribe: () => () => {},
   get: (id: string) => (id === parent.id ? parent : (sessions[id] ?? null)),
   childrenOf: (id: string) => (id === parent.id ? children : []),
   list: () => Object.values(sessions),
@@ -78,6 +86,7 @@ beforeEach(() => {
   created.length = 0
   sent.length = 0
   reports.length = 0
+  awaiting.length = 0
   children = []
   sessions = {}
   projects = {}
@@ -330,7 +339,7 @@ it('waitForSettled waits through queued and the starting it leaves by, and resol
   expect(settled?.status).toBe('idle')
 })
 
-it('waitForSettled sleeps through watching and resolves on the idle that follows', async () => {
+it('waitForSettled resolves on watching: the reply is complete, background work keeps the child alive', async () => {
   let status: SessionMeta['status'] = 'running'
   const listeners: ((row: { event: { type: string; status: string } }) => void)[] = []
   const reg = {
@@ -346,18 +355,49 @@ it('waitForSettled sleeps through watching and resolves on the idle that follows
   status = 'watching'
   for (const l of listeners) l({ event: { type: 'status', status: 'watching' } })
   await Promise.resolve()
-  expect(settled).toBeUndefined()
-  status = 'idle'
-  for (const l of listeners) l({ event: { type: 'status', status: 'idle' } })
   await Promise.resolve()
-  await Promise.resolve()
-  expect(settled?.status).toBe('idle')
-  // Already watching when asked: still not settled.
-  status = 'watching'
+  expect(settled?.status).toBe('watching')
+  // Already watching when asked: settled at once.
   let early: SessionMeta | null | undefined
   void waitForSettled(reg, 'c', 0).then((m) => (early = m))
   await Promise.resolve()
-  expect(early).toBeUndefined()
+  expect(early?.status).toBe('watching')
+})
+
+const kid = (over: Partial<SessionMeta>): SessionMeta =>
+  ({ id: 'child-1', parentId: parent.id, title: 'Kid', status: 'running', archived: false, ...over }) as SessionMeta
+
+it('a wait on a watching child returns watching with what it waits on', async () => {
+  const child = kid({ status: 'watching', background: { tasks: [{ id: 't', label: 'poll CI', kind: 'monitor', startedAt: 1 }], agents: [], batch: null, watchingSince: 1 } })
+  sessions[child.id] = child
+  children = [child]
+  const report = JSON.parse(await orchWaitForAgent(parent, { agentId: child.id }))
+  expect(report).toMatchObject({ agentId: child.id, status: 'watching', waitingOn: 'a monitor', note: 'its turn ended; background work keeps it alive, its reply is complete' })
+})
+
+it('a stopped child settles the wait with the harness-died note', async () => {
+  const child = kid({ status: 'stopped' })
+  sessions[child.id] = child
+  children = [child]
+  const report = JSON.parse(await orchWaitForAgent(parent, { agentId: child.id }))
+  expect(report).toMatchObject({ agentId: child.id, status: 'stopped', note: 'its harness died; Resume it or start another' })
+})
+
+it('an aborted wait releases its children and answers aborted; the parent meta held them meanwhile', async () => {
+  const child = kid({})
+  sessions[child.id] = child
+  children = [child]
+  const ac = new AbortController()
+  const wait = orchWaitForAgent(parent, { agentId: child.id }, ac.signal)
+  await Promise.resolve()
+  expect(awaiting).toEqual([{ parentId: parent.id, ids: [child.id], on: true }])
+  ac.abort()
+  expect(JSON.parse(await wait)).toEqual({ status: 'aborted', note: 'the turn ended; call wait_for_agent again to keep waiting' })
+  expect(awaiting.at(-1)).toEqual({ parentId: parent.id, ids: [child.id], on: false })
+  // A signal already aborted answers at once and holds nothing.
+  awaiting.length = 0
+  expect(JSON.parse(await orchWaitForAgent(parent, { agentId: child.id }, ac.signal))).toMatchObject({ status: 'aborted' })
+  expect(awaiting).toEqual([])
 })
 
 it('extraWriteRoots grants the reports root only when it is not the cwd', () => {

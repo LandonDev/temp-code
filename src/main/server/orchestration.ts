@@ -32,6 +32,7 @@ import {
   type OrchestrationRules
 } from '@shared/rules'
 import type { EventRow, SessionMeta } from '@shared/events'
+import { watchPhrase } from '@shared/watch'
 import type { SessionRegistry } from './sessions'
 import type { CrossHostAgents } from './crossHostAgents'
 import { foldTodo, newTodoFold, tallyOf } from './todos'
@@ -184,14 +185,14 @@ function tokensOf(
   return { input, output, costUsd: Math.round(costUsd * 10000) / 10000 }
 }
 
-/** Wait until the child finishes its current turn (idle/error/waiting).
- *  'watching' is not settled: the child is idle only until its background
- *  work (a CI poll, a Monitor) wakes it. Nor is 'queued' (held at the
- *  host's running cap, scheduler.ts) or the 'starting' it leaves through:
- *  the wait covers the turn it has not begun yet. timeoutMs <= 0 waits
- *  indefinitely — dormant, no polling. */
+/** Wait until the child finishes its current turn (idle, error, waiting,
+ *  stopped — or watching: its reply is complete and background work keeps
+ *  it alive; the report says what it waits on). Not settled: 'queued'
+ *  (held at the host's running cap, scheduler.ts) and the 'starting' it
+ *  leaves through: the wait covers the turn it has not begun yet.
+ *  timeoutMs <= 0 waits indefinitely — dormant, no polling. */
 const unsettled = (status: SessionMeta['status']): boolean =>
-  status === 'running' || status === 'watching' || status === 'queued' || status === 'starting'
+  status === 'running' || status === 'queued' || status === 'starting'
 
 /** The status an agent reads as; a queued one says why ("queued · 120 of 120 running"). */
 function statusOf(s: Pick<SessionMeta, 'id' | 'status'>): string {
@@ -260,16 +261,19 @@ function waitForAnySettled(
 // when idle, after its current work otherwise).
 
 /** Children currently inside a wait_for_agent — their settle is already
- *  being delivered as that tool's result, so no wake message. */
+ *  being delivered as that tool's result, so no wake message. The parent's
+ *  meta names them (`awaiting`) while the wait holds. */
 const awaited = new Map<string, number>()
-const holdAwaited = (ids: string[]): (() => void) => {
+const holdAwaited = (ids: string[], parentId: string): (() => void) => {
   for (const id of ids) awaited.set(id, (awaited.get(id) ?? 0) + 1)
+  registry?.setAwaiting(parentId, ids, true)
   return () => {
     for (const id of ids) {
       const n = (awaited.get(id) ?? 1) - 1
       if (n <= 0) awaited.delete(id)
       else awaited.set(id, n)
     }
+    registry?.setAwaiting(parentId, ids, false)
   }
 }
 
@@ -338,14 +342,17 @@ export function notifyParentOfSettle(reg: SessionRegistry, child: SessionMeta): 
   const tail = turnText(turn).slice(-600)
   const asked = pending?.kind === 'question' ? questionLines(pending.questions) : ''
   const question = asked ? `\n${asked}` : ''
+  const reply = tail ? `Latest reply:\n${tail}` : '(no reply text)'
   const body =
     child.status === 'waiting'
       ? pending?.kind === 'question'
         ? `It is WAITING on a question — answer it with answer_agent (requestId ${pending.requestId}).${question}`
         : 'It is WAITING on a permission approval — only the user can grant that.'
-      : tail
-        ? `Latest reply:\n${tail}`
-        : '(no reply text)'
+      : child.status === 'stopped'
+        ? `Its harness died; Resume it or start another.\n${reply}`
+        : child.status === 'watching'
+          ? `Its turn ended; it is watching ${watchPhrase(reg.get(child.id)?.background ?? child.background)}. Its reply is complete.\n${reply}`
+          : reply
   for (const targetId of targets) {
     const parent = reg.get(targetId)
     if (!parent || parent.archived) continue
@@ -410,7 +417,8 @@ const notChild = (agentId: string): string =>
   `refused: ${agentId} is not a subagent or batch thread of this session. list_agents shows your agents and their ids.`
 const idleSeconds = (id: string): number =>
   Math.max(0, Math.round((Date.now() - (registry?.lastActivityAt(id) ?? Date.now())) / 1000))
-/** The settled-agent report wait_for_agent returns. */
+/** The settled-agent report wait_for_agent returns. A watching child says
+ *  what keeps it alive; a stopped one that its harness died. */
 const settledReport = (id: string, meta: SessionMeta): Record<string, unknown> => {
   const turn = latestTurnRows(registry!.eventsAfter(id, 0))
   const pending = meta.status === 'waiting' ? pendingOf(turn) : null
@@ -418,7 +426,11 @@ const settledReport = (id: string, meta: SessionMeta): Record<string, unknown> =
     agentId: id,
     status: meta.status,
     reply: turnText(turn).slice(-8000) || '(no reply yet)',
-    ...(pending ? { pending } : {})
+    ...(pending ? { pending } : {}),
+    ...(meta.status === 'watching'
+      ? { waitingOn: watchPhrase(registry!.get(id)?.background ?? meta.background), note: 'its turn ended; background work keeps it alive, its reply is complete' }
+      : {}),
+    ...(meta.status === 'stopped' ? { note: 'its harness died; Resume it or start another' } : {})
   }
 }
 
@@ -848,7 +860,8 @@ export interface WaitForAgentArgs {
 
 export async function orchWaitForAgent(
   parent: SessionMeta,
-  args: WaitForAgentArgs
+  args: WaitForAgentArgs,
+  signal?: AbortSignal
 ): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
   const all = [...(args.agentIds ?? []), ...(args.agentId ? [args.agentId] : [])]
@@ -856,22 +869,33 @@ export async function orchWaitForAgent(
   const remoteIds = all.filter((id) => crossHost?.isRemote(id))
   const ids = all.filter((id) => !remoteIds.includes(id))
   for (const id of ids) if (!childOf(parent, id)) return notChild(id)
+  if (signal?.aborted) return abortedReport()
   // 0 / omitted = sleep until settled — the default; a timeout is opt-in.
   const timeoutMs = (args.timeoutSeconds ?? 0) * 1000
-  const release = holdAwaited(ids)
+  const release = holdAwaited(ids, parent.id)
   // Agents on other hosts wait over their links (crossHostAgents.ts); a
   // wait over both kinds races them for 'any' and gathers them for 'all'.
   const stop = { stopped: false }
   const remoteWait = (id: string) => crossHost!.wait(parent, id, timeoutMs, stop)
-  // A master's wait never swallows the person: a message into its live
-  // turn (sessions.ts steerMaster) ends the wait with the message as the
-  // reason, whatever the mode; the agents keep running.
-  const now = registry.get(parent.id) ?? parent
-  const steer = isMasterSession(now) ? registry.nextSteer(parent.id) : null
+  // A wait never swallows the person: a message into the live turn
+  // (sessions.ts steerLive, or a send into it) ends the wait with the
+  // message as the reason, whatever the mode; the agents keep running.
+  // Nor does it outlive the turn: the harness aborting the call (Stop, the
+  // turn ending) ends it with 'aborted', and the children report through
+  // the queue from then on.
+  const steer = registry.nextSteer(parent.id)
   const STEERED = Symbol('steered')
-  const raced = <T>(p: Promise<T>): Promise<T | { [STEERED]: string }> =>
-    steer ? Promise.race([p, steer.promise.then((text) => ({ [STEERED]: text }))]) : p
+  const ABORTED = Symbol('aborted')
+  let onAbort: (() => void) | null = null
+  const aborted = new Promise<{ [ABORTED]: true }>((resolve) => {
+    if (!signal) return
+    onAbort = () => resolve({ [ABORTED]: true })
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+  const raced = <T>(p: Promise<T>): Promise<T | { [STEERED]: string } | { [ABORTED]: true }> =>
+    Promise.race([p, steer.promise.then((text) => ({ [STEERED]: text })), aborted])
   const steered = (v: unknown): v is { [STEERED]: string } => !!v && typeof v === 'object' && STEERED in v
+  const wasAborted = (v: unknown): v is { [ABORTED]: true } => !!v && typeof v === 'object' && ABORTED in v
   const steerReport = (text: string): string =>
     JSON.stringify({
       status: 'steered',
@@ -887,6 +911,7 @@ export async function orchWaitForAgent(
         ])
       )
       if (steered(both)) return steerReport(both[STEERED])
+      if (wasAborted(both)) return abortedReport()
       const [metas, remotes] = both
       return JSON.stringify([
         ...ids.map((id, i) => {
@@ -910,11 +935,13 @@ export async function orchWaitForAgent(
       )
       stop.stopped = true
       if (steered(first)) return steerReport(first[STEERED])
+      if (wasAborted(first)) return abortedReport()
       if (!first) return JSON.stringify({ status: 'timeout', note: 'still running — check_agent shows progress' })
       return JSON.stringify(first)
     }
     const settled = await raced(waitForAnySettled(registry, ids, timeoutMs))
     if (steered(settled)) return steerReport(settled[STEERED])
+    if (wasAborted(settled)) return abortedReport()
     if (!settled) {
       return JSON.stringify({
         status: 'timeout',
@@ -923,10 +950,16 @@ export async function orchWaitForAgent(
     }
     return JSON.stringify(settledReport(settled.id, settled.meta))
   } finally {
-    steer?.cancel()
+    steer.cancel()
+    if (onAbort) signal?.removeEventListener('abort', onAbort)
+    stop.stopped = true
     release()
   }
 }
+
+/** The wait's answer when the harness ended the call under it (Stop, the turn ending). */
+const abortedReport = (): string =>
+  JSON.stringify({ status: 'aborted', note: 'the turn ended; call wait_for_agent again to keep waiting' })
 
 export async function orchAnswerAgent(
   parent: SessionMeta,
@@ -1073,7 +1106,7 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
       ),
       tool(
         'wait_for_agent',
-        'Block until a subagent (or the first of several) finishes its current turn, then return its latest reply and status. Timeouts are normal for long tasks — check_agent, then wait again.',
+        'Block until a subagent (or the first of several) finishes its current turn, then return its latest reply and status. The wait also returns when the person sends a message into your turn (status steered: act on it, then wait again), when your turn is stopped (aborted), when a child\'s turn ends behind background work it keeps watching (status watching, with waitingOn: its reply is complete), and when a child\'s harness dies (status stopped). Timeouts are normal for long tasks — check_agent, then wait again.',
         {
           agentId: z.string().optional().describe('One agent to wait for'),
           agentIds: z
@@ -1091,7 +1124,7 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
               '0 / omitted = sleep until settled (the normal case — no polling). Set only when you want control back early; the agents keep running.'
             )
         },
-        async (args) => text(await orchWaitForAgent(parent, args))
+        async (args, extra) => text(await orchWaitForAgent(parent, args, (extra as { signal?: AbortSignal } | undefined)?.signal))
       ),
       tool(
         'answer_agent',

@@ -10,6 +10,7 @@ import { ProjectPlanTickAnswerSchema, type ProjectPlanState } from './contract-p
 import type { ThreadResource, ThreadResourceRemoval } from './contract-resources'
 import type { BuildFacts } from './deployDrift'
 import { NoticeKindSchema, type AgentEvent, type SessionMeta } from './events'
+import { QueueAddResultSchema } from './wireSchemas'
 import * as W from './wireSchemas'
 
 // Every schema the 2026-10-21/22 features added parses a value typed by its
@@ -251,5 +252,14 @@ describe('session.changes on the wire (thread 14)', () => {
     const frame = { push: 'boot-resume', count: 3, at: 1_700_000_000_000 }
     expect(W.RemotePushSchema.parse(frame)).toEqual(frame)
     expect(() => W.RemotePushSchema.parse({ push: 'boot-resume', count: 3 })).toThrow()
+  })
+})
+
+describe('queue.add answers typed', () => {
+  it('a queued item or a steer, nothing else', () => {
+    expect(QueueAddResultSchema.parse({ kind: 'queued', item: { id: 'm1', text: 'later', ts: 1 } })).toEqual({ kind: 'queued', item: { id: 'm1', text: 'later', ts: 1 } })
+    expect(QueueAddResultSchema.parse({ kind: 'steered', id: 'm2' })).toEqual({ kind: 'steered', id: 'm2' })
+    expect(QueueAddResultSchema.safeParse(null).success).toBe(false)
+    expect(QueueAddResultSchema.safeParse({ id: 'm1', text: 'later', ts: 1 }).success).toBe(false)
   })
 })

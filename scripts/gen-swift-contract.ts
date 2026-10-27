@@ -339,7 +339,7 @@ export const SUBSET: SubsetEntry[] = [
   method('host.log', W.HostLogSnapshotSchema),
   method('macBridge.thread.get', W.MacBridgeThreadStateSchema),
   method('queue.list', z.array(W.QueuedMessageSchema)),
-  method('queue.add', z.null()),
+  method('queue.add', W.QueueAddResultSchema),
   method('queue.remove', z.null()),
   method('queue.update', z.null()),
   method('queue.reorder', z.null()),

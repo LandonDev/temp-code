@@ -14,11 +14,14 @@ import {
   loadComposerRunner,
   loadGridArcadeEnabled,
   loadLiveAgentsEnabled,
+  loadMidTurnDefault,
   loadNotesEnabled,
+  MID_TURN_DEFAULT,
   NOTES_ENABLED_DEFAULT,
   saveComposerRunner,
   saveGridArcadeEnabled,
   saveLiveAgentsEnabled,
+  saveMidTurnDefault,
   saveNotesEnabled,
 } from "./settings";
 
@@ -185,5 +188,25 @@ describe("keybindings", () => {
     const byGlyph = filterKeybindings(KEYBINDING_GROUPS, "⌘K").flatMap((g) => g.bindings.map((b) => b.name));
     expect([...byKeys, ...byGlyph]).toContain("Search");
     expect(filterKeybindings(KEYBINDING_GROUPS, "nothing like this")).toEqual([]);
+  });
+});
+
+describe("mid-turn default", () => {
+  beforeEach(() => {
+    mockLocalStorage();
+  });
+
+  it("is steer: a follow-up reaches the running turn", () => {
+    expect(MID_TURN_DEFAULT).toBe("steer");
+    expect(loadMidTurnDefault()).toBe("steer");
+  });
+
+  it("a stored preference wins either way", () => {
+    saveMidTurnDefault("queue");
+    expect(loadMidTurnDefault()).toBe("queue");
+    saveMidTurnDefault("steer");
+    expect(loadMidTurnDefault()).toBe("steer");
+    localStorage.setItem("monocode.midTurnDefault", "nonsense");
+    expect(loadMidTurnDefault()).toBe("steer");
   });
 });

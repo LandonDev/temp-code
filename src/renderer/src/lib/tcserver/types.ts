@@ -6,6 +6,7 @@ export type {
   ServerPush,
   ServerResponse,
   QueuedMessage,
+  QueueAddResult,
   SessionBatchResult,
   TaskLog,
 } from "@server/shared/contract";

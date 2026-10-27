@@ -11,6 +11,7 @@ import type {
   CreateSessionInput,
   PermissionPolicy,
   QueuedMessage,
+  QueueAddResult,
   ServerAttachment,
   SessionBatchResult,
   TaskLog,
@@ -194,8 +195,10 @@ export async function steer(
     extra,
   );
   const files = [...(await toServerAttachments(session.environmentId, attachments, session.id)), ...(extra?.attachments ?? [])];
-  const item = await queueAdd(session.id, text, files, runSettingsFor(session));
-  await queueSteer(session.id, item.id);
+  // The host steers a live turn itself (sessions.ts steerLive); a message it
+  // queued instead (attachments, an older host) is sent into the turn now.
+  const added = await queueAdd(session.id, text, files, runSettingsFor(session), true);
+  if (added.kind === "queued") await queueSteer(session.id, added.item.id);
 }
 
 /** Run settings a queued message carries to its eventual send: the
@@ -225,25 +228,29 @@ export async function queueList(sessionId: string): Promise<QueuedMessage[]> {
   return items;
 }
 
+/** Queue a message, or with `steer` send it into the live turn. The host's
+ *  typed answer says which happened; an older host answered the item or
+ *  null (its pushed list then holds the newest row with this text). */
 export async function queueAdd(
   sessionId: string,
   text: string,
   attachments: ServerAttachment[] = [],
   settings: QueueRunSettings = {},
-): Promise<QueuedMessage> {
+  steer = false,
+): Promise<QueueAddResult> {
   const link = linkFor(sessionId);
-  const item = await link.request<QueuedMessage | null>("queue.add", {
+  const answer = await link.request<QueueAddResult | QueuedMessage | null>("queue.add", {
     sessionId,
     text,
     ...(attachments.length > 0 ? { attachments } : {}),
     ...settings,
+    ...(steer ? { steer: true } : {}),
   });
-  if (item) return item;
-  // A server that answers null already pushed the list; the item is its
-  // newest row with this text.
+  if (answer && "kind" in answer) return answer;
+  if (answer) return { kind: "queued", item: answer };
   const queued = sessionStore.queueOf(sessionId);
   for (let i = queued.length - 1; i >= 0; i -= 1) {
-    if (queued[i].text === text) return queued[i];
+    if (queued[i].text === text) return { kind: "queued", item: queued[i] };
   }
   throw new Error("The server did not queue the message");
 }

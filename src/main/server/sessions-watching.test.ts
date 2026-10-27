@@ -15,6 +15,9 @@ const emits = new Map<string, (e: AgentEvent) => void>()
 const sends = new Map<string, string[]>()
 const disposed: string[] = []
 const stopped: string[] = []
+/** Handles whose process died: send throws, alive says no; a fresh start clears it. */
+const dead = new Set<string>()
+const spawns = new Map<string, number>()
 vi.mock('./drivers', () => ({
   BUILT_IN_DRIVERS: {
     claude: {
@@ -22,11 +25,15 @@ vi.mock('./drivers', () => ({
       start: async (ctx: DriverCtx) => {
         const id = ctx.session.id
         emits.set(id, ctx.emit)
+        spawns.set(id, (spawns.get(id) ?? 0) + 1)
+        dead.delete(id)
         return {
           send: async (text: string) => {
+            if (dead.has(id)) throw new Error('harness gone')
             sends.set(id, [...(sends.get(id) ?? []), text])
             ctx.emit({ type: 'status', status: 'running' })
           },
+          alive: () => !dead.has(id),
           interrupt: () => {},
           stopTask: async (taskId: string) => {
             stopped.push(`${id}:${taskId}`)
@@ -53,6 +60,8 @@ beforeEach(async () => {
   sends.clear()
   disposed.length = 0
   stopped.length = 0
+  dead.clear()
+  spawns.clear()
 })
 afterEach(async () => {
   vi.useRealTimers()
@@ -191,17 +200,58 @@ it('a persisted watching row resets to idle at boot', async () => {
   expect(types(s.id)).toContain('status:idle')
 })
 
-it('a child going running → watching sends no parent report; watching → idle does', async () => {
+it('running → watching reports to a dormant parent once, saying what the child waits on; watching → idle adds no report', async () => {
   const parent = await registry.create({ cwd: root, provider: 'claude' })
   const child = await live(parent.id)
+  emit(child, { type: 'background-tasks', tasks: ['poll CI'], items: [task('poll CI', 'monitor')] })
   emit(child, { type: 'status', status: 'watching' })
   await settle()
-  expect(types(parent.id)).not.toContain('agent-report')
-  expect(sends.get(parent.id)).toBeUndefined()
+  expect(types(parent.id).filter((t) => t === 'agent-report')).toHaveLength(1)
+  expect(sends.get(parent.id)?.[0]).toContain('settled with status watching')
+  expect(sends.get(parent.id)?.[0]).toContain('it is watching a monitor')
+  emit(child, { type: 'background-tasks', tasks: [], items: [] })
   emit(child, { type: 'status', status: 'idle' })
   await settle()
-  expect(types(parent.id)).toContain('agent-report')
-  expect(sends.get(parent.id)?.[0]).toContain('<subagent-report>')
+  expect(types(parent.id).filter((t) => t === 'agent-report')).toHaveLength(1)
+  expect(sends.get(parent.id)).toHaveLength(1)
+})
+
+it('a message queued while running drains as a turn when the thread settles into watching', async () => {
+  const id = await live()
+  const added = registry.queueAdd(id, 'and then this')
+  expect(added.kind).toBe('queued')
+  expect(registry.queueList(id)).toHaveLength(1)
+  expect(sends.get(id)).toEqual(['go'])
+  emit(id, { type: 'background-tasks', tasks: ['serve the app'] })
+  emit(id, { type: 'status', status: 'watching' })
+  await settle()
+  expect(registry.queueList(id)).toEqual([])
+  expect(sends.get(id)?.at(-1)).toBe('and then this')
+  expect(registry.get(id)?.status).toBe('running')
+})
+
+it('a message queued into a watching thread goes in at once', async () => {
+  const id = await live()
+  emit(id, { type: 'background-tasks', tasks: ['serve the app'] })
+  emit(id, { type: 'status', status: 'watching' })
+  registry.queueAdd(id, 'now please')
+  await settle()
+  expect(registry.queueList(id)).toEqual([])
+  expect(sends.get(id)?.at(-1)).toBe('now please')
+})
+
+it('a steer into a dead handle boots a fresh harness and delivers the message once', async () => {
+  const id = await live()
+  dead.add(id)
+  const added = registry.queueAdd(id, 'are you there', { steer: true })
+  expect(added.kind).toBe('steered')
+  await settle()
+  await settle()
+  expect(spawns.get(id)).toBe(2)
+  expect(sends.get(id)?.filter((t) => t.includes('are you there'))).toEqual(['are you there'])
+  const rows = registry.eventsAfter(id, 0).filter((r) => r.event.type === 'user-text' && (r.event as { text: string }).text === 'are you there')
+  expect(rows).toHaveLength(1)
+  expect(registry.get(id)?.status).toBe('running')
 })
 
 it('a watching parent takes a report at once', async () => {

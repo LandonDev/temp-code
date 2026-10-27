@@ -2474,13 +2474,17 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: registry.queueList(req.params.sessionId) })
             break
           case 'queue.add':
-            registry.queueAdd(req.params.sessionId, req.params.text, {
-              provider: req.params.provider,
-              model: req.params.model,
-              reasoning: req.params.reasoning,
-              attachments: req.params.attachments
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: registry.queueAdd(req.params.sessionId, req.params.text, {
+                provider: req.params.provider,
+                model: req.params.model,
+                reasoning: req.params.reasoning,
+                attachments: req.params.attachments,
+                steer: req.params.steer
+              })
             })
-            sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'queue.remove':
             registry.queueRemove(req.params.sessionId, req.params.messageId)

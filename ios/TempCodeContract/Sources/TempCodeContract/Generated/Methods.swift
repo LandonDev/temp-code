@@ -1119,18 +1119,68 @@ public enum Methods {
             public let model: String?
             public let reasoning: Reasoning?
             public let attachments: [Attachment]?
+            public let steer: Bool?
 
-            public init(sessionId: String, text: String, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, attachments: [Attachment]? = nil) {
+            public init(sessionId: String, text: String, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, attachments: [Attachment]? = nil, steer: Bool? = nil) {
                 self.sessionId = sessionId
                 self.text = text
                 self.provider = provider
                 self.model = model
                 self.reasoning = reasoning
                 self.attachments = attachments
+                self.steer = steer
             }
         }
 
-        public typealias Output = NoOutput
+        public enum Output: Codable, Hashable, Sendable {
+            public struct Case0: Codable, Hashable, Sendable {
+                public let item: QueuedMessage
+
+                public init(item: QueuedMessage) {
+                    self.item = item
+                }
+            }
+            public struct Case1: Codable, Hashable, Sendable {
+                public let id: String
+
+                public init(id: String) {
+                    self.id = id
+                }
+            }
+
+            case queued(Case0)
+            case steered(Case1)
+            /// A `kind` this build does not know: the whole object, untouched.
+            case unknown(JSONValue)
+
+            private enum Tag: String, CodingKey {
+                case kind
+            }
+
+            public init(from decoder: any Decoder) throws {
+                let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .kind)
+                switch tag {
+                case "queued": self = .queued(try Case0(from: decoder))
+                case "steered": self = .steered(try Case1(from: decoder))
+                default: self = .unknown(try JSONValue(from: decoder))
+                }
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                switch self {
+                case .queued(let value): try Self.encode(tag: "queued", value, to: encoder)
+                case .steered(let value): try Self.encode(tag: "steered", value, to: encoder)
+                case .unknown(let value): try value.encode(to: encoder)
+                }
+            }
+
+            private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: Tag.self)
+                try container.encode(tag, forKey: .kind)
+                try value.encode(to: encoder)
+            }
+        }
+        public typealias Output = Output
     }
 
     public enum QueueRemove: ContractMethod {

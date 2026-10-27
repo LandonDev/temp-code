@@ -542,6 +542,10 @@ export interface SessionMeta {
    *  master's batch, the watching stretch) — transient like `activity`;
    *  absent or null when there is nothing and the thread is not watching. */
   background?: BackgroundWork | null
+  /** The agent ids a live wait_for_agent of this thread covers
+   *  (orchestration.ts); absent when none. A queued message waits for
+   *  the wait, or steers into it. */
+  awaiting?: string[]
   /** How far through its CURRENT task list the thread is — server-folded
    *  from the log so a tab shows it without opening the thread. Null when
    *  this pass has no list yet. `current` names the in-progress task. */

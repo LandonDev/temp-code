@@ -50,6 +50,8 @@ class FakeLink implements Link {
   environmentId = "local";
   profile = "local" as const;
   connected = true;
+  /** How queue.add answers: an older host's bare item, the typed queued answer, or a steer. */
+  queueAnswer: "item" | "queued" | "steered" = "item";
   calls: { method: string; params: any }[] = [];
   private pushListeners = new Set<(push: ServerPush) => void>();
   request<T>(method: string, params?: unknown): Promise<T> {
@@ -70,7 +72,11 @@ class FakeLink implements Link {
       return Promise.resolve(null as T);
     }
     if (method === "file.read") return (params as any).path === "/repo/.temp-code/plan.md" ? Promise.resolve("# Plan" as T) : Promise.reject(new Error("outside"));
-    if (method === "queue.add") return Promise.resolve({ id: "m1", text: (params as any).text, ts: 1 } as T);
+    if (method === "queue.add") {
+      const item = { id: "m1", text: (params as any).text, ts: 1 };
+      if (this.queueAnswer === "item") return Promise.resolve(item as T);
+      return Promise.resolve((this.queueAnswer === "steered" ? { kind: "steered", id: "m1" } : { kind: "queued", item }) as T);
+    }
     if (method === "queue.list") return Promise.resolve([{ id: "q1", text: "one", ts: 1 }, { id: "q2", text: "two", ts: 2 }] as T);
     if (method === "session.batch") {
       const p = params as any;
@@ -198,14 +204,33 @@ describe("thread commands", () => {
 });
 
 describe("steer", () => {
-  it("queues then steers", async () => {
+  it("asks the host to steer; a host that queued instead gets the message sent into the turn", async () => {
     link.push({ push: "session", session: wireMeta({ id: "s1", status: "running" }) });
     const session = sessionStore.get("s1")!;
     sessionStore.mutate([session]);
     await steer(session, "also", [], undefined, undefined);
-    expect(link.of("queue.add")[0]).toEqual({ sessionId: "s1", text: "also" });
+    expect(link.of("queue.add")[0]).toEqual({ sessionId: "s1", text: "also", steer: true });
     expect(link.of("queue.steer")[0]).toEqual({ sessionId: "s1", messageId: "m1" });
     expect(sessionStore.get("s1")!.blocks.at(-1)).toMatchObject({ role: "user", text: "also", pending: true });
+  });
+
+  it("a host that steered the message itself is not asked again", async () => {
+    link.queueAnswer = "steered";
+    link.push({ push: "session", session: wireMeta({ id: "s1", status: "running" }) });
+    const session = sessionStore.get("s1")!;
+    sessionStore.mutate([session]);
+    await steer(session, "also", [], undefined, undefined);
+    expect(link.of("queue.add")).toHaveLength(1);
+    expect(link.of("queue.steer")).toEqual([]);
+  });
+
+  it("queueAdd reads the typed answer and never throws on a steer", async () => {
+    link.push({ push: "session", session: wireMeta({ id: "s1", status: "running" }) });
+    link.queueAnswer = "queued";
+    expect(await queueAdd("s1", "later", [], {})).toEqual({ kind: "queued", item: { id: "m1", text: "later", ts: 1 } });
+    link.queueAnswer = "steered";
+    expect(await queueAdd("s1", "now", [], {}, true)).toEqual({ kind: "steered", id: "m1" });
+    expect(link.of("queue.add").at(-1)).toEqual({ sessionId: "s1", text: "now", steer: true });
   });
 });
 
@@ -296,7 +321,7 @@ describe("run settings on queued messages", () => {
     const session = { ...sessionStore.get("s1")!, model: "claude:opus-5" };
     sessionStore.mutate([session]);
     await steer(session, "switch", [], undefined, undefined);
-    expect(link.of("queue.add")[0]).toEqual({ sessionId: "s1", text: "switch", model: "claude-opus-5" });
+    expect(link.of("queue.add")[0]).toEqual({ sessionId: "s1", text: "switch", model: "claude-opus-5", steer: true });
   });
 
   it("queueAdd spreads the settings it is given", async () => {

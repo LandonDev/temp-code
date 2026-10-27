@@ -40,13 +40,15 @@ export function MessageQueue({
 }: Props) {
   const [editing, setEditing] = useState<string | null>(null)
   const reduce = useReducedMotion()
+  // The thread sits in a wait_for_agent: the list drains when the wait does.
+  const awaiting = (useSessionMeta(sessionId)?.awaiting?.length ?? 0) > 0
 
   if (items.length === 0) return null
 
   return (
     <div className="mb-2">
       <p className="mb-1 px-1 text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase">
-        Queued · {items.length}
+        {awaiting ? 'Queued until the wait finishes' : `Queued · ${items.length}`}
       </p>
       <Reorder.Group
         axis="y"

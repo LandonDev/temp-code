@@ -925,7 +925,9 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       provider: providerEnum.optional(),
       model: z.string().optional(),
       reasoning: reasoningEnum.optional(),
-      attachments: z.array(AttachmentSchema).optional()
+      attachments: z.array(AttachmentSchema).optional(),
+      /** Into the live turn now (the composer's Steer); the answer says `steered` when it went. */
+      steer: z.boolean().optional()
     })
   }),
   z.object({
@@ -1282,6 +1284,9 @@ export interface QueuedMessage {
   reasoning?: string
   attachments?: import('./events').Attachment[]
 }
+
+/** queue.add's answer: the message waits in the list, or was steered into the live turn. */
+export type QueueAddResult = { kind: 'queued'; item: QueuedMessage } | { kind: 'steered'; id: string }
 
 export type ServerPush =
   // First frame on every socket: which environment answered, the contract

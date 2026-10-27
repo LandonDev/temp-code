@@ -206,7 +206,13 @@ interface QueuedSendOpts {
   /** A retry of a message whose user row is already on the transcript (the
    *  harness refused it); `first` is whether it opened the thread. */
   echoed?: { first: boolean }
+  /** Into the live turn now (the composer's Steer), whatever the thread;
+   *  a master steers without it. Never stored on the queued item. */
+  steer?: boolean
 }
+
+/** What queueAdd did with the message: queued it, or steered it into the live turn. */
+export type QueueAddResult = { kind: 'queued'; item: QueuedMessage } | { kind: 'steered'; id: string }
 
 export interface QueuedMessage extends QueuedSendOpts {
   id: string
@@ -432,6 +438,17 @@ async function githubRepoOf(path: string): Promise<string | null> {
   return url ? githubRepoFromRemote(url) : null
 }
 
+/** Which status moves wake a dormant parent with a report (orchestration.ts
+ *  notifyParentOfSettle): a turn ending (idle, error, waiting, watching —
+ *  the reply is complete, background work keeps the thread alive — or
+ *  stopped, the harness gone), and a watching thread erroring, stopping or
+ *  asking something. watching → idle is the work finishing, not a settle. */
+export function isSettleReport(from: SessionMeta['status'] | undefined, to: SessionMeta['status']): boolean {
+  if (from === 'running') return to === 'idle' || to === 'error' || to === 'waiting' || to === 'watching' || to === 'stopped'
+  if (from === 'watching') return to === 'error' || to === 'waiting' || to === 'stopped'
+  return false
+}
+
 export class SessionRegistry {
   private catalogListeners = new Set<(kind: 'workspaces' | 'projects') => void>()
 
@@ -467,8 +484,10 @@ export class SessionRegistry {
   private queueOptIn = new Set<string>()
   /** The lines queued rows carry (scheduler.ts): what the rail and the strip read. */
   private queuedLines = new Map<string, string>()
-  /** wait_for_agent calls of a master waiting for the person's next steer (nextSteer). */
+  /** wait_for_agent calls waiting for the person's next steer into the thread's turn (nextSteer). */
   private steerWaiters = new Map<string, Set<(text: string) => void>>()
+  /** The agent ids a live wait_for_agent of each thread covers, with how many waits name each (setAwaiting). */
+  private readonly awaiting = new Map<string, Map<string, number>>()
   /** The thread scheduler: `after` and the running cap (CLAUDE.md "Master threads"). */
   readonly scheduler: ThreadScheduler
   /** One phase line per send in stalls.log (sendSpans.ts): where a slow send spent its time. */
@@ -2667,6 +2686,9 @@ export class SessionRegistry {
     try {
       await handle.send(out, sendAttachments)
       this.spans.mark(sessionId, 'delivered')
+      // A message into a live turn is a steer: a wait_for_agent in flight
+      // there returns on it (orchestration.ts), whoever sent it.
+      if (status === 'running' || status === 'starting' || status === 'waiting') this.resolveSteerWaiters(sessionId, text)
     } catch (err) {
       // A steer at a provider that can't take mid-turn input (cursor's
       // process-per-turn) front-queues instead of erroring the composer.
@@ -3890,8 +3912,12 @@ export class SessionRegistry {
       // Live change stream (M22): watchers follow running sessions.
       if (next) liveDiffOnStatus(this, next, cur?.status)
       // A settled turn runs the pending completed-turn pass first; only a
-      // fully settled session (pass included) releases queued messages.
-      if (event.status === 'idle' || masterWatch) {
+      // fully settled session (pass included) releases queued messages. A
+      // settle into watching (background tasks live, or a master's open
+      // batch) is a settle too: the harness is idle behind its work, so the
+      // reports parked for it and then the person's next message go in as
+      // turns of their own, as they would on idle.
+      if (event.status === 'idle' || event.status === 'watching') {
         const pass = this.passActive.has(sessionId) ? null : this.passPending.get(sessionId)
         this.passActive.delete(sessionId)
         if (pass) {
@@ -3915,25 +3941,18 @@ export class SessionRegistry {
         this.passPending.delete(sessionId)
         this.passActive.delete(sessionId)
       }
-      // Watching: the harness is idle, so parked subagent reports can go
-      // in now. Queued user messages and the completed-turn pass wait for
-      // idle — the turn is not over until the awaited work reports.
-      if (event.status === 'watching') this.drainReports(sessionId)
       // Dormant supervision: a subagent leaving "running" wakes its parent
       // with an automatic report — immediately when the parent is idle,
       // queued behind its current work otherwise. Skipped when a
-      // wait_for_agent already covers this child. running → watching is
-      // no settle (the child still has work in flight); watching → idle is.
+      // wait_for_agent already covers this child. running → watching IS a
+      // settle (the reply is complete; the report says what it still
+      // waits on) and watching → idle adds nothing; a watching child that
+      // errors, stops (its harness died) or asks something reports again.
       // A root thread of a master's batch (masterId) wakes the master the
       // same way, and the thread that started it (startedBy) too, once
       // each; a settle is one report per listener whoever sent the message
       // that started the turn, the master included.
-      if (
-        next &&
-        settleTargets(next).length > 0 &&
-        (cur?.status === 'running' || cur?.status === 'watching') &&
-        (event.status === 'idle' || event.status === 'error' || event.status === 'waiting')
-      ) {
+      if (next && settleTargets(next).length > 0 && isSettleReport(cur?.status, event.status)) {
         settleToReport = next
       }
       // A planning thread settling with a complete plan (plan_complete was
@@ -4220,25 +4239,76 @@ export class SessionRegistry {
     this.append(sessionId, { type: 'status', status: 'idle' })
   }
 
-  /** A person's message into a master's live turn: the user row, the
-   *  steer whispered to the harness, the waiters told. False when the
-   *  master is not mid-turn (the caller queues as usual). */
-  private steerMaster(sessionId: string, text: string): boolean {
+  /** A person's message into a live turn (running or starting, not
+   *  paused): the user row, the text whispered as a steer, the waiters told
+   *  (a wait_for_agent in flight returns on it). False when the thread is
+   *  not mid-turn, so the caller queues as usual. A handle whose harness is
+   *  gone is dropped and a fresh one takes the text as a plain message (the
+   *  user row is already there); a provider that cannot take mid-turn input
+   *  front-queues it, so it sends next. */
+  private steerLive(sessionId: string, text: string): boolean {
     const status = this.store.getSession(sessionId)?.status
     if (status !== 'running' && status !== 'starting') return false
-    if (!this.handles.get(sessionId) || this.isTreePaused(sessionId) || !this.isMaster(sessionId)) return false
+    const handle = this.handles.get(sessionId)
+    if (!handle || this.isTreePaused(sessionId)) return false
     this.append(sessionId, { type: 'user-text', text })
-    this.whisper(sessionId, `<user-steer>\n${text}\n</user-steer>`)
-    const waiters = this.steerWaiters.get(sessionId)
-    if (waiters) {
-      this.steerWaiters.delete(sessionId)
-      for (const w of waiters) w(text)
+    const wrapped = `<user-steer>\n${text}\n</user-steer>`
+    const again: QueuedSendOpts = { echoed: { first: false } }
+    const deliver = async (): Promise<void> => {
+      if (handle.alive?.() === false) throw new Error('harness gone')
+      this.lastActivity.set(sessionId, Date.now())
+      await handle.send(wrapped)
     }
+    void deliver()
+      .catch(async (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err)
+        if (message.includes('harness gone')) {
+          // The process behind the turn is gone: a fresh harness takes the
+          // message as a turn of its own (resume keeps the conversation).
+          await this.dropHandle(sessionId)
+          await this.send(sessionId, text, again)
+        } else if (message.includes('still running')) {
+          this.queueAdd(sessionId, text, again, true)
+        } else {
+          this.holdNotice(sessionId, wrapped)
+        }
+      })
+      .catch(() => {})
+    this.resolveSteerWaiters(sessionId, text)
     return true
   }
 
-  /** The next steer into a master's turn (orchestration.ts: a master's
-   *  wait_for_agent returns on it). `cancel` drops the waiter. */
+  /** The person spoke into the thread's turn: every wait_for_agent in
+   *  flight there returns with the message (nextSteer). */
+  private resolveSteerWaiters(sessionId: string, text: string): void {
+    const waiters = this.steerWaiters.get(sessionId)
+    if (!waiters) return
+    this.steerWaiters.delete(sessionId)
+    for (const w of waiters) w(text)
+  }
+
+  /** A wait_for_agent of `parentId` holds (on) or releases (off) these
+   *  agent ids: the meta's `awaiting`, so a queued message can say it waits
+   *  for the wait (orchestration.ts holdAwaited). */
+  setAwaiting(parentId: string, ids: string[], on: boolean): void {
+    let set = this.awaiting.get(parentId)
+    if (on) {
+      if (!set) this.awaiting.set(parentId, (set = new Map()))
+      for (const id of ids) set.set(id, (set.get(id) ?? 0) + 1)
+    } else if (set) {
+      for (const id of ids) {
+        const n = (set.get(id) ?? 1) - 1
+        if (n <= 0) set.delete(id)
+        else set.set(id, n)
+      }
+      if (set.size === 0) this.awaiting.delete(parentId)
+    }
+    const meta = this.row(parentId)
+    if (meta) this.notifyMeta(meta)
+  }
+
+  /** The next steer into a thread's turn (orchestration.ts: a wait_for_agent
+   *  there returns on it). `cancel` drops the waiter. */
   nextSteer(sessionId: string): { promise: Promise<string>; cancel: () => void } {
     let resolve!: (text: string) => void
     const promise = new Promise<string>((r) => (resolve = r))
@@ -4317,24 +4387,31 @@ export class SessionRegistry {
     for (const l of this.queueListeners) l(sessionId, items)
   }
 
-  queueAdd(sessionId: string, text: string, opts?: QueuedSendOpts, front = false): QueuedMessage {
+  /** A message composed mid-turn. With `opts.steer` (the composer's Steer),
+   *  and for a master always (CLAUDE.md "Master threads"), it goes straight
+   *  into the live turn: the transcript keeps the user row, the harness
+   *  reads it now, and a wait_for_agent in flight returns on it (nextSteer).
+   *  Attachments and a front-queued retry always queue. The answer says
+   *  which happened, so a caller never looks for its text in the list. */
+  queueAdd(sessionId: string, text: string, opts?: QueuedSendOpts, front = false): QueueAddResult {
     this.assertNotMoving(sessionId)
-    const item: QueuedMessage = { id: nanoid(10), text, ts: Date.now(), ...opts }
-    // A person's message to a master mid-turn goes straight in as a steer
-    // (CLAUDE.md "Master threads"), never behind the turn: the transcript
-    // keeps the user row, the harness reads it now, and a wait_for_agent in
-    // flight returns on it (nextSteer). Attachments still queue.
-    if (!front && !opts?.attachments?.length && this.steerMaster(sessionId, text)) return item
+    const { steer, ...rest } = opts ?? {}
+    const item: QueuedMessage = { id: nanoid(10), text, ts: Date.now(), ...rest }
+    if (!front && !rest.attachments?.length && (steer || this.isMaster(sessionId)) && this.steerLive(sessionId, text)) {
+      return { kind: 'steered', id: item.id }
+    }
     const q = this.queues.get(sessionId) ?? []
     if (front) q.unshift(item)
     else q.push(item)
     this.queues.set(sessionId, q)
     this.notifyQueue(sessionId)
-    // The turn may have settled while the user was typing.
-    if (this.store.getSession(sessionId)?.status === 'idle' && !this.isTreePaused(sessionId)) {
+    // The turn may have settled while the user was typing; a watching
+    // thread's harness is idle behind its background work and takes a turn.
+    const status = this.store.getSession(sessionId)?.status
+    if ((status === 'idle' || status === 'watching') && !this.isTreePaused(sessionId)) {
       this.drainQueue(sessionId)
     }
-    return item
+    return { kind: 'queued', item }
   }
 
   queueRemove(sessionId: string, messageId: string): void {
@@ -4636,8 +4713,10 @@ export class SessionRegistry {
       return !!meta && this.canContinueError(meta)
     })
     const background = this.backgroundOf(session, index)
+    const awaiting = this.awaiting.get(session.id)
     return {
       ...session,
+      ...(awaiting?.size ? { awaiting: [...awaiting.keys()] } : {}),
       background,
       activity:
         session.status === 'watching'

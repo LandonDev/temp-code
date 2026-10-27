@@ -30,6 +30,7 @@ import type { Capability } from './capabilities'
 import { PowerStateSchema, ScreenStateSchema, type HostPresence } from './contract-relay'
 import type {
   QueuedMessage,
+  QueueAddResult,
   ServerPush,
   SessionBatchResult,
   ThreadNotesDoc
@@ -360,6 +361,7 @@ export const SessionMetaSchema = z.object({
   activity: z.string().nullable().optional(),
   activityKind: z.enum(['think', 'investigate', 'edit']).nullable().optional(),
   background: BackgroundWorkSchema.nullable().optional(),
+  awaiting: z.array(z.string()).optional(),
   tasks: z
     .object({
       done: z.number().int(),
@@ -508,6 +510,12 @@ export const QueuedMessageSchema = z.object({
   reasoning: z.string().optional(),
   attachments: z.array(AttachmentSchema).optional()
 })
+
+/** queue.add's answer: the message waits in the list, or went into the live turn. */
+export const QueueAddResultSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('queued'), item: QueuedMessageSchema }),
+  z.object({ kind: z.literal('steered'), id: z.string() })
+])
 
 // ── search ─────────────────────────────────────────────────────────────
 
@@ -1150,6 +1158,7 @@ export type WireSchemaPins = [
   Expect<Equal<z.infer<typeof GithubInboxReviewDecisionSchema>, GithubInboxReviewDecision>>,
   Expect<Mirror<typeof FileChangeSchema, FileChange>>,
   Expect<Mirror<typeof QueuedMessageSchema, QueuedMessage>>,
+  Expect<Equal<z.infer<typeof QueueAddResultSchema>, QueueAddResult>>,
   Expect<Mirror<typeof RemoteStatusSchema, RemoteStatus>>,
   Expect<Mirror<typeof PushStatusSchema, PushStatus>>,
   Expect<Mirror<typeof RemoteKeySchema, RemoteKey>>,
