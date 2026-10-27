@@ -12,7 +12,7 @@ import type { SessionMeta } from "./tcserver/types";
  * The fleet switches: one action over every qualifying thread of a
  * project, a host, or everywhere. The menus call `requestThreadBatch`;
  * what qualifies is `batchTargets`, what the confirm says is
- * `batchConfirm`, what the toast says is `batchToast`. Subagents follow
+ * `batchConfirm`, and each run leaves one notice for the toast. Subagents follow
  * their parent: only roots are selected, and the server acts on trees.
  */
 
@@ -47,7 +47,7 @@ export function hasRunningTurn(t: SessionMeta): boolean {
 /** Paused anywhere in the tree, or stopped by a restart (the status a
  *  later build adds; compared as text so this file needs nothing of it). */
 function isPausedOrStopped(t: SessionMeta): boolean {
-  return t.status === "paused" || !!t.treeHasPaused || (t.status as string) === "stopped";
+  return t.status === "paused" || !!t.treeHasPaused || t.status === "stopped";
 }
 
 export type BatchSelection = {
@@ -199,12 +199,12 @@ export function batchConfirm(
         : `${v.imperative} ${count} ${v.noun} ${threads(count)} ${where}?`;
   const body =
     removal && acting === 0
-      ? "They have not started, so nothing is lost. Removed threads stay in the archive list."
+      ? "They have not started, so nothing is lost."
       : action === "pause"
-        ? "Each thread keeps its place and picks up where it was when you resume it."
+        ? "Each keeps its place and continues from there."
         : action === "stop"
-          ? `Their turns end now. A stopped thread keeps its history and takes a new message.${removal ? " A queued thread leaves the queue for the archive list." : ""}`
-          : `Idle for more than ten minutes, read, and waiting on nothing. Archived threads stay in the archive list.${removal ? " A queued thread leaves the queue with them." : ""}`;
+          ? "Their turns end now; each keeps its history."
+          : "Idle ten minutes or more, read, and waiting on nothing.";
   const cleanup =
     action === "archiveDone" && resources !== null && resources > 0
       ? `and remove their ${resources} ${resources === 1 ? "worktree or simulator" : "worktrees and simulators"}`
@@ -220,31 +220,11 @@ export function batchConfirm(
 
 export type BatchFailure = { sessionId: string; environmentId: string; title: string; error: string };
 
-export type BatchToast = {
-  /** "Paused 14 · 1 failed: Search (harness not responding)" */
-  summary: string;
-  succeeded: number;
-  failed: BatchFailure[];
-};
-
-/** One line for the toast; the failed threads come back for the links. */
-export function batchToast(action: BatchAction, succeeded: number, failed: readonly BatchFailure[]): BatchToast {
-  const v = VERB[action];
-  let summary = `${v.past} ${succeeded}`;
-  if (failed.length > 0) {
-    const first = failed[0];
-    const rest = failed.length - 1;
-    summary += ` · ${failed.length} failed: ${first.title} (${first.error})`;
-    if (rest > 0) summary += ` and ${rest} more`;
-  }
-  return { summary, succeeded, failed: [...failed] };
-}
-
 // ── the pending confirm and the notices ──────────────────────────────
 
 export type BatchRequest = { action: BatchAction; scope: BatchScope };
 
-export type BatchNotice = BatchToast & { key: number; action: BatchAction };
+export type BatchNotice = { key: number; action: BatchAction; succeeded: number; failed: BatchFailure[] };
 
 type State = { pending: BatchRequest | null; notices: readonly BatchNotice[] };
 let state: State = { pending: null, notices: [] };
@@ -348,8 +328,7 @@ export async function runThreadBatch(
       for (const f of result.failed) failed.push({ sessionId: f.sessionId, environmentId, title: titleOf(f.sessionId), error: f.error });
     }),
   );
-  const toast = batchToast(action, succeeded, failed);
-  set({ notices: [...state.notices, { key: nextKey++, action, ...toast }] });
+  set({ notices: [...state.notices, { key: nextKey++, action, succeeded, failed: [...failed] }] });
 }
 
 /** The host's display name for a scope, as the registry knows it. */

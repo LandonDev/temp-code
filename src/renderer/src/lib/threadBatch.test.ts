@@ -13,7 +13,6 @@ import {
   ARCHIVE_DONE_AGE_MS,
   batchConfirm,
   batchTargets,
-  batchToast,
   cancelThreadBatch,
   confirmThreadBatch,
   hostScope,
@@ -61,7 +60,7 @@ describe("batchTargets", () => {
   const fleet = meta({ id: "fleet", status: "idle", treeHasLiveWork: true });
   const paused = meta({ id: "paused", status: "paused" });
   const pausedTree = meta({ id: "pausedTree", status: "idle", treeHasPaused: true });
-  const stopped = meta({ id: "stopped", status: "stopped" as SessionMeta["status"] });
+  const stopped = meta({ id: "stopped", status: "stopped" });
   const idle = meta({ id: "idle", status: "idle" });
   const done = meta({ id: "done", status: "done" });
   const errored = meta({ id: "err", status: "error" });
@@ -121,6 +120,12 @@ describe("batchTargets", () => {
 
 describe("batchConfirm", () => {
   const box = { kind: "host", environmentId: "env_box", name: "the box" } as const;
+  it("says one line per action, with no separator", () => {
+    expect(batchConfirm("pause", 2, box).body).toBe("Each keeps its place and continues from there.");
+    expect(batchConfirm("stop", 2, box).body).toBe("Their turns end now; each keeps its history.");
+    expect(batchConfirm("stop", 3, box, null, 1).body).toBe("Their turns end now; each keeps its history.");
+    expect(batchConfirm("archiveDone", 2, box).body).toBe("Idle ten minutes or more, read, and waiting on nothing.");
+  });
   it("names the count and the host", () => {
     const c = batchConfirm("pause", 15, box);
     expect(c.title).toBe("Pause 15 running threads on the box?");
@@ -134,7 +139,7 @@ describe("batchConfirm", () => {
     const only = batchConfirm("stop", 2, box, null, 2);
     expect(only.title).toBe("Remove 2 threads from the queue on the box?");
     expect(only.confirmLabel).toBe("Remove 2");
-    expect(only.body).toContain("nothing is lost");
+    expect(only.body).toBe("They have not started, so nothing is lost.");
     expect(batchConfirm("archiveDone", 3, box, 1, 1).title).toBe("Archive 2 finished threads and remove 1 from the queue on the box?");
   });
   it("speaks in the singular, and of a project or everywhere", () => {
@@ -159,19 +164,6 @@ describe("batchConfirm", () => {
     expect(needsConfirm("pause")).toBe(true);
     expect(needsConfirm("stop")).toBe(true);
     expect(needsConfirm("archiveDone")).toBe(true);
-  });
-});
-
-describe("batchToast", () => {
-  it("counts the successes and names the first failure", () => {
-    const t = batchToast("pause", 14, [{ sessionId: "s", environmentId: "local", title: "Search", error: "harness not responding" }]);
-    expect(t.summary).toBe("Paused 14 · 1 failed: Search (harness not responding)");
-  });
-  it("counts the rest of the failures", () => {
-    const f = (title: string) => ({ sessionId: title, environmentId: "local", title, error: "x" });
-    expect(batchToast("archiveDone", 0, [f("A"), f("B"), f("C")]).summary).toBe("Archived 0 · 3 failed: A (x) and 2 more");
-    expect(batchToast("resume", 3, []).summary).toBe("Resumed 3");
-    expect(batchToast("stop", 2, []).summary).toBe("Stopped 2");
   });
 });
 
@@ -214,7 +206,7 @@ describe("the request, the confirm and the run", () => {
     ]);
     const notices = __notices();
     expect(notices).toHaveLength(1);
-    expect(notices[0].summary).toBe("Paused 1 · 1 failed: Search (harness not responding)");
+    expect(notices[0]).toMatchObject({ action: "pause", succeeded: 1 });
     expect(notices[0].failed).toEqual([{ sessionId: "a", environmentId: "local", title: "Search", error: "harness not responding" }]);
     expect(__pending()).toBeNull();
   });
@@ -223,7 +215,7 @@ describe("the request, the confirm and the run", () => {
     sessionBatch.mockRejectedValue(new Error("link down"));
     await runThreadBatch("stop", { ...all, scope: hostScope("env_box") });
     expect(sessionBatch).toHaveBeenCalledWith("env_box", "stop", ["b"], {});
-    expect(__notices()[0].summary).toBe("Stopped 0 · 1 failed: Build (link down)");
+    expect(__notices()[0]).toMatchObject({ action: "stop", succeeded: 0, failed: [{ sessionId: "b", environmentId: "env_box", title: "Build", error: "link down" }] });
   });
 
   it("passes cleanup through for an archive and counts resources only through the seam", async () => {
@@ -235,7 +227,7 @@ describe("the request, the confirm and the run", () => {
     await requestThreadBatch("archiveDone", { kind: "all" }, () => sel);
     await confirmThreadBatch(sel, { cleanup: true });
     expect(sessionBatch).toHaveBeenCalledWith("local", "archive", ["c"], { cleanup: true });
-    expect(__notices()[0].summary).toBe("Archived 1");
+    expect(__notices()[0]).toMatchObject({ action: "archiveDone", succeeded: 1, failed: [] });
   });
 
   it("names the host as the registry does", () => {
