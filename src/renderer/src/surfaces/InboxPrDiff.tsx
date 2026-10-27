@@ -93,7 +93,7 @@ export function InboxPrDiff({ diff }: Props) {
   return (
     <div className="inbox-pr-diff flex flex-col gap-3">
       <div className="flex items-center gap-3 text-[12px]">
-        <span className="text-content/70">{fileLabel}</span>
+        <span className="text-muted-foreground">{fileLabel}</span>
         <DiffCounts additions={diff.additions} deletions={diff.deletions} />
         <TooltipProvider>
           <span className="ml-auto flex items-center gap-0.5">
@@ -111,7 +111,7 @@ export function InboxPrDiff({ diff }: Props) {
         </TooltipProvider>
       </div>
       {diff?.truncated ? (
-        <p className="text-[12px] text-content/40">
+        <p className="text-[12px] text-muted-foreground">
           Diff is too large to display in full. File list is shown without patches.
         </p>
       ) : null}
@@ -153,20 +153,21 @@ function PrFileCard({
       : file.path;
 
   return (
-    <div className="overflow-hidden rounded-md border border-content/10">
-      <button
-        type="button"
+    <div className="overflow-hidden rounded-lg border border-border">
+      <Button
+        variant="ghost"
+        size="sm"
         aria-expanded={expanded}
         onClick={onToggle}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-content/5"
+        className="w-full justify-start gap-2 rounded-none px-2.5 text-left font-normal"
       >
-        <Chevron className="size-3.5 shrink-0 text-content/40" strokeWidth={1.75} />
+        <Chevron className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} />
         <FileTypeIcon name={name} isDir={false} size={16} />
         <TruncateTip text={label}>
           <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground">{label}</span>
         </TruncateTip>
         <DiffCounts additions={file.additions} deletions={file.deletions} />
-      </button>
+      </Button>
       {expanded ? <PrFileBody file={file} /> : null}
     </div>
   );
@@ -175,14 +176,14 @@ function PrFileCard({
 function PrFileBody({ file }: { file: PrDiffFile }) {
   if (file.binary) {
     return (
-      <p className="border-t border-content/10 px-3 py-3 text-[12px] text-content/40">
+      <p className="border-t border-border px-3 py-3 text-[12px] text-muted-foreground">
         Binary file changed
       </p>
     );
   }
   if (file.lines.length === 0) {
     return (
-      <p className="border-t border-content/10 px-3 py-3 text-[12px] text-content/40">
+      <p className="border-t border-border px-3 py-3 text-[12px] text-muted-foreground">
         No textual diff
       </p>
     );
@@ -190,7 +191,7 @@ function PrFileBody({ file }: { file: PrDiffFile }) {
   const lines = file.lines.slice(0, MAX_DISPLAY_LINES);
   const clipped = file.lines.length > lines.length;
   return (
-    <div className="inbox-pr-diff overflow-x-auto border-t border-content/10">
+    <div className="inbox-pr-diff overflow-x-auto border-t border-border">
       {lines.map((line, index) => (
         <DiffLineRow
           key={`${line.kind}-${line.oldNumber ?? ""}-${line.newNumber ?? ""}-${index}`}
@@ -198,7 +199,7 @@ function PrFileBody({ file }: { file: PrDiffFile }) {
         />
       ))}
       {clipped ? (
-        <p className="px-3 py-2 text-[11px] text-content/40">
+        <p className="px-3 py-2 text-[11px] text-muted-foreground">
           Diff truncated after {MAX_DISPLAY_LINES.toLocaleString()} lines
         </p>
       ) : null}
@@ -209,7 +210,7 @@ function PrFileBody({ file }: { file: PrDiffFile }) {
 function DiffLineRow({ line }: { line: PrDiffLine }) {
   if (line.kind === "hunk") {
     return (
-      <div className="bg-content/5 px-3 py-0.5 font-mono text-[11px] text-content/40">
+      <div className="bg-foreground/5 px-3 py-0.5 font-mono text-[11px] text-muted-foreground">
         {line.text}
       </div>
     );
@@ -218,29 +219,29 @@ function DiffLineRow({ line }: { line: PrDiffLine }) {
     line.kind === "add"
       ? "bg-success/10"
       : line.kind === "del"
-        ? "bg-danger/10"
+        ? "bg-destructive/10"
         : "";
   const bar =
     line.kind === "add"
       ? "bg-success"
       : line.kind === "del"
-        ? "bg-danger"
+        ? "bg-destructive"
         : "bg-transparent";
   const mark = line.kind === "add" ? "+" : line.kind === "del" ? "−" : " ";
   const markColor =
     line.kind === "add"
       ? "text-success"
       : line.kind === "del"
-        ? "text-danger"
+        ? "text-destructive"
         : "text-transparent";
 
   return (
     <div className={`relative flex min-w-max items-baseline ${bg}`}>
       <span className={`absolute inset-y-0 left-0 w-0.5 ${bar}`} />
-      <span className="w-10 shrink-0 pr-1 text-right font-mono text-[10px] tabular-nums text-content/40">
+      <span className="w-10 shrink-0 pr-1 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
         {line.oldNumber ?? ""}
       </span>
-      <span className="w-10 shrink-0 pr-1 text-right font-mono text-[10px] tabular-nums text-content/40">
+      <span className="w-10 shrink-0 pr-1 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
         {line.newNumber ?? ""}
       </span>
       <span className={`w-3 shrink-0 text-center font-mono text-[10px] font-bold ${markColor}`}>
@@ -264,7 +265,7 @@ function DiffCounts({
   return (
     <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] font-semibold tabular-nums">
       {additions > 0 ? <span className="text-success">+{additions}</span> : null}
-      {deletions > 0 ? <span className="text-danger">-{deletions}</span> : null}
+      {deletions > 0 ? <span className="text-destructive">-{deletions}</span> : null}
     </span>
   );
 }
@@ -277,7 +278,7 @@ function highlight(text: string, dimmed: boolean) {
     trimmed.startsWith("///") ||
     trimmed.startsWith("#")
   ) {
-    return <span className={`text-content/40 ${dim}`}>{text}</span>;
+    return <span className={`text-muted-foreground ${dim}`}>{text}</span>;
   }
 
   const parts: { text: string; color: string }[] = [];
@@ -300,7 +301,7 @@ function highlight(text: string, dimmed: boolean) {
   if (last < text.length) parts.push({ text: text.slice(last), color: "" });
 
   return (
-    <span className={`text-content/70 ${dim}`}>
+    <span className={`text-muted-foreground ${dim}`}>
       {parts.map((part, index) =>
         part.color ? (
           <span key={index} className={part.color}>
