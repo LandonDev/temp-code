@@ -26,18 +26,16 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
-import {
-  AlertCircle,
-  ChevronDown,
-  ChevronUp,
-  RotateCcw,
-} from "../chrome/icons";
+import { AlertCircle, RotateCcw } from "../chrome/icons";
 import { minimalSetup } from "codemirror";
-import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  MarkdownViewShell,
-  useMarkdownMode,
-} from "../chrome/MarkdownModeToggle";
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
+import { useMarkdownMode } from "../chrome/MarkdownModeToggle";
 import { useColorScheme } from "../hooks/useColorScheme";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { isLightScheme } from "../lib/appearance";
@@ -60,6 +58,7 @@ import { registry } from "../lib/connection";
 import { displayPath } from "../lib/paths";
 import type { EditorNavigation } from "../lib/search";
 import { MarkdownPreview } from "./AgentMarkdown";
+import { FileHeader, type SaveState } from "./FileHeader";
 import { editorAutocomplete } from "./editorAutocomplete";
 import { languageForPath, schemeExtensions } from "./editorChrome";
 import { preserveEditorViewport, replaceEditorDoc } from "./editorDoc";
@@ -100,9 +99,13 @@ type LoadState =
   | { status: "ready"; content: string }
   | { status: "error"; message: string };
 
-type SaveState =
-  | { status: "idle" | "saving" | "saved" }
-  | { status: "error"; message: string };
+/** Where the review tab's diff stands: its hunks and the one in view. */
+type ChunkNav = {
+  positions: number[];
+  index: number;
+  additions: number;
+  deletions: number;
+};
 
 export function FileEditor({
   path,
@@ -127,6 +130,8 @@ export function FileEditor({
   }>({ path, original: null });
   const markdown = isMarkdownPath(path);
   const [mode, setMode] = useMarkdownMode(path);
+  const [chunkNav, setChunkNav] = useState<ChunkNav | null>(null);
+  const stepChunk = useRef<((delta: -1 | 1) => void) | null>(null);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const saveGeneration = useRef(0);
   const loadGeneration = useRef(0);
@@ -346,10 +351,9 @@ export function FileEditor({
     [onErrorCountChange, path],
   );
 
-  const relativePath = path.startsWith(`${cwd}/`)
-    ? path.slice(cwd.length + 1)
-    : path;
-
+  const shown = displayPath(path, cwd);
+  const slash = shown.lastIndexOf("/");
+  const folder = slash > 0 ? shown.slice(0, slash) : null;
   if (loadState.status === "loading") {
     return (
       <div className="grid h-full place-items-center text-[12px] text-content/40">
@@ -385,68 +389,63 @@ export function FileEditor({
     );
   }
 
+  const editor = (
+    <CodeMirrorEditor
+      key={`${path}:${reloadKey}:${readOnly}`}
+      path={path}
+      value={loadState.content}
+      readOnly={readOnly}
+      showDiff={showDiff}
+      gitOriginal={gitOriginal}
+      active={markdown ? active && mode === "source" : active}
+      navigation={navigation}
+      onDirtyChange={dirtyChange}
+      onErrorCountChange={errorCountChange}
+      onSave={save}
+      onStageGit={showDiff ? stageGit : undefined}
+      onDocChange={markdown ? setDraft : undefined}
+      onChunkNav={setChunkNav}
+      stepRef={stepChunk}
+    />
+  );
+
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <FileHeader
+        folder={folder}
+        save={saveState}
+        markdown={markdown ? { mode, onModeChange: setMode } : undefined}
+        diff={
+          showDiff
+            ? {
+                additions: chunkNav?.additions ?? 0,
+                deletions: chunkNav?.deletions ?? 0,
+                index: chunkNav?.index ?? 0,
+                total: chunkNav?.positions.length ?? 0,
+                onPrev: () => stepChunk.current?.(-1),
+                onNext: () => stepChunk.current?.(1),
+              }
+            : undefined
+        }
+      />
       {markdown ? (
-        <MarkdownViewShell
-          mode={mode}
-          onModeChange={setMode}
-          preview={
+        <div className="relative min-h-0 min-w-0 flex-1">
+          <div className={mode === "preview" ? "absolute inset-0" : "pointer-events-none invisible absolute inset-0"}>
             <MarkdownPreview text={draft} cwd={cwd} onOpenFile={onOpenFile} />
-          }
-          source={
-            <div className="flex h-full min-h-0 min-w-0 flex-col">
-              <CodeMirrorEditor
-                key={`${path}:${reloadKey}:${readOnly}`}
-                path={path}
-                value={loadState.content}
-                readOnly={readOnly}
-                showDiff={showDiff}
-                gitOriginal={gitOriginal}
-                active={active && mode === "source"}
-                navigation={navigation}
-                onDirtyChange={dirtyChange}
-                onErrorCountChange={errorCountChange}
-                onSave={save}
-                onStageGit={showDiff ? stageGit : undefined}
-                onDocChange={setDraft}
-              />
-            </div>
-          }
-        />
-      ) : (
-        <CodeMirrorEditor
-          key={`${path}:${reloadKey}:${readOnly}`}
-          path={path}
-          value={loadState.content}
-          readOnly={readOnly}
-          showDiff={showDiff}
-          gitOriginal={gitOriginal}
-          active={active}
-          navigation={navigation}
-          onDirtyChange={dirtyChange}
-          onErrorCountChange={errorCountChange}
-          onSave={save}
-          onStageGit={showDiff ? stageGit : undefined}
-        />
-      )}
-      <footer className="flex h-6 shrink-0 items-center border-t border-content/10 px-2.5 font-mono text-[11px] text-content/40">
-        <span className="min-w-0 flex-1 truncate" title={path}>
-          {relativePath}
-        </span>
-        {saveState.status === "saving" ? (
-          <span>Saving…</span>
-        ) : saveState.status === "saved" ? (
-          <span>Saved</span>
-        ) : saveState.status === "error" ? (
-          <span
-            className="max-w-64 truncate text-danger"
-            title={saveState.message}
+          </div>
+          <div
+            className={
+              mode === "source"
+                ? "absolute inset-0 flex min-h-0 min-w-0 flex-col"
+                : "pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 flex-col"
+            }
           >
-            Save failed: {saveState.message}
-          </span>
-        ) : null}
-      </footer>
+            {editor}
+          </div>
+        </div>
+      ) : (
+        editor
+      )}
     </div>
   );
 }
@@ -463,6 +462,8 @@ function CodeMirrorEditor({
   onSave,
   onStageGit,
   onDocChange,
+  onChunkNav,
+  stepRef,
   readOnly = false,
 }: {
   path: string;
@@ -477,6 +478,10 @@ function CodeMirrorEditor({
   onSave: (content: string) => Promise<void>;
   onStageGit?: (contents: string) => Promise<void>;
   onDocChange?: (content: string) => void;
+  /** The diff's hunks and the one in view, for the header's stepper. */
+  onChunkNav: (nav: ChunkNav | null) => void;
+  /** Filled with the step the header's buttons call. */
+  stepRef: MutableRefObject<((delta: -1 | 1) => void) | null>;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -493,12 +498,9 @@ function CodeMirrorEditor({
   const chunkNavPinnedRef = useRef<number | null>(null);
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const colorScheme = useColorScheme();
-  const [chunkNav, setChunkNav] = useState<{
-    positions: number[];
-    index: number;
-    additions: number;
-    deletions: number;
-  } | null>(null);
+  const [chunkNav, setChunkNav] = useState<ChunkNav | null>(null);
+  const onChunkNavRef = useRef(onChunkNav);
+  onChunkNavRef.current = onChunkNav;
   activeRef.current = active;
   onDirtyChangeRef.current = onDirtyChange;
   onErrorCountChangeRef.current = onErrorCountChange;
@@ -569,6 +571,16 @@ function CodeMirrorEditor({
       });
     },
     [chunkNav],
+  );
+
+  stepRef.current = stepChunkNav;
+  useEffect(() => onChunkNavRef.current(chunkNav), [chunkNav]);
+  useEffect(
+    () => () => {
+      stepRef.current = null;
+      onChunkNavRef.current(null);
+    },
+    [stepRef],
   );
 
   const setDirty = (nextDirty: boolean) => {
@@ -839,93 +851,8 @@ function CodeMirrorEditor({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {showDiff ? (
-        <DiffChunkNav
-          index={chunkNav?.index ?? 0}
-          total={chunkNav?.positions.length ?? 0}
-          additions={chunkNav?.additions ?? 0}
-          deletions={chunkNav?.deletions ?? 0}
-          onPrev={() => stepChunkNav(-1)}
-          onNext={() => stepChunkNav(1)}
-        />
-      ) : null}
       <div ref={hostRef} className="min-h-0 flex-1" />
     </div>
-  );
-}
-
-function DiffChunkNav({
-  index,
-  total,
-  additions,
-  deletions,
-  onPrev,
-  onNext,
-}: {
-  index: number;
-  total: number;
-  additions: number;
-  deletions: number;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  return (
-    <header
-      className="flex h-8 shrink-0 items-center justify-between gap-3 border-b border-content/10 px-3 pr-1"
-      role="toolbar"
-      aria-label="Jump between changes"
-    >
-      <DiffChunkStat additions={additions} deletions={deletions} />
-      <div className="flex items-center gap-0.5">
-        <button
-          type="button"
-          title="Previous change"
-          aria-label="Previous change"
-          disabled={total === 0 || index <= 0}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onPrev}
-          className="grid size-6 place-items-center rounded-md text-content/70 hover:bg-content/10 hover:text-content disabled:opacity-35"
-        >
-          <ChevronUp className="size-3.5" strokeWidth={1.75} />
-        </button>
-        <span className="min-w-10 px-0.5 text-center font-mono text-[11px] font-medium tabular-nums text-content/50 select-none">
-          {total === 0 ? "0/0" : `${index + 1}/${total}`}
-        </span>
-        <button
-          type="button"
-          title="Next change"
-          aria-label="Next change"
-          disabled={total === 0 || index >= total - 1}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onNext}
-          className="grid size-6 place-items-center rounded-md text-content/70 hover:bg-content/10 hover:text-content disabled:opacity-35"
-        >
-          <ChevronDown className="size-3.5" strokeWidth={1.75} />
-        </button>
-      </div>
-    </header>
-  );
-}
-
-function DiffChunkStat({
-  additions,
-  deletions,
-}: {
-  additions: number;
-  deletions: number;
-}) {
-  if (additions <= 0 && deletions <= 0) {
-    return <span className="min-w-0 flex-1" />;
-  }
-  return (
-    <span className="flex min-w-0 shrink-0 items-center gap-1.5 font-mono text-[11px] font-semibold tabular-nums">
-      {additions > 0 ? (
-        <span className="text-success">+{additions}</span>
-      ) : null}
-      {deletions > 0 ? (
-        <span className="text-danger">-{deletions}</span>
-      ) : null}
-    </span>
   );
 }
 
