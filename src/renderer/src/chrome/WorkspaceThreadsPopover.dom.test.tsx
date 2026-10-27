@@ -6,8 +6,7 @@ import { threadRow, type WorkspaceSessionGroups } from "../lib/workspaceSessions
 import type { ProjectMeta, SessionMeta } from "../lib/tcserver/types";
 import { WorkspaceThreadsList, workspaceThreadSections } from "./WorkspaceThreadsPopover";
 
-// Every mount leaves with its test: a row's clock (useClock) stays subscribed
-// while it is mounted, and a tick after the environment is gone would reach React.
+// Every mount leaves with its test, so no React work outlives the environment.
 afterEach(cleanup);
 
 const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
@@ -111,8 +110,6 @@ describe("WorkspaceThreadsList", () => {
       <WorkspaceThreadsList
         groups={groups}
         activeSessionId={null}
-        lastSeen={{}}
-        seenFloor={0}
         onSelectThread={() => {}}
       />,
     );
@@ -146,14 +143,14 @@ describe("WorkspaceThreadsList", () => {
       <WorkspaceThreadsList
         groups={groups}
         activeSessionId={null}
-        lastSeen={{}}
-        seenFloor={0}
         onSelectThread={() => {}}
       />,
     );
     const text = probe.container.textContent ?? "";
     expect(text).toContain("Ship it");
-    expect(text).toContain("Account work@example.com is no longer on file");
+    const shipped = [...probe.container.querySelectorAll("[data-thread-row]")].find((r) => r.textContent?.includes("Ship it"))!;
+    // The verdict sits under the title, inside the same row.
+    expect(shipped.textContent).toContain("Account work@example.com is no longer on file");
     // A row written before the verdict existed keeps the bare word.
     expect(text.match(/Failed/g)).toHaveLength(2);
   });
@@ -168,8 +165,6 @@ describe("WorkspaceThreadsList", () => {
       <WorkspaceThreadsList
         groups={groups}
         activeSessionId={null}
-        lastSeen={{}}
-        seenFloor={0}
         onSelectThread={() => {}}
       />,
     );
@@ -195,12 +190,10 @@ describe("WorkspaceThreadsList", () => {
       <WorkspaceThreadsList
         groups={groups}
         activeSessionId={null}
-        lastSeen={{}}
-        seenFloor={0}
         onSelectThread={onSelectThread}
       />,
     );
-    const row = probe.container.querySelector("button[type=button]");
+    const row = probe.container.querySelector("[data-thread-row]");
     expect(row).not.toBeNull();
     fireEvent.click(row!);
     expect(onSelectThread).toHaveBeenCalledWith("t1");
@@ -216,15 +209,16 @@ describe("WorkspaceThreadsList", () => {
       <WorkspaceThreadsList
         groups={groups}
         activeSessionId={null}
-        lastSeen={{ t1: 50 }}
-        seenFloor={0}
         onSelectThread={() => {}}
       />,
     );
     expect(probe.container.textContent).toContain("Wrapped up");
+    const title = [...probe.container.querySelectorAll("span")].find((el) => el.textContent === "Wrapped up")!;
+    expect(title.className).toContain("font-medium");
+    expect(probe.container.querySelector("[data-slot=status-mark]")).toBeNull();
   });
 
-  it("shows a waiting thread as its own row, not just a count (LiveLines drops it)", () => {
+  it("shows a waiting thread as its own row with its word", () => {
     const groups: WorkspaceSessionGroups = {
       projects: [],
       archived: [],
@@ -234,8 +228,6 @@ describe("WorkspaceThreadsList", () => {
       <WorkspaceThreadsList
         groups={groups}
         activeSessionId={null}
-        lastSeen={{}}
-        seenFloor={0}
         onSelectThread={() => {}}
       />,
     );
@@ -268,7 +260,7 @@ describe("WorkspaceThreadsList", () => {
       chats: [],
     };
     const probe = mountProbe(
-      <WorkspaceThreadsList groups={groups} activeSessionId={null} lastSeen={{}} seenFloor={0} onSelectThread={() => {}} />,
+      <WorkspaceThreadsList groups={groups} activeSessionId={null} onSelectThread={() => {}} />,
     );
     const text = probe.container.textContent ?? "";
     expect(text.split("Approve this diff").length - 1).toBe(1);
@@ -290,14 +282,12 @@ describe("WorkspaceThreadsList", () => {
       <WorkspaceThreadsList
         groups={groups}
         activeSessionId={null}
-        lastSeen={{}}
-        seenFloor={0}
         onSelectThread={onSelectThread}
       />,
     );
     expect(probe.container.textContent).toContain("Crashed mid-turn");
     expect(probe.container.textContent).toContain("Failed");
-    const row = probe.container.querySelector("button[type=button]");
+    const row = probe.container.querySelector("[data-thread-row]");
     fireEvent.click(row!);
     expect(onSelectThread).toHaveBeenCalledWith("t1");
   });
@@ -319,8 +309,6 @@ describe("WorkspaceThreadsList", () => {
       <WorkspaceThreadsList
         groups={groups}
         activeSessionId={null}
-        lastSeen={{ t1: 999 }}
-        seenFloor={0}
         onSelectThread={() => {}}
       />,
     );

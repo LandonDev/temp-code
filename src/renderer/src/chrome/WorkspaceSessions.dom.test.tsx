@@ -2,13 +2,12 @@
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent } from '@testing-library/react'
-import { projectCardStatus } from '../lib/projectCardModel'
 import { SESSION_LIST_PAGE } from '../lib/sessionListWindow'
 import type { ProjectMeta, SessionMeta } from '../lib/tcserver/types'
 import { mountProbe } from '../test/renderProbe'
 import { threadRow, type ThreadRow } from '../lib/workspaceSessions'
 import { nextPage } from '../lib/sidebarRows'
-import { LiveLines, ProjectRow, ThreadList, masterMenuItem } from './WorkspaceSessions'
+import { ProjectRow, ThreadList, masterMenuItem } from './WorkspaceSessions'
 import { projectFolds } from '../lib/projectFolds'
 import { subagentRowsStore } from '../stores/subagentRows'
 import { registry } from '../lib/connection'
@@ -388,19 +387,6 @@ describe('the host glyph on rail rows', () => {
     // The old name chip is gone: the glyph carries no text.
     expect(root.querySelector('[data-host-badge]')).toBeNull()
     expect(root.textContent).not.toContain('This Mac')
-    probe.unmount()
-  })
-})
-
-describe('LiveLines window', () => {
-  it('an expanded card holds at most a page of lines', () => {
-    const status = projectCardStatus(rows(50, { status: 'done', updatedAt: 200 }), null, {})
-    expect(status.unread).toHaveLength(50)
-    const probe = mountProbe(<LiveLines status={status} activeId={null} onMore={() => {}} />)
-    const lines = probe.container.firstElementChild!.children.length
-    // One page of lines plus the "more" row.
-    expect(lines).toBe(SESSION_LIST_PAGE + 1)
-    expect(moreButton(probe.container)?.textContent).toBe(`${50 - SESSION_LIST_PAGE} more`)
     probe.unmount()
   })
 })

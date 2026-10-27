@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { projectCardStatus } from "./projectCardModel";
 import { SESSION_LIST_PAGE } from "./sessionListWindow";
 import type { Catalog } from "./projectContext";
 import {
   groupMark,
   groupUnread,
-  liveLines,
   masterBlock,
   nextPage,
   rowState,
@@ -145,25 +143,6 @@ describe("windowRows", () => {
     expect(windowRows(rows(100), SESSION_LIST_PAGE, "elsewhere").shown).toHaveLength(
       SESSION_LIST_PAGE,
     );
-  });
-});
-
-describe("liveLines", () => {
-  it("prints running, then paused, then unread, keyed by thread id", () => {
-    const threads = [
-      threadRow(meta("done", { status: "done", updatedAt: 50 }), {}),
-      threadRow(meta("run", { status: "running", busySince: 40 }), {}),
-      threadRow(meta("wait", { status: "waiting" }), {}),
-      threadRow(meta("pause", { status: "paused" }), {}),
-      threadRow(meta("seen", { status: "idle", updatedAt: 5 }), { seen: 9 }),
-    ];
-    const lines = liveLines(projectCardStatus(threads, null, { seen: 9 }));
-    expect(lines.map((l) => `${l.kind}:${l.id}`)).toEqual([
-      "running:run",
-      "paused:pause",
-      "unread:done",
-    ]);
-    expect(lines[0]?.thread).toBe(threads[1]);
   });
 });
 

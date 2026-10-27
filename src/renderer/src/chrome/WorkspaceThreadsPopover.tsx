@@ -1,12 +1,15 @@
 import { useMemo, useState } from "react";
 import { PopoverContent } from "../components/ui/popover";
-import { LiveLines, RowShell, TaskLine, ThreadGlyph } from "./WorkspaceSessions";
+import type { ThreadState } from "../components/ui/status";
+import { ThreadRowView } from "./WorkspaceSessions";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
-import { blockedThreads, cardTasks, projectCardStatus } from "../lib/projectCardModel";
+import { cn } from "../lib/cn";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
-import { liveLines, masterBlocks } from "../lib/sidebarRows";
+import { masterBlock, rowState, type MasterBlock } from "../lib/sidebarRows";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import { agentSummaryParts, type AgentSummary } from "../lib/threads/agents";
+import { marksAtRest } from "../lib/threadStripModel";
 import {
   cardThreads,
   groupWorkspaceSessions,
@@ -15,49 +18,13 @@ import {
   type WorkspaceSessionGroups,
 } from "../lib/workspaceSessions";
 
-/** `threads` is what the tallies read (`cardThreads`), `roots` what the
- *  lines print (a master with its batch under it). */
+/** `threads` is every root with each master's batch beside it
+ *  (`cardThreads`), `roots` what the rows print (a master with its batch
+ *  under it). */
 type Section = { key: string; label: string; threads: ThreadRow[]; roots: ThreadRow[] };
 
-/** `LiveLines` only prints running/paused/unread — a waiting or failed
- *  thread is a count there, not a row. This popover's whole point is to
- *  show which thread is blocked, so it gets its own two rows, same visual
- *  language as `StatusDot`'s waiting (pulsing amber) and failed (red). A
- *  failed row prints the host's one-line verdict under the title when it
- *  has one, so the card says what happened, not just that it did. */
-function BlockedLine({
-  thread: t,
-  kind,
-  onSelect,
-}: {
-  thread: ThreadRow;
-  kind: "waiting" | "failed";
-  onSelect?: (id: string) => void;
-}) {
-  const tasks = kind === "waiting" ? cardTasks(t) : null;
-  const tone = kind === "waiting" ? "text-warning" : "text-danger";
-  const dot = kind === "waiting" ? "bg-warning motion-safe:animate-pulse" : "bg-danger";
-  return (
-    <RowShell className="w-full py-1" onSelect={onSelect ? () => onSelect(t.id) : undefined}>
-      <div className={`flex w-full items-center gap-1.5 text-[11px] leading-4 ${tone}`}>
-        <span className={`size-1.5 shrink-0 rounded-full ${dot}`} />
-        <ThreadGlyph thread={t} />
-        <span className="min-w-0 flex-1 truncate text-content">{t.title || "Untitled"}</span>
-        <span className="shrink-0 font-medium">{kind === "waiting" ? "Needs you" : "Failed"}</span>
-      </div>
-      {kind === "failed" && t.failure ? (
-        <div className="min-w-0 truncate pl-3 text-[11px] leading-4 text-content/60" title={t.failure}>
-          {t.failure}
-        </div>
-      ) : null}
-      {tasks ? <TaskLine tasks={tasks} /> : null}
-    </RowShell>
-  );
-}
-
 /** Every chat a workspace holds, grouped by the project it lives in — a
- *  loose chat gets none. Pure and prop-driven, so it tests the way
- *  `LiveLines` does: no store, no popover chrome. */
+ *  loose chat gets none. */
 export function workspaceThreadSections(groups: WorkspaceSessionGroups): Section[] {
   return [
     ...groups.projects
@@ -69,68 +36,112 @@ export function workspaceThreadSections(groups: WorkspaceSessionGroups): Section
   ];
 }
 
-/** The popover's content: one labeled section per project, then a trailing
- *  "Chats" section for threads with none, each rendered with the same
- *  running/paused/unread lines the Sessions tab's own project card uses —
- *  so a row here never disagrees with what you see after switching in. */
+const RANK: Record<ThreadState, number> = {
+  waiting: 0,
+  failed: 1,
+  working: 2,
+  watching: 2,
+  paused: 3,
+  "plan-ready": 4,
+  stopped: 5,
+  queued: 6,
+  done: 7,
+  idle: 7,
+};
+
+type Entry =
+  | { kind: "row"; id: string; rank: number; row: ThreadRow }
+  | { kind: "master"; id: string; rank: number; block: MasterBlock };
+
+/** What a section prints, blocked first: every root with a mark or unread,
+ *  and each master with something to say as one block. A thread inside a
+ *  master prints only in its block. */
+export function sectionEntries(roots: readonly ThreadRow[]): Entry[] {
+  const out: Entry[] = [];
+  for (const row of roots) {
+    if (row.housed) continue;
+    const block = masterBlock(row, row.unread);
+    if (block) {
+      const rank = Math.min(RANK[block.state], ...block.lines.map((l) => RANK[l.state]));
+      out.push({ kind: "master", id: row.id, rank, block });
+      continue;
+    }
+    const state = rowState(row);
+    if (marksAtRest(state) || row.unread) out.push({ kind: "row", id: row.id, rank: RANK[state], row });
+  }
+  return out.sort((a, b) => a.rank - b.rank);
+}
+
+/** A thread's working subagents in the fleet's words, two spaces apart,
+ *  aligned with its title. */
+function AgentsLine({ summary, className }: { summary: AgentSummary; className: string }) {
+  return (
+    <div className={cn("flex min-w-0 items-center gap-2 pb-1 text-[12px] text-muted-foreground", className)}>
+      {agentSummaryParts(summary).map((part) => (
+        <span key={part.text} className={cn("shrink-0 truncate", part.tone)}>
+          {part.text}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** A master and its batch as one block: its row with the done tally, its
+ *  own working subagents, then each batch thread with something to say
+ *  one step in, loudest first, and the queued ones as one count. */
+function MasterRows({ block, activeId, onSelect }: { block: MasterBlock; activeId: string | null; onSelect: (id: string) => void }) {
+  return (
+    <div className="flex flex-col">
+      <ThreadRowView row={block.master} word lead={false} selected={block.master.id === activeId} onOpen={() => onSelect(block.master.id)} />
+      {block.agents ? <AgentsLine summary={block.agents} className="pl-3" /> : null}
+      {block.lines.map(({ thread, agents }) => (
+        <div key={thread.id} className="flex flex-col">
+          <ThreadRowView row={thread} child word lead={false} selected={thread.id === activeId} onOpen={() => onSelect(thread.id)} />
+          {agents ? <AgentsLine summary={agents} className="pl-9" /> : null}
+        </div>
+      ))}
+      {block.queued > 0 ? (
+        <div className="flex h-7 items-center pl-9 text-[12px] text-muted-foreground">{block.queued} queued</div>
+      ) : null}
+    </div>
+  );
+}
+
+/** The popover's content: one section per project under its name, then a
+ *  trailing Chats section for threads with none; each row says its word,
+ *  since saying which thread is blocked is the popover's job. A project
+ *  with nothing to say is left out. */
 export function WorkspaceThreadsList({
   groups,
   activeSessionId,
-  lastSeen,
-  seenFloor,
   onSelectThread,
 }: {
   groups: WorkspaceSessionGroups;
   activeSessionId: string | null;
-  lastSeen: Record<string, number>;
-  seenFloor: number;
   onSelectThread: (sessionId: string) => void;
 }) {
   const sections = workspaceThreadSections(groups)
-    .map((section) => {
-      const status = projectCardStatus(section.threads, activeSessionId, lastSeen, seenFloor);
-      // A blocked thread inside a master, or a blocked master, says so in
-      // its master's block below; the rows here are everyone else's.
-      const unread = new Set(status.unread.map((u) => u.id));
-      const inBlock = new Set(masterBlocks(section.roots, (id) => unread.has(id)).map((b) => b.master.id));
-      return {
-        ...section,
-        status,
-        lines: liveLines(status, section.roots).length,
-        blocked: blockedThreads(section.threads.filter((t) => !t.housed && !inBlock.has(t.id))),
-      };
-    })
-    // A project with only dormant, long-seen threads has nothing to show
-    // here; skip its section rather than print an empty label.
-    .filter(
-      (section) =>
-        section.blocked.length > 0 || section.lines > 0,
-    );
+    .map((section) => ({ ...section, entries: sectionEntries(section.roots) }))
+    .filter((section) => section.entries.length > 0);
   return (
-    <div className="flex flex-col gap-2 p-1">
+    <div className="flex flex-col gap-2">
       {sections.map((section) => (
         <div key={section.key} className="flex flex-col">
-          <span className="px-2 py-1 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
-            {section.label}
-          </span>
-          {section.blocked.length > 0 ? (
-            <div className="w-full divide-y divide-content/10 border-y border-content/10">
-              {section.blocked.map(({ kind, thread }) => (
-                <BlockedLine
-                  key={thread.id}
-                  thread={thread}
-                  kind={kind}
-                  onSelect={onSelectThread}
-                />
-              ))}
-            </div>
-          ) : null}
-          <LiveLines
-            status={section.status}
-            roots={section.roots}
-            activeId={activeSessionId}
-            onSelectThread={onSelectThread}
-          />
+          <span className="flex h-7 items-center px-3 text-[12px] font-medium text-muted-foreground">{section.label}</span>
+          {section.entries.map((entry) =>
+            entry.kind === "master" ? (
+              <MasterRows key={entry.id} block={entry.block} activeId={activeSessionId} onSelect={onSelectThread} />
+            ) : (
+              <ThreadRowView
+                key={entry.id}
+                row={entry.row}
+                word
+                lead={false}
+                selected={entry.id === activeSessionId}
+                onOpen={() => onSelectThread(entry.id)}
+              />
+            ),
+          )}
         </div>
       ))}
     </div>
@@ -180,13 +191,7 @@ export function WorkspaceThreadsPopover({
       className="max-h-90 w-75 gap-0 overflow-hidden p-1"
     >
       <div ref={lockList} className="overflow-y-auto overscroll-none">
-        <WorkspaceThreadsList
-          groups={groups}
-          activeSessionId={activeSessionId}
-          lastSeen={lastSeen}
-          seenFloor={seenFloor}
-          onSelectThread={onSelectThread}
-        />
+        <WorkspaceThreadsList groups={groups} activeSessionId={activeSessionId} onSelectThread={onSelectThread} />
       </div>
     </PopoverContent>
   );

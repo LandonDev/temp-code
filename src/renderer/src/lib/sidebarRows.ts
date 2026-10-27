@@ -1,6 +1,6 @@
 import type { SessionMeta } from "./tcserver/types";
 import { threadStateOf, type ThreadState } from "../components/ui/status";
-import type { CardThread, ProjectCardStatus } from "./projectCardModel";
+import type { CardThread } from "./projectCardModel";
 import { type Catalog, workspacePathOfSession } from "./projectContext";
 import { agentSummary, type AgentSummary } from "./threads/agents";
 import { marksAtRest } from "./threadStripModel";
@@ -287,34 +287,4 @@ export function masterBlocks(
     if (block) out.push(block);
   }
   return out;
-}
-
-export type LiveLine<T extends CardThread> =
-  | {
-      kind: "running" | "paused" | "unread";
-      /** The thread's id, so the window can find the active line. */
-      id: string;
-      thread: T;
-    }
-  | { kind: "master"; id: string; block: MasterBlock };
-
-/** The lines a card prints under its header: each master with its batch
- *  first, then running, paused, unread. A thread inside a master
- *  (`housed`) prints only in its master's block. */
-export function liveLines<T extends CardThread>(
-  status: ProjectCardStatus<T>,
-  roots: readonly ThreadRow[] = [],
-): LiveLine<T>[] {
-  const unread = new Set(status.unread.map((u) => u.id));
-  const blocks = masterBlocks(roots, (id) => unread.has(id));
-  const inBlock = new Set(blocks.map((b) => b.master.id));
-  const own = (t: T) => !t.housed && !inBlock.has(t.id);
-  const lines: LiveLine<T>[] = blocks.map((block) => ({ kind: "master", id: block.master.id, block }));
-  for (const thread of status.running)
-    if (own(thread)) lines.push({ kind: "running", id: thread.id, thread });
-  for (const thread of status.paused)
-    if (own(thread)) lines.push({ kind: "paused", id: thread.id, thread });
-  for (const thread of status.unread)
-    if (own(thread)) lines.push({ kind: "unread", id: thread.id, thread });
-  return lines;
 }

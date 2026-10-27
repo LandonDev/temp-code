@@ -16,7 +16,6 @@ import { PreambleDialog } from "./PreambleDialog";
 import {
   ChevronRight,
   MoreHorizontal,
-  Pause,
   Plus,
 } from "./icons";
 import {
@@ -24,10 +23,8 @@ import {
   ProjectSettingsDialog,
   ProjectTeardownDialog,
 } from "./ProjectDialogs";
-import { duration } from "../lib/format";
-import { agentSummaryParts, modelLabel, type AgentSummary } from "../lib/threads/agents";
-import { AGENT_GLYPHS, THREAD_GLYPHS, THREAD_TINTS } from "../surfaces/threads/threadTypes";
-import { MatrixSpinner } from "../surfaces/threads/spinners";
+import { modelLabel } from "../lib/threads/agents";
+import { AGENT_GLYPHS, THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
 import { STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/status";
 import { Button } from "../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
@@ -35,20 +32,13 @@ import { cn } from "../lib/cn";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { projectFolds, projectFoldsStore, projectOpen, useProjectOpen } from "../lib/projectFolds";
 import {
-  cardTasks,
-  pausedElapsed,
   projectCardStatus,
   projectRunAction,
-  runningElapsed,
   stoppableThreads,
-  type CardThread,
 } from "../lib/projectCardModel";
 import { SESSION_LIST_PAGE } from "../lib/sessionListWindow";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import {
-  liveLines,
-  type BatchLine,
-  type MasterBlock,
   groupMark,
   groupUnread,
   nextPage,
@@ -66,7 +56,6 @@ import { deleteProject } from "../lib/tcserver/projects";
 import { archiveLinked, projectHomeNow, renameLinked } from "../lib/projectHome";
 import { sessionPrefetch } from "../lib/sessionPrefetch";
 import { useSessionMetas } from "../lib/tcserver/store";
-import { useClock } from "../lib/turnClock";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
@@ -326,6 +315,7 @@ export function ThreadRowView({
   offline = false,
   child = false,
   word = false,
+  lead = true,
   fold,
   title,
   onOpen,
@@ -336,8 +326,12 @@ export function ThreadRowView({
   selected?: boolean;
   offline?: boolean;
   child?: boolean;
-  /** The mark with its word (the popover, where the width allows it). */
+  /** The mark with its word (the popover, where the width allows it); a
+   *  failed row then prints the host's verdict under its title. */
   word?: boolean;
+  /** The empty 16px slot that puts a root's title in the project name's
+   *  column; the popover, with no chevrons, leaves it out. */
+  lead?: boolean;
   fold?: Fold;
   /** In place of the title: the rename field. */
   title?: ReactNode;
@@ -350,12 +344,14 @@ export function ThreadRowView({
   const Glyph = child ? (row.agentType ? AGENT_GLYPHS[row.agentType] : row.threadType ? THREAD_GLYPHS[row.threadType] : null) : null;
   const live = child && row.running ? row.activity?.trim() : "";
   const editing = title != null;
+  const verdict = word && row.failure && rowState(row) === "failed" ? row.failure : null;
   return (
     <div
       role="button"
       tabIndex={0}
       aria-current={selected || undefined}
       data-host-offline={offline || undefined}
+      data-thread-row
       onClick={() => !editing && onOpen?.()}
       onPointerEnter={() => sessionPrefetch.enter(row.id)}
       onPointerLeave={() => sessionPrefetch.leave(row.id)}
@@ -371,12 +367,12 @@ export function ThreadRowView({
       }
       className={cn(
         ROW,
-        child ? "h-7" : "h-8",
+        verdict ? "min-h-8 py-1.5" : child ? "h-7" : "h-8",
         selected ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
         offline && "opacity-50",
       )}
     >
-      <span aria-hidden className="size-4 shrink-0" />
+      {lead ? <span aria-hidden className="size-4 shrink-0" /> : null}
       {Glyph ? (
         <span aria-hidden className="grid size-4 shrink-0 place-items-center text-muted-foreground">
           <Glyph className="size-3" strokeWidth={1.5} />
@@ -384,6 +380,11 @@ export function ThreadRowView({
       ) : null}
       {editing ? (
         title
+      ) : verdict ? (
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate">{row.title || "Untitled"}</span>
+          <span className="truncate text-[12px] text-muted-foreground">{verdict}</span>
+        </span>
       ) : (
         <span className={cn("min-w-0 flex-1 truncate", row.unread && "font-medium text-foreground")}>
           {row.title || (child && !row.masterId ? "Subagent" : "Untitled")}
@@ -596,335 +597,6 @@ export const ThreadList = memo(function ThreadList({
     </div>
   );
 });
-
-type Tasks = NonNullable<CardThread["tasks"]>;
-
-/** An implementation thread's tally and current task, one step in. */
-export function TaskLine({ tasks, paused }: { tasks: Tasks; paused?: boolean }) {
-  const tally = paused
-    ? "text-warning"
-    : tasks.done === tasks.total
-      ? "text-success"
-      : "text-content/70";
-  return (
-    <div className="flex items-center gap-1.5 pl-3 text-[11px] leading-4">
-      <span
-        className={`shrink-0 text-[11px] tabular-nums ${tally}`}
-        title={`${tasks.done} of ${tasks.total} tasks done`}
-      >
-        {tasks.done}/{tasks.total}
-      </span>
-      {tasks.current ? (
-        <span className={`truncate ${paused ? "text-warning/70" : "text-content/40"}`}>
-          {tasks.current}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-export function ThreadGlyph({ thread }: { thread: ThreadRow }) {
-  const type = thread.threadType ?? "chat";
-  const Glyph = THREAD_GLYPHS[type];
-  return <Glyph className={`size-3 shrink-0 ${THREAD_TINTS[type]}`} strokeWidth={1.75} />;
-}
-
-type LiveStatus = ReturnType<typeof projectCardStatus<ThreadRow>>;
-
-/** The Sessions tab's card reads these lines, never clicks them ("the
- *  strip above the pane is where the threads live"). A caller that wants
- *  a row to jump straight to its thread (the rail's popover) passes
- *  `onSelect`; the row becomes a button instead of a div, same layout. */
-export function RowShell({
-  onSelect,
-  className,
-  title,
-  children,
-}: {
-  onSelect?: () => void;
-  className: string;
-  title?: string;
-  children: ReactNode;
-}) {
-  if (onSelect) {
-    return (
-      <button
-        type="button"
-        title={title}
-        onClick={onSelect}
-        className={`${className} cursor-default text-left hover:bg-content/5`}
-      >
-        {children}
-      </button>
-    );
-  }
-  return (
-    <div className={className} title={title}>
-      {children}
-    </div>
-  );
-}
-
-function RunningLine({
-  thread: t,
-  now,
-  onSelect,
-}: {
-  thread: ThreadRow;
-  now: number;
-  onSelect?: (id: string) => void;
-}) {
-  const ms = runningElapsed(t, now);
-  const tasks = cardTasks(t);
-  return (
-    <RowShell
-      className="w-full py-1"
-      title={t.activity ?? undefined}
-      onSelect={onSelect ? () => onSelect(t.id) : undefined}
-    >
-      <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
-        <MatrixSpinner cell={1.8} tint={t.activityKind} />
-        <ThreadGlyph thread={t} />
-        <span className="min-w-0 flex-1 truncate text-content/50">
-          {t.title || "Untitled"}
-        </span>
-        <span
-          className={`shrink-0 text-[11px] whitespace-nowrap tabular-nums text-content/40 ${ms < 3000 ? "opacity-0" : ""}`}
-        >
-          {duration(ms)}
-        </span>
-      </div>
-      {tasks ? <TaskLine tasks={tasks} /> : null}
-    </RowShell>
-  );
-}
-
-function PausedLine({
-  thread: t,
-  onSelect,
-}: {
-  thread: ThreadRow;
-  onSelect?: (id: string) => void;
-}) {
-  const tasks = cardTasks(t);
-  return (
-    <RowShell
-      className="w-full bg-warning/5 py-1"
-      onSelect={onSelect ? () => onSelect(t.id) : undefined}
-    >
-      <div className="flex w-full items-center gap-1.5 text-[11px] leading-4 text-warning">
-        <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.75} />
-        <ThreadGlyph thread={t} />
-        <span className="min-w-0 flex-1 truncate">{t.title || "Untitled"}</span>
-        <span className="shrink-0 font-medium">Paused</span>
-        <span className="shrink-0 text-[11px] tabular-nums text-current/70">
-          {duration(pausedElapsed(t))}
-        </span>
-      </div>
-      {tasks ? <TaskLine tasks={tasks} paused /> : null}
-    </RowShell>
-  );
-}
-
-function UnreadLine({
-  thread: t,
-  onSelect,
-}: {
-  thread: ThreadRow;
-  onSelect?: (id: string) => void;
-}) {
-  return (
-    <RowShell
-      className="flex w-full items-center gap-1.5 py-1 text-[11px] leading-4"
-      onSelect={onSelect ? () => onSelect(t.id) : undefined}
-    >
-      <span className="size-1.5 shrink-0 rounded-full bg-info" />
-      <ThreadGlyph thread={t} />
-      <span className="min-w-0 flex-1 truncate font-medium text-content">
-        {t.title || "Untitled"}
-      </span>
-    </RowShell>
-  );
-}
-
-/** A line's lead mark in a 16px box, so titles one level down share one
- *  column whatever the mark; nothing for a settled line. */
-function LineMark({ state }: { state: ThreadState }) {
-  return (
-    <span className="grid size-4 shrink-0 place-items-center">
-      {marksAtRest(state) ? <StatusMark state={state} word={false} /> : null}
-    </span>
-  );
-}
-
-/** A thread's working subagents, one quiet line aligned with its title, in
- *  the fleet's words and tones (2 agents · 1 working · 1 needs approval). */
-function AgentsLine({ summary, indent }: { summary: AgentSummary; indent: string }) {
-  return (
-    <div className={`flex min-w-0 items-center gap-1 py-0.5 ${indent} text-[11px] leading-4 text-content/40`}>
-      {agentSummaryParts(summary).map((part, i) => (
-        <span key={part.text} className={`shrink-0 truncate ${part.tone ?? ""}`}>
-          {i > 0 ? "· " : ""}
-          {part.text}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-/** A batch thread one step under its master: its mark under the master's
- *  glyph, title, then what it waits on (Needs you, Failed) or, while it
- *  works, its task tally or elapsed; its working subagents under its title. */
-function BatchThreadLine({
-  line: { thread: t, state, agents },
-  now,
-  onSelect,
-}: {
-  line: BatchLine;
-  now: number;
-  onSelect?: (id: string) => void;
-}) {
-  const tasks = cardTasks(t);
-  const ms = runningElapsed(t, now);
-  return (
-    <>
-      <RowShell
-        className="flex w-full items-center gap-1.5 py-0.5 pl-[18px] text-[11px] leading-4"
-        title={state === "failed" ? (t.failure ?? undefined) : (t.activity ?? undefined)}
-        onSelect={onSelect ? () => onSelect(t.id) : undefined}
-      >
-        <LineMark state={state} />
-        <ThreadGlyph thread={t} />
-        <span
-          className={`min-w-0 flex-1 truncate ${state === "paused" ? "text-warning" : state === "stopped" ? "text-content/40" : "text-content/60"}`}
-        >
-          {t.title || "Untitled"}
-        </span>
-        <HostGlyph environmentId={t.environmentId} />
-        {state === "waiting" ? (
-          <span className="shrink-0 font-medium text-warning">Needs you</span>
-        ) : state === "failed" ? (
-          <span className="shrink-0 font-medium text-danger">Failed</span>
-        ) : state === "working" && tasks ? (
-          <span className="shrink-0 tabular-nums text-content/40" title={`${tasks.done} of ${tasks.total} tasks done`}>
-            {tasks.done}/{tasks.total}
-          </span>
-        ) : state === "working" ? (
-          <span className={`shrink-0 whitespace-nowrap tabular-nums text-content/40 ${ms < 3000 ? "opacity-0" : ""}`}>
-            {duration(ms)}
-          </span>
-        ) : null}
-      </RowShell>
-      {agents ? <AgentsLine summary={agents} indent="pl-[54px]" /> : null}
-    </>
-  );
-}
-
-/** A master and its batch as one line of the card: the master's own line
- *  with the batch's done tally, its own working subagents under its title,
- *  then each batch thread with something to say one step in, loudest
- *  first, and the queued ones as one quiet count. Settled batch threads
- *  are the tally; nothing inside a master is ever unread. */
-function MasterLines({
-  block,
-  now,
-  onSelect,
-}: {
-  block: MasterBlock;
-  now: number;
-  onSelect?: (id: string) => void;
-}) {
-  const { master, state, unread, done, total } = block;
-  return (
-    <div className="flex w-full flex-col py-0.5">
-      <RowShell
-        className="flex w-full items-center gap-1.5 py-0.5 text-[11px] leading-4"
-        title={master.activity ?? undefined}
-        onSelect={onSelect ? () => onSelect(master.id) : undefined}
-      >
-        <LineMark state={state} />
-        <ThreadGlyph thread={master} />
-        <span
-          className={`min-w-0 flex-1 truncate ${
-            unread ? "font-medium text-content" : state === "paused" ? "text-warning" : "text-content/70"
-          }`}
-        >
-          {master.title || "Untitled"}
-        </span>
-        {state === "waiting" ? (
-          <span className="shrink-0 font-medium text-warning">Needs you</span>
-        ) : state === "failed" ? (
-          <span className="shrink-0 font-medium text-danger">Failed</span>
-        ) : null}
-        <span
-          className={`shrink-0 tabular-nums ${done === total ? "text-success" : "text-content/40"}`}
-          title={`${done} of ${total} ${total === 1 ? "thread" : "threads"} done`}
-        >
-          {done}/{total}
-        </span>
-      </RowShell>
-      {block.agents ? <AgentsLine summary={block.agents} indent="pl-9" /> : null}
-      {block.lines.map((line) => (
-        <BatchThreadLine key={line.thread.id} line={line} now={now} onSelect={onSelect} />
-      ))}
-      {block.queued > 0 ? (
-        <div className="flex items-center gap-1.5 py-0.5 pl-[18px] text-[11px] leading-4 text-content/40">
-          <LineMark state="queued" />
-          {block.queued} queued
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/** One line per live-or-unseen thread, status leading the eye: tinted
- *  spinner (or the blue unread dot) up front, title, elapsed at the end.
- *  A paused line freezes its elapsed where the pause left it. Only a card
- *  with a running line subscribes to the second hand. A card prints one
- *  page of lines (`sessionListWindow`) and a "more" row for the rest.
- *  `onSelectThread`: opt a caller's rows into jumping to their thread on
- *  click (the Sessions tab's own card leaves this unset by design). */
-export function LiveLines({
-  status,
-  roots,
-  activeId,
-  requested = SESSION_LIST_PAGE,
-  onMore,
-  onSelectThread,
-}: {
-  status: LiveStatus;
-  /** The card's root rows: a master among them prints as a block with its
-   *  batch under it (`MasterLines`). */
-  roots?: readonly ThreadRow[];
-  activeId: string | null;
-  requested?: number;
-  onMore?: () => void;
-  onSelectThread?: (id: string) => void;
-}) {
-  const now = useClock(status.running.length > 0);
-  const { shown, hidden } = windowRows(liveLines(status, roots), requested, activeId);
-  if (!shown.length) return null;
-  return (
-    <div className="w-full divide-y divide-content/10 border-y border-content/10">
-      {shown.map((line) =>
-        line.kind === "master" ? (
-          <MasterLines key={line.id} block={line.block} now={now} onSelect={onSelectThread} />
-        ) : line.kind === "running" ? (
-          <RunningLine key={line.id} thread={line.thread} now={now} onSelect={onSelectThread} />
-        ) : line.kind === "paused" ? (
-          <PausedLine key={line.id} thread={line.thread} onSelect={onSelectThread} />
-        ) : (
-          <UnreadLine key={line.id} thread={line.thread} onSelect={onSelectThread} />
-        ),
-      )}
-      {hidden > 0 && onMore ? (
-        <div className="py-1">
-          <MoreRow hidden={hidden} onMore={onMore} />
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 // --- project rows ----------------------------------------------------------
 
