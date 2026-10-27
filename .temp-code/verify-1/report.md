@@ -151,6 +151,7 @@ Severity: broken (does not work or misleads), wrong (against docs/DESIGN.md or t
 - wrong · the main process log · MaxListenersExceededWarning at boot of a preview instance · m3/instance.log:61, m2 · src/main (find the emitter)
 - wrong · a proof script's own listeners under a shell call (the quota proof's fake provider) were filed as dev servers and forwarded to the Mac by the box's release-300 host; master's NOT_DEV_RUNNER has no row for `scripts/e2e-*` or esbuild'd proofs · this thread's hook lines · src/shared/devServerRules.ts, src/main/server/threadPorts.ts
 - polish · the gate notice's detail "master" and the html_render page's `host=local` resolution (see 2.4) have a server side to check · src/main/server/batch.ts, src/main/assets.ts
+- wrong (from group X's #6) · Continue after a watching thread's harness died starts the strip's clock at the old turn's age · the renderer reads `session.busySince`, which the host keeps through a watching stretch and carries on in `resumeStopped` · the rule for H: a turn that starts from a settled state (watching, idle or error) stamps `busySince` now; the carry-on stays only for a turn that died mid-stream; fix it on the same death path as the first item · src/main/server/sessions.ts (resumeStopped, the watching → running transition)
 
 ## 3. The research report's ranked list
 
