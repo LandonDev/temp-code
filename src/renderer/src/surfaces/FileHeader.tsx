@@ -79,7 +79,9 @@ function SaveWord({ save }: { save: SaveState }) {
   if (save.status !== "error") return null;
   return (
     <Tooltip>
-      <TooltipTrigger render={<span className="shrink-0 text-destructive" />}>Save failed</TooltipTrigger>
+      <TooltipTrigger render={<span tabIndex={0} className="min-w-0 max-w-64 truncate text-destructive outline-none focus-visible:underline" />}>
+        Save failed: {save.message}
+      </TooltipTrigger>
       <TooltipContent>{save.message}</TooltipContent>
     </Tooltip>
   );

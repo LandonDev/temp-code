@@ -69,8 +69,8 @@ describe("FileHeader", () => {
     const { container, rerender } = render(<FileHeader folder={null} save={{ status: "saving" }} />);
     expect(container.textContent).toBe("Saving…");
     rerender(<FileHeader folder={null} save={{ status: "error", message: "EACCES" }} />);
-    expect(container.textContent).toBe("Save failed");
-    expect(container.querySelector(".text-destructive")).not.toBeNull();
+    expect(container.textContent).toBe("Save failed: EACCES");
+    expect(container.querySelector<HTMLElement>(".text-destructive")!.tabIndex).toBe(0);
     rerender(<FileHeader folder={null} save={{ status: "saved" }} />);
     expect(container.textContent).toBe("");
     rerender(<FileHeader folder={null} save={{ status: "idle" }} />);

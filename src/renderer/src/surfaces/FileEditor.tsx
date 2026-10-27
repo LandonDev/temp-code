@@ -392,6 +392,12 @@ export function FileEditor({
     />
   );
 
+  // The changes are in the source: a step from the Markdown preview shows it.
+  const stepToChange = (delta: -1 | 1) => {
+    if (markdown && mode === "preview") setMode("source");
+    stepChunk.current?.(delta);
+  };
+
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       <FileHeader
@@ -405,8 +411,8 @@ export function FileEditor({
                 deletions: chunkNav?.deletions ?? 0,
                 index: chunkNav?.index ?? 0,
                 total: chunkNav?.positions.length ?? 0,
-                onPrev: () => stepChunk.current?.(-1),
-                onNext: () => stepChunk.current?.(1),
+                onPrev: () => stepToChange(-1),
+                onNext: () => stepToChange(1),
               }
             : undefined
         }

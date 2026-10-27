@@ -250,8 +250,14 @@ class FindPanel implements Panel {
         }
       }
     }
+    if (changed) {
+      // openSearchPanel focuses and selects the field right after this
+      // update, so the new query has to be in the field already.
+      this.state = { ...this.state, count: this.countOf(this.state.search) };
+      flushSync(() => this.render());
+      return;
+    }
     if (
-      changed ||
       update.docChanged ||
       update.selectionSet ||
       update.transactions.some((transaction) =>
