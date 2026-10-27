@@ -11,7 +11,7 @@ import { trackEditor } from "./keys";
 import { ensureForModel } from "./lsp/idea";
 import { registerProviders } from "./lsp/providers";
 import { EDITOR_OPTIONS, editorFontFamily, followEditorFont, languageForPath, monaco } from "./monaco";
-import { openFile, resolveConflict, saveNow, type OpenedFile } from "./models";
+import { openFile, resolveConflict, saveExplicit, saveNow, type OpenedFile } from "./models";
 import { monacoReady } from "./theme";
 
 /**
@@ -81,7 +81,11 @@ export function DiffSurface({
         }
         setFileState(opened.state);
         cleanups.push(opened.onState(setFileState));
-        cleanups.push(registerEditorFlusher(path, opened.flushNow));
+        cleanups.push(
+          registerEditorFlusher(path, (explicit) =>
+            explicit ? saveExplicit(path) : opened.flushNow(),
+          ),
+        );
         original = monaco.editor.createModel(head, languageForPath(path));
         editor = monaco.editor.createDiffEditor(hostRef.current!, {
           ...EDITOR_OPTIONS,

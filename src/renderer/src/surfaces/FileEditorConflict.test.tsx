@@ -9,11 +9,13 @@ Range.prototype.getBoundingClientRect = () => new DOMRect();
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
+import { undo } from "@codemirror/commands";
 
 const h = vi.hoisted(() => ({
   disk: new Map<string, string>(),
   writes: [] as string[],
   watch: null as null | (() => void),
+  onWrite: null as null | (() => void),
 }));
 
 vi.mock("../lib/fs", async (importOriginal) => ({
@@ -26,6 +28,7 @@ vi.mock("../lib/fs", async (importOriginal) => ({
   writeTextFile: async (_host: string, path: string, text: string) => {
     h.writes.push(text);
     h.disk.set(path, text);
+    h.onWrite?.();
   },
   notifyGitChanged: () => {},
   subscribeGitChanged: () => () => {},
@@ -59,6 +62,7 @@ describe("the Markdown editor and the disk race", () => {
     h.disk.clear();
     h.writes.length = 0;
     h.watch = null;
+    h.onWrite = null;
     h.disk.set(PATH, base);
   });
   afterEach(cleanup);
@@ -129,6 +133,51 @@ describe("the Markdown editor and the disk race", () => {
     expect(cm.state.doc.toString()).toBe(edit(base, 4, "theirs"));
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(h.writes).toEqual([]);
+    // Reload is its own undo step: one ⌘Z brings the person's text back.
+    act(() => {
+      undo(cm);
+    });
+    expect(cm.state.doc.toString()).toBe(edit(base, 4, "mine"));
+  });
+
+  it("Save All in the focused editor is Keep mine while the bar shows", async () => {
+    const { cm, container } = await mount();
+    type(cm, 4, "mine");
+    h.disk.set(PATH, edit(base, 4, "theirs"));
+    await act(async () => {
+      await flushEditor(PATH);
+    });
+    expect(h.writes).toEqual([]);
+    act(() => cm.focus());
+    await act(async () => {
+      await flushEditor(PATH, true);
+    });
+    await waitFor(() => expect(h.writes).toEqual([edit(base, 4, "mine")]));
+    await waitFor(() => expect(container.querySelector('[role="alert"]')).toBeNull());
+  });
+
+  it("raises the bar when the person types on the merged-in line during the write, and the echo keeps it", async () => {
+    const { cm, container } = await mount();
+    type(cm, 2, "mine");
+    h.disk.set(PATH, edit(base, 9, "theirs"));
+    h.onWrite = () => {
+      h.onWrite = null;
+      type(cm, 9, "typed");
+    };
+    await act(async () => {
+      await flushEditor(PATH);
+    });
+    expect(h.writes).toEqual([edit(edit(base, 2, "mine"), 9, "theirs")]);
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    await act(async () => {
+      h.watch!();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    await act(async () => {
+      await flushEditor(PATH);
+    });
+    expect(h.writes).toHaveLength(1);
   });
 
   it("a watch event under unsaved edits on other lines merges without writing", async () => {

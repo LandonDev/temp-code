@@ -93,6 +93,8 @@ function applyExternal(entry: Entry, next: string, saved = true): monaco.IRange 
   const to = entry.model.getPositionAt(edit.endCur);
   entry.applyingExternal = true;
   try {
+    // Its own undo step: ⌘Z after a Reload or a merge undoes it alone.
+    entry.model.pushStackElement();
     entry.model.pushEditOperations(
       [],
       [
@@ -103,6 +105,7 @@ function applyExternal(entry: Entry, next: string, saved = true): monaco.IRange 
       ],
       () => null,
     );
+    entry.model.pushStackElement();
   } finally {
     entry.applyingExternal = false;
   }
@@ -202,7 +205,8 @@ function wantsFormat(model: monaco.editor.ITextModel): boolean {
 
 /** The disk now holds `disk`, decided on the buffer text `decidedOn`
  *  (saved at `altId`). Keystrokes typed since stay on top: unsaved, with
- *  the disk's lines merged under them when the disk took a merge. */
+ *  the disk's lines merged under them when the disk took a merge, or the
+ *  bar when they landed on those very lines. */
 function adopt(entry: Entry, disk: string, decidedOn: string, altId: number): void {
   entry.diskText = disk;
   const now = entry.model.getValue();
@@ -216,6 +220,13 @@ function adopt(entry: Entry, disk: string, decidedOn: string, altId: number): vo
   }
   const race = settleDiskRace(decidedOn, now, disk);
   if (race.kind === "merged") applyExternal(entry, race.text, false);
+  if (race.kind === "conflict") {
+    // The base stays where the buffer stands, so the write's own watch
+    // echo still reads as a conflict and keeps the bar.
+    entry.diskText = decidedOn;
+    entry.theirs = disk;
+    setState(entry, { conflict: "external", pending: true });
+  }
 }
 
 /** Write the buffer if it differs from disk, unless the disk changed the
@@ -244,9 +255,9 @@ async function flush(entry: Entry, force = false): Promise<boolean> {
         setState(entry, { conflict: "external", pending: true });
         return false;
       }
-      adopt(entry, res.text, content, altId);
       if (entry.state.conflict) setState(entry, { conflict: null });
       entry.theirs = null;
+      adopt(entry, res.text, content, altId);
       if (res.kind === "written") {
         await syncWatchedMtime(entry.path);
         notifyGitChanged();
@@ -375,6 +386,14 @@ export async function resolveConflict(path: string, action: "reload" | "keep"): 
   if (entries.get(path) !== entry) return false;
   entry.savedAltId = -1;
   return flush(entry, true);
+}
+
+/** Save All (the menu's ⌘S): Keep mine when an editor showing this file
+ *  has focus and the bar shows; otherwise a flush, which the bar holds. */
+export function saveExplicit(path: string): Promise<boolean> {
+  const entry = entries.get(path);
+  const focused = entry && monaco.editor.getEditors().some((e) => e.getModel() === entry.model && e.hasTextFocus());
+  return focused ? saveNow(path) : flushPath(path);
 }
 
 /** ⌘S: Keep mine while the bar shows, else save now. */

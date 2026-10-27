@@ -1,5 +1,5 @@
 import { acceptCompletion, completionStatus } from "@codemirror/autocomplete";
-import { indentLess, indentMore } from "@codemirror/commands";
+import { indentLess, indentMore, isolateHistory } from "@codemirror/commands";
 import {
   foldGutter,
   foldKeymap,
@@ -401,6 +401,15 @@ export function FileEditor({
     }
   }, [host, path]);
 
+  const raised = useCallback((theirs: string, base: string) => {
+    // The base stays where the buffer stands, so the write's own watch
+    // echo still reads as a conflict and keeps the bar.
+    diskTextRef.current = base;
+    theirsRef.current = theirs;
+    conflictRef.current = "external";
+    setConflict("external");
+  }, []);
+
   /** ⌘S is Keep mine while the bar shows. */
   const interceptSave = useCallback(() => {
     if (!conflictRef.current) return false;
@@ -479,6 +488,7 @@ export function FileEditor({
       stepRef={stepChunk}
       bufferRef={bufferRef}
       interceptSave={interceptSave}
+      onRaced={raised}
     />
   );
 
@@ -584,6 +594,7 @@ function CodeMirrorEditor({
   stepRef,
   bufferRef,
   interceptSave,
+  onRaced,
   readOnly = false,
 }: {
   path: string;
@@ -607,6 +618,9 @@ function CodeMirrorEditor({
   bufferRef: MutableRefObject<EditorBuffer | null>;
   /** ⌘S asks first; true when it took the key (the conflict bar). */
   interceptSave: () => boolean;
+  /** Keystrokes typed during a save landed on the lines the disk merged
+   *  in: the bar asks, with the disk's text. */
+  onRaced: (theirs: string, base: string) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -618,6 +632,8 @@ function CodeMirrorEditor({
   const onSaveRef = useRef(onSave);
   const interceptSaveRef = useRef(interceptSave);
   interceptSaveRef.current = interceptSave;
+  const onRacedRef = useRef(onRaced);
+  onRacedRef.current = onRaced;
   const onStageGitRef = useRef(onStageGit);
   const onDocChangeRef = useRef(onDocChange);
   const valueRef = useRef(value);
@@ -771,8 +787,11 @@ function CodeMirrorEditor({
       else if (disk !== decided) {
         const race = settleDiskRace(decided, now, disk);
         if (race.kind === "merged") next = race.text;
+        if (race.kind === "conflict") onRacedRef.current(disk, decided);
       }
-      if (next !== null) replaceEditorDoc(view, next, { annotations: [diskReload.of(true)] });
+      if (next !== null) {
+        replaceEditorDoc(view, next, { annotations: [diskReload.of(true), isolateHistory.of("full")] });
+      }
       savedDocumentRef.current = view.state.toText(disk);
       markDirty();
       return true;
@@ -794,16 +813,20 @@ function CodeMirrorEditor({
         if (!disposed && dirtyRef.current) void saveNow();
       }, 800);
     };
-    const unregisterFlusher = registerEditorFlusher(path, async () => {
+    const unregisterFlusher = registerEditorFlusher(path, async (explicit) => {
       if (autoSaveTimer !== null) window.clearTimeout(autoSaveTimer);
       autoSaveTimer = null;
+      if (explicit && view.hasFocus && interceptSaveRef.current()) return true;
       return dirtyRef.current ? saveNow() : true;
     });
     bufferRef.current = {
       doc: () => view.state.doc.toString(),
       apply: (text, disk, history) => {
         replaceEditorDoc(view, text, {
-          annotations: history ? [diskReload.of(true)] : [Transaction.addToHistory.of(false), diskReload.of(true)],
+          // Its own undo step: ⌘Z after a Reload or a merge undoes it alone.
+          annotations: history
+            ? [diskReload.of(true), isolateHistory.of("full")]
+            : [Transaction.addToHistory.of(false), diskReload.of(true)],
         });
         savedDocumentRef.current = view.state.toText(disk);
         markDirty();

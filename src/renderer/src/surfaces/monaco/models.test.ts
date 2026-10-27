@@ -27,6 +27,7 @@ class FakeModel {
   getAlternativeVersionId() {
     return this.alt;
   }
+  pushStackElement() {}
   getLanguageId() {
     return "plaintext";
   }
@@ -71,6 +72,7 @@ const h = vi.hoisted(() => ({
   model: null as unknown,
   fileEvent: null as null | ((e: { path: string; kind: string }) => void),
   autoSave: true,
+  onWrite: null as null | (() => void),
 }));
 
 vi.mock("./monaco", () => ({
@@ -94,6 +96,7 @@ vi.mock("./monaco", () => ({
       },
       onDidChangeMarkers: () => {},
       getModelMarkers: () => [],
+      getEditors: () => [],
     },
   },
 }));
@@ -106,6 +109,7 @@ vi.mock("../../lib/fs", () => ({
   writeTextFile: async (_host: string, path: string, text: string) => {
     h.writes.push(text);
     h.disk.set(path, text);
+    h.onWrite?.();
   },
   notifyGitChanged: () => {},
 }));
@@ -146,6 +150,7 @@ describe("the model registry and the disk race", () => {
     h.disk.clear();
     h.writes.length = 0;
     h.autoSave = true;
+    h.onWrite = null;
     h.disk.set(PATH, base);
     opened = await openFile(PATH, "/w");
     model = h.model as FakeModel;
@@ -222,6 +227,27 @@ describe("the model registry and the disk race", () => {
     expect(isModelDirty(PATH)).toBe(true);
     await autosave();
     expect(h.writes).toEqual([edit(base, 4, "mine")]);
+  });
+
+  it("raises the bar when the person types on the merged-in line while the merge is being written", async () => {
+    model.set(edit(base, 2, "mine"));
+    h.disk.set(PATH, edit(base, 9, "theirs"));
+    h.onWrite = () => {
+      h.onWrite = null;
+      model.set(edit(edit(base, 2, "mine"), 9, "typed"));
+    };
+    await autosave();
+    expect(h.writes).toEqual([edit(edit(base, 2, "mine"), 9, "theirs")]);
+    expect(getState().conflict).toBe("external");
+    // The write's own watch echo keeps the bar.
+    h.fileEvent!({ path: PATH, kind: "changed" });
+    await settle();
+    expect(getState().conflict).toBe("external");
+    await autosave();
+    await flushAll();
+    expect(h.writes).toHaveLength(1);
+    expect(await resolveConflict(PATH, "reload")).toBe(true);
+    expect(model.getValue()).toBe(edit(edit(base, 2, "mine"), 9, "theirs"));
   });
 
   it("a clean buffer takes an external change as it always did", async () => {

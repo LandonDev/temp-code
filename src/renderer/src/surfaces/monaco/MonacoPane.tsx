@@ -19,7 +19,7 @@ import { installSmartBackspace, showParamInfo } from "./lsp/paramInfo";
 import { registerProviders, showHierarchy } from "./lsp/providers";
 import { debugFile, paintBreakpoints } from "./debug/session";
 import { EDITOR_OPTIONS, editorFontFamily, followEditorFont, monaco, tabSizeForPath } from "./monaco";
-import { openFile, resolveConflict, saveNow, type OpenedFile } from "./models";
+import { openFile, resolveConflict, saveExplicit, saveNow, type OpenedFile } from "./models";
 import { monacoReady } from "./theme";
 
 type Props = {
@@ -128,7 +128,11 @@ export default function MonacoPane(props: Props) {
       const opened = handle;
       setFileState(opened.state);
       cleanups.push(opened.onState(setFileState));
-      cleanups.push(registerEditorFlusher(path, opened.flushNow));
+      cleanups.push(
+        registerEditorFlusher(path, (explicit) =>
+          explicit ? saveExplicit(path) : opened.flushNow(),
+        ),
+      );
       const debuggable = ["java", "kotlin"].includes(model.getLanguageId());
       model.updateOptions({ tabSize: tabSizeForPath(path), insertSpaces: true });
       editor = monaco.editor.create(hostRef.current!, {

@@ -6,7 +6,10 @@
  * editor chunk in.
  */
 
-type Flusher = () => Promise<boolean>;
+/** `explicit`: the person asked to save (Save All, ⌘S): the focused
+ *  editor's conflict bar takes it as Keep mine. Otherwise a bar holds the
+ *  write. */
+type Flusher = (explicit: boolean) => Promise<boolean>;
 
 const flushers = new Map<string, Flusher>();
 
@@ -19,11 +22,11 @@ export function registerEditorFlusher(path: string, flush: Flusher): () => void 
 
 /** Write `path`'s buffer now; true when the disk holds it afterwards
  *  (no open editor counts as nothing to do). */
-export async function flushEditor(path: string): Promise<boolean> {
+export async function flushEditor(path: string, explicit = false): Promise<boolean> {
   const flush = flushers.get(path);
   if (!flush) return true;
   try {
-    return await flush();
+    return await flush(explicit);
   } catch {
     return false;
   }
@@ -34,7 +37,7 @@ export async function flushAllEditors(): Promise<string[]> {
   const failed: string[] = [];
   await Promise.all(
     [...flushers.keys()].map(async (path) => {
-      if (!(await flushEditor(path))) failed.push(path);
+      if (!(await flushEditor(path, true))) failed.push(path);
     }),
   );
   return failed;
