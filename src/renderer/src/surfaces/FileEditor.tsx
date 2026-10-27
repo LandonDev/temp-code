@@ -53,6 +53,7 @@ import {
   writeTextFile,
 } from "../lib/fs";
 import { registerEditorFlusher } from "../lib/editorFlush";
+import { settleDiskRace, writeUnlessRaced } from "../lib/diskRace";
 import { loadAutoSave } from "../lib/settings";
 import { syncWatchedMtime, watchFile } from "../lib/fileWatch";
 import { hostOfCwd } from "../lib/tcserver/projects";
@@ -61,6 +62,7 @@ import { registry } from "../lib/connection";
 import { displayPath } from "../lib/paths";
 import type { EditorNavigation } from "../lib/search";
 import { MarkdownPreview } from "./AgentMarkdown";
+import { ConflictBar } from "./ConflictBar";
 import { FileHeader, fileFolder, type SaveState } from "./FileHeader";
 import { editorAutocomplete } from "./editorAutocomplete";
 import { languageForPath, schemeExtensions } from "./editorChrome";
@@ -102,6 +104,21 @@ type LoadState =
   | { status: "ready"; content: string }
   | { status: "error"; message: string };
 
+/** What the outer editor asks of the CodeMirror view: the bar's choices,
+ *  the watch path's merge and ⌘S go through it. */
+type EditorBuffer = {
+  /** The buffer's text now. */
+  doc(): string;
+  /** Put `text` in the buffer as one minimal edit (undoable when
+   *  `history`), with `disk` as what the disk now holds. */
+  apply(text: string, disk: string, history: boolean): void;
+  /** Write the buffer now; false when nothing landed. */
+  save(): Promise<boolean>;
+  focus(): void;
+};
+
+type Conflict = "external" | "deleted" | null;
+
 /** Where the review tab's diff stands: its hunks and the one in view. */
 type ChunkNav = {
   positions: number[];
@@ -139,54 +156,75 @@ export function FileEditor({
   const saveGeneration = useRef(0);
   const loadGeneration = useRef(0);
   const dirtyRef = useRef(false);
-  const pendingDiskRef = useRef(false);
+  /** What the editor last read from or wrote to disk: the disk race's base. */
+  const diskTextRef = useRef("");
+  /** The disk's text while the bar asks (Reload takes it). */
+  const theirsRef = useRef<string | null>(null);
+  const [conflict, setConflict] = useState<Conflict>(null);
+  const conflictRef = useRef<Conflict>(null);
+  /** Keep mine is writing: the one save the bar lets through. */
+  const keepingRef = useRef(false);
+  const bufferRef = useRef<EditorBuffer | null>(null);
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
 
-  const applyDiskContent = useCallback((content: string) => {
-    setLoadState((current) => {
-      if (current.status === "ready" && current.content === content) {
-        return current;
-      }
-      return { status: "ready", content };
-    });
-    setDraft(content);
+  const setConflictTo = useCallback((next: Conflict) => {
+    conflictRef.current = next;
+    setConflict(next);
+    if (next === null) theirsRef.current = null;
   }, []);
 
-  const reloadFromDisk = useCallback(
-    async (force = false) => {
-      const generation = ++loadGeneration.current;
-      try {
-        const content = await readTextFile(host, path);
-        if (generation !== loadGeneration.current) return;
-        if (dirtyRef.current && !force) {
-          pendingDiskRef.current = true;
-          return;
-        }
-        pendingDiskRef.current = false;
-        if (force && dirtyRef.current) {
-          dirtyRef.current = false;
-          onDirtyChangeRef.current(path, false);
-        }
-        applyDiskContent(content);
-      } catch (error: unknown) {
-        if (generation !== loadGeneration.current) return;
-        if (dirtyRef.current && !force) {
-          pendingDiskRef.current = true;
-          return;
-        }
-        setLoadState({
-          status: "error",
-          message: error instanceof Error ? error.message : String(error),
-        });
+  /** The disk changed under the editor. Never writes: a clean buffer takes
+   *  the disk; unsaved edits on other lines get the disk's lines merged in
+   *  (unsaved, so the next save writes both); edits on the same lines raise
+   *  the bar (lib/diskRace.ts). */
+  const settleDisk = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    let disk: string;
+    try {
+      disk = await readTextFile(host, path);
+    } catch (error: unknown) {
+      if (generation !== loadGeneration.current) return;
+      if (dirtyRef.current) {
+        setConflictTo("deleted");
+        return;
       }
-    },
-    [applyDiskContent, path, host],
-  );
+      setLoadState({
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    if (generation !== loadGeneration.current) return;
+    const buffer = bufferRef.current;
+    if (!buffer) {
+      diskTextRef.current = disk;
+      setLoadState({ status: "ready", content: disk });
+      return;
+    }
+    const race = settleDiskRace(diskTextRef.current, buffer.doc(), disk);
+    if (race.kind === "conflict") {
+      theirsRef.current = disk;
+      setConflictTo("external");
+      return;
+    }
+    const was = conflictRef.current;
+    setConflictTo(null);
+    if (race.kind === "ours") {
+      // The disk is what we last saw; a save the bar held can go now.
+      if (was && dirtyRef.current && loadAutoSave()) void buffer.save();
+      return;
+    }
+    diskTextRef.current = disk;
+    buffer.apply(race.kind === "merged" ? race.text : disk, disk, race.kind === "merged");
+    setLoadState((current) =>
+      current.status === "ready" && current.content === disk ? current : { status: "ready", content: disk },
+    );
+  }, [host, path, setConflictTo]);
 
   useEffect(() => {
     dirtyRef.current = false;
-    pendingDiskRef.current = false;
+    setConflictTo(null);
     let cancelled = false;
     setLoadState({ status: "loading" });
     setSaveState({ status: "idle" });
@@ -194,6 +232,7 @@ export function FileEditor({
     void readTextFile(host, path)
       .then((content) => {
         if (cancelled || generation !== loadGeneration.current) return;
+        diskTextRef.current = content;
         setLoadState({ status: "ready", content });
         setDraft(content);
       })
@@ -207,7 +246,7 @@ export function FileEditor({
     return () => {
       cancelled = true;
     };
-  }, [path, host, reloadKey]);
+  }, [path, host, reloadKey, setConflictTo]);
 
   useEffect(() => {
     if (!showDiff) {
@@ -249,7 +288,7 @@ export function FileEditor({
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         load();
-        void reloadFromDisk();
+        void settleDisk();
       }, 50);
     };
     window.addEventListener("focus", onFocus);
@@ -264,7 +303,7 @@ export function FileEditor({
       unsubGit();
       unsubWatch();
     };
-  }, [cwd, path, reloadFromDisk, showDiff]);
+  }, [cwd, path, settleDisk, showDiff]);
 
   const gitOriginal = gitBase.path === path ? gitBase.original : null;
 
@@ -272,36 +311,53 @@ export function FileEditor({
     if (loadState.status !== "ready") return;
     let timer = 0;
     const stop = watchFile(path, () => {
-      if (dirtyRef.current) {
-        pendingDiskRef.current = true;
-        return;
-      }
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
-        void reloadFromDisk();
+        void settleDisk();
       }, 50);
     }, host);
     return () => {
       window.clearTimeout(timer);
       stop();
     };
-  }, [loadState.status, path, reloadFromDisk]);
+  }, [loadState.status, path, settleDisk]);
 
+  /** Write through the disk race: the text now on disk, or null when the
+   *  disk changed the lines being edited (the bar asks) or the bar already
+   *  holds every write but Keep mine's. */
   const save = useCallback(
-    async (content: string) => {
+    async (content: string): Promise<string | null> => {
+      if (conflictRef.current && !keepingRef.current) return null;
       const generation = ++saveGeneration.current;
       setSaveState({ status: "saving" });
-      const operation = saveQueue.current.then(() =>
-        writeTextFile(host, path, content),
+      const io = {
+        read: () => readTextFile(host, path),
+        write: (text: string) => writeTextFile(host, path, text),
+      };
+      const operation = saveQueue.current.then(() => writeUnlessRaced(io, diskTextRef.current, content));
+      saveQueue.current = operation.then(
+        () => {},
+        () => {},
       );
-      saveQueue.current = operation.catch(() => {});
       try {
-        await operation;
-        await syncWatchedMtime(path);
-        notifyGitChanged();
+        const result = await operation;
+        if (result.kind === "conflict") {
+          theirsRef.current = result.theirs;
+          conflictRef.current = "external";
+          setConflict("external");
+          if (generation === saveGeneration.current) setSaveState({ status: "idle" });
+          return null;
+        }
+        diskTextRef.current = result.text;
+        if (result.kind === "written") {
+          await syncWatchedMtime(path);
+          notifyGitChanged();
+        }
+        if (conflictRef.current) setConflictTo(null);
         if (generation === saveGeneration.current) {
           setSaveState({ status: "saved" });
         }
+        return result.text;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (generation === saveGeneration.current) {
@@ -310,8 +366,47 @@ export function FileEditor({
         throw error;
       }
     },
-    [path],
+    [host, path, setConflictTo],
   );
+
+  /** Reload: the disk's text as one undoable edit, so ⌘Z brings the
+   *  person's back (and the next save writes it). */
+  const reloadTheirs = useCallback(() => {
+    const buffer = bufferRef.current;
+    const disk = theirsRef.current;
+    if (!buffer || disk === null) return;
+    diskTextRef.current = disk;
+    setConflictTo(null);
+    buffer.apply(disk, disk, true);
+    setLoadState({ status: "ready", content: disk });
+    buffer.focus();
+  }, [setConflictTo]);
+
+  /** Keep mine, and Restore for a deleted file: write the buffer over what
+   *  the disk holds now; the bar goes when the write lands. */
+  const keepMine = useCallback(async () => {
+    const buffer = bufferRef.current;
+    if (!buffer) return;
+    buffer.focus();
+    try {
+      diskTextRef.current = await readTextFile(host, path);
+    } catch {
+      // Deleted: the write recreates it.
+    }
+    keepingRef.current = true;
+    try {
+      await buffer.save();
+    } finally {
+      keepingRef.current = false;
+    }
+  }, [host, path]);
+
+  /** ⌘S is Keep mine while the bar shows. */
+  const interceptSave = useCallback(() => {
+    if (!conflictRef.current) return false;
+    void keepMine();
+    return true;
+  }, [keepMine]);
 
   const stageGit = useCallback(
     async (contents: string) => {
@@ -339,14 +434,9 @@ export function FileEditor({
         setSaveState((current) =>
           current.status === "saving" ? current : { status: "idle" },
         );
-        return;
-      }
-      if (pendingDiskRef.current) {
-        pendingDiskRef.current = false;
-        void reloadFromDisk();
       }
     },
-    [onDirtyChange, path, reloadFromDisk],
+    [onDirtyChange, path],
   );
 
   const errorCountChange = useCallback(
@@ -387,6 +477,8 @@ export function FileEditor({
       onDocChange={markdown ? setDraft : undefined}
       onChunkNav={setChunkNav}
       stepRef={stepChunk}
+      bufferRef={bufferRef}
+      interceptSave={interceptSave}
     />
   );
 
@@ -398,9 +490,10 @@ export function FileEditor({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
+      {conflict ? <ConflictBar kind={conflict} onReload={reloadTheirs} onKeep={() => void keepMine()} /> : null}
       <FileHeader
         folder={folder}
-        save={saveState}
+        save={conflict ? IDLE_SAVE : saveState}
         markdown={markdown ? { mode, onModeChange: setMode } : undefined}
         diff={
           showDiff
@@ -436,6 +529,9 @@ export function FileEditor({
     </div>
   );
 }
+
+/** While the bar shows it says what the save state would. */
+const IDLE_SAVE: SaveState = { status: "idle" };
 
 /** Widths of the loading lines, fixed so nothing shifts between renders. */
 const LOADING_LINES = [60, 82, 45, 70, 90, 38, 66, 52];
@@ -486,6 +582,8 @@ function CodeMirrorEditor({
   onDocChange,
   onChunkNav,
   stepRef,
+  bufferRef,
+  interceptSave,
   readOnly = false,
 }: {
   path: string;
@@ -497,13 +595,18 @@ function CodeMirrorEditor({
   navigation?: EditorNavigationRequest | null;
   onDirtyChange: (dirty: boolean) => void;
   onErrorCountChange: (count: number) => void;
-  onSave: (content: string) => Promise<void>;
+  /** The text now on disk, or null when nothing was written. */
+  onSave: (content: string) => Promise<string | null>;
   onStageGit?: (contents: string) => Promise<void>;
   onDocChange?: (content: string) => void;
   /** The diff's hunks and the one in view, for the header's stepper. */
   onChunkNav: (nav: ChunkNav | null) => void;
   /** Filled with the step the header's buttons call. */
   stepRef: MutableRefObject<((delta: -1 | 1) => void) | null>;
+  /** Filled with the buffer the outer editor's disk race works on. */
+  bufferRef: MutableRefObject<EditorBuffer | null>;
+  /** ⌘S asks first; true when it took the key (the conflict bar). */
+  interceptSave: () => boolean;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -513,6 +616,8 @@ function CodeMirrorEditor({
   const onDirtyChangeRef = useRef(onDirtyChange);
   const onErrorCountChangeRef = useRef(onErrorCountChange);
   const onSaveRef = useRef(onSave);
+  const interceptSaveRef = useRef(interceptSave);
+  interceptSaveRef.current = interceptSave;
   const onStageGitRef = useRef(onStageGit);
   const onDocChangeRef = useRef(onDocChange);
   const valueRef = useRef(value);
@@ -650,18 +755,30 @@ function CodeMirrorEditor({
         });
       }
 
-      const document = view.state.doc;
+      const decided = view.state.doc.toString();
+      let disk: string | null;
       try {
-        await onSaveRef.current(document.toString());
+        disk = await onSaveRef.current(decided);
       } catch {
         return false;
       }
-      if (disposed || generation !== saveGeneration) return false;
-      savedDocumentRef.current = document;
+      if (disposed || generation !== saveGeneration || disk === null) return false;
+      // The disk may hold a merge, and keystrokes may have landed meanwhile:
+      // the disk's lines go under them, still unsaved.
+      const now = view.state.doc.toString();
+      let next: string | null = null;
+      if (now === decided) next = disk;
+      else if (disk !== decided) {
+        const race = settleDiskRace(decided, now, disk);
+        if (race.kind === "merged") next = race.text;
+      }
+      if (next !== null) replaceEditorDoc(view, next, { annotations: [diskReload.of(true)] });
+      savedDocumentRef.current = view.state.toText(disk);
       markDirty();
       return true;
     };
     const save = () => {
+      if (interceptSaveRef.current()) return true;
       void saveNow();
       return true;
     };
@@ -682,6 +799,19 @@ function CodeMirrorEditor({
       autoSaveTimer = null;
       return dirtyRef.current ? saveNow() : true;
     });
+    bufferRef.current = {
+      doc: () => view.state.doc.toString(),
+      apply: (text, disk, history) => {
+        replaceEditorDoc(view, text, {
+          annotations: history ? [diskReload.of(true)] : [Transaction.addToHistory.of(false), diskReload.of(true)],
+        });
+        savedDocumentRef.current = view.state.toText(disk);
+        markDirty();
+        scheduleAutoSave();
+      },
+      save: saveNow,
+      focus: () => view.focus(),
+    };
 
     view = new EditorView({
       doc: valueRef.current,
@@ -778,6 +908,7 @@ function CodeMirrorEditor({
       disposed = true;
       if (autoSaveTimer !== null) window.clearTimeout(autoSaveTimer);
       unregisterFlusher();
+      bufferRef.current = null;
       onErrorCountChangeRef.current(0);
       lockOverscroll(null);
       viewRef.current = null;
@@ -785,7 +916,7 @@ function CodeMirrorEditor({
       setChunkNav(null);
       view.destroy();
     };
-  }, [lockOverscroll, path, readOnly, showDiff, syncChunkNav]);
+  }, [bufferRef, lockOverscroll, path, readOnly, showDiff, syncChunkNav]);
 
   useEffect(() => {
     const view = viewRef.current;
