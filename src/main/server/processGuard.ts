@@ -62,8 +62,8 @@ export interface GuardMarkers {
 export interface ProcessGuardDeps {
   /** This user's processes, one row each. */
   scan(): Promise<GuardProc[]>
-  /** A process's NUL-separated environment, null when it cannot be read. */
-  environ(pid: number): Promise<string | null>
+  /** A process's NUL-separated environment, null when it cannot be read; `args` is its command line as the scan saw it (macOS strips it off `ps -E`'s line). */
+  environ(pid: number, args?: string): Promise<string | null>
   /** Send a signal; a negative pid is a process group. False when nothing was there. */
   kill(pid: number, signal: 'SIGTERM' | 'SIGKILL'): boolean
   /** Pids the ledger knows as deliberately backgrounded (the `port` rows). */
@@ -133,13 +133,24 @@ export function markersOf(environ: string | null): GuardMarkers & { claudePid: n
 /** The environment keys the guard reads; on macOS `ps -E` prints them after the command line. */
 const MARK_KEYS = [THREAD_MARK, CALL_MARK, 'CLAUDE_PID', 'ANTHROPIC_BASE_URL'] as const
 
-/** `ps -E -o command= -p <pid>` (macOS: the command line, then `KEY=value` pairs) → a NUL-separated environ of the keys the guard reads. */
-export function environFromPsE(text: string): string | null {
-  const line = text.trim()
-  if (!line) return null
+/**
+ * `ps -ww -E -o command= -p <pid>` (macOS: the command line, then the
+ * `KEY=value` pairs of the environment the process started with) → a
+ * NUL-separated environ of the keys the guard reads. The command line is
+ * what the scan saw for the pid (`args`): it comes off the front, so a mark
+ * written in a command's text (wrapBashCommand's export) is never taken
+ * for the process's own; without it, the last pair wins, since the
+ * environment follows the command.
+ */
+export function environFromPsE(text: string, args?: string): string | null {
+  const line = text.trimEnd()
+  if (!line.trim()) return null
+  const prefix = args?.trim()
+  const env = prefix && line.startsWith(prefix) ? line.slice(prefix.length) : null
   const out: string[] = []
   for (const key of MARK_KEYS) {
-    const m = new RegExp(`(?:^|\\s)${key}=(\\S+)`).exec(line)
+    const matches = [...(env ?? line).matchAll(new RegExp(`(?:^|\\s)${key}=(\\S+)`, 'g'))]
+    const m = env ? matches[0] : matches.at(-1)
     if (m) out.push(`${key}=${m[1]}`)
   }
   return out.length ? `${out.join('\0')}\0` : ''
@@ -352,7 +363,7 @@ export class ProcessGuard {
     const key = `${r.pid}:${r.args}`
     let m = this.markers.get(key)
     if (!m) {
-      const read = markersOf(await this.deps.environ(r.pid))
+      const read = markersOf(await this.deps.environ(r.pid, r.args))
       const threadId = read.threadId ?? (read.claudePid ? (this.deps.threadOfHarness?.(read.claudePid) ?? `claude:${read.claudePid}`) : null)
       m = { threadId, callId: read.callId }
       this.markers.set(key, m)
@@ -367,24 +378,24 @@ export class ProcessGuard {
 const psRows = (): Promise<string> =>
   new Promise((resolve) => {
     const uid = process.getuid?.()
-    const args = uid === undefined ? ['-A', '-o', 'pid=,ppid=,pgid=,rss=,args='] : ['-u', String(uid), '-o', 'pid=,ppid=,pgid=,rss=,args=']
+    const args = uid === undefined ? ['-ww', '-A', '-o', 'pid=,ppid=,pgid=,rss=,args='] : ['-ww', '-u', String(uid), '-o', 'pid=,ppid=,pgid=,rss=,args=']
     execFile('ps', args, { timeout: 5_000, maxBuffer: 8 * 1024 * 1024 }, (_err, stdout) => resolve(String(stdout ?? '')))
   })
 
 /** macOS has no /proc: `ps -E` shows a process's environment after its command line (one child per process the guard has to decide about; the markers cache keeps it to once per process). */
-const darwinEnviron = (pid: number): Promise<string | null> =>
+const darwinEnviron = (pid: number, args?: string): Promise<string | null> =>
   new Promise((resolve) => {
-    execFile('ps', ['-E', '-o', 'command=', '-p', String(pid)], { timeout: 5_000, maxBuffer: 1024 * 1024 }, (err, stdout) => resolve(err ? null : environFromPsE(String(stdout ?? ''))))
+    execFile('ps', ['-ww', '-E', '-o', 'command=', '-p', String(pid)], { timeout: 5_000, maxBuffer: 1024 * 1024 }, (err, stdout) => resolve(err ? null : environFromPsE(String(stdout ?? ''), args)))
   })
 
 export function hostGuardDeps(): Pick<ProcessGuardDeps, 'scan' | 'environ' | 'kill'> {
   return {
     scan: async () => parseGuardPs(await psRows()),
-    environ: (pid) =>
+    environ: (pid, args) =>
       process.platform === 'linux'
         ? readFile(`/proc/${pid}/environ`, 'utf8').catch(() => null)
         : process.platform === 'darwin'
-          ? darwinEnviron(pid)
+          ? darwinEnviron(pid, args)
           : Promise.resolve(null),
     kill: (pid, signal) => {
       try {

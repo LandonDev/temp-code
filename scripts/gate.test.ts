@@ -271,6 +271,9 @@ describe('the vitest step and its JSON report', () => {
   it("a run whose reporter printed its summary keeps its exit: the JSON report does not count an unhandled error", () => {
     const summary = 'Test Files  530 passed (530)\n      Tests  4966 passed (4966)\n     Errors  1 error'
     expect(judgeReport(1, summary, report({ success: true }))).toEqual({ exitCode: 1, tail: summary })
+    // The summary seen earlier in the output, evicted from the kept tail by later lines: the exit still stands.
+    expect(judgeReport(1, 'shutdown line', report({ success: true }), true)).toEqual({ exitCode: 1, tail: 'shutdown line' })
+    expect(judgeReport(1, 'shutdown line', report({ success: true }), false).exitCode).toBe(0)
   })
 
   it('a red report names its failures when the output printed nothing, and keeps the output when it did', () => {

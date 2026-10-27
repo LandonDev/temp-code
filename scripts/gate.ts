@@ -433,11 +433,20 @@ export function readJsonReport(file: string | null): JsonReport | null {
  * no report and no output names the one cause that leaves both empty, the
  * workers never started (the host's pids cap). A green exit is itself.
  */
-export function judgeReport(exitCode: number | null, tail: string, report: JsonReport | null): { exitCode: number | null; tail: string } {
+/** Vitest's own summary line: the reporter lived to the end. */
+export const VITEST_SUMMARY = /\bTest Files\b/
+
+export function judgeReport(
+  exitCode: number | null,
+  tail: string,
+  report: JsonReport | null,
+  printedSummary: boolean = VITEST_SUMMARY.test(tail)
+): { exitCode: number | null; tail: string } {
   if (exitCode === 0) return { exitCode, tail }
-  // The reporter lived to print its summary: the exit is vitest's own word
-  // (failed tests, or an unhandled error the JSON report does not count).
-  if (/\bTest Files\b/.test(tail)) return { exitCode, tail }
+  // The reporter lived to print its summary (seen anywhere in the output,
+  // not only the kept tail): the exit is vitest's own word (failed tests,
+  // or an unhandled error the JSON report does not count).
+  if (printedSummary) return { exitCode, tail }
   if (report?.success === true) {
     const n = report.numPassedTests ?? report.numTotalTests ?? 0
     const note = `vitest exited ${exitCode ?? 'by signal'} after the tests ran; its JSON report says all ${n} passed, so the step passes`
@@ -482,8 +491,10 @@ export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean
       }
       const lines: string[] = []
       let partial = ''
+      let printedSummary = false
       const onData = (chunk: Buffer): void => {
         const text = chunk.toString()
+        if (jsonFile && VITEST_SUMMARY.test(text)) printedSummary = true
         appendFileSync(logFile, text)
         if (opts.verbose) for (const l of text.split('\n').filter(Boolean)) process.stdout.write(`[${step.name}] ${l}\n`)
         partial += text
@@ -506,7 +517,7 @@ export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean
       child.on('close', (code, sig) => {
         signal.removeEventListener('abort', onAbort)
         if (partial) lines.push(partial)
-        const judged = judgeReport(code ?? (sig ? 1 : null), lines.slice(-tailLines).join('\n'), readJsonReport(jsonFile))
+        const judged = judgeReport(code ?? (sig ? 1 : null), lines.slice(-tailLines).join('\n'), readJsonReport(jsonFile), printedSummary)
         resolvePromise({ exitCode: judged.exitCode, tail: `${judged.tail}\n(full log: ${logFile})` })
       })
     })

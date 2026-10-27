@@ -1092,6 +1092,27 @@ describe("the mounted set", () => {
     expect(sessionStore.get("s1")?.blocks.at(-1)?.text).toBe("q8");
   });
 
+  it("a busy transcript outside the kept set replays its gap on a resync too: the unload that keeps its rows never releases past the shed ones", async () => {
+    link.metas = [wireMeta({ id: "s1" }), wireMeta({ id: "s2" })];
+    const rows: EventRow[] = [];
+    for (let i = 1; i <= 5; i++) rows.push(row("s1", i, { type: "user-text", text: `q${i}` }));
+    link.events.set("s1", rows);
+    link.events.set("s2", rowsFor("s2", 2));
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    sessionStore.setMounted(["s2"]);
+    await sessionStore.ensureLoaded("s2", "test");
+    await sessionStore.ensureLoaded("s1", "test");
+    // s1 is open (its last row a prompt): busy, loaded, and not on screen.
+    expect(sessionStore.get("s1")?.busy).toBe(true);
+    link.events.set("s1", [...rows, row("s1", 6, { type: "user-text", text: "q6" }), row("s1", 7, { type: "user-text", text: "q7" })]);
+    link.push({ push: "resync" });
+    link.push({ push: "event", row: row("s1", 7, { type: "user-text", text: "q7" }) });
+    for (let i = 0; i < 6; i++) await tick();
+    expect(sessionStore.get("s1")?.blocks.map((b) => b.text)).toEqual(["q1", "q2", "q3", "q4", "q5", "q6", "q7"]);
+    expect(sessionStore.get("s1")?.loaded).toBe(true);
+  });
+
   it("a batch of 1,000 metas builds one snapshot and notifies once per frame", async () => {
     link.metas = [wireMeta({ id: "s1" })];
     sessionStore.attach(link);

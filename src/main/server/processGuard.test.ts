@@ -278,12 +278,20 @@ describe('the marks', () => {
     expect(markersOf(env({ CLAUDE_PID: '77' }))).toEqual({ threadId: null, callId: null, claudePid: 77 })
   })
 
-  it("environFromPsE reads the marks off macOS's ps -E line, where the environment follows the command", () => {
+  it("environFromPsE reads the marks off macOS's ps -E line, where the environment follows the command, never off the command's own text", () => {
     const line = `/bin/bash -c eval 'bun test' PATH=/usr/bin TEMP_CODE_THREAD=t1 TEMP_CODE_CALL=toolu_01 CLAUDE_PID=77 ANTHROPIC_BASE_URL=http://127.0.0.1:1/claude/~t=t1;a=x HOME=/Users/me\n`
-    expect(markersOf(environFromPsE(line))).toEqual({ threadId: 't1', callId: 'toolu_01', claudePid: 77 })
-    expect(environFromPsE('node server.js HOME=/Users/me\n')).toBe('')
-    expect(markersOf(environFromPsE('node server.js HOME=/Users/me\n'))).toEqual({ threadId: null, callId: null, claudePid: null })
-    expect(environFromPsE('')).toBeNull()
+    expect(markersOf(environFromPsE(line, "/bin/bash -c eval 'bun test'"))).toEqual({ threadId: 't1', callId: 'toolu_01', claudePid: 77 })
+    expect(environFromPsE('node server.js HOME=/Users/me\n', 'node server.js')).toBe('')
+    expect(markersOf(environFromPsE('node server.js HOME=/Users/me\n', 'node server.js'))).toEqual({ threadId: null, callId: null, claudePid: null })
+    expect(environFromPsE('', 'x')).toBeNull()
+    // The call's shell: the wrapped command's text carries the marks, its own environment does not (export ran inside it).
+    const shellArgs = `/bin/bash -c ${wrapBashCommand('bun test', 'call-1', 't1')}`
+    expect(markersOf(environFromPsE(`${shellArgs} PATH=/usr/bin HOME=/Users/me\n`, shellArgs))).toEqual({ threadId: null, callId: null, claudePid: null })
+    // Its child inherited them: the environment's pair wins, not the command text's quoted one.
+    const child = `node vitest.mjs ${wrapBashCommand('x', 'ignored', 'tX')} PATH=/usr/bin TEMP_CODE_THREAD=t1 TEMP_CODE_CALL=call-1\n`
+    expect(markersOf(environFromPsE(child, `node vitest.mjs ${wrapBashCommand('x', 'ignored', 'tX')}`))).toEqual({ threadId: 't1', callId: 'call-1', claudePid: null })
+    // Without the scan's command line to strip, the last pair wins: the environment follows the command.
+    expect(markersOf(environFromPsE(child))).toEqual({ threadId: 't1', callId: 'call-1', claudePid: null })
   })
 
   it('parseGuardPs reads the ps rows', () => {

@@ -1086,7 +1086,10 @@ class SessionStore {
     for (const entry of this.entries.values()) {
       if (!entry.loaded || !entry.meta || entry.meta.environmentId !== environmentId) continue;
       if (!keep || keep.has(entry.meta.id)) replay.push(entry);
-      else this.unload(entry);
+      // A transcript the unload refuses (busy, a send pending) keeps its
+      // rows, so it replays its gap like a kept one: a resync's hold on it
+      // must never release past the rows the host shed.
+      else if (!this.unload(entry)) replay.push(entry);
     }
     // A pane restored from a saved layout is a loaded draft until its host
     // claims it; its first fetch is a load with a phase like any other.
