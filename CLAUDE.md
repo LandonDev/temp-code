@@ -954,9 +954,13 @@ routed to (aliax-core's `forward`). Two listeners:
   it has not stamped yet) into one row on the newer copy (`search.project`
   matches carry `mtime`), marks each hit with the host glyph when more than
   one host is paired, and says "box: 1.2 s" per host at the foot (skipped when
-  offline). Filters are typed in the box: `host:`, `type:` (thread, file,
-  note, project), `project:`; one hint line, no other chrome. Enter opens
-  where the hit lives, ⌘↩ in a new pane; nothing in the list animates.
+  offline). Filters are typed in the box (`host:` and `type:` take a
+  comma list, `project:` a name) or ticked in the field's filter menu
+  (chrome/SearchFiltersMenu.tsx), which writes the same tokens
+  (`setQueryToken`); no other chrome. A command may open search with
+  tokens already typed (`initialQuery`: `type:note`, `type:file`). Enter
+  opens where the hit lives, ⌘↩ in a new pane; nothing in the list
+  animates.
 - `session.search` runs on an FTS5 index per host (src/main/server/
   turnIndex.ts): `events_fts` / `cold.events_fts` over turn text, rowid
   `(ordinal << 32) | seq` through `turn_index`, filled on every event
