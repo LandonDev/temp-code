@@ -131,10 +131,7 @@ export function LocalRelease() {
           line={[...publishParts(publish), publish.checkout].join(", ")}
           refusal={publish.refusal}
           onClose={() => setDialog(false)}
-          onPublish={async (notes) => {
-            await startPublish(notes);
-            setDialog(false);
-          }}
+          onPublish={startPublish}
         />
       ) : null}
     </Group>

@@ -1,62 +1,59 @@
 import { useState, type ReactNode } from "react";
+import { Textarea } from "@renderer/components/ui/textarea";
 import { DialogFooter, ErrorLine, errorText } from "../../../../chrome/ConfirmDialog";
-import { Modal } from "../../../../chrome/Modal";
-import { INPUT_CLASS } from "../../../settingsBits";
+import { Field } from "../../../../chrome/DialogField";
+import { Modal, useModalClose } from "../../../../chrome/Modal";
 
-export function PublishDialog({
-  notes: initial,
-  line,
-  refusal,
-  onClose,
-  onPublish,
-}: {
+type Props = {
   notes: string;
   line: string;
   refusal: string | null;
   onClose: () => void;
+  /** Starts the job; the dialog closes once it resolves. */
   onPublish: (notes: string) => Promise<void>;
-}): ReactNode {
-  const [notes, setNotes] = useState(initial);
+};
+
+export function PublishDialog(props: Props): ReactNode {
   const [pending, setPending] = useState(false);
+  return (
+    <Modal onClose={props.onClose} busy={pending} title="Publish Mac release" description={props.line} size="sm">
+      <Body {...props} pending={pending} setPending={setPending} />
+    </Modal>
+  );
+}
+
+function Body({ notes: initial, refusal, onClose, onPublish, pending, setPending }: Props & { pending: boolean; setPending: (on: boolean) => void }) {
+  const close = useModalClose();
+  const [notes, setNotes] = useState(initial);
   const [error, setError] = useState<string | null>(null);
+  const ready = !!notes.trim() && !refusal;
   const submit = async (): Promise<void> => {
     setPending(true);
     setError(null);
     try {
       await onPublish(notes.trim());
+      setPending(false);
+      if (close) close(onClose);
+      else onClose();
     } catch (err) {
       setError(errorText(err));
       setPending(false);
     }
   };
   return (
-    <Modal onClose={onClose} busy={pending} title="Publish Mac release" size="sm">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void submit();
-        }}
-      >
-        <div className="flex flex-col gap-3 px-4 py-3">
-          <p className="text-[12px] leading-snug text-content/50">{line}</p>
-          <label className="flex flex-col gap-1.5 text-[12px] text-content/50">
-            Release notes
-            <textarea
-              value={notes}
-              autoFocus
-              rows={4}
-              spellCheck={false}
-              onChange={(e) => setNotes(e.target.value)}
-              className={`${INPUT_CLASS} resize-none leading-relaxed`}
-            />
-          </label>
-          <p className="text-[11px] leading-4 text-content/40">
-            Runs the local train (typecheck, tests, build, tag), then signs, notarizes and uploads to GitHub. The installed app offers it on its next check.
-          </p>
-          <ErrorLine error={error ?? refusal} />
-        </div>
-        <DialogFooter onCancel={onClose} confirmLabel="Publish" pending={pending} disabled={!notes.trim() || !!refusal} />
-      </form>
-    </Modal>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ready) void submit();
+      }}
+    >
+      <div className="flex flex-col gap-4 px-4 py-4">
+        <Field label="Release notes">
+          <Textarea value={notes} autoFocus rows={4} spellCheck={false} onChange={(e) => setNotes(e.target.value)} className="max-h-40 resize-none" />
+        </Field>
+        <ErrorLine error={error ?? refusal} />
+      </div>
+      <DialogFooter onCancel={onClose} confirmLabel="Publish" pending={pending} disabled={!ready} />
+    </form>
   );
 }

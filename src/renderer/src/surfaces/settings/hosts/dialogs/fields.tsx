@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import type { Capability } from "@server/shared/capabilities";
 import type { RemoteAudience } from "@server/shared/contract-remote";
-import { INPUT_CLASS } from "../../../settingsBits";
+import { Input } from "@renderer/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@renderer/components/ui/toggle-group";
+import { Field, Tip } from "../../../../chrome/DialogField";
 import { CopyButton } from "../CopyButton";
 
 /** The pieces the key and pairing dialogs share. */
@@ -12,7 +14,12 @@ export const GRANTABLE: { cap: Capability; label: string }[] = [
   { cap: "admin", label: "Admin" },
 ];
 
-export const FIELD = "flex flex-col gap-1.5 text-[12px] text-content/50";
+const BOT_BLOCKED = "Bots never approve or administer";
+
+/** "Read, operate": every key reads; the rest in the picker's order. */
+export function grantText(caps: readonly Capability[]): string {
+  return ["Read", ...GRANTABLE.filter(({ cap }) => caps.includes(cap)).map(({ label }) => label.toLowerCase())].join(", ");
+}
 
 export function Countdown({ prefix, at }: { prefix: string; at: number }) {
   const [now, setNow] = useState(Date.now());
@@ -28,49 +35,82 @@ export function Countdown({ prefix, at }: { prefix: string; at: number }) {
   );
 }
 
+/** What a key may do beyond reading: independent toggles. A bot is held to
+ *  operate; the caps it may never hold are off, with the reason on hover. */
 export function CapsPicker({
   value,
   audience,
   onChange,
+  "aria-labelledby": labelledBy,
 }: {
   value: Capability[];
   audience: RemoteAudience;
   onChange: (caps: Capability[]) => void;
+  "aria-labelledby"?: string;
 }) {
   return (
-    <div className="flex gap-0.5 rounded-md border border-content/10 p-0.5 text-[12px]" role="group" aria-label="Capabilities">
+    <ToggleGroup
+      multiple
+      size="sm"
+      value={value}
+      onValueChange={(next) => onChange(GRANTABLE.map(({ cap }) => cap).filter((cap) => next.includes(cap)))}
+      aria-labelledby={labelledBy}
+      aria-label={labelledBy ? undefined : "Capabilities"}
+    >
       {GRANTABLE.map(({ cap, label }) => {
-        const on = value.includes(cap);
         const blocked = audience === "mcp" && cap !== "operate";
-        return (
-          <button
-            key={cap}
-            type="button"
-            role="checkbox"
-            aria-checked={on}
-            disabled={blocked}
-            title={blocked ? "Bots never approve or administer" : undefined}
-            onClick={() => onChange(on ? value.filter((c) => c !== cap) : [...value, cap])}
-            className={`pressable rounded-[4px] px-3 py-1 disabled:cursor-default disabled:opacity-30 ${
-              on ? "bg-content/10 text-content" : "text-content/50 hover:text-content"
-            }`}
-          >
+        const item = (
+          <ToggleGroupItem key={cap} value={cap} disabled={blocked}>
             {label}
-          </button>
+          </ToggleGroupItem>
+        );
+        // A disabled button takes no pointer events: the tooltip rides a wrapper.
+        return blocked ? (
+          <Tip key={cap} label={BOT_BLOCKED}>
+            <span className="inline-flex">{item}</span>
+          </Tip>
+        ) : (
+          item
         );
       })}
-    </div>
+    </ToggleGroup>
   );
 }
 
+/** A value shown once (a key, a link): a labelled field, read-only in the
+ *  mono face, the copy button beside it. */
 export function Secret({ label, value }: { label: string; value: string }) {
   return (
-    <div className={FIELD}>
-      {label}
-      <div className="flex items-center gap-1">
-        <code className={`${INPUT_CLASS} min-w-0 flex-1 select-all break-all`}>{value}</code>
-        <CopyButton text={value} label={`Copy ${label.toLowerCase()}`} />
-      </div>
+    <Field label={label}>
+      <SecretValue label={label} value={value} />
+    </Field>
+  );
+}
+
+/** Secret's control: takes the id and hint wiring its `Field` hands it. */
+function SecretValue({
+  value,
+  label,
+  id,
+  "aria-describedby": describedBy,
+}: {
+  value: string;
+  label: string;
+  id?: string;
+  "aria-describedby"?: string;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        id={id}
+        aria-describedby={describedBy}
+        readOnly
+        value={value}
+        spellCheck={false}
+        onFocus={(e) => e.currentTarget.select()}
+        className="flex-1 font-mono text-xs"
+      />
+      <CopyButton text={value} label={`Copy ${label.toLowerCase()}`} />
     </div>
   );
 }

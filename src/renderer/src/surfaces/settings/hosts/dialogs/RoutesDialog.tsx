@@ -1,16 +1,30 @@
 import { useState, type ReactNode } from "react";
 import type { SavedEnvironment, SavedRoute } from "@server/shared/contract-remote";
+import { Button } from "@renderer/components/ui/button";
+import { Input } from "@renderer/components/ui/input";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@renderer/components/ui/item";
 import { DialogFooter, ErrorLine } from "../../../../chrome/ConfirmDialog";
+import { Tip } from "../../../../chrome/DialogField";
 import { ArrowDownLong, ArrowUpLong, X } from "../../../../chrome/icons";
-import { Modal } from "../../../../chrome/Modal";
+import { Modal, useModalClose } from "../../../../chrome/Modal";
 import { hostErrorText, kindOf, originText } from "../../../../lib/hostConnection";
-import { Input, SecondaryButton } from "../../../settingsBits";
 import { rpc } from "../rpc";
 
-export function RoutesDialog({ env, onClose, onChanged }: { env: SavedEnvironment; onClose: () => void; onChanged: () => Promise<void> }) {
+type Props = { env: SavedEnvironment; onClose: () => void; onChanged: () => Promise<void> };
+
+export function RoutesDialog(props: Props) {
+  const [pending, setPending] = useState(false);
+  return (
+    <Modal onClose={props.onClose} busy={pending} title={`Routes to ${props.env.name}`} description="Best first." size="sm">
+      <Body {...props} pending={pending} setPending={setPending} />
+    </Modal>
+  );
+}
+
+function Body({ env, onClose, onChanged, pending, setPending }: Props & { pending: boolean; setPending: (on: boolean) => void }) {
+  const close = useModalClose();
   const [routes, setRoutes] = useState<SavedRoute[]>(env.routes);
   const [added, setAdded] = useState("");
-  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const move = (from: number, to: number) => {
     if (to < 0 || to >= routes.length) return;
@@ -31,34 +45,38 @@ export function RoutesDialog({ env, onClose, onChanged }: { env: SavedEnvironmen
     try {
       await rpc("remote.environments.update", { id: env.id, routes });
       await onChanged();
-      onClose();
+      setPending(false);
+      if (close) close(onClose);
+      else onClose();
     } catch (err) {
       setError(hostErrorText(err));
       setPending(false);
     }
   };
   return (
-    <Modal onClose={onClose} busy={pending} title={`Routes to ${env.name}`} description="Best first. The window connects over the first that works and keeps trying the earlier ones." size="sm">
-      <div className="flex flex-col gap-3 px-4 py-3">
-        <ol className="flex flex-col">
+    <>
+      <div className="flex flex-col gap-4 px-4 py-4">
+        <ItemGroup aria-label="Routes">
           {routes.map((route, i) => (
-            <li key={route.url} className="flex items-center gap-2 border-b border-content/5 py-2 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[12px] text-content">{originText(route.url)}</div>
-                <div className="text-[11px] text-content/40">{route.kind}</div>
-              </div>
-              <IconButton label="Move up" disabled={i === 0} onClick={() => move(i, i - 1)}>
-                <ArrowUpLong className="size-3.5" strokeWidth={1.75} />
-              </IconButton>
-              <IconButton label="Move down" disabled={i === routes.length - 1} onClick={() => move(i, i + 1)}>
-                <ArrowDownLong className="size-3.5" strokeWidth={1.75} />
-              </IconButton>
-              <IconButton label="Remove route" disabled={routes.length === 1} onClick={() => setRoutes(routes.filter((_, j) => j !== i))}>
-                <X className="size-3.5" strokeWidth={1.75} />
-              </IconButton>
-            </li>
+            <Item key={route.url} role="listitem" size="xs" className="px-0">
+              <ItemContent className="min-w-0">
+                <ItemTitle className="block max-w-full truncate">{originText(route.url)}</ItemTitle>
+                <ItemDescription>{route.kind}</ItemDescription>
+              </ItemContent>
+              <ItemActions className="gap-0.5">
+                <RouteAction label="Move up" disabled={i === 0} onClick={() => move(i, i - 1)}>
+                  <ArrowUpLong />
+                </RouteAction>
+                <RouteAction label="Move down" disabled={i === routes.length - 1} onClick={() => move(i, i + 1)}>
+                  <ArrowDownLong />
+                </RouteAction>
+                <RouteAction label="Remove route" disabled={routes.length === 1} onClick={() => setRoutes(routes.filter((_, j) => j !== i))}>
+                  <X />
+                </RouteAction>
+              </ItemActions>
+            </Item>
           ))}
-        </ol>
+        </ItemGroup>
         <div className="flex items-center gap-2">
           <Input
             value={added}
@@ -72,31 +90,26 @@ export function RoutesDialog({ env, onClose, onChanged }: { env: SavedEnvironmen
             placeholder="https://host or ws://10.0.0.5:7677"
             spellCheck={false}
             autoComplete="off"
-            className="min-w-0 flex-1"
+            className="flex-1"
             aria-label="New route"
           />
-          <SecondaryButton onClick={add} disabled={!added.trim()}>
+          <Button variant="secondary" onClick={add} disabled={!added.trim()}>
             Add route
-          </SecondaryButton>
+          </Button>
         </div>
         <ErrorLine error={error} />
       </div>
       <DialogFooter onCancel={onClose} confirmLabel="Save" pending={pending} onConfirm={() => void save()} disabled={routes.length === 0} />
-    </Modal>
+    </>
   );
 }
 
-function IconButton({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: ReactNode }) {
+function RouteAction({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent"
-    >
-      {children}
-    </button>
+    <Tip label={label}>
+      <Button variant="ghost" size="icon-xs" aria-label={label} disabled={disabled} onClick={onClick} className="text-muted-foreground hover:text-foreground">
+        {children}
+      </Button>
+    </Tip>
   );
 }
