@@ -84,7 +84,11 @@ Drag region (`titlebar-drag`), hiddenInset traffic lights. In deck layout
 the bar is one row: the thread strip (below) fills it, and its right end
 holds exactly two ghost icon buttons, each with a `Tooltip`: the ⋯ thread
 menu, then the panel toggle (`aria-pressed` while the right panel is open,
-"Panel ⌘⇧R"), last because it is nearest the panel it opens. The rail-closed
+"Panel ⌘⇧R"; disabled with "No room for the panel" while the thread's row
+is too narrow for it), last because it is nearest the panel it opens. The
+chips, New thread, the ⋯ menu and the toggle share one 40px row box
+(the strip stretches to it, the end group centres in it), so all of them
+sit on one 28px line at y 6. The rail-closed
 stand-ins (Inbox, Notes, Go to File, New Thread, Settings) and the Windows
 controls keep their places, each named on hover with its key by a `Tip`.
 In the classic strip one right-click menu serves the tabs and the group
