@@ -49,16 +49,39 @@ export function SettingsView({
   const title = workspace?.name ?? settingsSectionLabel(section);
 
   useEffect(() => {
+    // The value a field held when it took focus, so Escape can put it back.
+    const entered = new WeakMap<Element, string>();
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target as Element | null;
+      if (target && isTextField(target)) entered.set(target, target.value);
+    };
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      // A dialog on top of the page owns its own Escape.
-      if ((event.target as Element | null)?.closest?.('[role="dialog"]')) return;
+      const target = event.target as Element | null;
+      // A dialog, or an open list or menu, owns its own Escape.
+      if (target?.closest?.('[role="dialog"], [role="listbox"], [role="menu"], [data-slot=select-content]')) return;
+      if (document.querySelector("[data-slot=select-content][data-open]")) return;
       event.preventDefault();
       event.stopPropagation();
+      // A focused field takes Escape: its edit is undone and it lets go.
+      if (target && isTextField(target)) {
+        const before = entered.get(target);
+        if (before !== undefined && before !== target.value) setFieldValue(target, before);
+        target.blur();
+        return;
+      }
+      if (target instanceof HTMLSelectElement) {
+        target.blur();
+        return;
+      }
       shell.closeSettings();
     };
+    window.addEventListener("focusin", onFocusIn, true);
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("focusin", onFocusIn, true);
+      window.removeEventListener("keydown", onKey, true);
+    };
   }, []);
 
   return (
@@ -139,4 +162,19 @@ export function SettingsView({
       </div>
     </div>
   );
+}
+
+type TextField = HTMLInputElement | HTMLTextAreaElement;
+
+const NOT_TEXT = new Set(["checkbox", "radio", "button", "submit", "reset", "range", "color", "file"]);
+
+function isTextField(el: Element): el is TextField {
+  return el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !NOT_TEXT.has(el.type));
+}
+
+/** Sets a field's value the way typing would, so React's onChange hears it. */
+function setFieldValue(field: TextField, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")?.set;
+  setter?.call(field, value);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
 }

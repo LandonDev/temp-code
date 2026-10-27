@@ -15,13 +15,12 @@ vi.mock("./settings/Build", () => ({ BuildPage: stub("build") }));
 vi.mock("./settings/Archive", () => ({ ArchivePage: stub("archive") }));
 vi.mock("./ReviewSettings", () => ({ ReviewsPage: stub("reviews") }));
 vi.mock("./AppshotsSettings", () => ({ AppshotsPage: stub("appshots") }));
-vi.mock("./RemoteSettings", () => ({ RemoteSettings: stub("remote") }));
-vi.mock("./EnvironmentsSettings", () => ({ EnvironmentsSettings: stub("environments") }));
+vi.mock("./settings/hosts/HostsPage", () => ({ HostsPage: stub("remote") }));
 vi.mock("../lib/tcserver/workspaces", () => ({ useWorkspaces: () => [] }));
-vi.mock("../lib/nativeWeb", () => ({ isWebMode: () => false }));
 vi.mock("../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
 const { SettingsView } = await import("./SettingsView");
+const { useState } = await import("react");
 const { shell, shellStore } = await import("../stores/shell");
 
 const noop = () => {};
@@ -48,12 +47,11 @@ describe("SettingsView", () => {
     expect(screen.getByText("How the app behaves, and the release you run.")).toBeTruthy();
   });
 
-  it("shows Hosts with both bodies on the desktop", () => {
+  it("shows the Hosts page under the remote id", () => {
     act(() => shell.openSettings("remote"));
     render(view());
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Hosts");
     expect(document.querySelector("[data-page=remote]")).toBeTruthy();
-    expect(document.querySelector("[data-page=environments]")).toBeTruthy();
   });
 
   it("closes on Escape", () => {
@@ -73,5 +71,28 @@ describe("SettingsView", () => {
     );
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Name" }), { key: "Escape" });
     expect(shellStore.getState().settingsOpen).toBe(true);
+  });
+
+  it("lets a focused field take Escape: the edit is undone, the field lets go, Settings stays", () => {
+    function Field() {
+      const [value, setValue] = useState("box");
+      return <input aria-label="Host name" value={value} onChange={(event) => setValue(event.target.value)} />;
+    }
+    render(
+      <>
+        {view()}
+        <Field />
+      </>,
+    );
+    const field = screen.getByRole("textbox", { name: "Host name" }) as HTMLInputElement;
+    field.focus();
+    fireEvent.change(field, { target: { value: "box two" } });
+    expect(field.value).toBe("box two");
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(field.value).toBe("box");
+    expect(document.activeElement).not.toBe(field);
+    expect(shellStore.getState().settingsOpen).toBe(true);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(shellStore.getState().settingsOpen).toBe(false);
   });
 });
