@@ -181,6 +181,54 @@ export async function fastForwardMerge(
   return { sha, merged, pushed }
 }
 
+/** Has `target` moved since `branch` forked from it? Then no fast-forward
+ *  lands the branch until it is rebased (rebaseOnto). */
+export async function targetMoved(cwd: string, branch: string, target: string): Promise<boolean> {
+  const base = (await git(cwd, ['merge-base', target, branch])).trim()
+  const head = (await git(cwd, ['rev-parse', target])).trim()
+  return base !== head
+}
+
+/**
+ * Rebase `branch` onto `target` in the worktree that has it checked out, so
+ * the fast-forward that follows lands instead of refusing (mergeReview.ts
+ * runs it under the host's landing lock, where the target cannot move
+ * again). The worktree must be on the branch with no changes to tracked
+ * files. A conflict aborts the rebase, leaves the branch as it was and
+ * names the files. Answers the branch's new head and the base it now sits
+ * on; `rebased` false when the target had not moved.
+ */
+export async function rebaseOnto(worktree: string, branch: string, target: string): Promise<{ head: string; base: string; rebased: boolean }> {
+  const current = await branchOf(worktree)
+  if (current !== branch) {
+    throw new MergeRefusal(`${worktree} is on ${current ?? 'a detached HEAD'}, not ${branch}; the rebase onto ${target} needs its tree`)
+  }
+  if (!(await gitOk(worktree, ['diff', '--quiet'])) || !(await gitOk(worktree, ['diff', '--cached', '--quiet']))) {
+    throw new MergeRefusal(`${worktree} has uncommitted changes to tracked files; commit them before ${branch} can be rebased onto ${target}`)
+  }
+  const targetHead = (await git(worktree, ['rev-parse', target])).trim()
+  const base = (await git(worktree, ['merge-base', target, branch])).trim()
+  if (base === targetHead) return { head: (await git(worktree, ['rev-parse', branch])).trim(), base, rebased: false }
+  try {
+    await git(worktree, ['rebase', targetHead])
+  } catch {
+    let conflicts: string[] = []
+    try {
+      conflicts = (await git(worktree, ['diff', '--name-only', '--diff-filter=U']))
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+    } catch {
+      /* the rebase may have failed before any conflict */
+    }
+    await gitOk(worktree, ['rebase', '--abort'])
+    throw new MergeRefusal(
+      `rebasing ${branch} onto ${target} (${targetHead.slice(0, 10)}) hit conflicts${conflicts.length ? ` in ${conflicts.join(', ')}` : ''}; the branch is as it was. Rebase it by hand, resolve them, and merge again.`
+    )
+  }
+  return { head: (await git(worktree, ['rev-parse', branch])).trim(), base: targetHead, rebased: true }
+}
+
 // ── across hosts (docs/box.md "Threads across hosts") ─────────────────
 
 /** Push a branch to origin so another host can merge it from there (a held branch of a batch that lands all at once). */

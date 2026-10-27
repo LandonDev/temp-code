@@ -159,6 +159,8 @@ function fakeGit(over: Partial<NonNullable<MergeReviewDeps['git']>> = {}) {
         calls.push(`merge ${branch}->${target}@${cwd}${push ? ' push' : ''}`)
         return { sha: 'head0000000', merged: branch !== target, pushed: push }
       },
+      targetMoved: async () => false,
+      rebaseOnto: async () => ({ head: 'head0000000', base: 'base0000000', rebased: false }),
       ...over
     }
   }
@@ -506,6 +508,73 @@ describe('the gate before the merge', () => {
     const tb = await pb
     expect(order).toEqual(['start feature', 'end feature', 'start second', 'end second'])
     expect(tb).toMatch(/in the gate queue behind 1/)
+  })
+
+  it('two landings race: one lock holds the gate, the merge and the push; the second rebases onto the moved target under it', async () => {
+    // A fake repo: the target's head moves with every merge; a branch whose
+    // base is behind it is not a fast-forward until rebased.
+    const repo = { target: 'base0000000' }
+    const bases = new Map<string, string>([['feature', 'base0000000'], ['second', 'base0000000']])
+    const calls: string[] = []
+    const gitFor = (branch: string) =>
+      fakeGit({
+        branchOf: async (cwd: string) => (cwd === '/repo' ? 'master' : branch),
+        worktreeOf: async (_cwd: string, b: string) => (b === branch ? `/wt-${branch}` : null),
+        buildMergeBundle: async () => ({ ...fakeGit().bundle, branch, head: `${branch}-head`, base: bases.get(branch)! }),
+        targetMoved: async (_cwd: string, b: string) => bases.get(b) !== repo.target,
+        rebaseOnto: async (cwd: string, b: string, target: string) => {
+          calls.push(`rebase ${b} onto ${target}@${cwd}`)
+          bases.set(b, repo.target)
+          return { head: `${b}-rebased`, base: repo.target, rebased: true }
+        },
+        fastForwardMerge: async (_cwd: string, b: string, target: string, push: boolean) => {
+          if (bases.get(b) !== repo.target) throw new MergeRefusal(`git merge --ff-only ${b} failed: not a fast-forward`)
+          calls.push(`merge ${b}->${target}${push ? ' push' : ''}`)
+          repo.target = `${b}-landed`
+          return { sha: repo.target, merged: true, pushed: push }
+        }
+      }).git
+    let release!: () => void
+    const gateDone = new Promise<void>((r) => (release = r))
+    const runGate = async (o: GateRunOptions): Promise<GateRunResult> => {
+      calls.push(`gate ${o.branch}`)
+      if (o.branch === 'feature') await gateDone
+      return { ok: true, log: '', ms: 5, exitCode: 0 }
+    }
+    const queue = new GateQueue()
+    const a = reg.add({ cwd: '/wt-feature', masterId: 'm' })
+    const b = reg.add({ cwd: '/wt-second', masterId: 'm' })
+    const pa = new MergeReviews({ registry: reg.registry, store: reg.store, git: gitFor('feature'), runGate, queue }).mergeBranch(a, {})
+    await tick()
+    const pb = new MergeReviews({ registry: reg.registry, store: reg.store, git: gitFor('second'), runGate, queue }).mergeBranch(b, {})
+    await tick()
+    // The second landing waits for the first's push, not only its typecheck.
+    expect(calls).toEqual(['gate feature'])
+    release()
+    const ta = await pa
+    const tb = await pb
+    expect(calls).toEqual(['gate feature', 'merge feature->master push', 'rebase second onto master@/wt-second', 'gate second', 'merge second->master push'])
+    expect(ta).toContain('Merged feature into master')
+    expect(tb).toContain('Merged second into master')
+    expect(tb).toContain('rebased onto master first')
+    expect(tb).not.toMatch(/^refused/)
+    expect(repo.target).toBe('second-landed')
+  })
+
+  it('a rebase that hits conflicts refuses the landing and leaves the review standing', async () => {
+    const { git, calls } = fakeGit({
+      targetMoved: async () => true,
+      rebaseOnto: async () => {
+        throw new MergeRefusal('rebasing feature onto master (abc) hit conflicts in x.ts; the branch is as it was. Rebase it by hand, resolve them, and merge again.')
+      }
+    })
+    const { runs, runGate } = fakeGate()
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git, runGate, queue: new GateQueue() })
+    const child = reg.add({ cwd: '/wt', masterId: 'master1' })
+    const text = await reviews.mergeBranch(child, {})
+    expect(text).toMatch(/^refused: rebasing feature onto master .*hit conflicts in x\.ts/)
+    expect(runs).toEqual([])
+    expect(calls).toEqual([])
   })
 
   it('a passed review whose gate failed is not reviewed again on the next call', async () => {

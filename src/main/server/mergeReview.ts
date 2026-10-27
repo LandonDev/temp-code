@@ -21,6 +21,8 @@ import {
   defaultBranchOf,
   fastForwardMerge,
   hasOrigin,
+  rebaseOnto,
+  targetMoved,
   worktreeOf,
   type MergeBundle,
   type MergeResult
@@ -67,6 +69,10 @@ export interface MergeReviewGit {
   fastForwardMerge: typeof fastForwardMerge
   worktreeOf: typeof worktreeOf
   hasOrigin(cwd: string): Promise<boolean>
+  /** Has the target moved since the branch forked (then the landing rebases first, under the lock)? */
+  targetMoved: typeof targetMoved
+  /** The rebase a landing runs in the branch's worktree when the target moved. */
+  rebaseOnto: typeof rebaseOnto
 }
 
 export interface MergeReviewDeps {
@@ -92,6 +98,21 @@ export interface MergeReviewDeps {
    *  for a thread of another host's batch, remote/crossHostThreads.ts asks that host, so it may take a moment or refuse) */
   hold?: (session: SessionMeta, landing: { cwd: string; branch: string; target: string; push: boolean; subjects: string[] }) => string | null | Promise<string | null>
 }
+
+/** The gate step's verdict, as the landing's text reads it. */
+interface GateVerdict {
+  ok: boolean
+  line: string
+  ms: number
+  log: string
+}
+
+/** What one run under the landing lock came to. */
+type Landing =
+  | { kind: 'refused'; why: string; gate: GateVerdict | null; rebased: boolean }
+  | { kind: 'gate'; gate: GateVerdict; rebased: boolean }
+  | { kind: 'held'; text: string; gate: GateVerdict; rebased: boolean }
+  | { kind: 'landed'; result: MergeResult; gate: GateVerdict; rebased: boolean }
 
 /** What a landed merge tells the batch. */
 export interface Landed {
@@ -147,7 +168,9 @@ const defaultGit: MergeReviewGit = {
   buildMergeBundle,
   fastForwardMerge,
   worktreeOf,
-  hasOrigin
+  hasOrigin,
+  targetMoved,
+  rebaseOnto
 }
 
 const label = (provider: string, model: string): string => {
@@ -479,13 +502,18 @@ ${bundle.diff}
 
   // ── Merge anyway ─────────────────────────────────────────────────────
 
-  /** The person merges past a held review. */
+  /** The person merges past a held review: no gate, but the same landing
+   *  lock and the rebase onto a target that moved. */
   async override(sessionId: string, runId: string): Promise<MergeResult> {
     const run = this.heldRun(sessionId, runId)
     if (!run) throw new Error('no held review to merge past')
     const session = this.deps.registry.get(sessionId)
     if (!session) throw new Error(`unknown session: ${sessionId}`)
-    const result = await this.git.fastForwardMerge(run.cwd, run.branch, run.target, run.push)
+    const result = await this.queue.run(`land ${run.branch}`, async () => {
+      const cwd = await this.gateCwd(session, run)
+      if (cwd) await this.rebaseIfMoved(run, cwd)
+      return this.git.fastForwardMerge(run.cwd, run.branch, run.target, run.push)
+    })
     run.state = 'done'
     this.forget(run)
     this.row(sessionId, run, 'merged-anyway', true, result.pushed)
@@ -495,47 +523,100 @@ ${bundle.diff}
 
   // ── rows and texts ───────────────────────────────────────────────────
 
+  /**
+   * The landing, after the review: ONE run on the host's gate queue holds
+   * the whole of it, from the gate step to the push's return, so no other
+   * landing on this host slips in between (the fast-forward used to lose
+   * that race to every landing during its own typecheck). Under the lock,
+   * a target that moved since the branch forked is rebased onto first, in
+   * the branch's worktree, and the gate step runs on the rebased head.
+   */
   private async mergeAndRow(
     session: SessionMeta,
     run: ReviewRun,
     outcome: ReviewNotice['outcome'],
     reason?: string
   ): Promise<string> {
-    const gate = await this.gate(session, run)
-    if (!gate.ok) {
-      // The review stands (a passed head stays passed); the gate did not.
+    const step = MergeReviews.stepFor(session)
+    const cwd = await this.gateCwd(session, run)
+    if (!cwd) {
       if (run.state === 'done') this.forget(run)
-      return gate.text
+      return `refused: ${run.branch} is not checked out in any worktree of ${run.cwd}; the ${step === 'typecheck' ? 'typecheck' : 'gate'} needs its tree. Check it out (git worktree add) and call ${MERGE_BRANCH_TOOL_NAME} again.`
     }
-    // A batch that lands all at once: the branch is recorded, the merge waits for the end.
+    const started = this.now()
+    let wait: GateWait | null = null
+    const landing = await this.queue.run(
+      `land ${run.branch}`,
+      () => this.land(session, run, step, cwd),
+      (w) => (wait = w)
+    )
+    const waited = wait ? ` after ${fmtMs(this.now() - started - (landing.gate?.ms ?? 0))} in the gate queue behind ${(wait as GateWait).ahead.length}` : ''
+    if (landing.kind === 'refused') {
+      // The review stands (a passed head stays passed); the merge did not.
+      if (run.state === 'done') this.forget(run)
+      const verdict = outcome === 'pass' ? `Review passed${run.minor.length ? ` (${run.minor.length} minor)` : ''}, but ` : outcome === 'timeout' || outcome === 'failed' ? `${reviewLine(this.notice(run, outcome, false, false, reason), label(run.provider, run.model)).replace(/ — merged without it$/, '')}; ` : ''
+      return `refused: ${verdict}${landing.why}`
+    }
+    const gate = landing.gate
+    const gateText = gate.ok
+      ? `${gate.line} in ${fmtMs(gate.ms)}${waited}.`
+      : `HELD: ${gate.line.toLowerCase()} in ${fmtMs(gate.ms)}${waited}; the merge did not run.\n\n${logTail(gate.log, GATE_TEXT_TAIL)}\n\nFix it on ${run.branch}, commit, and call ${MERGE_BRANCH_TOOL_NAME} again.`
+    if (landing.kind === 'gate') {
+      if (run.state === 'done') this.forget(run)
+      return gateText
+    }
+    if (landing.kind === 'held') {
+      // A batch that lands all at once: the branch is recorded, the merge waits for the end.
+      this.forget(run)
+      this.row(session.id, run, outcome, false, false, reason)
+      return `${landing.text} ${gateText}`
+    }
+    const result = landing.result
+    this.forget(run)
+    const notice = this.row(session.id, run, outcome, result.merged || run.branch === run.target, result.pushed, reason)
+    this.deps.onLanded?.({ session, branch: run.branch, target: run.target, sha: result.sha, subjects: run.subjects ?? [] })
+    const minor = run.minor.length ? this.findingsText('Minor findings (not blocking)', run.minor) : ''
+    return `${reviewLine(notice, label(run.provider, run.model))}. ${run.target} is at ${result.sha.slice(0, 10)}${result.pushed ? ', pushed to origin' : ''}${landing.rebased ? ` (rebased onto ${run.target} first)` : ''}. ${gateText}${minor}`
+  }
+
+  /** What happened under the lock: the gate step's verdict, then the batch's hold or the merge, or a refusal on the way. */
+  private async land(session: SessionMeta, run: ReviewRun, step: GateStep, cwd: string): Promise<Landing> {
+    let rebased = false
+    try {
+      rebased = await this.rebaseIfMoved(run, cwd)
+    } catch (err) {
+      return { kind: 'refused', why: err instanceof Error ? err.message : String(err), gate: null, rebased: false }
+    }
+    const gate = await this.gate(session, run, step, cwd)
+    if (!gate.ok) return { kind: 'gate', gate, rebased }
     let held: string | null
     try {
       held = (await this.deps.hold?.(session, { cwd: run.cwd, branch: run.branch, target: run.target, push: run.push, subjects: run.subjects ?? [] })) ?? null
     } catch (err) {
       // The batch could not be asked (the master's host out of reach, the push refused): the review stands, the merge does not.
-      if (run.state === 'done') this.forget(run)
-      return `refused: ${err instanceof Error ? err.message : String(err)}`
+      return { kind: 'refused', why: err instanceof Error ? err.message : String(err), gate, rebased }
     }
-    if (held) {
-      this.forget(run)
-      this.row(session.id, run, outcome, false, false, reason)
-      return `${held} ${gate.text}`
-    }
-    let result: MergeResult
+    if (held) return { kind: 'held', text: held, gate, rebased }
     try {
-      result = await this.git.fastForwardMerge(run.cwd, run.branch, run.target, run.push)
+      const result = await this.git.fastForwardMerge(run.cwd, run.branch, run.target, run.push)
+      return { kind: 'landed', result, gate, rebased }
     } catch (err) {
-      // The review stands (a passed head stays passed); the merge did not.
-      if (run.state === 'done') this.forget(run)
-      const why = err instanceof Error ? err.message : String(err)
-      const verdict = outcome === 'pass' ? `Review passed${run.minor.length ? ` (${run.minor.length} minor)` : ''}, but ` : outcome === 'timeout' || outcome === 'failed' ? `${reviewLine(this.notice(run, outcome, false, false, reason), label(run.provider, run.model)).replace(/ — merged without it$/, '')}; ` : ''
-      return `refused: ${verdict}${why}`
+      return { kind: 'refused', why: err instanceof Error ? err.message : String(err), gate, rebased }
     }
-    this.forget(run)
-    const notice = this.row(session.id, run, outcome, result.merged || run.branch === run.target, result.pushed, reason)
-    this.deps.onLanded?.({ session, branch: run.branch, target: run.target, sha: result.sha, subjects: run.subjects ?? [] })
-    const minor = run.minor.length ? this.findingsText('Minor findings (not blocking)', run.minor) : ''
-    return `${reviewLine(notice, label(run.provider, run.model))}. ${run.target} is at ${result.sha.slice(0, 10)}${result.pushed ? ', pushed to origin' : ''}. ${gate.text}${minor}`
+  }
+
+  /** The target moved since the branch forked: rebase the branch in its
+   *  worktree (under the lock, so it cannot move again) and move the run's
+   *  head and base with it. A branch that IS the target has nothing to
+   *  rebase. True when a rebase ran. */
+  private async rebaseIfMoved(run: ReviewRun, cwd: string): Promise<boolean> {
+    if (run.branch === run.target) return false
+    if (!(await this.git.targetMoved(run.cwd, run.branch, run.target))) return false
+    const { head, base, rebased } = await this.git.rebaseOnto(cwd, run.branch, run.target)
+    run.head = head
+    run.base = base
+    if (run.state !== 'done') this.save(run)
+    return rebased
   }
 
   // ── the gate ─────────────────────────────────────────────────────────
@@ -554,31 +635,13 @@ ${bundle.diff}
     return this.git.worktreeOf(run.cwd, run.branch)
   }
 
-  /** Runs the branch's gate step on the queue, lands its row, and answers
-   *  the text the tool adds (green) or returns whole (HELD). */
-  private async gate(session: SessionMeta, run: ReviewRun): Promise<{ ok: boolean; text: string }> {
-    const step = MergeReviews.stepFor(session)
-    const cwd = await this.gateCwd(session, run)
-    if (!cwd) {
-      return { ok: false, text: `refused: ${run.branch} is not checked out in any worktree of ${run.cwd}; the ${step === 'typecheck' ? 'typecheck' : 'gate'} needs its tree. Check it out (git worktree add) and call ${MERGE_BRANCH_TOOL_NAME} again.` }
-    }
-    const started = this.now()
-    let wait: GateWait | null = null
-    const result = await this.queue.run(
-      `${step} ${run.branch}`,
-      () => this.runGate({ cwd, step, branch: run.branch, since: step === 'gate' ? run.base : undefined }),
-      (w) => (wait = w)
-    )
-    const waited = wait ? ` after ${fmtMs(this.now() - started - result.ms)} in the gate queue behind ${(wait as GateWait).ahead.length}` : ''
+  /** Runs the branch's gate step (the caller holds the landing lock) and
+   *  lands its row; the caller words the text from the verdict. */
+  private async gate(session: SessionMeta, run: ReviewRun, step: GateStep, cwd: string): Promise<GateVerdict> {
+    const result = await this.runGate({ cwd, step, branch: run.branch, since: step === 'gate' ? run.base : undefined })
     const notice: GateNotice = { step, branch: run.branch, ok: result.ok, log: result.log, at: this.now() }
     this.deps.registry.append(session.id, { type: 'notice', kind: 'gate', message: gateLine(notice), gate: notice })
-    const line = gateLine(notice)
-    if (result.ok) return { ok: true, text: `${line} in ${fmtMs(result.ms)}${waited}.` }
-    const tail = logTail(result.log, GATE_TEXT_TAIL)
-    return {
-      ok: false,
-      text: `HELD: ${line.toLowerCase()} in ${fmtMs(result.ms)}${waited}; the merge did not run.\n\n${tail}\n\nFix it on ${run.branch}, commit, and call ${MERGE_BRANCH_TOOL_NAME} again.`
-    }
+    return { ok: result.ok, line: gateLine(notice), ms: result.ms, log: result.log }
   }
 
   private heldText(run: ReviewRun): string {

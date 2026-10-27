@@ -8,7 +8,9 @@ import {
   branchOf,
   buildMergeBundle,
   defaultBranchOf,
-  fastForwardMerge
+  fastForwardMerge,
+  rebaseOnto,
+  targetMoved
 } from './mergeBranch'
 
 const git = (cwd: string, ...args: string[]): string =>
@@ -33,6 +35,8 @@ beforeEach(async () => {
   git(root, 'init', '--bare', '-b', 'master', origin)
   git(root, 'clone', origin, repo)
   git(repo, 'checkout', '-b', 'master')
+  git(repo, 'config', 'user.name', 't')
+  git(repo, 'config', 'user.email', 't@t')
   await writeFile(join(repo, 'a.txt'), 'one\n')
   git(repo, 'add', '.')
   git(repo, 'commit', '-m', 'init')
@@ -118,5 +122,67 @@ describe('the fast-forward', () => {
     expect(await branchOf(repo)).toBe('master')
     expect(await defaultBranchOf(repo)).toBe('master')
     expect(await branchOf(root)).toBeNull()
+  })
+})
+
+describe('the rebase under the landing lock', () => {
+  /** The feature branch in its own worktree, and master moved on by one commit. */
+  async function moved(): Promise<string> {
+    const wt = join(root, 'wt-feature')
+    git(repo, 'worktree', 'add', wt, 'feature')
+    git(wt, 'config', 'user.name', 't')
+    git(wt, 'config', 'user.email', 't@t')
+    await writeFile(join(repo, 'c.txt'), 'master moved\n')
+    git(repo, 'add', '.')
+    git(repo, 'commit', '-m', 'master moved')
+    return wt
+  }
+
+  it('says whether the target moved since the branch forked', async () => {
+    expect(await targetMoved(repo, 'feature', 'master')).toBe(false)
+    await moved()
+    expect(await targetMoved(repo, 'feature', 'master')).toBe(true)
+  })
+
+  it('rebases the branch in its worktree onto the moved target, so the fast-forward lands', async () => {
+    const wt = await moved()
+    const before = git(repo, 'rev-parse', 'feature')
+    const r = await rebaseOnto(wt, 'feature', 'master')
+    expect(r.rebased).toBe(true)
+    expect(r.base).toBe(git(repo, 'rev-parse', 'master'))
+    expect(r.head).toBe(git(repo, 'rev-parse', 'feature'))
+    expect(r.head).not.toBe(before)
+    expect(await targetMoved(repo, 'feature', 'master')).toBe(false)
+    const landed = await fastForwardMerge(repo, 'feature', 'master', true)
+    expect(landed.merged).toBe(true)
+    expect(git(origin, 'rev-parse', 'master')).toBe(r.head)
+    expect(git(repo, 'show', 'master:b.txt')).toBe('new')
+    expect(git(repo, 'show', 'master:c.txt')).toBe('master moved')
+  })
+
+  it('is a no-op when the target has not moved', async () => {
+    const wt = join(root, 'wt-feature')
+    git(repo, 'worktree', 'add', wt, 'feature')
+    const head = git(repo, 'rev-parse', 'feature')
+    expect(await rebaseOnto(wt, 'feature', 'master')).toEqual({ head, base: git(repo, 'rev-parse', 'master'), rebased: false })
+  })
+
+  it('a conflict aborts the rebase, names the file and leaves the branch as it was', async () => {
+    const wt = await moved()
+    await writeFile(join(repo, 'a.txt'), 'one\nconflict\n')
+    git(repo, 'commit', '-am', 'master edits a.txt too')
+    const before = git(repo, 'rev-parse', 'feature')
+    await expect(rebaseOnto(wt, 'feature', 'master')).rejects.toThrow(/hit conflicts in a\.txt; the branch is as it was/)
+    expect(git(repo, 'rev-parse', 'feature')).toBe(before)
+    expect(git(wt, 'status', '--porcelain')).toBe('')
+    expect(await branchOf(wt)).toBe('feature')
+  })
+
+  it('refuses a worktree on another branch or with uncommitted changes', async () => {
+    const wt = await moved()
+    await writeFile(join(wt, 'a.txt'), 'dirty\n')
+    await expect(rebaseOnto(wt, 'feature', 'master')).rejects.toThrow(/uncommitted changes/)
+    git(wt, 'checkout', '--', 'a.txt')
+    await expect(rebaseOnto(repo, 'feature', 'master')).rejects.toThrow(/is on master, not feature/)
   })
 })
