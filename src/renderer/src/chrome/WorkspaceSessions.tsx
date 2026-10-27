@@ -276,19 +276,14 @@ export function rowMark(row: ThreadRow): { state: ThreadState; label: string } {
   };
 }
 
-/** The mark at a row's end: the glyph alone with its word and detail on
- *  hover, or the glyph and its word (`word`, the popover's rows). Nothing
- *  on a settled row. */
+/** The mark at a row's end: the glyph alone, its word and detail as its
+ *  label (the row's tooltip says them), or the glyph and its word (`word`,
+ *  the popover's rows). Nothing on a settled row. */
 function RowMark({ row, word }: { row: ThreadRow; word?: boolean }) {
   const { state, label } = rowMark(row);
   if (!marksAtRest(state)) return null;
   if (word) return <StatusMark state={state} className="shrink-0" />;
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<StatusMark state={state} word={false} aria-label={label} />} />
-      <TooltipContent side="right">{label}</TooltipContent>
-    </Tooltip>
-  );
+  return <StatusMark state={state} word={false} aria-label={label} />;
 }
 
 /** A master's done tally over its batch: settled threads of all of them. */
@@ -345,7 +340,11 @@ export function ThreadRowView({
   const live = child && row.running ? row.activity?.trim() : "";
   const editing = title != null;
   const verdict = word && row.failure && rowState(row) === "failed" ? row.failure : null;
-  return (
+  const mark = rowMark(row);
+  // Hover and focus put More over the glyph, so the row itself says the
+  // word and its detail: the pointer anywhere on it, or the keyboard on it.
+  const tip = !word && !editing && marksAtRest(mark.state) ? mark.label : null;
+  const element = (
     <div
       role="button"
       tabIndex={0}
@@ -443,6 +442,14 @@ export function ThreadRowView({
         </>
       ) : null}
     </div>
+  );
+  // Always the same tree, the tooltip disabled when there is nothing to say,
+  // so a focused row keeps its focus when its thread settles.
+  return (
+    <Tooltip disabled={!tip}>
+      <TooltipTrigger render={element} />
+      {tip ? <TooltipContent side="right">{tip}</TooltipContent> : null}
+    </Tooltip>
   );
 }
 

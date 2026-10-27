@@ -321,6 +321,28 @@ describe('a thread row ends in its mark', () => {
     failed.probe.unmount()
   })
 
+  it("the row carries the word in its name, so hover or focus anywhere on it reads it (More covers the glyph)", () => {
+    const { probe, row } = one({ status: 'waiting' })
+    // The row is the tooltip's trigger: the word and its detail are in its accessible name.
+    expect(row.getAttribute('role')).toBe('button')
+    expect(row.querySelector('[aria-label="Needs you"]')).not.toBeNull()
+    expect(row.querySelector('[data-slot="tooltip-trigger"]')).toBeNull()
+    probe.unmount()
+  })
+
+  it('a focused row keeps its focus when its thread settles', () => {
+    const list = (status: SessionMeta['status']) => (
+      <ThreadList threads={[threadRow(meta('t', { status }), { t: 1000 })]} actions={actions} className="" />
+    )
+    const probe = mountProbe(list('running'))
+    const row = probe.container.querySelector<HTMLElement>('[role="button"]')!
+    act(() => row.focus())
+    probe.rerender(list('idle'))
+    expect(probe.container.querySelector('[role="button"]')).toBe(row)
+    expect(document.activeElement).toBe(row)
+    probe.unmount()
+  })
+
   it('a settled row ends in nothing', () => {
     for (const status of ['idle', 'done'] as const) {
       const { probe, mark } = one({ status })

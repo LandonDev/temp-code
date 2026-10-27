@@ -211,6 +211,12 @@ describe("groupMark", () => {
     const flatMaster = row("m", { status: "watching", isMaster: true, updatedAt: 5 });
     expect(groupMark([flatMaster, child])).toEqual({ state: "waiting", about: flatMaster, others: [], more: 0 });
   });
+
+  it("names a former batch thread itself once its master is unpinned", () => {
+    const former = row("m", { status: "idle", updatedAt: 5 });
+    const loose = row("b1", { status: "waiting", masterId: "m", updatedAt: 300 });
+    expect(groupMark([former, loose])).toEqual({ state: "waiting", about: loose, others: [], more: 0 });
+  });
 });
 
 describe("groupUnread", () => {

@@ -126,6 +126,7 @@ type GroupRow = RowStateInput & {
   id: string;
   updatedAt: number;
   masterId?: string;
+  housed?: boolean;
   batch?: readonly GroupRow[];
 };
 
@@ -150,7 +151,9 @@ export function groupMark<T extends GroupRow>(roots: readonly T[]): GroupMark<T>
     seen.set(standIn, Math.max(seen.get(standIn) ?? 0, row.updatedAt));
   };
   for (const root of roots) {
-    const standIn = (root.masterId && byId.get(root.masterId)) || root;
+    // Only a thread housed under a pinned master is named by it; once the
+    // master is unpinned its former batch threads are roots of their own.
+    const standIn = (root.housed && root.masterId && byId.get(root.masterId)) || root;
     note(root, standIn);
     for (const b of root.batch ?? []) note(b, root);
   }
