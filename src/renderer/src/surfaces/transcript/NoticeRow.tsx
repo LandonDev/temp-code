@@ -6,16 +6,21 @@ import { useSessionMeta } from "../../lib/tcserver/store";
 import type { OpenFileFn } from "../../lib/search";
 import { ErrorChip } from "../ErrorChip";
 import { CompactionCard } from "../CompactionCard";
-import { AgentSpawnRow, PlanHandoffRow } from "../AgentSpawnRow";
+import { AgentSpawnRow } from "../AgentSpawnRow";
 import { GateCard } from "../GateCard";
 import { ReviewCard } from "../ReviewCard";
 import { useTurnState } from "../turnState";
 import { useTranscriptSession } from "../transcriptSession";
+import { GitMerge, Users } from "../../chrome/icons";
+import { StatusMark } from "../../components/ui/status";
+import { NoticeLine } from "./NoticeLine";
+import { PlanHandoffRow } from "./PlanHandoffRow";
 
 /** A system row the host typed: compaction, a spawned agent, a plan handoff,
- *  a review, a gate, an error or a turn pass. */
+ *  a review, a gate, a batch or account notice, an error or a turn pass. */
 export function isNoticeBlock(block: Block): boolean {
   return !!(
+    block.notice ||
     block.compaction ||
     block.agent ||
     block.planHandoff ||
@@ -41,6 +46,10 @@ export function NoticeRow({
   if (block.planHandoff) return <PlanHandoffRow block={block} />;
   if (block.review) return <ReviewCard block={block} cwd={cwd} onOpenFile={onOpenFile} />;
   if (block.gate) return <GateCard block={block} />;
+  if (block.notice?.kind === "batch") return <BatchNotice text={block.text} />;
+  if (block.notice?.kind === "account-gone") {
+    return <NoticeLine glyph={<Users />} lead={block.text} wrap />;
+  }
   if (isErrorBlock(block)) return <ErrorRowView block={block} />;
   const actions = passActionsOf(block);
   if (actions) return <PassRow actions={actions} />;
@@ -67,12 +76,18 @@ export function ErrorRowView({ block }: { block: Block }) {
   );
 }
 
-/** What the turn-pass did between turns: a compact line, not a system dump. */
+/** A batch's line on the master or a child: a merge it made, or its end. */
+function BatchNotice({ text }: { text: string }) {
+  const merged = /^Merged by the batch: (.*)$/s.exec(text);
+  if (merged) return <NoticeLine glyph={<GitMerge />} lead="Merged by the batch" details={[merged[1]]} />;
+  const done = /^Batch done: (.*)$/s.exec(text);
+  if (done) {
+    return <NoticeLine glyph={<StatusMark state="done" word={false} />} lead="Batch done" details={[done[1]]} />;
+  }
+  return <NoticeLine glyph={<GitMerge />} lead={text} wrap />;
+}
+
+/** What the turn-pass did between turns: "Pass", then its actions. */
 export function PassRow({ actions }: { actions: string[] }) {
-  return (
-    <div className="flex items-center gap-2 py-1 font-sans text-[12px] text-content/40">
-      <span className="text-content/40">Pass</span>
-      <span className="min-w-0 truncate">{actions.join(" · ")}</span>
-    </div>
-  );
+  return <NoticeLine lead="Pass" details={[actions.join(", ")]} />;
 }

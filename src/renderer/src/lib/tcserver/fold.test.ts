@@ -820,10 +820,18 @@ describe("merge review rows", () => {
     expect(last.review).toBeUndefined();
   });
 
-  it("a plain notice stays a plain system row", () => {
+  it("a plain notice stays a system row and keeps its kind", () => {
     const state = foldAll(rows([{ type: "notice", kind: "account-gone", message: "account left" } as AgentEvent]), CWD);
     const last = state.blocks[state.blocks.length - 1];
     expect(last.text).toBe("account left");
     expect(last.review).toBeUndefined();
+    expect(last.notice).toEqual({ kind: "account-gone" });
+  });
+
+  it("a batch notice keeps its kind", () => {
+    const state = foldAll(rows([{ type: "notice", kind: "batch", message: "Batch done: 3 landed" } as AgentEvent]), CWD);
+    const last = state.blocks[state.blocks.length - 1];
+    expect(last.role).toBe("system");
+    expect(last.notice).toEqual({ kind: "batch" });
   });
 });

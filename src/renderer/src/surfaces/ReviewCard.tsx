@@ -1,21 +1,27 @@
 import { useContext, useState } from "react";
 import type { ReviewFinding } from "@server/shared/review";
-import { AlertCircle, Check, ChevronRight, CircleDashed } from "../chrome/icons";
+import { CircleDashed } from "../chrome/icons";
+import { Button } from "../components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/ui/collapsible";
+import { StatusMark } from "../components/ui/status";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import type { Block } from "../lib/session";
 import { mergeAnyway } from "../lib/tcserver/commands";
-import { useMetaById, modelLabel } from "../lib/threads/agents";
+import { modelLabel } from "../lib/threads/agents";
 import type { OpenFileFn } from "../lib/search";
 import { SelectSessionContext } from "./AgentMarkdown";
 import { useOpenAgentDetail } from "./agentDetailContext";
-import { CHIP } from "./chip";
+import { NoticeCaret, NoticeLine } from "./transcript/NoticeLine";
 import { useTranscriptSession } from "./transcriptSession";
 
+type Review = NonNullable<Block["review"]>;
+
 /**
- * A merge review's outcome on one system row (shared/review.ts): who
- * reviewed, what it found, whether the merge landed. A held review lists
- * its blocking findings with the file and line to open, the reviewer thread
- * is one chip away, and "Merge anyway" is the person's override. Everything
- * else reads as the quiet one-liners the transcript already has.
+ * A merge review's outcome (shared/review.ts). A settled outcome is one
+ * notice line: who reviewed and what it found, the minor findings behind a
+ * caret, the review thread on hover. A live hold is the one card: its
+ * blocking findings with the file and line to open, then Merge anyway, the
+ * person's override.
  */
 export function ReviewCard({
   block,
@@ -27,23 +33,67 @@ export function ReviewCard({
   onOpenFile?: OpenFileFn;
 }) {
   const review = block.review;
-  const sessionId = useTranscriptSession();
-  const reviewer = useMetaById(review?.reviewerId ?? null);
   const openDetail = useOpenAgentDetail();
   const onSelectSession = useContext(SelectSessionContext);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [minorOpen, setMinorOpen] = useState(false);
   if (!review) return null;
   const open = openDetail ?? onSelectSession;
   const label = modelLabel(review.provider, review.model);
-  const held = review.outcome === "held" && !review.resolved;
-  // Only a live hold speaks up; every settled outcome is a quiet line.
-  const tone = held ? "warn" : "muted";
-  const Icon = review.outcome === "held" ? AlertCircle : review.outcome === "timeout" || review.outcome === "failed" ? CircleDashed : Check;
+  const reviewerId = review.reviewerId;
+  const openThread = reviewerId && open ? () => open(reviewerId) : null;
+
+  if (review.outcome === "held" && !review.resolved) {
+    return <HeldReview review={review} label={label} openThread={openThread} cwd={cwd} onOpenFile={onOpenFile} />;
+  }
+
   const minor = review.minor.length;
+  const glyph =
+    review.outcome === "timeout" || review.outcome === "failed" ? <CircleDashed /> : <StatusMark state="done" word={false} />;
+  return (
+    <Collapsible open={minorOpen} onOpenChange={setMinorOpen}>
+      <NoticeLine
+        glyph={glyph}
+        lead={leadOf(review.outcome, label)}
+        details={detailOf(review)}
+        trailing={minor ? <NoticeCaret open={minorOpen} label={minorOpen ? "Hide minor findings" : "Show minor findings"} /> : undefined}
+        actions={
+          openThread ? (
+            <Button variant="ghost" size="xs" className="-my-0.5 text-muted-foreground hover:text-foreground" onClick={openThread}>
+              Review thread
+            </Button>
+          ) : undefined
+        }
+      >
+        {minor ? (
+          <CollapsibleContent>
+            <FindingList findings={review.minor} cwd={cwd} onOpenFile={onOpenFile} />
+          </CollapsibleContent>
+        ) : null}
+      </NoticeLine>
+    </Collapsible>
+  );
+}
+
+/** The live hold: the one review card. */
+function HeldReview({
+  review,
+  label,
+  openThread,
+  cwd,
+  onOpenFile,
+}: {
+  review: Review;
+  label: string;
+  openThread: (() => void) | null;
+  cwd?: string;
+  onOpenFile?: OpenFileFn;
+}) {
+  const sessionId = useTranscriptSession();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [minorOpen, setMinorOpen] = useState(false);
   const blocking = review.blocking.length;
-  const lead = leadOf(review.outcome, label);
-  const detail = detailOf(review.outcome, blocking, minor, review.minutes, review.reason, review.resolved);
+  const minor = review.minor.length;
 
   const merge = async () => {
     if (!sessionId || pending) return;
@@ -58,57 +108,46 @@ export function ReviewCard({
   };
 
   return (
-    <div className="flex min-w-0 flex-col gap-1.5 py-2 font-sans text-[12px]">
-      <div className={`flex min-w-0 items-center gap-2 ${tone === "warn" ? "text-content" : "text-content/50"}`}>
-        <Icon className={`size-3.5 shrink-0 ${tone === "warn" ? "text-warning" : ""}`} strokeWidth={1.75} />
-        <span className="min-w-0 truncate">
-          <span className="font-medium">{lead}</span>
-          {detail ? <span className={tone === "warn" ? "text-content/60" : "text-content/40"}> · {detail}</span> : null}
-        </span>
-        {review.reviewerId ? (
-          <button
-            type="button"
-            disabled={!open}
-            title={reviewer?.title ?? "Open the review thread"}
-            className="pressable -my-0.5 ml-auto shrink-0 rounded-md bg-content/6 px-1.5 py-0.5 text-[11px] text-content/60 enabled:hover:bg-content/10 enabled:hover:text-content"
-            onClick={(event) => {
-              event.stopPropagation();
-              open?.(review.reviewerId!);
-            }}
-          >
-            Review thread
-          </button>
-        ) : null}
+    <div data-slot="review-hold" className="my-2 min-w-0 rounded-lg border border-border bg-card p-3 font-sans text-[13px]">
+      <div className="flex min-w-0 items-center gap-2 leading-5">
+        <StatusMark state="waiting" word={false} />
+        <span className="shrink-0 font-medium text-foreground">Reviewed by {label}</span>
+        <span className="shrink-0 text-muted-foreground">{plural(blocking, "blocking finding")}</span>
+        <span className="min-w-0 truncate text-muted-foreground">merge held</span>
       </div>
-      {blocking ? (
-        <FindingList findings={review.blocking} cwd={cwd} onOpenFile={onOpenFile} strong={held} />
-      ) : null}
+      <FindingList findings={review.blocking} cwd={cwd} onOpenFile={onOpenFile} className="mt-3" strong />
       {minor ? (
-        <details className="group min-w-0">
-          <summary className="flex cursor-default list-none items-center gap-1 text-content/40 hover:text-content/60 [&::-webkit-details-marker]:hidden">
-            <ChevronRight className="size-3 shrink-0 transition-transform duration-150 ease-out group-open:rotate-90" strokeWidth={1.75} />
-            {minor} minor {minor === 1 ? "finding" : "findings"}, not blocking
-          </summary>
-          <div className="pt-1">
-            <FindingList findings={review.minor} cwd={cwd} onOpenFile={onOpenFile} strong={false} />
-          </div>
-        </details>
+        <Collapsible open={minorOpen} onOpenChange={setMinorOpen} className="mt-3">
+          <CollapsibleTrigger
+            render={<Button variant="ghost" size="xs" className="-ml-2 text-muted-foreground hover:text-foreground" />}
+          >
+            {plural(minor, "minor finding")}
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <FindingList findings={review.minor} cwd={cwd} onOpenFile={onOpenFile} className="pt-2" />
+          </CollapsibleContent>
+        </Collapsible>
       ) : null}
-      {held ? (
-        <div className="flex min-w-0 items-center gap-2 pt-0.5">
-          <button type="button" className={CHIP} disabled={pending || !sessionId} onClick={merge}>
-            {pending ? "Merging…" : "Merge anyway"}
-          </button>
-          <span className="min-w-0 truncate text-content/40">
-            {error ? <span className="text-danger">{error}</span> : "Address the findings and merge again, or merge past them."}
-          </span>
-        </div>
-      ) : null}
+      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3">
+        <Button size="sm" disabled={pending || !sessionId} onClick={merge}>
+          {pending ? "Merging…" : "Merge anyway"}
+        </Button>
+        {openThread ? (
+          <Button variant="ghost" size="sm" onClick={openThread}>
+            Review thread
+          </Button>
+        ) : null}
+        {error ? <span className="min-w-0 text-xs text-destructive">{error}</span> : null}
+      </div>
     </div>
   );
 }
 
-function leadOf(outcome: NonNullable<Block["review"]>["outcome"], label: string): string {
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+function leadOf(outcome: Review["outcome"], label: string): string {
   switch (outcome) {
     case "pass":
     case "held":
@@ -124,29 +163,28 @@ function leadOf(outcome: NonNullable<Block["review"]>["outcome"], label: string)
   }
 }
 
-function detailOf(
-  outcome: NonNullable<Block["review"]>["outcome"],
-  blocking: number,
-  minor: number,
-  minutes: number | undefined,
-  reason: string | undefined,
-  resolved: boolean | undefined,
-): string {
+/** The settled line's details, each its own part. */
+export function detailOf(review: Review): string[] {
+  const blocking = review.blocking.length;
+  const minor = review.minor.length;
   const minorText = minor ? `${minor} minor` : "";
-  switch (outcome) {
-    case "pass":
-      return ["no blocking findings", minorText].filter(Boolean).join(", ");
-    case "held":
-      return [`${blocking} blocking ${blocking === 1 ? "finding" : "findings"}`, minorText, resolved ? "merged anyway" : "merge held"].filter(Boolean).join(", ");
-    case "timeout":
-      return `after ${minutes ?? "?"} min, merged without it`;
-    case "failed":
-      return [reason, "merged without it"].filter(Boolean).join(", ");
-    case "merged-anyway":
-      return `${blocking} blocking ${blocking === 1 ? "finding" : "findings"} overridden`;
-    case "skipped":
-      return reason ?? "";
-  }
+  const parts = (() => {
+    switch (review.outcome) {
+      case "pass":
+        return ["no blocking findings", minorText];
+      case "held":
+        return [plural(blocking, "blocking finding"), minorText, review.resolved ? "merged anyway" : "merge held"];
+      case "timeout":
+        return [`after ${review.minutes ?? "?"} min`, "merged without it"];
+      case "failed":
+        return [review.reason ?? "", "merged without it"];
+      case "merged-anyway":
+        return [`${plural(blocking, "blocking finding")} overridden`];
+      case "skipped":
+        return [review.reason ?? ""];
+    }
+  })();
+  return parts.filter(Boolean);
 }
 
 /** The findings as rows: the place to open, the claim, the failure. */
@@ -154,38 +192,47 @@ function FindingList({
   findings,
   cwd,
   onOpenFile,
-  strong,
+  className,
+  strong = false,
 }: {
   findings: ReviewFinding[];
   cwd?: string;
   onOpenFile?: OpenFileFn;
-  strong: boolean;
+  className?: string;
+  strong?: boolean;
 }) {
   return (
-    <ol className="ml-[7px] flex min-w-0 flex-col gap-1.5 border-l border-content/10 pl-3">
+    <ol className={`flex min-w-0 flex-col gap-3 ${className ?? ""}`}>
       {findings.map((f, i) => {
         const where = `${f.file}${f.line ? `:${f.line}` : ""}`;
         const path = cwd && !f.file.startsWith("/") ? `${cwd.replace(/\/$/, "")}/${f.file}` : f.file;
         return (
-          <li key={`${where}:${i}`} className="flex min-w-0 flex-col gap-0.5">
-            <div className="flex min-w-0 items-baseline gap-1.5">
-              <button
-                type="button"
-                disabled={!onOpenFile}
-                title={path}
-                className="pressable shrink-0 rounded-md bg-content/6 px-1 py-px font-mono text-[11px] text-content/70 enabled:hover:bg-content/10 enabled:hover:text-content disabled:cursor-default"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onOpenFile?.(path, f.line ? { line: f.line } : undefined);
-                }}
+          <li key={`${where}:${i}`} className="flex min-w-0 flex-col items-start">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    disabled={!onOpenFile}
+                    className="-ml-2 h-5 max-w-full font-mono text-xs font-normal text-muted-foreground hover:text-foreground"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpenFile?.(path, f.line ? { line: f.line } : undefined);
+                    }}
+                  />
+                }
               >
-                {where}
-              </button>
-              {f.verdict === "PLAUSIBLE" ? <span className="shrink-0 text-[11px] text-content/40">plausible</span> : null}
-              <span className={`min-w-0 break-words ${strong ? "text-content/80" : "text-content/60"}`}>{f.summary}</span>
-            </div>
+                <span className="truncate">{where}</span>
+              </TooltipTrigger>
+              <TooltipContent>{path}</TooltipContent>
+            </Tooltip>
+            <span className={`min-w-0 break-words text-[13px] ${strong ? "text-foreground" : "text-muted-foreground"}`}>
+              {f.summary}
+              {f.verdict === "PLAUSIBLE" ? <span className="ml-2 text-xs text-muted-foreground">plausible</span> : null}
+            </span>
             {f.failure_scenario ? (
-              <div className="min-w-0 break-words pl-0.5 text-content/50">{f.failure_scenario}</div>
+              <span className="mt-0.5 min-w-0 break-words text-xs text-muted-foreground">{f.failure_scenario}</span>
             ) : null}
           </li>
         );

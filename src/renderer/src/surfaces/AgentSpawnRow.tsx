@@ -6,7 +6,7 @@ import { useMetaById } from "../lib/threads/agents";
 import { asHarness, sessionStore } from "../lib/tcserver/store";
 import { SelectSessionContext } from "./AgentMarkdown";
 import { useOpenAgentDetail } from "./agentDetailContext";
-import { StatusDot, THREAD_GLYPHS, THREAD_TINTS } from "./threads/bits";
+import { StatusDot } from "./threads/bits";
 
 /** The window's environment for a cross-host child id (`<hostId>:<sessionId>`),
  *  before its row is in the store: `local` when the host is this machine. */
@@ -54,49 +54,6 @@ export function AgentSpawnRow({ block }: { block: Block }) {
           <span className="flex shrink-0 items-center gap-1 text-[12px] text-content/40">
             {!report ? <StatusDot status={meta?.status} /> : null}
             {status}
-          </span>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-/**
- * The planning thread's handoff row: the build started from its plan, how
- * (on its own, or by hand), and where that thread stands now. Clicking
- * opens the build in this pane.
- */
-export function PlanHandoffRow({ block }: { block: Block }) {
-  const handoff = block.planHandoff;
-  const meta = useMetaById(handoff?.id ?? null);
-  const onSelectSession = useContext(SelectSessionContext);
-  if (!handoff) return null;
-  const type = meta?.threadType === "orchestration" ? "orchestration" : "implementation";
-  const Glyph = THREAD_GLYPHS[type];
-  const title = meta?.title || handoff.title;
-  return (
-    <div>
-      <div className="ml-[7px] flex min-w-0 items-center gap-1.5 border-l border-content/10 py-1 pl-3 font-sans text-sm">
-        <Glyph className={`size-3.5 shrink-0 ${THREAD_TINTS[type]}`} strokeWidth={1.75} />
-        <span className="shrink-0 text-content/50">
-          {handoff.how === "auto" ? "Started the build" : "Build started"}
-        </span>
-        <button
-          type="button"
-          disabled={!onSelectSession}
-          title={title}
-          className="pressable -my-0.5 min-w-0 truncate rounded-md bg-content/6 px-1 py-0.5 text-left text-content/70 enabled:hover:bg-content/10 enabled:hover:text-content"
-          onClick={(event) => {
-            event.stopPropagation();
-            onSelectSession?.(handoff.id);
-          }}
-        >
-          {title}
-        </button>
-        {meta ? (
-          <span className="flex shrink-0 items-center gap-1 text-[12px] text-content/40">
-            <StatusDot status={meta.status} />
-            {meta.archived ? "archived" : meta.status}
           </span>
         ) : null}
       </div>

@@ -602,7 +602,10 @@ export function foldEvent(
         // A gate run's row: its own card, never folded into the status line.
         blocks = [...sealLastStream(blocks), { id: `notice:${row.seq}`, role: "system", text: e.message, gate: e.gate }];
       } else {
-        blocks = appendStatusBlock(blocks, e.message, `notice:${row.seq}`);
+        // A batch's or an account's notice keeps its kind, so it draws typed.
+        const next = appendStatusBlock(blocks, e.message, `notice:${row.seq}`);
+        if (next !== blocks) next[next.length - 1] = { ...next[next.length - 1], notice: { kind: e.kind } };
+        blocks = next;
       }
       break;
     case "errors-cleared": {
