@@ -125,6 +125,18 @@ describe("PlanView for a project plan", () => {
     expect(mark?.textContent).toBe("Plan ready2 tasks");
   });
 
+  it("the outline shows by the board's own width (a container query), not the window's", () => {
+    doc = "# Plan\n\n## Context\nc\n\n## Tasks\n- [ ] a\n";
+    const plan = (status: string) => <PlanView {...props(session({ threadType: "planning", status, planPath: "/repo/.temp-code/plan-x.md" } as Partial<Session>))} />;
+    const view = render(plan("running"));
+    // The turn settles with the plan written: the chat folds and the outline appears.
+    view.rerender(plan("idle"));
+    const nav = screen.getByRole("navigation", { name: "Outline" });
+    expect(nav.className).toContain("@min-[69rem]:block");
+    expect(nav.className).not.toContain("min-[1360px]");
+    expect(nav.parentElement?.className).toContain("@container");
+  });
+
   it("a plan still being written shows its count alone", () => {
     doc = "# Plan\n\n## Tasks\n- [ ] a\n";
     render(<PlanView {...props(session({ threadType: "planning", status: "running", planPath: "/repo/.temp-code/plan-x.md" }))} />);

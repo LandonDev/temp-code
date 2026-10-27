@@ -173,7 +173,7 @@ export function PlanView(props: ThreadViewProps) {
 
   const board = (
     <>
-      <div className="relative flex min-h-0 flex-1">
+      <div className="@container relative flex min-h-0 flex-1">
         {collapsed && sections.some((s) => s.heading) ? (
           <Outline
             sections={sections}
@@ -248,7 +248,9 @@ export function PlanView(props: ThreadViewProps) {
   );
 }
 
-/** Heading map down the left edge — only on the full-width plan. */
+/** Heading map down the left edge, only where the board leaves it room
+ *  beside the centred 672px document: (69rem − 42rem) / 2 holds the 16px
+ *  inset, the 176px outline and a 24px gap. */
 function Outline({
   sections,
   active,
@@ -259,7 +261,7 @@ function Outline({
   onJump: (i: number) => void;
 }) {
   return (
-    <nav aria-label="Outline" className="absolute top-6 bottom-4 left-4 hidden w-44 overflow-y-auto min-[1360px]:block">
+    <nav aria-label="Outline" className="absolute top-6 bottom-4 left-4 hidden w-44 overflow-y-auto @min-[69rem]:block">
       <div className="flex flex-col">
         {sections.map((s, i) =>
           s.heading === null ? null : (
