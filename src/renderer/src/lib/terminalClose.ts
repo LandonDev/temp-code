@@ -1,4 +1,4 @@
-import { ask } from "./native";
+import { confirmAction, type ConfirmRequest } from "../chrome/ConfirmDialog";
 import type { FilePaneTab } from "./layout";
 import { getPtyStatus } from "./pty";
 import { terminalTabLabel } from "./terminalTab";
@@ -24,34 +24,22 @@ async function runningTerminals(files: FilePaneTab[]): Promise<RunningTerminal[]
 }
 
 /** Confirm closing one terminal when its foreground process is not the shell. */
-export async function confirmCloseTerminal(file: FilePaneTab): Promise<boolean> {
-  const running = await runningTerminals([file]);
-  if (running.length === 0) return true;
-  const { process } = running[0];
-  const label = terminalTabLabel(file);
-  return ask(
-    `"${process}" is still running in ${label}. Close this terminal anyway?`,
-    { title: "TempCode", kind: "warning" },
-  );
+export function confirmCloseTerminal(file: FilePaneTab): Promise<boolean> {
+  return confirmCloseTerminals([file]);
 }
 
 /** Confirm closing terminals that still have a foreground process. */
 export async function confirmCloseTerminals(files: FilePaneTab[]): Promise<boolean> {
   const running = await runningTerminals(files);
   if (running.length === 0) return true;
-  if (running.length === 1) {
-    const { file, process } = running[0];
-    return ask(
-      `"${process}" is still running in ${terminalTabLabel(file)}. Close this terminal anyway?`,
-      { title: "TempCode", kind: "warning" },
-    );
-  }
-  return ask(closeTerminalsLine(running.map(({ process }) => process)), { title: "TempCode", kind: "warning" });
+  return confirmAction(closeTerminalsRequest(running));
 }
 
-/** The confirm for several busy terminals, one line: "Close 3 terminals? bun dev and 2 more are still running." */
-export function closeTerminalsLine(processes: readonly string[]): string {
-  const [first, ...rest] = processes;
-  const busy = rest.length === 0 ? `${first} is` : `${first} and ${rest.length} more are`;
-  return `Close ${processes.length} terminals? ${busy} still running.`;
+/** The confirm for busy terminals: "Close dev?" / "vite is still running.",
+ *  or "Close 3 terminals?" / "bun dev and 2 more are still running." */
+export function closeTerminalsRequest(running: readonly RunningTerminal[]): ConfirmRequest {
+  const [first, ...rest] = running;
+  const title = rest.length === 0 ? `Close ${terminalTabLabel(first.file)}?` : `Close ${running.length} terminals?`;
+  const busy = rest.length === 0 ? `${first.process} is` : `${first.process} and ${rest.length} more are`;
+  return { title, body: `${busy} still running.`, action: "Close", danger: true };
 }
