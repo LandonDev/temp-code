@@ -41,6 +41,9 @@ describe("RailRows", () => {
     const { container, getByTestId } = render(<List rows={VIRTUAL_AT_ROWS + 1} />);
     const scroller = getByTestId("scroller");
     scroller.scrollTop = 40;
+    // jsdom does not scroll: record where the virtualizer asks the scroller to go.
+    const scrolledTo: number[] = [];
+    scroller.scrollTo = ((options: ScrollToOptions) => scrolledTo.push(options.top ?? 0)) as typeof scroller.scrollTo;
     expect(container.querySelector(".relative.w-full")).toBeNull();
     await act(async () => {
       await virtualChunk.load();
@@ -50,6 +53,7 @@ describe("RailRows", () => {
     expect(container.querySelector(".relative.w-full")).not.toBeNull();
     expect(getByTestId("scroller")).toBe(scroller);
     expect(scroller.scrollTop).toBe(40);
+    expect(scrolledTo.every((top) => top === 40)).toBe(true);
     // Once loaded, a new list virtualizes from its first render.
     cleanup();
     const again = render(<List rows={KEYS.length} />);

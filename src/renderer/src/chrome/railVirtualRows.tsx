@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
 
 /** What the rail's list hands either mode (chrome/railRows.tsx). */
@@ -43,9 +43,15 @@ export function VirtualRows({ count, scroller, estimateSize, getItemKey, render,
     overscan: 4,
     gap: RAIL_GAP_PX,
     measureElement: measureRow,
+    // Swapped in under a list the person may have scrolled: start where it is.
+    initialOffset: () => scroller.current?.scrollTop ?? 0,
   });
+  // A reveal the plain list already answered is not replayed at the swap.
+  const answered = useRef(reveal);
   useEffect(() => {
-    if (reveal) virtualizer.scrollToIndex(reveal.index, { align: "auto" });
+    if (!reveal || reveal === answered.current) return;
+    answered.current = reveal;
+    virtualizer.scrollToIndex(reveal.index, { align: "auto" });
   }, [reveal, virtualizer]);
   return (
     <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>

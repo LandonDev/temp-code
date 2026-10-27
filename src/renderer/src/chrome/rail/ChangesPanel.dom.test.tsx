@@ -64,8 +64,8 @@ vi.mock("../../surfaces/editorGit", () => ({
 
 // The head's branch switch: BranchPicker's own tests cover its list; here it reports what the head gave it.
 vi.mock("../BranchPicker", () => ({
-  BranchPicker: (p: { branch?: string; variant?: string; tip?: string; onChange?: () => void }) => (
-    <button type="button" aria-label={`Branch ${p.branch}`} data-variant={p.variant} data-tip={p.tip} onClick={() => p.onChange?.()}>
+  BranchPicker: (p: { branch?: string; variant?: string; tip?: string; enabled?: boolean; onChange?: () => void }) => (
+    <button type="button" aria-label={`Branch ${p.branch}`} data-variant={p.variant} data-tip={p.tip} disabled={p.enabled === false} onClick={() => p.onChange?.()}>
       {p.branch}
     </button>
   ),
@@ -131,6 +131,13 @@ describe("ChangesPanel", () => {
     expect(head.getAttribute("data-tip")).toBe("Tracks origin/feat");
     fireEvent.click(head);
     expect(onBranchChange).toHaveBeenCalledWith("t1");
+  });
+
+  it("while the thread's turn runs its branch cannot be switched from the head", async () => {
+    h.index = indexOf();
+    render(<ChangesPanel cwd="/p" sessionId="t1" busy onOpenDiff={onOpenDiff} />);
+    await flush();
+    expect((screen.getByRole("button", { name: "Branch feat" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("loads as skeleton rows, and an empty checkout is one Empty", async () => {

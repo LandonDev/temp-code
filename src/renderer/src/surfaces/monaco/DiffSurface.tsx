@@ -109,7 +109,8 @@ export function DiffSurface({
           const next = editor?.getLineChanges() ?? [];
           const line = modified.getPosition()?.lineNumber ?? 1;
           setChanges(next);
-          setChangeIndex(Math.max(0, next.findLastIndex((change) => Math.max(1, change.modifiedStartLineNumber) <= line)));
+          // -1 while the caret is above the first change, so Next reaches it.
+          setChangeIndex(next.findLastIndex((change) => Math.max(1, change.modifiedStartLineNumber) <= line));
         };
         cleanups.push(() => diffListener.dispose(), () => cursorListener.dispose());
         const diffListener = editor.onDidUpdateDiff(syncChanges);

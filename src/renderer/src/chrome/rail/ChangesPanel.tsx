@@ -178,6 +178,7 @@ function usePrStatus(environmentId: string, cwd: string, branch: string | null |
 export function ChangesPanel({
   cwd,
   sessionId,
+  busy: threadBusy = false,
   selectedPath,
   onOpenDiff,
   onOpenFile,
@@ -185,6 +186,8 @@ export function ChangesPanel({
   cwd: string;
   /** The panel's thread: a branch switched in the head is its branch change. */
   sessionId?: string;
+  /** The thread's turn is running: its branch does not change under it. */
+  busy?: boolean;
   /** the review file the focused tab shows, relative to the git root */
   selectedPath?: string;
   /** opens the file as a review tab; HEAD is parked as its base first */
@@ -382,6 +385,7 @@ export function ChangesPanel({
             variant="head"
             cwd={cwd}
             branch={index.branch ?? undefined}
+            enabled={!threadBusy}
             tip={trackingWords(index)}
             onChange={sessionId ? () => sessionActions?.onBranchChange(sessionId) : undefined}
           />

@@ -57,16 +57,20 @@ describe("Monaco review header", () => {
   it("shows the folder and base review counts, steps through changes and follows the caret", async () => {
     h.changes = [change(2, 3, 2, 2), change(9, 0, 9, 10), change(15, 15, 14, 0)];
     const { container, getByRole } = render(<DiffSurface path="/repo/src/file.ts" cwd="/repo" base="review-base" />);
-    await waitFor(() => expect(container.textContent).toContain("1/3"));
+    // The caret sits above the first change: none is current yet, and Next reaches the first.
+    await waitFor(() => expect(container.textContent).toContain("0/3"));
     expect(container.textContent).toContain("src");
     expect(container.textContent).toContain("+3");
     expect(container.textContent).toContain("−3");
     expect(h.request).toHaveBeenCalledWith("project.show", { projectId: "project", path: "src/file.ts", ref: "review-base" });
     expect(getByRole<HTMLButtonElement>("button", { name: "Previous change" }).disabled).toBe(true);
     fireEvent.click(getByRole("button", { name: "Next change" }));
+    expect(h.setPosition).toHaveBeenCalledWith({ lineNumber: 2, column: 1 });
+    expect(container.textContent).toContain("1/3");
+    fireEvent.click(getByRole("button", { name: "Next change" }));
     expect(h.setPosition).toHaveBeenCalledWith({ lineNumber: 9, column: 1 });
     expect(h.reveal).toHaveBeenCalledWith(9);
-    expect(h.focus).toHaveBeenCalledOnce();
+    expect(h.focus).toHaveBeenCalledTimes(2);
     expect(container.textContent).toContain("2/3");
     act(() => { h.position = 15; h.cursorUpdate(); });
     expect(container.textContent).toContain("3/3");
