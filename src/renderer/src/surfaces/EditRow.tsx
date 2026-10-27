@@ -31,6 +31,7 @@ import { editModel, splitPath } from './editModel'
 import { editOpenKey, usePersistedOpen } from './editOpenState'
 import { OmittedNote } from './ToolDetails'
 import { toolCallState } from './transcriptActivity'
+import { toolPhraseParts } from '../lib/toolPhrase'
 import { useTranscriptSession } from './transcriptSession'
 import { MatrixSpinner } from './threads/bits'
 
@@ -263,7 +264,7 @@ export function EditRow({
           )}
         </span>
         <span className="flex min-w-0 flex-1 items-baseline gap-1.5 text-[13px]">
-          {running ? <span className="shrink-0 text-content/50">{m.verb}</span> : null}
+          {running ? <span className="shrink-0 text-content/50">{toolPhraseParts(block, cwd, true).verb}</span> : null}
           {name ? (
             <button
               type="button"

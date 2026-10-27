@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { Block } from "../lib/session";
 import {
   editModel,
-  editVerb,
   isEditBlock,
   parseApplyPatchText,
   parsePatchDiff,
@@ -81,7 +80,7 @@ describe("parseApplyPatchText", () => {
 describe("editModel", () => {
   it("counts an Edit from old and new strings", () => {
     const m = editModel(tool("Edit", { file_path: "/p/a.ts", old_string: "a\nb", new_string: "c" }));
-    expect(m).toMatchObject({ path: "/p/a.ts", adds: 1, dels: 2, create: false, remove: false, verb: "Editing…" });
+    expect(m).toMatchObject({ path: "/p/a.ts", adds: 1, dels: 2, create: false, remove: false });
   });
 
   it("sums MultiEdit hunks", () => {
@@ -99,7 +98,7 @@ describe("editModel", () => {
 
   it("marks a Write as created with every line added", () => {
     const m = editModel(tool("Write", { file_path: "/p/n.md", content: "one\ntwo\nthree" }));
-    expect(m).toMatchObject({ path: "/p/n.md", adds: 3, dels: 0, create: true, verb: "Writing…" });
+    expect(m).toMatchObject({ path: "/p/n.md", adds: 3, dels: 0, create: true });
   });
 
   it("falls back to the preview counts while input is still streaming", () => {
@@ -130,7 +129,7 @@ describe("editModel", () => {
 
   it("shows the verb only when nothing gives counts", () => {
     const m = editModel(tool("Edit", { file_path: "/p/a.ts" }));
-    expect(m).toMatchObject({ path: "/p/a.ts", adds: 0, dels: 0, verb: "Editing…" });
+    expect(m).toMatchObject({ path: "/p/a.ts", adds: 0, dels: 0 });
   });
 
   it("reads a normalized apply_patch change", () => {
@@ -139,7 +138,7 @@ describe("editModel", () => {
         { path: "src/x.ts", kind: { type: "update" }, diff: "@@ -1 +1 @@\n-a\n+b\n+c" },
       ]),
     );
-    expect(m).toMatchObject({ path: "src/x.ts", adds: 2, dels: 1, verb: "Patching…" });
+    expect(m).toMatchObject({ path: "src/x.ts", adds: 2, dels: 1 });
   });
 
   it("lists further files of a multi-file patch", () => {
@@ -154,18 +153,9 @@ describe("editModel", () => {
 
   it("flags a delete", () => {
     const m = editModel(tool("apply_patch", [{ path: "gone.ts", kind: { type: "delete" }, diff: "" }]));
-    expect(m).toMatchObject({ path: "gone.ts", remove: true, verb: "Deleting…" });
+    expect(m).toMatchObject({ path: "gone.ts", remove: true });
     const byKind = editModel(tool("remove_file", { path: "/p/gone.ts" }, { kind: "delete" }));
-    expect(byKind).toMatchObject({ path: "/p/gone.ts", remove: true, verb: "Deleting…" });
-  });
-});
-
-describe("editVerb", () => {
-  it("picks by state then by tool", () => {
-    expect(editVerb({ create: false, remove: true }, "Edit")).toBe("Deleting…");
-    expect(editVerb({ create: true, remove: false }, "foreign")).toBe("Writing…");
-    expect(editVerb({ create: false, remove: false }, "apply_patch")).toBe("Patching…");
-    expect(editVerb({ create: false, remove: false }, "Edit")).toBe("Editing…");
+    expect(byKind).toMatchObject({ path: "/p/gone.ts", remove: true });
   });
 });
 

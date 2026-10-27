@@ -4,7 +4,7 @@ import { displayPath } from "../lib/paths";
 /**
  * A file change stands alone in the transcript — never folded into the
  * quiet run of tool calls. This is the model behind that row: which blocks
- * count as edits, and the file, verb, and +N / −N diffstat for one.
+ * count as edits, and the file, states, and +N / −N diffstat for one.
  */
 
 export const EDIT_TOOLS = new Set([
@@ -25,8 +25,6 @@ export interface EditModel {
   remove: boolean;
   /** Further files the same call touches (multi-file patches). */
   extraPaths: string[];
-  /** Live label while the call runs. */
-  verb: string;
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -113,13 +111,6 @@ function countPreviewLines(preview?: ToolPreview): { adds: number; dels: number 
   return adds || dels ? { adds, dels } : null;
 }
 
-export function editVerb(model: Pick<EditModel, "create" | "remove">, name?: string): string {
-  if (model.remove) return "Deleting…";
-  if (name === "apply_patch") return "Patching…";
-  if (name === "Write" || model.create) return "Writing…";
-  return "Editing…";
-}
-
 /** File, counts, and states for an edit block. Counts come from the tool
  *  input when it carries the change, else from the server's preview. */
 export function editModel(block: Block): EditModel {
@@ -135,12 +126,10 @@ export function editModel(block: Block): EditModel {
     create: false,
     remove: kind === "delete",
     extraPaths: [],
-    verb: "",
   };
-  const finish = (m: EditModel): EditModel => ({ ...m, verb: editVerb(m, name) });
   const withPreview = (m: EditModel): EditModel => {
     const c = countPreviewLines(preview);
-    return finish(c ? { ...m, adds: c.adds, dels: c.dels } : m);
+    return (c ? { ...m, adds: c.adds, dels: c.dels } : m);
   };
   switch (name) {
     case "Edit": {
@@ -150,12 +139,12 @@ export function editModel(block: Block): EditModel {
       // profile): the server's preview carries the counts.
       if (typeof i.old_string !== "string" && typeof i.new_string !== "string")
         return withPreview({ ...base, path: str(i.file_path) || base.path });
-      return finish({ ...base, path: str(i.file_path) || base.path, adds: nw.length, dels: o.length });
+      return ({ ...base, path: str(i.file_path) || base.path, adds: nw.length, dels: o.length });
     }
     case "MultiEdit": {
       const edits = Array.isArray(i.edits) ? (i.edits as unknown[]).map(rec) : [];
       if (edits.length === 0) return withPreview({ ...base, path: str(i.file_path) || base.path });
-      return finish({
+      return ({
         ...base,
         path: str(i.file_path) || base.path,
         adds: edits.reduce((n, e) => n + lines(str(e.new_string)).length, 0),
@@ -165,12 +154,12 @@ export function editModel(block: Block): EditModel {
     case "Write": {
       const path = str(i.file_path) || base.path;
       if (typeof i.content !== "string") return withPreview({ ...base, path, create: true });
-      return finish({ ...base, path, create: true, adds: lines(i.content).length });
+      return ({ ...base, path, create: true, adds: lines(i.content).length });
     }
     case "NotebookEdit": {
       const path = str(i.notebook_path) || base.path;
       if (typeof i.new_source !== "string") return withPreview({ ...base, path });
-      return finish({ ...base, path, adds: lines(i.new_source).length });
+      return ({ ...base, path, adds: lines(i.new_source).length });
     }
     case "apply_patch": {
       // Server-normalized: an array of { path, kind: { type }, diff }.
@@ -182,7 +171,7 @@ export function editModel(block: Block): EditModel {
         const create = type === "add";
         const remove = type === "delete";
         const d = changes.length === 1 ? parsePatchDiff(str(first.diff), create) : { adds: 0, dels: 0 };
-        return finish({
+        return ({
           ...base,
           path: paths[0] ?? base.path,
           extraPaths: paths.slice(1),
@@ -197,7 +186,7 @@ export function editModel(block: Block): EditModel {
       const { files } = parseApplyPatchText(text);
       if (files.length > 0) {
         const f = files[0];
-        return finish({
+        return ({
           ...base,
           path: f.path,
           extraPaths: files.slice(1).map((x) => x.path),

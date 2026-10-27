@@ -397,7 +397,7 @@ describe("toolCallLabel", () => {
         text: "Skill /code-review",
         tool: { kind: "skill", title: "Skill /code-review" },
       }),
-    ).toBe("Used Skill /code-review");
+    ).toBe("Used skill /code-review");
   });
 
   it("renders file-reading bash as a Read/Find label", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Block, ToolPreview } from "./session";
-import { commandPhrases, humanName, kindOf, toolPhrase } from "./toolPhrase";
+import { commandPhrases, humanName, kindOf, toolPhrase, toolPhraseParts } from "./toolPhrase";
 
 const CWD = "/Users/me/monocode";
 
@@ -65,11 +65,11 @@ describe("humanName", () => {
 });
 
 describe("toolPhrase", () => {
-  it("reads, writes, edits and patches name the file relative to the cwd", () => {
+  it("reads, writes, edits and patches name the file by its basename", () => {
     expect(toolPhrase(call("Read", { file_path: `${CWD}/src/lib/paths.ts` }), CWD)).toBe(
-      "Read src/lib/paths.ts",
+      "Read paths.ts",
     );
-    expect(toolPhrase(call("Write", { file_path: `${CWD}/a.ts` }), CWD)).toBe("Wrote a.ts");
+    expect(toolPhrase(call("Write", { file_path: `${CWD}/a.ts` }), CWD)).toBe("Created a.ts");
     expect(toolPhrase(call("Edit", { file_path: `${CWD}/a.ts` }), CWD, true)).toBe(
       "Editing a.ts",
     );
@@ -78,9 +78,9 @@ describe("toolPhrase", () => {
         call("apply_patch", "*** Begin Patch\n*** Update File: src/a.ts\n*** Add File: src/b.ts\n*** End Patch"),
         CWD,
       ),
-    ).toBe("Patched 2 files");
+    ).toBe("Edited 2 files");
     expect(toolPhrase(call("apply_patch", { patch: "*** Update File: src/a.ts\n" }), CWD)).toBe(
-      "Patched src/a.ts",
+      "Edited a.ts",
     );
   });
 
@@ -113,7 +113,7 @@ describe("toolPhrase", () => {
       "Searched for foo",
     );
     expect(toolPhrase(call("Bash", { command: "ls src && wc -l a.ts && git log" }))).toBe(
-      "Listed src · counted lines in a.ts +1 more",
+      "Listed src, counted lines in a.ts +1 more",
     );
     expect(toolPhrase(call("shell", { command: ["/bin/zsh", "-lc", "bun run build"] }))).toBe(
       "Ran bun run build",
@@ -146,7 +146,7 @@ describe("toolPhrase", () => {
     expect(toolPhrase(call("TodoWrite", { todos: [] }), undefined, true)).toBe("Updating todos");
     expect(toolPhrase(call("LS", { path: `${CWD}/src` }), CWD)).toBe("Listed src");
     expect(toolPhrase(call("AskUserQuestion", { questions: [] }))).toBe("Asked a question");
-    expect(toolPhrase(call("Skill", { skill: "code-review" }))).toBe("Used Skill code-review");
+    expect(toolPhrase(call("Skill", { skill: "code-review" }))).toBe("Used skill code-review");
   });
 
   it("app, agent and MCP tools read as Used <Name>, nothing else", () => {
@@ -173,6 +173,75 @@ describe("toolPhrase", () => {
     expect(
       toolPhrase({ ...call("Bash", { command: "npm test" }), approval: { requestId: 1 } }),
     ).toBe("Running the tests");
+  });
+});
+
+describe("toolPhraseParts", () => {
+  const parts = (b: Block, live = false) => toolPhraseParts(b, CWD, live);
+  const file = `${CWD}/src/lib/a.ts`;
+
+  it("splits every kind into verb and object, settled and live", () => {
+    const cases: [Block, string, string, string][] = [
+      [call("Bash", { command: "npm test" }), "Ran", "Running", "the tests"],
+      [call("Read", { file_path: file }), "Read", "Reading", "a.ts"],
+      [call("Write", { file_path: file }), "Created", "Creating", "a.ts"],
+      [call("Edit", { file_path: file }), "Edited", "Editing", "a.ts"],
+      [call("apply_patch", "*** Update File: src/a.ts\n"), "Edited", "Editing", "a.ts"],
+      [call("apply_patch", "*** Update File: a.ts\n*** Add File: b.ts\n"), "Edited", "Editing", "2 files"],
+      [call("Grep", { pattern: "needle" }), "Searched for", "Searching for", "needle"],
+      [call("Glob", { pattern: "*.ts" }), "Searched for", "Searching for", "*.ts"],
+      [call("LS", { path: `${CWD}/src` }), "Listed", "Listing", "src"],
+      [call("WebFetch", { url: "https://docs.rs/x" }), "Fetched", "Fetching", "docs.rs"],
+      [call("WebSearch", { query: "tauri" }), "Searched the web for", "Searching the web for", "tauri"],
+      [call("TodoWrite", { todos: [] }), "Updated todos", "Updating todos", ""],
+      [call("AskUserQuestion", {}), "Asked", "Asking", "a question"],
+      [call("Skill", { skill: "code-review" }), "Used skill", "Using skill", "code-review"],
+      [call("mcp__linear__save_document", {}), "Used", "Using", "Save Document"],
+      [call("Whatever", {}), "Used", "Using", "Whatever"],
+    ];
+    for (const [block, settled, live, object] of cases) {
+      expect(parts(block)).toMatchObject({ verb: settled, object });
+      expect(parts(block, true)).toMatchObject({ verb: live, object });
+    }
+  });
+
+  it("a delete says Deleted", () => {
+    const b: Block = {
+      id: "d",
+      role: "tool",
+      text: "Deleted gone.ts",
+      tool: { kind: "delete", title: "Deleted gone.ts", status: "completed", preview: { kind: "write", path: `${CWD}/gone.ts` } },
+    };
+    expect(parts(b)).toMatchObject({ verb: "Deleted", object: "gone.ts" });
+    expect(parts(b, true).verb).toBe("Deleting");
+  });
+
+  it("a file's title is its shown path", () => {
+    expect(parts(call("Read", { file_path: file })).title).toBe("src/lib/a.ts");
+  });
+
+  it("splits a run phrase on its first word", () => {
+    expect(parts(call("Bash", { command: "npx convex dev" }))).toEqual({ verb: "Ran", object: "convex" });
+    expect(parts(call("Bash", { command: "npm i" }))).toEqual({ verb: "Installed", object: "dependencies" });
+    expect(parts(call("Bash", { command: "" }))).toEqual({ verb: "Ran", object: "a command" });
+    expect(parts(call("Bash", { command: "git status && git diff" }))).toEqual({
+      verb: "Checked",
+      object: "git status, viewed the diff",
+    });
+  });
+
+  it("toolPhrase is the parts joined, and never carries a middle dot", () => {
+    const blocks = [
+      call("Bash", { command: "ls src && wc -l a.ts && git log && git diff" }),
+      call("Read", { file_path: file }),
+      call("TodoWrite", {}),
+      call("mcp__app__app_start_thread", {}),
+    ];
+    for (const b of blocks) {
+      const { verb, object } = parts(b);
+      expect(toolPhrase(b, CWD, false)).toBe([verb, object].filter(Boolean).join(" "));
+      expect(toolPhrase(b, CWD, false)).not.toContain(" · ");
+    }
   });
 });
 

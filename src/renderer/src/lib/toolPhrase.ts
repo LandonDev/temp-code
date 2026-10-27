@@ -460,22 +460,30 @@ export function commandPhrases(raw: string, cwd?: string): string[] {
   return out;
 }
 
-function runPhrase(block: Block, cwd: string | undefined, live: boolean): string {
+/** The run row's words: a description or the command's gist, split at the verb. */
+function runParts(block: Block, cwd: string | undefined, live: boolean): PhraseParts {
   const desc = str(inputOf(block).description).trim();
-  if (desc) return cap(tense(trim(desc.charAt(0).toLowerCase() + desc.slice(1), 60), live));
+  if (desc) return splitVerb(cap(tense(trim(desc.charAt(0).toLowerCase() + desc.slice(1), 60), live)));
   if (inputOf(block).command === undefined) {
     // The fold may already have turned the command into "Read x" / "Find x".
     const title = (block.text || block.tool?.title || "").trim();
     const m = /^(Read|Find|List|Edit|Write|Delete|Move|Fetch|Create)\s+(.+)$/.exec(title);
     if (m) {
       const verb = m[1] === "Find" ? "search for" : m[1].toLowerCase();
-      return cap(`${tense(verb, live)} ${m[2]}`);
+      return { verb: cap(tense(verb, live)), object: m[2] };
     }
   }
   const phrases = commandPhrases(commandOf(block), cwd).map((p) => tense(p, live));
-  if (phrases.length === 0) return live ? "Running a command" : "Ran a command";
+  if (phrases.length === 0) return { verb: live ? "Running" : "Ran", object: "a command" };
   const extra = phrases.length - 2;
-  return cap(phrases.slice(0, 2).join(" · ") + (extra > 0 ? ` +${extra} more` : ""));
+  return splitVerb(cap(phrases.slice(0, 2).join(", ") + (extra > 0 ? ` +${extra} more` : "")));
+}
+
+/** "Ran the tests" → verb "Ran", object "the tests"; the phrase's first word. */
+function splitVerb(phrase: string): PhraseParts {
+  const at = phrase.indexOf(" ");
+  if (at < 0) return { verb: phrase, object: "" };
+  return { verb: phrase.slice(0, at), object: phrase.slice(at + 1) };
 }
 
 function patchPaths(block: Block): string[] {
@@ -487,76 +495,97 @@ function patchPaths(block: Block): string[] {
   return p ? [p] : [];
 }
 
-function fileWord(block: Block, cwd?: string): string {
-  const p = pathOf(block);
-  return p ? displayPath(p, cwd) : "a file";
+/** A file call's object: the basename, the shown path in `title`. */
+function fileParts(verb: string, path: string, cwd?: string): PhraseParts {
+  if (!path) return { verb, object: "a file" };
+  const title = displayPath(path, cwd);
+  return { verb, object: base(path), title };
 }
 
-/** The plain-word line for one call. Empty when nothing can be said. */
-export function toolPhrase(block: Block, cwd?: string, live = isLive(block)): string {
+/** A call's words split for the row: verb muted, object in foreground. */
+export interface PhraseParts {
+  verb: string;
+  object: string;
+  /** The object's full form (the shown path), for the tooltip. */
+  title?: string;
+}
+
+/**
+ * The words for one call, split at the verb: "Read" + "paths.ts", "Searched
+ * for" + "toolCallLabel", "Ran" + "the tests". Empty verb when nothing can
+ * be said.
+ */
+export function toolPhraseParts(block: Block, cwd?: string, live = isLive(block)): PhraseParts {
   const name = block.tool?.name ?? "";
   const kind = kindOf(block);
+  const deleting = block.tool?.kind?.trim().toLowerCase() === "delete";
   switch (kind) {
     case "run":
-      return runPhrase(block, cwd, live);
+      return runParts(block, cwd, live);
     case "read":
-      return `${live ? "Reading" : "Read"} ${fileWord(block, cwd)}`;
+      return fileParts(live ? "Reading" : "Read", pathOf(block), cwd);
     case "write":
-      return `${live ? "Writing" : "Wrote"} ${fileWord(block, cwd)}`;
+      return fileParts(live ? "Creating" : "Created", pathOf(block), cwd);
     case "edit":
-      return `${live ? "Editing" : "Edited"} ${fileWord(block, cwd)}`;
+      return deleting
+        ? fileParts(live ? "Deleting" : "Deleted", pathOf(block), cwd)
+        : fileParts(live ? "Editing" : "Edited", pathOf(block), cwd);
     case "patch": {
       const paths = patchPaths(block);
-      const what =
-        paths.length === 0
-          ? "files"
-          : paths.length === 1
-            ? displayPath(paths[0], cwd)
-            : `${paths.length} files`;
-      return `${live ? "Patching" : "Patched"} ${what}`;
+      const verb = live ? "Editing" : "Edited";
+      if (paths.length === 1) return fileParts(verb, paths[0], cwd);
+      return { verb, object: paths.length === 0 ? "files" : `${paths.length} files` };
     }
     case "search":
     case "glob": {
       const q = queryOf(block);
       return q
-        ? `${live ? "Searching" : "Searched"} for ${trim(q, 32)}`
-        : live
-          ? "Searching the project"
-          : "Searched the project";
+        ? { verb: live ? "Searching for" : "Searched for", object: trim(q, 32), title: q }
+        : { verb: live ? "Searching" : "Searched", object: "the project" };
     }
     case "list": {
       const p = pathOf(block);
-      return `${live ? "Listing" : "Listed"} ${p ? displayPath(p, cwd) : "files"}`;
+      return { verb: live ? "Listing" : "Listed", object: p ? displayPath(p, cwd) : "files" };
     }
     case "fetch": {
       const url = str(inputOf(block).url);
+      const verb = live ? "Fetching" : "Fetched";
       try {
-        return `${live ? "Fetching" : "Fetched"} ${url ? new URL(url).hostname : "a page"}`;
+        return url ? { verb, object: new URL(url).hostname, title: url } : { verb, object: "a page" };
       } catch {
-        return live ? "Fetching a page" : "Fetched a page";
+        return { verb, object: "a page" };
       }
     }
     case "web": {
       const q = str(inputOf(block).query) || block.tool?.preview?.query || "";
-      return `${live ? "Searching" : "Searched"} the web${q ? ` for ${trim(q, 32)}` : ""}`;
+      return q
+        ? { verb: live ? "Searching the web for" : "Searched the web for", object: trim(q, 32), title: q }
+        : { verb: live ? "Searching" : "Searched", object: "the web" };
     }
     case "todo":
-      return live ? "Updating todos" : "Updated todos";
+      return { verb: live ? "Updating todos" : "Updated todos", object: "" };
     case "question":
-      return live ? "Asking a question" : "Asked a question";
+      return { verb: live ? "Asking" : "Asked", object: "a question" };
     case "skill": {
       const i = inputOf(block);
       const title = (block.text || block.tool?.title || "").replace(/^skill\b\s*/i, "").trim();
       const skill = str(i.skill) || str(i.name) || title;
-      return `${live ? "Using" : "Used"} Skill${skill ? ` ${skill}` : ""}`;
+      return { verb: live ? "Using skill" : "Used skill", object: skill };
     }
     default: {
+      const verb = live ? "Using" : "Used";
       if (!name) {
         const title = (block.text || block.tool?.title || "").trim();
-        if (!title || /^(working|tool|running)$/i.test(title)) return "";
-        return `${live ? "Using" : "Used"} ${humanName(title.split(/[\s:]/)[0] || title)}`;
+        if (!title || /^(working|tool|running)$/i.test(title)) return { verb: "", object: "" };
+        return { verb, object: humanName(title.split(/[\s:]/)[0] || title) };
       }
-      return `${live ? "Using" : "Used"} ${humanName(name)}`;
+      return { verb, object: humanName(name) };
     }
   }
+}
+
+/** The plain-word line for one call. Empty when nothing can be said. */
+export function toolPhrase(block: Block, cwd?: string, live = isLive(block)): string {
+  const { verb, object } = toolPhraseParts(block, cwd, live);
+  return [verb, object].filter(Boolean).join(" ");
 }
