@@ -65,6 +65,29 @@ public struct StripWords: Hashable, Sendable {
         return StripWords(title: "Queued", detail: first.uppercased() + rest.dropFirst())
     }
 
+    /// A turn's phase before its first content, as the host words it onto
+    /// the activity line (sessions.ts `phaseLine`): "Starting the CLI",
+    /// "Initializing", "Waiting for the provider · 25 s", "Rate limited ·
+    /// retry 3 in 32 s", "Provider overloaded · retry 1 in 5 s", "Retrying",
+    /// "Reconnecting · retry 2 of 5". The words before the first " · " are
+    /// the title, the rest (its first letter raised) the detail; nil for any
+    /// other activity ("Thinking", a tool's line).
+    public static func phase(activity: String?) -> StripWords? {
+        guard let activity else { return nil }
+        let split = activity.range(of: " · ")
+        let title = split.map { String(activity[..<$0.lowerBound]) } ?? activity
+        guard phaseTitles.contains(title) else { return nil }
+        guard let split else { return StripWords(title: title) }
+        let rest = activity[split.upperBound...]
+        guard let first = rest.first else { return StripWords(title: title) }
+        return StripWords(title: title, detail: first.uppercased() + rest.dropFirst())
+    }
+
+    private static let phaseTitles: Set<String> = [
+        "Starting the CLI", "Initializing", "Waiting for the provider",
+        "Rate limited", "Provider overloaded", "Retrying", "Reconnecting"
+    ]
+
     /// The host's activity line where a status mark beside it already says
     /// queued: the reason alone ("Waiting for Backfill the rollups"), "Queued"
     /// when the host gave none; any other activity unchanged.

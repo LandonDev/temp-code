@@ -289,6 +289,22 @@ import TempCodeContract
         #expect(line.detail == "build-1")
     }
 
+    @Test func `a phase is activity, never a row: the fold adds nothing and the turn stays open`() {
+        let fold = ThreadFold.fold(rows([
+            user("go"),
+            .phase(PhaseEvent(phase: .cliStarting)),
+            .phase(PhaseEvent(phase: .retrying, retry: .init(attempt: 3, delayMs: 32_000, reason: "HTTP 429"))),
+            .phase(PhaseEvent(phase: nil)),
+            answer("done")
+        ]))
+        #expect(fold.items.count == 2)
+        guard case .user = fold.items[0].item, case .assistant = fold.items[1].item else {
+            Issue.record("shape \(fold.items)")
+            return
+        }
+        #expect(fold.lastSeq == 5)
+    }
+
     @Test func `host rows carry their event whole: the failure, the notice, the preamble, the handoff's child`() {
         let failure = Failure(kind: .rateLimited, account: "work", summary: "Rate limited", cause: "429 from the API")
         let notice = NoticeEvent(kind: .accountGone, message: "Account work is gone from this host")

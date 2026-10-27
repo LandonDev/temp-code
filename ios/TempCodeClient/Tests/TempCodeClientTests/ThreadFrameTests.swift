@@ -248,6 +248,15 @@ private let pendingApproval: [AgentEvent] = [
         #expect(line(.stopped, host: "box").compact == [.words("Stopped")])
     }
 
+    @Test("a running turn's phase says itself last, and the shortest form keeps it; any other activity adds nothing") func aRunningTurnsPhaseSaysItselfLast() {
+        let limited = line(.running, host: "box", activity: "Rate limited · retry 3 in 32 s")
+        #expect(limited.parts == [.host("box")] + type + [.elapsed(since: 500), .words("Rate limited", detail: "Retry 3 in 32 s")])
+        #expect(limited.compact == [.words("Rate limited")])
+        #expect(line(.starting, activity: "Starting the CLI").parts == type + [.elapsed(since: 500), .words("Starting the CLI")])
+        #expect(line(.running, activity: "Thinking").parts == type + [.elapsed(since: 500)])
+        #expect(line(.idle, activity: "Initializing").parts == type, "a settled thread has no phase")
+    }
+
     @Test("queued takes the host's reason as its detail when the activity starts with Queued") func queuedTakesTheHostSActivityLineWhenItStartsWithQueued() {
         #expect(line(.queued, activity: "Queued · waiting for Add the billing export (paused)").parts == [.words("Queued", detail: "Waiting for Add the billing export (paused)")])
         #expect(line(.queued, activity: "Reading files").parts == [.words("Queued")])

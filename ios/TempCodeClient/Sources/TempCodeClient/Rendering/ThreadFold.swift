@@ -471,7 +471,9 @@ public struct ThreadFold: Sendable, Hashable {
                 }
             }
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .status, text: event.message, detail: event.kind.rawValue, stopped: false, notice: event)))
-        case .context:
+        case .context, .phase:
+            // Activity, never a row: the host folds both onto the session
+            // meta (the context meter, the activity line) and drops the event.
             break
         case .unknown:
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .unknown, text: "Something this version of the app does not show", detail: nil, stopped: false)))

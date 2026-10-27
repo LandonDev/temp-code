@@ -89,6 +89,19 @@ private func session(_ id: String, status: SessionStatus, parentId: String? = ni
         #expect(StripWords.queued(activity: "Reading files") == StripWords(title: "Queued"), "an activity that is not the host's queued line says nothing more")
     }
 
+    @Test func `a turn's phase is the host's phase line, its first words the title and the rest the detail`() {
+        #expect(StripWords.phase(activity: "Starting the CLI") == StripWords(title: "Starting the CLI"))
+        #expect(StripWords.phase(activity: "Initializing") == StripWords(title: "Initializing"))
+        #expect(StripWords.phase(activity: "Waiting for the provider · 25 s") == StripWords(title: "Waiting for the provider", detail: "25 s"))
+        #expect(StripWords.phase(activity: "Rate limited · retry 3 in 32 s") == StripWords(title: "Rate limited", detail: "Retry 3 in 32 s"))
+        #expect(StripWords.phase(activity: "Provider overloaded · retry 1 in 5 s") == StripWords(title: "Provider overloaded", detail: "Retry 1 in 5 s"))
+        #expect(StripWords.phase(activity: "Retrying") == StripWords(title: "Retrying"))
+        #expect(StripWords.phase(activity: "Reconnecting · retry 2 of 5") == StripWords(title: "Reconnecting", detail: "Retry 2 of 5"))
+        #expect(StripWords.phase(activity: "Thinking") == nil)
+        #expect(StripWords.phase(activity: "Initializing the repo") == nil, "a tool's line that starts like a phase is not one")
+        #expect(StripWords.phase(activity: nil) == nil)
+    }
+
     @Test func `paused names the batch only on a master with paused threads, stopped names the harness`() {
         #expect(StripWords.paused(batch: 0) == StripWords(title: "Paused"))
         #expect(StripWords.paused(batch: 1) == StripWords(title: "Paused", detail: "1 batch thread with it"))

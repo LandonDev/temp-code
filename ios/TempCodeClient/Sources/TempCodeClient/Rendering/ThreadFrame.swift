@@ -211,6 +211,12 @@ public struct ThreadHeaderLine: Equatable, Sendable {
         case .running, .starting:
             mark = .spinner
             parts += identity + [.elapsed(since: since)]
+            // A wait before the turn's first content (the CLI starting, the
+            // provider slow or refusing) says itself last, so the shortest
+            // form keeps it.
+            if let phase = StripWords.phase(activity: session.activity) {
+                parts.append(.words(phase.title, detail: phase.detail))
+            }
             live = true
         case .watching:
             mark = .dot(.info)

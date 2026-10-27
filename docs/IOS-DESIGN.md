@@ -433,12 +433,12 @@ label tinted (a subagent's role instead; "Master" first on a master), the
 model, and the elapsed ticking once a second in tabular digits while the
 thread is live. The host's name leads that line, in the tertiary step, only
 when more than one host is paired; the line drops the host, then compacts
-to the type and the model (or the one word "Queued" / "Stopped"), before the title
+to the type and the model (or the one word "Queued" / "Stopped", or a running turn's phase alone), before the title
 truncates. The mark and the words by status:
 
 | status | mark | after the host |
 | --- | --- | --- |
-| running, starting | spinner | type, model, elapsed |
+| running, starting | spinner | type, model, elapsed, then the turn's phase while it waits before its first content ("Rate limited", "Retry 3 in 32 s" quieter; `StripWords.phase` reads the host's phase line off the activity) |
 | watching | info dot, still live | type, model, elapsed |
 | waiting | warning dot | type, model |
 | error | destructive dot | type, model |
