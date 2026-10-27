@@ -9,7 +9,7 @@ import { workspaceStore } from "../lib/tcserver/workspaces";
 import { resetThreadBatchForTests, useBatchPending } from "../lib/threadBatch";
 import { batchExplorerItems, batchMenuExtraItems } from "../lib/threadBatchMenu";
 import { ExplorerMenu } from "./ExplorerMenu";
-import { HostRows } from "./HostRows";
+import { HostsRow } from "./HostRows";
 import { ProjectRail } from "./ProjectRail";
 import { TabGroupMenu } from "./TabGroupMenu";
 
@@ -172,10 +172,13 @@ describe("the fleet switches as mounted", () => {
     expect(pending).toMatchObject({ action: "pause", scope: { kind: "project", path: MAC, paths: [MAC, BOX], name: "app" } });
   });
 
-  it("a host's row runs them on that host alone", async () => {
-    await mountTwoHosts(<HostRows onAddWorkspace={noop} />);
-    fireEvent.click(screen.getByRole("button", { name: /^box,/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
+  it("a host's submenu in the Hosts row runs them on that host alone", async () => {
+    await mountTwoHosts(<HostsRow onAddWorkspace={noop} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Hosts:/ }));
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /^box/ }));
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pause all" }));
     const pending = JSON.parse(screen.getByTestId("pending").textContent ?? "null");
     expect(pending).toEqual({ action: "pause", scope: { kind: "host", environmentId: "env_box", name: "box" } });
   });
