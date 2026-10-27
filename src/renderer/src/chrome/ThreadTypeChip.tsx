@@ -1,6 +1,6 @@
 import type { ThreadType } from "../lib/tcserver/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { THREAD_GLYPHS, THREAD_HINTS, THREAD_LABELS, THREAD_TYPES } from "../surfaces/threads/bits";
+import { THREAD_GLYPHS, THREAD_HINTS, THREAD_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
 
 type Props = {
   value: ThreadType;

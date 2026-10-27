@@ -7,7 +7,7 @@ import { setFileOpener } from "../../lib/monaco/opener";
 import { toggleBreakpoint } from "../../lib/monaco/breakpoints";
 import type { EditorNavigationTarget, OpenFileFn } from "../../lib/search";
 import { projectForCwd } from "../../lib/tcserver/projects";
-import { MatrixSpinner } from "../threads/bits";
+import { MatrixSpinner } from "../threads/spinners";
 import { ConflictBar } from "./ConflictBar";
 import { DiffSurface } from "./DiffSurface";
 import { trackEditor } from "./keys";

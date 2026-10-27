@@ -12,7 +12,7 @@ import {
   tickMilestone,
 } from "../../lib/projectPlan";
 import type { Session } from "../../lib/session";
-import { MatrixSpinner } from "./bits";
+import { MatrixSpinner } from "./spinners";
 
 /**
  * The project plan's two live pieces (docs/PROJECT-PLAN.md): the milestone

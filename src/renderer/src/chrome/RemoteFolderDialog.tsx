@@ -5,7 +5,7 @@ import { Modal } from "./Modal";
 import { registry, useEnvironments } from "../lib/connection";
 import { createPath, listDir, type FsEntry } from "../lib/fs";
 import { INPUT_CLASS, Input, SecondaryButton } from "../surfaces/settingsBits";
-import { MatrixSpinner } from "../surfaces/threads/bits";
+import { MatrixSpinner } from "../surfaces/threads/spinners";
 
 /**
  * Pick a folder on another machine (thread K2). No native dialog can open

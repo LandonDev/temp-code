@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MatrixSpinner } from "../threads/bits";
+import { MatrixSpinner } from "../threads/spinners";
 import { registerProviders } from "./lsp/providers";
 import { openFile, type OpenedFile } from "./models";
 import { EDITOR_OPTIONS, editorFontFamily, followEditorFont, monaco, tabSizeForPath } from "./monaco";

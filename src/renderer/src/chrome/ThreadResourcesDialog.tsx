@@ -15,7 +15,7 @@ import { openUrl, portLine, rowOpen } from '../lib/devPorts'
 import { macBridgeStore } from '../lib/macBridge'
 import { DialogFooter, errorText } from './ConfirmDialog'
 import { Modal } from './Modal'
-import { MatrixSpinner } from '../surfaces/threads/bits'
+import { MatrixSpinner } from '../surfaces/threads/spinners'
 
 /**
  * Thread resources (docs/box.md "Thread resources"): the thread menu's

@@ -3,7 +3,9 @@ import { addonTitle } from "../lib/addonNames";
 import { SECTION_LABELS } from "../lib/composerTriggers";
 import type { ProjectFile } from "../lib/fs";
 import type { ProjectMeta, SessionMeta, SlashCommand } from "../lib/tcserver/types";
-import { StatusDot, timeAgo } from "../surfaces/threads/bits";
+import { StatusMark, threadStateOf } from "../components/ui/status";
+import { timeAgo } from "../lib/duration";
+import { marksAtRest } from "../lib/threadStripModel";
 import { AddonMark } from "./AddonMark";
 import { FileText, MessageSquare, StickyNote } from "./icons";
 
@@ -25,7 +27,11 @@ export type PopoverMatches =
   | { mode: "file"; rows: AtMatch[] };
 
 const ROW = "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left";
-const QUIET_STATUSES = new Set(["running", "waiting", "error", "starting"]);
+/** A thread row's glyph: its status mark when it has one at rest, else the thread glyph. */
+function ThreadGlyph({ status }: { status: SessionMeta["status"] }) {
+  const state = threadStateOf(status);
+  return marksAtRest(state) ? <StatusMark state={state} word={false} /> : <MessageSquare className="size-3.5 text-content/50" />;
+}
 
 export function CommandPopover({
   matches,
@@ -139,10 +145,7 @@ export function CommandPopover({
                   {label}
                   <button type="button" {...rowProps(n)}>
                     <span className="flex size-3.5 shrink-0 items-center justify-center">
-                      <StatusDot status={t.status} className="size-2" />
-                      {!QUIET_STATUSES.has(t.status) ? (
-                        <MessageSquare className="size-3.5 text-content/50" />
-                      ) : null}
+                      <ThreadGlyph status={t.status} />
                     </span>
                     <span className="min-w-0 truncate text-[13px]">{t.title}</span>
                     {projectName ? (

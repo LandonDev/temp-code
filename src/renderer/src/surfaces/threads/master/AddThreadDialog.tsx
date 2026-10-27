@@ -13,7 +13,7 @@ import type { EnsureLinkedArgs } from "@server/shared/projectLinks";
 import { copiesOf, ensureLinkedArgs, ensureLinkedOn, probeOf, rememberLinkHost, type CopyProbe } from "../../../lib/projectHostChoice";
 import { useProjects, useWorkspaces } from "../../../lib/tcserver/workspaces";
 import { Segmented, Select } from "../../settingsBits";
-import { THREAD_LABELS } from "../bits";
+import { THREAD_LABELS } from "../threadTypes";
 import { linkedHosts } from "./boardActions";
 
 /**

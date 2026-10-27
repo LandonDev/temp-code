@@ -7,7 +7,7 @@ import { copiesOf, ensureLinkedArgs, ensureLinkedOn, probeOf, rememberLinkHost, 
 import { sessionStore, useSession, useSessionMeta } from "../lib/tcserver/store";
 import type { ProjectMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
-import { Spinner } from "../surfaces/threads/bits";
+import { Spinner } from "../surfaces/threads/spinners";
 
 /**
  * Where an unsent draft of a linked project starts (CLAUDE.md "One project

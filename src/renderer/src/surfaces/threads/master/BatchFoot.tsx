@@ -3,7 +3,9 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { BatchState } from "@server/shared/contract-batch";
 import { Check, ChevronDown, CircleDashed, Square } from "../../../chrome/icons";
 import { TweenHeight } from "../../../motion";
-import { MatrixSpinner, StatusDot, useNow } from "../bits";
+import { StatusMark } from "../../../components/ui/status";
+import { MatrixSpinner } from "../spinners";
+import { useNow } from "../../../lib/duration";
 import { RulesDialog } from "./RulesDialog";
 import { consoleStep, liveSteps, nearBottom, progressText, stepTime, statusWord, tailLines, type LiveStep, type StepStatus } from "./steps";
 import { blockedLine, rulesSentence, type Rules } from "./useMasterModel";
@@ -31,7 +33,7 @@ const LOG_LINES = 200;
 function StepGlyph({ status, dim = false }: { status: StepStatus; dim?: boolean }) {
   if (status === "passed") return <Check className={`size-3 ${dim ? "text-content/35" : "text-success"}`} strokeWidth={2.2} />;
   if (status === "running") return <MatrixSpinner cell={1.5} />;
-  if (status === "failed") return <StatusDot status="error" />;
+  if (status === "failed") return <StatusMark state="failed" word={false} />;
   return <CircleDashed className="size-3 text-content/30" strokeWidth={1.75} />;
 }
 

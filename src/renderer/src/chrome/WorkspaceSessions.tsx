@@ -30,12 +30,8 @@ import {
 } from "./ProjectDialogs";
 import { duration, timeAgo } from "../lib/format";
 import { agentSummaryParts, modelLabel, type AgentSummary } from "../lib/threads/agents";
-import {
-  AGENT_GLYPHS,
-  MatrixSpinner,
-  THREAD_GLYPHS,
-  THREAD_TINTS,
-} from "../surfaces/threads/bits";
+import { AGENT_GLYPHS, THREAD_GLYPHS, THREAD_TINTS } from "../surfaces/threads/threadTypes";
+import { MatrixSpinner } from "../surfaces/threads/spinners";
 import {
   cardTasks,
   cardTooltip,

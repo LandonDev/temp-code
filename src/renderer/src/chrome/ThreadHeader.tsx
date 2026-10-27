@@ -6,7 +6,7 @@ import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
 import type { ReadyMap } from "../lib/threadStripModel";
-import { THREAD_LABELS, THREAD_TYPES } from "../surfaces/threads/bits";
+import { THREAD_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
 import type { ExplorerMenuItem } from "./ExplorerMenu";
 import { NewThreadChooser } from "./NewThreadChooser";
 import { ProjectPlanChip } from "./ProjectPlanChip";

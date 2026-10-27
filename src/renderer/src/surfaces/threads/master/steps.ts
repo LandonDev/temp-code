@@ -7,7 +7,7 @@ import {
   type BatchStepKind,
   type BatchStepSpec,
 } from "@server/shared/contract-batch";
-import { duration } from "../bits";
+import { duration } from "../../../lib/duration";
 
 /**
  * The batch's steps as the foot reads them (docs/LAYOUT.md "Master"): the

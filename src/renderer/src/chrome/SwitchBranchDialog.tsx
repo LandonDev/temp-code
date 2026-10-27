@@ -4,7 +4,7 @@ import { GHOST, PRIMARY, errorText } from "./ConfirmDialog";
 import { Modal } from "./Modal";
 import { generateCommitMessage } from "../lib/harness";
 import { MOD } from "../lib/platform";
-import { MatrixSpinner } from "../surfaces/threads/bits";
+import { MatrixSpinner } from "../surfaces/threads/spinners";
 
 type Busy = "stash" | "commit" | null;
 

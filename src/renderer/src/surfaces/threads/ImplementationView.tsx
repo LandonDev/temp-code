@@ -34,7 +34,10 @@ import {
   wholeChange,
 } from "../../lib/threads/rounds";
 import { AgentMarkdown } from "../AgentMarkdown";
-import { duration, MatrixSpinner, PaneHeader, THREAD_GLYPHS, THREAD_TINTS, useNow } from "./bits";
+import { duration, useNow } from "../../lib/duration";
+import { MatrixSpinner } from "./spinners";
+import { PaneHeader } from "./PaneHeader";
+import { THREAD_GLYPHS, THREAD_TINTS } from "./threadTypes";
 import { useMetaById } from "../../lib/threads/agents";
 import { AgentDetail } from "./fleet/AgentDetail";
 import { OpenAgentDetailContext } from "../agentDetailContext";

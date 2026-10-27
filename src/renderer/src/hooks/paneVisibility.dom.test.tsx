@@ -3,7 +3,7 @@ import { act, render, renderHook, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalSpinner } from "../chrome/TerminalSpinner";
-import { useNow } from "../surfaces/threads/bits";
+import { useNow } from "../lib/duration";
 import { PaneVisibilityContext } from "./paneVisibility";
 
 const parked = ({ children }: { children: ReactNode }) => (

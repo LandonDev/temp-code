@@ -6,7 +6,7 @@ import { StatusMark, type ThreadState } from "../../components/ui/status";
 import type { Block } from "../../lib/session";
 import { useMetaById } from "../../lib/threads/agents";
 import { SelectSessionContext } from "../AgentMarkdown";
-import { THREAD_GLYPHS } from "../threads/bits";
+import { THREAD_GLYPHS } from "../threads/threadTypes";
 import { NoticeLine } from "./NoticeLine";
 
 /** A build's session status in the status vocabulary's words. */

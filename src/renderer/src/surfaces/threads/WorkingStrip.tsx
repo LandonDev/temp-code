@@ -10,7 +10,7 @@ import type { ApprovalDecision } from "../../lib/harness";
 import type { Session } from "../../lib/session";
 import { hasPendingQuestion, threadStatus } from "../../lib/threadStripModel";
 import { useClock, useSlowClock } from "../../lib/turnClock";
-import { duration } from "./bits";
+import { duration } from "../../lib/duration";
 
 /**
  * The thread's status above the composer, in a permanently reserved 28px

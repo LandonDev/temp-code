@@ -3,7 +3,7 @@ import { isStaleWatch } from "@shared/watch";
 import { stopAll } from "../lib/activity";
 import { heldSuffix, useMacHeldTotal } from "../lib/macBridge";
 import { useSlowClock } from "../lib/turnClock";
-import { duration } from "../surfaces/threads/bits";
+import { duration } from "../lib/duration";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
 import type { HarnessId } from "../lib/session";
 import * as serverCommands from "../lib/tcserver/commands";

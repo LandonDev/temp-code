@@ -18,7 +18,8 @@ import {
   type AgentStatus,
 } from "../../../lib/threads/agents";
 import { AgentTranscript } from "../../AgentTranscript";
-import { AGENT_GLYPHS, useNow } from "../bits";
+import { AGENT_GLYPHS } from "../threadTypes";
+import { useNow } from "../../../lib/duration";
 import { useContextReading } from "./contextCache";
 import { AgentNumbersLine } from "./rowBits";
 import { agentNumbers, fleetStats, type NumberPart } from "./useFleetModel";

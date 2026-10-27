@@ -8,13 +8,7 @@ import {
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import type { ThreadType } from "../lib/tcserver/types";
 import { TerminalGridBackground } from "./TerminalGridBackground";
-import {
-  THREAD_GLYPHS,
-  THREAD_HINTS,
-  THREAD_LABELS,
-  THREAD_TINTS,
-  THREAD_TYPES,
-} from "./threads/bits";
+import { THREAD_GLYPHS, THREAD_HINTS, THREAD_LABELS, THREAD_TINTS, THREAD_TYPES } from "./threads/threadTypes";
 
 type Props = {
   cwd: string;

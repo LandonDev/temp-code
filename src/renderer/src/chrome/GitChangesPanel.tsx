@@ -28,7 +28,7 @@ import {
 import { ConfirmDialog, errorText } from "./ConfirmDialog";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { Popover } from "./Popover";
-import { MatrixSpinner } from "../surfaces/threads/bits";
+import { MatrixSpinner } from "../surfaces/threads/spinners";
 import {
   basename,
   gitCommit,

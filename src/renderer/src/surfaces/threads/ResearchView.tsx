@@ -17,7 +17,8 @@ import {
   type SourceRow,
 } from "../../lib/threads/researchBoard";
 import { AgentMarkdown } from "../AgentMarkdown";
-import { MatrixSpinner, PaneHeader } from "./bits";
+import { MatrixSpinner } from "./spinners";
+import { PaneHeader } from "./PaneHeader";
 import { AgentDetail } from "./fleet/AgentDetail";
 import { OpenAgentDetailContext } from "../agentDetailContext";
 import { SplitShell } from "./SplitShell";

@@ -13,7 +13,7 @@ import {
   type AgentStatus,
   type FleetCounts,
 } from "../../../lib/threads/agents";
-import { duration } from "../bits";
+import { duration } from "../../../lib/duration";
 import { readingPercent, type ContextReading } from "./contextCache";
 
 /**

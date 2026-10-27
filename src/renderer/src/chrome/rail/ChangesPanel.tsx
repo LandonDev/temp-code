@@ -7,7 +7,7 @@ import { GLIDE_MAX_ROWS } from "../../lib/listGlide";
 import { ArrowDownCircle, Archive, ChevronRight, CloudUpload, Minus, Plus, Undo2 } from "../icons";
 import { cn } from "../../motion/cn";
 import { StatefulButton, type ButtonState } from "../../motion/StatefulButton";
-import { Spinner } from "../../surfaces/threads/bits";
+import { Spinner } from "../../surfaces/threads/spinners";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { invalidateWatchedFiles } from "../../lib/fileWatch";
 import { timeAgo } from "../../lib/format";

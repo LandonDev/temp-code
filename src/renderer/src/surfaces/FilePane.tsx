@@ -12,7 +12,7 @@ import { editorPathsEqual } from "../lib/search";
 import { editorChunk, mediaChunk, releaseNotesChunk, terminalChunk } from "./chunks";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
 import { FileNoteBar } from "./FileNoteBar";
-import { MatrixSpinner } from "./threads/bits";
+import { MatrixSpinner } from "./threads/spinners";
 
 // Monaco, shiki, and the LSP client live behind this boundary; the first
 // Monaco tab pulls the chunk in, never app start.

@@ -5,7 +5,7 @@ import { StatefulButton } from "../../motion/StatefulButton";
 import { devPane } from "../../lib/devPane";
 import { startDevServer, targetLabel, useDevHosts, useDevTargets, type DevHost } from "../../lib/devServers";
 import { useProjects } from "../../lib/tcserver/workspaces";
-import { Spinner } from "../../surfaces/threads/bits";
+import { Spinner } from "../../surfaces/threads/spinners";
 import { RailSelect } from "./RailSelect";
 
 const targetKey = (projectId: string): string => `dev-target:${projectId}`;

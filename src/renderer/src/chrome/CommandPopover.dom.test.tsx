@@ -2,6 +2,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ProjectFile } from "../lib/fs";
+import type { SessionMeta } from "../lib/tcserver/types";
 import { CommandPopover, type PopoverMatches } from "./CommandPopover";
 
 beforeAll(() => {
@@ -23,5 +24,14 @@ describe("CommandPopover", () => {
     rerender(<CommandPopover matches={at} {...props} />);
     rerender(<CommandPopover matches={{ ...at, rows: [...at.rows, { kind: "file", file: file("src/b.ts") }] }} {...props} />);
     expect(container.querySelectorAll("[data-command-popover]")).toHaveLength(1);
+  });
+
+  it("marks a thread row with its live status, and gives a settled one the thread glyph", () => {
+    const thread = (id: string, status: SessionMeta["status"]) =>
+      ({ kind: "thread", session: { id, title: id, status, projectId: null, updatedAt: 1 } as SessionMeta }) as const;
+    const at: PopoverMatches = { mode: "file", rows: [thread("a", "paused"), thread("b", "running"), thread("c", "idle")] };
+    const { container } = render(<CommandPopover matches={at} {...props} />);
+    const marks = [...container.querySelectorAll('[data-slot="status-mark"]')].map((m) => m.getAttribute("data-state"));
+    expect(marks).toEqual(["paused", "working"]);
   });
 });

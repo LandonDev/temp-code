@@ -2,8 +2,10 @@ import { useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { MessageSquare } from "../../chrome/icons";
 import { EASE_DRAWER_CSS, EASE_OUT_CSS } from "../../lib/ease";
+import { StatusMark, threadStateOf } from "../../components/ui/status";
 import type { SessionStatus } from "../../lib/tcserver/types";
-import { StatusDot } from "./bits";
+import { marksAtRest } from "../../lib/threadStripModel";
+
 
 /**
  * The board | sash | chat recipe every thread view with a board shares.
@@ -179,7 +181,7 @@ export function SplitShell({
           className="flex w-8 shrink-0 flex-col items-center gap-2 border-l border-content/10 pt-4 text-content/50 transition-colors hover:bg-content/5 hover:text-content"
         >
           <MessageSquare className="size-3.5" strokeWidth={1.75} />
-          <StatusDot status={status} />
+          {marksAtRest(threadStateOf(status)) ? <StatusMark state={threadStateOf(status)} word={false} /> : null}
         </button>
       ) : null}
       <div

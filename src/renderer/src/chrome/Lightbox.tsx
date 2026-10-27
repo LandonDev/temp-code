@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ChevronLeft, ChevronRight, X } from './icons'
 import { EASE_OUT, SPRING_PANEL } from '../lib/ease'
 import { LAYER } from '../lib/layers'
-import { Spinner } from '../surfaces/threads/bits'
+import { Spinner } from '../surfaces/threads/spinners'
 import {
   closeLightbox,
   imageDataFor,

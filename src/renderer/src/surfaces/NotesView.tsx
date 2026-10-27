@@ -1,5 +1,5 @@
 import { Plus, Search, File, Trash2 } from "../chrome/icons";
-import { MatrixSpinner } from "./threads/bits";
+import { MatrixSpinner } from "./threads/spinners";
 import { ConfirmDialog } from "../chrome/ConfirmDialog";
 import {
   Fragment,

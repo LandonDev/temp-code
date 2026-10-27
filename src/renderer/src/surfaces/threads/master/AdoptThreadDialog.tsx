@@ -2,7 +2,7 @@ import { useState } from "react";
 import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
 import { Modal } from "../../../chrome/Modal";
 import type { SessionMeta } from "../../../lib/tcserver/types";
-import { THREAD_GLYPHS, THREAD_TINTS } from "../bits";
+import { THREAD_GLYPHS, THREAD_TINTS } from "../threadTypes";
 import { typeWord } from "./useMasterModel";
 
 /**

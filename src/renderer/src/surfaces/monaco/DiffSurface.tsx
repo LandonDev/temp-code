@@ -5,7 +5,7 @@ import type { FileState } from "../../lib/monaco/editorState";
 import { displayPath } from "../../lib/paths";
 import { registry } from "../../lib/connection";
 import { hostOfCwd, projectForCwd } from "../../lib/tcserver/projects";
-import { MatrixSpinner } from "../threads/bits";
+import { MatrixSpinner } from "../threads/spinners";
 import { ConflictBar } from "./ConflictBar";
 import { trackEditor } from "./keys";
 import { ensureForModel } from "./lsp/idea";

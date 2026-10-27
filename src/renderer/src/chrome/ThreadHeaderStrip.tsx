@@ -27,7 +27,7 @@ import {
   type ThreadStatus,
 } from "../lib/threadStripModel";
 import type { ActivityKind } from "../lib/session";
-import { THREAD_GLYPHS } from "../surfaces/threads/bits";
+import { THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
 import { ThreadStatusMark } from "./TabIndicator";
 
 /** The tooltip is inverted (foreground on background), so the hover line takes its muted tone whole. */

@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popove
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
 import { ThreadTune, normalizeTune } from "./ThreadTune";
-import { THREAD_GLYPHS, THREAD_HINTS, THREAD_LABELS, THREAD_START_LABELS, THREAD_TYPES } from "../surfaces/threads/bits";
+import { THREAD_GLYPHS, THREAD_HINTS, THREAD_LABELS, THREAD_START_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
 
 const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
 

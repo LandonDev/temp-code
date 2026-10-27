@@ -4,7 +4,7 @@ import { Check, Copy, Pencil } from "../../chrome/icons";
 import type { Session } from "../../lib/session";
 import { saveNotes, useThreadNotes } from "../../lib/threadNotes";
 import { AgentMarkdown, MarkdownSourceHighlight } from "../AgentMarkdown";
-import { timeAgo } from "./bits";
+import { timeAgo } from "../../lib/duration";
 
 const SAVE_DEBOUNCE_MS = 700;
 

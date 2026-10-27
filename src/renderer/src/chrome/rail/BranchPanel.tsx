@@ -6,7 +6,7 @@ import type { CommitInfo, MergeResult } from "@server/shared/domain";
 import { ChevronRight, GitCompare, RefreshCw } from "../icons";
 import { cn } from "../../motion/cn";
 import { StatefulButton, type ButtonState } from "../../motion/StatefulButton";
-import { Spinner } from "../../surfaces/threads/bits";
+import { Spinner } from "../../surfaces/threads/spinners";
 import { timeAgo } from "../../lib/format";
 import { onFileEvent } from "../../lib/projectWatch";
 import { dirPrefix } from "../../lib/tcserver/projects";

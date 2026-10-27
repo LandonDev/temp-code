@@ -10,7 +10,7 @@ import { shownServer, stopLiveServer, useLiveDevServers, type LiveServer } from 
 import { macBridgeStore } from "../lib/macBridge";
 import { isWebMode } from "../lib/nativeWeb";
 import { rightPanel } from "../lib/rightPanel";
-import { Spinner } from "./threads/bits";
+import { Spinner } from "./threads/spinners";
 import { DevConsole } from "./DevConsole";
 
 /**

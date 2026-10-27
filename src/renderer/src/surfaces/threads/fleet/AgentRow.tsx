@@ -5,7 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/
 import { cn } from "../../../lib/cn";
 import type { AgentStatus } from "../../../lib/threads/agents";
 import type { SessionMeta } from "../../../lib/tcserver/types";
-import { AGENT_GLYPHS } from "../bits";
+import { AGENT_GLYPHS } from "../threadTypes";
 import { useAgentStatus } from "./useFleetModel";
 
 /**

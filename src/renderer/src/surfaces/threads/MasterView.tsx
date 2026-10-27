@@ -16,7 +16,7 @@ import { useMasterIds } from "../../lib/masterThread";
 import { sessionStore, useQueue, useSessionMetasWhen } from "../../lib/tcserver/store";
 import { loadThreadResources, useThreadResources } from "../../lib/threadResources";
 import { moveTargets, useMoving } from "../../lib/threadMove";
-import { PaneHeader } from "./bits";
+import { PaneHeader } from "./PaneHeader";
 import { chatOf } from "./chatSlots";
 import { AddThreadDialog } from "./master/AddThreadDialog";
 import { AdoptThreadDialog } from "./master/AdoptThreadDialog";

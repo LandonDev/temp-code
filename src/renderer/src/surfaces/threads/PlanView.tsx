@@ -42,14 +42,10 @@ import { loadProjectPlan, useProjectPlan } from "../../lib/projectPlan";
 import { MilestoneList, ProjectPlanCard } from "./ProjectPlanCard";
 import { Pin } from "../../chrome/icons";
 import { AgentMarkdown } from "../AgentMarkdown";
-import {
-  MatrixSpinner,
-  PaneHeader,
-  THREAD_GLYPHS,
-  THREAD_LABELS,
-  THREAD_TINTS,
-  timeAgo,
-} from "./bits";
+import { MatrixSpinner } from "./spinners";
+import { PaneHeader } from "./PaneHeader";
+import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS } from "./threadTypes";
+import { timeAgo } from "../../lib/duration";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 
