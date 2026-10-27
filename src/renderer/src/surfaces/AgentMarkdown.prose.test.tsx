@@ -67,4 +67,15 @@ describe("AgentMarkdown prose", () => {
     expect(wide.className).toContain("box-decoration-clone");
     expect(wide.className).not.toContain("whitespace-nowrap");
   });
+
+  it("a task list's items carry the class the stylesheet takes their bullet off by", () => {
+    const { container } = render(<AgentMarkdown text={"- [ ] write it\n- [x] test it\n"} />);
+    const items = [...container.querySelectorAll("li")];
+    expect(items).toHaveLength(2);
+    for (const li of items) {
+      expect(li.classList.contains("task-list-item")).toBe(true);
+      expect(li.querySelector('input[type="checkbox"]')).not.toBeNull();
+    }
+    expect(container.querySelector("ul")?.classList.contains("contains-task-list")).toBe(true);
+  });
 });

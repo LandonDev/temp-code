@@ -15,6 +15,11 @@ describe("transcript/markdown.css", () => {
     expect(css).toMatch(/heading-3"\] \{[^}]*font-weight: 600/);
   });
 
+  it("takes the bullet off a task list's items, their checkbox the marker", () => {
+    expect(rule(".agent-markdown li.task-list-item")).toContain("list-style: none");
+    expect(rule('.agent-markdown li.task-list-item input[type="checkbox"]')).toContain("margin: 0 0.5rem 0 0");
+  });
+
   it("writes no literal colour", () => {
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|rgb\(|oklch\(|color-mix/i);
   });

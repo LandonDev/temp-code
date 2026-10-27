@@ -24,6 +24,18 @@
   color: var(--muted-foreground);
 }
 
+/* A task list's checkbox is its marker: no bullet before it, the box at the
+   text's left edge with the 8px gap of a glyph and its label. */
+.agent-markdown li.task-list-item {
+  list-style: none;
+}
+
+.agent-markdown li.task-list-item input[type="checkbox"] {
+  margin: 0 0.5rem 0 0;
+  vertical-align: -0.125em;
+  accent-color: var(--primary);
+}
+
 /* Headings are short bold lines: more room above than below. */
 .agent-markdown [data-streamdown="heading-1"],
 .agent-markdown [data-streamdown="heading-2"],
