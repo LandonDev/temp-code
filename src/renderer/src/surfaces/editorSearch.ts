@@ -26,7 +26,15 @@ import {
   type Panel,
   type ViewUpdate,
 } from "@codemirror/view";
-import { MOD, ALT, SHIFT } from "../lib/platform";
+import { createElement, createRef } from "react";
+import { flushSync } from "react-dom";
+import { createRoot, type Root } from "react-dom/client";
+import {
+  countLabel,
+  FindBar,
+  type FindBarState,
+  type FindFlag,
+} from "./FindBar";
 
 const MATCH_CAP = 999;
 const panels = new WeakMap<EditorView, FindPanel>();
@@ -176,157 +184,74 @@ function findKeymap(): KeyBinding[] {
   ];
 }
 
+/**
+ * CodeMirror's search panel, drawn by FindBar through a React root on the
+ * panel's node. The search itself stays CodeMirror's.
+ */
 class FindPanel implements Panel {
   readonly view: EditorView;
   readonly dom: HTMLElement;
   readonly top = true;
   query: SearchQuery;
-  private replaceVisible = false;
+  private state: FindBarState;
   private composing = false;
-  private readonly searchField: HTMLInputElement;
-  private readonly replaceField: HTMLInputElement;
-  private readonly count: HTMLElement;
-  private readonly caseButton: HTMLButtonElement;
-  private readonly wordButton: HTMLButtonElement;
-  private readonly regexButton: HTMLButtonElement;
-  private readonly expandButton: HTMLButtonElement;
-  private readonly replaceRow: HTMLElement;
+  private readonly root: Root;
+  private readonly searchRef = createRef<HTMLInputElement>();
+  private readonly replaceRef = createRef<HTMLInputElement>();
 
   constructor(view: EditorView) {
     this.view = view;
     this.query = getSearchQuery(view.state);
     panels.set(view, this);
-
-    this.searchField = inputField("Find", {
-      name: "search",
-      "main-field": "true",
-      value: this.query.search,
-    });
-    this.replaceField = inputField("Replace", {
-      name: "replace",
-      value: this.query.replace,
-    });
-    this.count = elt("span", { class: "cm-find-count" });
-    this.caseButton = toggleButton("Aa", "Match Case", `${ALT}C`);
-    this.wordButton = toggleButton("ab", "Match Whole Word", `${ALT}W`);
-    this.regexButton = toggleButton(".*", "Use Regular Expression", `${ALT}R`);
-    this.expandButton = iconButton(
-      "cm-find-expand",
-      "Toggle Replace",
-      `${MOD}${ALT}F`,
-      svgIcon("M6 4l4 4-4 4"),
-    );
-    this.expandButton.setAttribute("aria-expanded", "false");
-
-    const prevButton = iconButton(
-      "cm-find-step",
-      "Previous Match",
-      `${MOD}${SHIFT}G`,
-      svgIcon("M4 10l4-4 4 4"),
-    );
-    const nextButton = iconButton(
-      "cm-find-step",
-      "Next Match",
-      `${MOD}G`,
-      svgIcon("M4 6l4 4 4-4"),
-    );
-    const closeButton = iconButton(
-      "cm-find-close",
-      "Close",
-      "Escape",
-      svgIcon("M4.5 4.5l7 7M11.5 4.5l-7 7"),
-    );
-
-    this.replaceRow = elt(
-      "div",
-      { class: "cm-find-row cm-find-replace-row" },
-      elt("div", { class: "cm-find-query" }, this.replaceField),
-      elt(
-        "div",
-        { class: "cm-find-replace-actions" },
-        textButton("Replace", () => replaceNext(this.view)),
-        textButton("All", () => replaceAll(this.view)),
-      ),
-    );
-
-    this.dom = elt(
-      "div",
-      { class: "cm-find", onkeydown: (event) => this.onKeyDown(event) },
-      this.expandButton,
-      elt(
-        "div",
-        { class: "cm-find-fields" },
-        elt(
-          "div",
-          { class: "cm-find-row" },
-          elt(
-            "div",
-            { class: "cm-find-query cm-find-search" },
-            this.searchField,
-            this.count,
-          ),
-          elt(
-            "div",
-            { class: "cm-find-toggles" },
-            this.caseButton,
-            this.wordButton,
-            this.regexButton,
-          ),
-        ),
-        this.replaceRow,
-      ),
-      elt("div", { class: "cm-find-nav" }, prevButton, nextButton, closeButton),
-    );
-
-    this.searchField.addEventListener("compositionstart", () => {
-      this.composing = true;
-    });
-    this.searchField.addEventListener("compositionend", () => {
-      this.composing = false;
-      this.commit(true);
-    });
-    this.searchField.addEventListener("input", () => {
-      if (!this.composing) this.commit(true);
-    });
-    this.replaceField.addEventListener("input", () => this.commit(false));
-    this.caseButton.addEventListener("click", () =>
-      this.toggle("caseSensitive"),
-    );
-    this.wordButton.addEventListener("click", () => this.toggle("wholeWord"));
-    this.regexButton.addEventListener("click", () => this.toggle("regexp"));
-    this.expandButton.addEventListener("click", () =>
-      this.setReplaceVisible(!this.replaceVisible, this.replaceVisible),
-    );
-    prevButton.addEventListener("click", () => findPrevious(this.view));
-    nextButton.addEventListener("click", () => findNext(this.view));
-    closeButton.addEventListener("click", () => closeSearchPanel(this.view));
-
-    this.syncControls();
-    this.syncCount();
+    this.state = {
+      search: this.query.search,
+      replace: this.query.replace,
+      caseSensitive: this.query.caseSensitive,
+      wholeWord: this.query.wholeWord,
+      regexp: this.query.regexp,
+      replaceVisible: false,
+      count: { text: "", state: "idle" },
+    };
+    this.dom = document.createElement("div");
+    this.root = createRoot(this.dom);
+    this.state.count = this.countOf(this.state.search);
+    // openSearchPanel focuses [main-field] the moment the panel mounts, so
+    // the field has to exist when the constructor returns.
+    flushSync(() => this.render());
   }
 
   mount() {
-    this.searchField.select();
+    this.searchRef.current?.select();
     this.reveal();
     this.syncCount();
   }
 
   destroy() {
     panels.delete(this.view);
+    // Unmounting inside CodeMirror's update would warn; the node is gone anyway.
+    queueMicrotask(() => this.root.unmount());
   }
 
   update(update: ViewUpdate) {
+    let changed = false;
     for (const transaction of update.transactions) {
       for (const effect of transaction.effects) {
         if (effect.is(setSearchQuery) && !effect.value.eq(this.query)) {
           this.query = effect.value;
-          this.searchField.value = this.query.search;
-          this.replaceField.value = this.query.replace;
-          this.syncControls();
+          this.state = {
+            ...this.state,
+            search: this.query.search,
+            replace: this.query.replace,
+            caseSensitive: this.query.caseSensitive,
+            wholeWord: this.query.wholeWord,
+            regexp: this.query.regexp,
+          };
+          changed = true;
         }
       }
     }
     if (
+      changed ||
       update.docChanged ||
       update.selectionSet ||
       update.transactions.some((transaction) =>
@@ -338,43 +263,73 @@ class FindPanel implements Panel {
   }
 
   setReplaceVisible(visible: boolean, focusReplace = false) {
-    this.replaceVisible = visible;
-    this.dom.classList.toggle("is-replace", visible);
-    this.expandButton.setAttribute("aria-expanded", String(visible));
+    this.state = { ...this.state, replaceVisible: visible };
+    flushSync(() => this.render());
     if (visible && focusReplace) {
-      this.replaceField.focus();
-      this.replaceField.select();
+      this.replaceRef.current?.focus();
+      this.replaceRef.current?.select();
     }
   }
 
-  private toggle(flag: "caseSensitive" | "wholeWord" | "regexp") {
-    this.query = new SearchQuery({
-      search: this.searchField.value,
-      replace: this.replaceField.value,
-      caseSensitive:
-        flag === "caseSensitive"
-          ? !this.query.caseSensitive
-          : this.query.caseSensitive,
-      wholeWord:
-        flag === "wholeWord" ? !this.query.wholeWord : this.query.wholeWord,
-      regexp: flag === "regexp" ? !this.query.regexp : this.query.regexp,
-      literal: true,
-    });
-    this.syncControls();
+  private render() {
+    this.root.render(
+      createElement(FindBar, {
+        ...this.state,
+        searchRef: this.searchRef,
+        replaceRef: this.replaceRef,
+        onSearch: (value) => {
+          this.state = { ...this.state, search: value };
+          if (this.composing) this.render();
+          else this.commit(true);
+        },
+        onReplace: (value) => {
+          this.state = { ...this.state, replace: value };
+          this.commit(false);
+        },
+        onToggle: (flag) => this.toggle(flag),
+        onToggleReplace: () =>
+          this.setReplaceVisible(
+            !this.state.replaceVisible,
+            this.state.replaceVisible,
+          ),
+        onPrev: () => findPrevious(this.view),
+        onNext: () => findNext(this.view),
+        onClose: () => closeSearchPanel(this.view),
+        onReplaceNext: () => replaceNext(this.view),
+        onReplaceAll: () => replaceAll(this.view),
+        onKeyDown: (event) => this.onKeyDown(event),
+        onCompositionStart: () => {
+          this.composing = true;
+        },
+        onCompositionEnd: () => {
+          this.composing = false;
+          this.commit(true);
+        },
+      }),
+    );
+  }
+
+  private toggle(flag: FindFlag) {
+    this.state = { ...this.state, [flag]: !this.state[flag] };
+    this.query = this.queryOf();
     this.view.dispatch({ effects: setSearchQuery.of(this.query) });
     this.reveal();
     this.syncCount();
   }
 
-  private commit(reveal: boolean) {
-    const query = new SearchQuery({
-      search: this.searchField.value,
-      replace: this.replaceField.value,
-      caseSensitive: this.query.caseSensitive,
-      wholeWord: this.query.wholeWord,
-      regexp: this.query.regexp,
+  private queryOf(): SearchQuery {
+    return new SearchQuery({
+      search: this.state.search,
+      replace: this.state.replace,
+      caseSensitive: this.state.caseSensitive,
+      wholeWord: this.state.wholeWord,
+      regexp: this.state.regexp,
       literal: true,
     });
+  }
+
+  private commit(reveal: boolean) {
+    const query = this.queryOf();
     if (!query.eq(this.query)) {
       this.query = query;
       this.view.dispatch({ effects: setSearchQuery.of(query) });
@@ -403,77 +358,45 @@ class FindPanel implements Panel {
     });
   }
 
-  private syncControls() {
-    setPressed(this.caseButton, this.query.caseSensitive);
-    setPressed(this.wordButton, this.query.wholeWord);
-    setPressed(this.regexButton, this.query.regexp);
+  private countOf(value: string) {
+    if (!value || !this.query.valid) {
+      return countLabel({ value, valid: this.query.valid, current: 0, total: 0, capped: false });
+    }
+    return countLabel({ value, valid: true, ...countMatches(this.view) });
   }
 
   private syncCount() {
-    const value = this.searchField.value;
-    if (!value) {
-      this.count.textContent = "";
-      this.count.dataset.state = "idle";
-      this.dom.classList.remove("is-empty", "is-invalid");
-      return;
-    }
-    if (!this.query.valid) {
-      this.count.textContent = "Invalid regex";
-      this.count.dataset.state = "invalid";
-      this.dom.classList.add("is-invalid");
-      this.dom.classList.remove("is-empty");
-      return;
-    }
-
-    const { current, total, capped } = countMatches(this.view);
-    this.dom.classList.toggle("is-empty", total === 0);
-    this.dom.classList.remove("is-invalid");
-    if (total === 0) {
-      this.count.textContent = "No results";
-      this.count.dataset.state = "empty";
-      return;
-    }
-    const suffix = capped ? "+" : "";
-    this.count.textContent =
-      current > 0 ? `${current} of ${total}${suffix}` : `${total}${suffix}`;
-    this.count.dataset.state = "ok";
+    this.state = { ...this.state, count: this.countOf(this.state.search) };
+    this.render();
   }
 
-  private onKeyDown(event: Event) {
-    const keyEvent = event as KeyboardEvent;
-    if (runScopeHandlers(this.view, keyEvent, "search-panel")) {
-      keyEvent.preventDefault();
+  private onKeyDown(event: KeyboardEvent) {
+    if (runScopeHandlers(this.view, event, "search-panel")) {
+      event.preventDefault();
       return;
     }
-    if (
-      keyEvent.altKey &&
-      !keyEvent.metaKey &&
-      !keyEvent.ctrlKey &&
-      !keyEvent.shiftKey
-    ) {
-      if (keyEvent.code === "KeyC") {
-        keyEvent.preventDefault();
-        this.toggle("caseSensitive");
-        return;
-      }
-      if (keyEvent.code === "KeyW") {
-        keyEvent.preventDefault();
-        this.toggle("wholeWord");
-        return;
-      }
-      if (keyEvent.code === "KeyR") {
-        keyEvent.preventDefault();
-        this.toggle("regexp");
+    if (event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+      const flag: FindFlag | null =
+        event.code === "KeyC"
+          ? "caseSensitive"
+          : event.code === "KeyW"
+            ? "wholeWord"
+            : event.code === "KeyR"
+              ? "regexp"
+              : null;
+      if (flag) {
+        event.preventDefault();
+        this.toggle(flag);
         return;
       }
     }
-    if (keyEvent.key !== "Enter") return;
-    keyEvent.preventDefault();
-    if (keyEvent.target === this.replaceField) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (event.target === this.replaceRef.current) {
       replaceNext(this.view);
       return;
     }
-    (keyEvent.shiftKey ? findPrevious : findNext)(this.view);
+    (event.shiftKey ? findPrevious : findNext)(this.view);
   }
 }
 
@@ -505,293 +428,37 @@ function nextMatch(
   return result.done ? null : result.value;
 }
 
-function inputField(
-  label: string,
-  attrs: Record<string, string>,
-): HTMLInputElement {
-  return elt("input", {
-    type: "text",
-    placeholder: label,
-    "aria-label": label,
-    autocomplete: "off",
-    autocorrect: "off",
-    autocapitalize: "off",
-    spellcheck: "false",
-    ...attrs,
-  });
-}
+const tint = (token: string, percent: number) =>
+  `color-mix(in srgb, var(${token}) ${percent}%, transparent)`;
 
-function toggleButton(label: string, title: string, shortcut: string) {
-  const button = elt(
-    "button",
-    {
-      type: "button",
-      class: "cm-find-toggle",
-      title: `${title} (${shortcut})`,
-      "aria-label": title,
-      "aria-pressed": "false",
-      tabindex: "-1",
-    },
-    label,
-  );
-  return button;
-}
-
-function iconButton(
-  className: string,
-  title: string,
-  shortcut: string,
-  icon: Node,
-) {
-  return elt(
-    "button",
-    {
-      type: "button",
-      class: className,
-      title: `${title} (${shortcut})`,
-      "aria-label": title,
-      tabindex: "-1",
-    },
-    icon,
-  );
-}
-
-function textButton(label: string, onClick: () => void) {
-  return elt(
-    "button",
-    {
-      type: "button",
-      class: "cm-find-text",
-      tabindex: "-1",
-      onclick: onClick,
-    },
-    label,
-  );
-}
-
-function setPressed(button: HTMLButtonElement, pressed: boolean) {
-  button.setAttribute("aria-pressed", String(pressed));
-  button.classList.toggle("is-active", pressed);
-}
-
-function svgIcon(path: string) {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("width", "14");
-  svg.setAttribute("height", "14");
-  svg.setAttribute("viewBox", "0 0 16 16");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "1.75");
-  svg.setAttribute("stroke-linecap", "round");
-  svg.setAttribute("stroke-linejoin", "round");
-  svg.setAttribute("aria-hidden", "true");
-  for (const d of path.split("M").slice(1)) {
-    const node = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    node.setAttribute("d", `M${d}`);
-    svg.append(node);
-  }
-  return svg;
-}
-
-type Attrs = Record<
-  string,
-  string | boolean | ((event: Event) => void) | null | undefined
->;
-
-function elt<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  attrs?: Attrs,
-  ...children: Array<Node | string | null | false>
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (attrs) {
-    for (const [key, value] of Object.entries(attrs)) {
-      if (value == null || value === false) continue;
-      if (key.startsWith("on") && typeof value === "function") {
-        node.addEventListener(
-          key.slice(2).toLowerCase(),
-          value as EventListener,
-        );
-        continue;
-      }
-      if (value === true) {
-        node.setAttribute(key, "");
-        continue;
-      }
-      node.setAttribute(key, String(value));
-    }
-  }
-  for (const child of children) {
-    if (!child) continue;
-    node.append(child);
-  }
-  return node;
-}
-
-const findTheme = EditorView.theme(
-  {
-    "&": {
-      position: "relative",
-    },
-    ".cm-panels.cm-panels-top": {
-      position: "absolute",
-      top: "8px",
-      right: "16px",
-      left: "auto",
-      width: "auto",
-      minWidth: "min(360px, calc(100% - 24px))",
-      maxWidth: "calc(100% - 24px)",
-      zIndex: "40",
-      backgroundColor: "transparent",
-      border: "none",
-      pointerEvents: "auto",
-    },
-    ".cm-panel.cm-find": {
-      display: "flex",
-      alignItems: "stretch",
-      gap: "4px",
-      padding: "6px",
-      border:
-        "1px solid color-mix(in srgb, var(--color-content) 12%, transparent)",
-      borderRadius: "10px",
-      backgroundColor: "var(--color-background-base)",
-      boxShadow: "0 10px 28px hsl(0 0% 0% / 0.28)",
-      color: "var(--color-content)",
-    },
-    ".cm-find-expand, .cm-find-step, .cm-find-close, .cm-find-toggle, .cm-find-text":
-      {
-        display: "grid",
-        placeItems: "center",
-        margin: "0",
-        padding: "0",
-        border: "0",
-        borderRadius: "6px",
-        background: "transparent",
-        color: "color-mix(in srgb, var(--color-content) 62%, transparent)",
-        cursor: "pointer",
-      },
-    ".cm-find-expand:hover, .cm-find-step:hover, .cm-find-close:hover, .cm-find-toggle:hover, .cm-find-text:hover":
-      {
-        backgroundColor:
-          "color-mix(in srgb, var(--color-content) 10%, transparent)",
-        color: "var(--color-content)",
-      },
-    ".cm-find-expand": {
-      width: "20px",
-      alignSelf: "stretch",
-    },
-    ".cm-find-expand svg": {
-      transition: "transform 0.12s ease",
-    },
-    ".cm-find.is-replace .cm-find-expand svg": {
-      transform: "rotate(90deg)",
-    },
-    ".cm-find-fields": {
-      display: "flex",
-      flexDirection: "column",
-      gap: "4px",
-      minWidth: "0",
-    },
-    ".cm-find-row": {
-      display: "flex",
-      alignItems: "center",
-      gap: "4px",
-      minWidth: "0",
-    },
-    ".cm-find-replace-row": {
-      display: "none",
-    },
-    ".cm-find.is-replace .cm-find-replace-row": {
-      display: "flex",
-    },
-    ".cm-find-query": {
-      display: "flex",
-      alignItems: "center",
-      boxSizing: "border-box",
-      width: "240px",
-      flex: "none",
-      height: "26px",
-      padding: "0 8px",
-      border:
-        "1px solid color-mix(in srgb, var(--color-content) 12%, transparent)",
-      borderRadius: "6px",
-      backgroundColor:
-        "color-mix(in srgb, var(--color-content) 6%, transparent)",
-    },
-    ".cm-find.is-empty .cm-find-search, .cm-find.is-invalid .cm-find-search": {
-      borderColor: "color-mix(in srgb, #f87171 55%, transparent)",
-    },
-    ".cm-find input": {
-      minWidth: "0",
-      flex: "1",
-      height: "24px",
-      margin: "0",
-      padding: "0",
-      border: "0",
-      outline: "none",
-      background: "transparent",
-      color: "var(--color-content)",
-      fontFamily: "var(--font-mono)",
-      fontSize: "12px",
-      userSelect: "text",
-    },
-    ".cm-find-count": {
-      boxSizing: "border-box",
-      width: "13ch",
-      flex: "none",
-      paddingLeft: "8px",
-      overflow: "hidden",
-      color: "color-mix(in srgb, var(--color-content) 45%, transparent)",
-      fontFamily: "var(--font-mono)",
-      fontSize: "11px",
-      fontVariantNumeric: "tabular-nums",
-      textAlign: "right",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-    },
-    ".cm-find-count[data-state=empty], .cm-find-count[data-state=invalid]": {
-      color: "#f87171",
-    },
-    ".cm-find-toggles, .cm-find-nav, .cm-find-replace-actions": {
-      display: "flex",
-      alignItems: "center",
-      gap: "2px",
-    },
-    ".cm-find-toggle": {
-      width: "24px",
-      height: "24px",
-      fontFamily: "var(--font-mono)",
-      fontSize: "11px",
-      fontWeight: "600",
-    },
-    ".cm-find-toggle.is-active": {
-      backgroundColor:
-        "color-mix(in srgb, var(--color-accent) 28%, transparent)",
-      color: "var(--color-content)",
-    },
-    ".cm-find-step, .cm-find-close": {
-      width: "24px",
-      height: "24px",
-    },
-    ".cm-find-text": {
-      height: "24px",
-      padding: "0 8px",
-      fontSize: "11px",
-    },
-    ".cm-searchMatch": {
-      backgroundColor: "color-mix(in srgb, #e2c08d 46%, transparent)",
-    },
-    ".cm-searchMatch-selected": {
-      backgroundColor:
-        "color-mix(in srgb, var(--color-accent) 52%, transparent)",
-    },
-    ".cm-selectionMatch": {
-      backgroundColor:
-        "color-mix(in srgb, var(--color-content) 14%, transparent)",
-    },
+/** The panel's place over the editor and the match marks; FindBar draws
+ *  the rest. */
+const findTheme = EditorView.theme({
+  "&": {
+    position: "relative",
   },
-  { dark: true },
-);
+  ".cm-panels.cm-panels-top": {
+    position: "absolute",
+    top: "8px",
+    right: "12px",
+    left: "auto",
+    width: "auto",
+    maxWidth: "calc(100% - 24px)",
+    zIndex: "40",
+    backgroundColor: "transparent",
+    border: "none",
+    pointerEvents: "auto",
+  },
+  ".cm-searchMatch": {
+    backgroundColor: tint("--color-foreground", 16),
+  },
+  ".cm-searchMatch-selected": {
+    backgroundColor: tint("--color-accent", 40),
+  },
+  ".cm-selectionMatch": {
+    backgroundColor: tint("--color-foreground", 8),
+  },
+});
 
 function scrollToSearchMatch(range: SelectionRange, view: EditorView) {
   const coords = view.coordsAtPos(range.from);
