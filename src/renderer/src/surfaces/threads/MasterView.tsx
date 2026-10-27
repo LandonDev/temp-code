@@ -246,6 +246,7 @@ export function MasterView(props: ThreadViewProps) {
           key={openId}
           sessionId={openId}
           environmentId={openHost}
+          title={rowModels(layout).find((r) => r.meta.id === openId)?.title}
           focusComposer={focusComposer}
           onBack={() => setOpenId(null)}
           onOpenFile={props.onOpenFile}

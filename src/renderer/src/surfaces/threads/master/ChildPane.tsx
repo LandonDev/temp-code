@@ -7,6 +7,7 @@ import type { OpenFileFn } from "../../../lib/search";
 import type { Session } from "../../../lib/session";
 import { useMetaById, useSessionById } from "../../../lib/threads/agents";
 import { useSessionActions, useThreadChat, type SessionActions } from "../../threadChat";
+import { SurfaceSkeleton } from "../../SurfaceSkeleton";
 import { ThreadView } from "../ThreadView";
 
 /**
@@ -20,12 +21,15 @@ import { ThreadView } from "../ThreadView";
  * host's rows by id, so the view, the transcript and every send reach that
  * host the way a rail row of another host opens. The header is one Back
  * control to the board; Escape and ⌘↩ outside the composer go back too
- * (inside it ⌘↩ is the composer's own).
+ * (inside it ⌘↩ is the composer's own). The header shows at once, titled
+ * from the board's row until the meta lands; the body is the transcript's
+ * skeleton until the thread's rows do.
  */
 
 export function ChildPane({
   sessionId,
   environmentId,
+  title,
   focusComposer,
   onBack,
   onOpenFile,
@@ -35,6 +39,8 @@ export function ChildPane({
   sessionId: string;
   /** The host the thread runs on. */
   environmentId: string;
+  /** The board row's title, shown until the thread's meta lands. */
+  title?: string;
   /** Land in the composer on open (the row's Message action). */
   focusComposer: boolean;
   onBack: () => void;
@@ -60,7 +66,10 @@ export function ChildPane({
     onBack();
   };
 
-  if (!meta || !session || meta.environmentId !== environmentId) return null;
+  // A thread of the same id on another host is not this one.
+  if (meta && meta.environmentId !== environmentId) return null;
+  // SessionPane's rule: no rows yet and the host has not answered.
+  const loading = !meta || !session || (session.blocks.length === 0 && (session.load?.phase ?? "loaded") !== "loaded");
 
   return (
     <div ref={paneRef} tabIndex={-1} onKeyDown={onKey} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none" data-child-pane={sessionId} data-child-host={environmentId}>
@@ -74,17 +83,23 @@ export function ChildPane({
             Back to the board <Kbd size="sm">Esc</Kbd>
           </TooltipContent>
         </Tooltip>
-        <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{meta.title || "Untitled"}</span>
+        <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{meta?.title || title || "Untitled"}</span>
       </div>
-      <ChildThread
-        session={session}
-        actions={actions}
-        focusComposer={focusComposer}
-        rootRef={paneRef}
-        onOpenFile={onOpenFile}
-        onOpenDiff={onOpenDiff}
-        onOpenSession={onOpenSession}
-      />
+      {loading ? (
+        <div className="min-h-0 flex-1">
+          <SurfaceSkeleton kind="transcript" label="Loading thread" />
+        </div>
+      ) : (
+        <ChildThread
+          session={session}
+          actions={actions}
+          focusComposer={focusComposer}
+          rootRef={paneRef}
+          onOpenFile={onOpenFile}
+          onOpenDiff={onOpenDiff}
+          onOpenSession={onOpenSession}
+        />
+      )}
     </div>
   );
 }
