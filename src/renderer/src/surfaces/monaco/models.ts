@@ -10,6 +10,7 @@ import {
   type FileState,
 } from "../../lib/monaco/editorState";
 import { minimalEdit } from "../../lib/monaco/minimalEdit";
+import { settleDiskRace, writeUnlessRaced } from "../../lib/diskRace";
 import { languageForPath, monaco } from "./monaco";
 
 export { minimalEdit };
@@ -22,8 +23,9 @@ export { minimalEdit };
  *  - keystrokes → 800 ms autosave (when the setting is on), ⌘S flushes now;
  *  - agent and shell writes → watch event → one minimal model edit (never
  *    setValue), so cursor, folds, and undo survive;
- *  - the overlap → the reload queues behind the flush; a true concurrent
- *    write surfaces as a one-line conflict bar, never a modal.
+ *  - the overlap → nothing is ever written over a disk change the buffer
+ *    has not seen (lib/diskRace.ts): a change on other lines merges in, one
+ *    on the lines being edited holds every write behind the conflict bar.
  */
 
 export const AUTOSAVE_MS = 800;
@@ -55,7 +57,12 @@ interface Entry {
   savedAltId: number;
   timer: number | null;
   flushing: Promise<boolean> | null;
-  queuedReload: boolean;
+  /** a watch event came in during a flush: look at the disk again after it */
+  recheck: boolean;
+  /** the latest disk read an external change started; older ones lose */
+  readSeq: number;
+  /** the disk's text while state.conflict is "external" (Reload takes it) */
+  theirs: string | null;
   applyingExternal: boolean;
   state: FileState;
   stateListeners: Set<(s: FileState) => void>;
@@ -76,9 +83,12 @@ function setState(entry: Entry, patch: Partial<FileState>): void {
 
 /** Apply new disk content as a minimal single edit so cursor, scroll,
  *  folds, and the undo stack survive. Returns the touched range. */
-function applyExternal(entry: Entry, next: string): monaco.IRange | null {
+function applyExternal(entry: Entry, next: string, saved = true): monaco.IRange | null {
   const edit = minimalEdit(entry.model.getValue(), next);
-  if (!edit) return null;
+  if (!edit) {
+    if (saved) entry.savedAltId = entry.model.getAlternativeVersionId();
+    return null;
+  }
   const from = entry.model.getPositionAt(edit.start);
   const to = entry.model.getPositionAt(edit.endCur);
   entry.applyingExternal = true;
@@ -96,7 +106,7 @@ function applyExternal(entry: Entry, next: string): monaco.IRange | null {
   } finally {
     entry.applyingExternal = false;
   }
-  entry.savedAltId = entry.model.getAlternativeVersionId();
+  if (saved) entry.savedAltId = entry.model.getAlternativeVersionId();
   const endLine = entry.model.getPositionAt(edit.start + edit.text.length).lineNumber;
   const range: monaco.IRange = {
     startLineNumber: from.lineNumber,
@@ -108,27 +118,63 @@ function applyExternal(entry: Entry, next: string): monaco.IRange | null {
   return range;
 }
 
-async function reloadFromDisk(entry: Entry): Promise<void> {
-  let content: string;
-  try {
-    content = await readTextFile(entry.host, entry.path);
-  } catch {
-    if (entries.get(entry.path) === entry) setState(entry, { conflict: "deleted" });
-    return;
-  }
-  if (entries.get(entry.path) !== entry) return;
-  entry.diskText = content;
-  applyExternal(entry, content);
-  if (entry.state.conflict) setState(entry, { conflict: null });
+function isDirty(entry: Entry): boolean {
+  return entry.model.getAlternativeVersionId() !== entry.savedAltId;
 }
 
-function onExternalChange(entry: Entry): void {
-  if (entry.state.pending || entry.flushing) {
-    // Unflushed keystrokes: the window is short; reload after the flush.
-    entry.queuedReload = true;
+/** The disk changed under the buffer. Never writes: a clean buffer takes
+ *  the disk; unsaved edits on other lines get the disk's lines merged in
+ *  (washed, still unsaved, so the next save writes both); edits on the same
+ *  lines raise the bar. A watch event during a flush waits for it. */
+async function onExternalChange(entry: Entry): Promise<void> {
+  if (entry.flushing) {
+    entry.recheck = true;
     return;
   }
-  void reloadFromDisk(entry);
+  const seq = ++entry.readSeq;
+  let disk: string;
+  try {
+    disk = await readTextFile(entry.host, entry.path);
+  } catch {
+    if (entries.get(entry.path) === entry && seq === entry.readSeq) setState(entry, { conflict: "deleted" });
+    return;
+  }
+  if (entries.get(entry.path) !== entry || seq !== entry.readSeq) return;
+  if (entry.flushing) {
+    entry.recheck = true;
+    return;
+  }
+  const race = settleDiskRace(entry.diskText, entry.model.getValue(), disk);
+  switch (race.kind) {
+    case "ours":
+      // The disk is what we last saw: an echo of our own write, or the
+      // other writer put it back. Nothing stands between the buffer and it.
+      if (!entry.state.conflict) return;
+      entry.theirs = null;
+      setState(entry, { conflict: null });
+      if (isDirty(entry)) scheduleFlush(entry);
+      return;
+    case "same":
+      entry.diskText = disk;
+      entry.savedAltId = entry.model.getAlternativeVersionId();
+      setState(entry, { conflict: null, pending: false });
+      return;
+    case "theirs":
+      entry.diskText = disk;
+      applyExternal(entry, disk);
+      setState(entry, { conflict: null, pending: false });
+      return;
+    case "merged":
+      entry.diskText = disk;
+      applyExternal(entry, race.text, false);
+      if (entry.state.conflict) setState(entry, { conflict: null });
+      scheduleFlush(entry);
+      return;
+    case "conflict":
+      entry.theirs = disk;
+      setState(entry, { conflict: "external", pending: true });
+      return;
+  }
 }
 
 // The server's tree watcher (one subscription per project, held while a
@@ -141,7 +187,7 @@ onFileEvent((event) => {
     setState(entry, { conflict: "deleted" });
     return;
   }
-  onExternalChange(entry);
+  void onExternalChange(entry);
 });
 
 // ── save ─────────────────────────────────────────────────────────────
@@ -154,11 +200,32 @@ function wantsFormat(model: monaco.editor.ITextModel): boolean {
   return false;
 }
 
-/** Write the buffer if it differs from disk. Resolves true when the disk
- *  holds the buffer afterwards (nothing to do counts as success). */
-async function flush(entry: Entry): Promise<boolean> {
+/** The disk now holds `disk`, decided on the buffer text `decidedOn`
+ *  (saved at `altId`). Keystrokes typed since stay on top: unsaved, with
+ *  the disk's lines merged under them when the disk took a merge. */
+function adopt(entry: Entry, disk: string, decidedOn: string, altId: number): void {
+  entry.diskText = disk;
+  const now = entry.model.getValue();
+  if (now === decidedOn) {
+    applyExternal(entry, disk);
+    return;
+  }
+  if (disk === decidedOn) {
+    entry.savedAltId = altId;
+    return;
+  }
+  const race = settleDiskRace(decidedOn, now, disk);
+  if (race.kind === "merged") applyExternal(entry, race.text, false);
+}
+
+/** Write the buffer if it differs from disk, unless the disk changed the
+ *  lines being edited: then nothing is written and the bar asks. Resolves
+ *  true when the disk holds the buffer afterwards (nothing to do counts as
+ *  success). While the bar shows nothing writes but its choice (`force`). */
+async function flush(entry: Entry, force = false): Promise<boolean> {
   if (entry.flushing) return entry.flushing;
-  if (entry.model.getAlternativeVersionId() === entry.savedAltId) {
+  if (entry.state.conflict && !force) return false;
+  if (!isDirty(entry)) {
     if (entry.state.pending) setState(entry, { pending: false });
     return true;
   }
@@ -167,12 +234,24 @@ async function flush(entry: Entry): Promise<boolean> {
     const altId = entry.model.getAlternativeVersionId();
     const content = entry.model.getValue();
     try {
-      await writeTextFile(entry.host, entry.path, content);
-      entry.diskText = content;
-      entry.savedAltId = altId;
-      await syncWatchedMtime(entry.path);
-      notifyGitChanged();
-      for (const l of savedListeners) l(entry.model);
+      const io = {
+        read: () => readTextFile(entry.host, entry.path),
+        write: (text: string) => writeTextFile(entry.host, entry.path, text),
+      };
+      const res = await writeUnlessRaced(io, entry.diskText, content);
+      if (res.kind === "conflict") {
+        entry.theirs = res.theirs;
+        setState(entry, { conflict: "external", pending: true });
+        return false;
+      }
+      adopt(entry, res.text, content, altId);
+      if (entry.state.conflict) setState(entry, { conflict: null });
+      entry.theirs = null;
+      if (res.kind === "written") {
+        await syncWatchedMtime(entry.path);
+        notifyGitChanged();
+        for (const l of savedListeners) l(entry.model);
+      }
       return true;
     } catch {
       // Write refused or failed: stay pending, the next flush retries.
@@ -185,21 +264,11 @@ async function flush(entry: Entry): Promise<boolean> {
   } finally {
     entry.flushing = null;
   }
-  const clean = entry.model.getAlternativeVersionId() === entry.savedAltId;
+  const clean = !isDirty(entry);
   if (clean && entry.state.pending) setState(entry, { pending: false });
-  if (entry.queuedReload) {
-    entry.queuedReload = false;
-    // Re-read; if the disk differs from what we just flushed, a second
-    // writer truly raced us: surface the bar instead of silently losing.
-    try {
-      const content = await readTextFile(entry.host, entry.path);
-      if (content !== entry.model.getValue()) {
-        entry.diskText = content;
-        setState(entry, { conflict: "external" });
-      }
-    } catch {
-      setState(entry, { conflict: "deleted" });
-    }
+  if (entry.recheck) {
+    entry.recheck = false;
+    void onExternalChange(entry);
   }
   return ok && clean;
 }
@@ -271,23 +340,48 @@ registerBeforeMove(async (from, to) => {
   }
 });
 
-// ── conflict resolution (the one-line bar's two actions) ─────────────
+// ── conflict resolution (the bar's choices) ──────────────────────────
 
-export function resolveConflict(path: string, action: "reload" | "keep"): void {
+/** Reload takes the disk's text as one undoable edit (⌘Z brings the
+ *  person's text back, and the next save writes it). Keep mine, and
+ *  Restore for a deleted file, write the buffer over what the disk holds
+ *  now; the bar goes when the write lands. True when the disk holds the
+ *  buffer afterwards. */
+export async function resolveConflict(path: string, action: "reload" | "keep"): Promise<boolean> {
   const entry = entries.get(path);
-  if (!entry) return;
-  const was = entry.state.conflict;
+  if (!entry) return true;
   if (action === "reload") {
+    if (entry.state.conflict !== "external") return false;
+    const disk = entry.theirs ?? entry.diskText;
+    entry.theirs = null;
+    entry.diskText = disk;
+    if (entry.timer !== null) {
+      window.clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+    applyExternal(entry, disk);
     setState(entry, { conflict: null, pending: false });
-    if (was === "deleted") return;
-    applyExternal(entry, entry.diskText);
-    void reloadFromDisk(entry);
-  } else {
-    // Keep mine: the buffer wins; write it back over the disk version.
-    setState(entry, { conflict: null });
-    entry.savedAltId = -1;
-    void flush(entry);
+    return true;
   }
+  if (entry.timer !== null) {
+    window.clearTimeout(entry.timer);
+    entry.timer = null;
+  }
+  try {
+    entry.diskText = await readTextFile(entry.host, entry.path);
+  } catch {
+    // Deleted: the write recreates it.
+  }
+  if (entries.get(path) !== entry) return false;
+  entry.savedAltId = -1;
+  return flush(entry, true);
+}
+
+/** ⌘S: Keep mine while the bar shows, else save now. */
+export function saveNow(path: string): Promise<boolean> {
+  const entry = entries.get(path);
+  if (entry?.state.conflict) return resolveConflict(path, "keep");
+  return flushPath(path);
 }
 
 // ── open / release ───────────────────────────────────────────────────
@@ -343,7 +437,9 @@ export async function openFile(path: string, cwd: string, environmentId?: string
         savedAltId: carry === undefined ? model.getAlternativeVersionId() : -1,
         timer: null,
         flushing: null,
-        queuedReload: false,
+        recheck: false,
+        readSeq: 0,
+        theirs: null,
         applyingExternal: false,
         state: { pending: carry !== undefined, conflict: null },
         stateListeners: new Set(),
@@ -356,7 +452,7 @@ export async function openFile(path: string, cwd: string, environmentId?: string
         if (created.applyingExternal) return;
         scheduleFlush(created);
       });
-      created.unwatch = watchFile(path, () => onExternalChange(created), host);
+      created.unwatch = watchFile(path, () => void onExternalChange(created), host);
       created.unwatchProject = watchCwd(cwd);
       created.dispose = () => {
         sub.dispose();
@@ -422,7 +518,7 @@ export function entryForUri(uri: monaco.Uri): { path: string; cwd: string } | nu
 
 export function isModelDirty(path: string): boolean {
   const entry = entries.get(path);
-  return !!entry && entry.model.getAlternativeVersionId() !== entry.savedAltId;
+  return !!entry && isDirty(entry);
 }
 
 // ── problem counts (the quiet per-file count in the tab) ─────────────

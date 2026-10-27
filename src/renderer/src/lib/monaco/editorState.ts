@@ -9,7 +9,8 @@ import { useSyncExternalStore } from "react";
 
 export interface FileState {
   pending: boolean;
-  /** 'external': disk changed while unsaved keystrokes were in flight;
+  /** 'external': the disk changed the lines you edited; nothing is
+   *  written until you choose (lib/diskRace.ts);
    *  'deleted': the file vanished under an open buffer */
   conflict: "external" | "deleted" | null;
 }

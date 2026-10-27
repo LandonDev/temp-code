@@ -19,7 +19,7 @@ import { installSmartBackspace, showParamInfo } from "./lsp/paramInfo";
 import { registerProviders, showHierarchy } from "./lsp/providers";
 import { debugFile, paintBreakpoints } from "./debug/session";
 import { EDITOR_OPTIONS, editorFontFamily, followEditorFont, monaco, tabSizeForPath } from "./monaco";
-import { openFile, resolveConflict, type OpenedFile } from "./models";
+import { openFile, resolveConflict, saveNow, type OpenedFile } from "./models";
 import { monacoReady } from "./theme";
 
 type Props = {
@@ -155,7 +155,7 @@ export default function MonacoPane(props: Props) {
         }),
       );
 
-      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void opened.flushNow());
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void saveNow(path));
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
         if (editor) void showParamInfo(editor);
       });
@@ -241,8 +241,14 @@ export default function MonacoPane(props: Props) {
       {fileState.conflict ? (
         <ConflictBar
           kind={fileState.conflict}
-          onReload={() => resolveConflict(path, "reload")}
-          onKeep={() => resolveConflict(path, "keep")}
+          onReload={() => {
+            void resolveConflict(path, "reload");
+            editorRef.current?.focus();
+          }}
+          onKeep={() => {
+            void resolveConflict(path, "keep");
+            editorRef.current?.focus();
+          }}
         />
       ) : null}
       {needsEula && project ? (

@@ -11,7 +11,7 @@ import { trackEditor } from "./keys";
 import { ensureForModel } from "./lsp/idea";
 import { registerProviders } from "./lsp/providers";
 import { EDITOR_OPTIONS, editorFontFamily, followEditorFont, languageForPath, monaco } from "./monaco";
-import { openFile, resolveConflict, type OpenedFile } from "./models";
+import { openFile, resolveConflict, saveNow, type OpenedFile } from "./models";
 import { monacoReady } from "./theme";
 
 /**
@@ -49,6 +49,7 @@ export function DiffSurface({
   onDirtyChange?: (path: string, dirty: boolean) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const modifiedRef = useRef<monaco.editor.ICodeEditor | null>(null);
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
   const [fileState, setFileState] = useState<FileState>({ pending: false, conflict: null });
   const onDirtyChangeRef = useRef(onDirtyChange);
@@ -95,7 +96,8 @@ export function DiffSurface({
         cleanups.push(followEditorFont(editor));
         const modified = editor.getModifiedEditor();
         cleanups.push(trackEditor(modified));
-        modified.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void opened.flushNow());
+        modified.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void saveNow(path));
+        modifiedRef.current = modified;
         const project = projectForCwd(cwd);
         if (project) ensureForModel(project, opened.model);
         setPhase("ready");
@@ -106,6 +108,7 @@ export function DiffSurface({
     return () => {
       disposed = true;
       for (const cleanup of cleanups) cleanup();
+      modifiedRef.current = null;
       editor?.dispose();
       original?.dispose();
       handle?.release();
@@ -118,8 +121,14 @@ export function DiffSurface({
       {fileState.conflict ? (
         <ConflictBar
           kind={fileState.conflict}
-          onReload={() => resolveConflict(path, "reload")}
-          onKeep={() => resolveConflict(path, "keep")}
+          onReload={() => {
+            void resolveConflict(path, "reload");
+            modifiedRef.current?.focus();
+          }}
+          onKeep={() => {
+            void resolveConflict(path, "keep");
+            modifiedRef.current?.focus();
+          }}
         />
       ) : null}
       {phase === "loading" ? (
