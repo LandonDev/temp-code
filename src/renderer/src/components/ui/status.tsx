@@ -49,6 +49,11 @@ const TONE_CLASS: Record<StatusTone, string> = {
   danger: "text-destructive",
 };
 
+/** The text colour the vocabulary gives a state, for a word set beside a mark (a count, a line). */
+export function statusToneClass(state: ThreadState): string {
+  return TONE_CLASS[STATUS_TONE[state]];
+}
+
 /**
  * A session's wire status as the vocabulary's state. `starting` and
  * `running` work; `error` failed; a plan written and not yet built

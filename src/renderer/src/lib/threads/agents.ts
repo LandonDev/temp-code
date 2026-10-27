@@ -1,6 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { contextPercent } from "../contextUsage";
-import { threadStateOf, type ThreadState } from "../../components/ui/status";
+import { STATUS_WORD, statusNeedsYou, statusToneClass, threadStateOf, type ThreadState } from "../../components/ui/status";
 import { findModel } from "../models";
 import type { Block, Session } from "../session";
 import { asHarness, pickerModelId, sessionStore } from "../tcserver/store";
@@ -14,20 +14,16 @@ import type { SessionMeta, SessionStatus } from "../tcserver/types";
 
 // ── rank and order ─────────────────────────────────────────────────────
 
-const RANK: Partial<Record<SessionStatus, number>> = {
-  waiting: 0,
-  error: 1,
-  starting: 2,
-  running: 2,
-};
+const FIRST: readonly ThreadState[] = ["waiting", "failed", "working"];
 
-/** Rows sort by what needs the user first: waiting, failed, working, done. */
+/** Rows sort by what needs the user first: waiting, failed, working, then the rest. */
 export function agentRank(status: SessionStatus | undefined): number {
-  return (status && RANK[status]) ?? 3;
+  const i = FIRST.indexOf(threadStateOf(status));
+  return i < 0 ? FIRST.length : i;
 }
 
 export function isLiveStatus(status: SessionStatus | undefined): boolean {
-  return status === "running" || status === "starting";
+  return threadStateOf(status) === "working";
 }
 
 export function sortAgents<T extends { status: SessionStatus; createdAt: number }>(list: T[]): T[] {
@@ -48,35 +44,28 @@ export type FleetCounts = { working: number; waiting: number; failed: number; do
 
 export function fleetCounts(agents: { status: SessionStatus }[]): FleetCounts {
   const out: FleetCounts = { working: 0, waiting: 0, failed: 0, done: 0 };
-  for (const a of agents) {
-    if (isLiveStatus(a.status) || a.status === "watching") out.working++;
-    else if (a.status === "waiting") out.waiting++;
-    else if (a.status === "error") out.failed++;
-    else out.done++;
-  }
+  for (const a of agents) out[countOf(threadStateOf(a.status))]++;
   return out;
 }
 
-/** The words and tones a fleet count is said in (the fleet header, the
- *  sidebar's agent counts). */
-export const FLEET_WORDS: Record<keyof FleetCounts, string> = {
-  working: "working",
-  waiting: "needs you",
-  failed: "failed",
-  done: "done",
-};
+/** The count a state falls in: watching works, every other quiet state is done. */
+function countOf(state: ThreadState): keyof FleetCounts {
+  if (state === "working" || state === "watching") return "working";
+  return state === "waiting" || state === "failed" ? state : "done";
+}
 
-export const FLEET_TONES: Partial<Record<keyof FleetCounts, string>> = {
-  waiting: "text-warning",
-  failed: "text-destructive",
-};
+/** A count said in the vocabulary's word for its state ("2 needs you"), in
+ *  its tone where the tone means something (needs you, failed). */
+function countPart(k: keyof FleetCounts, n: number): { text: string; tone?: string } {
+  return { text: `${n} ${STATUS_WORD[k].toLowerCase()}`, tone: statusNeedsYou(k) ? statusToneClass(k) : undefined };
+}
 
 /** The fleet's counts as one sentence, nonzero parts in order working,
  *  needs you, failed, done; the renderer joins them with ", ". */
 export function fleetSentence(c: FleetCounts): { text: string; tone?: string }[] {
   return (["working", "waiting", "failed", "done"] as const)
     .filter((k) => c[k] > 0)
-    .map((k) => ({ text: `${c[k]} ${FLEET_WORDS[k]}`, tone: FLEET_TONES[k] }));
+    .map((k) => countPart(k, c[k]));
 }
 
 /** A row's subagents: the count and the live states in the fleet's buckets. */
@@ -95,7 +84,7 @@ export function agentSummary(agents: readonly { status: SessionStatus }[]): Agen
 export function agentSummaryParts(s: AgentSummary): { text: string; tone?: string }[] {
   const parts: { text: string; tone?: string }[] = [{ text: `${s.total} ${s.total === 1 ? "agent" : "agents"}` }];
   for (const k of ["working", "waiting", "failed"] as const) {
-    if (s[k] > 0) parts.push({ text: `${s[k]} ${FLEET_WORDS[k]}`, tone: FLEET_TONES[k] });
+    if (s[k] > 0) parts.push(countPart(k, s[k]));
   }
   return parts;
 }
@@ -127,10 +116,11 @@ export function lastErrorLine(blocks: Block[]): string {
 
 export type AgentTone = "warning" | "danger" | "muted";
 
+/** A line's tone in the vocabulary's colours: the person is needed, it failed, or neither. */
 export const TONE_CLASS: Record<AgentTone, string> = {
-  warning: "text-warning",
-  danger: "text-destructive",
-  muted: "text-muted-foreground",
+  warning: statusToneClass("waiting"),
+  danger: statusToneClass("failed"),
+  muted: statusToneClass("done"),
 };
 
 // ── status ─────────────────────────────────────────────────────────────
@@ -257,7 +247,8 @@ export function useAgents(parentId: string): SessionMeta[] {
  *  agent asks, or a failure the meta does not carry. Everything else a row
  *  shows is on the meta (`activity`, `failure`). */
 export function loadsTranscript(agent: Pick<SessionMeta, "status" | "failure">): boolean {
-  return agent.status === "waiting" || (agent.status === "error" && !agent.failure);
+  const state = threadStateOf(agent.status);
+  return state === "waiting" || (state === "failed" && !agent.failure);
 }
 
 /** One session's folded state, loading its transcript on first use. */

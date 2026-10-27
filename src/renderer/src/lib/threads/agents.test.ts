@@ -12,7 +12,9 @@ import {
   loadsTranscript,
   sortAgents,
   taskTitle,
+  TONE_CLASS,
 } from "./agents";
+import { STATUS_WORD, statusToneClass } from "../../components/ui/status";
 
 const block = (role: Block["role"], text: string, extra: Partial<Block> = {}): Block => ({
   id: `${role}:${text}`,
@@ -171,6 +173,30 @@ describe("leadStripped", () => {
     expect(leadStripped("Queued · waiting for Sibling", "queued")).toBe("waiting for Sibling");
     expect(leadStripped("Waiting on x", "queued")).toBe("Waiting on x");
     expect(leadStripped("Editing a.ts", "working")).toBe("Editing a.ts");
+  });
+});
+
+describe("the vocabulary is the one map", () => {
+  it("counts are said in StatusMark's words and tones, and a line's tone is the state's", () => {
+    const parts = fleetSentence({ working: 1, waiting: 1, failed: 1, done: 1 });
+    expect(parts.map((p) => p.text)).toEqual(
+      (["working", "waiting", "failed", "done"] as const).map((s) => `1 ${STATUS_WORD[s].toLowerCase()}`),
+    );
+    expect(parts[1].tone).toBe(statusToneClass("waiting"));
+    expect(parts[2].tone).toBe(statusToneClass("failed"));
+    expect(TONE_CLASS).toEqual({
+      warning: statusToneClass("waiting"),
+      danger: statusToneClass("failed"),
+      muted: statusToneClass("done"),
+    });
+  });
+
+  it("ranks and counts by threadStateOf: starting works, watching counts as working, the quiet states as done", () => {
+    expect(agentRank("starting")).toBe(agentRank("running"));
+    expect(agentRank("queued")).toBe(agentRank("idle"));
+    expect(
+      fleetCounts([{ status: "starting" }, { status: "watching" }, { status: "queued" }, { status: "stopped" }, { status: "paused" }]),
+    ).toEqual({ working: 2, waiting: 0, failed: 0, done: 3 });
   });
 });
 

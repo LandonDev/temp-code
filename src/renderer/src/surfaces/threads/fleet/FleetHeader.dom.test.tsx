@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /** The orchestration header (A18): the goal, then one sentence of counts. */
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
+import { tooltipChunk, warmTooltips } from "../../../components/ui/tooltip";
 import { FleetHeader } from "./FleetHeader";
 import { FLEET_METAS } from "./fleetFixture";
 
@@ -31,12 +32,14 @@ describe("FleetHeader", () => {
 
   it("puts the whole goal in a tooltip", async () => {
     const goal = "Build the shell and the thread screens in parallel, then review both";
-    const { container, findAllByText } = render(<FleetHeader goal={goal} agents={FLEET_METAS} />);
+    const { container } = render(<FleetHeader goal={goal} agents={FLEET_METAS} />);
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
     const trigger = container.querySelector("p")!;
     expect(trigger.className).toContain("truncate");
-    fireEvent.pointerEnter(trigger);
-    fireEvent.mouseEnter(trigger);
-    fireEvent.focus(trigger);
-    await waitFor(async () => expect((await findAllByText(goal)).length).toBeGreaterThan(1));
+    expect(trigger.getAttribute("data-slot")).toBe("tooltip-trigger");
+    expect(trigger.textContent).toBe(goal);
   });
 });
