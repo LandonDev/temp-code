@@ -541,28 +541,6 @@ header[data-tauri-drag-region] button {
   height: 100%;
 }
 
-.shimmer-text {
-  background-image:
-    linear-gradient(
-      90deg,
-      transparent calc(50% - var(--spread)),
-      var(--color-content) calc(50%),
-      transparent calc(50% + var(--spread))
-    ),
-    linear-gradient(
-      color-mix(in oklab, var(--foreground) 40%, transparent),
-      color-mix(in oklab, var(--foreground) 40%, transparent)
-    );
-  background-size:
-    250% 100%,
-    auto;
-  background-repeat: no-repeat, padding-box;
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  animation: shimmer-text var(--shimmer-duration, 2s) steps(30) infinite;
-}
-
 /* Two-frame mascot loop — a hard swap plus a one-pixel hop, arcade style. */
 .mascot-active {
   animation: mascot-hop var(--mascot-beat, 460ms) infinite;
@@ -630,25 +608,6 @@ header[data-tauri-drag-region] button {
 
 .mascot-stunned .mascot-talk {
   opacity: 0;
-}
-
-/* motion/TextShimmer: the highlight sweeps once per 1.4s. */
-@keyframes text-shimmer {
-  from {
-    background-position: 150% center;
-  }
-  to {
-    background-position: -50% center;
-  }
-}
-
-@keyframes shimmer-text {
-  from {
-    background-position: 100% center;
-  }
-  to {
-    background-position: 0% center;
-  }
 }
 
 .monocode-terminal {
@@ -1237,7 +1196,6 @@ header[data-tauri-drag-region] button {
 
 /* Reduced motion: every keyframe class stops; the static end state stays. */
 @media (prefers-reduced-motion: reduce) {
-  .shimmer-text,
   .mascot-active,
   .mascot-rest,
   .mascot-talk,

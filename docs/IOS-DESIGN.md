@@ -857,7 +857,7 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   its edit cards under the line. A lone step is not a group: the glyph and
   the step, no header repeating it. A search hit inside a phase opens it
   before the list scrolls to it.
-- **The shimmer** (`ShimmerText`, the desktop's `.shimmer-text`): the words
+- **The shimmer** (`ShimmerText`, the desktop's `TextShimmer`): the words
   at 40 % of the text colour, a band of full colour 2 pt per character
   each side of its centre sweeping left to right, 1.4 s a pass, linear, no
   pause; a gradient's offset under the text's own mask, read off a
