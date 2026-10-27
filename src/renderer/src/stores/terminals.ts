@@ -1,12 +1,14 @@
 import { useStore } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { createStore } from "zustand/vanilla";
-import type { FilePaneTab } from "../lib/layout";
+import { newTerminalFile, type FilePaneTab } from "../lib/layout";
 import {
   addTerminalToDock,
   createProjectTerminal,
+  defaultDockSize,
   findProjectTerminal,
   mapProjectTerminal,
+  nextDockTerminalTitle,
   patchProjectTerminals,
   type ProjectTerminalDock,
 } from "../lib/projectTerminal";
@@ -15,18 +17,31 @@ import type { TerminalMetaPatch } from "../lib/terminalTab";
 
 /**
  * The project terminal docks: one per project folder, each a pane of
- * terminals with a side, a size and whether it is open. Every reducer that
+ * terminals with a height and whether it is open. The dock is bottom only:
+ * a dock saved on another side comes back at the bottom at the default
+ * height (`toBottom`, wherever docks enter). Every reducer that
  * can be a no-op hands back the same `state` then, so a write that does
  * nothing notifies nobody.
  */
 export type TerminalsState = { docks: ProjectTerminalDock[] };
 
+/** A dock saved on another side, at the bottom at the default height; a bottom dock as it is. */
+export function toBottom(dock: ProjectTerminalDock): ProjectTerminalDock {
+  return dock.side === "bottom" ? dock : { ...dock, side: "bottom", size: defaultDockSize("bottom") };
+}
+
+function allBottom(docks: ProjectTerminalDock[]): ProjectTerminalDock[] {
+  const next = docks.map(toBottom);
+  return sameDocks(next, docks) ? docks : next;
+}
+
 export function initialTerminalsState(docks: ProjectTerminalDock[] = []): TerminalsState {
-  return { docks };
+  return { docks: allBottom(docks) };
 }
 
 export function setDocks(state: TerminalsState, docks: ProjectTerminalDock[]): TerminalsState {
-  return docks === state.docks ? state : { docks };
+  const next = allBottom(docks);
+  return sameDocks(next, state.docks) ? state : { docks: next };
 }
 
 /** Update the dock at `projectPath`; null from `update` removes it. */
@@ -51,6 +66,13 @@ export function openTerminal(
       ? mapProjectTerminal(state.docks, projectPath, (dock) => addTerminalToDock(dock, file))
       : [...state.docks, createProjectTerminal(projectPath, file)],
   };
+}
+
+/** A new terminal at the project's folder, titled after the ones its dock has. */
+export function openNext(state: TerminalsState, projectPath: string): TerminalsState {
+  const existing = findProjectTerminal(state.docks, projectPath);
+  const title = existing ? nextDockTerminalTitle(existing, projectPath) : undefined;
+  return openTerminal(state, projectPath, newTerminalFile(projectPath, title));
 }
 
 export function patchTerminal(
@@ -100,6 +122,7 @@ export const terminals = {
   ) => apply((s) => updateDock(s, projectPath, update)),
   openTerminal: (projectPath: string, file: FilePaneTab) =>
     apply((s) => openTerminal(s, projectPath, file)),
+  openNext: (projectPath: string) => apply((s) => openNext(s, projectPath)),
   patchTerminal: (fileId: string, patch: TerminalMetaPatch) =>
     apply((s) => patchTerminal(s, fileId, patch)),
   removeProject: (projectPath: string) => apply((s) => removeProject(s, projectPath)),

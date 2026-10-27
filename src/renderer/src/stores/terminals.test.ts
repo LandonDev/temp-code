@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { newTerminalFile } from "../lib/layout";
-import { createProjectTerminal, withDockOpen } from "../lib/projectTerminal";
+import { createProjectTerminal, defaultDockSize, withDockOpen } from "../lib/projectTerminal";
 import {
   currentDock,
   initialTerminalsState,
+  openNext,
   openTerminal,
   patchTerminal,
   removeProject,
   setDocks,
   terminals,
   terminalsStore,
+  toBottom,
   updateDock,
 } from "./terminals";
 
@@ -71,6 +73,37 @@ describe("terminal reducers", () => {
   it("removeProject drops the project's dock by normalized path", () => {
     const s = initialTerminalsState([dock("/repo"), dock("/other")]);
     expect(removeProject(s, "/repo/").docks).toEqual([s.docks[1]]);
+  });
+});
+
+describe("the dock is bottom only", () => {
+  it("a dock saved on the right restores at the bottom at the default height", () => {
+    const right = { ...dock("/repo"), side: "right" as const, size: 480 };
+    const [restored] = initialTerminalsState([right]).docks;
+    expect(restored.side).toBe("bottom");
+    expect(restored.size).toBe(defaultDockSize("bottom"));
+    expect(restored.pane).toBe(right.pane);
+    const moved = setDocks(initialTerminalsState(), [{ ...right, side: "top" }]);
+    expect(moved.docks[0].side).toBe("bottom");
+  });
+
+  it("a bottom dock keeps its object, and setDocks of bottom docks keeps the state", () => {
+    const bottom = { ...dock("/repo"), size: 300 };
+    expect(toBottom(bottom)).toBe(bottom);
+    const s = initialTerminalsState([bottom]);
+    expect(s.docks[0]).toBe(bottom);
+    expect(setDocks(s, [bottom])).toBe(s);
+  });
+});
+
+describe("openNext", () => {
+  it("opens a terminal at the project folder and titles the second after the first", () => {
+    const first = openNext(initialTerminalsState(), "/repo");
+    const second = openNext(first, "/repo");
+    const [a, b] = second.docks[0].pane.files;
+    expect(a.cwd).toBe("/repo");
+    expect(b.path).toBe(`${a.path} 2`);
+    expect(second.docks[0].pane.activeFileId).toBe(b.id);
   });
 });
 

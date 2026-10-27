@@ -38,7 +38,6 @@ export function DevServersPane({
   return (
     <DockFrame
       data-dev-servers-pane=""
-      side="bottom"
       size={size}
       focused={false}
       label="Resize dev servers"

@@ -1,22 +1,9 @@
-import {
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  Globe,
-  PanelBottom,
-  PanelLeft,
-  PanelRight,
-  PanelTop,
-  Plus,
-} from "../chrome/icons";
-import { useRef, useState } from "react";
+import { ChevronDown, Globe, Plus } from "../chrome/icons";
 import { DockFrame } from "../chrome/DockFrame";
-import { ExplorerMenu } from "../chrome/ExplorerMenu";
 import { SurfaceTabs } from "../chrome/SurfaceTabs";
 import { IconButton } from "../chrome/TitleBar";
 import { devPane } from "../lib/devPane";
-import type { DockSide, ProjectTerminalDock } from "../lib/projectTerminal";
+import type { ProjectTerminalDock } from "../lib/projectTerminal";
 import { MOD } from "../lib/platform";
 import type { TerminalMetaPatch } from "../lib/terminalTab";
 import { terminalChunk } from "./chunks";
@@ -30,8 +17,6 @@ type Props = {
   focused: boolean;
   onFocus: () => void;
   onHide: () => void;
-  /** Gone once the dock is bottom only (area A24). */
-  onSideChange?: (side: DockSide) => void;
   onSizePaint: (size: number) => void;
   onSizeCommit: (size: number) => void;
   onAddTerminal: () => void;
@@ -41,33 +26,11 @@ type Props = {
   onTerminalMetaChange?: (fileId: string, patch: TerminalMetaPatch) => void;
 };
 
-const SIDE_ITEMS: { id: DockSide; label: string }[] = [
-  { id: "bottom", label: "Dock Bottom" },
-  { id: "top", label: "Dock Top" },
-  { id: "left", label: "Dock Left" },
-  { id: "right", label: "Dock Right" },
-];
-
-function sideIcon(side: DockSide) {
-  if (side === "top") return PanelTop;
-  if (side === "left") return PanelLeft;
-  if (side === "right") return PanelRight;
-  return PanelBottom;
-}
-
-function hideIcon(side: DockSide) {
-  if (side === "top") return ChevronUp;
-  if (side === "left") return ChevronLeft;
-  if (side === "right") return ChevronRight;
-  return ChevronDown;
-}
-
 export function ProjectTerminalDock({
   dock,
   focused,
   onFocus,
   onHide,
-  onSideChange,
   onSizePaint,
   onSizeCommit,
   onAddTerminal,
@@ -76,15 +39,9 @@ export function ProjectTerminalDock({
   onReorderTerminals,
   onTerminalMetaChange,
 }: Props) {
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const sideButton = useRef<HTMLDivElement>(null);
-  const SideIcon = sideIcon(dock.side);
-  const HideIcon = hideIcon(dock.side);
-
   return (
     <DockFrame
       data-project-terminal-dock=""
-      side={dock.side}
       size={dock.size}
       focused={focused}
       label="Resize terminal"
@@ -112,23 +69,11 @@ export function ProjectTerminalDock({
             <IconButton label="Dev Servers" onClick={() => devPane.open()}>
               <Globe className="size-3.5" strokeWidth={1.75} />
             </IconButton>
-            <div ref={sideButton}>
-            <IconButton
-              label="Move Terminal"
-              onClick={() => {
-                const rect = sideButton.current?.getBoundingClientRect();
-                if (!rect) return;
-                setMenu({ x: rect.left, y: rect.bottom + 4 });
-              }}
-            >
-              <SideIcon className="size-3.5" strokeWidth={1.75} />
-            </IconButton>
-            </div>
             <IconButton
               label={`Hide Terminal (${MOD}J)`}
               onClick={onHide}
             >
-              <HideIcon className="size-3.5" strokeWidth={1.75} />
+              <ChevronDown className="size-3.5" strokeWidth={1.75} />
             </IconButton>
           </div>
         }
@@ -153,26 +98,6 @@ export function ProjectTerminalDock({
           </div>
         ))}
       </div>
-      {menu ? (
-        <ExplorerMenu
-          x={menu.x}
-          y={menu.y}
-          ariaLabel="Move terminal"
-          items={SIDE_ITEMS.map((item) => ({
-            kind: "item" as const,
-            id: item.id,
-            label: item.label,
-            checked: item.id === dock.side,
-          }))}
-          onPick={(id) => {
-            if (id === "top" || id === "bottom" || id === "left" || id === "right") {
-              onSideChange?.(id);
-            }
-            setMenu(null);
-          }}
-          onClose={() => setMenu(null)}
-        />
-      ) : null}
     </DockFrame>
   );
 }
