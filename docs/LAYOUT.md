@@ -330,37 +330,38 @@ implicit "setup" row).
   filename, `+n −m` in tabular nums (success/destructive colors). Click
   opens the diff.
 
-### Orchestration — the subagent board (the showpiece)
+### Orchestration — the chat under a header
 
 ```
-┌ goal line + orchestrator status ──────────┐
-│ ┌ subagent capsule ┐ ┌ capsule ┐ ┌ ─ ─ ┐  │
-│ │ ◉ codex · gpt-5.5│ │ claude  │ │ ...  │  │
-│ │ task summary     │ │         │ │      │  │
-│ │ ▸ last tool line │ │         │ │      │  │
-│ │ 2m14s · $0.16    │ │         │ │      │  │
-│ └──────────────────┘ └─────────┘ └ ─ ─ ┘  │
-├ orchestrator narration (quiet feed) ──────┤
-└───────────────────────────────────────────┘
+┌ Ship the iOS thread screens ──────────────┐  ┌ Agents ─────────────────────────────┐
+│ 2 working, 1 needs you, 3 done            │  │ ▫ Build the shell   ◌ Editing Home… │
+├───────────────────────────────────────────┤  │ ▫ Review the fold   ⊙ Needs you  a… │
+│ the orchestrator's transcript             │  │ ▫ Find the row sizes         ✓ Done │
+├ composer ─────────────────────────────────┤  └─────────────────────────────────────┘
 ```
 
-- **Capsules**: BUI *Task Rows* (capsules view) as the base. Each: provider
-  glyph, agent type + model/effort, one-line task summary, live last-activity
-  line (latest tool call, updates in place with a subtle crossfade), status
-  (running pulse / waiting amber — approval needed / done / error), elapsed +
-  cost in tabular nums. Grid `repeat(auto-fill, minmax(240px,1fr))`.
-- **Drill-in**: click a capsule → it **morphs into the detail surface**
-  (shared `layoutId`, BeUI *Morphing Modal* recipe, `SPRING_PANEL`): the
-  capsule expands in place into a panel showing that subagent's own activity
-  feed (same Tool Chips/Thinking primitives, read-only) + a small
-  send-to-agent input. Dismiss reverses the same path (apple-design §7:
-  exit the way it entered; §3: interruptible mid-morph).
-- **Waiting states surface up**: a subagent's approval-request renders the
-  BUI *Approval Card* inline in the capsule detail *and* flips the capsule
-  amber.
-- The orchestrator's own stream is the chat column the board views share
-  (`SplitShell`), folded to its edge tab by default ("Show orchestrator
-  log") so the fleet keeps the room.
+- **The thread is the chat.** Above the transcript, inset to its column,
+  sits `FleetHeader` (fleet/FleetHeader.tsx): the goal (the latest user
+  line) at 15px, and one 13px muted sentence under it, "2 working, 1 needs
+  you, 3 done" (`fleetSentence`), needs you in amber and failed in red.
+  Nothing before the first agent. There is no board, no edge tab and no
+  "Orchestrator log".
+- **The agents are rows in the right panel's Agents section** (`FleetList`,
+  fleet/AgentRow.tsx), on every thread that has subagents. A row is one
+  36px line: the role glyph, the title (at most half the row), the host
+  glyph (two or more hosts), and at the right edge the status: the host's
+  phrase while the agent works ("Editing HomeView.swift"), else the
+  vocabulary's word and what it is about ("Needs you  approve rm -rf
+  build", "Failed  usage cap", "Watching  bun test", "Queued  120 of 120
+  running"), Done alone once finished; the full text in a tooltip. Rows
+  read the meta (`agentStatus`); a row loads its transcript only to quote a
+  waiting agent or a failure the meta lacks. Nothing in a row moves.
+- **A row opens the agent's detail** over the pane (fleet/AgentDetail.tsx,
+  its content fleet/AgentDetailBody.tsx): the title, the status in full,
+  one muted tabular line (host, model, effort, branch, +a −d, tasks,
+  context, cost, elapsed), the transcript, and a field that steers a live
+  agent and messages a settled one. A spawn row in the transcript opens the
+  same detail.
 
 ### Master — the project's batch
 
@@ -661,5 +662,5 @@ paint them into a corner:
   together; honor reduced-transparency (§12, §14).
 - **Sidebar rows respond on pointer-down; pill glides with velocity**: §1, §5.
 - **Everything 13px/12px/11px with weight+dim hierarchy**: typography (§15).
-- One showpiece per view (sidebar pill; tab underline; capsule morph) — the
+- One showpiece per view (sidebar pill; tab underline) — the
   rest stays still. Restraint is the Cursor feel.

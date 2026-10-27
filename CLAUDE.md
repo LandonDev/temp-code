@@ -1072,7 +1072,7 @@ names the far child).
   name on hover, platform from the hello, remembered on the saved host row
   by `rememberPlatform`, preload for this machine; `lib/hostPlatform.ts`)
   marks every thread and agent row with two or more hosts: the rail, ChildRow,
-  the fleet panel, the spawn row, the Inbox, search, the master board.
+  the right panel's Agents rows, the spawn row, the Inbox, search, the master board.
   `lib/projectHostChoice.ts` picks a new thread's host (the thread on
   screen's, else the last used for the link, else this machine, else the
   first connected host with a copy) and `chrome/DraftHostPicker.tsx` in the
@@ -1084,7 +1084,7 @@ names the far child).
   own id; the attachment carries `environmentId`); sessions.ts reads its
   digest over the new `thread.read` (admin, any thread of that host) into
   the same `.temp-code/refs/<id>.md`, or leaves one line `thread "<title>"
-  on <host> is unreachable (<why>)`. The fleet panel already spans hosts
+  on <host> is unreachable (<why>)`. The right panel's Agents rows already span hosts
   (the store is global; a far child keeps its parent's bare id).
 - **Phone.** `ProjectPairs` folds by `linkId` alone, Home draws one row per
   linked project with the `HostGlyph`, the settings sheet saves on the home

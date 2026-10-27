@@ -2954,7 +2954,7 @@ thread, leaves one line in its place: `thread "<title>" on <host> is
 unreachable (<why>)`. A token naming the host itself reads the thread
 there. The call gives up after 15 s.
 
-The fleet panel's rows (`childrenOf`, `useAgents` in
+The right panel's Agents rows (`childrenOf`, `useAgents` in
 lib/threads/agents.ts) come from every host's rows: a child spawned on
 another host has the parent's bare id as its `parentId`, so it shows under
 its parent, and its `environmentId` names the host it lives on.
