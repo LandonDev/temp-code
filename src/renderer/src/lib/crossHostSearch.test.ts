@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AppSearchHit, ContentHit, FileHit, MessageHit } from "./appSearch";
 import {
   dedupePairedFiles,
+  foldFileHits,
   formatSeconds,
   hostTimingLabel,
   hostToken,
@@ -192,6 +193,64 @@ describe("dedupePairedFiles", () => {
     const unknown = content("local", "/Users/me/app/src/a.ts", 1);
     const dated = content("box", "/work/app/src/a.ts", 1, { mtime: 5 });
     expect(dedupePairedFiles([unknown, dated], pairs)[0]).toMatchObject({ host: "box", newer: true });
+  });
+});
+
+describe("foldFileHits", () => {
+  it("folds a file's matching lines into its first line, counting the rest", () => {
+    const out = foldFileHits(
+      [content("local", "/Users/me/solo/app.ts", 9), content("local", "/Users/me/solo/app.ts", 3)],
+      pairs,
+    );
+    expect(out).toEqual([{ ...content("local", "/Users/me/solo/app.ts", 3), more: 1 }]);
+  });
+
+  it("counts an exact duplicate line once", () => {
+    const line = content("local", "/Users/me/solo/app.ts", 3);
+    expect(foldFileHits([line, { ...line, id: "content:memory" }], pairs)).toEqual([line]);
+  });
+
+  it("gives a name hit its file's lines: it opens at the first and counts the others", () => {
+    const name = file("local", "/Users/me/solo/app.ts");
+    const out = foldFileHits(
+      [content("local", "/Users/me/solo/app.ts", 7), name, content("local", "/Users/me/solo/app.ts", 3, { column: 5 })],
+      pairs,
+    );
+    expect(out).toEqual([{ ...name, line: 3, column: 5, more: 1 }]);
+    expect(foldFileHits([name], pairs)).toEqual([name]);
+  });
+
+  it("folds a paired project's lines from both hosts into one row", () => {
+    const out = foldFileHits(
+      [content("local", "/Users/me/app/src/a.ts", 3, { alsoOn: ["box"], newer: false }), content("box", "/work/app/src/a.ts", 9)],
+      pairs,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ host: "local", line: 3, more: 1, alsoOn: ["box"] });
+  });
+
+  it("keeps different files, and the same path on unpaired hosts, apart, in their order", () => {
+    const message1 = message("local", "a", 1);
+    const out = foldFileHits(
+      [content("local", "/Users/me/solo/a.ts", 1), message1, content("local", "/Users/me/solo/b.ts", 1), content("box", "/tmp/a.ts", 1), content("local", "/Users/me/solo/a.ts", 2)],
+      pairs,
+    );
+    expect(out.map((hit) => (hit.kind === "content" ? `${hit.host}:${hit.path}:${hit.more ?? 0}` : hit.id))).toEqual([
+      "local:/Users/me/solo/a.ts:1",
+      "message:a:seq-1",
+      "local:/Users/me/solo/b.ts:0",
+      "box:/tmp/a.ts:0",
+    ]);
+  });
+
+  it("runs in the merge, after the paired copies fold", () => {
+    const perHost = new Map<string, AppSearchHit[]>([
+      ["local", [content("local", "/Users/me/app/src/a.ts", 3, { mtime: 1 }), content("local", "/Users/me/app/src/a.ts", 8, { mtime: 1 })]],
+      ["box", [content("box", "/work/app/src/a.ts", 3, { mtime: 2 })]],
+    ]);
+    const out = mergeCrossHost(perHost, { pairs, hostOrder: ["local", "box"] });
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ host: "box", line: 3, more: 1, newer: true });
   });
 });
 

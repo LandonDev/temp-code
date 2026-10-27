@@ -76,6 +76,12 @@ export type FileHit = Located &
     name: string;
     score: number;
     positions: number[];
+    /** Where the file's first content match is, when its lines folded into
+     *  this row (crossHostSearch.ts foldFileHits): the row opens there. */
+    line?: number;
+    column?: number;
+    /** How many more matching lines the row stands for. */
+    more?: number;
   };
 
 export type ContentHit = Located &
@@ -88,6 +94,8 @@ export type ContentHit = Located &
     line: number;
     column: number;
     preview: string;
+    /** How many more matching lines of this file the row stands for. */
+    more?: number;
   };
 
 export type NoteHit = Located & {

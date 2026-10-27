@@ -284,6 +284,7 @@ export function mergeCrossHost(
   let merged = mergeHits(...lists);
   merged = scoreMessages(merged);
   merged = dedupePairedFiles(merged, options.pairs);
+  merged = foldFileHits(merged, options.pairs);
   if (options.types && options.types.length > 0) {
     const wanted = new Set(options.types);
     merged = merged.filter((hit) => wanted.has(kindOf(hit)));
@@ -355,6 +356,54 @@ export function dedupePairedFiles(hits: AppSearchHit[], pairs: readonly ProjectP
     out.push(winners.get(key)!);
   }
   return out;
+}
+
+/** One row per file: a file's matching lines (and its name, when that
+ *  matched too) fold into one hit, keyed by its relative path in a paired
+ *  project (so both hosts' copies are one file) or else its host and path.
+ *  Lines alone become the first line with `more` counting the other lines;
+ *  a name hit takes the first line's position, so it opens there, and the
+ *  same count. A hit stands where its file first appeared in the list. */
+export function foldFileHits(hits: AppSearchHit[], pairs: readonly ProjectPair[]): AppSearchHit[] {
+  type Group = { name?: FileHit; lines: ContentHit[] };
+  const groups = new Map<string, Group>();
+  const keyOf = (hit: FileHit | ContentHit): string => {
+    const found = hit.host ? relativeInPair(pairs, hit.host, hit.path) : null;
+    return found ? `pair:${found.pair.id}:${found.relative}` : `path:${hit.host ?? ""}:${hit.path}`;
+  };
+  for (const hit of hits) {
+    if (hit.kind !== "file" && hit.kind !== "content") continue;
+    const key = keyOf(hit);
+    const group = groups.get(key) ?? { lines: [] };
+    if (hit.kind === "file") group.name ??= hit;
+    else group.lines.push(hit);
+    groups.set(key, group);
+  }
+  const out: AppSearchHit[] = [];
+  const emitted = new Set<string>();
+  for (const hit of hits) {
+    if (hit.kind !== "file" && hit.kind !== "content") {
+      out.push(hit);
+      continue;
+    }
+    const key = keyOf(hit);
+    if (emitted.has(key)) continue;
+    emitted.add(key);
+    out.push(foldedRow(groups.get(key)!));
+  }
+  return out;
+}
+
+function foldedRow({ name, lines }: { name?: FileHit; lines: ContentHit[] }): FileHit | ContentHit {
+  const byLine = new Map<number, ContentHit>();
+  for (const line of [...lines].sort((a, b) => a.line - b.line || a.column - b.column)) {
+    if (!byLine.has(line.line)) byLine.set(line.line, line);
+  }
+  const [first] = byLine.values();
+  const more = byLine.size > 1 ? { more: byLine.size - 1 } : {};
+  if (!first) return name!;
+  if (!name) return { ...first, ...more };
+  return { ...name, line: first.line, column: first.column, ...more };
 }
 
 // ── per-host hit builders (pure; the surface feeds them the wire rows) ──
