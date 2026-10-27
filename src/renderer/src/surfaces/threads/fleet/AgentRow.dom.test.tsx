@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The agent row (A18): one 36px button line, the host's phrase for a
- * working agent, the vocabulary's word and detail otherwise, Done alone,
- * and no numbers.
+ * working agent, the vocabulary's word and detail otherwise, no mark at
+ * rest (idle, done), and no numbers.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
@@ -62,12 +62,16 @@ describe("AgentRowView", () => {
     expect(container.querySelector('[data-slot="status-mark"]')?.textContent).toBe("FailedUsage cap reached on work");
   });
 
-  it("a done row says Done alone", () => {
+  it("at rest a row draws no mark and no word: done and idle are the title alone", () => {
     const { meta, status } = row("Port module 4");
-    const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    const mark = container.querySelector('[data-slot="status-mark"]')!;
-    expect(mark.textContent).toBe("Done");
-    expect(mark.querySelector('[data-slot="status-detail"]')).toBeNull();
+    expect(status.state).toBe("done");
+    const { container, rerender } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
+    expect(container.querySelector('[data-slot="status-mark"]')).toBeNull();
+    expect(container.textContent).not.toContain("Done");
+    rerender(<AgentRowView meta={meta} status={{ state: "idle", detail: "", phrase: false }} onOpen={() => {}} />);
+    expect(container.querySelector('[data-slot="status-mark"]')).toBeNull();
+    expect(container.textContent).not.toContain("Idle");
+    expect(container.textContent).toContain("Port module 4");
   });
 
   it("marks the selected row and opens on click", () => {

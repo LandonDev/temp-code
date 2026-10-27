@@ -100,6 +100,12 @@ describe("AgentDetailBody", () => {
     await waitFor(() => expect(h.send).toHaveBeenCalledOnce());
   });
 
+  it("the header says no elapsed time: the turn's closing line already does", () => {
+    h.metas.set("old", fixtureMeta("old", { status: "running", createdAt: Date.now() - 252_000 }));
+    const { container } = render(<AgentDetailBody agentId="old" parentCwd="/repo" onClose={() => {}} />);
+    expect(container.textContent).not.toMatch(/\d+m \d+s/);
+  });
+
   it("names a far child's host", () => {
     h.environments = [
       { id: "local", name: "This Mac" },

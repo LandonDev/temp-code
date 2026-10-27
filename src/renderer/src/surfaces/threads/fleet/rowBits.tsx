@@ -15,7 +15,7 @@ export function StatusGlyph({ status }: { status: SessionMeta["status"] }) {
 }
 
 /** The detail's numbers as one muted line, two spaces between facts: the
- *  diff in green and red, then tasks, context, cost and elapsed. `lead` is
+ *  diff in green and red, then tasks, context and cost. `lead` is
  *  plain words before them (the host, model, effort, branch). */
 export function AgentNumbersLine({
   parts,

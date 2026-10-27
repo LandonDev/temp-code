@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
+import { CALL_MARK, THREAD_MARK } from '@shared/bashMarks'
 import type { EventRow } from '@shared/events'
 import { parseEnviron } from './portSweep'
 
@@ -81,8 +82,7 @@ export interface ProcessGuardDeps {
   ownPid?: number
 }
 
-export const THREAD_MARK = 'TEMP_CODE_THREAD'
-export const CALL_MARK = 'TEMP_CODE_CALL'
+export { CALL_MARK, THREAD_MARK, unwrapBashCommand } from '@shared/bashMarks'
 export const GUARD_TICK_MS = 10_000
 export const ORPHAN_GRACE_MS = 60_000
 export const KILL_GRACE_MS = 5_000
@@ -108,13 +108,6 @@ export function shellQuote(text: string): string {
  */
 export function wrapBashCommand(command: string, callId: string, threadId: string): string {
   return `export ${THREAD_MARK}=${shellQuote(threadId)} ${CALL_MARK}=${shellQuote(callId)}; ${command}`
-}
-
-const WRAP_PREFIX = new RegExp(`^export ${THREAD_MARK}='(?:[^']|'\\\\'')*' ${CALL_MARK}='(?:[^']|'\\\\'')*'; `)
-
-/** The command as the model wrote it (the approval card shows this, never the marks). */
-export function unwrapBashCommand(command: string): string {
-  return command.replace(WRAP_PREFIX, '')
 }
 
 /** The thread and the call a process belongs to, read off its environment. */

@@ -34,22 +34,21 @@ describe("agentNumbers", () => {
   const base = { adds: 0, dels: 0, tasksDone: 0, tasksTotal: 0, ctxPct: null, cost: undefined, compacting: false };
 
   it("is empty with nothing to say", () => {
-    expect(agentNumbers(base, undefined, null)).toEqual([]);
-    expect(agentNumbers(base, 0, 0)).toEqual([]);
+    expect(agentNumbers(base, undefined)).toEqual([]);
+    expect(agentNumbers(base, 0)).toEqual([]);
   });
 
-  it("gives every part in order: diff, tasks, context, cost, elapsed", () => {
-    expect(agentNumbers({ ...base, adds: 140, dels: 12, tasksDone: 3, tasksTotal: 7, ctxPct: 42 }, 0.123, 252_000)).toEqual([
+  it("gives every part in order: diff, tasks, context, cost; no elapsed time (the turn's closing line says it)", () => {
+    expect(agentNumbers({ ...base, adds: 140, dels: 12, tasksDone: 3, tasksTotal: 7, ctxPct: 42 }, 0.123)).toEqual([
       { key: "diff", adds: 140, dels: 12 },
       { key: "tasks", text: "3/7 tasks" },
       { key: "context", text: "42% context" },
       { key: "cost", text: "$0.12" },
-      { key: "elapsed", text: "4m 12s" },
     ]);
   });
 
   it("says Compacting over the context while compaction runs", () => {
-    expect(agentNumbers({ ...base, ctxPct: 90, compacting: true }, undefined, null)).toEqual([
+    expect(agentNumbers({ ...base, ctxPct: 90, compacting: true }, undefined)).toEqual([
       { key: "context", text: "Compacting" },
     ]);
   });

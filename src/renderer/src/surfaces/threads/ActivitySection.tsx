@@ -170,7 +170,12 @@ function Row({
           <TooltipTrigger render={<span className="block truncate text-[13px] text-foreground" />}>{row.label}</TooltipTrigger>
           <TooltipContent>{row.label}</TooltipContent>
         </Tooltip>
-        {row.detail ? <span className="mt-0.5 block truncate font-mono text-xs text-muted-foreground">{row.detail}</span> : null}
+        {row.detail ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="mt-0.5 block truncate font-mono text-xs text-muted-foreground" />}>{row.detail}</TooltipTrigger>
+            <TooltipContent className="max-w-sm font-mono break-all">{row.detail}</TooltipContent>
+          </Tooltip>
+        ) : null}
       </ItemContent>
       <ItemActions className={cn("gap-1", row.detail && "self-start")}>
         {now > 0 ? (

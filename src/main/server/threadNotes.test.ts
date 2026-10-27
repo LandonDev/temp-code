@@ -98,6 +98,17 @@ describe('note sections', () => {
     expect(brief).toContain('**Open questions**\n\n- Which port?')
     expect(brief).not.toContain('**Decisions**')
   })
+
+  it('the brief\'s closing line names only the sections it carries', () => {
+    const custom = notesAsBrief('# Scratch\n\nJust a note.', 'T')
+    expect(custom).not.toMatch(/Start from|Pointers/)
+    expect(custom.endsWith('Just a note.')).toBe(true)
+    const state = notesAsBrief(applyNoteEdit('', { section: 'State', content: 'Half done.' }), 'T')
+    expect(state.endsWith('Start from State.')).toBe(true)
+    const pointers = notesAsBrief(applyNoteEdit('', { section: 'Pointers', content: 'src/a.ts' }), 'T')
+    expect(pointers.endsWith('The Pointers name the files and commands that matter.')).toBe(true)
+    expect(pointers).not.toContain('Start from')
+  })
 })
 
 describe('ThreadNotes storage', () => {

@@ -13,7 +13,6 @@ import {
   type AgentStatus,
   type FleetCounts,
 } from "../../../lib/threads/agents";
-import { duration } from "../../../lib/duration";
 import { readingPercent, type ContextReading } from "./contextCache";
 
 /**
@@ -55,19 +54,18 @@ export type NumberPart =
   | { key: "diff"; adds: number; dels: number }
   | { key: "tasks"; text: string }
   | { key: "context"; text: string }
-  | { key: "cost"; text: string }
-  | { key: "elapsed"; text: string };
+  | { key: "cost"; text: string };
 
 /** The detail's numbers in order: diff, tasks, context (Compacting while
- *  compaction runs), cost, elapsed. A fact the agent lacks gives no part. */
-export function agentNumbers(s: FleetStats, cost: number | undefined, elapsedMs: number | null): NumberPart[] {
+ *  compaction runs), cost. A fact the agent lacks gives no part; the time
+ *  is the turn's closing line ("Working for 12s", "Worked for 3s"). */
+export function agentNumbers(s: FleetStats, cost: number | undefined): NumberPart[] {
   const parts: NumberPart[] = [];
   if (s.adds > 0 || s.dels > 0) parts.push({ key: "diff", adds: s.adds, dels: s.dels });
   if (s.tasksTotal > 0) parts.push({ key: "tasks", text: `${s.tasksDone}/${s.tasksTotal} tasks` });
   if (s.compacting) parts.push({ key: "context", text: "Compacting" });
   else if (s.ctxPct !== null) parts.push({ key: "context", text: `${s.ctxPct}% context` });
   if (cost !== undefined && cost > 0) parts.push({ key: "cost", text: `$${cost.toFixed(2)}` });
-  if (elapsedMs !== null && elapsedMs > 0) parts.push({ key: "elapsed", text: duration(elapsedMs) });
   return parts;
 }
 

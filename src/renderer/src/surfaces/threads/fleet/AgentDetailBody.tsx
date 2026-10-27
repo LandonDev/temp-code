@@ -19,7 +19,6 @@ import {
 } from "../../../lib/threads/agents";
 import { AgentTranscript } from "../../AgentTranscript";
 import { AGENT_GLYPHS } from "../threadTypes";
-import { useNow } from "../../../lib/duration";
 import { useContextReading } from "./contextCache";
 import { AgentNumbersLine } from "./rowBits";
 import { agentNumbers, fleetStats, type NumberPart } from "./useFleetModel";
@@ -105,7 +104,6 @@ export function AgentDetailBody({
   const session = useSessionById(agentId);
   const live = isLiveStatus(meta?.status);
   const reading = useContextReading(agentId, live);
-  const now = useNow(live);
   const stats = useMemo(() => fleetStats(session, reading), [session, reading]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -114,8 +112,7 @@ export function AgentDetailBody({
   if (!meta) return null;
   const harness = asHarness(meta.provider);
   const branch = meta.cwd && meta.cwd !== parentCwd ? (meta.cwd.split("/").filter(Boolean).pop() ?? null) : null;
-  const elapsed = live ? now - meta.createdAt : meta.updatedAt - meta.createdAt;
-  const parts = agentNumbers(stats, session?.thread?.cost, elapsed);
+  const parts = agentNumbers(stats, session?.thread?.cost);
 
   const submit = async () => {
     const body = text.trim();

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { unwrapBashCommand } from "@server/shared/bashMarks";
 import type { BackgroundTaskKind } from "@server/shared/events";
 import type { MacBridgeRequest } from "@server/shared/contract-macbridge";
 import { STALE_WATCH_MS, isStaleWatch } from "@server/shared/watch";
@@ -82,11 +83,13 @@ export function activityRows(src: ActivitySources): ActivityRow[] {
   }
   for (const t of bg?.tasks ?? []) {
     const cron = t.kind === "cron";
+    // The host's guard marks a call's shell; the row shows the command as written.
+    const command = t.command ? unwrapBashCommand(t.command) : undefined;
     rest.push({
       key: `task:${t.id}`,
       kind: t.kind,
       label: cron ? upperFirst(t.label) : t.label,
-      ...(t.command && t.command !== t.label ? { detail: t.command } : {}),
+      ...(command && command !== t.label ? { detail: command } : {}),
       since: t.startedAt,
       ...(cron ? {} : { stop: { type: "task" as const, sessionId: src.meta.id, taskId: t.id } }),
       ...(LOG_KINDS.has(t.kind) ? { open: "log" as const, taskId: t.id } : {}),

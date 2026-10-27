@@ -160,7 +160,17 @@ export function notesAsBrief(text: string, title: string): string {
     if (!s.body) continue
     lines.push(`**${s.heading}**`, '', s.body, '')
   }
-  lines.push('Start from State and Open questions; the Pointers name the files and commands that matter.')
+  const filled = new Set(p.sections.filter((s) => s.body).map((s) => s.heading))
+  const from = (['State', 'Open questions'] as const).filter((h) => filled.has(h))
+  // The closing line names only sections the brief carries.
+  const clauses = [
+    from.length ? `Start from ${from.join(' and ')}` : '',
+    filled.has('Pointers') ? 'the Pointers name the files and commands that matter' : ''
+  ].filter(Boolean)
+  if (clauses.length) {
+    const line = clauses.join('; ')
+    lines.push(`${line[0].toUpperCase()}${line.slice(1)}.`)
+  }
   return lines.join('\n').trim()
 }
 

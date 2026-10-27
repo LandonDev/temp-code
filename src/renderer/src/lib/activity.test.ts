@@ -76,6 +76,28 @@ describe("activityRows", () => {
     expect(byKind.monitor.open).toBeUndefined();
   });
 
+  it("shows a guarded shell's command as written: the host's marks never reach the row", () => {
+    const wrapped = (command: string) => `export TEMP_CODE_THREAD='s1' TEMP_CODE_CALL='toolu_1'; ${command}`;
+    const rows = activityRows({
+      meta: {
+        id: "s1",
+        status: "running",
+        background: bg({
+          tasks: [
+            { id: "t1", label: "Serve the app", kind: "shell", startedAt: 100, command: wrapped("bun run dev"), callId: "c1" },
+            { id: "t2", label: "sleep 45", kind: "shell", startedAt: 200, command: wrapped("sleep 45"), callId: "c2" },
+          ],
+        }),
+      },
+      agents: [],
+      devServers: [],
+      macCalls: [],
+    });
+    expect(rows.find((r) => r.label === "Serve the app")?.detail).toBe("bun run dev");
+    // Equal to its label once unwrapped: no second line.
+    expect(rows.find((r) => r.label === "sleep 45")?.detail).toBeUndefined();
+  });
+
   it("keeps a batch-steps row while a master watches with every batch thread done", () => {
     const master = (status: "watching" | "idle") =>
       activityRows({ meta: { id: "m", status, background: bg({ batch: { out: 0, total: 3 }, watchingSince: 5 }) }, agents: [], devServers: [], macCalls: [] });
