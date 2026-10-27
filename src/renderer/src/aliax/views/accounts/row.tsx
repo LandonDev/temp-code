@@ -131,7 +131,8 @@ export function UsageBars({ name, report, headroom, columns, now }: { name: stri
             ) : null}
           </PopoverTrigger>
           <PopoverContent align="end" className="w-64 gap-3 p-3">
-            {windows.map((w) => (
+            {/* Every window, even one past the bar cap: the popover is where all of them live. */}
+            {report.windows.map((w) => (
               <WindowDetail key={w.label} w={w} now={now} />
             ))}
             {rate ? (

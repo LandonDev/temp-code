@@ -120,6 +120,15 @@ describe("AccountsView", () => {
     expect(document.activeElement).toBe(details);
   });
 
+  it("lists every window in the popover, even past the bar cap", async () => {
+    const windows = ["5h", "Weekly", "Opus", "Fable"].map((label, i) => ({ label, usedPercent: 10 * i, resetsAt: NOW + (i + 1) * HOUR, periodMs: 168 * HOUR }));
+    render(<AccountsView {...props} usage={{ "claude-code": [{ profileName: "a@x.com", windows }] }} />);
+    expect(screen.queryByRole("progressbar", { name: /^Fable/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Usage details for Main" }));
+    await flush();
+    expect(within(screen.getByRole("dialog")).getByText("Fable")).toBeTruthy();
+  });
+
   it("has no details button for a row without a report", () => {
     render(<AccountsView {...props} />);
     expect(screen.queryByRole("button", { name: "Usage details for Spare" })).toBeNull();
