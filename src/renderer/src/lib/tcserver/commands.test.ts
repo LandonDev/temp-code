@@ -422,6 +422,24 @@ describe("FocusSignal", () => {
     expect(links.box.sent).toEqual(["x", null, "x"]);
   });
 
+  it("an absent person clears the focus on every host; their return restores it", () => {
+    const { links, signal, settle } = setup();
+    signal.pane("mac", "a");
+    settle();
+    signal.attention(false);
+    settle();
+    // Moving panes while away tells no host of a thread on screen.
+    signal.left("a");
+    signal.pane("box", "x");
+    settle();
+    expect(links.mac.sent).toEqual(["a", null]);
+    expect(links.box.sent).toEqual([]);
+    signal.attention(true);
+    settle();
+    expect(links.box.sent).toEqual(["x"]);
+    expect(links.mac.sent).toEqual(["a", null]);
+  });
+
   it("a send that failed leaves the host unknown, so the next change still reaches it", async () => {
     const { links, signal, settle } = setup();
     let fail = true;

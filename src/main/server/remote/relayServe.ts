@@ -341,7 +341,8 @@ export class RelayServer {
 
   /** A notice of a local root thread (notifier.onNotice): to every connected link as relay.notice when this host delivers nothing itself. */
   onNotice(notice: Notice): void {
-    if (this.closed || this.deps.deliversNotices()) return
+    // A thread its person is looking at on this Mac is not news on the phone.
+    if (this.closed || notice.onScreen || this.deps.deliversNotices()) return
     // Everything but url: the carrier's /ui cannot open this host's thread.
     const body = {
       event: notice.event,

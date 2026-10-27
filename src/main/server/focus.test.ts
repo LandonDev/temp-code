@@ -16,6 +16,18 @@ describe('FocusSet', () => {
     expect(set.isInteractive('other')).toBe(false)
   })
 
+  it('isNamed is the exact thread a socket names, never widened', () => {
+    const set = new FocusSet(links({ sub: 'root' }, { child: 'master' }))
+    set.set(1, 'sub')
+    set.set(2, 'master')
+    expect(set.isNamed('sub')).toBe(true)
+    expect(set.isNamed('master')).toBe(true)
+    expect(set.isNamed('root')).toBe(false)
+    expect(set.isNamed('child')).toBe(false)
+    set.drop(1)
+    expect(set.isNamed('sub')).toBe(false)
+  })
+
   it('a focused master brings every root carrying its id and their subagents', () => {
     const set = new FocusSet(links({ childSub: 'child' }, { child: 'master', stranger: 'elsewhere' }))
     set.set(1, 'master')

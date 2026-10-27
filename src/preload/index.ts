@@ -200,7 +200,10 @@ const api = {
       ipcRenderer.send('app:quit-subscribe')
       return on('app:quit-requested', cb)
     },
-    logoUrl: (absolutePath: string): string => logoAssetUrl(absolutePath)
+    logoUrl: (absolutePath: string): string => logoAssetUrl(absolutePath),
+    /** Whether the person is at this machine: unlocked, awake, input in the last two minutes. */
+    attention: (): Promise<boolean> => ipcRenderer.invoke('app:attention'),
+    onAttention: (cb: (present: boolean) => void): (() => void) => on('app:attention', cb)
   },
 
   /** Dev builds only; the handlers are not registered in a packaged app. */

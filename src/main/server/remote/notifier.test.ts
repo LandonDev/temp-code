@@ -579,3 +579,44 @@ describe('a batch thread', () => {
     ])
   })
 })
+
+describe('a thread on screen', () => {
+  it('stamps the notice for the root a window names, counts it as sent, and leaves a focused subagent or master out', () => {
+    const named = new Set<string>()
+    notifier.stop()
+    notifier = new Notifier({ registry: reg, stuckMinutes: () => 10, onScreen: (id) => named.has(id), now: () => Date.now(), log: () => {} })
+    notifier.onNotice((n) => {
+      notices.push(n)
+    })
+    reg.add('r', { status: 'running' })
+    reg.add('sub', { parentId: 'r', status: 'running' })
+    reg.add('m', { threadType: 'chat', isMaster: true, status: 'watching' })
+    reg.add('k', { status: 'running', masterId: 'm' })
+    notifier.start()
+    named.add('r')
+    reg.row('r', { type: 'approval-request', requestId: 'a', toolName: 'Bash', input: { command: 'bun test' } })
+    reg.status('r', 'waiting')
+    settle()
+    expect(notices.map((n) => [n.threadId, n.body, n.onScreen])).toEqual([['r', 'Run bun test?', true]])
+    // Leaving the thread does not replay the prompt.
+    named.delete('r')
+    reg.push('r', { activity: 'waiting' })
+    reg.status('r', 'waiting')
+    settle()
+    expect(notices).toHaveLength(1)
+    // A focused subagent does not stamp its root, nor a focused master its batch.
+    named.add('sub')
+    named.add('m')
+    reg.row('r', { type: 'approval-resolved', requestId: 'a', allow: true })
+    reg.status('r', 'running')
+    reg.row('sub', { type: 'approval-request', requestId: 'b', toolName: 'Read', input: { file_path: '/x/y.ts' } })
+    reg.status('sub', 'waiting')
+    reg.row('k', { type: 'approval-request', requestId: 'c', toolName: 'Bash', input: { command: 'ls' } })
+    reg.status('k', 'waiting')
+    settle()
+    expect(notices.slice(1).map((n) => [n.threadId, n.body, n.onScreen])).toEqual([
+      ['r', 'Read y.ts?', undefined],
+      ['k', 'Run ls?', undefined]
+    ])
+  })
+})

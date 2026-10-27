@@ -24,6 +24,7 @@ import { registerAppProtocol } from './appScheme'
 import { migrateLocalStorage } from './originMigration'
 import { isHeadless, noDisplay, publishLocalPort, quitsOnAllClosed, unpublishLocalPort } from './headless'
 import { MacPresenceWatcher, presenceFromEnv } from './presence'
+import { AttentionWatcher } from './attention'
 import { htmlPreviewer } from './htmlPreview'
 import { setHtmlPreviewer, setHtmlRenderRoot } from './server/htmlRender'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
@@ -151,6 +152,15 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin' && !headless) {
     presence.attach(powerMonitor)
     if (!fromEnv.screen) void presence.readInitialLock()
+  }
+  // Whether the person is at this machine (attention.ts): the renderer names its focused thread only then.
+  const attention = new AttentionWatcher(presence, headless ? { getSystemIdleTime: () => 0 } : powerMonitor)
+  ipcMain.handle('app:attention', () => attention.isPresent())
+  if (!headless) {
+    attention.onChange((present) => {
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send('app:attention', present)
+    })
+    attention.start()
   }
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
     appPath: app.getAppPath(),

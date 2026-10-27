@@ -2856,18 +2856,21 @@ export async function startServer(
       (meta.workspaceId ? registry.listWorkspaces().find((w) => w.id === meta.workspaceId)?.name : null) ??
       null,
     // The payload's tc.host: the phone adds it to the subtitle when several hosts are paired.
-    hostName: () => hostname()
+    hostName: () => hostname(),
+    // A thread a window shows its person right now: the phone hears nothing of it (attention.ts, FocusSignal).
+    onScreen: (id) => focus.isNamed(id)
   })
+  // The person-facing sinks (the hub, local APNs, the relay) skip an onScreen notice; webhooks and the Live Activity take every one.
   if (hub) {
     notifier.onNotice(
       (n) =>
-        void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, subtitle: n.subtitle, body: n.body, url: n.url, ts: n.ts, seq: n.seq, kind: n.kind, requestId: n.requestId, hostName: n.hostName })
+        n.onScreen ? undefined : void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, subtitle: n.subtitle, body: n.body, url: n.url, ts: n.ts, seq: n.seq, kind: n.kind, requestId: n.requestId, hostName: n.hostName })
     )
   }
   // A host with the key posts every notice to its phones itself.
   if (apns)
     notifier.onNotice((n) =>
-      pushRegistry.deliver({ event: n.event, threadId: n.threadId, seq: n.seq, title: n.title, subtitle: n.subtitle, body: n.body, kind: n.kind, requestId: n.requestId, hostName: n.hostName, ts: n.ts }).then(() => undefined)
+      n.onScreen ? undefined : pushRegistry.deliver({ event: n.event, threadId: n.threadId, seq: n.seq, title: n.title, subtitle: n.subtitle, body: n.body, kind: n.kind, requestId: n.requestId, hostName: n.hostName, ts: n.ts }).then(() => undefined)
     )
   // Threads with a Live Activity on a phone: every change of what the card
   // shows goes out as a liveactivity push (coalesced for the task line), and

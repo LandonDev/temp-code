@@ -561,6 +561,15 @@ export function openUrl(url: string): Promise<void> {
  *  itself after `apply`, so there is no renderer-side relaunch. */
 export type UpdateStatus = Awaited<ReturnType<typeof window.api.updates.get>>;
 
+/**
+ * Whether the person is at this machine (src/main/attention.ts). A window
+ * without the bridge (a test, an older preload) is always present.
+ */
+export const attention = {
+  present: (): Promise<boolean> => api()?.app?.attention?.() ?? Promise.resolve(true),
+  onChange: (cb: (present: boolean) => void): (() => void) => api()?.app?.onAttention?.(cb) ?? (() => {}),
+};
+
 export const updates = {
   get: (): Promise<UpdateStatus> => api().updates.get(),
   check: (): Promise<UpdateStatus> => api().updates.check(),

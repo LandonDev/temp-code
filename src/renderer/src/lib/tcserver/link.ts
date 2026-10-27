@@ -1,4 +1,4 @@
-import { bindServer, getServerPort, isWebMode } from "../native";
+import { attention as nativeAttention, bindServer, getServerPort, isWebMode } from "../native";
 import { webSocketUrl } from "../nativeWeb";
 import {
   LOCAL_ENVIRONMENT_ID,
@@ -97,6 +97,9 @@ let leaving = false;
  *  render, a webview) blurs the window but leaves the document focused. */
 function installFocusHooks(): void {
   focusSignal.window(document.hasFocus());
+  // Away (locked, asleep, idle two minutes): no host is told a thread is on screen, so the phone still hears.
+  void nativeAttention.present().then((present) => focusSignal.attention(present), () => undefined);
+  nativeAttention.onChange((present) => focusSignal.attention(present));
   window.addEventListener("focus", () => focusSignal.window(true));
   window.addEventListener("blur", () => {
     setTimeout(() => focusSignal.window(document.hasFocus()), 0);

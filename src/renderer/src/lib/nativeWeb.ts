@@ -140,6 +140,9 @@ export const webApi: Api = {
     declineQuit: noop,
     onQuitRequested: () => noop,
     logoUrl: (absolutePath) => assetHref(logoAssetUrl(absolutePath)),
+    // A browser tab cannot tell whether its person is there: always present.
+    attention: () => Promise.resolve(true),
+    onAttention: () => noop,
   },
   debug: {
     menuClick: () => needsDesktop("Debug"),

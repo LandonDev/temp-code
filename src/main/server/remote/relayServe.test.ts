@@ -344,6 +344,10 @@ describe('RelayServer', () => {
       from: 'env_mac',
       notice: { event: 'needs_you', kind: 'approval', threadId: 't1', title: 'T', subtitle: 'proj', body: 'B', ts: 5, seq: 9, requestId: 'r1', hostName: 'Studio' }
     })
+    // A thread its person is looking at on this Mac is not relayed.
+    relayed.server.onNotice({ ...notice, onScreen: true })
+    await tick()
+    expect(relayed.requests.filter((r) => r.method === 'relay.notice')).toHaveLength(2)
   })
 
   it('onPeerPush serves relay.* pushes and leaves every other push alone', async () => {

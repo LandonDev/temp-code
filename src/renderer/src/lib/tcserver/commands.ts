@@ -310,14 +310,18 @@ const UNKNOWN = Symbol("unknown focus");
 /**
  * `session.focus`: the thread this window's focused pane shows goes to its
  * host, null to every other host and to all of them while the window is
- * not focused; the host runs that thread's requests and pushes first
- * (src/main/server/focus.ts). Sent once per change per link, the changes
- * of one commit folded into one (a pane's cleanup and the next pane's
- * effect), and again when a link opens a new socket.
+ * not focused or its person is away (src/main/attention.ts); the host runs
+ * that thread's requests and pushes first (src/main/server/focus.ts) and
+ * sends the phone nothing about it (remote/notifier.ts `onScreen`). Sent
+ * once per change per link, the changes of one commit folded into one (a
+ * pane's cleanup and the next pane's effect), and again when a link opens a
+ * new socket.
  */
 export class FocusSignal {
   private active: { environmentId: string; sessionId: string } | null = null;
   private windowFocused = true;
+  /** The person is at the machine (unlocked, awake, input in the last two minutes). */
+  private personPresent = true;
   /** What each link's socket was last told; absent: nothing since it opened. */
   private sent = new Map<string, string | null | typeof UNKNOWN>();
   private queued = false;
@@ -347,6 +351,13 @@ export class FocusSignal {
     this.schedule();
   }
 
+  /** The person left (locked, asleep, idle two minutes) or came back: away, no host is told a thread is on screen. */
+  attention(present: boolean): void {
+    if (this.personPresent === present) return;
+    this.personPresent = present;
+    this.schedule();
+  }
+
   /** The link opened a new socket, which holds no focus yet. */
   reopened(environmentId: string): void {
     this.sent.delete(environmentId);
@@ -363,7 +374,7 @@ export class FocusSignal {
   }
 
   private flush(): void {
-    const want = this.windowFocused ? this.active : null;
+    const want = this.windowFocused && this.personPresent ? this.active : null;
     const hosts = new Set(this.sent.keys());
     if (want) hosts.add(want.environmentId);
     for (const environmentId of hosts) {

@@ -47,6 +47,8 @@ export interface Notice {
   requestId?: string
   /** This host's name: the phone adds it to the subtitle when several hosts are paired. */
   hostName?: string
+  /** A desktop window shows this thread to its person right now: the person-facing sinks (hub, APNs, relay) skip it. */
+  onScreen?: true
 }
 
 export type NoticeSink = (notice: Notice) => void | Promise<void>
@@ -71,6 +73,8 @@ export interface NotifierOptions {
   place?: (meta: SessionMeta) => string | null
   /** This host's name, carried on every notice. */
   hostName?: () => string
+  /** A desktop window shows this root to its person now (FocusSet.isNamed): the notice is stamped `onScreen`. */
+  onScreen?: (rootId: string) => boolean
   now?: () => number
   /** Signals inside this window settle into one decision. */
   debounceMs?: number
@@ -551,9 +555,10 @@ export class Notifier {
       ts: this.now(),
       seq,
       ...(requestId === undefined ? {} : { requestId }),
-      ...(hostName ? { hostName: cut(oneLine(hostName), 80) } : {})
+      ...(hostName ? { hostName: cut(oneLine(hostName), 80) } : {}),
+      ...(this.options.onScreen?.(id) ? { onScreen: true as const } : {})
     }
-    this.log(`${event} ${id} "${notice.title}": ${body}`)
+    this.log(`${event} ${id} "${notice.title}": ${body}${notice.onScreen ? ' (on screen)' : ''}`)
     for (const sink of this.sinks) {
       try {
         const out = sink(notice)

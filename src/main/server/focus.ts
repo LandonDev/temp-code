@@ -53,6 +53,11 @@ export class FocusSet {
     return [...this.counts.keys()]
   }
 
+  /** A socket names this exact thread: on screen now (a focused subagent or master does not count for its root or batch). */
+  isNamed(sessionId: string): boolean {
+    return this.counts.has(sessionId)
+  }
+
   /** In the union across sockets: focused, under a focused thread, or in a focused master's batch. */
   isInteractive(sessionId: string): boolean {
     if (this.counts.size === 0) return false
