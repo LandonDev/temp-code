@@ -1,12 +1,6 @@
 import { registry } from "../lib/connection";
 import { environmentOfCwd } from "../lib/tcserver/projects";
-import {
-  CaseSensitive,
-  ChevronLeft,
-  LoaderCircle,
-  Regex,
-  WholeWord,
-} from "./icons";
+import { CaseSensitive, ChevronLeft, Regex, WholeWord } from "./icons";
 import {
   useEffect,
   useMemo,
@@ -15,6 +9,12 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Item } from "../components/ui/item";
+import { Spinner } from "../components/ui/spinner";
+import { Toggle } from "../components/ui/toggle";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import {
   searchProject,
   type OpenFileFn,
@@ -140,30 +140,30 @@ export function ProjectSearch({
   };
 
   if (!cwd || cwd === "~") {
-    return (
-      <p className="px-3 py-2 text-[12px] text-content/50">No project folder</p>
-    );
+    return <p className="px-3 py-2 text-[12px] text-muted-foreground">No project folder</p>;
   }
+
+  const trimmed = query.trim();
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center gap-1 border-b border-content/10 px-1.5 py-1">
-        <button
-          type="button"
-          onClick={onClose}
-          title="Back to files"
-          aria-label="Back to files"
-          className="grid size-7 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
-        >
-          <ChevronLeft className="size-4" strokeWidth={1.75} />
-        </button>
-        <span className="min-w-0 flex-1 truncate text-[12px] text-content/50">
+      <div className="flex shrink-0 items-center gap-1 px-1.5 pt-1.5">
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button variant="ghost" size="icon-sm" aria-label="Back to files" onClick={onClose} />}
+          >
+            <ChevronLeft />
+          </TooltipTrigger>
+          <TooltipContent>Back to files</TooltipContent>
+        </Tooltip>
+        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-muted-foreground">
           Search in files
         </span>
       </div>
-      <div className="shrink-0 space-y-2 border-b border-content/10 p-2">
-        <div className="flex items-center gap-1 rounded-md border border-content/10 bg-content/5 px-2 pr-1">
-          <input
+      <div className="flex shrink-0 flex-col gap-2 p-3">
+        <div className="relative">
+          <Input
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -171,142 +171,122 @@ export function ProjectSearch({
             placeholder="Search"
             aria-label="Search"
             spellCheck={false}
-            className="min-w-0 flex-1 bg-transparent py-1.5 text-[12px] text-content outline-none placeholder:text-content/40"
+            className="pe-[84px]"
           />
-          <Toggle
-            label="Match case"
-            active={caseSensitive}
-            onClick={() => setCaseSensitive((value) => !value)}
-          >
-            <CaseSensitive className="size-3.5" strokeWidth={1.75} />
-          </Toggle>
-          <Toggle
-            label="Match whole word"
-            active={wholeWord}
-            onClick={() => setWholeWord((value) => !value)}
-          >
-            <WholeWord className="size-3.5" strokeWidth={1.75} />
-          </Toggle>
-          <Toggle
-            label="Use regular expression"
-            active={regex}
-            onClick={() => setRegex((value) => !value)}
-          >
-            <Regex className="size-3.5" strokeWidth={1.75} />
-          </Toggle>
+          <div className="absolute end-1 top-1/2 flex -translate-y-1/2 items-center">
+            <OptionToggle label="Match case" pressed={caseSensitive} onPressedChange={setCaseSensitive}>
+              <CaseSensitive />
+            </OptionToggle>
+            <OptionToggle label="Match whole word" pressed={wholeWord} onPressedChange={setWholeWord}>
+              <WholeWord />
+            </OptionToggle>
+            <OptionToggle label="Use regular expression" pressed={regex} onPressedChange={setRegex}>
+              <Regex />
+            </OptionToggle>
+          </div>
         </div>
-        <input
+        <Input
           value={include}
           onChange={(event) => setInclude(event.target.value)}
-          placeholder="files to include"
-          aria-label="files to include"
+          placeholder="Files to include"
+          aria-label="Files to include"
           spellCheck={false}
-          className="w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[11px] text-content outline-none placeholder:text-content/40"
+          className="h-7 text-[12px]"
         />
-        <input
+        <Input
           value={exclude}
           onChange={(event) => setExclude(event.target.value)}
-          placeholder="files to exclude"
-          aria-label="files to exclude"
+          placeholder="Files to exclude"
+          aria-label="Files to exclude"
           spellCheck={false}
-          className="w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[11px] text-content outline-none placeholder:text-content/40"
+          className="h-7 text-[12px]"
         />
       </div>
 
-      <div className="flex min-h-8 shrink-0 items-center gap-2 px-3 py-1.5 text-[11px] text-content/40">
-        {loading ? (
-          <>
-            <LoaderCircle className="size-3 motion-safe:animate-spin" strokeWidth={1.75} />
-            <span>Searching…</span>
-          </>
-        ) : error ? (
-          <span className="text-danger">{error}</span>
-        ) : query.trim() ? (
-          <span>
-            {matchCount === 0
-              ? "No results"
-              : `${matchCount} result${matchCount === 1 ? "" : "s"} in ${fileCount} file${fileCount === 1 ? "" : "s"}`}
-            {truncated ? " (limited)" : ""}
-          </span>
-        ) : (
-          <span>Type to search across the project</span>
-        )}
-      </div>
+      {trimmed ? (
+        <div aria-live="polite" className="flex shrink-0 items-center gap-2 px-3 pb-2 text-[12px] text-muted-foreground">
+          {loading ? (
+            <>
+              <Spinner className="size-3.5" />
+              <span>Searching…</span>
+            </>
+          ) : error ? (
+            <span className="text-destructive">{error}</span>
+          ) : matchCount === 0 ? (
+            <span>No results</span>
+          ) : (
+            <span>
+              {truncated ? "First " : ""}
+              {truncated ? `${matchCount} results` : plural(matchCount, "result")} in {plural(fileCount, "file")}
+            </span>
+          )}
+        </div>
+      ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-none">
-        {groups.map((group) => (
-          <section key={group.path} className="border-b border-content/8">
-            <div className="flex items-center gap-1.5 px-2 py-1.5">
-              <FileTypeIcon name={group.name} isDir={false} size={16} />
-              <span className="min-w-0 flex-1 truncate text-[12px] text-content">
-                {group.name}
-              </span>
-              <span className="rounded-full bg-accent/20 px-1.5 py-0.5 text-[10px] tabular-nums text-accent">
-                {group.matches.length}
-              </span>
-            </div>
-            <p
-              className="truncate px-2 pb-1 text-[10px] text-content/40"
-              title={group.relative}
-            >
-              {group.relative}
-            </p>
-            <ul>
-              {group.matches.map((match) => (
-                <li key={`${match.path}:${match.line}:${match.column}`}>
-                  <button
-                    type="button"
-                    onClick={() => openMatch(match)}
-                    className="flex w-full items-start gap-2 px-2 py-1 text-left hover:bg-content/5"
-                  >
-                    <span className="w-7 shrink-0 pt-px text-right font-mono text-[11px] text-content/40 tabular-nums">
-                      {match.line}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate font-mono text-[11px] leading-5 text-content/70">
-                      <MatchText
-                        text={match.preview.trimEnd()}
-                        query={query.trim()}
-                        caseSensitive={caseSensitive}
-                        regex={regex}
-                      />
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-none px-1.5 pb-1.5">
+        {groups.map((group) => {
+          const folder = group.relative.slice(0, Math.max(0, group.relative.length - group.name.length - 1));
+          return (
+            <section key={group.path} aria-label={group.relative}>
+              <div className="flex h-7 items-center gap-2 px-1.5">
+                <FileTypeIcon name={group.name} isDir={false} size={16} />
+                <span className="shrink-0 truncate text-[13px] text-foreground">{group.name}</span>
+                <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">{folder}</span>
+                <span data-match-count className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
+                  {group.matches.length}
+                </span>
+              </div>
+              <ul>
+                {group.matches.map((match) => (
+                  <li key={`${match.path}:${match.line}:${match.column}`}>
+                    <Item
+                      size="xs"
+                      className="flex-nowrap items-start gap-2 rounded-md px-1.5 py-0.5 text-left transition-none hover:bg-foreground/5"
+                      render={<button type="button" onClick={() => openMatch(match)} />}
+                    >
+                      <span className="w-7 shrink-0 text-right font-mono text-[11px] leading-5 text-muted-foreground tabular-nums">
+                        {match.line}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-mono text-[12px] leading-5 text-foreground/80">
+                        <MatchText
+                          text={match.preview.trimEnd()}
+                          query={trimmed}
+                          caseSensitive={caseSensitive}
+                          regex={regex}
+                        />
+                      </span>
+                    </Item>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function Toggle({
+function OptionToggle({
   label,
-  active,
-  onClick,
+  pressed,
+  onPressedChange,
   children,
 }: {
   label: string;
-  active: boolean;
-  onClick: () => void;
+  pressed: boolean;
+  onPressedChange: (pressed: boolean) => void;
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      onClick={onClick}
-      className={`grid size-6 place-items-center rounded-md ${
-        active
-          ? "bg-content/15 text-content"
-          : "text-content/40 hover:bg-content/10 hover:text-content/70"
-      }`}
-    >
-      {children}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={<Toggle size="xs" aria-label={label} pressed={pressed} onPressedChange={onPressedChange} />}
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
