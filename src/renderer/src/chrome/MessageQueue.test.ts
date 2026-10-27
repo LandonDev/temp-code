@@ -26,7 +26,8 @@ describe("MessageQueue", () => {
         ],
       }),
     );
-    expect(html).toContain("Queued · 2");
+    expect(html).toMatch(/Queued<span[^>]*tabular-nums[^>]*>2<\/span>/);
+    expect(html).not.toContain("·");
     expect(html).toContain("first");
     expect(html).toContain("second");
     expect(html.match(/aria-label="Send now"/g)).toHaveLength(2);
@@ -36,7 +37,7 @@ describe("MessageQueue", () => {
   it("says the list waits for the wait when the thread sits in a wait_for_agent", () => {
     const items = [{ id: "a", text: "x", ts: 1 }];
     expect(renderToStaticMarkup(createElement(MessageQueue, { ...props, sessionId: "waiting", items }))).toContain("Queued until the wait finishes");
-    expect(renderToStaticMarkup(createElement(MessageQueue, { ...props, sessionId: "other", items }))).toContain("Queued · 1");
+    expect(renderToStaticMarkup(createElement(MessageQueue, { ...props, sessionId: "other", items }))).toMatch(/Queued<span[^>]*>1<\/span>/);
   });
 
   it("hides steer while paused", () => {

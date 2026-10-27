@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { AnimatePresence, Reorder, useReducedMotion } from 'motion/react'
 import { DUR, EASE_OUT, FADE_OUT } from '../lib/ease'
 import type { QueuedMessage } from '../lib/tcserver/types'
@@ -7,8 +7,10 @@ import { useSessionMeta } from '../lib/tcserver/store'
 import { modelsFor, resolveModel } from '../lib/models'
 import { HARNESSES, HARNESS_TITLE, type HarnessId } from '../lib/session'
 import { HarnessIcon } from './HarnessIcon'
-import { Popover } from './Popover'
-import { Select } from '../surfaces/settingsBits'
+import { Button } from '../components/ui/button'
+import { ChoiceSelect } from '../components/choice-select'
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { ArrowUp, GripVertical, SlidersHorizontal, X } from './icons'
 
 type Props = {
@@ -26,8 +28,8 @@ type Props = {
 /**
  * Messages waiting their turn, stacked above the composer. Each sends as
  * turns settle, in order. Drag to reorder, click the text to edit in
- * place, ✕ removes, ↑ steers it into the running turn now (providers that
- * cannot steer send it next instead).
+ * place, Remove takes it out, Send now steers it into the running turn
+ * (providers that cannot steer send it next instead).
  */
 export function MessageQueue({
   items,
@@ -47,8 +49,14 @@ export function MessageQueue({
 
   return (
     <div className="mb-2">
-      <p className="mb-1 px-1 text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase">
-        {awaiting ? 'Queued until the wait finishes' : `Queued · ${items.length}`}
+      <p className="mb-1 px-1 text-xs font-medium text-muted-foreground">
+        {awaiting ? (
+          'Queued until the wait finishes'
+        ) : (
+          <>
+            Queued<span className="ms-2 tabular-nums">{items.length}</span>
+          </>
+        )}
       </p>
       <Reorder.Group
         axis="y"
@@ -66,8 +74,8 @@ export function MessageQueue({
               exit={reduce ? undefined : FADE_OUT}
               className="group/q relative"
             >
-              <div className="flex items-start gap-1.5 rounded-lg border border-content/10 bg-content/5 py-1.5 pr-1.5 pl-1">
-                <span className="mt-[3px] cursor-grab text-content/30 active:cursor-grabbing">
+              <div className="flex items-start gap-1.5 rounded-lg border border-border bg-card py-1.5 pr-1.5 pl-1">
+                <span className="mt-[3px] cursor-grab text-muted-foreground/60 active:cursor-grabbing">
                   <GripVertical className="size-3.5" />
                 </span>
                 {editing === m.id ? (
@@ -97,45 +105,35 @@ export function MessageQueue({
                       const v = e.target.value.trim()
                       if (v && v !== m.text) onUpdate(m.id, v)
                     }}
-                    className="min-w-0 flex-1 resize-none bg-transparent text-[13px] leading-5 text-content outline-none"
+                    aria-label="Edit queued message"
+                    className="min-w-0 flex-1 resize-none bg-transparent text-[13px] leading-5 text-foreground outline-none"
                   />
                 ) : (
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    aria-label={`Edit: ${m.text}`}
                     onClick={() => setEditing(m.id)}
-                    title="Edit"
-                    className="min-w-0 flex-1 text-left"
+                    className="h-auto min-w-0 flex-1 justify-start whitespace-normal px-0 py-0 text-left font-normal hover:bg-transparent aria-expanded:bg-transparent active:bg-transparent"
                   >
-                    <span className="line-clamp-2 text-[13px] leading-5 text-content/50">
-                      <span className="mr-1.5 text-[11px] text-content/40 tabular-nums">
+                    <span className="line-clamp-2 text-[13px] leading-5 text-foreground">
+                      <span className="mr-1.5 text-[11px] tabular-nums text-muted-foreground">
                         {ix + 1}
                       </span>
                       {m.text}
                     </span>
-                  </button>
+                  </Button>
                 )}
                 <span className="flex shrink-0 items-center gap-0.5">
                   {sessionId ? <QueueTuneButton sessionId={sessionId} item={m} /> : null}
-                  <span className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/q:opacity-100 focus-within:opacity-100">
+                  <span className="flex items-center gap-0.5 opacity-0 transition-opacity duration-(--dur-fast) group-hover/q:opacity-100 focus-within:opacity-100 motion-reduce:transition-none">
                     {paused ? null : (
-                      <button
-                        type="button"
-                        onClick={() => onSteer(m.id)}
-                        aria-label="Send now"
-                        title="Send now, into the running turn"
-                        className="pressable flex size-5 items-center justify-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
-                      >
-                        <ArrowUp className="size-3" strokeWidth={2.25} />
-                      </button>
+                      <RowAction label="Send now" onClick={() => onSteer(m.id)}>
+                        <ArrowUp />
+                      </RowAction>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => onRemove(m.id)}
-                      aria-label="Remove from queue"
-                      className="pressable flex size-5 items-center justify-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
-                    >
-                      <X className="size-3" />
-                    </button>
+                    <RowAction label="Remove" ariaLabel="Remove from queue" onClick={() => onRemove(m.id)}>
+                      <X />
+                    </RowAction>
                   </span>
                 </span>
               </div>
@@ -158,7 +156,6 @@ const effortLabel = (value: string) =>
 function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedMessage }) {
   const meta = useSessionMeta(sessionId)
   const [open, setOpen] = useState(false)
-  const anchor = useRef<HTMLButtonElement>(null)
   const overridden = !!(item.provider || item.model || item.reasoning)
   const harness = (item.provider ?? meta?.provider ?? 'claude') as HarnessId
   const modelId = item.model ?? meta?.model ?? ''
@@ -199,97 +196,121 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
   }
 
   return (
-    <>
-      <button
-        ref={anchor}
-        type="button"
-        aria-label="Model for this message"
-        aria-expanded={open}
-        title={overridden ? `${HARNESS_TITLE[harness]} · ${model.name}` : 'Model for this message'}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => setOpen((value) => !value)}
-        className={`flex h-5 items-center gap-1 rounded-md px-1 text-[11px] transition hover:bg-content/10 hover:text-content ${
-          overridden
-            ? 'text-content/70'
-            : 'text-content/50 opacity-0 group-hover/q:opacity-100 focus-visible:opacity-100'
-        } ${open ? 'opacity-100 bg-content/10' : ''}`}
-      >
-        {overridden ? (
-          <>
-            <HarnessIcon harness={harness} className="size-3 shrink-0" />
-            <span className="max-w-28 truncate">
-              {model.name}
-              {item.reasoning ? ` · ${effortLabel(item.reasoning)}` : ''}
-            </span>
-          </>
-        ) : (
-          <SlidersHorizontal className="size-3" strokeWidth={2} />
-        )}
-      </button>
-      {open ? (
-        <Popover
-          anchor={anchor}
-          side="top"
-          align="end"
-          width={240}
-          onDismiss={() => setOpen(false)}
-          role="dialog"
-          aria-label="Model for this message"
-          data-queue-tune
-          className="flex flex-col gap-2 p-2"
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  aria-label="Model for this message"
+                  className={`h-5 px-1 text-[11px] font-normal text-muted-foreground hover:text-foreground aria-expanded:opacity-100 ${
+                    overridden ? '' : 'opacity-0 group-hover/q:opacity-100 focus-visible:opacity-100'
+                  }`}
+                />
+              }
+            />
+          }
         >
-          <label className="flex items-center justify-between gap-2 text-[11px] text-content/50">
-            Provider
-            <Select
-              label="Provider"
-              value={harness}
-              options={harnesses.map((id) => ({ value: id, label: HARNESS_TITLE[id] }))}
-              onChange={(value) => setHarness(value as HarnessId)}
-            />
-          </label>
-          <label className="flex items-center justify-between gap-2 text-[11px] text-content/50">
-            Model
-            <Select
-              label="Model"
-              value={model.nativeId ?? modelId}
-              options={modelsFor(harness, environmentId).map((m) => ({
-                value: m.nativeId ?? m.id,
-                label: m.name
-              }))}
-              onChange={setModel}
-            />
-          </label>
-          {effortOptions.length > 0 ? (
-            <label className="flex items-center justify-between gap-2 text-[11px] text-content/50">
-              Reasoning
-              <Select
-                label="Reasoning"
-                value={
-                  effortOptions.some((o) => o.value === reasoning)
-                    ? reasoning
-                    : effortOptions[0].value
-                }
-                options={effortOptions}
-                onChange={(value) =>
-                  apply({ provider: harness, model: model.nativeId ?? modelId, reasoning: value })
-                }
-              />
-            </label>
-          ) : null}
           {overridden ? (
-            <button
-              type="button"
-              onClick={() => {
-                apply({ provider: null, model: null, reasoning: null })
-                setOpen(false)
-              }}
-              className="self-start rounded-md px-1.5 py-1 text-[11px] text-content/50 hover:bg-content/10 hover:text-content"
-            >
-              Follow the thread
-            </button>
-          ) : null}
-        </Popover>
-      ) : null}
-    </>
+            <>
+              <HarnessIcon harness={harness} className="size-3 shrink-0" />
+              <span className="max-w-28 truncate">{model.name}</span>
+              {item.reasoning ? <span className="ms-1">{effortLabel(item.reasoning)}</span> : null}
+            </>
+          ) : (
+            <SlidersHorizontal className="size-3" />
+          )}
+        </TooltipTrigger>
+        <TooltipContent>Model for this message</TooltipContent>
+      </Tooltip>
+      <PopoverContent side="top" align="end" data-queue-tune aria-label="Model for this message" className="w-64 gap-1 p-2">
+        <TuneRow label="Provider">
+          <ChoiceSelect
+            size="sm"
+            label="Provider"
+            value={harness}
+            options={harnesses.map((id) => ({ value: id, label: HARNESS_TITLE[id] }))}
+            onChange={(value) => setHarness(value as HarnessId)}
+          />
+        </TuneRow>
+        <TuneRow label="Model">
+          <ChoiceSelect
+            size="sm"
+            label="Model"
+            value={model.nativeId ?? modelId}
+            options={modelsFor(harness, environmentId).map((m) => ({ value: m.nativeId ?? m.id, label: m.name }))}
+            onChange={setModel}
+          />
+        </TuneRow>
+        {effortOptions.length > 0 ? (
+          <TuneRow label="Effort">
+            <ChoiceSelect
+              size="sm"
+              label="Effort"
+              value={effortOptions.some((o) => o.value === reasoning) ? reasoning : effortOptions[0].value}
+              options={effortOptions}
+              onChange={(value) => apply({ provider: harness, model: model.nativeId ?? modelId, reasoning: value })}
+            />
+          </TuneRow>
+        ) : null}
+        {overridden ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            className="self-start font-normal text-muted-foreground"
+            onClick={() => {
+              apply({ provider: null, model: null, reasoning: null })
+              setOpen(false)
+            }}
+          >
+            Follow the thread
+          </Button>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function TuneRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex h-8 items-center justify-between gap-2">
+      <span className="text-[13px] text-muted-foreground">{label}</span>
+      {children}
+    </div>
+  )
+}
+
+/** A row's hover action: a ghost icon button with its name in a Tooltip. */
+function RowAction({
+  label,
+  ariaLabel = label,
+  onClick,
+  children
+}: {
+  label: string
+  ariaLabel?: string
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={ariaLabel}
+            onClick={onClick}
+            className="text-muted-foreground hover:text-foreground"
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }

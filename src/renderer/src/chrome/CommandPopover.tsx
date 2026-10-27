@@ -26,11 +26,11 @@ export type PopoverMatches =
   | { mode: "command"; rows: SlashCommand[] }
   | { mode: "file"; rows: AtMatch[] };
 
-const ROW = "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left";
+const ROW = "flex h-7 w-full cursor-default items-center gap-2 rounded-md px-2 text-left text-[13px]";
 /** A thread row's glyph: its status mark when it has one at rest, else the thread glyph. */
 function ThreadGlyph({ status }: { status: SessionMeta["status"] }) {
   const state = threadStateOf(status);
-  return marksAtRest(state) ? <StatusMark state={state} word={false} /> : <MessageSquare className="size-3.5 text-content/50" />;
+  return marksAtRest(state) ? <StatusMark state={state} word={false} /> : <MessageSquare className="size-3.5 text-muted-foreground" />;
 }
 
 export function CommandPopover({
@@ -60,22 +60,26 @@ export function CommandPopover({
 
   const rowProps = (n: number) => ({
     "data-active": n === active,
+    role: "option",
+    "aria-selected": n === active,
     onMouseEnter: () => onActive(n),
     onMouseDown: (e: React.MouseEvent) => {
       e.preventDefault();
       onAccept(n);
     },
-    className: `${ROW} ${n === active ? "bg-content/10" : ""}`,
+    className: `${ROW} ${n === active ? "bg-muted" : ""}`,
   });
 
   if (!open) return null;
   return (
     <div
       data-command-popover
-      className="absolute right-0 bottom-full left-0 z-30 mb-2 rounded-xl shadow-[0_4px_24px_rgb(0_0_0/0.24)] glass-surface floating-surface"
+      className="absolute right-0 bottom-full left-0 z-30 mb-2 rounded-xl border border-border bg-popover text-popover-foreground shadow-overlay"
     >
       <div
         ref={listRef}
+        role="listbox"
+        aria-label={matches.mode === "command" ? "Skills and commands" : "Files and threads"}
         className="max-h-72 overflow-y-auto overscroll-none rounded-xl p-1"
       >
         {matches.mode === "command"
@@ -83,26 +87,26 @@ export function CommandPopover({
               <Fragment key={`${c.scope}:${c.name}`}>
                 {SECTION_LABELS[c.source] !==
                 SECTION_LABELS[matches.rows[n - 1]?.source as SlashCommand["source"]] ? (
-                  <p className="px-2 pt-2 pb-1 text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase first:pt-1">
+                  <p className="px-2 pt-2 pb-1 text-[11px] font-medium text-muted-foreground first:pt-1">
                     {SECTION_LABELS[c.source]}
                   </p>
                 ) : null}
-                <button type="button" {...rowProps(n)}>
+                <div {...rowProps(n)}>
                   <AddonMark command={c} size={14} />
-                  <span className="shrink-0 text-[13px] font-medium">
+                  <span className="shrink-0 font-medium">
                     {c.source === "plugin" || c.source === "mcp"
                       ? addonTitle(c.name)
                       : `/${c.name}`}
                   </span>
                   {c.description ? (
-                    <span className="min-w-0 truncate text-xs text-content/50">
+                    <span className="min-w-0 truncate text-xs text-muted-foreground">
                       {c.description}
                     </span>
                   ) : null}
-                  <span className="ml-auto shrink-0 pl-2 text-[11px] text-content/40">
+                  <span className="ml-auto shrink-0 pl-2 text-[11px] text-muted-foreground">
                     {c.scope === "project" ? "project" : ""}
                   </span>
-                </button>
+                </div>
               </Fragment>
             ))
           : matches.rows.map((m, n) => {
@@ -112,7 +116,7 @@ export function CommandPopover({
               const mixed = matches.rows.some((x) => x.kind !== m.kind);
               const label =
                 mixed && prev !== m.kind && m.kind !== "file" ? (
-                  <div className="px-2 pt-1.5 pb-0.5 text-[11px] font-medium text-content/40">
+                  <div className="px-2 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
                     {m.kind === "thread" ? "Threads" : "Notes"}
                   </div>
                 ) : null;
@@ -125,13 +129,13 @@ export function CommandPopover({
                 return (
                   <div key={m.file.path}>
                     {label}
-                    <button type="button" {...rowProps(n)}>
-                      <Icon className="size-3.5 shrink-0 text-content/50" />
-                      <span className="shrink-0 text-[13px]">{base}</span>
+                    <div {...rowProps(n)}>
+                      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="shrink-0">{base}</span>
                       {dir ? (
-                        <span className="min-w-0 truncate text-xs text-content/40">{dir}</span>
+                        <span className="min-w-0 truncate text-xs text-muted-foreground">{dir}</span>
                       ) : null}
-                    </button>
+                    </div>
                   </div>
                 );
               }
@@ -143,18 +147,18 @@ export function CommandPopover({
               return (
                 <div key={t.id}>
                   {label}
-                  <button type="button" {...rowProps(n)}>
+                  <div {...rowProps(n)}>
                     <span className="flex size-3.5 shrink-0 items-center justify-center">
                       <ThreadGlyph status={t.status} />
                     </span>
-                    <span className="min-w-0 truncate text-[13px]">{t.title}</span>
+                    <span className="min-w-0 truncate">{t.title}</span>
                     {projectName ? (
-                      <span className="shrink-0 text-xs text-content/40">{projectName}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{projectName}</span>
                     ) : null}
-                    <span className="ml-auto shrink-0 pl-2 text-[11px] text-content/40">
+                    <span className="ml-auto shrink-0 pl-2 text-[11px] tabular-nums text-muted-foreground">
                       {timeAgo(t.updatedAt)}
                     </span>
-                  </button>
+                  </div>
                 </div>
               );
             })}
