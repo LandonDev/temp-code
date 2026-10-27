@@ -19,7 +19,6 @@ vi.mock("../../chrome/ThreadTune", () => ({
   tuneSummary: () => null,
 }));
 vi.mock("../AgentMarkdown", () => ({ AgentMarkdown: () => null }));
-vi.mock("./fleet/FleetPanel", () => ({ FleetPulseLine: () => null }));
 vi.mock("../../lib/models", () => ({
   mergeModelSettings: (_m: unknown, s: Record<string, string>) => s,
   nativeModelId: (m: string) => m,

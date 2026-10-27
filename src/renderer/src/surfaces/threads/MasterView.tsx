@@ -18,7 +18,6 @@ import { loadThreadResources, useThreadResources } from "../../lib/threadResourc
 import { moveTargets, useMoving } from "../../lib/threadMove";
 import { PaneHeader } from "./bits";
 import { chatOf } from "./chatSlots";
-import { FleetPulseLine } from "./fleet/FleetPanel";
 import { AddThreadDialog } from "./master/AddThreadDialog";
 import { AdoptThreadDialog } from "./master/AdoptThreadDialog";
 import { ArchiveBatchDialog } from "./master/ArchiveBatchDialog";
@@ -222,11 +221,9 @@ export function MasterView(props: ThreadViewProps) {
   const open = useCallback((id: string, focus?: boolean) => openRef.current(id, focus), []);
   const onRowMenu = useCallback<OnRowMenu>((id, at) => setRowMenu({ id, ...at }), []);
 
-  const chatOpts = { topSlot: <FleetPulseLine sessionId={session.id} /> };
-
   if (!hasBoard) {
     return (
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col [contain:layout_style]">{chatOf(props, chatOpts)}</div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col [contain:layout_style]">{chatOf(props)}</div>
     );
   }
 
@@ -394,7 +391,7 @@ export function MasterView(props: ThreadViewProps) {
           <ChevronRight className="size-3.5" strokeWidth={1.75} />
         </button>
       </PaneHeader>
-      {chatOf(props, chatOpts)}
+      {chatOf(props)}
     </>
   );
 

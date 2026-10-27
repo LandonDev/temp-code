@@ -20,7 +20,6 @@ import { AgentMarkdown } from "../AgentMarkdown";
 import { MatrixSpinner, PaneHeader } from "./bits";
 import { AgentDetail } from "./fleet/AgentDetail";
 import { OpenAgentDetailContext } from "../agentDetailContext";
-import { FleetPulseLine } from "./fleet/FleetPanel";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 
@@ -200,7 +199,7 @@ export function ResearchView(props: ThreadViewProps) {
           </button>
         </PaneHeader>
       ) : null}
-      {renderChat({ topSlot: <FleetPulseLine sessionId={session.id} /> })}
+      {renderChat()}
     </>
   );
 

@@ -1,8 +1,6 @@
 import { AnimatePresence, LayoutGroup, MotionConfig } from "motion/react";
 import { useId } from "react";
 import type { OpenFileFn } from "../../../lib/search";
-import { fleetCounts, isLiveStatus, useAgents, useMetaById } from "../../../lib/threads/agents";
-import { MatrixSpinner, StatusDot } from "../bits";
 import { AgentDetail } from "./AgentDetail";
 import { AgentRow } from "./AgentRow";
 import { useFleetModel } from "./useFleetModel";
@@ -59,29 +57,5 @@ export function FleetList({
         </AnimatePresence>
       </LayoutGroup>
     </MotionConfig>
-  );
-}
-
-/** "3 subagents working" above the composer while the main thread is idle. */
-export function FleetPulseLine({ sessionId }: { sessionId: string }) {
-  const agents = useAgents(sessionId);
-  const status = useMetaById(sessionId)?.status;
-  if (agents.length === 0 || isLiveStatus(status)) return null;
-  const counts = fleetCounts(agents);
-  if (counts.working === 0 && counts.waiting === 0) return null;
-  const n = counts.working > 0 ? counts.working : counts.waiting;
-  const label =
-    counts.working > 0
-      ? `${n} subagent${n === 1 ? "" : "s"} working`
-      : `${n} subagent${n === 1 ? "" : "s"} waiting on approval`;
-  return (
-    <div className="mx-auto flex w-full max-w-4xl items-center gap-2 px-4 pb-1 text-xs text-content/50">
-      {counts.working > 0 ? (
-        <MatrixSpinner cell={2} />
-      ) : (
-        <StatusDot status="waiting" />
-      )}
-      {label}
-    </div>
   );
 }

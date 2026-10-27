@@ -50,7 +50,6 @@ import {
   THREAD_TINTS,
   timeAgo,
 } from "./bits";
-import { FleetPulseLine } from "./fleet/FleetPanel";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 
@@ -311,7 +310,7 @@ export function PlanView(props: ThreadViewProps) {
           </button>
         </PaneHeader>
       ) : null}
-      {props.renderChat({ topSlot: <FleetPulseLine sessionId={session.id} /> })}
+      {props.renderChat()}
     </>
   );
 
