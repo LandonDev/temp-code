@@ -69,7 +69,7 @@ describe("flattenTurns", () => {
       false,
     );
     const by = Object.fromEntries(rows.map((r) => [r.key, estimateRowHeight(r)]));
-    expect(by.u0).toBe(46 + 40);
+    expect(by.u0).toBe(52 + 24 * 2);
     // A group is closed by default: one 32px line.
     expect(by.t0).toBe(32);
     // 3 wrapped lines of 80 characters, three fence lines, one fence.

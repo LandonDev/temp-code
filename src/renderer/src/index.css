@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "./assets/components.css";
 @import "./surfaces/transcript/markdown.css";
+@import "./surfaces/transcript/transcript.css";
 
 /* `dark:` means the default theme; `html.theme-light` is the light one. */
 @custom-variant dark (&:where(html:not(.theme-light), html:not(.theme-light) *));
@@ -309,60 +310,6 @@ html.is-mac.glass .sidebar-glass {
 
 .body-glass {
   background: var(--color-background-base);
-}
-
-/*
- * A bubble born from this window's send rises out of the composer: transform
- * and opacity only, so the row's box is final from its first frame and the
- * follow scroll lands where the bubble will rest. The class comes off at
- * animationend, which is also when will-change lets go.
- */
-@keyframes bubble-send-in {
-  from {
-    transform: translateY(18px) scale(0.96);
-    opacity: 0;
-  }
-  to {
-    transform: none;
-    opacity: 1;
-  }
-}
-.bubble-send-in {
-  animation: bubble-send-in 320ms var(--ease-out) both;
-  transform-origin: bottom right;
-  will-change: transform;
-}
-/* The FLIP entrance: the bubble starts where the composer field was
-   (--send-dx/--send-dy, set from the two boxes at mount) and settles on
-   the drawer curve. Transform only, opacity 1 throughout, so the text
-   reads as the same text moving. */
-@keyframes bubble-send-flip {
-  from {
-    transform: translate(var(--send-dx, 0px), var(--send-dy, 18px)) scale(0.98);
-  }
-  to {
-    transform: none;
-  }
-}
-.bubble-send-flip {
-  animation: bubble-send-flip 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
-  transform-origin: bottom right;
-  will-change: transform;
-}
-@media (prefers-reduced-motion: reduce) {
-  @keyframes bubble-send-in {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-  .bubble-send-in,
-  .bubble-send-flip {
-    animation: bubble-send-in 120ms linear both;
-    will-change: auto;
-  }
 }
 
 /*

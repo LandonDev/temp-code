@@ -151,8 +151,9 @@ export function estimateRowHeight(row: TranscriptRow): number {
   const block = item.block;
   switch (block.role) {
     case "user": {
+      // 20px above, 8px below, the bubble's padding and 24px a line (4 at most).
       const lines = Math.min(4, Math.max(1, block.text.split("\n").length));
-      return 46 + 20 * lines + (block.attachments?.length ? 40 : 0);
+      return 52 + 24 * lines + (block.attachments?.length ? 40 : 0) + (block.preamble ? 28 : 0);
     }
     case "tool":
     case "approval":

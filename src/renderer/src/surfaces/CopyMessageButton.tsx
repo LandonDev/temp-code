@@ -6,17 +6,15 @@ import { playCue } from "../lib/sounds";
 
 /**
  * Copy a prompt as sent — its text for anywhere, and its attachments and
- * thread mentions for a paste back into the composer. Shows on hover in the
- * bubble's corner.
+ * thread mentions for a paste back into the composer. Shows on hover, left
+ * of the bubble.
  */
 export function CopyMessageButton({
   text,
   attachments,
-  chat,
 }: {
   text: string;
   attachments: Attachment[];
-  chat: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | null>(null);
@@ -31,9 +29,7 @@ export function CopyMessageButton({
       type="button"
       title={copied ? "Copied" : "Copy message"}
       aria-label={copied ? "Copied" : "Copy message"}
-      className={`pressable absolute z-10 grid size-6 place-items-center rounded-md bg-content/8 text-content/50 opacity-0 transition-opacity hover:bg-content/10 hover:text-content focus-visible:opacity-100 group-hover/message:opacity-100 ${
-        chat ? "-left-8 top-1/2 -translate-y-1/2" : "right-1.5 top-1.5"
-      }`}
+      className="pressable absolute -left-8 top-1/2 z-10 grid size-6 -translate-y-1/2 place-items-center rounded-md bg-content/8 text-content/50 opacity-0 transition-opacity hover:bg-content/10 hover:text-content focus-visible:opacity-100 group-hover/message:opacity-100"
       onClick={(event) => {
         event.stopPropagation();
         playCue("copy");

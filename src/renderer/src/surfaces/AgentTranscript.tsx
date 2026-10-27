@@ -27,10 +27,8 @@ import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { usePaneVisible } from "../hooks/paneVisibility";
 import { saveTranscriptScroll, takeTranscriptScroll, type TranscriptScrollMemory } from "../lib/transcriptScrollMemory";
 import { blockForSeq, pendingTranscriptJump, subscribeTranscriptJump, takeTranscriptJump } from "../lib/transcriptJump";
-import { useTranscriptLayout } from "../hooks/useTranscriptLayout";
 import { useTranscriptAnchor } from "../hooks/useTranscriptAnchor";
 import { useTranscriptSelection } from "../hooks/useTranscriptSelection";
-import type { TranscriptLayout } from "../lib/appearance";
 import { SelectSessionContext } from "./AgentMarkdown";
 import type { OpenFileFn } from "../lib/search";
 import { TranscriptSessionContext } from "./transcriptSession";
@@ -39,7 +37,6 @@ import { groupTurns } from "./transcriptActivity";
 import { TurnEnd } from "./transcript/TurnEnd";
 import { ActionGroup } from "./transcript/ActionGroup";
 import { TranscriptBlock } from "./transcript/TranscriptBlock";
-import { TurnStamp } from "./transcript/UserMessage";
 /*
  * One scroll engine (ported from temp-code). Three modes: `follow` rides the
  * bottom on a spring, `parked` holds the prompt at the top of the viewport
@@ -178,7 +175,6 @@ export function AgentTranscript({
     scrollerEl,
     onAddToChat !== undefined,
   );
-  const transcriptLayout = useTranscriptLayout();
   const promptAnchor = useTranscriptAnchor();
   const lastUserId = lastUserBlockId(blocks);
   const setShowJump = useCallback(
@@ -889,7 +885,6 @@ export function AgentTranscript({
                 !shownRows.current.has(row.key)
               }
               cwd={cwd}
-              layout={transcriptLayout}
               harnessOf={harnessOf}
               turnState={row.kind !== "more" && row.turn.isLast ? (turnState ?? null) : null}
               register={registerRow}
@@ -949,7 +944,6 @@ type RowViewProps = {
   /** Born after the transcript mounted and never shown: fades in, once. */
   fresh: boolean;
   cwd?: string;
-  layout: TranscriptLayout;
   harnessOf: (turn: Block[]) => HarnessId | undefined;
   /** The session, for the live turn's rows only; older rows never see it change. */
   turnState: TurnSession | null;
@@ -974,7 +968,6 @@ const RowView = memo(function RowView({
   top,
   fresh,
   cwd,
-  layout,
   harnessOf,
   turnState,
   register,
@@ -1033,22 +1026,19 @@ const RowView = memo(function RowView({
           onOpenDiff={onOpenDiff}
         />
       ) : row.item.block.role === "user" ? (
-        <div data-block={row.item.block.id} className="group/turn flex min-w-0 flex-col">
+        <div data-block={row.item.block.id} className="flex min-w-0 flex-col">
           <TranscriptBlock
             block={row.item.block}
-            layout={layout}
             stickyIndex={row.turn.index + 1}
             onApproval={onApproval}
             onOpenFile={onOpenFile}
             onOpenDiff={onOpenDiff}
             cwd={cwd}
           />
-          <TurnStamp ts={row.item.block.ts ?? row.item.block.startedAt} chat={layout === "chat"} />
         </div>
       ) : (
         <TranscriptBlock
           block={row.item.block}
-          layout={layout}
           stickyIndex={row.turn.index + 1}
           compactTop={row.compactTop}
           onApproval={onApproval}

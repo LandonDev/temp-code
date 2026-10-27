@@ -14,25 +14,26 @@ import { sendOffset, sendOrigin } from "../../lib/sendOrigin";
 import { type Block } from "../../lib/session";
 import { CommandChip } from "../ToolChips";
 import { commandParts, useKnownCommands, type CommandPart } from "../toolMarks";
-import type { TranscriptLayout } from "../../lib/appearance";
 import { SelectSessionContext } from "../AgentMarkdown";
 import { threadMentionParts, type ThreadMentionPart, useThreadTitles } from "../../lib/threadMentions";
 import { CopyMessageButton } from "../CopyMessageButton";
 import { PreambleRow } from "../PreambleRow";
 import { useTranscriptSession } from "../transcriptSession";
 
-/** The send-in entrance's length (index.css `bubble-send-flip`, the
- *  longer of the two entrances). */
-export const SEND_IN_MS = 420;
+/** The send-in entrance's length (transcript.css `bubble-send-flip` and
+ *  `bubble-send-in`, the composer send's 280ms on the drawer curve). */
+export const SEND_IN_MS = 280;
 
+/**
+ * The person's message: a soft bubble on the right, 15px, no avatar and no
+ * time. The project rules it opened with fold to one line above it.
+ */
 export function UserMessageBlock({
   block,
-  layout,
   stickyIndex,
   environmentId,
 }: {
   block: Block;
-  layout: TranscriptLayout;
   stickyIndex: number;
   /** The host the turn's attachments live on. */
   environmentId: string;
@@ -83,7 +84,6 @@ export function UserMessageBlock({
   const card = block.secondOpinion;
   const note = block.noteCard;
   const text = card && card.kind !== "handoff" ? "" : block.text;
-  const chat = layout === "chat";
 
   useLayoutEffect(() => {
     const el = textRef.current;
@@ -100,18 +100,16 @@ export function UserMessageBlock({
   };
 
   return (
-    <div
-      className={
-        chat ? "flex justify-end pt-1.5 pl-10" : "pt-1.5"
-      }
-    >
+    <div className="flex min-w-0 flex-col items-end pt-5 pb-2 pl-10">
+      {block.preamble ? (
+        <div className="flex max-w-[min(36rem,85%)] justify-end">
+          <PreambleRow text={block.preamble.text} words={block.preamble.words} />
+        </div>
+      ) : null}
       <div
         ref={bubbleRef}
-        className={`group/message relative min-w-0 bg-content/10 px-3 py-2 font-sans text-content ${
-          chat
-            ? "w-fit max-w-xl rounded-xl"
-            : "rounded-xl"
-        }`}
+        data-user-bubble=""
+        className="group/message relative w-fit max-w-[min(36rem,85%)] min-w-0 rounded-xl bg-card px-3.5 py-2.5 font-sans text-[15px] leading-6 text-foreground"
         style={
           entering == null
             ? { zIndex: stickyIndex }
@@ -121,7 +119,7 @@ export function UserMessageBlock({
         onClick={overflows ? toggle : undefined}
       >
         {text || block.attachments?.length ? (
-          <CopyMessageButton text={text} attachments={block.attachments ?? []} chat={chat} />
+          <CopyMessageButton text={text} attachments={block.attachments ?? []} />
         ) : null}
         {block.attachments?.length ? (
           <div
@@ -151,13 +149,10 @@ export function UserMessageBlock({
             <SecondOpinionCard card={card} />
           </div>
         ) : null}
-        {block.preamble ? (
-          <PreambleRow text={block.preamble.text} words={block.preamble.words} />
-        ) : null}
         {text ? (
           <pre
             ref={textRef}
-            className={`min-w-0 whitespace-pre-wrap break-words font-sans text-sm ${expanded ? "" : "line-clamp-4"}`}
+            className={`min-w-0 whitespace-pre-wrap break-words font-sans ${expanded ? "" : "line-clamp-4"}`}
           >
             <UserText text={text} />
           </pre>
@@ -202,27 +197,5 @@ export function UserText({ text }: { text: string }) {
         ),
       )}
     </>
-  );
-}
-
-export const stampFormat = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
-/** When the prompt went out, shown under it while the turn is hovered.
- *  The row is reserved even without a time, so every bubble sits the same
- *  16px above what follows. */
-export function TurnStamp({ ts, chat }: { ts?: number; chat: boolean }) {
-  return (
-    <div
-      className={`flex h-4 items-center font-sans text-[11px] tabular-nums text-content/40 opacity-0 transition-opacity group-hover/turn:opacity-100 ${
-        chat ? "justify-end" : ""
-      }`}
-    >
-      {ts == null ? null : stampFormat.format(ts)}
-    </div>
   );
 }

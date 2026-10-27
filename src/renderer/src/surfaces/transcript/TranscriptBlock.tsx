@@ -8,7 +8,6 @@ import { htmlRenderChunk } from "../chunks";
 import { SurfaceSkeleton } from "../SurfaceSkeleton";
 import { htmlRenderOf } from "../htmlRenderBlock";
 import { type Block } from "../../lib/session";
-import type { TranscriptLayout } from "../../lib/appearance";
 import { AgentMarkdown } from "../AgentMarkdown";
 import type { OpenFileFn } from "../../lib/search";
 import { useTranscriptHost } from "../transcriptSession";
@@ -22,7 +21,6 @@ export const HtmlRenderRow = htmlRenderChunk.surface("HtmlRenderRow", <SurfaceSk
 
 export const TranscriptBlock = memo(function TranscriptBlock({
   block,
-  layout,
   stickyIndex,
   compactTop = false,
   cwd,
@@ -31,7 +29,6 @@ export const TranscriptBlock = memo(function TranscriptBlock({
   onOpenDiff,
 }: {
   block: Block;
-  layout: TranscriptLayout;
   stickyIndex: number;
   compactTop?: boolean;
   cwd?: string;
@@ -45,7 +42,6 @@ export const TranscriptBlock = memo(function TranscriptBlock({
     return (
       <UserMessageBlock
         block={block}
-        layout={layout}
         stickyIndex={stickyIndex}
         environmentId={threadHost}
       />
