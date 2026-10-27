@@ -27,13 +27,11 @@ import {
 } from "../../lib/linear";
 import { BUNDLED_RELEASE } from "../../lib/releaseNotes";
 import {
-  loadClaudeHooks,
   loadComposerRunner,
   loadGridArcadeEnabled,
   loadMidTurnDefault,
   loadLiveAgentsEnabled,
   loadNotesEnabled,
-  saveClaudeHooks,
   saveComposerRunner,
   saveGridArcadeEnabled,
   saveMidTurnDefault,
@@ -95,7 +93,6 @@ export function GeneralPage({
   const [liveAgentsEnabled, setLiveAgentsEnabled] = useStoredFlag(loadLiveAgentsEnabled, saveLiveAgentsEnabled);
   const [soundsEnabled, setSoundsEnabled] = useStoredFlag(loadSoundsEnabled, saveSoundsEnabled);
   const [gridArcadeEnabled, setGridArcadeEnabled] = useStoredFlag(loadGridArcadeEnabled, saveGridArcadeEnabled);
-  const [claudeHooks, setClaudeHooks] = useStoredFlag(loadClaudeHooks, saveClaudeHooks);
 
   // The menu flips the anchor too; follow it while the page is open.
   useEffect(() => {
@@ -177,12 +174,6 @@ export function GeneralPage({
           description="Pac-man and snake idle on the empty-session grid."
           on={gridArcadeEnabled}
           onChange={setGridArcadeEnabled}
-        />
-        <SwitchRow
-          title="Claude Code hooks"
-          description="Run the hooks from your settings.json files on the next turn."
-          on={claudeHooks}
-          onChange={setClaudeHooks}
         />
       </PageSection>
 
