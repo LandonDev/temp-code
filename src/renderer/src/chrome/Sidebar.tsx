@@ -1,8 +1,4 @@
-import {
-  MoreHorizontal,
-  Plus,
-  Search,
-} from "./icons";
+import { MoreHorizontal, Plus } from "./icons";
 import {
   memo,
   useEffect,
@@ -10,22 +6,20 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
 } from "react";
 import { warmProjectForCwd } from "../lib/monaco/focusBoot";
-import {
-  loadSidebarTabOrder,
-  saveSidebarTabOrder,
-  type SidebarTabId,
-} from "../lib/appearance";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { EASE_OUT } from "../lib/ease";
+import { DUR, EASE_OUT } from "../lib/ease";
 import { IS_MAC, MOD } from "../lib/platform";
+import { basename } from "../lib/fs";
+import { projectName } from "../lib/paths";
+import { loadTabGroupLabels, resolveTabGroupLabel, TAB_GROUP_LABELS_CHANGED } from "../lib/tabGroups";
 import type { ProjectMeta } from "../lib/tcserver/types";
 import {
   useWorkspaceCatalog,
   useWorkspaces,
   workspaceIdOf,
+  workspaceLabelKey,
 } from "../lib/tcserver/workspaces";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { archive } from "../lib/tcserver/commands";
@@ -33,9 +27,7 @@ import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import { dormantByType, dormantThreads, focusedTree } from "../lib/threadStripModel";
 import { scopeTest } from "../lib/workspaceSessions";
 import { openWorkspaceSettings } from "../lib/settings";
-import { pickTextHarness } from "../lib/harness/textHarness";
 import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
-import { selectedChangePath } from "../lib/workspaceTabGroups";
 import { useWorkspaceTabs } from "../stores/workspace";
 import { requestProjectRailAction } from "../lib/projectRailActions";
 import WorkspaceSessions from "./WorkspaceSessions";
@@ -48,12 +40,8 @@ import { openOrchestrationSettings } from "../lib/tcserver/rules";
 import { useBootResumeToasts } from "./HostRows";
 import { useProjectSignals } from "../hooks/useProjectSignals";
 import { useDragResize } from "../hooks/useDragResize";
-import { useGitFileStatuses } from "../hooks/useGitFileStatuses";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
-import { useProjectDiffStats } from "../hooks/useProjectDiffStats";
-import { useSortable } from "../hooks/useSortable";
 import { looksLikeProject } from "../lib/recents";
-import { FileTree } from "./FileTree";
 import { ProjectRail, RailFoot } from "./ProjectRail";
 import {
   useProject,
@@ -63,9 +51,10 @@ import {
   useSelectedWorkspaceIds,
 } from "../stores/project";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
-import { DevModeSlot, IconButton, TabVisitNav } from "./TitleBar";
-import { ProjectSearch } from "./ProjectSearch";
-import { SourceControl } from "./SourceControl";
+import { DevModeSlot, TabVisitNav } from "./TitleBar";
+import { Button } from "../components/ui/button";
+import { Kbd } from "../components/ui/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import type { OpenFileFn } from "../lib/search";
 
 const MIN_WIDTH = 260;
@@ -73,15 +62,6 @@ const MAX_WIDTH = 560;
 const DEFAULT_WIDTH = 260;
 
 let rememberedWidth = DEFAULT_WIDTH;
-
-type SidebarTab = SidebarTabId;
-
-const TAB_LABELS: Record<SidebarTab, string> = {
-  sessions: "Sessions",
-  inbox: "Inbox",
-  files: "Explorer",
-  changes: "Changes",
-};
 
 type Props = {
   onSelectSession: (sessionId: string) => void;
@@ -118,15 +98,8 @@ function SidebarComponent({
   onSelectSession,
   onRenameSession,
   onDeleteSession,
-  onOpenFile,
-  onOpenTerminal,
-  onFileMoved,
-  onFileDeleted,
-  onOpenFilesSearch,
   onGoBack,
   onGoForward,
-  onOpenDiff,
-  onShowSourceControl,
   onSelectAgent,
   onSelectProject,
   onOpenProject,
@@ -136,7 +109,6 @@ function SidebarComponent({
   onOpenInbox,
   onOpenAccountsPage,
   onOpenChats,
-  onGoToFile,
   onSelectProjectCard,
   onNewChat,
   onProjectCreated,
@@ -144,10 +116,8 @@ function SidebarComponent({
 }: Props) {
   // The folder, the focused session and the visit trail come off the stores:
   // App passes handlers only, so a tab switch re-renders this, not App's tree.
-  const { activeTab, active, sidebarCwd: cwd, gitCwd } = useProjectCwds();
+  const { active, sidebarCwd: cwd, gitCwd } = useProjectCwds();
   const activeSessionId = active?.id;
-  const textHarness = pickTextHarness(active?.harness);
-  const selectedDiffPath = activeTab ? selectedChangePath(activeTab, gitCwd) : undefined;
   const canVisitBack = useWorkspaceTabs((s) => canTabVisitBack(s.visits));
   const canGoForward = useWorkspaceTabs((s) => canTabVisitForward(s.visits));
   const recents = useRailRecents();
@@ -179,16 +149,10 @@ function SidebarComponent({
       rememberedWidth = next;
     },
   });
-  const [tabOrder, setTabOrder] = useState<SidebarTab[]>(loadSidebarTabOrder);
   const sessionsLock = useLockOverscroll<HTMLDivElement>();
   const sessionsScrollRef = useRef<HTMLDivElement>(null);
-  /** The home: no workspace folder, the chats outside every workspace. It
-   *  has one tab, Sessions, and nothing to browse or diff. */
+  /** The home: no workspace folder, the chats outside every workspace. */
   const atHome = workspaceCwd === "~";
-  const shellTab = useShell((s) => s.sidebarTab);
-  const tab: SidebarTab = atHome ? "sessions" : shellTab;
-  const filesSearchOpen = useShell((s) => s.filesSearchOpen);
-  const searchFocusToken = useShell((s) => s.searchFocusToken);
   const searchActive = useShell((s) => s.searchViewOpen);
   const inboxActive = useShell((s) => s.inboxViewOpen);
   const notesActive = useShell((s) => s.notesViewOpen);
@@ -198,22 +162,27 @@ function SidebarComponent({
   // Back leaves an overlay before it walks tab history.
   const canGoBack =
     canVisitBack || searchActive || settingsOpen || inboxActive || notesActive || !!accountsPage;
-  const sortable = useSortable(tabOrder, (ids) => {
-    const next = ids as SidebarTab[];
-    setTabOrder(next);
-    saveSidebarTabOrder(next);
-    if (next[0]) shell.setSidebarTab(next[0]);
-  });
-  const visibleTabs: SidebarTab[] = atHome
-    ? ["sessions"]
-    : tabOrder.filter((itemId) => itemId !== "inbox");
-  const canDragTabs = visibleTabs.length > 1;
   const showProjectRail = Boolean(onSelectProject && onOpenProject);
   // Settings live in the rail slot, so they keep it visible even when the
   // project rail itself is collapsed.
   const railVisible = showProjectRail && (projectRailOpen || settingsOpen);
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
   const workspacePath = workspace?.path ?? cwd;
+  // The header names the workspace as the rail does: its label, else its name.
+  const [groupLabels, setGroupLabels] = useState(loadTabGroupLabels);
+  useEffect(() => {
+    const refresh = () => setGroupLabels(loadTabGroupLabels());
+    window.addEventListener(TAB_GROUP_LABELS_CHANGED, refresh);
+    return () => window.removeEventListener(TAB_GROUP_LABELS_CHANGED, refresh);
+  }, []);
+  const workspaces = useWorkspaces();
+  const title = atHome
+    ? "Chats"
+    : resolveTabGroupLabel(
+        workspaceLabelKey(workspaces, workspacePath, projectName(workspacePath)),
+        groupLabels,
+        workspace?.name ?? basename(workspacePath),
+      );
   /** What the Sessions list shows: a workspace, the home (null), or nothing. */
   const sessionsScope: string | null | undefined = workspaceId ?? (atHome ? null : undefined);
   const [workspaceMenu, setWorkspaceMenu] = useState<HTMLElement | null>(null);
@@ -266,218 +235,99 @@ function SidebarComponent({
     accountsPage: accountsPage !== null,
     settingsOpen,
   });
-  const gitStatuses = useGitFileStatuses(gitRoot, tab === "files");
-  const changeStats = useProjectDiffStats(gitRoot, inProject);
-
-  const onTabPick = (itemId: SidebarTab) => {
-    shell.setSidebarTab(itemId);
-  };
-
-  const changeAdditions = changeStats?.additions ?? 0;
-  const changeDeletions = changeStats?.deletions ?? 0;
-  const hasChangeStats = changeAdditions > 0 || changeDeletions > 0;
-
-  const workspaceTabItems = visibleTabs.map((itemId, index) => {
-    const active = tab === itemId;
-    const isChangesTab = itemId === "changes";
-    const draggingTab = sortable.draggingId === itemId;
-    const showStart =
-      sortable.draggingId &&
-      sortable.toIndex !== null &&
-      sortable.toIndex === index &&
-      sortable.fromIndex !== null &&
-      sortable.toIndex < sortable.fromIndex;
-    const showEnd =
-      sortable.draggingId &&
-      sortable.toIndex !== null &&
-      sortable.toIndex === index &&
-      sortable.fromIndex !== null &&
-      sortable.toIndex > sortable.fromIndex;
-    return (
-      <div
-        key={itemId}
-        ref={(el) => sortable.setItemRef(itemId, el)}
-        className={`relative flex min-w-0 flex-1 touch-none items-stretch ${
-          draggingTab ? "opacity-40" : ""
-        } ${canDragTabs ? "cursor-grab active:cursor-grabbing" : ""}`}
-        onPointerDown={(event) => {
-          if (event.button !== 0) return;
-          onTabPick(itemId);
-          sortable.onItemPointerDown(itemId, event);
-        }}
-      >
-        {showStart ? (
-          <div className="pointer-events-none absolute inset-y-1.5 left-0 z-20 w-0.5 rounded-full bg-accent" />
-        ) : null}
-        {showEnd ? (
-          <div className="pointer-events-none absolute inset-y-1.5 right-0 z-20 w-0.5 rounded-full bg-accent" />
-        ) : null}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={active}
-          aria-label={
-            isChangesTab
-              ? hasChangeStats
-                ? [
-                    "Changes",
-                    changeAdditions > 0 ? `+${changeAdditions}` : "",
-                    changeDeletions > 0 ? `-${changeDeletions}` : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")
-                : "Changes"
-              : undefined
-          }
-          data-tauri-drag-region="false"
-          onClick={() => {
-            if (sortable.consumeClick()) return;
-            onTabPick(itemId);
-          }}
-          className={`flex h-6 min-w-0 flex-1 items-center justify-center self-center rounded-md px-2 text-[12px] leading-none ${
-            active
-              ? "bg-muted text-foreground"
-              : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
-          } ${canDragTabs ? "cursor-grab active:cursor-grabbing" : ""}`}
-        >
-          {isChangesTab && hasChangeStats ? (
-            <DiffStat additions={changeAdditions} deletions={changeDeletions} />
-          ) : (
-            <span className="block truncate">{TAB_LABELS[itemId]}</span>
-          )}
-        </button>
-      </div>
-    );
-  });
-
   const sidebarContent = (
     <aside
       ref={resize.setPaneRef}
       className="sidebar-glass relative flex h-full min-h-0 shrink-0 flex-col border-r border-border"
     >
-      {railVisible ? (
-        <>
-          <div
-            className="flex h-10 shrink-0 select-none items-center gap-1 border-b border-border pl-3 pr-1.5"
-            data-tauri-drag-region="deep"
-          >
-            <span className="min-w-0 flex-1 truncate text-sm font-medium leading-tight">
-              {atHome ? "Chats" : "Workspace"}
-            </span>
-            <WorkspaceTitleActions
-              onSearch={atHome ? undefined : onGoToFile}
-              onNew={onNew}
-              onMenu={workspaceSessions ? openWorkspaceMenu : undefined}
-              menuOpen={!!workspaceMenu}
-            />
-          </div>
-          <div
-            role="tablist"
-            aria-label="Workspace"
-            className="flex h-9 shrink-0 items-center gap-px border-b border-border px-2"
-          >
-            {workspaceTabItems}
-          </div>
-        </>
-      ) : (
-        <>
-          <div
-            className="flex h-10 shrink-0 select-none items-center border-b border-border pr-1.5"
-            data-tauri-drag-region="deep"
-          >
-            {IS_MAC ? <div className="w-[78px] shrink-0" /> : null}
-            <DevModeSlot />
-            <TabVisitNav
-              canGoBack={canGoBack}
-              canGoForward={canGoForward}
-              onGoBack={onGoBack}
-              onGoForward={onGoForward}
-              onTogglePanel={shell.toggleProjectRail}
-              panelActive={false}
-            />
-          </div>
-          <div
-            role="tablist"
-            aria-label="Workspace"
-            className="flex h-9 shrink-0 items-center gap-px overflow-visible border-b border-border px-2"
-          >
-            {workspaceTabItems}
-          </div>
-        </>
+      {railVisible ? null : (
+        <div
+          className="flex h-10 shrink-0 select-none items-center pr-1.5"
+          data-tauri-drag-region="deep"
+        >
+          {IS_MAC ? <div className="w-[78px] shrink-0" /> : null}
+          <DevModeSlot />
+          <TabVisitNav
+            canGoBack={canGoBack}
+            canGoForward={canGoForward}
+            onGoBack={onGoBack}
+            onGoForward={onGoForward}
+            onTogglePanel={shell.toggleProjectRail}
+            panelActive={false}
+          />
+        </div>
       )}
-      {(
-        <>
-          <div
-            className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
-              tab === "files" ? "" : "hidden"
-            }`}
-          >
-            {filesSearchOpen ? (
-              <ProjectSearch
-                cwd={gitRoot}
-                focusToken={searchFocusToken}
-                onOpenFile={onOpenFile}
-                onClose={() => shell.setFilesSearchOpen(false)}
-              />
-            ) : cwd && cwd !== "~" ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <FileTree
-                  key={gitRoot}
-                  cwd={gitRoot}
-                  onOpenFile={onOpenFile}
-                  onOpenTerminal={onOpenTerminal}
-                  onFileMoved={onFileMoved}
-                  onFileDeleted={onFileDeleted}
-                  onSearch={onOpenFilesSearch}
-                  gitStatuses={gitStatuses}
-                  sourceControlActive={tab === "changes"}
-                  onShowSourceControl={onShowSourceControl}
-                />
-              </div>
-            ) : (
-              <p className="px-3 py-2 text-[12px] text-muted-foreground">
-                No project folder
-              </p>
-            )}
-          </div>
-          <div
-            ref={(el) => {
-              sessionsLock(el);
-              sessionsScrollRef.current = el;
-            }}
-            className={`min-h-0 flex-1 overflow-y-auto overscroll-none ${
-              tab === "sessions" ? "" : "hidden"
-            }`}
-          >
-            {workspaceSessions ?? (
-              <p className="px-3 py-2 text-[12px] text-muted-foreground">
-                No project folder
-              </p>
-            )}
-          </div>
-          {tab === "changes" ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <SourceControl
-                cwd={gitRoot}
-                enabled
-                textHarness={textHarness}
-                selectedPath={selectedDiffPath}
-                onOpenFile={onOpenDiff ?? onOpenFile}
-              />
-            </div>
+      <div
+        className="flex h-10 shrink-0 select-none items-center gap-0.5 border-b border-border pr-1.5 pl-3"
+        data-tauri-drag-region="deep"
+      >
+        <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{title}</h2>
+        <div className="flex shrink-0 items-center gap-0.5" data-tauri-drag-region="false">
+          {onNew ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="New thread"
+                    onClick={() => void onNew()}
+                    className="text-muted-foreground hover:text-foreground"
+                  />
+                }
+              >
+                <Plus className="size-4" strokeWidth={1.5} />
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                New thread <Kbd>{`${MOD}N`}</Kbd>
+              </TooltipContent>
+            </Tooltip>
           ) : null}
-          {showSidebarFooter && onOpenProject ? (
-            <RailFoot
-              activeSessionId={activeSessionId}
-              onSearch={onSearch}
-              onOpenInbox={onOpenInbox}
-              onOpenAccountsPage={onOpenAccountsPage}
-              onOpenWhatsNew={onOpenWhatsNew}
-              onAddWorkspace={(environmentId) => onOpenProject(environmentId)}
-            />
+          {workspaceSessions ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Workspace options"
+                    aria-haspopup="menu"
+                    aria-expanded={!!workspaceMenu}
+                    onClick={openWorkspaceMenu}
+                    className="text-muted-foreground hover:text-foreground"
+                  />
+                }
+              >
+                <MoreHorizontal className="size-4" strokeWidth={1.5} />
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Workspace options</TooltipContent>
+            </Tooltip>
           ) : null}
-        </>
-      )}
+        </div>
+      </div>
+      <div
+        ref={(el) => {
+          sessionsLock(el);
+          sessionsScrollRef.current = el;
+        }}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-none"
+      >
+        {workspaceSessions ?? (
+          <p className="px-3 py-2 text-[12px] text-muted-foreground">
+            No project folder
+          </p>
+        )}
+      </div>
+      {showSidebarFooter && onOpenProject ? (
+        <RailFoot
+          activeSessionId={activeSessionId}
+          onSearch={onSearch}
+          onOpenInbox={onOpenInbox}
+          onOpenAccountsPage={onOpenAccountsPage}
+          onOpenWhatsNew={onOpenWhatsNew}
+          onAddWorkspace={(environmentId) => onOpenProject(environmentId)}
+        />
+      ) : null}
       {workspaceMenu ? (
         <WorkspaceMenu
           anchor={workspaceMenu}
@@ -578,7 +428,7 @@ function SidebarComponent({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={reduceMotion ? { duration: 0 } : { duration: 0.12, ease: EASE_OUT }}
+            transition={reduceMotion ? { duration: 0 } : { duration: DUR.fast, ease: EASE_OUT }}
             className="flex h-full shrink-0"
           >
             {sidebarContent}
@@ -590,109 +440,3 @@ function SidebarComponent({
 }
 
 export const Sidebar = memo(SidebarComponent);
-
-function WorkspaceTitleActions({
-  onSearch,
-  onNew,
-  onMenu,
-  menuOpen = false,
-}: {
-  onSearch?: () => void;
-  onNew?: () => void;
-  onMenu?: (event: ReactMouseEvent<HTMLButtonElement>) => void;
-  menuOpen?: boolean;
-}) {
-  if (!onSearch && !onNew && !onMenu) return null;
-  return (
-    <div
-      className="flex shrink-0 items-center gap-0.5"
-      data-tauri-drag-region="false"
-    >
-      {onMenu ? (
-        <SessionsHeaderButton
-          label="Workspace actions"
-          open={menuOpen}
-          hasPopup
-          onClick={onMenu}
-        >
-          <MoreHorizontal className="size-3.5" strokeWidth={1.75} />
-        </SessionsHeaderButton>
-      ) : null}
-      {onSearch ? (
-        <IconButton label={`Go to File (${MOD}P)`} onClick={onSearch}>
-          <Search className="size-3.5" strokeWidth={1.75} />
-        </IconButton>
-      ) : null}
-      {onNew ? (
-        <IconButton label={`New session (${MOD}T)`} onClick={onNew}>
-          <Plus className="size-3.5" strokeWidth={1.75} />
-        </IconButton>
-      ) : null}
-    </div>
-  );
-}
-
-function SessionsHeaderButton({
-  label,
-  active = false,
-  open = false,
-  hasPopup = false,
-  onClick,
-  children,
-}: {
-  label: string;
-  active?: boolean;
-  open?: boolean;
-  hasPopup?: boolean;
-  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      aria-expanded={open}
-      aria-haspopup={hasPopup ? "menu" : undefined}
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={onClick}
-      className={`relative z-50 grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-foreground/7 hover:text-foreground ${
-        open || active ? "bg-foreground/7 text-foreground" : ""
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function DiffStat({
-  additions,
-  deletions,
-}: {
-  additions: number;
-  deletions: number;
-}) {
-  if (additions <= 0 && deletions <= 0) return null;
-
-  const label = [
-    additions > 0 ? `+${additions}` : "",
-    deletions > 0 ? `-${deletions}` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return (
-    <span
-      title={`${label} uncommitted`}
-      className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] font-semibold tabular-nums"
-    >
-      {additions > 0 ? (
-        <span className="text-success">+{additions}</span>
-      ) : null}
-      {deletions > 0 ? (
-        <span className="text-danger">-{deletions}</span>
-      ) : null}
-    </span>
-  );
-}
-

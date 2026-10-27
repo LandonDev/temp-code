@@ -37,10 +37,6 @@ export type ShellState = {
   sidebarOpen: boolean;
   projectRailOpen: boolean;
   sidebarTab: SidebarTabId;
-  /** The files tab's search box. */
-  filesSearchOpen: boolean;
-  /** Bumped to move focus into the files search box. */
-  searchFocusToken: number;
   searchViewOpen: boolean;
   /** Bumped to move focus into the search view. */
   searchViewFocusToken: number;
@@ -69,8 +65,6 @@ export function initialShellState(
     sidebarOpen: loadSidebarOpen(),
     projectRailOpen: loadProjectRailOpen(),
     sidebarTab: loadSidebarTabOrder()[0] ?? "sessions",
-    filesSearchOpen: false,
-    searchFocusToken: 0,
     searchViewOpen: false,
     searchViewFocusToken: 0,
     searchSeed: null,
@@ -117,11 +111,6 @@ export function closeOverlays(state: ShellState): ShellState {
 /** Back to the board with the sessions tab up, for a thread that just started. */
 export function leaveToSessions(state: ShellState): ShellState {
   return patch(state, { ...VIEWS_CLOSED, sidebarTab: "sessions" });
-}
-
-/** The sidebar comes forward on the given tab. */
-export function showSidebarTab(state: ShellState, tab: SidebarTabId): ShellState {
-  return patch(state, { sidebarOpen: true, sidebarTab: tab });
 }
 
 export function toggleSidebar(state: ShellState, layout: SidebarLayout): ShellState {
@@ -276,9 +265,7 @@ export const shell = {
   closeViews: () => update(closeViews),
   closeOverlays: () => update(closeOverlays),
   leaveToSessions: () => update(leaveToSessions),
-  showSidebarTab: (tab: SidebarTabId) => update((s) => showSidebarTab(s, tab)),
   setSidebarTab: (tab: SidebarTabId) => update((s) => patch(s, { sidebarTab: tab })),
-  setFilesSearchOpen: (open: boolean) => update((s) => patch(s, { filesSearchOpen: open })),
   /** Takes the window's own layout: storage may already hold another window's. */
   toggleSidebar: (layout: SidebarLayout) => update((s) => toggleSidebar(s, layout)),
   toggleProjectRail: () => update(toggleProjectRail),

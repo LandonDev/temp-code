@@ -18,7 +18,6 @@ import {
   settleSidebarTab,
   shell,
   shellStore,
-  showSidebarTab,
   toggleSidebar,
 } from "./shell";
 
@@ -47,8 +46,6 @@ describe("shell reducers", () => {
     expect(closeViews(state)).toBe(state);
     expect(closeOverlays(state)).toBe(state);
     expect(leaveToSessions(state)).toBe(state);
-    const shown = { ...state, sidebarOpen: true };
-    expect(showSidebarTab(shown, "sessions")).toBe(shown);
     expect(leaveTopOverlay(state)).toBe(state);
     expect(settleSidebarTab(state, "deck")).toBe(state);
     expect(settleSidebarTab(state, "classic")).toBe(state);
@@ -177,7 +174,6 @@ describe("shell store", () => {
     expect(saveProjectRailOpen).not.toHaveBeenCalled();
     expect(saveSettingsSection).not.toHaveBeenCalled();
     shell.toggleSidebar("classic");
-    shell.showSidebarTab("files");
     shell.openFilesSearch();
     expect(saveSidebarOpen).toHaveBeenCalledTimes(1);
     expect(saveSidebarOpen).toHaveBeenCalledWith(true);

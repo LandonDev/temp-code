@@ -15,7 +15,6 @@ import { useEditors } from "../stores/editors";
 import { header, stripOrder, stripOrderStore } from "../stores/header";
 import { useStore } from "zustand";
 import { dockCwdOf, useProject, useProjectCwds } from "../stores/project";
-import { useShell } from "../stores/shell";
 import { useTerminals } from "../stores/terminals";
 import { useWorkspaceTabs } from "../stores/workspace";
 import { basename } from "../lib/fs";
@@ -116,9 +115,8 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   const { active, sidebarCwd: cwd, gitCwd } = useProjectCwds();
   const activeSessionId = active?.id;
   const dirtyFiles = useEditors((s) => s.dirtyFiles);
-  const sidebarOpen = useShell((s) => s.sidebarOpen);
-  const sidebarTab = useShell((s) => s.sidebarTab);
-  const railOpen = useRightPanel(activeSessionId ?? "").open;
+  const panel = useRightPanel(activeSessionId ?? "");
+  const railOpen = panel.open;
   // A linked project's copies are one project here: the strip and its tabs hold every copy's threads.
   const projectScope = useMemo(() => {
     const selected = selectedProjectId ? catalog.projects.find((p) => p.id === selectedProjectId) : undefined;
@@ -128,7 +126,8 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   const dockCwd = dockCwdOf({ projectCwd, selectedProjectId }, catalog.projects);
   const dock = useTerminals((s) => findProjectTerminal(s.docks, dockCwd));
   const projectTerminalActive = deckLayout && !!dock && dock.pane.files.length > 0;
-  const sourceControlActive = deckLayout ? sidebarOpen && sidebarTab === "changes" : railOpen;
+  // The workspace column has no Changes tab: the changes are the right panel's section.
+  const sourceControlActive = panel.open && panel.section === "changes";
   const headerWorkspaceId = deckLayout
     ? resolveSessionContext({
         ...catalog,
