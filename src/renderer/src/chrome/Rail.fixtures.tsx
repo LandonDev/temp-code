@@ -1,9 +1,10 @@
 // The rail's look, for `bun run ui:preview src/renderer/src/chrome/Rail.fixtures.tsx#RailSketch`.
 // Presentational rows only (RailRow, the headings, the foot's shapes) fed plain props: no stores.
 import { StatusMark } from "../components/ui/status";
-import { ChartBar, Inbox, MessageSquare, MoreHorizontal, Plus, Search, Server, Settings, Users } from "./icons";
+import { ChartBar, FolderPlus, Inbox, MessageSquare, MoreHorizontal, Plus, Search, Server, Settings, Users } from "./icons";
 import { ProjectMascot } from "./ProjectMascot";
 import { RailHeading, RailRow } from "./RailRow";
+import { SignInRowView } from "./SignInRow";
 import { UpdateRow } from "./UpdateRow";
 import type { GroupMark } from "../lib/sidebarRows";
 import type { ThreadRow } from "../lib/workspaceSessions";
@@ -76,4 +77,41 @@ export function RailSketch() {
       </div>
     </nav>
   );
+}
+
+/** A new install: Chats, the empty Workspaces list, and the foot led by the
+ *  sign-in row until an account arrives (`signedIn`), with no meter yet. */
+function FirstRun({ signedIn, pending = false }: { signedIn: boolean; pending?: boolean }) {
+  return (
+    <nav aria-label="Workspaces" className="flex h-[720px] w-[260px] flex-col border-r border-border bg-sidebar">
+      <div className="h-10 shrink-0" />
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">
+        <div className="px-2">
+          <RailRow icon={MessageSquare} label="Chats" selected />
+        </div>
+        <div className="px-2 pt-4">
+          <RailHeading>Workspaces</RailHeading>
+          <RailRow icon={FolderPlus} label="Add workspace…" onClick={noop} />
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-col border-t border-border">
+        <div className="flex flex-col p-2">
+          {signedIn ? null : <SignInRowView provider="claude" pending={pending} onClick={noop} />}
+          <RailRow icon={Inbox} label="Inbox" />
+          <RailRow icon={Search} label="Search" />
+          <RailRow icon={Users} label="Accounts" />
+          <RailRow icon={ChartBar} label="Stats" />
+          <RailRow icon={Settings} label="Settings" />
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+export function FirstRunRail({ pending = false }: { pending?: boolean }) {
+  return <FirstRun signedIn={false} pending={pending} />;
+}
+
+export function SignedInRail() {
+  return <FirstRun signedIn />;
 }
