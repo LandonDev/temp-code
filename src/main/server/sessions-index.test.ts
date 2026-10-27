@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
+import { sessionPage } from './wire'
+import * as lifecycle from '@shared/session-lifecycle'
 
 vi.mock('./drivers', () => ({
   BUILT_IN_DRIVERS: {
@@ -56,15 +58,15 @@ it('the index follows every row the store writes: meta pushes and row writes nev
   expect(registry.runningCount()).toBe(1)
   expect(lists).not.toHaveBeenCalled()
 
-  // list() is the authority: it reads the table, as before.
+  // list() reads the index too: no table read for the rows.
   expect(registry.list().map((s) => s.id).sort()).toEqual([parent.id, child.id].sort())
-  expect(lists).toHaveBeenCalledTimes(1)
+  expect(lists).not.toHaveBeenCalled()
   // A write the store cannot describe (a move's raw SQL) bumps the version:
   // the next read builds the index again, once.
   store.forgetSessions([child.id])
   registry.get(parent.id)
   registry.runningCount()
-  expect(lists).toHaveBeenCalledTimes(2)
+  expect(lists).toHaveBeenCalledTimes(1)
 })
 
 it('300 metas changing (context ticks, statuses, accounts) cost no listSessions call', async () => {
@@ -117,6 +119,31 @@ it('the running cap counts from the index: queued roots and subagents, passes, s
   expect(store.getSession(ids[1]!)?.status).toBe('starting')
   expect(store.getSession(ids[2]!)?.status).toBe('queued')
   expect(registry.liveIds().has(ids[0]!)).toBe(false)
+  expect(lists).not.toHaveBeenCalled()
+})
+
+it('list never reads the table: the rows come off the index, newest first, and a family of 50 summarises its tree once', async () => {
+  const roots = [await registry.create({ cwd: root, provider: 'claude', title: 'old' }), await registry.create({ cwd: root, provider: 'claude', title: 'new' })]
+  for (let i = 0; i < 50; i++) await registry.create({ cwd: root, provider: 'claude', parentId: roots[0].id, title: `kid ${i}` })
+  const lists = vi.spyOn(store, 'listSessions')
+  const summaries = vi.spyOn(lifecycle, 'summarizeRootTree')
+  const listed = registry.list({ archived: false })
+  expect(lists).not.toHaveBeenCalled()
+  expect(listed).toHaveLength(52)
+  // Newest first over every row.
+  expect(listed.every((r, i) => i === 0 || listed[i - 1].createdAt >= r.createdAt)).toBe(true)
+  expect(listed.at(-1)!.createdAt).toBe(Math.min(...listed.map((r) => r.createdAt)))
+  // Two roots: two tree summaries for 52 decorated rows.
+  expect(summaries).toHaveBeenCalledTimes(2)
+  // The raw rows page before decoration: a remote page decorates its rows alone.
+  const raw = registry.listRaw({ archived: false })
+  expect(raw.every((r) => !('treeHasLiveWork' in r))).toBe(true)
+  const page = sessionPage(raw, null, { maxRows: 10 })
+  expect(page.sessions).toHaveLength(10)
+  summaries.mockClear()
+  const decorated = registry.decorateAll(page.sessions)
+  expect(decorated.every((r) => 'treeHasLiveWork' in r)).toBe(true)
+  expect(summaries.mock.calls.length).toBeLessThanOrEqual(2)
   expect(lists).not.toHaveBeenCalled()
 })
 

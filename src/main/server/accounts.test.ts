@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { configure, pinProfile, pinnedProfile, vault, type ServiceView, type UsageReport } from 'aliax-core'
 import { HeadroomStore } from './headroom'
-import { AccountsService, accountsPusher, ACCOUNTS_PUSH_MS, OUT_RETRY_MS, RESET_GRACE_MS, type AccountsDeps } from './accounts'
+import { AccountsService, accountsPusher, ACCOUNTS_PUSH_MS, OUT_RETRY_MS, RESET_GRACE_MS, type AccountsDeps, pickableChange, type PickableChange } from './accounts'
 import type { AccountHeadroom, AccountsSnapshot } from '@shared/accounts'
 
 /**
@@ -395,9 +395,15 @@ describe('AccountsService', () => {
     const changes: AccountsSnapshot[] = []
     const picks: AccountsSnapshot[] = []
     svc.onChange((s) => changes.push(s))
-    svc.onPickable((s) => picks.push(s))
+    const moved: (PickableChange | null)[] = []
+    svc.onPickable((s, changed) => {
+      picks.push(s)
+      moved.push(changed)
+    })
     await svc.rebuildNow()
     expect([changes.length, picks.length]).toEqual([1, 1])
+    // The first picture names every provider whole.
+    expect(moved[0]).toMatchObject({ claude: 'all', codex: 'all' })
     // The same picture twice: nothing fires.
     await svc.rebuildNow()
     await svc.rebuildNow()
@@ -418,6 +424,8 @@ describe('AccountsService', () => {
     svc.markOut('codex', 'c@x.com')
     await svc.rebuildNow()
     expect(picks.length).toBe(4)
+    // A mark on one account names that account alone, on its provider alone.
+    expect(moved.at(-1)).toEqual({ codex: new Set(['c@x.com']) })
     expect(usage).toHaveBeenCalled()
   })
 })
@@ -453,5 +461,29 @@ describe('accountsPusher', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('pickableChange', () => {
+  const picture = (over: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      claude: { pinned: 'a@x.com', out: [], throttled: [], profiles: [['a@x.com', false, []], ['b@x.com', false, []]] },
+      codex: { pinned: null, out: [], throttled: [], profiles: [['c@x.com', false, []]] },
+      ...over
+    })
+
+  it('a window reset on account A names A alone', () => {
+    const before = picture({ claude: { pinned: 'a@x.com', out: [], throttled: [], profiles: [['a@x.com', false, ['5h']], ['b@x.com', false, []]] } })
+    expect(pickableChange(before, picture())).toEqual({ claude: new Set(['a@x.com']) })
+  })
+
+  it('a cooldown, an out mark, an expiry or a profile that left name their accounts; a moved pin names the provider whole; nothing moved is null', () => {
+    expect(pickableChange(picture(), picture({ codex: { pinned: null, out: ['c@x.com'], throttled: [], profiles: [['c@x.com', false, []]] } }))).toEqual({ codex: new Set(['c@x.com']) })
+    expect(pickableChange(picture(), picture({ claude: { pinned: 'a@x.com', out: [], throttled: ['b@x.com'], profiles: [['a@x.com', false, []], ['b@x.com', false, []]] } }))).toEqual({ claude: new Set(['b@x.com']) })
+    expect(pickableChange(picture(), picture({ claude: { pinned: 'a@x.com', out: [], throttled: [], profiles: [['a@x.com', true, []], ['b@x.com', false, []]] } }))).toEqual({ claude: new Set(['a@x.com']) })
+    expect(pickableChange(picture(), picture({ claude: { pinned: 'a@x.com', out: [], throttled: [], profiles: [['a@x.com', false, []]] } }))).toEqual({ claude: new Set(['b@x.com']) })
+    expect(pickableChange(picture(), picture({ claude: { pinned: 'b@x.com', out: [], throttled: [], profiles: [['a@x.com', false, []], ['b@x.com', false, []]] } }))).toEqual({ claude: 'all' })
+    expect(pickableChange(null, picture())).toEqual({ claude: 'all', codex: 'all' })
+    expect(pickableChange(picture(), picture())).toBeNull()
   })
 })

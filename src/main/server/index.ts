@@ -20,7 +20,7 @@ import { createServer } from 'node:http'
 import { visibleCatalog } from '@shared/catalog'
 import { networkRefusalOf, refusalCodeOf } from './failureKind'
 import { ClientRequestSchema, type ClientRequest, type ServerFrame, type ServerPush, type ServerResponse } from '@shared/contract'
-import type { SessionChanges } from '@shared/wire'
+import type { SessionChanges, SessionPage } from '@shared/wire'
 import {
   CONTRACT_VERSION,
   LOCAL_PRINCIPAL,
@@ -852,7 +852,7 @@ export async function startServer(
     environmentId,
     scanner: listenerScanner,
     threads: () =>
-      registry.list({ archived: false }).map((m) => {
+      registry.listRaw({ archived: false }).map((m) => {
         const harnessPid = registry.harnessPid(m.id)
         return { id: m.id, cwd: m.cwd, harnessPid, live: harnessPid !== null || LIVE_STATUSES.has(m.status), createdAt: m.createdAt, activeAt: m.updatedAt }
       }),
@@ -1071,8 +1071,8 @@ export async function startServer(
   // Every snapshot that changes what a thread could be routed to re-picks the
   // open threads' accounts (an empty one would pick nothing): the first
   // covers boot. A usage or headroom number moving is not such a change.
-  accounts.onPickable((snapshot) => {
-    if (Object.values(snapshot.providers).some((p) => p.profiles.length > 0)) registry.refreshAccounts()
+  accounts.onPickable((snapshot, changed) => {
+    if (Object.values(snapshot.providers).some((p) => p.profiles.length > 0)) registry.refreshAccounts(changed)
   })
   accounts.start()
   const observed = observeHooks({ logDir: join(options.dataDir ?? dirname(dbPath), 'logs'), onObserved: () => accounts.nudge(), headroom })
@@ -1210,7 +1210,7 @@ export async function startServer(
       bootMark('archive-sweep start')
       const ids = await sweepArchive({
         store,
-        list: () => registry.list({ archived: undefined }),
+        list: () => registry.listRaw({ archived: undefined }),
         queueList: (id) => registry.queueList(id),
         setArchived: (id, archived) => registry.setArchived(id, archived),
         checkpoints
@@ -2269,15 +2269,20 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.list': {
-            const sessions = registry.list({
-              archived: req.params?.archived ?? false,
-              projectId: req.params?.projectId
-            })
+            const opts = { archived: req.params?.archived ?? false, projectId: req.params?.projectId }
+            // The remote profile pages the raw rows first and decorates the
+            // page alone: a 3,000-thread host once decorated every row to
+            // answer a 60-row page.
+            const sessions = profile === 'remote' ? registry.listRaw(opts) : registry.list(opts)
             if (!firstListMarked) {
               firstListMarked = true
               bootMark('first-session-list', `${sessions.length} sessions`)
             }
-            const result = profile === 'remote' ? sessionPage(sessions, req.params?.cursor) : sessions
+            let result: SessionMeta[] | SessionPage
+            if (profile === 'remote') {
+              const page = sessionPage(sessions, req.params?.cursor)
+              result = { ...page, sessions: registry.decorateAll(page.sessions) }
+            } else result = sessions
             const frame = timed('session.list stringify', () =>
               JSON.stringify({ id: req.id, ok: true, result } satisfies ServerFrame)
             )

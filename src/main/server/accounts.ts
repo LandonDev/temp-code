@@ -87,6 +87,44 @@ const RESET_HORIZON_MS = 24 * 3_600_000
  *  routed answer moves a usage window, and the rows need no more than this. */
 export const ACCOUNTS_PUSH_MS = 5_000
 
+/**
+ * Which accounts a pickable picture moved for, per provider: the names whose
+ * out mark, cooldown, expiry or full windows changed, or appeared or left;
+ * `'all'` when the pin moved (every thread of the provider may route
+ * elsewhere) or there was no picture before. Null when nothing moved.
+ */
+export type PickableChange = Partial<Record<AccountProvider, Set<string> | 'all'>>
+
+export function pickableChange(prev: string | null, next: string): PickableChange | null {
+  type Picture = Record<string, { pinned: string | null; out: string[]; throttled: string[]; profiles: [string, boolean, string[]][] }>
+  const after = JSON.parse(next) as Picture
+  const before = prev ? (JSON.parse(prev) as Picture) : null
+  const changed: PickableChange = {}
+  for (const p of ACCOUNT_PROVIDERS) {
+    const a = after[p]
+    const b = before?.[p]
+    if (!a) continue
+    if (!b || a.pinned !== b.pinned) {
+      changed[p] = 'all'
+      continue
+    }
+    const names = new Set<string>()
+    const diff = (x: string[], y: string[]): void => {
+      for (const n of x) if (!y.includes(n)) names.add(n)
+      for (const n of y) if (!x.includes(n)) names.add(n)
+    }
+    diff(a.out, b.out)
+    diff(a.throttled, b.throttled)
+    const rows = (list: [string, boolean, string[]][]): Map<string, string> => new Map(list.map(([name, expired, full]) => [name, JSON.stringify([expired, full])]))
+    const ra = rows(a.profiles)
+    const rb = rows(b.profiles)
+    for (const [name, v] of ra) if (rb.get(name) !== v) names.add(name)
+    for (const name of rb.keys()) if (!ra.has(name)) names.add(name)
+    if (names.size) changed[p] = names
+  }
+  return Object.keys(changed).length ? changed : null
+}
+
 /** What a snapshot shows, less the build's own clock: equal digests are the same picture. */
 export function snapshotDigest(snap: AccountsSnapshot): string {
   return JSON.stringify({ ...snap, updatedAt: 0 })
@@ -204,7 +242,7 @@ export class AccountsService {
   private snap: AccountsSnapshot = emptyAccounts()
   private built = false
   private listeners = new Set<(snapshot: AccountsSnapshot) => void>()
-  private pickableListeners = new Set<(snapshot: AccountsSnapshot) => void>()
+  private pickableListeners = new Set<(snapshot: AccountsSnapshot, changed: PickableChange | null) => void>()
   /** The last picture the listeners heard, and the last pickable set. */
   private digest: string | null = null
   private pickable: string | null = null
@@ -235,7 +273,7 @@ export class AccountsService {
 
   /** A rebuild that changed what a thread could be routed to (pickableDigest):
    *  the open threads re-pick then, never on a usage or headroom number. */
-  onPickable(listener: (snapshot: AccountsSnapshot) => void): () => void {
+  onPickable(listener: (snapshot: AccountsSnapshot, changed: PickableChange | null) => void): () => void {
     this.pickableListeners.add(listener)
     return () => this.pickableListeners.delete(listener)
   }
@@ -566,8 +604,11 @@ export class AccountsService {
       }
       const pickable = this.pickableDigest(snap)
       if (pickable !== this.pickable) {
+        // Which accounts moved, so the registry re-picks only their threads
+        // (a window reset at the clock hour once re-picked every thread).
+        const changed = pickableChange(this.pickable, pickable)
         this.pickable = pickable
-        for (const l of this.pickableListeners) l(snap)
+        for (const l of this.pickableListeners) l(snap, changed)
       }
     })
     this.chain = run.catch(() => {})

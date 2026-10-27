@@ -39,7 +39,8 @@ import {
   foldFailure,
   foldGoal,
   summarizeRootTree,
-  type GoalState
+  type GoalState,
+  type RootTreeSummary
 } from '@shared/session-lifecycle'
 import { isRoutedProvider, type AccountPins, type AccountProvider, type AccountRoute } from '@shared/accounts'
 import { resolvePin, type ResolvedPin, type RouteOptions } from './accountRouting'
@@ -123,10 +124,11 @@ import { batchMembershipOf, isMasterSession, notifyParentOfSettle, settleTargets
 import { batches } from './batch'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
-import { recordSendSpan, timed, whenLoopIdle } from './stalls'
+import { recordSendSpan, timed, whenLoopIdle, yieldUntilIdle } from './stalls'
 import { FIRST_OUTPUT_GAVE_UP, FIRST_OUTPUT_SILENCE } from './drivers/silence'
 import { SendSpans } from './sendSpans'
 import { applyRowChange, buildSessionIndex, type SessionIndex } from './sessionIndex'
+import type { PickableChange } from './accounts'
 import {
   appendJournal,
   INLINE_DIGEST_MAX_CHARS,
@@ -474,6 +476,8 @@ export function isSettleReport(from: SessionMeta['status'] | undefined, to: Sess
 export const PROVIDER_WAIT_MS = 15_000
 /** Every foreign thread reference of one send resolves inside this, together. */
 export const FOREIGN_REFS_BUDGET_MS = 15_000
+/** How many threads an account re-pick writes before the loop gets a turn. */
+export const REFRESH_SLICE = 100
 const PROVIDER_TICK_MS = 5_000
 
 export class SessionRegistry {
@@ -1245,15 +1249,26 @@ export class SessionRegistry {
    *  archived root still decorates right. */
   list(opts: { archived?: boolean; projectId?: string } = { archived: false }): SessionMeta[] {
     return timed('registry.list', () => {
-      const sessions = this.store.listSessions()
-      const index = this.indexOf(sessions)
-      const wanted = sessions.filter(
-        (s) =>
-          (opts.archived === undefined || s.archived === opts.archived) &&
-          (opts.projectId === undefined || s.projectId === opts.projectId)
-      )
-      return wanted.map((s) => this.decorate(s, index))
+      const index = this.indexOf()
+      return this.decorateAll(this.listRaw(opts, index), index)
     })
+  }
+
+  /** The rows alone, newest first, off the maintained index: no table read,
+   *  no decoration. The remote list pages these before decorating the page;
+   *  the archive sweep and the port sweep read them as they are. */
+  listRaw(opts: { archived?: boolean; projectId?: string } = { archived: false }, index: SessionIndex = this.indexOf()): SessionMeta[] {
+    const rows: SessionMeta[] = []
+    for (const s of index.byId.values()) {
+      if ((opts.archived === undefined || s.archived === opts.archived) && (opts.projectId === undefined || s.projectId === opts.projectId)) rows.push(s)
+    }
+    return rows.sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  }
+
+  /** Decorate rows together: one index, and each family's tree summarised once. */
+  decorateAll(rows: readonly SessionMeta[], index: SessionIndex = this.indexOf()): SessionMeta[] {
+    const trees = new Map<string, RootTreeSummary>()
+    return rows.map((s) => this.decorate(s, index, trees))
   }
 
   /** One decorated session — the lookup-by-id every caller used to do
@@ -1609,28 +1624,55 @@ export class SessionRegistry {
   /** Every open thread: at boot (once the accounts service knows any
    *  account) and whenever the snapshot changes, so coming back to a
    *  thread never shows a stale pick. */
-  refreshAccounts(): void {
-    this.expectAccountsUnder(() => true)
+  refreshAccounts(changed: PickableChange | null = null): void {
+    if (!changed) {
+      this.expectAccountsUnder(() => true)
+      return
+    }
+    // Only the threads the moved accounts touch: those on one of them, and
+    // those with no account yet; every thread of a provider whose pin moved.
+    // A window reset at the clock hour once re-picked every unarchived
+    // thread at once (4,000 metas in a second, nine of nine storms).
+    const match = (s: SessionMeta): boolean => {
+      const names = changed[s.provider as AccountProvider]
+      if (!names) return false
+      return names === 'all' || !s.account || names.has(s.account)
+    }
+    void this.expectAccountsSliced(match)
   }
 
-  /** A scope pin changed: threads under it show their new pick now. The
-   *  live load is read once per provider for the whole pass: refreshing a
-   *  thread never changes it (live threads are skipped), and reading it per
-   *  thread made a pass cost threads × live threads. */
+  /** The pass in slices behind the loop: each slice is written and pushed
+   *  (tagged `accounts`), then the loop gets a turn before the next. */
+  private async expectAccountsSliced(match: (meta: SessionMeta) => boolean, slice = REFRESH_SLICE): Promise<void> {
+    const rows = [...this.indexOf().byId.values()].filter((s) => !s.archived && match(s))
+    for (let i = 0; i < rows.length; i += slice) {
+      this.expectAccountsOver(rows.slice(i, i + slice))
+      if (i + slice < rows.length) await yieldUntilIdle()
+    }
+  }
+
+  /** A scope pin changed: threads under it show their new pick now. */
   private expectAccountsUnder(match: (meta: SessionMeta) => boolean): void {
+    this.expectAccountsOver([...this.indexOf().byId.values()].filter((s) => !s.archived && match(s)))
+  }
+
+  /** Re-pick these rows. The live load is read once per provider for the
+   *  whole pass: refreshing a thread never changes it (live threads are
+   *  skipped), and reading it per thread made a pass cost threads × live
+   *  threads. 224 idle threads re-picked on every snapshot once held the
+   *  loop 2.2 s: the pass runs only when the pickable set moved (index.ts)
+   *  and notifies once it is written. */
+  private expectAccountsOver(rows: readonly SessionMeta[]): void {
     const loads = new Map<SessionMeta['provider'], Record<string, number>>()
     const load = (provider: SessionMeta['provider']): Record<string, number> => {
       let l = loads.get(provider)
       if (!l) loads.set(provider, (l = this.liveLoad(provider)))
       return l
     }
-    // 224 idle threads re-picked on every snapshot once held the loop 2.2 s:
-    // the pass walks the index (copied: it writes rows as it goes), runs only
-    // when the pickable set moved (index.ts), and notifies once it is written.
     const outer = this.deferredMeta
     const deferred = (this.deferredMeta ??= new Map())
     try {
-      for (const s of [...this.indexOf().byId.values()]) if (!s.archived && match(s)) this.refreshAccount(s.id, load)
+      for (const s of rows) this.refreshAccount(s.id, load)
     } finally {
       if (!outer) {
         this.deferredMeta = null
@@ -4931,7 +4973,7 @@ export class SessionRegistry {
 
   /** Everything the tab strip needs that isn't in the stored row: what the
    *  thread is doing, and how far through its task list it is. */
-  private decorate(session: SessionMeta, index: SessionIndex = this.indexOf()): SessionMeta {
+  private decorate(session: SessionMeta, index: SessionIndex = this.indexOf(), trees?: Map<string, RootTreeSummary>): SessionMeta {
     const act = this.activities.get(session.id)
     let root = session
     for (let hops = 0; root.parentId && hops < 20; hops++) {
@@ -4939,10 +4981,15 @@ export class SessionRegistry {
       if (!parent) break
       root = parent
     }
-    const tree = summarizeRootTree(root, index.byParent, (id) => {
-      const meta = index.byId.get(id)
-      return !!meta && this.canContinueError(meta)
-    })
+    // A list decorating a family of fifty summarises its tree once, not fifty times.
+    let tree = trees?.get(root.id)
+    if (!tree) {
+      tree = summarizeRootTree(root, index.byParent, (id) => {
+        const meta = index.byId.get(id)
+        return !!meta && this.canContinueError(meta)
+      })
+      trees?.set(root.id, tree)
+    }
     const background = this.backgroundOf(session, index)
     const awaiting = this.awaiting.get(session.id)
     return {
