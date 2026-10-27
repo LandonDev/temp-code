@@ -139,10 +139,13 @@ describe("AddThreadDialog", () => {
     expect(hostButton("Mini").disabled).toBe(true);
     // The note hangs on a Tooltip over the disabled choice, never a title=.
     expect(hostButton("Mini").hasAttribute("title")).toBe(false);
-    // The tooltip's primitive loads on the first hover anywhere; load it first, as a warm app has.
+    // The tooltip's primitive loads on the first hover anywhere and swaps in
+    // once focus leaves the brief; load it and let go of focus first.
     await act(async () => {
+      (document.activeElement as HTMLElement | null)?.blur();
       warmTooltips();
       await tooltipChunk.load();
+      await Promise.resolve();
     });
     const wrapper = hostButton("Mini").closest("[data-choice-note]") as HTMLElement;
     await act(async () => {

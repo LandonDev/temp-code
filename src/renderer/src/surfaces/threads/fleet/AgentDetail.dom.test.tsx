@@ -56,7 +56,10 @@ const agent = (over: Partial<SessionMeta> = {}): SessionMeta =>
 
 /** One finite animation per element whose `finished` the test releases. */
 let release: () => void = () => {};
+const flags = globalThis as { BASE_UI_ANIMATIONS_DISABLED?: boolean };
 function holdAnimations() {
+  // The dom setup turns Base UI's animation wait off; this test needs it on.
+  flags.BASE_UI_ANIMATIONS_DISABLED = false;
   let finished = false;
   const done = new Promise<void>((resolve) => {
     release = () => {
@@ -87,6 +90,7 @@ afterEach(() => {
   h.send.mockClear();
   h.steer.mockClear();
   delete (Element.prototype as { getAnimations?: unknown }).getAnimations;
+  flags.BASE_UI_ANIMATIONS_DISABLED = true;
 });
 
 describe("AgentDetail", () => {
