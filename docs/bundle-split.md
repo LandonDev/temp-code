@@ -22,8 +22,9 @@ on intent so the skeleton is rarely seen.
   module the import target is a barrel (`diffChunk.ts`, `editorChunk.ts`,
   `threads/threadViews.ts`).
 - `src/renderer/src/surfaces/SurfaceSkeleton.tsx` — the fallbacks, one
-  outline per kind (`page`, `pane`, `diff`, `terminal`, `frame`), the
-  surface's own shape in faint bars so the frame around it never jumps.
+  outline per kind (`page`, `pane`, `diff`, `terminal`, `frame`,
+  `transcript`, `rows`), the surface's own shape in still `Skeleton` blocks
+  so the frame around it never jumps.
 
 | Chunk | Holds | Mount point | Warmed by |
 | --- | --- | --- | --- |

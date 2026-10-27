@@ -21,7 +21,7 @@ describe("ConnectionLine", () => {
     degraded = { kind: "reconnecting", status };
     const { container } = render(<ConnectionLine environmentId="env_box" />);
     expect(container.querySelector('[data-slot="spinner"]')?.getAttribute("aria-hidden")).toBe("true");
-    expect(container.innerHTML).not.toContain("animate-pulse");
+    expect(container.innerHTML).not.toMatch(/animate-(pulse|spin)\b/);
   });
 
   it.each(["offline", "unauthorized"] as const)("keeps a still dot when the host is %s", (kind) => {

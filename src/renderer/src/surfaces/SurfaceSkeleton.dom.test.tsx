@@ -14,7 +14,7 @@ describe("SurfaceSkeleton", () => {
     expect(root.getAttribute("data-surface-skeleton")).toBe(kind);
     expect(root.getAttribute("aria-busy")).toBe("true");
     expect(root.querySelector('[data-slot="skeleton"]')).not.toBeNull();
-    expect(container.innerHTML).not.toContain("animate-pulse");
+    expect(container.innerHTML).not.toMatch(/animate-(pulse|spin)\b/);
   });
 
   it("says Loading when given no label", () => {

@@ -38,10 +38,10 @@ DESIGN.md wins.
 | An icon replacing another (Copy → Check) | `SwapIcon` (../../motion/IconSwap.tsx) | The new glyph grows from a quarter size on `SPRING_LAYOUT`; reduced motion cross-fades. |
 | A scrolling panel | `ScrollArea` (scroll-area.tsx) | Panels and lists; the transcript keeps its native scroller. |
 | A determinate bar | `Progress` (progress.tsx) | Usage meter, tallies. `fill` is foreground, muted or warning; the fill is a transform, so a live update never relayouts. |
-| Loading, indeterminate | `Spinner` (spinner.tsx) | 16px arc, with a word. The nine other spinners are retired. |
-| Loading, a shape | `Skeleton` (skeleton.tsx) | Shaped like what it stands in for. |
+| Loading, indeterminate | `Spinner` (spinner.tsx) | 16px arc, with a word. The nine other spinners are retired. A small section's wait is `LoadingLine` (surfaces/SurfaceSkeleton.tsx). |
+| Loading, a shape | `Skeleton` (skeleton.tsx) | Shaped like what it stands in for; still. A whole surface is `SurfaceSkeleton` (surfaces/SurfaceSkeleton.tsx) by kind. |
 | Something is happening (text) | `TextShimmer` (text-shimmer.tsx) | The one shimmer. |
-| Nothing here | `Empty` (empty.tsx) | Title, one line, at most one action. |
+| Nothing here | `Empty` (empty.tsx) | Title, one line, at most one action, through `EmptyState` (surfaces/SurfaceSkeleton.tsx). A picker's no match is one muted row. |
 | An inline callout | `Alert` (alert.tsx) | Tinted by tone. Not for transcript notices. |
 | A thread's state | `StatusMark` (status.tsx) | One glyph, one word, one tone per state; `detail` is what it is about, muted after the word ("Working  typecheck", a tally). The only status-to-colour map; `threadStateOf(status, { settled, planReady })` turns a session's wire status into the state (a written plan is `plan-ready`, muted), `linkMarkOf(transport)` a host link into its state and word. A thread's row reads `threadStatus` (lib/threadStripModel.ts: the state with the tree's overrides, the detail and the tally) and draws it with `ThreadStatusMark` (chrome/TabIndicator.tsx); `marksAtRest` leaves idle and done unmarked. |
 | A key cap | `Kbd` (kbd.tsx) | In menus, tooltips, buttons. |

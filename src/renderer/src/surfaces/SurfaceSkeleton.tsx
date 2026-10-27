@@ -61,8 +61,8 @@ function body(kind: SkeletonKind, count: number): ReactNode {
                 {Array.from({ length: 5 }, (_, i) => (
                   <div key={i} className="flex items-center gap-4">
                     <div className="flex min-w-0 flex-1 flex-col gap-2">
-                      <Skeleton className="h-3 w-40" />
-                      <Skeleton className="h-2.5 w-64" />
+                      <Skeleton className="h-3 w-40 max-w-full" />
+                      <Skeleton className="h-2.5 w-64 max-w-full" />
                     </div>
                     <Skeleton className="h-5 w-9 rounded-full" />
                   </div>
@@ -82,7 +82,7 @@ function body(kind: SkeletonKind, count: number): ReactNode {
       return (
         <>
           <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3">
-            <Skeleton className="h-3 w-40" />
+            <Skeleton className="h-3 w-40 max-w-full" />
             <Skeleton className="ms-auto h-3 w-10" />
           </div>
           <div className="flex max-w-2xl flex-col gap-4 p-3">
@@ -119,8 +119,8 @@ function body(kind: SkeletonKind, count: number): ReactNode {
         <div className="flex flex-col gap-1">
           {Array.from({ length: count }, (_, i) => (
             <div key={i} data-skeleton-row className="flex h-12 flex-col justify-center gap-2 px-3">
-              <Skeleton className="h-3 w-40" />
-              <Skeleton className="h-2.5 w-56" />
+              <Skeleton className="h-3 w-40 max-w-full" />
+              <Skeleton className="h-2.5 w-56 max-w-full" />
             </div>
           ))}
         </div>

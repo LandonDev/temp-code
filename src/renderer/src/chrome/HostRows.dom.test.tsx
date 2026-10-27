@@ -116,7 +116,7 @@ describe("HostsRow", () => {
     const spinner = row.querySelector('[data-host-status="reconnecting"]')!;
     expect(spinner.getAttribute("data-slot")).toBe("spinner");
     expect(spinner.getAttribute("class")).toContain("text-warning");
-    expect(row.innerHTML).not.toContain("animate-pulse");
+    expect(row.innerHTML).not.toMatch(/animate-(pulse|spin)\b/);
   });
 
   it("lists a submenu per host, with the glyph, the name and the state, then Host settings", async () => {
