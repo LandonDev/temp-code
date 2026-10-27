@@ -50,8 +50,7 @@ export const SETTINGS_SECTIONS: {
     id: "orchestration",
     group: "threads",
     label: "Orchestration",
-    description:
-      "What threads that spawn subagents may do themselves, which models they may spawn, and where each kind of work goes.",
+    description: "What threads that spawn subagents may do, and which models they may spawn.",
   },
   {
     id: "reviews",

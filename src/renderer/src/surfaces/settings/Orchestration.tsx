@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { OrchestrationRulesEditor } from "../../chrome/OrchestrationRules";
+import { ChoiceSelect } from "../../components/choice-select";
+import { PageRow, PageSection } from "../../components/page";
 import { takeRequestedScope } from "../../lib/tcserver/rules";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
-import { Row, Select } from "../settingsBits";
 
 export function OrchestrationPage() {
   const workspaces = useWorkspaces();
@@ -11,17 +12,16 @@ export function OrchestrationPage() {
   return (
     <>
       {workspaces.length > 0 ? (
-        <Row label="Scope" description="The global rules, or one workspace's override of them.">
-          <Select
-            label="Rules scope"
-            value={known ? (scope ?? "") : ""}
-            onChange={(next) => setScope(next || null)}
-            options={[
-              { value: "", label: "Global" },
-              ...workspaces.map((w) => ({ value: w.id, label: w.name })),
-            ]}
-          />
-        </Row>
+        <PageSection>
+          <PageRow title="Rules for">
+            <ChoiceSelect
+              label="Rules for"
+              value={known ? (scope ?? "") : ""}
+              onChange={(next) => setScope(next || null)}
+              options={[{ value: "", label: "Global" }, ...workspaces.map((w) => ({ value: w.id, label: w.name }))]}
+            />
+          </PageRow>
+        </PageSection>
       ) : null}
       <OrchestrationRulesEditor key={scope ?? ""} workspaceId={known ? scope : null} />
     </>
