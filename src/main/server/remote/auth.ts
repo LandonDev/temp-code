@@ -31,6 +31,10 @@ export const AUDIENCES: readonly Audience[] = ['client', 'mcp']
 export const isAudience = (v: unknown): v is Audience => v === 'client' || v === 'mcp'
 
 /** Thrown for a caller's mistake; the listener maps `status` onto the response. */
+/** The refusal of a browser session for a bot (MCP) pairing. The pair page
+ *  matches it to redeem the same code as a key instead (pairPage.ts). */
+export const SESSION_NEEDS_CLIENT = 'only client pairings open a browser session'
+
 export class RemoteAuthError extends Error {
   constructor(
     readonly status: number,
@@ -447,7 +451,7 @@ export class RemoteAuth {
     const name = request.name?.trim() || row.name
     const createdBy = `pairing:${row.id}`
     if (request.kind === 'session' && row.audience !== 'client')
-      throw new RemoteAuthError(400, 'only client pairings open a browser session')
+      throw new RemoteAuthError(400, SESSION_NEEDS_CLIENT)
     // One compare-and-consume claims the code before anything is minted, so
     // N concurrent redeems answer one key and N-1 refusals (R2 M1); the
     // claim is released if minting throws.

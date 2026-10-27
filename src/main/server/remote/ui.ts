@@ -6,6 +6,7 @@ import { ASSET_SCHEME } from '@shared/assets'
 import type { RequestContext, UiHandler } from './listener'
 import { notFound } from './listener'
 import type { Verified } from './auth'
+import { pairPageHtml } from './pairPage'
 
 /**
  * The browser face of the fixed port (plan 5jtfkIC45Cbr): `/pair` signs a
@@ -87,66 +88,6 @@ export function assetRequestFor(url: string, req: { method?: string; headers: Re
     method: req.method === 'HEAD' ? 'HEAD' : 'GET',
     headers: typeof range === 'string' ? { range } : {}
   })
-}
-
-/** The sign-in page: the code comes in the fragment (never sent to the server by the link itself).
- *  Its one script runs under a per-response nonce, so the policy allows no inline script at all (R2 L3). */
-export function pairPageHtml(nonce: string): string {
-  return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self'; form-action 'none'; base-uri 'none'">
-<title>Pair this browser</title>
-<style>
-  :root { color-scheme: dark; }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: hsl(240 0% 9%); color: #e8e8e8; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  form { width: min(360px, calc(100vw - 48px)); display: grid; gap: 12px; }
-  h1 { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
-  p { margin: 0; color: #9a9a9a; font-size: 13px; }
-  label { display: grid; gap: 6px; font-size: 12px; color: #9a9a9a; }
-  input { font: inherit; padding: 9px 11px; border-radius: 8px; border: 1px solid #333; background: #161616; color: inherit; outline: none; }
-  input:focus { border-color: #555; }
-  #code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; text-transform: uppercase; }
-  button { font: inherit; font-weight: 500; padding: 10px; border-radius: 8px; border: 0; background: #e8e8e8; color: #111; cursor: pointer; }
-  button:disabled { opacity: 0.5; cursor: default; }
-  #error { color: #ff6b6b; font-size: 13px; min-height: 1.2em; }
-</style></head>
-<body>
-<form id="f" autocomplete="off">
-  <h1>Pair this browser</h1>
-  <p>Enter the code from the app's Settings → Hosts.</p>
-  <label>Pairing code<input id="code" name="code" required placeholder="XXXXX-XXXXX" spellcheck="false" autocapitalize="characters"></label>
-  <label>Name this browser<input id="name" name="name" placeholder="Chrome on iPad"></label>
-  <div id="error" role="alert"></div>
-  <button id="go" type="submit">Sign in</button>
-</form>
-<script nonce="${nonce}">
-(function () {
-  var code = document.getElementById('code'), name = document.getElementById('name'), err = document.getElementById('error'), go = document.getElementById('go');
-  var fromHash = decodeURIComponent(location.hash.slice(1));
-  if (fromHash) code.value = fromHash;
-  if (!name.value) name.value = (function (ua) {
-    var b = /Edg\\//.test(ua) ? 'Edge' : /OPR\\//.test(ua) ? 'Opera' : /Chrome\\//.test(ua) ? 'Chrome' : /Firefox\\//.test(ua) ? 'Firefox' : /Safari\\//.test(ua) ? 'Safari' : 'Browser';
-    var os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : '';
-    return os ? b + ' on ' + os : b;
-  })(navigator.userAgent);
-  (fromHash ? name : code).focus();
-  document.getElementById('f').addEventListener('submit', function (e) {
-    e.preventDefault();
-    err.textContent = '';
-    go.disabled = true;
-    fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code.value, kind: 'session', name: name.value }) })
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); })
-      .then(function (r) {
-        if (r.ok) { history.replaceState(null, '', '/pair'); location.replace('/ui/'); return; }
-        err.textContent = (r.body && r.body.error) || ('Sign-in failed (' + r.status + ')');
-        go.disabled = false;
-      })
-      .catch(function () { err.textContent = 'Could not reach the server.'; go.disabled = false; });
-  });
-})();
-</script>
-</body></html>
-`
 }
 
 function send(res: RequestContext['res'], status: number, body: string, type: string, extra: Record<string, string> = {}): void {

@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
-import { assetRequestFor, createUiHandler, fencedUnder, mimeFor, pairPageHtml, rewriteCsp } from './ui'
+import { assetRequestFor, createUiHandler, fencedUnder, mimeFor, rewriteCsp } from './ui'
 
 const INDEX = `<!doctype html><html><head><meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; media-src 'self' tempcode-asset:; frame-src tempcode-asset:" />
@@ -45,23 +45,6 @@ describe('fencedUnder', () => {
     expect(fencedUnder(root, '%zz')).toBeNull()
     expect(fencedUnder(root, '')).toBeNull()
     expect(fencedUnder(root, 'a%00b')).toBeNull()
-  })
-})
-
-describe('pairPageHtml', () => {
-  it('posts a session exchange and never inlines a code', () => {
-    const html = pairPageHtml('n0nce+Abc/==')
-    expect(html).toContain("kind: 'session'")
-    expect(html).toContain('location.hash')
-    expect(html).toContain("location.replace('/ui/')")
-    expect(html).not.toMatch(/tc_[A-Z0-9]{10}/)
-  })
-  it('allows its script by nonce only, never inline (R2 L3)', () => {
-    const html = pairPageHtml('n0nce+Abc/==')
-    expect(html).toMatch(/script-src 'nonce-n0nce\+Abc\/=='; /)
-    expect(html).toContain('<script nonce="n0nce+Abc/==">')
-    expect(html).not.toMatch(/script-src[^;]*unsafe-inline/)
-    expect(html.match(/<script/g)).toHaveLength(1)
   })
 })
 
