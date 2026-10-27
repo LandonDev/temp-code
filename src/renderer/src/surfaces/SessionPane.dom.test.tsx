@@ -86,6 +86,7 @@ function pane(s: Session, split: { inSplit?: boolean; focused?: boolean; onClose
 
 const skeleton = () => document.querySelector('[data-surface-skeleton="transcript"]');
 const line = () => document.querySelector("[data-load-line]");
+const parts = () => [...(line()?.querySelectorAll("span > span") ?? [])].map((part) => part.textContent);
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -135,11 +136,12 @@ describe("the pane while a transcript loads", () => {
   it("slow: the skeleton and one line naming the host with the seconds ticking, and Retry", () => {
     pane(session({ phase: "slow", since: NOW - 12_000, attempt: 0 }));
     expect(skeleton()).not.toBeNull();
-    expect(line()?.textContent).toBe("Waiting for box · 12 sRetry");
+    expect(parts()).toEqual(["Waiting for box", "12 s"]);
+    expect(screen.getByRole("button", { name: "Retry" }).dataset.slot).toBe("button");
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(line()?.textContent).toBe("Waiting for box · 13 sRetry");
+    expect(parts()).toEqual(["Waiting for box", "13 s"]);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retryLoad).toHaveBeenCalledWith("s1");
   });
@@ -147,7 +149,7 @@ describe("the pane while a transcript loads", () => {
   it("failed: what went wrong, the countdown to the next try, and Retry now", () => {
     pane(session({ phase: "failed", since: NOW - 5_000, attempt: 3, error: "timed out", retryAt: NOW + 4_000 }));
     expect(skeleton()).not.toBeNull();
-    expect(line()?.textContent).toBe("Box did not answer (timed out) · retrying in 4 sRetry now");
+    expect(parts()).toEqual(["Box did not answer", "timed out", "retrying in 4 s"]);
     act(() => {
       vi.advanceTimersByTime(1000);
     });
@@ -183,16 +185,19 @@ describe("the pane in a split", () => {
 });
 
 describe("loadLineText", () => {
-  it("words each phase", () => {
+  it("words each phase in parts, with no dots or parentheses", () => {
     expect(loadLineText("box", { phase: "loading", since: NOW, attempt: 0 }, NOW)).toBeNull();
     expect(loadLineText("box", { phase: "loaded", since: NOW, attempt: 0 }, NOW)).toBeNull();
-    expect(loadLineText("the box", { phase: "slow", since: NOW - 8_400, attempt: 0 }, NOW)).toBe("Waiting for the box · 8 s");
-    expect(loadLineText("the box", { phase: "failed", since: NOW, attempt: 1, error: "connection closed", retryAt: NOW + 900 }, NOW)).toBe(
-      "The box did not answer (connection closed) · retrying in 1 s",
-    );
-    expect(loadLineText("box", { phase: "failed", since: NOW, attempt: 1, retryAt: NOW - 1 }, NOW)).toBe("Box did not answer · retrying…");
-    expect(loadLineText("box", { phase: "failed", since: NOW, attempt: 1, error: "unknown session" }, NOW)).toBe(
-      "Box could not open this thread (unknown session)",
-    );
+    expect(loadLineText("the box", { phase: "slow", since: NOW - 8_400, attempt: 0 }, NOW)).toEqual(["Waiting for the box", "8 s"]);
+    expect(loadLineText("the box", { phase: "failed", since: NOW, attempt: 1, error: "connection closed", retryAt: NOW + 900 }, NOW)).toEqual([
+      "The box did not answer",
+      "connection closed",
+      "retrying in 1 s",
+    ]);
+    expect(loadLineText("box", { phase: "failed", since: NOW, attempt: 1, retryAt: NOW - 1 }, NOW)).toEqual(["Box did not answer", "retrying…"]);
+    expect(loadLineText("box", { phase: "failed", since: NOW, attempt: 1, error: "unknown session" }, NOW)).toEqual([
+      "Box could not open this thread",
+      "unknown session",
+    ]);
   });
 });

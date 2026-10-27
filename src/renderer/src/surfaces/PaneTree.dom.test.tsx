@@ -59,6 +59,15 @@ describe("SessionLeaf for a thread no host has", () => {
     expect(openSettings).toHaveBeenCalledWith("archive");
   });
 
+  it("in a split, a gone thread closes its pane", () => {
+    state.session = thread("gone");
+    const onClose = vi.fn();
+    render(<SessionLeaf id="t1" {...base} inSplit onClose={onClose} />);
+    expect(screen.queryByRole("button", { name: "Close tab" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close pane" }));
+    expect(onClose).toHaveBeenCalledWith("t1");
+  });
+
   it("a thread the store dropped after the hosts listed draws the line, not nothing", () => {
     render(<SessionLeaf id="t1" {...base} onClose={() => {}} />);
     expect(screen.getByText("No longer on any host")).toBeTruthy();

@@ -92,10 +92,10 @@ export function SessionLeaf({ id, visible, ...props }: SessionLeafProps) {
     // A failed load retries by itself (store.ts); the pane reads its phase.
     if (!loaded) void sessionStore.ensureLoaded(id, "pane").catch(() => undefined);
   }, [id, loaded]);
-  if (session?.load?.phase === "gone") return <SessionGone id={id} host={session.environmentId} onClose={props.onClose} />;
+  if (session?.load?.phase === "gone") return <SessionGone id={id} host={session.environmentId} inSplit={props.inSplit} onClose={props.onClose} />;
   // A thread the store does not hold once the hosts have listed: the host
   // stopped listing it. Before that it may still be on its way.
-  if (!session) return sessionStore.hasListed() ? <SessionGone id={id} onClose={props.onClose} /> : null;
+  if (!session) return sessionStore.hasListed() ? <SessionGone id={id} inSplit={props.inSplit} onClose={props.onClose} /> : null;
   return <SessionPane session={session} visible={visible} {...props} />;
 }
 

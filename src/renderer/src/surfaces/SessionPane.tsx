@@ -21,6 +21,7 @@ import { rightPanel } from "../lib/rightPanel";
 import { diffChunk, inboxChunk, notesChunk, rightPanelChunk, searchChunk, selectChunk, threadViewsChunk } from "./chunks";
 import { tooltipChunk } from "../components/ui/tooltip";
 import { preloadWhenIdle } from "../lib/lazyChunk";
+import { Button } from "../components/ui/button";
 import { EmptySession } from "./EmptySession";
 import { PaneHeader } from "./paneChrome";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
@@ -223,16 +224,17 @@ export const SessionPane = memo(function SessionPane({
   );
 });
 
-/** The pane's one line while a transcript is slow or failed; null otherwise. */
-export function loadLineText(name: string, load: LoadState, now: number): string | null {
-  if (load.phase === "slow") return `Waiting for ${name} · ${Math.max(0, Math.floor((now - load.since) / 1000))} s`;
+/** The pane's one line while a transcript is slow or failed, in parts set
+ *  apart by space; null otherwise. */
+export function loadLineText(name: string, load: LoadState, now: number): string[] | null {
+  if (load.phase === "slow") return [`Waiting for ${name}`, `${Math.max(0, Math.floor((now - load.since) / 1000))} s`];
   if (load.phase !== "failed") return null;
   const host = `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
-  const why = load.error ? ` (${load.error})` : "";
+  const why = load.error ? [load.error] : [];
   // No retry scheduled: the host answered with a refusal, not silence.
-  if (load.retryAt === undefined) return `${host} could not open this thread${why}`;
+  if (load.retryAt === undefined) return [`${host} could not open this thread`, ...why];
   const wait = Math.ceil((load.retryAt - now) / 1000);
-  return wait > 0 ? `${host} did not answer${why} · retrying in ${wait} s` : `${host} did not answer${why} · retrying…`;
+  return [`${host} did not answer`, ...why, wait > 0 ? `retrying in ${wait} s` : "retrying…"];
 }
 
 function LoadLine({ name, load, onRetry }: { name: string; load: LoadState; onRetry: () => void }) {
@@ -244,18 +246,24 @@ function LoadLine({ name, load, onRetry }: { name: string; load: LoadState; onRe
     const t = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, [ticking, load]);
-  const text = loadLineText(name, load, now);
-  if (!text) return null;
+  const parts = loadLineText(name, load, now);
+  if (!parts) return null;
   return (
     <div
       role="status"
       data-load-line={load.phase}
-      className="mx-auto mt-2 flex h-6 w-full max-w-4xl shrink-0 items-center gap-2 px-4 text-[11px] text-content/50"
+      className="mx-auto mt-2 flex h-6 w-full max-w-4xl shrink-0 items-center gap-2 px-4 text-[12px] text-muted-foreground"
     >
-      <span className="min-w-0 flex-1 truncate">{text}</span>
-      <button type="button" onClick={onRetry} className="pressable shrink-0 rounded px-1.5 py-0.5 hover:bg-content/10 hover:text-content">
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        {parts.map((part, i) => (
+          <span key={i} className={i === 0 ? "min-w-0 truncate" : "shrink-0 tabular-nums"}>
+            {part}
+          </span>
+        ))}
+      </span>
+      <Button variant="ghost" size="xs" className="shrink-0" onClick={onRetry}>
         {load.phase === "failed" ? "Retry now" : "Retry"}
-      </button>
+      </Button>
     </div>
   );
 }
