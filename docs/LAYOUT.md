@@ -351,10 +351,10 @@ the tiers the serving CLI lists, any other setting). Right: the permission
 mode as a quiet select (none for fx) and the send button, whose glyph is
 what Enter would do.
 
-Under the box, only on the shell's new-thread screen and until a thread's
-first message, one quiet row holds project, host, branch and type. After
-it they live in the header, the right panel's Branch section and the
-thread menu's Type submenu. The goal is the thread menu's "Goal…"
+Under the box, one quiet row holds project, host, branch and type on the
+shell's new-thread screen and until a thread's first message; after it the
+row holds the branch alone (no other control switches it), and the type is
+the thread menu's Type submenu. The goal is the thread menu's "Goal…"
 (chrome/GoalDialog.tsx); usage and accounts are the rail's meter (A3); the
 context ring and its breakdown are gone, the percent is on the model menu.
 

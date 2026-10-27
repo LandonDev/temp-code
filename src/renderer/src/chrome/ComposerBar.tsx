@@ -108,9 +108,10 @@ function AddMenu({
  *  checkpoint strip that sits on its top edge (chrome/SessionReview.tsx). */
 export const COMPOSER_SURFACE = "border border-border bg-card";
 
-/** Whether the row under the box (project, host, branch, type) shows: on the
- *  shell's new-thread screen and on a thread with no message yet. After the
- *  first message they live in the header, the right panel and the thread menu. */
+/** Whether the draft's controls under the box (project, host, type) show: on
+ *  the shell's new-thread screen and on a thread with no message yet. After
+ *  the first message the branch stays there alone; the type is the thread
+ *  menu's Type submenu. */
 export function useDraftRow(sessionId: string | undefined, shell = false): boolean {
   return useSyncExternalStore(
     sessionStore.subscribe,

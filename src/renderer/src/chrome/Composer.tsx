@@ -942,38 +942,37 @@ export function Composer({
             }
           />
         </div>
-        {draft ? (
-          <div data-composer-draft-row className="mt-1 flex h-7 min-w-0 items-center gap-2 px-3 text-xs text-muted-foreground">
-            {hideProjectPicker ? null : (
-              <CwdPicker
-                cwd={cwd}
-                recents={recents}
-                projectLogoPath={projectLogoPath}
-                enabled={enabled}
-                onCwdChange={onCwdChange}
-                onNewTerminal={onNewTerminal}
-                onClose={() => inputRef.current?.focus()}
-              />
-            )}
-            {sessionId && enabled ? (
-              <DraftHostPicker sessionId={sessionId} onClose={() => inputRef.current?.focus()} />
-            ) : null}
-            <BranchPicker
+        <div data-composer-draft-row className="mt-1 flex h-7 min-w-0 items-center gap-2 px-3 text-xs text-muted-foreground">
+          {draft && !hideProjectPicker ? (
+            <CwdPicker
               cwd={cwd}
-              branch={branch}
-              enabled={enabled && !busy}
-              onChange={onBranchChange}
+              recents={recents}
+              projectLogoPath={projectLogoPath}
+              enabled={enabled}
+              onCwdChange={onCwdChange}
+              onNewTerminal={onNewTerminal}
               onClose={() => inputRef.current?.focus()}
             />
-            {threadType && onThreadTypeChange ? (
-              <ThreadTypeChip
-                value={threadType}
-                onChange={onThreadTypeChange}
-                onClose={() => inputRef.current?.focus()}
-              />
-            ) : null}
-          </div>
-        ) : null}
+          ) : null}
+          {draft && sessionId && enabled ? (
+            <DraftHostPicker sessionId={sessionId} onClose={() => inputRef.current?.focus()} />
+          ) : null}
+          {/* The branch stays after the first message: it has no other home. */}
+          <BranchPicker
+            cwd={cwd}
+            branch={branch}
+            enabled={enabled && !busy}
+            onChange={onBranchChange}
+            onClose={() => inputRef.current?.focus()}
+          />
+          {draft && threadType && onThreadTypeChange ? (
+            <ThreadTypeChip
+              value={threadType}
+              onChange={onThreadTypeChange}
+              onClose={() => inputRef.current?.focus()}
+            />
+          ) : null}
+        </div>
         {runnerLive && runnerEnabled ? (
           <ComposerRunner
             boxRef={boxRef}

@@ -506,7 +506,7 @@ function ModelList({
   }
 
   return (
-    <ScrollArea className="max-h-[340px] min-h-0">
+    <ScrollArea className="min-h-0 [&>[data-slot=scroll-area-viewport]]:max-h-[340px]">
       <div role="listbox" aria-label="Models">
         {models.map((item, index) => {
           const selected = item.id === currentId;

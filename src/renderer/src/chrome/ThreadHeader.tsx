@@ -213,7 +213,8 @@ export function ThreadHeader({
     const own = chip.id === target;
     const bridge: ChipBridge | undefined =
       own && targetEnv && bridgeableEnvironment(targetEnv) ? { state: bridgeState } : undefined;
-    const goal = own ? { running: !!sessionStore.get(chip.id)?.goal } : undefined;
+    // The goal dialog mounts with the thread's composer: only the thread on screen has one.
+    const goal = chip.id === model.activeId ? { running: !!sessionStore.get(chip.id)?.goal } : undefined;
     return chipMenuItems(chip, bridge, own ? resources.length : 0, masterIds.has(chip.id), own ? host.moves : [], goal);
   };
 
