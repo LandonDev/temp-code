@@ -52,6 +52,22 @@
   --chart-3: #199e70;
   --chart-4: #c98500;
   --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.5), 0 2px 6px -2px rgb(0 0 0 / 0.3);
+  /* Runner sprites keep their coin and star colours in both themes. */
+  --composer-coin: #e8b923;
+  --composer-star: #f4e27a;
+  /* Monaco completion kinds follow the editor syntax palette. */
+  --editor-type-name: #6c9edd;
+  --editor-constant-name: #c0a85c;
+  --editor-keyword-name: #cc7832;
+  --editor-symbol-foreground: #fff;
+  --editor-symbol-text: #6b6e76;
+  --editor-symbol-class: #4a7cf0;
+  --editor-symbol-interface: #34a05a;
+  --editor-symbol-enum: #b07203;
+  --editor-symbol-method: #c75450;
+  --editor-symbol-field: #c77dbb;
+  --editor-symbol-variable: #4a9aa6;
+  --editor-symbol-keyword: #787878;
   /* Motion: four durations, three curves. Springs are in lib/ease.ts. */
   --dur-instant: 0ms;
   --dur-fast: 120ms;
@@ -71,6 +87,9 @@
 }
 
 html.theme-light {
+  --composer-coin: #e8b923;
+  --composer-star: #f4e27a;
+  --editor-type-name: #2a5fb0;
   --sidebar: oklch(0.972 0.002 80);
   --background: oklch(1 0 0);
   --card: oklch(0.985 0.002 80);
@@ -708,10 +727,10 @@ header[data-tauri-drag-region] button {
 .monaco-editor .suggest-widget {
   border-radius: 10px !important;
   overflow: hidden !important;
-  box-shadow: 0 10px 28px rgb(0 0 0 / 0.35) !important;
+  box-shadow: var(--shadow-overlay) !important;
 }
 .theme-light .monaco-editor .suggest-widget {
-  box-shadow: 0 10px 28px rgb(0 0 0 / 0.16) !important;
+  box-shadow: var(--shadow-overlay) !important;
 }
 .monaco-editor .suggest-widget .monaco-list-row {
   padding: 0 6px 0 4px;
@@ -762,21 +781,21 @@ header[data-tauri-drag-region] button {
 .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-interface) .monaco-icon-label,
 .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-struct) .monaco-icon-label,
 .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-enum) .monaco-icon-label {
-  color: #6c9edd;
+  color: var(--editor-type-name);
 }
 .theme-light .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-class) .monaco-icon-label,
 .theme-light .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-interface) .monaco-icon-label,
 .theme-light .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-struct) .monaco-icon-label,
 .theme-light .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-enum) .monaco-icon-label {
-  color: #2a5fb0;
+  color: var(--editor-type-name);
 }
 .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-constant) .monaco-icon-label,
 .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-enum-member) .monaco-icon-label {
-  color: #c0a85c;
+  color: var(--editor-constant-name);
   font-weight: 600;
 }
 .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-keyword) .monaco-icon-label {
-  color: #cc7832;
+  color: var(--editor-keyword-name);
 }
 /* Letter badges in place of codicons: a 15px disc with the kind's initial. */
 .monaco-editor .suggest-widget .codicon[class*="codicon-symbol-"] {
@@ -791,45 +810,45 @@ header[data-tauri-drag-region] button {
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
-  color: #fff;
-  background: #6b6e76;
+  color: var(--editor-symbol-foreground);
+  background: var(--editor-symbol-text);
   flex-shrink: 0;
 }
 .monaco-editor .suggest-widget .codicon[class*="codicon-symbol-"]::before {
   font-family: inherit;
   content: "a";
 }
-.monaco-editor .suggest-widget .codicon-symbol-class { background: #4a7cf0 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-class { background: var(--editor-symbol-class) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-class::before { content: "C"; }
-.monaco-editor .suggest-widget .codicon-symbol-struct { background: #4a7cf0 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-struct { background: var(--editor-symbol-class) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-struct::before { content: "S"; }
-.monaco-editor .suggest-widget .codicon-symbol-interface { background: #34a05a !important; }
+.monaco-editor .suggest-widget .codicon-symbol-interface { background: var(--editor-symbol-interface) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-interface::before { content: "I"; }
-.monaco-editor .suggest-widget .codicon-symbol-enum { background: #b07203 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-enum { background: var(--editor-symbol-enum) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-enum::before { content: "E"; }
-.monaco-editor .suggest-widget .codicon-symbol-enum-member { background: #b07203 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-enum-member { background: var(--editor-symbol-enum) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-enum-member::before { content: "e"; }
-.monaco-editor .suggest-widget .codicon-symbol-method { background: #c75450 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-method { background: var(--editor-symbol-method) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-method::before { content: "m"; }
-.monaco-editor .suggest-widget .codicon-symbol-function { background: #c75450 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-function { background: var(--editor-symbol-method) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-function::before { content: "f"; }
-.monaco-editor .suggest-widget .codicon-symbol-constructor { background: #c75450 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-constructor { background: var(--editor-symbol-method) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-constructor::before { content: "c"; }
-.monaco-editor .suggest-widget .codicon-symbol-field { background: #c77dbb !important; }
+.monaco-editor .suggest-widget .codicon-symbol-field { background: var(--editor-symbol-field) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-field::before { content: "f"; }
-.monaco-editor .suggest-widget .codicon-symbol-property { background: #c77dbb !important; }
+.monaco-editor .suggest-widget .codicon-symbol-property { background: var(--editor-symbol-field) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-property::before { content: "p"; }
-.monaco-editor .suggest-widget .codicon-symbol-variable { background: #4a9aa6 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-variable { background: var(--editor-symbol-variable) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-variable::before { content: "v"; }
-.monaco-editor .suggest-widget .codicon-symbol-constant { background: #b07203 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-constant { background: var(--editor-symbol-enum) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-constant::before { content: "c"; }
-.monaco-editor .suggest-widget .codicon-symbol-keyword { background: #787878 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-keyword { background: var(--editor-symbol-keyword) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-keyword::before { content: "k"; }
-.monaco-editor .suggest-widget .codicon-symbol-snippet { background: #787878 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-snippet { background: var(--editor-symbol-keyword) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-snippet::before { content: "t"; }
-.monaco-editor .suggest-widget .codicon-symbol-module { background: #6b6e76 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-module { background: var(--editor-symbol-text) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-module::before { content: "M"; }
-.monaco-editor .suggest-widget .codicon-symbol-text { background: #6b6e76 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-text { background: var(--editor-symbol-text) !important; }
 .monaco-editor .suggest-widget .codicon.codicon-symbol-text::before { content: "a"; }
 .monaco-editor .suggest-widget .suggest-status-bar {
   font-size: 10.5px;
@@ -842,11 +861,11 @@ header[data-tauri-drag-region] button {
 .monaco-editor .monaco-hover {
   border-radius: 8px !important;
   border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent) !important;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  box-shadow: var(--shadow-overlay);
   overflow: hidden;
 }
 .theme-light .monaco-editor .monaco-hover {
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+  box-shadow: var(--shadow-overlay);
 }
 .monaco-editor .monaco-hover .hover-row {
   padding: 2px 0;
@@ -875,7 +894,7 @@ header[data-tauri-drag-region] button {
   background: color-mix(in srgb, var(--foreground) 5%, var(--background));
   border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  box-shadow: var(--shadow-overlay);
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--foreground);

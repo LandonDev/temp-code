@@ -12,7 +12,8 @@ type Props = {
   onChange: (hex: string) => void;
 };
 
-/** A custom colour: the saturation and brightness field, the hue strip and
+/** The gradients are colour data, kept literal in colourGuard's palette list.
+ *  A custom colour: the saturation and brightness field, the hue strip and
  *  the hex value, laid out inline (the Customize dialog shows it under its
  *  colour row). */
 export function ColorPicker({ value, onChange }: Props) {
@@ -108,7 +109,7 @@ export function ColorPicker({ value, onChange }: Props) {
         onPointerDown={onSvPointer}
       >
         <span
-          className="pointer-events-none absolute size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-sm"
+          className="pointer-events-none absolute size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-foreground shadow-sm"
           style={{
             left: `${hsv.s}%`,
             top: `${100 - hsv.v}%`,
@@ -132,7 +133,7 @@ export function ColorPicker({ value, onChange }: Props) {
         onPointerDown={onHuePointer}
       >
         <span
-          className="pointer-events-none absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-sm"
+          className="pointer-events-none absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-foreground shadow-sm"
           style={{
             left: `${(hsv.h / 360) * 100}%`,
             background: hueColor,

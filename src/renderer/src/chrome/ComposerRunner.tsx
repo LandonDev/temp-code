@@ -25,8 +25,8 @@ type LiveCoin = Coin & {
   collectedAt: number | null;
 };
 
-const COIN_SVG = `<svg viewBox="0 0 8 8" width="${COIN_SIZE}" height="${COIN_SIZE}" shape-rendering="crispEdges" fill="#e8b923" aria-hidden="true"><path class="composer-coin-face" d="${COIN_FACE_PATH}"/><path class="composer-coin-edge" d="${COIN_EDGE_PATH}"/></svg>`;
-const STAR_SVG = `<svg viewBox="0 0 8 8" width="${STAR_SIZE}" height="${STAR_SIZE}" shape-rendering="crispEdges" fill="#f4e27a" aria-hidden="true"><path class="composer-coin-face" d="${STAR_FACE_PATH}"/><path class="composer-coin-edge" d="${STAR_EDGE_PATH}"/></svg>`;
+const COIN_SVG = `<svg viewBox="0 0 8 8" width="${COIN_SIZE}" height="${COIN_SIZE}" shape-rendering="crispEdges" fill="var(--composer-coin)" aria-hidden="true"><path class="composer-coin-face" d="${COIN_FACE_PATH}"/><path class="composer-coin-edge" d="${COIN_EDGE_PATH}"/></svg>`;
+const STAR_SVG = `<svg viewBox="0 0 8 8" width="${STAR_SIZE}" height="${STAR_SIZE}" shape-rendering="crispEdges" fill="var(--composer-star)" aria-hidden="true"><path class="composer-coin-face" d="${STAR_FACE_PATH}"/><path class="composer-coin-edge" d="${STAR_EDGE_PATH}"/></svg>`;
 
 /** Project pixel mascot running the composer's top ledge while a turn is live. */
 export function ComposerRunner({
@@ -101,7 +101,6 @@ export function ComposerRunner({
       el.style.width = `${STAR_SIZE}px`;
       el.style.height = `${STAR_SIZE}px`;
       el.style.opacity = "0";
-      el.style.filter = "drop-shadow(0 1px 0 rgba(0,0,0,0.45))";
       el.style.transform =
         "translate3d(var(--star-x, -64px), var(--star-y, -64px), 0)";
       el.innerHTML = STAR_SVG;
@@ -343,7 +342,6 @@ export function ComposerRunner({
           el.style.height = `${COIN_SIZE}px`;
           el.style.transform =
             "translate3d(var(--coin-x, -64px), var(--coin-y, -64px), 0)";
-          el.style.filter = "drop-shadow(0 1px 0 rgba(0,0,0,0.45))";
           el.innerHTML = COIN_SVG;
           coinLayer.append(el);
           coins.push({
@@ -428,7 +426,7 @@ export function ComposerRunner({
       <div ref={coinsRef} className="absolute inset-0" />
       <div
         ref={spriteRef}
-        className="absolute top-0 left-0 origin-bottom drop-shadow-[0_1px_0_rgba(0,0,0,0.45)] will-change-transform"
+        className="absolute top-0 left-0 origin-bottom will-change-transform"
         style={{
           width: RUNNER_SIZE,
           height: RUNNER_SIZE,
