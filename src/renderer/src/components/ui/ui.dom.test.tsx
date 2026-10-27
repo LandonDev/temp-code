@@ -300,6 +300,35 @@ describe("Tooltip", () => {
     expect(tooltipChunk.loaded()).not.toBeNull();
     expect(screen.getByRole("button", { name: "Save" }).getAttribute("data-slot")).toBe("tooltip-trigger");
   });
+
+  it("never swaps a trigger between its press and its click: the first click on a cold one lands", async () => {
+    await tooltipChunk.load();
+    resetTooltips();
+    const onClick = vi.fn();
+    render(
+      <Tooltip>
+        <TooltipTrigger render={<button type="button" onClick={onClick} />}>Settings</TooltipTrigger>
+        <TooltipContent>Settings</TooltipContent>
+      </Tooltip>,
+    );
+    const button = screen.getByRole("button", { name: "Settings" });
+    await act(async () => {
+      fireEvent.pointerEnter(button);
+      fireEvent.pointerDown(button);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(screen.getByRole("button", { name: "Settings" })).toBe(button);
+      fireEvent.pointerUp(button);
+      fireEvent.click(button);
+    });
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(button.isConnected).toBe(true);
+    // Released, the tooltip warms.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.getByRole("button", { name: "Settings" }).getAttribute("data-slot")).toBe("tooltip-trigger");
+  });
 });
 
 describe("Tooltip delays", () => {

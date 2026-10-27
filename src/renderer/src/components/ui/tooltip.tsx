@@ -38,10 +38,45 @@ function focusHeld(): boolean {
   return !!active && active !== document.body;
 }
 
+/** Whether a pointer is pressed: a swap now would replace the trigger under
+ *  its click (the mousedown on the old node, the click on nothing). The mark
+ *  clears a macrotask after the release, once the click has dispatched. */
+let pressed = false;
+let presses = 0;
+/** A wake that came while pressed, run at the release. */
+let heldWake = false;
+if (typeof document !== "undefined") {
+  document.addEventListener(
+    "pointerdown",
+    () => {
+      pressed = true;
+      presses++;
+    },
+    true,
+  );
+  const release = () => {
+    const at = presses;
+    setTimeout(() => {
+      if (at !== presses) return;
+      pressed = false;
+      if (!heldWake) return;
+      heldWake = false;
+      wake();
+    }, 0);
+  };
+  document.addEventListener("pointerup", release, true);
+  document.addEventListener("pointercancel", release, true);
+}
+
 /** Wakes every cold tooltip on screen; while a control has focus the swap
- *  waits for the focus to leave, so a rename in progress keeps its text. */
+ *  waits for the focus to leave, so a rename in progress keeps its text, and
+ *  while a pointer is pressed it waits for the release. */
 function wake(): void {
   if (published) return;
+  if (pressed) {
+    heldWake = true;
+    return;
+  }
   if (focusHeld()) {
     document.addEventListener("focusout", () => queueMicrotask(wake), { once: true });
     return;
@@ -50,9 +85,11 @@ function wake(): void {
   for (const listener of listeners) listener();
 }
 
-/** Test seam: forget the published primitive. */
+/** Test seam: forget the published primitive and any press. */
 export function resetTooltips(): void {
   published = null;
+  pressed = false;
+  heldWake = false;
 }
 
 /** Loads the primitive and wakes every cold tooltip on screen. */
@@ -60,6 +97,14 @@ export function warmTooltips(): void {
   if (published) return;
   if (tooltipChunk.loaded()) wake();
   else tooltipChunk.load().then(wake, () => {});
+}
+
+/** A pointer entering a cold trigger warms them a macrotask later, never in
+ *  its own task: a press that came with the enter (a touch, a pen) is seen
+ *  first, and the swap waits for its release. */
+function warmFromPointer(): void {
+  if (published) return;
+  setTimeout(warmTooltips, 0);
 }
 /** The primitive the tooltips render with: set by `wake` alone, so a cold
  *  tooltip re-rendering after the chunk loaded does not swap on its own. */
@@ -85,7 +130,7 @@ function TooltipTrigger<Payload>(props: TooltipPrimitive.Trigger.Props<Payload>)
   const P = usePrimitive();
   if (P) return <P.TooltipTrigger {...props} />;
   const { render, children, className } = props as ColdTrigger;
-  const warm = { onPointerEnter: warmTooltips };
+  const warm = { onPointerEnter: warmFromPointer };
   if (isValidElement(render)) {
     const element = render as ReactElement<{ onPointerEnter?: (event: unknown) => void; children?: ReactNode }>;
     const given = element.props.onPointerEnter;
@@ -94,7 +139,7 @@ function TooltipTrigger<Payload>(props: TooltipPrimitive.Trigger.Props<Payload>)
       {
         onPointerEnter: (event: unknown) => {
           given?.(event);
-          warmTooltips();
+          warmFromPointer();
         },
       },
       children ?? element.props.children,
