@@ -46,6 +46,11 @@
   --warning: var(--thread-warning);
   --info: var(--thread-info);
   /* Floating layers: one shadow, soft. Docked chrome has none. */
+  /* Chart series, from the dataviz reference palette, checked on the dark surfaces (A4's plan). */
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
   --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.5), 0 2px 6px -2px rgb(0 0 0 / 0.3);
   /* Motion: four durations, three curves. Springs are in lib/ease.ts. */
   --dur-instant: 0ms;
@@ -80,6 +85,10 @@ html.theme-light {
   --primary: oklch(0.2 0 0);
   --primary-foreground: oklch(0.99 0 0);
   --accent: hsl(211 92% 48%);
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
   --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.18), 0 2px 6px -2px rgb(0 0 0 / 0.1);
 }
 
@@ -100,6 +109,10 @@ html.theme-light {
   --color-border: var(--border);
   --color-input: var(--input);
   --color-image-outline: var(--image-outline);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
   --color-ring: var(--ring);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);

@@ -496,7 +496,6 @@ function GroupLabel({
   project,
   projectKey,
   mascotName,
-  busy,
   count,
   logoPath,
   canDrag,
@@ -512,7 +511,6 @@ function GroupLabel({
   project: string;
   projectKey: string;
   mascotName: string | null;
-  busy: boolean;
   count: number;
   logoPath?: string | null;
   canDrag: boolean;
@@ -563,7 +561,6 @@ function GroupLabel({
           color={color}
           name={mascotName}
           className="size-3 min-w-3 shrink-0"
-          active={busy}
         />
       )}
       <span className="text-[13px] truncate">{project}</span>
@@ -622,7 +619,6 @@ function TabGroupBlock({
   deckLayout?: boolean;
 }) {
   const activeInGroup = segment.tabs.some((tab) => tab.id === activeId);
-  const groupBusy = segment.tabs.some((tab) => tab.busyHarnesses.length > 0);
   const activeTabRef = useRef<HTMLDivElement | null>(null);
   const draggingGroup = segmentDrag.draggingFromIndex === segmentIndex;
   const showSegmentStart =
@@ -678,7 +674,6 @@ function TabGroupBlock({
         project={displayLabel}
         projectKey={projectKey}
         mascotName={mascotName}
-        busy={groupBusy}
         count={segment.tabs.length}
         logoPath={logoPath}
         canDrag={canDragGroup}
