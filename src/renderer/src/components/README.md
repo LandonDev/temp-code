@@ -19,6 +19,8 @@ DESIGN.md wins.
 | A menu from a trigger | `RowsMenu` (chrome/menuRows.tsx) over `DropdownMenu` (dropdown-menu.tsx) | Rows are `MenuRow[]` data, rendered by the one `MenuRows` (chrome/menuBody.tsx): the 14px glyph, the label, the key cap from `shortcutFor`. The body loads in `menuChunk`, out of the first paint. |
 | A right-click menu | `RowsContextMenu` (chrome/menuRows.tsx) over `ContextMenu` (context-menu.tsx) | Same rows, at the pointer. One around a list; each row carries `data-menu-id`. |
 | Content floating from a control (a picker, a list of accounts) | `LazyPopover` (chrome/menuRows.tsx) over `Popover` (popover.tsx) | Content, never verbs. |
+| A thread's menu, on any surface | `threadMenuRows` (lib/threadMenu.ts) with `useThreadMenu` (chrome/useThreadMenu.tsx) | One list everywhere (tab chip, ⋯, title-bar tab, rail row, board row, subagent line); a surface adds only Open, New pass… or Start now. The hook runs every pick and mounts the dialogs. |
+| A project's or tab group's look | `CustomizeGroupDialog` (chrome/CustomizeGroupDialog.tsx), from `groupMenuRows`' Customize… | Name, logo, colour, mascot; applied on Save. |
 | Floating content from a trigger | `Popover` (popover.tsx) | Pickers, account lists, previews. Scales from its anchor. |
 | A label on hover | `Tip` / `TruncateTip` (../tip.tsx) over `Tooltip` (tooltip.tsx) | `Tip` names an icon-only control, with its binding's `Kbd`; `TruncateTip` shows cut-off text whole, only while it is cut. |
 | The tooltip itself | `Tooltip` (tooltip.tsx) | Replaces every `title=`. Each carries its delay; a `TooltipProvider` around a toolbar lets neighbours share one. `TOOLTIP_DELAY` and `TOOLTIP_CLOSE_DELAY` are the numbers a hover popover reuses. |

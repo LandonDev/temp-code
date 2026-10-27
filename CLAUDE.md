@@ -2390,10 +2390,11 @@ this is the short one.
   transcript, strip and composer a tab has (`surfaces/threadChat.tsx`:
   `ThreadComposer` and `useThreadChat`, shared with SessionPane; App's
   handlers through `SessionActionsContext`). A right-click on a row or a
-  subagent line is that thread's menu (`master/rowMenu.ts`: New pass…,
-  Open, Start now for a queued thread, then the tab's `chipMenuItems` the
-  board answers and the host moves, Remove from queue in a queued
-  thread's Archive place); New pass… is a Modal (`master/NewPassDialog.tsx`) with the
+  subagent line, or its ⋯, is that thread's one menu (lib/threadMenu.ts
+  with `{ open, newPass }`: Open, New pass…, Start now for a queued
+  thread, then the rows every surface shows, Remove from queue in a
+  queued thread's Archive place; chrome/useThreadMenu.tsx answers the
+  picks); New pass… is a Modal (`master/NewPassDialog.tsx`) with the
   thread's title, its status and activity or last words on one line
   (`passLine`) and that composer, closing on send; the draft stays per
   thread. The title bar's ⋯ menu is the batch's
@@ -2421,8 +2422,8 @@ this is the short one.
   Stop is `batch.stopStep { stepId }`, and the dialog
   (`master/rulesEdit.ts`) reorders, renames, adds a built-in kind or a
   shell command with a cwd and removes steps; no step name is written in
-  the renderer. A Popover sits on the popover layer, above every dialog
-  (lib/layers.ts mirrors the `--layer-*` tokens). `lib/threadBatch.ts`
+  the renderer. A menu or popover sits on the popover layer
+  (`--layer-popover`), above every dialog. `lib/threadBatch.ts`
   exports `hasRunningTurn` so the rows and Pause all use the fleet
   switches' rule. The phone draws a queued root with the label "Queued"
   (StatusDot.swift), never under Home's Running (`HomeModel.isLive`); the

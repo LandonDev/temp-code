@@ -30,12 +30,10 @@ The README's table is the authority on which component renders which class
 of element; nothing is rendered twice by two different things.
 
 Retired by this standard, migrated area by area, never patched further:
-`chrome/Popover.tsx`, `chrome/Drawer.tsx`, `lib/layers.ts` (Base UI stacks
-its own portals), `surfaces/settingsBits.tsx`, `chrome/RailAction.tsx`,
+`chrome/Drawer.tsx`, `surfaces/settingsBits.tsx`, `chrome/RailAction.tsx`,
 `chrome/ComposerAction.tsx`, `motion/Button.tsx`, the four
 custom toast stacks (sonner), the nine spinner builds (`Spinner`), the
-twenty status-to-colour maps (`StatusMark`), the 228 `title=` attributes
-(`Tooltip`), the 390 raw `<button>`s (`Button`). ReUI, BeUI and Beautiful
+twenty status-to-colour maps (`StatusMark`), the 390 raw `<button>`s (`Button`). ReUI, BeUI and Beautiful
 UI are no longer sources; their registries are gone from components.json.
 
 Hand-made and staying so: the transcript's rows and markdown pipeline, the
@@ -220,6 +218,13 @@ one title, one line and two buttons; code that must ask first awaits
 `Dialog` and `AlertDialog` for their existing callers. A sheet is for a long form or picker
 that would not fit a dialog. A menu (`DropdownMenu`, `ContextMenu`) is
 verbs; a popover is content (a picker, a preview, a list of accounts). A
+menu's rows are `MenuRow` data rendered by `RowsMenu` (from a trigger) or
+`RowsContextMenu` (one per list, at the pointer), each row a 14px glyph, a
+label and the key cap of a real binding (`shortcutFor`); the window's menu
+bar alone is words and keys. A thread offers the same rows on every
+surface (lib/threadMenu.ts). Menus and popovers load with their first use,
+out of the first paint (chrome/menuRows.tsx). A label on hover is `Tip` or
+`TruncateTip`, never a `title=`. A
 popover scales from its trigger; a menu scales from its trigger; a context
 menu fades at the pointer; a dialog rises 4px and fades; a sheet slides 16px
 from its edge. Every one of them exits in `--dur-fast`, back a quarter of

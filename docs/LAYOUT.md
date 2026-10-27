@@ -85,15 +85,18 @@ the bar is one row: the thread strip (below) fills it, and its right end
 holds exactly two ghost icon buttons, each with a `Tooltip`: the ⋯ thread
 menu, then the panel toggle (`aria-pressed` while the right panel is open,
 "Panel ⌘⇧R"), last because it is nearest the panel it opens. The rail-closed
-stand-ins (Inbox, Notes, Go to File, New session, Settings) and the Windows
-controls keep their places.
+stand-ins (Inbox, Notes, Go to File, New Thread, Settings) and the Windows
+controls keep their places, each named on hover with its key by a `Tip`.
+In the classic strip one right-click menu serves the tabs and the group
+chips: a tab's thread rows then its group rows, a group's Customize… and
+its verbs.
 
-The ⋯ menu (chrome/ThreadMenu.tsx, a `DropdownMenu` at the `sm` size) has
+The ⋯ menu (chrome/ThreadMenu.tsx, a `RowsMenu` at the `sm` size) has
 three groups. First a quiet line, not an item: the host's glyph and name
 when the window has two or more hosts, and the thread's cost at the end in
 `tabular-nums` when it is above zero; absent when it would say nothing.
 Then the active thread's own rows, the same list its chip's right-click
-shows (`chipMenuItems`, rendered by the one `MenuRows` for both menus), with
+shows (lib/threadMenu.ts, the thread's one list on every surface), with
 "Move to <host>…" rows before Archive (`useThreadHost` in
 chrome/ThreadHostChip.tsx; a disabled one carries its reason as a second
 line). Then the project: Pause all with the running count (only when
@@ -112,7 +115,7 @@ of the right panel's Changes section, not the header's.
 | Row | `chrome/RailRow.tsx` (`RailRow`) | every row in the rail and the settings list: 36px, a 16px glyph, a 13px label, `text-muted-foreground` at rest and `text-foreground` on hover, focus and selection; selection is `aria-current` with a `bg-muted` fill, hover `bg-foreground/5`, never a bar, border or shadow; at most one trailing mark (`trailingInteractive` puts a control such as a workspace's status word beside the row's button) and one hover action (an icon Button with its Tooltip that takes the trailing slot's place); a Tooltip, never `title=`; rows never animate in or out. The lists sit in an 8px inset |
 | Heading | `RailHeading` in `chrome/RailRow.tsx` | 28px, 12px `font-medium` muted, sentence case, on the rows' glyph column; "Pinned" only when pins exist, "Workspaces" ends in Add workspace (one always-visible icon button) unless the list is empty, when an Add workspace… row stands under it instead |
 | List | Chats, then Pinned, then Workspaces | Chats is the first row (the home's loose chats, its trailing mark the waiting or working glyph); Notes and Mark all read are not in the rail (Search finds notes with `type:note`, each thread's notes are the right panel's; Mark all read is in the Threads menu and every workspace and host menu) |
-| Workspace row | `WorkspaceRow` in `chrome/ProjectRail.tsx` on `lib/linkedRail.ts` | the glyph, the alias-resolved name, its one `StatusMark` word as its trailing mark and ⋯ (the right-click's menu: label, colour, mascot, Pin or Unpin, Reveal, Mark all read, the fleet switches, Archive, Delete) as its hover action; drag reorders it, a 2px accent line marks the drop. One "Workspaces" section for every host, no host headers; a workspace linked across hosts (one `linkId`) is one row led by this machine's copy, its threads, word, Mark all read, pin and drag spanning every copy; order, pins, recents, labels, colours and mascots keep their keys, the other copies alias to the leader's (`aliasKeys`). No diff stat, no pin button, no shimmer on the name. The glyph (logo or mascot, never animated or tinted by state), the word (Needs you, Failed, Working, Paused, loudest first; a click opens the workspace's threads in a Popover) and the 24px line under the row naming the thread behind the word (`+N` for the others) are A2's, in `chrome/WorkspaceRowMarks.tsx`; unread is the row's emphasis |
+| Workspace row | `WorkspaceRow` in `chrome/ProjectRail.tsx` on `lib/linkedRail.ts` | the glyph, the alias-resolved name, its one `StatusMark` word as its trailing mark and ⋯ (the right-click's menu: Customize… (name, logo, colour and mascot in one dialog, applied on Save), Pin or Unpin, Reveal, Mark all read, the fleet switches, Archive, Delete) as its hover action; drag reorders it, a 2px accent line marks the drop. One "Workspaces" section for every host, no host headers; a workspace linked across hosts (one `linkId`) is one row led by this machine's copy, its threads, word, Mark all read, pin and drag spanning every copy; order, pins, recents, labels, colours and mascots keep their keys, the other copies alias to the leader's (`aliasKeys`). No diff stat, no pin button, no shimmer on the name. The glyph (logo or mascot, never animated or tinted by state), the word (Needs you, Failed, Working, Paused, loudest first; a click opens the workspace's threads in a Popover) and the 24px line under the row naming the thread behind the word (`+N` for the others) are A2's, in `chrome/WorkspaceRowMarks.tsx`; unread is the row's emphasis |
 | Offline tint | `chrome/hostOffline.ts` | with two or more hosts, a row whose host's link is not open (a rail row: every host of it) sits at `opacity-50` with `data-host-offline`, as the master board's rows do; its rows are the launch mirror's and lift when the host is back |
 | Foot | `RailFoot` in `chrome/ProjectRail.tsx` (`railFootRows`) | under a 1px hairline, in order: the sign-in row while this machine has no Claude or Codex account, the update row when there is something to act on, the Hosts row with two or more hosts, Inbox (medium foreground while something is unseen), Search (Tooltip ⌘K), Accounts, Stats, Settings (Tooltip ⌘,), then the usage meter. The same foot sits under the workspace column while the rail is collapsed |
 | Update row | `chrome/UpdateRow.tsx` (`updateRowState`) | one RailRow, absent while idle or checking: "Updated to 1.0.N" (opens What's new, ✕ dismisses), "Update to 1.0.N" or "Retry update" (installs; What's new as the hover action when there are notes), "Downloading" with its percentage, "Restart to update"; the glyph is the accent while there is something to do, no tinted fill. Check for updates is in the app menu and Settings, General |
@@ -317,7 +320,8 @@ leave the row and are reached from the ⋯ menu's Recent threads.
 - **Input.** A primary click selects, on release; dragged 5px it carries
   the thread onto a pane's edge instead ("Panes" below). A right press or a
   Control-click never selects, and the contextmenu opens the thread's menu
-  at the pointer (`ContextMenu`, rows from `chipMenuItems`). Double-click renames in place
+  at the pointer (one `RowsContextMenu` over the strip reading the chip's
+  `data-menu-id`; rows from lib/threadMenu.ts). Double-click renames in place
   on an `Input`. Arrows, Home and End move focus along the row (only the
   active chip is in the tab order), Enter or Space selects. The row and its
   gaps are outside the window's drag region.
@@ -769,14 +773,11 @@ in the whole pane, with Back.
   own), goes back, and the board returns at the scroll it was left at.
   Nothing opens a tab; the strip never lists a child (`isBatchChild` in
   lib/threadStripModel.ts).
-- **Right-click** on a row, or on a subagent line under it, opens that
-  thread's menu (`master/rowMenu.ts`): New pass… first, Open, then the
-  tab's own thread actions (`chipMenuItems`: Rename, Continue or Pause,
-  Compact, Stop, the master pin, Archive) with the thread chip's host
-  moves before Archive; a queued thread's menu has Start now after Open,
-  Remove from queue (the fleet switches' Stop on a queued root, which
-  archives it) in Archive's place and no Compact; the tab's type options, Mac bridge, resources and
-  delete stay on the tab. New pass… is a dialog (`master/NewPassDialog.tsx`,
+- **Right-click** on a row, or on a subagent line under it, or the row's
+  ⋯, opens that thread's one menu (lib/threadMenu.ts, the rows every
+  surface shows): Open and New pass… first; a queued thread's menu has
+  Start now after them, Remove from queue (the fleet switches' Stop on a
+  queued root, which archives it) in Archive's place and no Compact. New pass… is a dialog (`master/NewPassDialog.tsx`,
   the Modal at `lg`): the thread's title, one quiet line with its status
   glyph and the board row's own words for what it does now, else its last
   words (`passLine`), and the same composer for that thread on its host.
@@ -845,8 +846,8 @@ in the whole pane, with Back.
   host's link with `masterId`, `startedBy` (the master, so the thread's
   settles report to it) and `after` plus the brief as the first message;
   the row arrives from the push. Its model
-  menu, like every Popover, sits on the popover layer (95, above the
-  dialog's 90; lib/layers.ts mirrors the `--layer-*` tokens).
+  menu, like every menu and popover, sits on the popover layer (95, above
+  the dialog's 90).
 - **Everywhere else** a child is an ordinary root thread in the rail with
   its activity line ("Queued · waiting for <sibling>") and its own working
   strip with one quiet Start now; only the header strip leaves it out.
