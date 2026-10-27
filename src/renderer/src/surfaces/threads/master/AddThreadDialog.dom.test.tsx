@@ -84,6 +84,7 @@ beforeEach(() => {
   h.ensure.mockReset();
   h.startThread.mockReset();
   h.startThread.mockResolvedValue({ id: "new" });
+  h.ensure.mockResolvedValue({ cwd: null, exists: false, project: null, note: "no checkout of temp-code" });
 });
 afterEach(() => {
   cleanup();
@@ -91,7 +92,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-const hostRadio = (name: string) => within(screen.getByRole("radiogroup", { name: "Host" })).getByRole("radio", { name }) as HTMLButtonElement;
+const hostButton = (name: string) => within(screen.getByRole("group", { name: "Host" })).getByRole("button", { name }) as HTMLButtonElement;
 
 describe("hostChoices across linked copies", () => {
   it("the master's project at home, the linked copy where there is one, the link facts where there is none", () => {
@@ -118,8 +119,9 @@ describe("AddThreadDialog", () => {
     render(<AddThreadDialog master={master} siblings={[]} onClose={() => {}} />);
     await flush();
     expect(h.ensure).toHaveBeenCalledWith("mini", expect.objectContaining({ projectLinkId: "pl_a" }), true);
-    expect(hostRadio("Mini").disabled).toBe(false);
-    fireEvent.click(hostRadio("Mini"));
+    expect(hostButton("Mini").disabled).toBe(false);
+    fireEvent.click(hostButton("Mini"));
+    expect(hostButton("Mini").getAttribute("aria-pressed")).toBe("true");
     fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "Port the view." } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     await flush();
@@ -130,17 +132,63 @@ describe("AddThreadDialog", () => {
   });
 
   it("a host with no checkout is disabled with the host's note, and a host with a copy needs no dry run", async () => {
-    h.ensure.mockResolvedValue({ cwd: null, exists: false, project: null, note: "no checkout of temp-code" });
     render(<AddThreadDialog master={master} siblings={[]} onClose={() => {}} />);
     await flush();
     expect(h.ensure).toHaveBeenCalledTimes(1);
-    expect(hostRadio("Mini").disabled).toBe(true);
-    expect(hostRadio("Mini").getAttribute("title")).toBe("no checkout of temp-code");
-    expect(hostRadio("The box").disabled).toBe(false);
-    fireEvent.click(hostRadio("The box"));
+    expect(hostButton("Mini").disabled).toBe(true);
+    // The note hangs on a Tooltip over the disabled choice, never a title=.
+    expect(hostButton("Mini").hasAttribute("title")).toBe(false);
+    const wrapper = hostButton("Mini").closest("[data-choice-note]") as HTMLElement;
+    await act(async () => {
+      fireEvent.pointerEnter(wrapper, { pointerType: "mouse" });
+      fireEvent.mouseEnter(wrapper);
+      fireEvent.mouseMove(wrapper);
+      await new Promise((r) => setTimeout(r, 500));
+    });
+    expect((await screen.findByText("no checkout of temp-code")).closest("[data-slot=tooltip-content]")).toBeTruthy();
+    expect(hostButton("The box").disabled).toBe(false);
+    fireEvent.click(hostButton("The box"));
     fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "Port the view." } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     await flush();
     expect(h.startThread.mock.calls[0][0]).toMatchObject({ environmentId: "box", projectId: "p-box" });
+  });
+
+  it("Escape with After's list open closes the list and leaves the dialog open", async () => {
+    const onClose = vi.fn();
+    render(<AddThreadDialog master={master} siblings={[{ id: "s1", title: "Search" }]} onClose={onClose} />);
+    await flush();
+    const after = screen.getByRole("combobox", { name: "After" });
+    await act(async () => {
+      fireEvent.click(after);
+    });
+    const option = await screen.findByRole("option", { name: "Search" });
+    await act(async () => {
+      fireEvent.keyDown(option, { key: "Escape" });
+    });
+    await flush();
+    expect(screen.queryByRole("option", { name: "Search" })).toBeNull();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+    // A second Escape, with the list shut, is the dialog's.
+    await act(async () => {
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    });
+    await flush();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("Add closes through the dialog's exit and calls onClose once", async () => {
+    const onClose = vi.fn();
+    const onAdded = vi.fn();
+    render(<AddThreadDialog master={master} siblings={[]} onClose={onClose} onAdded={onAdded} />);
+    await flush();
+    expect(document.activeElement).toBe(screen.getByLabelText("Brief"));
+    fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "Port the view." } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await flush();
+    await flush();
+    expect(onAdded).toHaveBeenCalledWith({ id: "new" });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

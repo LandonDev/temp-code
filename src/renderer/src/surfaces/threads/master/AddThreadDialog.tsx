@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Reasoning } from "@server/shared/catalog";
 import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
-import { Modal } from "../../../chrome/Modal";
+import { Modal, useModalClose } from "../../../chrome/Modal";
+import { FieldRow } from "../../../chrome/DialogField";
 import { ModelPicker } from "../../../chrome/ModelPicker";
 import { useEnvironments, useEnvironmentStatuses } from "../../../lib/connection/status";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../../../lib/models";
@@ -12,14 +13,16 @@ import type { ProjectMeta, SessionMeta, ThreadType, WorkspaceMeta } from "../../
 import type { EnsureLinkedArgs } from "@server/shared/projectLinks";
 import { copiesOf, ensureLinkedArgs, ensureLinkedOn, probeOf, rememberLinkHost, type CopyProbe } from "../../../lib/projectHostChoice";
 import { useProjects, useWorkspaces } from "../../../lib/tcserver/workspaces";
-import { Segmented, Select } from "../../settingsBits";
+import { ChoiceSelect } from "../../../components/choice-select";
+import { ChoiceToggle } from "../../../components/choice-toggle";
+import { Textarea } from "../../../components/ui/textarea";
 import { THREAD_LABELS } from "../threadTypes";
 import { linkedHosts } from "./boardActions";
 
 /**
  * "Add a thread to <batch>" (docs/LAYOUT.md "Master"): the brief first,
- * then one row per choice (type, model, effort, context, host, after),
- * label left and control right the way the settings pages lay a row out.
+ * then one FieldRow per choice (type, model, effort, context, host, after),
+ * the label at the row's start and the control at its end.
  * One column at the dialog's medium width, nothing scrolls. Every catalog
  * model is offered with its own effort ladder and context choices. Add
  * creates the thread on the chosen host with the master's id and sends
@@ -28,8 +31,6 @@ import { linkedHosts } from "./boardActions";
 
 const TYPES: ThreadType[] = ["implementation", "planning", "orchestration", "research", "project-plan"];
 const NO_AFTER = "";
-const TEXTAREA =
-  "h-24 w-full resize-none rounded-lg border border-content/10 bg-content/5 px-3 py-2 font-sans text-[13px] leading-5 text-content outline-none placeholder:text-content/40 focus:border-content/20 disabled:cursor-default disabled:opacity-40";
 
 export type AddThreadMaster = Pick<
   SessionMeta,
@@ -92,18 +93,31 @@ export function effortChoices(harness: HarnessId, model: string, environmentId: 
   );
 }
 
-export function AddThreadDialog({
-  master,
-  siblings,
-  onClose,
-  onAdded,
-}: {
+type AddThreadProps = {
   master: AddThreadMaster;
   /** The batch's other children, for After. */
   siblings: readonly Pick<SessionMeta, "id" | "title">[];
   onClose: () => void;
   onAdded?: (meta: SessionMeta) => void;
-}) {
+};
+
+export function AddThreadDialog(props: AddThreadProps) {
+  const [pending, setPending] = useState(false);
+  return (
+    <Modal onClose={props.onClose} busy={pending} title={`Add a thread to ${props.master.title || "the batch"}`} size="md">
+      <AddThreadForm {...props} pending={pending} setPending={setPending} />
+    </Modal>
+  );
+}
+
+function AddThreadForm({
+  master,
+  siblings,
+  onClose,
+  onAdded,
+  pending,
+  setPending,
+}: AddThreadProps & { pending: boolean; setPending: (pending: boolean) => void }) {
   const [type, setType] = useState<ThreadType>("implementation");
   const [choice, setChoice] = useState<{ harness: HarnessId; model: string }>({
     harness: master.provider as HarnessId,
@@ -118,8 +132,8 @@ export function AddThreadDialog({
   );
   const [after, setAfter] = useState(NO_AFTER);
   const [brief, setBrief] = useState("");
-  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const close = useModalClose();
 
   const environments = useEnvironments();
   const statuses = useEnvironmentStatuses();
@@ -193,115 +207,91 @@ export function AddThreadDialog({
         brief.trim(),
       );
       onAdded?.(meta);
-      onClose();
+      if (close) close(onClose);
+      else onClose();
     } catch (err) {
       setError(errorText(err));
       setPending(false);
     }
   };
 
-  return (
-    <Modal onClose={onClose} busy={pending} title={`Add a thread to ${master.title || "the batch"}`} size="md">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void add();
-        }}
-      >
-        <div className="flex flex-col px-4 pt-3 pb-2">
-          <textarea
-            autoFocus
-            value={brief}
-            onChange={(e) => setBrief(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && e.metaKey) {
-                e.preventDefault();
-                void add();
-              }
-            }}
-            aria-label="Brief"
-            placeholder="What this thread should do, and what done looks like."
-            disabled={pending}
-            className={TEXTAREA}
-          />
-          <div className="mt-2 flex flex-col divide-y divide-content/5">
-            <Field label="Type">
-              <Segmented label="Type" value={type} options={TYPES.map((t) => ({ value: t, label: THREAD_LABELS[t] }))} onChange={setType} />
-            </Field>
-            <Field label="Model">
-              <span className="-mr-1.5 flex items-center" data-model-picker>
-                <ModelPicker
-                  harness={choice.harness}
-                  model={choice.model}
-                  environmentId={host}
-                  onChange={(h, m) => {
-                    setChoice({ harness: h, model: m });
-                    setSettings(mergeModelSettings(resolveModel(h, m, host), settings));
-                  }}
-                />
-              </span>
-            </Field>
-            {efforts.length > 0 && effort ? (
-              <Field label="Effort">
-                <Segmented label="Effort" value={effort} options={efforts} onChange={(r) => setSettings({ ...settings, effort: r })} />
-              </Field>
-            ) : null}
-            {contexts ? (
-              <Field label="Context">
-                <Segmented
-                  label="Context"
-                  value={settings.context === "1m" ? "1m" : "200k"}
-                  options={contexts.map((o) => ({ value: o.value, label: o.label }))}
-                  onChange={(c) => setSettings({ ...settings, context: c })}
-                />
-              </Field>
-            ) : null}
-            {hosts.length > 1 ? (
-              <Field label="Host">
-                <div role="radiogroup" aria-label="Host" className="flex gap-0.5 rounded-md border border-content/10 p-0.5 text-[12px]">
-                  {hosts.map((h) => (
-                    <button
-                      key={h.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={host === h.id}
-                      disabled={!usable(h)}
-                      title={noteOf(h)}
-                      onClick={() => setHost(h.id)}
-                      className={`pressable rounded-[4px] px-3 py-1 disabled:cursor-default disabled:opacity-40 ${
-                        host === h.id ? "bg-content/10 text-content" : "text-content/50 hover:text-content"
-                      }`}
-                    >
-                      {h.name}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            ) : null}
-            <Field label="After">
-              <Select
-                label="After"
-                value={after}
-                className="max-w-60"
-                options={[{ value: NO_AFTER, label: "Nothing, start now" }, ...siblings.map((s) => ({ value: s.id, label: s.title || "Untitled" }))]}
-                onChange={setAfter}
-              />
-            </Field>
-          </div>
-          <ErrorLine error={error} />
-        </div>
-        <DialogFooter onCancel={onClose} confirmLabel="Add" pending={pending} disabled={!canAdd} />
-      </form>
-    </Modal>
-  );
-}
+  const hostOptions = hosts.map((h) => ({ value: h.id, label: h.name, disabled: !usable(h), note: noteOf(h) }));
 
-/** One choice: its name at the left, the control at the right. */
-function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex min-h-10 items-center justify-between gap-4 py-1.5 text-[12px]">
-      <span className="shrink-0 text-content/50">{label}</span>
-      <div className="flex min-w-0 items-center justify-end">{children}</div>
-    </div>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void add();
+      }}
+    >
+      {/* The rows carry their own 8px, so the brief and the rows sit 16px apart. */}
+      <div className="flex flex-col gap-2 px-4 pt-4 pb-2">
+        <Textarea
+          autoFocus
+          value={brief}
+          onChange={(e) => setBrief(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && e.metaKey) {
+              e.preventDefault();
+              void add();
+            }
+          }}
+          aria-label="Brief"
+          placeholder="What this thread should do, and what done looks like."
+          disabled={pending}
+          className="min-h-24 max-h-60 resize-none"
+        />
+        <div className="flex flex-col">
+          <FieldRow label="Type">
+            <ChoiceToggle label="Type" value={type} options={TYPES.map((t) => ({ value: t, label: THREAD_LABELS[t] }))} onChange={setType} />
+          </FieldRow>
+          <FieldRow label="Model">
+            <span className="flex items-center" data-model-picker>
+              <ModelPicker
+                harness={choice.harness}
+                model={choice.model}
+                environmentId={host}
+                onChange={(h, m) => {
+                  setChoice({ harness: h, model: m });
+                  setSettings(mergeModelSettings(resolveModel(h, m, host), settings));
+                }}
+              />
+            </span>
+          </FieldRow>
+          {efforts.length > 0 && effort ? (
+            <FieldRow label="Effort">
+              <ChoiceToggle label="Effort" value={effort} options={efforts} onChange={(r) => setSettings({ ...settings, effort: r })} />
+            </FieldRow>
+          ) : null}
+          {contexts ? (
+            <FieldRow label="Context">
+              <ChoiceToggle
+                label="Context"
+                value={settings.context === "1m" ? "1m" : "200k"}
+                options={contexts.map((o) => ({ value: o.value, label: o.label }))}
+                onChange={(c) => setSettings({ ...settings, context: c })}
+              />
+            </FieldRow>
+          ) : null}
+          {hosts.length > 1 ? (
+            <FieldRow label="Host">
+              <ChoiceToggle label="Host" value={host} options={hostOptions} onChange={setHost} />
+            </FieldRow>
+          ) : null}
+          <FieldRow label="After">
+            <ChoiceSelect
+              label="After"
+              size="sm"
+              value={after}
+              className="max-w-60"
+              options={[{ value: NO_AFTER, label: "Nothing, start now" }, ...siblings.map((s) => ({ value: s.id, label: s.title || "Untitled" }))]}
+              onChange={setAfter}
+            />
+          </FieldRow>
+        </div>
+        <ErrorLine error={error} />
+      </div>
+      <DialogFooter onCancel={onClose} confirmLabel="Add" pending={pending} disabled={!canAdd} />
+    </form>
   );
 }

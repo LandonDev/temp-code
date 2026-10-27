@@ -23,6 +23,7 @@ DESIGN.md wins.
 | An option picker | `Select` (select.tsx) | Bordered trigger, list aligned on the chosen item. |
 | An option picker from a list | `ChoiceSelect` (../choice-select.tsx) | The one adapter from `{ value, label }[]` to `Select`; an empty value (Auto) round-trips; an option's `group` lists it under that heading (a provider). Nothing maps `SelectItem`s by hand. |
 | A settings or app page | `Page`, `PageSection`, `PageRow` (../page.tsx) | 672px column, 24px inset, one 16px title; sections 24px apart under a 12px muted heading; rows with a hairline between neighbours. A page never draws its own header or section heading. |
+| A single choice of a few, shown at once | `ChoiceToggle` (../choice-toggle.tsx) | The one adapter from `{ value, label, disabled?, note? }[]` to a single-choice `ToggleGroup` on a bordered track; one is always chosen; a disabled choice's `note` is its Tooltip. |
 | A text field | `Input`, `Textarea` (input.tsx, textarea.tsx) | 32px, hairline border, ring inside. A field with a glyph or buttons in it (search) is `InputGroup` with `leading`/`trailing` around a `GroupInput`. |
 | A labelled field in a dialog or sheet | `Field`, `FieldRow` (chrome/DialogField.tsx) | Label, control, hint; `FieldRow` for a choice at the row's end. |
 | A setting on or off | `Switch` (switch.tsx); `SettingSwitch` (../setting-switch.tsx) in a settings row | The only toggle for a setting. `SettingSwitch` names it and plays the switch cue. |

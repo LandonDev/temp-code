@@ -68,8 +68,9 @@ env -u ELECTRON_RUN_AS_NODE \
   gate, merge rule, what never to touch, which skills to use for UI). They
   are a **preamble** now: markdown on the project row (`projects.preamble`,
   `preamble_enabled`) edited from the project header menu → "Preamble…"
-  (src/renderer/src/chrome/PreambleDialog.tsx: the editor, a live preview,
-  the word count, the switch, the variables in the footer), and a
+  (src/renderer/src/chrome/PreambleDialog.tsx, a large dialog: the editor
+  and its word count beside a live preview, the switch under both, the
+  variables in one mono line with their meanings on tooltips), and a
   workspace default (`workspaces.preamble`, the workspace menu → "Preamble…")
   for projects without their own. A project switched off carries nothing,
   whatever the workspace says. RPCs `project.setPreamble` and

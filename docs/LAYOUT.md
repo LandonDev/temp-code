@@ -673,24 +673,27 @@ in the whole pane, with Back.
   moves in `master/rulesEdit.ts`): Branches land (As they finish / All at
   once, shown while a merge step is in the list), then the steps in order,
   one row each: its number, its name in a field, its kind or a shell step's
-  command muted, and Up, Down, Remove. Under them "Add a step…": a built-in
+  command muted, and Up, Down, Remove as ghost icon buttons with tooltips.
+  Under them the "Add a step…" select: a built-in
   kind (Merge the branches, Gate the merged tree, Release, Publish the Mac
   release, Deploy to the box) lands at once with its name; Shell command
   opens a draft with a name, the command (exit 0 passes) and a directory
-  (default the project), and its own Add. Then (Notify me / Archive the
-  threads), Summary, the sentence read back under the fields. Save stays
+  (default the project), Cancel and Add step, in place of the select.
+  Then (Notify me / Archive the threads), Summary, the sentence read back
+  under the fields. The two choices are `FieldRow`s with a `ChoiceToggle`. Save stays
   off while a step has no name or a shell step no command; it is
   `batch.setRules` with the whole list, the foot takes the change from the
   push.
 - **New thread…** opens the add sheet (Modal md, `master/AddThreadDialog.tsx`):
   "Add a thread to <batch>", the brief first (focused; ⌘↩ adds), then one
-  row per choice, label left and control right: Type (segmented), Model
-  (the app's picker, every catalog model), Effort (segmented from the
-  model's own ladder, whole), Context (200k / 1M, Claude only), Host
-  (segmented over the master's own host and every saved host whose link is
+  `FieldRow` per choice, label left and control right: Type (a
+  `ChoiceToggle`), Model (the app's picker, every catalog model), Effort
+  (a `ChoiceToggle` of the model's own ladder, whole), Context (200k / 1M,
+  Claude only), Host (a `ChoiceToggle` over the master's own host and every saved host whose link is
   open, `linkedHosts`, the master's first, the row hidden with one host;
   another host offers its paired copy of the project and is disabled
-  without one), After ("Nothing, start now", else a sibling). Cancel, Add.
+  without one, its note on a tooltip), After (a small select: "Nothing,
+  start now", else a sibling). Cancel, Add.
   One column, nothing scrolls. Add is `session.create` on the chosen
   host's link with `masterId`, `startedBy` (the master, so the thread's
   settles report to it) and `after` plus the brief as the first message;

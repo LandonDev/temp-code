@@ -286,6 +286,18 @@ const renderView = () =>
   );
 
 const flush = (): Promise<void> => act(() => new Promise((r) => setTimeout(r, 0)));
+/** Opens a Select and chooses the option named; Base UI commits a mouse
+ *  choice only when the press started on the item. */
+async function pick(trigger: HTMLElement, name: string): Promise<void> {
+  await act(async () => {
+    fireEvent.click(trigger);
+  });
+  const option = await screen.findByRole("option", { name });
+  await act(async () => {
+    fireEvent.pointerDown(option, { pointerType: "mouse" });
+    fireEvent.click(option);
+  });
+}
 
 const rows = (sessionId: string, events: AgentEvent[]): EventRow[] =>
   events.map((event, i) => ({ sessionId, seq: i + 1, ts: 1_000 + i, event }));
@@ -1019,10 +1031,10 @@ describe("the master view", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove Gate" }));
     expect(ids()).toEqual(["land", "release"]);
     // A built-in kind lands at once with its name.
-    fireEvent.change(within(dialog).getByLabelText("Add a step"), { target: { value: "deploy" } });
+    await pick(within(dialog).getByRole("combobox", { name: "Add a step" }), "Deploy to the box");
     expect(ids()).toEqual(["land", "release", "deploy"]);
     // A shell step asks for a name and a command first; Add stays off until both are there.
-    fireEvent.change(within(dialog).getByLabelText("Add a step"), { target: { value: "shell" } });
+    await pick(within(dialog).getByRole("combobox", { name: "Add a step" }), "Shell command");
     const addStep = within(dialog).getByRole("button", { name: "Add step" });
     expect(addStep.hasAttribute("disabled")).toBe(true);
     fireEvent.change(within(dialog).getByLabelText("Step name"), { target: { value: "Smoke test" } });
@@ -1032,7 +1044,7 @@ describe("the master view", () => {
     expect(ids()).toEqual(["land", "release", "deploy", "shell"]);
     expect(dialog.querySelector("[data-rule-step='shell'] [data-rule-line]")?.textContent).toBe("bun run smoke");
     fireEvent.change(within(dialog).getByLabelText("Step 3 name"), { target: { value: "Deploy to the box" } });
-    fireEvent.click(within(dialog).getByRole("radio", { name: "All at once" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "All at once" }));
     fireEvent.change(within(dialog).getByPlaceholderText(/One line/), { target: { value: "Land all seven" } });
     expect(dialog.querySelector("[data-rules-preview]")?.textContent).toBe(
       "Branches land together once every thread is done, then Release, Deploy to the box and Smoke test. Then you are notified.",
@@ -1077,9 +1089,9 @@ describe("the master view", () => {
     expect(within(dialog).getByText("Add a thread to iOS batch 2")).toBeTruthy();
     // The brief has focus; every effort of the model's own ladder is offered.
     expect(document.activeElement).toBe(within(dialog).getByLabelText("Brief"));
-    expect(within(dialog).getAllByRole("radio", { name: /Low|Medium|High|Max/ }).length).toBeGreaterThanOrEqual(3);
-    fireEvent.click(within(dialog).getByRole("radio", { name: "Plan" }));
-    fireEvent.change(within(dialog).getByLabelText("After"), { target: { value: "c-run" } });
+    expect(within(within(dialog).getByRole("group", { name: "Effort" })).getAllByRole("button", { name: /Low|Medium|High|Max/ }).length).toBeGreaterThanOrEqual(3);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Plan" }));
+    await pick(within(dialog).getByRole("combobox", { name: "After" }), "Home");
     fireEvent.change(within(dialog).getByLabelText("Brief"), { target: { value: "Search: the results screen." } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
     await flush();
@@ -1382,10 +1394,10 @@ describe("the batch across hosts", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Thread$/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
     const dialog = screen.getByRole("dialog");
-    const hostRow = within(dialog).getByRole("radiogroup", { name: "Host" });
-    expect(within(hostRow).getAllByRole("radio").map((r) => r.textContent)).toEqual(["This Mac", "The box"]);
-    expect(within(hostRow).getByRole("radio", { name: "This Mac" }).getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(within(hostRow).getByRole("radio", { name: "The box" }));
+    const hostRow = within(dialog).getByRole("group", { name: "Host" });
+    expect(within(hostRow).getAllByRole("button").map((r) => r.textContent)).toEqual(["This Mac", "The box"]);
+    expect(within(hostRow).getByRole("button", { name: "This Mac" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(within(hostRow).getByRole("button", { name: "The box" }));
     fireEvent.change(within(dialog).getByLabelText("Brief"), { target: { value: "Search: the results screen." } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
     await flush();
@@ -1401,7 +1413,7 @@ describe("the batch across hosts", () => {
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /^Thread$/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
-    expect(within(screen.getByRole("dialog")).queryByRole("radiogroup", { name: "Host" })).toBeNull();
+    expect(within(screen.getByRole("dialog")).queryByRole("group", { name: "Host" })).toBeNull();
   });
 
   it("Add existing thread… names each candidate's host across hosts, adopts a remote one in the cross-host id form, and reads the refusal", async () => {

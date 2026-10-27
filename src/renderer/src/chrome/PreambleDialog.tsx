@@ -1,15 +1,15 @@
-import { Suspense, lazy, useMemo, useRef, useState, type FormEvent } from "react";
-import { Modal } from "./Modal";
-import { DialogFooter as Footer, ErrorLine, GHOST, errorText } from "./ConfirmDialog";
-import { Toggle } from "../surfaces/settingsBits";
+import { Suspense, lazy, useMemo, useRef, useState, type FormEvent, type RefObject } from "react";
+import { Modal, useModalClose } from "./Modal";
+import { DialogFooter as Footer, ErrorLine, errorText } from "./ConfirmDialog";
+import { Field, FieldRow, Tip } from "./DialogField";
+import { Button } from "../components/ui/button";
+import { ScrollArea } from "../components/ui/scroll-area";
+import { Switch } from "../components/ui/switch";
+import { Textarea } from "../components/ui/textarea";
 import { setProjectPreamble, setWorkspacePreamble } from "../lib/tcserver/projects";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useProjectHome } from "../lib/projectHome";
-import {
-  PREAMBLE_VARIABLES,
-  normalizePreamble,
-  wordCount,
-} from "@server/shared/preamble";
+import { PREAMBLE_VARIABLES, normalizePreamble, wordCount } from "@server/shared/preamble";
 
 /** What the dialog edits: a project's own preamble, or the workspace's
  *  default for its projects without one. */
@@ -23,10 +23,6 @@ const AgentMarkdown = lazy(() =>
   import("../surfaces/AgentMarkdown").then((m) => ({ default: m.AgentMarkdown })),
 );
 
-const LABEL = "text-[11px] font-medium text-content/50";
-const TEXTAREA =
-  "min-h-[9.5rem] w-full resize-y rounded-lg border border-content/10 bg-content/5 px-2.5 py-2 font-sans text-[12px] leading-5 text-content outline-none placeholder:text-content/40 focus:border-content/20 disabled:cursor-default disabled:opacity-40";
-
 const PLACEHOLDER = `- Work in your own worktree: \`{{worktree}}\`.
 - Typecheck, tests and build green before you merge.
 - Never touch what is not yours.`;
@@ -36,9 +32,9 @@ const words = (n: number) => `${n} word${n === 1 ? "" : "s"}`;
 /**
  * The preamble editor: the markdown every thread in the scope opens with
  * (prepended by the main process to its first message as "## Project
- * rules"), a live preview of how it reads, the word count the transcript
- * row will show, and the switch that keeps the text while nothing is
- * prepended. Saving reaches new threads only. A linked project's preamble
+ * rules") beside a live preview of how it reads, the word count the
+ * transcript row will show, and the switch that keeps the text while
+ * nothing is prepended. Saving reaches new threads only. A linked project's preamble
  * lives on its settings home (lib/projectHome.ts): read from and saved to
  * that copy, the footer saying where, Save off while the home is offline.
  */
@@ -69,24 +65,16 @@ function ProjectPreambleDialog({
   );
 }
 
-function PreambleEditor({
-  scope,
-  onClose,
-  note,
-  blocked = null,
-}: {
+type EditorProps = {
   scope: PreambleScope;
   onClose: () => void;
   note?: string;
   blocked?: string | null;
-}) {
-  const own = scope.kind === "project" ? scope.project : scope.workspace;
-  const saved = own.preamble ?? "";
-  const savedEnabled = own.preambleEnabled !== false;
-  const [text, setText] = useState(saved);
-  const [enabled, setEnabled] = useState(savedEnabled);
+};
+
+function PreambleEditor(props: EditorProps) {
+  const { scope } = props;
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   // The caret opens at the end of the text.
   const focusText = () => {
@@ -94,14 +82,45 @@ function PreambleEditor({
     el?.setSelectionRange(el.value.length, el.value.length);
     return el ?? true;
   };
+  const title = scope.kind === "project" ? "Preamble" : "Workspace preamble";
+  const description =
+    scope.kind === "project"
+      ? `Opens every new thread in ${scope.project.name}.`
+      : `The default for projects in ${scope.workspace.name} without their own.`;
+  return (
+    <Modal onClose={props.onClose} busy={pending} title={title} description={description} size="lg" initialFocus={focusText}>
+      <PreambleForm {...props} textRef={ref} pending={pending} setPending={setPending} />
+    </Modal>
+  );
+}
+
+function PreambleForm({
+  scope,
+  onClose,
+  note,
+  blocked = null,
+  textRef,
+  pending,
+  setPending,
+}: EditorProps & {
+  textRef: RefObject<HTMLTextAreaElement | null>;
+  pending: boolean;
+  setPending: (pending: boolean) => void;
+}) {
+  const own = scope.kind === "project" ? scope.project : scope.workspace;
+  const saved = own.preamble ?? "";
+  const savedEnabled = own.preambleEnabled !== false;
+  const [text, setText] = useState(saved);
+  const [enabled, setEnabled] = useState(savedEnabled);
+  const [error, setError] = useState<string | null>(null);
+  const close = useModalClose();
 
   const normalized = normalizePreamble(text);
   const count = useMemo(() => wordCount(text), [text]);
   const dirty = normalized !== normalizePreamble(saved) || enabled !== savedEnabled;
   // A project with no text of its own falls back to the workspace default;
-  // the row says so, with the count a thread would carry.
-  const fallback =
-    scope.kind === "project" ? normalizePreamble(scope.workspace.preamble) : null;
+  // the preview says so, with the count a thread would carry.
+  const fallback = scope.kind === "project" ? normalizePreamble(scope.workspace.preamble) : null;
   const fallbackApplies = scope.kind === "project" && scope.workspace.preambleEnabled !== false;
 
   const submit = async (e: FormEvent) => {
@@ -112,101 +131,76 @@ function PreambleEditor({
     try {
       if (scope.kind === "project") await setProjectPreamble(scope.project.id, normalized, enabled);
       else await setWorkspacePreamble(scope.workspace.id, normalized, enabled);
-      onClose();
+      if (close) close(onClose);
+      else onClose();
     } catch (err) {
       setError(errorText(err));
       setPending(false);
     }
   };
 
-  const title = scope.kind === "project" ? "Preamble" : "Workspace preamble";
-  const description =
-    scope.kind === "project"
-      ? `Opens every new thread in ${scope.project.name}`
-      : `The default for projects in ${scope.workspace.name} without their own`;
-
   return (
-    <Modal onClose={onClose} busy={pending} title={title} description={description} size="md" initialFocus={focusText}>
-      <form
-        onSubmit={submit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            void submit(e);
-          }
-        }}
-      >
-        <div className="flex flex-col gap-3 px-4 py-3">
-          <label className="flex flex-col gap-1">
-            <span className="flex items-baseline justify-between">
-              <span className={LABEL}>Project rules</span>
-              <span className="text-[11px] tabular-nums text-content/40">{words(count)}</span>
-            </span>
-            <textarea
-              ref={ref}
+    <form
+      onSubmit={submit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          void submit(e);
+        }
+      }}
+    >
+      <div className="flex flex-col gap-4 px-4 py-4">
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Project rules" aside={<span className="text-xs tabular-nums text-muted-foreground" data-preamble-count>{words(count)}</span>}>
+            <Textarea
+              ref={textRef}
               value={text}
-              rows={8}
               spellCheck={false}
               placeholder={PLACEHOLDER}
               onChange={(e) => setText(e.target.value)}
-              className={TEXTAREA}
+              className="h-64 resize-none field-sizing-fixed"
             />
-          </label>
-          {normalized ? (
-            <div className="flex flex-col gap-1">
-              <span className={LABEL}>Preview</span>
-              <div className="max-h-56 overflow-y-auto rounded-lg border border-content/10 px-3 py-2 text-content/80 [&_h1]:text-[13px] [&_h2]:text-[13px] [&_h3]:text-[12px] [&_h4]:text-[12px]">
-                <Suspense fallback={<pre className="whitespace-pre-wrap font-sans text-[12px] leading-5">{normalized}</pre>}>
-                  <AgentMarkdown text={normalized} className="!text-[12px] !leading-5" />
-                </Suspense>
+          </Field>
+          <section aria-label="Preview" className="flex min-w-0 flex-col gap-1">
+            <h3 className="text-xs font-medium text-muted-foreground">Preview</h3>
+            <ScrollArea className="h-64 rounded-lg border border-border bg-card">
+              <div className="px-3 py-2 text-[13px] [&_h1]:text-[13px] [&_h2]:text-[13px] [&_h3]:text-xs [&_h4]:text-xs" data-preamble-preview>
+                {normalized ? (
+                  <Suspense fallback={<pre className="whitespace-pre-wrap font-sans text-xs leading-5">{normalized}</pre>}>
+                    <AgentMarkdown text={normalized} className="!text-xs !leading-5" />
+                  </Suspense>
+                ) : scope.kind === "project" && fallback ? (
+                  <p className="text-xs text-muted-foreground" data-preamble-fallback>
+                    Empty: threads take the workspace default ({words(wordCount(fallback))}
+                    {fallbackApplies ? "" : ", switched off"}).
+                  </p>
+                ) : null}
               </div>
-            </div>
-          ) : scope.kind === "project" && fallback ? (
-            <p className="text-[11px] leading-4 text-content/40">
-              Empty: threads take the workspace default ({words(wordCount(fallback))}
-              {fallbackApplies ? "" : ", switched off"}).
-            </p>
-          ) : null}
-          <div className="flex items-center justify-between gap-3 border-t border-content/10 pt-3">
-            <span className="flex flex-col">
-              <span className="text-[12px] text-content">Apply to new threads</span>
-              <span className="text-[11px] leading-4 text-content/40">
-                {enabled
-                  ? "The rules open each thread's first message. Threads already running keep theirs."
-                  : "Kept, but nothing is prepended."}
-              </span>
-            </span>
-            <Toggle label="Apply to new threads" on={enabled} onChange={setEnabled} />
-          </div>
-          {scope.kind === "project" && normalized ? (
-            <button
-              type="button"
-              onClick={() => setText("")}
-              className={`${GHOST} self-start`}
-            >
-              Use workspace default
-            </button>
-          ) : null}
-          <p className="text-[11px] leading-4 text-content/40">
-            {PREAMBLE_VARIABLES.map((v, i) => (
-              <span key={v.name}>
-                {i > 0 ? " · " : ""}
-                <code className="rounded bg-content/5 px-1 font-mono text-[10.5px] text-content/60">{`{{${v.name}}}`}</code>{" "}
-                {v.meaning}
-              </span>
-            ))}
-            . Substituted when the thread starts.
-          </p>
-          <ErrorLine error={error} />
+            </ScrollArea>
+          </section>
         </div>
-        <Footer
-          onCancel={onClose}
-          confirmLabel="Save"
-          pending={pending}
-          disabled={!dirty || !!blocked}
-          note={note}
-        />
-      </form>
-    </Modal>
+        <div className="flex flex-col">
+          <FieldRow label="Apply to new threads" description={enabled ? undefined : "Kept, but nothing is prepended."} className="-my-2">
+            <Switch checked={enabled} onCheckedChange={setEnabled} />
+          </FieldRow>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="flex gap-2 font-mono text-[11px] text-muted-foreground" data-preamble-variables>
+            {PREAMBLE_VARIABLES.map((v) => (
+              <Tip key={v.name} label={`${v.meaning}, filled in when the thread starts`}>
+                <code>{`{{${v.name}}}`}</code>
+              </Tip>
+            ))}
+          </p>
+          {scope.kind === "project" && normalized ? (
+            <Button type="button" variant="link" size="xs" className="h-auto px-0 text-muted-foreground hover:text-foreground" onClick={() => setText("")}>
+              Use workspace default
+            </Button>
+          ) : null}
+        </div>
+        <ErrorLine error={error} />
+      </div>
+      <Footer onCancel={onClose} confirmLabel="Save" pending={pending} disabled={!dirty || !!blocked} note={note} />
+    </form>
   );
 }
