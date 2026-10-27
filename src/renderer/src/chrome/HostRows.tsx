@@ -27,6 +27,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "../components/ui/dropdown-menu";
+import { Spinner } from "../components/ui/spinner";
 import { DeployDriftMark } from "./DeployDrift";
 import { HostGlyph } from "./HostGlyph";
 import { loadToast } from "./toastSync";
@@ -40,7 +41,7 @@ export function toneOf(status: EnvironmentStatus, degraded: boolean, slow = fals
   switch (status.transport) {
     case "connecting":
     case "reconnecting":
-      return "bg-warning motion-safe:animate-pulse";
+      return "bg-warning";
     case "unauthorized":
       return "bg-danger";
     default:
@@ -78,6 +79,9 @@ export function HostsRow({ onAddWorkspace }: { onAddWorkspace: (environmentId: s
           <span className="flex items-center gap-1">
             {environments.map((environment) => {
               const status = statuses.get(environment.id);
+              if (status && (status.transport === "connecting" || status.transport === "reconnecting")) {
+                return <Spinner key={environment.id} aria-hidden data-host-status={status.transport} className="size-2.5 text-warning" />;
+              }
               return (
                 <span
                   key={environment.id}

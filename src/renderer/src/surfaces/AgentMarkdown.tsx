@@ -18,6 +18,7 @@ import {
 import type { PluggableList } from "unified";
 import { CodeBlock } from "./CodeBlock";
 import { Button } from "../components/ui/button";
+import { Skeleton } from "../components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { FileRefMenu } from "./FileRefMenu";
 import { createLazyMermaidPlugin } from "./mermaidPlugin";
@@ -407,7 +408,7 @@ function MermaidBlock({
 
   if (!svg) {
     return (
-      <div className="my-4 h-32 motion-safe:animate-pulse rounded-lg border border-border bg-card" />
+      <Skeleton className="my-4 h-32 w-full rounded-lg" />
     );
   }
 

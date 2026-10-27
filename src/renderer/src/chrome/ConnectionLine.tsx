@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { degradedText, registry, useEnvironmentDegraded, useEnvironments, type Degraded } from "../lib/connection";
+import { Spinner } from "../components/ui/spinner";
 import { shell } from "../stores/shell";
 import { settingsChunk } from "../surfaces/chunks";
 
@@ -35,12 +36,11 @@ export function ConnectionLine({ environmentId }: { environmentId: string }) {
       data-connection-line={degraded.kind}
       className="mb-1.5 flex h-6 items-center gap-2 px-1 text-[11px] text-content/50"
     >
-      <span
-        aria-hidden
-        className={`size-1.5 shrink-0 rounded-full ${
-          unauthorized ? "bg-danger" : degraded.kind === "offline" ? "bg-content/25" : "bg-warning motion-safe:animate-pulse"
-        }`}
-      />
+      {unauthorized || degraded.kind === "offline" ? (
+        <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${unauthorized ? "bg-danger" : "bg-content/25"}`} />
+      ) : (
+        <Spinner aria-hidden className="size-3 text-muted-foreground" />
+      )}
       <span className="min-w-0 flex-1 truncate">{text}</span>
       {unauthorized ? (
         <button type="button" {...settingsChunk.intent} onClick={() => shell.openSettings("remote")} className="pressable shrink-0 rounded px-1.5 py-0.5 hover:bg-content/10 hover:text-content">

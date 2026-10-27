@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
 import type { PlanInfo, ProfileView, UsageReport, UsageWindow } from "aliax-core/shared/types";
+import { Skeleton } from "../components/ui/skeleton";
 import { Check, Pin } from "./icons";
 import { HeadroomLine } from "./HeadroomLine";
 import { Popover } from "./Popover";
@@ -234,7 +235,7 @@ function UsageBlock({ report, now, slots }: { report: UsageReport | undefined; n
   if (!report) {
     return (
       <span className="flex shrink-0 items-center text-content/40" style={style}>
-        <span className="motion-safe:animate-pulse">···</span>
+        <Skeleton className="h-2 w-8" />
       </span>
     );
   }

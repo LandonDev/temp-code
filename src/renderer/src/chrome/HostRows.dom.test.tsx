@@ -109,6 +109,16 @@ describe("HostsRow", () => {
     expect(screen.queryByRole("listitem")).toBeNull();
   });
 
+  it("spins an amber spinner in the dot's place while a host reconnects, never a pulse", () => {
+    hosts([LOCAL, BOX], { local: status("open", "darwin"), env_box: status("reconnecting", "linux") });
+    render(<HostsRow onAddWorkspace={() => {}} />);
+    const row = screen.getByRole("button", { name: /^Hosts:/ });
+    const spinner = row.querySelector('[data-host-status="reconnecting"]')!;
+    expect(spinner.getAttribute("data-slot")).toBe("spinner");
+    expect(spinner.getAttribute("class")).toContain("text-warning");
+    expect(row.innerHTML).not.toContain("animate-pulse");
+  });
+
   it("lists a submenu per host, with the glyph, the name and the state, then Host settings", async () => {
     hosts([LOCAL, BOX], { local: status("open", "darwin"), env_box: status("offline", "linux") });
     render(<HostsRow onAddWorkspace={() => {}} />);
