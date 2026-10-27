@@ -35,11 +35,11 @@ export function usageParts(host: Pick<MacBridgeHostPolicy, "running" | "held" | 
   return parts.length ? parts : ["Nothing running"];
 }
 
-/** The Publish row: "v1.0.306 in ~/IdeaProjects/temp-code", "last v1.0.305", and what would stop a publish. */
+/** The Publish row: "v1.0.306", "last v1.0.305", and what would stop a publish. The checkout is the field beside it. */
 export function publishParts(p: PublishStatus | null): string[] {
   if (!p) return [];
   if (!p.readable) return [p.refusal ?? `${p.checkout} is not readable`];
-  const parts = [`${p.version ? `v${p.version}` : "HEAD"} in ${p.checkout}`];
+  const parts = [p.version ? `v${p.version}` : "HEAD"];
   if (p.publishedVersion) parts.push(`last v${p.publishedVersion}`);
   if (p.branch && p.branch !== "master") parts.push(`on ${p.branch}, not master`);
   if (p.dirty) parts.push("uncommitted changes");

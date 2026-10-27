@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
 import {
   forgetMacBridgeRules,
@@ -53,8 +53,8 @@ export function RunRememberSelect({
   )
 }
 
-/** One thread's remembered approvals as rows, each with Remove, and Forget all. */
-export function MacBridgeRuleList({ sessionId, empty }: { sessionId: string; empty?: string }) {
+/** One thread's remembered approvals as rows, each with Remove, and Forget all (on the heading's line when there is one). */
+export function MacBridgeRuleList({ sessionId, empty, heading }: { sessionId: string; empty?: string; heading?: ReactNode }) {
   const rules = useMacBridgeRules(sessionId)
   const [error, setError] = useState<string | null>(null)
   const forget = async (ruleId?: string) => {
@@ -67,8 +67,19 @@ export function MacBridgeRuleList({ sessionId, empty }: { sessionId: string; emp
   }
   if (rules.length === 0)
     return empty ? <p className="text-xs text-muted-foreground">{empty}</p> : null
+  const forgetAll = (
+    <Button variant="ghost" size="xs" className={DANGER_GHOST} onClick={() => void forget()}>
+      Forget all
+    </Button>
+  )
   return (
     <div className="flex flex-col" data-mac-bridge-rules={sessionId}>
+      {heading ? (
+        <div className="flex min-h-7 items-center gap-2 text-xs">
+          <div className="flex min-w-0 flex-1 items-center gap-2">{heading}</div>
+          {forgetAll}
+        </div>
+      ) : null}
       {rules.map((rule) => {
         const { what, detail } = ruleText(rule)
         return (
@@ -87,11 +98,7 @@ export function MacBridgeRuleList({ sessionId, empty }: { sessionId: string; emp
           </Item>
         )
       })}
-      <div className="flex justify-end">
-        <Button variant="ghost" size="xs" className={DANGER_GHOST} onClick={() => void forget()}>
-          Forget all
-        </Button>
-      </div>
+      {heading ? null : <div className="flex justify-end">{forgetAll}</div>}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   )
@@ -110,13 +117,16 @@ export function MacBridgeRememberedSection() {
   return (
     <Group title="Remembered approvals" data-mac-bridge-remembered={threads.length}>
       {threads.map((r) => (
-        <div key={r.sessionId} className="flex flex-col pt-1.5">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="min-w-0 truncate font-medium text-foreground">{r.threadTitle || r.sessionId}</span>
-            <span className="shrink-0 text-muted-foreground">{r.hostName}</span>
-          </div>
-          <MacBridgeRuleList sessionId={r.sessionId} />
-        </div>
+        <MacBridgeRuleList
+          key={r.sessionId}
+          sessionId={r.sessionId}
+          heading={
+            <>
+              <span className="min-w-0 truncate font-medium text-foreground">{r.threadTitle || r.sessionId}</span>
+              <span className="shrink-0 text-muted-foreground">{r.hostName}</span>
+            </>
+          }
+        />
       ))}
     </Group>
   )

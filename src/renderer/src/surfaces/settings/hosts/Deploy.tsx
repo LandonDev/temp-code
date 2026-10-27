@@ -124,7 +124,7 @@ export function LocalRelease() {
       {dialog && publish ? (
         <PublishDialog
           notes={publish.notes}
-          line={publishParts(publish).join(", ")}
+          line={[...publishParts(publish), publish.checkout].join(", ")}
           refusal={publish.refusal}
           onClose={() => setDialog(false)}
           onPublish={async (notes) => {

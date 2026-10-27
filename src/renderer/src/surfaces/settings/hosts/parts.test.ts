@@ -48,10 +48,10 @@ describe("host page parts", () => {
     expect(usageParts({ running: 0, held: 0, threads: 0 })).toEqual(["Nothing running"]);
   });
   it("words the Publish row, what would refuse it, and nothing before the status answers", () => {
-    expect(publishParts(publish())).toEqual(["v1.0.306 in ~/IdeaProjects/temp-code", "last v1.0.305"]);
-    expect(publishParts(publish({ branch: "a16", dirty: true }))).toEqual(["v1.0.306 in ~/IdeaProjects/temp-code", "last v1.0.305", "on a16, not master", "uncommitted changes"]);
+    expect(publishParts(publish())).toEqual(["v1.0.306", "last v1.0.305"]);
+    expect(publishParts(publish({ branch: "a16", dirty: true }))).toEqual(["v1.0.306", "last v1.0.305", "on a16, not master", "uncommitted changes"]);
     expect(publishParts(publish({ readable: false, refusal: null }))).toEqual(["~/IdeaProjects/temp-code is not readable"]);
-    expect(publishParts(publish({ version: null, publishedVersion: null }))).toEqual(["HEAD in ~/IdeaProjects/temp-code"]);
+    expect(publishParts(publish({ version: null, publishedVersion: null }))).toEqual(["HEAD"]);
     expect(publishParts(null)).toEqual([]);
   });
 });
