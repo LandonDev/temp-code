@@ -1,106 +1,98 @@
 // A9 (thinking): a thinking row in a group.
-import { Minus } from "../../chrome/icons";
 import { useState } from "react";
+import { ChevronRight, Sparkles } from "../../chrome/icons";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
+import { TextShimmer } from "../../components/ui/text-shimmer";
+import { cn } from "../../lib/cn";
 import { type Block } from "../../lib/session";
-import { AgentMarkdown } from "../AgentMarkdown";
 import type { OpenFileFn } from "../../lib/search";
-import { proseSummary } from "../transcriptActivity";
+import { AgentMarkdown } from "../AgentMarkdown";
+import { latestLine, thoughtLabel, thoughtMs } from "./thinking";
+
+/** One row of the action list: the 14px glyph slot, then the words. */
+const ROW = "flex min-h-8 min-w-0 items-center gap-2 font-sans text-sm";
+const GLYPH = <Sparkles className="size-3.5 shrink-0 text-muted-foreground" />;
 
 /**
- * The line that keeps a long think from reading as a stall. Opening the fold
- * around it does not open the thought itself — reasoning is only ever read on
- * purpose, one line until you ask for it.
+ * A thought, as one row of the paragraph's action list. While it streams:
+ * "Thinking" shimmering and the newest finished sentence after it. Once it
+ * ends: "Thought for 4s", which opens the whole text. Reasoning is only read
+ * on purpose.
  */
 export function ActivityThinkingRow({
   block,
   cwd,
   expandable = false,
-  bare = false,
+  endTs,
   onOpenFile,
 }: {
   block: Block;
   cwd?: string;
+  /** False: a line that does not open. */
   expandable?: boolean;
+  /** Accepted for A7's callers; the glyph slot is always drawn. */
   bare?: boolean;
-  /** When the thought settled (its turn item's end): the row's duration reads from it. */
+  /** When the thought settled (the next block's time, or the turn's end). */
   endTs?: number;
   onOpenFile?: OpenFileFn;
 }) {
   const [open, setOpen] = useState(false);
-  // The thought mounts on first open and stays; the grid track does the reveal.
-  const [mounted, setMounted] = useState(false);
-  // A thought we watched arrive rises in; history sits still.
-  const [fresh] = useState(!!block.streaming);
-  const text = proseSummary(block.text) || "Thinking";
-  // In a group the rail is the bullet, so there is nothing to breathe while
-  // reasoning streams in — the line itself does.
-  const pulse = block.streaming ? "zen-thinking-pulse" : "";
-  const icon = bare ? null : (
-    <Minus
-      className={`size-3.5 shrink-0 text-content/40 ${pulse}`}
-      strokeWidth={1.75}
-    />
-  );
-  const label = (
-    <span
-      className={`min-w-0 flex-1 truncate font-sans text-sm text-content/50 ${
-        bare ? pulse : ""
-      }`}
-    >
-      {text}
-    </span>
-  );
+  // The text mounts on first open and stays mounted.
+  const [opened, setOpened] = useState(false);
 
+  if (block.streaming) {
+    const line = latestLine(block.text);
+    return (
+      <div aria-label="Thinking" className={ROW}>
+        {GLYPH}
+        <TextShimmer className="shrink-0">Thinking</TextShimmer>
+        {line ? <span className="min-w-0 truncate text-muted-foreground">{line}</span> : null}
+      </div>
+    );
+  }
+
+  const label = thoughtLabel(thoughtMs(block, endTs));
   if (!expandable) {
     return (
-      <div
-        aria-label={`Thinking: ${text}`}
-        className={`flex min-w-0 items-center gap-1.5 py-1 ${fresh ? "z-fade-in" : ""}`}
-      >
-        {icon}
-        {label}
+      <div className={cn(ROW, "text-muted-foreground")}>
+        {GLYPH}
+        <span className="truncate">{label}</span>
       </div>
     );
   }
 
   return (
-    <div className={`flex min-w-0 flex-col ${fresh ? "z-fade-in" : ""}`}>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-label={open ? "Hide thinking" : `Show thinking: ${text}`}
-        onClick={() => {
-          setMounted(true);
-          setOpen((value) => !value);
-        }}
-        className="group flex min-w-0 items-center gap-1.5 py-1 text-left"
-      >
-        {icon}
-        <span
-          className={`min-w-0 flex-1 truncate font-sans text-sm text-content/50 transition-colors group-hover:text-content/70 ${
-            bare ? pulse : ""
-          }`}
-        >
-          {text}
-        </span>
-      </button>
-      <div
-        className="thinking-body grid"
-        style={{ gridTemplateRows: open ? "1fr" : "0fr", opacity: open ? 1 : 0 }}
-      >
-        <div className="min-h-0 overflow-hidden">
-          {mounted ? (
-            <div className={`min-w-0 pb-2 ${bare ? "" : "pl-5"}`}>
-              <AgentMarkdown
-                className="agent-reasoning"
-                text={block.text}
-                cwd={cwd}
-                onOpenFile={onOpenFile}
-              />
-            </div>
+    <Collapsible
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setOpened(true);
+        setOpen(next);
+      }}
+      className="min-w-0"
+    >
+      <CollapsibleTrigger className={cn(ROW, "w-fit text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground")}>
+        {GLYPH}
+        <span className="truncate">{label}</span>
+        <ChevronRight
+          className={cn(
+            "size-3 shrink-0 transition-transform duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
+            open && "rotate-90",
+          )}
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent keepMounted={opened}>
+        <div className="min-w-0 pb-2 pl-5.5">
+          {opened ? (
+            <AgentMarkdown
+              className="agent-reasoning"
+              size="compact"
+              text={block.text}
+              cwd={cwd}
+              onOpenFile={onOpenFile}
+            />
           ) : null}
         </div>
-      </div>
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

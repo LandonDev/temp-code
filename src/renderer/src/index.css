@@ -801,21 +801,6 @@ header[data-tauri-drag-region] button {
   }
 }
 
-@keyframes zen-thinking-pulse {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
-  50% {
-    opacity: 0.9;
-  }
-}
-
-/* The thinking line breathes while reasoning streams in. */
-.zen-thinking-pulse {
-  animation: zen-thinking-pulse 1.8s steps(14) infinite alternate;
-}
-
 @keyframes zen-spin {
   to {
     transform: rotate(360deg);
@@ -828,8 +813,7 @@ header[data-tauri-drag-region] button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .zen-tool-spin,
-  .zen-thinking-pulse {
+  .zen-tool-spin {
     animation: none;
   }
 }
@@ -1094,20 +1078,10 @@ header[data-tauri-drag-region] button {
   animation: z-fade-quick 150ms var(--ease-out);
 }
 
-.thinking-body {
-  transition:
-    grid-template-rows 200ms var(--ease-out),
-    opacity 200ms var(--ease-out);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .z-fade-in,
   .z-fade-quick {
     animation: none;
-  }
-
-  .thinking-body {
-    transition: none;
   }
 }
 
