@@ -1,5 +1,7 @@
 import { sessionStore } from "../lib/tcserver/store";
-import { ChevronDown, ChevronRight } from "./icons";
+import { ChevronRight } from "./icons";
+import { Button } from "../components/ui/button";
+import { Spinner } from "../components/ui/spinner";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   keepSessionChanges,
@@ -11,6 +13,7 @@ import {
 import { invalidateProjectFiles } from "../lib/fileIndex";
 import { invalidateWatchedFiles } from "../lib/fileWatch";
 import { basename, notifyGitChanged, subscribeGitChanged } from "../lib/fs";
+import { Counts } from "../surfaces/transcript/Counts";
 import { FileTypeIcon } from "./FileTypeIcon";
 
 export const STATUS_DEBOUNCE_MS = 500;
@@ -32,7 +35,6 @@ export function SessionReview({
 }: Props) {
   const environmentId = sessionStore.environmentOf(sessionId);
   const [files, setFiles] = useState<CheckpointFile[]>([]);
-  const [expanded, setExpanded] = useState(false);
   const [acting, setActing] = useState<"keep" | "undo" | null>(null);
   const filesRef = useRef(files);
   filesRef.current = files;
@@ -81,19 +83,10 @@ export function SessionReview({
     };
   }, [enabled, load, sessionId, busy]);
 
-  useEffect(() => {
-    if (files.length <= 1) setExpanded(false);
-  }, [files.length]);
-
   if (files.length === 0) return null;
 
-  const disabled = busy || acting != null;
-  const many = files.length > 1;
-  const first = files[0];
-  if (!first) return null;
-
   const run = (action: "keep" | "undo") => {
-    if (disabled || !environmentId) return;
+    if (busy || acting != null || !environmentId) return;
     setActing(action);
     const op =
       action === "keep"
@@ -112,133 +105,115 @@ export function SessionReview({
   };
 
   return (
+    <SessionReviewView
+      files={files}
+      busy={busy}
+      acting={acting}
+      onReview={onOpenDiff}
+      onUndo={() => run("undo")}
+      onKeep={() => run("keep")}
+    />
+  );
+}
+
+type ViewProps = {
+  files: CheckpointFile[];
+  busy: boolean;
+  acting: "undo" | "keep" | null;
+  onReview: (path?: string) => void;
+  onUndo: () => void;
+  onKeep: () => void;
+};
+
+/** The strip on the composer's top edge: what the thread changed since the
+ *  last Keep, as a name or a file count with its line counts (opening the
+ *  diff pane), then Undo and Keep. Nothing while there is nothing to keep. */
+export function SessionReviewView({
+  files,
+  busy,
+  acting,
+  onReview,
+  onUndo,
+  onKeep,
+}: ViewProps) {
+  const first = files[0];
+  if (!first) return null;
+  const one = files.length === 1;
+  const name = basename(first.relative);
+  const adds = files.reduce((sum, file) => sum + file.additions, 0);
+  const dels = files.reduce((sum, file) => sum + file.deletions, 0);
+  const label = one ? name : `${files.length} files`;
+  const disabled = busy || acting != null;
+  return (
     <div className="px-2">
       <div
-        className="relative z-0 rounded-t-[10px] border border-b-0 border-content/10 bg-content/5 px-2 py-1"
+        className="flex h-8 items-center gap-1 rounded-t-lg border border-b-0 border-border bg-card px-1"
         data-session-review
       >
-        <div className="flex min-w-0 items-center gap-2">
-          {many ? (
-            <button
-              type="button"
-              title={expanded ? "Collapse files" : "Expand files"}
-              aria-expanded={expanded}
-              onClick={() => setExpanded((open) => !open)}
-              className="flex min-w-0 flex-1 items-center gap-1 py-0.5 text-left text-content/70 hover:text-content"
-            >
-              {expanded ? (
-                <ChevronDown className="size-3.5 shrink-0" strokeWidth={1.75} />
-              ) : (
-                <ChevronRight
-                  className="size-3.5 shrink-0"
-                  strokeWidth={1.75}
-                />
-              )}
-              <span className="truncate text-[12px]">{files.length} Files</span>
-            </button>
+        <Button
+          variant="ghost"
+          size="xs"
+          aria-label={`Review changes: ${label}`}
+          onClick={() => (one ? onReview(first.path) : onReview())}
+          className="min-w-0 flex-1 justify-start gap-1.5 font-normal"
+        >
+          {one ? (
+            <>
+              {/* The icon pack writes its own `title`; no tooltip here. */}
+              <span aria-hidden className="pointer-events-none flex">
+                <FileTypeIcon name={name} isDir={false} size={14} />
+              </span>
+              <span className="min-w-0 truncate font-mono text-[11px] text-foreground">
+                {name}
+              </span>
+            </>
           ) : (
-            <FileLabel file={first} onOpenDiff={onOpenDiff} />
+            <span className="truncate text-[12px] text-muted-foreground">
+              {label}
+            </span>
           )}
-          <div className="flex shrink-0 items-center gap-0.5">
-            <button
-              type="button"
-              title="Undo all session changes"
-              disabled={disabled}
-              onClick={() => run("undo")}
-              className="pressable h-6 rounded-md px-1.5 text-[11px] text-content/50 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
-            >
-              Undo all
-            </button>
-            <button
-              type="button"
-              title="Keep all session changes"
-              disabled={disabled}
-              onClick={() => run("keep")}
-              className="pressable h-6 rounded-md px-1.5 text-[11px] text-content/50 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
-            >
-              Keep all
-            </button>
-            <button
-              type="button"
-              title="Review changes"
-              onClick={() => onOpenDiff()}
-              className="pressable h-6 rounded-md bg-content/10 px-2 text-[11px] text-content/70 hover:bg-content/20 hover:text-content"
-            >
-              Review
-            </button>
-          </div>
-        </div>
-        {many && expanded ? (
-          <ul className="scrollbar-none mt-1 max-h-40 overflow-y-auto">
-            {files.map((file) => (
-              <li key={file.relative}>
-                <FileRow file={file} onOpenDiff={onOpenDiff} />
-              </li>
-            ))}
-          </ul>
-        ) : null}
+          <Counts added={adds} removed={dels} />
+          <ChevronRight className="size-3 text-muted-foreground" />
+        </Button>
+        <StripAction
+          word="Undo"
+          running={acting === "undo"}
+          disabled={disabled}
+          onClick={onUndo}
+        />
+        <StripAction
+          word="Keep"
+          running={acting === "keep"}
+          disabled={disabled}
+          onClick={onKeep}
+        />
       </div>
     </div>
   );
 }
 
-function FileLabel({
-  file,
-  onOpenDiff,
+function StripAction({
+  word,
+  running,
+  disabled,
+  onClick,
 }: {
-  file: CheckpointFile;
-  onOpenDiff: (path?: string) => void;
+  word: string;
+  running: boolean;
+  disabled: boolean;
+  onClick: () => void;
 }) {
-  const name = basename(file.relative);
   return (
-    <button
-      type="button"
-      title={file.relative}
-      onClick={() => onOpenDiff(file.path)}
-      className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left text-content/70 hover:text-content"
+    <Button
+      variant="ghost"
+      size="xs"
+      disabled={disabled}
+      aria-busy={running || undefined}
+      onClick={onClick}
+      className="text-muted-foreground hover:text-foreground"
     >
-      <FileTypeIcon name={name} isDir={false} size={14} />
-      <span className="min-w-0 truncate font-mono text-[12px]">{name}</span>
-      <DiffCounts file={file} />
-    </button>
-  );
-}
-
-function FileRow({
-  file,
-  onOpenDiff,
-}: {
-  file: CheckpointFile;
-  onOpenDiff: (path?: string) => void;
-}) {
-  const name = basename(file.relative);
-  return (
-    <button
-      type="button"
-      title={file.relative}
-      onClick={() => onOpenDiff(file.path)}
-      className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-1 text-left text-content/70 hover:bg-content/10 hover:text-content"
-    >
-      <FileTypeIcon name={name} isDir={false} size={16} />
-      <span className="min-w-0 flex-1 truncate font-mono text-[12px]">
-        {name}
-      </span>
-      <DiffCounts file={file} />
-    </button>
-  );
-}
-
-function DiffCounts({ file }: { file: CheckpointFile }) {
-  if (file.additions <= 0 && file.deletions <= 0) return null;
-  return (
-    <span className="shrink-0 font-mono text-[11px] font-semibold">
-      {file.additions > 0 ? (
-        <span className="text-success">+{file.additions}</span>
-      ) : null}
-      {file.additions > 0 && file.deletions > 0 ? " " : null}
-      {file.deletions > 0 ? (
-        <span className="text-danger">-{file.deletions}</span>
-      ) : null}
-    </span>
+      {running ? <Spinner aria-hidden className="size-3" /> : null}
+      {word}
+    </Button>
   );
 }

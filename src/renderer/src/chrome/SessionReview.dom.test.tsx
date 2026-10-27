@@ -24,7 +24,8 @@ vi.mock('../lib/fileIndex', () => ({ invalidateProjectFiles: vi.fn() }))
 vi.mock('../lib/fileWatch', () => ({ invalidateWatchedFiles: vi.fn() }))
 
 import { mountProbe } from '../test/renderProbe'
-import { SessionReview, STATUS_DEBOUNCE_MS } from './SessionReview'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { SessionReview, SessionReviewView, STATUS_DEBOUNCE_MS } from './SessionReview'
 
 vi.mock('../lib/tcserver/store', () => ({ sessionStore: { environmentOf: (id: string) => id === 's1' ? 'local' : undefined } }))
 
@@ -90,5 +91,95 @@ describe('SessionReview status fetches', () => {
     await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
     expect(status).toHaveBeenCalledTimes(2)
     probe.unmount()
+  })
+})
+
+const file = (relative: string, additions: number, deletions: number) => ({
+  path: `/w/one/${relative}`,
+  relative,
+  status: 'M',
+  additions,
+  deletions,
+})
+const view = (files: ReturnType<typeof file>[], over: Partial<Parameters<typeof SessionReviewView>[0]> = {}) => (
+  <SessionReviewView
+    files={files}
+    busy={false}
+    acting={null}
+    onReview={() => undefined}
+    onUndo={() => undefined}
+    onKeep={() => undefined}
+    {...over}
+  />
+)
+const three = [file('src/a.ts', 30, 9), file('src/b.ts', 12, 0), file('docs/c.md', 4, 3)]
+
+describe('SessionReview strip', () => {
+  afterEach(() => {
+    cleanup()
+    status.mockReset()
+    status.mockImplementation(() => Promise.resolve({ files: [] }))
+  })
+
+  it('one file shows its name and counts, and opens that file’s diff', async () => {
+    vi.useFakeTimers()
+    status.mockImplementation(() => Promise.resolve({ files: [file('src/chrome/SessionReview.tsx', 46, 12)] }))
+    const onOpenDiff = vi.fn()
+    render(<SessionReview sessionId="s1" cwd="/w/one" onOpenDiff={onOpenDiff} />)
+    await act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
+    vi.useRealTimers()
+    const summary = screen.getByRole('button', { name: 'Review changes: SessionReview.tsx' })
+    expect(summary.textContent).toContain('SessionReview.tsx')
+    expect(summary.textContent).toContain('+46')
+    expect(summary.textContent).toContain('−12')
+    fireEvent.click(summary)
+    expect(onOpenDiff).toHaveBeenCalledWith('/w/one/src/chrome/SessionReview.tsx')
+  })
+
+  it('several files show a count and summed counts, no names, no list, no Review button', () => {
+    const onReview = vi.fn()
+    const { container } = render(view(three, { onReview }))
+    const summary = screen.getByRole('button', { name: /^Review changes/ })
+    expect(summary.getAttribute('aria-label')).toBe('Review changes: 3 files')
+    expect(summary.textContent).toContain('3 files')
+    expect(summary.textContent).toContain('+46')
+    expect(summary.textContent).toContain('−12')
+    expect(container.textContent).not.toContain('a.ts')
+    expect(container.querySelector('ul, li')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Review' })).toBeNull()
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([expect.any(String), 'Undo', 'Keep'])
+    fireEvent.click(summary)
+    expect(onReview).toHaveBeenCalledTimes(1)
+    expect(onReview.mock.calls[0]).toEqual([])
+  })
+
+  it('a zero side of the counts is left out', () => {
+    render(view([file('src/new.ts', 18, 0)]))
+    const summary = screen.getByRole('button', { name: /^Review changes/ })
+    expect(summary.textContent).toContain('+18')
+    expect(summary.textContent).not.toContain('−')
+  })
+
+  it('a working thread disables Undo and Keep and leaves the summary enabled', () => {
+    render(view(three, { busy: true }))
+    expect((screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Keep' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /^Review changes/ }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('carries no title attributes of its own', () => {
+    for (const files of [three, [file('src/a.ts', 1, 1)]]) {
+      const { container } = render(view(files))
+      // The file icon pack titles its own glyph; it sits in an aria-hidden,
+      // pointer-events-none wrapper, so no tooltip ever shows.
+      const titled = [...container.querySelectorAll('[title]')].filter((el) => !el.closest('[aria-hidden]'))
+      expect(titled).toEqual([])
+      cleanup()
+    }
+  })
+
+  it('renders nothing with no changes', () => {
+    const { container } = render(view([]))
+    expect(container.innerHTML).toBe('')
   })
 })
