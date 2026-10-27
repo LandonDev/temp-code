@@ -138,15 +138,6 @@ describe("project actions", () => {
     expect(loadSelectedProject).not.toHaveBeenCalled();
   });
 
-  it("the default cwd fills empty recents only", () => {
-    project.adoptDefaultCwd("/first");
-    expect(projectStore.getState().recents.map((r) => r.path)).toContain("/first");
-    const held = projectStore.getState().recents;
-    project.adoptDefaultCwd("/second");
-    expect(projectStore.getState().projectCwd).toBe("/second");
-    expect(projectStore.getState().recents).toBe(held);
-  });
-
   it("picking a project saves it for the current folder, once", () => {
     project.selectProject("p2");
     project.selectProject("p2");

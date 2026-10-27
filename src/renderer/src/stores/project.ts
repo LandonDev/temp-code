@@ -199,16 +199,6 @@ export const project = {
     update((s) => moveToWorkspace(s, cwd, selectionFor(s, cwd), rememberProject(cwd))),
   /** Move to `cwd` without touching the recents. */
   setProjectCwd: (cwd: string) => update((s) => moveToWorkspace(s, cwd, selectionFor(s, cwd))),
-  /** The default folder on a first launch: recents fill only when they are empty. */
-  adoptDefaultCwd: (cwd: string) =>
-    update((s) =>
-      moveToWorkspace(
-        s,
-        cwd,
-        selectionFor(s, cwd),
-        s.recents.length > 0 ? s.recents : rememberProject(cwd),
-      ),
-    ),
   /** Open the folder a tab or thread lives in, unless the window is on it
    *  already or on a linked copy of it (lib/linkedRail.ts): a switch between
    *  a project's Mac and box copies moves nothing, bumps no recent and

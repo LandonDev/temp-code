@@ -11,9 +11,8 @@ import {
 import { historyStore } from "../lib/historyStore";
 import { liveAgentTracker } from "../lib/liveAgentTracker";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
-import { invoke } from "../lib/native";
 import { landingPathOfSession, saveLastSession } from "../lib/projectContext";
-import { lastProjectPath, looksLikeProject } from "../lib/recents";
+import { looksLikeProject } from "../lib/recents";
 import { replaceProjectHistory } from "../lib/sessionHistory";
 import { markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
 import {
@@ -455,16 +454,8 @@ export function installBootTasks(): Teardown {
     },
   ];
 
-  if (!lastProjectPath()) {
-    void invoke<string>("default_cwd")
-      .then((cwd) => {
-        if (!live || !looksLikeProject(cwd)) return;
-        project.adoptDefaultCwd(cwd);
-        void createWorkspace(registry.primary().environmentId, cwd).catch(() => undefined);
-        sessionStore.mutate((prev) => prev.map((s) => (s.cwd === "~" ? { ...s, cwd } : s)));
-      })
-      .catch(() => {});
-  }
+  // A first run starts empty wherever the app was launched from: the person
+  // adds a folder with Add workspace… (docs/LAYOUT.md "First run").
 
   void probeHarnessAvailability();
   // Only the harnesses already in this window. Probing every installed CLI

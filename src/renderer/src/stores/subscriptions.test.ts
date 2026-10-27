@@ -575,9 +575,11 @@ describe("installBootTasks", () => {
     environments.mockRestore();
   });
 
-  it("adopts the default folder on a first launch and re-resolves live models", async () => {
+  it("starts a first launch empty, wherever it was launched from, and re-resolves live models", async () => {
     vi.mocked(lastProjectPath).mockReturnValue(null);
     vi.mocked(invoke).mockResolvedValue("/home/me/code");
+    vi.mocked(createWorkspace).mockClear();
+    const before = projectStore.getState().projectCwd;
     sessionStore.mutate([
       session("s-a", { cwd: "~", model: "old" }),
       session("s-b", { model: "kept" }),
@@ -585,11 +587,12 @@ describe("installBootTasks", () => {
     ]);
     teardown = installBootTasks();
     await flush();
-    expect(projectStore.getState().projectCwd).toBe("/home/me/code");
-    expect(createWorkspace).toHaveBeenCalledWith("local", "/home/me/code");
+    expect(invoke).not.toHaveBeenCalledWith("default_cwd");
+    expect(createWorkspace).not.toHaveBeenCalled();
+    expect(projectStore.getState().projectCwd).toBe(before);
     expect(refreshHarnessCatalogs).toHaveBeenCalledWith(["claude"]);
     const [a, b, c] = sessionStore.getSnapshot();
-    expect(a.cwd).toBe("/home/me/code");
+    expect(a.cwd).toBe("~");
     expect(a.model).toBe("new");
     expect(b.cwd).toBe("/repo");
     expect(b.model).toBe("kept");
