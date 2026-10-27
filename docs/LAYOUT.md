@@ -314,9 +314,10 @@ leave the row and are reached from the ⋯ menu's Recent threads.
   colour swap takes `--dur-fast`), `bg-muted` when active (no transition),
   medium weight when unread, the accent ring on keyboard focus. No motion:
   list rows take none.
-- **Input.** A primary press selects; a right press or a Control-click
-  never selects, and the contextmenu opens the thread's menu at the pointer
-  (`ContextMenu`, rows from `chipMenuItems`). Double-click renames in place
+- **Input.** A primary click selects, on release; dragged 5px it carries
+  the thread onto a pane's edge instead ("Panes" below). A right press or a
+  Control-click never selects, and the contextmenu opens the thread's menu
+  at the pointer (`ContextMenu`, rows from `chipMenuItems`). Double-click renames in place
   on an `Input`. Arrows, Home and End move focus along the row (only the
   active chip is in the tab order), Enter or Space selects. The row and its
   gaps are outside the window's drag region.
@@ -419,6 +420,44 @@ nothing under it repeats them.
   case, word and regex toggles, Previous, Next and Close, and the replace
   row under it while replace shows. It opens from the keyboard, so it has no
   motion.
+
+### Panes
+
+A tab holds a tree of panes (surfaces/PaneTree.tsx on lib/layout.ts); the
+pieces it draws are surfaces/paneChrome.tsx.
+
+- **The header.** Alone in its tab a thread has none. In a split every
+  thread pane has a 36px `PaneHeader`: the title (13px, truncated, no
+  tooltip: the chip has it) and Close, a ghost icon button with "Close
+  pane ⌘W" on hover. The focus mark is the header itself: the focused
+  pane's is the content's background with the title in foreground, the
+  others' the rail's gray with a muted title. A file pane's tab bar takes
+  the same two backgrounds. No dot, no status mark, no grip.
+- **Moving a pane.** The whole header drags it (the file pane's bar from
+  its empty end); past 5px the pane dims and the drop zone shows where it
+  lands. Escape cancels.
+- **The sash.** A hairline between panes with a 6px hit area each side; a
+  4px band on it takes the rail handles' hover and drag tints, and the
+  accent when focused from the keyboard. It is focusable ("Resize panes"):
+  the arrows along its axis move it 2% (Shift 10%), and a double-click
+  makes the group's panes equal.
+- **The drop zone.** The half the pane will take, a box inset 4px with
+  rounded corners, the hairline and a translucent muted fill, fading in at
+  `--dur-fast`; it moves between edges in place. The nearest edge wins:
+  every drop splits, nothing drops in the centre.
+- **A chip onto a pane.** A thread's chip dragged out of the strip shows
+  the same drop zone on the pane under the pointer, and a release there
+  opens the thread on that edge, its tab forward and it focused
+  (`workspaceActions.dropThread`): a thread already in that tab moves, one
+  from another tab leaves it (that tab goes when it held only the thread),
+  one open nowhere joins. A release elsewhere, Escape or the window losing
+  focus does nothing.
+- **Parked tabs.** Only the shown tab's panes take a drop: a parked tab is
+  `content-visibility: hidden`, `pointer-events: none` and `aria-hidden`.
+- **States.** A gone thread's pane offers Close pane in a split and Close
+  tab alone. A slow or failed load is one 12px muted line, its parts 8px
+  apart ("Box did not answer", "connection closed", "retrying in 1 s"),
+  then Retry.
 
 ## Thread views
 
