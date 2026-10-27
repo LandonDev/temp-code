@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Block } from "./session";
-import { approvalDetailOf, approvalOutcome, bareCommand } from "./approvalDetail";
+import { approvalDetailOf, bareCommand } from "./approvalDetail";
 
 function approval(name: string, input: unknown, kind?: string): Block {
   return {
@@ -46,15 +46,5 @@ describe("approvalDetailOf", () => {
     const b = approval("Bash", undefined);
     (b.tool as { partialInput?: unknown }).partialInput = { command: "ls" };
     expect(approvalDetailOf(b)).toMatchObject({ kind: "shell", command: "ls" });
-  });
-});
-
-describe("approvalOutcome", () => {
-  it("names the decision and who made it", () => {
-    expect(approvalOutcome(undefined)).toBeNull();
-    expect(approvalOutcome({ requestId: 1 })).toBeNull();
-    expect(approvalOutcome({ requestId: 1, decided: "allow" })).toBe("approved");
-    expect(approvalOutcome({ requestId: 1, decided: "deny" })).toBe("denied");
-    expect(approvalOutcome({ requestId: 1, decided: "deny", auto: true })).toBe("denied (timed out)");
   });
 });

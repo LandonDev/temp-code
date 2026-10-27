@@ -37,9 +37,8 @@ export function bareCommand(raw: string): string {
   return s.replace(/\/Users\/[^/\s'"]+/g, "~");
 }
 
-/** `partialInput` streams in while the model still writes the call (M4); `auto` marks a policy decision (M4). */
+/** `partialInput` streams in while the model still writes the call (M4). */
 type ApprovalTool = NonNullable<Block["tool"]> & { partialInput?: unknown };
-type Approval = NonNullable<Block["approval"]> & { auto?: boolean };
 
 function inputOf(block: Block): Record<string, unknown> {
   const tool = block.tool as ApprovalTool | undefined;
@@ -85,11 +84,4 @@ export function approvalDetailOf(block: Block, cwd?: string): ApprovalDetail | n
 
 function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/** The decided line: who allowed it, or that a timeout did the denying. */
-export function approvalOutcome(approval: Approval | undefined): string | null {
-  if (!approval?.decided) return null;
-  if (approval.decided === "allow") return "approved";
-  return approval.auto ? "denied (timed out)" : "denied";
 }

@@ -1,8 +1,20 @@
-// A9 (notices): the approval controls and detail.
+// A9 (notices): the approval controls under an action row.
+import { Button } from "../../components/ui/button";
 import type { ApprovalDecision } from "../../lib/harness";
 import { type Block } from "../../lib/session";
-import { approvalDetailOf, approvalOutcome } from "../../lib/approvalDetail";
+import { approvalDetailOf } from "../../lib/approvalDetail";
 
+/** The decided approval's one line. */
+function decidedLine(approval: NonNullable<Block["approval"]>): string {
+  if (approval.decided === "allow") return "Allowed";
+  return approval.auto ? "Denied, timed out" : "Denied";
+}
+
+/**
+ * An approval's controls, under the action row that shows what it asks
+ * (A8's row draws the command or the path). Undecided: a shell call's one
+ * line of what it means to do, then Allow and Deny. Decided: one line.
+ */
 export function ApprovalControls({
   block,
   onApproval,
@@ -12,73 +24,22 @@ export function ApprovalControls({
 }) {
   const approval = block.approval;
   if (!approval) return null;
-  const detail = approvalDetailOf(block);
-  const outcome = approvalOutcome(approval);
   if (approval.decided) {
-    return outcome ? (
-      <div className="mt-1 font-sans text-[11px] text-content/40">{outcome}</div>
-    ) : null;
+    return <div className="pl-5.5 font-sans text-xs leading-5 text-muted-foreground">{decidedLine(approval)}</div>;
   }
+  const detail = approvalDetailOf(block);
+  const reason = detail?.kind === "shell" ? detail.doing : null;
   return (
-    <div className="mt-1.5 flex flex-col gap-2">
-      {detail ? <ApprovalDetailView detail={detail} /> : null}
+    <div className="flex min-w-0 flex-col gap-2 pb-2 pl-5.5 font-sans">
+      {reason ? <span className="min-w-0 truncate text-[13px] leading-5 text-muted-foreground">{reason}</span> : null}
       <div className="flex gap-2">
-      <button
-        type="button"
-        className="rounded-md bg-content px-2.5 py-0.5 text-[11px] hover:bg-content/70     text-background-base"
-        onClick={() => onApproval?.(approval.requestId, "allow")}
-      >
-        Allow
-      </button>
-      <button
-        type="button"
-        className="rounded-md bg-content/10 px-2.5 py-0.5 text-[11px] text-content/70 hover:bg-content/20"
-        onClick={() => onApproval?.(approval.requestId, "deny")}
-      >
-        Deny
-      </button>
+        <Button size="sm" onClick={() => onApproval?.(approval.requestId, "allow")}>
+          Allow
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => onApproval?.(approval.requestId, "deny")}>
+          Deny
+        </Button>
       </div>
     </div>
-  );
-}
-
-/** What the agent is asking to do, in the words the board can decide on. */
-export function ApprovalDetailView({
-  detail,
-}: {
-  detail: NonNullable<ReturnType<typeof approvalDetailOf>>;
-}) {
-  if (detail.kind === "shell") {
-    return (
-      <div className="flex min-w-0 flex-col gap-1">
-        <span className="font-sans text-[12px] text-content/70">{detail.doing}</span>
-        <pre className="min-w-0 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-content/6 px-2 py-1 text-[12px] text-content/70">
-          {detail.command}
-        </pre>
-      </div>
-    );
-  }
-  if (detail.kind === "file") {
-    return (
-      <div className="flex min-w-0 flex-col gap-1">
-        <span className="font-sans text-[12px] text-content/70">Write {detail.path}</span>
-        {detail.added.length ? (
-          <pre className="min-w-0 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-content/6 px-2 py-1 text-[12px] text-content/70">
-            {detail.added.join("\n")}
-            {detail.more ? "\n…" : null}
-          </pre>
-        ) : null}
-      </div>
-    );
-  }
-  return (
-    <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12px]">
-      {detail.entries.map(([key, value]) => (
-        <div key={key} className="contents">
-          <dt className="text-content/40">{key}</dt>
-          <dd className="min-w-0 truncate text-content/70">{value}</dd>
-        </div>
-      ))}
-    </dl>
   );
 }
