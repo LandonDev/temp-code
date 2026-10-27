@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   COMPOSER_RUNNER_DEFAULT,
   GRID_ARCADE_ENABLED_DEFAULT,
+  filterKeybindings,
   isSettingsSectionId,
+  KEYBINDING_GROUPS,
+  KEYBINDING_SCOPE_LABEL,
   loadSettingsSection,
   SETTINGS_GROUPS,
   SETTINGS_SECTIONS,
@@ -150,5 +153,37 @@ describe("settings sections", () => {
     localStorage.setItem("monocode.settingsSection", "environments");
     expect(loadSettingsSection()).toBe("remote");
     expect(isSettingsSectionId("environments")).toBe(false);
+  });
+});
+
+describe("keybindings", () => {
+  const all = KEYBINDING_GROUPS.flatMap((group) => group.bindings);
+
+  it("gives every binding at least one chord of caps", () => {
+    for (const binding of all) {
+      expect(binding.keys.length).toBeGreaterThan(0);
+      for (const chord of binding.keys) {
+        expect(chord.length).toBeGreaterThan(0);
+        for (const cap of chord) expect(cap).not.toMatch(/\+$/);
+      }
+    }
+  });
+
+  it("says where a binding holds in words, never code", () => {
+    for (const binding of all) {
+      if (binding.scope) expect(KEYBINDING_SCOPE_LABEL[binding.scope]).toMatch(/^[A-Z][a-z ]+$/);
+    }
+    expect(JSON.stringify(KEYBINDING_GROUPS)).not.toMatch(/editorFocus|deckLayout|Always/);
+  });
+
+  it("filters by name, by group and by keys", () => {
+    expect(filterKeybindings(KEYBINDING_GROUPS, "symbol").flatMap((g) => g.bindings.map((b) => b.name))).toEqual([
+      "Go to Symbol",
+    ]);
+    expect(filterKeybindings(KEYBINDING_GROUPS, "terminal").map((g) => g.title)).toEqual(["Terminal"]);
+    const byKeys = filterKeybindings(KEYBINDING_GROUPS, "ctrl k").flatMap((g) => g.bindings.map((b) => b.name));
+    const byGlyph = filterKeybindings(KEYBINDING_GROUPS, "⌘K").flatMap((g) => g.bindings.map((b) => b.name));
+    expect([...byKeys, ...byGlyph]).toContain("Search");
+    expect(filterKeybindings(KEYBINDING_GROUPS, "nothing like this")).toEqual([]);
   });
 });

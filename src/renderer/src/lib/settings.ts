@@ -1,5 +1,5 @@
 import { requestSettings } from "./monaco/debugTab";
-import { ALT, IS_MAC, MOD, SHIFT } from "./platform";
+import { IS_MAC } from "./platform";
 
 const SECTION_KEY = "monocode.settingsSection";
 
@@ -307,75 +307,112 @@ export function saveClaudeHooks(value: boolean) {
   }
 }
 
-const CTRL = IS_MAC ? "⌃" : "Ctrl+";
+// Key caps, one per key: macOS glyphs, words elsewhere.
+const CMD = IS_MAC ? "⌘" : "Ctrl";
+const OPT = IS_MAC ? "⌥" : "Alt";
+const SHF = IS_MAC ? "⇧" : "Shift";
+const CTL = IS_MAC ? "⌃" : "Ctrl";
 
-export type KeybindingRow = {
-  command: string;
-  keys: string;
-  when: string;
+export type Keybinding = {
+  name: string;
+  /** Each entry is one chord as caps; a second entry is an alternative. */
+  keys: string[][];
+  /** Where the binding holds, when not everywhere. */
+  scope?: "editor" | "outside-editor";
 };
+
+export type KeybindingGroup = { title: string; bindings: Keybinding[] };
 
 /**
  * Mirrors the bindings we actually handle: the command map in
  * lib/appCommands.ts (native menu accelerators, `tabCommand`, window keys).
  */
-export const KEYBINDINGS: KeybindingRow[] = [
-  { command: "App: Search", keys: `${MOD}K`, when: "Always" },
-  { command: "App: Go to File", keys: `${MOD}P`, when: "Always" },
-  { command: "App: Go to File", keys: "Shift Shift", when: "Always" },
-  { command: "App: Go to Symbol", keys: `${MOD}O`, when: "Always" },
-  { command: "App: Type Hierarchy", keys: `${MOD}T`, when: "Always" },
-  { command: "App: Find in Files", keys: `${MOD}${SHIFT}F`, when: "Always" },
-  { command: "App: Save All", keys: `${MOD}S`, when: "Always" },
-  { command: "App: New Window", keys: `${MOD}${SHIFT}N`, when: "Always" },
-  { command: "App: Toggle Sidebar", keys: `${MOD}B`, when: "Always" },
-  { command: "App: Switch Model", keys: `${MOD}.`, when: "Always" },
-  { command: "Tab: New", keys: `${MOD}N`, when: "Always" },
-  { command: "Tab: Next", keys: `${MOD}${SHIFT}]`, when: "Always" },
-  { command: "Tab: Previous", keys: `${MOD}${SHIFT}[`, when: "Always" },
-  { command: "Tab: Cycle Next", keys: `${CTRL}Tab`, when: "Always" },
+export const KEYBINDING_GROUPS: KeybindingGroup[] = [
   {
-    command: "Tab: Cycle Previous",
-    keys: `${CTRL}${SHIFT}Tab`,
-    when: "Always",
+    title: "App",
+    bindings: [
+      { name: "Search", keys: [[CMD, "K"]] },
+      { name: "Go to File", keys: [[CMD, "P"], [SHF, SHF]] },
+      { name: "Go to Symbol", keys: [[CMD, "O"]] },
+      { name: "Type Hierarchy", keys: [[CMD, "T"]] },
+      { name: "Find in Files", keys: [[CMD, SHF, "F"]] },
+      { name: "Save All", keys: [[CMD, "S"]] },
+      { name: "New Window", keys: [[CMD, SHF, "N"]] },
+      { name: "Toggle Sidebar", keys: [[CMD, "B"]] },
+      { name: "Switch Model", keys: [[CMD, "."]] },
+    ],
   },
-  { command: "Tab: Back", keys: `${MOD}[`, when: "Always" },
-  { command: "Tab: Forward", keys: `${MOD}]`, when: "Always" },
-  { command: "Tab: Activate 1–8", keys: `${MOD}1 … ${MOD}8`, when: "Always" },
-  { command: "Tab: Activate Last", keys: `${MOD}9`, when: "Always" },
-  { command: "Environment: Next", keys: `${MOD}${ALT}]`, when: "Always" },
-  { command: "Environment: Previous", keys: `${MOD}${ALT}[`, when: "Always" },
-  { command: "Environment: Activate 1–9", keys: `${MOD}${ALT}1 … ${MOD}${ALT}9`, when: "Always" },
-  { command: "Pane: Close", keys: `${MOD}W`, when: "Always" },
-  { command: "Pane: Split Right", keys: `${MOD}D`, when: "!editorFocus" },
   {
-    command: "Pane: Split Down",
-    keys: `${MOD}${SHIFT}D`,
-    when: "!editorFocus",
+    title: "Tabs",
+    bindings: [
+      { name: "New", keys: [[CMD, "N"]] },
+      { name: "Next", keys: [[CMD, SHF, "]"]] },
+      { name: "Previous", keys: [[CMD, SHF, "["]] },
+      { name: "Cycle Next", keys: [[CTL, "Tab"]] },
+      { name: "Cycle Previous", keys: [[CTL, SHF, "Tab"]] },
+      { name: "Back", keys: [[CMD, "["]] },
+      { name: "Forward", keys: [[CMD, "]"]] },
+      { name: "Activate 1 to 8", keys: [[CMD, "1–8"]] },
+      { name: "Activate Last", keys: [[CMD, "9"]] },
+    ],
   },
-  { command: "Pane: Focus Left", keys: `${MOD}${ALT}←`, when: "Always" },
-  { command: "Pane: Focus Right", keys: `${MOD}${ALT}→`, when: "Always" },
-  { command: "Pane: Focus Up", keys: `${MOD}${ALT}↑`, when: "Always" },
-  { command: "Pane: Focus Down", keys: `${MOD}${ALT}↓`, when: "Always" },
-  { command: "Terminal: New", keys: `${MOD}\``, when: "Always" },
-  { command: "Terminal: New Tab", keys: `${MOD}${SHIFT}\``, when: "Always" },
-  { command: "Terminal: Toggle Dock", keys: `${MOD}J`, when: "deckLayout" },
-  { command: "Editor: Find", keys: `${MOD}F`, when: "editorFocus" },
-  { command: "Editor: Replace", keys: `${MOD}${ALT}F`, when: "editorFocus" },
+  {
+    title: "Environments",
+    bindings: [
+      { name: "Next", keys: [[CMD, OPT, "]"]] },
+      { name: "Previous", keys: [[CMD, OPT, "["]] },
+      { name: "Activate 1 to 9", keys: [[CMD, OPT, "1–9"]] },
+    ],
+  },
+  {
+    title: "Panes",
+    bindings: [
+      { name: "Close", keys: [[CMD, "W"]] },
+      { name: "Split Right", keys: [[CMD, "D"]], scope: "outside-editor" },
+      { name: "Split Down", keys: [[CMD, SHF, "D"]], scope: "outside-editor" },
+      { name: "Focus Left", keys: [[CMD, OPT, "←"]] },
+      { name: "Focus Right", keys: [[CMD, OPT, "→"]] },
+      { name: "Focus Up", keys: [[CMD, OPT, "↑"]] },
+      { name: "Focus Down", keys: [[CMD, OPT, "↓"]] },
+    ],
+  },
+  {
+    title: "Terminal",
+    bindings: [
+      { name: "New", keys: [[CMD, "`"]] },
+      { name: "New Tab", keys: [[CMD, SHF, "`"]] },
+      { name: "Toggle Dock", keys: [[CMD, "J"]] },
+    ],
+  },
+  {
+    title: "Editor",
+    bindings: [
+      { name: "Find", keys: [[CMD, "F"]], scope: "editor" },
+      { name: "Replace", keys: [[CMD, OPT, "F"]], scope: "editor" },
+    ],
+  },
 ];
 
-export function filterKeybindings(
-  rows: KeybindingRow[],
-  query: string,
-): KeybindingRow[] {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return rows;
-  return rows.filter(
-    (row) =>
-      row.command.toLowerCase().includes(needle) ||
-      row.keys.toLowerCase().includes(needle) ||
-      row.when.toLowerCase().includes(needle),
-  );
+export const KEYBINDING_SCOPE_LABEL: Record<NonNullable<Keybinding["scope"]>, string> = {
+  editor: "In the editor",
+  "outside-editor": "Outside the editor",
+};
+
+/** The groups with only the bindings whose name, group or keys match;
+ *  a group with none left is dropped. Keys match typed with or without spaces. */
+export function filterKeybindings(groups: KeybindingGroup[], query: string): KeybindingGroup[] {
+  const needle = query.trim().toLowerCase().replace(/\s+/g, "");
+  if (!needle) return groups;
+  return groups
+    .map((group) => ({
+      ...group,
+      bindings: group.bindings.filter((binding) =>
+        [group.title, binding.name, ...binding.keys.map((chord) => chord.join(""))].some((text) =>
+          text.toLowerCase().replace(/\s+/g, "").includes(needle),
+        ),
+      ),
+    }))
+    .filter((group) => group.bindings.length > 0);
 }
 
 // ── editor ───────────────────────────────────────────────────────────

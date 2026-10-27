@@ -1,63 +1,55 @@
-import { Search } from "../../chrome/icons";
-import { useMemo, useState } from "react";
-import { filterKeybindings, KEYBINDINGS } from "../../lib/settings";
+import { Fragment, useMemo, useState } from "react";
+import { PageRow, PageSection } from "../../components/page";
+import { Empty, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
+import { Input } from "../../components/ui/input";
+import { filterKeybindings, KEYBINDING_GROUPS, KEYBINDING_SCOPE_LABEL } from "../../lib/settings";
+import { Keys } from "./keys";
 
 export function KeybindingsPage() {
   const [query, setQuery] = useState("");
-  const rows = useMemo(() => filterKeybindings(KEYBINDINGS, query), [query]);
+  const groups = useMemo(() => filterKeybindings(KEYBINDING_GROUPS, query), [query]);
 
   return (
     <>
-      <div className="flex items-center justify-end gap-3 pb-3">
-        <span className="shrink-0 text-[12px] text-content/40 tabular-nums">
-          {rows.length} {rows.length === 1 ? "binding" : "bindings"}
-        </span>
-        <label className="flex h-7 w-52 shrink-0 items-center gap-2 rounded-lg border border-content/10 bg-content/5 px-2 text-content/40 focus-within:border-content/20">
-          <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter"
-            aria-label="Filter keybindings"
-            spellCheck={false}
-            autoComplete="off"
-            className="min-w-0 flex-1 bg-transparent text-[12px] text-content outline-none placeholder:text-content/40"
-          />
-        </label>
-      </div>
-
-      <div className="overflow-hidden rounded-lg border border-content/10">
-        <div className="flex items-center border-b border-content/10 bg-content/5 px-3 py-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
-          <span className="min-w-0 flex-1">Command</span>
-          <span className="w-40 shrink-0">Keybinding</span>
-          <span className="w-28 shrink-0">When</span>
+      <Input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Filter"
+        aria-label="Filter keybindings"
+        spellCheck={false}
+        autoComplete="off"
+      />
+      {groups.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>No shortcut matches</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <div className="@container">
+          <div className="grid grid-cols-1 gap-6 @min-[560px]:grid-cols-2 @min-[560px]:gap-x-8">
+            {groups.map((group) => (
+              <PageSection key={group.title} title={group.title}>
+                {group.bindings.map((binding) => (
+                  <PageRow
+                    key={binding.name}
+                    className="min-h-8 py-1.5"
+                    title={binding.name}
+                    description={binding.scope ? KEYBINDING_SCOPE_LABEL[binding.scope] : undefined}
+                  >
+                    {binding.keys.map((chord, index) => (
+                      <Fragment key={chord.join("")}>
+                        {index > 0 ? <span className="text-xs text-muted-foreground">or</span> : null}
+                        <Keys keys={chord} className="" />
+                      </Fragment>
+                    ))}
+                  </PageRow>
+                ))}
+              </PageSection>
+            ))}
+          </div>
         </div>
-        {rows.length === 0 ? (
-          <p className="px-3 py-3 text-[12px] text-content/40">
-            No matching bindings
-          </p>
-        ) : (
-          rows.map((row) => (
-            <div
-              key={`${row.command}-${row.keys}`}
-              className="flex items-center border-b border-content/5 px-3 py-2 text-[12px] last:border-b-0"
-            >
-              <span className="min-w-0 flex-1 truncate">{row.command}</span>
-              <span className="w-40 shrink-0 font-mono text-[12px] text-content/70 tabular-nums">
-                {row.keys}
-              </span>
-              <span className="w-28 shrink-0 font-mono text-[11px] text-content/40">
-                {row.when}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-
-      <p className="pt-3 text-[12px] text-content/40">
-        Bindings come from the app menu and the workspace key handler; they
-        aren’t customizable yet.
-      </p>
+      )}
     </>
   );
 }

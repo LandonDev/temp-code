@@ -101,11 +101,7 @@ export function SettingsView({
           ) : null}
           {section === "appearance" ? <AppearancePage /> : null}
           {section === "editor" ? <EditorPage /> : null}
-          {section === "keybindings" ? (
-            <div>
-              <KeybindingsPage />
-            </div>
-          ) : null}
+          {section === "keybindings" ? <KeybindingsPage /> : null}
           {section === "providers" ? (
             <div>
               <ProvidersPage />
