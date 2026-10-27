@@ -285,7 +285,7 @@ function TabHarnesses({
       ))}
       {extra > 0 ? (
         <span
-          className={`pl-0.5 text-[11px] leading-none tabular-nums ${dimmed ? "text-content/50" : "text-content"}`}
+          className={`pl-0.5 text-[11px] leading-none tabular-nums ${dimmed ? "text-muted-foreground" : "text-foreground"}`}
         >
           +{extra}
         </span>
@@ -417,8 +417,8 @@ function TitleTabItem({
           closable ? "pr-8" : "pr-2"
         } ${
           active
-            ? "bg-content/10 text-content"
-            : "text-content/50 hover:bg-content/5 hover:text-content"
+            ? "bg-muted text-foreground"
+            : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
         }`}
       >
         {TypeGlyph ? (
@@ -433,7 +433,7 @@ function TitleTabItem({
         ) : tab.terminal || !fileIcon ? (
           <Terminal
             className={`size-3.5 shrink-0 ${
-              active ? "text-content" : "text-content/50"
+              active ? "text-foreground" : "text-muted-foreground"
             }`}
             strokeWidth={1.75}
           />
@@ -455,7 +455,7 @@ function TitleTabItem({
             </span>
             {tab.dirty ? (
               <span
-                className="size-1.5 shrink-0 rounded-full bg-content/70"
+                className="size-1.5 shrink-0 rounded-full bg-muted-foreground"
                 title="Unsaved changes"
                 aria-label="Unsaved changes"
               />
@@ -463,7 +463,7 @@ function TitleTabItem({
             {tab.thread ? <TabIndicator thread={tab.thread} /> : null}
           </span>
           {meta ? (
-            <span className="hidden min-w-0 truncate text-[11px] leading-none text-content/40 @min-[11rem]:block">
+            <span className="hidden min-w-0 truncate text-[11px] leading-none text-muted-foreground @min-[11rem]:block">
               {meta}
             </span>
           ) : null}
@@ -481,7 +481,7 @@ function TitleTabItem({
             e.stopPropagation();
             onClose(tab.id);
           }}
-          className="pressable absolute right-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-content/50 opacity-0 hover:bg-content/10 hover:text-content group-hover:opacity-100"
+          className="pressable absolute right-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground opacity-0 hover:bg-foreground/7 hover:text-foreground group-hover:opacity-100"
         >
           <X className="size-3.5" strokeWidth={1.75} />
         </button>
@@ -543,7 +543,7 @@ function GroupLabel({
         canDrag ? "touch-none" : ""
       }`}
       style={{
-        background: `color-mix(in srgb, ${color} 20%, var(--color-background-base, #1a1a1a) 80%)`,
+        background: `color-mix(in srgb, ${color} 20%, var(--color-sidebar) 80%)`,
       }}
     >
       {dropTarget ? (
@@ -568,7 +568,7 @@ function GroupLabel({
       )}
       <span className="text-[13px] truncate">{project}</span>
       {collapsed ? (
-        <span className="shrink-0 pl-1 text-content/70 tabular-nums">
+        <span className="shrink-0 pl-1 text-muted-foreground tabular-nums">
           {count}
         </span>
       ) : null}
@@ -757,7 +757,7 @@ function TabStripChevron({
       data-tauri-drag-region="false"
       onPointerDown={(event) => event.stopPropagation()}
       onClick={onClick}
-      className={`pressable absolute top-5 z-40 grid size-6 -translate-y-1/2 place-items-center rounded-md border border-content/10 bg-background-base text-content/70 hover:text-content ${
+      className={`pressable absolute top-5 z-40 grid size-6 -translate-y-1/2 place-items-center rounded-md border border-border bg-background text-muted-foreground hover:text-foreground ${
         side === "left" ? "left-1" : "right-1"
       }`}
     >
@@ -799,12 +799,12 @@ export function IconButton({
       }}
       className={`pressable grid size-6 place-items-center rounded-md ${
         disabled
-          ? "text-content/50 opacity-40"
+          ? "text-muted-foreground opacity-40"
           : accent
-            ? "text-accent hover:bg-content/10"
+            ? "text-accent hover:bg-foreground/7"
             : active
-              ? "text-content hover:bg-content/10"
-              : "text-content/50 hover:bg-content/10 hover:text-content"
+              ? "text-foreground hover:bg-foreground/7"
+              : "text-muted-foreground hover:bg-foreground/7 hover:text-foreground"
       }`}
     >
       {children}
@@ -1334,7 +1334,7 @@ function TitleBarComponent({
   // exempts buttons, links and inputs on its own.
   return (
     <header
-      className="flex min-h-10 shrink-0 select-none items-stretch border-b border-content/10"
+      className="flex min-h-10 shrink-0 select-none items-stretch border-b border-border bg-sidebar"
       data-tauri-drag-region="deep"
     >
       {/* Both the rail and the sidebar step aside without a project, so the
@@ -1386,13 +1386,13 @@ function TitleBarComponent({
           onNewTerminal={onNewTerminal}
           buttonClassName="flex h-full min-w-0 max-w-64 shrink items-center gap-2 px-4 text-left text-[13px] font-medium leading-tight"
         >
-          <span className="min-w-0 truncate text-content/50">No project</span>
+          <span className="min-w-0 truncate text-muted-foreground">No project</span>
         </CwdPicker>
       ) : null}
 
       <div
         className={`flex min-w-0 flex-1 items-stretch${
-          deckLayout && !showProjectButton ? "" : " border-l border-content/10"
+          deckLayout && !showProjectButton ? "" : " border-l border-border"
         }`}
       >
         {/*
@@ -1628,7 +1628,7 @@ function TitleBarComponent({
         {/* Deck mode keeps New in the sidebar and Terminal in the title bar,
             so the strip carries no trailing actions. */}
         {deckLayout ? null : (
-          <div className="flex shrink-0 items-center gap-0.5 border-l border-content/10 px-2">
+          <div className="flex shrink-0 items-center gap-0.5 border-l border-border px-2">
             <IconButton label={`New Tab (${MOD}N)`} onClick={onNew}>
               <Plus className="size-3.5" strokeWidth={1.75} />
             </IconButton>
@@ -1646,7 +1646,7 @@ function TitleBarComponent({
         {deckLayout && IS_MAC ? null : (
           <div className="flex min-w-0 flex-1 items-center justify-center px-4">
             {!IS_MAC ? (
-              <span className="pointer-events-none truncate text-[12px] font-medium text-content/40 select-none">
+              <span className="pointer-events-none truncate text-[12px] font-medium text-muted-foreground select-none">
                 {systemTitle}
               </span>
             ) : null}
@@ -1704,8 +1704,8 @@ function ProjectDiffStats({
           : "w-6 justify-center"
       } ${
         active
-          ? "bg-content/10 text-content"
-          : "text-content/50 hover:bg-content/10 hover:text-content"
+          ? "bg-muted text-foreground"
+          : "text-muted-foreground hover:bg-foreground/7 hover:text-foreground"
       }`}
     >
       {hasStats ? null : (

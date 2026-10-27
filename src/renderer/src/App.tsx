@@ -38,7 +38,6 @@ import {
   HtmlRenderOverlay,
   isHtmlRenderOverlayOpen,
 } from "./surfaces/HtmlRenderOverlay";
-import { UsageFooter } from "./chrome/UsageFooter";
 import { useSidebarLayout } from "./hooks/useSidebarLayout";
 import { toggleTranscriptZen } from "./lib/appearance";
 import { perfMark } from "./lib/perfMarks";
@@ -80,7 +79,6 @@ import {
   updateTerminalTab,
   withSurfacePanes,
   type EditorPane,
-  type FilePaneTab,
   type FocusDir,
   type PaneEdge,
   type SplitDir,
@@ -120,10 +118,7 @@ import {
   confirmCloseTerminal,
   confirmCloseTerminals,
 } from "./lib/terminalClose";
-import {
-  listRunningTerminals,
-  type TerminalMetaPatch,
-} from "./lib/terminalTab";
+import { type TerminalMetaPatch } from "./lib/terminalTab";
 import {
   cancelHarnessTurn,
   forgetHarnessSession,
@@ -591,29 +586,6 @@ export default function App() {
   );
   const sidebarCwd = sidebarCwdOf({ projectCwd, selectedProjectId }, projects, active, activeTab);
   const gitCwd = gitCwdOf(active, sidebarCwd);
-
-  const runningTerminals = useMemo(() => {
-    const files: FilePaneTab[] = [];
-    const dock = findProjectTerminal(projectTerminals, dockCwd);
-    if (dock) files.push(...dock.pane.files);
-    for (const tab of tabs) {
-      for (const pane of tab.terminalPanes ?? []) {
-        files.push(...pane.files);
-      }
-    }
-    return listRunningTerminals(files);
-  }, [dockCwd, projectTerminals, tabs]);
-  const runningTerminalOpen = useMemo(() => {
-    const ids = new Set(runningTerminals.map((terminal) => terminal.id));
-    if (
-      currentProjectDock?.open &&
-      currentProjectDock.pane.files.some((file) => ids.has(file.id))
-    ) {
-      return true;
-    }
-    const focused = activeTab ? focusedFileTab(activeTab) : undefined;
-    return !!focused && ids.has(focused.id);
-  }, [activeTab, currentProjectDock, runningTerminals]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1122,59 +1094,6 @@ export default function App() {
       );
     },
     [],
-  );
-
-  const onToggleRunningTerminal = useCallback(
-    (fileId: string) => {
-      const dock = currentDocks().find((entry) =>
-        entry.pane.files.some((file) => file.id === fileId),
-      );
-      if (dock) {
-        if (dock.open) {
-          terminals.updateDock(dock.projectPath, (entry) => withDockOpen(entry, false));
-          setProjectTerminalFocused(false);
-          return;
-        }
-        terminals.updateDock(dock.projectPath, (entry) =>
-          withDockOpen(selectDockTerminal(entry, fileId), true),
-        );
-        focusProjectTerminal();
-        return;
-      }
-      for (const tab of workspaceTabsStore.getState().tabs) {
-        for (const pane of tab.terminalPanes ?? []) {
-          if (!pane.files.some((file) => file.id === fileId)) continue;
-          const showing =
-            workspaceTabsStore.getState().activeTabId === tab.id &&
-            tab.focusedId === pane.id &&
-            pane.activeFileId === fileId;
-          if (showing) {
-            setComposerFocused(true);
-            setProjectTerminalFocused(false);
-            return;
-          }
-          setActiveTabId(tab.id);
-          setTabs((prev) =>
-            prev.map((entry) => {
-              if (entry.id !== tab.id) return entry;
-              return withSurfacePanes(
-                { ...entry, focusedId: pane.id },
-                "terminal",
-                (entry.terminalPanes ?? []).map((item) =>
-                  item.id === pane.id
-                    ? { ...item, activeFileId: fileId }
-                    : item,
-                ),
-              );
-            }),
-          );
-          setProjectTerminalFocused(false);
-          setComposerFocused(false);
-          return;
-        }
-      }
-    },
-    [focusProjectTerminal],
   );
 
   const onNewTerminalTab = useCallback(() => {
@@ -3699,7 +3618,7 @@ export default function App() {
   return (
     <SessionActionsContext.Provider value={sessionActions}>
     <div
-      className="app-shell flex h-full bg-background-base text-content">
+      className="app-shell flex h-full bg-background text-foreground">
       <Sidebar
         onOpenFilesSearch={onFindInProject}
         onSelectSession={onSelectHistorySession}
@@ -3956,15 +3875,6 @@ export default function App() {
             onOpenWhatsNew={onOpenWhatsNew}
           />
         ) : null}
-        {searchViewOpen || inboxViewOpen || notesViewOpen || settingsOpen || accountsPage ? null : (
-          <UsageFooter
-            harness={active?.harness}
-            sessionId={active?.id}
-            terminals={runningTerminals}
-            terminalOpen={runningTerminalOpen}
-            onToggleTerminal={onToggleRunningTerminal}
-          />
-        )}
       </div>
 
       {filePickerOpen ? (

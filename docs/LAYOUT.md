@@ -34,7 +34,8 @@ component builds each surface, and how**. Nothing here is built yet.
 └────────────┴───────────────────────────────────────────────────┴─────────────────────┘
 ```
 
-- Sidebar and rail sit on `bg-sidebar`; main view on `bg-background`; the one
+- Sidebar, rail, title bar and the bottom dock sit on `bg-sidebar` (a focused
+  dock takes `bg-background`); main view on `bg-background`; the one
   gray step + hairline `border-border` separates them (no shadows on docked
   chrome).
 - The right rail is collapsed by default and only exists where it has
@@ -67,6 +68,7 @@ ambient chrome; it earns its place because agents run in background threads
 | Offline tint | `chrome/hostOffline.ts` | with two or more hosts, a row whose host's link is not open (a rail row: every host of it) sits at `opacity-50` with `data-host-offline`, as the master board's rows do; its rows are the launch mirror's and lift when the host is back |
 | Host rows | `chrome/HostRows.tsx`, above Settings | only with two or more hosts: one 28px row per host, no borders, the rail rows' 12px type: the host's `HostGlyph` (12px, `text-content/45`, laptop for a Mac, server otherwise) in the rail icons' 14px box so the names share Settings' text column, the name, the connection dot (`toneOf`, its state in the tooltip), then at the right the boot-resume line while fresh and the `+N` deploy drift, which yield to `⋯` on hover; a click opens the host's menu: Add workspace here…, Mark all read, Pause all, Resume all, Stop all, Archive done, Remote access settings |
 | Bottom | connection strip (exists) + settings gear | unchanged |
+| Usage meter | `chrome/UsageMeter.tsx` on `src/shared/usageMeter.ts` (`meterFor`), below Settings | one 36px ghost row per provider with accounts: the provider glyph, a 4px `Progress` of the room the next pick would land on (the best account's tightest usage window; a throttled, rate-limited or expired account has none), "resets in 2h" in 12px `text-muted-foreground`; no account name; the row opens the read-only `AccountsPopover`, a `Tooltip` names the provider and the percent left. It replaced the bottom footer; a running terminal shows in its tab's title and the title bar's terminal button |
 
 ### Settings → Hosts
 

@@ -232,8 +232,8 @@ body,
   width: 100%;
   height: 100%;
   margin: 0;
-  background: var(--color-background-base);
-  color: var(--color-content);
+  background: var(--color-background);
+  color: var(--color-foreground);
   overflow: hidden;
   overscroll-behavior: none;
   user-select: none;
@@ -283,15 +283,11 @@ html.theme-switching *::after {
 
 /* The rail's and the content's fills until S3 and A1 move them to tokens. */
 .sidebar-glass {
-  background: color-mix(in srgb, var(--color-background-base) 90%, black);
-}
-
-html.theme-light .sidebar-glass {
-  background: color-mix(in srgb, var(--color-background-base) 93%, black 7%);
+  background: var(--color-sidebar);
 }
 
 .body-glass {
-  background: var(--color-background-base);
+  background: var(--color-background);
 }
 
 /*

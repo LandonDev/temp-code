@@ -98,6 +98,7 @@ import { ProjectSearch } from "./ProjectSearch";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
 import { ProjectMascot } from "./ProjectMascot";
 import { SidebarUpdateFooter } from "./SidebarUpdate";
+import { UsageMeter } from "./UsageMeter";
 import { SourceControl } from "./SourceControl";
 import { InboxView } from "../surfaces/InboxView";
 import { settingsChunk } from "../surfaces/chunks";
@@ -402,8 +403,8 @@ function SidebarComponent({
           }}
           className={`flex h-6 min-w-0 flex-1 items-center justify-center self-center rounded-md px-2 text-[12px] leading-none ${
             active
-              ? "bg-content/10 text-content"
-              : "text-content/50 hover:bg-content/5 hover:text-content"
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
           } ${canDragTabs ? "cursor-grab active:cursor-grabbing" : ""}`}
         >
           {isChangesTab && hasChangeStats ? (
@@ -419,12 +420,12 @@ function SidebarComponent({
   const sidebarContent = (
     <aside
       ref={resize.setPaneRef}
-      className="sidebar-glass relative flex h-full min-h-0 shrink-0 flex-col border-r border-content/10"
+      className="sidebar-glass relative flex h-full min-h-0 shrink-0 flex-col border-r border-border"
     >
       {deckLayout && railVisible ? (
         <>
           <div
-            className="flex h-10 shrink-0 select-none items-center gap-1 border-b border-content/10 pl-3 pr-1.5"
+            className="flex h-10 shrink-0 select-none items-center gap-1 border-b border-border pl-3 pr-1.5"
             data-tauri-drag-region="deep"
           >
             <span className="min-w-0 flex-1 truncate text-sm font-medium leading-tight">
@@ -440,7 +441,7 @@ function SidebarComponent({
           <div
             role="tablist"
             aria-label="Workspace"
-            className="flex h-9 shrink-0 items-center gap-px border-b border-content/10 px-2"
+            className="flex h-9 shrink-0 items-center gap-px border-b border-border px-2"
           >
             {workspaceTabItems}
           </div>
@@ -449,7 +450,7 @@ function SidebarComponent({
         <>
           {deckLayout ? (
             <div
-              className="flex h-10 shrink-0 select-none items-center border-b border-content/10 pr-1.5"
+              className="flex h-10 shrink-0 select-none items-center border-b border-border pr-1.5"
               data-tauri-drag-region="deep"
             >
               {IS_MAC ? <div className="w-[78px] shrink-0" /> : null}
@@ -498,7 +499,7 @@ function SidebarComponent({
             <div
               role="tablist"
               aria-label="Workspace"
-              className={`flex h-9 shrink-0 items-center gap-px overflow-visible border-content/10 px-2 ${
+              className={`flex h-9 shrink-0 items-center gap-px overflow-visible border-border px-2 ${
                 // Mirrors the rail-open header stack: each row owns its own
                 // bottom border, so the seams land on the title bar's.
                 deckLayout ? "border-b" : "border-y"
@@ -545,13 +546,13 @@ function SidebarComponent({
                 />
               </div>
             ) : (
-              <p className="px-3 py-2 text-[12px] text-content/50">
+              <p className="px-3 py-2 text-[12px] text-muted-foreground">
                 No project folder
               </p>
             )}
           </div>
           {!deckLayout && tab === "sessions" && cwd && cwd !== "~" ? (
-            <div className="shrink-0 border-b border-content/10">
+            <div className="shrink-0 border-b border-border">
               <div className="flex h-9 items-center px-2 pr-1.5">
                 <div
                   title={cwd}
@@ -568,7 +569,7 @@ function SidebarComponent({
                       <FileTypeIcon name={basename(cwd)} isDir isRoot />
                     </span>
                   )}
-                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
+                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
                     {workspace?.name ?? basename(cwd)}
                   </span>
                 </div>
@@ -598,7 +599,7 @@ function SidebarComponent({
             }`}
           >
             {workspaceSessions ?? (
-              <p className="px-3 py-2 text-[12px] text-content/50">
+              <p className="px-3 py-2 text-[12px] text-muted-foreground">
                 No project folder
               </p>
             )}
@@ -636,6 +637,7 @@ function SidebarComponent({
                   ariaLabel={`Settings (${MOD},)`}
                 />
               </div>
+              <UsageMeter sessionId={activeSessionId} />
             </>
           ) : null}
         </>
@@ -697,7 +699,7 @@ function SidebarComponent({
         aria-valuemin={MIN_WIDTH}
         aria-valuemax={MAX_WIDTH}
         className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none ${
-          resize.dragging ? "bg-content/15" : "hover:bg-content/10"
+          resize.dragging ? "bg-foreground/12" : "hover:bg-foreground/7"
         }`}
         onPointerDown={resize.onPointerDown}
         onDoubleClick={resize.onDoubleClick}
@@ -807,7 +809,7 @@ function SidebarProjectPicker({
 
   return (
     <div
-      className="flex h-9 items-center gap-0.5 border-b border-content/10 px-2"
+      className="flex h-9 items-center gap-0.5 border-b border-border px-2"
       data-tauri-drag-region="deep"
     >
       <CwdPicker
@@ -818,7 +820,7 @@ function SidebarProjectPicker({
         onCwdChange={onSelectProject}
         onNewTerminal={onNewTerminal}
         className="min-w-0 items-center"
-        buttonClassName="flex h-6.5 w-full items-center gap-1.5 rounded-md px-2 text-[12px] leading-none text-content/50 hover:text-content"
+        buttonClassName="flex h-6.5 w-full items-center gap-1.5 rounded-md px-2 text-[12px] leading-none text-muted-foreground hover:text-foreground"
       >
         {atHome ? (
           <MessageSquare className="size-3.5 shrink-0" strokeWidth={1.75} />
@@ -941,8 +943,8 @@ function SessionsHeaderButton({
       aria-haspopup={hasPopup ? "menu" : undefined}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={onClick}
-      className={`relative z-50 grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content ${
-        open || active ? "bg-content/10 text-content" : ""
+      className={`relative z-50 grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-foreground/7 hover:text-foreground ${
+        open || active ? "bg-foreground/7 text-foreground" : ""
       }`}
     >
       {children}

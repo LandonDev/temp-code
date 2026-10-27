@@ -136,8 +136,8 @@ export function DockFrame({
     <section
       {...data}
       className={`relative flex h-full min-h-0 min-w-0 flex-col ${
-        focused ? "bg-content/5" : ""
-      } ${edge} border-content/10`}
+        focused ? "bg-background" : "bg-sidebar"
+      } ${edge} border-border`}
       onMouseDown={onFocus}
     >
       <div
@@ -145,7 +145,7 @@ export function DockFrame({
         aria-orientation={vertical ? "horizontal" : "vertical"}
         aria-label={label}
         aria-valuenow={size}
-        className={`${sash} ${dragging ? "bg-content/15" : "hover:bg-content/10"}`}
+        className={`${sash} ${dragging ? "bg-foreground/12" : "hover:bg-foreground/7"}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

@@ -97,6 +97,7 @@ import { RailAction, RailSearch } from "./RailAction";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
 import { DevModeSlot, TabVisitNav } from "./TitleBar";
 import { SidebarUpdateFooter } from "./SidebarUpdate";
+import { UsageMeter } from "./UsageMeter";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { SettingsNav } from "./SettingsRail";
 import { Shimmer } from "../surfaces/Shimmer";
@@ -635,6 +636,7 @@ export function ProjectRail({
               ariaLabel={`Settings (${MOD},)`}
             />
           </div>
+          <UsageMeter sessionId={activeSessionId ?? undefined} />
         </>
       )}
       {projectMenu ? (
