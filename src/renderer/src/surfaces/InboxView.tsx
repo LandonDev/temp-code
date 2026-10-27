@@ -2,8 +2,6 @@ import { useEnvironments } from "../lib/connection";
 import { hostOfCwd } from "../lib/tcserver/projects";
 import { openUrl } from "../lib/native";
 import {
-  Check,
-  ChevronDown,
   CircleDot,
   ExternalLink,
   GitCompare,
@@ -26,7 +24,6 @@ import {
 } from "../chrome/InboxFiltersMenu";
 import { HostGlyph } from "../chrome/HostGlyph";
 import { InboxProviderMark } from "../chrome/InboxProviderMark";
-import { Popover } from "../chrome/Popover";
 import { ProjectLogoIcon } from "../chrome/ProjectLogoIcon";
 import { ProjectMascot } from "../chrome/ProjectMascot";
 import { OverlayNav } from "../chrome/TitleBar";
@@ -40,20 +37,19 @@ import { Item } from "../components/ui/item";
 import { Skeleton } from "../components/ui/skeleton";
 import { Spinner } from "../components/ui/spinner";
 import { StatusMark } from "../components/ui/status";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
-import { inboxRowModel } from "../lib/inboxRow";
+import { checksFailed, inboxItemSource, inboxRowModel, inboxStateWords } from "../lib/inboxRow";
 import { useTabGroupLogos } from "../hooks/useTabGroupLogos";
 import {
   githubPrDiff,
-  githubReviewDecisionLabel,
   githubWorkItemComment,
   githubWorkItemDetails,
   githubWorkItemThread,
   inboxItemKey,
   inboxItemRef,
-  inboxItemStatus,
   peekGithubPrDiff,
   peekGithubWorkItemDetails,
   peekGithubWorkItemThread,
@@ -199,33 +195,6 @@ function InboxProjectMark({
       name={project.mascotName}
       className="size-3 shrink-0"
     />
-  );
-}
-
-function InboxDetailTab({
-  label,
-  selected,
-  onSelect,
-}: {
-  label: string;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={selected}
-      onClick={onSelect}
-      className={`relative -mb-px flex h-9 items-center text-[13px] font-medium leading-none transition-colors ${
-        selected ? "text-content" : "text-content/50 hover:text-content"
-      }`}
-    >
-      {label}
-      {selected ? (
-        <span className="absolute inset-x-0 -bottom-px h-px bg-content" />
-      ) : null}
-    </button>
   );
 }
 
@@ -739,7 +708,7 @@ export function InboxDetailPane({
     <div
       role="region"
       aria-label="Inbox"
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-none text-content"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-none text-foreground"
     >
       <InboxDetailBody
         item={item}
@@ -767,16 +736,8 @@ function InboxDetailBody({
   revision?: number;
   onStart?: (item: InboxItem, body?: string) => void | Promise<void>;
 }) {
-  if (!item) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-        <Inbox className="mb-3 size-6 text-content/30" strokeWidth={1.75} />
-        <p className="text-[13px] text-content/40">
-          Select an issue or pull request
-        </p>
-      </div>
-    );
-  }
+  // Nothing selected draws nothing: the list's Empty already says why.
+  if (!item) return null;
   return (
     <InboxDetail
       key={inboxItemKey(item)}
@@ -931,22 +892,7 @@ function InboxDetail({
   const [startProject, setStartProject] = useState(defaultProject);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
-  const status = linear
-    ? item.state || inboxItemStatus(item)
-    : inboxItemStatus(item);
-  const statusKind = inboxItemStatus(item);
-  const statusClass =
-    statusKind === "Open"
-      ? "text-success"
-      : statusKind === "Draft"
-        ? "text-content/50"
-        : statusKind === "Merged"
-          ? "text-violet"
-          : "text-content/40";
-
-  const source = linear
-    ? item.teamName || item.repo
-    : item.repo || projectName(item.projectPath);
+  const source = inboxItemSource(item);
   const markdownCwd = linear ? startProject || cwd : item.projectPath || cwd;
   // The snapshot already knows the author, refs and decision; gh fills the rest.
   const authorName = item.author?.login?.trim() || details?.author?.trim() || "";
@@ -963,13 +909,7 @@ function InboxDetail({
     details?.reviewDecision?.trim() ||
     thread?.reviewDecision?.trim() ||
     "";
-  const reviewLabel = githubReviewDecisionLabel(reviewDecision);
-  const reviewClass =
-    reviewDecision.toUpperCase() === "APPROVED"
-      ? "text-success"
-      : reviewDecision.toUpperCase() === "CHANGES_REQUESTED"
-        ? "text-danger"
-        : "text-content/50";
+  const stateWords = inboxStateWords(item, reviewDecision);
   const baseRef =
     item.baseRefName?.trim() || details?.baseRefName?.trim() || thread?.baseRefName?.trim() || "";
   const headRef =
@@ -1162,190 +1102,144 @@ function InboxDetail({
   };
 
   return (
-    <div className={`mx-auto flex w-full flex-col gap-5 px-8 py-8 max-w-5xl`}>
-      <header className="flex flex-col gap-3">
-        <div className="flex items-center gap-2 text-[12px] text-content/50">
-          <InboxProviderMark provider={item.provider} className="size-3.5" />
-          <span className="tabular-nums">{inboxItemRef(item)}</span>
-          <span className={statusClass}>{status}</span>
-          {source ? <span className="truncate">{source}</span> : null}
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-8">
+      <header className="flex flex-col">
+        <div className="flex min-w-0 items-center gap-3 text-[12px] text-muted-foreground">
+          <span className="flex shrink-0 items-center gap-2">
+            <InboxProviderMark provider={item.provider} className="size-3.5" />
+            <span className="tabular-nums">{inboxItemRef(item)}</span>
+          </span>
+          {stateWords.map((word) => (
+            <span key={word} className="shrink-0">
+              {word}
+            </span>
+          ))}
+          {source ? <span className="min-w-0 truncate">{source}</span> : null}
+          {checksFailed(item) ? (
+            // StatusMark has no detail slot yet; "checks" sits beside it in its tone.
+            <span className="ms-auto flex shrink-0 items-center gap-1.5 text-xs font-medium text-destructive">
+              <StatusMark state="failed" />
+              <span>checks</span>
+            </span>
+          ) : null}
         </div>
-        <h1 className="text-2xl font-semibold leading-tight tracking-[-0.02em] text-content">
+        <h1 className="mt-2 text-[16px] font-semibold leading-snug tracking-[-0.01em] text-foreground">
           {item.title}
         </h1>
-        <div className="flex flex-wrap items-center gap-2 text-[12px] text-content/50">
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
           {authorName ? (
             <InboxPerson
               name={authorName}
-              avatarUrl={inboxPersonAvatarUrl(
-                item.provider,
-                authorName,
-                authorAvatar,
-              )}
+              avatarUrl={inboxPersonAvatarUrl(item.provider, authorName, authorAvatar)}
               size={16}
             />
           ) : null}
           {showAssignment ? (
-            <>
-              {authorName ? <span aria-hidden>·</span> : null}
-              {extraAssignees.length > 0 ? (
-                <span className="flex min-w-0 flex-wrap items-center gap-2">
-                  {extraAssignees.map((person) => (
-                    <InboxPerson
-                      key={person.login}
-                      name={person.login}
-                      avatarUrl={inboxPersonAvatarUrl(
-                        item.provider,
-                        person.login,
-                        person.avatarUrl,
-                      )}
-                      size={16}
-                    />
-                  ))}
-                </span>
-              ) : (
-                <span>Unassigned</span>
-              )}
-            </>
+            extraAssignees.length > 0 ? (
+              extraAssignees.map((person) => (
+                <InboxPerson
+                  key={person.login}
+                  name={person.login}
+                  avatarUrl={inboxPersonAvatarUrl(item.provider, person.login, person.avatarUrl)}
+                  size={16}
+                />
+              ))
+            ) : (
+              <span>Unassigned</span>
+            )
           ) : null}
           {formatRelativeTime(item.updatedAt) ? (
-            <>
-              <span aria-hidden>·</span>
-              <span className="tabular-nums">Updated {formatRelativeTime(item.updatedAt)}</span>
-            </>
+            <span className="tabular-nums">Updated {formatRelativeTime(item.updatedAt)}</span>
           ) : null}
           {baseRef && headRef ? (
-            <>
-              <span aria-hidden>·</span>
-              <span className="inline-flex min-w-0 items-center gap-1">
-                <GitCompare className="size-3 shrink-0" strokeWidth={1.75} />
-                <span className="min-w-0 truncate">
-                  {baseRef} ← {headRef}
-                </span>
+            <span className="inline-flex min-w-0 items-center gap-1">
+              <GitCompare className="size-3 shrink-0" />
+              <span className="min-w-0 truncate">
+                {baseRef} ← {headRef}
               </span>
-            </>
-          ) : null}
-          {reviewLabel ? (
-            <>
-              <span aria-hidden>·</span>
-              <span className={reviewClass}>{reviewLabel}</span>
-            </>
+            </span>
           ) : null}
         </div>
         {item.labels.length > 0 ? (
-          <div className="flex flex-wrap gap-1">
+          <div className="mt-2 flex flex-wrap gap-1">
             {item.labels.map((label) => (
               <InboxLabel key={label.name} label={label} />
             ))}
           </div>
         ) : null}
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           {onStart && item.kind !== "pr" ? (
             <>
-              <button
-                type="button"
-                disabled={
-                  starting || (linear && (!startProject || loading || !!error))
-                }
+              <Button
+                size="sm"
+                disabled={starting || (linear && (!startProject || loading || !!error))}
                 onClick={() => {
                   if (starting) return;
                   setStarting(true);
                   setStartError(null);
-                  const next = linear
-                    ? { ...item, projectPath: startProject }
-                    : item;
-                  void Promise.resolve(
-                    onStart(next, linear ? (details?.body ?? "") : undefined),
-                  )
+                  const next = linear ? { ...item, projectPath: startProject } : item;
+                  void Promise.resolve(onStart(next, linear ? (details?.body ?? "") : undefined))
                     .catch((err: unknown) => {
-                      setStartError(
-                        err instanceof Error ? err.message : String(err),
-                      );
+                      setStartError(err instanceof Error ? err.message : String(err));
                     })
                     .finally(() => setStarting(false));
                 }}
-                className="pressable inline-flex h-7 items-center gap-2 rounded-md bg-content px-3 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50"
               >
                 {starting ? <Spinner className="size-3" /> : null}
                 Send to agent
-              </button>
+              </Button>
               {linear ? (
-                <InboxProjectPicker
-                  projects={projects}
-                  value={startProject}
-                  onChange={setStartProject}
-                />
+                <InboxProjectPicker projects={projects} value={startProject} onChange={setStartProject} />
               ) : null}
             </>
           ) : null}
-          <button
-            type="button"
+          <Button
+            size="sm"
+            variant={item.kind === "pr" ? "default" : "ghost"}
             onClick={() => void openUrl(item.url)}
-            className={
-              item.kind === "pr"
-                ? "pressable inline-flex h-7 items-center gap-1.5 rounded-md bg-content px-3 text-[12px] font-medium text-background-base hover:bg-content/70"
-                : "pressable inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] text-content/70 hover:bg-content/8 hover:text-content"
-            }
           >
-            <ExternalLink className="size-3.5" strokeWidth={1.75} />
-            {item.kind === "pr"
-              ? "Review on GitHub"
-              : linear
-                ? "Open in Linear"
-                : "Open on GitHub"}
-          </button>
+            <ExternalLink />
+            {item.kind === "pr" ? "Review on GitHub" : linear ? "Open in Linear" : "Open on GitHub"}
+          </Button>
         </div>
-        {startError ? (
-          <p className="text-[12px] text-danger">{startError}</p>
-        ) : null}
+        {startError ? <p className="mt-2 text-[12px] text-destructive">{startError}</p> : null}
       </header>
       {isPr ? (
-        <div
-          role="tablist"
-          aria-label="Pull request sections"
-          className="flex h-9 items-stretch gap-4 border-b border-content/10"
-        >
-          <InboxDetailTab
-            label="Summary"
-            selected={tab === "summary"}
-            onSelect={() => setTab("summary")}
-          />
-          <InboxDetailTab
-            label="Code"
-            selected={tab === "code"}
-            onSelect={() => setTab("code")}
-          />
-        </div>
-      ) : (
-        <div className="border-t border-content/10" />
-      )}
+        <Tabs value={tab} onValueChange={(next) => setTab(next as "summary" | "code")}>
+          <TabsList
+            variant="line"
+            aria-label="Pull request sections"
+            className="h-9 w-full justify-start gap-4 border-b border-border"
+          >
+            <TabsTrigger value="summary" className="flex-none">
+              Summary
+            </TabsTrigger>
+            <TabsTrigger value="code" className="flex-none">
+              Code
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      ) : null}
       {isPr && tab === "code" ? (
         diffLoading ? (
-          <div className="flex justify-center py-10">
-            <Spinner />
-          </div>
+          <ParagraphSkeleton />
         ) : diffError ? (
-          <p className="text-[12px] text-danger">{diffError}</p>
+          <p className="text-[12px] text-destructive">{diffError}</p>
         ) : prDiff ? (
-          <InboxPrDiff
-            key={`${item.projectPath}:${item.number}:${revision}`}
-            diff={prDiff}
-          />
+          <InboxPrDiff key={`${item.projectPath}:${item.number}:${revision}`} diff={prDiff} />
         ) : (
-          <p className="text-[13px] text-content/40">No file changes</p>
+          <p className="text-[13px] text-muted-foreground">No file changes</p>
         )
       ) : loading ? (
-        <div className="flex justify-center py-10">
-          <Spinner />
-        </div>
+        <ParagraphSkeleton />
       ) : error ? (
-        <p className="text-[12px] text-danger">{error}</p>
+        <p className="text-[12px] text-destructive">{error}</p>
       ) : (
         <>
           {details?.body.trim() ? (
             <AgentMarkdown text={details.body} cwd={markdownCwd} />
           ) : (
-            <p className="text-[13px] text-content/40">No description</p>
+            <p className="text-[13px] text-muted-foreground">No description</p>
           )}
           <InboxComments
             thread={thread}
@@ -1368,6 +1262,17 @@ function InboxDetail({
           />
         </>
       )}
+    </div>
+  );
+}
+
+/** Three lines of text on their way, the last one shorter. */
+function ParagraphSkeleton() {
+  return (
+    <div aria-label="Loading" className="flex flex-col gap-2">
+      <Skeleton className="h-3.5 w-full" />
+      <Skeleton className="h-3.5 w-full" />
+      <Skeleton className="h-3.5 w-2/3" />
     </div>
   );
 }
@@ -1401,13 +1306,13 @@ function InboxPerson({
           referrerPolicy="no-referrer"
           draggable={false}
           onError={() => setFailed(true)}
-          className="shrink-0 rounded-full bg-content/10 object-cover"
+          className="shrink-0 rounded-full bg-muted object-cover"
           style={{ width: size, height: size }}
         />
       ) : (
         <span
           aria-hidden
-          className="grid shrink-0 place-items-center rounded-full bg-content/12 font-medium text-content/50"
+          className="grid shrink-0 place-items-center rounded-full bg-muted font-medium text-muted-foreground"
           style={{
             width: size,
             height: size,
@@ -1431,97 +1336,51 @@ function InboxProjectPicker({
   value: string;
   onChange: (path: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const button = useRef<HTMLButtonElement>(null);
   const selected =
     projects.find((project) => sameProjectPath(project.path, value)) ??
     projects[0] ??
     null;
-
   return (
-    <div className="relative">
-      <button
-        ref={button}
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        disabled={projects.length === 0}
-        onClick={() => setOpen((next) => !next)}
-        className="pressable inline-flex h-7 max-w-48 items-center gap-1.5 rounded-md border border-content/10 bg-content/5 px-2 text-[12px] text-content/70 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
-      >
-        {selected ? <InboxProjectMark project={selected} /> : null}
-        <span className="min-w-0 truncate">
-          {selected?.name ?? "Choose project"}
-        </span>
-        <ChevronDown
-          className="size-3.5 shrink-0 text-content/40"
-          strokeWidth={1.75}
-        />
-      </button>
-      {open ? (
-        <Popover
-          anchor={button}
-          side="bottom"
-          align="start"
-          gap={4}
-          width={256}
-          maxHeight={256}
-          autoFocus
-          onDismiss={() => setOpen(false)}
-          role="listbox"
-          tabIndex={-1}
-          className="overflow-y-auto overscroll-none p-1"
-        >
-          {projects.map((project) => {
-            const active = selected
-              ? sameProjectPath(project.path, selected.path)
-              : false;
-            return (
-              <button
-                key={project.path}
-                type="button"
-                role="option"
-                aria-selected={active}
-                onClick={() => {
-                  onChange(project.path);
-                  setOpen(false);
-                }}
-                className="flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none text-content hover:bg-content/5 active:bg-content/10"
-              >
-                <InboxProjectMark project={project} />
-                <span className="min-w-0 flex-1 truncate">{project.name}</span>
-                {active ? (
-                  <Check className="size-3.5 shrink-0" strokeWidth={2.25} />
-                ) : null}
-              </button>
-            );
-          })}
-        </Popover>
-      ) : null}
-    </div>
+    <Select
+      value={selected?.path ?? null}
+      onValueChange={(next) => {
+        if (next) onChange(String(next));
+      }}
+      disabled={projects.length === 0}
+    >
+      <SelectTrigger size="sm" aria-label="Project" className="max-w-48">
+        <SelectValue>
+          {() =>
+            selected ? (
+              <>
+                <InboxProjectMark project={selected} />
+                <span className="min-w-0 truncate">{selected.name}</span>
+              </>
+            ) : (
+              "Choose project"
+            )
+          }
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent align="start" alignItemWithTrigger={false} className="w-64">
+        {projects.map((project) => (
+          <SelectItem key={project.path} value={project.path}>
+            <InboxProjectMark project={project} />
+            <span className="min-w-0 truncate">{project.name}</span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
-function InboxLabel({
-  label,
-  compact = false,
-}: {
-  label: GithubLabel;
-  compact?: boolean;
-}) {
+function InboxLabel({ label }: { label: GithubLabel }) {
   const color = labelColor(label.color);
   return (
-    <span
-      className={`inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-px text-content/50 bg-content/8 ${
-        compact ? "max-w-20 text-[11px]" : "text-[11px]"
-      }`}
-    >
+    <span className="inline-flex min-w-0 items-center gap-1 rounded-sm bg-muted px-1.5 text-[11px] text-muted-foreground">
       {color ? (
-        <span
-          aria-hidden
-          className="size-1.5 shrink-0 rounded-full"
-          style={{ backgroundColor: color }}
-        />
+        // The label's own colour is data, not decoration.
+        <span aria-hidden className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
       ) : null}
       <span className="min-w-0 truncate">{label.name}</span>
     </span>
