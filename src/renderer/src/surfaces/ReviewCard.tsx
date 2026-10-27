@@ -119,7 +119,7 @@ function HeldReview({
       {minor ? (
         <Collapsible open={minorOpen} onOpenChange={setMinorOpen} className="mt-3">
           <CollapsibleTrigger
-            render={<Button variant="ghost" size="xs" className="-ml-2 text-muted-foreground hover:text-foreground" />}
+            render={<Button variant="ghost" size="xs" className="-ml-2 text-muted-foreground hover:text-foreground aria-expanded:bg-transparent aria-expanded:hover:bg-foreground/7" />}
           >
             {plural(minor, "minor finding")}
           </CollapsibleTrigger>

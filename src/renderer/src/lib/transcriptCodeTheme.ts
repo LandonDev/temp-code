@@ -5,7 +5,7 @@ import type { ThemeRegistration } from "shiki";
  * hue. Green means lines added and amber means the person is needed
  * everywhere else in the app, so code never borrows them. Every colour is
  * a CSS variable the markdown defines from the ink tokens
- * (transcript/markdown.css: `--code-strong` is the foreground, `--code-soft`
+ * (transcript/markdown.css: `--code-strong` is `--foreground`, `--code-soft`
  * the muted foreground), so one theme serves dark and light. The Monaco
  * editor keeps intellijTheme.ts. No DOM imports: the worker loads this.
  */

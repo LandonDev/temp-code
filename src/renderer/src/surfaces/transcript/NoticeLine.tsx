@@ -83,7 +83,7 @@ export function NoticeLine({
 export function NoticeCaret({ open, label }: { open: boolean; label: string }) {
   return (
     <CollapsibleTrigger
-      render={<Button variant="ghost" size="icon-xs" aria-label={label} className="-my-0.5 text-muted-foreground hover:text-foreground" />}
+      render={<Button variant="ghost" size="icon-xs" aria-label={label} className="-my-0.5 text-muted-foreground hover:text-foreground aria-expanded:bg-transparent aria-expanded:hover:bg-foreground/7" />}
     >
       <ChevronRight
         className={cn(

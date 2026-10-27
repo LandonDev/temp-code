@@ -2,18 +2,18 @@
 
 .agent-markdown {
   /* The code theme's two inks (lib/transcriptCodeTheme.ts). */
-  --code-strong: var(--color-foreground);
-  --code-soft: var(--color-muted-foreground);
+  --code-strong: var(--foreground);
+  --code-soft: var(--muted-foreground);
 }
 
 .agent-markdown p,
 .agent-markdown li {
-  color: var(--color-foreground);
+  color: var(--foreground);
 }
 
 .agent-markdown strong,
 .agent-markdown [data-streamdown="strong"] {
-  color: var(--color-foreground);
+  color: var(--foreground);
   font-weight: 600;
 }
 
@@ -21,7 +21,7 @@
 .agent-reasoning.agent-markdown li,
 .agent-reasoning.agent-markdown strong,
 .agent-reasoning.agent-markdown [data-streamdown="strong"] {
-  color: var(--color-muted-foreground);
+  color: var(--muted-foreground);
 }
 
 /* Headings are short bold lines: more room above than below. */
@@ -33,7 +33,7 @@
   font-size: 15px;
   font-weight: 600;
   line-height: 1.6;
-  color: var(--color-foreground);
+  color: var(--foreground);
 }
 
 .agent-markdown [data-streamdown="heading-1"] {
@@ -50,9 +50,9 @@
   gap: 0;
   padding: 0;
   margin-block: 16px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--color-card);
+  background: var(--card);
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -99,7 +99,7 @@
   width: 24px;
   margin-right: 12px;
   text-align: right;
-  color: var(--color-muted-foreground);
+  color: var(--muted-foreground);
   user-select: none;
 }
 
@@ -111,7 +111,7 @@
 
 .agent-markdown [data-streamdown="table"] > :not(:last-child),
 .agent-markdown [data-streamdown="table-body"] > :not(:last-child) {
-  border-color: var(--color-border);
+  border-color: var(--border);
 }
 
 .agent-markdown [data-streamdown="table-header-cell"],
@@ -122,7 +122,7 @@
 
 .agent-markdown [data-streamdown="horizontal-rule"] {
   border: 0;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--border);
 }
 
 .agent-markdown .mermaid-block svg {
@@ -137,7 +137,7 @@
   margin-bottom: 4px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--color-muted-foreground);
+  color: var(--muted-foreground);
 }
 
 .whats-new-md.agent-markdown [data-streamdown="heading-3"]:first-child {
