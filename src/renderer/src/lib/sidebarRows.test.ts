@@ -218,17 +218,17 @@ describe("groupMark", () => {
     const old = row("old", { status: "running", updatedAt: 10 });
     const fresh = row("fresh", { status: "running", updatedAt: 90 });
     const quiet = row("quiet", { updatedAt: 200 });
-    expect(groupMark([old, fresh, quiet])).toEqual({ state: "working", about: fresh, more: 1 });
+    expect(groupMark([old, fresh, quiet])).toEqual({ state: "working", about: fresh, others: [old], more: 1 });
   });
 
   it("names a waiting batch thread by its master, as a nested row or a flat one", () => {
     const child = row("b1", { status: "waiting", masterId: "m", updatedAt: 300 }, {}, true);
     const master = { ...row("m", { status: "watching", isMaster: true, updatedAt: 5 }), batch: [child] };
     const other = row("x", { status: "waiting", updatedAt: 100 });
-    expect(groupMark([master, other])).toEqual({ state: "waiting", about: master, more: 1 });
+    expect(groupMark([master, other])).toEqual({ state: "waiting", about: master, others: [other], more: 1 });
     // A flat list (the rail's) finds the master by its id.
     const flatMaster = row("m", { status: "watching", isMaster: true, updatedAt: 5 });
-    expect(groupMark([flatMaster, child])).toEqual({ state: "waiting", about: flatMaster, more: 0 });
+    expect(groupMark([flatMaster, child])).toEqual({ state: "waiting", about: flatMaster, others: [], more: 0 });
   });
 });
 

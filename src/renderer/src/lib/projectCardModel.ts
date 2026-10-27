@@ -109,32 +109,6 @@ export function blockedThreads<T extends CardThread>(threads: readonly T[]): Blo
   return out;
 }
 
-/** The whole-card tooltip: every non-zero state, then the open-tab count. */
-export function cardTooltip(status: ProjectCardStatus, archivedCount: number): string {
-  return [
-    status.running.length > 0 && `${status.running.length} running`,
-    status.paused.length > 0 && `${status.paused.length} paused`,
-    status.waiting > 0 && `${status.waiting} waiting on you`,
-    status.failed > 0 && `${status.failed} failed`,
-    status.unread.length > 0 && `${status.unread.length} unread`,
-    `${status.total} open ${status.total === 1 ? "tab" : "tabs"}`,
-    archivedCount > 0 && `${archivedCount} archived`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-/** The muted tail of the stats line. */
-export function quietSummary(status: ProjectCardStatus, archivedCount: number): string {
-  if (status.total === 0) return "No tabs";
-  return [
-    status.dormant > 0 && `${status.dormant} dormant`,
-    archivedCount > 0 && `${archivedCount} archived`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
 /** Elapsed on a running line: since the working stretch began. */
 export function runningElapsed(t: CardThread, now: number): number {
   return Math.max(0, now - (t.busySince ?? t.updatedAt));

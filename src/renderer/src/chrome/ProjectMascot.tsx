@@ -16,7 +16,7 @@ export function ProjectMascot({
   project,
   color,
   name,
-  className = "size-3 shrink-0",
+  className = "size-4 shrink-0",
   active = false,
 }: Props) {
   const mascot = projectMascot(project, name);

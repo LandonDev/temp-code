@@ -1,14 +1,9 @@
 import { useMemo, useSyncExternalStore } from "react";
-import { projectCardStatus, type CardThread } from "../lib/projectCardModel";
 import type { Catalog } from "../lib/projectContext";
 import { homeOrWorkspacePath, workspacePathOfSession } from "../lib/projectContext";
 import type { Session } from "../lib/session";
-import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
-import { sessionStore, useSessionMetas } from "../lib/tcserver/store";
-import type { SessionMeta } from "../lib/tcserver/types";
+import { sessionStore } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
-import { aliasKeys } from "../lib/linkedRail";
-import { housedIds } from "../lib/workspaceSessions";
 
 export interface ProjectSignals {
   /** Folders with a turn in flight. */
@@ -78,90 +73,4 @@ export function useProjectSignals(): ProjectSignals {
       needsYou: needsYou ? needsYou.split(UNIT) : [],
     };
   }, [key]);
-}
-
-// ── per-workspace rail status ────────────────────────────────────────
-
-export type WorkspaceRailStatusKind = "paused" | "needsYou" | "busy" | "unread";
-
-export type WorkspaceRailStatus = {
-  kind: WorkspaceRailStatusKind | null;
-  /** Threads in the dominant bucket, for the chip's title. */
-  count: number;
-  /** The busy bucket's own running threads. Only "busy" carries them: the
-   *  rail shows these inline as a line under the workspace, no chip or
-   *  popover needed to say what a workspace is doing. */
-  running?: CardThread[];
-};
-
-const RAIL_STATUS_NONE: WorkspaceRailStatus = { kind: null, count: 0 };
-
-/**
- * One dominant status per workspace path, loudest first: paused, needs you
- * (waiting on an answer or a recoverable failure), busy (a turn in flight
- * anywhere in the tree), unread (settled and unseen), else none. Built on
- * `projectCardStatus()` — the same fold the Sessions tab's project card and
- * the rail's own thread popover use — so the chip and what it opens never
- * disagree about a workspace's state. `keyOf` folds a workspace's copies on
- * other hosts into its leader's path (lib/linkedRail.ts `aliasKeys`), so a
- * linked row counts every copy's threads as one workspace. A thread inside
- * a master (`housedIds`) counts as working or needing you, never as unread.
- */
-export function workspaceRailStatuses(
-  metas: readonly SessionMeta[],
-  catalog: Catalog,
-  lastSeen: Record<string, number>,
-  floor = 0,
-  keyOf: (path: string) => string = (path) => path,
-): Map<string, WorkspaceRailStatus> {
-  const archivedProjects = new Set(
-    catalog.projects.filter((p) => p.archived).map((p) => p.id),
-  );
-  const housed = housedIds(metas);
-  const byPath = new Map<string, (SessionMeta & { housed?: boolean })[]>();
-  for (const m of metas) {
-    const meta = housed.has(m.id) ? { ...m, housed: true } : m;
-    if (meta.parentId || meta.archived) continue;
-    // An archived project's threads never enter the workspace's own project
-    // list (`groupWorkspaceSessions`); a stuck thread inside one is not
-    // something the chip should surface, or the popover would disagree.
-    if (meta.projectId && archivedProjects.has(meta.projectId)) continue;
-    const at = workspacePathOfSession(meta, catalog);
-    if (!at) continue;
-    const path = keyOf(at);
-    const list = byPath.get(path);
-    if (list) list.push(meta);
-    else byPath.set(path, [meta]);
-  }
-  const out = new Map<string, WorkspaceRailStatus>();
-  for (const [path, threads] of byPath) {
-    const status = projectCardStatus(threads, null, lastSeen, floor);
-    const needsYouCount = status.waiting + status.failed;
-    const dominant: WorkspaceRailStatus =
-      status.paused.length > 0
-        ? { kind: "paused", count: status.paused.length }
-        : needsYouCount > 0
-          ? { kind: "needsYou", count: needsYouCount }
-          : status.running.length > 0
-            ? { kind: "busy", count: status.running.length, running: status.running }
-            : status.unread.length > 0
-              ? { kind: "unread", count: status.unread.length }
-              : RAIL_STATUS_NONE;
-    if (dominant.kind) out.set(path, dominant);
-  }
-  return out;
-}
-
-/** The rail's per-workspace status map, keyed by the rail row's lead path
- *  (a linked workspace's copies count as one), recomputed only when the
- *  metas, catalog, or seen state actually change. */
-export function useWorkspaceRailStatuses(): Map<string, WorkspaceRailStatus> {
-  const catalog = useWorkspaceCatalog();
-  const metas = useSessionMetas();
-  const lastSeen = useLastSeen();
-  const floor = useSeenFloor();
-  return useMemo(
-    () => workspaceRailStatuses(metas, catalog, lastSeen, floor, aliasKeys(catalog.workspaces).path),
-    [metas, catalog, lastSeen, floor],
-  );
 }

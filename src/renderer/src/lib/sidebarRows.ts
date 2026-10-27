@@ -129,8 +129,8 @@ type GroupRow = RowStateInput & {
 };
 
 /** A project's or workspace's one word: its loudest state, the newest thread
- *  behind it (`about`) and how many more share it. */
-export type GroupMark<T> = { state: GroupState; about: T; more: number };
+ *  behind it (`about`), the others in that state newest first, and how many. */
+export type GroupMark<T> = { state: GroupState; about: T; others: T[]; more: number };
 
 /**
  * The loudest of waiting > failed > working > paused over every root and
@@ -156,14 +156,8 @@ export function groupMark<T extends GroupRow>(roots: readonly T[]): GroupMark<T>
   for (const state of GROUP_ORDER) {
     const seen = found.get(state);
     if (!seen?.size) continue;
-    let about: T | null = null;
-    let at = -Infinity;
-    for (const [row, updated] of seen)
-      if (updated > at) {
-        about = row;
-        at = updated;
-      }
-    return { state, about: about!, more: seen.size - 1 };
+    const [about, ...others] = [...seen].sort((a, b) => b[1] - a[1]).map(([row]) => row);
+    return { state, about, others, more: others.length };
   }
   return null;
 }

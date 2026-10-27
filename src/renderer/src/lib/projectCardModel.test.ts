@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   cardTasks,
-  cardTooltip,
   pausedElapsed,
   projectCardStatus,
   projectRunAction,
-  quietSummary,
   runningElapsed,
   stoppableThreads,
   type CardThread,
@@ -89,34 +87,6 @@ describe("projectCardStatus", () => {
   it("is empty for a project with no threads", () => {
     const status = projectCardStatus([], null, {});
     expect(status).toMatchObject({ total: 0, dormant: 0, latest: 0, waiting: 0, failed: 0 });
-  });
-});
-
-describe("copy", () => {
-  const status = projectCardStatus(
-    [
-      thread("a", { status: "running" }),
-      thread("b", { status: "paused" }),
-      thread("c", { status: "waiting" }),
-      thread("d", { status: "error" }),
-      thread("e", { updatedAt: 200 }),
-      thread("f"),
-    ],
-    null,
-    { e: 1, f: 100 },
-  );
-
-  it("joins every non-zero state and the tab count for the tooltip", () => {
-    expect(cardTooltip(status, 2)).toBe(
-      "1 running · 1 paused · 1 waiting on you · 1 failed · 1 unread · 6 open tabs · 2 archived",
-    );
-    expect(cardTooltip(projectCardStatus([thread("a")], null, { a: 100 }), 0)).toBe("1 open tab");
-  });
-
-  it("summarises the quiet rest", () => {
-    expect(quietSummary(status, 2)).toBe("1 dormant · 2 archived");
-    expect(quietSummary(status, 0)).toBe("1 dormant");
-    expect(quietSummary(projectCardStatus([], null, {}), 3)).toBe("No tabs");
   });
 });
 

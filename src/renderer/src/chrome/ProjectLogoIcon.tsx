@@ -1,5 +1,6 @@
 import { Folder, GitHub, GitLab, type IconComponent } from "./icons";
 import { useEffect, useState } from "react";
+import { cn } from "../lib/cn";
 import { projectLogoSrc } from "../lib/projectLogos";
 import { useWorkspaceIcon } from "../lib/tcserver/workspaces";
 import {
@@ -20,7 +21,7 @@ type Props = {
 export function ProjectLogoIcon({
   path,
   workspaceId,
-  className = "size-3.5 shrink-0",
+  className = "size-4 shrink-0",
   imageClassName,
   fallback: Fallback = Folder,
   fallbackStrokeWidth = 1.5,
@@ -41,7 +42,7 @@ export function ProjectLogoIcon({
         key={`${path ?? ""}:${revision}`}
         src={src}
         alt=""
-        className={`rounded-md object-cover ${className} ${imageClassName ?? ""}`}
+        className={cn("rounded-sm object-cover outline outline-1 -outline-offset-1 outline-image-outline", className, imageClassName)}
       />
     );
   }

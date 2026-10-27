@@ -5,24 +5,32 @@ import { ChartBar, Inbox, MessageSquare, MoreHorizontal, Plus, Search, Server, S
 import { ProjectMascot } from "./ProjectMascot";
 import { RailHeading, RailRow } from "./RailRow";
 import { UpdateRow } from "./UpdateRow";
-import { RailStatusChip, WorkspaceWorkingLine } from "./WorkspaceRowMarks";
+import type { GroupMark } from "../lib/sidebarRows";
+import type { ThreadRow } from "../lib/workspaceSessions";
+import { WorkspaceLineView, WorkspaceMarkView } from "./WorkspaceRowMarks";
 
 const noop = () => {};
 
-function Workspace({ name, color, busy = false, needsYou = false, selected = false }: { name: string; color: string; busy?: boolean; needsYou?: boolean; selected?: boolean }) {
+const markOf = (state: GroupMark<ThreadRow>["state"], title: string, more = 0): GroupMark<ThreadRow> => ({
+  state,
+  about: { id: title, title } as ThreadRow,
+  others: Array.from({ length: more }, (_, i) => ({ id: `o${i}`, title: `Other ${i + 1}` }) as ThreadRow),
+  more,
+});
+
+function Workspace({ name, color, mark, unread = false, selected = false }: { name: string; color: string; mark?: GroupMark<ThreadRow>; unread?: boolean; selected?: boolean }) {
   return (
     <>
       <RailRow
-        glyph={<ProjectMascot project={name} color={needsYou ? "var(--color-warning)" : color} className="size-3" active={busy} />}
+        glyph={<ProjectMascot project={name} color={color} />}
         label={name}
         selected={selected}
+        emphasis={unread}
         trailingInteractive
-        trailing={
-          needsYou ? <RailStatusChip status={{ kind: "needsYou", count: 1 } as never} open={false} onToggle={noop} chipRef={{ current: null }} /> : null
-        }
+        trailing={mark ? <WorkspaceMarkView mark={mark} /> : null}
         hoverAction={{ label: "Workspace options", icon: MoreHorizontal, menu: true, onClick: noop }}
       />
-      {busy ? <WorkspaceWorkingLine running={[{ id: "t1", title: "Typecheck the rail" } as never]} /> : null}
+      {mark ? <WorkspaceLineView mark={mark} /> : null}
     </>
   );
 }
@@ -41,9 +49,9 @@ export function RailSketch() {
         </div>
         <div className="px-2 pt-4">
           <RailHeading action={{ label: "Add workspace", icon: Plus, onClick: noop }}>Workspaces</RailHeading>
-          <Workspace name="cosmic-prisons" color="var(--chart-2)" busy />
-          <Workspace name="aliax" color="var(--chart-3)" needsYou />
-          <Workspace name="landing-site" color="var(--chart-4)" />
+          <Workspace name="cosmic-prisons" color="var(--chart-2)" mark={markOf("working", "Typecheck the rail", 2)} />
+          <Workspace name="aliax" color="var(--chart-3)" mark={markOf("waiting", "Approve Bash on deploy")} />
+          <Workspace name="landing-site" color="var(--chart-4)" unread />
         </div>
       </div>
       <div className="flex shrink-0 flex-col border-t border-border">

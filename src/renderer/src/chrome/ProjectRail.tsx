@@ -63,7 +63,6 @@ import {
   saveTabGroupLabel,
   saveTabGroupMascot,
 } from "../lib/tabGroups";
-import { useWorkspaceRailStatuses, type WorkspaceRailStatus } from "../hooks/useProjectSignals";
 import { threadsToMarkRead } from "../lib/markRead";
 import { batchActionOfMenuId, batchCounts, batchMenuExtraItems, type BatchCounts } from "../lib/threadBatchMenu";
 import { requestThreadBatch, type BatchScope } from "../lib/threadBatch";
@@ -72,7 +71,6 @@ import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import { markAllSeen, markSessionsSeen } from "../lib/sessionSeen";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
-import { WorkspaceThreadsPopover } from "./WorkspaceThreadsPopover";
 import { subscribeProjectRailActions } from "../lib/projectRailActions";
 import {
   useWorkspaceIcon,
@@ -81,7 +79,8 @@ import {
   workspaceLabelKey,
 } from "../lib/tcserver/workspaces";
 import { RailHeading, RailRow } from "./RailRow";
-import { RailStatusChip, WorkspaceGlyph, WorkspaceWorkingLine } from "./WorkspaceRowMarks";
+import { useWorkspaceMarks, WorkspaceGlyph, WorkspaceLineView, WorkspaceMarkTrigger } from "./WorkspaceRowMarks";
+import type { WorkspaceMark } from "../lib/sidebarRows";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
 import { DevModeSlot, TabVisitNav } from "./TitleBar";
 import { UpdateRow, useUpdateRowState } from "./UpdateRow";
@@ -239,7 +238,7 @@ export function ProjectRail({
     for (const path of needsYouPaths ?? []) set.add(path);
     return set;
   }, [needsYouPaths]);
-  const railStatuses = useWorkspaceRailStatuses();
+  const railStatuses = useWorkspaceMarks();
   const metas = useSessionMetas();
   const catalog = useWorkspaceCatalog();
   const lastSeen = useLastSeen();
@@ -661,7 +660,7 @@ function ProjectSection({
   cwd: string;
   busy: Set<string>;
   needsYou: Set<string>;
-  railStatuses: Map<string, WorkspaceRailStatus>;
+  railStatuses: Map<string, WorkspaceMark>;
   activeSessionId: string | null;
   onSelectAgent?: (sessionId: string) => void;
   sortable: SortableHandle;
@@ -743,7 +742,7 @@ function WorkspaceRow({
   selected: boolean;
   busy: boolean;
   needsYou: boolean;
-  railStatus: WorkspaceRailStatus | undefined;
+  railStatus: WorkspaceMark | undefined;
   activeSessionId: string | null;
   onSelectAgent?: (sessionId: string) => void;
   sortable: SortableHandle;
@@ -774,8 +773,6 @@ function WorkspaceRow({
   const dropping = sortable.draggingId && sortable.toIndex === index && sortable.fromIndex !== null;
   const showStart = dropping && sortable.toIndex! < sortable.fromIndex!;
   const showEnd = dropping && sortable.toIndex! > sortable.fromIndex!;
-  const [threadsOpen, setThreadsOpen] = useState(false);
-  const chipRef = useRef<HTMLButtonElement>(null);
 
   return (
     <>
@@ -792,21 +789,20 @@ function WorkspaceRow({
             projectKey={projectKey}
             color={color}
             mascotName={resolveTabGroupMascot(projectKey, groupMascots)}
-            busy={busy}
-            needsYou={needsYou}
           />
         }
         label={name}
         ariaLabel={workspaceRowAriaLabel(name, busy, needsYou)}
         selected={selected}
+        emphasis={!!railStatus?.unread}
         trailingInteractive
         trailing={
-          railStatus?.kind && railStatus.kind !== "busy" ? (
-            <RailStatusChip
-              status={railStatus}
-              open={threadsOpen}
-              onToggle={() => setThreadsOpen((v) => !v)}
-              chipRef={chipRef}
+          railStatus?.mark && workspaceId ? (
+            <WorkspaceMarkTrigger
+              mark={railStatus.mark}
+              workspaceIds={item.workspaceIds.length > 0 ? item.workspaceIds : [workspaceId]}
+              activeSessionId={activeSessionId}
+              onSelectThread={onSelectAgent}
             />
           ) : null
         }
@@ -838,21 +834,7 @@ function WorkspaceRow({
           <div className="pointer-events-none absolute inset-x-2 bottom-0 z-20 h-0.5 rounded-full bg-accent" />
         ) : null}
       </RailRow>
-      {railStatus?.kind === "busy" && railStatus.running?.length ? (
-        <WorkspaceWorkingLine running={railStatus.running} onSelect={onSelectAgent} />
-      ) : null}
-      {threadsOpen && workspaceId ? (
-        <WorkspaceThreadsPopover
-          anchor={chipRef}
-          workspaceIds={item.workspaceIds.length > 0 ? item.workspaceIds : [workspaceId]}
-          activeSessionId={activeSessionId}
-          onDismiss={() => setThreadsOpen(false)}
-          onSelectThread={(sessionId) => {
-            setThreadsOpen(false);
-            onSelectAgent?.(sessionId);
-          }}
-        />
-      ) : null}
+      {railStatus?.mark ? <WorkspaceLineView mark={railStatus.mark} onSelect={onSelectAgent} /> : null}
     </>
   );
 }

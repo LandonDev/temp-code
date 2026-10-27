@@ -175,7 +175,7 @@ describe("the rail", () => {
     const list = root.querySelector('nav[aria-label="Workspaces"] .overflow-y-auto')!;
     expect(list.querySelector("button")?.textContent).toBe("Chats");
     expect(headers(root)).not.toContain("Accounts");
-    // The rows themselves carry no title= (the status chip is A2's mark).
+    // The rows themselves carry no title= (the word at the end is the status mark).
     expect(list.querySelector("[data-rail-row] > button[title]")).toBeNull();
   });
 
@@ -193,8 +193,8 @@ describe("the rail", () => {
 
   it("counts both copies' threads on the row's status", async () => {
     const root = await mountRail([LOCAL, BOX]);
-    const chips = [...root.querySelectorAll('[aria-label^="Needs you — "]')];
-    expect(chips.map((c) => c.getAttribute("aria-label"))).toEqual(["Needs you — 2 threads"]);
+    const marks = [...root.querySelectorAll('[aria-label^="Needs you, "]')];
+    expect(marks.map((c) => c.getAttribute("aria-label"))).toEqual(["Needs you, 2 threads"]);
   });
 
   it("dims a row whose only host is down, not the linked one", async () => {

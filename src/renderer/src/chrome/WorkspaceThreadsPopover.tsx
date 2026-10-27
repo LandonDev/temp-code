@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Popover, type PopoverAnchor } from "./Popover";
+import { PopoverContent } from "../components/ui/popover";
 import { LiveLines, RowShell, TaskLine, ThreadGlyph } from "./WorkspaceSessions";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { blockedThreads, cardTasks, projectCardStatus } from "../lib/projectCardModel";
@@ -14,9 +14,6 @@ import {
   type ThreadRow,
   type WorkspaceSessionGroups,
 } from "../lib/workspaceSessions";
-
-const POPOVER_WIDTH = 300;
-const POPOVER_MAX_HEIGHT = 360;
 
 /** `threads` is what the tallies read (`cardThreads`), `roots` what the
  *  lines print (a master with its batch under it). */
@@ -141,22 +138,18 @@ export function WorkspaceThreadsList({
 }
 
 /**
- * What the rail's status chip opens: `WorkspaceThreadsList` wired to the
- * live stores and anchored to the chip with `Popover`.
+ * What a rail row's word opens: `WorkspaceThreadsList` wired to the live
+ * stores, as the content of the word's `Popover` (WorkspaceRowMarks.tsx).
  */
 export function WorkspaceThreadsPopover({
-  anchor,
   workspaceIds,
   activeSessionId,
   onSelectThread,
-  onDismiss,
 }: {
-  anchor: PopoverAnchor;
   /** The rail row's workspace and its copies on other hosts, the leader's first. */
   workspaceIds: readonly string[];
   activeSessionId: string | null;
   onSelectThread: (sessionId: string) => void;
-  onDismiss: () => void;
 }) {
   const metas = useSessionMetas();
   const { workspaces, projects } = useWorkspaceCatalog();
@@ -180,17 +173,11 @@ export function WorkspaceThreadsPopover({
   );
 
   return (
-    <Popover
-      anchor={anchor}
+    <PopoverContent
       side="right"
       align="start"
-      width={POPOVER_WIDTH}
-      maxHeight={POPOVER_MAX_HEIGHT}
-      autoFocus
-      onDismiss={onDismiss}
-      role="menu"
       aria-label="This workspace's threads"
-      className="flex flex-col overflow-hidden p-1"
+      className="max-h-90 w-75 gap-0 overflow-hidden p-1"
     >
       <div ref={lockList} className="overflow-y-auto overscroll-none">
         <WorkspaceThreadsList
@@ -201,6 +188,6 @@ export function WorkspaceThreadsPopover({
           onSelectThread={onSelectThread}
         />
       </div>
-    </Popover>
+    </PopoverContent>
   );
 }
