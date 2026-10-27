@@ -2,10 +2,9 @@ import type { ThemeRegistration } from "shiki";
 
 /**
  * IntelliJ IDEA's editor palettes as TextMate themes (IntelliJ Light and
- * Darcula). One palette for the whole app: the Monaco editor overlays its
- * workbench colors on top (monaco/theme.ts), and the transcript's highlight
- * worker paints code blocks with these as-is on a transparent block. This
- * file must stay free of DOM and Monaco imports so the worker can load it.
+ * Darcula) for the Monaco editor, which overlays its workbench colors on
+ * top (monaco/theme.ts). The transcript's code blocks use the neutral
+ * transcriptCodeTheme.ts instead.
  */
 
 export interface Tone {

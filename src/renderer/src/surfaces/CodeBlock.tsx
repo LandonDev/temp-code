@@ -1,27 +1,33 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Copy } from "../chrome/icons";
 import { copyText } from "../lib/clipboard";
 import { highlight, highlightCached } from "../lib/highlight";
 import { playCue } from "../lib/sounds";
+import { IconAction, SwapIcon, useArmOnIntent } from "./transcript/IconAction";
 
 /**
- * A fenced code block (ported from temp-code): language and copy button in
- * the header, IntelliJ Light / Darcula colouring from the shiki worker so
- * the main thread never tokenizes. Highlighting runs while the fence still
- * streams too, debounced so the worker is not hammered on every delta.
- * Keeps streamdown's `data-streamdown` hooks so index.css styles it as one
- * with tables and the rest of the markdown.
+ * A fenced code block, quiet: the language (or the fence's file path) at
+ * the top left, copy on hover at the top right, the code in 13px mono
+ * coloured by weight on the transcript's neutral theme
+ * (lib/transcriptCodeTheme.ts) from the shiki worker, so the main thread
+ * never tokenizes. Line numbers only when the fence asks. Highlighting
+ * runs while the fence still streams too, debounced so the worker is not
+ * hammered on every delta. Keeps streamdown's `data-streamdown` hooks so
+ * transcript/markdown.css frames it like a table: one card, one hairline.
  */
 export const CodeBlock = memo(function CodeBlock({
   code,
   language,
+  label,
   incomplete = false,
-  lineNumbers = true,
+  lineNumbers = false,
   startLine = 1,
   className,
 }: {
   code: string;
   language: string;
+  /** Replaces the language at the top left (the fence's file path). */
+  label?: ReactNode;
   incomplete?: boolean;
   lineNumbers?: boolean;
   startLine?: number;
@@ -33,6 +39,7 @@ export const CodeBlock = memo(function CodeBlock({
   const [html, setHtml] = useState<string | null>(() => highlightCached(clean, lang) ?? null);
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<number | null>(null);
+  const [armed, intent] = useArmOnIntent();
 
   useEffect(() => {
     let alive = true;
@@ -66,7 +73,7 @@ export const CodeBlock = memo(function CodeBlock({
       () => {
         setCopied(true);
         if (copyTimer.current != null) window.clearTimeout(copyTimer.current);
-        copyTimer.current = window.setTimeout(() => setCopied(false), 1500);
+        copyTimer.current = window.setTimeout(() => setCopied(false), 2000);
       },
       () => {},
     );
@@ -75,26 +82,22 @@ export const CodeBlock = memo(function CodeBlock({
   return (
     <div
       data-streamdown="code-block"
-      className={`my-4 flex flex-col overflow-hidden rounded-[10px] border border-content/10 bg-content/6 ${className ?? ""}`}
+      className={`group/code flex flex-col ${className ?? ""}`}
+      {...intent}
     >
       <div
         data-streamdown="code-block-header"
-        className="flex items-center justify-between gap-2"
+        className="flex h-8 items-center justify-between gap-2 pl-3 pr-1"
       >
-        <span>{lang || "plain text"}</span>
-        <button
-          type="button"
+        <span className="min-w-0 truncate text-xs text-muted-foreground">{label ?? lang}</span>
+        <IconAction
+          label={copied ? "Copied" : "Copy code"}
           onClick={copy}
-          title={copied ? "Copied" : "Copy code"}
-          aria-label={copied ? "Copied" : "Copy code"}
-          className="-my-1 -mr-1 grid size-6 shrink-0 place-items-center rounded-md text-content/40 transition-colors hover:bg-content/8 hover:text-content/70"
+          armed={armed}
+          className="opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/code:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
         >
-          {copied ? (
-            <Check className="size-3.5" strokeWidth={1.75} />
-          ) : (
-            <Copy className="size-3.5" strokeWidth={1.75} />
-          )}
-        </button>
+          <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
+        </IconAction>
       </div>
       <div
         data-streamdown="code-block-body"

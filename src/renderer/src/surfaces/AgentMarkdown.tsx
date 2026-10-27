@@ -16,8 +16,9 @@ import {
   type Components,
 } from "streamdown";
 import type { PluggableList } from "unified";
-import { FileTypeIcon } from "../chrome/FileTypeIcon";
 import { CodeBlock } from "./CodeBlock";
+import { Button } from "../components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { FileRefMenu } from "./FileRefMenu";
 import { createLazyMermaidPlugin } from "./mermaidPlugin";
 import { cachedParse, restoreHast } from "../lib/markdownCache";
@@ -102,42 +103,6 @@ const LANGUAGE_FROM_EXT: Record<string, string> = {
   cxx: "cpp",
 };
 
-const LANGUAGE_FILE_NAMES: Record<string, string> = {
-  bash: "code.sh",
-  c: "code.c",
-  cpp: "code.cpp",
-  "c++": "code.cpp",
-  csharp: "code.cs",
-  css: "code.css",
-  go: "code.go",
-  html: "code.html",
-  java: "code.java",
-  javascript: "code.js",
-  js: "code.js",
-  jsx: "code.jsx",
-  json: "code.json",
-  markdown: "code.md",
-  md: "code.md",
-  php: "code.php",
-  python: "code.py",
-  py: "code.py",
-  ruby: "code.rb",
-  rust: "code.rs",
-  rs: "code.rs",
-  shell: "code.sh",
-  sh: "code.sh",
-  sql: "code.sql",
-  swift: "code.swift",
-  toml: "code.toml",
-  ts: "code.ts",
-  tsx: "code.tsx",
-  typescript: "code.ts",
-  xml: "code.xml",
-  yaml: "code.yaml",
-  yml: "code.yaml",
-  zsh: "code.sh",
-};
-
 type MarkdownLinkProps = ComponentProps<"a"> & { node?: unknown };
 
 function MarkdownLink({
@@ -157,7 +122,7 @@ function MarkdownLink({
   const anchor = (
     <a
       href={href}
-      className={`text-info hover:text-info hover:underline ${className ?? ""}`}
+      className={`text-accent underline-offset-2 hover:underline ${className ?? ""}`}
       {...props}
       onClick={(event) => {
         onClick?.(event);
@@ -203,8 +168,8 @@ function MarkdownCode({
     const code = (
       <code
         {...props}
-        className={`inline-flex items-center gap-1 rounded-md bg-content/8 px-1.5 h-6 align-baseline font-mono text-[0.8em] text-content ${
-          open ? "cursor-pointer hover:text-info hover:underline" : ""
+        className={`rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.875em] text-foreground ${
+          open ? "cursor-pointer decoration-muted-foreground underline-offset-2 hover:underline" : ""
         } ${className ?? ""}`}
         role={open ? "link" : undefined}
         tabIndex={open ? 0 : undefined}
@@ -220,11 +185,6 @@ function MarkdownCode({
             : undefined
         }
       >
-        {fileName ? (
-          <span aria-hidden="true">
-            <FileTypeIcon name={fileName} isDir={false} size={14} />
-          </span>
-        ) : null}
         {children}
       </code>
     );
@@ -238,28 +198,20 @@ function MarkdownCode({
       <MermaidBlock code={textContent(children)} incomplete={incomplete} />
     );
   }
-  const iconName =
-    fence.fileName ??
-    (fence.language ? fileNameForLanguage(fence.language) : "");
-  const lineNumbers = !/\bnoLineNumbers\b/.test(meta);
+  // Line numbers only when the fence asks: `lineNumbers`, or a start line.
+  const lineNumbers =
+    !/\bnoLineNumbers\b/.test(meta) && (/\blineNumbers\b/.test(meta) || fence.startLine !== undefined);
 
   return (
-    <div className="markdown-code-shell">
-      {iconName ? (
-        <span className="markdown-code-icon" aria-hidden="true">
-          <FileTypeIcon name={iconName} isDir={false} />
-        </span>
-      ) : null}
-      {fence.filePath ? <MarkdownCodePath path={fence.filePath} /> : null}
-      <CodeBlock
-        className={className}
-        code={textContent(children)}
-        incomplete={incomplete}
-        language={fence.language}
-        lineNumbers={lineNumbers}
-        startLine={fence.startLine}
-      />
-    </div>
+    <CodeBlock
+      className={className}
+      code={textContent(children)}
+      incomplete={incomplete}
+      language={fence.language}
+      label={fence.filePath ? <MarkdownCodePath path={fence.filePath} /> : undefined}
+      lineNumbers={lineNumbers}
+      startLine={fence.startLine}
+    />
   );
 }
 
@@ -268,16 +220,22 @@ const MARKDOWN_COMPONENTS = {
   code: MarkdownCode,
 } satisfies Components;
 
+/** Transcript prose is 15/1.6 (24px lines, transcriptRows' PROSE_LINE);
+ *  panels and dialogs read it at 14/24. */
+const SIZE_CLASS = { prose: "text-[15px] leading-[1.6]", compact: "text-sm leading-6" } as const;
+
 export const AgentMarkdown = memo(function AgentMarkdown({
   text,
   streaming,
   className,
+  size = "prose",
   cwd,
   onOpenFile,
 }: {
   text: string;
   streaming?: boolean;
   className?: string;
+  size?: keyof typeof SIZE_CLASS;
   cwd?: string;
   onOpenFile?: OpenFileFn;
 }) {
@@ -306,13 +264,13 @@ export const AgentMarkdown = memo(function AgentMarkdown({
         {!ready ? (
           <pre
             aria-hidden
-            className={`agent-markdown invisible min-w-0 whitespace-pre-wrap break-words font-sans text-sm leading-6 ${className ?? ""}`}
+            className={`agent-markdown invisible min-w-0 whitespace-pre-wrap break-words font-sans ${SIZE_CLASS[size]} ${className ?? ""}`}
           >
             {shown}
           </pre>
         ) : (
         <Streamdown
-          className={`agent-markdown min-w-0 font-sans text-sm leading-6 ${className ?? ""}`}
+          className={`agent-markdown min-w-0 font-sans ${SIZE_CLASS[size]} ${className ?? ""}`}
           components={MARKDOWN_COMPONENTS}
           controls={false}
           isAnimating={!!streaming || shown.length < source.length}
@@ -437,29 +395,19 @@ function MermaidBlock({
 
   if (incomplete || failed) {
     return (
-      <div className="markdown-code-shell">
-        <span className="markdown-code-icon" aria-hidden="true">
-          <FileTypeIcon name="diagram.mmd" isDir={false} />
-        </span>
-        <CodeBlock
-          code={code}
-          incomplete={incomplete}
-          language="mermaid"
-          lineNumbers={false}
-        />
-      </div>
+      <CodeBlock code={code} incomplete={incomplete} language="mermaid" />
     );
   }
 
   if (!svg) {
     return (
-      <div className="h-32 motion-safe:animate-pulse rounded-[10px] border border-content/10 bg-content/6" />
+      <div className="my-4 h-32 motion-safe:animate-pulse rounded-lg border border-border bg-card" />
     );
   }
 
   return (
     <div
-      className="mermaid-block overflow-x-auto rounded-[10px] border border-content/10 bg-content/6 p-3"
+      className="mermaid-block my-4 overflow-x-auto rounded-lg border border-border bg-card p-3"
       data-streamdown="mermaid-block"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
@@ -504,7 +452,6 @@ function parseCodeFence(
 ): {
   language: string;
   startLine?: number;
-  fileName?: string;
   filePath?: string;
 } {
   const raw = className?.match(/\blanguage-([^\s]+)/)?.[1] ?? "";
@@ -518,7 +465,6 @@ function parseCodeFence(
     return {
       language: languageFromFileName(fileName),
       startLine: Number(citation[1]),
-      fileName,
       filePath,
     };
   }
@@ -528,7 +474,6 @@ function parseCodeFence(
     return {
       language: languageFromFileName(fileName),
       startLine: metaStartLine,
-      fileName,
       filePath: raw,
     };
   }
@@ -544,14 +489,21 @@ function MarkdownCodePath({ path }: { path: string }) {
     return <span className="markdown-code-path">{path}</span>;
   }
   return (
-    <button
-      type="button"
-      className="markdown-code-path markdown-code-path-link"
-      title={file.path}
-      onClick={() => openAt(onOpenFile, file, threadHost)}
-    >
-      {path}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="link"
+            size="xs"
+            className="markdown-code-path h-auto max-w-full justify-start px-0 font-normal text-muted-foreground hover:text-foreground"
+            onClick={() => openAt(onOpenFile, file, threadHost)}
+          />
+        }
+      >
+        <span className="truncate">{path}</span>
+      </TooltipTrigger>
+      <TooltipContent>{file.path}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -563,11 +515,6 @@ function languageFromFileName(fileName: string): string {
     ? lower.slice(lower.lastIndexOf(".") + 1)
     : lower;
   return LANGUAGE_FROM_EXT[ext] ?? ext;
-}
-
-function fileNameForLanguage(language: string): string {
-  const key = language.toLowerCase();
-  return LANGUAGE_FILE_NAMES[key] ?? `code.${key}`;
 }
 
 function inlineFileName(value: string): string | undefined {
