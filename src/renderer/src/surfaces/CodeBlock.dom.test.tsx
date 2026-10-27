@@ -10,6 +10,7 @@ const copyText = vi.fn((_: string) => Promise.resolve());
 vi.mock("../lib/clipboard", () => ({ copyText: (text: string) => copyText(text) }));
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
 
+import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 import { CodeBlock } from "./CodeBlock";
 
 afterEach(() => {
@@ -36,6 +37,10 @@ describe("CodeBlock", () => {
   });
 
   it("copies the code without its trailing newline", async () => {
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
     const view = render(<CodeBlock code={"const a = 1;\n"} language="ts" />);
     fireEvent.pointerEnter(view.container.firstElementChild!);
     const button = screen.getByRole("button", { name: "Copy code" });
