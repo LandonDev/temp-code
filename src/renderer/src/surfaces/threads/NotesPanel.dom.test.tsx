@@ -35,9 +35,16 @@ vi.mock("../../lib/connection", () => {
 });
 // The markdown renderer pulls the code-block stack; the panel's contract is what it hands over.
 vi.mock("../AgentMarkdown", () => ({
-  AgentMarkdown: ({ text }: { text: string }) => <div data-testid="md">{text}</div>,
+  AgentMarkdown: ({ text, size }: { text: string; size?: string }) => (
+    <div data-testid="md" data-size={size}>
+      {text}
+    </div>
+  ),
   MarkdownSourceHighlight: ({ text }: { text: string }) => <span>{text}</span>,
 }));
+
+// Base UI's scroll area asks for running animations; jsdom has none.
+if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
 import { resetNotesStore } from "../../lib/threadNotes";
 import type { Session } from "../../lib/session";
@@ -64,7 +71,8 @@ describe("NotesBody", () => {
     render(<NotesBody session={session} />);
     await flush();
     expect(screen.getByTestId("md").textContent).toContain("Ship the notes panel.");
-    expect(screen.getByText(/updated 2m/)).toBeTruthy();
+    expect(screen.getByText("Updated 2m ago")).toBeTruthy();
+    expect(screen.getByTestId("md").dataset.size).toBe("compact");
     act(() => push({ push: "notes", sessionId: "s1", doc: { text: "## Goal\n\nShipped.\n", updatedAt: Date.now(), path: "/p/notes.md" } }));
     expect(screen.getByTestId("md").textContent).toContain("Shipped.");
   });
@@ -76,7 +84,7 @@ describe("NotesBody", () => {
     const field = screen.getByLabelText("Notes source") as HTMLTextAreaElement;
     expect(field.value).toContain("## State\n\n- panel in flight");
     fireEvent.change(field, { target: { value: "## Goal\n\nShip.\n\n## State\n\n- panel done\n" } });
-    fireEvent.click(screen.getByRole("button", { name: "Done editing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await flush();
     expect(request).toHaveBeenCalledWith("session.notes.set", { sessionId: "s1", text: "## Goal\n\nShip.\n\n## State\n\n- panel done\n" });
     expect(screen.getByTestId("md").textContent).toContain("panel done");
@@ -90,7 +98,7 @@ describe("NotesBody", () => {
     fireEvent.change(field, { target: { value: "## Goal\n\nmine\n" } });
     act(() => push({ push: "notes", sessionId: "s1", doc: { text: "## Goal\n\ntheirs\n", updatedAt: Date.now(), path: "/p/notes.md" } }));
     expect(field.value).toBe("## Goal\n\nmine\n");
-    expect(screen.getByText(/updated the notes while you edited/)).toBeTruthy();
+    expect(screen.getByText("The thread updated the notes")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Load theirs" }));
     expect(field.value).toBe("## Goal\n\ntheirs\n");
   });
@@ -116,10 +124,41 @@ describe("NotesBody", () => {
     expect(written).toContain("**State**\n\n- panel in flight");
   });
 
+  it("Escape in the editor is Done", async () => {
+    render(<NotesBody session={session} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Edit notes" }));
+    const field = screen.getByLabelText("Notes source") as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: "## Goal\n\nEscaped.\n" } });
+    fireEvent.keyDown(field, { key: "Escape" });
+    await flush();
+    expect(screen.queryByLabelText("Notes source")).toBeNull();
+    expect(request).toHaveBeenCalledWith("session.notes.set", { sessionId: "s1", text: "## Goal\n\nEscaped.\n" });
+  });
+
+  it("a failed save says so in red", async () => {
+    render(<NotesBody session={session} />);
+    await flush();
+    request.mockImplementationOnce(() => Promise.reject(new Error("offline")));
+    fireEvent.click(screen.getByRole("button", { name: "Edit notes" }));
+    fireEvent.change(screen.getByLabelText("Notes source"), { target: { value: "## Goal\n\nlost?\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await flush();
+    expect(screen.getByText("Not saved").className).toContain("text-destructive");
+  });
+
+  it("loading shows skeleton lines, not words", () => {
+    request.mockImplementationOnce(() => new Promise(() => {}));
+    render(<NotesBody session={session} />);
+    expect(screen.getByLabelText("Loading notes").getAttribute("aria-busy")).toBe("true");
+    expect(screen.queryByRole("button", { name: "Edit notes" })).toBeNull();
+  });
+
   it("an empty thread offers to start the notes", async () => {
     request.mockImplementationOnce(() => Promise.resolve({ text: "", updatedAt: null, path: null }));
     render(<NotesBody session={session} />);
     await flush();
+    expect(screen.getByText("No notes yet")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Start the notes" }));
     const field = screen.getByLabelText("Notes source") as HTMLTextAreaElement;
     expect(field.value).toBe("## Goal\n\n## Decisions\n\n## State\n\n## Pointers\n\n## Open questions\n");
