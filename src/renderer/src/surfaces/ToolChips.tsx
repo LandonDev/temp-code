@@ -1,4 +1,5 @@
 import { AddonMark } from "../chrome/AddonMark";
+import { Button } from "../components/ui/button";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { addonTitle } from "../lib/addonNames";
 import { openUrl } from "../lib/native";
@@ -12,8 +13,8 @@ import { agentProviderOf } from "./toolMarks";
 /** The connector's brand in place of the tool icon. */
 export function ConnectorMark({ app, className = "" }: { app: string; className?: string }) {
   return (
-    <span className={`grid size-3.5 shrink-0 place-items-center ${className}`} title={addonTitle(app)}>
-      <AddonMark command={{ name: app, source: "mcp" }} size={13} colored={false} className="text-content/50" />
+    <span className={`grid size-3.5 shrink-0 place-items-center ${className}`} aria-label={addonTitle(app)}>
+      <AddonMark command={{ name: app, source: "mcp" }} size={13} colored={false} className="text-muted-foreground" />
     </span>
   );
 }
@@ -31,7 +32,7 @@ export function SubagentMark({ block, className = "" }: { block: Block; classNam
 
 export function ProviderMark({ harness, className = "" }: { harness: HarnessId; className?: string }) {
   return (
-    <span className={`grid size-3.5 shrink-0 place-items-center text-content/50 ${className}`}>
+    <span className={`grid size-3.5 shrink-0 place-items-center text-muted-foreground ${className}`}>
       <HarnessIcon harness={asHarness(harness)} className="size-3" />
     </span>
   );
@@ -41,28 +42,27 @@ export function ProviderMark({ harness, className = "" }: { harness: HarnessId; 
 export function SubagentSteps({ count }: { count?: number }) {
   if (!count) return null;
   return (
-    <span className="shrink-0 tabular-nums font-sans text-[11px] text-content/40">
+    <span className="shrink-0 font-sans text-xs tabular-nums text-muted-foreground">
       {count} {count === 1 ? "step" : "steps"}
     </span>
   );
 }
 
-/** A connector's grant expired: the chip opens the page that renews it. */
+/** A connector's grant expired: the button opens the page that renews it. */
 export function ReconnectChip({ reauth }: { reauth: { app: string; url: string } }) {
-  const title = addonTitle(reauth.app);
   return (
-    <button
-      type="button"
-      title={`Reconnect ${title} — opens its sign-in page`}
-      className="pressable inline-flex shrink-0 items-center gap-1 rounded-md bg-warning/10 px-1.5 py-0.5 font-sans text-[11px] text-warning hover:bg-warning/20"
+    <Button
+      variant="ghost"
+      size="xs"
+      className="text-warning hover:text-warning"
       onClick={(event) => {
         event.stopPropagation();
         void openUrl(reauth.url);
       }}
     >
       <AddonMark command={{ name: reauth.app, source: "mcp" }} size={11} colored={false} />
-      Reconnect {title}
-    </button>
+      Reconnect {addonTitle(reauth.app)}
+    </Button>
   );
 }
 
@@ -70,30 +70,6 @@ export function ReconnectChip({ reauth }: { reauth: { app: string; url: string }
 export function reauthOf(blocks: Block[]): { app: string; url: string } | undefined {
   for (const b of blocks) if (b.tool?.reauth) return b.tool.reauth;
   return undefined;
-}
-
-/** An addon call's face: the product's proper name, then what it did. */
-export function ConnectorSummary({
-  display,
-  chip = false,
-  failed = false,
-}: {
-  display: { app?: string; action?: string };
-  chip?: boolean;
-  failed?: boolean;
-}) {
-  const appTone = failed ? "text-danger" : "text-content/50";
-  const actionTone = failed ? "text-danger" : chip ? "text-content/70" : "text-content";
-  return (
-    <span className="flex min-w-0 flex-1 items-center gap-1.5 font-sans text-sm">
-      {display.app ? <span className={`shrink-0 ${appTone}`}>{addonTitle(display.app)}</span> : null}
-      {display.action ? (
-        <span className={`min-w-0 truncate ${actionTone}`} title={display.action}>
-          {display.action}
-        </span>
-      ) : null}
-    </span>
-  );
 }
 
 /** A `/command` in the user's words, as the addon it names. */

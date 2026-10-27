@@ -1,38 +1,22 @@
 // A8 (action rows): one action row in a group.
-import { ChevronRight, CircleDashed, Minus, X } from "../../chrome/icons";
+import { Minus } from "../../chrome/icons";
 import { useState } from "react";
-import { QuestionCard } from "../QuestionCard";
-import type { ApprovalDecision } from "../../lib/harness";
-import { isEditTool } from "../../lib/harness/preview";
 import { type Block } from "../../lib/session";
-import {
-  ConnectorMark,
-  ConnectorSummary,
-  ReconnectChip,
-  SubagentMark,
-  SubagentSteps,
-} from "../ToolChips";
-import { isAgentCall, mcpServerOf } from "../toolMarks";
 import { AgentMarkdown } from "../AgentMarkdown";
 import type { OpenFileFn } from "../../lib/search";
 import { EditRow } from "../EditRow";
-import { CallPortLink } from "../CallPortLink";
-import { ToolDetails } from "../ToolDetails";
 import { splitEditCards } from "../editCards";
-import { AppToolSummary, useAppView } from "../AppToolSummary";
 import { isEditBlock } from "../editModel";
 import {
   isThinkingBlock,
   isProseBlock,
   needsApproval,
   proseSummary,
-  toolCallLabel,
-  toolCallState,
-  type ToolCallState,
 } from "../transcriptActivity";
 import { ActivityThinkingRow } from "./ThinkingRow";
 import { ApprovalControls } from "./Approval";
-import { ToolCallSummary } from "./ToolCall";
+import { ActionRow } from "./ActionRow";
+import type { ApprovalHandler } from "./types";
 
 /** One activity row: py-1 around a 20px line. */
 export const ACTIVITY_ROW_HEIGHT = "h-7";
@@ -48,7 +32,6 @@ export function ActivityRow({
   block,
   cwd,
   expanded = false,
-  live = false,
   variant = "stack",
   endTs,
   onApproval,
@@ -58,11 +41,12 @@ export function ActivityRow({
   block: Block;
   cwd?: string;
   expanded?: boolean;
+  /** The turn is live; a row speaks in its own call's tense either way. */
   live?: boolean;
   variant?: "stack" | "phase";
   /** A thought's settled time (its turn item's end), for "Thought for 4s". */
   endTs?: number;
-  onApproval?: (requestId: string | number, decision: ApprovalDecision) => void;
+  onApproval?: ApprovalHandler;
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path: string) => void;
 }) {
@@ -114,31 +98,13 @@ export function ActivityRow({
             <EditRow block={card} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
           </div>
         ))}
-        {internal ? (
-          <ActivityToolRow
-            block={internal}
-            cwd={cwd}
-            live={live}
-            bare={railed}
-            onOpenFile={onOpenFile}
-          />
-        ) : null}
+        {internal ? <ActionRow block={internal} cwd={cwd} onOpenFile={onOpenFile} /> : null}
         {/* A decided board leaves its one-line verdict under the edit it judged. */}
         <ApprovalControls block={block} onApproval={onApproval} />
       </>
     );
   }
-  return (
-    <ActivityToolRow
-      block={block}
-      cwd={cwd}
-      live={live}
-      bare={railed}
-      onApproval={onApproval}
-      onOpenFile={onOpenFile}
-      onOpenDiff={onOpenDiff}
-    />
-  );
+  return <ActionRow block={block} cwd={cwd} onApproval={onApproval} onOpenFile={onOpenFile} />;
 }
 
 /**
@@ -199,130 +165,4 @@ export function ActivityNoteRow({
       ) : null}
     </div>
   );
-}
-
-export function ActivityToolRow({
-  block,
-  cwd,
-  live = false,
-  bare = false,
-  onApproval,
-  onOpenFile,
-  onOpenDiff,
-}: {
-  block: Block;
-  cwd?: string;
-  live?: boolean;
-  bare?: boolean;
-  onApproval?: (requestId: string | number, decision: ApprovalDecision) => void;
-  onOpenFile?: OpenFileFn;
-  onOpenDiff?: (path: string) => void;
-}) {
-  const label = toolCallLabel(block, cwd);
-  const state = toolCallState(block);
-  const pending = needsApproval(block);
-  const openFile = isEditTool(
-    block.tool?.kind,
-    block.text || block.tool?.title,
-    block.tool?.preview,
-  )
-    ? (onOpenDiff ?? onOpenFile)
-    : onOpenFile;
-  // A call we watched start rises in; rows already settled at mount sit still.
-  const [fresh] = useState(live && state === "pending");
-  const [open, setOpen] = useState(false);
-  const app = useAppView(block);
-  // Every call opens onto its details; the body mounts only once asked for.
-  const expandable = !!block.tool && !pending && !block.question;
-  // The app's own tools (mcp__app__*) are the app itself, not a connector —
-  // no brand reads on them. Everything else that went through MCP gets the
-  // connector's mark: a real logo where we have one, a plug glyph otherwise.
-  const mcpServer = mcpServerOf(block.tool?.name ?? "");
-  const connector = mcpServer && mcpServer !== "app" ? mcpServer : null;
-
-  return (
-    <div data-block={block.id} className={`flex min-w-0 flex-col ${fresh ? "z-fade-in" : ""}`}>
-      <div
-        aria-label={`Tool call: ${label}`}
-        className={`group/tool flex min-w-0 items-center gap-1.5 py-1 ${expandable ? "cursor-pointer" : ""}`}
-        onClick={expandable ? () => setOpen((value) => !value) : undefined}
-      >
-        {bare ? null : state === "pending" ? (
-          <ActivityToolIcon state={state} live={live} />
-        ) : block.tool?.display?.app ? (
-          <ConnectorMark app={block.tool.display.app} />
-        ) : isAgentCall(block) ? (
-          <SubagentMark block={block} />
-        ) : connector ? (
-          <ConnectorMark app={connector} />
-        ) : (
-          <ActivityToolIcon state={state} live={live} />
-        )}
-        {block.tool?.display?.app ? (
-          <ConnectorSummary display={block.tool.display} chip={bare} failed={state === "rejected"} />
-        ) : app ? (
-          <AppToolSummary view={app} chip={bare} failed={state === "rejected"} agent={isAgentCall(block)} />
-        ) : (
-          <ToolCallSummary
-            label={label}
-            preview={block.tool?.preview}
-            cwd={cwd}
-            chip={bare}
-            failed={state === "rejected"}
-            onOpenFile={openFile}
-          />
-        )}
-        <SubagentSteps count={block.tool?.subCount} />
-        <CallPortLink callId={block.tool?.callId} />
-        {block.tool?.reauth ? <ReconnectChip reauth={block.tool.reauth} /> : null}
-        {pending || block.question ? null : <ToolCallStatusIcon state={state} />}
-        {expandable ? <ToolDisclosure open={open} /> : null}
-      </div>
-      {open && expandable ? <ToolDetails block={block} /> : null}
-      {/* Pending: the board. Decided: its one-line verdict. Neither: nothing. */}
-      <ApprovalControls block={block} onApproval={onApproval} />
-      {block.question ? <QuestionCard question={block.question} /> : null}
-    </div>
-  );
-}
-
-/** The chevron that opens a row onto its details: quiet until hovered. */
-export function ToolDisclosure({ open }: { open: boolean }) {
-  return (
-    <ChevronRight
-      className={`ml-auto size-3.5 shrink-0 text-content/40 transition-transform duration-150 ${
-        open ? "rotate-90" : "opacity-0 group-hover/tool:opacity-100"
-      }`}
-      strokeWidth={1.75}
-    />
-  );
-}
-
-export function ActivityToolIcon({
-  state,
-  live = false,
-}: {
-  state: ToolCallState;
-  live?: boolean;
-}) {
-  if (state === "pending") {
-    return (
-      <CircleDashed
-        className={`size-3.5 shrink-0 text-content/40 ${live ? "zen-tool-spin" : ""}`}
-        strokeWidth={1.75}
-      />
-    );
-  }
-
-  return (
-    <Minus className="size-3.5 shrink-0 text-content/50" strokeWidth={1.75} />
-  );
-}
-
-/** Failure stays marked. Running and success do not get a trailing icon. */
-export function ToolCallStatusIcon({ state }: { state: ToolCallState }) {
-  if (state === "rejected") {
-    return <X className="size-3.5 shrink-0 text-danger" strokeWidth={2} />;
-  }
-  return null;
 }
