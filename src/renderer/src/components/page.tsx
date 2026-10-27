@@ -58,7 +58,9 @@ function PageSection({
   return (
     <section data-slot="page-section" aria-labelledby={title ? id : undefined} className={cn("min-w-0", className)}>
       {hasHead ? (
-        <div className="flex min-h-7 items-center gap-3">
+        // A 20px line, so the heading sits closer to its rows than to the
+        // section above; a small action button overhangs it evenly.
+        <div className="flex h-5 items-center gap-3 [&>[data-slot=button]]:-my-1">
           {title ? (
             <h2 id={id} className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
               {title}
