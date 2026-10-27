@@ -109,6 +109,20 @@ describe('ui-preview', () => {
     }
   })
 
+  it('passes a fixture Set and element through untouched', () => {
+    const { dir, name, target } = temporaryComponent((name) => `
+      export function ${name}({ ids, icon }) {
+        return <p>{[...ids].join(',')}{icon}</p>
+      }
+    `)
+    writeFileSync(join(dir, 'sample.fixtures.tsx'), `export default [
+      { name: 'Kept', props: { ids: new Set(['a', 'b']), icon: <b>i</b> } }
+    ]`)
+    const result = run([target], dir)
+    expect(result.status, result.stderr).toBe(0)
+    expect(output(name).dark).toContain('<p>a,b<b>i</b></p>')
+  })
+
   it('embeds all existing built styles without changing theme selectors', () => {
     const { dir, name, target } = temporaryComponent((name) => `export function ${name}() { return <span>Styled</span> }`)
     const assets = join(dir, 'out/renderer/assets')

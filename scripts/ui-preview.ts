@@ -30,10 +30,11 @@ type Props = Record<string, unknown>
 type Fixture = { name: string; props: Props }
 const noop = (): void => {}
 
+// Only plain objects and arrays are walked: a fixture's Set, Map or element passes as it is.
 function stubCallbacks(value: unknown): unknown {
   if (value === 'fn') return noop
   if (Array.isArray(value)) return value.map(stubCallbacks)
-  if (value && typeof value === 'object') {
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype && !('$$typeof' in value)) {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, stubCallbacks(item)]))
   }
   return value

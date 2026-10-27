@@ -1,35 +1,37 @@
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import type { ThreadRules } from "@server/shared/rules";
-import { DUR, EASE_OUT, FADE_OUT, SPRING_LAYOUT } from "../lib/ease";
-import { GLIDE_MAX_ROWS, useListGlide } from "../lib/listGlide";
+import { Button } from "../components/ui/button";
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/ui/context-menu";
+import { Input } from "../components/ui/input";
+import { STATUS_WORD, StatusMark, threadStateOf, type ThreadState } from "../components/ui/status";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
+import { pendingApprovalForSession } from "../lib/approvalToast";
 import { HARNESSES, sessionDisplayTitle, type HarnessId } from "../lib/session";
+import { sessionStore } from "../lib/tcserver/store";
 import type { ThreadType } from "../lib/tcserver/types";
 import { holdDepartures, type HeaderChip, type HeaderModel } from "../lib/threadHeaderModel";
 import type { ReadyMap, StripThread } from "../lib/threadStripModel";
-import { Tabs, TabsTrigger } from "../motion";
-import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, timeAgo } from "../surfaces/threads/bits";
-import { HarnessIcon } from "./HarnessIcon";
-import { Archive, ArchiveRestore, Search } from "./icons";
-import { Popover } from "./Popover";
-import { TabIndicator, type TabThread } from "./TabIndicator";
+import type { ActivityKind } from "../lib/session";
+import { THREAD_GLYPHS } from "../surfaces/threads/bits";
 
 /**
- * temp-code's ThreadStrip on MonoCode's title bar: the selected project's
- * root threads as soft chips, live ones on the top row, the dormant shelf a
- * line below, each row freshest first. A chip is a thread, open in a tab
- * or not; nothing here closes one. Selection commits on pointer-down and
- * the active wash swaps in 120 ms; chips fade in and slide closed on
- * archive. Right-click for the thread's menu, double-click to rename, the
- * shelf at the row's end brings archived threads back. A project switch
- * swaps every chip: that render animates nothing and measures nothing, and
- * the rows start gliding again once they have settled.
+ * The deck title bar's thread strip: the selected project's live root
+ * threads as one row of chips, in a stable order like a browser's tabs (the
+ * thread on screen always has its chip; settled ones are "Recent threads"
+ * in the thread menu). A chip is the type glyph, the title, "Master" when
+ * pinned and the status glyph (none for a settled thread); the hover label
+ * says the state in words.
+ * A primary press selects, a right-click opens the thread's menu at the
+ * pointer, a double-click renames. List rows take no motion (DESIGN.md), so
+ * nothing here animates: a chip that leaves while the pointer is over the
+ * strip holds its place until the pointer goes.
  */
 
 /** What a chip needs from a thread; a SessionMeta satisfies it. */
@@ -38,17 +40,16 @@ export type ChipThread = StripThread & {
   threadType: ThreadType | null;
   provider?: string;
   busySince?: number | null;
-  frozenActiveElapsed?: number | null;
-  treeFrozenActiveElapsed?: number | null;
   activity?: string | null;
-  activityKind?: TabThread["activityKind"];
+  activityKind?: ActivityKind | null;
   tasks?: { done: number; total: number } | null;
   threadRules?: ThreadRules | null;
+  failure?: { summary: string } | null;
 };
 
 export type StripChip = HeaderChip<ChipThread>;
 
-/** An archived thread of the selected project, recoverable from the shelf. */
+/** An archived thread of the selected project, recoverable from the thread menu. */
 export type ArchivedThread = {
   id: string;
   title: string;
@@ -61,7 +62,10 @@ type ChipEvents = {
   renamingId: string | null;
   onStartRename: (id: string) => void;
   onRename: (id: string, title: string) => void;
-  onContextMenu: (chip: StripChip, event: ReactMouseEvent<HTMLDivElement>) => void;
+  /** The right-click, before the menu opens: load what its rows need. */
+  onContextMenu: (chip: StripChip, event: ReactMouseEvent<HTMLElement>) => void;
+  /** The thread's menu rows, rendered inside the chip's ContextMenu. */
+  menu?: (chip: StripChip, close: () => void) => ReactNode;
   activeRef: (el: HTMLDivElement | null) => void;
   /** The threads pinned as their project's master: the chip reads "Master" after the title. */
   masterIds?: ReadonlySet<string>;
@@ -75,17 +79,9 @@ function wheelToX(event: ReactWheelEvent<HTMLDivElement>): void {
   }
 }
 
-const TONE_WASH: Record<NonNullable<StripChip["tone"]>, string> = {
-  warning: "bg-warning/10 hover:bg-warning/15",
-  danger: "bg-danger/10 hover:bg-danger/15",
-  info: "bg-info/10 hover:bg-info/15",
-};
-
 export function ThreadHeaderStrip({
   model,
   onSelect,
-  archived,
-  onRestore,
   stripRef,
   trailing,
   end,
@@ -93,77 +89,47 @@ export function ThreadHeaderStrip({
 }: ChipEvents & {
   model: HeaderModel<ChipThread>;
   onSelect: (id: string) => void;
-  archived: ArchivedThread[];
-  onRestore: (sessionId: string) => void;
-  /** The live row's scroller, for the title bar's overflow chevrons. */
+  /** The row's scroller, for the title bar's overflow chevrons. */
   stripRef: (el: HTMLDivElement | null) => void;
-  /** Sits after the live chips: the new-thread chooser. */
+  /** Sits after the chips: the new-thread chooser. */
   trailing?: ReactNode;
-  /** The row's far end, before the archived shelf: cost, Pause all, rail. */
+  /** The title bar's right end: the thread menu and the panel toggle. */
   end?: ReactNode;
 }) {
-  const reduce = useReducedMotion();
-  const activeId = model.activeId ?? "";
-  const live = useHeldChips(model.live);
-  const { generation, glide } = useListGlide(
-    live.chips.map((c) => c.id),
-  );
-  const row = (chips: StripChip[], shelf: boolean) => (
-    <AnimatePresence key={generation} initial={false} mode="popLayout">
-      {chips.map((chip) => (
-        <motion.div
-          key={chip.id}
-          layout={glide}
-          // Only a chip's own row moves it; a re-render that leaves the row
-          // alone takes no snapshot.
-          layoutDependency={rowDependency(chips)}
-          initial={reduce ? false : { opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={reduce ? undefined : { opacity: 0 }}
-          transition={{ duration: DUR.fast, ease: EASE_OUT, layout: SPRING_LAYOUT }}
-          className="shrink-0"
-          data-tauri-drag-region="false"
-          ref={chip.id === activeId ? events.activeRef : undefined}
-          onDoubleClick={() => events.onStartRename(chip.id)}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            events.onContextMenu(chip, event);
-          }}
-        >
-          <Chip chip={chip} shelf={shelf} active={chip.id === activeId} {...events} />
-        </motion.div>
-      ))}
-    </AnimatePresence>
-  );
-
+  const activeId = model.activeId;
+  const held = useHeldChips(model.live);
+  const focusable = held.chips.some((c) => c.id === activeId) ? activeId : held.chips[0]?.id;
   return (
-    <Tabs
-      variant="soft"
-      value={activeId}
-      onValueChange={onSelect}
-      glide={glide}
-      generation={generation}
-      className="flex min-w-0 flex-1 flex-col"
-    >
-      <div className="flex h-10 min-w-0 items-center" onPointerEnter={live.hold} onPointerLeave={live.release}>
-        <motion.div
-          layoutScroll
+    <div className="flex min-w-0 flex-1 items-center">
+      <TooltipProvider>
+        <div
           ref={stripRef}
           onWheel={wheelToX}
+          onPointerEnter={held.hold}
+          onPointerLeave={held.release}
           role="tablist"
+          aria-label="Threads"
+          aria-orientation="horizontal"
           data-strip="live"
           data-tauri-drag-region="false"
-          className="scrollbar-none flex h-full min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5"
+          className="scrollbar-none flex h-10 min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5"
         >
-          {row(live.chips, false)}
+          {held.chips.map((chip) => (
+            <Chip
+              key={chip.id}
+              chip={chip}
+              active={chip.id === activeId}
+              focusable={chip.id === focusable}
+              onSelect={onSelect}
+              {...events}
+            />
+          ))}
           {trailing}
-        </motion.div>
-        <div className="min-w-1.5 flex-1" />
-        {end}
-        <ArchivedShelf archived={archived} onRestore={onRestore} />
-      </div>
-    </Tabs>
+        </div>
+      </TooltipProvider>
+      <div className="h-full min-w-1.5 flex-1" />
+      {end}
+    </div>
   );
 }
 
@@ -175,22 +141,19 @@ export function ThreadHeaderStrip({
 function useHeldChips(next: StripChip[]): { chips: StripChip[]; hold: () => void; release: () => void } {
   const [holding, setHolding] = useState(false);
   const shown = useRef<StripChip[]>(next);
-  const byId = new Map(shown.current.map((chip) => [chip.id, chip]));
-  for (const chip of next) byId.set(chip.id, chip);
   const ids = holdDepartures(
     shown.current.map((chip) => chip.id),
     next.map((chip) => chip.id),
     holding,
   );
-  const chips = ids.length === next.length ? next : ids.map((id) => byId.get(id)!);
+  let chips = next;
+  if (ids.length !== next.length) {
+    const byId = new Map(shown.current.map((chip) => [chip.id, chip]));
+    for (const chip of next) byId.set(chip.id, chip);
+    chips = ids.map((id) => byId.get(id)!);
+  }
   shown.current = chips;
   return { chips, hold: () => setHolding(true), release: () => setHolding(false) };
-}
-
-function rowDependency(chips: StripChip[]): string {
-  let dep = "";
-  for (const chip of chips) dep += chip.id + ":" + chip.thread.title + "|";
-  return dep;
 }
 
 export function chipTitle(chip: StripChip): string {
@@ -202,59 +165,49 @@ export function chipTitle(chip: StripChip): string {
   return shown.trim() || "New session";
 }
 
-function chipTooltip(chip: StripChip): string {
-  const type = chip.thread.threadType;
-  const kind = type ? THREAD_LABELS[type] : "Thread";
-  return `${chipTitle(chip)} · ${kind}`;
+/** States a chip leaves unmarked: a settled thread says nothing at rest
+ *  (its hover label still names the state). */
+const QUIET: ReadonlySet<ThreadState> = new Set(["idle", "done"]);
+
+/** The chip's state in the one vocabulary (components/ui/status.tsx). */
+export function chipState(chip: StripChip, planReady: ReadyMap): ThreadState {
+  return threadStateOf(chip.status, { planReady: !!planReady[chip.id] });
 }
 
-function tabThreadOf(chip: StripChip, planReady: ReadyMap, active: boolean): TabThread {
+/** What the state is about, for the hover label's second line: the tally, the
+ *  activity ("typecheck", "approve Bash") or the failure's verdict. */
+export function chipDetail(chip: StripChip, state: ThreadState, waitingOn?: string | null): string | null {
   const t = chip.thread;
-  return {
-    type: t.threadType,
-    status: chip.status,
-    unread: !active && chip.unread,
-    since: t.busySince ?? t.updatedAt,
-    activity: t.activity ?? null,
-    activityKind: t.activityKind ?? null,
-    tasks: t.tasks ? { done: t.tasks.done, total: t.tasks.total } : null,
-    planReady: !!planReady[chip.id],
-    frozenElapsed: t.treeFrozenActiveElapsed ?? t.frozenActiveElapsed ?? null,
-  };
+  if (state === "failed") return t.failure?.summary ?? null;
+  if (state === "waiting" && waitingOn) return waitingOn;
+  if (state === "idle" || state === "done" || state === "plan-ready") return null;
+  if (t.tasks && state === "working") return `${t.tasks.done}/${t.tasks.total}`;
+  const activity = t.activity?.trim();
+  if (!activity) return null;
+  // The host's queued line repeats the word ("Queued · 3rd in line").
+  const word = STATUS_WORD[state];
+  return activity.startsWith(word) ? activity.slice(word.length).replace(/^[\s·:—-]+/, "") || null : activity;
 }
 
-function ChipGlyph({ chip, dimmed, size }: { chip: StripChip; dimmed: boolean; size: string }) {
-  const type = chip.thread.threadType;
-  const fade = dimmed ? "opacity-60 grayscale" : "opacity-80";
-  if (type && type !== "chat") {
-    const Glyph = THREAD_GLYPHS[type];
-    return <Glyph className={`${size} shrink-0 ${THREAD_TINTS[type]} ${fade}`} strokeWidth={1.75} />;
-  }
-  const provider = chip.thread.provider;
-  if (provider && (HARNESSES as string[]).includes(provider)) {
-    return (
-      <span className={`flex shrink-0 items-center ${dimmed ? "opacity-60 grayscale" : ""}`}>
-        <HarnessIcon harness={provider as HarnessId} className={size} />
-      </span>
-    );
-  }
-  const Glyph = THREAD_GLYPHS.chat;
-  return <Glyph className={`${size} shrink-0 ${THREAD_TINTS.chat} ${fade}`} strokeWidth={1.75} />;
+/** The roving focus along the row: arrows, Home and End move between chips. */
+function moveFocus(event: ReactKeyboardEvent<HTMLButtonElement>): void {
+  const keys: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, Home: -Infinity, End: Infinity };
+  const step = keys[event.key];
+  if (step === undefined) return;
+  const tabs = [...(event.currentTarget.closest('[role="tablist"]')?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])];
+  const at = tabs.indexOf(event.currentTarget);
+  const next = Number.isFinite(step) ? tabs[(at + step + tabs.length) % tabs.length] : step < 0 ? tabs[0] : tabs.at(-1);
+  if (!next) return;
+  event.preventDefault();
+  next.focus();
 }
 
-function RenameInput({
-  chip,
-  className,
-  onRename,
-}: {
-  chip: StripChip;
-  className: string;
-  onRename: (id: string, title: string) => void;
-}) {
+function RenameInput({ chip, onRename }: { chip: StripChip; onRename: (id: string, title: string) => void }) {
   const title = chip.thread.title;
   return (
-    <input
+    <Input
       autoFocus
+      aria-label="Thread title"
       defaultValue={title}
       data-tauri-drag-region="false"
       onFocus={(event) => event.target.select()}
@@ -267,170 +220,80 @@ function RenameInput({
         }
       }}
       onBlur={(event) => onRename(chip.id, event.target.value.trim())}
-      className={`rounded-md bg-content/10 text-content outline-none ${className}`}
+      className="h-7 w-44 shrink-0 px-3 text-[13px]"
     />
   );
 }
 
 function Chip({
   chip,
-  shelf,
   active,
+  focusable,
+  onSelect,
   ...events
-}: { chip: StripChip; shelf: boolean; active: boolean } & ChipEvents) {
-  if (events.renamingId === chip.id) {
-    return (
-      <RenameInput
-        chip={chip}
-        onRename={events.onRename}
-        className={shelf ? "h-5 w-36 px-1.5 text-[12px]" : "h-[26px] w-44 px-2.5 text-[13px]"}
-      />
-    );
-  }
-  const thread = tabThreadOf(chip, events.planReady, active);
-  const busy = chip.status === "running" || chip.status === "starting" || chip.status === "paused";
-  const tooltip = chipTooltip(chip);
+}: { chip: StripChip; active: boolean; focusable: boolean; onSelect: (id: string) => void } & ChipEvents) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  if (events.renamingId === chip.id) return <RenameInput chip={chip} onRename={events.onRename} />;
+  const state = chipState(chip, events.planReady);
+  // What a waiting thread waits on: its pending approval ("Bash: bun test"), when loaded here.
+  const session = state === "waiting" ? sessionStore.get(chip.id) : undefined;
+  const detail = chipDetail(chip, state, session ? pendingApprovalForSession(session)?.label : null);
+  const title = chipTitle(chip);
+  const unread = !active && chip.unread;
+  const Glyph = THREAD_GLYPHS[chip.thread.threadType ?? "chat"];
   return (
-    <span
-      title={tooltip}
-      className={`block rounded-md ${chip.tone ? TONE_WASH[chip.tone] : ""} ${
-        shelf && !active ? "opacity-70 hover:opacity-100" : ""
-      }`}
-    >
-      <TabsTrigger
-        value={chip.id}
-        className={
-          shelf
-            ? "h-5 max-w-36 min-w-0 justify-start gap-1 px-1.5 py-0 text-[12px] leading-none"
-            : "h-[26px] max-w-56 min-w-0 justify-start gap-1.5 px-2.5 py-0 text-[13px] leading-none"
-        }
+    <ContextMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <ContextMenuTrigger
+        ref={active ? events.activeRef : undefined}
+        className="shrink-0"
+        onContextMenu={(event) => events.onContextMenu(chip, event)}
+        onDoubleClick={() => events.onStartRename(chip.id)}
       >
-        <ChipGlyph chip={chip} dimmed={!active} size={shelf ? "size-3" : "size-[13px]"} />
-        <span
-          className={`min-w-0 truncate ${busy && !shelf ? "max-w-32" : ""} ${
-            thread.unread ? "font-medium text-content" : ""
-          }`}
-        >
-          {chipTitle(chip)}
-        </span>
-        {events.masterIds?.has(chip.id) ? (
-          <span className="shrink-0 text-content/45" data-master-word>
-            Master
-          </span>
-        ) : null}
-        <TabIndicator thread={thread} />
-      </TabsTrigger>
-    </span>
-  );
-}
-
-/** Recover archived threads: restore puts the chip back and opens it.
- *  Grows a search field once the list holds more than a screenful. */
-function ArchivedShelf({
-  archived,
-  onRestore,
-}: {
-  archived: ArchivedThread[];
-  onRestore: (sessionId: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const button = useRef<HTMLButtonElement | null>(null);
-  const reduce = useReducedMotion();
-  if (archived.length === 0) return null;
-
-  const q = query.trim().toLowerCase();
-  const shown = q ? archived.filter((t) => t.title.toLowerCase().includes(q)) : archived;
-  const close = () => {
-    setOpen(false);
-    setQuery("");
-  };
-  const restore = (id: string) => {
-    if (archived.length === 1) close();
-    onRestore(id);
-  };
-
-  return (
-    <>
-      <button
-        ref={button}
-        type="button"
-        title="Archived threads"
-        aria-label="Archived threads"
-        aria-expanded={open}
-        data-tauri-drag-region="false"
-        onClick={() => (open ? close() : setOpen(true))}
-        className={`mr-1.5 grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/5 hover:text-content ${
-          open ? "bg-content/10 text-content" : ""
-        }`}
-      >
-        <Archive className="size-3.5" strokeWidth={1.75} />
-      </button>
-      {open ? (
-        <Popover
-          anchor={button}
-          side="bottom"
-          align="end"
-          width={288}
-          className="flex flex-col p-1"
-          onDismiss={close}
-          ignore="[aria-label='Archived threads']"
-        >
-          <div className="px-2 pt-1.5 pb-1 text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase">
-            Archived · {archived.length}
-          </div>
-          {archived.length > 6 ? (
-            <div className="relative px-1 pb-1">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-3 -translate-y-[calc(50%+2px)] text-content/40" />
-              <input
-                autoFocus
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search…"
-                className="h-7 w-full rounded-md bg-content/5 pr-2 pl-7 text-[12px] text-content outline-none placeholder:text-content/40"
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                role="tab"
+                aria-selected={active}
+                tabIndex={focusable ? 0 : -1}
+                data-unread={unread || undefined}
+                onPointerDown={(event) => {
+                  // Only the primary button without Control selects: a right
+                  // press (or a Control-click on the Mac) is the chip's menu.
+                  if (event.button !== 0 || event.ctrlKey) return;
+                  if (!active) onSelect(chip.id);
+                }}
+                onClick={(event) => {
+                  // Pointer presses selected on down; this is Enter and Space.
+                  if (event.detail === 0 && !active) onSelect(chip.id);
+                }}
+                onKeyDown={moveFocus}
+                className="h-7 max-w-56 min-w-0 justify-start gap-2 rounded-md px-3 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent aria-selected:bg-muted aria-selected:text-foreground aria-selected:transition-none data-unread:font-medium data-unread:text-foreground"
               />
-            </div>
-          ) : null}
-          <div className="max-h-80 overflow-y-auto">
-            {shown.length === 0 ? (
-              <p className="px-2 py-3 text-center text-[11px] text-content/40">No matches.</p>
+            }
+          >
+            <Glyph className="size-3.5 shrink-0" strokeWidth={1.5} />
+            <span className="min-w-0 truncate">{title}</span>
+            {events.masterIds?.has(chip.id) ? (
+              <span className="shrink-0 font-normal text-muted-foreground" data-master-word>
+                Master
+              </span>
             ) : null}
-            <AnimatePresence initial={false}>
-              {shown.map((thread) => {
-                const Glyph = THREAD_GLYPHS[thread.type ?? "chat"];
-                return (
-                  <motion.button
-                    key={thread.id}
-                    type="button"
-                    layout={shown.length <= GLIDE_MAX_ROWS}
-                    exit={reduce ? undefined : FADE_OUT}
-                    transition={SPRING_LAYOUT}
-                    onClick={() => restore(thread.id)}
-                    className="group/arch flex w-full items-center gap-2.5 overflow-hidden rounded-lg px-2 py-1.5 text-left hover:bg-content/5"
-                  >
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-content/10">
-                      <Glyph
-                        className={`size-3.5 opacity-80 ${THREAD_TINTS[thread.type ?? "chat"]}`}
-                        strokeWidth={1.75}
-                      />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] text-content">
-                        {thread.title || "Untitled"}
-                      </span>
-                      <span className="block text-[11px] text-content/40">{timeAgo(thread.updatedAt)}</span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-1 text-[11px] text-content/50 opacity-0 transition-opacity group-hover/arch:opacity-100">
-                      <ArchiveRestore className="size-3.5" strokeWidth={1.75} />
-                      Restore
-                    </span>
-                  </motion.button>
-                );
-              })}
-            </AnimatePresence>
-          </div>
-        </Popover>
+            {QUIET.has(state) ? null : <StatusMark state={state} word={false} />}
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="flex-col items-start gap-0.5 text-left">
+            <span>{title}</span>
+            <span className="flex gap-2 font-normal text-background/70">
+              <span>{STATUS_WORD[state]}</span>
+              {detail ? <span className="min-w-0 truncate">{detail}</span> : null}
+            </span>
+          </TooltipContent>
+        </Tooltip>
+      </ContextMenuTrigger>
+      {menuOpen && events.menu ? (
+        <ContextMenuContent aria-label="Thread actions">{events.menu(chip, () => setMenuOpen(false))}</ContextMenuContent>
       ) : null}
-    </>
+    </ContextMenu>
   );
 }
