@@ -1,20 +1,25 @@
-import { invoke } from "./native";
 import { IS_MAC } from "./platform";
 
-const THEME_HUE_KEY = "monocode.themeHue";
-const THEME_SATURATION_KEY = "monocode.themeSaturation";
-const OPACITY_KEY = "monocode.sidebarOpacity";
 const OPEN_KEY = "monocode.sidebarOpen";
 const PROJECT_RAIL_OPEN_KEY = "monocode.projectRailOpen";
-const BODY_KEY = "monocode.bodyGlass";
-const GLASS_KEY = "monocode.glass";
 const SCHEME_KEY = "monocode.colorScheme";
 const SIDEBAR_TAB_ORDER_KEY = "monocode.sidebarTabOrder";
 const PROJECT_RAIL_WIDTH_KEY = "monocode.projectRailWidth";
-const SIDEBAR_LAYOUT_KEY = "monocode.sidebarLayout";
 const TRANSCRIPT_LAYOUT_KEY = "monocode.transcriptLayout";
 const TRANSCRIPT_ZEN_KEY = "monocode.transcriptZen";
 const TRANSCRIPT_ANCHOR_KEY = "monocode.transcriptAnchor";
+const EDITOR_FONT_SIZE_KEY = "monocode.editorFontSize";
+
+/** Keys of settings that are gone: the tint, Glass, sidebar opacity, main-pane
+ *  glass and the Classic layout. Boot clears them. */
+const RETIRED_KEYS = [
+  "monocode.themeHue",
+  "monocode.themeSaturation",
+  "monocode.sidebarOpacity",
+  "monocode.bodyGlass",
+  "monocode.glass",
+  "monocode.sidebarLayout",
+];
 
 export type ColorScheme = "dark" | "light";
 export type ThemePreference = ColorScheme | "system";
@@ -26,7 +31,8 @@ export const THEME_PREFERENCE_DEFAULT: ThemePreference = "dark";
 /** Fired on `window` whenever the color scheme flips (detail: ColorScheme). */
 export const SCHEME_CHANGE_EVENT = "monocode:schemechange";
 
-/** Fired on `window` whenever the sidebar layout flips (detail: SidebarLayout). */
+/** Fired on `window` whenever the sidebar layout flips (detail: SidebarLayout).
+ *  Nothing flips it since Classic left; A1 deletes it with the Classic path. */
 export const LAYOUT_CHANGE_EVENT = "monocode:layoutchange";
 
 export const SIDEBAR_LAYOUT_DEFAULT: SidebarLayout = "deck";
@@ -55,29 +61,17 @@ const DEFAULT_SIDEBAR_TAB_ORDER: SidebarTabId[] = [
   "changes",
 ];
 
-export const THEME_HUE_MIN = 0;
-export const THEME_HUE_MAX = 360;
-export const THEME_HUE_DEFAULT = 240;
-
-export const THEME_SATURATION_MIN = 0;
-export const THEME_SATURATION_MAX = 100;
-export const THEME_SATURATION_DEFAULT = 0;
-
-export const SIDEBAR_OPACITY_MIN = 0.15;
-export const SIDEBAR_OPACITY_MAX = 1;
-export const SIDEBAR_OPACITY_DEFAULT = 0.8;
-
-
 export const PROJECT_RAIL_WIDTH_MIN = 180;
 export const PROJECT_RAIL_WIDTH_MAX = 360;
 export const PROJECT_RAIL_WIDTH_DEFAULT = 200;
 
-export const BODY_GLASS_DEFAULT = false;
+/** The editor's type sizes, CodeMirror's and Monaco's alike. */
+export const EDITOR_FONT_SIZES = [12, 13, 14] as const;
+export type EditorFontSize = (typeof EDITOR_FONT_SIZES)[number];
+export const EDITOR_FONT_SIZE_DEFAULT: EditorFontSize = 13;
 
-export const GLASS_DEFAULT = true;
-
-/** Fired on `window` whenever the effective glass state flips (detail: boolean). */
-export const GLASS_CHANGE_EVENT = "monocode:glasschange";
+/** Fired on `window` whenever the editor's type size changes (detail: EditorFontSize). */
+export const EDITOR_FONT_CHANGE_EVENT = "monocode:editorfontchange";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -120,69 +114,20 @@ function writeFlag(key: string, value: boolean) {
   }
 }
 
-export function loadThemeHue(): number {
-  return Math.round(
-    clamp(
-      readNumber(THEME_HUE_KEY) ?? THEME_HUE_DEFAULT,
-      THEME_HUE_MIN,
-      THEME_HUE_MAX,
-    ),
-  );
-}
-
-export function saveThemeHue(value: number) {
-  writeNumber(
-    THEME_HUE_KEY,
-    Math.round(clamp(value, THEME_HUE_MIN, THEME_HUE_MAX)),
-  );
-}
-
-export function loadThemeSaturation(): number {
-  return Math.round(
-    clamp(
-      readNumber(THEME_SATURATION_KEY) ?? THEME_SATURATION_DEFAULT,
-      THEME_SATURATION_MIN,
-      THEME_SATURATION_MAX,
-    ),
-  );
-}
-
-export function saveThemeSaturation(value: number) {
-  writeNumber(
-    THEME_SATURATION_KEY,
-    Math.round(
-      clamp(value, THEME_SATURATION_MIN, THEME_SATURATION_MAX),
-    ),
-  );
-}
-
-export function applyThemeTint(hue: number, saturation: number) {
-  const nextHue = Math.round(clamp(hue, THEME_HUE_MIN, THEME_HUE_MAX));
-  const nextSaturation = Math.round(
-    clamp(saturation, THEME_SATURATION_MIN, THEME_SATURATION_MAX),
-  );
-  document.documentElement.style.setProperty("--theme-hue", String(nextHue));
-  document.documentElement.style.setProperty(
-    "--theme-saturation",
-    `${nextSaturation}%`,
-  );
-  return { hue: nextHue, saturation: nextSaturation };
-}
-
 export function initAppearance() {
   document.documentElement.classList.toggle("is-mac", IS_MAC);
-  applyThemeTint(loadThemeHue(), loadThemeSaturation());
+  clearRetiredKeys();
   applyThemePreference(loadThemePreference());
   watchSystemColorScheme();
-  applySidebarOpacity(loadSidebarOpacity());
-  applyBodyGlass(loadBodyGlass());
-  // html/body/#root stay opaque until the first paint: main.tsx adds
-  // `html.ready` and calls syncWindowGlass() when it dismisses the splash.
-  applyGlassClass(effectiveGlass(loadGlass()));
-  watchReducedTransparency();
-  window.addEventListener(SCHEME_CHANGE_EVENT, () => {
-    if (windowGlassSynced && !isGlassOn()) syncWindowGlass();
-  });
+  applyEditorFontSize(loadEditorFontSize());
+}
+
+function clearRetiredKeys() {
+  try {
+    for (const key of RETIRED_KEYS) localStorage.removeItem(key);
+  } catch {
+    // private mode
+  }
 }
 
 function isThemePreference(value: unknown): value is ThemePreference {
@@ -225,7 +170,15 @@ export function isLightScheme(): boolean {
 
 export function applyThemePreference(value: ThemePreference): ColorScheme {
   const next = resolveColorScheme(value);
-  document.documentElement.classList.toggle("theme-light", next === "light");
+  const root = document.documentElement;
+  if (root.classList.contains("theme-light") !== (next === "light")) {
+    // Every colour changes at once; with transitions on, the flip smears.
+    // Off for one frame, a forced style read so the swap lands without them.
+    root.classList.add("theme-switching");
+    root.classList.toggle("theme-light", next === "light");
+    void getComputedStyle(root).opacity;
+    requestAnimationFrame(() => root.classList.remove("theme-switching"));
+  }
   window.dispatchEvent(
     new CustomEvent<ColorScheme>(SCHEME_CHANGE_EVENT, { detail: next }),
   );
@@ -240,121 +193,6 @@ export function watchSystemColorScheme() {
     const preference = loadThemePreference();
     if (preference === "system") applyThemePreference(preference);
   });
-}
-
-export function loadSidebarOpacity(): number {
-  return clamp(
-    readNumber(OPACITY_KEY) ?? SIDEBAR_OPACITY_DEFAULT,
-    SIDEBAR_OPACITY_MIN,
-    SIDEBAR_OPACITY_MAX,
-  );
-}
-
-export function saveSidebarOpacity(value: number) {
-  writeNumber(
-    OPACITY_KEY,
-    clamp(value, SIDEBAR_OPACITY_MIN, SIDEBAR_OPACITY_MAX),
-  );
-}
-
-export function applySidebarOpacity(value: number) {
-  const next = clamp(value, SIDEBAR_OPACITY_MIN, SIDEBAR_OPACITY_MAX);
-  document.documentElement.style.setProperty("--sidebar-opacity", String(next));
-  return next;
-}
-
-export function loadGlass(): boolean {
-  return readFlag(GLASS_KEY) ?? GLASS_DEFAULT;
-}
-
-export function saveGlass(value: boolean) {
-  writeFlag(GLASS_KEY, value);
-  // Main mirrors it: the next window is created with vibrancy only if it
-  // is on, and an alpha background cannot be added to a window later.
-  if (IS_MAC) void invoke("set_window_glass_pref", { on: value });
-}
-
-/** Toggles the translucent chrome and the window's vibrancy together. */
-export function applyGlass(value: boolean) {
-  applyGlassClass(effectiveGlass(value));
-  syncWindowGlass(value);
-  return value;
-}
-
-/** True when the sidebar chrome shows the desktop through: the setting is on
- *  and the OS is not asking for reduced transparency. */
-export function isGlassOn(): boolean {
-  return effectiveGlass(loadGlass());
-}
-
-let windowGlassSynced = false;
-
-/** Applies or removes the window's vibrancy to match the effective glass
- *  state. Call once after the first paint, then on every flip. */
-export function syncWindowGlass(setting = loadGlass()) {
-  windowGlassSynced = true;
-  if (!IS_MAC) return;
-  if (effectiveGlass(setting)) {
-    void invoke("enable_window_glass");
-  } else {
-    void invoke("disable_window_glass", { color: themeBackgroundHex() });
-  }
-}
-
-function reducedTransparencyQuery(): MediaQueryList | null {
-  return typeof window.matchMedia === "function"
-    ? window.matchMedia("(prefers-reduced-transparency: reduce)")
-    : null;
-}
-
-function effectiveGlass(setting: boolean): boolean {
-  return setting && !reducedTransparencyQuery()?.matches;
-}
-
-function applyGlassClass(on: boolean) {
-  document.documentElement.classList.toggle("glass", on);
-  window.dispatchEvent(new CustomEvent<boolean>(GLASS_CHANGE_EVENT, { detail: on }));
-}
-
-function watchReducedTransparency() {
-  reducedTransparencyQuery()?.addEventListener("change", () => {
-    applyGlassClass(effectiveGlass(loadGlass()));
-    if (windowGlassSynced) syncWindowGlass();
-  });
-}
-
-/** The theme's base background as a hex colour, for the opaque window. */
-function themeBackgroundHex(): string {
-  const style = getComputedStyle(document.documentElement);
-  const hue = Number.parseFloat(style.getPropertyValue("--theme-hue")) || 0;
-  const sat =
-    (Number.parseFloat(style.getPropertyValue("--theme-saturation")) || 0) /
-    100;
-  const light =
-    (Number.parseFloat(style.getPropertyValue("--background-lightness")) ||
-      9) / 100;
-  const k = (n: number) => (n + hue / 30) % 12;
-  const a = sat * Math.min(light, 1 - light);
-  const channel = (n: number) =>
-    Math.round(
-      255 * (light - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))),
-    )
-      .toString(16)
-      .padStart(2, "0");
-  return `#${channel(0)}${channel(8)}${channel(4)}`;
-}
-
-export function loadBodyGlass(): boolean {
-  return readFlag(BODY_KEY) ?? BODY_GLASS_DEFAULT;
-}
-
-export function saveBodyGlass(value: boolean) {
-  writeFlag(BODY_KEY, value);
-}
-
-export function applyBodyGlass(value: boolean) {
-  document.documentElement.classList.toggle("glass-body", value);
-  return value;
 }
 
 function isSidebarTabId(value: unknown): value is SidebarTabId {
@@ -427,28 +265,9 @@ export function saveProjectRailWidth(value: number) {
   );
 }
 
-function isSidebarLayout(value: unknown): value is SidebarLayout {
-  return value === "classic" || value === "deck";
-}
-
+/** Classic is retired: every window is the deck. */
 export function loadSidebarLayout(): SidebarLayout {
-  try {
-    const raw = localStorage.getItem(SIDEBAR_LAYOUT_KEY);
-    return isSidebarLayout(raw) ? raw : SIDEBAR_LAYOUT_DEFAULT;
-  } catch {
-    return SIDEBAR_LAYOUT_DEFAULT;
-  }
-}
-
-export function saveSidebarLayout(value: SidebarLayout) {
-  try {
-    localStorage.setItem(SIDEBAR_LAYOUT_KEY, value);
-  } catch {
-    // private mode / quota
-  }
-  window.dispatchEvent(
-    new CustomEvent<SidebarLayout>(LAYOUT_CHANGE_EVENT, { detail: value }),
-  );
+  return SIDEBAR_LAYOUT_DEFAULT;
 }
 
 function isTranscriptLayout(value: unknown): value is TranscriptLayout {
@@ -509,4 +328,32 @@ export function saveTranscriptAnchor(value: boolean) {
       detail: value,
     }),
   );
+}
+
+function isEditorFontSize(value: unknown): value is EditorFontSize {
+  return EDITOR_FONT_SIZES.includes(value as EditorFontSize);
+}
+
+export function loadEditorFontSize(): EditorFontSize {
+  const raw = readNumber(EDITOR_FONT_SIZE_KEY);
+  return isEditorFontSize(raw) ? raw : EDITOR_FONT_SIZE_DEFAULT;
+}
+
+/** Saves the nearest size on the list and applies it. */
+export function saveEditorFontSize(value: number): EditorFontSize {
+  const next = EDITOR_FONT_SIZES.reduce((best, size) => (Math.abs(size - value) < Math.abs(best - value) ? size : best));
+  writeNumber(EDITOR_FONT_SIZE_KEY, next);
+  applyEditorFontSize(next);
+  return next;
+}
+
+/** CodeMirror reads `--font-size-code`; Monaco's mounts follow the event. */
+export function applyEditorFontSize(size: EditorFontSize) {
+  document.documentElement.style.setProperty("--font-size-code", `${size}px`);
+  window.dispatchEvent(new CustomEvent<EditorFontSize>(EDITOR_FONT_CHANGE_EVENT, { detail: size }));
+}
+
+/** Monaco's size and line height for the editor's type size. */
+export function editorFontOptions(size: EditorFontSize = loadEditorFontSize()): { fontSize: number; lineHeight: number } {
+  return { fontSize: size, lineHeight: { 12: 18, 13: 20, 14: 22 }[size] };
 }

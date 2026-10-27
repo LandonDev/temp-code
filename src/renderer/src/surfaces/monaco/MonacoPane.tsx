@@ -17,7 +17,7 @@ import { ensureForModel } from "./lsp/idea";
 import { installSmartBackspace, showParamInfo } from "./lsp/paramInfo";
 import { registerProviders, showHierarchy } from "./lsp/providers";
 import { debugFile, paintBreakpoints } from "./debug/session";
-import { EDITOR_OPTIONS, editorFontFamily, monaco, tabSizeForPath } from "./monaco";
+import { EDITOR_OPTIONS, editorFontFamily, followEditorFont, monaco, tabSizeForPath } from "./monaco";
 import { openFile, resolveConflict, type OpenedFile } from "./models";
 import { monacoReady } from "./theme";
 
@@ -139,6 +139,7 @@ export default function MonacoPane(props: Props) {
       });
       editorRef.current = editor;
       cleanups.push(trackEditor(editor));
+      cleanups.push(followEditorFont(editor));
       const saved = viewStates.get(path);
       if (saved) editor.restoreViewState(saved);
 

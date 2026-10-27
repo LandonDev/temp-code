@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { MatrixSpinner } from "../threads/bits";
 import { registerProviders } from "./lsp/providers";
 import { openFile, type OpenedFile } from "./models";
-import { EDITOR_OPTIONS, editorFontFamily, monaco, tabSizeForPath } from "./monaco";
+import { EDITOR_OPTIONS, editorFontFamily, followEditorFont, monaco, tabSizeForPath } from "./monaco";
 import { monacoReady } from "./theme";
 
 /**
@@ -36,6 +36,7 @@ export default function InlineEditor({
     let disposed = false;
     let handle: OpenedFile | null = null;
     let editor: monaco.editor.IStandaloneCodeEditor | null = null;
+    let unfollowFont: (() => void) | null = null;
     void (async () => {
       try {
         await monacoReady();
@@ -65,6 +66,7 @@ export default function InlineEditor({
         fontFamily: editorFontFamily(),
         model,
       });
+      unfollowFont = followEditorFont(editor);
       const { line: at, highlight: ranges } = initial.current;
       if (ranges?.length) {
         editor.createDecorationsCollection(
@@ -86,6 +88,7 @@ export default function InlineEditor({
     })();
     return () => {
       disposed = true;
+      unfollowFont?.();
       editor?.dispose();
       handle?.release();
     };

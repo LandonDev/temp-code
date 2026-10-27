@@ -94,9 +94,6 @@ export const webApi: Api = {
     stageTransfer: () => done(),
     takeTransfer: () => Promise.resolve(null),
     setButtonsVisible: () => done(),
-    enableGlass: done,
-    disableGlass: () => done(),
-    setGlassPref: () => done(),
     setZoom: () => done(),
     onResized: (cb) => {
       window.addEventListener("resize", cb);

@@ -97,8 +97,6 @@ export type LocalCommand =
   | "decline_quit"
   | "default_cwd"
   | "destroy_window"
-  | "disable_window_glass"
-  | "enable_window_glass"
   | "hide_window"
   | "home_dir"
   | "open_new_window"
@@ -112,7 +110,6 @@ export type LocalCommand =
   | "reveal_path"
   | "set_dock_badge"
   | "set_traffic_lights_visible"
-  | "set_window_glass_pref"
   | "set_zoom"
   | "sidecar_port"
   | "stage_window_transfer"
@@ -316,11 +313,6 @@ const localBacked: Record<LocalCommand, Backed> = {
   take_window_transfer: () => api().win.takeTransfer<string>(),
   set_traffic_lights_visible: (args) =>
     api().win.setButtonsVisible(arg<boolean>(args, "visible")),
-  enable_window_glass: () => api().win.enableGlass(),
-  disable_window_glass: (args) =>
-    api().win.disableGlass(arg<string | undefined>(args, "color")),
-  set_window_glass_pref: (args) =>
-    api().win.setGlassPref(arg<boolean>(args, "on")),
   set_zoom: (args) => api().win.setZoom(arg<number>(args, "level")),
   pty_spawn: (args) =>
     api().pty.spawn({

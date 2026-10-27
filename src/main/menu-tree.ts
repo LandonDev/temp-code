@@ -111,7 +111,7 @@ export const MENU_TREE: MenuSection[] = [
       cmd('focus_up', 'Focus Pane Up', 'CmdOrCtrl+Alt+Up'),
       cmd('focus_down', 'Focus Pane Down', 'CmdOrCtrl+Alt+Down'),
       sep,
-      cmd('sidebar_opacity', 'Sidebar Appearance…'),
+      cmd('sidebar_opacity', 'Appearance…'),
       sep,
       cmd('zoom_in', 'Zoom In', 'CmdOrCtrl+='),
       cmd('zoom_out', 'Zoom Out', 'CmdOrCtrl+-'),

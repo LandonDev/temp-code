@@ -1,3 +1,4 @@
+import { EDITOR_FONT_CHANGE_EVENT, editorFontOptions } from "../../lib/appearance";
 import * as monaco from "monaco-editor/editor/editor.api";
 import "monaco-editor/features/register.all";
 // register.all only wires the viewport (range) semantic-tokens contrib; the
@@ -133,10 +134,18 @@ export function editorFontFamily(): string {
   return `'JetBrains Mono', ${fromToken || "ui-monospace, Menlo, monospace"}`;
 }
 
+/** Keeps an editor on the type size Settings → Appearance picks: applies it
+ *  now and on every change; returns the unsubscribe. */
+export function followEditorFont(editor: { updateOptions(options: { fontSize: number; lineHeight: number }): void }): () => void {
+  const apply = () => editor.updateOptions(editorFontOptions());
+  apply();
+  window.addEventListener(EDITOR_FONT_CHANGE_EVENT, apply);
+  return () => window.removeEventListener(EDITOR_FONT_CHANGE_EVENT, apply);
+}
+
 /** Shared editor options: quiet chrome, the buffer is the hero. */
 export const EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
-  fontSize: 13,
-  lineHeight: 20,
+  ...editorFontOptions(),
   fontLigatures: false,
   "semanticHighlighting.enabled": true,
   codeLensFontSize: 11,

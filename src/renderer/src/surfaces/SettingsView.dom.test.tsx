@@ -5,10 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const stub = (name: string) => () => <div data-page={name} />;
 vi.mock("./settings/General", () => ({ GeneralPage: stub("general") }));
 vi.mock("./settings/ThreadDefaults", () => ({ ThreadDefaultsPage: stub("defaults") }));
-vi.mock("./settings/Appearance", () => ({
-  AppearancePage: stub("appearance"),
-  useAppearanceSettings: () => ({ restoreDefaults: () => {} }),
-}));
+vi.mock("./settings/Appearance", () => ({ AppearancePage: stub("appearance") }));
 vi.mock("./settings/Editor", () => ({ EditorPage: stub("editor") }));
 vi.mock("./settings/Keybindings", () => ({ KeybindingsPage: stub("keybindings") }));
 vi.mock("./settings/Providers", () => ({ ProvidersPage: stub("providers") }));

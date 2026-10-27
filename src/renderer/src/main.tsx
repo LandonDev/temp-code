@@ -5,7 +5,7 @@ import { installEditorKeys } from "./lib/editorKeys";
 import App from "./App";
 /* The toast stack rides its own chunk: sonner is not part of the first paint. */
 const Toaster = lazy(() => import("./components/ui/toaster").then((m) => ({ default: m.Toaster })));
-import { initAppearance, syncWindowGlass } from "./lib/appearance";
+import { initAppearance } from "./lib/appearance";
 import { initSounds } from "./lib/sounds";
 import { initServerLink } from "./lib/tcserver/link";
 import { hydrateFromLaunchMirror, installLaunchMirror } from "./lib/tcserver/launchMirror";
@@ -52,8 +52,6 @@ function dismissBootSplash() {
   if (!splash || splash.dataset.dismissed === "1") return;
   splash.dataset.dismissed = "1";
   const fade = () => {
-    // The window was created with vibrancy; only now may the page go
-    // transparent over it (index.css `html.is-mac.glass.ready`).
     document.documentElement.classList.add("ready");
     // Launch-timing probe (scripts/e2e-launch-timing.ts): the UI is on screen.
     performance.mark("tc:ready");
@@ -62,7 +60,6 @@ function dismissBootSplash() {
     void sessionStore.whenPainted().then(() => {
       requestAnimationFrame(() => requestAnimationFrame(() => performance.mark("tc:rail-complete")));
     });
-    syncWindowGlass();
     splash.classList.add("boot-splash-out");
     window.setTimeout(() => splash.remove(), 180);
   };

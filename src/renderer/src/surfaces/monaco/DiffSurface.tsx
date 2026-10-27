@@ -10,7 +10,7 @@ import { ConflictBar } from "./ConflictBar";
 import { trackEditor } from "./keys";
 import { ensureForModel } from "./lsp/idea";
 import { registerProviders } from "./lsp/providers";
-import { EDITOR_OPTIONS, editorFontFamily, languageForPath, monaco } from "./monaco";
+import { EDITOR_OPTIONS, editorFontFamily, followEditorFont, languageForPath, monaco } from "./monaco";
 import { openFile, resolveConflict, type OpenedFile } from "./models";
 import { monacoReady } from "./theme";
 
@@ -92,6 +92,7 @@ export function DiffSurface({
           diffAlgorithm: "advanced",
         });
         editor.setModel({ original, modified: opened.model });
+        cleanups.push(followEditorFont(editor));
         const modified = editor.getModifiedEditor();
         cleanups.push(trackEditor(modified));
         modified.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void opened.flushNow());

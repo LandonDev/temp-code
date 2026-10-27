@@ -10,14 +10,11 @@ import { Progress } from "../../components/ui/progress";
 import { Spinner } from "../../components/ui/spinner";
 import { SettingSwitch } from "../../components/setting-switch";
 import {
-  loadSidebarLayout,
   loadTranscriptLayout,
   loadTranscriptAnchor,
-  saveSidebarLayout,
   saveTranscriptLayout,
   saveTranscriptAnchor,
   TRANSCRIPT_ANCHOR_CHANGE_EVENT,
-  type SidebarLayout,
   type TranscriptLayout,
 } from "../../lib/appearance";
 import { IS_MAC } from "../../lib/platform";
@@ -108,7 +105,6 @@ export function GeneralPage({
 }: {
   onOpenWhatsNew: (version: string, markdown?: string) => void;
 }) {
-  const [layout, setLayout] = useState<SidebarLayout>(loadSidebarLayout);
   const [transcriptLayout, setTranscriptLayout] = useState<TranscriptLayout>(loadTranscriptLayout);
   const [transcriptAnchor, setTranscriptAnchor] = useState(loadTranscriptAnchor);
   const [midTurn, setMidTurn] = useState<MidTurnDefault>(loadMidTurnDefault);
@@ -130,20 +126,6 @@ export function GeneralPage({
   return (
     <>
       <PageSection title="Transcript">
-        <PageRow title="Workspace layout" description="Deck adds the project rail, workspace panel and terminal dock.">
-          <ChoiceSelect
-            label="Workspace layout"
-            value={layout}
-            options={[
-              { value: "deck", label: "Deck" },
-              { value: "classic", label: "Classic" },
-            ]}
-            onChange={(next) => {
-              saveSidebarLayout(next);
-              setLayout(next);
-            }}
-          />
-        </PageRow>
         <PageRow title="Transcript layout" description="Chat sets your prompts on the right.">
           <ChoiceSelect
             label="Transcript layout"

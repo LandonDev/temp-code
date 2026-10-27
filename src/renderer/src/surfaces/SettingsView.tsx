@@ -1,4 +1,3 @@
-import { RotateCcw } from "../chrome/icons";
 import { useEffect } from "react";
 import { WindowControls } from "../chrome/WindowControls";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
@@ -16,7 +15,7 @@ import { isWebMode } from "../lib/nativeWeb";
 import { Page } from "../components/page";
 import { GeneralPage } from "./settings/General";
 import { ThreadDefaultsPage } from "./settings/ThreadDefaults";
-import { AppearancePage, useAppearanceSettings } from "./settings/Appearance";
+import { AppearancePage } from "./settings/Appearance";
 import { EditorPage } from "./settings/Editor";
 import { KeybindingsPage } from "./settings/Keybindings";
 import { ProvidersPage } from "./settings/Providers";
@@ -47,7 +46,6 @@ export function SettingsView({
   // project's threads from the server instead.
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const section = useShell((s) => s.settingsSection);
-  const appearance = useAppearanceSettings();
   const workspaceId = workspaceOfSection(section);
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
   const title = workspace?.name ?? settingsSectionLabel(section);
@@ -77,17 +75,6 @@ export function SettingsView({
         data-tauri-drag-region="deep"
       >
         <div className="flex-1" />
-        {section === "appearance" ? (
-          <button
-            type="button"
-            data-tauri-drag-region="false"
-            onClick={appearance.restoreDefaults}
-            className="pressable mr-2 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-content/50 hover:bg-content/10 hover:text-content"
-          >
-            <RotateCcw className="size-3.5" strokeWidth={1.75} />
-            Restore defaults
-          </button>
-        ) : null}
         {IS_MAC ? null : <WindowControls />}
       </div>
 
@@ -114,11 +101,7 @@ export function SettingsView({
               <WorkspacePage key={workspace.id} workspaceId={workspace.id} />
             </div>
           ) : null}
-          {section === "appearance" ? (
-            <div>
-              <AppearancePage appearance={appearance} />
-            </div>
-          ) : null}
+          {section === "appearance" ? <AppearancePage /> : null}
           {section === "editor" ? (
             <div>
               <EditorPage />

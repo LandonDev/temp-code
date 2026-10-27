@@ -13,7 +13,7 @@ import { useColorScheme } from "./useColorScheme";
  * The app's live theme as the variables an HTML render styles against. Read
  * from the root's computed custom properties (their var()s already
  * substituted), again on scheme changes and whenever <html>'s class or style
- * changes: a tint change sets --theme-hue inline and fires no event. Memoised
+ * changes: a style change (the editor's type size) fires no event. Memoised
  * by value, so a frame only posts into its page when something changed.
  */
 export function useHtmlRenderTheme(): HtmlRenderTheme {
