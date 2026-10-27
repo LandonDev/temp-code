@@ -32,8 +32,8 @@ of element; nothing is rendered twice by two different things.
 Retired by this standard, migrated area by area, never patched further:
 `chrome/Popover.tsx`, `chrome/Drawer.tsx`, `lib/layers.ts` (Base UI stacks
 its own portals), `surfaces/settingsBits.tsx`, `chrome/RailAction.tsx`,
-`chrome/ComposerAction.tsx`, `motion/Button.tsx`, `motion/Tabs.tsx`,
-`motion/TextShimmer.tsx`, `aliax/components/ui/*`, `radix-ui`, the four
+`chrome/ComposerAction.tsx`, `motion/Button.tsx`,
+`aliax/components/ui/*`, `radix-ui`, the four
 custom toast stacks (sonner), the nine spinner builds (`Spinner`), the
 twenty status-to-colour maps (`StatusMark`), the 228 `title=` attributes
 (`Tooltip`), the 390 raw `<button>`s (`Button`). ReUI, BeUI and Beautiful
@@ -126,8 +126,12 @@ sheet). Curves: `--ease-out` for entrances and most transitions,
 `--ease-in-out` for a symmetric move. Springs live in `lib/ease.ts`:
 `SPRING_PRESS` (press only), `SPRING_LAYOUT` (the tab indicator, icon
 swaps), `SPRING_PANEL` (a row morphing into a card), `SPRING_GLIDE` (a
-released drag). `SPRING_SWAP` merges into `SPRING_LAYOUT`; `SPRING_MOUSE`
-is gone.
+released drag). `springEasing` turns a spring into a CSS `linear()` curve
+and its settle time (`SPRING_LAYOUT_CSS`: 370ms, no overshoot), for a
+transition that glides like the spring without JavaScript.
+`lib/motionGuard.test.ts` fails on any literal duration or curve outside
+`lib/ease.ts` and this layer; the sites still open are listed there with
+the area that owns each, and the lists only shrink.
 
 ### Layers
 
@@ -261,9 +265,16 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | Tooltip | fade + scale 0.95→1, `--dur-base`; moves between triggers instead of reopening | fade, `--dur-fast` | fade |
 | Toast (sonner) | rise and fade, `--dur-base` | fade, `--dur-fast` | fade |
 | Right panel, rail | no width animation; content fades `--dur-fast` | same | same |
-| Tab indicator | `SPRING_LAYOUT` glide | — | jump |
+| Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS`; line tabs and the tab strip: instant | — | jump |
 | Press | scale 0.985, `--dur-fast` | release | colour only |
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
+| Disclosure chevron | rotates with its fold, `--dur-base` `--ease-out` | same | none |
+| Icon swap (`SwapIcon`) | opacity + scale 0.25→1 on `SPRING_LAYOUT` | fade + scale →0.25, `--dur-fast` | opacity, `--dur-fast` |
+| Count | ticks from the shown value, `--dur-slow` `--ease-out` | — | none |
+| Shimmer (`TextShimmer`) | one highlight sweeps the muted text, 2s | — | still muted text |
+| Spinner | the one arc turning | — | still |
+| Appshot | fade + scale 0.95→1 centred, `--dur-slow`; holds; glides into its chip, `--dur-drawer` `--ease-drawer` | — | fade in and out in place, `--dur-fast` |
+| Released drag | settles on `SPRING_GLIDE` | — | none |
 | List rows (rail, tabs, fleet, attachments) | none | none | none |
 | Transcript rows | one 150ms fade on first appearance, never replayed | — | none |
 | Streaming text | the jitter buffer (lib/smoothText); words fade `--dur-base` in `StreamingText` | — | none |

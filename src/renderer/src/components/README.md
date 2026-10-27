@@ -32,7 +32,8 @@ DESIGN.md wins.
 | Rows and columns of structured data | `Table` (table.tsx) | Flat: hairline rows, no box, no column rules, first and last columns on the inset. No hover fill; the cells hold the controls. |
 | A list row, a settings row | `Item` (item.tsx) | Media, title + description, actions. Settings pages are columns of these. |
 | A divider | `Separator` (separator.tsx) | Spacing first; a separator only where spacing cannot tell groups apart. |
-| A disclosure | `Collapsible` (collapsible.tsx) | Height eases through `.collapsible-resize`. |
+| A disclosure | `Collapsible` (collapsible.tsx) | Height eases through `.collapsible-resize`. A fold with no trigger of its own is the same panel, opened by `open`. |
+| An icon replacing another (Copy → Check) | `SwapIcon` (../../motion/IconSwap.tsx) | The new glyph grows from a quarter size on `SPRING_LAYOUT`; reduced motion cross-fades. |
 | A scrolling panel | `ScrollArea` (scroll-area.tsx) | Panels and lists; the transcript keeps its native scroller. |
 | A determinate bar | `Progress` (progress.tsx) | Usage meter, tallies. `fill` is foreground, muted or warning; the fill is a transform, so a live update never relayouts. |
 | Loading, indeterminate | `Spinner` (spinner.tsx) | 16px arc, with a word. The nine other spinners are retired. |
@@ -75,7 +76,9 @@ Colour, radius, shadow and motion names are in `src/renderer/src/index.css`
 (the token layer at the top); the parts utilities cannot express
 (`focus-field`, `shimmer`, the switch and checkbox transitions, the
 collapsible height, the task list) are in `src/renderer/src/assets/components.css`.
-A component never writes a literal colour, duration or curve.
+A component never writes a literal colour, duration or curve;
+`lib/motionGuard.test.ts` fails on a new literal timing and lists, by owning
+area, the sites still open.
 
 ## Installing another Kobra component
 
