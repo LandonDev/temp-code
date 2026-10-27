@@ -706,7 +706,7 @@ export function preferredModelId(harness: HarnessId): string {
 /** Provider + model new conversations should start with. */
 export function defaultSessionChoice(): LastModelChoice {
   const last = loadLastModelChoice();
-  const harness = last?.harness ?? "cursor";
+  const harness = last?.harness ?? "claude";
   return { harness, model: preferredModelId(harness) };
 }
 
