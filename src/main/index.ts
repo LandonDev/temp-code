@@ -42,6 +42,7 @@ import {
   targetWindow
 } from './windows'
 import { setSignInParent } from './aliax/signInWindow'
+import { aboutPanelOptions, buildInfo } from './buildInfo'
 
 // First statement of the bundle: everything before this mark is Electron's
 // own init plus the compile of out/main/index.js (through boot.js). `start=`
@@ -134,6 +135,8 @@ app.whenReady().then(async () => {
   registerAppProtocol()
   // A sign-in window opens over the app window in front.
   setSignInParent(targetWindow)
+  // About: "Version 1.0.N (abc1234)" and the copyright, not Electron's defaults.
+  if (!headless) app.setAboutPanelOptions(aboutPanelOptions(buildInfo(app.getAppPath())))
   // Agent HTML pages: stored under userData, previewed in the hidden window.
   setHtmlRenderRoot(pagesRoot())
   setHtmlPreviewer(htmlPreviewer)

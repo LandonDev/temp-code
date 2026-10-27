@@ -3,7 +3,7 @@
   "version": "1.0.305",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/boot.js",
-  "author": "example.com",
+  "author": "Landon Hale",
   "homepage": "https://electron-vite.org",
   "scripts": {
     "format": "prettier --write .",

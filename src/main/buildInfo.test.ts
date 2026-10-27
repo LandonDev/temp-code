@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { buildInfo, bundledBuildSha, checkoutSha, readBuildSha } from './buildInfo'
+import { aboutPanelOptions, buildInfo, bundledBuildSha, checkoutRootOf, checkoutSha, COPYRIGHT, readBuildSha } from './buildInfo'
 import release from '../../release.json'
 
 const A = 'a'.repeat(40)
@@ -83,5 +83,26 @@ describe('buildInfo', () => {
     const info = buildInfo(d)
     expect(info).toEqual({ release: release.n, version: `1.0.${release.n}`, sha: B })
     expect(buildInfo().sha).toBeNull()
+  })
+})
+
+describe('aboutPanelOptions', () => {
+  it('reads the version with its short commit and the copyright', () => {
+    expect(aboutPanelOptions({ release: 412, version: '1.0.412', sha: A })).toEqual({
+      applicationName: 'TempCode',
+      applicationVersion: '1.0.412',
+      version: 'aaaaaaa',
+      copyright: 'Copyright © 2026 Landon Hale',
+      credits: ''
+    })
+  })
+  it('leaves the commit out when the build has none', () => {
+    const options = aboutPanelOptions({ release: 412, version: '1.0.412', sha: null })
+    expect(options).not.toHaveProperty('version')
+    expect(options.applicationVersion).toBe('1.0.412')
+  })
+  it("says what electron-builder.yml's copyright says", () => {
+    const yml = readFileSync(join(checkoutRootOf(__dirname), 'electron-builder.yml'), 'utf8')
+    expect(yml.match(/^copyright:\s*(.+?)\s*$/m)?.[1]).toBe(COPYRIGHT)
   })
 })

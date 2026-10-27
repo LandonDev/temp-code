@@ -124,3 +124,24 @@ export function checkoutRootOf(path: string): string {
   while (!existsSync(join(dir, 'package.json')) && dirname(dir) !== dir) dir = dirname(dir)
   return dir
 }
+
+/** The About panel's and Finder's copyright line (electron-builder.yml's `copyright` says the same). */
+export const COPYRIGHT = 'Copyright © 2026 Landon Hale'
+
+/** The About panel: the version with its commit, the copyright, no credits.
+ *  The release number is the N in the version, so it is not repeated. */
+export function aboutPanelOptions(info: BuildInfo): {
+  applicationName: string
+  applicationVersion: string
+  version?: string
+  copyright: string
+  credits: string
+} {
+  return {
+    applicationName: 'TempCode',
+    applicationVersion: info.version,
+    ...(info.sha ? { version: info.sha.slice(0, 7) } : {}),
+    copyright: COPYRIGHT,
+    credits: ''
+  }
+}
