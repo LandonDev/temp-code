@@ -298,6 +298,11 @@ app replaces itself from the feed, and only from the feed.
   `registerSchemes()` call (assets.ts). First boot on the new origin copies
   the `file://` localStorage over once (src/main/originMigration.ts, marker
   `<userData>/localstorage-migrated`).
+- Monaco file and review panes use `surfaces/FileHeader.tsx` for the folder
+  and review stepper. CodeMirror mounts `surfaces/HunkBar.tsx` for Stage
+  and Revert with shared buttons and tooltips. `lib/colourGuard.test.ts`
+  checks literal renderer colours against the token layer and counted
+  palette exceptions; the counts only shrink.
 - The renderer is split (docs/bundle-split.md): the index chunk carries
   only the first paint (rail, transcript, composer, thread header; 4.56 MiB,
   down from 8.07 MiB) and every other surface is a lazy chunk behind

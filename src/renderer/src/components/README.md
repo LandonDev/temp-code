@@ -81,7 +81,8 @@ Colour, radius, shadow and motion names are in `src/renderer/src/index.css`
 collapsible height, the task list) are in `src/renderer/src/assets/components.css`.
 A component never writes a literal colour, duration or curve;
 `lib/motionGuard.test.ts` fails on a new literal timing and lists, by owning
-area, the sites still open.
+area, the sites still open. `lib/colourGuard.test.ts` checks literal colours
+beside motionGuard and counts each named palette exception.
 
 ## Installing another Kobra component
 
