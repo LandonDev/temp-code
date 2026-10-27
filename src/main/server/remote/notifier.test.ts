@@ -331,7 +331,7 @@ describe('plumbing', () => {
 })
 
 describe('a completed plan', () => {
-  it('says the plan is complete and whether its build started', () => {
+  it('says Ready to build while the plan waits for the person, and nothing once its build started', () => {
     reg.add('p', { threadType: 'planning', planPath: '/p.md', title: 'Plan: widget' })
     notifier.start()
     reg.status('p', 'running')
@@ -339,13 +339,22 @@ describe('a completed plan', () => {
     reg.row('p', { type: 'assistant-text', text: 'done', delta: false } as AgentEvent)
     reg.push('p', { status: 'idle', planCompletedAt: 7 })
     settle()
-    expect(notices.at(-1)).toMatchObject({ event: 'finished', threadId: 'p', body: 'Plan complete — waiting for you to start the build' })
+    expect(notices.at(-1)).toMatchObject({ event: 'finished', kind: 'plan', threadId: 'p', body: 'Ready to build' })
     reg.add('b', { threadType: 'implementation', title: 'Ship it' })
     reg.status('p', 'running')
     reg.row('p', { type: 'assistant-text', text: 'more', delta: false } as AgentEvent)
     reg.push('p', { status: 'idle', planCompletedAt: 7, implementationId: 'b' })
     settle()
-    expect(notices.at(-1)).toMatchObject({ event: 'finished', threadId: 'p', body: 'Plan complete — implementation started: Ship it' })
+    expect(notices).toHaveLength(1)
+  })
+  it('a plan whose build started at once says nothing at all', () => {
+    reg.add('p', { threadType: 'planning', planPath: '/p.md', status: 'running' })
+    reg.add('b', { threadType: 'implementation', title: 'Ship it' })
+    notifier.start()
+    reg.row('p', { type: 'user-text', text: 'plan it' })
+    reg.push('p', { status: 'idle', planCompletedAt: 7, implementationId: 'b' })
+    settle()
+    expect(notices).toEqual([])
   })
 })
 
@@ -404,7 +413,7 @@ describe("the host's verdict, a gone harness, a queued thread", () => {
     reg.row('p', { type: 'user-text', text: 'plan it' })
     reg.push('p', { status: 'idle', planCompletedAt: 7 })
     settle()
-    expect(notices).toEqual([expect.objectContaining({ event: 'finished', kind: 'plan', hostName: 'box', body: 'Plan complete — waiting for you to start the build' })])
+    expect(notices).toEqual([expect.objectContaining({ event: 'finished', kind: 'plan', hostName: 'box', body: 'Ready to build' })])
   })
 })
 
@@ -421,9 +430,15 @@ describe("a master's batch", () => {
     reg.status('m', 'watching')
     settle()
     expect(notices.map((n) => [n.event, n.kind, n.body, n.seq])).toEqual([['finished', 'batch', 'Batch done: 3 landed, gate passed in 4m 12s, release-281 tagged', 2]])
-    // Told once: the master's next idle is an ordinary finish, not the batch again.
+    // Told once: the master's idle after it is not a second Done.
     reg.status('m', 'running')
     reg.row('m', { type: 'assistant-text', text: 'Landed.', delta: false } as AgentEvent)
+    reg.status('m', 'idle')
+    settle()
+    expect(notices.map((n) => n.kind)).toEqual(['batch'])
+    // The person writes again: that turn's end is an ordinary finish.
+    reg.status('m', 'running')
+    reg.row('m', { type: 'user-text', text: 'and now?' })
     reg.status('m', 'idle')
     settle()
     expect(notices.map((n) => n.kind)).toEqual(['batch', 'finished'])
@@ -523,6 +538,44 @@ describe('the finished body', () => {
     expect(notices.map((n) => [n.threadId, n.body])).toEqual([
       ['a', 'Done in 12m, 2 tasks left'],
       ['b', 'Done in 12m']
+    ])
+  })
+})
+
+describe('a batch thread', () => {
+  it("finishes quietly under a live master, but still asks and fails out loud", () => {
+    reg.add('m', { threadType: 'chat', isMaster: true, status: 'watching' })
+    reg.add('k', { status: 'running', masterId: 'm' })
+    reg.add('j', { status: 'running', masterId: 'm' })
+    notifier.start()
+    reg.row('k', { type: 'user-text', text: 'go' })
+    reg.status('k', 'idle')
+    settle()
+    expect(notices).toEqual([])
+    reg.status('k', 'running')
+    reg.row('k', { type: 'approval-request', requestId: 'a', toolName: 'Bash', input: { command: 'bun test' } })
+    reg.status('k', 'waiting')
+    reg.row('j', { type: 'error', message: 'harness died' })
+    reg.status('j', 'error')
+    settle()
+    expect(notices.map((n) => [n.threadId, n.event, n.body])).toEqual([
+      ['k', 'needs_you', 'Run bun test?'],
+      ['j', 'failed', 'Failed: harness died']
+    ])
+  })
+  it('finishes out loud when its master is archived or no longer a master', () => {
+    reg.add('m', { threadType: 'chat', isMaster: false, status: 'idle' })
+    reg.add('k', { status: 'running', masterId: 'm' })
+    reg.add('gone', { status: 'running', masterId: 'nobody' })
+    notifier.start()
+    for (const id of ['k', 'gone']) {
+      reg.row(id, { type: 'user-text', text: 'go' })
+      reg.status(id, 'idle')
+    }
+    settle()
+    expect(notices.map((n) => [n.threadId, n.event])).toEqual([
+      ['k', 'finished'],
+      ['gone', 'finished']
     ])
   })
 })

@@ -110,6 +110,8 @@ interface ThreadState {
   startedAt: number | null
   stuckSent: boolean
   timer: ReturnType<typeof setTimeout> | null
+  /** A master told its batch's end and the person has not written since: its idle is not a second Done. */
+  batchTold: boolean
 }
 
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
@@ -280,7 +282,8 @@ export class Notifier {
         lastRowSeq: 0,
         startedAt: WORKING.has(status) ? (this.options.registry.get(id)?.busySince ?? null) : null,
         stuckSent: false,
-        timer: null
+        timer: null,
+        batchTold: false
       }
       this.threads.set(id, state)
     }
@@ -327,6 +330,9 @@ export class Notifier {
     state.stuckSent = false
     const { event } = row
     switch (event.type) {
+      case 'user-text':
+        if (own) state.batchTold = false
+        return
       case 'approval-request': {
         const plan = event.toolName === 'ExitPlanMode' || event.toolName === 'exit_plan_mode'
         state.pending = {
@@ -458,16 +464,26 @@ export class Notifier {
       // A stop by the user is not a finish, and a thread that never worked since we looked has nothing to report.
       if (state.lastError?.stopped && state.lastError.seq >= state.lastRowSeq - 2) return null
       if (state.sent === null && state.lastRowSeq === 0) return null
-      // A plan the planner marked complete says so, and whether its build
-      // runs (planFlow.ts): the person's own notice of a finished plan.
+      // A batch thread's finish is the master's to tell, in its one batch notice.
+      if (this.inLiveBatch(meta)) return null
+      // A master's idle right after its batch notice would say Done twice.
+      if (meta.isMaster === true && state.batchTold) return null
+      // A plan the planner marked complete (planFlow.ts): only a plan that
+      // waits for the person says so; a started build will say Done itself.
       if (meta.threadType === 'planning' && meta.planCompletedAt) {
-        const build = meta.implementationId ? this.options.registry.get(meta.implementationId) : null
-        const body = build && !build.archived ? `Plan complete — implementation started: ${cut(build.title, 80)}` : 'Plan complete — waiting for you to start the build'
-        return { event: 'finished', kind: 'plan', key: `plan:${meta.planCompletedAt}:${build?.id ?? ''}`, body, seq: state.lastRowSeq }
+        if (meta.implementationId) return null
+        return { event: 'finished', kind: 'plan', key: `plan:${meta.planCompletedAt}`, body: 'Ready to build', seq: state.lastRowSeq }
       }
       return { event: 'finished', kind: 'finished', key: `finished:${state.lastRowSeq}`, body: this.finishedBody(meta, state), seq: state.lastRowSeq }
     }
     return null
+  }
+
+  /** The thread is a child of a master that is live: pinned, here and unarchived. */
+  private inLiveBatch(meta: SessionMeta): boolean {
+    if (!meta.masterId) return false
+    const master = this.options.registry.get(meta.masterId)
+    return master !== null && !master.archived && master.isMaster === true
   }
 
   /** "Done in 12m", and "Done in 12m, 2 tasks left" when the thread's list is not finished. */
@@ -485,7 +501,10 @@ export class Notifier {
     if (!decision) return
     if (state.sent && state.sent.event === decision.event && state.sent.key === decision.key) return
     if (decision.event === 'stuck') state.stuckSent = true
-    if (decision.kind === 'batch') state.lastBatch = null
+    if (decision.kind === 'batch') {
+      state.lastBatch = null
+      state.batchTold = true
+    }
     state.sent = { event: decision.event, key: decision.key }
     this.emit(id, decision.event, decision.kind, decision.body, decision.seq, decision.requestId)
   }
