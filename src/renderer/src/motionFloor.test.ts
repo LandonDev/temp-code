@@ -7,8 +7,8 @@ const rule = (selector: string) => css.match(new RegExp(`\\n${selector.replace(/
 
 describe("the motion floor", () => {
   it("lands the send bubble inside the UI budget, on the tokens", () => {
-    expect(rule(".bubble-send-flip")).toContain("animation: bubble-send-flip 280ms var(--ease-drawer) both;");
-    expect(rule(".bubble-send-in")).toContain("animation: bubble-send-in 280ms var(--ease-drawer) both;");
+    expect(rule(".bubble-send-flip")).toContain("animation: bubble-send-flip var(--dur-slow) var(--ease-drawer) both;");
+    expect(rule(".bubble-send-in")).toContain("animation: bubble-send-in var(--dur-slow) var(--ease-drawer) both;");
   });
 
   it("has no modal or popover-exit keyframes left from the ghost exits", () => {

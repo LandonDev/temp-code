@@ -25,7 +25,7 @@ export function ProjectMascot({
       aria-hidden
       viewBox={`0 0 ${MASCOT_GRID} ${MASCOT_GRID}`}
       shapeRendering="crispEdges"
-      className={`${className} ${active ? "mascot-active" : ""}`}
+      className={className}
       fill="currentColor"
       style={color ? { color } : undefined}
     >
