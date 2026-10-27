@@ -76,6 +76,11 @@ foreground, the same words the group line uses); the components only draw it.
   system text are lines; a held review (`ReviewCard.tsx`) and a failure
   (`FailureCard.tsx`) are the only cards. A plain notice keeps its kind on
   the block (`Block.notice`, from fold.ts), so `NoticeRow` draws it typed.
+- **A question** from the model is the one question card
+  (`components/ui/question-card.tsx`, keys taken only inside the card)
+  through `surfaces/QuestionCard.tsx`: an Other field unless the question
+  forbids free text, Skip dismisses the set; once answered, one line per
+  question says what was picked.
 - **Prose and code** (`AgentMarkdown.tsx`, `CodeBlock.tsx`,
   `transcript/markdown.css`): 15/1.6 prose (`size="compact"` is 14/24 for
   panels), one plain inline-code pill, a quiet code block coloured by
