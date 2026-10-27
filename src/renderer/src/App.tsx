@@ -1989,7 +1989,7 @@ export default function App() {
       const currentCwd =
         current?.cwd ??
         (activeWorkspace ? focusedFileTab(activeWorkspace)?.cwd : undefined);
-      if (currentCwd && sameProjectPath(currentCwd, normalized)) return;
+      if (project.alreadyIn(currentCwd, normalized)) return;
 
       // The thread this workspace was last on comes back before any other
       // open tab of it, and an open tab before a blank one.

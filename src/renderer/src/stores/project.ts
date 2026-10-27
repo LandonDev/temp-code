@@ -217,6 +217,14 @@ export const project = {
     const { projectCwd } = projectStore.getState();
     if (!sameFolder(cwd, projectCwd, workspaceStore.getSnapshot())) project.enterWorkspace(cwd);
   },
+  /** A pick of the workspace the window's thread already lives in: nothing
+   *  opens, but a header left on another folder follows the thread. True
+   *  when the thread was there, so the caller stops. */
+  alreadyIn: (threadCwd: string | undefined, cwd: string): boolean => {
+    if (!threadCwd || !sameProjectPath(threadCwd, cwd)) return false;
+    project.followWorkspace(cwd);
+    return true;
+  },
   /** Pick a project in this workspace; the choice is remembered per folder. */
   selectProject: (projectId: string | null) => {
     const before = projectStore.getState();

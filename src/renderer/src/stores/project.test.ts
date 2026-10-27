@@ -212,6 +212,17 @@ describe("project actions", () => {
     });
   });
 
+  it("a pick of the workspace the thread is already in puts a stale header right", () => {
+    projectStore.setState(initialProjectState({ projectCwd: "/w/beta", selectedProjectId: null }));
+    expect(project.alreadyIn("/w/alpha", "/w/alpha")).toBe(true);
+    expect(projectStore.getState().projectCwd).toBe("/w/alpha");
+    const before = projectStore.getState();
+    expect(project.alreadyIn("/w/alpha", "/w/alpha")).toBe(true);
+    expect(projectStore.getState()).toBe(before);
+    expect(project.alreadyIn("/w/beta", "/w/alpha")).toBe(false);
+    expect(project.alreadyIn(undefined, "/w/alpha")).toBe(false);
+  });
+
   it("a plain cwd move leaves the recents alone", () => {
     const held = projectStore.getState().recents;
     project.setProjectCwd("/elsewhere");
