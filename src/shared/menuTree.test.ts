@@ -243,7 +243,7 @@ describe('inAppMenus', () => {
   })
 
   it('drops roles, main ids and desktop-only rows', () => {
-    for (const id of [...MAIN_MENU_IDS, 'new_window']) expect(ids).not.toContain(id)
+    for (const id of [...MAIN_MENU_IDS, 'new_window', 'new_terminal', 'toggle_terminal']) expect(ids).not.toContain(id)
     const labels = menus.flatMap((m) => m.items.flatMap((i) => (i.kind === 'item' ? [i.label] : [])))
     for (const label of ['Undo', 'Close Window', 'Reload Window', 'Developer Tools']) expect(labels).not.toContain(label)
   })

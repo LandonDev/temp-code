@@ -1,44 +1,55 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MENU_TREE, inAppMenus, type InAppMenu } from "@shared/menuTree";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
-import { MOD, SHIFT } from "../lib/platform";
-import { updateStore } from "../lib/updateStore";
+import { ALT, IS_MAC, MOD, SHIFT } from "../lib/platform";
 
-type MenuKey = "file" | "view" | "terminal";
+/**
+ * The menu bar a browser on /ui shows off macOS, opened by a lone Alt: the
+ * native menu's rows (src/shared/menuTree.ts `inAppMenus`), each with its
+ * key. A pick goes to the app command map.
+ */
+
+const KEY_NAMES: Record<string, string> = { Left: "←", Right: "→", Up: "↑", Down: "↓", Plus: "+" };
+
+/** `CmdOrCtrl+Shift+F` as the platform writes it: ⌘⇧F on a Mac, Ctrl+Shift+F elsewhere. */
+export function acceleratorLabel(accelerator: string): string {
+  const parts = accelerator.split("+");
+  const key = parts.pop() ?? "";
+  const mods = parts.map((part) => {
+    if (part === "CmdOrCtrl" || part === "CommandOrControl" || part === "Cmd") return MOD;
+    if (part === "Ctrl") return IS_MAC ? "⌃" : "Ctrl+";
+    if (part === "Shift") return SHIFT;
+    if (part === "Alt" || part === "Option") return ALT;
+    return `${part}+`;
+  });
+  return mods.join("") + (KEY_NAMES[key] ?? key);
+}
+
+function rowsOf(menu: InAppMenu, disabled: ReadonlySet<string>): ExplorerMenuItem[] {
+  return menu.items.map((item): ExplorerMenuItem =>
+    item.kind === "separator"
+      ? { kind: "sep" }
+      : {
+          kind: "item",
+          id: item.id,
+          label: item.label,
+          ...(item.accelerator ? { shortcut: acceleratorLabel(item.accelerator) } : {}),
+          ...(disabled.has(item.id) ? { disabled: true } : {}),
+        },
+  );
+}
 
 type Props = {
-  onNew: () => void;
-  onNewTerminal?: () => void;
-  onToggleTerminal?: () => void;
-  onGoToFile?: () => void;
-  /** Any item id not handled here goes to the app command map (lib/appCommands.ts). */
-  onCommand?: (id: string) => void;
-  onToggleSidebar: () => void;
-  onShowSourceControl?: () => void;
-  onCloseCurrentTab?: () => void;
-  onPickProject?: () => void;
-  onFindInProject?: () => void;
-  onSearch?: () => void;
-  onOpenInbox?: () => void;
-  onOpenNotes?: () => void;
+  onCommand: (id: string) => void;
+  /** Rows that would do nothing here, greyed. */
+  disabled?: readonly string[];
 };
 
-export function MenuBar({
-  onNew,
-  onNewTerminal,
-  onToggleTerminal,
-  onGoToFile,
-  onCommand,
-  onToggleSidebar,
-  onShowSourceControl,
-  onCloseCurrentTab,
-  onPickProject,
-  onFindInProject,
-  onSearch,
-  onOpenInbox,
-  onOpenNotes,
-}: Props) {
+export function MenuBar({ onCommand, disabled }: Props) {
+  const menus = useMemo(() => inAppMenus(MENU_TREE), []);
+  const off = useMemo(() => new Set(disabled ?? []), [disabled]);
   const [open, setOpen] = useState(false);
-  const [activeMenu, setActiveMenu] = useState<MenuKey | null>(null);
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -82,7 +93,7 @@ export function MenuBar({
     };
   }, []);
 
-  const openDropdown = useCallback((key: MenuKey, target: HTMLElement) => {
+  const openDropdown = useCallback((key: string, target: HTMLElement) => {
     const rect = target.getBoundingClientRect();
     setActiveMenu(key);
     setMenuAnchor({ x: rect.left, y: rect.bottom + 4 });
@@ -97,126 +108,14 @@ export function MenuBar({
     (id: string) => {
       closeMenu();
       setOpen(false);
-
-      switch (id) {
-        case "new_tab":
-          onNew();
-          break;
-        case "new_terminal":
-          onNewTerminal?.();
-          break;
-        case "toggle_terminal":
-          onToggleTerminal?.();
-          break;
-        case "open_project":
-          onPickProject?.();
-          break;
-        case "open_search":
-          onSearch?.();
-          break;
-        case "open_inbox":
-          onOpenInbox?.();
-          break;
-        case "open_notes":
-          onOpenNotes?.();
-          break;
-        case "go_to_file":
-          onGoToFile?.();
-          break;
-        case "find_in_project":
-          onFindInProject?.();
-          break;
-        case "close_tab":
-          onCloseCurrentTab?.();
-          break;
-        case "toggle_sidebar":
-          onToggleSidebar();
-          break;
-        case "open_model_picker":
-          window.dispatchEvent(new Event("open_model_picker"));
-          break;
-        case "toggle_diff":
-          onShowSourceControl?.();
-          break;
-        case "check_for_updates":
-          void updateStore.check(true);
-          break;
-        default:
-          onCommand?.(id);
-      }
+      onCommand(id);
     },
-    [
-      closeMenu,
-      onCommand,
-      onCloseCurrentTab,
-      onFindInProject,
-      onGoToFile,
-      onNew,
-      onNewTerminal,
-      onToggleTerminal,
-      onPickProject,
-      onSearch,
-      onOpenInbox,
-      onOpenNotes,
-      onShowSourceControl,
-      onToggleSidebar,
-    ],
+    [closeMenu, onCommand],
   );
-
-  // A row whose handler is absent (the terminal at /ui) is not drawn.
-  const absent = new Set([...(onNewTerminal ? [] : ["new_terminal"]), ...(onToggleTerminal ? [] : ["toggle_terminal"])]);
-  const getMenuItems = (key: MenuKey): ExplorerMenuItem[] =>
-    menuItemsFor(key).filter((item) => item.kind !== "item" || !absent.has(item.id));
-  const menuItemsFor = (key: MenuKey): ExplorerMenuItem[] => {
-    switch (key) {
-      case "file":
-        return [
-          { kind: "item", id: "new_tab", label: "New Tab", shortcut: `${MOD}N` },
-          { kind: "item", id: "new_terminal", label: "New Terminal", shortcut: `${MOD}\`` },
-          { kind: "item", id: "new_window", label: "New Window", shortcut: `${MOD}${SHIFT}N` },
-          { kind: "sep" },
-          { kind: "item", id: "open_project", label: "Open Project…" },
-          { kind: "item", id: "open_search", label: "Search…", shortcut: `${MOD}K` },
-          { kind: "item", id: "go_to_file", label: "Go to File…", shortcut: `${MOD}P` },
-          { kind: "item", id: "go_to_symbol", label: "Go to Symbol…", shortcut: `${MOD}O` },
-          { kind: "item", id: "show_hierarchy", label: "Type Hierarchy", shortcut: `${MOD}T` },
-          { kind: "item", id: "find_in_project", label: "Find in Files…", shortcut: `${MOD}${SHIFT}F` },
-          { kind: "sep" },
-          { kind: "item", id: "save_all", label: "Save All", shortcut: `${MOD}S` },
-          { kind: "sep" },
-          { kind: "item", id: "close_tab", label: "Close Pane", shortcut: `${MOD}W` },
-          { kind: "sep" },
-          { kind: "item", id: "check_for_updates", label: "Check for Updates…" },
-        ];
-      case "view":
-        return [
-          { kind: "item", id: "toggle_sidebar", label: "Toggle Sidebar", shortcut: `${MOD}B` },
-          { kind: "item", id: "open_inbox", label: "Inbox" },
-          { kind: "item", id: "mark_all_read", label: "Mark All Threads as Read" },
-          ...(onOpenNotes
-            ? [{ kind: "item" as const, id: "open_notes", label: "Notes" }]
-            : []),
-          { kind: "item", id: "toggle_terminal", label: "Toggle Terminal", shortcut: `${MOD}J` },
-          { kind: "item", id: "open_model_picker", label: "Switch Model…", shortcut: `${MOD}.` },
-          { kind: "item", id: "toggle_diff", label: "Toggle Changes" },
-        ];
-      case "terminal":
-        return [
-          { kind: "item", id: "new_terminal", label: "New Terminal", shortcut: `${MOD}\`` },
-          { kind: "item", id: "toggle_terminal", label: "Toggle Terminal", shortcut: `${MOD}J` },
-        ];
-    }
-  };
 
   if (!open && !activeMenu) {
     return null;
   }
-
-  const MENUS: { key: MenuKey; label: string }[] = [
-    { key: "file", label: "File" },
-    { key: "view", label: "View" },
-    ...(onNewTerminal || onToggleTerminal ? [{ key: "terminal" as const, label: "Terminal" }] : []),
-  ];
 
   return (
     <div
@@ -224,7 +123,8 @@ export function MenuBar({
       className="flex h-7 shrink-0 items-center gap-0.5 border-b border-content/10 bg-content/5 px-2 text-[12px]"
       data-tauri-drag-region="false"
     >
-      {MENUS.map(({ key, label }) => {
+      {menus.map(({ label }) => {
+        const key = label;
         const isActive = activeMenu === key;
         return (
           <button
@@ -258,7 +158,7 @@ export function MenuBar({
         <ExplorerMenu
           x={menuAnchor.x}
           y={menuAnchor.y}
-          items={getMenuItems(activeMenu)}
+          items={rowsOf(menus.find((m) => m.label === activeMenu)!, off)}
           ariaLabel={`${activeMenu} menu`}
           onPick={handlePick}
           onClose={closeMenu}

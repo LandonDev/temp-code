@@ -21,6 +21,7 @@ import { selectionFor } from "./lib/threadBatchSelection";
 
 /** The View menu's fleet switches reach every host. */
 const EVERYWHERE: BatchScope = { kind: "all" };
+const NOTES_OFF = ["open_notes"];
 import { ThreadBatchToasts } from "./chrome/ThreadBatchToasts";
 import { MacBridgeToasts } from "./chrome/MacBridgeCards";
 import { WhatsNewDialog } from "./chrome/WhatsNewDialog";
@@ -3651,25 +3652,12 @@ export default function App() {
           aria-hidden={searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || !!accountsPage}
           inert={searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || !!accountsPage || undefined}
         >
-        {!IS_MAC ? (
+        {isWebMode() && !IS_MAC ? (
           <MenuBar
-            onNew={onNew}
-            onNewTerminal={desktopOnly(onNewTerminal)}
-            onToggleTerminal={desktopOnly(onToggleProjectTerminal)}
-            onGoToFile={onGoToFile}
             onCommand={(id) => {
               if (isAppCommandId(id)) execute({ id });
             }}
-            onToggleSidebar={onToggleSidebar}
-            onShowSourceControl={onToggleChanges}
-            onCloseCurrentTab={
-              activeTabId ? () => onCloseTab(activeTabId) : undefined
-            }
-            onPickProject={pickProject}
-            onFindInProject={onFindInProject}
-            onSearch={onOpenSearch}
-            onOpenInbox={onOpenInbox}
-            onOpenNotes={notesEnabled ? onOpenNotes : undefined}
+            disabled={notesEnabled ? undefined : NOTES_OFF}
           />
         ) : null}
         <ShellTitleBar

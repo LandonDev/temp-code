@@ -18,7 +18,7 @@ export interface MenuCommand {
   accelerator?: string
   /** Shown in the menu but left to the page: the menu does not register the key. */
   pageKey?: true
-  /** Hidden from the in-app bar of a browser. */
+  /** Hidden from the in-app bar of a browser (/ui has no second window and no terminal). */
   desktopOnly?: true
   /** Show/Hide labels; `label` is the show one. */
   toggle?: { show: string; hide: string }
@@ -60,8 +60,8 @@ const cmd = (
   accelerator?: string,
   extra: Pick<MenuCommand, 'pageKey' | 'desktopOnly'> = {}
 ): MenuCommand => ({ kind: 'command', id, label, ...(accelerator ? { accelerator } : {}), ...extra })
-const toggle = (id: string, what: string, accelerator: string): MenuCommand => ({
-  ...cmd(id, `Show ${what}`, accelerator),
+const toggle = (id: string, what: string, accelerator: string, extra: Pick<MenuCommand, 'desktopOnly'> = {}): MenuCommand => ({
+  ...cmd(id, `Show ${what}`, accelerator, extra),
   toggle: { show: `Show ${what}`, hide: `Hide ${what}` }
 })
 const submenu = (label: string, items: MenuNode[]): MenuSubmenu => ({ kind: 'submenu', label, items })
@@ -88,7 +88,7 @@ export const MENU_TREE: MenuSection[] = [
     label: 'File',
     items: [
       cmd('new_tab', 'New Thread', 'CmdOrCtrl+N'),
-      cmd('new_terminal', 'New Terminal', 'Ctrl+`', { pageKey: true }),
+      cmd('new_terminal', 'New Terminal', 'Ctrl+`', { pageKey: true, desktopOnly: true }),
       cmd('new_window', 'New Window', 'CmdOrCtrl+Shift+N', { desktopOnly: true }),
       sep,
       cmd('open_project', 'Open Project…'),
@@ -119,7 +119,7 @@ export const MENU_TREE: MenuSection[] = [
     items: [
       toggle('toggle_sidebar', 'Sidebar', 'CmdOrCtrl+B'),
       toggle('toggle_panel', 'Panel', 'CmdOrCtrl+Shift+R'),
-      toggle('toggle_terminal', 'Terminal', 'CmdOrCtrl+J'),
+      toggle('toggle_terminal', 'Terminal', 'CmdOrCtrl+J', { desktopOnly: true }),
       sep,
       cmd('split_right', 'Split Right', 'CmdOrCtrl+D'),
       cmd('split_down', 'Split Down', 'CmdOrCtrl+Shift+D'),
