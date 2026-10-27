@@ -153,7 +153,7 @@ on its own the first time it loads.
 1. Put the import behind `defineChunk` in `surfaces/chunks.ts` (a barrel if
    it is several modules) and add its modules to `NEVER_IN_ENTRY`.
 2. At the mount point: `const X = chunk.surface("X", <SurfaceSkeleton kind="…" />)`.
-3. On the trigger: spread `chunk.intent` (IconButton and RailAction take an
+3. On the trigger: spread `chunk.intent` (IconButton and RailRow take an
    `intent` prop), or `preloadWhenIdle(chunk)` where a click is not the way in.
 4. Never import a module of the chunk statically from the main chunk;
    `bun run check:bundle` says so when it happens, `bun run bundle:map`

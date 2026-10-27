@@ -57,7 +57,10 @@ the transcript's rows and its markdown pipeline (streamdown, the worker,
 the Shiki code block, DiffBody), the composer field, the rail, the tab
 strip, the editor (CodeMirror), the terminal (xterm), the charts (recharts
 in Aliax). Each is built from the components above wherever it has a
-button, a menu, a field or a state word.
+button, a menu, a field or a state word. The rail's one row is `RailRow`
+(chrome/RailRow.tsx, with `RailHeading`): a ghost `Button`, a 16px glyph, a
+13px label, one trailing mark and one hover action, used by the rail, its
+foot and the settings list.
 
 ## Icons
 

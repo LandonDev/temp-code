@@ -681,8 +681,9 @@ routed to (aliax-core's `forward`). Two listeners:
   failure keeps the last value; `deploy.master` RPC + `deploy-master` push,
   local only; headless hosts never fetch). `useDeployDrift(environmentId)`
   in the renderer's lib/deployDrift.ts gives `{behind, deployedVersion,
-  masterVersion}`; chrome/DeployDrift.tsx is the muted tabular `+N` on the
-  host's row at the rail's foot and its header on Settings → Hosts,
+  masterVersion}`; chrome/DeployDrift.tsx is the muted tabular `+N` at the
+  end of the host's submenu trigger in the rail's Hosts row and on its
+  header on Settings → Hosts,
   tooltip naming both versions and the deploy (box) or publish (Mac)
   command; nothing when current or unknown. docs/box.md "Knowing the box
   is behind". Every "ask the login shell" call goes
@@ -960,7 +961,8 @@ routed to (aliax-core's `forward`). Two listeners:
   transcript with a "The host restarted during your turn at <time>; continue
   where you left off." nudge, four at a time, children first, paused ones
   left paused, and pushes one `boot-resume` (count, boot time) that the rail
-  shows once per boot as "N threads resumed after restart". A running row
+  says once per boot as a sonner toast, "N threads resumed after restart"
+  (`useBootResumeToasts`, chrome/HostRows.tsx). A running row
   with no live harness for 20 s flips to the `stopped` status (liveness sweep
   `sweepLiveness`, `DriverHandle.alive`); the strip says "Stopped · the
   harness is gone" with Resume, and `session.resume` on it calls
@@ -1069,9 +1071,12 @@ names the far child).
   (`aliasKeys`) so order, pins, recents, labels, colours and mascots keep
   theirs; one "Workspaces" section, no host headers, every copy's threads by
   recency, unread sums, Mark all read and the fleet switches over every
-  copy, a down host's rows under the offline tint. Host status (connection
-  dot, boot-resume line, deploy drift) is one row per host at the rail's
-  foot (`chrome/HostRows.tsx`, two or more hosts only) with the host's menu.
+  copy, a down host's rows under the offline tint. Host status is one Hosts
+  row at the rail's foot (`HostsRow` in chrome/HostRows.tsx, two or more
+  hosts only): a connection dot per host, and a menu with a submenu per
+  host (its state, the deploy drift, Switch to, Add workspace here, Mark
+  all read, the fleet switches), then Host settings; a boot resume is a
+  toast.
   `chrome/HostGlyph.tsx` (12 px, laptop for darwin, server otherwise, the
   name on hover, platform from the hello, remembered on the saved host row
   by `rememberPlatform`, preload for this machine; `lib/hostPlatform.ts`)
@@ -1819,8 +1824,9 @@ proof and the sizing rules; the pieces, by name:
 ## The fleet switches: one click for every thread of a scope
 Pause all, Resume all, Stop all and Archive done sit beside Mark all read in
 a project's menu (rail row and project header; on a project linked across
-hosts they act on every copy, one `session.batch` per host), a host's row at
-the rail's foot (`chrome/HostRows.tsx`, with two or more hosts), and the View menu for everything. Roots only, subagents follow their parent; a row with nothing to
+hosts they act on every copy, one `session.batch` per host), a host's
+submenu in the rail's Hosts row (`HostsRow` in chrome/HostRows.tsx, with two
+or more hosts), and the View menu for everything. Roots only, subagents follow their parent; a row with nothing to
 act on is disabled. The rules per row, the confirm copy with its live count
 and the toast line are `src/renderer/src/lib/threadBatch.ts` (unit-tested);
 the menus' rows are `threadBatchMenu.ts`; the dialog and toast are
