@@ -13,7 +13,6 @@ function chip(id: string, title: string, over: Partial<StripChip> = {}, thread: 
     live: true,
     status,
     unread: false,
-    tone: null,
     updatedAt: now,
     ...over,
     thread: {

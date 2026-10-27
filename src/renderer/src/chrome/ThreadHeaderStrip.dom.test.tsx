@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HeaderModel } from "../lib/threadHeaderModel";
-import { ThreadHeaderStrip, chipDetail, chipState, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
+import { ThreadHeaderStrip, chipStatus, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 
 const thread = (id: string, title: string): ChipThread => ({
   id,
@@ -23,7 +23,6 @@ const chip = (id: string, title: string): StripChip => ({
   live: true,
   status: "idle",
   unread: false,
-  tone: null,
   updatedAt: 1,
 });
 
@@ -120,7 +119,7 @@ describe("ThreadHeaderStrip row", () => {
 
 describe("ThreadHeaderStrip chip", () => {
   it("a master chip reads its type glyph, title, Master and status glyph, nothing else, and carries no title attribute", () => {
-    const waiting = { ...chip("a", "Alpha"), status: "waiting" as const };
+    const waiting: StripChip = { ...chip("a", "Alpha"), status: "waiting", thread: { ...thread("a", "Alpha"), status: "waiting" } };
     mount({ masterIds: new Set(["a"]), model: { ...model, live: [waiting, ...model.live.slice(1)] } });
     const el = tab("Alpha");
     expect(el.children).toHaveLength(4);
@@ -161,23 +160,15 @@ describe("ThreadHeaderStrip chip", () => {
     expect(await screen.findByText("Rename Gamma")).toBeTruthy();
   });
 
-  it("the hover label says the state in words with what it is about", async () => {
+  it("reads the chip's status from its thread: the tree, the activity, the tally", () => {
     const working: StripChip = {
       ...chip("w", "Build"),
       status: "running",
-      thread: { ...thread("w", "Build"), status: "running", activity: "typecheck" },
+      thread: { ...thread("w", "Build"), status: "running", activity: "Typecheck", tasks: { done: 3, total: 7 } },
     };
-    expect(chipDetail(working, chipState(working, {}))).toBe("typecheck");
-    const queued: StripChip = {
-      ...chip("q", "Later"),
-      status: "queued",
-      thread: { ...thread("q", "Later"), status: "queued", activity: "Queued · 3rd in line" },
-    };
-    expect(chipDetail(queued, chipState(queued, {}))).toBe("3rd in line");
-    const tally: StripChip = { ...working, thread: { ...working.thread, tasks: { done: 3, total: 7 } } };
-    expect(chipDetail(tally, "working")).toBe("3/7");
-    expect(chipDetail(chip("i", "Idle"), "idle")).toBeNull();
-    const waiting: StripChip = { ...chip("n", "Ask"), status: "waiting", thread: { ...thread("n", "Ask"), status: "waiting" } };
-    expect(chipDetail(waiting, "waiting", "Bash: bun test")).toBe("Bash: bun test");
+    expect(chipStatus(working, {})).toEqual({ state: "working", detail: "typecheck", tally: "3/7" });
+    const paused: StripChip = { ...working, thread: { ...working.thread, treeHasPaused: true } };
+    expect(chipStatus(paused, {}).state).toBe("paused");
+    expect(chipStatus(chip("i", "Idle"), { i: true }).state).toBe("plan-ready");
   });
 });

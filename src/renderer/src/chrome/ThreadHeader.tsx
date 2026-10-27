@@ -83,7 +83,7 @@ export function chipMenuItems(
   });
   if (t.threadType && TUNABLE.has(t.threadType))
     items.push({ kind: "item", id: "tune", label: `${THREAD_LABELS[t.threadType]} options…` });
-  const paused = chip.status === "paused";
+  const paused = chip.status === "paused" || !!t.treeHasPaused;
   const stopped = chip.status === "stopped";
   const working = !!t.treeHasLiveWork || chip.status === "running" || chip.status === "starting";
   const live = working || paused || chip.status === "waiting" || chip.status === "watching";

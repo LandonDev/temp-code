@@ -6,18 +6,26 @@ import {
   type ReactNode,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import type { BackgroundWork } from "@server/shared/events";
 import type { ThreadRules } from "@server/shared/rules";
 import { Button } from "../components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/ui/context-menu";
 import { Input } from "../components/ui/input";
-import { STATUS_WORD, StatusMark, threadStateOf, type ThreadState } from "../components/ui/status";
+import { STATUS_WORD, StatusMark } from "../components/ui/status";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { pendingApprovalForSession } from "../lib/approvalToast";
 import { HARNESSES, sessionDisplayTitle, type HarnessId } from "../lib/session";
 import { sessionStore } from "../lib/tcserver/store";
 import type { ThreadType } from "../lib/tcserver/types";
 import { holdDepartures, type HeaderChip, type HeaderModel } from "../lib/threadHeaderModel";
-import type { ReadyMap, StripThread } from "../lib/threadStripModel";
+import {
+  hasPendingQuestion,
+  marksAtRest,
+  threadStatus,
+  type ReadyMap,
+  type StripThread,
+  type ThreadStatus,
+} from "../lib/threadStripModel";
 import type { ActivityKind } from "../lib/session";
 import { THREAD_GLYPHS } from "../surfaces/threads/bits";
 
@@ -45,6 +53,7 @@ export type ChipThread = StripThread & {
   tasks?: { done: number; total: number } | null;
   threadRules?: ThreadRules | null;
   failure?: { summary: string } | null;
+  background?: BackgroundWork | null;
 };
 
 export type StripChip = HeaderChip<ChipThread>;
@@ -165,28 +174,23 @@ export function chipTitle(chip: StripChip): string {
   return shown.trim() || "New session";
 }
 
-/** States a chip leaves unmarked: a settled thread says nothing at rest
- *  (its hover label still names the state). */
-const QUIET: ReadonlySet<ThreadState> = new Set(["idle", "done"]);
-
-/** The chip's state in the one vocabulary (components/ui/status.tsx). */
-export function chipState(chip: StripChip, planReady: ReadyMap): ThreadState {
-  return threadStateOf(chip.status, { planReady: !!planReady[chip.id] });
-}
-
-/** What the state is about, for the hover label's second line: the tally, the
- *  activity ("typecheck", "approve Bash") or the failure's verdict. */
-export function chipDetail(chip: StripChip, state: ThreadState, waitingOn?: string | null): string | null {
+/** The chip's status in the one vocabulary: the tree's overrides, what it is about and its tally. */
+export function chipStatus(chip: StripChip, planReady: ReadyMap): ThreadStatus {
   const t = chip.thread;
-  if (state === "failed") return t.failure?.summary ?? null;
-  if (state === "waiting" && waitingOn) return waitingOn;
-  if (state === "idle" || state === "done" || state === "plan-ready") return null;
-  if (t.tasks && state === "working") return `${t.tasks.done}/${t.tasks.total}`;
-  const activity = t.activity?.trim();
-  if (!activity) return null;
-  // The host's queued line repeats the word ("Queued · 3rd in line").
-  const word = STATUS_WORD[state];
-  return activity.startsWith(word) ? activity.slice(word.length).replace(/^[\s·:—-]+/, "") || null : activity;
+  // What a waiting thread waits on, when its transcript is loaded here.
+  const session = t.status === "waiting" ? sessionStore.get(chip.id) : undefined;
+  return threadStatus({
+    status: t.status,
+    treeHasPaused: t.treeHasPaused,
+    treeCanContinue: t.treeCanContinue,
+    activity: t.activity,
+    tasks: t.tasks,
+    failure: t.failure?.summary ?? null,
+    planReady: !!planReady[chip.id],
+    waitingOn: session ? (pendingApprovalForSession(session)?.label ?? null) : null,
+    asking: session ? hasPendingQuestion(session.blocks) : false,
+    background: t.background ?? null,
+  });
 }
 
 /** The roving focus along the row: arrows, Home and End move between chips. */
@@ -234,10 +238,7 @@ function Chip({
 }: { chip: StripChip; active: boolean; focusable: boolean; onSelect: (id: string) => void } & ChipEvents) {
   const [menuOpen, setMenuOpen] = useState(false);
   if (events.renamingId === chip.id) return <RenameInput chip={chip} onRename={events.onRename} />;
-  const state = chipState(chip, events.planReady);
-  // What a waiting thread waits on: its pending approval ("Bash: bun test"), when loaded here.
-  const session = state === "waiting" ? sessionStore.get(chip.id) : undefined;
-  const detail = chipDetail(chip, state, session ? pendingApprovalForSession(session)?.label : null);
+  const status = chipStatus(chip, events.planReady);
   const title = chipTitle(chip);
   const unread = !active && chip.unread;
   const Glyph = THREAD_GLYPHS[chip.thread.threadType ?? "chat"];
@@ -280,13 +281,14 @@ function Chip({
                 Master
               </span>
             ) : null}
-            {QUIET.has(state) ? null : <StatusMark state={state} word={false} />}
+            {marksAtRest(status.state) ? <StatusMark state={status.state} word={false} /> : null}
           </TooltipTrigger>
           <TooltipContent side="bottom" className="flex-col items-start gap-0.5 text-left">
             <span>{title}</span>
             <span className="flex gap-2 font-normal text-background/70">
-              <span>{STATUS_WORD[state]}</span>
-              {detail ? <span className="min-w-0 truncate">{detail}</span> : null}
+              <span>{STATUS_WORD[status.state]}</span>
+              {status.detail ? <span className="min-w-0 truncate">{status.detail}</span> : null}
+              {status.tally ? <span className="tabular-nums">{status.tally}</span> : null}
             </span>
           </TooltipContent>
         </Tooltip>

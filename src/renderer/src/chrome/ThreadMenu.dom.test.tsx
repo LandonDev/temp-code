@@ -21,7 +21,7 @@ const chip = (id: string, title: string, updatedAt: number): StripChip => {
     archived: false,
     threadType: "chat",
   };
-  return { id, thread, tabId: null, live: false, status: "idle", unread: false, tone: null, updatedAt };
+  return { id, thread, tabId: null, live: false, status: "idle", unread: false, updatedAt };
 };
 
 function menu(over: Partial<ComponentProps<typeof ThreadMenu>> = {}) {

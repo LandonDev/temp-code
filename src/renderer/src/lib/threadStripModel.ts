@@ -1,3 +1,6 @@
+import type { BackgroundWork } from "@shared/events";
+import { watchPhrase } from "@shared/watch";
+import { threadStateOf, type ThreadState } from "../components/ui/status";
 import type { SessionMeta, SessionStatus, ThreadType } from "./tcserver/types";
 
 /**
@@ -189,25 +192,93 @@ export function dormantByType<T extends { threadType?: ThreadType | null }>(
   return groups.length > 1 ? groups : [];
 }
 
-/** What the chip wears: a paused descendant reads as paused, a recoverable
- *  failure anywhere in the tree as failed, otherwise the root's own status. */
-export function displayStatus(
-  t: Pick<StripThread, "status" | "treeHasPaused" | "treeCanContinue">,
-): SessionStatus {
-  if (t.treeHasPaused) return "paused";
-  if (t.treeCanContinue) return "error";
-  return t.status;
+/** What every thread status row reads: a chip's meta and a tab's thread both give it. */
+export type ThreadStatusInput = {
+  status: SessionStatus | null | undefined;
+  treeHasPaused?: boolean;
+  treeCanContinue?: boolean;
+  /** The host's activity line ("Running bun", "Queued · 3rd in line", "Waiting on …"). */
+  activity?: string | null;
+  tasks?: { done: number; total: number } | null;
+  /** The host's one-line failure verdict. */
+  failure?: string | null;
+  planReady?: boolean;
+  /** The undecided approval's label ("Bash: bun test"), when the transcript is loaded. */
+  waitingOn?: string | null;
+  /** An undecided question in the transcript. */
+  asking?: boolean;
+  background?: BackgroundWork | null;
+};
+
+/** A thread's state in the one vocabulary, what it is about, and its round's tally. */
+export type ThreadStatus = { state: ThreadState; detail: string | null; tally: string | null };
+
+const LIVE_STATUSES: ReadonlySet<SessionStatus> = new Set(["starting", "running", "waiting", "watching"]);
+
+/**
+ * The one decision of what a thread's status row says (docs/DESIGN.md
+ * "Status vocabulary"): `threadStateOf`, plus the tree's overrides (a paused
+ * descendant reads paused, a recoverable failure in the tree failed) and the
+ * detail. A detail starts lower-case, never ends in a full stop and never
+ * repeats the word.
+ */
+export function threadStatus(input: ThreadStatusInput): ThreadStatus {
+  const { status } = input;
+  if (input.treeHasPaused) return { state: "paused", detail: null, tally: null };
+  if (input.treeCanContinue && !(status && LIVE_STATUSES.has(status)))
+    return { state: "failed", detail: lowerFirst(input.failure), tally: null };
+  const state = threadStateOf(status, { planReady: input.planReady });
+  const none = { state, detail: null, tally: null };
+  switch (state) {
+    case "working": {
+      const detail = lowerFirst(input.activity) ?? (status === "starting" ? "starting" : null);
+      const tally = input.tasks ? `${input.tasks.done}/${input.tasks.total}` : null;
+      return { state, detail, tally };
+    }
+    case "waiting":
+      if (input.waitingOn) return { state, detail: `approve ${input.waitingOn}`, tally: null };
+      return { state, detail: input.asking ? "answer a question" : null, tally: null };
+    case "watching":
+      return {
+        state,
+        detail: watchPhrase(input.background) || lowerFirst(after(input.activity, "Waiting on")) || "background work",
+        tally: null,
+      };
+    case "queued":
+      return { state, detail: lowerFirst(after(input.activity, "Queued")), tally: null };
+    case "stopped":
+      return { state, detail: "the harness is gone", tally: null };
+    case "failed":
+      return { state, detail: lowerFirst(input.failure), tally: null };
+    default:
+      return none;
+  }
 }
 
-export type ChipTone = "warning" | "danger" | "info" | null;
+/** The host's line past its leading word ("Queued · 3rd in line" → "3rd in line"); null when it says nothing more. */
+function after(line: string | null | undefined, lead: string): string | null {
+  const text = line?.trim();
+  if (!text || !text.startsWith(lead)) return null;
+  return text.slice(lead.length).replace(/^[\s·:—-]+/, "") || null;
+}
 
-/** The chip's wash, one glance apart: amber when it needs you or is paused,
- *  red when it failed, blue when finished unseen, nothing otherwise. */
-export function chipTone(status: SessionStatus, unread: boolean): ChipTone {
-  if (status === "waiting" || status === "paused") return "warning";
-  if (status === "error") return "danger";
-  if ((status === "idle" || status === "done") && unread) return "info";
-  return null;
+/** A detail as the vocabulary writes it: lower-case first letter (an acronym keeps its case), no trailing full stop. */
+export function lowerFirst(text: string | null | undefined): string | null {
+  const t = text?.trim().replace(/\.$/, "");
+  if (!t) return null;
+  const head = t.split(/\s/, 1)[0];
+  if (head.length > 1 && head === head.toUpperCase() && /[A-Z]/.test(head)) return t;
+  return t[0].toLowerCase() + t.slice(1);
+}
+
+/** Does the state draw a mark at rest: not when it would only say "nothing is happening". */
+export function marksAtRest(state: ThreadState): boolean {
+  return state !== "idle" && state !== "done";
+}
+
+/** An undecided question in a transcript (the question card's pending case). */
+export function hasPendingQuestion(blocks: readonly { question?: { answers?: unknown } | null }[]): boolean {
+  return blocks.some((b) => b.question != null && b.question.answers === undefined);
 }
 
 /** Roots with live work anywhere in their tree — what Pause All pauses. */

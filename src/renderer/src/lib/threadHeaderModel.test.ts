@@ -50,7 +50,7 @@ describe("buildHeaderModel", () => {
     expect(model.activeId).toBe("run");
   });
 
-  it("wears the tree-aware status and tone", () => {
+  it("carries the root's own status, the tree flags on its thread", () => {
     const model = buildHeaderModel({
       threads: [thread("x", { status: "running", treeHasPaused: true }), thread("y", { updatedAt: 200 })],
       tabs: [],
@@ -59,9 +59,9 @@ describe("buildHeaderModel", () => {
       lastSeen: { x: 100, y: 100 },
       planReady: {},
     });
-    expect(model.live.map((c) => [c.id, c.status, c.tone, c.unread])).toEqual([
-      ["y", "idle", "info", true],
-      ["x", "paused", "warning", false],
+    expect(model.live.map((c) => [c.id, c.status, !!c.thread.treeHasPaused, c.unread])).toEqual([
+      ["y", "idle", false, true],
+      ["x", "running", true, false],
     ]);
   });
 

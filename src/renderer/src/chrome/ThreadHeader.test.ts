@@ -8,7 +8,6 @@ const chip = (status: StripChip["status"], extra: Partial<StripChip["thread"]> =
   live: status !== "idle",
   status,
   unread: false,
-  tone: null,
   updatedAt: 1,
   thread: {
     id: "t1",
@@ -33,6 +32,12 @@ describe("chipMenuItems", () => {
     expect(ids(chip("paused"))).not.toContain("compact");
     expect(ids(chip("waiting"))).not.toContain("compact");
     expect(ids(chip("idle", { treeHasLiveWork: true }))).not.toContain("compact");
+  });
+
+  it("offers Continue, not Pause, to a running root whose tree holds a paused thread", () => {
+    const tree = ids(chip("running", { treeHasPaused: true }));
+    expect(tree).toContain("resume");
+    expect(tree).not.toContain("pause");
   });
 
   it("offers Kill background tasks only to a watching thread, beside Stop", () => {

@@ -1,8 +1,11 @@
+import type { BackgroundWork } from "@shared/events";
 import { describe, expect, it } from "vitest";
 import {
   archivedRootThreads,
-  chipTone,
-  displayStatus,
+  hasPendingQuestion,
+  lowerFirst,
+  marksAtRest,
+  threadStatus,
   dormantByType,
   dormantThreads,
   focusedTree,
@@ -115,22 +118,105 @@ describe("splitThreads", () => {
   });
 });
 
-describe("displayStatus and chipTone", () => {
-  it("lets a paused descendant outrank a recoverable failure outrank the root's status", () => {
-    expect(displayStatus(thread("x", { status: "running", treeHasPaused: true }))).toBe("paused");
-    expect(displayStatus(thread("x", { status: "idle", treeCanContinue: true }))).toBe("error");
-    expect(displayStatus(thread("x", { status: "waiting" }))).toBe("waiting");
+describe("threadStatus", () => {
+  const bg = (over: Partial<BackgroundWork> = {}): BackgroundWork => ({ tasks: [], agents: [], ...over }) as BackgroundWork;
+
+  it("reads a paused descendant as paused, outranking everything", () => {
+    expect(threadStatus({ status: "running", treeHasPaused: true, treeCanContinue: true, activity: "Running bun" })).toEqual({
+      state: "paused",
+      detail: null,
+      tally: null,
+    });
   });
 
-  it("washes waiting and paused amber, failed red, unread blue, else nothing", () => {
-    expect(chipTone("waiting", false)).toBe("warning");
-    expect(chipTone("paused", false)).toBe("warning");
-    expect(chipTone("error", true)).toBe("danger");
-    expect(chipTone("idle", true)).toBe("info");
-    expect(chipTone("done", true)).toBe("info");
-    expect(chipTone("idle", false)).toBeNull();
-    expect(chipTone("running", true)).toBeNull();
-    expect(chipTone("watching", true)).toBeNull();
+  it("reads a recoverable failure in the tree as failed with the host's summary, unless the root is live", () => {
+    expect(threadStatus({ status: "idle", treeCanContinue: true, failure: "Usage cap." })).toEqual({
+      state: "failed",
+      detail: "usage cap",
+      tally: null,
+    });
+    expect(threadStatus({ status: "running", treeCanContinue: true, activity: "Reading types.ts" }).state).toBe("working");
+  });
+
+  it("says what a working thread does, with its round's tally", () => {
+    expect(threadStatus({ status: "running", activity: "Running bun", tasks: { done: 3, total: 7 } })).toEqual({
+      state: "working",
+      detail: "running bun",
+      tally: "3/7",
+    });
+    expect(threadStatus({ status: "running" })).toEqual({ state: "working", detail: null, tally: null });
+  });
+
+  it("says starting for a starting thread with no activity yet", () => {
+    expect(threadStatus({ status: "starting" })).toEqual({ state: "working", detail: "starting", tally: null });
+    expect(threadStatus({ status: "starting", activity: "Booting claude" }).detail).toBe("booting claude");
+  });
+
+  it("names the approval a waiting thread needs, else its question, else nothing", () => {
+    expect(threadStatus({ status: "waiting", waitingOn: "Bash: bun test", asking: true })).toEqual({
+      state: "waiting",
+      detail: "approve Bash: bun test",
+      tally: null,
+    });
+    expect(threadStatus({ status: "waiting", asking: true }).detail).toBe("answer a question");
+    expect(threadStatus({ status: "waiting" })).toEqual({ state: "waiting", detail: null, tally: null });
+  });
+
+  it("is plan-ready on idle and on watching, never on running", () => {
+    expect(threadStatus({ status: "idle", planReady: true })).toEqual({ state: "plan-ready", detail: null, tally: null });
+    expect(threadStatus({ status: "watching", planReady: true, background: bg({ agents: ["a"] }) }).state).toBe("plan-ready");
+    expect(threadStatus({ status: "running", planReady: true }).state).toBe("working");
+  });
+
+  it("says what a watching thread watches: the background, else the host's line, else background work", () => {
+    expect(threadStatus({ status: "watching", background: bg({ agents: ["a", "b", "c"] }) }).detail).toBe("3 subagents");
+    expect(threadStatus({ status: "watching", activity: "Waiting on 2 monitors" }).detail).toBe("2 monitors");
+    expect(threadStatus({ status: "watching" })).toEqual({ state: "watching", detail: "background work", tally: null });
+  });
+
+  it("gives a queued thread the host's reason past the word", () => {
+    expect(threadStatus({ status: "queued", activity: "Queued · 120 of 120 running" }).detail).toBe("120 of 120 running");
+    expect(threadStatus({ status: "queued", activity: "Queued · waiting for Plan A19" }).detail).toBe("waiting for Plan A19");
+    expect(threadStatus({ status: "queued" })).toEqual({ state: "queued", detail: null, tally: null });
+  });
+
+  it("says the harness is gone for a stopped thread", () => {
+    expect(threadStatus({ status: "stopped" })).toEqual({ state: "stopped", detail: "the harness is gone", tally: null });
+  });
+
+  it("gives an errored thread its summary, or nothing", () => {
+    expect(threadStatus({ status: "error", failure: "Rate limited by the provider" }).detail).toBe("rate limited by the provider");
+    expect(threadStatus({ status: "error" })).toEqual({ state: "failed", detail: null, tally: null });
+  });
+
+  it("says nothing more for paused, idle and done", () => {
+    for (const status of ["paused", "idle", "done"] as const)
+      expect(threadStatus({ status, activity: "Running bun", tasks: { done: 1, total: 2 } })).toEqual({
+        state: status,
+        detail: null,
+        tally: null,
+      });
+  });
+});
+
+describe("lowerFirst, marksAtRest and hasPendingQuestion", () => {
+  it("lower-cases the first letter, keeps an acronym, drops the full stop", () => {
+    expect(lowerFirst("Usage cap.")).toBe("usage cap");
+    expect(lowerFirst("PR checks failed")).toBe("PR checks failed");
+    expect(lowerFirst("  ")).toBeNull();
+    expect(lowerFirst(null)).toBeNull();
+  });
+
+  it("marks every state at rest but idle and done", () => {
+    expect(marksAtRest("idle")).toBe(false);
+    expect(marksAtRest("done")).toBe(false);
+    for (const state of ["working", "waiting", "paused", "failed", "queued", "stopped", "watching", "plan-ready"] as const)
+      expect(marksAtRest(state)).toBe(true);
+  });
+
+  it("finds an undecided question, not an answered or dismissed one", () => {
+    expect(hasPendingQuestion([{ question: { answers: undefined } }])).toBe(true);
+    expect(hasPendingQuestion([{ question: { answers: [["Yes"]] } }, { question: { answers: null } }, {}])).toBe(false);
   });
 });
 

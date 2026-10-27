@@ -1,10 +1,7 @@
 import {
-  chipTone,
-  displayStatus,
   isUnread,
   projectRootThreads,
   splitThreads,
-  type ChipTone,
   type ReadyMap,
   type SeenMap,
   type ProjectScope,
@@ -33,9 +30,9 @@ export type HeaderChip<T extends StripThread = StripThread> = {
   /** The open tab holding this thread, if any. */
   tabId: string | null;
   live: boolean;
+  /** The root's own status; the tree's overrides are `threadStatus`'s. */
   status: SessionStatus;
   unread: boolean;
-  tone: ChipTone;
   updatedAt: number;
 };
 
@@ -61,7 +58,6 @@ export function buildHeaderModel<T extends StripThread>(input: {
   const floor = input.seenFloor ?? 0;
   const { live, dormant } = splitThreads(roots, input.lastSeen, input.planReady, floor);
   const chip = (thread: T, isLive: boolean): HeaderChip<T> => {
-    const status = displayStatus(thread);
     // A local draft has no server meta to stamp seen; it is new, not unread.
     const unread = !thread.draft && isUnread(thread, input.lastSeen, floor);
     return {
@@ -69,9 +65,8 @@ export function buildHeaderModel<T extends StripThread>(input: {
       thread,
       tabId: tabOf.get(thread.id) ?? null,
       live: isLive,
-      status,
+      status: thread.status,
       unread,
-      tone: chipTone(status, unread),
       updatedAt: thread.updatedAt,
     };
   };
