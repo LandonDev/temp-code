@@ -6,6 +6,15 @@ turns, an agent thread tens of thousands into two. This page fixes how it
 stays cheap, how that is measured, and the numbers it must keep. It mirrors
 the phone's rules in docs/IOS-DESIGN.md "Performance".
 
+The window and `RowView` live in AgentTranscript.tsx; every row component
+lives under `surfaces/transcript/`, one file per area with its owner named
+in the first line: TranscriptBlock (the per-block switch), UserMessage,
+ActivityGroup and ActivityPhases (A7, turn structure); ActivityRow and
+ToolCall (A8, action rows); ThinkingRow, TurnEnd, SystemRow, NoticeRow
+(every typed notice through one switch), Approval and markdown.css (A9).
+`transcript/types.ts` holds the callback types, so nothing under
+`transcript/` imports AgentTranscript.tsx.
+
 ## Rules
 
 - **Rows are the unit.** The thread is a flat list of rows
