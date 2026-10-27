@@ -65,6 +65,14 @@ describe("MacBridgeGroup", () => {
     expect(POLICY_TEXT.read).toBe("Reads shared folders and projects; asks for the rest");
   });
 
+  it("says when the host cannot reach this Mac", () => {
+    const { container, unmount } = render(<MacBridgeGroup host={host({ registered: false })} />);
+    expect(container.querySelector("[data-mac-bridge-unregistered]")?.textContent).toBe("Not connected to this Mac right now");
+    unmount();
+    const live = render(<MacBridgeGroup host={host()} />);
+    expect(live.container.querySelector("[data-mac-bridge-unregistered]")).toBeNull();
+  });
+
   it("sets the policy from the Access select", async () => {
     render(<MacBridgeGroup host={host()} />);
     fireEvent.click(screen.getByLabelText("What box may do on this Mac"));

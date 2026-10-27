@@ -96,27 +96,36 @@ describe('MacBridgeThreadCards', () => {
 })
 
 describe('MacBridgeToasts', () => {
-  it('raises one toast per host with its id, updates it as the queue moves, and dismisses it when answered', async () => {
+  it('raises one toast for the oldest request of a host, a fresh one for the next once it is answered, and dismisses the answered one', async () => {
     requests = [req('r1'), req('r2', { createdAt: 2, argv: ['git', 'status'] })]
     const view = render(<MacBridgeToasts />)
     await flush()
     expect(toasts.toast).toHaveBeenCalledTimes(1)
     const [title, options] = toasts.toast.mock.calls[0]!
     expect(title).toBe('box wants to run on this Mac')
-    expect(options).toMatchObject({ id: 'mac-bridge:env_box', duration: Infinity, action: { label: 'Allow' }, cancel: { label: 'Deny' } })
+    expect(options).toMatchObject({ id: 'mac-bridge:r1', duration: Infinity, action: { label: 'Allow' }, cancel: { label: 'Deny' } })
 
-    // The first is answered: the same toast now carries the second.
+    // The first is answered: the second gets a toast of its own, never the first's id (whose exit would take it along).
     requests = [req('r2', { createdAt: 2, argv: ['git', 'status'] })]
     view.rerender(<MacBridgeToasts />)
     await flush()
-    expect(toasts.toast).toHaveBeenCalledTimes(2)
-    expect(toasts.toast.mock.calls[1]![1]).toMatchObject({ id: 'mac-bridge:env_box' })
-    expect(toasts.toast.dismiss).not.toHaveBeenCalled()
+    expect(toasts.toast.mock.calls.at(-1)![1]).toMatchObject({ id: 'mac-bridge:r2' })
+    expect(toasts.toast.dismiss).toHaveBeenCalledWith('mac-bridge:r1')
 
     requests = []
     view.rerender(<MacBridgeToasts />)
     await flush()
-    expect(toasts.toast.dismiss).toHaveBeenCalledWith('mac-bridge:env_box')
+    expect(toasts.toast.dismiss).toHaveBeenCalledWith('mac-bridge:r2')
+  })
+
+  it('shows the whole command and where it runs, so what Allow allows can be read in the toast', async () => {
+    const long = Array.from({ length: 30 }, (_, i) => `arg${i}`)
+    requests = [req('r1', { argv: ['bun', ...long] })]
+    render(<MacBridgeToasts />)
+    await flush()
+    const description = render(<>{toasts.toast.mock.calls[0]![1].description}</>).container
+    expect(description.textContent).toContain('arg29')
+    expect(description.textContent).toContain('in /Users/me/app')
   })
 
   it('a running command raises no toast and no card: it is an Activity row and a Hosts page row', () => {

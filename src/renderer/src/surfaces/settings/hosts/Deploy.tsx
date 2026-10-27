@@ -64,7 +64,9 @@ export function HostDeploy({ environmentId, name }: { environmentId: string; nam
   const master = drift.masterVersion ?? publish?.masterVersion ?? null;
   const [confirm, setConfirm] = useState(false);
   const connected = status.transport === "open";
-  if (!deploy || !connected) return null;
+  // A deploy restarts the host: its log stays on screen while the link is down.
+  if (!connected) return <JobLog environmentId={environmentId} job="deploy" hostName={name} />;
+  if (!deploy) return null;
   const busy = deploy.phase === "pending" || deploy.phase === "running";
   const parts = deployRowParts({ installed: deploy.installed, version: deployed, masterVersion: master, connected, phase: deploy.phase });
   return (

@@ -73,7 +73,16 @@ export function MacBridgeGroup({ host }: { host: MacBridgeHostPolicy }) {
         </Button>
       }
     >
-      <Row title="Access" description={POLICY_TEXT[host.policy]} error={error}>
+      <Row
+        title="Access"
+        description={
+          <>
+            {POLICY_TEXT[host.policy]}
+            {host.registered ? null : <span className="block" data-mac-bridge-unregistered>Not connected to this Mac right now</span>}
+          </>
+        }
+        error={error}
+      >
         <Select
           items={POLICIES}
           value={host.policy}

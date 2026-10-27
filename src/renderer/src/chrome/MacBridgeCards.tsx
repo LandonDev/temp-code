@@ -155,11 +155,9 @@ export function MacBridgeThreadCards({ environmentId, sessionId }: { environment
   )
 }
 
-const short = (text: string, max = 80): string => (text.length > max ? `${text.slice(0, max - 1)}…` : text)
-
 /**
- * The requests of threads not on screen, as sonner toasts: one per host for
- * its waiting request (Allow, Deny; the remember choice is the thread
+ * The requests of threads not on screen, as sonner toasts: one for each
+ * host's oldest waiting request, the whole command with its facts, (Allow, Deny; the remember choice is the thread
  * card's alone), updated as the queue moves and dismissed when nothing waits.
  * `shown` is the set of toast ids up now, kept by the caller.
  */
@@ -171,15 +169,18 @@ export function syncMacBridgeToasts(queue: MacBridgeQueue, shown: Set<string>): 
 function syncToasts(toast: Awaited<ReturnType<typeof loadToast>>, queue: MacBridgeQueue, shown: Set<string>): void {
   const live = new Set<string>()
   for (const request of queue.pending) {
-    const id = `mac-bridge:${request.environmentId}`
+    // One toast per request, never one id reused per host: sonner's exit of an
+    // answered toast would take the next request's update with it.
+    const id = `mac-bridge:${request.id}`
     live.add(id)
     const more = queue.more[request.environmentId] ?? 0
     toast(requestTitle(request), {
       id,
       duration: Infinity,
       description: (
-        <span className="flex min-w-0 flex-col" data-mac-bridge-toast={request.id}>
-          <span className="truncate font-mono text-xs">{short(requestCode(request))}</span>
+        <span className="flex min-w-0 flex-col gap-1" data-mac-bridge-toast={request.id}>
+          <span className="block max-h-32 overflow-auto whitespace-pre-wrap break-all font-mono text-xs">{requestCode(request)}</span>
+          {requestFacts(request).length ? <Facts parts={requestFacts(request)} className="text-xs" /> : null}
           {request.threadTitle || more ? (
             <span className="truncate">{[request.threadTitle, more ? `and ${more} more` : ''].filter(Boolean).join(', ')}</span>
           ) : null}
