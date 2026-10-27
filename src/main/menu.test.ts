@@ -95,6 +95,16 @@ describe('menu template', () => {
     expect(item.registerAccelerator).toBe(false)
     expect(menu('File').find((r) => r.id === 'new_tab')!.registerAccelerator).toBeUndefined()
   })
+
+  it('leaves New Terminal\'s key to the page on macOS too, where the key still reaches the menu', () => {
+    const send = vi.fn()
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue({ isDestroyed: () => false, webContents: { send } } as never)
+    const click = menu('File').find((r) => r.id === 'new_terminal')!.click as (...args: unknown[]) => void
+    click({}, undefined, { triggeredByAccelerator: true })
+    expect(send).not.toHaveBeenCalled()
+    click({}, undefined, { triggeredByAccelerator: false })
+    expect(send).toHaveBeenCalledWith('native:menu', 'new_terminal')
+  })
 })
 
 describe('show logs', () => {

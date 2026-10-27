@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shellStore } from "../stores/shell";
-import { MENU_STATE_THROTTLE_MS, menuStateOf, publishMenuState, type MenuFacts } from "./nativeMenuState";
+import { MENU_STATE_CLOCK_MS, MENU_STATE_THROTTLE_MS, menuStateOf, publishMenuState, type MenuFacts } from "./nativeMenuState";
 import { rightPanel } from "./rightPanel";
 import { sessionStore } from "./tcserver/store";
 import type { SessionMeta } from "./tcserver/types";
@@ -102,6 +102,24 @@ describe("publishMenuState", () => {
     shellStore.setState({ projectRailOpen: !shellStore.getState().projectRailOpen });
     vi.advanceTimersByTime(MENU_STATE_THROTTLE_MS);
     expect(send).toHaveBeenCalledTimes(4);
+    publisher.stop();
+  });
+
+  it("greys Show Panel for a subagent on screen: its view has no panel", () => {
+    metas = [meta({ id: "a" }), meta({ id: "child", parentId: "a" })];
+    vi.spyOn(sessionStore, "metaOf").mockImplementation((id) => metas.find((m) => m.id === id) ?? null);
+    rightPanel.visible("child", true);
+    const send = vi.fn();
+    publishMenuState(() => ({ dockOpen: false, dockUsable: true }), send).stop();
+    expect(send.mock.calls[0][0].disabled).toContain("toggle_panel");
+  });
+
+  it("reads the facts again as the clock moves, for Archive Done's age rule", () => {
+    const send = vi.fn();
+    const publisher = publishMenuState(() => ({ dockOpen: false, dockUsable: true }), send);
+    metas = [meta({ id: "a", status: "idle" })];
+    vi.advanceTimersByTime(MENU_STATE_CLOCK_MS + MENU_STATE_THROTTLE_MS);
+    expect(send).toHaveBeenCalledTimes(2);
     publisher.stop();
   });
 });

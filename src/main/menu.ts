@@ -55,9 +55,13 @@ function toItem(node: MenuNode): MenuItemConstructorOptions {
     label: node.label,
     ...(node.accelerator ? { accelerator: node.accelerator } : {}),
     // The page owns the key (a focused terminal keeps ⌃` for the shell); the item only shows it.
+    // registerAccelerator is Windows and Linux only, so on macOS the key's own click is dropped.
     ...(node.pageKey ? { registerAccelerator: false } : {}),
     ...(node.enabled === false ? { enabled: false } : {}),
-    click: () => dispatch(node.id)
+    click: (_item, _window, event) => {
+      if (node.pageKey && event?.triggeredByAccelerator) return
+      dispatch(node.id)
+    }
   }
 }
 

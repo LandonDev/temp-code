@@ -61,7 +61,9 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }): MenuFacts 
   const catalog = workspaceStore.getSnapshot();
   const lastSeen = loadLastSeen();
   const floor = seenFloor();
-  const focused = rightPanel.focused();
+  // A subagent's view has no panel (ThreadView), so only a root thread can show one.
+  const focusedId = rightPanel.focused();
+  const focused = focusedId && !sessionStore.metaOf(focusedId)?.parentId ? focusedId : null;
   const markable = new Set(threadsToMarkRead(metas, catalog, null).ids);
   const unread = metas.filter((m) => markable.has(m.id) && isUnread(m, lastSeen, floor)).length;
   return {
@@ -76,6 +78,9 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }): MenuFacts 
 
 /** Thread metas move many times a second while turns stream; the menu reads them at most this often. */
 export const MENU_STATE_THROTTLE_MS = 250;
+
+/** Archive Done's age rule moves with the clock alone; the facts are read again this often. */
+export const MENU_STATE_CLOCK_MS = 30_000;
 
 type Send = (state: MenuState) => void;
 
@@ -106,10 +111,12 @@ export function publishMenuState(
     rightPanel.subscribe(schedule),
     shellStore.subscribe(schedule),
   ];
+  const clock = setInterval(schedule, MENU_STATE_CLOCK_MS);
   flush();
   return {
     refresh: schedule,
     stop: () => {
+      clearInterval(clock);
       if (timer !== null) clearTimeout(timer);
       for (const off of offs) off();
     },
