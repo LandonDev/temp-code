@@ -210,23 +210,6 @@ html.theme-light {
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Buttons and chips press: colour and a 0.96 scale, 100 ms. List and menu
-   rows take active:bg-content/10 instead. */
-/* The press of docs/DESIGN.md, for the hand-made buttons not yet on Button. */
-.pressable {
-  transition-property: background-color, color, transform;
-  transition-duration: var(--dur-fast);
-  transition-timing-function: var(--ease-out);
-}
-.pressable:active {
-  transform: scale(0.985);
-}
-@media (prefers-reduced-motion: reduce) {
-  .pressable:active {
-    transform: none;
-  }
-}
-
 /* One focus ring for every control; the ring sits inside the box so rows
    in tight lists do not clip it. */
 button:focus-visible,

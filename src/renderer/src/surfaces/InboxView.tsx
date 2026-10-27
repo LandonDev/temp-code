@@ -24,7 +24,7 @@ import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { GroupInput, InputGroup } from "../components/ui/input";
-import { Item } from "../components/ui/item";
+import { ItemButton } from "../components/ui/item";
 import { Skeleton } from "../components/ui/skeleton";
 import { Spinner } from "../components/ui/spinner";
 import { StatusMark } from "../components/ui/status";
@@ -732,20 +732,15 @@ export function InboxRow({
   const row = inboxRowModel(item, { unseen, showSource });
   const KindIcon = row.kind === "pr" ? GitPullRequest : CircleDot;
   return (
-    <Item
+    <ItemButton
       size="sm"
+      aria-current={active ? "true" : undefined}
+      aria-label={unseen ? `${item.title}, new` : undefined}
+      onClick={onSelect}
       className={cn(
         "flex-col flex-nowrap items-stretch gap-0.5 rounded-md px-2.5 py-2 text-left transition-none",
         active ? "bg-muted" : "hover:bg-foreground/5",
       )}
-      render={
-        <button
-          type="button"
-          aria-current={active ? "true" : undefined}
-          aria-label={unseen ? `${item.title}, new` : undefined}
-          onClick={onSelect}
-        />
-      }
     >
       <span className="flex min-w-0 items-center gap-2">
         <KindIcon className="size-3.5 shrink-0 text-muted-foreground" />
@@ -774,7 +769,7 @@ export function InboxRow({
           </span>
         ) : null}
       </span>
-    </Item>
+    </ItemButton>
   );
 }
 

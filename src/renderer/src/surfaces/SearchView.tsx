@@ -21,7 +21,7 @@ import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { GroupInput, InputGroup } from "../components/ui/input";
-import { Item } from "../components/ui/item";
+import { ItemButton } from "../components/ui/item";
 import { Spinner } from "../components/ui/spinner";
 import {
   flattenGrouped,
@@ -601,23 +601,18 @@ function ResultList({
         const highlighted = index === active;
         const row = rowCopy(hit, query);
         return (
-          <Item
+          <ItemButton
             key={hit.id}
+            ref={highlighted ? activeRef : undefined}
+            role="option"
+            aria-selected={highlighted}
+            onMouseDown={(event) => event.preventDefault()}
+            onMouseEnter={() => onRowEnter(index)}
+            onClick={(event) => onOpen(hit, event.metaKey || event.ctrlKey)}
             size="xs"
             id={`app-search-hit-${index}`}
             data-kind={hit.kind}
             className={`h-8 flex-nowrap gap-2 rounded-md px-3 py-0 text-left transition-none ${highlighted ? "bg-muted" : ""}`}
-            render={
-              <button
-                ref={highlighted ? activeRef : undefined}
-                type="button"
-                role="option"
-                aria-selected={highlighted}
-                onMouseDown={(event) => event.preventDefault()}
-                onMouseEnter={() => onRowEnter(index)}
-                onClick={(event) => onOpen(hit, event.metaKey || event.ctrlKey)}
-              />
-            }
           >
             <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
               {row.icon}
@@ -638,7 +633,7 @@ function ResultList({
                 alsoOn={hit.kind === "file" || hit.kind === "content" ? hit.alsoOn?.map(nameOf) : undefined}
               />
             ) : null}
-          </Item>
+          </ItemButton>
         );
       })}
     </div>
