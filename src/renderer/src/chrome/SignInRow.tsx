@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { toast } from "sonner";
+import { loadToast } from "../components/ui/toaster";
 import {
   ROUTED_PROVIDERS,
   SERVICE_OF,
@@ -83,9 +83,9 @@ export function SignInRow({ provider }: { provider: RoutedProvider }) {
     try {
       const result = await window.aliax.loginStart(SERVICE_OF[provider]);
       if (result.ok) void accountsStore.refresh(registry.primary().environmentId, provider);
-      else if (result.error !== CANCELLED) toast.error(result.error);
+      else if (result.error !== CANCELLED) void loadToast().then((toast) => toast.error(result.error));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      void loadToast().then((toast) => toast.error(err instanceof Error ? err.message : String(err)));
     } finally {
       setPending(false);
     }

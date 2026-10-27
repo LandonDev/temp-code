@@ -1,13 +1,7 @@
 import { useEffect, useRef } from "react";
-import type { toast as Toast } from "sonner";
+import { loadToast, type ToastApi } from "../components/ui/toaster";
 
-export type ToastApi = typeof Toast;
-
-/** sonner rides its own chunk (the Toaster is lazy in main.tsx); the first
- *  toast loads it, so `toast()` never sits in the first paint. */
-export function loadToast(): Promise<ToastApi> {
-  return import("sonner").then((m) => m.toast);
-}
+export { loadToast, type ToastApi };
 
 /** Mirrors a list into sonner: each item shows, or updates in place, under
  *  its id; an id that leaves the list is dismissed. */

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { loadToast } from "../../components/ui/toaster";
 import type { CommitInfo, CompareResult, MergeResult } from "@server/shared/domain";
 import { Alert, AlertDescription, AlertTitle } from "@renderer/components/ui/alert";
 import { Button } from "@renderer/components/ui/button";
@@ -132,7 +132,7 @@ export function ChangesAgainst({
         const sha = r.sha.slice(0, 7);
         const words =
           kind === "rebase" ? `Rebased onto ${target}` : kind === "land" ? `${r.fastForward ? "Fast-forwarded" : "Merged into"} ${target}` : `${r.fastForward ? "Fast-forwarded to" : "Merged"} ${target}`;
-        toast.success(`${words}  ${sha}`, r.where ? { description: `In ${r.where.replace(/^\/(Users|home)\/[^/]+/, "~")}` } : undefined);
+        void loadToast().then((toast) => toast.success(`${words}  ${sha}`, r.where ? { description: `In ${r.where.replace(/^\/(Users|home)\/[^/]+/, "~")}` } : undefined));
       } else {
         setConflicts(r.conflicts);
       }

@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
-import { toast } from "sonner";
+import { loadToast } from "../components/ui/toaster";
 import { Button } from "../components/ui/button";
 import {
   DropdownMenu,
@@ -119,7 +119,7 @@ export function ThreadMenu({
       <DropdownMenuItem
         key="pause-all"
         onClick={() => {
-          onPauseAll().catch(() => toast.error("Couldn't pause every thread"));
+          onPauseAll().catch(() => loadToast().then((toast) => toast.error("Couldn't pause every thread")));
         }}
       >
         Pause all

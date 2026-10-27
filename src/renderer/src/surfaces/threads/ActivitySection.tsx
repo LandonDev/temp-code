@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type ComponentType } from "react";
-import { toast } from "sonner";
+import { loadToast } from "../../components/ui/toaster";
 import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
 import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
@@ -140,7 +140,7 @@ function Row({
     if (stopping) return;
     setStopping(true);
     stopActivity(row)
-      .catch(() => toast.error("Couldn't stop it", { description: row.label }))
+      .catch(() => loadToast().then((toast) => toast.error("Couldn't stop it", { description: row.label })))
       .finally(() => setStopping(false));
   };
   const item = (
