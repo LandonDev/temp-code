@@ -8,7 +8,8 @@ import { toggleBreakpoint } from "../../lib/monaco/breakpoints";
 import type { EditorNavigationTarget, OpenFileFn } from "../../lib/search";
 import { projectForCwd } from "../../lib/tcserver/projects";
 import { MatrixSpinner } from "../threads/spinners";
-import { ConflictBar } from "./ConflictBar";
+import { ConflictBar } from "../ConflictBar";
+import { EditorAlert } from "../FileNoteBar";
 import { DiffSurface } from "./DiffSurface";
 import { trackEditor } from "./keys";
 import { attachGitGutter } from "./gitGutter";
@@ -245,13 +246,12 @@ export default function MonacoPane(props: Props) {
         />
       ) : null}
       {needsEula && project ? (
-        <div className="flex h-8 shrink-0 items-center gap-3 border-b border-content/10 px-3 text-[12px]">
-          <span className="text-content/50">IntelliJ engine needs the EULA</span>
-          <span className="flex-1" />
-          <button type="button" className="font-medium text-content hover:underline" onClick={() => requestSettings("editor")}>
-            Accept
-          </button>
-        </div>
+        <EditorAlert
+          tone="info"
+          role="status"
+          text="IntelliJ engine needs the EULA"
+          actions={[{ label: "Accept", onClick: () => requestSettings("editor") }]}
+        />
       ) : null}
       {phase === "loading" ? (
         <div className="flex flex-1 items-center justify-center">

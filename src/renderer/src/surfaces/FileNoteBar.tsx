@@ -1,9 +1,10 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { FileNote } from "../lib/layout";
 import { openWithEditor } from "../lib/native";
 import { Alert, AlertDescription, type AlertTone } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+import { cn } from "../lib/cn";
 
 /** A read-only note is a preview the app chose (lib/openInEditor.ts); a
  *  note on a writable file is a launcher that failed and fell back to the
@@ -30,16 +31,61 @@ export function FileNoteBar({ note, readOnly = false }: { note: FileNote; readOn
     });
   };
   return (
+    <EditorAlert
+      tone={noteTone(note, readOnly, failure != null)}
+      role="status"
+      text={text}
+      aside={readOnly ? "Read-only" : undefined}
+      actions={action ? [{ label: action.label, onClick: run }] : []}
+    />
+  );
+}
+
+export type EditorAlertAction = { label: string; onClick: () => void; tooltip?: ReactNode };
+
+/**
+ * One line above a buffer: the note (FileNoteBar), the disk conflict
+ * (ConflictBar), the engine's EULA. One shape, so the lines stacked over a
+ * file never drift apart: the text truncates (whole on hover only when
+ * cut), an optional muted aside after it, the actions at the end.
+ */
+export function EditorAlert({
+  tone,
+  role,
+  text,
+  aside,
+  actions,
+}: {
+  tone: AlertTone;
+  role: "status" | "alert";
+  text: string;
+  aside?: string;
+  actions: readonly EditorAlertAction[];
+}) {
+  return (
     <div className="shrink-0 px-3 py-2">
-      <Alert role="status" variant={noteTone(note, readOnly, failure != null)} className="py-1.5">
+      <Alert role={role} variant={tone} className="py-1.5">
         <AlertDescription className="flex min-w-0 items-center gap-2 text-[12px]">
           <NoteText text={text} />
-          {readOnly ? <span className="shrink-0 text-muted-foreground">Read-only</span> : null}
-          {action ? (
-            <Button variant="ghost" size="xs" className="-me-1.5 ms-auto text-foreground" onClick={run}>
-              {action.label}
-            </Button>
-          ) : null}
+          {aside ? <span className="shrink-0 text-muted-foreground">{aside}</span> : null}
+          {actions.map((item, index) => {
+            const className = cn("text-foreground", index === 0 && "ms-auto", index === actions.length - 1 && "-me-1.5");
+            if (!item.tooltip) {
+              return (
+                <Button key={item.label} variant="ghost" size="xs" className={className} onClick={item.onClick}>
+                  {item.label}
+                </Button>
+              );
+            }
+            return (
+              <Tooltip key={item.label}>
+                <TooltipTrigger render={<Button variant="ghost" size="xs" className={className} onClick={item.onClick} />}>
+                  {item.label}
+                </TooltipTrigger>
+                <TooltipContent>{item.tooltip}</TooltipContent>
+              </Tooltip>
+            );
+          })}
         </AlertDescription>
       </Alert>
     </div>
