@@ -670,7 +670,7 @@ function rowCopy(
           strokeWidth={1.75}
         />
       ),
-      title: <Highlight text={hit.preview || hit.title} query={query} />,
+      title: <MatchText text={hit.preview || hit.title} query={query} />,
       meta: notes ? `Notes · ${hit.title}` : hit.title,
     };
   }
@@ -686,14 +686,14 @@ function rowCopy(
   if (hit.kind === "content") {
     return {
       icon: <FileTypeIcon name={hit.name} isDir={false} size={16} />,
-      title: <Highlight text={hit.preview} query={query} />,
+      title: <MatchText text={hit.preview} query={query} />,
       meta: `${hit.relative}:${hit.line}`,
     };
   }
   if (hit.kind === "note") {
     return {
       icon: <StickyNote className="size-3.5 text-content/50" strokeWidth={1.75} />,
-      title: <Highlight text={hit.preview || hit.title} query={query} />,
+      title: <MatchText text={hit.preview || hit.title} query={query} />,
       meta: hit.title,
     };
   }
@@ -708,27 +708,6 @@ function rowCopy(
     title: <MatchText text={hit.name} positions={hit.positions} active />,
     meta: prettyCwd(hit.path),
   };
-}
-
-function Highlight({ text, query }: { text: string; query: string }) {
-  const needle = query.trim();
-  if (!needle) return <>{text}</>;
-  const index = text.toLowerCase().indexOf(needle.toLowerCase());
-  if (index < 0) {
-    // Several words: mark the first one that is there.
-    const first = needle.split(/\s+/).map((word) => text.toLowerCase().indexOf(word.toLowerCase())).find((at) => at >= 0);
-    if (first === undefined) return <>{text}</>;
-    const word = needle.split(/\s+/).find((w) => text.toLowerCase().indexOf(w.toLowerCase()) === first) ?? "";
-    return <Highlight text={text} query={word} />;
-  }
-  const end = index + needle.length;
-  return (
-    <>
-      {text.slice(0, index)}
-      <span className="text-accent">{text.slice(index, end)}</span>
-      {text.slice(end)}
-    </>
-  );
 }
 
 function namePositions(hit: {

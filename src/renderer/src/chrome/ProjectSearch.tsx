@@ -21,6 +21,7 @@ import {
   type ProjectSearchMatch,
 } from "../lib/search";
 import { FileTypeIcon } from "./FileTypeIcon";
+import { MatchText } from "./MatchText";
 
 type Props = {
   cwd: string;
@@ -262,8 +263,8 @@ export function ProjectSearch({
                       {match.line}
                     </span>
                     <span className="min-w-0 flex-1 truncate font-mono text-[11px] leading-5 text-content/70">
-                      <MatchPreview
-                        preview={match.preview.trimEnd()}
+                      <MatchText
+                        text={match.preview.trimEnd()}
                         query={query.trim()}
                         caseSensitive={caseSensitive}
                         regex={regex}
@@ -327,51 +328,3 @@ function groupMatches(matches: ProjectSearchMatch[]): MatchGroup[] {
   return [...byPath.values()];
 }
 
-function MatchPreview({
-  preview,
-  query,
-  caseSensitive,
-  regex,
-}: {
-  preview: string;
-  query: string;
-  caseSensitive: boolean;
-  regex: boolean;
-}) {
-  if (!query) return <>{preview}</>;
-  if (regex) {
-    try {
-      const pattern = new RegExp(query, caseSensitive ? "" : "i");
-      const match = preview.match(pattern);
-      if (!match || match.index == null) return <>{preview}</>;
-      const start = match.index;
-      const end = start + match[0].length;
-      return (
-        <>
-          {preview.slice(0, start)}
-          <mark className="rounded-md bg-accent/35 text-content">
-            {preview.slice(start, end)}
-          </mark>
-          {preview.slice(end)}
-        </>
-      );
-    } catch {
-      return <>{preview}</>;
-    }
-  }
-
-  const source = caseSensitive ? preview : preview.toLowerCase();
-  const needle = caseSensitive ? query : query.toLowerCase();
-  const index = source.indexOf(needle);
-  if (index < 0) return <>{preview}</>;
-  const end = index + needle.length;
-  return (
-    <>
-      {preview.slice(0, index)}
-      <mark className="rounded-md bg-accent/35 text-content">
-        {preview.slice(index, end)}
-      </mark>
-      {preview.slice(end)}
-    </>
-  );
-}
