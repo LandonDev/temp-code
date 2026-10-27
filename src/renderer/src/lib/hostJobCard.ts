@@ -107,16 +107,18 @@ export function deployConfirmText(hostName: string, deployed: string | null, mas
   return `${hostName} rebuilds master from GitHub, trials it and restarts the service; it rolls back if the trial fails.`;
 }
 
-/** The line under a box's row. */
-export function deployRowLine(opts: { installed: boolean; version: string | null; masterVersion: string | null; connected: boolean; phase: HostJobStatus["phase"] }): string {
-  if (!opts.connected) return "Not connected right now.";
-  if (!opts.installed) return "Deploy from the app is not installed on this host.";
-  const runs = versionText(opts.version);
+/**
+ * What a box's Deploy row says, as separate facts: the version it runs, and
+ * whether a deploy runs now or it matches master. How many releases behind
+ * is the host header's `+N`; a host not connected says nothing here (its
+ * header says it).
+ */
+export function deployRowParts(opts: { installed: boolean; version: string | null; masterVersion: string | null; connected: boolean; phase: HostJobStatus["phase"] }): string[] {
+  if (!opts.connected) return [];
+  if (!opts.installed) return ["Deploy from the app is not installed on this host"];
+  const runs = `Runs ${versionText(opts.version) ?? "an unknown version"}`;
+  if (opts.phase === "pending" || opts.phase === "running") return [runs, "deploying"];
   const a = releaseN(opts.version);
   const b = releaseN(opts.masterVersion);
-  const behind = a !== null && b !== null ? b - a : null;
-  if (opts.phase === "pending" || opts.phase === "running") return `Runs ${runs ?? "an unknown version"} · deploying`;
-  if (behind === null) return `Runs ${runs ?? "an unknown version"}.`;
-  if (behind <= 0) return `Runs ${runs} · up to date with master`;
-  return `Runs ${runs} · ${behind} ${behind === 1 ? "release" : "releases"} behind master`;
+  return a !== null && b !== null && b <= a ? [runs, "up to date with master"] : [runs];
 }

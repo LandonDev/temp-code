@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HostJobStatus } from "@server/shared/contract-host";
-import { deployConfirmText, deployRowLine, hostJobCard, tailLines } from "./hostJobCard";
+import { deployConfirmText, deployRowParts, hostJobCard, tailLines } from "./hostJobCard";
 
 const status = (patch: Partial<HostJobStatus>): HostJobStatus => ({
   job: "deploy",
@@ -67,13 +67,16 @@ describe("deployConfirmText", () => {
   });
 });
 
-describe("deployRowLine", () => {
-  it("says what the box runs and how far behind master it is", () => {
-    expect(deployRowLine({ installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: "idle" })).toBe("Runs v1.0.270 · 3 releases behind master");
-    expect(deployRowLine({ installed: true, version: "1.0.273", masterVersion: "1.0.273", connected: true, phase: "idle" })).toBe("Runs v1.0.273 · up to date with master");
-    expect(deployRowLine({ installed: true, version: "1.0.273", masterVersion: null, connected: true, phase: "idle" })).toBe("Runs v1.0.273.");
-    expect(deployRowLine({ installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: "running" })).toBe("Runs v1.0.270 · deploying");
-    expect(deployRowLine({ installed: false, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: "idle" })).toBe("Deploy from the app is not installed on this host.");
-    expect(deployRowLine({ installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: false, phase: "idle" })).toBe("Not connected right now.");
+describe("deployRowParts", () => {
+  it("says what the box runs, whether a deploy runs or it matches master, and nothing while not connected", () => {
+    const at = (patch: Partial<Parameters<typeof deployRowParts>[0]>) =>
+      deployRowParts({ installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: "idle", ...patch });
+    expect(at({})).toEqual(["Runs v1.0.270"]);
+    expect(at({ version: "1.0.273" })).toEqual(["Runs v1.0.273", "up to date with master"]);
+    expect(at({ masterVersion: null })).toEqual(["Runs v1.0.270"]);
+    expect(at({ version: null })).toEqual(["Runs an unknown version"]);
+    expect(at({ phase: "running" })).toEqual(["Runs v1.0.270", "deploying"]);
+    expect(at({ installed: false })).toEqual(["Deploy from the app is not installed on this host"]);
+    expect(at({ connected: false })).toEqual([]);
   });
 });

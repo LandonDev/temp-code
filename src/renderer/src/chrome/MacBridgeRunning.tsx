@@ -107,17 +107,24 @@ export function MacBridgeRunningList({
 }
 
 /**
- * "2 commands running on this Mac from box · 1 waiting · 1 paused"; with
- * nothing running, "1 command waiting for this Mac", or with only paused
- * ones, "2 calls paused with their thread".
+ * The list's first line as facts: "2 commands running on this Mac from
+ * box", "1 waiting", "1 paused"; with nothing running, "1 command waiting
+ * for this Mac", or with only paused ones, "2 calls paused with their
+ * thread".
  */
-export function countLine(running: number, waiting: number, hostName?: string, paused = 0): string {
+export function countParts(running: number, waiting: number, hostName?: string, paused = 0): string[] {
   const from = hostName ? ` from ${hostName}` : ''
   const noun = (n: number) => (n === 1 ? 'command' : 'commands')
-  const pausedPart = paused ? ` · ${paused} paused` : ''
   if (running === 0 && waiting === 0)
-    return `${paused} ${paused === 1 ? 'call' : 'calls'} paused with ${paused === 1 ? 'its' : 'their'} thread${from}`
-  if (running === 0) return `${waiting} ${noun(waiting)} waiting for this Mac${from}${pausedPart}`
-  const base = `${running} ${noun(running)} running on this Mac${from}`
-  return `${waiting ? `${base} · ${waiting} waiting` : base}${pausedPart}`
+    return [`${paused} ${paused === 1 ? 'call' : 'calls'} paused with ${paused === 1 ? 'its' : 'their'} thread${from}`]
+  const parts =
+    running === 0
+      ? [`${waiting} ${noun(waiting)} waiting for this Mac${from}`]
+      : [`${running} ${noun(running)} running on this Mac${from}`, ...(waiting ? [`${waiting} waiting`] : [])]
+  return paused ? [...parts, `${paused} paused`] : parts
+}
+
+/** The same facts on one line, for the Mac approvals dialog. */
+export function countLine(running: number, waiting: number, hostName?: string, paused = 0): string {
+  return countParts(running, waiting, hostName, paused).join(' · ')
 }

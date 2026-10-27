@@ -15,8 +15,8 @@ import { Countdown } from "./settings/hosts/dialogs/fields";
 import { NewKeyDialog } from "./settings/hosts/dialogs/NewKeyDialog";
 import { PairDialog } from "./settings/hosts/dialogs/PairDialog";
 import { MatrixSpinner } from "./threads/bits";
-import { harnessLine } from "./harnessLine";
-import { memoryLine } from "./memoryLine";
+import { harnessParts } from "./harnessLine";
+import { memoryParts } from "./memoryLine";
 import { isWebMode } from "../lib/nativeWeb";
 import { revealPath } from "../lib/fs";
 import { MacBridgeSettings } from "./MacBridgeSettings";
@@ -231,9 +231,9 @@ export function RemoteSettings({ onOpenSession }: { onOpenSession?: (sessionId: 
                   meta={
                     mem ? (
                       <>
-                        <div className="truncate">{harnessLine(env)}</div>
+                        <div className="truncate">{harnessParts(env).join(" · ")}</div>
                         <div className="truncate">
-                          {memoryLine(mem)}
+                          {memoryParts(mem).join(" · ")}
                           {mem.conflicts > 0 || (memory?.conflicts.length ?? 0) > 0 ? (
                             <>
                               {" · "}
@@ -249,7 +249,7 @@ export function RemoteSettings({ onOpenSession }: { onOpenSession?: (sessionId: 
                         </div>
                       </>
                     ) : (
-                      harnessLine(env)
+                      harnessParts(env).join(" · ")
                     )
                   }
                   action={

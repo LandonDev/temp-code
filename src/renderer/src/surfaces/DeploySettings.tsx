@@ -4,7 +4,7 @@ import { DeployDriftMark } from "../chrome/DeployDrift";
 import { LOCAL_ENVIRONMENT_ID, WEB_ENVIRONMENT_ID } from "../lib/connection/registry";
 import { useEnvironmentStatus, useEnvironments } from "../lib/connection";
 import { useDeployDrift } from "../lib/deployDrift";
-import { deployConfirmText, deployRowLine, hostJobCard } from "../lib/hostJobCard";
+import { deployConfirmText, deployRowParts, hostJobCard } from "../lib/hostJobCard";
 import {
   dismissJob,
   refreshDeployStatus,
@@ -162,7 +162,7 @@ function HostRow({
   const master = drift.masterVersion ?? masterVersion;
   const connected = status.transport === "open";
   const line = deploy
-    ? deployRowLine({ installed: deploy.installed, version: deployed, masterVersion: master, connected, phase: deploy.phase })
+    ? (deployRowParts({ installed: deploy.installed, version: deployed, masterVersion: master, connected, phase: deploy.phase }).join(" · ") || "Not connected right now.")
     : connected
       ? "This host does not answer the deploy status: it runs an older build, or the key is not admin."
       : "Not connected right now.";
