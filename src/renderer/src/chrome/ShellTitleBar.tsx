@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, type ComponentProps } from "react";
 import { useSidebarLayout } from "../hooks/useSidebarLayout";
 import { resolveSessionContext } from "../lib/projectContext";
-import { useRightRailOpen } from "../lib/rightRail";
+import { useRightPanel } from "../lib/rightPanel";
 import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import {
@@ -112,7 +112,7 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   const dirtyFiles = useEditors((s) => s.dirtyFiles);
   const sidebarOpen = useShell((s) => s.sidebarOpen);
   const sidebarTab = useShell((s) => s.sidebarTab);
-  const railOpen = useRightRailOpen();
+  const railOpen = useRightPanel(activeSessionId ?? "").open;
   // A linked project's copies are one project here: the strip and its tabs hold every copy's threads.
   const projectScope = useMemo(() => {
     const selected = selectedProjectId ? catalog.projects.find((p) => p.id === selectedProjectId) : undefined;

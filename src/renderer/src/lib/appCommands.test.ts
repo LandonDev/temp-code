@@ -53,9 +53,10 @@ describe("command map: chords", () => {
     expect(resolve(key(k, { meta: true }), ctx)).toEqual({ id });
   });
 
-  it("⌘⇧F finds in project, ⌘⇧N opens a window, ⌘⌥Z toggles zen, ⌘1 activates a tab", () => {
+  it("⌘⇧F finds in project, ⌘⇧N opens a window, ⌘⇧R toggles the thread panel, ⌘⌥Z toggles zen, ⌘1 activates a tab", () => {
     expect(resolve(key("f", { meta: true, shift: true }), ctx)).toEqual({ id: "find_in_project" });
     expect(resolve(key("n", { meta: true, shift: true }), ctx)).toEqual({ id: "new_window" });
+    expect(resolve(key("r", { meta: true, shift: true }), ctx)).toEqual({ id: "toggle_panel" });
     expect(resolve(key("z", { meta: true, alt: true }), ctx)).toEqual({ id: "toggle_zen" });
     expect(resolve(key("1", { meta: true }), ctx)).toEqual({ id: "activate_tab", index: 0 });
   });

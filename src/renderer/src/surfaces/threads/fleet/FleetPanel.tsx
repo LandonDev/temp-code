@@ -1,27 +1,20 @@
 import { AnimatePresence, LayoutGroup, MotionConfig } from "motion/react";
 import { useId } from "react";
 import type { OpenFileFn } from "../../../lib/search";
-import { Drawer } from "../../../chrome/Drawer";
-import { ChevronRight, Users } from "../../../chrome/icons";
 import { fleetCounts, isLiveStatus, useAgents, useMetaById } from "../../../lib/threads/agents";
 import { GLIDE_MAX_ROWS } from "../../../lib/listGlide";
-import { MatrixSpinner, PaneHeader, StatusDot } from "../bits";
+import { MatrixSpinner, StatusDot } from "../bits";
 import { AgentDetail } from "./AgentDetail";
 import { AgentRow } from "./AgentRow";
 import { useFleetModel } from "./useFleetModel";
 
-const PANEL_W = 340;
-
 /**
- * The subagent panel on a thread's right edge: rows while open, a slim
- * tab with a status dot while folded. It opens itself while any child
- * works or waits on the user; a manual toggle wins until that state
- * flips. Nothing renders when the thread has no children. It is a push
- * drawer: the shell widens from the 32px tab and the rows slide in at
- * their final width. The layout group is scoped to this mount so rows in
- * two panes on the same thread never glide into each other.
+ * The subagent rows: the right panel's Agents section (surfaces/RightPanel.tsx),
+ * with the agent detail sheet over the pane when a row is open. The layout
+ * group is scoped to this mount so rows in two panes on the same thread
+ * never glide into each other.
  */
-export function FleetPanel({
+export function FleetList({
   sessionId,
   parentCwd,
   onOpenSession,
@@ -36,53 +29,24 @@ export function FleetPanel({
 }) {
   const fleet = useFleetModel(sessionId);
   const scope = useId();
-  if (fleet.agents.length === 0) return null;
-  const { agents, open, active, anyWaiting, detailId, now } = fleet;
+  const { agents, detailId, now } = fleet;
 
   return (
     <MotionConfig reducedMotion="user">
       <LayoutGroup id={scope}>
-        <Drawer
-          open={open}
-          width={PANEL_W}
-          closedWidth={32}
-          className="border-l border-content/10"
-          closed={
-            <button
-              type="button"
-              onClick={() => fleet.setOpen(true)}
-              title="Subagents"
-              aria-label="Show subagents"
-              className="group flex h-full w-8 flex-col items-center gap-2 pt-4 transition-colors hover:bg-content/5"
-            >
-              <Users className="size-3.5 text-content/50 transition-colors group-hover:text-content" />
-              <StatusDot status={anyWaiting ? "waiting" : active ? "running" : "idle"} />
-            </button>
-          }
-        >
-          <PaneHeader label="Subagents" detail={String(agents.length)}>
-            <button
-              type="button"
-              onClick={() => fleet.setOpen(false)}
-              aria-label="Hide subagents"
-              className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
-            >
-              <ChevronRight className="size-3.5" strokeWidth={1.75} />
-            </button>
-          </PaneHeader>
-          <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2 pt-0">
-            {agents.map((agent) => (
-              <AgentRow
-                key={agent.id}
-                agent={agent}
-                now={now}
-                glide={agents.length <= GLIDE_MAX_ROWS}
-                fleetSize={agents.length}
-                onOpen={() => fleet.setDetailId(agent.id)}
-              />
-            ))}
-          </div>
-        </Drawer>
+        <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+          {agents.length === 0 ? <p className="px-1 py-1 text-[13px] text-muted-foreground">No subagents yet.</p> : null}
+          {agents.map((agent) => (
+            <AgentRow
+              key={agent.id}
+              agent={agent}
+              now={now}
+              glide={agents.length <= GLIDE_MAX_ROWS}
+              fleetSize={agents.length}
+              onOpen={() => fleet.setDetailId(agent.id)}
+            />
+          ))}
+        </div>
         <AnimatePresence>
           {detailId ? (
             <AgentDetail

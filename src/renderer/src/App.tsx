@@ -131,7 +131,6 @@ import {
   registerBuiltinHarnesses,
   respondHarnessApproval,
   stopStreaming,
-  pickTextHarness,
   type ApprovalDecision,
 } from "./lib/harness";
 import {
@@ -233,7 +232,6 @@ import {
   filterTabsForProject,
   filterTabsForWorkspace,
   planWorkspaceTabClose,
-  selectedChangePath,
   tabProjectKey,
   workspaceTabCwd,
 } from "./lib/workspaceTabGroups";
@@ -264,8 +262,7 @@ import {
   sessionStore,
   useSessionShells,
 } from "./lib/tcserver/store";
-import { toggleRightRail } from "./lib/rightRail";
-import { ProjectRail } from "./chrome/rail/ProjectRail";
+import { rightPanel } from "./lib/rightPanel";
 import { headerNeighbour } from "./lib/threadHeaderModel";
 import type { ThreadAction } from "./chrome/ThreadHeader";
 import type { ThreadRules } from "@server/shared/rules";
@@ -274,7 +271,6 @@ import * as serverCommands from "./lib/tcserver/commands";
 import { requestTranscriptJump } from "./lib/transcriptJump";
 import { installAppFacade } from "./lib/appFacade";
 import {
-  focusDiff,
   setTabSplitRatio,
 } from "./lib/workspaceFocus";
 import { tallyRender } from "./lib/devRenders";
@@ -307,7 +303,7 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, diffChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
+import { aliaxChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
 import { SearchView } from "./surfaces/SearchView";
@@ -315,7 +311,6 @@ import { InboxView, InboxDetailPane } from "./surfaces/InboxView";
 import { NotesView, focusNote } from "./surfaces/NotesView";
 // Lazy surfaces (surfaces/chunks.ts): none of these is on the first-paint path.
 const DevServersPane = terminalChunk.surface("DevServersPane", <SurfaceSkeleton kind="terminal" label="Loading dev servers" />);
-const DiffPane = diffChunk.surface("DiffPane", <SurfaceSkeleton kind="diff" label="Loading changes" />);
 const SettingsView = settingsChunk.surface("SettingsView", <SurfaceSkeleton kind="page" label="Loading settings" />);
 const AliaxPagesView = aliaxChunk.surface("AliaxPagesView", <SurfaceSkeleton kind="page" label="Loading accounts" />);
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
@@ -1732,25 +1727,11 @@ export default function App() {
     [],
   );
 
+  // The classic layout's Changes: the thread panel's section (the deck's is the sidebar tab).
   const onToggleDiff = useCallback(() => {
-    setTabs((prev) =>
-      prev.map((tab) =>
-        tab.id === activeTabId
-          ? {
-              ...tab,
-              diffOpen: !tab.diffOpen,
-              diffFocused: !tab.diffOpen,
-            }
-          : tab,
-      ),
-    );
+    rightPanel.show("changes");
     setComposerFocused(false);
-  }, [activeTabId]);
-
-  const onFocusDiff = useCallback(() => {
-    setTabs((prev) => focusDiff(prev, activeTabId));
-    setComposerFocused(false);
-  }, [activeTabId]);
+  }, []);
 
   const onShowSourceControl = useCallback(() => {
     shell.showSidebarTab("changes");
@@ -3282,7 +3263,10 @@ export default function App() {
             onRestore: onRestoreThread,
             onNew: onHeaderNew,
             onPauseAll: () => Promise.all(registry.environments().map((e) => serverCommands.pauseAllRunning(e.id))).then(() => undefined),
-            onToggleRail: toggleRightRail,
+            onToggleRail: () => {
+              const id = rightPanel.focused();
+              if (id) rightPanel.toggle(id);
+            },
           }
         : undefined,
     [
@@ -3535,6 +3519,11 @@ export default function App() {
         case "focus_up": return go(() => a.onFocusDir("up"));
         case "focus_down": return go(() => a.onFocusDir("down"));
         case "toggle_sidebar": return go(a.onToggleSidebar);
+        case "toggle_panel":
+          return go(() => {
+            const id = rightPanel.focused();
+            if (id) rightPanel.toggle(id);
+          });
         case "toggle_zen": return go(() => toggleTranscriptZen());
         case "open_project": return go(() => void a.pickProject());
         case "go_to_file": return go(a.onGoToFile);
@@ -3908,23 +3897,6 @@ export default function App() {
               ))}
                 </div>
               )}
-            {!deckLayout && !classicInbox && activeTab?.diffOpen ? (
-              <DiffPane
-                key={gitCwd ?? ""}
-                cwd={gitCwd}
-                textHarness={pickTextHarness(active?.harness)}
-                selectedPath={selectedChangePath(activeTab, gitCwd)}
-                focused={!!activeTab.diffFocused}
-                onFocus={onFocusDiff}
-                onOpenFile={onOpenDiff}
-              />
-            ) : null}
-            <ProjectRail
-              cwd={gitCwd}
-              selectedPath={activeTab ? selectedChangePath(activeTab, gitCwd) : undefined}
-              onOpenFile={onOpenFile}
-              onOpenDiff={onOpenDiff}
-            />
             </div>
           </div>
         </main>

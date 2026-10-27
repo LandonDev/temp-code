@@ -50,7 +50,6 @@ import {
   timeAgo,
 } from "./bits";
 import { FleetPulseLine } from "./fleet/FleetPanel";
-import { FleetSlot } from "./FleetSlot";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 
@@ -325,15 +324,6 @@ export function PlanView(props: ThreadViewProps) {
         collapsed={collapsed}
         onOpenChat={() => setChatOpen(true)}
         status={session.status}
-      />
-      {/* Recon fleet: planning threads spawn explorers — the same panel the
-          chat grows, folded to its edge tab once the fleet settles. */}
-      <FleetSlot
-        sessionId={session.id}
-        parentCwd={session.cwd}
-        onOpenSession={props.onOpenSession}
-        onOpenFile={props.onOpenFile}
-        onOpenDiff={props.onOpenDiff}
       />
     </div>
   );

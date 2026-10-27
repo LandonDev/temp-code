@@ -14,7 +14,7 @@ const MasterView = threadViewsChunk.surface("MasterView", skeleton);
 const OrchestrationView = threadViewsChunk.surface("OrchestrationView", skeleton);
 const PlanView = threadViewsChunk.surface("PlanView", skeleton);
 const ResearchView = threadViewsChunk.surface("ResearchView", skeleton);
-import { NotesPanel } from "./NotesPanel";
+import { RightPanel } from "../RightPanel";
 
 export type { ChatOpts } from "./chatSlots";
 
@@ -31,9 +31,8 @@ export type ThreadViewProps = ChatSource & {
 
 /** The switch on a session's thread type; null and chat fall through to
  *  ChatView, and a master thread (CLAUDE.md "Master threads") to
- *  MasterView whatever its type. Every root thread carries its notes
- *  panel at the right edge (a subagent's notes read through its parent's
- *  digest instead). */
+ *  MasterView whatever its type. Every root thread carries the right
+ *  panel at its edge (surfaces/RightPanel.tsx); a subagent has none. */
 export function ThreadView(props: ThreadViewProps) {
   const { session } = props;
   const master = isMasterThread(session);
@@ -42,7 +41,12 @@ export function ThreadView(props: ThreadViewProps) {
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1">
       {view}
-      <NotesPanel session={session} />
+      <RightPanel
+        session={session}
+        onOpenFile={props.onOpenFile}
+        onOpenDiff={props.onOpenDiff}
+        onOpenSession={props.onOpenSession}
+      />
     </div>
   );
 }

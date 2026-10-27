@@ -27,7 +27,7 @@ import { setMaster } from "../lib/tcserver/commands";
 /**
  * The deck title bar's thread surface: temp-code's strip and heading
  * controls inside MonoCode's shell. Owns the chip menu, inline rename, the
- * tune and delete dialogs, Pause all and the rail toggle; every action goes
+ * tune and delete dialogs, Pause all and the panel toggle; every action goes
  * back to App by thread id.
  */
 
@@ -231,7 +231,7 @@ export function ThreadHeader({
               </button>
             ) : null}
             {model.activeId ? <DevServerButton sessionId={model.activeId} /> : null}
-            <IconButton label={railOpen ? "Hide rail" : "Show rail"} active={railOpen} onClick={onToggleRail}>
+            <IconButton label={railOpen ? "Hide panel" : "Show panel"} active={railOpen} onClick={onToggleRail}>
               <PanelRight className="size-3.5" strokeWidth={1.75} />
             </IconButton>
           </div>

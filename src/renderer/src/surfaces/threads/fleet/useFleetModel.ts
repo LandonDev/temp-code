@@ -23,24 +23,11 @@ import { readingPercent, useContextReading, type ContextReading } from "./contex
  * wire them to the session store and the context cache.
  */
 
-// ── panel open state ────────────────────────────────────────────────────
+// ── the fleet's state ───────────────────────────────────────────────────
 
-/** The panel opens itself while a child works or waits on the user. */
+/** A child works or waits on the user. */
 export function fleetActive(counts: FleetCounts): boolean {
   return counts.working > 0 || counts.waiting > 0;
-}
-
-/**
- * A manual toggle wins until the fleet next flips between active and
- * quiet; then the panel follows the fleet again. Returns the override to
- * keep for this render.
- */
-export function resolveOverride(override: boolean | null, sawActive: boolean, active: boolean): boolean | null {
-  return active === sawActive ? override : null;
-}
-
-export function panelOpen(override: boolean | null, active: boolean): boolean {
-  return override ?? active;
 }
 
 // ── row stats ───────────────────────────────────────────────────────────
@@ -107,29 +94,19 @@ export type FleetModel = {
   /** A child works or waits. */
   active: boolean;
   anyWaiting: boolean;
-  open: boolean;
-  setOpen: (open: boolean) => void;
   detailId: string | null;
   setDetailId: (id: string | null) => void;
   now: number;
 };
 
-/** One thread's fleet, with the panel's open state and which row is open. */
+/** One thread's fleet, and which row is open. */
 export function useFleetModel(sessionId: string): FleetModel {
   const agents = useAgents(sessionId);
   const counts = useMemo(() => fleetCounts(agents), [agents]);
   const active = fleetActive(counts);
   const anyWaiting = counts.waiting > 0;
-  const [override, setOverride] = useState<boolean | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const now = useNow(counts.working > 0);
-
-  // Render-phase reset so the panel follows the fleet on the same frame it flips.
-  const [sawActive, setSawActive] = useState(active);
-  if (active !== sawActive) {
-    setSawActive(active);
-    setOverride(resolveOverride(override, sawActive, active));
-  }
 
   // A row that vanished (archived, re-parented) closes its detail.
   useEffect(() => {
@@ -141,8 +118,6 @@ export function useFleetModel(sessionId: string): FleetModel {
     counts,
     active,
     anyWaiting,
-    open: panelOpen(override, active),
-    setOpen: setOverride,
     detailId,
     setDetailId,
     now,

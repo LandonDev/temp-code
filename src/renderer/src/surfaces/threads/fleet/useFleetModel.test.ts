@@ -5,8 +5,6 @@ import {
   fleetLine,
   fleetStats,
   isCompacting,
-  panelOpen,
-  resolveOverride,
   statsParts,
 } from "./useFleetModel";
 
@@ -22,21 +20,11 @@ const session = (extra: Partial<Session> = {}): Session => ({ id: "s", blocks: [
 const thread = (extra: Record<string, unknown> = {}) =>
   ({ todos: [], cost: undefined, ...extra }) as unknown as Session["thread"];
 
-describe("panel open state", () => {
-  it("opens while a child works or waits, not for failed or done", () => {
+describe("fleetActive", () => {
+  it("a child working or waiting, not failed or done", () => {
     expect(fleetActive({ working: 1, waiting: 0, failed: 0, done: 0 })).toBe(true);
     expect(fleetActive({ working: 0, waiting: 1, failed: 0, done: 0 })).toBe(true);
     expect(fleetActive({ working: 0, waiting: 0, failed: 2, done: 3 })).toBe(false);
-  });
-
-  it("a manual toggle wins until the fleet flips", () => {
-    expect(panelOpen(null, true)).toBe(true);
-    expect(panelOpen(false, true)).toBe(false);
-    expect(panelOpen(true, false)).toBe(true);
-    expect(resolveOverride(false, true, true)).toBe(false);
-    expect(resolveOverride(false, true, false)).toBeNull();
-    expect(resolveOverride(true, false, true)).toBeNull();
-    expect(panelOpen(resolveOverride(false, true, false), false)).toBe(false);
   });
 });
 

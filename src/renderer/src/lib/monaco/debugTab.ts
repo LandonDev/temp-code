@@ -1,6 +1,6 @@
 /**
  * Window events from the editor chunk to the app shell. The debugger now
- * lives in the rail's Debug tab (`lib/railPanel.ts`); OPEN_DEBUG_EVENT is
+ * lives in the thread panel's Debug section (`lib/rightPanel.ts`); OPEN_DEBUG_EVENT is
  * no longer fired and stays only because App.tsx still listens for it —
  * M8e can drop the listener and this constant together.
  */

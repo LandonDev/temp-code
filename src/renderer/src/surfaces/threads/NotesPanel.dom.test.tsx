@@ -41,7 +41,7 @@ vi.mock("../AgentMarkdown", () => ({
 
 import { resetNotesStore } from "../../lib/threadNotes";
 import type { Session } from "../../lib/session";
-import { NotesPanel, resetNotesPanel } from "./NotesPanel";
+import { NotesBody } from "./NotesPanel";
 
 const session = { id: "s1", environmentId: "local", title: "Notes feature", cwd: "/p", status: "idle", blocks: [] } as unknown as Session;
 const push = (p: unknown): void => {
@@ -51,7 +51,6 @@ const flush = (): Promise<void> => act(() => new Promise((r) => setTimeout(r, 0)
 
 beforeEach(() => {
   resetNotesStore();
-  resetNotesPanel();
   request.mockClear();
   Object.assign(navigator, { clipboard: { writeText: vi.fn(() => Promise.resolve()) } });
 });
@@ -60,11 +59,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("NotesPanel", () => {
-  it("opens from its rail and renders the notes live", async () => {
-    render(<NotesPanel session={session} />);
-    await flush();
-    fireEvent.click(screen.getByRole("button", { name: "Expand notes" }));
+describe("NotesBody", () => {
+  it("renders the notes live", async () => {
+    render(<NotesBody session={session} />);
     await flush();
     expect(screen.getByTestId("md").textContent).toContain("Ship the notes panel.");
     expect(screen.getByText(/updated 2m/)).toBeTruthy();
@@ -73,9 +70,7 @@ describe("NotesPanel", () => {
   });
 
   it("the person's edit saves on Done as the whole text", async () => {
-    render(<NotesPanel session={session} />);
-    await flush();
-    fireEvent.click(screen.getByRole("button", { name: "Expand notes" }));
+    render(<NotesBody session={session} />);
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Edit notes" }));
     const field = screen.getByLabelText("Notes source") as HTMLTextAreaElement;
@@ -88,9 +83,7 @@ describe("NotesPanel", () => {
   });
 
   it("a push while editing is offered, never forced into the draft", async () => {
-    render(<NotesPanel session={session} />);
-    await flush();
-    fireEvent.click(screen.getByRole("button", { name: "Expand notes" }));
+    render(<NotesBody session={session} />);
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Edit notes" }));
     const field = screen.getByLabelText("Notes source") as HTMLTextAreaElement;
@@ -103,9 +96,7 @@ describe("NotesPanel", () => {
   });
 
   it("Copy as brief puts the first message of a successor on the clipboard", async () => {
-    render(<NotesPanel session={session} />);
-    await flush();
-    fireEvent.click(screen.getByRole("button", { name: "Expand notes" }));
+    render(<NotesBody session={session} />);
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Copy as brief" }));
     await flush();
@@ -116,9 +107,7 @@ describe("NotesPanel", () => {
 
   it("an empty thread offers to start the notes", async () => {
     request.mockImplementationOnce(() => Promise.resolve({ text: "", updatedAt: null, path: null }));
-    render(<NotesPanel session={session} />);
-    await flush();
-    fireEvent.click(screen.getByRole("button", { name: "Expand notes" }));
+    render(<NotesBody session={session} />);
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Start the notes" }));
     const field = screen.getByLabelText("Notes source") as HTMLTextAreaElement;

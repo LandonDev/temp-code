@@ -1,81 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { emptyNotes, notesAsBrief, notesEmpty } from "@shared/notes";
-import { Drawer } from "../../chrome/Drawer";
-import { Check, Copy, PanelRight, Pencil } from "../../chrome/icons";
+import { Check, Copy, Pencil } from "../../chrome/icons";
 import type { Session } from "../../lib/session";
-import { saveNotes, useThreadNotes, type ThreadNotesDoc } from "../../lib/threadNotes";
+import { saveNotes, useThreadNotes } from "../../lib/threadNotes";
 import { AgentMarkdown, MarkdownSourceHighlight } from "../AgentMarkdown";
-import { PaneHeader, timeAgo } from "./bits";
+import { timeAgo } from "./bits";
 
-const OPEN_W = 380;
-const RAIL_W = 36;
 const SAVE_DEBOUNCE_MS = 700;
 
-/** Open state per thread, across remounts (a tab switch, a pane move). */
-const openByThread = new Map<string, boolean>();
-
-/** Test seam: forget which threads had the panel open. */
-export function resetNotesPanel(): void {
-  openByThread.clear();
-}
-
 /**
- * The thread's working notes beside its transcript: what the thread keeps
- * for its next window and its successors (src/main/server/threadNotes.ts).
- * Folded to a rail by default — the Orchestrator log's recipe — and
- * rendered live from the `notes` push. The person edits the whole text;
- * each save lands in the file the harness reads on its next tool call.
- * "Copy as brief" turns the notes into the first message of a new thread.
+ * The thread's working notes: the right panel's Notes section
+ * (surfaces/RightPanel.tsx). What the thread keeps for its next window and
+ * its successors (src/main/server/threadNotes.ts), rendered live from the
+ * `notes` push. The person edits the whole text; each save lands in the
+ * file the harness reads on its next tool call. "Copy as brief" turns the
+ * notes into the first message of a new thread.
  */
-export function NotesPanel({ session }: { session: Session }) {
-  const [open, setOpen] = useState(openByThread.get(session.id) ?? false);
+export function NotesBody({ session }: { session: Session }) {
   const doc = useThreadNotes(session.environmentId, session.id);
-  const has = !!doc && doc.text.trim().length > 0 && !notesEmpty(doc.text);
-  const toggle = (next: boolean): void => {
-    openByThread.set(session.id, next);
-    setOpen(next);
-  };
-
-  return (
-    <Drawer
-      open={open}
-      width={OPEN_W}
-      closedWidth={RAIL_W}
-      keepMounted
-      as="aside"
-      aria-label="Notes"
-      className="border-l border-content/10"
-      closed={
-        <button
-          type="button"
-          onClick={() => toggle(true)}
-          title="Notes"
-          aria-label="Expand notes"
-          className="group flex h-full flex-col items-center gap-3 pt-2.5 text-content/50 transition-colors hover:bg-content/5 hover:text-content"
-          style={{ width: RAIL_W }}
-        >
-          <PanelRight className="size-4" strokeWidth={1.75} />
-          <span className="text-[11px] font-medium tracking-[0.08em] uppercase" style={{ writingMode: "vertical-rl" }}>
-            Notes
-          </span>
-          {has ? <span aria-hidden className="size-1.5 rounded-full bg-content/40" /> : null}
-        </button>
-      }
-    >
-      <NotesBody session={session} doc={doc} onCollapse={() => toggle(false)} />
-    </Drawer>
-  );
-}
-
-function NotesBody({
-  session,
-  doc,
-  onCollapse,
-}: {
-  session: Session;
-  doc: ThreadNotesDoc | undefined;
-  onCollapse: () => void;
-}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "failed">("idle");
@@ -158,7 +100,8 @@ function NotesBody({
 
   return (
     <>
-      <PaneHeader label="Notes" detail={detail}>
+      <div className="flex h-8 shrink-0 items-center justify-between pr-1.5 pl-3">
+        <span className="truncate text-[11px] tabular-nums text-muted-foreground">{detail}</span>
         <div className="flex items-center gap-0.5">
           {has || editing ? <CopyBrief text={editing ? draft : text} title={session.title} /> : null}
           <button
@@ -171,19 +114,8 @@ function NotesBody({
           >
             {editing ? <Check className="size-3.5" strokeWidth={2} /> : <Pencil className="size-3.5" strokeWidth={1.75} />}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (editing) finishEdit();
-              onCollapse();
-            }}
-            aria-label="Collapse notes"
-            className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
-          >
-            <PanelRight className="size-3.5" strokeWidth={1.75} />
-          </button>
         </div>
-      </PaneHeader>
+      </div>
       {editing ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">

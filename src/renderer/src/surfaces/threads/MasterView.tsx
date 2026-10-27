@@ -19,7 +19,6 @@ import { moveTargets, useMoving } from "../../lib/threadMove";
 import { PaneHeader } from "./bits";
 import { chatOf } from "./chatSlots";
 import { FleetPulseLine } from "./fleet/FleetPanel";
-import { FleetSlot } from "./FleetSlot";
 import { AddThreadDialog } from "./master/AddThreadDialog";
 import { AdoptThreadDialog } from "./master/AdoptThreadDialog";
 import { ArchiveBatchDialog } from "./master/ArchiveBatchDialog";
@@ -69,7 +68,7 @@ import type { ThreadViewProps } from "./ThreadView";
  * `board-paint master=<id> n=<rows> ms=<since mount>` (stall.report).
  *
  * The master's own subagents (spawn_agent, not its batch) sit where every
- * thread's do: the fleet panel at the right edge and the pulse line above
+ * thread's do: the right panel's Agents section and the pulse line above
  * the composer. They are never board rows.
  */
 
@@ -214,23 +213,11 @@ export function MasterView(props: ThreadViewProps) {
   const open = useCallback((id: string, focus?: boolean) => openRef.current(id, focus), []);
   const onRowMenu = useCallback<OnRowMenu>((id, at) => setRowMenu({ id, ...at }), []);
 
-  const fleet = (
-    <FleetSlot
-      sessionId={session.id}
-      parentCwd={session.cwd}
-      onOpenSession={props.onOpenSession}
-      onOpenFile={props.onOpenFile}
-      onOpenDiff={props.onOpenDiff}
-    />
-  );
   const chatOpts = { topSlot: <FleetPulseLine sessionId={session.id} /> };
 
   if (!hasBoard) {
     return (
-      <div className="relative flex min-h-0 flex-1">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col [contain:layout_style]">{chatOf(props, chatOpts)}</div>
-        {fleet}
-      </div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col [contain:layout_style]">{chatOf(props, chatOpts)}</div>
     );
   }
 
@@ -413,7 +400,6 @@ export function MasterView(props: ThreadViewProps) {
         status={meta?.status ?? session.status}
         edgeTitle="Show conversation"
       />
-      {fleet}
       {menu ? (
         <ExplorerMenu
           x={menu.x}

@@ -18,7 +18,6 @@ vi.mock("../../chrome/ThreadTune", () => ({ ThreadTune: () => null, normalizeTun
 vi.mock("../../lib/models", () => ({ mergeModelSettings: (_m: unknown, s: unknown) => s, nativeModelId: (m: string) => m, resolveModel: () => null }));
 vi.mock("../AgentMarkdown", () => ({ AgentMarkdown: ({ text }: { text: string }) => <pre data-md>{text}</pre> }));
 vi.mock("./fleet/FleetPanel", () => ({ FleetPulseLine: () => null }));
-vi.mock("./FleetSlot", () => ({ FleetSlot: () => null }));
 vi.mock("./SplitShell", () => ({
   SplitShell: ({ board, chat }: { board: React.ReactNode; chat: React.ReactNode }) => (
     <div>
