@@ -18,7 +18,7 @@ import { MacBridgeThreadCards } from "../chrome/MacBridgeCards";
 import { MessageQueue } from "../chrome/MessageQueue";
 import { SessionReview } from "../chrome/SessionReview";
 import type { ComposerIntent } from "../lib/composerAction";
-import { SPRING_PRESS, EASE_OUT } from "../lib/ease";
+import { FADE_OUT, SPRING_PRESS } from "../lib/ease";
 import type { ApprovalDecision } from "../lib/harness";
 import { useMacBridgeRequests } from "../lib/macBridge";
 import { createNote, noteTitle } from "../lib/notes";
@@ -385,7 +385,7 @@ export function useThreadChat({
               className="pointer-events-none absolute inset-x-0 bottom-2 z-30 flex justify-center"
               initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1, transition: SPRING_PRESS }}
-              exit={{ opacity: 0, transition: { duration: 0.12, ease: EASE_OUT } }}
+              exit={FADE_OUT}
             >
               <button
                 type="button"

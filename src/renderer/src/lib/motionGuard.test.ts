@@ -25,12 +25,13 @@ const ALLOWED: Record<string, { owner: string; count: number }> = {
   "aliax/components/ui/dropdown-menu.tsx": { owner: "A4", count: 2 },
   "aliax/components/ui/progress.tsx": { owner: "A4", count: 1 },
   "aliax/lib/ease.ts": { owner: "A4", count: 5 },
-  "aliax/views/accounts.tsx": { owner: "A4", count: 1 },
+  "aliax/pages.tsx": { owner: "A4", count: 1 },
+  "aliax/views/accounts.tsx": { owner: "A4", count: 2 },
   "chrome/AttachmentChip.tsx": { owner: "A10", count: 1 },
   "chrome/ComposerInput.tsx": { owner: "A10", count: 3 },
   "chrome/ModelSettings.tsx": { owner: "A10", count: 1 },
   "components/ui/plan-card.tsx": { owner: "shell", count: 4 },
-  "components/ui/question-card.tsx": { owner: "shell", count: 5 },
+  "components/ui/question-card.tsx": { owner: "shell", count: 10 },
   "components/ui/spinner.tsx": { owner: "shell", count: 1 },
   "lib/composerHeight.ts": { owner: "A10", count: 2 },
   "surfaces/TranscriptMinimap.tsx": { owner: "A7", count: 1 },
@@ -77,11 +78,11 @@ const TAILWIND = [
   /(?<![\w-])ease-(?:linear|in|out|in-out)(?![\w-])/g,
 ];
 // A zero duration is "instant", not a timing, and passes everywhere.
-const SCRIPT = [/duration:\s*(?!0\b)\d/g, /ease:\s*\[/g, /type:\s*["']spring["']/g, /easing:\s*["']/g];
+const SCRIPT = [/duration:\s*(?!0(?![.\d]))\d/g, /ease:\s*\[/g, /type:\s*["']spring["']/g, /easing:\s*["']/g];
 const STYLE = [
   /\d+(?:\.\d+)?m?s\s+(?:linear|ease|cubic-bezier|steps|var\(--ease)/g,
   /cubic-bezier\(/g,
-  /(?:transition|animation)-(?:duration|delay):\s*(?!0(?:m?s)?\b)\d/g,
+  /(?:transition|animation)-(?:duration|delay):\s*(?!0(?:m?s)?(?![.\w]))\d/g,
 ];
 
 const INSTEAD =
