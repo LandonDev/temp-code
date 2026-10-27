@@ -3,6 +3,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HeaderModel } from "../lib/threadHeaderModel";
+import { getExternalPaneDrop } from "../lib/paneDrop";
+
+const { dropThread } = vi.hoisted(() => ({ dropThread: vi.fn() }));
+vi.mock("../stores/workspaceActions", () => ({ workspaceActions: { dropThread } }));
+
 import { ChipHoverLabel, ThreadHeaderStrip, chipStatus, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 
 const thread = (id: string, title: string): ChipThread => ({
@@ -78,11 +83,14 @@ describe("ThreadHeaderStrip pointer", () => {
     expect(onContextMenu.mock.calls[0]![0].id).toBe("c");
   });
 
-  it("a primary press selects", () => {
+  it("a primary press and release selects, on the release", () => {
     const { onSelect } = mount();
-    fireEvent.pointerDown(tab("Beta"), { button: 0 });
+    fireEvent.pointerDown(tab("Beta"), { button: 0, clientX: 10, clientY: 10 });
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.pointerUp(window, { clientX: 11, clientY: 10 });
     expect(onSelect).toHaveBeenCalledWith("b");
   });
+
 
   it("the strip's rows take clicks: they are out of the window's drag region", () => {
     mount();
@@ -190,5 +198,63 @@ describe("ThreadHeaderStrip chip", () => {
     const line = container.querySelector('[data-slot="status-mark"]')!;
     expect(line.getAttribute("data-state")).toBe("working");
     expect(container.textContent).toBe("AlphaWorkingrunning bun3/7");
+  });
+});
+
+describe("ThreadHeaderStrip chip drag", () => {
+  // A pane 400px wide at the origin; the pointer at x 390 is on its right edge.
+  function paneUnderPointer() {
+    const pane = document.createElement("div");
+    pane.dataset.paneId = "p1";
+    pane.getBoundingClientRect = () => ({ left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0, toJSON: () => ({}) });
+    document.body.append(pane);
+    // jsdom has no hit testing.
+    document.elementFromPoint = (x: number) => (x > 100 ? pane : document.body);
+    return () => {
+      pane.remove();
+      delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+    };
+  }
+  afterEach(() => {
+    dropThread.mockReset();
+  });
+
+  it("a move past the threshold drags: no select, the drop names the pane and its edge, the chip dims", () => {
+    const restore = paneUnderPointer();
+    const { onSelect } = mount();
+    fireEvent.pointerDown(tab("Beta"), { button: 0, clientX: 380, clientY: 150 });
+    fireEvent.pointerMove(window, { clientX: 390, clientY: 150 });
+    expect(getExternalPaneDrop()).toEqual({ fromId: "b", overId: "p1", edge: "right" });
+    expect(tab("Beta").dataset.dragging).toBe("true");
+    fireEvent.pointerUp(window, { clientX: 390, clientY: 150 });
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(dropThread).toHaveBeenCalledWith("b", "p1", "right");
+    expect(getExternalPaneDrop()).toBeNull();
+    restore();
+  });
+
+  it("a release outside every pane drops nothing", () => {
+    const restore = paneUnderPointer();
+    const { onSelect } = mount();
+    fireEvent.pointerDown(tab("Beta"), { button: 0, clientX: 380, clientY: 150 });
+    fireEvent.pointerMove(window, { clientX: 50, clientY: 150 });
+    expect(getExternalPaneDrop()).toEqual({ fromId: "b", overId: null, edge: "left" });
+    fireEvent.pointerUp(window, { clientX: 50, clientY: 150 });
+    expect(dropThread).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+    restore();
+  });
+
+  it("Escape cancels: the drop clears and the release does nothing", () => {
+    const restore = paneUnderPointer();
+    const { onSelect } = mount();
+    fireEvent.pointerDown(tab("Beta"), { button: 0, clientX: 380, clientY: 150 });
+    fireEvent.pointerMove(window, { clientX: 390, clientY: 150 });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(getExternalPaneDrop()).toBeNull();
+    fireEvent.pointerUp(window, { clientX: 390, clientY: 150 });
+    expect(dropThread).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+    restore();
   });
 });

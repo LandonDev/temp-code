@@ -19,6 +19,7 @@ import {
   activateTab,
   appendTab,
   closeTab,
+  dropThreadInto,
   focusPane,
   focusSession,
   isolateTerminals,
@@ -276,5 +277,56 @@ describe("workspaceTabTarget", () => {
 
   it("is undefined when none of the workspace's tabs is open", () => {
     expect(workspaceTabTarget(state([tab("b")], "b"), sessions, "/repo", "s-a")).toBeUndefined();
+  });
+});
+
+describe("dropThreadInto: a thread dragged onto a pane's edge", () => {
+  const split = (ids: string[]): LayoutNode => ({ type: "split", id: "sp", dir: "right", children: ids.map(leaf), sizes: ids.map(() => 1 / ids.length) });
+
+  it("onto its own pane changes nothing", () => {
+    const s = state([tab("a")]);
+    expect(dropThreadInto(s, "s-a", "s-a", "right")).toBe(s);
+  });
+
+  it("onto a pane no tab holds changes nothing", () => {
+    const s = state([tab("a")]);
+    expect(dropThreadInto(s, "s-b", "nowhere", "right")).toBe(s);
+  });
+
+  it("within its tab, the pane moves to that edge", () => {
+    const s = state([tab("a", { layout: split(["x", "y", "z"]), focusedId: "y" })]);
+    const next = dropThreadInto(s, "x", "z", "right");
+    expect(leafIds(next.tabs[0].layout)).toEqual(["y", "z", "x"]);
+    expect(next.tabs[0].focusedId).toBe("x");
+  });
+
+  it("from a tab it held alone, that tab goes", () => {
+    const s = state([tab("a"), tab("b")], "a");
+    const next = dropThreadInto(s, "s-b", "s-a", "left");
+    expect(next.tabs.map((t) => t.id)).toEqual(["a"]);
+    expect(leafIds(next.tabs[0].layout)).toEqual(["s-b", "s-a"]);
+  });
+
+  it("from a split, its pane leaves and the focus moves to its sibling", () => {
+    const s = state([tab("a"), tab("b", { layout: split(["x", "y"]), focusedId: "y" })], "a");
+    const next = dropThreadInto(s, "y", "s-a", "bottom");
+    const from = next.tabs.find((t) => t.id === "b")!;
+    expect(leafIds(from.layout)).toEqual(["x"]);
+    expect(from.focusedId).toBe("x");
+    expect(leafIds(next.tabs.find((t) => t.id === "a")!.layout)).toEqual(["s-a", "y"]);
+  });
+
+  it("open nowhere, it joins as a new pane", () => {
+    const s = state([tab("a")]);
+    const next = dropThreadInto(s, "fresh", "s-a", "right");
+    expect(next.tabs).toHaveLength(1);
+    expect(leafIds(next.tabs[0].layout)).toEqual(["s-a", "fresh"]);
+  });
+
+  it("the target tab comes forward with the dropped thread focused", () => {
+    const s = state([tab("a"), tab("b")], "b");
+    const next = dropThreadInto(s, "fresh", "s-a", "top");
+    expect(next.activeTabId).toBe("a");
+    expect(next.tabs[0].focusedId).toBe("fresh");
   });
 });

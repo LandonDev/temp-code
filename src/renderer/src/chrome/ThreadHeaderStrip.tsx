@@ -2,6 +2,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type WheelEvent as ReactWheelEvent,
@@ -14,6 +15,9 @@ import { Input } from "../components/ui/input";
 import { StatusMark } from "../components/ui/status";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { pendingApprovalForSession } from "../lib/approvalToast";
+import { DRAG_THRESHOLD, setGrabbing, suppressTextSelection } from "../lib/drag";
+import { paneDropFromPoint, setExternalPaneDrop } from "../lib/paneDrop";
+import { workspaceActions } from "../stores/workspaceActions";
 import { HARNESSES, sessionDisplayTitle, type HarnessId } from "../lib/session";
 import { sessionStore } from "../lib/tcserver/store";
 import type { ThreadType } from "../lib/tcserver/types";
@@ -40,8 +44,9 @@ const HOVER_LINE = "font-normal text-background/70 **:data-[slot=status-detail]:
  * in the thread menu). A chip is the type glyph, the title, "Master" when
  * pinned and the status glyph (none for a settled thread); the hover label
  * says the state in words.
- * A primary press selects, a right-click opens the thread's menu at the
- * pointer, a double-click renames. List rows take no motion (DESIGN.md), so
+ * A primary click selects (on release), a right-click opens the thread's
+ * menu at the pointer, a double-click renames. Dragging a chip onto a pane's
+ * edge opens that thread there, beside what is on screen. List rows take no motion (DESIGN.md), so
  * nothing here animates: a chip that leaves while the pointer is over the
  * strip holds its place until the pointer goes.
  */
@@ -244,6 +249,71 @@ function RenameInput({ chip, onRename }: { chip: StripChip; onRename: (id: strin
   );
 }
 
+/**
+ * A chip's primary press: a release before the pointer moves `DRAG_THRESHOLD`
+ * is a click and selects; past it the chip drags its thread over the panes,
+ * showing where it would land, and a release over a pane drops it there.
+ * Escape, a cancelled pointer, the window losing focus or a release outside
+ * every pane end the drag with nothing done.
+ */
+function useChipDrag(id: string, select: () => void) {
+  const [dragging, setDragging] = useState(false);
+  const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    // Only the primary button without Control: a right press (or a
+    // Control-click on the Mac) is the chip's menu.
+    if (event.button !== 0 || event.ctrlKey) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let restoreSelection: (() => void) | null = null;
+
+    const move = (ev: PointerEvent) => {
+      if (!restoreSelection) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD) return;
+        restoreSelection = suppressTextSelection();
+        setGrabbing(true);
+        setDragging(true);
+      }
+      const over = paneDropFromPoint(ev.clientX, ev.clientY);
+      setExternalPaneDrop({ fromId: id, overId: over?.id ?? null, edge: over?.edge ?? "left" });
+    };
+    const up = (ev: PointerEvent) => {
+      if (!restoreSelection) {
+        end();
+        select();
+        return;
+      }
+      const over = paneDropFromPoint(ev.clientX, ev.clientY);
+      end();
+      if (over && over.id !== id) workspaceActions.dropThread(id, over.id, over.edge);
+    };
+    const key = (ev: KeyboardEvent) => {
+      if (ev.key !== "Escape") return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      end();
+    };
+    function end() {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", end);
+      window.removeEventListener("keydown", key, true);
+      window.removeEventListener("blur", end);
+      if (!restoreSelection) return;
+      restoreSelection();
+      restoreSelection = null;
+      setGrabbing(false);
+      setDragging(false);
+      setExternalPaneDrop(null);
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", end);
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("blur", end);
+  };
+  return { dragging, onPointerDown };
+}
+
 function Chip({
   chip,
   active,
@@ -252,6 +322,9 @@ function Chip({
   ...events
 }: { chip: StripChip; active: boolean; focusable: boolean; onSelect: (id: string) => void } & ChipEvents) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const drag = useChipDrag(chip.id, () => {
+    if (!active) onSelect(chip.id);
+  });
   if (events.renamingId === chip.id) return <RenameInput chip={chip} onRename={events.onRename} />;
   const status = chipStatus(chip, events.planReady);
   const title = chipTitle(chip);
@@ -274,18 +347,14 @@ function Chip({
                 aria-selected={active}
                 tabIndex={focusable ? 0 : -1}
                 data-unread={unread || undefined}
-                onPointerDown={(event) => {
-                  // Only the primary button without Control selects: a right
-                  // press (or a Control-click on the Mac) is the chip's menu.
-                  if (event.button !== 0 || event.ctrlKey) return;
-                  if (!active) onSelect(chip.id);
-                }}
+                data-dragging={drag.dragging || undefined}
+                onPointerDown={drag.onPointerDown}
                 onClick={(event) => {
-                  // Pointer presses selected on down; this is Enter and Space.
+                  // A pointer selects on release (useChipDrag); this is Enter and Space.
                   if (event.detail === 0 && !active) onSelect(chip.id);
                 }}
                 onKeyDown={moveFocus}
-                className="h-7 max-w-56 min-w-0 justify-start gap-2 rounded-md px-3 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent aria-selected:bg-muted aria-selected:text-foreground aria-selected:transition-none data-unread:font-medium data-unread:text-foreground"
+                className="h-7 max-w-56 min-w-0 justify-start gap-2 rounded-md px-3 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent aria-selected:bg-muted aria-selected:text-foreground aria-selected:transition-none data-unread:font-medium data-unread:text-foreground data-dragging:opacity-50"
               />
             }
           >

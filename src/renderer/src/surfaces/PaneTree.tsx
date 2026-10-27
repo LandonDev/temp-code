@@ -8,7 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { OpenFileFn } from "../lib/search";
-import { setGrabbing, suppressTextSelection } from "../lib/drag";
+import { DRAG_THRESHOLD, setGrabbing, suppressTextSelection } from "../lib/drag";
 import {
   paneDropFromPoint,
   useExternalPaneDrop,
@@ -62,8 +62,6 @@ type PaneDrag = {
   overId: string | null;
   edge: PaneEdge;
 };
-
-const DRAG_THRESHOLD = 5;
 
 type SessionLeafProps = Omit<ComponentProps<typeof SessionPane>, "session"> & { id: string };
 

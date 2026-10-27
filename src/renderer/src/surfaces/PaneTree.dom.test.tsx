@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Session } from "../lib/session";
 
@@ -18,6 +18,7 @@ vi.mock("../stores/shell", () => ({ shell: { openSettings } }));
 
 import { PaneTree, SessionLeaf } from "./PaneTree";
 import type { LayoutNode, WorkspaceTab } from "../lib/layout";
+import { setExternalPaneDrop } from "../lib/paneDrop";
 import { setTabSplitRatio } from "../lib/workspaceFocus";
 import { initialWorkspaceTabsState, workspace, workspaceTabsStore } from "../stores/workspace";
 
@@ -118,5 +119,21 @@ describe("PaneTree's sashes", () => {
     fireEvent.doubleClick(screen.getAllByRole("separator", { name: "Resize panes" })[1]);
     const layout = workspaceTabsStore.getState().tabs[0].layout as Extract<LayoutNode, { type: "split" }>;
     for (const size of layout.sizes) expect(size).toBeCloseTo(1 / 3);
+  });
+});
+
+describe("PaneTree under a dragged chip", () => {
+  it("shows where the thread lands on the pane under the pointer only, and dims the thread's own pane", () => {
+    state.session = thread("loading");
+    workspaceTabsStore.setState(initialWorkspaceTabsState([splitTab([0.5, 0.5])]));
+    const { container } = tree();
+    act(() => setExternalPaneDrop({ fromId: "p0", overId: "p1", edge: "right" }));
+    const pane = (id: string) => container.querySelector<HTMLElement>(`[data-pane-id="${id}"]`)!;
+    expect(pane("p1").querySelector("[data-pane-drop-hint]")?.getAttribute("data-edge")).toBe("right");
+    expect(pane("p0").querySelector("[data-pane-drop-hint]")).toBeNull();
+    expect(pane("p0").className).toMatch(/\bopacity-40\b/);
+    expect(pane("p1").className).not.toMatch(/\bopacity-40\b/);
+    act(() => setExternalPaneDrop(null));
+    expect(container.querySelector("[data-pane-drop-hint]")).toBeNull();
   });
 });

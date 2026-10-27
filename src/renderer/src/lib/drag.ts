@@ -1,3 +1,6 @@
+/** How far a press moves before it is a drag rather than a click. */
+export const DRAG_THRESHOLD = 5;
+
 export function setGrabbing(on: boolean) {
   document.body.style.cursor = on ? "grabbing" : "";
 }

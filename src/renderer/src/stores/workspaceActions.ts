@@ -1,8 +1,12 @@
 import {
+  closeLeaf,
   isolateTerminalPanes,
   leafIds,
+  movePane,
+  placePane,
   replaceLeafId,
   splitPane,
+  type PaneEdge,
   type WorkspaceTab,
 } from "../lib/layout";
 import type { Session } from "../lib/session";
@@ -92,6 +96,37 @@ export function splitBeside(
     ),
   );
   return setActiveTabId(split, tab.id);
+}
+
+/**
+ * A thread dragged onto a pane's edge: it splits that pane there and comes
+ * forward focused, with its tab. A thread already in that tab moves; one in
+ * another tab leaves it (the tab goes when the thread was all it held); one
+ * open nowhere joins as a new pane, which loads as any open does.
+ */
+export function dropThreadInto(
+  state: WorkspaceTabsState,
+  sessionId: string,
+  paneId: string,
+  edge: PaneEdge,
+): WorkspaceTabsState {
+  if (sessionId === paneId) return state;
+  const target = state.tabs.find((tab) => leafIds(tab.layout).includes(paneId));
+  if (!target) return state;
+  const source = state.tabs.find((tab) => leafIds(tab.layout).includes(sessionId));
+  const tabs: WorkspaceTab[] = [];
+  for (const tab of state.tabs) {
+    if (tab.id === target.id) {
+      const layout = source === target ? movePane(tab.layout, sessionId, paneId, edge) : placePane(tab.layout, sessionId, paneId, edge);
+      tabs.push({ ...tab, layout, focusedId: sessionId });
+    } else if (tab === source) {
+      const rest = closeLeaf(tab, sessionId);
+      if (rest) tabs.push(rest);
+    } else {
+      tabs.push(tab);
+    }
+  }
+  return setActiveTabId(setTabs(state, tabs), target.id);
 }
 
 /** A thread joins behind the user's work; the active tab and every focus stay put. */
@@ -271,4 +306,6 @@ export const workspaceActions = {
     projectOf: TabProjectLookup,
   ) => apply((s) => leaveGroupIfMoved(s, sessionId, project, projectOf)),
   isolateTerminals: () => apply(isolateTerminals),
+  dropThread: (sessionId: string, paneId: string, edge: PaneEdge) =>
+    apply((s) => dropThreadInto(s, sessionId, paneId, edge)),
 };
