@@ -165,11 +165,6 @@ html.theme-light {
 }
 
 @theme {
-  /* Legacy names: `background-base` is `background`, `content` is
-     `foreground`. New code uses the token names; these stay until the last
-     reader is migrated. */
-  --color-background-base: var(--background);
-  --color-content: var(--foreground);
   --color-accent: var(--accent);
   --color-skill: #e8c547;
   --color-mention: #38bdf8;

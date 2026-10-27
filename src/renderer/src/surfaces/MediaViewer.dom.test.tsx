@@ -106,7 +106,7 @@ describe("MediaGate", () => {
     expect(img.className).not.toContain("rounded");
     expect(container.querySelector("video, footer")).toBeNull();
     expect(container.querySelector('[data-testid="editor"]')).toBeNull();
-    expect(container.querySelector('[class*="bg-content"]')).toBeNull();
+    expect(container.querySelector('[class*="bg-foreground"]')).toBeNull();
     const header = container.querySelector("header")!;
     expect(header.textContent).toContain("img");
     expect(header.textContent).not.toContain("shot.png");
