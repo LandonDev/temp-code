@@ -12,7 +12,7 @@ import { defineChunk } from "../lib/lazyChunk";
 export const settingsChunk = defineChunk("settings", () => import("./SettingsView"));
 /** The Aliax Accounts and Stats pages, with recharts. */
 export const aliaxChunk = defineChunk("aliax", () => import("./AliaxPagesView"));
-/** The changes pane and the edit card's diff body (DiffPane, DiffBody). */
+/** The edit card's diff body (DiffBody). */
 export const diffChunk = defineChunk("diff", () => import("./diffChunk"));
 /** The CodeMirror file editor, its find/replace keys and the git helpers. */
 export const editorChunk = defineChunk("editor", () => import("./editorChunk"));

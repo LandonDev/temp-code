@@ -9,7 +9,7 @@ import { SurfaceSkeleton } from "./SurfaceSkeleton";
 const EXPECTED: Record<keyof typeof allChunks, string[]> = {
   settingsChunk: ["SettingsView"],
   aliaxChunk: ["AliaxPagesView"],
-  diffChunk: ["DiffPane", "DiffBody"],
+  diffChunk: ["DiffBody"],
   editorChunk: ["FileEditor", "handleEditorFindKey", "openFindInActiveEditor"],
   terminalChunk: ["TerminalView", "DevServersPane"],
   threadViewsChunk: ["ImplementationView", "OrchestrationView", "PlanView", "ResearchView"],
