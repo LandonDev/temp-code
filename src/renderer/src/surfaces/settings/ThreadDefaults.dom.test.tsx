@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
@@ -9,12 +9,30 @@ const state = vi.hoisted(() => ({
   overriding: new Set<string>(),
   save: vi.fn(async () => {}),
   open: vi.fn(),
+  picker: vi.fn(),
+  hooks: vi.fn(),
 }));
 
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../chrome/PlanSettingsFields", () => ({ PlanSettingsEditor: () => <section aria-label="Plans" /> }));
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
-vi.mock("../../lib/settings", () => ({ openWorkspaceSettings: (id: string) => state.open(id) }));
+vi.mock("../../lib/settings", () => ({
+  openWorkspaceSettings: (id: string) => state.open(id),
+  loadClaudeHooks: () => false,
+  saveClaudeHooks: (on: boolean) => state.hooks(on),
+}));
+vi.mock("../../lib/harness/availability", () => ({
+  getHarnessAvailabilitySnapshot: () => 0,
+  subscribeHarnessAvailability: () => () => {},
+  probeHarnessAvailability: async () => {},
+  isHarnessAvailable: (id: string) => id === "claude" || id === "codex",
+}));
+vi.mock("../../lib/models", async (original) => ({
+  ...(await original<typeof import("../../lib/models")>()),
+  isPickerProviderVisible: () => true,
+  savePickerProviderVisible: (...args: unknown[]) => state.picker(...args),
+}));
+vi.mock("../../chrome/HarnessIcon", () => ({ HarnessIcon: () => <svg /> }));
 vi.mock("../../lib/tcserver/defaults", async (original) => ({
   ...(await original<typeof import("../../lib/tcserver/defaults")>()),
   modelForDefaults: () => ({ id: "m" }),
@@ -50,6 +68,8 @@ beforeEach(() => {
   state.overriding = new Set();
   state.save.mockClear();
   state.open.mockClear();
+  state.picker.mockClear();
+  state.hooks.mockClear();
 });
 afterEach(cleanup);
 
@@ -109,5 +129,21 @@ describe("Thread defaults", () => {
     });
     expect(state.save).toHaveBeenCalledWith("local", "w1", expect.objectContaining({ provider: "claude" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("lists a picker switch per installed CLI, and saves its visibility", () => {
+    render(<ThreadDefaultsPage />);
+    const picker = screen.getByRole("region", { name: "Model picker" });
+    const switches = within(picker).getAllByRole("switch");
+    expect(switches).toHaveLength(2);
+    fireEvent.click(switches[0]);
+    expect(state.picker).toHaveBeenCalledWith("claude", false);
+  });
+
+  it("saves the settings.json hooks switch", () => {
+    render(<ThreadDefaultsPage />);
+    const section = screen.getByRole("region", { name: "Claude Code" });
+    fireEvent.click(within(section).getByRole("switch", { name: "settings.json hooks" }));
+    expect(state.hooks).toHaveBeenCalledWith(true);
   });
 });

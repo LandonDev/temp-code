@@ -42,7 +42,7 @@ export const SETTINGS_SECTIONS: {
     id: "defaults",
     group: "threads",
     label: "Thread defaults",
-    description: "What new threads and plan builds start with.",
+    description: "What new threads and plan builds start with, and what the picker lists.",
   },
   { id: "providers", group: "threads", label: "Providers", description: "The agent CLIs this machine can run." },
   {

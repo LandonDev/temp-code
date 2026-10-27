@@ -6,8 +6,6 @@ const host = vi.hoisted(() => ({
   doctor: null as null | ((doctor: Record<string, unknown>) => void),
   update: vi.fn(),
   installed: new Set<string>(["claude", "codex"]),
-  picker: vi.fn(),
-  hooks: vi.fn(),
 }));
 
 vi.mock("../../lib/tcserver/catalog", () => ({
@@ -24,12 +22,7 @@ vi.mock("../../lib/harness/availability", () => ({
   harnessInstallCommand: (id: string) => (id === "cursor" ? "curl https://cursor.com/install | bash" : undefined),
 }));
 vi.mock("../../lib/harness/registry", () => ({ refreshHarnessCatalogs: async () => {} }));
-vi.mock("../../lib/models", () => ({
-  modelsFor: () => [{ id: "m" }],
-  isPickerProviderVisible: () => true,
-  savePickerProviderVisible: (...args: unknown[]) => host.picker(...args),
-}));
-vi.mock("../../lib/settings", () => ({ loadClaudeHooks: () => false, saveClaudeHooks: (on: boolean) => host.hooks(on) }));
+vi.mock("../../lib/models", () => ({ modelsFor: () => [{ id: "m" }] }));
 vi.mock("../../chrome/HarnessIcon", () => ({ HarnessIcon: () => <svg /> }));
 vi.mock("../../lib/sounds", () => ({ playCue: vi.fn() }));
 
@@ -39,14 +32,12 @@ const { HARNESS_TITLE } = await import("../../lib/session");
 beforeEach(() => {
   host.doctor = null;
   host.update.mockReset();
-  host.picker.mockReset();
-  host.hooks.mockReset();
 });
 afterEach(cleanup);
 
-/** The CLI's own row, in the first section; the picker section repeats the name. */
+/** The CLI's own row. */
 const row = (harness: "claude" | "codex" | "cursor") =>
-  [...document.querySelectorAll<HTMLElement>("[data-slot=page-section]")[0].querySelectorAll<HTMLElement>("[data-slot=page-row]")].find(
+  [...document.querySelectorAll<HTMLElement>("[data-slot=page-row]")].find(
     (el) => el.querySelector("[data-slot=item-title]")?.textContent === HARNESS_TITLE[harness],
   )!;
 
@@ -63,16 +54,30 @@ describe("Providers", () => {
     for (const r of rows) expect(r.querySelector("[data-slot=skeleton]")).toBeTruthy();
   });
 
-  it("shows the version, the path and a doctor's error", async () => {
+  it("shows the version or Not installed and a doctor's error, never the path or the install line", async () => {
     render(<ProvidersPage />);
     await act(async () => host.doctor?.(DOCTOR));
     expect(row("claude").textContent).toContain("v2.1.263");
     expect(row("claude").textContent).not.toContain("(Claude Code)");
-    expect(within(row("claude")).getByText("/usr/local/bin/claude").className).toContain("font-mono");
+    expect(document.body.textContent).not.toContain("/usr/local/bin/claude");
     expect(row("codex").textContent).toContain("codex-cli 0.162.1");
     expect(within(row("codex")).getByText("Login expired").className).toContain("text-warning");
     expect(row("cursor").textContent).toContain("Not installed");
-    expect(within(row("cursor")).getByText("curl https://cursor.com/install | bash").className).toContain("font-mono");
+    expect(document.body.textContent).not.toContain("cursor.com/install");
+  });
+
+  it("gives a missing CLI one control that copies its install command", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<ProvidersPage />);
+    await act(async () => host.doctor?.(DOCTOR));
+    const buttons = within(row("cursor")).getAllByRole("button");
+    expect(buttons).toHaveLength(1);
+    await act(async () => {
+      fireEvent.click(within(row("cursor")).getByRole("button", { name: "Copy install command" }));
+    });
+    expect(writeText).toHaveBeenCalledWith("curl https://cursor.com/install | bash");
+    expect(within(row("claude")).getAllByRole("button").map((b) => b.textContent)).toEqual(["Update"]);
   });
 
   it("updates a CLI with a spinner, and shows a failure under its row", async () => {
@@ -88,20 +93,10 @@ describe("Providers", () => {
     expect(within(row("claude")).getByText("npm exited 1").closest("[data-slot=item-description]")?.className).toContain("text-destructive");
   });
 
-  it("keeps the picker's switches in their own section, one per installed CLI", async () => {
+  it("leaves the model picker and the hooks to Thread defaults", async () => {
     render(<ProvidersPage />);
     await act(async () => host.doctor?.(DOCTOR));
-    const picker = screen.getByRole("region", { name: "Model picker" });
-    expect(within(picker).getAllByRole("switch")).toHaveLength(2);
-    expect(within(row("claude")).queryByRole("switch")).toBeNull();
-    fireEvent.click(within(picker).getByRole("switch", { name: `Show ${HARNESS_TITLE.claude} in the model picker` }));
-    expect(host.picker).toHaveBeenCalledWith("claude", false);
-    expect(within(picker).queryByRole("switch", { name: `Show ${HARNESS_TITLE.cursor} in the model picker` })).toBeNull();
-  });
-
-  it("saves the Claude Code hooks switch", () => {
-    render(<ProvidersPage />);
-    fireEvent.click(screen.getByRole("switch", { name: "Run settings.json hooks" }));
-    expect(host.hooks).toHaveBeenCalledWith(true);
+    expect(screen.queryByRole("region", { name: "Model picker" })).toBeNull();
+    expect(screen.queryByRole("switch")).toBeNull();
   });
 });

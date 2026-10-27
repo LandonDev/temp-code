@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { PageRow, PageSection } from "../../components/page";
-import { SettingSwitch } from "../../components/setting-switch";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
@@ -13,16 +12,17 @@ import {
   subscribeHarnessAvailability,
 } from "../../lib/harness/availability";
 import { refreshHarnessCatalogs } from "../../lib/harness/registry";
-import { isPickerProviderVisible, modelsFor, savePickerProviderVisible } from "../../lib/models";
+import { modelsFor } from "../../lib/models";
 import { HARNESSES, HARNESS_TITLE, type HarnessId } from "../../lib/session";
-import { loadClaudeHooks, saveClaudeHooks } from "../../lib/settings";
 import { probeDoctor, type Doctor, type DoctorRow } from "../../lib/tcserver/catalog";
 import { registry } from "../../lib/connection";
+import { CopyButton } from "./hosts/CopyButton";
 
+/** The agent CLIs this machine can run: one row each, its version and one
+ *  control. What the picker lists and the hooks live on Thread defaults. */
 export function ProvidersPage() {
   useSyncExternalStore(subscribeHarnessAvailability, getHarnessAvailabilitySnapshot, getHarnessAvailabilitySnapshot);
   const [doctor, setDoctor] = useState<Doctor | null>(null);
-  const [claudeHooks, setClaudeHooks] = useState(loadClaudeHooks);
 
   const refreshDoctor = useCallback((force = false) => {
     void probeHarnessAvailability({ force });
@@ -36,34 +36,19 @@ export function ProvidersPage() {
   }, [refreshDoctor]);
 
   return (
-    <>
-      <PageSection>
-        {HARNESSES.map((harness) => (
-          <ProviderRow
-            key={harness}
-            harness={harness}
-            doctor={doctor ? (doctor[harness] ?? { found: false }) : undefined}
-            onUpdated={(row) => {
-              setDoctor((prev) => ({ ...(prev ?? {}), [harness]: row }));
-              refreshDoctor(true);
-            }}
-          />
-        ))}
-      </PageSection>
-      <PickerSection />
-      <PageSection title="Claude Code">
-        <PageRow title="Run settings.json hooks" description="The hooks from your settings.json files run from the next turn.">
-          <SettingSwitch
-            label="Run settings.json hooks"
-            on={claudeHooks}
-            onChange={(on) => {
-              saveClaudeHooks(on);
-              setClaudeHooks(on);
-            }}
-          />
-        </PageRow>
-      </PageSection>
-    </>
+    <PageSection>
+      {HARNESSES.map((harness) => (
+        <ProviderRow
+          key={harness}
+          harness={harness}
+          doctor={doctor ? (doctor[harness] ?? { found: false }) : undefined}
+          onUpdated={(row) => {
+            setDoctor((prev) => ({ ...(prev ?? {}), [harness]: row }));
+            refreshDoctor(true);
+          }}
+        />
+      ))}
+    </PageSection>
   );
 }
 
@@ -120,17 +105,12 @@ function ProviderRow({
     ) : doctor.found ? (
       <>
         <span className="block">{doctor.version ? versionLabel(doctor.version) : "Installed"}</span>
-        {doctor.path ? <span className="block truncate font-mono text-[11px]">{doctor.path}</span> : null}
         {doctor.error ? <span className="block text-warning">{doctor.error}</span> : null}
       </>
     ) : (
-      <>
-        <span className="block">Not installed</span>
-        {harnessInstallCommand(harness) ? (
-          <span className="block truncate font-mono text-[11px]">{harnessInstallCommand(harness)}</span>
-        ) : null}
-      </>
+      "Not installed"
     );
+  const install = doctor && !doctor.found ? harnessInstallCommand(harness) : null;
 
   return (
     <PageRow
@@ -144,37 +124,9 @@ function ProviderRow({
           {updating ? <Spinner className="size-3.5" /> : null}
           Update
         </Button>
+      ) : install ? (
+        <CopyButton text={install} label="Copy install command" />
       ) : null}
-    </PageRow>
-  );
-}
-
-/** Which installed CLIs the model picker lists. */
-function PickerSection() {
-  const installed = HARNESSES.filter((harness) => isHarnessAvailable(harness));
-  if (installed.length === 0) return null;
-  return (
-    <PageSection title="Model picker">
-      {installed.map((harness) => (
-        <PickerRow key={harness} harness={harness} />
-      ))}
-    </PageSection>
-  );
-}
-
-function PickerRow({ harness }: { harness: HarnessId }) {
-  const title = HARNESS_TITLE[harness];
-  const [visible, setVisible] = useState(() => isPickerProviderVisible(harness));
-  return (
-    <PageRow media={<HarnessIcon harness={harness} className="size-4" />} title={title}>
-      <SettingSwitch
-        label={`Show ${title} in the model picker`}
-        on={visible}
-        onChange={(next) => {
-          savePickerProviderVisible(harness, next);
-          setVisible(next);
-        }}
-      />
     </PageRow>
   );
 }
