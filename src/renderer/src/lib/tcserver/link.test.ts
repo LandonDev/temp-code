@@ -71,6 +71,7 @@ describe("initServerLink", () => {
   it("the page at /ui has exactly one environment: its own origin, the cookie on the upgrade", async () => {
     native.webMode = true;
     vi.stubGlobal("location", { hostname: "box.example" });
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ key: { id: "k" } })));
     initServerLink();
     await flush();
     expect(registry.environments().map((e) => e.id)).toEqual(["web"]);
@@ -80,6 +81,20 @@ describe("initServerLink", () => {
     ]);
     expect(FakeSocket.instances.map((s) => s.url)).toEqual(["wss://box.example/ws"]);
     expect(registry.primary()).toBe(registry.linkOf("web"));
+  });
+});
+
+describe("initServerLink at /ui, signed out", () => {
+  it("a cookie the host no longer knows sends the page to /pair?signed-out once", async () => {
+    native.webMode = true;
+    const replace = vi.fn();
+    vi.stubGlobal("location", { hostname: "box.example", replace });
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ environmentId: "env_box", contract: 3 })));
+    initServerLink();
+    await flush();
+    await flush();
+    expect(FakeSocket.instances).toHaveLength(0);
+    expect(replace.mock.calls).toEqual([["/pair?signed-out"]]);
   });
 });
 

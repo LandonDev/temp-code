@@ -3,11 +3,14 @@ import type { EnvLink } from "./link";
 import { ConnectionRegistry, localEnvironment, savedEnvironment, webEnvironment, type LinkEvent } from "./registry";
 import { FakeClock, FakeTransport, HELLO, flush } from "./testing";
 
-function harness() {
+const SIGNED_IN = (async () => new Response(JSON.stringify({ environmentId: "env_box", key: { id: "k" } }))) as typeof fetch;
+
+function harness(fetch: typeof globalThis.fetch = SIGNED_IN) {
   const clock = new FakeClock();
   const transports: FakeTransport[] = [];
   const registry = new ConnectionRegistry({
     clock,
+    fetch,
     transport: (url, profile) => {
       const t = new FakeTransport(url, profile);
       transports.push(t);
@@ -234,6 +237,32 @@ describe("ConnectionRegistry", () => {
     expect(h.transports[0].url).toBe("wss://tempcode.example/ws");
     expect(h.transports[0].profile).toBe("remote");
     expect(h.registry.primary()).toBe(link);
+  });
+
+  it("a cookie route asks /api/hello on its origin first: a hello without a key is signed out, no socket, no retry", async () => {
+    const asked: string[] = [];
+    const h = harness((async (url: string) => {
+      asked.push(url);
+      return new Response(JSON.stringify({ environmentId: "env_box", contract: 3 }));
+    }) as typeof fetch);
+    h.registry.add(webEnvironment("wss://tempcode.example/ws"));
+    await flush();
+    expect(asked).toEqual(["https://tempcode.example/api/hello"]);
+    expect(h.transports).toHaveLength(0);
+    expect(h.registry.statusOf("web")).toMatchObject({ transport: "unauthorized", lastError: "unauthorized: signed out", nextRetryAt: null });
+  });
+
+  it("a cookie route whose hello fails is unavailable and backs off, never signed out", async () => {
+    const h = harness((async () => {
+      throw new TypeError("Failed to fetch");
+    }) as typeof fetch);
+    h.registry.add(webEnvironment("ws://10.0.0.9:7677/ws"));
+    await flush();
+    expect(h.transports).toHaveLength(0);
+    const status = h.registry.statusOf("web");
+    expect(status.transport).not.toBe("unauthorized");
+    expect(status.lastError).toBe("unavailable: Failed to fetch");
+    expect(status.nextRetryAt).not.toBeNull();
   });
 
   it("names the environments whose host is slow to answer, one set per change", async () => {

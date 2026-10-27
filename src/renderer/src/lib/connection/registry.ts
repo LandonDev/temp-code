@@ -18,6 +18,8 @@ export type RegistryOptions = {
   resolveUrl?: (environment: Environment, route: Route) => Promise<string>;
   transport?: (url: string, profile: WireProfile) => Transport;
   clock?: Clock;
+  /** What a cookie route's sign-in probe fetches with; the page's own fetch by default. */
+  fetch?: typeof fetch;
 };
 
 type Entry = { environment: Environment; supervisor: Supervisor; link: EnvLink; offHealth: () => void };
@@ -308,6 +310,7 @@ export class ConnectionRegistry {
       url.searchParams.set("ticket", minted.ticket);
       return url.toString();
     }
+    if (route.credential === "cookie") await checkCookie(route.url, this.options.fetch ?? fetch);
     if (route.credential === "implicit" && this.profileFor(environment, route) === "remote") {
       const url = new URL(route.url);
       url.searchParams.set("profile", "remote");
@@ -326,6 +329,30 @@ export class ConnectionRegistry {
   private emit(): void {
     for (const l of this.statusListeners) l();
   }
+}
+
+/**
+ * A cookie route's refusal is invisible to the page: the host answers the
+ * socket upgrade 401 and the browser reports only a closed socket. So the
+ * route asks `/api/hello` on its own origin first; a hello without `key`
+ * means the host no longer knows the cookie (expired, revoked), which is
+ * `unauthorized: signed out` (no retry); no answer is `unavailable` and the
+ * backoff runs as for any dropped route.
+ */
+export async function checkCookie(socketUrl: string, fetchFn: typeof fetch): Promise<void> {
+  const url = new URL(socketUrl);
+  url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+  url.pathname = "/api/hello";
+  url.search = "";
+  let answer: Response;
+  try {
+    answer = await fetchFn(url.toString(), { credentials: "same-origin", cache: "no-store" });
+  } catch (err) {
+    throw new Error(`unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!answer.ok) throw new Error(`unavailable: hello answered ${answer.status}`);
+  const hello = (await answer.json().catch(() => null)) as { key?: unknown } | null;
+  if (!hello?.key) throw new Error("unauthorized: signed out");
 }
 
 /** The port this machine's server answers on, read off the local link's live

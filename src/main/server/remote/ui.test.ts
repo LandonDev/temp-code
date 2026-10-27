@@ -77,7 +77,7 @@ class FakeRes extends Writable {
   }
 }
 
-async function serve(path: string, rendererDir: string, signedIn = true): Promise<FakeRes> {
+async function serve(path: string, rendererDir: string, signedIn: boolean | 'refused' = true): Promise<FakeRes> {
   const handler = createUiHandler({ rendererDir })
   const res = new FakeRes()
   const done = new Promise<void>((resolve) => res.on('finish', resolve))
@@ -90,7 +90,10 @@ async function serve(path: string, rendererDir: string, signedIn = true): Promis
     proto: 'https',
     host: 'tempcode.example',
     origin: 'https://tempcode.example',
-    principal: async () => (signedIn ? ({ session: { id: 's' }, principal: { audience: 'client' } } as never) : null),
+    principal: async () => {
+      if (signedIn === 'refused') throw new Error('session expired')
+      return signedIn ? ({ session: { id: 's' }, principal: { audience: 'client' } } as never) : null
+    },
     setCookie: () => {}
   })
   expect(answered).toBe(true)
@@ -117,6 +120,16 @@ describe('createUiHandler: the lazy chunks over /ui', () => {
     const res = await serve('/ui/assets/SettingsView-def.js', dir, false)
     expect(res.status).toBe(401)
     expect(res.headers['Cache-Control']).toBe('no-store')
+  })
+
+  it('the document sends a browser with no cookie to /pair, and one whose cookie was refused to /pair?signed-out', async () => {
+    const fresh = await serve('/ui/', dir, false)
+    expect(fresh.status).toBe(302)
+    expect(fresh.headers.Location).toBe('/pair')
+    const refused = await serve('/ui/', dir, 'refused')
+    expect(refused.status).toBe(302)
+    expect(refused.headers.Location).toBe('/pair?signed-out')
+    expect((await serve('/ui/assets/SettingsView-def.js', dir, 'refused')).status).toBe(401)
   })
 
   it('a chunk that is not on disk is 404', async () => {

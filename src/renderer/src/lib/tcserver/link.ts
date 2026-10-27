@@ -74,6 +74,13 @@ export function initServerLink(): void {
     setDefaultCatalogEnvironment(WEB_ENVIRONMENT_ID);
     registry.setPrimary(WEB_ENVIRONMENT_ID);
     registry.add(webEnvironment(webSocketUrl(), location.hostname));
+    // A refused cookie (expired, revoked) is sign-in again, never a retry loop.
+    const off = registry.subscribe(() => {
+      if (leaving || registry.statusOf(WEB_ENVIRONMENT_ID).transport !== "unauthorized") return;
+      leaving = true;
+      off();
+      location.replace("/pair?signed-out");
+    });
     return;
   }
   getServerPort().then(
@@ -81,6 +88,9 @@ export function initServerLink(): void {
     (e) => console.error(`${TAG} no server port:`, e),
   );
 }
+
+/** The page is on its way to /pair; a second status change must not navigate again. */
+let leaving = false;
 
 /** The window losing focus clears this window's focus on every host; coming
  *  back restores it. Focus moving into a frame inside the window (an html

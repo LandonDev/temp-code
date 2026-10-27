@@ -110,10 +110,13 @@ export function createUiHandler(options: UiOptions): UiHandler {
     if (path !== '/ui' && !path.startsWith('/ui/') && !isAsset) return false
 
     let verified: Verified | null = null
+    // A credential the host refused (an expired or revoked cookie) is a
+    // browser that was signed in; no credential at all is a new one.
+    let refused = false
     try {
       verified = await ctx.principal()
     } catch {
-      verified = null
+      refused = true
     }
     const isDocument = path === '/ui' || path === '/ui/' || path === '/ui/index.html'
     // The asset mirror also answers an app key sent as a bearer: the phone
@@ -123,7 +126,7 @@ export function createUiHandler(options: UiOptions): UiHandler {
       // The document sends the browser to sign in; an asset without a cookie
       // is a plain 401, so a stale tab fails fast instead of redirecting scripts.
       if (isDocument) {
-        res.writeHead(302, { Location: '/pair', 'Cache-Control': 'no-store' })
+        res.writeHead(302, { Location: refused ? '/pair?signed-out' : '/pair', 'Cache-Control': 'no-store' })
         res.end()
       } else send(res, 401, 'sign in at /pair', 'text/plain; charset=utf-8', { 'Cache-Control': 'no-store' })
       return true
