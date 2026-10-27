@@ -368,14 +368,13 @@ export function MasterView(props: ThreadViewProps) {
           </div>
         </AgentSummaryContext.Provider>
       </BoardDigestContext.Provider>
-      {loaded ? (
-        <BatchFoot
+      <BatchFoot
           batch={batch}
+          loaded={loaded}
           titleOf={(id) => rowModels(layout).find((r) => r.meta.id === id)?.title}
           onSave={(next) => setBatchRules(session.environmentId, session.id, next)}
           onStop={(stepId) => stopBatchStep(session.environmentId, session.id, stepId)}
         />
-      ) : null}
     </div>
   );
 

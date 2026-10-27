@@ -752,24 +752,62 @@ describe("the master view", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("reads batch.board into the foot: the rules sentence first, then the console of the running step", async () => {
+  it("reads batch.board into the foot: the heading, a row per step in the master's order, the running step's console under its row", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     renderView();
     await flush();
     expect(link.calls.some((c) => c.method === "batch.board" && (c.params as { masterId: string }).masterId === "m")).toBe(true);
     expect(link.calls.some((c) => c.method === "batch.get")).toBe(false);
     const foot = document.querySelector("[data-batch-foot]")!;
-    expect(within(foot as HTMLElement).getByText("When the threads are done")).toBeTruthy();
-    expect(foot.querySelector("[data-rules]")?.textContent).toBe("Branches land as they finish, then Gate and Release. Then you are notified.");
-    // The gate runs, so the foot is a console: the landed step above it with its time, the release still ahead.
+    expect(within(foot as HTMLElement).getByRole("heading", { name: "When done" })).toBeTruthy();
+    expect(foot.querySelector("[data-rules]")).toBeNull();
     expect(foot.getAttribute("data-foot-mode")).toBe("console");
-    const console_ = foot.querySelector("[data-console='gate']")!;
-    expect(within(console_ as HTMLElement).getByText("Merging").closest("li")?.getAttribute("data-step-status")).toBe("passed");
-    expect(within(console_ as HTMLElement).getByText("Merging").closest("li")?.querySelector("[data-step-time]")?.textContent).toBe("2m");
-    expect(within(console_ as HTMLElement).getByText("Release").closest("li")?.getAttribute("data-step-status")).toBe("pending");
-    expect(console_.querySelector("[data-progress]")?.textContent).toBe("3 of 7 vitest");
-    expect(console_.querySelector("[role='progressbar']")?.getAttribute("aria-valuenow")).toBe("43");
-    expect(console_.querySelector("[data-log]")?.textContent).toBe("✓ typecheck 12s\nvitest: 3 of 7 files");
+    const rows = [...foot.querySelectorAll<HTMLElement>("[data-step]")];
+    expect(rows.map((li) => `${li.getAttribute("data-step")}:${li.getAttribute("data-step-status")}`)).toEqual(["land:passed", "gate:running", "release:pending"]);
+    expect(rows.map((li) => li.querySelector("[data-slot=status-mark]")?.getAttribute("data-state"))).toEqual(["done", "working", "queued"]);
+    expect(rows[0]!.querySelector("[data-step-time]")?.textContent).toBe("2m");
+    // The running step says its progress on its row, its console under it, no bar.
+    expect(rows[1]!.querySelector("[data-step-detail]")?.textContent).toBe("3 of 7vitest");
+    expect(rows[1]!.querySelector("[data-console='gate']")?.textContent).toBe("✓ typecheck 12s\nvitest: 3 of 7 files");
+    expect(foot.querySelector("[role='progressbar']")).toBeNull();
+    expect(foot.querySelectorAll("[data-console]")).toHaveLength(1);
+    expect(foot.querySelector("[data-then]")?.textContent).toBe("Then notify you");
+  });
+
+  it("the foot is a skeleton until batch.board answers", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    let answer: (v: unknown) => void = () => {};
+    const request = link.request.bind(link);
+    const spy = vi.spyOn(link, "request").mockImplementation(((method: string, params?: unknown) =>
+      method === "batch.board" ? new Promise((r) => (answer = r)) : request(method, params)) as typeof link.request);
+    try {
+      renderView();
+      await flush();
+      expect(document.querySelector("[data-batch-foot]")?.getAttribute("data-foot-mode")).toBe("loading");
+      expect(document.querySelectorAll("[data-batch-foot] [data-slot=skeleton]").length).toBeGreaterThan(1);
+      await act(async () => answer({ children: [], digests: {}, state: batch }));
+      await flush();
+      expect(document.querySelector("[data-batch-foot]")?.getAttribute("data-foot-mode")).toBe("console");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("the land row says how branches land before it runs", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    renderView();
+    await flush();
+    const push = (land: string, steps: unknown[]) =>
+      act(() => {
+        link.push({ push: "batch", state: { ...batch, rules: { ...batch.rules, land }, steps } } as unknown as ServerPush);
+      });
+    const detail = () => document.querySelector("[data-step='land'] [data-step-detail]")?.textContent;
+    push("as-they-finish", [{ id: "land", status: "pending", detail: "", at: null, log: [] }]);
+    expect(detail()).toBe("as they finish");
+    push("all-at-once", [{ id: "land", status: "pending", detail: "", at: null, log: [] }]);
+    expect(detail()).toBe("all at once");
+    push("as-they-finish", [{ id: "land", status: "running", detail: "", at: 1, startedAt: 1, log: [] }]);
+    expect(detail()).toBe("1 of 4 landed");
   });
 
   it("the running step's clock ticks every second from startedAt", async () => {
@@ -782,7 +820,7 @@ describe("the master view", () => {
         await Promise.resolve();
         await Promise.resolve();
       });
-      const head = () => document.querySelector("[data-console-head] [data-step-time]")?.textContent;
+      const head = () => document.querySelector("[data-step='gate'] [data-step-time]")?.textContent;
       expect(head()).toBe("1m 5s");
       await act(async () => {
         vi.advanceTimersByTime(1_000);
@@ -838,7 +876,7 @@ describe("the master view", () => {
     expect(link.calls.find((c) => c.method === "batch.stopStep")?.params).toEqual({ masterId: "m", stepId: "gate" });
   });
 
-  it("the foot grows to the console when a step starts and shrinks back to the row when every step is done", async () => {
+  it("the console opens under the step's row when it starts and closes when it passes; the rows stay", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     renderView();
     await flush();
@@ -847,6 +885,7 @@ describe("the master view", () => {
       act(() => {
         link.push({ push: "batch", state: { ...batch, steps } } as unknown as ServerPush);
       });
+    const rowsOf = () => [...foot().querySelectorAll("[data-step]")].map((li) => `${li.getAttribute("data-step")}:${li.getAttribute("data-step-status")}`);
     const t = batch.steps[1].startedAt!;
     pushSteps([
       { id: "land", status: "passed", detail: "", at: 1, startedAt: t - 120_000, endedAt: t },
@@ -854,9 +893,8 @@ describe("the master view", () => {
       { id: "release", status: "pending", detail: "", at: null, log: [] },
     ]);
     expect(foot().getAttribute("data-foot-mode")).toBe("idle");
-    const row = foot().querySelector("[data-steps-row]")!;
-    expect([...row.querySelectorAll("li")].map((li) => `${li.getAttribute("data-step")}:${li.getAttribute("data-step-status")}`)).toEqual(["land:passed", "gate:pending", "release:pending"]);
-    expect(row.querySelector("[data-step='land'] [data-step-time]")?.textContent).toBe("2m");
+    expect(rowsOf()).toEqual(["land:passed", "gate:pending", "release:pending"]);
+    expect(foot().querySelector("[data-step='land'] [data-step-time]")?.textContent).toBe("2m");
     expect(foot().querySelector("[data-console]")).toBeNull();
     pushSteps([
       { id: "land", status: "passed", detail: "", at: 1, startedAt: t - 120_000, endedAt: t },
@@ -864,7 +902,8 @@ describe("the master view", () => {
       { id: "release", status: "pending", detail: "", at: null, log: [] },
     ]);
     expect(foot().getAttribute("data-foot-mode")).toBe("console");
-    expect(foot().querySelector("[data-console='gate']")).toBeTruthy();
+    expect(foot().querySelector("[data-step='gate'] [data-console='gate']")).toBeTruthy();
+    expect(rowsOf()).toEqual(["land:passed", "gate:running", "release:pending"]);
     pushSteps([
       { id: "land", status: "passed", detail: "", at: 1, startedAt: t - 120_000, endedAt: t },
       { id: "gate", status: "passed", detail: "", at: 3, startedAt: t, endedAt: t + 252_000, log: ["starting", "done"] },
@@ -872,16 +911,16 @@ describe("the master view", () => {
     ]);
     expect(foot().getAttribute("data-foot-mode")).toBe("idle");
     expect(foot().querySelector("[data-console]")).toBeNull();
-    expect([...foot().querySelectorAll("[data-steps-row] [data-step-time]")].map((e) => e.textContent)).toEqual(["2m", "4m 12s", "8s"]);
+    expect([...foot().querySelectorAll("[data-step-time]")].map((e) => e.textContent)).toEqual(["2m", "4m 12s", "8s"]);
   });
 
-  it("the steps are the master's list in order: a shell step reads by its name idle, and runs in the same console with its command", async () => {
+  it("the steps are the master's list in order: a shell step reads by its name idle, and its command shows once, as its console's first line", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     renderView();
     await flush();
     const rules = {
       land: "as-they-finish",
-      then: "notify",
+      then: "archive-children",
       summary: "Build, deploy to dev, smoke",
       steps: [
         { id: "land", name: "Merging", kind: "land" },
@@ -900,32 +939,29 @@ describe("the master view", () => {
     ]);
     const foot = document.querySelector("[data-batch-foot]")!;
     expect(foot.getAttribute("data-foot-mode")).toBe("idle");
-    expect(foot.querySelector("[data-rules]")?.textContent).toBe("Branches land as they finish, then Build the plugin and Deploy to dev. Then you are notified.");
-    expect(within(foot as HTMLElement).getByText("Build, deploy to dev, smoke")).toBeTruthy();
     // The row names every step of the list in order, the one the host has not seen yet pending at the end.
-    expect([...foot.querySelectorAll("[data-steps-row] li")].map((li) => `${li.getAttribute("data-step")}:${li.getAttribute("data-step-status")}:${li.textContent}`)).toEqual([
-      "land:passed:Merging2m",
+    expect([...foot.querySelectorAll("[data-step]")].map((li) => `${li.getAttribute("data-step")}:${li.getAttribute("data-step-status")}:${li.textContent}`)).toEqual([
+      "land:passed:Merging1 of 4 landed2m",
       "build:pending:Build the plugin",
       "deploy-dev:pending:Deploy to dev",
     ]);
+    expect(foot.querySelector("[data-then]")?.textContent).toBe("Then archive the threads");
     push([
       { id: "land", status: "passed", detail: "", at: 1, startedAt: t - 120_000, endedAt: t },
-      { id: "build", status: "running", detail: "", at: 2, startedAt: t, log: ["> gradle build", "BUILD SUCCESSFUL"] },
+      { id: "build", status: "running", detail: "", at: 2, startedAt: t, log: ["$ gradle build", "BUILD SUCCESSFUL"] },
       { id: "deploy-dev", status: "pending", detail: "", at: null, log: [] },
     ]);
     expect(foot.getAttribute("data-foot-mode")).toBe("console");
-    const console_ = foot.querySelector("[data-console='build']")!;
-    const head = console_.querySelector("[data-console-head]")!;
-    expect(within(head as HTMLElement).getByText("Build the plugin")).toBeTruthy();
-    expect(head.querySelector("[data-step-run]")?.textContent).toBe("gradle build");
-    expect(console_.querySelector("[data-log]")?.textContent).toBe("> gradle build\nBUILD SUCCESSFUL");
-    expect(within(console_ as HTMLElement).getByText("Deploy to dev").closest("li")?.getAttribute("data-step-status")).toBe("pending");
-    fireEvent.click(within(foot as HTMLElement).getByRole("button", { name: "Stop" }));
+    const build = foot.querySelector("[data-step='build']") as HTMLElement;
+    expect(build.querySelector("[data-console='build']")?.textContent).toBe("$ gradle build\nBUILD SUCCESSFUL");
+    expect((foot.textContent ?? "").split("gradle build")).toHaveLength(2);
+    expect(foot.querySelector("[data-step='deploy-dev']")?.getAttribute("data-step-status")).toBe("pending");
+    fireEvent.click(within(build).getByRole("button", { name: "Stop" }));
     await flush();
     expect(link.calls.find((c) => c.method === "batch.stopStep")?.params).toEqual({ masterId: "m", stepId: "build" });
   });
 
-  it("a failed step stays open with its last lines and the failure in red until Hide", async () => {
+  it("a failed step stays open with its last lines and the failure in red until Hide, and Show opens it again", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     renderView();
     await flush();
@@ -945,15 +981,18 @@ describe("the master view", () => {
     });
     const foot = document.querySelector("[data-batch-foot]")!;
     expect(foot.getAttribute("data-foot-mode")).toBe("console");
-    const head = foot.querySelector("[data-console-head]")!;
-    expect(head.textContent).toContain("Gatefailed30s");
-    expect(foot.querySelector("[data-log] .text-danger")?.textContent).toBe("FAILED at vitest");
+    const gate = foot.querySelector("[data-step='gate']") as HTMLElement;
+    expect(gate.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("failed");
+    expect(gate.querySelector("[data-step-detail]")?.className).toContain("text-destructive");
+    expect(gate.querySelector("[data-step-time]")?.textContent).toBe("30s");
+    expect(gate.querySelector("[data-log] .text-destructive")?.textContent).toBe("FAILED at vitest");
     expect(within(foot as HTMLElement).queryByRole("button", { name: "Stop" })).toBeNull();
-    expect(within(foot.querySelector("[data-console]") as HTMLElement).getByText("Release").closest("li")?.textContent).toBe("Releaseskipped");
-    expect(foot.querySelector("[data-steps-row]")?.getAttribute("aria-hidden")).toBe("true");
-    fireEvent.click(within(foot as HTMLElement).getByRole("button", { name: "Hide" }));
+    expect(foot.querySelector("[data-step='release']")?.textContent).toBe("Releaseskipped");
+    fireEvent.click(within(gate).getByRole("button", { name: /Hide/ }));
     expect(foot.getAttribute("data-foot-mode")).toBe("idle");
-    expect(foot.querySelector("[data-steps-row] [data-step='gate']")?.getAttribute("data-step-status")).toBe("failed");
+    expect(gate.getAttribute("data-step-status")).toBe("failed");
+    fireEvent.click(within(gate).getByRole("button", { name: /Show/ }));
+    expect(foot.getAttribute("data-foot-mode")).toBe("console");
   });
 
   it("Edit opens the rules: the steps reorder, a built-in and a shell step are added, one is removed, and Save writes the list", async () => {

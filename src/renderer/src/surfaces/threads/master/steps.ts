@@ -7,6 +7,7 @@ import {
   type BatchStepKind,
   type BatchStepSpec,
 } from "@server/shared/contract-batch";
+import type { ThreadState } from "../../../components/ui/status";
 import { duration } from "../../../lib/duration";
 
 /**
@@ -127,15 +128,46 @@ export function stepTime(step: Pick<LiveStep, "status" | "startedAt" | "endedAt"
   return duration(Math.max(0, step.endedAt - step.startedAt));
 }
 
-/** "3 of 7 · vitest" without the dot: "3 of 7" and the label apart. */
-export function progressText(progress: StepProgress | undefined): { count: string; label: string | null; pct: number | null } | null {
+/** Progress as a count and its label: "3 of 7" and "vitest", set apart by margin. */
+export function progressText(progress: StepProgress | undefined): { count: string; label: string | null } | null {
   if (!progress) return null;
-  const total = progress.total > 0 ? progress.total : null;
-  return {
-    count: total ? `${progress.done} of ${total}` : `${progress.done}`,
-    label: progress.label?.trim() || null,
-    pct: total ? Math.min(100, Math.round((progress.done / total) * 100)) : null,
-  };
+  return { count: progress.total > 0 ? `${progress.done} of ${progress.total}` : `${progress.done}`, label: progress.label?.trim() || null };
+}
+
+/** A step's status in the status vocabulary: pending is queued, running
+ *  working, passed done, failed failed, skipped idle. */
+export function stepState(status: StepStatus): ThreadState {
+  switch (status) {
+    case "pending":
+      return "queued";
+    case "running":
+      return "working";
+    case "passed":
+      return "done";
+    case "failed":
+      return "failed";
+    case "skipped":
+      return "idle";
+  }
+}
+
+/** What a step's row says after its name: the land step how branches
+ *  land until it runs, then how many landed; a running step its progress;
+ *  a skipped one the host's reason, else "skipped"; otherwise the host's
+ *  detail. A shell step's command is never the row's: its console opens
+ *  with `$ <run>`. */
+export function stepDetail(step: Pick<LiveStep, "kind" | "status" | "detail" | "progress">, rules: Pick<BatchRules, "land">): { text: string; label: string | null } {
+  const plain = (text: string) => ({ text, label: null });
+  if (step.kind === "land") {
+    if (step.status === "pending") return plain(rules.land === "all-at-once" ? "all at once" : "as they finish");
+    if (step.progress && step.progress.total > 0) return plain(`${step.progress.done} of ${step.progress.total} landed`);
+  }
+  if (step.status === "skipped") return plain(step.detail.trim() || "skipped");
+  if (step.status === "running") {
+    const progress = progressText(step.progress);
+    if (progress) return { text: progress.count, label: progress.label };
+  }
+  return plain(step.detail.trim());
 }
 
 /** The step the console shows: the running one, else a failed one (it
@@ -154,12 +186,4 @@ export function tailLines(log: readonly string[], limit = 200): string[] {
  *  scrolled up. */
 export function nearBottom(el: { scrollTop: number; scrollHeight: number; clientHeight: number }, slack = 8): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= slack;
-}
-
-/** The status word after a finished step's name in the console's lines
- *  above: nothing for passed (the check says it), the word otherwise. */
-export function statusWord(status: StepStatus): string | null {
-  if (status === "failed") return "failed";
-  if (status === "skipped") return "skipped";
-  return null;
 }

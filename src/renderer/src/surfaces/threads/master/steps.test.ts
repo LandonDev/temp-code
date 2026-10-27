@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BatchState, BatchStep, BatchStepSpec } from "@server/shared/contract-batch";
-import { consoleStep, liveStep, liveSteps, nearBottom, progressText, specOf, stepTime, tailLines, type LiveStep } from "./steps";
+import { consoleStep, liveStep, liveSteps, nearBottom, progressText, specOf, stepDetail, stepState, stepTime, tailLines, type LiveStep } from "./steps";
 
 const batch = { landed: ["a"], pending: ["b", "c"] };
 const live = (over: Partial<LiveStep>): LiveStep => ({ id: "gate", name: "Gate", kind: "gate", status: "pending", detail: "", log: [], ...over });
@@ -49,10 +49,32 @@ describe("a step as the foot reads it", () => {
     expect(stepTime(live({ status: "passed", startedAt: 1_000 }), 0)).toBeNull();
   });
 
-  it("reads progress as a count, a label and a percent when the total is known", () => {
-    expect(progressText({ done: 3, total: 7, label: "vitest" })).toEqual({ count: "3 of 7", label: "vitest", pct: 43 });
-    expect(progressText({ done: 2, total: 0 })).toEqual({ count: "2", label: null, pct: null });
+  it("reads progress as a count and a label", () => {
+    expect(progressText({ done: 3, total: 7, label: "vitest" })).toEqual({ count: "3 of 7", label: "vitest" });
+    expect(progressText({ done: 2, total: 0 })).toEqual({ count: "2", label: null });
     expect(progressText(undefined)).toBeNull();
+  });
+
+  it("maps each status onto the vocabulary", () => {
+    expect((["pending", "running", "passed", "failed", "skipped"] as const).map(stepState)).toEqual(["queued", "working", "done", "failed", "idle"]);
+  });
+
+  it("says how branches land before the land step runs, then how many landed", () => {
+    const land = live({ kind: "land", id: "land" });
+    expect(stepDetail(land, { land: "as-they-finish" })).toEqual({ text: "as they finish", label: null });
+    expect(stepDetail(land, { land: "all-at-once" }).text).toBe("all at once");
+    expect(stepDetail({ ...land, status: "running", progress: { done: 2, total: 5 } }, { land: "as-they-finish" }).text).toBe("2 of 5 landed");
+    expect(stepDetail({ ...land, status: "passed", detail: "nothing landed" }, { land: "as-they-finish" }).text).toBe("nothing landed");
+  });
+
+  it("a running step says its progress, a skipped one why, a failed or passed one the host's detail", () => {
+    const rules = { land: "as-they-finish" } as const;
+    expect(stepDetail(live({ status: "running", progress: { done: 12, total: 31, label: "vitest" } }), rules)).toEqual({ text: "12 of 31", label: "vitest" });
+    expect(stepDetail(live({ status: "running" }), rules)).toEqual({ text: "", label: null });
+    expect(stepDetail(live({ status: "skipped" }), rules).text).toBe("skipped");
+    expect(stepDetail(live({ status: "skipped", detail: "needs a release" }), rules).text).toBe("needs a release");
+    expect(stepDetail(live({ status: "failed", detail: "vitest: 2 failed" }), rules).text).toBe("vitest: 2 failed");
+    expect(stepDetail(live({ status: "pending", kind: "shell", run: "bun run smoke" }), rules).text).toBe("");
   });
 });
 
