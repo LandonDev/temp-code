@@ -300,6 +300,7 @@ import { SessionActionsContext, type SessionActions } from "./surfaces/threadCha
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
 import { aliaxChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
+import { useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
 // Lazy surfaces (surfaces/chunks.ts): none of these is on the first-paint path.
 const DevServersPane = terminalChunk.surface("DevServersPane", <SurfaceSkeleton kind="terminal" label="Loading dev servers" />);
@@ -439,6 +440,7 @@ export default function App() {
   const devPaneOpen = useDevPane((s) => s.open);
   const devPaneSize = useDevPane((s) => s.size);
   const dockVisible = !!currentProjectDock?.open && !devPaneOpen;
+  useNativeMenuState({ dockOpen: dockVisible, dockUsable: deckLayout && looksLikeProject(dockCwd) });
   const sidebarTab = useShell((s) => s.sidebarTab);
   const classicInbox = !deckLayout && sidebarTab === "inbox";
   const searchViewOpen = useShell((s) => s.searchViewOpen);

@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { app, BrowserWindow, globalShortcut, Menu, shell, type MenuItemConstructorOptions } from 'electron'
-import { EMPTY_MENU_STATE, MENU_TREE, resolveMenu, type MenuNode, type MenuState } from '../shared/menuTree'
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, shell, type MenuItemConstructorOptions, type WebContents } from 'electron'
+import { EMPTY_MENU_STATE, MENU_TREE, resolveMenu, sameMenuState, type MenuNode, type MenuState } from '../shared/menuTree'
 import { createWindow } from './windows'
 import { hostProfileRunning, profileHost } from './server/doctorProfile'
 
@@ -71,10 +71,47 @@ export function buildMenu(state: MenuState = EMPTY_MENU_STATE): Menu {
 }
 
 let installed: Menu | null = null
+let applied: MenuState = EMPTY_MENU_STATE
+
+/** Each window's last word over `menu:state`, by webContents id. */
+const states = new Map<number, MenuState>()
+
+/** Electron cannot relabel a built item: a new state is a new menu, built only when it differs. */
+function apply(state: MenuState): void {
+  if (installed && sameMenuState(state, applied)) return
+  applied = state
+  installed = buildMenu(state)
+  Menu.setApplicationMenu(installed)
+}
+
+/** The focused window's state, or every row enabled and every toggle Show with none. */
+export function applyFocusedMenu(): void {
+  const win = BrowserWindow.getFocusedWindow()
+  apply((win && !win.isDestroyed() && states.get(win.webContents.id)) || EMPTY_MENU_STATE)
+}
+
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []
+
+/** A window said what it shows; it reaches the menu now if that window is the focused one,
+ *  else when it is next focused. */
+export function receiveMenuState(contents: WebContents, raw: unknown): void {
+  const value = (raw ?? {}) as Partial<MenuState>
+  if (!states.has(contents.id)) {
+    const id = contents.id
+    contents.once('destroyed', () => {
+      states.delete(id)
+      applyFocusedMenu()
+    })
+  }
+  states.set(contents.id, { open: strings(value.open), disabled: strings(value.disabled) })
+  if (BrowserWindow.getFocusedWindow()?.webContents === contents) applyFocusedMenu()
+}
 
 export function registerMenu(): void {
-  installed = buildMenu()
-  Menu.setApplicationMenu(installed)
+  apply(EMPTY_MENU_STATE)
+  ipcMain.on('menu:state', (event, state: unknown) => receiveMenuState(event.sender, state))
+  app.on('browser-window-focus', applyFocusedMenu)
   if (process.platform === 'darwin') registerZoomKeys()
 }
 

@@ -2,14 +2,16 @@ import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron'
 import { hostProfileRunning, profileHost } from './server/doctorProfile'
 import { buildMenu } from './menu'
 
 vi.mock('electron', () => ({
-  app: { quit: vi.fn(), getPath: vi.fn() },
+  app: { quit: vi.fn(), getPath: vi.fn(), on: vi.fn() },
   BrowserWindow: { getFocusedWindow: vi.fn() },
-  Menu: { buildFromTemplate: vi.fn() },
+  ipcMain: { on: vi.fn() },
+  globalShortcut: { isRegistered: vi.fn(), register: vi.fn(), unregister: vi.fn() },
+  Menu: { buildFromTemplate: vi.fn(), setApplicationMenu: vi.fn() },
   shell: { showItemInFolder: vi.fn(), openPath: vi.fn() }
 }))
 vi.mock('./windows', () => ({ createWindow: vi.fn() }))
@@ -105,5 +107,74 @@ describe('show logs', () => {
     expect(existsSync(join(userData, 'logs'))).toBe(true)
     expect(shell.openPath).toHaveBeenCalledWith(join(userData, 'logs'))
     expect(BrowserWindow.getFocusedWindow).not.toHaveBeenCalled()
+  })
+})
+
+describe('menu state', () => {
+  type Contents = { id: number; once: (event: string, cb: () => void) => void; destroy: () => void }
+  function contents(id: number): Contents {
+    let onDestroyed = (): void => {}
+    return { id, once: (_event, cb) => { onDestroyed = cb }, destroy: () => onDestroyed() }
+  }
+  const windowOf = (c: Contents) => ({ webContents: c, isDestroyed: () => false }) as unknown as BrowserWindow
+  const row = (section: string, id: string): MenuItemConstructorOptions => {
+    const last = vi.mocked(Menu.buildFromTemplate).mock.calls.at(-1)![0] as MenuItemConstructorOptions[]
+    const items = last.find((s) => s.label === section)!.submenu as MenuItemConstructorOptions[]
+    return items.find((r) => r.id === id)!
+  }
+  let menuModule: typeof import('./menu')
+
+  beforeEach(async () => {
+    vi.resetModules()
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(null)
+    vi.mocked(Menu.buildFromTemplate).mockReturnValue({} as Menu)
+    menuModule = await import('./menu')
+    menuModule.registerMenu()
+  })
+
+  it('takes the focused window\'s state: Hide Sidebar, Pause All greyed', () => {
+    const c = contents(1)
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))
+    expect(row('View', 'toggle_sidebar').label).toBe('Show Sidebar')
+    menuModule.receiveMenuState(c as never, { open: ['toggle_sidebar'], disabled: ['pause_all_threads'] })
+    expect(row('View', 'toggle_sidebar').label).toBe('Hide Sidebar')
+    expect(row('Threads', 'pause_all_threads').enabled).toBe(false)
+    expect(row('Threads', 'stop_all_threads').enabled).toBeUndefined()
+    expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(2)
+  })
+
+  it('holds a blurred window\'s state until that window is focused', () => {
+    const front = contents(1)
+    const back = contents(2)
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(front))
+    menuModule.receiveMenuState(back as never, { open: ['toggle_terminal'], disabled: [] })
+    expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(1)
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(back))
+    const calls = vi.mocked(app.on).mock.calls as unknown as [string, () => void][]
+    const onFocus = calls.find(([event]) => event === 'browser-window-focus')![1]
+    onFocus()
+    expect(row('View', 'toggle_terminal').label).toBe('Hide Terminal')
+  })
+
+  it('does not rebuild for a state it already shows', () => {
+    const c = contents(1)
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))
+    menuModule.receiveMenuState(c as never, { open: ['toggle_panel'], disabled: [] })
+    menuModule.receiveMenuState(c as never, { open: ['toggle_panel'], disabled: [] })
+    menuModule.applyFocusedMenu()
+    expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(2)
+  })
+
+  it('goes back to the plain menu when the window closes', () => {
+    const c = contents(1)
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))
+    menuModule.receiveMenuState(c as never, { open: ['toggle_sidebar'], disabled: [] })
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(null)
+    c.destroy()
+    expect(row('View', 'toggle_sidebar').label).toBe('Show Sidebar')
+  })
+
+  it('listens on menu:state', () => {
+    expect(vi.mocked(ipcMain.on).mock.calls.map(([channel]) => channel)).toContain('menu:state')
   })
 })

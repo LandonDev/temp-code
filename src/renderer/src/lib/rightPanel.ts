@@ -133,6 +133,13 @@ function emit(): void {
   for (const l of listeners) l();
 }
 
+/** A new focused thread is a change: the native menu reads which panel ⌘⇧R reaches. */
+function setFocused(id: string | null): void {
+  if (focusedId === id) return;
+  focusedId = id;
+  emit();
+}
+
 function stateOf(id: string): PanelState {
   const cached = cache.get(id);
   if (cached) return cached;
@@ -176,7 +183,7 @@ export const rightPanel = {
   },
   /** The thread whose panel is on screen; `show` with no id reaches it. */
   focus(id: string | null): void {
-    focusedId = id;
+    setFocused(id);
   },
   /** A thread's pane came on screen or left it. The target is the focused
    *  visible thread; when it leaves, another visible thread takes over, so
@@ -184,11 +191,11 @@ export const rightPanel = {
   visible(id: string, on: boolean): void {
     if (on) {
       visibleIds.add(id);
-      if (!focusedId) focusedId = id;
+      if (!focusedId) setFocused(id);
       return;
     }
     visibleIds.delete(id);
-    if (focusedId === id) focusedId = visibleIds.values().next().value ?? null;
+    if (focusedId === id) setFocused(visibleIds.values().next().value ?? null);
   },
   /** Open a section on the thread on screen (⌃D's Debug, the Dev Server button). */
   show(section: Section, id: string | null = focusedId): void {
@@ -196,6 +203,10 @@ export const rightPanel = {
   },
   focused(): string | null {
     return focusedId;
+  },
+  /** Every change of a thread's panel and of the focused thread (the native menu's Show Panel). */
+  subscribe(l: () => void): () => void {
+    return subscribe(l);
   },
   /** Test seam. */
   reset(): void {
