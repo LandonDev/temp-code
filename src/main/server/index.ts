@@ -2165,7 +2165,7 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: { runs: devRuns.running() } })
             break
           case 'devServer.start':
-            sendFrame({ id: req.id, ok: true, result: { run: await devRuns.start(req.params.projectId, req.params.targetId) } })
+            sendFrame({ id: req.id, ok: true, result: { run: await devRuns.start(req.params.projectId, req.params.targetId, req.params.sessionId ?? null) } })
             break
           case 'devServer.stop':
             sendFrame({ id: req.id, ok: true, result: { run: await devRuns.stop(req.params.runId) } })

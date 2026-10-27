@@ -26,8 +26,10 @@ export interface DevTarget {
   dir: string
   /** What runs, for the console's first line. */
   command: string
-  /** Runs only on a Mac (an iOS app needs Xcode and a simulator). */
+  /** Runs only on a Mac (an iOS app needs Xcode and a simulator; an Expo app its phone and simulators). */
   macOnly: boolean
+  /** What it starts, in a few words: "Vite dev server", "Expo app" (shared/devServerWords.ts). */
+  what: string
 }
 
 export type DevRunStatus = 'running' | 'exited' | 'failed' | 'stopped'
@@ -47,6 +49,10 @@ export interface DevRun {
   script: string
   kind: DevTargetKind
   command: string
+  /** What it is, in a few words ("Vite dev server"); absent from an older host. */
+  what?: string
+  /** The thread it was started for; null when none was on screen (absent from an older host). */
+  sessionId?: string | null
   /** Absolute, on the host. */
   cwd: string
   status: DevRunStatus
@@ -66,8 +72,8 @@ export const DevServerRequestSchemas = [
   request('devServer.targets', z.object({ projectId: id })),
   /** → { runs: DevRun[] }: every running run on this host, any project (the Dev servers pane's list). */
   request('devServer.runs', z.object({})),
-  /** → { run: DevRun }: start a target; a target may run several times at once (each run picks its own port). */
-  request('devServer.start', z.object({ projectId: id, targetId: id })),
+  /** → { run: DevRun }: start a target for a thread (`sessionId`, the one on screen); a target may run several times at once (each run picks its own port). */
+  request('devServer.start', z.object({ projectId: id, targetId: id, sessionId: id.optional() })),
   /** → { run: DevRun }: SIGTERM the run's process group, SIGKILL after 5 s. */
   request('devServer.stop', z.object({ runId: id })),
   /** → { run: DevRun }: stop it, then start the same target again (a new run id). */

@@ -1,15 +1,20 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { DevTarget } from '@shared/contract-devservers'
+import { frameworkOf, serverWords } from '@shared/devServerWords'
+
+export { frameworkOf }
 
 /**
- * What a project can serve (docs/box.md "Dev servers on the box"): the dev
- * scripts of its package.json and of its workspaces (package.json
- * `workspaces`, pnpm-workspace.yaml, else apps/* and packages/*), each run
- * with the package manager its lockfile names, and its Xcode apps (an
- * .xcworkspace, an .xcodeproj or an XcodeGen project.yml at the root or one
- * folder down, outside an Expo app). An Electron app's script is left out:
- * it is not a server, and the box has no screen for it.
+ * What a project can serve (docs/box.md "Dev servers on the box"), only
+ * what a person would pick: the root's dev script, then each workspace app
+ * (package.json `workspaces`, pnpm-workspace.yaml, else apps/* and
+ * packages/*) by name, one script each (dev, else start, serve, web,
+ * storybook), run with the package manager its lockfile names; Expo apps
+ * and Xcode apps (an .xcworkspace, an .xcodeproj or an XcodeGen project.yml
+ * at the root or two folders down, outside an Expo app) run on a Mac only.
+ * Each says in a few words what it starts (`what`). An Electron app's
+ * script is left out: it is not a server, and the box has no screen for it.
  */
 
 export interface DevTargetFs {
@@ -29,8 +34,8 @@ export const nodeFs: DevTargetFs = {
     )
 }
 
-/** Script names that serve something. */
-const DEV_SCRIPT = /^(?:dev|start|serve|preview|web|storybook)(?::[\w.-]+)?$/
+/** The scripts that serve something, in the order one is picked for a package. */
+const DEV_SCRIPTS = ['dev', 'start', 'serve', 'web', 'storybook']
 const NOT_A_SERVER = /\b(?:electron(?:-vite|-forge|-builder)?|tsc|vitest|jest|eslint|prettier)\b/
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'out', '.next', '.expo', 'Pods', 'DerivedData', '.temp-code', '.claude'])
 const MAX_PACKAGES = 40
@@ -41,28 +46,6 @@ interface Pkg {
   workspaces?: string[] | { packages?: string[] }
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
-}
-
-const FRAMEWORKS: [RegExp, string][] = [
-  [/\bexpo\b/, 'expo'],
-  [/\bnext\b/, 'next'],
-  [/\bnuxt\b/, 'nuxt'],
-  [/\bastro\b/, 'astro'],
-  [/\bremix\b/, 'remix'],
-  [/\bsvelte-kit\b|\bsveltekit\b/, 'sveltekit'],
-  [/\bstorybook\b/, 'storybook'],
-  [/\bvite\b/, 'vite'],
-  [/\bwebpack(?:-dev-server)?\b/, 'webpack'],
-  [/\breact-scripts\b/, 'react-scripts'],
-  [/\bwrangler\b/, 'wrangler'],
-  [/\bconvex\b/, 'convex'],
-  [/\bbun\b/, 'bun'],
-  [/\bnodemon\b|\bnode\b|\btsx\b/, 'node']
-]
-
-export function frameworkOf(command: string): string | null {
-  for (const [re, name] of FRAMEWORKS) if (re.test(command)) return name
-  return null
 }
 
 /** The package manager the lockfile at the root names, and how it runs a script. */
@@ -125,24 +108,16 @@ async function expand(cwd: string, patterns: readonly string[], fs: DevTargetFs)
 
 const usesExpo = (pkg: Pkg | null): boolean => !!(pkg?.dependencies?.expo ?? pkg?.devDependencies?.expo)
 
-function scriptTargets(dir: string, pkg: Pkg, name: string, run: (s: string) => string): DevTarget[] {
-  const out: DevTarget[] = []
-  for (const [script, body] of Object.entries(pkg.scripts ?? {})) {
-    if (!DEV_SCRIPT.test(script) || NOT_A_SERVER.test(body)) continue
+/** A package's one target: its first dev script that serves something, or none. */
+function scriptTarget(dir: string, pkg: Pkg, name: string, run: (s: string) => string): DevTarget | null {
+  for (const script of DEV_SCRIPTS) {
+    const body = pkg.scripts?.[script]
+    if (!body || NOT_A_SERVER.test(body)) continue
     const framework = frameworkOf(body)
-    out.push({
-      id: `${dir || '.'}#${script}`,
-      name,
-      script,
-      kind: framework === 'expo' ? 'expo' : 'web',
-      framework,
-      dir,
-      command: run(script),
-      macOnly: false
-    })
+    const expo = framework === 'expo'
+    return { id: `${dir || '.'}#${script}`, name, script, kind: expo ? 'expo' : 'web', framework, dir, command: run(script), macOnly: expo, what: serverWords(framework) }
   }
-  // dev first, then the rest as package.json lists them.
-  return out.sort((a, b) => Number(b.script === 'dev') - Number(a.script === 'dev'))
+  return null
 }
 
 /** An iOS target: build for the simulator, install on the booted one (booting one when none is), launch with its console. */
@@ -180,7 +155,7 @@ async function iosTargets(cwd: string, dirs: readonly string[], fs: DevTargetFs)
       if (!scheme) continue
       const id = `ios:${dir || '.'}/${entry}`
       const derived = join(cwd, '.temp-code', 'dev-server', `ios-${scheme}`)
-      out.push({ id, name: scheme, script: scheme, kind: 'ios', framework: 'xcode', dir, command: iosCommand(dir, entry, derived), macOnly: true })
+      out.push({ id, name: scheme, script: scheme, kind: 'ios', framework: 'xcode', dir, command: iosCommand(dir, entry, derived), macOnly: true, what: serverWords('xcode') })
     }
   }
   return out
@@ -205,13 +180,14 @@ async function subdirs(cwd: string, dir: string, depth: number, fs: DevTargetFs)
   return out
 }
 
-/** Every target in a project checkout, root first. */
+/** Every target in a project checkout: the root's, then the workspace apps by name, then the Xcode apps. */
 export async function detectDevTargets(cwd: string, projectName: string, fs: DevTargetFs = nodeFs): Promise<DevTarget[]> {
   const rootEntries = await fs.list(cwd)
   const run = runnerOf(rootEntries)
   const root = parseJson(await fs.read(join(cwd, 'package.json')))
   const out: DevTarget[] = []
-  if (root) out.push(...scriptTargets('', root, projectName, run))
+  const rootTarget = root ? scriptTarget('', root, projectName, run) : null
+  if (rootTarget) out.push(rootTarget)
 
   const ws = root?.workspaces
   let patterns = Array.isArray(ws) ? ws : (ws?.packages ?? [])
@@ -219,12 +195,15 @@ export async function detectDevTargets(cwd: string, projectName: string, fs: Dev
   if (!patterns.length) patterns = ['apps/*', 'packages/*']
   const pkgDirs = (await expand(cwd, patterns, fs)).slice(0, MAX_PACKAGES)
   const expoDirs = new Set<string>(usesExpo(root) ? [''] : [])
+  const apps: DevTarget[] = []
   for (const dir of pkgDirs) {
     const pkg = parseJson(await fs.read(join(cwd, dir, 'package.json')))
     if (!pkg) continue
     if (usesExpo(pkg)) expoDirs.add(dir)
-    out.push(...scriptTargets(dir, pkg, pkg.name?.replace(/^@[^/]+\//, '') || basename(dir), run))
+    const target = scriptTarget(dir, pkg, pkg.name?.replace(/^@[^/]+\//, '') || basename(dir), run)
+    if (target) apps.push(target)
   }
+  out.push(...apps.sort((a, b) => a.name.localeCompare(b.name)))
 
   // Xcode apps at the root and up to two folders down (ios/App/project.yml), never inside an Expo app (its ios/ is generated).
   const iosDirs = expoDirs.has('') ? [] : (await subdirs(cwd, '', 2, fs)).filter((d) => ![...expoDirs].some((e) => e && (d === e || d.startsWith(`${e}/`))))

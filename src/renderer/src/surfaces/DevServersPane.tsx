@@ -1,22 +1,14 @@
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect } from "react";
 import type { DevTarget } from "@server/shared/contract-devservers";
-import { useStore } from "zustand";
 import { DEV_TAB, DockBar } from "../chrome/DockBar";
+import { DevServerRow } from "../chrome/DevServerRow";
 import { DockFrame } from "../chrome/DockFrame";
-import { HostGlyph } from "../chrome/HostGlyph";
-import { Square } from "../chrome/icons";
 import { DevStarter, useDevStarter } from "../chrome/rail/DevServerPanel";
-import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
-import { Item, ItemActions, ItemContent, ItemGroup, ItemTitle } from "../components/ui/item";
+import { ItemGroup } from "../components/ui/item";
 import { ScrollArea } from "../components/ui/scroll-area";
-import { Spinner } from "../components/ui/spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { devPane, useDevPane } from "../lib/devPane";
-import { openUrl, portOpen } from "../lib/devPorts";
-import { shownServer, stopLiveServer, useDevTab, useDockProject, useLiveDevServers, type LiveServer } from "../lib/devServers";
-import { macBridgeStore } from "../lib/macBridge";
-import { isWebMode } from "../lib/nativeWeb";
+import { serverGroups, shownServer, useDevTab, useDockProject, useLiveDevServers } from "../lib/devServers";
 import { findProjectTerminal, selectDockTerminal, withDockOpen, withDockSize } from "../lib/projectTerminal";
 import { useProjects } from "../lib/tcserver/workspaces";
 import { dockCwdOf, useProject } from "../stores/project";
@@ -27,9 +19,10 @@ import { DevConsole } from "./DevConsole";
  * The Dev servers pane (docs/box.md "Dev servers on the box"): the bottom
  * dock's other occupant, under the same bar as the terminals (its Dev
  * servers tab is the one picked) and at the dock's height. The starter
- * runs a target; below it, one row per dev server live on a host right now
- * (a running Dev Server run, or a port a thread opened that still listens);
- * a row leaves the moment its host drops it. The picked row's console fills
+ * runs a target for the thread on screen; below it, one row per dev server
+ * live on a host right now (a running Dev Server run, or a port a thread
+ * opened that still listens) under the thread it belongs to; a row leaves
+ * the moment its host drops it. The picked row's console fills
  * the rest.
  */
 export function DevServersPane({
@@ -91,11 +84,16 @@ export function DevServersPane({
           <DevStarter starter={starter} />
           {servers.length > 0 ? (
             <ScrollArea className="min-h-0 flex-1">
-              <ItemGroup aria-label="Dev servers" className="gap-0.5 p-1.5">
-                {servers.map((server) => (
-                  <ServerRow key={server.key} server={server} picked={server.key === shown?.key} />
+              <div className="flex flex-col gap-2 p-1.5">
+                {serverGroups(servers).map((group) => (
+                  <ItemGroup key={group.key} aria-label={group.owner} data-dev-group={group.key} className="gap-0.5">
+                    <div className="truncate px-2 pt-1 text-xs font-medium text-muted-foreground">{group.owner}</div>
+                    {group.servers.map((server) => (
+                      <DevServerRow key={server.key} server={server} picked={server.key === shown?.key} onPick={() => devPane.pick(server.key)} />
+                    ))}
+                  </ItemGroup>
                 ))}
-              </ItemGroup>
+              </div>
             </ScrollArea>
           ) : null}
         </div>
@@ -148,86 +146,4 @@ function useCurrentDock() {
   const cwd = dockCwdOf({ projectCwd, selectedProjectId }, projects);
   const dock = useTerminals((s) => findProjectTerminal(s.docks, cwd));
   return { cwd, dock };
-}
-
-function ServerRow({ server, picked }: { server: LiveServer; picked: boolean }) {
-  const localId = useStore(macBridgeStore, (s) => s.localId);
-  const [stopping, setStopping] = useState(false);
-  const open =
-    server.port && !isWebMode() ? portOpen(server.port.number, server.port.environmentId, server.port.forwards, localId) : null;
-  const stop = () => {
-    setStopping(true);
-    void stopLiveServer(server)
-      .catch(() => undefined)
-      .finally(() => setStopping(false));
-  };
-  const title = (
-    <ItemTitle className="min-w-0 max-w-full">
-      <span className="min-w-0 truncate">{server.title}</span>
-      <HostGlyph environmentId={server.port?.environmentId ?? server.environmentId} />
-    </ItemTitle>
-  );
-  return (
-    <Item
-      size="xs"
-      role="listitem"
-      tabIndex={0}
-      data-dev-server={server.key}
-      aria-current={picked || undefined}
-      className={`flex-nowrap rounded-md ${picked ? "bg-muted" : "hover:bg-foreground/5"}`}
-      onClick={() => devPane.pick(server.key)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" && event.target === event.currentTarget) devPane.pick(server.key);
-      }}
-    >
-      <ItemContent className="min-w-0 gap-0.5">
-        {server.thread ? (
-          <Tooltip>
-            <TooltipTrigger render={title} />
-            <TooltipContent>{server.thread}</TooltipContent>
-          </Tooltip>
-        ) : (
-          title
-        )}
-        {open ? (
-          <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-            <Button
-              variant="link"
-              size="xs"
-              className="h-auto px-0 text-xs font-normal tabular-nums text-muted-foreground hover:text-foreground"
-              onClick={(event) => {
-                event.stopPropagation();
-                openUrl(open.url);
-              }}
-            >
-              {open.label} :{open.port}
-            </Button>
-            {open.movedFrom ? <span className="truncate">{open.movedFrom} is taken here</span> : null}
-          </div>
-        ) : null}
-      </ItemContent>
-      <ItemActions>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Stop"
-                disabled={stopping}
-                className="text-muted-foreground hover:text-foreground"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  stop();
-                }}
-              />
-            }
-          >
-            {stopping ? <Spinner className="size-3" /> : <Square className="size-3" strokeWidth={2} />}
-          </TooltipTrigger>
-          <TooltipContent>Stop</TooltipContent>
-        </Tooltip>
-      </ItemActions>
-    </Item>
-  );
 }

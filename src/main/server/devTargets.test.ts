@@ -22,7 +22,21 @@ describe('detectDevTargets', () => {
   it('reads a single web app with its lockfile', async () => {
     put('package.json', { scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview', test: 'vitest' } })
     put('bun.lock', '')
-    expect(await ids()).toEqual(['.#dev web vite :: bun run dev', '.#preview web vite :: bun run preview'])
+    expect(await ids()).toEqual(['.#dev web vite :: bun run dev'])
+  })
+
+  it('offers one target per package, the root first, then the workspace apps by name, each saying what it starts', async () => {
+    put('package.json', { workspaces: ['apps/*', 'packages/*'], scripts: { dev: 'turbo dev', 'dev:api': 'tsx api.ts', start: 'node server.js' } })
+    put('bun.lock', '')
+    put('apps/web/package.json', { name: 'web', scripts: { start: 'next start', dev: 'next dev', storybook: 'storybook dev' } })
+    put('apps/admin/package.json', { name: 'admin', scripts: { serve: 'vite preview', preview: 'vite preview' } })
+    put('packages/ui/package.json', { name: 'ui', scripts: { dev: 'tsc --watch', build: 'tsc' } })
+    const targets = await detectDevTargets(root, 'acme')
+    expect(targets.map((t) => [t.id, t.name, t.command, t.what])).toEqual([
+      ['.#dev', 'acme', 'bun run dev', 'Dev server'],
+      ['apps/admin#serve', 'admin', 'bun run serve', 'Vite dev server'],
+      ['apps/web#dev', 'web', 'bun run dev', 'Next.js dev server']
+    ])
   })
 
   it('reads a monorepo of sites through its workspaces, each with its own name', async () => {
@@ -34,7 +48,6 @@ describe('detectDevTargets', () => {
     const targets = await detectDevTargets(root, 'acme')
     expect(targets.map((t) => [t.id, t.name, t.framework, t.command])).toEqual([
       ['apps/docs#dev', 'docs', 'astro', 'pnpm run dev'],
-      ['apps/docs#start', 'docs', 'astro', 'pnpm run start'],
       ['apps/web#dev', 'web', 'next', 'pnpm run dev']
     ])
   })
@@ -47,11 +60,13 @@ describe('detectDevTargets', () => {
     expect(await ids()).toEqual(['sites/a#dev web vite :: npm run dev'])
   })
 
-  it('marks an Expo app and leaves its generated ios/ alone', async () => {
+  it('marks an Expo app as Mac-only and leaves its generated ios/ alone', async () => {
     put('package.json', { dependencies: { expo: '^52' }, scripts: { start: 'expo start', ios: 'expo run:ios' } })
     put('yarn.lock', '')
     put('ios/App.xcworkspace/contents.xcworkspacedata', '')
     expect(await ids()).toEqual(['.#start expo expo :: yarn start'])
+    const [expo] = await detectDevTargets(root, 'site')
+    expect([expo.macOnly, expo.what]).toEqual([true, 'Expo app'])
   })
 
   it('leaves out an Electron app and anything that is not a server', async () => {
@@ -64,9 +79,9 @@ describe('detectDevTargets', () => {
     put('Shop.xcworkspace/contents.xcworkspacedata', '')
     put('ios/TempCode/project.yml', 'name: TempCode\noptions: {}\n')
     const targets = await detectDevTargets(root, 'shop')
-    expect(targets.map((t) => [t.id, t.name, t.kind, t.macOnly, t.dir])).toEqual([
-      ['ios:./Shop.xcworkspace', 'Shop', 'ios', true, ''],
-      ['ios:ios/TempCode/project.yml', 'TempCode', 'ios', true, 'ios/TempCode']
+    expect(targets.map((t) => [t.id, t.name, t.kind, t.macOnly, t.dir, t.what])).toEqual([
+      ['ios:./Shop.xcworkspace', 'Shop', 'ios', true, '', 'iOS app in the Simulator'],
+      ['ios:ios/TempCode/project.yml', 'TempCode', 'ios', true, 'ios/TempCode', 'iOS app in the Simulator']
     ])
   })
 })

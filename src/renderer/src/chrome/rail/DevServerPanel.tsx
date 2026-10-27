@@ -7,8 +7,20 @@ import { Spinner } from "../../components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { devPane } from "../../lib/devPane";
-import { startDevServer, targetLabel, useDevHosts, useDevTargets, type DevHost } from "../../lib/devServers";
+import {
+  runChoice,
+  startDevServer,
+  stopLiveServer,
+  targetLabel,
+  threadRoot,
+  useDevHosts,
+  useDevTargets,
+  useLiveDevServers,
+  type DevHost,
+} from "../../lib/devServers";
+import { useServerSessions } from "../../lib/tcserver/store";
 import { useProjects } from "../../lib/tcserver/workspaces";
+import { useActivePane } from "../../stores/project";
 
 const targetKey = (projectId: string): string => `dev-target:${projectId}`;
 const hostKey = (projectId: string): string => `dev-host:${projectId}`;
@@ -24,13 +36,19 @@ export type DevStarterState = {
   pickTarget: (id: string) => void;
   starting: boolean;
   error: string | null;
+  /** Run pressed for a thread that already has a dev server: the choice waits. */
+  asking: boolean;
+  /** Start the target for the thread on screen; asks first when that thread already runs one. */
   run: () => Promise<void>;
+  /** The answer: stop the thread's servers and start this one, or start another beside them. */
+  answer: (choice: "replace" | "another" | "cancel") => Promise<void>;
 };
 
 /**
  * What the project can serve and on which host (docs/box.md "Dev servers on
- * the box"). Run starts another run of the target (several may run at once,
- * each on its own port) and picks it in the Dev servers pane.
+ * the box"). Run starts the target for the thread on screen and picks it in
+ * the Dev servers pane; a thread has one dev server unless the person says
+ * the second is for a different feature (`runChoice`).
  */
 export function useDevStarter(projectId: string | null): DevStarterState {
   const project = useProjects().find((p) => p.id === projectId);
@@ -44,6 +62,28 @@ export function useDevStarter(projectId: string | null): DevStarterState {
   const target = targets?.find((t) => t.id === targetPick) ?? targets?.[0];
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const servers = useLiveDevServers();
+  const sessions = useServerSessions();
+  const active = useActivePane().active;
+  const sessionId = active
+    ? threadRoot(active.id, (id) => sessions.find((s) => s.id === id)?.parentId ?? (id === active.id ? active.parentId : null))
+    : null;
+
+  const start = async (replace: boolean): Promise<void> => {
+    if (!envId || !copyId || !target) return;
+    setStarting(true);
+    setError(null);
+    try {
+      if (replace) await Promise.all(servers.filter((s) => s.sessionId === sessionId).map((s) => stopLiveServer(s)));
+      const started = await startDevServer(envId, copyId, target.id, sessionId);
+      devPane.open(`${envId}/${started.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStarting(false);
+    }
+  };
 
   return {
     hosts,
@@ -62,18 +102,14 @@ export function useDevStarter(projectId: string | null): DevStarterState {
       setTargetPick(id);
       setError(null);
     },
+    asking,
     run: async () => {
-      if (!envId || !copyId || !target) return;
-      setStarting(true);
-      setError(null);
-      try {
-        const started = await startDevServer(envId, copyId, target.id);
-        devPane.open(`${envId}/${started.id}`);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setStarting(false);
-      }
+      if (runChoice(servers, sessionId) === "ask") setAsking(true);
+      else await start(false);
+    },
+    answer: async (choice) => {
+      setAsking(false);
+      if (choice !== "cancel") await start(choice === "replace");
     },
   };
 }
@@ -100,11 +136,27 @@ export function DevStarter({ starter }: { starter: DevStarterState }) {
         ) : (
           <ChoiceSelect label="Dev server target" size="sm" value="" options={NO_TARGETS} disabled onChange={noop} className="min-w-0 flex-1" />
         )}
-        <Button size="sm" disabled={!target || !envId || starting} onClick={() => void starter.run()}>
+        <Button size="sm" disabled={!target || !envId || starting || starter.asking} onClick={() => void starter.run()}>
           {starting ? <Spinner className="size-3.5" /> : null}
           Run
         </Button>
       </div>
+      {starter.asking ? (
+        <div data-dev-replace="" className="flex flex-col gap-2 px-3 pb-2">
+          <p className="text-xs text-muted-foreground">This thread already runs a dev server. Replace it, or start another for a different feature?</p>
+          <div className="flex gap-1">
+            <Button size="xs" onClick={() => void starter.answer("replace")}>
+              Replace
+            </Button>
+            <Button size="xs" variant="secondary" onClick={() => void starter.answer("another")}>
+              Start another
+            </Button>
+            <Button size="xs" variant="ghost" onClick={() => void starter.answer("cancel")}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {hosts.length > 1 ? <HostChoice hosts={hosts} value={envId} onChange={starter.pickHost} /> : null}
       {error ? <p className="break-words px-3 pb-2 text-xs text-destructive">{error}</p> : null}
     </div>

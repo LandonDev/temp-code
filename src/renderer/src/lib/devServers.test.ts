@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DevRun } from '@server/shared/contract-devservers'
 import type { ThreadResource } from '@server/shared/contract-resources'
-import { applyDevRunPush, applyHostRuns, devHosts, devTabOf, devServerStore, liveServers, shownServer, targetLabel, type LiveServerSources } from './devServers'
+import { commandWords } from '@server/shared/devServerWords'
+import { applyDevRunPush, applyHostRuns, devHosts, devTabOf, runChoice, serverGroups, threadRoot, devServerStore, liveServers, shownServer, targetLabel, type LiveServerSources } from './devServers'
 import { devPane, devPaneStore, resetDevPane } from './devPane'
 import { pairWorkspaces } from './projectPairs'
 
@@ -60,9 +61,9 @@ describe('devServers', () => {
     expect(devHosts(projects[0], envs, (id) => id === 'env_mac', pairWorkspaces(workspaces), projects).map((h) => h.environmentId)).toEqual(['env_mac'])
   })
 
-  it('labels a target by its package and script, an iOS one by its scheme', () => {
-    expect(targetLabel({ name: 'web', script: 'dev', framework: 'vite', kind: 'web' })).toBe('web · dev')
-    expect(targetLabel({ name: 'TempCode', script: 'TempCode', framework: 'xcode', kind: 'ios' })).toBe('TempCode · iOS')
+  it('labels a target by its app and what it starts', () => {
+    expect(targetLabel({ name: 'web', what: 'Vite dev server' })).toBe('web (Vite dev server)')
+    expect(targetLabel({ name: 'TempCode', what: 'iOS app in the Simulator' })).toBe('TempCode (iOS app in the Simulator)')
   })
 })
 
@@ -91,18 +92,62 @@ const sources = (over: Partial<LiveServerSources> = {}): LiveServerSources => ({
 })
 
 describe('the live dev servers', () => {
-  it('lists running runs and listening ports, newest first, titled by target or project and port', () => {
+  it('lists running runs and listening ports, newest first, each in plain words under its thread', () => {
     const list = liveServers(
       sources({
-        runs: { 'env_mac/p1': [run({ id: 'r1', startedAt: 9, ports: [{ port: 5173, url: 'http://localhost:5173' }] }), run({ id: 'r0', status: 'stopped' })] },
+        runs: { 'env_mac/p1': [run({ id: 'r1', startedAt: 9, what: 'Vite dev server', ports: [{ port: 5173, url: 'http://localhost:5173' }] }), run({ id: 'r0', status: 'stopped' })] },
         resources: { t1: [port()] }
       })
     )
-    expect(list.map((s) => [s.key, s.title, s.port?.number])).toEqual([
-      ['env_mac/r1', 'site · dev', 5173],
-      ['env_box/res1', 'cosmicweb :3007', 3007]
+    expect(list.map((s) => [s.key, s.title, s.port?.number, s.owner])).toEqual([
+      ['env_mac/r1', 'Vite dev server', 5173, 'site'],
+      ['env_box/res1', 'Dev server', 3007, 'Coins page']
     ])
-    expect(list[1]).toMatchObject({ environmentId: 'env_box', thread: 'Coins page', resource: { id: 'res1', sessionId: 't1' }, runId: null })
+    expect(list[1]).toMatchObject({ environmentId: 'env_box', sessionId: 't1', resource: { id: 'res1', sessionId: 't1' }, runId: null })
+  })
+
+  it('reads a command past its package runner', () => {
+    expect(commandWords('cd apps/web && bun run dev')).toBe('Dev server')
+    expect(commandWords('npx vite --port 3007')).toBe('Vite dev server')
+    expect(commandWords('pnpm next dev')).toBe('Next.js dev server')
+    expect(commandWords('bun --hot src/index.ts')).toBe('Bun server')
+  })
+
+  it('files a run under the thread it was started for, and a port a run holds once', () => {
+    const list = liveServers(
+      sources({
+        runs: { 'env_box/p9': [run({ id: 'r1', sessionId: 't1', startedAt: 9, ports: [{ port: 3007, url: 'http://localhost:3007' }] })] },
+        resources: { t1: [port()] }
+      })
+    )
+    expect(list.map((s) => [s.key, s.sessionId, s.owner])).toEqual([['env_box/r1', 't1', 'Coins page']])
+  })
+
+  it('groups the servers under their threads, the group with the newest server first', () => {
+    const list = liveServers(
+      sources({
+        runs: { 'env_box/p9': [run({ id: 'mine', projectId: 'p9', startedAt: 20, ports: [] }), run({ id: 'r2', projectId: 'p9', sessionId: 't1', startedAt: 10, ports: [] })] },
+        resources: { t1: [port({ createdAt: 15 })] }
+      })
+    )
+    expect(serverGroups(list).map((g) => [g.owner, g.servers.map((s) => s.key)])).toEqual([
+      ['cosmicweb', ['env_box/mine']],
+      ['Coins page', ['env_box/res1', 'env_box/r2']]
+    ])
+  })
+
+  it('asks before a second server for the same thread, and only then', () => {
+    const list = liveServers(sources({ resources: { t1: [port()] } }))
+    expect(runChoice(list, 't1')).toBe('ask')
+    expect(runChoice(list, 't2')).toBe('start')
+    expect(runChoice(list, null)).toBe('start')
+    expect(runChoice([], 't1')).toBe('start')
+  })
+
+  it('files a subagent’s server under its root thread', () => {
+    const parents: Record<string, string> = { sub2: 'sub1', sub1: 'root' }
+    expect(threadRoot('sub2', (id) => parents[id])).toBe('root')
+    expect(threadRoot('root', (id) => parents[id])).toBe('root')
   })
 
   it('drops a row the moment the host does: removed, being removed, or a finished run', () => {

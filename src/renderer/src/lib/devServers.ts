@@ -5,6 +5,7 @@ import type { DevRun, DevRunPush, DevTarget } from '@server/shared/contract-devs
 import type { ThreadResource } from '@server/shared/contract-resources'
 import type { PortForwardInfo } from '@server/shared/contract-ports'
 import { notDevServer } from '@server/shared/devServerRules'
+import { commandWords, serverWords } from '@server/shared/devServerWords'
 import { sessionStore, useServerSessions } from './tcserver/store'
 import { removeThreadResources, startThreadResources, threadResourcesStore } from './threadResources'
 import { registry } from './connection/registry'
@@ -127,7 +128,8 @@ async function act(environmentId: string, method: 'devServer.start' | 'devServer
   return run
 }
 
-export const startDevServer = (environmentId: string, projectId: string, targetId: string) => act(environmentId, 'devServer.start', { projectId, targetId })
+export const startDevServer = (environmentId: string, projectId: string, targetId: string, sessionId?: string | null) =>
+  act(environmentId, 'devServer.start', { projectId, targetId, ...(sessionId ? { sessionId } : {}) })
 export const stopDevServer = (environmentId: string, runId: string) => act(environmentId, 'devServer.stop', { runId })
 export const restartDevServer = (environmentId: string, runId: string) => act(environmentId, 'devServer.restart', { runId })
 
@@ -201,10 +203,9 @@ export function useDevHosts(project: Pick<ProjectMeta, 'id' | 'environmentId' | 
   )
 }
 
-/** The line a target reads as in the menu: "web · dev", the framework after it when it names one. */
-export function targetLabel(t: Pick<DevTarget, 'name' | 'script' | 'kind'>): string {
-  if (t.kind === 'ios') return `${t.name} · iOS`
-  return `${t.name} · ${t.script}`
+/** A target as the starter lists it: its app and what it starts, "web (Vite dev server)". */
+export function targetLabel(t: Pick<DevTarget, 'name' | 'what'>): string {
+  return `${t.name} (${t.what})`
 }
 
 const copiesOf = (hosts: readonly DevHost[]): Key[] => hosts.flatMap((h) => (h.projectId ? [keyOf(h.environmentId, h.projectId)] : []))
@@ -230,19 +231,23 @@ export function useDevServable(project: Pick<ProjectMeta, 'id' | 'environmentId'
 }
 
 /**
- * One dev server live on a host, as the Dev servers pane lists it: a running
- * Dev Server run, or a `port` row on a thread's ledger that still listens and
- * passes the shared rules (src/shared/devServerRules.ts). The host drops a row
- * the moment nothing listens; so does this list.
+ * One dev server live on a host, as the Dev servers pane and a thread's
+ * Resources list it: a running Dev Server run, or a `port` row on a thread's
+ * ledger that still listens and passes the shared rules
+ * (src/shared/devServerRules.ts). The host drops a row the moment nothing
+ * listens; so does this list.
  */
 export interface LiveServer {
   /** `<host>/<run or ledger row id>`: stable across windows. */
   key: string
   /** The host whose link serves the log and takes the Stop. */
   environmentId: string
+  /** What it is, in plain words: "Vite dev server", "Expo app". */
   title: string
-  /** The thread that opened it (a ledger row), for the title's hover. */
-  thread: string | null
+  /** The thread it belongs to (the one that opened it, or the one on screen when Run started it); null for none. */
+  sessionId: string | null
+  /** That thread's title, or for a run with no thread the project's name: the group heading. */
+  owner: string
   /** The port, and the host it lives on (a Mac bridge row lives on the Mac), with its forwards. */
   port: { number: number; environmentId: string; forwards: PortForwardInfo[] | undefined } | null
   runId: string | null
@@ -258,19 +263,26 @@ export interface LiveServerSources {
   projectName: (environmentId: string, projectId: string) => string | null
 }
 
-/** Every live dev server across the hosts, newest first. */
+/**
+ * Every live dev server across the hosts, newest first, each once: a port a
+ * run holds is the run's, even when the sweep also filed it on a thread.
+ */
 export function liveServers(src: LiveServerSources): LiveServer[] {
   const out: LiveServer[] = []
+  const held = new Set<string>()
   for (const [key, list] of Object.entries(src.runs)) {
     const environmentId = key.slice(0, key.indexOf('/'))
     for (const run of list) {
       if (run.status !== 'running') continue
       const p = run.ports[0]
+      for (const port of run.ports) held.add(`${environmentId}:${port.port}`)
+      const sessionId = run.sessionId ?? null
       out.push({
         key: `${environmentId}/${run.id}`,
         environmentId,
-        title: targetLabel(run),
-        thread: null,
+        title: run.what ?? (run.kind === 'ios' ? serverWords('xcode') : commandWords(run.command)),
+        sessionId,
+        owner: (sessionId ? src.thread(sessionId)?.title : null) ?? src.projectName(environmentId, run.projectId) ?? run.name,
         port: p ? { number: p.port, environmentId, forwards: p.forwards } : null,
         runId: run.id,
         resource: null,
@@ -284,13 +296,13 @@ export function liveServers(src: LiveServerSources): LiveServer[] {
     for (const row of rows) {
       if (row.kind !== 'port' || row.removedAt || row.removeRequestedAt) continue
       const number = Number(row.identifier)
-      if (notDevServer(number, null, row.label)) continue
-      const project = thread.projectId ? src.projectName(thread.environmentId, thread.projectId) : null
+      if (notDevServer(number, null, row.label) || held.has(`${row.environmentId}:${number}`)) continue
       out.push({
         key: `${thread.environmentId}/${row.id}`,
         environmentId: thread.environmentId,
-        title: `${project ?? thread.title} :${number}`,
-        thread: thread.title,
+        title: commandWords(row.label),
+        sessionId,
+        owner: thread.title,
         port: { number, environmentId: row.environmentId, forwards: row.forwards },
         runId: null,
         resource: { id: row.id, sessionId },
@@ -299,6 +311,18 @@ export function liveServers(src: LiveServerSources): LiveServer[] {
     }
   }
   return out.sort((a, b) => b.startedAt - a.startedAt)
+}
+
+/** The servers under their threads: groups in the order of their newest server, each group newest first. */
+export function serverGroups(servers: readonly LiveServer[]): { key: string; owner: string; servers: LiveServer[] }[] {
+  const groups = new Map<string, { key: string; owner: string; servers: LiveServer[] }>()
+  for (const server of servers) {
+    const key = server.sessionId ?? `owner:${server.owner}`
+    const group = groups.get(key) ?? { key, owner: server.owner, servers: [] }
+    group.servers.push(server)
+    groups.set(key, group)
+  }
+  return [...groups.values()]
 }
 
 /** The row the pane shows: the one picked while it is still live, else the newest. */
@@ -363,4 +387,25 @@ export function useDevTab(projectPath: string): { count: number } | null {
   const count = useLiveDevServers().length
   const open = useDevPane((s) => s.open)
   return devTabOf({ servable, count, open })
+}
+
+/**
+ * One dev server per thread (docs/box.md "Dev servers on the box"): Run for
+ * a thread that already has one asks whether to replace it or start another
+ * for a different feature; a thread's own servers (its shell's port rows)
+ * count. `start` when it has none or no thread is on screen.
+ */
+export function runChoice(servers: readonly LiveServer[], sessionId: string | null): 'start' | 'ask' {
+  return sessionId && servers.some((s) => s.sessionId === sessionId) ? 'ask' : 'start'
+}
+
+/** The root of `id`'s thread: servers belong to the thread, not to a subagent of it. */
+export function threadRoot(id: string, parentOf: (id: string) => string | null | undefined): string {
+  let at = id
+  for (let i = 0; i < 32; i++) {
+    const parent = parentOf(at)
+    if (!parent) return at
+    at = parent
+  }
+  return at
 }

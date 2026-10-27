@@ -11,7 +11,7 @@ let dir: string
 let runs: DevRuns
 let pushes: DevRunPush[]
 let offersChanged = 0
-const target = (id: string, command: string, macOnly = false): DevTarget => ({ id, name: 'site', script: id, kind: 'web', framework: 'node', dir: '', command, macOnly })
+const target = (id: string, command: string, macOnly = false): DevTarget => ({ id, name: 'site', script: id, kind: 'web', framework: 'node', dir: '', command, macOnly, what: 'Node server' })
 let targets: DevTarget[]
 
 const until = async (ok: () => boolean, ms = 10_000) => {
@@ -77,10 +77,12 @@ describe('DevRuns', () => {
     expect(h.lines).toContain('nope')
   })
 
-  it('restarts a run as a new one and lists runs newest first', async () => {
-    const first = await runs.start('p1', 'serve')
+  it('restarts a run as a new one for the same thread and lists runs newest first', async () => {
+    const first = await runs.start('p1', 'serve', 't1')
+    expect(first).toMatchObject({ sessionId: 't1', what: 'Node server' })
     const second = await runs.restart(first.id)
     expect(second.id).not.toBe(first.id)
+    expect(second.sessionId).toBe('t1')
     const { runs: list } = await runs.targets('p1')
     expect(list.map((r) => r.id)).toEqual([second.id])
   }, 20_000)

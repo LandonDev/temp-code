@@ -3,20 +3,33 @@ import type { DevRun, DevTarget } from '@server/shared/contract-devservers'
 import { mountProbe } from '../../test/renderProbe'
 import { registry } from '../../lib/connection/registry'
 import { macBridgeStore } from '../../lib/macBridge'
-import { devServerStore, type DevHost } from '../../lib/devServers'
+import { applyDevRunPush, devServerStore, type DevHost } from '../../lib/devServers'
+import { sessionStore } from '../../lib/tcserver/store'
 import { devPaneStore, resetDevPane } from '../../lib/devPane'
 import { selectChunk } from '../../surfaces/chunks'
 import { DevServerPanel } from './DevServerPanel'
 
 const project = { id: 'p1', environmentId: 'env_mac', cwd: '/Users/l/site', workspaceId: 'w', name: 'site' }
 let hosts: DevHost[] = []
-vi.mock('../../lib/tcserver/workspaces', () => ({ useProjects: () => [project], useWorkspaces: () => [] }))
+vi.mock('../../lib/tcserver/workspaces', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/tcserver/workspaces')>()),
+  useProjects: () => [project],
+  useWorkspaces: () => []
+}))
+vi.mock('../../stores/project', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../stores/project')>()),
+  useActivePane: () => ({ activeTab: undefined, active: { id: 't1', parentId: null } })
+}))
+vi.mock('../../lib/tcserver/store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/tcserver/store')>()),
+  useServerSessions: () => [{ id: 't1', projectId: 'p1', title: 'Coins page', parentId: null }]
+}))
 vi.mock('../../lib/devServers', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/devServers')>()),
   useDevHosts: () => hosts
 }))
 
-const target = (id: string, over: Partial<DevTarget> = {}): DevTarget => ({ id, name: 'web', script: 'dev', kind: 'web', framework: 'vite', dir: 'apps/web', command: 'bun run dev', macOnly: false, ...over })
+const target = (id: string, over: Partial<DevTarget> = {}): DevTarget => ({ id, name: 'web', script: 'dev', kind: 'web', framework: 'vite', dir: 'apps/web', command: 'bun run dev', macOnly: false, what: 'Vite dev server', ...over })
 const run = (over: Partial<DevRun> = {}): DevRun => ({
   id: 'run1',
   projectId: 'p2',
@@ -61,7 +74,7 @@ describe('DevServerPanel', () => {
             if (method === 'devServer.targets')
               return env === 'env_box'
                 ? { targets: [target('apps/web#dev'), target('apps/docs#dev', { name: 'docs', dir: 'apps/docs', framework: 'astro' })], runs: [] }
-                : { targets: [target('apps/web#dev')], runs: [] }
+                : { targets: [target('apps/web#dev')], runs: devServerStore.getState().runs[`${env}/${(params as { projectId: string }).projectId}`] ?? [] }
             if (method === 'devServer.start') return { run: run({ projectId: (params as { projectId: string }).projectId, ports: [] }) }
             if (method === 'devServer.log') return { run: run(), lines: [] }
             if (method === 'devServer.stop') return { run: run({ status: 'stopped', endedAt: Date.now(), ports: [] }) }
@@ -113,9 +126,42 @@ describe('DevServerPanel', () => {
     const button = [...probe.container.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith('Run')) as HTMLElement
     await probe.act(async () => button.click())
     await flush()
-    expect(requests).toContainEqual(['env_mac', 'devServer.start', { projectId: 'p1', targetId: 'apps/web#dev' }])
+    expect(requests).toContainEqual(['env_mac', 'devServer.start', { projectId: 'p1', targetId: 'apps/web#dev', sessionId: 't1' }])
     expect(devPaneStore.getState()).toMatchObject({ open: true, picked: 'env_mac/run1' })
     expect(probe.container.querySelector('[aria-label="Stop"]')).toBeNull()
   })
 
+  it('asks before a second dev server for the thread on screen, and Replace stops the first', async () => {
+    vi.spyOn(sessionStore, 'environmentOf').mockReturnValue('env_mac')
+    applyDevRunPush('env_mac', { push: 'dev-run', projectId: 'p1', run: run({ projectId: 'p1', sessionId: 't1' }), lines: [] })
+    probe = mountProbe(<DevServerPanel projectId="p1" />)
+    await flush()
+    const button = (name: string) => [...probe!.container.querySelectorAll('button')].find((b) => b.textContent?.trim() === name) as HTMLElement
+    await probe.act(async () => button('Run').click())
+    expect(probe.container.textContent).toContain('This thread already runs a dev server. Replace it, or start another for a different feature?')
+    expect(requests.some(([, m]) => m === 'devServer.start')).toBe(false)
+    await probe.act(async () => button('Replace').click())
+    await flush()
+    expect(requests.map(([, m, p]) => [m, p])).toEqual(
+      expect.arrayContaining([
+        ['devServer.stop', { runId: 'run1' }],
+        ['devServer.start', { projectId: 'p1', targetId: 'apps/web#dev', sessionId: 't1' }]
+      ])
+    )
+    expect(requests.findIndex(([, m]) => m === 'devServer.stop')).toBeLessThan(requests.findIndex(([, m]) => m === 'devServer.start'))
+    expect(probe.container.querySelector('[data-dev-replace]')).toBeNull()
+  })
+
+  it('starts another beside the first when the person says it is for a different feature', async () => {
+    vi.spyOn(sessionStore, 'environmentOf').mockReturnValue('env_mac')
+    applyDevRunPush('env_mac', { push: 'dev-run', projectId: 'p1', run: run({ projectId: 'p1', sessionId: 't1' }), lines: [] })
+    probe = mountProbe(<DevServerPanel projectId="p1" />)
+    await flush()
+    const button = (name: string) => [...probe!.container.querySelectorAll('button')].find((b) => b.textContent?.trim() === name) as HTMLElement
+    await probe.act(async () => button('Run').click())
+    await probe.act(async () => button('Start another').click())
+    await flush()
+    expect(requests.some(([, m]) => m === 'devServer.stop')).toBe(false)
+    expect(requests).toContainEqual(['env_mac', 'devServer.start', { projectId: 'p1', targetId: 'apps/web#dev', sessionId: 't1' }])
+  })
 })

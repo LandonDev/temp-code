@@ -1,9 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ThreadResource } from '@server/shared/contract-resources'
 import { mountProbe } from '../test/renderProbe'
 import { threadResourcesStore } from '../lib/threadResources'
 import { macBridgeStore } from '../lib/macBridge'
+import { sessionStore } from '../lib/tcserver/store'
 import { ArchiveThreadDialog, ThreadResourceList } from './ThreadResourcesDialog'
+
+vi.mock('../lib/tcserver/store', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../lib/tcserver/store')>()
+  return {
+    ...real,
+    useServerSessions: () => [{ id: 's1', projectId: null, title: 'Coins page' }]
+  }
+})
 
 const row = (over: Partial<ThreadResource>): ThreadResource => ({
   id: 'r1',
@@ -54,30 +63,31 @@ describe('ThreadResourceList', () => {
     expect(probe.container.textContent).toBe('Nothing recorded.')
   })
 
-  it('a dev server row says where it opens here, with Open on the Mac and Stop', () => {
+  it('lists the thread’s live dev servers as the Dev servers pane does, and none the host dropped', () => {
     macBridgeStore.setState({ localId: 'env_mac' })
-    threadResourcesStore.setState({
-      bySession: {
-        s1: [
-          row({
-            kind: 'port',
-            environmentId: 'env_box',
-            identifier: '5173',
-            label: 'http://localhost:5173',
-            branch: null,
-            pid: 42,
-            callId: 'c1',
-            forwards: [{ environmentId: 'env_mac', hostName: 'Mac', macPort: 5174, error: null }]
-          })
-        ]
-      }
-    })
+    const env = vi.spyOn(sessionStore, 'environmentOf').mockReturnValue('env_box')
+    const port = (over: Partial<ThreadResource>) =>
+      row({
+        kind: 'port',
+        environmentId: 'env_box',
+        identifier: '5173',
+        label: 'npx vite',
+        branch: null,
+        pid: 42,
+        callId: 'c1',
+        forwards: [{ environmentId: 'env_mac', hostName: 'Mac', macPort: 5174, error: null }],
+        ...over
+      })
+    threadResourcesStore.setState({ bySession: { s1: [port({}), port({ id: 'gone', identifier: '3000', removedAt: 9 })] } })
     probe = mountProbe(<ThreadResourceList sessionId="s1" />)
-    const r = probe.container.querySelector('[data-resource]') as HTMLElement
-    expect(r.textContent).toContain('dev server')
-    expect(r.textContent).toContain('localhost:5174 · 5173 is taken here')
-    expect([...r.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Open on the Mac', 'Stop'])
+    const servers = [...probe.container.querySelectorAll('[data-dev-server]')] as HTMLElement[]
+    expect(servers.map((r) => r.getAttribute('data-dev-server'))).toEqual(['env_box/r1'])
+    expect(servers[0].textContent).toContain('Vite dev server')
+    expect(servers[0].textContent).toContain('localhost:5173')
+    expect([...servers[0].querySelectorAll('button')].map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['Open on the Mac :5174', 'Stop'])
+    expect(probe.container.querySelector('[data-resource]')).toBeNull()
     macBridgeStore.setState({ localId: null })
+    env.mockRestore()
   })
 
   it('a row waiting on its host shows Waiting and the reason, with Remove held; a note from the last attempt shows under the row', () => {

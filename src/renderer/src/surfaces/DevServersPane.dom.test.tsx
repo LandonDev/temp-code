@@ -47,9 +47,10 @@ vi.mock('../lib/tcserver/store', async (importOriginal) => {
   }
 })
 
-const target = (over: Partial<DevTarget> = {}): DevTarget => ({ id: 'apps/web#dev', name: 'web', script: 'dev', kind: 'web', framework: 'vite', dir: 'apps/web', command: 'bun run dev', macOnly: false, ...over })
+const target = (over: Partial<DevTarget> = {}): DevTarget => ({ id: 'apps/web#dev', name: 'web', script: 'dev', kind: 'web', framework: 'vite', dir: 'apps/web', command: 'bun run dev', macOnly: false, what: 'Vite dev server', ...over })
 const run = (over: Partial<DevRun> = {}): DevRun => ({
   id: 'run1',
+  what: 'Vite dev server',
   projectId: 'p9',
   targetId: 'apps/web#dev',
   name: 'web',
@@ -151,8 +152,9 @@ describe('DevServersPane', () => {
     threadResourcesStore.setState({ bySession: { t1: [port()] } })
     mount()
     expect(rows()).toEqual(['env_box/res1', 'env_box/run1'])
-    expect(probe!.container.textContent).toContain('cosmicweb :3007')
-    expect(probe!.container.textContent).toContain('web · dev')
+    const groups = [...probe!.container.querySelectorAll('[data-dev-group]')].map((g) => g.getAttribute('aria-label'))
+    expect(groups).toEqual(['Coins page', 'cosmicweb'])
+    expect(probe!.container.querySelector('[data-dev-server="env_box/run1"]')!.textContent).toContain('Vite dev server')
     expect(shown()).toBe('res1')
     await probe!.act(async () => (probe!.container.querySelector('[data-dev-server="env_box/run1"]') as HTMLElement).click())
     expect(shown()).toBe('run1')
@@ -166,7 +168,7 @@ describe('DevServersPane', () => {
     const link = [...probe!.container.querySelectorAll('[data-dev-server] button')].find((b) => b.textContent === 'Open on the Mac :5174') as HTMLElement
     await probe!.act(async () => link.click())
     expect(opened).toHaveBeenCalledWith('http://localhost:5174', '_blank', 'noopener')
-    expect(probe!.container.textContent).toContain('5173 is taken here')
+    expect(probe!.container.querySelector('[data-dev-server]')!.textContent).toContain('localhost:5173')
   })
 
   it('a terminal tab selects that terminal and shows the terminals', async () => {

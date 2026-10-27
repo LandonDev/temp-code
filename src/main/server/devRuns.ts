@@ -122,7 +122,8 @@ export class DevRuns {
     return { run: this.view(s), lines: s.lines.slice(), end: s.total }
   }
 
-  async start(projectId: string, targetId: string): Promise<DevRun> {
+  /** Start a target; `sessionId` is the thread it is started for (the thread on screen when the person pressed Run). */
+  async start(projectId: string, targetId: string, sessionId: string | null = null): Promise<DevRun> {
     const p = this.must(projectId)
     const target = (await (this.deps.detect ?? detectDevTargets)(p.cwd, p.name)).find((t) => t.id === targetId)
     if (!target) throw new Error(`no such dev target in ${p.name}: ${targetId}`)
@@ -139,6 +140,8 @@ export class DevRuns {
         script: target.script,
         kind: target.kind,
         command: target.command,
+        what: target.what,
+        sessionId,
         cwd,
         status: 'running',
         pid: null,
@@ -220,7 +223,7 @@ export class DevRuns {
   async restart(runId: string): Promise<DevRun> {
     const s = this.slot(runId)
     await this.stop(runId)
-    return this.start(s.run.projectId, s.run.targetId)
+    return this.start(s.run.projectId, s.run.targetId, s.run.sessionId ?? null)
   }
 
   private lines(s: Slot, raw: string[]): void {
@@ -297,7 +300,7 @@ export class DevRuns {
     for (const s of this.slots.values()) {
       if (s.run.status !== 'running') continue
       const title = `${s.run.name} · ${s.run.script}`
-      for (const p of s.run.ports) out.push({ id: forwardIdOf(s.run.id, p.port), port: p.port, label: p.url, title, sessionId: null, runId: s.run.id })
+      for (const p of s.run.ports) out.push({ id: forwardIdOf(s.run.id, p.port), port: p.port, label: p.url, title, sessionId: s.run.sessionId ?? null, runId: s.run.id })
     }
     return out
   }

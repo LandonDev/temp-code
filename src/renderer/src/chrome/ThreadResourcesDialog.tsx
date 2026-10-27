@@ -12,6 +12,9 @@ import {
   useThreadResources
 } from '../lib/threadResources'
 import { openUrl, portLine, rowOpen } from '../lib/devPorts'
+import { useLiveDevServers } from '../lib/devServers'
+import { ItemGroup } from '../components/ui/item'
+import { DevServerRow } from './DevServerRow'
 import { macBridgeStore } from '../lib/macBridge'
 import { DialogFooter, errorText } from './ConfirmDialog'
 import { Modal } from './Modal'
@@ -23,7 +26,9 @@ import { MatrixSpinner } from '../surfaces/threads/spinners'
  * thread created, with where it lives and Remove; and the archive confirm
  * that offers to remove them with the thread. Both read the same store
  * (lib/threadResources.ts), so a removal's outcome lands on the row as the
- * host reports it.
+ * host reports it. Its dev servers are the Dev servers pane's rows for this
+ * thread (lib/devServers.ts `liveServers`, chrome/DevServerRow.tsx): the
+ * same list from the same source, and nothing a host no longer lists.
  */
 
 function ResourceRow({ row, onRemove, pending }: { row: ThreadResource; onRemove: () => void; pending: boolean }) {
@@ -74,7 +79,8 @@ function ResourceRow({ row, onRemove, pending }: { row: ThreadResource; onRemove
 
 /** The rows of one thread with Remove per row and Remove all. */
 export function ThreadResourceList({ sessionId, empty }: { sessionId: string; empty?: string }) {
-  const rows = useThreadResources(sessionId)
+  const rows = useThreadResources(sessionId).filter((r) => r.kind !== 'port')
+  const servers = useLiveDevServers().filter((s) => s.sessionId === sessionId)
   const [pending, setPending] = useState<Set<string>>(() => new Set())
   const [error, setError] = useState<string | null>(null)
   const remove = async (ids?: string[]) => {
@@ -95,9 +101,16 @@ export function ThreadResourceList({ sessionId, empty }: { sessionId: string; em
       })
     }
   }
-  if (rows.length === 0) return empty ? <p className="text-[12px] text-content/40">{empty}</p> : null
+  if (rows.length === 0 && servers.length === 0) return empty ? <p className="text-[12px] text-content/40">{empty}</p> : null
   return (
     <div className="flex flex-col gap-1.5" data-thread-resources={sessionId}>
+      {servers.length ? (
+        <ItemGroup aria-label="Dev servers" className="-mx-2 gap-0.5">
+          {servers.map((server) => (
+            <DevServerRow key={server.key} server={server} />
+          ))}
+        </ItemGroup>
+      ) : null}
       {rows.map((row) => (
         <ResourceRow key={row.id} row={row} pending={pending.has(row.id)} onRemove={() => void remove([row.id])} />
       ))}
