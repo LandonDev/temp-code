@@ -216,6 +216,11 @@ describe("toolPhraseParts", () => {
     expect(parts(b, true).verb).toBe("Deleting");
   });
 
+  it("a Write over a file that was there is an edit", () => {
+    const b = call("Write", { file_path: file }, { detail: "The file /repo/src/lib/a.ts has been updated." });
+    expect(parts(b)).toMatchObject({ verb: "Edited", object: "a.ts" });
+  });
+
   it("a file's title is its shown path", () => {
     expect(parts(call("Read", { file_path: file })).title).toBe("src/lib/a.ts");
   });

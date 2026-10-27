@@ -6,8 +6,10 @@ import { cn } from "../../lib/cn";
 import { useCountUp } from "../../motion";
 
 /**
- * `[glyph]  Verb  object  +46 −3  extras  ▸`, 32px tall, full width of the
- * list so the hover fill reaches its edges. The line's own action (open the
+ * `[glyph]  Verb  object  +46 −3  extras  ▸`, 32px tall. The list around
+ * the rows gives them their side padding (ActionGroup), so a lone row lines
+ * up with the prose. Hover lifts the verb and the caret to foreground, as
+ * the group line does. The line's own action (open the
  * body, or open the file) is one button stretched under the content, so the
  * object can be a link of its own and the extras stay real buttons without
  * nesting one button inside another.
@@ -56,8 +58,7 @@ export function ActionLine({
   return (
     <div
       className={cn(
-        "group/action relative flex h-8 min-w-0 items-center gap-2 px-3 font-sans text-sm",
-        action && "hover:bg-foreground/5 has-focus-visible:bg-foreground/5",
+        "group/action relative flex h-8 min-w-0 items-center gap-2 font-sans text-sm",
       )}
     >
       {action ? (
@@ -66,14 +67,14 @@ export function ActionLine({
           aria-label={label}
           aria-expanded={opens ? !!open : undefined}
           onClick={action}
-          className="absolute inset-0 cursor-default outline-none"
+          className="absolute inset-0 cursor-default rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       ) : (
         <span className="sr-only">{label}</span>
       )}
       {glyph}
       <span className="pointer-events-none flex min-w-0 flex-1 items-center gap-2">
-        {verb ? <span className="shrink-0 text-muted-foreground">{verb}</span> : null}
+        {verb ? <span className={cn("shrink-0 text-muted-foreground", action && LIFT)}>{verb}</span> : null}
         {objectText}
         {adds || dels ? <Counts adds={adds ?? 0} dels={dels ?? 0} ticking={ticking} /> : null}
       </span>
@@ -87,7 +88,7 @@ export function ActionLine({
         <ChevronRight
           aria-hidden
           className={cn(
-            "pointer-events-none size-3 shrink-0 text-muted-foreground transition-[rotate] duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
+            "pointer-events-none size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-fast) ease-(--ease-out) group-hover/action:text-foreground motion-reduce:transition-none",
             open && "rotate-90",
           )}
           strokeWidth={1.5}
@@ -96,6 +97,10 @@ export function ActionLine({
     </div>
   );
 }
+
+/** Hover and keyboard focus on the line lift its muted words. */
+const LIFT =
+  "transition-[color] duration-(--dur-fast) group-hover/action:text-foreground group-has-focus-visible/action:text-foreground motion-reduce:transition-none";
 
 /** The object in foreground: plain text, or a link; its full form in a tooltip. */
 function ObjectText({

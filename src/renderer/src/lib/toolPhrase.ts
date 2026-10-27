@@ -525,7 +525,10 @@ export function toolPhraseParts(block: Block, cwd?: string, live = isLive(block)
     case "read":
       return fileParts(live ? "Reading" : "Read", pathOf(block), cwd);
     case "write":
-      return fileParts(live ? "Creating" : "Created", pathOf(block), cwd);
+      // A Write over a file that was there is an edit (lib/groupPhrase.ts says the same).
+      return /has been (updated|overwritten)/i.test(block.tool?.detail ?? "")
+        ? fileParts(live ? "Editing" : "Edited", pathOf(block), cwd)
+        : fileParts(live ? "Creating" : "Created", pathOf(block), cwd);
     case "edit":
       return deleting
         ? fileParts(live ? "Deleting" : "Deleted", pathOf(block), cwd)

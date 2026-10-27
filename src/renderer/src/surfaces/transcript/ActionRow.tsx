@@ -82,7 +82,7 @@ export function ActionRow({
       {hasBody ? (
         <Collapsible open={open} onOpenChange={setOpen}>
           <CollapsibleContent>
-            <div className="px-3 pb-2">
+            <div className="pb-2">
               {action.opens === "command" ? (
                 <CommandCard block={block} failed={action.failed} />
               ) : (

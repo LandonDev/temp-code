@@ -107,7 +107,7 @@ export function actionOf(block: Block, cwd?: string, app: AppView | null = null,
     const startLine = block.tool?.preview?.startLine;
     return {
       ...base,
-      glyph: m.remove ? "delete" : m.create ? "write" : kind === "patch" ? "patch" : "edit",
+      glyph: m.remove ? "delete" : m.create && parts.verb.startsWith("Creat") ? "write" : kind === "patch" ? "patch" : "edit",
       path: m.path || undefined,
       line: startLine && startLine > 0 ? startLine : undefined,
       adds: m.adds,

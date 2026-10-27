@@ -224,7 +224,7 @@ export function EditRow({
       />
       <Collapsible open={open}>
         <CollapsibleContent>
-          <div className="group/body relative px-3 pb-2">
+          <div className="group/body relative pb-2">
             {editMode && filePath && cwd ? (
               <>
                 <CornerButton label="Show diff" onClick={() => setEditMode(false)}>
@@ -283,7 +283,7 @@ function CornerButton({
             size="icon-xs"
             aria-label={label}
             onClick={onClick}
-            className="absolute right-3 top-0 z-10 text-muted-foreground opacity-0 transition-[opacity,background-color] group-hover/body:opacity-100 focus-visible:opacity-100"
+            className="absolute right-0 top-0 z-10 text-muted-foreground opacity-0 transition-[opacity,background-color] group-hover/body:opacity-100 focus-visible:opacity-100"
           />
         }
       >
