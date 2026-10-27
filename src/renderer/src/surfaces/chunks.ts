@@ -50,6 +50,9 @@ export const customizeChunk = defineChunk("customize", () => import("../chrome/C
  *  the fleet switches' confirm (chrome/dialogs.ts). */
 export const dialogsChunk = defineChunk("dialogs", () => import("../chrome/dialogs"));
 
+/** The rail's virtualizer (@tanstack/react-virtual); the rail lists its cards plainly until it lands. */
+export const virtualChunk = defineChunk("virtual", () => import("../chrome/railVirtualRows"));
+
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
   settingsChunk,
@@ -70,4 +73,5 @@ export const allChunks = {
   menuChunk,
   customizeChunk,
   dialogsChunk,
+  virtualChunk,
 };

@@ -24,6 +24,7 @@ const EXPECTED: Record<keyof typeof allChunks, string[]> = {
   selectChunk: ["ChoiceSelect"],
   menuChunk: ["DropdownRows", "ContextRows", "PopoverBody", "MenuRows"],
   customizeChunk: ["CustomizeGroupDialog"],
+  virtualChunk: ["VirtualRows"],
   dialogsChunk: ["ThreadBatchDialog", "WhatsNewDialog", "NewProjectDialog", "NewWorkspaceDialog", "ProjectSettingsDialog", "ProjectTeardownDialog", "RemoteFolderDialog", "ThreadDefaultsDialog", "PreambleDialog"],
 };
 

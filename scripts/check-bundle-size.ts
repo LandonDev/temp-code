@@ -39,6 +39,7 @@ export const NEVER_IN_ENTRY = [
   'node_modules/@codemirror/merge/dist/index.js',
   'node_modules/recharts/es6/index.js',
   'node_modules/qrcode/lib/browser.js',
+  'node_modules/@tanstack/virtual-core/dist/esm/index.js',
   // surfaces
   'src/renderer/src/surfaces/SettingsView.tsx',
   'src/renderer/src/surfaces/AliaxPagesView.tsx',
@@ -67,6 +68,8 @@ export const NEVER_IN_ENTRY = [
   'src/renderer/src/chrome/WhatsNewDialog.tsx',
   'src/renderer/src/chrome/ThreadBatchDialog.tsx',
   'src/renderer/src/lib/releaseNotesParse.ts',
+  // The rail's virtualizer rides virtualChunk; the rail lists its cards plainly until it lands.
+  'src/renderer/src/chrome/railVirtualRows.tsx',
   'src/renderer/src/aliax/pages.tsx'
 ]
 

@@ -9,7 +9,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
 import { RowsContextMenu, RowsMenu, tidy, type MenuRow } from "./menuRows";
 import { useThreadMenu } from "./useThreadMenu";
 import { HostGlyph } from "./HostGlyph";
@@ -72,6 +71,7 @@ import {
   type ThreadRow,
 } from "../lib/workspaceSessions";
 import { dialogsChunk } from "../surfaces/chunks";
+import { RailRows } from "./railRows";
 
 // Opened from a project's menu; mounted only while open (chrome/dialogs.ts).
 const ProjectSettingsDialog = dialogsChunk.surface("ProjectSettingsDialog");
@@ -209,20 +209,6 @@ type RailThreadMenu = {
   rowsFor: (id: string) => readonly MenuRow[];
   onPick: (id: string, pick: string) => void;
   onOpenChange: (id: string, open: boolean) => void;
-};
-
-/** Row sizes come from the ResizeObserver, which reports every row once on
- *  observe and again when it grows: a row mounting under a switch keeps its
- *  cached or estimated size instead of reading a rect, which would force a
- *  layout per new row before the paint. */
-const measureRow: VirtualizerOptions<HTMLDivElement, HTMLDivElement>["measureElement"] = (
-  node,
-  entry,
-  instance,
-) => {
-  if (entry) return measureElement(node, entry, instance);
-  const index = instance.indexFromElement(node);
-  return instance.measurementsCache[index]?.size ?? instance.options.estimateSize(index);
 };
 
 /** Scrolls the list's selected row into view when the selection moves, and
@@ -1103,9 +1089,10 @@ export default function WorkspaceSessions({
     [activeSessionId, focused, openSession, renameSession, railMenu, renamingId],
   );
 
-  // Cards are the virtual unit: each roots its own border and hover group,
-  // and the shared ActivePill lives inside one. Every item is measured, so
-  // a card that grows a live line pushes the ones below it. (A fold's
+  // Cards are the list's unit (railRows.tsx, virtual once the chunk lands):
+  // each roots its own border and hover group, and the shared ActivePill
+  // lives inside one. Every item is measured, so a card that grows a live
+  // line pushes the ones below it. (A fold's
   // height animation is measured too: the root re-renders per frame while
   // a section opens or closes, and the memoized cards sit that out.)
   const items = useMemo(
@@ -1115,19 +1102,12 @@ export default function WorkspaceSessions({
   const scroller = useRef<HTMLDivElement>(null);
   const estimateSize = useCallback((i: number) => estimateItem(items[i]), [items]);
   const getItemKey = useCallback((i: number) => items[i].key, [items]);
-  const virtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement: () => scroller.current,
-    estimateSize,
-    getItemKey,
-    overscan: 4,
-    gap: 4,
-    measureElement: measureRow,
-  });
+  const rowCount = useMemo(() => items.reduce((n, item) => n + estimateItem(item) / ROW_PX, 0), [items]);
 
   // Bring the selected card on screen once per selection: when it changes,
   // or as soon as the list fills after a boot that restored it. A meta push
   // re-sorting the cards must not scroll.
+  const [reveal, setReveal] = useState<{ index: number } | null>(null);
   const revealed = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedProjectId || revealed.current === selectedProjectId) return;
@@ -1136,16 +1116,16 @@ export default function WorkspaceSessions({
     );
     if (index < 0) return;
     revealed.current = selectedProjectId;
-    virtualizer.scrollToIndex(index, { align: "auto" });
-  }, [items, selectedProjectId, virtualizer]);
+    setReveal({ index });
+  }, [items, selectedProjectId]);
   const revealedSession = useRef(activeSessionId);
   useEffect(() => {
     if (!activeSessionId || revealedSession.current === activeSessionId) return;
     const index = sessionItemIndex(items, activeSessionId);
     if (index < 0) return;
     revealedSession.current = activeSessionId;
-    virtualizer.scrollToIndex(index, { align: "auto" });
-  }, [activeSessionId, items, virtualizer]);
+    setReveal({ index });
+  }, [activeSessionId, items]);
 
   const entry = (item: SidebarItem): ReactNode => {
     switch (item.kind) {
@@ -1216,19 +1196,15 @@ export default function WorkspaceSessions({
           onPick={(pick, id) => id && railMenu.onPick(id, pick)}
           onOpenChange={(open, id) => id && railMenu.onOpenChange(id, open)}
         >
-        <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
-          {virtualizer.getVirtualItems().map((row) => (
-            <div
-              key={row.key}
-              data-index={row.index}
-              ref={virtualizer.measureElement}
-              className="absolute top-0 left-0 w-full"
-              style={{ transform: `translateY(${row.start}px)` }}
-            >
-              {entry(items[row.index])}
-            </div>
-          ))}
-        </div>
+        <RailRows
+          count={items.length}
+          rows={rowCount}
+          scroller={scroller}
+          estimateSize={estimateSize}
+          getItemKey={getItemKey}
+          render={(index) => entry(items[index])}
+          reveal={reveal}
+        />
         </RowsContextMenu>
 
 
