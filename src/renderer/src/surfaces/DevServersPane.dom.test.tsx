@@ -11,6 +11,7 @@ import { initialProjectState, projectStore } from '../stores/project'
 import { initialTerminalsState, currentDock, terminalsStore } from '../stores/terminals'
 import { macBridgeStore } from '../lib/macBridge'
 import { threadResourcesStore } from '../lib/threadResources'
+import { selectChunk } from './chunks'
 import { commandLine, DevServersPane } from './DevServersPane'
 
 const CWD = '/srv/agents/work/cosmicweb'
@@ -93,7 +94,8 @@ describe('DevServersPane', () => {
   const rows = () => [...probe!.container.querySelectorAll('[data-dev-server]')].map((r) => r.getAttribute('data-dev-server'))
   const shown = () => probe!.container.querySelector('[data-console]')?.getAttribute('data-console')
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await selectChunk.load()
     // jsdom has no Web Animations; Base UI asks for them on close.
     Element.prototype.getAnimations ??= () => []
     localStorage.clear()

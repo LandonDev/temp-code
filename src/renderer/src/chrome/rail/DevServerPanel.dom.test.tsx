@@ -5,6 +5,7 @@ import { registry } from '../../lib/connection/registry'
 import { macBridgeStore } from '../../lib/macBridge'
 import { devServerStore, type DevHost } from '../../lib/devServers'
 import { devPaneStore, resetDevPane } from '../../lib/devPane'
+import { selectChunk } from '../../surfaces/chunks'
 import { DevServerPanel } from './DevServerPanel'
 
 const project = { id: 'p1', environmentId: 'env_mac', cwd: '/Users/l/site', workspaceId: 'w', name: 'site' }
@@ -37,7 +38,9 @@ const run = (over: Partial<DevRun> = {}): DevRun => ({
 describe('DevServerPanel', () => {
   let probe: ReturnType<typeof mountProbe> | null = null
   const requests: [string, string, unknown][] = []
-  beforeEach(() => {
+  beforeEach(async () => {
+    // The target Select rides its own chunk; load it so it mounts at once.
+    await selectChunk.load()
     // jsdom has no scrolling; the console follows its tail through scrollTo.
     Element.prototype.scrollTo = () => {}
     Element.prototype.getAnimations ??= () => []
