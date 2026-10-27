@@ -72,16 +72,19 @@ function FilePaneComponent({
         if (!focused) onFocus(pane.id);
       }}
     >
-      <SurfaceTabs
-        files={pane.files}
-        activeFileId={pane.activeFileId}
-        dirtyFileIds={dirtyFileIds}
-        fileErrorCounts={fileErrorCounts}
-        onSelectFile={(fileId) => onSelectFile(pane.id, fileId)}
-        onCloseFile={(fileId) => onCloseFile(pane.id, fileId)}
-        onReorder={(ids) => onReorderFiles(pane.id, ids)}
-        onPaneDragStart={onPaneDragStart}
-      />
+      {/* In a split the bar takes the pane header's focus mark. */}
+      <div className={onPaneDragStart && !focused ? "bg-sidebar" : "bg-background"}>
+        <SurfaceTabs
+          files={pane.files}
+          activeFileId={pane.activeFileId}
+          dirtyFileIds={dirtyFileIds}
+          fileErrorCounts={fileErrorCounts}
+          onSelectFile={(fileId) => onSelectFile(pane.id, fileId)}
+          onCloseFile={(fileId) => onCloseFile(pane.id, fileId)}
+          onReorder={(ids) => onReorderFiles(pane.id, ids)}
+          onPaneDragStart={onPaneDragStart}
+        />
+      </div>
       <div className="relative min-h-0 flex-1">
         {pane.files.map((file) => (
           <div

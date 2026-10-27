@@ -65,18 +65,18 @@ const actions = {
   onApproval: noop,
   onNewTerminal: noop,
 };
-function pane(s: Session) {
+function pane(s: Session, split: { inSplit?: boolean; focused?: boolean; onClose?: (id: string) => void } = {}) {
   return render(
     <SessionActionsContext.Provider value={actions}>
       <SessionPane
         session={s}
         visible
-        focused
-        inSplit={false}
+        focused={split.focused ?? true}
+        inSplit={split.inSplit ?? false}
         composerFocused={false}
         recents={[]}
         onFocus={noop}
-        onClose={noop}
+        onClose={split.onClose ?? noop}
         onOpenFile={noop}
         onOpenDiff={noop}
       />
@@ -161,6 +161,24 @@ describe("the pane while a transcript loads", () => {
     pane(session({ phase: "failed", since: NOW, attempt: 1, error: "connection closed", retryAt: NOW + 1_000 }));
     expect(skeleton()).not.toBeNull();
     expect(line()).toBeNull();
+  });
+});
+
+describe("the pane in a split", () => {
+  it("has the pane header with the title, its focus and Close", () => {
+    const onClose = vi.fn();
+    pane(session({ phase: "loaded" }), { inSplit: true, focused: false, onClose });
+    const header = document.querySelector<HTMLElement>("[data-pane-header]")!;
+    expect(header.dataset.focused).toBe("false");
+    expect(header.textContent).toContain("Box thread");
+    expect(header.querySelector("[title]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close pane" }));
+    expect(onClose).toHaveBeenCalledWith("s1");
+  });
+
+  it("has no header alone in its tab", () => {
+    pane(session({ phase: "loaded" }));
+    expect(document.querySelector("[data-pane-header]")).toBeNull();
   });
 });
 

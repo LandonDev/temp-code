@@ -14,7 +14,6 @@ import {
   useExternalPaneDrop,
 } from "../lib/paneDrop";
 import { PaneVisibilityContext } from "../hooks/paneVisibility";
-import { useSidebarLayout } from "../hooks/useSidebarLayout";
 import {
   layoutLeaves,
   layoutSashes,
@@ -146,7 +145,6 @@ function PaneTreeComponent({
   const fileErrorCounts = useEditors((s) => (visible ? s.fileErrorCounts : NO_COUNTS));
   const editorNavigation = useEditors((s) => s.navigation);
   const recents = useProject((s) => (visible ? s.recents : NO_RECENTS));
-  const hideProjectPicker = useSidebarLayout() === "deck";
   // Focus: the shown tab's focused pane, unless the diff or the dock holds
   // it; the composer only once the deferred pass has caught up with the click.
   const settled = useWorkspaceTabs((s) => visible && s.activeTabId === tabId);
@@ -313,7 +311,6 @@ function PaneTreeComponent({
                 inSplit={inSplit}
                 composerFocused={composerFocused}
                 recents={recents}
-                hideProjectPicker={hideProjectPicker}
                 onFocus={onFocus}
                 onClose={onClose}
                 onOpenFile={onOpenFile}

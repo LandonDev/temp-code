@@ -104,6 +104,26 @@ describe("SurfaceTabs", () => {
     expect(screen.getByText("app.ts").className).not.toMatch(/\bitalic\b/);
   });
 
+  it("drags the pane from the bar's empty end, with no grip button", () => {
+    const onPaneDragStart = vi.fn();
+    const { container } = render(
+      <SurfaceTabs
+        files={[APP]}
+        activeFileId="app"
+        dirtyFileIds={new Set()}
+        fileErrorCounts={new Map()}
+        onSelectFile={() => {}}
+        onCloseFile={() => {}}
+        onReorder={() => {}}
+        onPaneDragStart={onPaneDragStart}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Drag to reorder pane" })).toBeNull();
+    const trailing = container.querySelector<HTMLElement>(".cursor-grab")!;
+    fireEvent.pointerDown(trailing, { button: 0 });
+    expect(onPaneDragStart).toHaveBeenCalledTimes(1);
+  });
+
   it("uses no title attributes for its hover labels", () => {
     const { container } = render(
       <SurfaceTabs

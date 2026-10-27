@@ -1,5 +1,5 @@
 import { MOD } from "../lib/platform";
-import { GripVertical, Terminal, X } from "./icons";
+import { Terminal, X } from "./icons";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
@@ -125,32 +125,6 @@ export function SurfaceTabs({
           aria-label={label}
           className="scrollbar-none min-w-0 flex-1 items-stretch justify-start overflow-x-auto overflow-y-hidden overscroll-none px-1 group-data-[orientation=horizontal]/tabs:h-full"
         >
-          {onPaneDragStart ? (
-            <div className="shrink-0 pt-1">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Drag to reorder pane"
-                      tabIndex={-1}
-                      className="w-5 cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
-                      onPointerDown={(event) => {
-                        if (event.button !== 0) return;
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onPaneDragStart(event);
-                      }}
-                    />
-                  }
-                >
-                  <GripVertical />
-                </TooltipTrigger>
-                <TooltipContent>Drag to reorder pane</TooltipContent>
-              </Tooltip>
-            </div>
-          ) : null}
           {files.map((file, index) => {
             const active = file.id === activeFileId;
             const hovered = file.id === hoveredId;

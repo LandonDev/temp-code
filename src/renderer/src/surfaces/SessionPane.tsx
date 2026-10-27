@@ -1,4 +1,3 @@
-import { GripVertical, X } from "../chrome/icons";
 import type { OpenFileFn } from "../lib/search";
 import { perfMark } from "../lib/perfMarks";
 import {
@@ -23,13 +22,13 @@ import { diffChunk, inboxChunk, notesChunk, rightPanelChunk, searchChunk, select
 import { tooltipChunk } from "../components/ui/tooltip";
 import { preloadWhenIdle } from "../lib/lazyChunk";
 import { EmptySession } from "./EmptySession";
+import { PaneHeader } from "./paneChrome";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
 import { ThreadView } from "./threads/ThreadView";
 import { isMasterThread } from "../lib/masterThread";
 import { useSessionActions, useThreadChat } from "./threadChat";
 import * as serverCommands from "../lib/tcserver/commands";
 import { askPreconnect, idleForPreconnect } from "../lib/preconnect";
-import { MOD } from "../lib/platform";
 import { ADD_TO_CHAT_EVENT, type AddToChatRequest } from "../lib/quoteDraft";
 
 type Props = {
@@ -39,7 +38,6 @@ type Props = {
   inSplit: boolean;
   composerFocused: boolean;
   recents: RecentProject[];
-  hideProjectPicker?: boolean;
   onFocus: (sessionId: string) => void;
   onClose: (sessionId: string) => void;
   onOpenFile: OpenFileFn;
@@ -56,7 +54,6 @@ export const SessionPane = memo(function SessionPane({
   inSplit,
   composerFocused,
   recents,
-  hideProjectPicker,
   onFocus,
   onClose,
   onOpenFile,
@@ -147,7 +144,7 @@ export const SessionPane = memo(function SessionPane({
     composerFocused,
     shell: !dockComposer,
     recents,
-    hideProjectPicker: hideProjectPicker ? !showDeckProjectPicker : false,
+    hideProjectPicker: !showDeckProjectPicker,
     rootRef,
     onFocusPane: focusPane,
     onOpenFile,
@@ -180,51 +177,12 @@ export const SessionPane = memo(function SessionPane({
       onMouseDown={focusPane}
     >
       {inSplit ? (
-        <div
-          className={`flex h-9 shrink-0 touch-none items-center gap-1.5 border-b border-content/10 px-2 select-none ${
-            onPaneDragStart ? "cursor-grab active:cursor-grabbing" : ""
-          }`}
-          onPointerDown={(event) => {
-            if (event.button !== 0 || !onPaneDragStart) return;
-            if (
-              (event.target as HTMLElement | null)?.closest("[data-no-drag]")
-            ) {
-              return;
-            }
-            onPaneDragStart(event);
-          }}
-        >
-          {onPaneDragStart ? (
-            <GripVertical
-              className="size-3.5 shrink-0 text-content/40"
-              strokeWidth={1.75}
-            />
-          ) : null}
-          <span
-            className={`size-2 shrink-0 rounded-full ${focused ? "bg-accent" : "bg-transparent"}`}
-          />
-          <span
-            className="min-w-0 flex-1 truncate text-xs text-content"
-            title={title}
-          >
-            {title}
-          </span>
-          <button
-            type="button"
-            title={`Close Pane (${MOD}W)`}
-            aria-label="Close pane"
-            data-no-drag
-            className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onClose(session.id);
-            }}
-          >
-            <X className="size-3.5" strokeWidth={1.75} />
-          </button>
-        </div>
+        <PaneHeader
+          title={title}
+          focused={focused}
+          onClose={() => onClose(session.id)}
+          onDragStart={onPaneDragStart}
+        />
       ) : null}
       {isEmpty ? (
         <>
