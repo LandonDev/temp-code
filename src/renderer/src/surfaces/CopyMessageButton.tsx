@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "../chrome/icons";
 import { copyUserMessage } from "../lib/copyMessage";
+import { SwapIcon } from "../motion/IconSwap";
 import type { Attachment } from "../lib/session";
 import { playCue } from "../lib/sounds";
 
@@ -43,7 +44,7 @@ export function CopyMessageButton({
         );
       }}
     >
-      {copied ? <Check className="size-3.5" strokeWidth={1.75} /> : <Copy className="size-3.5" strokeWidth={1.75} />}
+      <SwapIcon swapped={copied} from={<Copy className="size-3.5" strokeWidth={1.75} />} to={<Check className="size-3.5" strokeWidth={1.75} />} />
     </button>
   );
 }

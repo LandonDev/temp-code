@@ -14,7 +14,8 @@ import { useTurnState, type TurnSession } from "../turnState";
 import { usePaneVisible } from "../../hooks/paneVisibility";
 import { storeTitleOf, threadMentionsToTitles } from "../../lib/threadMentions";
 import { needsApproval, turnCopyText } from "../transcriptActivity";
-import { IconAction, SwapIcon, useArmOnIntent } from "./IconAction";
+import { SwapIcon } from "../../motion/IconSwap";
+import { IconAction, useArmOnIntent } from "./IconAction";
 import { spanWords } from "./thinking";
 import { ThinkingTail } from "./ThinkingRow";
 

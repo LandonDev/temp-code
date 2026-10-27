@@ -11,7 +11,8 @@ import type { Session } from "../../lib/session";
 import { saveNotes, useThreadNotes } from "../../lib/threadNotes";
 import { AgentMarkdown, MarkdownSourceHighlight } from "../AgentMarkdown";
 import { timeAgo } from "../../lib/duration";
-import { IconAction, SwapIcon } from "../transcript/IconAction";
+import { SwapIcon } from "../../motion/IconSwap";
+import { IconAction } from "../transcript/IconAction";
 
 const SAVE_DEBOUNCE_MS = 700;
 /** How long the copy button shows its check. */

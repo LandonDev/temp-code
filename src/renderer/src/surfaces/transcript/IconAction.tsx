@@ -1,34 +1,8 @@
 /* A9 (closing lines and code blocks): the transcript's icon buttons. */
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
-import { SPRING_LAYOUT } from "@renderer/lib/ease";
 import { cn } from "@renderer/lib/cn";
-
-/**
- * Swaps one icon for another (Copy → Check): the new one grows from a
- * quarter size out of a 4px blur, the old one leaves the same way.
- * Reduced motion swaps in place.
- */
-export function SwapIcon({ swapped, from, to }: { swapped: boolean; from: ReactNode; to: ReactNode }) {
-  const reduce = useReducedMotion();
-  if (reduce) return <span className="grid place-items-center">{swapped ? to : from}</span>;
-  return (
-    <AnimatePresence mode="popLayout" initial={false}>
-      <motion.span
-        key={swapped ? "to" : "from"}
-        className="grid place-items-center"
-        initial={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
-        animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-        exit={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
-        transition={SPRING_LAYOUT}
-      >
-        {swapped ? to : from}
-      </motion.span>
-    </AnimatePresence>
-  );
-}
 
 /**
  * A ghost icon button with its name in a tooltip, for row and header

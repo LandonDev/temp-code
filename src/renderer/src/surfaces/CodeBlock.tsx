@@ -3,7 +3,8 @@ import { Check, Copy } from "../chrome/icons";
 import { copyText } from "../lib/clipboard";
 import { highlight, highlightCached } from "../lib/highlight";
 import { playCue } from "../lib/sounds";
-import { IconAction, SwapIcon, useArmOnIntent } from "./transcript/IconAction";
+import { SwapIcon } from "../motion/IconSwap";
+import { IconAction, useArmOnIntent } from "./transcript/IconAction";
 
 /**
  * A fenced code block, quiet: the language (or the fence's file path) at
