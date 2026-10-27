@@ -386,7 +386,7 @@ export function ThreadRowView({
           <span className="truncate text-[12px] text-muted-foreground">{verdict}</span>
         </span>
       ) : (
-        <span className={cn("min-w-0 flex-1 truncate", row.unread && "font-medium text-foreground")}>
+        <span className={cn("min-w-0 truncate", live ? "shrink" : "flex-1", row.unread && "font-medium text-foreground")}>
           {row.title || (child && !row.masterId ? "Subagent" : "Untitled")}
         </span>
       )}
@@ -394,7 +394,7 @@ export function ThreadRowView({
         <>
           <HostGlyph environmentId={row.environmentId} />
           {live ? (
-            <span className="max-w-[45%] shrink-0 truncate text-[12px] text-muted-foreground" data-activity>
+            <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground" data-activity>
               {live}
             </span>
           ) : child && row.provider && row.model ? (
