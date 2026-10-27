@@ -32,9 +32,6 @@ import { requestProjectRailAction } from "../lib/projectRailActions";
 import WorkspaceSessions from "./WorkspaceSessions";
 import { sidebarVisible as asideVisible } from "./sidebarVisibility";
 import { WorkspaceMenu } from "./WorkspaceMenu";
-import { NewProjectDialog } from "./ProjectDialogs";
-import { ThreadDefaultsDialog } from "./ThreadDefaultsDialog";
-import { PreambleDialog } from "./PreambleDialog";
 import { openOrchestrationSettings } from "../lib/tcserver/rules";
 import { useBootResumeToasts } from "./HostRows";
 import { useProjectSignals } from "../hooks/useProjectSignals";
@@ -55,6 +52,12 @@ import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import type { OpenFileFn } from "../lib/search";
+import { dialogsChunk } from "../surfaces/chunks";
+
+// Opened from the workspace menu; mounted only while open (chrome/dialogs.ts).
+const NewProjectDialog = dialogsChunk.surface("NewProjectDialog");
+const ThreadDefaultsDialog = dialogsChunk.surface("ThreadDefaultsDialog");
+const PreambleDialog = dialogsChunk.surface("PreambleDialog");
 
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 560;
@@ -286,6 +289,7 @@ function SidebarComponent({
                   variant="ghost"
                   size="icon-sm"
                   aria-label="Workspace options"
+                  {...dialogsChunk.intent}
                   className="text-muted-foreground hover:text-foreground"
                 >
                   <MoreHorizontal className="size-4" strokeWidth={1.5} />

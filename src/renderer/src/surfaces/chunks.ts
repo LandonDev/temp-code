@@ -45,6 +45,11 @@ export const menuChunk = defineChunk("menus", () => import("../chrome/menuBody")
 /** A project's or tab group's Customize dialog, opened from its menu (CustomizeGroupDialog). */
 export const customizeChunk = defineChunk("customize", () => import("../chrome/CustomizeGroupDialog"));
 
+/** The dialogs an action opens: new project or workspace, project settings and
+ *  teardown, a remote folder, thread defaults, the preamble, What's new and
+ *  the fleet switches' confirm (chrome/dialogs.ts). */
+export const dialogsChunk = defineChunk("dialogs", () => import("../chrome/dialogs"));
+
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
   settingsChunk,
@@ -64,4 +69,5 @@ export const allChunks = {
   selectChunk,
   menuChunk,
   customizeChunk,
+  dialogsChunk,
 };

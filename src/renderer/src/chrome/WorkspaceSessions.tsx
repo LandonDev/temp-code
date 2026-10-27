@@ -13,7 +13,6 @@ import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tansta
 import { RowsContextMenu, RowsMenu, tidy, type MenuRow } from "./menuRows";
 import { useThreadMenu } from "./useThreadMenu";
 import { HostGlyph } from "./HostGlyph";
-import { PreambleDialog } from "./PreambleDialog";
 import {
   Archive,
   ArchiveRestore,
@@ -29,11 +28,7 @@ import {
   Square,
   Trash2,
 } from "./icons";
-import {
-  ConfirmDialog,
-  ProjectSettingsDialog,
-  ProjectTeardownDialog,
-} from "./ProjectDialogs";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { modelLabel } from "../lib/threads/agents";
 import { AGENT_GLYPHS, THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
 import { STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/status";
@@ -76,6 +71,12 @@ import {
   type ProjectGroup,
   type ThreadRow,
 } from "../lib/workspaceSessions";
+import { dialogsChunk } from "../surfaces/chunks";
+
+// Opened from a project's menu; mounted only while open (chrome/dialogs.ts).
+const ProjectSettingsDialog = dialogsChunk.surface("ProjectSettingsDialog");
+const PreambleDialog = dialogsChunk.surface("PreambleDialog");
+const ProjectTeardownDialog = dialogsChunk.surface("ProjectTeardownDialog");
 
 type Props = {
   /** Null: the home, the chats outside every workspace. */

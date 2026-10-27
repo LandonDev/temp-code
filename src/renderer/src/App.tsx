@@ -15,8 +15,7 @@ import { Sidebar } from "./chrome/Sidebar";
 import { confirmAction } from "./chrome/ConfirmDialog";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
 import { MoveToasts } from "./chrome/ThreadHostChip";
-import { ThreadBatchDialog } from "./chrome/ThreadBatchDialog";
-import { requestThreadBatch, type BatchScope } from "./lib/threadBatch";
+import { requestThreadBatch, useBatchPending, type BatchScope } from "./lib/threadBatch";
 import { selectionFor } from "./lib/threadBatchSelection";
 
 /** The View menu's fleet switches reach every host. */
@@ -24,9 +23,6 @@ const EVERYWHERE: BatchScope = { kind: "all" };
 const NOTES_OFF = ["open_notes"];
 import { ThreadBatchToasts } from "./chrome/ThreadBatchToasts";
 import { MacBridgeToasts } from "./chrome/MacBridgeCards";
-import { WhatsNewDialog } from "./chrome/WhatsNewDialog";
-import { NewWorkspaceDialog } from "./chrome/ProjectDialogs";
-import { RemoteFolderDialog } from "./chrome/RemoteFolderDialog";
 import { environment, environmentAt, environmentStore, stepEnvironment } from "./stores/environment";
 import { subscribeEnvironmentSwitch, workspaceToLandOn } from "./lib/environmentSwitch";
 import { markAllSeen } from "./lib/sessionSeen";
@@ -280,7 +276,7 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, inboxChunk, notesChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
+import { aliaxChunk, dialogsChunk, inboxChunk, notesChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
@@ -290,6 +286,11 @@ const SettingsView = settingsChunk.surface("SettingsView", <SurfaceSkeleton kind
 const AliaxPagesView = aliaxChunk.surface("AliaxPagesView", <SurfaceSkeleton kind="page" label="Loading accounts" />);
 // The full-body views ride their own chunks: none is in the first paint.
 const SearchView = searchChunk.surface("SearchView", <SurfaceSkeleton kind="page" label="Loading search" />);
+// The action-opened dialogs, mounted only while open (chrome/dialogs.ts).
+const ThreadBatchDialog = dialogsChunk.surface("ThreadBatchDialog");
+const WhatsNewDialog = dialogsChunk.surface("WhatsNewDialog");
+const NewWorkspaceDialog = dialogsChunk.surface("NewWorkspaceDialog");
+const RemoteFolderDialog = dialogsChunk.surface("RemoteFolderDialog");
 const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="page" label="Loading inbox" />);
 const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" label="Loading notes" />);
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
@@ -430,6 +431,7 @@ export default function App() {
   );
   const settingsOpen = useShell((s) => s.settingsOpen);
   const whatsNew = useShell((s) => s.whatsNew);
+  const batchPending = useBatchPending();
   const filePickerOpen = useShell((s) => s.filePickerOpen);
   const symbolPickerOpen = useShell((s) => s.symbolPickerOpen);
   const dirtyFiles = useEditors((s) => s.dirtyFiles);
@@ -3517,7 +3519,7 @@ export default function App() {
 
       <MoveToasts />
       <ThreadBatchToasts onOpen={onOpenApprovalSession} />
-      <ThreadBatchDialog />
+      {batchPending ? <ThreadBatchDialog /> : null}
       <HiddenApprovalToasts
         onFocusSession={onOpenApprovalSession}
         onApproval={onApproval}

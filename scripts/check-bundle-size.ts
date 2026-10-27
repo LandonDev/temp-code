@@ -59,6 +59,14 @@ export const NEVER_IN_ENTRY = [
   // Every menu, context menu and popover body rides menuChunk (chrome/menuRows.tsx).
   'src/renderer/src/chrome/menuBody.tsx',
   'src/renderer/src/chrome/CustomizeGroupDialog.tsx',
+  // The action-opened dialogs ride dialogsChunk (chrome/dialogs.ts), the changelog parser releaseNotesChunk.
+  'src/renderer/src/chrome/ProjectDialogs.tsx',
+  'src/renderer/src/chrome/ThreadDefaultsDialog.tsx',
+  'src/renderer/src/chrome/PreambleDialog.tsx',
+  'src/renderer/src/chrome/RemoteFolderDialog.tsx',
+  'src/renderer/src/chrome/WhatsNewDialog.tsx',
+  'src/renderer/src/chrome/ThreadBatchDialog.tsx',
+  'src/renderer/src/lib/releaseNotesParse.ts',
   'src/renderer/src/aliax/pages.tsx'
 ]
 
