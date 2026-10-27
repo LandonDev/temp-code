@@ -34,7 +34,7 @@ function call(
 afterEach(cleanup);
 
 describe("ActionRow", () => {
-  it("a read says Read and the basename, has no caret, and opens the file at its line", () => {
+  it("a read says Read and the basename, has an unturned caret, and opens the file at its line", () => {
     const onOpenFile = vi.fn();
     const { container, getByRole } = render(
       <ActionRow block={call("Read", { file_path: "/repo/src/types.ts", offset: 41 })} cwd="/repo" onOpenFile={onOpenFile} />,
@@ -44,6 +44,9 @@ describe("ActionRow", () => {
     expect(container.textContent).not.toContain("src/types.ts");
     const button = getByRole("button", { name: "Read types.ts" });
     expect(button.getAttribute("aria-expanded")).toBeNull();
+    const caret = container.querySelector("svg.size-3[aria-hidden]:last-child")!;
+    expect(caret).not.toBeNull();
+    expect(caret.getAttribute("class")).not.toContain("rotate-90");
     fireEvent.click(button);
     expect(onOpenFile).toHaveBeenCalledWith("/repo/src/types.ts", { line: 41 }, undefined);
   });

@@ -32,6 +32,21 @@ describe("UserMessageBlock", () => {
     expect(preamble.compareDocumentPosition(bubble(container)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("draws a second opinion as one notice line on the left, not a bubble", () => {
+    const { container } = mount(user({ text: "", secondOpinion: { from: "claude", to: "codex", files: 3 } }));
+    expect(container.querySelector("[data-user-bubble]")).toBeNull();
+    const line = container.querySelector('[data-slot="notice-line"]')!;
+    expect(line.textContent).toBe("Second opinionCodex3 files");
+    expect(container.textContent).not.toContain("Claude");
+  });
+
+  it("keeps a handoff's brief in its bubble", () => {
+    const { container } = mount(user({ text: "Carry on from here", secondOpinion: { from: "claude", to: "codex", kind: "handoff" } }));
+    expect(bubble(container).textContent).toContain("Handoff");
+    expect(bubble(container).textContent).toContain("Carry on from here");
+    expect(container.querySelector('[data-slot="notice-line"]')).toBeNull();
+  });
+
   it("keeps attachments inside the bubble", () => {
     const { container } = mount(
       user({ attachments: [{ id: "f", name: "log.txt", mimeType: "text/plain", kind: "file", size: 10 }] }),

@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Lock, LockOpen, Pencil, Sparkles } from "./icons";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { RUNTIME_MODE_HINT, RUNTIME_MODE_LABEL, RUNTIME_MODES, type RuntimeMode } from "../lib/session";
@@ -18,10 +19,12 @@ const ICONS: Record<RuntimeMode, typeof Lock> = {
 const ITEMS = RUNTIME_MODES.map((mode) => ({ value: mode, label: RUNTIME_MODE_LABEL[mode] }));
 
 /** The permission mode, at the right end of the composer's bar: a quiet
- *  select whose rows carry each mode's hint under its name. Closing hands
- *  the focus back to the composer through `onClose`. */
+ *  select whose rows carry each mode's hint under its name. A pick hands
+ *  the focus back to the composer through `onClose`; Escape and an outside
+ *  press return it to the trigger. */
 export function AccessPicker({ value, onChange, onClose }: Props) {
   const Icon = ICONS[value];
+  const toField = useRef(false);
   return (
     <Select
       items={ITEMS}
@@ -29,8 +32,9 @@ export function AccessPicker({ value, onChange, onClose }: Props) {
       onValueChange={(next) => {
         if (next !== null && next !== value) onChange(next as RuntimeMode);
       }}
-      onOpenChange={(open) => {
-        if (!open) onClose?.();
+      onOpenChange={(open, details) => {
+        toField.current = !open && details.reason === "item-press" && !!onClose;
+        if (toField.current) onClose?.();
       }}
     >
       <SelectTrigger
@@ -43,13 +47,13 @@ export function AccessPicker({ value, onChange, onClose }: Props) {
           {RUNTIME_MODE_LABEL[value]}
         </SelectValue>
       </SelectTrigger>
-      {/* The composer takes the focus back itself, so the trigger must not. */}
+      {/* After a pick the composer takes the focus back itself, so the trigger must not. */}
       <SelectContent
         side="top"
         align="end"
         alignItemWithTrigger={false}
         data-access-picker
-        finalFocus={onClose ? false : undefined}
+        finalFocus={() => !toField.current}
         className="w-72 p-1"
       >
         {RUNTIME_MODES.map((mode) => {

@@ -41,7 +41,6 @@ import type { Attachment, HarnessId, RuntimeMode, ThreadGoal } from '../lib/sess
 import { harnessSupportsAttachments } from '../lib/session'
 import { GoalDialog } from './GoalDialog'
 import { CommandPopover, type AtMatch, type PopoverMatches } from './CommandPopover'
-import { ComposerRunner } from './ComposerRunner'
 import { AttachmentChip, openAttachmentImages } from './AttachmentChip'
 import {
   AttachmentUploadError,
@@ -64,8 +63,6 @@ import { projectName } from '../lib/paths'
 import { consumeQuoteRequest, type QuoteRequest } from '../lib/quoteDraft'
 import { useTabGroupLogos } from '../hooks/useTabGroupLogos'
 import {
-  COMPOSER_RUNNER_CHANGE_EVENT,
-  loadComposerRunner,
   loadMidTurnDefault,
   loadNotesEnabled,
   subscribeMidTurnDefault,
@@ -248,8 +245,6 @@ export function Composer({
   const [files, setFiles] = useState<ProjectFile[]>(() => peekProjectFiles(executionCwd) ?? [])
   const notesEnabled = useSyncExternalStore(subscribeNotesEnabled, loadNotesEnabled, () => true)
   const [notes, setNotes] = useState<Note[]>(() => peekNotes(hostOfCwd(executionCwd)) ?? [])
-  const [runnerEnabled, setRunnerEnabled] = useState(loadComposerRunner)
-  const [runnerLive, setRunnerLive] = useState(() => busy && loadComposerRunner())
   const groupLogos = useTabGroupLogos()
   const projectLogoPath = resolveTabGroupLogo(projectName(cwd), groupLogos)
 
@@ -464,20 +459,6 @@ export function Composer({
       return []
     })
   }, [harness, syncHasValue])
-
-  useEffect(() => {
-    const refresh = () => setRunnerEnabled(loadComposerRunner())
-    window.addEventListener(COMPOSER_RUNNER_CHANGE_EVENT, refresh)
-    return () => window.removeEventListener(COMPOSER_RUNNER_CHANGE_EVENT, refresh)
-  }, [])
-
-  useEffect(() => {
-    if (!runnerEnabled) {
-      setRunnerLive(false)
-      return
-    }
-    if (busy) setRunnerLive(true)
-  }, [busy, runnerEnabled])
 
   // The index walks the tree; only an open `@` menu is worth that.
   useEffect(() => {
@@ -964,15 +945,6 @@ export function Composer({
           onThreadTypeChange={onThreadTypeChange}
           onClose={() => inputRef.current?.focus()}
         />
-        {runnerLive && runnerEnabled ? (
-          <ComposerRunner
-            boxRef={boxRef}
-            cwd={cwd}
-            busy={busy}
-            enabled={enabled}
-            onExited={() => setRunnerLive(false)}
-          />
-        ) : null}
       </div>
     </div>
   )

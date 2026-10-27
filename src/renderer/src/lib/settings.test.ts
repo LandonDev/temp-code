@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  COMPOSER_RUNNER_DEFAULT,
   filterKeybindings,
   isSettingsSectionId,
   KEYBINDING_GROUPS,
@@ -10,19 +9,16 @@ import {
   SETTINGS_SECTIONS,
   settingsSectionLabel,
   LIVE_AGENTS_ENABLED_DEFAULT,
-  loadComposerRunner,
   loadLiveAgentsEnabled,
   loadMidTurnDefault,
   loadNotesEnabled,
   MID_TURN_DEFAULT,
   NOTES_ENABLED_DEFAULT,
-  saveComposerRunner,
   saveLiveAgentsEnabled,
   saveMidTurnDefault,
   saveNotesEnabled,
 } from "./settings";
 
-const KEY = "monocode.composerRunner";
 const NOTES_KEY = "monocode.notesEnabled";
 const LIVE_AGENTS_KEY = "monocode.liveAgentsEnabled";
 
@@ -49,26 +45,6 @@ function mockLocalStorage() {
     configurable: true,
   });
 }
-
-describe("composer runner setting", () => {
-  beforeEach(mockLocalStorage);
-  afterEach(() => {
-    localStorage.removeItem(KEY);
-  });
-
-  it("defaults to on", () => {
-    expect(COMPOSER_RUNNER_DEFAULT).toBe(true);
-    expect(loadComposerRunner()).toBe(true);
-  });
-
-  it("persists an off switch", () => {
-    saveComposerRunner(false);
-    expect(localStorage.getItem(KEY)).toBe("0");
-    expect(loadComposerRunner()).toBe(false);
-    saveComposerRunner(true);
-    expect(loadComposerRunner()).toBe(true);
-  });
-});
 
 describe("notes enabled setting", () => {
   beforeEach(mockLocalStorage);

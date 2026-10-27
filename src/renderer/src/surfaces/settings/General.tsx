@@ -27,11 +27,9 @@ import {
 } from "../../lib/linear";
 import { BUNDLED_RELEASE } from "../../lib/releaseNotes";
 import {
-  loadComposerRunner,
   loadMidTurnDefault,
   loadLiveAgentsEnabled,
   loadNotesEnabled,
-  saveComposerRunner,
   saveMidTurnDefault,
   saveLiveAgentsEnabled,
   saveNotesEnabled,
@@ -85,7 +83,6 @@ export function GeneralPage({
 }) {
   const [transcriptAnchor, setTranscriptAnchor] = useState(loadTranscriptAnchor);
   const [midTurn, setMidTurn] = useState<MidTurnDefault>(loadMidTurnDefault);
-  const [composerRunner, setComposerRunner] = useStoredFlag(loadComposerRunner, saveComposerRunner);
   const [notesEnabled, setNotesEnabled] = useStoredFlag(loadNotesEnabled, saveNotesEnabled);
   const [liveAgentsEnabled, setLiveAgentsEnabled] = useStoredFlag(loadLiveAgentsEnabled, saveLiveAgentsEnabled);
   const [soundsEnabled, setSoundsEnabled] = useStoredFlag(loadSoundsEnabled, saveSoundsEnabled);
@@ -136,12 +133,6 @@ export function GeneralPage({
             }}
           />
         </PageRow>
-        <SwitchRow
-          title="Composer mascot"
-          description="The project mascot runs along the composer during a turn."
-          on={composerRunner}
-          onChange={setComposerRunner}
-        />
       </PageSection>
 
       <PageSection title="Rail">

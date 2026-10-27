@@ -6,7 +6,7 @@
  * percent only when there is a reading.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { resetHarnessModelOverlays, setHarnessModels } from "../lib/models";
 import { agentModelsFor } from "../lib/tcserver/catalog";
 import type { ModelInfo, ProviderInfo } from "../lib/tcserver/types";
@@ -129,6 +129,53 @@ describe("ModelPicker", () => {
     picker("claude", "claude:claude-opus-5-5");
     menu = await open(/Opus 5\.5/);
     expect(menu.textContent).not.toMatch(/\d+%/);
+  });
+
+  it("Codex has no context setting, so a reading gets a read-only Context row after Effort", async () => {
+    seed("codex", [{ id: "gpt-a", label: "A", reasoning: ["low", "high"], speedTiers: ["priority"] }]);
+    picker("codex", "codex:gpt-a", {}, { used: 28_500, window: 475_000 });
+    let menu = await open(/^Codex A/);
+    const rows = menu.querySelector("[data-model-settings-rows]")!;
+    const labels = [...rows.children].map((row) => row.firstElementChild?.textContent);
+    expect(labels).toEqual(["Effort", "Context", "Speed"]);
+    expect(rows.children[1].textContent).toBe("Context6%475K");
+    expect(within(rows.children[1] as HTMLElement).queryByRole("combobox")).toBeNull();
+    cleanup();
+    picker("codex", "codex:gpt-a");
+    menu = await open(/^Codex A/);
+    expect(menu.textContent).not.toContain("Context");
+  });
+
+  it("Claude's Context row keeps its select, with the percent beside it", async () => {
+    seed("claude", [{ id: "claude-opus-5-5", label: "Opus 5.5", reasoning: EFFORTS, context: 1_000_000 }]);
+    picker("claude", "claude:claude-opus-5-5", {}, { used: 84_000, window: 200_000 });
+    const menu = await open(/Opus 5\.5/);
+    expect(within(menu).getAllByText("Context")).toHaveLength(1);
+    expect(within(menu).getByRole("combobox", { name: "Context" })).toBeTruthy();
+  });
+
+  it("Escape returns focus to the model button; a pick hands it to the field", async () => {
+    seed("claude", [
+      { id: "claude-opus-5-5", label: "Opus 5.5", reasoning: EFFORTS, context: 1_000_000 },
+      { id: "claude-fable-5-1", label: "Fable 5.1", reasoning: EFFORTS, context: 1_000_000 },
+    ]);
+    const onClose = vi.fn();
+    render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" onChange={() => {}} onClose={onClose} />);
+    const trigger = screen.getByRole("button", { name: /Opus 5\.5/ });
+    let menu = await open(/Opus 5\.5/);
+    await act(async () => {
+      fireEvent.keyDown(within(menu).getByRole("textbox"), { key: "Escape" });
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    menu = await open(/Opus 5\.5/);
+    await act(async () => {
+      fireEvent.change(within(menu).getByRole("textbox"), { target: { value: "Fable" } });
+    });
+    await act(async () => {
+      fireEvent.click(within(menu).getByRole("option", { name: /Fable 5\.1/ }));
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("says nothing it cannot know", async () => {

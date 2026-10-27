@@ -8,6 +8,17 @@ afterEach(cleanup);
 const one: Question[] = [{ prompt: "Which?", options: [{ label: "Alpha" }, { label: "Beta" }, { label: "Other", freeform: true }] }];
 
 describe("QuestionCard", () => {
+  it("sets the sans face on its root, whatever the transcript row around it uses", () => {
+    const { container } = render(
+      <div className="font-mono">
+        <QuestionCard questions={one} onSubmitAnswers={() => {}} />
+      </div>,
+    );
+    const card = container.querySelector('[data-slot="question-card"]')!;
+    expect(card.classList.contains("font-sans")).toBe(true);
+    expect(card.querySelector(".font-mono")).toBeNull();
+  });
+
   it("keys act only while focus is inside the card", () => {
     const onSubmitAnswers = vi.fn();
     render(

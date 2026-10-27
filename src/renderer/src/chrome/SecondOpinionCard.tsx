@@ -6,6 +6,8 @@ type Props = {
   card: SecondOpinionMeta;
 };
 
+/** A handoff's header inside its bubble: from one harness to the other. A
+ *  second opinion is a notice line (transcript/UserMessage.tsx). */
 export function SecondOpinionCard({ card }: Props) {
   const files =
     card.files != null && card.files > 0
@@ -15,7 +17,7 @@ export function SecondOpinionCard({ card }: Props) {
   return (
     <div className="min-w-0 font-sans">
       <div className="text-[13px] font-medium leading-snug text-foreground">
-        {card.kind === "handoff" ? "Handoff" : "Second opinion"}
+        Handoff
       </div>
       <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
         <HarnessIcon harness={card.from} className="size-3 shrink-0" />

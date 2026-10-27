@@ -361,9 +361,13 @@ Skills and commands; the last two type `@` or `/` at the caret) and the
 model button, which reads the model and the effort ("Opus 5.5  High") and
 opens the model menu: providers, search, the list, then the model's
 settings as rows (Effort, Context with the thread's percent, Speed only for
-the tiers the serving CLI lists, any other setting). Right: the permission
+the tiers the serving CLI lists, any other setting; a catalog with no
+context setting, Codex's, gets a read-only Context row with the percent and
+the window while the thread has a reading). A pick hands the focus back to
+the field; Escape or a click outside returns it to the model button, and the
+permission select follows the same rule. Right: the permission
 mode as a quiet select (none for fx) and the send button, whose glyph is
-what Enter would do.
+what Enter would do. No mascot runs along the composer.
 
 Under the box, one quiet row (`DraftRow`) holds project, host, branch and
 type on the shell's new-thread screen and until a thread's first message;

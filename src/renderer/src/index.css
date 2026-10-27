@@ -528,61 +528,6 @@ header[data-tauri-drag-region] button {
   height: 100%;
 }
 
-/* mascot-rest and mascot-talk: the two-frame swap of chrome/ComposerRunner.tsx's
-   running mascot (ProjectMascot's active frames) and its coins (A10). Every
-   other mascot is one still mark. */
-.mascot-rest {
-  animation: mascot-rest var(--mascot-beat, 460ms) infinite;
-}
-
-.mascot-talk {
-  animation: mascot-talk var(--mascot-beat, 460ms) infinite;
-}
-
-@keyframes mascot-rest {
-  0%,
-  49.99% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes mascot-talk {
-  0%,
-  49.99% {
-    opacity: 0;
-  }
-  50%,
-  100% {
-    opacity: 1;
-  }
-}
-
-.composer-coin-face {
-  animation: mascot-rest 320ms infinite;
-}
-
-.composer-coin-edge {
-  animation: mascot-talk 320ms infinite;
-}
-
-/* Freeze the swap while the runner is seeing stars after a chevron bonk. */
-.mascot-stunned .mascot-rest,
-.mascot-stunned .mascot-talk {
-  animation: none;
-}
-
-.mascot-stunned .mascot-rest {
-  opacity: 1;
-}
-
-.mascot-stunned .mascot-talk {
-  opacity: 0;
-}
-
 .monocode-terminal {
   box-sizing: border-box;
   overflow: hidden;
@@ -992,10 +937,6 @@ header[data-tauri-drag-region] button {
 
 /* Reduced motion: every keyframe class stops; the static end state stays. */
 @media (prefers-reduced-motion: reduce) {
-  .mascot-rest,
-  .mascot-talk,
-  .composer-coin-face,
-  .composer-coin-edge,
   .monaco-editor .reveal-flash-line {
     animation: none;
   }

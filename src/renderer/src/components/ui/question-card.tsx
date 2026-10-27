@@ -215,7 +215,7 @@ export function QuestionCard({
   if (!question) return null;
 
   return (
-    <div data-slot="question-card" onKeyDown={onKeyDown} className={cn("w-full max-w-lg rounded-xl border border-border bg-card p-4 text-card-foreground", className)}>
+    <div data-slot="question-card" onKeyDown={onKeyDown} className={cn("w-full max-w-lg rounded-xl border border-border bg-card p-4 font-sans text-card-foreground", className)}>
       <div className="flex items-center gap-2.5">
         {icon ? <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4">{icon}</span> : null}
         <h3 className="text-sm font-semibold tracking-tight">{title}</h3>

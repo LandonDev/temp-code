@@ -27,8 +27,6 @@ const KEYFRAMES: Record<string, string> = {
   "text-shimmer": "components/ui/text-shimmer.tsx",
   "streaming-word-fade": "components/ui/streaming-text.tsx",
   "status-breathe": "components/ui/status.tsx",
-  "mascot-rest": "chrome/ComposerRunner.tsx",
-  "mascot-talk": "chrome/ComposerRunner.tsx",
   "z-fade-quick": "surfaces/AgentTranscript.tsx",
   "reveal-flash": "surfaces/monaco/MonacoPane.tsx",
   "bubble-send-in": "surfaces/transcript/UserMessage.tsx",

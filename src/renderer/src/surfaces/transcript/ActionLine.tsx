@@ -49,10 +49,11 @@ export function ActionLine({
   ticking?: boolean;
   /** The row's extras, in order: steps, host, port, reconnect, status. */
   trailing?: ReactNode;
-  /** Set when the row opens a body: the caret shows and turns. */
+  /** Set when the row opens a body: the caret turns. */
   open?: boolean;
   onToggle?: () => void;
-  /** The whole line does one thing (a read opens its file); no caret. */
+  /** The whole line does one thing (a read opens its file); the caret
+   *  shows and stays unturned. */
   onActivate?: () => void;
 }) {
   const action = onToggle ?? onActivate;
@@ -87,12 +88,12 @@ export function ActionLine({
           {trailing}
         </span>
       ) : null}
-      {opens ? (
+      {action ? (
         <ChevronRight
           aria-hidden
           className={cn(
             "pointer-events-none size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-fast) ease-(--ease-out) group-hover/action:text-foreground motion-reduce:transition-none",
-            open && "rotate-90",
+            opens && open && "rotate-90",
           )}
           strokeWidth={1.5}
         />

@@ -11,9 +11,10 @@ import {
 } from "react";
 import { AttachmentChip, openAttachmentImages } from "../../chrome/AttachmentChip";
 import { SecondOpinionCard } from "../../chrome/SecondOpinionCard";
+import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { NoteMiniCard } from "../../chrome/NoteMiniCard";
 import { sendOffset, sendOrigin } from "../../lib/sendOrigin";
-import { type Block } from "../../lib/session";
+import { HARNESS_TITLE, type Block, type SecondOpinionMeta } from "../../lib/session";
 import { CommandChip } from "../ToolChips";
 import { commandParts, useKnownCommands, type CommandPart } from "../toolMarks";
 import { SelectSessionContext } from "../AgentMarkdown";
@@ -21,6 +22,7 @@ import { threadMentionParts, type ThreadMentionPart, useThreadTitles } from "../
 import { CopyMessageButton } from "../CopyMessageButton";
 import { PreambleRow } from "../PreambleRow";
 import { useTranscriptSession } from "../transcriptSession";
+import { NoticeLine } from "./NoticeLine";
 
 /** The send-in entrance's length: transcript.css `bubble-send-flip` and
  *  `bubble-send-in` run `--dur-slow` on the drawer curve. */
@@ -28,7 +30,9 @@ export const SEND_IN_MS = DUR.slow * 1000;
 
 /**
  * The person's message: a soft bubble on the right, 15px, no avatar and no
- * time. The project rules it opened with fold to one line above it.
+ * time. The project rules it opened with fold to one line above it. A
+ * second opinion carries no words of the person's, so it is a notice line
+ * on the left instead; a handoff keeps its bubble (its text is the brief).
  */
 export function UserMessageBlock({
   block,
@@ -99,6 +103,8 @@ export function UserMessageBlock({
 
   const toggle = () => setExpanded((value) => !value);
 
+  if (card && card.kind !== "handoff") return <SecondOpinionLine card={card} />;
+
   return (
     <div className="flex min-w-0 flex-col items-end pt-5 pb-2 pl-10">
       {block.preamble ? (
@@ -162,6 +168,16 @@ export function UserMessageBlock({
           </Button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** "Second opinion  Codex  3 files", led by the reviewing harness's mark. */
+function SecondOpinionLine({ card }: { card: SecondOpinionMeta }) {
+  const files = card.files ? `${card.files} ${card.files === 1 ? "file" : "files"}` : null;
+  return (
+    <div data-second-opinion="" className="min-w-0 pt-3">
+      <NoticeLine glyph={<HarnessIcon harness={card.to} />} lead="Second opinion" details={[HARNESS_TITLE[card.to], files]} />
     </div>
   );
 }

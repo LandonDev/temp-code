@@ -7,8 +7,6 @@ type Props = {
   /** Explicit pick from the project menu; falls back to the hashed one. */
   name?: string | null;
   className?: string;
-  /** Cycles the mascot's two frames while a turn is in flight. */
-  active?: boolean;
 };
 
 /** Pixel mascot standing in for the project's color dot. */
@@ -17,7 +15,6 @@ export function ProjectMascot({
   color,
   name,
   className = "size-4 shrink-0",
-  active = false,
 }: Props) {
   const mascot = projectMascot(project, name);
   return (
@@ -29,14 +26,7 @@ export function ProjectMascot({
       fill="currentColor"
       style={color ? { color } : undefined}
     >
-      {active ? (
-        <>
-          <path className="mascot-rest" d={mascot.restPath} />
-          <path className="mascot-talk" d={mascot.talkPath} />
-        </>
-      ) : (
-        <path d={mascot.restPath} />
-      )}
+      <path d={mascot.restPath} />
     </svg>
   );
 }

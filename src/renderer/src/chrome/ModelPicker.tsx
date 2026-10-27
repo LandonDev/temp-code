@@ -145,12 +145,17 @@ export function ModelPicker({
   tabRef.current = visibleTab;
   openRef.current = open;
 
+  // A pick (or the hotkey closing it) hands focus back to the field through
+  // onClose; Escape and an outside press return it to the trigger.
+  const toField = useRef(false);
   const dismiss = (restore: boolean) => {
+    toField.current = restore && !!onCloseRef.current;
     setOpen(false);
-    if (restore) onCloseRef.current?.();
+    if (toField.current) onCloseRef.current?.();
   };
 
   const openPicker = () => {
+    toField.current = false;
     setOpen(true);
   };
 
@@ -357,7 +362,7 @@ export function ModelPicker({
       open={open}
       onOpenChange={(next) => {
         if (next) openPicker();
-        else dismiss(true);
+        else dismiss(false);
       }}
     >
       <Tooltip>
@@ -389,7 +394,7 @@ export function ModelPicker({
         side="top"
         align="start"
         initialFocus={search}
-        finalFocus={onClose ? false : undefined}
+        finalFocus={() => !toField.current}
         aria-label="Model picker"
         data-model-picker
         className="w-80 gap-0 p-1"
