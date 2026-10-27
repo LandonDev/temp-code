@@ -52,6 +52,32 @@ describe("CwdPicker", () => {
     expect(props.onNewTerminal).toHaveBeenCalled();
   });
 
+  it("Choose folder… shows only with its handler, after the recent projects", async () => {
+    mount();
+    let menu = await open();
+    expect(within(menu).queryByRole("menuitem", { name: "Choose folder…" })).toBeNull();
+    fireEvent.keyDown(menu, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Project picker" })).toBeNull());
+    cleanup();
+    mount({ onChooseFolder: vi.fn() });
+    menu = await open();
+    const rows = [...menu.querySelectorAll("[role^=\"menuitem\"]")].map((row) => row.textContent ?? "");
+    const choose = rows.findIndex((text) => text.includes("Choose folder…"));
+    expect(choose).toBeGreaterThan(rows.findIndex((text) => text.includes("More projects")));
+    expect(choose).toBeLessThan(rows.findIndex((text) => text.includes("New terminal")));
+  });
+
+  it("a pick of Choose folder… opens the dialog, and the folder it picks goes to onCwdChange", async () => {
+    // The caller's dialog stands in: it answers a path the way App's chooseFolder does.
+    const onCwdChange = vi.fn();
+    const onChooseFolder = vi.fn(() => onCwdChange("/u/me/picked"));
+    mount({ onCwdChange, onChooseFolder });
+    const menu = await open();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Choose folder…" }));
+    expect(onChooseFolder).toHaveBeenCalledTimes(1);
+    expect(onCwdChange).toHaveBeenCalledWith("/u/me/picked");
+  });
+
   it("Escape closes and hands the focus back", async () => {
     const props = mount();
     const menu = await open();

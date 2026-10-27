@@ -80,6 +80,8 @@ type Props = {
   header: ThreadHeaderProps;
   recents?: RecentProject[];
   onSelectProject?: (path: string) => void;
+  /** "Choose folder…" in the no-project picker. */
+  onChooseFolder?: () => void;
 };
 
 /** Which tab-strip edges still have overflow to scroll toward. */
@@ -287,6 +289,7 @@ function TitleBarComponent({
   header,
   recents = [],
   onSelectProject,
+  onChooseFolder,
 }: Props) {
   const projectRailOpen = useShell((s) => s.projectRailOpen);
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
@@ -432,6 +435,7 @@ function TitleBarComponent({
           recents={recents}
           placement="below"
           onCwdChange={onSelectProject}
+          onChooseFolder={onChooseFolder}
           onNewTerminal={onNewTerminal}
           buttonClassName="flex h-full min-w-0 max-w-64 shrink items-center gap-2 px-4 text-left text-[13px] font-medium leading-tight"
         >

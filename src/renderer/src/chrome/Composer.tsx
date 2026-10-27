@@ -137,6 +137,8 @@ type Props = {
   hotkeys?: boolean
   onFocus: () => void
   onCwdChange: (cwd: string) => void
+  /** "Choose folder…" in the draft's project picker. */
+  onChooseFolder?: () => void
   onBranchChange?: () => void
   onNewTerminal?: () => void
   onModelChange: (harness: HarnessId, model: string) => void
@@ -187,6 +189,7 @@ export function Composer({
   goal = null,
   onFocus,
   onCwdChange,
+  onChooseFolder,
   onBranchChange,
   onNewTerminal,
   onModelChange,
@@ -950,6 +953,7 @@ export function Composer({
               projectLogoPath={projectLogoPath}
               enabled={enabled}
               onCwdChange={onCwdChange}
+              onChooseFolder={onChooseFolder}
               onNewTerminal={onNewTerminal}
               onClose={() => inputRef.current?.focus()}
             />

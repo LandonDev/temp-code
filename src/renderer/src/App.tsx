@@ -2031,7 +2031,8 @@ export default function App() {
   const newWorkspacePath = useShell((s) => s.newWorkspacePath);
   const newWorkspaceEnvironmentId = useShell((s) => s.newWorkspaceEnvironmentId);
   /** Another host's folders, being browsed for a workspace there. */
-  const [remoteFolderPick, setRemoteFolderPick] = useState<string | null>(null);
+  /** A folder browsed on another host (or at /ui), and where the pick goes. */
+  const [remoteFolderPick, setRemoteFolderPick] = useState<{ environmentId: string; onPick: (path: string) => void } | null>(null);
   const adoptFolder = useCallback(
     (path: string, environmentId: string) => {
       // A folder the catalog knows just comes forward; a new one gets the
@@ -2042,20 +2043,33 @@ export default function App() {
     },
     [onSelectProject],
   );
-  const pickProject = useCallback(
-    async (environmentId?: string) => {
-      // Another machine (or the page's own host, at /ui) has no dialog here:
-      // browse its folders over its link.
+  /** The folder dialog: this machine's native one, else another machine's
+   *  (or, at /ui, the page's own host's) folders browsed over its link. */
+  const chooseFolder = useCallback(
+    async (environmentId: string | undefined, onPick: (path: string, environmentId: string) => void, title?: string) => {
       const remote = folderPickOn(environmentId, registry.primaryEnvironmentId, isWebMode());
       if (remote) {
-        setRemoteFolderPick(remote);
+        setRemoteFolderPick({ environmentId: remote, onPick: (path) => onPick(path, remote) });
         return;
       }
-      const path = await pickFolder();
-      if (!path) return;
-      adoptFolder(path, registry.primaryEnvironmentId);
+      const path = await pickFolder(title);
+      if (path) onPick(path, registry.primaryEnvironmentId);
     },
-    [adoptFolder],
+    [],
+  );
+  const pickProject = useCallback(
+    (environmentId?: string) => void chooseFolder(environmentId, adoptFolder),
+    [adoptFolder, chooseFolder],
+  );
+  /** A draft's "Choose folder…": the picked folder becomes its project, as a recent one would. */
+  const onChooseFolder = useCallback(
+    (sessionId: string) =>
+      void chooseFolder(sessionStore.environmentOf(sessionId), (path) => onCwdChange(sessionId, path), "Choose folder"),
+    [chooseFolder, onCwdChange],
+  );
+  const onChooseProjectFolder = useCallback(
+    () => void chooseFolder(undefined, (path) => onSelectProject(path), "Choose folder"),
+    [chooseFolder, onSelectProject],
   );
 
   const onRemoveProject = useCallback(
@@ -3241,6 +3255,7 @@ export default function App() {
       onStop,
       onApproval,
       onCwdChange,
+      onChooseFolder,
       onBranchChange,
       onModelChange,
       onModelSettingsChange,
@@ -3260,6 +3275,7 @@ export default function App() {
       onStop,
       onApproval,
       onCwdChange,
+      onChooseFolder,
       onBranchChange,
       onModelChange,
       onModelSettingsChange,
@@ -3338,6 +3354,7 @@ export default function App() {
           onOpenNotes={notesEnabled ? onOpenNotes : undefined}
           onGoToFile={onGoToFile}
           onSelectProject={onSelectProject}
+          onChooseFolder={onChooseProjectFolder}
         />
         <ThreadBanners
           projectId={selectedProjectId}
@@ -3535,12 +3552,11 @@ export default function App() {
       ) : null}
       {remoteFolderPick ? (
         <RemoteFolderDialog
-          environmentId={remoteFolderPick}
+          environmentId={remoteFolderPick.environmentId}
           onClose={() => setRemoteFolderPick(null)}
           onPick={(path) => {
-            const environmentId = remoteFolderPick;
             setRemoteFolderPick(null);
-            adoptFolder(path, environmentId);
+            remoteFolderPick.onPick(path);
           }}
         />
       ) : null}

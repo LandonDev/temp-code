@@ -22,6 +22,9 @@ type Props = {
   children?: ReactNode;
   onCwdChange: (path: string) => void;
   onNewTerminal?: () => void;
+  /** Shows "Choose folder…": the caller opens the folder dialog and hands the
+   *  path to `onCwdChange`. */
+  onChooseFolder?: () => void;
   /** The menu closed: the caller takes the focus back (the composer). */
   onClose?: () => void;
 };
@@ -30,6 +33,7 @@ type Props = {
 const PREVIEW = 5;
 const CURRENT = "current";
 const NEW_TERMINAL = "new-terminal";
+const CHOOSE_FOLDER = "choose-folder";
 
 const folderRow = (path: string): MenuRow => ({
   kind: "item",
@@ -54,6 +58,7 @@ export function CwdPicker({
   children,
   onCwdChange,
   onNewTerminal,
+  onChooseFolder,
   onClose,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -75,6 +80,7 @@ export function CwdPicker({
       ...(overflow.length
         ? [{ kind: "sub", id: "more", label: "More projects", icon: MoreHorizontal, items: overflow.map((item) => folderRow(item.path)) } as const]
         : []),
+      ...(onChooseFolder ? [{ kind: "item", id: CHOOSE_FOLDER, label: "Choose folder…", icon: FolderOpen } as const] : []),
       { kind: "sep" },
       ...(onNewTerminal
         ? [{ kind: "item", id: NEW_TERMINAL, label: "New terminal", icon: Terminal, shortcut: shortcutFor("Terminal", "New") } as const]
@@ -84,6 +90,7 @@ export function CwdPicker({
 
   const pick = (id: string) => {
     if (id === NEW_TERMINAL) onNewTerminal?.();
+    else if (id === CHOOSE_FOLDER) onChooseFolder?.();
     else if (id.startsWith("recent:")) onCwdChange(id.slice("recent:".length));
   };
 

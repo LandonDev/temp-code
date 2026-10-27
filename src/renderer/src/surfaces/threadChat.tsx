@@ -66,6 +66,8 @@ export type SessionActions = {
   onStop: (sessionId: string) => void;
   onApproval: (sessionId: string, requestId: string | number, decision: ApprovalDecision) => void;
   onCwdChange: (sessionId: string, cwd: string) => void;
+  /** The folder dialog for a draft's project picker; the pick goes to `onCwdChange`. */
+  onChooseFolder?: (sessionId: string) => void;
   onBranchChange: (sessionId: string) => void;
   onModelChange: (sessionId: string, harness: HarnessId, model: string) => void;
   onModelSettingsChange: (sessionId: string, settings: Record<string, string>) => void;
@@ -212,6 +214,7 @@ function boundTo(actions: SessionActions, id: string) {
     onNoteCardDismiss: () => actions.onNoteCardDismiss?.(id),
     onHandoffCardDismiss: () => actions.onHandoffCardDismiss?.(id),
     onCwdChange: (cwd: string) => actions.onCwdChange(id, cwd),
+    onChooseFolder: actions.onChooseFolder ? () => actions.onChooseFolder?.(id) : undefined,
     onBranchChange: () => actions.onBranchChange(id),
     onNewTerminal: desktopOnly(() => actions.onNewTerminal(id)),
     onModelChange: (harness: HarnessId, model: string) => actions.onModelChange(id, harness, model),
