@@ -44,7 +44,8 @@ function readTheme(appearance: HtmlRenderAppearance): HtmlRenderTheme {
     info: read("--thread-info", fallback.info),
     violet: read("--thread-violet", fallback.violet),
     cyan: read("--thread-cyan", fallback.cyan),
-    busy: read("--thread-busy", fallback.busy),
+    // The busy tint is the page palette's own, not an app token.
+    busy: fallback.busy,
     fontSans: read("--font-sans", fallback.fontSans),
     fontMono: read("--font-mono", fallback.fontMono),
   };
