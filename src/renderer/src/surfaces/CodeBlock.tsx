@@ -2,13 +2,15 @@ import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Copy } from "../chrome/icons";
 import { copyText } from "../lib/clipboard";
 import { highlight, highlightCached } from "../lib/highlight";
+import { grammarFor } from "../lib/highlightLanguages";
 import { playCue } from "../lib/sounds";
 import { SwapIcon } from "../motion/IconSwap";
 import { IconAction, useArmOnIntent } from "./transcript/IconAction";
 
 /**
- * A fenced code block, quiet: the language (or the fence's file path) at
- * the top left, copy on hover at the top right, the code in 13px mono
+ * A fenced code block, quiet: the fence's file path, else the language
+ * when the transcript colours it, at the top left (plain text and an
+ * unknown language name nothing), copy on hover at the top right, the code in 13px mono
  * coloured by weight on the transcript's neutral theme
  * (lib/transcriptCodeTheme.ts) from the shiki worker, so the main thread
  * never tokenizes. Line numbers only when the fence asks. Highlighting
@@ -36,6 +38,7 @@ export const CodeBlock = memo(function CodeBlock({
 }) {
   const clean = code.replace(/\n$/, "");
   const lang = language.trim().toLowerCase();
+  const heading = label ?? (grammarFor(lang) ? lang : null);
   // A remount of a block the worker already coloured paints coloured.
   const [html, setHtml] = useState<string | null>(() => highlightCached(clean, lang) ?? null);
   const [copied, setCopied] = useState(false);
@@ -90,7 +93,7 @@ export const CodeBlock = memo(function CodeBlock({
         data-streamdown="code-block-header"
         className="flex h-8 items-center justify-between gap-2 pl-3 pr-1"
       >
-        <span className="min-w-0 truncate text-xs text-muted-foreground">{label ?? lang}</span>
+        <span className="min-w-0 truncate text-xs text-muted-foreground">{heading}</span>
         <IconAction
           label={copied ? "Copied" : "Copy code"}
           onClick={copy}

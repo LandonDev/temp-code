@@ -36,6 +36,21 @@ describe("CodeBlock", () => {
     expect(view.container.querySelector('[data-streamdown="code-block-header"]')?.textContent).toContain("src/a.ts");
   });
 
+  it("names nothing for plain text or a language it does not colour, and keeps the header's height", () => {
+    const header = (v: ReturnType<typeof render>) =>
+      v.container.querySelector('[data-streamdown="code-block-header"]') as HTMLElement;
+    for (const language of ["text", "txt", "plaintext", "", "klingon"]) {
+      const view = render(<CodeBlock code="x" language={language} />);
+      expect(header(view).querySelector("span")?.textContent).toBe("");
+      expect(header(view).className).toContain("h-8");
+      view.unmount();
+    }
+    const ts = render(<CodeBlock code="x" language="ts" />);
+    expect(header(ts).querySelector("span")?.textContent).toBe("ts");
+    ts.rerender(<CodeBlock code="x" language="text" label={<span>notes.txt</span>} />);
+    expect(header(ts).textContent).toContain("notes.txt");
+  });
+
   it("copies the code without its trailing newline", async () => {
     await act(async () => {
       warmTooltips();
