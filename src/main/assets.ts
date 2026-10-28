@@ -1,4 +1,5 @@
 import { app, net, protocol } from 'electron'
+import { withEscapeRelay } from '@shared/htmlRender'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -153,7 +154,7 @@ export async function serveRemotePage(host: string, url: URL): Promise<Response>
   if (!pageId || !cached || !remotePages) return new Response('not found', { status: 404 })
   const html = { 'Content-Type': 'text/html; charset=utf-8' }
   try {
-    return new Response(await readFile(cached, 'utf8'), { headers: html })
+    return new Response(withEscapeRelay(await readFile(cached, 'utf8')), { headers: html })
   } catch {}
   let page: string | null
   try {
@@ -164,7 +165,7 @@ export async function serveRemotePage(host: string, url: URL): Promise<Response>
   if (page === null) return new Response('not found', { status: 404 })
   await mkdir(dirname(cached), { recursive: true })
   await writeFile(cached, page)
-  return new Response(page, { headers: html })
+  return new Response(withEscapeRelay(page), { headers: html })
 }
 
 /** A path under `root`, or null when the URL's path escapes it. */
@@ -236,7 +237,8 @@ export async function handleAssetRequest(request: Request): Promise<Response> {
   try {
     const file = await net.fetch(pathToFileURL(path).toString())
     if (url.host !== 'page') return file
-    return new Response(file.body, {
+    // A page saved before the bootstrap carried the Escape relay gets it here.
+    return new Response(file.ok ? withEscapeRelay(await file.text()) : file.body, {
       status: file.status,
       headers: { 'Content-Type': 'text/html; charset=utf-8' }
     })

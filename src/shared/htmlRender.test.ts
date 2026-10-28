@@ -15,8 +15,7 @@ import {
   readHtmlRenderContentHeight,
   readHtmlRenderEscape,
   readHtmlRenderLinkRequest,
-  readHtmlRenderReference
-} from './htmlRender'
+  readHtmlRenderReference, ESCAPE_SCRIPT, withEscapeRelay } from './htmlRender'
 
 const reference = { sessionId: 'thread-abc', pageId: 'page123', title: 'Chart', height: 420 }
 
@@ -148,6 +147,51 @@ describe('the bootstrap passes Escape up', () => {
       keydown[0]!({ key: 'Enter', defaultPrevented: false })
       vi.runAllTimers()
       expect(posted).toEqual([{ jsonrpc: '2.0', method: 'tc/escape' }])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('withEscapeRelay', () => {
+  it('gives a page saved before the bootstrap the Escape relay once, before </head>, else </body>, else first; never inside a comment or a script', () => {
+    const old = '<!doctype html><html><head><title>t</title></head><body><p>x</p></body></html>'
+    const relayed = withEscapeRelay(old)
+    expect(relayed).toBe(`<!doctype html><html><head><title>t</title>${ESCAPE_SCRIPT}</head><body><p>x</p></body></html>`)
+    expect(withEscapeRelay(relayed)).toBe(relayed)
+    expect(withEscapeRelay('<html><body><p>x</p></body></html>')).toBe(`<html><body><p>x</p>${ESCAPE_SCRIPT}</body></html>`)
+    expect(withEscapeRelay('<p>bare</p>')).toBe(`${ESCAPE_SCRIPT}<p>bare</p>`)
+    expect(withEscapeRelay('<!-- </head> --><script>var s = "</head>"</script><p>y</p></body>')).toBe(
+      `<!-- </head> --><script>var s = "</head>"</script><p>y</p>${ESCAPE_SCRIPT}</body>`
+    )
+    // A page the bootstrap already relays is left as it is.
+    const fresh = injectHtmlRenderBootstrap('<p>x</p>')
+    expect(withEscapeRelay(fresh)).toBe(fresh)
+  })
+
+  it('posts tc/escape from the relay alone for an Escape the page left alone, nothing when it took it or outside a frame', () => {
+    vi.useFakeTimers()
+    try {
+      const script = /<script id="tc-escape">([\s\S]*?)<\/script>/.exec(ESCAPE_SCRIPT)![1]!
+      const keydown: ((e: unknown) => void)[] = []
+      const posted: unknown[] = []
+      const win = {
+        parent: { postMessage: (data: unknown) => posted.push(data) },
+        addEventListener: (type: string, f: (e: unknown) => void, capture?: boolean) => {
+          if (type === 'keydown' && capture === true) keydown.push(f)
+        }
+      }
+      new Function('window', script)(win)
+      expect(keydown).toHaveLength(1)
+      keydown[0]!({ key: 'Escape', defaultPrevented: false })
+      keydown[0]!({ key: 'Escape', defaultPrevented: true })
+      keydown[0]!({ key: 'Enter', defaultPrevented: false })
+      vi.runAllTimers()
+      expect(posted).toEqual([{ jsonrpc: '2.0', method: 'tc/escape' }])
+      const top = { addEventListener: () => keydown.push(() => {}) }
+      ;(top as { parent?: unknown }).parent = top
+      new Function('window', script)(top)
+      expect(keydown).toHaveLength(1)
     } finally {
       vi.useRealTimers()
     }

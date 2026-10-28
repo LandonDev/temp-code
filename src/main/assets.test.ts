@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { ESCAPE_SCRIPT, injectHtmlRenderBootstrap } from '@shared/htmlRender'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -39,12 +40,15 @@ describe('a page of another host', () => {
     const first = await page('env_box')
     expect(first.status).toBe(200)
     expect(first.headers.get('Content-Type')).toBe('text/html; charset=utf-8')
-    expect(await first.text()).toBe('<p>from the box</p>')
+    // A page saved before the bootstrap carried the Escape relay is served with it, cached as the host sent it.
+    expect(await first.text()).toBe(`${ESCAPE_SCRIPT}<p>from the box</p>`)
     expect(read).toHaveBeenCalledWith('env_box', 'sess-1', 'abc')
     expect(readFileSync(join(dataDir, 'html-renders-remote', 'env_box', 'sess-1', 'abc.html'), 'utf8')).toBe(
       '<p>from the box</p>'
     )
-    expect((await page('env_box')).status).toBe(200)
+    const again = await page('env_box')
+    expect(again.status).toBe(200)
+    expect(await again.text()).toBe(`${ESCAPE_SCRIPT}<p>from the box</p>`)
     expect(read).toHaveBeenCalledTimes(1)
   })
 
@@ -69,7 +73,11 @@ describe('a page of another host', () => {
     const res = await page('local', '/sess-9/mine.html')
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toBe('text/html; charset=utf-8')
-    expect(await res.text()).toBe('<p>on this machine</p>')
+    // An old page gets the relay; a page the bootstrap wrote is served as it is.
+    expect(await res.text()).toBe(`${ESCAPE_SCRIPT}<p>on this machine</p>`)
+    const fresh = injectHtmlRenderBootstrap('<p>new</p>')
+    writeFileSync(join(dataDir, 'html-renders', 'sess-9', 'fresh.html'), fresh)
+    expect(await (await page('local', '/sess-9/fresh.html')).text()).toBe(fresh)
     expect(read).toHaveBeenCalledTimes(3)
   })
 })

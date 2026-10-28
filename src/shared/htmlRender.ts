@@ -440,6 +440,28 @@ const blankNonMarkup = (html: string) => {
   return parts.join('')
 }
 
+/** The Escape relay alone (the bootstrap's own keydown handler, word for
+ *  word): a page saved before the bootstrap carried it gets this at serve
+ *  time, so Escape inside its frame still reaches the viewer. */
+export const ESCAPE_SCRIPT = `<script id="tc-escape">(function(){if(window.parent===window)return;window.addEventListener("keydown",function(e){if(e.key==="Escape")setTimeout(function(){if(!e.defaultPrevented)window.parent.postMessage({jsonrpc:"2.0",method:${JSON.stringify(KEY_ESCAPE_METHOD)}},"*");},0);},true);})();</script>`
+
+/**
+ * A stored page with the Escape relay: the page as it is when it already
+ * relays Escape (the full bootstrap, or this relay), else with the relay
+ * inserted before </head>, else before </body>, else prepended, through the
+ * same scan the bootstrap uses so a tag inside a comment or a script is
+ * never taken for the document's.
+ */
+export function withEscapeRelay(html: string): string {
+  if (html.includes('id="tc-escape"') || html.includes(KEY_ESCAPE_METHOD)) return html
+  const scan = blankNonMarkup(html)
+  const headClose = /<\/head\s*>/i.exec(scan)
+  if (headClose) return html.slice(0, headClose.index) + ESCAPE_SCRIPT + html.slice(headClose.index)
+  const bodyClose = /<\/body\s*>/i.exec(scan)
+  if (bodyClose) return html.slice(0, bodyClose.index) + ESCAPE_SCRIPT + html.slice(bodyClose.index)
+  return ESCAPE_SCRIPT + html
+}
+
 /**
  * Inserts the theme bootstrap at the start of the document head, so a page's
  * own styles and scripts come after it.

@@ -55,6 +55,8 @@ describe('assetRequestFor', () => {
     expect(r.headers.get('range')).toBe('bytes=0-99')
     expect(assetRequestFor('/asset/logo/a%20b.png', { headers: {} })!.url).toBe('tempcode-asset://logo/a%20b.png')
     expect(assetRequestFor('/asset/page/s/p.html', { method: 'HEAD', headers: {} })!.method).toBe('HEAD')
+    // The host a page lives on rides the route's query.
+    expect(assetRequestFor('/asset/page/s/p.html?host=env_box', { headers: {} })!.url).toBe('tempcode-asset://page/s/p.html?host=env_box')
     expect(assetRequestFor('/asset/', { headers: {} })).toBeNull()
     expect(assetRequestFor('/asset/Logo/x', { headers: {} })).toBeNull()
     expect(assetRequestFor('/assets/index.js', { headers: {} })).toBeNull()
