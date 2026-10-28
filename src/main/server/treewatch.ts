@@ -1,6 +1,7 @@
 import { watch as fsWatch, statSync } from 'fs'
 import { watch as chokidarWatch } from 'chokidar'
 import { basename, join, relative, sep } from 'path'
+import { APP_DIR } from './appDir'
 
 /**
  * One watcher per tree, one fd per tree. chokidar 4+ has no FSEvents
@@ -15,7 +16,7 @@ import { basename, join, relative, sep } from 'path'
 /** Directory names ignored at any depth (build storms, VCS, app dirs). */
 export const WATCH_IGNORED = new Set([
   '.git',
-  '.temp-code',
+  APP_DIR,
   'node_modules',
   'target',
   'build',

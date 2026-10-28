@@ -279,6 +279,61 @@ describe('donor git methods', () => {
   })
 })
 
+describe('the app folder', () => {
+  const appFiles = (paths: string[]): string[] => paths.filter((p) => p.includes('.temp-code'))
+  async function seed(): Promise<void> {
+    await mkdir(join(cwd, '.temp-code', 'threads'), { recursive: true })
+    await mkdir(join(cwd, 'app', '.temp-code'), { recursive: true })
+    await write('.temp-code/threads/x.md', 'thread\n')
+    await write('app/.temp-code/y.md', 'plan\n')
+    await write('other.txt', 'other\n')
+    await write('app/other.txt', 'app other\n')
+  }
+
+  it('leaves .temp-code/ out of diffIndex and diffStats, at the root and below a project folder', async () => {
+    await seed()
+    await write('.temp-code/staged.md', 'staged\n')
+    command(cwd, 'add', '-f', '.temp-code/staged.md')
+    const index = await git.gitDiffIndex(cwd)
+    expect(appFiles(index.files.map((f) => f.relative))).toEqual([])
+    expect(index.files.map((f) => f.relative)).toEqual(['app/other.txt', 'other.txt'])
+    expect(await git.gitDiffStats(cwd)).toEqual({ files: 2, additions: 2, deletions: 0 })
+    const below = await git.gitDiffIndex(join(cwd, 'app'))
+    expect(appFiles(below.files.map((f) => f.relative))).toEqual([])
+    expect(below.files.map((f) => f.relative)).toContain('app/other.txt')
+    expect((await git.gitDiffStats(join(cwd, 'app'))).files).toBeGreaterThan(0)
+  })
+
+  it('stageAll leaves it untracked and stash leaves it on disk', async () => {
+    await seed()
+    await git.gitStageAll(cwd)
+    expect(command(cwd, 'diff', '--cached', '--name-only').split('\n')).toEqual(['app/other.txt', 'other.txt'])
+    expect(command(cwd, 'ls-files', '--others').split('\n')).toEqual(['.temp-code/threads/x.md', 'app/.temp-code/y.md'])
+    await git.gitUnstageAll(cwd)
+    await git.gitStash(cwd, 'app folder')
+    expect(command(cwd, 'stash', 'list')).toContain('app folder')
+    expect(command(cwd, 'ls-files', '--others').split('\n')).toEqual(['.temp-code/threads/x.md', 'app/.temp-code/y.md'])
+    expect(await readFile(join(cwd, '.temp-code', 'threads', 'x.md'), 'utf8')).toBe('thread\n')
+    await expect(readFile(join(cwd, 'other.txt'), 'utf8')).rejects.toThrow()
+    command(cwd, 'stash', 'pop', '-q')
+    expect(await readFile(join(cwd, 'other.txt'), 'utf8')).toBe('other\n')
+  })
+
+  it('stagedContext names no app file', async () => {
+    await seed()
+    await write('file.txt', 'changed\n')
+    const result = await git.gitStagedContext(cwd)
+    expect(result.summary).toContain('other.txt')
+    expect(result.summary).not.toContain('.temp-code')
+    expect(result.patch).not.toContain('.temp-code')
+    command(cwd, 'add', '-f', '.temp-code/threads/x.md')
+    command(cwd, 'add', 'file.txt')
+    const staged = await git.gitStagedContext(cwd)
+    expect(staged.summary).toContain('file.txt')
+    expect(staged.summary + staged.patch).not.toContain('.temp-code')
+  })
+})
+
 describe('untracked line cache', () => {
   it('reuses a line count while size and mtime hold, and recounts a changed file', async () => {
     await write('new.txt', 'one\ntwo\nthree\n')

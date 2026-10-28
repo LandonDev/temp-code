@@ -2,6 +2,7 @@ import { execFileChildBudgeted } from './spawnBudget'
 import { lstat, mkdir, open, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { extname, isAbsolute, join, resolve } from 'node:path'
+import { APP_DIR_PATHSPEC } from './appDir'
 import { MEDIA_SCRATCH_DIR, fsMedia } from './media'
 import type {
   FsMedia, GitBranches, GitChangedFile, GitDiffIndex, GitDiffStats, GitFileDiff, GitFileMedia,
@@ -11,12 +12,14 @@ import type {
 const MAX_TEXT_BYTES = 8 * 1024 * 1024
 const rootPath = (cwd: string): string => resolve(cwd === '~' ? homedir() : cwd.startsWith('~/') ? join(homedir(), cwd.slice(2)) : cwd)
 
-/** No shell; stdin stays separate from arguments for index-only hunk staging. */
+/** No shell; stdin stays separate from arguments for index-only hunk staging.
+ *  Paths after `--` are literal, except in a call that carries the app
+ *  folder's exclusion (its only other pathspec is `.`). */
 function run(cwd: string, args: string[], input?: string): Promise<Buffer> {
   return new Promise((resolveOutput, reject) => {
     void execFileChildBudgeted('git', ['--no-pager', '-C', rootPath(cwd), ...args], {
       encoding: 'buffer', maxBuffer: 32 * 1024 * 1024, timeout: 120_000,
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', ...(args.includes('--') ? { GIT_LITERAL_PATHSPECS: '1' } : {}) }
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', ...(args.includes('--') && !args.includes(APP_DIR_PATHSPEC) ? { GIT_LITERAL_PATHSPECS: '1' } : {}) }
     }, (error, stdout, stderr) => {
       if (error) reject(new Error(stderr.toString().trim() || stdout.toString().trim() || error.message))
       else resolveOutput(stdout as Buffer)
@@ -34,6 +37,8 @@ const headBranch = (cwd: string): Promise<string | null> => value(cwd, ['symboli
 const branch = async (cwd: string): Promise<string | null> => (await headBranch(cwd)) ?? value(cwd, ['rev-parse', '--short', 'HEAD'])
 const isWorkTree = async (cwd: string): Promise<boolean> => (await value(cwd, ['rev-parse', '--is-inside-work-tree'])) === 'true'
 const refExists = async (cwd: string, ref: string): Promise<boolean> => (await optional(cwd, ['show-ref', '--verify', '--quiet', ref])) !== null
+/** The checkout below the project cwd, less the app's own folder. */
+const CHANGES = ['--', '.', APP_DIR_PATHSPEC]
 
 function repoPath(relative: string): string {
   const rel = relative.replace(/\\/g, '/')
@@ -120,7 +125,7 @@ async function untrackedLineCount(path: string): Promise<number> {
  *  ls-files, three diffs, rev-parse, rev-list and symbolic-ref before. */
 interface StatusInfo { head: string | null; upstream: string | null; ab: { ahead: number; behind: number } | null }
 async function status(cwd: string, files: Map<string, FileAcc>, statuses: Map<string, string>): Promise<StatusInfo> {
-  const out = (await optional(cwd, ['status', '--porcelain=v2', '-z', '--branch', '--no-renames', '--untracked-files=all'])) ?? ''
+  const out = (await optional(cwd, ['status', '--porcelain=v2', '-z', '--branch', '--no-renames', '--untracked-files=all', '--', APP_DIR_PATHSPEC])) ?? ''
   const info: StatusInfo = { head: null, upstream: null, ab: null }
   for (const field of out.split('\0')) {
     if (field.startsWith('# branch.head ')) info.head = field.slice(14)
@@ -151,9 +156,9 @@ async function status(cwd: string, files: Map<string, FileAcc>, statuses: Map<st
 async function changes(cwd: string): Promise<{ files: Map<string, FileAcc>; statuses: Map<string, string>; info: StatusInfo }> {
   const files = new Map<string, FileAcc>()
   const statuses = new Map<string, string>()
-  const head = await optional(cwd, ['diff', '--no-ext-diff', '--numstat', '-z', 'HEAD', '--', '.'])
+  const head = await optional(cwd, ['diff', '--no-ext-diff', '--numstat', '-z', 'HEAD', ...CHANGES])
   if (head !== null) addNumstat(head, files)
-  else for (const base of [[], ['--cached']]) addNumstat((await optional(cwd, ['diff', '--no-ext-diff', '--numstat', '-z', ...base, '--', '.'])) ?? '', files)
+  else for (const base of [[], ['--cached']]) addNumstat((await optional(cwd, ['diff', '--no-ext-diff', '--numstat', '-z', ...base, ...CHANGES])) ?? '', files)
   const info = await status(cwd, files, statuses)
   return { files, statuses, info }
 }
@@ -270,19 +275,19 @@ export async function gitDiscardFile(cwd: string, relative: string): Promise<voi
   }
   await checked(cwd, ['restore', '--worktree', '--', relative])
 }
-export async function gitStageAll(cwd: string): Promise<void> { await checked(cwd, ['add', '-A', '--', '.']) }
+export async function gitStageAll(cwd: string): Promise<void> { await checked(cwd, ['add', '-A', ...CHANGES]) }
 export async function gitUnstageAll(cwd: string): Promise<void> { await checked(cwd, ['restore', '--staged', '--', '.']) }
 export async function gitCommitStaged(cwd: string, message: string): Promise<void> {
   if (!message.trim()) throw new Error('Commit message cannot be empty')
   await checked(cwd, ['commit', '--cleanup=strip', '-m', message.trim()])
 }
 export async function gitStagedContext(cwd: string): Promise<GitStagedContext> {
-  let summary = (await optional(cwd, ['diff', '--cached', '--stat', '--', '.'])) ?? ''
-  let patch = (await optional(cwd, ['diff', '--cached', '--no-ext-diff', '--', '.'])) ?? ''
+  let summary = (await optional(cwd, ['diff', '--cached', '--stat', ...CHANGES])) ?? ''
+  let patch = (await optional(cwd, ['diff', '--cached', '--no-ext-diff', ...CHANGES])) ?? ''
   if (!summary.trim() && !patch.trim()) {
-    summary = (await optional(cwd, ['diff', 'HEAD', '--stat', '--', '.'])) ?? ''
-    patch = (await optional(cwd, ['diff', 'HEAD', '--no-ext-diff', '--', '.'])) ?? ''
-    const names = await value(cwd, ['ls-files', '--others', '--exclude-standard'])
+    summary = (await optional(cwd, ['diff', 'HEAD', '--stat', ...CHANGES])) ?? ''
+    patch = (await optional(cwd, ['diff', 'HEAD', '--no-ext-diff', ...CHANGES])) ?? ''
+    const names = await value(cwd, ['ls-files', '--others', '--exclude-standard', '--', APP_DIR_PATHSPEC])
     if (names) summary += `${summary.trim() ? '\n' : ''}Untracked files:\n${names}`
   }
   if (!summary.trim() && !patch.trim()) throw new Error('No changes to summarize')
@@ -375,7 +380,8 @@ export async function gitCreateBranch(cwd: string, name: string): Promise<string
 }
 export async function gitStash(cwd: string, message?: string | null): Promise<void> {
   await requireRepo(cwd)
-  await checked(cwd, ['stash', 'push', '--include-untracked', ...(message?.trim() ? ['-m', message.trim()] : [])])
+  // The app's folder stays: threads keep writing into it while it is stashed.
+  await checked(cwd, ['stash', 'push', '--include-untracked', ...(message?.trim() ? ['-m', message.trim()] : []), '--', APP_DIR_PATHSPEC])
 }
 export async function gitClone(url: string, parent: string): Promise<string> {
   url = url.trim()

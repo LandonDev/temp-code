@@ -2,6 +2,7 @@ import { execFileBudgeted as execFileP } from './spawnBudget'
 import { mkdirSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, sep } from 'node:path'
+import { APP_DIR } from './appDir'
 import type { CommitInfo, CompareResult, FileChange, MergeResult } from '@shared/domain'
 
 
@@ -236,7 +237,7 @@ export async function deleteRemoteBranch(repoPath: string, branch: string): Prom
 }
 
 /** App-managed files (plan docs) — never user-facing "changes". */
-const isAppPath = (path: string): boolean => path.startsWith('.temp-code/')
+const isAppPath = (path: string): boolean => path.startsWith(`${APP_DIR}/`)
 
 /** Ignore `.temp-code/` locally (info/exclude — never touches the tracked
  *  .gitignore). Worktrees share the common git dir, so one write covers all. */

@@ -13,6 +13,7 @@ import {
   existsSync
 } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
+import { APP_DIR } from './appDir'
 import { watchTree, type TreeWatcher } from './treewatch'
 import type { FsEntry, FsReadResult } from '@shared/domain'
 
@@ -31,7 +32,7 @@ import type { FsEntry, FsReadResult } from '@shared/domain'
 const MAX_FILE_BYTES = 2 * 1024 * 1024
 
 /** Directories the tree hides entirely. */
-const HIDDEN = new Set(['.git', '.temp-code'])
+const HIDDEN = new Set(['.git', APP_DIR])
 
 
 /** Resolve a project-relative path inside cwd or throw. */
