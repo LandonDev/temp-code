@@ -170,7 +170,10 @@ Two separate steps, on purpose, over one gate.
 2. **`bun run release:publish` publishes HEAD's 1.0.N** (scripts/
    release-publish.sh): the fast path, about five minutes on the Mac. A
    clean tree on master; master and the `v1.0.N` tag pushed and a draft
-   release opened first; then `gate --tier publish` runs BESIDE the
+   release opened first (its notes are the commit subjects since the last
+   `v1.0.*` tag, newest first, cut at whole lines to 100,000 characters
+   with "… and N more commits since vPREV" last: scripts/lib/release-notes.sh,
+   since GitHub refuses a body over 125,000); then `gate --tier publish` runs BESIDE the
    electron-vite build (they share nothing; a red gate still stops the
    upload and deletes the draft; `GATE_SKIP=1` only to retry a failed
    upload); ONE electron-builder call (`--mac zip`, the `sign` phase)

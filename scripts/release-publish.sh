@@ -47,6 +47,7 @@
 #   3. With --notarize: notary credentials stored as Keychain profile "aliax".
 set -e
 cd "$(dirname "$0")/.."
+. scripts/lib/release-notes.sh
 export PATH="$HOME/.bun/bin:/opt/homebrew/bin:$PATH"
 
 NOTARIZE=${TEMP_CODE_NOTARIZE:-0}
@@ -164,7 +165,9 @@ else
   # Title and notes from the commits since the last published release; the
   # auto-release commits are noise to a reader, so they stay out.
   PREV_TAG=$(git tag --list 'v1.0.*' --sort=-v:refname | sed -n 2p)
-  NOTES=$(git log --no-merges --pretty='- %s' ${PREV_TAG:+$PREV_TAG..}HEAD | grep -v '^- release: ' | cut -c1-400 || true)
+  # 400 bytes a line, then whole lines up to 100,000 bytes (GitHub refuses a
+  # body over 125,000 characters), the dropped ones counted on a last line.
+  NOTES=$(git log --no-merges --pretty='- %s' ${PREV_TAG:+$PREV_TAG..}HEAD | grep -v '^- release: ' | cut -c1-400 | cap_release_notes 100000 "$PREV_TAG" || true)
   [ -n "$NOTES" ] || NOTES="- TempCode $VERSION"
   gh release create "v$VERSION" --repo "$REPO" --draft --title "TempCode $VERSION" --notes "$NOTES" >/dev/null
   DRAFTED=1
