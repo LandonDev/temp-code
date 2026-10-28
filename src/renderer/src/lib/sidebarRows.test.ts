@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import { SESSION_LIST_PAGE } from "./sessionListWindow";
 import type { Catalog } from "./projectContext";
 import {
+  cardCounts,
+  cardLines,
   groupMark,
   groupUnread,
   masterBlock,
   nextPage,
+  projectCardAriaLabel,
   rowState,
   sessionItemIndex,
   sidebarItems,
@@ -13,7 +16,9 @@ import {
   workspaceMarks,
 } from "./sidebarRows";
 import type { ProjectMeta, SessionMeta } from "./tcserver/types";
+import { projectCardStatus } from "./projectCardModel";
 import {
+  cardThreads,
   threadRow,
   type ProjectGroup,
   type ThreadRow,
@@ -323,5 +328,101 @@ describe("workspaceMarks", () => {
     );
     expect([...marks.keys()]).toEqual(["/a"]);
     expect(marks.get("/a")?.mark).toMatchObject({ state: "working", about: { id: "t2" }, more: 1 });
+  });
+});
+
+describe("cardLines", () => {
+  const lines = (roots: ThreadRow[], selected: string | null = null, seen: Record<string, number> = {}) =>
+    cardLines(roots, projectCardStatus(cardThreads(roots), selected, seen, 0)).map((l) => [l.kind, l.id]);
+
+  it("prints master blocks, then working, paused and unread roots", () => {
+    const b = (id: string, status: SessionMeta["status"]) => row(id, { status, masterId: "m" }, {}, true);
+    const master = { ...row("m", { status: "watching", isMaster: true }), batch: [b("in-batch", "running")] };
+    const roots = [
+      row("unread", { status: "done", updatedAt: 50 }),
+      row("paused", { status: "paused" }),
+      row("run", { status: "running" }),
+      master,
+      row("quiet", { status: "idle" }, { quiet: 200 }),
+      row("wait", { status: "waiting" }),
+    ];
+    expect(lines(roots, null, { quiet: 200 })).toEqual([
+      ["master", "m"],
+      ["working", "run"],
+      ["paused", "paused"],
+      ["unread", "unread"],
+    ]);
+  });
+
+  it("prints a housed thread only in its master's block", () => {
+    const housed = row("h", { status: "running", masterId: "m" }, {}, true);
+    const master = { ...row("m", { status: "watching", isMaster: true }), batch: [housed] };
+    const out = cardLines([master], projectCardStatus(cardThreads([master]), null, {}, 0));
+    expect(out.map((l) => l.id)).toEqual(["m"]);
+    const block = out[0].kind === "master" ? out[0].block : null;
+    expect(block?.lines.map((l) => l.thread.id)).toEqual(["h"]);
+  });
+
+  it("reads a root watching its background work as a working line", () => {
+    expect(lines([row("w", { status: "watching" })])).toEqual([["working", "w"]]);
+  });
+
+  it("leaves out the thread on screen from the unread lines", () => {
+    expect(lines([row("a", { status: "done", updatedAt: 50 })], "a")).toEqual([]);
+  });
+});
+
+describe("cardCounts", () => {
+  // Every thread counts as seen, so a quiet one is dormant, not unread.
+  const counts = (roots: ThreadRow[], archived = 0) =>
+    cardCounts(projectCardStatus(cardThreads(roots), null, {}, 1000), archived).map((c) => [c.kind, c.text]);
+
+  it("says who needs you, what failed, what is dormant and archived, each its own part", () => {
+    expect(
+      counts(
+        [
+          row("w", { status: "waiting" }),
+          row("f", { status: "error" }),
+          row("d1"),
+          row("d2"),
+        ],
+        2,
+      ),
+    ).toEqual([
+      ["waiting", "1 needs you"],
+      ["failed", "1 failed"],
+      ["dormant", "2 dormant"],
+      ["archived", "2 archived"],
+    ]);
+    expect(counts([row("a", { status: "waiting" }), row("b", { status: "waiting" })])).toEqual([["waiting", "2 need you"]]);
+  });
+
+  it("never counts paused: its lines say it", () => {
+    expect(counts([row("p", { status: "paused" })])).toEqual([]);
+  });
+
+  it("reads No threads for a project with none, and the archived count when only those remain", () => {
+    expect(counts([])).toEqual([["none", "No threads"]]);
+    expect(counts([], 3)).toEqual([["archived", "3 archived"]]);
+  });
+});
+
+describe("projectCardAriaLabel", () => {
+  it("names the project, then what needs saying, loudest first", () => {
+    const status = projectCardStatus(
+      [
+        row("w", { status: "waiting" }),
+        row("r1", { status: "running" }),
+        row("r2", { status: "running" }),
+        row("u1", { status: "done", updatedAt: 50 }),
+        row("u2", { status: "done", updatedAt: 50 }),
+        row("u3", { status: "done", updatedAt: 50 }),
+      ],
+      null,
+      {},
+      0,
+    );
+    expect(projectCardAriaLabel("Alpha", status)).toBe("Alpha, 1 needs you, 2 working, 3 unread");
+    expect(projectCardAriaLabel("Quiet", projectCardStatus([], null, {}, 0))).toBe("Quiet");
   });
 });

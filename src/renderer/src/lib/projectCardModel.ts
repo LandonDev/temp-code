@@ -4,7 +4,8 @@ import type { SessionMeta } from "./tcserver/types";
  * The sidebar project card's tree-aware status, as temp-code's ProjectRow
  * derived it. Each root thread lands in exactly one bucket, loudest first:
  * paused (its own or a descendant's), running (live work anywhere in the
- * tree, unless it is waiting on you or needs recovery), waiting, failed
+ * tree, or watching its background work or batch, unless it is waiting on
+ * you or needs recovery), waiting, failed
  * (a recoverable failure the tree has not moved past), unread (settled,
  * unseen, not the open thread, not inside a master), else dormant.
  */
@@ -56,7 +57,7 @@ export function projectCardStatus<T extends CardThread>(
       !isPaused.has(t) &&
       t.status !== "waiting" &&
       !t.treeCanContinue &&
-      (t.status === "running" || t.status === "starting" || !!t.treeHasLiveWork),
+      (t.status === "running" || t.status === "starting" || t.status === "watching" || !!t.treeHasLiveWork),
   );
   const waiting = threads.filter(
     (t) => !isPaused.has(t) && !t.treeCanContinue && t.status === "waiting",

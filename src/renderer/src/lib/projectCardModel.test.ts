@@ -23,6 +23,12 @@ const thread = (id: string, extra: Partial<CardThread> = {}): CardThread => ({
 const ids = (list: CardThread[]) => list.map((t) => t.id);
 
 describe("projectCardStatus", () => {
+  it("counts a thread watching its background work or batch as running", () => {
+    const status = projectCardStatus([thread("w", { status: "watching" })], null, {});
+    expect(ids(status.running)).toEqual(["w"]);
+    expect(status.dormant).toBe(0);
+  });
+
   it("puts each thread in one bucket, loudest first", () => {
     const status = projectCardStatus(
       [

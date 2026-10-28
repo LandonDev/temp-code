@@ -1,6 +1,6 @@
 import type { SessionMeta } from "./tcserver/types";
 import { threadStateOf, type ThreadState } from "../components/ui/status";
-import type { CardThread } from "./projectCardModel";
+import type { CardThread, ProjectCardStatus } from "./projectCardModel";
 import { type Catalog, workspacePathOfSession } from "./projectContext";
 import { agentSummary, type AgentSummary } from "./threads/agents";
 import { marksAtRest, settledWithAgents } from "./threadStripModel";
@@ -297,4 +297,68 @@ export function masterBlocks(
     if (block) out.push(block);
   }
   return out;
+}
+
+/** One line of a project card: a master with its batch, or a root that
+ *  works, is paused or is unread. Lines inform; they never open a thread. */
+export type CardLine =
+  | { kind: "master"; id: string; block: MasterBlock }
+  | { kind: "working" | "paused" | "unread"; id: string; thread: ThreadRow };
+
+/**
+ * The lines a card prints under its branch line: each master with something
+ * to say first (`masterBlocks`), then the working roots, the paused ones and
+ * the unread ones, in `projectCardStatus`'s buckets. A thread housed in a
+ * master's batch prints only in its master's block. `status` is the card's
+ * status over `cardThreads(roots)`.
+ */
+export function cardLines(roots: readonly ThreadRow[], status: ProjectCardStatus<ThreadRow>): CardLine[] {
+  const unread = new Set(status.unread.map((t) => t.id));
+  const blocks = masterBlocks(roots, (id) => unread.has(id));
+  const inBlock = new Set(blocks.map((b) => b.master.id));
+  const own = (t: ThreadRow) => !t.housed && !inBlock.has(t.id);
+  const lines: CardLine[] = blocks.map((block) => ({ kind: "master", id: block.master.id, block }));
+  for (const [kind, list] of [
+    ["working", status.running],
+    ["paused", status.paused],
+    ["unread", status.unread],
+  ] as const)
+    for (const thread of list) if (own(thread)) lines.push({ kind, id: thread.id, thread });
+  return lines;
+}
+
+/** One fact of a card's count line; the view draws `waiting` and `failed`
+ *  with their glyph and tone, the rest muted. */
+export type CardCount = { kind: "waiting" | "failed" | "dormant" | "archived" | "none"; text: string };
+
+/**
+ * The count line's facts, each its own part (the view sets them apart by
+ * margin, never a dot): who needs you, what failed, what is dormant, what
+ * is archived. Paused is never counted: its lines say it. A project with no
+ * threads at all reads "No threads"; an empty list means no count line.
+ */
+export function cardCounts(status: ProjectCardStatus, archivedCount: number): CardCount[] {
+  if (status.total === 0 && archivedCount === 0) return [{ kind: "none", text: "No threads" }];
+  const out: CardCount[] = [];
+  if (status.waiting > 0)
+    out.push({ kind: "waiting", text: `${status.waiting} ${status.waiting === 1 ? "needs" : "need"} you` });
+  if (status.failed > 0) out.push({ kind: "failed", text: `${status.failed} failed` });
+  if (status.dormant > 0) out.push({ kind: "dormant", text: `${status.dormant} dormant` });
+  if (archivedCount > 0) out.push({ kind: "archived", text: `${archivedCount} archived` });
+  return out;
+}
+
+/** A card's accessible name: the project, then what needs saying, loudest
+ *  first ("Alpha, 1 needs you, 2 working, 3 unread"). */
+export function projectCardAriaLabel(name: string, status: ProjectCardStatus): string {
+  return [
+    name,
+    status.waiting > 0 && `${status.waiting} ${status.waiting === 1 ? "needs" : "need"} you`,
+    status.failed > 0 && `${status.failed} failed`,
+    status.running.length > 0 && `${status.running.length} working`,
+    status.paused.length > 0 && `${status.paused.length} paused`,
+    status.unread.length > 0 && `${status.unread.length} unread`,
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
