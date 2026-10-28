@@ -1,8 +1,9 @@
 /**
  * The bundle served at `/ui` by the fixed port runs in a plain browser:
  * there is no preload, so `window.api` is absent. This object has the same
- * shape and gives every Electron-only command a browser answer: dialogs go
- * through confirm/alert, links open in a tab, the terminal says it needs the
+ * shape and gives every Electron-only command a browser answer: an ask is
+ * the app's own confirm dialog and a message a toast (never the browser's
+ * confirm or alert), links open in a tab, the terminal says it needs the
  * desktop app, and window chrome, updates and appshots are inert. Those
  * refusals are the last resort: the controls that would reach them are not
  * drawn (`desktopOnly`), and a desktop-only surface reached anyway says
@@ -10,6 +11,7 @@
  * workspace snapshot and never overwrites the desktop layout.
  */
 import { logoAssetUrl } from "@server/shared/assets";
+import { confirmAction, type ConfirmRequest } from "../chrome/ConfirmDialog";
 
 type Api = typeof window.api;
 
@@ -17,6 +19,32 @@ const DESKTOP_ONLY = "needs the desktop app";
 const needsDesktop = (what: string) => Promise.reject(new Error(`${what} ${DESKTOP_ONLY}`));
 const noop = () => {};
 const done = () => Promise.resolve();
+
+/** sonner rides the toast chunk, out of the first paint; loaded once, on the first message. */
+let sonner: Promise<typeof import("sonner")> | undefined;
+
+/** A dialog's text as a title and the rest: its first line, then what follows the blank line. */
+function splitText(text: string): { title: string; body?: string } {
+  const [first, ...rest] = text.split("\n");
+  const body = rest.join("\n").trim();
+  return { title: first.trim(), ...(body ? { body } : {}) };
+}
+
+/** The desktop's native ask as the app's confirm: its title (else the
+ *  text's first line), the text, the OK label as the verb; a warning asks
+ *  in red. */
+export function askRequest(
+  text: string,
+  options?: { title?: string; kind?: "info" | "warning" | "error"; okLabel?: string },
+): ConfirmRequest {
+  const split = options?.title ? { title: options.title, body: text } : splitText(text);
+  return {
+    title: split.title,
+    ...(split.body ? { body: split.body } : {}),
+    action: options?.okLabel ?? "OK",
+    ...(options?.kind === "warning" || options?.kind === "error" ? { danger: true } : {}),
+  };
+}
 
 /** True when this page is served by the fixed port rather than Electron. */
 export function isWebMode(): boolean {
@@ -117,9 +145,12 @@ export const webApi: Api = {
   menu: { onCommand: () => noop, setState: noop },
   dialog: {
     open: () => needsDesktop("The file picker"),
-    ask: (text) => Promise.resolve(window.confirm(text)),
-    message: (text) => {
-      window.alert(text);
+    ask: (text, options) => confirmAction(askRequest(text, options)),
+    message: (text, options) => {
+      const { title, body } = splitText(text);
+      void (sonner ??= import("sonner")).then(({ toast }) =>
+        (options?.kind === "error" ? toast.error : toast)(title, body ? { description: body } : undefined),
+      );
       return done();
     },
   },

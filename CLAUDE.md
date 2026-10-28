@@ -740,7 +740,9 @@ routed to (aliax-core's `forward`). Two listeners:
   Terminal, is left out of the list); a desktop-only surface reached anyway
   (a stored Appshots route) shows `DESKTOP_ONLY_LINE`
   ("Available in the desktop app") in `Empty`; Open project browses the
-  host's folders (`folderPickOn` in lib/fs.ts). A signed-out tab: `/ui`
+  host's folders (`folderPickOn` in lib/fs.ts); a native ask is the app's
+  confirm dialog (`askRequest` → `confirmAction`) and a native message a
+  sonner toast, never the browser's confirm or alert. A signed-out tab: `/ui`
   answers a refused cookie `302 /pair?signed-out` (no cookie: `/pair`), and
   the cookie route asks `/api/hello` before its socket (`checkCookie` in
   lib/connection/registry.ts; a hello without `key` is `unauthorized:
