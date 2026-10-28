@@ -48,8 +48,7 @@ export type BannerThreads = {
  * a thread by id, so switching to its project first buys nothing. Needs-you
  * stays scoped to `projectId` (null for every root). The thread already on
  * screen is left out where it says the state itself: its strip offers Stop
- * and Continue (not an orchestration thread's, which has no strip), its
- * question and its own failure ride the transcript.
+ * and Continue, its question and its own failure ride the transcript.
  */
 export function bannerThreads(
   metas: readonly SessionMeta[],
@@ -72,8 +71,7 @@ export function bannerThreads(
   // A batch thread paused with its master folds under the master's line.
   const pausedIds = new Set(allPaused.map((m) => m.id));
   const folded = (m: SessionMeta): boolean => !!m.masterId && pausedIds.has(m.masterId);
-  // An orchestration thread has no strip, so it keeps its line.
-  const paused = allPaused.filter((m) => !folded(m) && (m.id !== activeSessionId || m.threadType === "orchestration"));
+  const paused = allPaused.filter((m) => !folded(m) && m.id !== activeSessionId);
   const shownIds = new Set(paused.map((m) => m.id));
   const batchPaused = allPaused.filter((m) => folded(m) && shownIds.has(m.masterId!)).length;
   return { paused, recovery, needsYou, batchPaused };

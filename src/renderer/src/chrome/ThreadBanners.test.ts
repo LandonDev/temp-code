@@ -85,9 +85,12 @@ describe("bannerThreads", () => {
     // A descendant failed: the root's transcript has no failure card.
     const failedBelow = meta("f", { treeCanContinue: true, status: "idle" });
     expect(bannerThreads([failedBelow], null, "f").recovery).toEqual([failedBelow]);
-    // An orchestration thread has no strip.
+  });
+
+  it("leaves an orchestration thread on screen out of paused: its strip says it", () => {
     const orchestration = meta("o", { treeHasPaused: true, threadType: "orchestration" });
-    expect(bannerThreads([orchestration], null, "o").paused).toEqual([orchestration]);
+    expect(bannerThreads([orchestration], null, "o").paused).toEqual([]);
+    expect(bannerThreads([orchestration], null, "x").paused).toEqual([orchestration]);
   });
 
   it("drops a master on screen with the batch threads folded under it", () => {

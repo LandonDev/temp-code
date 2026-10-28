@@ -1374,7 +1374,8 @@ names the far child).
   servers pane. The working strip's watching case says "Watching
   <watchSubject>" with the stretch's age and opens the section; its working
   case ends with Stop, and the thread on screen is left out of the paused
-  banner (an orchestration thread, with no strip, keeps it) and out of the
+  banner (every thread has the strip, an orchestration parent's too, and no
+  transcript draws the live state under it) and out of the
   recovery banner for its own failure (its FailureCard has Continue; a
   failed descendant keeps the line). A watch is
   stale (`isStaleWatch`: amber, Stop all, the banner) only past

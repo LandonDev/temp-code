@@ -370,7 +370,7 @@ export function useThreadChat({
             blocks={session.blocks}
             busy={!!session.busy}
             visible={visible}
-            liveState={session.threadType === "orchestration"}
+            liveState={false}
             cwd={workCwd}
             harness={session.harness}
             onApproval={approve}
@@ -411,17 +411,18 @@ export function useThreadChat({
         </AnimatePresence>
       </div>
     ),
-    strip:
-      session.threadType !== "orchestration" ? (
-        <WorkingStrip
-          session={session}
-          onStop={() => onStop(sessionId)}
-          onResume={resume}
-          onStart={() => serverCommands.startNow(sessionId).catch(() => undefined)}
-          onApproval={approve}
-          onOpenActivity={() => rightPanel.open(sessionId, "activity")}
-        />
-      ) : null,
+    // Every thread's live state is its strip's, an orchestration parent's
+    // included; the transcript only closes settled turns.
+    strip: (
+      <WorkingStrip
+        session={session}
+        onStop={() => onStop(sessionId)}
+        onResume={resume}
+        onStart={() => serverCommands.startNow(sessionId).catch(() => undefined)}
+        onApproval={approve}
+        onOpenActivity={() => rightPanel.open(sessionId, "activity")}
+      />
+    ),
     composer: composerOf(opts),
     anchor: focused && visible,
   });

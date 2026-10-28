@@ -664,6 +664,10 @@ favicon, the title, the host, the claim; the address in a tooltip).
   failed in red.
   Nothing before the first agent. There is no board, no edge tab and no
   "Orchestrator log".
+  Under the transcript sit the working strip and the composer, as on any
+  thread: Working with Stop mid-turn, "Watching  a subagent" while it
+  waits on its agents, Paused with Stop and Continue; the transcript draws
+  no live row of its own.
 - **The agents are rows in the right panel's Agents section** (`FleetList`,
   fleet/AgentRow.tsx), on every thread that has subagents. A row is one
   36px line: the role glyph, the title (at most half the row), the host
