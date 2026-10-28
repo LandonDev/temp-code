@@ -6,6 +6,8 @@ import type { ReviewSettings } from "@server/shared/review";
 const state = vi.hoisted(() => ({
   get: null as null | ((params: unknown) => Promise<unknown>),
   set: vi.fn(async (_params: unknown): Promise<unknown> => ({})),
+  connected: true,
+  opens: new Set<() => void>(),
 }));
 
 vi.mock("../components/choice-select", async () => await import("../components/choice-select-body"));
@@ -13,6 +15,13 @@ vi.mock("../lib/connection", () => ({
   registry: {
     primary: () => ({ environmentId: "local" }),
     linkOf: () => ({
+      get connected() {
+        return state.connected;
+      },
+      onOpen: (l: () => void) => {
+        state.opens.add(l);
+        return () => state.opens.delete(l);
+      },
       request: (method: string, params: unknown, options?: unknown) =>
         method === "review.get" ? state.get!({ params, options }) : state.set(params),
     }),
@@ -59,8 +68,21 @@ beforeEach(() => {
   answer(SETTINGS);
   state.set.mockReset();
   state.set.mockImplementation(async () => ({}));
+  state.connected = true;
+  state.opens.clear();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+/** The window's socket opening: the link turns connected and tells its listeners. */
+async function openSocket() {
+  state.connected = true;
+  await act(async () => {
+    for (const l of [...state.opens]) l();
+  });
+}
 
 describe("Reviews page", () => {
   it("shows skeleton rows before review.get answers", () => {
@@ -77,6 +99,34 @@ describe("Reviews page", () => {
     };
     await renderPage();
     expect(asked[0]).toMatchObject({ options: { retry: true } });
+  });
+
+  it("waits for the socket after a reload and loads the moment it opens", async () => {
+    state.connected = false;
+    const asked: unknown[] = [];
+    state.get = async (call) => {
+      asked.push(call);
+      return { override: null, global: SETTINGS, settings: SETTINGS, source: "global" };
+    };
+    await renderPage();
+    expect(asked).toHaveLength(0);
+    expect(screen.getByTestId("review-skeleton")).toBeTruthy();
+    await openSocket();
+    expect(asked).toHaveLength(1);
+    expect(screen.getByRole("switch", { name: "Review before merge" })).toBeTruthy();
+  });
+
+  it("says the host did not answer at the deadline, then loads when a socket opens", async () => {
+    vi.useFakeTimers();
+    state.connected = false;
+    render(<ReviewsPage />);
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(screen.getByText("The host did not answer").className).toContain("text-destructive");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    await openSocket();
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByRole("switch", { name: "Review before merge" })).toBeTruthy();
+    expect(screen.queryByText("The host did not answer")).toBeNull();
   });
 
   it("says why the load failed, and Retry asks again", async () => {

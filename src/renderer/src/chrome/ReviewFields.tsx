@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReviewSettings } from "@server/shared/review";
 import { registry } from "../lib/connection";
+import { readWhenOpen, withDeadline } from "../lib/connection/openRead";
 import type { HarnessId } from "../lib/session";
 import { EFFORT_LABELS, effortLadder, type Reasoning } from "../lib/tcserver/defaults";
 import { resolveModel } from "../lib/models";
@@ -53,9 +54,48 @@ export function ReviewSkeleton() {
   );
 }
 
+/** A scope's review set. The read waits for the socket to open and is
+ *  refused with NO_ANSWER past LOAD_DEADLINE_MS. */
 export async function loadReviewScope(environmentId: string, projectId: string | null): Promise<ReviewScope> {
-  const raw = await registry.linkOf(environmentId).request("review.get", { projectId }, { retry: true });
+  const raw = await withDeadline(readWhenOpen(registry.linkOf(environmentId), "review.get", { projectId }));
   return parseReviewScope(raw);
+}
+
+/** A scope's review set, loaded on mount, asked again on every new socket
+ *  until it has answered, with the last failure and a Retry. */
+export function useReviewScope(environmentId: string, projectId: string | null) {
+  const [scope, setScope] = useState<ReviewScope | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // Bumped by Retry and by a socket opening while the set is missing.
+  const [attempt, setAttempt] = useState(0);
+  // A load in flight waits for the open itself; only a settled miss asks again.
+  const pending = useRef(false);
+  const loaded = scope !== null;
+  useEffect(() => {
+    if (loaded) return;
+    return registry.linkOf(environmentId).onOpen(() => {
+      if (!pending.current) setAttempt((n) => n + 1);
+    });
+  }, [environmentId, loaded]);
+  useEffect(() => {
+    let live = true;
+    pending.current = true;
+    setError(null);
+    loadReviewScope(environmentId, projectId)
+      .then((s) => {
+        if (!live) return;
+        setScope(s);
+        setError(null);
+      })
+      .catch((err) => live && setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => {
+        if (live) pending.current = false;
+      });
+    return () => {
+      live = false;
+    };
+  }, [environmentId, projectId, attempt]);
+  return { scope, setScope, error, setError, retry: () => setAttempt((n) => n + 1) };
 }
 
 export async function saveReviewSettings(

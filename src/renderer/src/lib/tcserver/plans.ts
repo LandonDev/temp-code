@@ -5,6 +5,7 @@ import {
   type PlanSettings,
 } from "@server/shared/plans";
 import { registry } from "../connection";
+import { readWhenOpen, withDeadline } from "../connection/openRead";
 import { bridgeNewThread } from "../macBridge";
 import { sessionStore } from "./store";
 import type { PermissionPolicy, SessionMeta, ThreadRules, WireSessionMeta } from "./types";
@@ -38,32 +39,64 @@ function coerce(raw: unknown): PlanScope {
   return { settings: parsed.success ? parsed.data : DEFAULT_PLAN_SETTINGS, overridden: r.overridden === true };
 }
 
-/** Ask the host for a scope's set. The read waits for the link (it may be
- *  asked before the window's socket opens); a second caller while it is
- *  in flight shares the one request. A final failure is kept as the
- *  scope's error until the next load. */
+/** The scopes the UI has asked for, by host: each still missing one is asked again when that host's socket opens. */
+const asked = new Map<string, Set<string | null>>();
+/** The newest load of each scope; an older one's outcome is dropped. */
+const generation = new Map<string, number>();
+
+function watchHost(environmentId: string): Set<string | null> {
+  let projects = asked.get(environmentId);
+  if (projects) return projects;
+  projects = new Set();
+  asked.set(environmentId, projects);
+  registry.linkOf(environmentId).onOpen(() => {
+    for (const projectId of asked.get(environmentId) ?? []) {
+      // A load in flight rides the link's own retry onto this socket.
+      const k = key(environmentId, projectId);
+      if (!scopes.has(k) && !inflight.has(k)) void startLoad(environmentId, projectId).catch(() => {});
+    }
+  });
+  return projects;
+}
+
+/** Ask the host for a scope's set. The read waits for the socket to open
+ *  (it may be asked before the window's socket is up) and is asked again
+ *  on every new socket until it answers; a second caller while it is in
+ *  flight shares the one request. Past LOAD_DEADLINE_MS, or on a refusal,
+ *  the scope keeps an error until the next load; a late answer still lands. */
 export function loadPlanSettings(environmentId: string, projectId: string | null): Promise<PlanScope> {
+  const running = inflight.get(key(environmentId, projectId));
+  return running ?? startLoad(environmentId, projectId);
+}
+
+function startLoad(environmentId: string, projectId: string | null): Promise<PlanScope> {
   const k = key(environmentId, projectId);
-  const running = inflight.get(k);
-  if (running) return running;
+  watchHost(environmentId).add(projectId);
+  const gen = (generation.get(k) ?? 0) + 1;
+  generation.set(k, gen);
+  const current = () => generation.get(k) === gen;
   if (errors.delete(k)) emit();
-  const load = (async () => {
-    try {
-      const raw = await registry.linkOf(environmentId).request("plans.get", { projectId }, { retry: true });
-      const scope = coerce(raw);
-      scopes.set(k, scope);
-      emit();
-      return scope;
-    } catch (err) {
+  const read = readWhenOpen(registry.linkOf(environmentId), "plans.get", { projectId }).then((raw) => {
+    const scope = coerce(raw);
+    // Any answer is the host's word, whichever load asked for it.
+    scopes.set(k, scope);
+    errors.delete(k);
+    emit();
+    return scope;
+  });
+  const load = withDeadline(read).catch((err: unknown) => {
+    console.warn(`[plans] ${k} load failed (link ${registry.linkOf(environmentId).connected ? "open" : "closed"}):`, err);
+    if (current() && !scopes.has(k)) {
       errors.set(k, err instanceof Error ? err.message : String(err));
       emit();
-      throw err;
-    } finally {
-      inflight.delete(k);
     }
-  })();
-  inflight.set(k, load);
-  return load;
+    throw err;
+  });
+  const settled = load.finally(() => {
+    if (inflight.get(k) === settled) inflight.delete(k);
+  });
+  inflight.set(k, settled);
+  return settled;
 }
 
 /** Store a set at the scope, or null to clear it: a project falls back to
@@ -129,6 +162,8 @@ export function resetPlanSettingsForTests(): void {
   scopes.clear();
   errors.clear();
   inflight.clear();
+  asked.clear();
+  generation.clear();
 }
 
 export type ImplementPlanParams = {

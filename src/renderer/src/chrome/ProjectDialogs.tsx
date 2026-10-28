@@ -32,7 +32,7 @@ import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
 import { PlanSettingsFields } from "./PlanSettingsFields";
 import { savePlanSettings, samePlanSettings, usePlanSettings, usePlanSettingsError } from "../lib/tcserver/plans";
 import type { PlanSettings } from "@server/shared/plans";
-import { ReviewFields, loadReviewScope, saveReviewSettings, type ReviewScope } from "./ReviewFields";
+import { ReviewFields, saveReviewSettings, useReviewScope } from "./ReviewFields";
 import { DEFAULT_REVIEW_SETTINGS, type ReviewSettings } from "@server/shared/review";
 import { registry } from "../lib/connection";
 import { useAccounts } from "../stores/accounts";
@@ -129,21 +129,6 @@ export function projectInheritLabel(workspace: WorkspaceMeta, profiles: { name: 
     const profile = profiles.find((p) => p.name === name);
     return `Inherit (workspace: ${profile ? shortName(profile) : name})`;
   };
-}
-
-/** One project's review override, plus the global set it would follow. */
-function useReviewScope(environmentId: string, projectId: string) {
-  const [scope, setScope] = useState<ReviewScope | null>(null);
-  useEffect(() => {
-    let live = true;
-    loadReviewScope(environmentId, projectId)
-      .then((s) => live && setScope(s))
-      .catch(() => live && setScope(null));
-    return () => {
-      live = false;
-    };
-  }, [environmentId, projectId]);
-  return scope;
 }
 
 const sameReview = (a: ReviewSettings | null, b: ReviewSettings | null) =>
@@ -542,7 +527,7 @@ function ProjectSettingsBody({
   const [pins, setPins] = useState<AccountPins>(home.accountPins ?? {});
   const { snapshot } = useAccounts(home.environmentId);
   const { pass, setPass, inherited } = useTurnPass(homeWorkspace.id, home.id);
-  const reviewScope = useReviewScope(home.environmentId, home.id);
+  const reviewScope = useReviewScope(home.environmentId, home.id).scope;
   // undefined until the scope loads; null = follows the global set.
   const [review, setReview] = useState<ReviewSettings | null | undefined>(undefined);
   useEffect(() => {

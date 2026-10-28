@@ -84,6 +84,7 @@ const linkFor = (slot: string): Link =>
   ({
     environmentId: slot,
     connected: true,
+    onOpen: () => () => {},
     request: async (method: string, params: Record<string, unknown> = {}) => {
       calls.push({ slot, method, params })
       if (projectPlansFail && method === 'plans.get' && params.projectId) throw new Error('not connected')
