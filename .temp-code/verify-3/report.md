@@ -105,3 +105,37 @@ One reviewer, GPT 6.1 Sol (reviewer, high effort), over all twenty V3 commits wi
 1ec9b1fb, 9ed6a4ca, 07d43579, 872c4325, c164dee5, 078348f7, b5c1c567, 4545fb43, 9c52f831, 2be17491, c87c27db, 72887253, b183be80, 471d2a08, d58afcf5, 08742c78, 80084184, 46f2bcdc, 3f1d292b, 7a25d3e7, c545b1a3.
 
 Left for a later pass: the two host-side items above (the board's done rule for a watching thread, the held queue item), a recheck of the stop and gate words on a build with fix H, and the approval toast's place in a split view.
+
+## Recheck on fix H's build
+
+Fix H landed on master at 27b85814. V3-R, one GPT 6.1 Sol subagent on the Mac, built that commit in ~/IdeaProjects/temp-code-verify (a profile build) and drove a preview instance over CDP (userData temp-code-verify, port 9231). It shot the master "M1 project check" at 1000×800 in dark and light, with the chat open and folded. The 26 shots, their text and the toast's rects are in .temp-code/verify-3/mac/recheck.tgz, with V3-R's findings.md.
+
+| What | On 27b85814 | Now |
+| --- | --- | --- |
+| Stop while a question waits (V3-A F02) | "Asked a question", "Dismissed", then the closing line "Stopped"; no failure card | Right: fix H's slice 2 |
+| Pause, then Stop, on a batch child (V3-A F01) | The closing line "Worked for 18s"; the board said "ended its turn without completing" | 1b37ad91: the Stop writes the stopped row the pause dropped, so the turn closes "Stopped" and the board says "was stopped" |
+| The Gate row when the gate script is missing (V3-A F10, V3-C F10) | "Gate  gate: error: Module not found "scripts/gate.ts"", and the same error as the console's only line | 3245a6ab: "Gate  error: Module not found "scripts/gate.ts"", with no console and no Show |
+| The Gate row when a test fails | "vitest: FAIL src/total.test.ts > rounds the total" | 3245a6ab: "vitest: src/total.test.ts > rounds the total" |
+| A settled step's time (V3-C F11) | "Gate  passed in 0s  0s" | 3245a6ab: the time column alone; a publish reads "v1.0.N published", a failed shell step "exit 1, …" |
+| The gate notice in the chat | "Gate failed  master  at vitest"; the missing script ends on its error line | Right as it stands |
+| The batch's done line (V3-C F03) | "Batch done  nothing landed, gate passed in 0s" | Right: commas, no middle dot (fix H's slice 6) |
+| A child watching its subagents (V3-C F02) | Fix H's slice 12 took it out of the host's done list, but the board still filed it under Done | 44901c74: under Working, saying Watching; back under Done once they settle |
+| A queued thread's brief shown twice (V3-A F05) | Fixed by fix H's slice 13 (846f6ee1) | Not shot this round |
+| The approval toast's seat | The table below | Right: 2dd2ea96 |
+
+The toast's seat, the same in both themes, in CSS pixels (window 1000×800, chat column 369 wide):
+
+| Chat | Width | Sides | Bottom |
+| --- | --- | --- | --- |
+| Open | 337 | 16 inside the chat column each side | 8 above the composer |
+| Folded | 340 | 16 inside the board's right edge | 8 above the board's foot |
+| Open again | 337 | 16 inside the chat column each side | 8 above the composer |
+
+Left as docs/LAYOUT.md specifies them:
+- A blocked child's reason shows on its row, in red over the foot's steps, and in the master's strip.
+- The gate notice's log opens on demand beside the foot's console.
+- The "Batch done" row is the transcript's record of the end, beside the foot's live rows.
+
+V3-R killed the one instance it started (pid 33354). A second look found nothing listening on 9231 to 9233 and no preview process left. In the scratch repo it removed its fake gate in a commit of its own, and it put the master's steps back as they were.
+
+Recheck commits: 2dd2ea96, 1b37ad91, 3245a6ab, 44901c74.
