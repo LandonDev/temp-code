@@ -13,7 +13,7 @@ const { sessions, commands, dropThread, goalOpen, tabs, dev } = vi.hoisted(() =>
 }));
 
 vi.mock("../lib/tcserver/store", () => ({
-  sessionStore: { get: (id: string) => sessions.get(id), metaOf: () => null, subscribe: () => () => {} },
+  sessionStore: { get: (id: string) => sessions.get(id), metaOf: () => null, subscribe: () => () => {}, isDraft: () => false },
 }));
 vi.mock("../lib/tcserver/workspaces", () => ({ useProjects: () => [{ id: "p1", environmentId: "local", cwd: "/p", name: "P" }] }));
 vi.mock("../lib/devServers", () => ({ useDevServable: () => dev.servable, useDevRunning: () => false }));
