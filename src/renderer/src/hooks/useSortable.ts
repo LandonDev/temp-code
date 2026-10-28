@@ -168,7 +168,13 @@ export function useSortable(
       };
       drag.current = state;
       handle.setPointerCapture(event.pointerId);
-      const restoreSelection = suppressTextSelection();
+      // A press is a click until it moves: only a drag turns selection off
+      // for the whole document (a class on <html>, a restyle of everything),
+      // so a click on a rail row or a tab never pays for it. Until then a
+      // move under the threshold starts no selection.
+      const blockSelect = (ev: Event) => ev.preventDefault();
+      window.addEventListener("selectstart", blockSelect);
+      let restoreSelection: (() => void) | null = null;
 
       const onMove = (ev: PointerEvent) => {
         const current = drag.current;
@@ -181,6 +187,7 @@ export function useSortable(
             return;
           }
           current.active = true;
+          restoreSelection = suppressTextSelection();
           setGrabbing(true);
           setDraggingId(id);
           setToIndex(from);
@@ -217,7 +224,8 @@ export function useSortable(
         window.removeEventListener("keydown", onKey);
         const current = drag.current;
         drag.current = null;
-        restoreSelection();
+        window.removeEventListener("selectstart", blockSelect);
+        restoreSelection?.();
         setGrabbing(false);
         setDraggingId(null);
         setToIndex(null);
