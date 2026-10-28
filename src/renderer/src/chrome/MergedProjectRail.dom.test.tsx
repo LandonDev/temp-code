@@ -297,6 +297,12 @@ describe("the rail", () => {
     expect(other.querySelector("[data-workspace-diff]")).toBeNull();
   });
 
+  it("a linked row selected through its box copy asks git about the box copy", async () => {
+    git.asked = [];
+    await mountRail([LOCAL, BOX], {}, undefined, { cwd: BOX_PATH });
+    expect([...new Set(git.asked.filter(([, on]) => on).map(([cwd]) => cwd))]).toEqual([BOX_PATH]);
+  });
+
   it("pins a workspace from the button in its glyph's place, without selecting it", async () => {
     const onSelect = vi.fn();
     const root = await mountRail([LOCAL, BOX], {}, onSelect);

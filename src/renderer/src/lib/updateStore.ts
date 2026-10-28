@@ -95,6 +95,7 @@ class UpdateStore {
     });
     this.inflight = run.finally(() => {
       this.inflight = null;
+      this.manualCheck = false;
     });
     return this.inflight;
   }

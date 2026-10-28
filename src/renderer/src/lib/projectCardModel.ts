@@ -67,6 +67,7 @@ export function projectCardStatus<T extends CardThread>(
   const unread = threads.filter(
     (t) =>
       !t.housed &&
+      !isPaused.has(t) &&
       (t.status === "idle" || t.status === "done") &&
       !t.treeCanContinue &&
       !t.treeHasLiveWork &&

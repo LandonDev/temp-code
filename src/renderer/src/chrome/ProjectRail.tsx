@@ -745,7 +745,7 @@ function ProjectSection({
           <WorkspaceRow
             key={item.path}
             item={item}
-            selected={!searchActive && item.paths.some((p) => sameProjectPath(p, cwd))}
+            selectedPath={searchActive ? null : (item.paths.find((p) => sameProjectPath(p, cwd)) ?? null)}
             busy={item.paths.some((p) => pathIn(p, busy))}
             needsYou={item.paths.some((p) => pathIn(p, needsYou))}
             railStatus={railStatuses.get(statusKey(item.path))}
@@ -779,7 +779,7 @@ function ProjectSection({
  */
 function WorkspaceRow({
   item,
-  selected,
+  selectedPath,
   busy,
   needsYou,
   railStatus,
@@ -799,7 +799,9 @@ function WorkspaceRow({
   groupMascots,
 }: {
   item: RailItem;
-  selected: boolean;
+  /** The copy of this row's workspace on screen, when the row is selected:
+   *  its diff is that copy's, on that copy's host. */
+  selectedPath: string | null;
   busy: boolean;
   needsYou: boolean;
   railStatus: WorkspaceMark | undefined;
@@ -835,7 +837,8 @@ function WorkspaceRow({
   const showStart = dropping && sortable.toIndex! < sortable.fromIndex!;
   const showEnd = dropping && sortable.toIndex! > sortable.fromIndex!;
   // Only the selected row asks git, on the bulk lane; the rest say nothing.
-  const stats = useGitDiffStats(item.path, selected && item.path !== "~");
+  const selected = selectedPath !== null;
+  const stats = useGitDiffStats(selectedPath, selected && selectedPath !== "~");
   const changed = !!stats && (stats.additions > 0 || stats.deletions > 0);
 
   return (

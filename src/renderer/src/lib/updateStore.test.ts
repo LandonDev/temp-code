@@ -70,9 +70,11 @@ describe("updateStore", () => {
     updateStore.start();
     await flush();
     expect(updateStore.manualCheck).toBe(false);
-    void updateStore.check(true);
+    const done = updateStore.check(true);
     expect(updateStore.manualCheck).toBe(true);
-    await flush();
+    await done;
+    // Once it ends, a status main pushes on its own is no longer the person's.
+    expect(updateStore.manualCheck).toBe(false);
   });
 
   it("probes at launch and keeps the release notes on the snapshot", async () => {

@@ -23,6 +23,11 @@ const thread = (id: string, extra: Partial<CardThread> = {}): CardThread => ({
 const ids = (list: CardThread[]) => list.map((t) => t.id);
 
 describe("projectCardStatus", () => {
+  it("puts an unseen idle root over paused subagents under paused alone, never unread too", () => {
+    const status = projectCardStatus([thread("p", { status: "idle", treeHasPaused: true, updatedAt: 200 })], null, { p: 100 });
+    expect(ids(status.paused)).toEqual(["p"]);
+    expect(ids(status.unread)).toEqual([]);
+  });
   it("never counts a thread inside a master as dormant: its master's block says it", () => {
     const status = projectCardStatus(
       [thread("root"), thread("done-in-batch", { status: "done", housed: true }), thread("queued-in-batch", { status: "queued", housed: true })],
