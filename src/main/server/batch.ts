@@ -456,6 +456,7 @@ export class Batches {
       pending: ids.filter((id) => !row.landed.includes(id)),
       held: row.held.filter(known),
       blocked: row.blocked,
+      done: members.filter((m) => this.memberDone(m)).map((m) => m.id),
       finishedAt: row.finishedAt,
       children: members.map((m) => ({
         sessionId: m.sessionId,

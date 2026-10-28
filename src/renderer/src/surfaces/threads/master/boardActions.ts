@@ -2,6 +2,7 @@ import { Archive, ListPlus, MessageSquarePlus, Pause, Play } from "../../../chro
 import type { MenuRow } from "../../../chrome/menuRows";
 import type { EnvironmentStatus } from "../../../lib/connection/types";
 import { pairWorkspaces, partnersOf } from "../../../lib/projectPairs";
+import type { BatchState } from "@server/shared/contract-batch";
 import type { ProjectMeta, SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
 
@@ -17,10 +18,22 @@ import { hasRunningTurn } from "../../../lib/threadBatch";
 
 export type ArchiveWhich = "done" | "all";
 
-/** The rows Archive done takes: finished, by the batch engine's rule
- *  (done, or idle after a turn); a stopped or errored row stays. */
-export function doneRows<T extends { meta: Pick<SessionMeta, "status"> }>(rows: readonly T[]): T[] {
-  return rows.filter((r) => r.meta.status === "idle" || r.meta.status === "done");
+/** What the host says of its batch that Archive done reads. */
+export type BatchDone = Pick<BatchState, "done" | "blocked">;
+
+/** Is this id (bare on the master's host, `<env>:<id>` on another) the row's? */
+const names = (id: string, meta: Pick<SessionMeta, "id" | "environmentId">): boolean => id === meta.id || id === `${meta.environmentId}:${meta.id}`;
+
+/** The rows Archive done takes: the ones the host counts done
+ *  (`BatchState.done`, batch.ts's rule: done, or idle on a completed turn
+ *  with no failure). An older host sends no list: then done or idle, less
+ *  the child the batch's `blocked` names (one idle on a turn it never
+ *  completed). A stopped or errored row stays either way. */
+export function doneRows<T extends { meta: Pick<SessionMeta, "id" | "environmentId" | "status"> }>(rows: readonly T[], batch?: BatchDone | null): T[] {
+  const listed = batch?.done;
+  if (listed) return rows.filter((r) => listed.some((id) => names(id, r.meta)));
+  const blocked = batch?.blocked?.sessionId;
+  return rows.filter((r) => (r.meta.status === "idle" || r.meta.status === "done") && !(blocked && names(blocked, r.meta)));
 }
 
 /** The rows Resume all takes. */
@@ -148,9 +161,10 @@ export function remoteArchivePlan<T extends { meta: Pick<SessionMeta, "id" | "en
   master: Pick<SessionMeta, "environmentId">,
   which: ArchiveWhich,
   archivedByMaster: readonly string[],
+  batch?: BatchDone | null,
 ): { environmentId: string; stop: string[]; archive: string[] }[] {
   const covered = new Set(archivedByMaster);
-  const wanted = which === "done" ? doneRows(rows) : rows;
+  const wanted = which === "done" ? doneRows(rows, batch) : rows;
   const byHost = new Map<string, { environmentId: string; stop: string[]; archive: string[] }>();
   for (const { meta } of wanted) {
     if (meta.environmentId === master.environmentId || covered.has(meta.id)) continue;

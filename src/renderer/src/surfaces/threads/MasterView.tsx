@@ -157,7 +157,8 @@ export function MasterView(props: ThreadViewProps) {
   const children = useMemo(() => rows.map((r) => r.meta), [rows]);
   const toPause = pausableRows(rows);
   const paused = pausedRows(rows);
-  const done = doneRows(rows);
+  // The host's own rule, so the count and what leaves agree.
+  const done = doneRows(rows, batch);
   const workspaces = useWorkspaces();
   const projects = useProjects();
   const paired = useMemo(() => (meta ? pairedProjectIds(meta, workspaces, projects) : new Set<string>()), [meta, workspaces, projects]);
@@ -371,7 +372,7 @@ export function MasterView(props: ThreadViewProps) {
           count={archiving === "done" ? done.length : layout.rows.length}
           resources={resourcesHeldBy((archiving === "done" ? done : rows).map((r) => r.meta.id))}
           onCancel={() => setArchiving(null)}
-          onConfirm={(removeResources) => archiveBatch(session, rows, archiving, removeResources)}
+          onConfirm={(removeResources) => archiveBatch(session, rows, archiving, removeResources, batch)}
         />
       ) : null}
       {threadMenu.dialogs}

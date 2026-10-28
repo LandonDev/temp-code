@@ -24,6 +24,25 @@ describe("the board's menus", () => {
     expect(pausedRows(rows).map((r) => r.meta.id)).toEqual(["c4"]);
   });
 
+  it("Archive done counts the host's done: three done, never the paused child or the one idle without a completed turn", () => {
+    const rows = [
+      { meta: meta({ id: "a", status: "done" }) },
+      { meta: meta({ id: "b", status: "idle" }) },
+      { meta: meta({ id: "f", environmentId: "box", status: "idle" }) },
+      { meta: meta({ id: "p", status: "paused" }) },
+      { meta: meta({ id: "n", status: "idle" }) },
+    ];
+    // The host's list names a far child as <env>:<id>.
+    const listed = doneRows(rows, { done: ["a", "b", "box:f"], blocked: { sessionId: "p", why: "paused" } });
+    expect(listed.map((r) => r.meta.id)).toEqual(["a", "b", "f"]);
+    expect(archiveCopy("done", listed.length, 0).title).toBe("Archive 3 done threads?");
+    // An older host sends no list: the old rule less the child its block names.
+    expect(doneRows(rows, { blocked: { sessionId: "n", why: "no-turn" } }).map((r) => r.meta.id)).toEqual(["a", "b", "f"]);
+    expect(remoteArchivePlan(rows, { environmentId: "local" }, "done", ["a", "b"], { done: ["a", "b", "box:f"], blocked: null })).toEqual([
+      { environmentId: "box", stop: [], archive: ["f"] },
+    ]);
+  });
+
   it("disables a switch with nothing to act on", () => {
     const items = boardMenuItems({ pausable: 0, paused: 1, done: 0, all: 3 });
     const by = (id: string) => items.find((i) => i.kind === "item" && i.id === id) as { label: string; disabled?: boolean };

@@ -1664,10 +1664,11 @@ public struct BatchState: Codable, Hashable, Sendable {
     public let pending: [String]
     public let held: [String]
     public let blocked: Blocked?
+    public let done: [String]?
     public let finishedAt: Int?
     public let children: [Children]?
 
-    public init(masterId: String, rules: BatchRules, steps: [BatchStep], landed: [String], pending: [String], held: [String], blocked: Blocked?, finishedAt: Int?, children: [Children]? = nil) {
+    public init(masterId: String, rules: BatchRules, steps: [BatchStep], landed: [String], pending: [String], held: [String], blocked: Blocked?, done: [String]? = nil, finishedAt: Int?, children: [Children]? = nil) {
         self.masterId = masterId
         self.rules = rules
         self.steps = steps
@@ -1675,12 +1676,13 @@ public struct BatchState: Codable, Hashable, Sendable {
         self.pending = pending
         self.held = held
         self.blocked = blocked
+        self.done = done
         self.finishedAt = finishedAt
         self.children = children
     }
 
     private enum CodingKeys: String, CodingKey {
-        case masterId, rules, steps, landed, pending, held, blocked, finishedAt, children
+        case masterId, rules, steps, landed, pending, held, blocked, done, finishedAt, children
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -1692,6 +1694,7 @@ public struct BatchState: Codable, Hashable, Sendable {
         try container.encode(pending, forKey: .pending)
         try container.encode(held, forKey: .held)
         try container.encode(blocked, forKey: .blocked)
+        try container.encodeIfPresent(done, forKey: .done)
         try container.encode(finishedAt, forKey: .finishedAt)
         try container.encodeIfPresent(children, forKey: .children)
     }

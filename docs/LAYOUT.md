@@ -757,7 +757,9 @@ in the whole pane, with Back.
   to each row's own host through its `session.batch`; Archive done… and
   Archive all… (`master/ArchiveBatchDialog.tsx`: "Archive 3 done threads?"
   / "Archive all 7 threads?" with the live count, the resources checkbox
-  the fleet's Archive done offers) run `batch.archive` on the master's host
+  the fleet's Archive done offers; done is the host's rule, `BatchState.done`
+  from batch.ts, so a child idle on a turn it never completed is not
+  counted) run `batch.archive` on the master's host
   (a running thread is stopped first, the master stays) and then, for the
   rows of another host its answer did not cover, that host's own
   `session.batch` (`remoteArchivePlan`: under all the live ones stopped

@@ -2522,7 +2522,9 @@ this is the short one.
   thread. The title bar's ⋯ menu is the batch's
   fleet switches over every host (Pause all and Resume all through each
   row's host's `session.batch`; Archive done… and Archive all… with the
-  live count and the resources checkbox: `batch.archive` on the master's
+  live count (done by the host's own rule, `BatchState.done`, the far
+  children as `<env>:<id>`; an older host's answer falls back to done or
+  idle less the blocked child) and the resources checkbox: `batch.archive` on the master's
   host, then each other host's `session.batch` for the rows its answer
   left, `remoteArchivePlan` in `master/boardActions.ts`), + Thread a menu
   with New thread… (the add sheet: every type, Chat first; Host over the master's host and every

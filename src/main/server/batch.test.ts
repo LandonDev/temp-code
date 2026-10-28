@@ -826,6 +826,21 @@ describe('Batches: publish and deploy', () => {
     expect(b.get('m').blocked).toBeNull()
   })
 
+  it('lists the children it counts done: done, or idle on a completed turn with no failure; never paused or idle without a completed turn', () => {
+    const w = world({
+      children: [
+        meta('m'),
+        meta('a', { masterId: 'm', createdAt: 2, status: 'done' }),
+        meta('b', { masterId: 'm', createdAt: 3, status: 'idle' }),
+        meta('c', { masterId: 'm', createdAt: 4, status: 'idle' }),
+        meta('d', { masterId: 'm', createdAt: 5, status: 'paused' }),
+        meta('e', { masterId: 'm', createdAt: 6, status: 'idle', failure: { kind: 'usage_cap', summary: 'Usage cap' } as SessionMeta['failure'] })
+      ]
+    })
+    w.registry.hasCompletedTurn = (id) => id !== 'c'
+    expect(w.make().get('m').done).toEqual(['a', 'b'])
+  })
+
   it('a publish that was running at the restart is failed with a pointer to the Mac', async () => {
     const w = world()
     w.store.setSetting(

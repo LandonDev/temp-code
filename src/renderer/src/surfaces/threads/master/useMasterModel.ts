@@ -8,7 +8,7 @@ import {
   type BatchState,
   type BoardDigest,
 } from "@server/shared/contract-batch";
-import { batchThreadId, remoteArchivePlan, type ArchiveWhich } from "./boardActions";
+import { batchThreadId, remoteArchivePlan, type ArchiveWhich, type BatchDone } from "./boardActions";
 import { stepsOf } from "./steps";
 import { blockedWords } from "@shared/batchWords";
 import { AgentSummaries } from "./agentSummary";
@@ -322,11 +322,12 @@ export async function archiveBatch(
   rows: readonly MasterRowModel[],
   which: ArchiveWhich,
   removeResources: boolean,
+  batch?: BatchDone | null,
 ): Promise<void> {
   const link = registry.link(master.environmentId);
   if (!link) throw new Error("The master's host is not connected");
   const result = await link.request<{ succeeded?: string[] } | null>("batch.archive", { masterId: master.id, which, removeResources });
-  const plan = remoteArchivePlan(rows, master, which, result?.succeeded ?? []);
+  const plan = remoteArchivePlan(rows, master, which, result?.succeeded ?? [], batch);
   const outcomes = await Promise.allSettled(
     plan.map(async ({ environmentId, stop, archive }) => {
       if (stop.length) await commands.sessionBatch(environmentId, "stop", stop);

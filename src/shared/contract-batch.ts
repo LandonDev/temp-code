@@ -173,6 +173,11 @@ export const BatchStateSchema = z.object({
       environmentId: z.string().optional()
     })
     .nullable(),
+  /** the children the host counts done (done, or idle on a completed turn
+   *  with no failure; a complete plan only once its build exists; a far
+   *  child as `<env>:<session>`): what Archive done archives (additive: an
+   *  older host leaves it out) */
+  done: z.array(z.string()).optional(),
   /** when the engine finished the last step the rules named; null until then */
   finishedAt: z.number().int().nullable(),
   /** every child of the batch, local and on other hosts, oldest first (additive: an older host leaves it out) */

@@ -136,7 +136,8 @@ thread of another batch, an unknown id. The master does the same with the
 `adopt_thread { threadId }` tool (codex over the bridge as
 `app.adoptThread`). `batch.archive { masterId, which, removeResources? }`
 (operate) archives the batch's children and leaves the master: `done` is
-the done ones (done, or idle after a turn), `all` is every one with the
+the done ones (done, or idle on a completed turn with no failure; the ids
+`BatchState.done` lists, which the board's Archive done count reads), `all` is every one with the
 live ones stopped first; both go through the fleet's own `session.batch`
 (sessionBatch.ts, four at a time, the resource cleanup when asked).
 
