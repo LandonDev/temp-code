@@ -629,9 +629,11 @@ never a section. A task list draws its checkboxes with no bullet.
 │ Dec 31  Opus 5.5  High  200k  $1.20                             │
 │                                                                 │
 │ Now make the gate run beside the build                          │
-│ ┌ ◔ Tasks                                  2/3 ┐                │
-│ │ ✓ Gate in parallel                          │                 │
-│ │ ○ Run the publish gate                      │                 │
+│ ┌ ◔ Tasks                                 2/3 ┐                 │
+│ │ ✓ Read the brief, the board's view a…   12s │                 │
+│ │ ◉ Make every task one line that fits    41s │                 │
+│ │   the column, with the whole text           │                 │
+│ │ ○ Run the publish gate beside the ele…      │                 │
 │ └─────────────────────────────────────────────┘                 │
 │ ◉ Needs you  Bash: bun run gate                                 │
 │                                                                 │
@@ -644,7 +646,14 @@ never a section. A task list draws its checkboxes with no bullet.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The board is the pass's `TaskList`, then one line per approval or question
+The board is the pass's `TaskList`: every task one 28px line cut at the
+column's edge (more of it shows as the board widens), its whole text in a
+tooltip on hover while it is cut, and the running task alone whole, in
+full foreground, so when the next task starts the last one collapses to
+its line and the new one opens. Each started task ends its row in the time
+its blocks worked (12px, muted, the running one ticking on the shared
+clock, a done one in the done tone, nothing under 1.5 s); folded, the
+header names the running task on one cut line. Then one line per approval or question
 waiting on the person (opening the chat) and the last failure (or
 Stopped), then the files each task changed (`ChangeRows`: a row per file
 under its task's name, shell-made ones marked `shell`, each opening its

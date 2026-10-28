@@ -52,7 +52,7 @@ DESIGN.md wins.
 | A toast | sonner `toast()`; one `<Toaster>` (toaster.tsx) mounted lazily in main.tsx | The four custom toast stacks are retired. The stack sits above the focused thread's strip and inside its column, or above a master board's foot while its chat is folded (`toastInset`, lib/toastAnchor.ts). |
 | A question from the agent | `QuestionCard` (question-card.tsx) | Lettered options, free-form field, `multiSelect` for several picks, ⌘⏎ (keys only while focus is inside the card). |
 | A plan to approve | `PlanCard` (plan-card.tsx) | To-dos, Approve ⌘⏎, optional countdown. |
-| Tasks the agent works through | `TaskList` (task-list.tsx) | Donut header, marks that draw their check. |
+| Tasks the agent works through | `TaskList` (task-list.tsx) | Donut header, marks that draw their check; one line per task cut to its column, the running task whole, each task's time at the end. |
 | A live short line | `StreamingText` (streaming-text.tsx) | Words fade in. Not the transcript's prose. |
 | A file in or on a turn | `Attachment` (attachment.tsx) | Media, name, one line, an action. |
 | The frame of one message | `Message` (message.tsx) | The user bubble itself is the transcript's. |
