@@ -26,11 +26,18 @@ type Props = {
   onReorder: (order: string[]) => void
 }
 
+/** The items the queue shows: a stored one (the held-back boot's first
+ *  message, already the transcript's user row) is left to the transcript. */
+export function visibleQueue(items: readonly QueuedMessage[]): QueuedMessage[] {
+  return items.filter((m) => !m.stored)
+}
+
 /**
  * Messages waiting their turn, stacked above the composer. Each sends as
  * turns settle, in order. Drag to reorder, click the text to edit in
  * place, Remove takes it out, Send now steers it into the running turn
- * (providers that cannot steer send it next instead).
+ * (providers that cannot steer send it next instead). A stored item shows
+ * nothing here: its row is on the transcript.
  */
 export function MessageQueue({
   items,
@@ -45,8 +52,9 @@ export function MessageQueue({
   const reduce = useReducedMotion()
   // The thread sits in a wait_for_agent: the list drains when the wait does.
   const awaiting = (useSessionMeta(sessionId)?.awaiting?.length ?? 0) > 0
+  const shown = visibleQueue(items)
 
-  if (items.length === 0) return null
+  if (shown.length === 0) return null
 
   return (
     <div className="mb-2">
@@ -55,18 +63,18 @@ export function MessageQueue({
           'Queued until the wait finishes'
         ) : (
           <>
-            Queued<span className="ms-2 tabular-nums">{items.length}</span>
+            Queued<span className="ms-2 tabular-nums">{shown.length}</span>
           </>
         )}
       </p>
       <Reorder.Group
         axis="y"
-        values={items.map((m) => m.id)}
+        values={shown.map((m) => m.id)}
         onReorder={(order) => onReorder(order as string[])}
         className="flex flex-col gap-1"
       >
         <AnimatePresence initial={false}>
-          {items.map((m, ix) => (
+          {shown.map((m, ix) => (
             <Reorder.Item
               key={m.id}
               value={m.id}

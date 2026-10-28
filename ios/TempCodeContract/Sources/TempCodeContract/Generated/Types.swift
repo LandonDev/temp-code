@@ -1138,8 +1138,9 @@ public struct QueuedMessage: Codable, Hashable, Sendable {
     public let model: String?
     public let reasoning: String?
     public let attachments: [Attachment]?
+    public let stored: Bool?
 
-    public init(id: String, text: String, ts: Int, provider: String? = nil, model: String? = nil, reasoning: String? = nil, attachments: [Attachment]? = nil) {
+    public init(id: String, text: String, ts: Int, provider: String? = nil, model: String? = nil, reasoning: String? = nil, attachments: [Attachment]? = nil, stored: Bool? = nil) {
         self.id = id
         self.text = text
         self.ts = ts
@@ -1147,6 +1148,7 @@ public struct QueuedMessage: Codable, Hashable, Sendable {
         self.model = model
         self.reasoning = reasoning
         self.attachments = attachments
+        self.stored = stored
     }
 }
 

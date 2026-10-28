@@ -16,7 +16,7 @@ import { Composer } from "../chrome/Composer";
 import { ConnectionLine, useEnvironmentBlock } from "../chrome/ConnectionLine";
 import { ChevronDown } from "../chrome/icons";
 import { MacBridgeThreadCards } from "../chrome/MacBridgeCards";
-import { MessageQueue } from "../chrome/MessageQueue";
+import { MessageQueue, visibleQueue } from "../chrome/MessageQueue";
 import { SessionReview } from "../chrome/SessionReview";
 import type { ComposerIntent } from "../lib/composerAction";
 import { FADE_OUT, SPRING_PRESS } from "../lib/ease";
@@ -142,7 +142,7 @@ export function ThreadComposer({
   const block = useEnvironmentBlock(session.environmentId);
   const macRequests = useMacBridgeRequests(session.environmentId, session.id);
   const paused = session.status === "paused";
-  const queue = useQueue(session.id);
+  const queue = visibleQueue(useQueue(session.id));
   const id = session.id;
   const queueStrip =
     queue.length > 0 ? (

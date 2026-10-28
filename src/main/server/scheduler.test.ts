@@ -107,6 +107,8 @@ describe('no cap configured', () => {
     const user = rows.find((r) => r.event.type === 'user-text')
     expect(user?.event).toMatchObject({ type: 'user-text', text: 'do it' })
     expect(rows.filter((r) => r.event.type === 'user-text')).toHaveLength(1)
+    // The held message is on the wire marked stored: the composer's queue leaves it to the transcript.
+    expect(registry.queueList(s.id)).toMatchObject([{ text: 'do it', stored: true }])
     expect(store.firstUserPreamble(s.id)).toEqual((user?.event as { preamble?: unknown }).preamble ?? null)
     await registry.startQueued(s.id)
     await settle()

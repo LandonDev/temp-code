@@ -1283,6 +1283,9 @@ export interface QueuedMessage {
   model?: string
   reasoning?: string
   attachments?: import('./events').Attachment[]
+  /** The held-back boot's first message (a queued thread's): already on the
+   *  transcript as the user row, so the composer's queue skips it. */
+  stored?: boolean
 }
 
 /** queue.add's answer: the message waits in the list, or was steered into the live turn. */

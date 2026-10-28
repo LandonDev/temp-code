@@ -2367,7 +2367,9 @@ this is the short one.
   queued and starting; spawn, `list_agents` and `check_agent` say "queued ·
   120 of 120 running"). `admit` decides in `SessionRegistry.send` (the user
   row and its preamble stamp land as a held-back boot stores them, the
-  message waits at the front of the thread's queue); `startQueued` (the
+  message waits at the front of the thread's queue marked `stored` on the
+  wire, so the composer's queue skips it and the transcript's row is its
+  one appearance); `startQueued` (the
   scheduler; `session.start { sessionId }`, operate, the strip's Start now,
   past `after` and past the cap) sends it through the same path; a focused
   send is admitted over the cap, up to two (`scheduler.focused`, wired

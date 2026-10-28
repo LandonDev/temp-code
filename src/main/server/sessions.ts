@@ -236,6 +236,8 @@ export interface QueuedMessage extends QueuedSendOpts {
   id: string
   text: string
   ts: number
+  /** On the wire: the item is an echoed send, its user row already on the transcript (the composer skips it). */
+  stored?: boolean
 }
 
 /** A subagent settle report headed for its parent's harness. */
@@ -4838,8 +4840,11 @@ export class SessionRegistry {
     return () => this.queueListeners.delete(listener)
   }
 
+  /** The queue as the wire sees it: an echoed item (a held-back boot's first
+   *  message, a retry the harness refused) is marked `stored`, its user row
+   *  being on the transcript already, so the composer shows it once. */
   queueList(sessionId: string): QueuedMessage[] {
-    return this.queues.get(sessionId) ?? []
+    return (this.queues.get(sessionId) ?? []).map((m) => (m.echoed ? { ...m, stored: true } : m))
   }
 
   private notifyQueue(sessionId: string): void {

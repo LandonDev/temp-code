@@ -8,13 +8,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRef } from "react";
 
 const h = vi.hoisted(() => ({ liveState: [] as unknown[] }));
-vi.mock("../lib/tcserver/store", () => ({ sessionStore: { isDraft: () => false }, useQueue: () => [] }));
+vi.mock("../lib/tcserver/store", () => ({ sessionStore: { isDraft: () => false }, useQueue: () => [], useSessionMetasWhen: () => [] }));
 vi.mock("../chrome/ConnectionLine", () => ({ useEnvironmentBlock: () => ({ degraded: null, name: "local", text: null }), ConnectionLine: () => null }));
 vi.mock("../chrome/Composer", () => ({ Composer: () => <div data-testid="composer" /> }));
 vi.mock("../chrome/MacBridgeCards", () => ({ MacBridgeThreadCards: () => null }));
 vi.mock("../lib/macBridge", () => ({ useMacBridgeRequests: () => [] }));
 vi.mock("../chrome/AppshotFlyIn", () => ({ AppshotFlyIn: () => null }));
-vi.mock("../chrome/MessageQueue", () => ({ MessageQueue: () => null }));
+vi.mock("../chrome/MessageQueue", () => ({ MessageQueue: () => null, visibleQueue: (items: unknown[]) => items }));
 vi.mock("../chrome/SessionReview", () => ({ SessionReview: () => null }));
 vi.mock("./DeferredMount", () => ({ DeferredMount: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("./AgentTranscript", () => ({
