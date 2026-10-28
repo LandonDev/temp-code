@@ -114,7 +114,7 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
 
   return (
     <PickerDialog
-      label="Go to Symbol"
+      label="Go to symbol"
       data-symbol-picker
       search={search}
       query={query}

@@ -57,7 +57,7 @@ export function surfaceTabPresentation(
   const review = isReviewTab(file);
   const terminal = isTerminalTab(file);
   const name = terminal ? terminalTabLabel(file) : basename(file.path);
-  const against = review ? (file.diffBase ? `vs ${shortRef(file.diffBase)}` : "Working Tree") : null;
+  const against = review ? (file.diffBase ? `vs ${shortRef(file.diffBase)}` : "working tree") : null;
   return {
     name,
     label: against ? `${name} (${against})` : name,

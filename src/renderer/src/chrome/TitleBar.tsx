@@ -387,10 +387,10 @@ function TitleBarComponent({
         ) : null}
         {railClosed && !projectless ? (
           <>
-            <IconButton label="Go to File" shortcut={shortcutFor("App", "Go to File")} onClick={onGoToFile}>
+            <IconButton label="Go to file" shortcut={shortcutFor("App", "Go to File")} onClick={onGoToFile}>
               <Search className="size-3.5" strokeWidth={1.75} />
             </IconButton>
-            <IconButton label="New Thread" shortcut={shortcutFor("Tabs", "New Thread")} onClick={onNew}>
+            <IconButton label="New thread" shortcut={shortcutFor("Tabs", "New Thread")} onClick={onNew}>
               <Plus className="size-3.5" strokeWidth={1.75} />
             </IconButton>
           </>

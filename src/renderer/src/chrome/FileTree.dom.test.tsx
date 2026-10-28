@@ -108,8 +108,8 @@ describe("FileTree", () => {
     expect((await row("Rename")).disabled).toBe(true);
     expect((await row("Delete")).disabled).toBe(true);
     expect((await row("Cut")).disabled).toBe(true);
-    expect((await row("New File")).disabled).toBe(false);
-    fireEvent.click((await row("Copy Path")).el);
+    expect((await row("New file")).disabled).toBe(false);
+    fireEvent.click((await row("Copy path")).el);
     expect(writeText).toHaveBeenCalledWith(ROOT);
   });
 
@@ -117,7 +117,7 @@ describe("FileTree", () => {
     await mount();
     fireEvent.contextMenu(screen.getByRole("treeitem", { name: /README\.md/ }));
     const desktop = await screen.findByRole("menu", { name: "File actions" });
-    expect(within(desktop).queryByText(/Reveal|Containing Folder/)).not.toBeNull();
+    expect(within(desktop).queryByText(/Reveal|containing folder/)).not.toBeNull();
     cleanup();
     // Web mode is a page with no preload bridge.
     const api = (window as { api?: unknown }).api;
@@ -126,7 +126,7 @@ describe("FileTree", () => {
       await mount();
       fireEvent.contextMenu(screen.getByRole("treeitem", { name: /README\.md/ }));
       const menu = await screen.findByRole("menu", { name: "File actions" });
-      expect(within(menu).queryByText(/Reveal|Containing Folder/)).toBeNull();
+      expect(within(menu).queryByText(/Reveal|containing folder/)).toBeNull();
     } finally {
       (window as { api?: unknown }).api = api;
     }
@@ -183,6 +183,20 @@ describe("FileTree", () => {
       fireEvent.change(input, { target: { value: "NOTES.md" } });
       fireEvent.blur(input);
       await vi.waitFor(() => expect(renamePath).toHaveBeenCalledWith("local", `${ROOT}/README.md`, "NOTES.md"));
+    });
+
+    it("says what is wrong with a name in one short line", async () => {
+      const input = await startRename();
+      const line = () => input.parentElement?.parentElement?.querySelector("p")?.textContent;
+      fireEvent.change(input, { target: { value: "src" } });
+      expect(line()).toBe("src already exists here");
+      fireEvent.change(input, { target: { value: "" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(line()).toBe("Type a name");
+      fireEvent.change(input, { target: { value: "/notes.md" } });
+      expect(line()).toBe("A name can't start with a slash");
+      fireEvent.change(input, { target: { value: "notes.md " } });
+      expect(line()).toBe("The name starts or ends with a space");
     });
   });
 });

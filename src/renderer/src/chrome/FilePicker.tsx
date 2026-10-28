@@ -136,7 +136,7 @@ export function FilePicker({
   return (
     <PickerDialog
       open={open}
-      label="Go to File"
+      label="Go to file"
       data-file-picker
       search={search}
       query={query}

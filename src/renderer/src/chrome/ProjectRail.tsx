@@ -107,7 +107,7 @@ const REVEAL_LABEL = IS_MAC
   ? "Reveal in Finder"
   : typeof navigator !== "undefined" && /Win/.test(navigator.platform)
     ? "Reveal in File Explorer"
-    : "Open Containing Folder";
+    : "Open containing folder";
 
 /** The project menu's rows after the label, colour and mascot: pin, reveal
  *  (in the desktop app only: a browser has no file manager), Mark all read,

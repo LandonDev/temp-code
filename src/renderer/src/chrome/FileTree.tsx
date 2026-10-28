@@ -106,7 +106,7 @@ const REVEAL_LABEL = IS_MAC
   ? "Reveal in Finder"
   : typeof navigator !== "undefined" && /Win/.test(navigator.platform)
     ? "Reveal in File Explorer"
-    : "Open Containing Folder";
+    : "Open containing folder";
 
 type TreeCtxValue = {
   expanded: Set<string>;
@@ -168,23 +168,23 @@ function explorerItems(
     (clip.isDir &&
       (pasteParent === clip.path || pasteParent.startsWith(`${clip.path}/`)));
   const rows: MenuRow[] = [
-    { kind: "item", id: "new-file", label: "New File", icon: FilePlus },
-    { kind: "item", id: "new-folder", label: "New Folder", icon: FolderPlus },
+    { kind: "item", id: "new-file", label: "New file", icon: FilePlus },
+    { kind: "item", id: "new-folder", label: "New folder", icon: FolderPlus },
     { kind: "sep" },
     { kind: "item", id: "cut", label: "Cut", icon: Scissors, shortcut: shortcutFor("Files", "Cut"), disabled: target.isRoot },
     { kind: "item", id: "copy", label: "Copy", icon: Copy, shortcut: shortcutFor("Files", "Copy"), disabled: target.isRoot },
     { kind: "item", id: "paste", label: "Paste", icon: ClipboardPaste, shortcut: shortcutFor("Files", "Paste"), disabled: pasteBlocked },
     { kind: "item", id: "duplicate", label: "Duplicate", icon: CopyPlus, disabled: target.isRoot },
     { kind: "sep" },
-    { kind: "item", id: "copy-path", label: "Copy Path", icon: Copy },
-    { kind: "item", id: "copy-relative-path", label: "Copy Relative Path", icon: Copy },
+    { kind: "item", id: "copy-path", label: "Copy path", icon: Copy },
+    { kind: "item", id: "copy-relative-path", label: "Copy relative path", icon: Copy },
     { kind: "sep" },
     { kind: "item", id: "rename", label: "Rename", icon: Pencil, shortcut: shortcutFor("Files", "Rename"), disabled: target.isRoot },
     { kind: "item", id: "delete", label: "Delete", icon: Trash2, shortcut: shortcutFor("Files", "Delete"), disabled: target.isRoot, danger: true },
     { kind: "sep" },
   ];
   if (editorLabel && !target.isDir) rows.push({ kind: "item", id: "open-editor", label: editorLabel, icon: ExternalLink, shortcut: shortcutFor("Files", "Open in Editor") });
-  if (canOpenTerminal) rows.push({ kind: "item", id: "open-terminal", label: "Open in Terminal", icon: Terminal });
+  if (canOpenTerminal) rows.push({ kind: "item", id: "open-terminal", label: "Open in terminal", icon: Terminal });
   if (!isWebMode()) rows.push({ kind: "item", id: "reveal", label: REVEAL_LABEL, icon: FolderOpen });
   return rows;
 }
@@ -1073,30 +1073,27 @@ function NameIssueView({
   } else if (issue) {
     switch (issue.kind) {
       case "empty":
-        body = "A file or folder name must be provided.";
+        body = "Type a name";
         break;
       case "slash":
-        body = "A file or folder name cannot start with a slash.";
+        body = "A name can't start with a slash";
         break;
       case "exists":
         body = (
           <>
-            A file or folder <span className="font-semibold">{issue.name}</span>{" "}
-            already exists at this location. Please choose a different name.
+            <span className="font-semibold">{issue.name}</span> already exists here
           </>
         );
         break;
       case "invalid":
         body = (
           <>
-            The name <span className="font-semibold">{issue.name}</span> is not
-            valid as a file or folder name. Please choose a different name.
+            <span className="font-semibold">{issue.name}</span> can't be a file or folder name
           </>
         );
         break;
       case "whitespace":
-        body =
-          "Leading or trailing whitespace detected in file or folder name.";
+        body = "The name starts or ends with a space";
         break;
     }
   }

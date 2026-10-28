@@ -12,10 +12,10 @@ import { isWebMode } from "../lib/nativeWeb";
 
 /**
  * Right-click on any file link in the transcript: Open in <editor> (Open
- * on the Mac for a thread on another host), Reveal in Finder, Copy Path,
- * Copy File Name. Left-click stays with the wrapped child. Relative
+ * on the Mac for a thread on another host), Reveal in Finder, Copy path,
+ * Copy file name. Left-click stays with the wrapped child. Relative
  * targets resolve against the transcript's cwd; without one, Reveal hides
- * and Copy Path copies the path as written.
+ * and Copy path copies the path as written.
  */
 export function FileRefMenu({
   target,
@@ -39,8 +39,8 @@ export function FileRefMenu({
   const items: MenuRow[] = [
     ...(editorLabel ? [{ kind: "item", id: "editor", label: editorLabel, icon: ExternalLink } as const] : []),
     ...(ref.abs && !isWebMode() ? [{ kind: "item", id: "reveal", label: "Reveal in Finder", icon: FolderOpen } as const] : []),
-    { kind: "item", id: "path", label: "Copy Path", icon: Copy },
-    { kind: "item", id: "name", label: "Copy File Name", icon: FileText },
+    { kind: "item", id: "path", label: "Copy path", icon: Copy },
+    { kind: "item", id: "name", label: "Copy file name", icon: FileText },
   ];
   const pick = (id: string) => {
     if (id === "editor" && ref.abs) {
