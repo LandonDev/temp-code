@@ -183,6 +183,8 @@ describe("PairDialog", () => {
 describe("AddHostDialog", () => {
   it("keeps the e2e's fields and switches from a link to a host and key", () => {
     render(<AddHostDialog onClose={() => {}} onChanged={noop} />);
+    // The page's button and the dialog name the same noun.
+    expect(screen.getByRole("dialog", { name: "Add host" })).toBeTruthy();
     const field = (name: string) => document.querySelector(`[data-environment-field="${name}"]`);
     expect(field("link")).toBe(screen.getByLabelText("Pairing link"));
     expect(field("name")).toBe(screen.getByLabelText("Name"));

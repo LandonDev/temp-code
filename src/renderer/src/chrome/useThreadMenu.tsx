@@ -242,7 +242,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     dialogs = (
       <ConfirmDialog
         title={`Delete ${titleOf(id)}?`}
-        body="The thread and its whole transcript are gone for good. Archive keeps it instead."
+        body="Its transcript is gone for good."
         confirmLabel="Delete thread"
         danger
         onCancel={close}

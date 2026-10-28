@@ -137,7 +137,7 @@ export function movePreviewParts(p: SessionMovePreview | null | "error"): string
   if (p === "error") return ["Could not read the branch; the move carries it if there is one."];
   if (!p.branch && !p.detached) return p.dirty ? ["No branch to carry", `${files(p.dirty)} stay behind`] : ["No branch to carry"];
   const what = p.branch ? `Branch ${p.branch} travels too` : "The checked-out commit travels too";
-  return p.dirty ? [what, `${files(p.dirty)} will be carried`] : [what];
+  return p.dirty ? [what, `${files(p.dirty)} ${p.dirty === 1 ? "travels" : "travel"} too`] : [what];
 }
 
 /** The one fact a finished move's toast carries under its title, when the

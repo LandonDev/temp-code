@@ -57,7 +57,8 @@ describe("the board's menus", () => {
     expect(archiveCopy("done", 1, null)).toMatchObject({ title: "Archive 1 done thread?", confirmLabel: "Archive 1", cleanup: null });
     expect(archiveCopy("all", 7, 3)).toMatchObject({ title: "Archive all 7 threads?", cleanup: "and remove their 3 worktrees and simulators" });
     expect(archiveCopy("all", 7, 0).cleanup).toBeNull();
-    expect(archiveCopy("all", 2, null).body).toMatch(/stopped first/);
+    expect(archiveCopy("all", 2, null).body).toBe("Running threads stop first; the master stays.");
+    expect(archiveCopy("done", 2, null).body).toBe("The master stays.");
   });
 
   it("offers the project's unarchived roots in no batch and no master, on the master's host and on the project's paired copies", () => {

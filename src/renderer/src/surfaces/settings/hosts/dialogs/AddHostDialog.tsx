@@ -13,7 +13,7 @@ type Props = { repair?: SavedEnvironment; onClose: () => void; onChanged: () => 
 export function AddHostDialog(props: Props) {
   const [pending, setPending] = useState(false);
   return (
-    <Modal onClose={props.onClose} busy={pending} title={props.repair ? `Pair ${props.repair.name} again` : "Add environment"} size="sm">
+    <Modal onClose={props.onClose} busy={pending} title={props.repair ? `Pair ${props.repair.name} again` : "Add host"} size="sm">
       <Body {...props} pending={pending} setPending={setPending} />
     </Modal>
   );

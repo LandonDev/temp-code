@@ -16,7 +16,8 @@ describe("the move confirm", () => {
     render(<MoveThreadConfirm sessionId="s1" to="env_box" toName="box" fromName="This Mac" onClose={() => {}} />);
     const branch = await screen.findByText("Branch ios/home travels too");
     const line = branch.parentElement!;
-    expect(Array.from(line.children, (c) => c.textContent)).toEqual(["Branch ios/home travels too", "3 uncommitted files will be carried"]);
+    expect(Array.from(line.children, (c) => c.textContent)).toEqual(["Branch ios/home travels too", "3 uncommitted files travel too"]);
+    expect(screen.getByText("Its subagents and pages move with it; undo history stays on This Mac.")).toBeTruthy();
     expect(line.className).toContain("gap-x-2");
     expect(document.querySelector("[data-confirm-note]")?.textContent).not.toContain("·");
   });

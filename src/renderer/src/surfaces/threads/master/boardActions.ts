@@ -74,8 +74,8 @@ export function archiveCopy(which: ArchiveWhich, count: number, resources: numbe
   const title = which === "done" ? `Archive ${count} done ${threads(count)}?` : `Archive all ${count} ${threads(count)}?`;
   const body =
     which === "done"
-      ? "They leave the board and stay in the archive list. The master stays."
-      : "A running thread is stopped first. Every one leaves the board and stays in the archive list. The master stays.";
+      ? "The master stays."
+      : "Running threads stop first; the master stays.";
   const cleanup =
     resources !== null && resources > 0 ? `and remove their ${resources} ${resources === 1 ? "worktree or simulator" : "worktrees and simulators"}` : null;
   return { title, body, cleanup, confirmLabel: `Archive ${count}` };

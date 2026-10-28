@@ -49,8 +49,8 @@ describe("movePreviewParts", () => {
   it("says what the move carries: the branch and its uncommitted files, or that there is none", () => {
     expect(movePreviewParts(null)).toEqual(["Checking the branch…"]);
     expect(movePreviewParts("error")).toEqual([expect.stringMatching(/Could not read the branch/)]);
-    expect(movePreviewParts({ branch: "ios/home", detached: false, worktree: false, dirty: 3, origin: true })).toEqual(["Branch ios/home travels too", "3 uncommitted files will be carried"]);
-    expect(movePreviewParts({ branch: "ios/home", detached: false, worktree: true, dirty: 1, origin: false })).toEqual(["Branch ios/home travels too", "1 uncommitted file will be carried"]);
+    expect(movePreviewParts({ branch: "ios/home", detached: false, worktree: false, dirty: 3, origin: true })).toEqual(["Branch ios/home travels too", "3 uncommitted files travel too"]);
+    expect(movePreviewParts({ branch: "ios/home", detached: false, worktree: true, dirty: 1, origin: false })).toEqual(["Branch ios/home travels too", "1 uncommitted file travels too"]);
     expect(movePreviewParts({ branch: "master", detached: false, worktree: false, dirty: 0, origin: true })).toEqual(["Branch master travels too"]);
     expect(movePreviewParts({ branch: null, detached: true, worktree: false, dirty: 0, origin: false })).toEqual(["The checked-out commit travels too"]);
     expect(movePreviewParts({ branch: null, detached: false, worktree: false, dirty: 0, origin: false })).toEqual(["No branch to carry"]);

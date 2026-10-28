@@ -128,7 +128,7 @@ export function MoveThreadConfirm({
   return (
     <ConfirmDialog
       title={`Move this thread to ${toName}?`}
-      body={`The thread, its subagents, its transcript and its agent pages move to ${toName} and run there from now on. The undo history stays on ${fromName}.`}
+      body={`Its subagents and pages move with it; undo history stays on ${fromName}.`}
       note={
         <span className="flex flex-wrap gap-x-2">
           {movePreviewParts(preview).map((part) => (

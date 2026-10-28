@@ -190,5 +190,6 @@ describe("one thread menu on every surface", () => {
     fireEvent.contextMenu(screen.getByText("Row t1"));
     fireEvent.click(within(await screen.findByRole("menu", { name: "Rail" })).getByText("Delete…"));
     expect(await screen.findByText("Delete t1?")).toBeTruthy();
+    expect(screen.getByText("Its transcript is gone for good.")).toBeTruthy();
   });
 });
