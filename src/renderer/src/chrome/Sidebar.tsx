@@ -280,8 +280,10 @@ function SidebarComponent({
           />
         </div>
       )}
+      {/* A 40px content box with the hairline under it, as the title bar's rows:
+          its controls share the strip's y 6 line, its hairline the title bar's. */}
       <div
-        className="flex h-10 shrink-0 select-none items-center gap-0.5 border-b border-border pr-1.5 pl-3"
+        className="box-content flex h-10 shrink-0 select-none items-center gap-0.5 border-b border-border pr-1.5 pl-3"
         data-tauri-drag-region="deep"
       >
         <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{title}</h2>

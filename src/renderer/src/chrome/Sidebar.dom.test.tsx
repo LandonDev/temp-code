@@ -73,6 +73,14 @@ describe("the workspace column", () => {
     expect(screen.getByRole("button", { name: "Workspace options" }).getAttribute("aria-expanded")).toBe("true");
   });
 
+  it("keeps a 40px content box under its hairline, as the title bar's rows do, so its controls sit on the strip's line", () => {
+    mount();
+    const header = screen.getByRole("heading", { name: "alpha" }).parentElement!;
+    expect(header.className).toMatch(/\bbox-content\b/);
+    expect(header.className).toMatch(/\bh-10\b/);
+    expect(header.className).toMatch(/\bborder-b\b/);
+  });
+
   it("resizes from a focusable sash by 2% or Shift 10% and resets on double-click", () => {
     const { container } = mount();
     vi.spyOn(container.querySelector(".app-shell")!, "getBoundingClientRect").mockReturnValue({ width: 1000 } as DOMRect);
