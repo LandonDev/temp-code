@@ -140,6 +140,17 @@ describe("agentStatus", () => {
     });
   });
 
+  it("a watching, queued or failed detail starts lower-case; an acronym lead and the working phrase keep theirs", () => {
+    expect(agentStatus({ status: "watching", activity: "Waiting on Sleep 90 seconds in the alpha workspace" }).detail).toBe(
+      "sleep 90 seconds in the alpha workspace",
+    );
+    expect(agentStatus({ status: "watching", activity: "Waiting on README check" }).detail).toBe("README check");
+    expect(agentStatus({ status: "queued", activity: "Queued · Waiting for Sibling" }).detail).toBe("waiting for Sibling");
+    const capped: SessionMeta["failure"] = { kind: "quota", account: null, summary: "Usage cap", cause: "" };
+    expect(agentStatus({ status: "error", failure: capped }).detail).toBe("usage cap");
+    expect(agentStatus({ status: "running", activity: "Editing HomeView.swift" }).detail).toBe("Editing HomeView.swift");
+  });
+
   it("a waiting agent quotes its question, else the approval it needs", () => {
     const q = block("assistant", "", {
       question: { sessionId: "s", requestId: "r", questions: [{ question: "Which db?\nmore", options: [] }] },
@@ -155,7 +166,7 @@ describe("agentStatus", () => {
   it("a failed agent says the host's summary over the transcript's error line", () => {
     const err = block("system", "Rate limited\nstack", { id: "err:1" });
     expect(agentStatus({ status: "error", failure }, [err]).detail).toBe("usage cap");
-    expect(agentStatus({ status: "error" }, [err])).toEqual({ state: "failed", detail: "Rate limited", phrase: false });
+    expect(agentStatus({ status: "error" }, [err])).toEqual({ state: "failed", detail: "rate limited", phrase: false });
     expect(agentStatus({ status: "error" }).detail).toBe("");
   });
 

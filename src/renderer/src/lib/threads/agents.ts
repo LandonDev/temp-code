@@ -6,6 +6,7 @@ import type { Block, Session } from "../session";
 import { asHarness, pickerModelId, sessionStore } from "../tcserver/store";
 import { tallyOf } from "../tcserver/todos";
 import type { SessionMeta, SessionStatus } from "../tcserver/types";
+import { lowerFirst } from "../threadStripModel";
 
 /**
  * Fleet selectors: which children a thread has, how they rank, the status
@@ -179,11 +180,12 @@ export function agentStatus(
       return { state, detail: activity || (meta.status === "starting" ? "Starting" : "Thinking"), phrase: true };
     case "watching":
     case "queued":
-      return { state, detail: leadStripped(activity, state), phrase: false };
+      // A detail starts lower-case (docs/DESIGN.md); the working phrase leads its row and keeps its capital.
+      return { state, detail: lowerFirst(leadStripped(activity, state)) ?? "", phrase: false };
     case "waiting":
       return { state, detail: waitingDetail(blocks), phrase: false };
     case "failed":
-      return { state, detail: meta.failure?.summary.trim() || lastErrorLine(blocks), phrase: false };
+      return { state, detail: lowerFirst(meta.failure?.summary.trim() || lastErrorLine(blocks)) ?? "", phrase: false };
     default:
       return { state, detail: "", phrase: false };
   }
