@@ -9,7 +9,7 @@ import type { SessionMeta } from "../lib/tcserver/types";
 import { buildHeaderModel, orderModel } from "../lib/threadHeaderModel";
 import type { ThreadHeaderProps } from "./ThreadHeader";
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
-import { TitleBar } from "./TitleBar";
+import { TabVisitNav, TitleBar } from "./TitleBar";
 
 vi.mock("./WindowControls", () => ({ WindowControls: () => null }));
 
@@ -107,6 +107,11 @@ describe("TitleBar", () => {
     fireEvent.mouseEnter(toggle);
     fireEvent.mouseMove(toggle);
     await waitFor(() => expect(screen.getByText("No room for the panel")).toBeTruthy(), { timeout: 1500 });
+  });
+
+  it("names the rail's toggle by what it shows, as the panel's and the sidebar's are", () => {
+    render(<TabVisitNav onTogglePanel={() => {}} />);
+    expect(screen.getByRole("button", { name: "Workspaces" })).toBeTruthy();
   });
 });
 

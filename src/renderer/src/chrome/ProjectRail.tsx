@@ -465,7 +465,6 @@ export function ProjectRail({
           onGoForward={onGoForward}
           onTogglePanel={settingsOpen ? undefined : shell.toggleProjectRail}
           panelActive
-          panelLabel="Toggle workspaces"
         />
       </div>
 
@@ -767,7 +766,7 @@ function WorkspaceRow({
         rowRef={(el) => sortable.setItemRef(item.path, el)}
         data-host-offline={offline || undefined}
         data-rail-path={item.path}
-        className={`touch-none ${dragging ? "opacity-40" : offline ? "opacity-50" : ""}`}
+        className={`@container/railrow touch-none ${dragging ? "opacity-40" : offline ? "opacity-50" : ""}`}
         glyph={
           <WorkspaceGlyph
             showLogo={showLogo}

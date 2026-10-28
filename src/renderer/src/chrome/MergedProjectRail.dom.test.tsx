@@ -203,6 +203,15 @@ describe("the rail", () => {
     expect(marks.map((c) => c.getAttribute("aria-label"))).toEqual(["Needs you, 2 threads"]);
   });
 
+  it("gives the name the room: in a rail under 15rem the word goes and the glyph stays", async () => {
+    const root = await mountRail([LOCAL, BOX]);
+    const row = workspaceRows(root)[0] as HTMLElement;
+    expect(row.className).toContain("@container/railrow");
+    const word = row.querySelector('[aria-label^="Needs you, "] [data-slot="status-word"]')!;
+    expect(word.className).toContain("@max-[15rem]/railrow:hidden");
+    expect(word.previousElementSibling?.querySelector("svg")).toBeTruthy();
+  });
+
   it("dims a row whose only host is down, not the linked one", async () => {
     const root = await mountRail([LOCAL, BOX], { env_box: status("offline") });
     const dim = [...root.querySelectorAll('nav[aria-label="Workspaces"] [data-host-offline]')];

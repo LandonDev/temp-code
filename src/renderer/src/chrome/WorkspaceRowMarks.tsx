@@ -62,7 +62,10 @@ export function WorkspaceGlyph({
 
 const threadCount = (n: number) => `${n} ${n === 1 ? "thread" : "threads"}`;
 
-/** The word itself: a ghost button holding the StatusMark, named with its count. */
+/** The word itself: a ghost button holding the StatusMark, named with its
+ *  count. In a rail narrower than 15rem the word gives way to the name: the
+ *  glyph stays, and the button's name and the line under the row still say
+ *  it (the rail row is the `railrow` container, ProjectRail.tsx). */
 export function WorkspaceMarkView({ mark, ...props }: { mark: GroupMark<ThreadRow> } & React.ComponentProps<typeof Button>) {
   return (
     <Button
@@ -73,7 +76,7 @@ export function WorkspaceMarkView({ mark, ...props }: { mark: GroupMark<ThreadRo
       {...props}
       className={cn("h-6 px-1.5 hover:bg-foreground/7 aria-expanded:bg-foreground/7", props.className)}
     >
-      <StatusMark state={mark.state} />
+      <StatusMark state={mark.state} wordClassName="@max-[15rem]/railrow:hidden" />
     </Button>
   );
 }

@@ -203,7 +203,7 @@ export function TabVisitNav({
   onGoForward,
   onTogglePanel,
   panelActive = false,
-  panelLabel = "Toggle Projects",
+  panelLabel = "Workspaces",
 }: {
   canGoBack?: boolean;
   canGoForward?: boolean;

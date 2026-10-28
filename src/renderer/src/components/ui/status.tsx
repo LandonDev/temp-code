@@ -166,6 +166,7 @@ export function StatusMark({
   state,
   word = true,
   detail,
+  wordClassName,
   className,
   ...props
 }: ComponentProps<"span"> & {
@@ -173,6 +174,8 @@ export function StatusMark({
   word?: boolean | string;
   /** What the state is about, muted after the word: "Working  typecheck", "Needs you  approve Bash", a tally "3/7". */
   detail?: ReactNode;
+  /** The word's own class: a row that hides it when tight (a container query) keeps the glyph. */
+  wordClassName?: string;
 }) {
   const text = word === true ? STATUS_WORD[state] : word === false ? null : word;
   return (
@@ -187,7 +190,7 @@ export function StatusMark({
         <Glyph state={state} />
       </span>
       {text !== null ? (
-        <span data-slot="status-word" className={detail != null && detail !== "" ? "shrink-0" : "min-w-0 truncate"}>
+        <span data-slot="status-word" className={cn(detail != null && detail !== "" ? "shrink-0" : "min-w-0 truncate", wordClassName)}>
           {text}
         </span>
       ) : null}

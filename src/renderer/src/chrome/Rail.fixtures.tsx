@@ -27,6 +27,7 @@ function Workspace({ name, color, mark, unread = false, selected = false }: { na
         label={name}
         selected={selected}
         emphasis={unread}
+        className="@container/railrow"
         trailingInteractive
         trailing={mark ? <WorkspaceMarkView mark={mark} /> : null}
         hoverAction={{ label: "Workspace options", icon: MoreHorizontal, menu: true, onClick: noop }}
@@ -36,9 +37,10 @@ function Workspace({ name, color, mark, unread = false, selected = false }: { na
   );
 }
 
-export function RailSketch() {
+/** `width` is the rail's: 200 by default in the app, 180 to 360 by drag. */
+export function RailSketch({ width = 260 }: { width?: number }) {
   return (
-    <nav aria-label="Workspaces" className="flex h-[720px] w-[260px] flex-col border-r border-border bg-sidebar">
+    <nav aria-label="Workspaces" className="flex h-[720px] flex-col border-r border-border bg-sidebar" style={{ width }}>
       <div className="h-10 shrink-0" />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">
         <div className="px-2">
