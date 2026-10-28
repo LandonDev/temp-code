@@ -159,7 +159,7 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
         </PageRow>
         {switchRow("File edits", "Off removes its edit tools.", "selfEdit")}
         {switchRow("Shell commands", "Off removes its shell; agents gather context.", "selfShell")}
-        {switchRow("Report checks", "Check results before relaying them.", "verifyResults")}
+        {switchRow("Result checks", "Check results before relaying them.", "verifyResults")}
         {switchRow("Escalation", "Rerun with a smarter model when a result misses.", "escalate")}
         {switchRow("Worktree isolation", "Writing agents get their own git worktree.", "useWorktrees")}
         <PageRow title="Parallel agents" description="Running at once.">

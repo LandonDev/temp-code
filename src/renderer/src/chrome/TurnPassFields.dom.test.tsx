@@ -19,7 +19,17 @@ describe("Completed turn", () => {
     const section = screen.getByRole("region", { name: "Completed turn" });
     expect(section.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(3);
     await act(async () => host.answer?.({ verify: true, build: false, commit: "off" }));
-    expect(screen.getByRole("switch", { name: "Make a build" })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Fresh build" })).toBeTruthy();
     expect(section.querySelector("[data-slot=page-row-skeleton]")).toBeNull();
+  });
+
+  it("labels each row with a noun, its switch named the same", async () => {
+    render(<TurnPassEditor workspaceId="w1" />);
+    await act(async () => host.answer?.({ verify: true, build: false, commit: "off" }));
+    const section = screen.getByRole("region", { name: "Completed turn" });
+    const titles = [...section.querySelectorAll("[data-slot=page-row] [data-slot=item-title]")].map((el) => el.textContent);
+    expect(titles).toEqual(["Checks", "Fresh build", "Commit"]);
+    expect(screen.getByRole("switch", { name: "Checks" })).toBeTruthy();
+    expect(section.textContent).not.toMatch(/Verify|Make a build/);
   });
 });

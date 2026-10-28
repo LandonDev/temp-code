@@ -22,9 +22,9 @@ export const COMMIT_OPTIONS: { value: TurnPass["commit"]; label: string }[] = [
 ];
 
 const COPY = {
-  verify: { label: "Verify", hint: "Run the project's checks and fix what fails." },
+  verify: { label: "Checks", hint: "Run the project's checks and fix what fails." },
   // Not "Build": the workspace page's Build section means the command.
-  build: { label: "Make a build", hint: "Create a build and say where it landed." },
+  build: { label: "Fresh build", hint: "Create a build and say where it landed." },
   commit: { label: "Commit", hint: "Commit the turn's changes to the branch." },
 };
 
@@ -50,7 +50,7 @@ export function TurnPassFields({
   return (
     <>
       <PageRow title={COPY.verify.label} description={COPY.verify.hint}>
-        <SettingSwitch label="Verify" on={value.verify} onChange={(verify) => onChange({ ...value, verify })} />
+        <SettingSwitch label={COPY.verify.label} on={value.verify} onChange={(verify) => onChange({ ...value, verify })} />
       </PageRow>
       <PageRow title={COPY.build.label} description={COPY.build.hint}>
         <SettingSwitch label={COPY.build.label} on={value.build} onChange={(build) => onChange({ ...value, build })} />

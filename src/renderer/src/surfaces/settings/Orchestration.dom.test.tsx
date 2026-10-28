@@ -114,6 +114,13 @@ describe("Orchestration page", () => {
     expect(saved().conduct.selfEdit).toBe(true);
   });
 
+  it("names the checking switch with a noun", () => {
+    render(<OrchestrationPage />);
+    const conduct = screen.getByRole("region", { name: "Conduct" });
+    expect(within(conduct).getByRole("switch", { name: "Result checks" })).toBeTruthy();
+    expect(conduct.textContent).not.toContain("Report checks");
+  });
+
   it("describes Delegation by its value", async () => {
     const { rerender } = render(<OrchestrationPage />);
     expect(screen.getByText("Delegates everything; the orchestrator never does the work itself.")).toBeTruthy();
