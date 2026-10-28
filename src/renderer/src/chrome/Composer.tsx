@@ -61,12 +61,7 @@ import { ModelPicker } from './ModelPicker'
 import { projectName } from '../lib/paths'
 import { consumeQuoteRequest, type QuoteRequest } from '../lib/quoteDraft'
 import { useTabGroupLogos } from '../hooks/useTabGroupLogos'
-import {
-  loadMidTurnDefault,
-  loadNotesEnabled,
-  subscribeMidTurnDefault,
-  subscribeNotesEnabled
-} from '../lib/settings'
+import { loadMidTurnDefault, subscribeMidTurnDefault } from '../lib/settings'
 import { COMPOSER_SURFACE, ComposerBar, SendButton, useDraftRow } from './ComposerBar'
 import { Button } from '../components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
@@ -239,7 +234,6 @@ export function Composer({
     index: 0
   })
   const [files, setFiles] = useState<ProjectFile[]>(() => peekProjectFiles(executionCwd) ?? [])
-  const notesEnabled = useSyncExternalStore(subscribeNotesEnabled, loadNotesEnabled, () => true)
   const [notes, setNotes] = useState<Note[]>(() => peekNotes(hostOfCwd(executionCwd)) ?? [])
   const groupLogos = useTabGroupLogos()
   const projectLogoPath = resolveTabGroupLogo(projectName(cwd), groupLogos)
@@ -261,8 +255,8 @@ export function Composer({
     [commands]
   )
   const mentionFiles = useMemo(
-    () => (notesEnabled ? [...files, ...notesAsProjectFiles(notes)] : files),
-    [files, notes, notesEnabled]
+    () => [...files, ...notesAsProjectFiles(notes)],
+    [files, notes]
   )
   const mentionIndex = useMemo(() => buildMentionIndex(mentionFiles), [mentionFiles])
   // Plain `/skill` and `@file` runs get their colour; connector tokens are
@@ -324,11 +318,9 @@ export function Composer({
     const threadHits: AtMatch[] = rankThreads(metas, live.query, sessionId, projectId).map(
       (session) => ({ kind: 'thread', session })
     )
-    const noteHits: AtMatch[] = notesEnabled
-      ? rankNoteFiles(notes, live.query).map((file) => ({ kind: 'note', file }))
-      : []
+    const noteHits: AtMatch[] = rankNoteFiles(notes, live.query).map((file) => ({ kind: 'note', file }))
     return { mode: 'file', rows: [...fileHits, ...threadHits, ...noteHits] }
-  }, [commands, executionCwd, live, mentionable, metas, notes, notesEnabled, projectId, sessionId])
+  }, [commands, executionCwd, live, mentionable, metas, notes, projectId, sessionId])
   const rows = matches?.rows.length ?? 0
   const selectionKey = live ? `${live.mode}:${live.query}` : ''
   const active =
@@ -471,7 +463,7 @@ export function Composer({
   }, [executionCwd, mentionOpen])
 
   useEffect(() => {
-    if (!mentionOpen || !notesEnabled) return
+    if (!mentionOpen) return
     let cancelled = false
     void loadNotes(environmentId).then((next) => {
       if (!cancelled) setNotes(next)
@@ -479,7 +471,7 @@ export function Composer({
     return () => {
       cancelled = true
     }
-  }, [environmentId, mentionOpen, notesEnabled])
+  }, [environmentId, mentionOpen])
 
   /** Every input and caret move lands here; the trigger under the caret
    *  drives the popover, and a caret inside a chip never counts as typing. */

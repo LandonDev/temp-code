@@ -4,7 +4,6 @@ import { loadSelectedProject, saveLastSession, saveSelectedProject } from "../li
 import { newSession, type Session } from "../lib/session";
 import { markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
 import { listSessionsByProject, saveWorkspaceSnapshot } from "../lib/sessionStore";
-import { loadNotesEnabled } from "../lib/settings";
 import { withDockOpen } from "../lib/projectTerminal";
 import { environment, environmentStore } from "./environment";
 import { focus, focusStore, initialFocusState } from "./focus";
@@ -30,7 +29,6 @@ import {
   installBootTasks,
   installHistoryRefresh,
   installLayoutSync,
-  installNotesGate,
   installIdleSweep,
   installWarmSet,
   installSubscriptions,
@@ -80,10 +78,6 @@ vi.mock("../lib/sessionStore", async (importOriginal) => ({
   saveWorkspaceSnapshot: vi.fn(() => Promise.resolve()),
   listSessionsByProject: vi.fn(() => Promise.resolve([])),
   subscribeSessionHistory: vi.fn(() => () => {}),
-}));
-vi.mock("../lib/settings", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../lib/settings")>()),
-  loadNotesEnabled: vi.fn(() => true),
 }));
 vi.mock("../lib/sessionSeen", () => ({ markSessionSeen: vi.fn(), pruneLastSeen: vi.fn() }));
 vi.mock("../lib/workspaceMigration", () => ({ migrateWorkspaces: vi.fn(() => Promise.resolve()) }));
@@ -327,6 +321,17 @@ describe("installIdleSweep", () => {
     workspace.setTabs((tabs) => tabs.filter((t) => t.id !== "b"));
     await flush();
     expect(sessionStore.getSnapshot().map((s) => s.id)).toEqual(["s-a", "s-busy"]);
+  });
+
+  it("keeps a hidden thread that finished unseen, with no setting to ask", async () => {
+    setTabs([tab("a")]);
+    sessionStore.mutate([session("s-a"), session("s-done", { busy: true })]);
+    teardown = installIdleSweep();
+    await flush();
+    sessionStore.mutate((prev) => prev.map((s) => (s.id === "s-done" ? { ...s, busy: false } : s)));
+    await flush();
+    expect(sessionStore.getSnapshot().map((s) => s.id)).toEqual(["s-a", "s-done"]);
+    expect(forgetHarnessSession).not.toHaveBeenCalledWith("claude", "s-done");
   });
 
   it("stops sweeping after teardown", async () => {
@@ -712,18 +717,6 @@ describe("installHistoryRefresh", () => {
     expect(listSessionsByProject).toHaveBeenLastCalledWith("/other");
     // The file index walks the whole tree; a folder change alone never asks for it.
     expect(invoke).not.toHaveBeenCalledWith("list_project_files", expect.anything());
-  });
-});
-
-describe("installNotesGate", () => {
-  it("closes the notes view when notes are off", () => {
-    shell.openNotes();
-    teardown = installNotesGate();
-    expect(shellStore.getState().notesViewOpen).toBe(true);
-    teardown();
-    vi.mocked(loadNotesEnabled).mockReturnValue(false);
-    teardown = installNotesGate();
-    expect(shellStore.getState().notesViewOpen).toBe(false);
   });
 });
 

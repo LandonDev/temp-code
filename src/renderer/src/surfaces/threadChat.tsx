@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -36,7 +35,6 @@ import {
   type RuntimeMode,
   type Session,
 } from "../lib/session";
-import { loadNotesEnabled, subscribeNotesEnabled } from "../lib/settings";
 import * as serverCommands from "../lib/tcserver/commands";
 import { useQueue } from "../lib/tcserver/store";
 import type { ThreadType } from "../lib/tcserver/types";
@@ -295,7 +293,6 @@ export function useThreadChat({
   const acknowledgeQuote = useCallback((handledId: number) => {
     setQuoteRequest((current) => acknowledgeQuoteRequest(current, handledId));
   }, []);
-  const notesEnabled = useSyncExternalStore(subscribeNotesEnabled, loadNotesEnabled, () => true);
   const saveNote = useCallback(
     (text: string) => {
       const sessionTitle = sessionDisplayTitle(session.title, session.harness);
@@ -375,7 +372,7 @@ export function useThreadChat({
             harness={session.harness}
             onApproval={approve}
             onAddToChat={addSelectionToChat}
-            onSaveNote={notesEnabled ? saveNote : undefined}
+            onSaveNote={saveNote}
             onOpenFile={onOpenFile}
             onOpenDiff={onOpenDiff}
             onSelectSession={onOpenSession}

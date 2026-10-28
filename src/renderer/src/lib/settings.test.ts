@@ -8,19 +8,11 @@ import {
   SETTINGS_GROUPS,
   SETTINGS_SECTIONS,
   settingsSectionLabel,
-  LIVE_AGENTS_ENABLED_DEFAULT,
-  loadLiveAgentsEnabled,
   loadMidTurnDefault,
-  loadNotesEnabled,
   MID_TURN_DEFAULT,
-  NOTES_ENABLED_DEFAULT,
-  saveLiveAgentsEnabled,
   saveMidTurnDefault,
-  saveNotesEnabled,
 } from "./settings";
 
-const NOTES_KEY = "monocode.notesEnabled";
-const LIVE_AGENTS_KEY = "monocode.liveAgentsEnabled";
 
 function mockLocalStorage() {
   const data = new Map<string, string>();
@@ -45,46 +37,6 @@ function mockLocalStorage() {
     configurable: true,
   });
 }
-
-describe("notes enabled setting", () => {
-  beforeEach(mockLocalStorage);
-  afterEach(() => {
-    localStorage.removeItem(NOTES_KEY);
-  });
-
-  it("defaults to on", () => {
-    expect(NOTES_ENABLED_DEFAULT).toBe(true);
-    expect(loadNotesEnabled()).toBe(true);
-  });
-
-  it("persists an off switch", () => {
-    saveNotesEnabled(false);
-    expect(localStorage.getItem(NOTES_KEY)).toBe("0");
-    expect(loadNotesEnabled()).toBe(false);
-    saveNotesEnabled(true);
-    expect(loadNotesEnabled()).toBe(true);
-  });
-});
-
-describe("live agents enabled setting", () => {
-  beforeEach(mockLocalStorage);
-  afterEach(() => {
-    localStorage.removeItem(LIVE_AGENTS_KEY);
-  });
-
-  it("defaults to on", () => {
-    expect(LIVE_AGENTS_ENABLED_DEFAULT).toBe(true);
-    expect(loadLiveAgentsEnabled()).toBe(true);
-  });
-
-  it("persists an off switch", () => {
-    saveLiveAgentsEnabled(false);
-    expect(localStorage.getItem(LIVE_AGENTS_KEY)).toBe("0");
-    expect(loadLiveAgentsEnabled()).toBe(false);
-    saveLiveAgentsEnabled(true);
-    expect(loadLiveAgentsEnabled()).toBe(true);
-  });
-});
 
 describe("settings sections", () => {
   it("puts every section in exactly one known group", () => {

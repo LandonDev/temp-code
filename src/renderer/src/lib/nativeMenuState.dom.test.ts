@@ -14,7 +14,6 @@ const facts = (over: Partial<MenuFacts> = {}): MenuFacts => ({
   dockOpen: false,
   split: false,
   dockUsable: true,
-  notesEnabled: true,
   unread: 1,
   counts: { pause: 1, resume: 1, stop: 1, archiveDone: 1 },
   ...over,
@@ -37,8 +36,8 @@ describe("menuStateOf", () => {
     expect(menuStateOf(facts({ panel: "none", dockUsable: false })).disabled).toEqual(["toggle_panel", "toggle_terminal"]);
   });
 
-  it("greys Notes while notes are off and Mark All Read with nothing unread", () => {
-    expect(menuStateOf(facts({ notesEnabled: false, unread: 0 })).disabled).toEqual(["open_notes", "mark_all_read"]);
+  it("greys Mark All Read with nothing unread, and never Notes", () => {
+    expect(menuStateOf(facts({ unread: 0 })).disabled).toEqual(["mark_all_read"]);
   });
 
   it("greys each fleet switch whose count is zero", () => {

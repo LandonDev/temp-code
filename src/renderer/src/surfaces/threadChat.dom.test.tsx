@@ -25,7 +25,6 @@ vi.mock("./AgentTranscript", () => ({
 }));
 vi.mock("../lib/tcserver/commands", () => ({ startNow: () => Promise.resolve(), resume: () => Promise.resolve(), killBackground: () => Promise.resolve() }));
 vi.mock("../lib/notes", () => ({ createNote: () => {}, noteTitle: () => "" }));
-vi.mock("../lib/settings", () => ({ loadNotesEnabled: () => true, subscribeNotesEnabled: () => () => {} }));
 
 import { newSession, type Session } from "../lib/session";
 import { useThreadChat, type SessionActions } from "./threadChat";

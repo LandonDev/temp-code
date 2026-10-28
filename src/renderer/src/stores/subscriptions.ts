@@ -21,10 +21,6 @@ import {
   subscribeSessionHistory,
 } from "../lib/sessionStore";
 import {
-  loadLiveAgentsEnabled,
-  loadNotesEnabled,
-  subscribeLiveAgentsEnabled,
-  subscribeNotesEnabled,
 } from "../lib/settings";
 import { createWorkspace } from "../lib/tcserver/projects";
 import { sessionStore } from "../lib/tcserver/store";
@@ -37,7 +33,6 @@ import { environmentStore } from "./environment";
 import { focus } from "./focus";
 import { currentDockCwd, currentSidebarCwd, project, projectStore } from "./project";
 import { installStallRecorder } from "../lib/stallRecorder";
-import { shell } from "./shell";
 import { currentDock, terminalsStore } from "./terminals";
 import { activeSessionOf, workspace, workspaceTabsStore } from "./workspace";
 import { openSessionIds, workspaceActions } from "./workspaceActions";
@@ -150,14 +145,13 @@ export function installIdleSweep(): Teardown {
   let pending: ReturnType<typeof setTimeout> | null = null;
   const sweep = () => {
     pending = null;
-    const keepUnseen = loadLiveAgentsEnabled();
     const visibleIds = openSessionIds(workspaceTabsStore.getState().tabs);
     const unseen = liveAgentTracker.unseenIds();
     const idleDetached = sessionStore.getSnapshot().filter(
       (session) =>
         !visibleIds.has(session.id) &&
         !session.busy &&
-        !(keepUnseen && unseen.has(session.id)),
+        !unseen.has(session.id),
     );
     if (idleDetached.length === 0) return;
     for (const session of idleDetached) {
@@ -171,7 +165,7 @@ export function installIdleSweep(): Teardown {
         (session) =>
           visibleIds.has(session.id) ||
           session.busy ||
-          (keepUnseen && unseen.has(session.id)) ||
+          unseen.has(session.id) ||
           skipForgetSessionIds.has(session.id),
       );
       // The store bumps on any new array; a no-op sweep must not re-notify
@@ -186,7 +180,6 @@ export function installIdleSweep(): Teardown {
   const offs = [
     sessionStore.subscribe(sweepAfterCommit),
     workspaceTabsStore.subscribe((s) => s.tabs, sweepAfterCommit),
-    subscribeLiveAgentsEnabled(sweepAfterCommit),
   ];
   return () => {
     teardownAll(offs)();
@@ -406,15 +399,6 @@ export function installHistoryRefresh(): Teardown {
   ]);
 }
 
-/** Notes turned off closes the notes view. */
-export function installNotesGate(): Teardown {
-  const check = () => {
-    if (!loadNotesEnabled()) shell.closeNotes();
-  };
-  check();
-  return subscribeNotesEnabled(check);
-}
-
 /** A dock that is not on screen cannot hold the terminal's focus. */
 export function installLayoutSync(): Teardown {
   const dockVisible = () => !!currentDock(currentDockCwd())?.open;
@@ -504,7 +488,6 @@ export function installSubscriptions(): Teardown {
     installActiveSessionSync(),
     installAutosave(),
     installHistoryRefresh(),
-    installNotesGate(),
     installLayoutSync(),
     installBootTasks(),
   ]);

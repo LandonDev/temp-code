@@ -29,11 +29,7 @@ import {
 import { BUNDLED_RELEASE } from "../../lib/releaseNotes";
 import {
   loadMidTurnDefault,
-  loadLiveAgentsEnabled,
-  loadNotesEnabled,
   saveMidTurnDefault,
-  saveLiveAgentsEnabled,
-  saveNotesEnabled,
   type MidTurnDefault,
 } from "../../lib/settings";
 import { loadSoundsEnabled, saveSoundsEnabled } from "../../lib/sounds";
@@ -84,8 +80,6 @@ export function GeneralPage({
 }) {
   const [transcriptAnchor, setTranscriptAnchor] = useState(loadTranscriptAnchor);
   const [midTurn, setMidTurn] = useState<MidTurnDefault>(loadMidTurnDefault);
-  const [notesEnabled, setNotesEnabled] = useStoredFlag(loadNotesEnabled, saveNotesEnabled);
-  const [liveAgentsEnabled, setLiveAgentsEnabled] = useStoredFlag(loadLiveAgentsEnabled, saveLiveAgentsEnabled);
   const [soundsEnabled, setSoundsEnabled] = useStoredFlag(loadSoundsEnabled, saveSoundsEnabled);
 
   // The menu flips the anchor too; follow it while the page is open.
@@ -134,16 +128,6 @@ export function GeneralPage({
             }}
           />
         </PageRow>
-      </PageSection>
-
-      <PageSection title="Rail">
-        <SwitchRow title="Notes" description="A markdown notebook on the project rail." on={notesEnabled} onChange={setNotesEnabled} />
-        <SwitchRow
-          title="Working agents"
-          description="A rail card lists chats in flight across projects."
-          on={liveAgentsEnabled}
-          onChange={setLiveAgentsEnabled}
-        />
       </PageSection>
 
       <LinearSettings />

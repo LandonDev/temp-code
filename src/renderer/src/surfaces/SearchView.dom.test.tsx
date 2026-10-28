@@ -68,7 +68,6 @@ vi.mock("../lib/fileIndex", async (importOriginal) => {
   ];
   return { ...real, peekProjectFiles: () => files, loadProjectFiles: () => Promise.resolve(files), recentOpenedFiles: () => h.recentFiles };
 });
-vi.mock("../lib/settings", () => ({ loadNotesEnabled: () => true }));
 vi.mock("../lib/session", () => ({ sessionDisplayTitle: (title: string) => title }));
 vi.mock("../lib/projectLogos", () => ({ projectLogoSrc: () => null }));
 vi.mock("../lib/tabGroups", () => ({ TAB_GROUP_LOGOS_CHANGED: "x", tabGroupLogoDisplayRevision: () => 0 }));

@@ -8,7 +8,6 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useSyncExternalStore,
   useState,
 } from "react";
 import { Sidebar } from "./chrome/Sidebar";
@@ -20,7 +19,6 @@ import { selectionFor } from "./lib/threadBatchSelection";
 
 /** The View menu's fleet switches reach every host. */
 const EVERYWHERE: BatchScope = { kind: "all" };
-const NOTES_OFF = ["open_notes"];
 import { ThreadBatchToasts } from "./chrome/ThreadBatchToasts";
 import { GoalDialogHost } from "./chrome/GoalDialog";
 import { MacBridgeToasts } from "./chrome/MacBridgeCards";
@@ -303,9 +301,7 @@ import {
   peekLinearIssueDetails,
 } from "./lib/linear";
 import {
-  loadNotesEnabled,
   isSettingsSectionId,
-  subscribeNotesEnabled,
 } from "./lib/settings";
 import {
   handleEditorFindKey,
@@ -427,11 +423,6 @@ export default function App() {
   const inboxViewOpen = useShell((s) => s.inboxViewOpen);
   const notesViewOpen = useShell((s) => s.notesViewOpen);
   const accountsPage = useShell((s) => s.accountsPage);
-  const notesEnabled = useSyncExternalStore(
-    subscribeNotesEnabled,
-    loadNotesEnabled,
-    () => true,
-  );
   const settingsOpen = useShell((s) => s.settingsOpen);
   const whatsNew = useShell((s) => s.whatsNew);
   const batchPending = useBatchPending();
@@ -3381,7 +3372,6 @@ export default function App() {
             onCommand={(id) => {
               if (isAppCommandId(id)) execute({ id });
             }}
-            disabled={notesEnabled ? undefined : NOTES_OFF}
           />
         ) : null}
         <ShellTitleBar
@@ -3392,7 +3382,7 @@ export default function App() {
           onShowTerminal={desktopOnly(onShowProjectTerminal)}
           onOpenSettings={onOpenSettings}
           onOpenInbox={onOpenInbox}
-          onOpenNotes={notesEnabled ? onOpenNotes : undefined}
+          onOpenNotes={onOpenNotes}
           onGoToFile={onGoToFile}
           onSelectProject={onSelectProject}
           onChooseFolder={onChooseProjectFolder}

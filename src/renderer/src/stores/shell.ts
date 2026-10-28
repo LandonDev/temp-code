@@ -4,7 +4,6 @@ import { createStore } from "zustand/vanilla";
 import { perfMark } from "../lib/perfMarks";
 import { loadProjectRailOpen, saveProjectRailOpen } from "../lib/appearance";
 import {
-  loadNotesEnabled,
   loadSettingsSection,
   saveSettingsSection,
   type SettingsSectionId,
@@ -225,7 +224,6 @@ export const shell = {
   },
   closeInbox: () => update((s) => patch(s, { inboxViewOpen: false })),
   openNotes: () => {
-    if (!loadNotesEnabled()) return;
     update(openNotes);
   },
   closeNotes: () => update((s) => patch(s, { notesViewOpen: false })),

@@ -28,7 +28,6 @@ vi.mock("./threads/WorkingStrip", () => ({ WorkingStrip: () => null }));
 vi.mock("../lib/tcserver/commands", () => ({ focusSignal: { pane: () => {}, left: () => {} } }));
 vi.mock("../lib/preconnect", () => ({ askPreconnect: () => {}, idleForPreconnect: () => false }));
 vi.mock("../lib/notes", () => ({ createNote: () => {}, noteTitle: () => "" }));
-vi.mock("../lib/settings", () => ({ loadNotesEnabled: () => true, subscribeNotesEnabled: () => () => {} }));
 
 import { SessionPane, loadLineText } from "./SessionPane";
 import { SessionActionsContext } from "./threadChat";

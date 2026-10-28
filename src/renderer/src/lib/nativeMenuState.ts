@@ -7,7 +7,6 @@ import { threadsToMarkRead } from "./markRead";
 import { menuStateSender } from "./native";
 import { rightPanel } from "./rightPanel";
 import { loadLastSeen, seenFloor, subscribeLastSeen } from "./sessionSeen";
-import { loadNotesEnabled, subscribeNotesEnabled } from "./settings";
 import { sessionStore } from "./tcserver/store";
 import { workspaceStore } from "./tcserver/workspaces";
 import type { BatchAction } from "./threadBatch";
@@ -29,7 +28,6 @@ export type MenuFacts = {
   split: boolean;
   /** The dock's cwd is a project: Show Terminal has somewhere to open. */
   dockUsable: boolean;
-  notesEnabled: boolean;
   unread: number;
   counts: BatchCounts;
 };
@@ -50,7 +48,6 @@ export function menuStateOf(f: MenuFacts): MenuState {
   if (f.dockOpen) open.push("toggle_terminal");
   if (f.split) open.push("close_tab");
   if (!f.dockUsable) disabled.push("toggle_terminal");
-  if (!f.notesEnabled) disabled.push("open_notes");
   if (f.unread === 0) disabled.push("mark_all_read");
   for (const action of Object.keys(FLEET_IDS) as BatchAction[]) {
     if (f.counts[action] === 0) disabled.push(FLEET_IDS[action]);
@@ -78,7 +75,6 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }): MenuFacts 
     panel: !focused || !rightPanel.hasRoom(focused) ? "none" : rightPanel.get(focused).open ? "open" : "closed",
     ...dock,
     split: !!active && leafIds(active.layout).length > 1,
-    notesEnabled: loadNotesEnabled(),
     unread,
     counts: batchCounts(metas, { catalog, lastSeen, floor, scope: EVERYWHERE, now: Date.now() }),
   };
@@ -115,7 +111,6 @@ export function publishMenuState(
     sessionStore.onMetaChange(schedule),
     workspaceStore.subscribe(schedule),
     subscribeLastSeen(schedule),
-    subscribeNotesEnabled(schedule),
     rightPanel.subscribe(schedule),
     shellStore.subscribe(schedule),
     workspaceTabsStore.subscribe(schedule),

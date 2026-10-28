@@ -65,7 +65,6 @@ import { pairWorkspaces, partnersOf } from "../lib/projectPairs";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
 import { searchProject, type OpenFileFn } from "../lib/search";
 import { sessionDisplayTitle, type HarnessId } from "../lib/session";
-import { loadNotesEnabled } from "../lib/settings";
 import { environmentOfCwd, hostOfCwd } from "../lib/tcserver/projects";
 import { sessionStore, useServerSessions, useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
@@ -280,7 +279,6 @@ export function SearchView({
     }
     let cancel: (() => void) | null = null;
     const timer = window.setTimeout(() => {
-      const notesOn = loadNotesEnabled();
       const hosts: SearchHost[] = askedHosts.map((env) => ({
         environmentId: env.id,
         name: env.name,
@@ -323,13 +321,11 @@ export function SearchView({
               );
             }
           }
-          if (notesOn) {
-            sources.push(
-              invokeOn<{ hits: Parameters<typeof noteHits>[1] }>(id, "notes_search", { query: text, limit: NOTE_LIMIT }).then((result) =>
-                noteHits(id, result.hits),
-              ),
-            );
-          }
+          sources.push(
+            invokeOn<{ hits: Parameters<typeof noteHits>[1] }>(id, "notes_search", { query: text, limit: NOTE_LIMIT }).then((result) =>
+              noteHits(id, result.hits),
+            ),
+          );
           return sources;
         },
       });
@@ -346,7 +342,7 @@ export function SearchView({
   // A browse that may show notes reads each asked, online host's notes: the
   // cache paints at once, the host's answer replaces it. An offline host is
   // skipped, and nothing waits on a host to paint the other kinds.
-  const browseNotes = browsing && loadNotesEnabled() && (parsed.types === null || parsed.types.includes("note"));
+  const browseNotes = browsing && (parsed.types === null || parsed.types.includes("note"));
   // The asked hosts that are online, as one string: a host coming online
   // reads its notes, a heartbeat that changes nothing does not.
   const onlineHosts = askedHosts

@@ -25,7 +25,8 @@ vi.mock("../../lib/updateStore", () => ({
   updateStore: { install: vi.fn(), check: vi.fn() },
   useUpdateSnapshot: () => update.snapshot,
 }));
-vi.mock("../../lib/sounds", () => ({ loadSoundsEnabled: () => true, saveSoundsEnabled: vi.fn(), playCue: vi.fn() }));
+const sounds = vi.hoisted(() => ({ save: vi.fn() }));
+vi.mock("../../lib/sounds", () => ({ loadSoundsEnabled: () => true, saveSoundsEnabled: sounds.save, playCue: vi.fn() }));
 vi.mock("../chunks", () => ({ releaseNotesChunk: { intent: {} } }));
 vi.mock("../../lib/native", async (original) => ({
   ...(await original<typeof import("../../lib/native")>()),
@@ -35,7 +36,6 @@ vi.mock("../../lib/native", async (original) => ({
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 
 const { GeneralPage, updateActionLabel } = await import("./General");
-const settings = await import("../../lib/settings");
 
 function mockLocalStorage() {
   const data = new Map<string, string>();
@@ -72,7 +72,6 @@ describe("General", () => {
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
       "Transcript",
       "Composer",
-      "Rail",
       "Linear",
       "Extras",
       "About",
@@ -82,11 +81,17 @@ describe("General", () => {
   it("saves a switch's setting", async () => {
     page();
     await act(async () => {});
-    const notes = screen.getByRole("switch", { name: "Notes" });
-    expect(notes.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(notes);
-    expect(settings.loadNotesEnabled()).toBe(false);
-    expect(notes.getAttribute("aria-checked")).toBe("false");
+    const cues = screen.getByRole("switch", { name: "Sounds" });
+    expect(cues.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(cues);
+    expect(sounds.save).toHaveBeenCalledWith(false);
+    expect(cues.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("has no switches for the retired rail features", async () => {
+    page();
+    await act(async () => {});
+    for (const name of ["Rail", "Notes", "Working agents"]) expect(screen.queryByText(name)).toBeNull();
   });
 
   it("connects Linear in a dialog: Enter checks the key, a refusal stays in the dialog", async () => {
