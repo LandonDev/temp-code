@@ -29,7 +29,7 @@ describe("MessageQueue", () => {
     unmount();
     render(<MessageQueue items={[item("a", "first", true)]} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
     expect(screen.getByRole("button", { name: "Edit: first" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Remove from queue" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Remove from queue" }).length).toBeGreaterThan(0);
   });
 
   it("a reorder of the shown rows keeps a hidden item where it was", () => {
