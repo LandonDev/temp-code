@@ -5,7 +5,7 @@ import type { DriverCtx } from './types'
 
 vi.mock('electron', () => ({ nativeImage: {} }))
 
-const { checkForgottenTasks, handleMessage, kindOf, newStreamState, permittedWebTools, stopHookFor } = await import('./claude')
+const { checkForgottenTasks, handleMessage, kindOf, newStreamState, permittedWebTools, stopHookFor, taskLabel } = await import('./claude')
 
 /**
  * Background work over the SDK stream: the task level and edges, the Stop
@@ -435,4 +435,33 @@ it('web tools run without a prompt under Auto-edits only', () => {
   expect(permittedWebTools('edits')).toEqual(['WebSearch', 'WebFetch'])
   expect(permittedWebTools('safe')).toEqual([])
   expect(permittedWebTools('auto')).toEqual([])
+})
+
+it("the Stop hook's command loses the process guard's marks, and a task without a description is labelled by its command", async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(2_000)
+  startTurn()
+  const marked = "export TEMP_CODE_THREAD='s1' TEMP_CODE_CALL='toolu_01'; sleep 600"
+  const hook = stopHookFor(ctx, state)
+  await hook(
+    stopInput([], [
+      { id: 't1', description: '', command: marked },
+      { id: 't2', description: 'poll the deploy', command: marked },
+      { id: 't3', description: 'background task', command: "export TEMP_CODE_THREAD='s1' TEMP_CODE_CALL='c'; while true; do curl -s http://localhost:5173/health && break; sleep 5; done\necho up" }
+    ] as never[])
+  )
+  expect(itemLists().at(-1)).toEqual([
+    { id: 't1', label: 'sleep 600', kind: 'shell', startedAt: 2_000, command: 'sleep 600' },
+    { id: 't2', label: 'poll the deploy', kind: 'shell', startedAt: 2_000, command: 'sleep 600' },
+    { id: 't3', label: 'while true; do curl -s http://localhost:5173/health && break', kind: 'shell', startedAt: 2_000, command: 'while true; do curl -s http://localhost:5173/health && break; sleep 5; done\necho up' }
+  ])
+  expect(itemLists().at(-1)![2].label).toHaveLength(60)
+})
+
+it('taskLabel: the description as written, else the first line of the command cut to 60, else the generic words', () => {
+  expect(taskLabel('serve the app', 'bun run dev')).toBe('serve the app')
+  expect(taskLabel('  ', 'bun run dev\nsleep 1')).toBe('bun run dev')
+  expect(taskLabel(undefined, undefined)).toBe('background task')
+  expect(taskLabel('background task', undefined)).toBe('background task')
+  expect(taskLabel(undefined, 'x'.repeat(80))).toBe('x'.repeat(60))
 })

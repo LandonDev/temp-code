@@ -443,14 +443,29 @@ interface TaskReport {
   command?: string
 }
 
-/** Merge a report into what was known of the task. */
+const GENERIC_TASK = 'background task'
+/** The label of a task: the model's description as written; without one,
+ *  the command's first line cut to 60 characters; else the generic words. */
+export function taskLabel(description: string | undefined, command: string | undefined): string {
+  const given = description?.trim()
+  if (given && given !== GENERIC_TASK) return given
+  const line = command?.trim().split('\n')[0]?.trim()
+  return line ? line.slice(0, 60) : GENERIC_TASK
+}
+
+/** Merge a report into what was known of the task. The command is the one
+ *  the model wrote: the Stop hook reports it as the shell ran it, with the
+ *  process guard's marks exported in front (wrapBashCommand), which are
+ *  nothing a person should read. */
 function learn(state: StreamState, r: { id: string } & Partial<TaskInfo> & { type?: string }): TaskInfo {
   const prev = state.known.get(r.id)
   const kind = r.type ? kindOf(r.type) : r.kind
+  const raw = r.command ?? prev?.command
+  const command = raw === undefined ? undefined : unwrapBashCommand(raw)
   const info: TaskInfo = {
-    description: r.description ?? prev?.description ?? 'background task',
+    description: taskLabel(r.description ?? prev?.description, command),
     kind: kind && kind !== 'other' ? kind : (prev?.kind ?? kind ?? 'other'),
-    ...((r.command ?? prev?.command) ? { command: r.command ?? prev?.command } : {}),
+    ...(command ? { command } : {}),
     ...((r.callId ?? prev?.callId) ? { callId: r.callId ?? prev?.callId } : {})
   }
   state.known.set(r.id, info)
