@@ -16,6 +16,7 @@ import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
+import { providerWaitWords, retryWords } from '@shared/statusWords'
 import type { SessionBatchResult } from '@shared/contract'
 import { batchChildIds, runSessionBatch, type SessionBatchAction } from './sessionBatch'
 import { ThreadScheduler } from './scheduler'
@@ -319,10 +320,9 @@ export function phaseLine(event: Extract<AgentEvent, { type: 'phase' }>): string
     case 'retrying': {
       const r = event.retry
       if (!r) return 'Retrying'
-      const wait = r.delayMs > 0 ? ` in ${Math.max(1, Math.round(r.delayMs / 1000))} s` : ''
-      if (r.reason?.startsWith('of ')) return `Reconnecting · retry ${r.attempt} ${r.reason}`
-      const why = r.reason === 'HTTP 429' ? 'Rate limited' : r.reason === 'HTTP 529' || r.reason === 'HTTP 503' ? 'Provider overloaded' : 'Retrying'
-      return `${why} · retry ${r.attempt}${wait}`
+      if (r.reason?.startsWith('of ')) return retryWords({ why: 'reconnecting', attempt: r.attempt, of: r.reason.slice(3).trim() })
+      const why = r.reason === 'HTTP 429' ? 'rate-limited' : r.reason === 'HTTP 529' || r.reason === 'HTTP 503' ? 'overloaded' : 'retrying'
+      return retryWords({ why, attempt: r.attempt, delayMs: r.delayMs })
     }
     default:
       return null
@@ -854,7 +854,7 @@ export class SessionRegistry {
     return this.handles.get(sessionId)?.pid?.() ?? null
   }
 
-  /** The line a queued row carries ("Queued · 120 of 120 running"), null when not queued. */
+  /** The line a queued row carries ("Queued  120 of 120 running"), null when not queued. */
   queuedLine(sessionId: string): string | null {
     const line = this.queuedLines.get(sessionId)
     if (line) return line
@@ -4725,7 +4725,7 @@ export class SessionRegistry {
     if (!open?.size) return null
     const oldest = Math.min(...open.values())
     const waited = now - oldest
-    return waited >= PROVIDER_WAIT_MS ? `Waiting for the provider · ${Math.round(waited / 1000)} s` : null
+    return waited >= PROVIDER_WAIT_MS ? providerWaitWords(Math.round(waited / 1000)) : null
   }
 
   /** The person spoke into the thread's turn: every wait_for_agent in

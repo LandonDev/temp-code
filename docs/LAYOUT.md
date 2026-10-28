@@ -812,7 +812,7 @@ in the whole pane, with Back.
   and what it was doing; failed, the failure; watching, what it watches
   (an idle child with live subagents is watching them, the strip's rule)
   and queued, the activity without the lead the word says ("Waiting on ",
-  "Queued · "); paused, what it was doing; done, "landed 12:08" once the
+  "Queued  "); paused, what it was doing; done, "landed 12:08" once the
   batch lists it, else a research or orchestration thread's summary (the
   notes' State line, else its last words). The child the batch's
   `blocked` names says why ("ended its turn without completing", "errored",
@@ -967,7 +967,7 @@ in the whole pane, with Back.
   menu, like every menu and popover, sits on the popover layer (95, above
   the dialog's 90).
 - **Everywhere else** a child is an ordinary root thread in the rail with
-  its activity line ("Queued · waiting for <sibling>") and its own working
+  its activity line ("Queued  waiting for <sibling>") and its own working
   strip with one quiet Start now; only the header strip leaves it out.
   Under the master's rail row a child on a host whose link is not open
   sits under the same offline tint as on the board (`data-host-offline`).

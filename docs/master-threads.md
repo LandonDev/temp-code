@@ -182,7 +182,7 @@ restart the first user row is the message. `tick` runs oldest-first on
 every meta change and removal, and after boot only once the BootResumer
 is done (`holdUntil`).
 
-A queued root's `activity` reads "Queued · waiting for <sibling>"
+A queued root's `activity` reads "Queued  waiting for <sibling>"
 ("(errored)", "(stopped)" or "(paused)" appended), pushed only when it
 changes. The rail draws a still gray dot, the tab edge "Queued" with that
 line as its tooltip, the working strip the line with "Start now". The

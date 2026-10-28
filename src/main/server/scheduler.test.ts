@@ -136,7 +136,7 @@ describe('after', () => {
     const waiter = await queued('wait', { after: sibling.id })
     // The sibling has not run: a fresh idle thread is not a settled one.
     expect(status(waiter)).toBe('queued')
-    expect(line(waiter)).toBe('Queued · waiting for Sibling')
+    expect(line(waiter)).toBe('Queued  waiting for Sibling')
     await registry.send(sibling.id, 'go')
     await settle()
     expect(status(waiter)).toBe('queued')
@@ -153,7 +153,7 @@ describe('after', () => {
     emits.get(sibling.id)!({ type: 'status', status: 'error' })
     await settle()
     expect(status(waiter)).toBe('queued')
-    expect(line(waiter)).toBe('Queued · waiting for Broken (errored)')
+    expect(line(waiter)).toBe('Queued  waiting for Broken (errored)')
     await registry.setArchived(sibling.id, true)
     await settle()
     expect(status(waiter)).toBe('running')
@@ -245,7 +245,7 @@ describe('the running cap', () => {
     const ids = [await plain('a'), await plain('b'), await plain('c')]
     expect(ids.map(status)).toEqual(['running', 'running', 'queued'])
     expect(boots).not.toContain(ids[2])
-    expect(line(ids[2]!)).toBe('Queued · 2 of 2 running')
+    expect(line(ids[2]!)).toBe('Queued  2 of 2 running')
     expect(registry.scheduler.counts()).toEqual({ running: 2, queued: 1 })
   })
 
@@ -261,7 +261,7 @@ describe('the running cap', () => {
     expect(registry.liveIds().has(a)).toBe(false)
     expect([b, c].map(status)).toEqual(['running', 'queued'])
     expect(sends.get(b)).toEqual(['b'])
-    expect(line(c)).toBe('Queued · 1 of 1 running')
+    expect(line(c)).toBe('Queued  1 of 1 running')
     idle(b)
     await settle()
     expect(status(c)).toBe('running')
@@ -299,12 +299,12 @@ describe('the running cap', () => {
     capAt(1, 60_000)
     const sibling = await plain('go', { title: 'Sibling' })
     const waiter = await queued('wait', { after: sibling })
-    expect(line(waiter)).toBe('Queued · waiting for Sibling')
+    expect(line(waiter)).toBe('Queued  waiting for Sibling')
     idle(sibling)
     await settle()
     // After is met; the idle sibling still holds the one slot inside its grace.
     expect(status(waiter)).toBe('queued')
-    expect(line(waiter)).toBe('Queued · 1 of 1 running')
+    expect(line(waiter)).toBe('Queued  1 of 1 running')
     registry.reclaimGraceMs = 0
     await registry.scheduler.tick()
     await settle()
@@ -322,7 +322,7 @@ describe('the running cap', () => {
     await registry.send(a, 'again')
     await settle()
     expect(status(a)).toBe('queued')
-    expect(line(a)).toBe('Queued · 1 of 1 running')
+    expect(line(a)).toBe('Queued  1 of 1 running')
     idle(b)
     await settle()
     expect(status(a)).toBe('running')
@@ -386,7 +386,7 @@ describe('the scheduler alone', () => {
     await scheduler.tick()
     expect(started).toEqual(['a', 'b'])
     expect(scheduler.counts()).toEqual({ running: 2, queued: 5 })
-    expect(scheduler.lineOf('c')).toBe('Queued · 2 of 2 running')
+    expect(scheduler.lineOf('c')).toBe('Queued  2 of 2 running')
   })
 
   it('while the loop lags, a storm of changes is one pass per 250 ms, each after a quiet moment', async () => {
@@ -478,6 +478,6 @@ describe('the scheduler alone', () => {
     const scheduler = new ThreadScheduler({ ...reg, memoryLow: () => true })
     await scheduler.tick()
     expect(started).toEqual([])
-    expect(scheduler.lineOf('a')).toBe('Queued · waiting for memory')
+    expect(scheduler.lineOf('a')).toBe('Queued  waiting for memory')
   })
 })

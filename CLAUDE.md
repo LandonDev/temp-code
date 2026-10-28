@@ -645,9 +645,11 @@ routed to (aliax-core's `forward`). Two listeners:
   own `api_retry` (attempt, delay, status) and clears it at the first text,
   thinking or tool call; the codex driver emits `retrying` on
   `willRetry`/`Reconnecting`; sessions.ts words them ("Starting the CLI",
-  "Initializing", "Rate limited · retry 3 in 32 s") and folds them onto the
+  "Initializing", "Rate limited, retry 3 in 32 s"; the vocabulary is
+  src/shared/statusWords.ts: a comma before a phase's detail, two spaces
+  after a state word, `leadDetail` reading both and the old dot) and folds them onto the
   meta like `context` (`phaseLine`). A provider request open past 15 s with
-  nothing finer known reads "Waiting for the provider · 25 s", re-pushed
+  nothing finer known reads "Waiting for the provider, 25 s", re-pushed
   every 5 s (`providerRequest`, `PROVIDER_WAIT_MS`). A first-output
   watchdog (`FIRST_OUTPUT_MS`, 60 s after a send with nothing back at all)
   settles the turn with the silence error and puts the process down; the
@@ -949,8 +951,8 @@ routed to (aliax-core's `forward`). Two listeners:
   over `macBridge.loadLimit` (default 2 × cores) until it is back under
   0.75 × the limit. A held call is `status: 'held'` with its `held` standing
   (reason, position, load, limit), a row with Stop in the host's running
-  list and the thread's Mac approvals dialog ("Waiting for the Mac · load
-  12.3 of 8 · 3rd in line"), never a card, and waits only within the call's
+  list and the thread's Mac approvals dialog ("Waiting for the Mac, load
+  12.3 of 8, 3rd in line"), never a card, and waits only within the call's
   own deadline. `macBridge.maxThreads.<envId>` (default 2) caps the
   Mac-local threads a host starts here: `MacBridge.admitThread(envId)`
   (also `macBridge.admitThread`, local) is asked by crossHostThreads.ts
@@ -2343,9 +2345,9 @@ this is the short one.
   queued messages or reports due), which is how a settle frees a slot. The
   BootResumer resumes up to the cap and leaves the rest `queued` with their
   nudge stored (`queueResume`; their ledger rows stay). A queued row's
-  `activity` reads "Queued · waiting for <sibling>" ("(errored)" /
-  "(stopped)" / "(paused)" appended), "Queued · 120 of 120 running" or
-  "Queued · waiting for memory", pushed only when it changes. RPCs
+  `activity` reads "Queued  waiting for <sibling>" ("(errored)" /
+  "(stopped)" / "(paused)" appended), "Queued  120 of 120 running" or
+  "Queued  waiting for memory" (two spaces after the state word), pushed only when it changes. RPCs
   `admission.get` (read: cap, pinned, default, running, queued, memory) and
   `admission.set { cap | null }` (admin); a Running threads row in each
   connected host's section of Settings → Hosts shows it

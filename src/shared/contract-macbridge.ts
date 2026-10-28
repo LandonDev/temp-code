@@ -340,7 +340,7 @@ export type MacBridgeOutcome = 'allowed' | 'denied' | 'expired' | 'stopped' | 'd
  * Why an allowed command or job waits on the Mac before it starts (the load
  * guard, remote/macLoadGuard.ts): the host is at its cap of concurrent
  * commands and jobs, or the Mac's one-minute load is over the limit. The
- * renderer draws it as "Waiting for the Mac · load 12.3 of 8 · 3rd in line".
+ * renderer draws it as "Waiting for the Mac, load 12.3 of 8, 3rd in line".
  */
 export interface MacBridgeHeld {
   reason: 'cap' | 'load'
@@ -363,13 +363,28 @@ export function ordinal(n: number): string {
   return `${n}${one === 1 ? 'st' : one === 2 ? 'nd' : one === 3 ? 'rd' : 'th'}`
 }
 
-/** What a held row says, on the Mac and in the log: "Waiting for the Mac · load 12.3 of 8 · 3rd in line". */
+/** What a held row says, on the Mac and in the log: "Waiting for the Mac,
+ *  load 12.3 of 8, 3rd in line" (statusWords.ts: a comma before each
+ *  fact; `heldFacts` has them apart). */
 export function heldLine(held: MacBridgeHeld): string {
+  return `${HELD_LEAD}, ${heldFacts(held).join(', ')}`
+}
+
+/** The held row's lead. */
+export const HELD_LEAD = 'Waiting for the Mac'
+
+/** The held row as facts for a line that sets them apart by margin: the lead, why, the place in line. */
+export function heldParts(held: MacBridgeHeld): string[] {
+  return [HELD_LEAD, ...heldFacts(held)]
+}
+
+/** The held row's facts after its lead: why ("load 12.3 of 8", "4 of 4 running") and the place in line. */
+export function heldFacts(held: MacBridgeHeld): string[] {
   const why =
     held.reason === 'load'
       ? `load ${held.load.toFixed(1)} of ${trimNumber(held.limit)}`
       : `${held.running} of ${held.maxRunning} running`
-  return `Waiting for the Mac · ${why} · ${ordinal(held.position)} in line`
+  return [why, `${ordinal(held.position)} in line`]
 }
 
 /** 16 → "16", 4.5 → "4.5". */

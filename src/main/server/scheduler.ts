@@ -1,4 +1,5 @@
 import type { SessionMeta } from '@shared/events'
+import { joinFacts } from '@shared/statusWords'
 import { currentLag, DEFAULT_IDLE_THRESHOLD_MS, untilLoopIdle } from './stalls'
 
 /**
@@ -28,9 +29,9 @@ import { currentLag, DEFAULT_IDLE_THRESHOLD_MS, untilLoopIdle } from './stalls'
  * directly, past `after` and past the cap.
  *
  * Every queued row's `activity` line (what the rail, the board and the
- * working strip read) is "Queued · waiting for <sibling title>" (with
+ * working strip read) is "Queued  waiting for <sibling title>" (with
  * "(errored)", "(stopped)" or "(paused)" appended) for an `after` wait, and
- * "Queued · 120 of 120 running" for the cap, recomputed on every tick and
+ * "Queued  120 of 120 running" for the cap, recomputed on every tick and
  * pushed only when it changed.
  *
  * An idle thread still holding its harness holds a slot, so while rows
@@ -350,11 +351,11 @@ export class ThreadScheduler {
 }
 
 function capLine(running: number, cap: number, low: boolean): string {
-  return low ? 'Queued · waiting for memory' : `Queued · ${running} of ${cap} running`
+  return joinFacts('Queued', low ? 'waiting for memory' : `${running} of ${cap} running`)
 }
 
 function waitingLine(after: Extract<AfterState, { met: false }>): string {
-  const base = `Queued · waiting for ${after.title}`
+  const base = joinFacts('Queued', `waiting for ${after.title}`)
   switch (after.why) {
     case 'errored':
       return `${base} (errored)`

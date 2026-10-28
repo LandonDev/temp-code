@@ -334,3 +334,10 @@ describe("focusedTree", () => {
     expect([...focusedTree(metas, "gone")]).toEqual(["gone"]);
   });
 });
+
+it("the strip's queued detail parses the host's two spaces as it parses the old dot", () => {
+  expect(threadStatus({ status: "queued", activity: "Queued  120 of 120 running" }).detail).toBe("120 of 120 running");
+  expect(threadStatus({ status: "queued", activity: "Queued  waiting for Plan A19" }).detail).toBe("waiting for Plan A19");
+  expect(threadStatus({ status: "queued", activity: "Queued · waiting for Plan A19" }).detail).toBe("waiting for Plan A19");
+  expect(threadStatus({ status: "queued", activity: "Queued" }).detail).toBeNull();
+});

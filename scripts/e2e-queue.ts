@@ -5,11 +5,11 @@
  *   1. With no cap configured, all six start at once and none sits queued.
  *   2. Every thread finishes with an answer, and each carries exactly one
  *      user row (the message its create stored, sent once).
- *   3. A thread created with `after` waits as `queued` with a "Queued ·
+ *   3. A thread created with `after` waits as `queued` with a "Queued
  *      waiting for <sibling>" line until its sibling's turn settles, then
  *      starts with its stored message and answers.
  *   4. The running cap (admission.ts), pinned at two, over six plain threads
- *      sent at once: two run, four wait "Queued · 2 of 2 running" with no
+ *      sent at once: two run, four wait "Queued  2 of 2 running" with no
  *      harness booted; Start now runs the newest past the cap; each settle
  *      frees a slot (the idle harness is put down) and the oldest waiting
  *      thread takes it; the others never run more than two at once.
@@ -128,7 +128,7 @@ console.log('\n[3] after: a thread waits for its sibling')
 const lead = await spawn(7)
 const follower = await spawn(8, { after: lead })
 await sleep(300)
-check('follower queued behind the lead', store.getSession(follower)?.status === 'queued' && registry.get(follower)?.activity === 'Queued · waiting for Q7', registry.get(follower)?.activity ?? '')
+check('follower queued behind the lead', store.getSession(follower)?.status === 'queued' && registry.get(follower)?.activity === 'Queued  waiting for Q7', registry.get(follower)?.activity ?? '')
 check('the follower holds its first message', registry.queueList(follower).length === 1 && registry.eventsAfter(follower, 0).some((r) => r.event.type === 'user-text'))
 await settled(lead)
 await sleep(1_500)
@@ -183,7 +183,7 @@ for (let n = 1; n <= 6; n++) await plain(n)
 await sleep(300)
 const capStatuses = capped.map((id) => store.getSession(id)?.status)
 check('two run, four wait', capStatuses.filter((s) => LIVE.has(s!)).length === 2 && capStatuses.filter((s) => s === 'queued').length === 4, capStatuses.join(','))
-check('the queued rows read "Queued · 2 of 2 running"', capped.slice(2).every((id) => registry.get(id)?.activity === 'Queued · 2 of 2 running'), registry.get(capped[2]!)?.activity ?? '')
+check('the queued rows read "Queued  2 of 2 running"', capped.slice(2).every((id) => registry.get(id)?.activity === 'Queued  2 of 2 running'), registry.get(capped[2]!)?.activity ?? '')
 check('a queued thread holds no harness', capped.slice(2).every((id) => !registry.liveIds().has(id)))
 overrideId = capped[5]!
 check('Start now runs the newest past the cap', await registry.startQueued(overrideId))

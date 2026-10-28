@@ -82,10 +82,10 @@ it('a phase event is activity on the meta and never a transcript row; the first 
   emit(id, { type: 'phase', phase: 'initializing' })
   expect(registry.get(id)?.activity).toBe('Initializing')
   emit(id, { type: 'phase', phase: 'retrying', retry: { attempt: 3, delayMs: 32_000, reason: 'HTTP 429' } })
-  expect(registry.get(id)?.activity).toBe('Rate limited · retry 3 in 32 s')
+  expect(registry.get(id)?.activity).toBe('Rate limited, retry 3 in 32 s')
   emit(id, { type: 'phase', phase: null })
   expect(registry.get(id)?.activity).toBe('Thinking')
-  expect(pushed).toEqual(['Starting the CLI', 'Initializing', 'Rate limited · retry 3 in 32 s', 'Thinking'])
+  expect(pushed).toEqual(['Starting the CLI', 'Initializing', 'Rate limited, retry 3 in 32 s', 'Thinking'])
   expect(types(id)).not.toContain('phase')
 })
 
@@ -121,9 +121,9 @@ it('a live handle reads Initializing after the send, kept through a repeated run
 it('phaseLine words every phase', () => {
   expect(phaseLine({ type: 'phase', phase: 'waiting-provider' })).toBe('Waiting for the provider')
   expect(phaseLine({ type: 'phase', phase: 'retrying' })).toBe('Retrying')
-  expect(phaseLine({ type: 'phase', phase: 'retrying', retry: { attempt: 2, delayMs: 0, reason: 'of 5' } })).toBe('Reconnecting · retry 2 of 5')
-  expect(phaseLine({ type: 'phase', phase: 'retrying', retry: { attempt: 1, delayMs: 5_000, reason: 'HTTP 529' } })).toBe('Provider overloaded · retry 1 in 5 s')
-  expect(phaseLine({ type: 'phase', phase: 'retrying', retry: { attempt: 1, delayMs: 2_000, reason: 'no response' } })).toBe('Retrying · retry 1 in 2 s')
+  expect(phaseLine({ type: 'phase', phase: 'retrying', retry: { attempt: 2, delayMs: 0, reason: 'of 5' } })).toBe('Reconnecting, retry 2 of 5')
+  expect(phaseLine({ type: 'phase', phase: 'retrying', retry: { attempt: 1, delayMs: 5_000, reason: 'HTTP 529' } })).toBe('Provider overloaded, retry 1 in 5 s')
+  expect(phaseLine({ type: 'phase', phase: 'retrying', retry: { attempt: 1, delayMs: 2_000, reason: 'no response' } })).toBe('Retrying, retry 1 in 2 s')
   expect(phaseLine({ type: 'phase', phase: null })).toBeNull()
 })
 
@@ -134,12 +134,12 @@ it('a request out at the provider past the threshold reads Waiting for the provi
   registry.providerRequest(id, 7, t0)
   expect(registry.get(id)?.activity).toBe('Thinking')
   vi.setSystemTime(t0 + PROVIDER_WAIT_MS + 10_000)
-  expect(registry.get(id)?.activity).toBe('Waiting for the provider · 25 s')
+  expect(registry.get(id)?.activity).toBe('Waiting for the provider, 25 s')
   // A finer phase wins over the wait.
   emit(id, { type: 'phase', phase: 'retrying', retry: { attempt: 1, delayMs: 1_000, reason: 'HTTP 429' } })
-  expect(registry.get(id)?.activity).toBe('Rate limited · retry 1 in 1 s')
+  expect(registry.get(id)?.activity).toBe('Rate limited, retry 1 in 1 s')
   emit(id, { type: 'phase', phase: null })
-  expect(registry.get(id)?.activity).toBe('Waiting for the provider · 25 s')
+  expect(registry.get(id)?.activity).toBe('Waiting for the provider, 25 s')
   // The ticker re-pushes the row so the seconds move.
   const pushed: (string | null | undefined)[] = []
   registry.onMeta((m) => {
@@ -147,7 +147,7 @@ it('a request out at the provider past the threshold reads Waiting for the provi
   })
   vi.setSystemTime(t0 + PROVIDER_WAIT_MS + 20_000)
   await vi.advanceTimersByTimeAsync(5_000)
-  expect(pushed.at(-1)).toBe('Waiting for the provider · 40 s')
+  expect(pushed.at(-1)).toBe('Waiting for the provider, 40 s')
   registry.providerRequest(id, 7, null)
   expect(registry.get(id)?.activity).toBe('Thinking')
   // A tool call's own activity is never replaced by the wait.

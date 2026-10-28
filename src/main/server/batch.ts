@@ -820,7 +820,7 @@ export class Batches {
     const total = this.landers(row).length
     const n = row.landed.length
     if (n === 0 && total === 0) return 'nothing landed'
-    return `${n} of ${Math.max(total, n)} landed${leftOut ? ` · ${leftOut} left out` : ''}`
+    return `${n} of ${Math.max(total, n)} landed${leftOut ? `, ${leftOut} left out` : ''}`
   }
 
   // ── land ─────────────────────────────────────────────────────────────
@@ -889,7 +889,7 @@ export class Batches {
       row.armed = true
       if (this.step(row, land).status !== 'running') this.begin(row, land, '')
       this.logLine(row, land, `${l.branch} held for the end (pushed to origin from ${this.hostName(id)})`)
-      this.detail(row, land, `${row.held.length} held for the end${row.landed.length ? ` · ${row.landed.length} landed` : ''}`)
+      this.detail(row, land, `${row.held.length} held for the end${row.landed.length ? `, ${row.landed.length} landed` : ''}`)
       this.save(row)
       this.schedule(l.masterId)
       return { hold: true }
@@ -944,7 +944,7 @@ export class Batches {
     row.armed = true
     if (this.step(row, land).status !== 'running') this.begin(row, land, '')
     this.logLine(row, land, `${landing.branch} held for the end`)
-    this.detail(row, land, `${row.held.length} held for the end${row.landed.length ? ` · ${row.landed.length} landed` : ''}`)
+    this.detail(row, land, `${row.held.length} held for the end${row.landed.length ? `, ${row.landed.length} landed` : ''}`)
     this.save(row)
     this.schedule(session.masterId)
     return `HELD: the batch lands all at once; the master will merge ${landing.branch} when every thread is done. Your work is recorded; you are done with it.`
@@ -1360,7 +1360,7 @@ export class Batches {
       const text = `${s.detail}${took}`
       return s.kind === 'gate' ? `gate ${text}` : s.kind === 'shell' ? `${s.name} ${text}` : text
     }
-    const line = [this.landDetail(row, row.leftOut), ...row.steps.filter((s) => s.kind !== 'land').map(outcome)].filter(Boolean).join(' · ')
+    const line = [this.landDetail(row, row.leftOut), ...row.steps.filter((s) => s.kind !== 'land').map(outcome)].filter(Boolean).join(', ')
     this.deps.registry.append(master.id, { type: 'notice', kind: 'batch', message: `Batch done: ${line}` })
     if (row.rules.then === 'archive-children') {
       for (const s of children) if (this.done(s)) await this.deps.registry.setArchived?.(s.id, true)
@@ -1453,7 +1453,7 @@ export class Batches {
       const out = releaseOutcome(release.log)
       row.version = out ? versionOf(out.tag) : null
       this.save(row)
-      return `${passed} · ${!out ? lastLine(release.log) : out.fresh ? `${out.tag} tagged` : `nothing to release since ${out.tag}`}`
+      return `${passed}, ${!out ? lastLine(release.log) : out.fresh ? `${out.tag} tagged` : `nothing to release since ${out.tag}`}`
     } finally {
       this.gating.delete(master.id)
     }
@@ -1503,7 +1503,7 @@ export class Batches {
       },
       (w) => {
         wait = w
-        this.detail(row, id, `queued · ${ordinal(w.position)} in line`)
+        this.detail(row, id, `queued, ${ordinal(w.position)} in line`)
         this.save(row)
       }
     )
@@ -1560,7 +1560,7 @@ export class Batches {
         }
       },
       (w) => {
-        this.detail(row, id, `queued · ${ordinal(w.position)} in line`)
+        this.detail(row, id, `queued, ${ordinal(w.position)} in line`)
         this.save(row)
       }
     )
@@ -1571,7 +1571,7 @@ export class Batches {
       ? `passed in ${took}`
       : result.stopped
         ? `stopped after ${took}`
-        : `exit ${result.code ?? result.signal ?? '?'} after ${took}${last && !last.startsWith('$ ') ? ` · ${last}` : ''}`
+        : `exit ${result.code ?? result.signal ?? '?'} after ${took}${last && !last.startsWith('$ ') ? `, ${last}` : ''}`
     this.logLine(row, id, `== ${spec.name} ${detail}`)
     this.end(row, id, ok ? 'passed' : 'failed', detail)
     this.save(row)

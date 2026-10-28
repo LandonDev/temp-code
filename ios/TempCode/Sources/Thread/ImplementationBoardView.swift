@@ -175,7 +175,7 @@ private struct PlanLine: View {
     }
 }
 
-/// A queued build: the host's one line ("Queued · waiting for <sibling>")
+/// A queued build: the host's one line ("Queued  waiting for <sibling>")
 /// behind the quiet dot. The thread has not booted, so there is nothing else
 /// to draw and no "No tasks yet" to say.
 private struct QueuedRow: View {

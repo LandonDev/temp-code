@@ -1,4 +1,5 @@
 import type { BackgroundWork } from "@shared/events";
+import { leadDetail } from "@shared/statusWords";
 import { watchPhrase } from "@shared/watch";
 import { threadStateOf, type ThreadState } from "../components/ui/status";
 import type { Catalog } from "./projectContext";
@@ -296,11 +297,9 @@ export function settledWithAgents(state: ThreadState, background: BackgroundWork
   return (state === "idle" || state === "done") && !!background?.agents.length;
 }
 
-/** The host's line past its leading word ("Queued · 3rd in line" → "3rd in line"); null when it says nothing more. */
+/** The host's line past its leading word ("Queued  3rd in line" → "3rd in line"; statusWords.ts `leadDetail`, the old dot read too); null when it says nothing more. */
 function after(line: string | null | undefined, lead: string): string | null {
-  const text = line?.trim();
-  if (!text || !text.startsWith(lead)) return null;
-  return text.slice(lead.length).replace(/^[\s·:—-]+/, "") || null;
+  return leadDetail(line, lead);
 }
 
 /** A detail as the vocabulary writes it: lower-case first letter (an acronym keeps its case), no trailing full stop. */

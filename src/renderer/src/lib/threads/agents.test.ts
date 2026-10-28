@@ -280,3 +280,12 @@ describe("loadsTranscript", () => {
     }
   });
 });
+
+it("the queued lead parses the host's two spaces as it parses the old dot", () => {
+  expect(agentStatus({ status: "queued", activity: "Queued  120 of 120 running" }).detail).toBe("120 of 120 running");
+  expect(agentStatus({ status: "queued", activity: "Queued  waiting for Sibling" }).detail).toBe("waiting for Sibling");
+  expect(leadStripped("Queued  waiting for Sibling", "queued")).toBe("waiting for Sibling");
+  expect(leadStripped("Queued · waiting for Sibling", "queued")).toBe("waiting for Sibling");
+  expect(leadStripped("Waiting on 3 subagents", "watching")).toBe("3 subagents");
+  expect(leadStripped("Thinking", "queued")).toBe("Thinking");
+});

@@ -15,7 +15,7 @@ export function Facts({ parts, className }: { parts: readonly string[]; classNam
   );
 }
 
-/** Splits a line another module words with " · " (`devicesSummary`, `heldLine`) into its facts. */
+/** Splits a line another module words with " · " (`devicesSummary`) into its facts. */
 export function splitFacts(line: string): string[] {
   return line
     .split(" · ")

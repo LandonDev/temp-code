@@ -331,7 +331,7 @@ failure waits for a tap.
 
 **Queued, stopped, resources.** A queued root (created, waiting for its
 `after` sibling) reads the host's reason ("Waiting for X", the host's
-"Queued · waiting for X" with the word the queued dot already says left
+"Queued  waiting for X" with the word the queued dot already says left
 off) through its `activity`, never counts as working on its workspace row, and offers Start now in its context
 menu and in the working strip (`session.start`, past the `after`); a
 stopped root (its harness gone after a restart) reads "Stopped", then "The
@@ -668,7 +668,7 @@ tertiary tabular digits; Paused, the pause glyph in the warning tint, the
 frozen elapsed, on a master "3 batch threads with it", then Stop and
 Continue (warning); Stopped, the stop square, "The harness is gone" and
 Resume (accent); Queued, the clock glyph, the host's reason ("Waiting for
-<sibling>", "120 of 120 running", split off the host's "Queued · …" line by
+<sibling>", "120 of 120 running", split off the host's "Queued  …" line by
 `StripWords.queued`) and Start now. While idle, a locked relayed host's one
 line. A refused action re-enables its control and says nothing more: the
 block is already in the field. Between states only opacity animates, in

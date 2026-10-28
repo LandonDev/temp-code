@@ -6,6 +6,7 @@ import type { Block, Session } from "../session";
 import { asHarness, pickerModelId, sessionStore } from "../tcserver/store";
 import { tallyOf } from "../tcserver/todos";
 import type { SessionMeta, SessionStatus } from "../tcserver/types";
+import { leadDetail } from "@shared/statusWords";
 import { lowerFirst } from "../threadStripModel";
 
 /**
@@ -126,19 +127,19 @@ export const TONE_CLASS: Record<AgentTone, string> = {
 
 // ── status ─────────────────────────────────────────────────────────────
 
-/** The prefixes the host writes that the state's word already says:
- *  "Waiting on 3 subagents" under Watching, "Queued · 120 of 120 running"
- *  under Queued (sessions.ts `watchLine`, scheduler.ts). */
+/** The leads the host writes that the state's word already says:
+ *  "Waiting on 3 subagents" under Watching, "Queued  120 of 120 running"
+ *  under Queued (sessions.ts `watchLine`, scheduler.ts; the joiner is
+ *  statusWords.ts's, read by `leadDetail` with the old dot). */
 const LEADS: Partial<Record<ThreadState, string>> = {
-  watching: "Waiting on ",
-  queued: "Queued · ",
+  watching: "Waiting on",
+  queued: "Queued",
 };
 
 /** The activity with the lead its state's word repeats taken off. */
 export function leadStripped(text: string, state: ThreadState): string {
   const lead = LEADS[state];
-  const t = text.trim();
-  return lead && t.startsWith(lead) ? t.slice(lead.length).trim() : t;
+  return (lead && leadDetail(text, lead)) || text.trim();
 }
 
 /** What a waiting agent asks: its open question's first line, else

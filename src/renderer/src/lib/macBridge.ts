@@ -6,7 +6,7 @@ import type {
   MacBridgeRequest,
   MacBridgeThreadState
 } from '@server/shared/contract-macbridge'
-export { heldLine } from '@server/shared/contract-macbridge'
+export { heldFacts, heldLine, heldParts } from '@server/shared/contract-macbridge'
 import type { MacDecideRemember } from '@server/shared/contract-macbridge-rules'
 import { LOCAL_ENVIRONMENT_ID, WEB_ENVIRONMENT_ID, registry } from './connection/registry'
 import { isWebMode } from './nativeWeb'

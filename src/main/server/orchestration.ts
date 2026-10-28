@@ -1,4 +1,5 @@
 import { execFileBudgeted as execFileP } from './spawnBudget'
+import { leadDetail } from '@shared/statusWords'
 import { NOTES_MECHANICS } from './notesPrompts'
 import { nanoid } from 'nanoid'
 import { anglePathFor, SHOWING_VISUALS } from './threads'
@@ -194,11 +195,11 @@ function tokensOf(
 const unsettled = (status: SessionMeta['status']): boolean =>
   status === 'running' || status === 'queued' || status === 'starting'
 
-/** The status an agent reads as; a queued one says why ("queued · 120 of 120 running"). */
+/** The status an agent reads as; a queued one says why ("queued, 120 of 120 running"). */
 function statusOf(s: Pick<SessionMeta, 'id' | 'status'>): string {
   if (s.status !== 'queued') return s.status
-  const line = registry?.queuedLine(s.id)
-  return line ? line.replace(/^Queued/, 'queued') : 'queued'
+  const detail = leadDetail(registry?.queuedLine(s.id), 'Queued')
+  return detail ? `queued, ${detail}` : 'queued'
 }
 
 export function waitForSettled(

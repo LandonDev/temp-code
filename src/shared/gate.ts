@@ -61,17 +61,18 @@ export function gateReason(log: string): string | null {
   return last || null
 }
 
-/** The row's one line: "Typecheck failed on <branch> · 3 errors". */
+/** The row's one line: "Typecheck failed on <branch>, 3 errors", "Gate
+ *  failed on master, at vitest" (statusWords.ts: a comma before the detail). */
 export function gateLine(n: GateNotice): string {
   const label = STEP_LABEL[n.step]
   if (n.ok) return `${label} passed on ${n.branch}`
   if (n.step === 'typecheck') {
     const errors = typecheckErrorCount(n.log)
-    return `${label} failed on ${n.branch}${errors ? ` · ${errors} error${errors === 1 ? '' : 's'}` : ''}`
+    return `${label} failed on ${n.branch}${errors ? `, ${errors} error${errors === 1 ? '' : 's'}` : ''}`
   }
   if (n.step === 'gate') {
     const step = failedGateStep(n.log)
-    return `${label} failed on ${n.branch}${step ? ` · at ${step}` : ''}`
+    return `${label} failed on ${n.branch}${step ? `, at ${step}` : ''}`
   }
   return `${label} failed on ${n.branch}`
 }

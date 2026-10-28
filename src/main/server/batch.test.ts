@@ -437,10 +437,10 @@ describe('Batches: the end of the batch', () => {
     expect(w.rows.m.filter((e) => e.type === 'notice').map((e) => (e as { kind: string }).kind + ': ' + (e as { message: string }).message)).toEqual([
       'gate: Gate passed on master',
       'gate: Release passed on master',
-      'batch: Batch done: 2 of 2 landed · gate passed in 1m 12s · release-277 tagged in 0s'
+      'batch: Batch done: 2 of 2 landed, gate passed in 1m 12s, release-277 tagged in 0s'
     ])
     expect(w.reports).toEqual([
-      { to: 'm', status: 'done', text: expect.stringContaining('<batch-report>\nThe batch is done: 2 of 2 landed · gate passed in 1m 12s · release-277 tagged in 0s.') }
+      { to: 'm', status: 'done', text: expect.stringContaining('<batch-report>\nThe batch is done: 2 of 2 landed, gate passed in 1m 12s, release-277 tagged in 0s.') }
     ])
     expect(b.open('m')).toBe(false)
     // A second review runs nothing again.
@@ -456,9 +456,9 @@ describe('Batches: the end of the batch', () => {
     b.landed(w.landed('a'))
     await b.review('m')
     expect(w.runs).toHaveLength(0)
-    expect(steps(b.get('m'))).toEqual({ land: ['passed', '1 of 2 landed · 1 left out'] })
+    expect(steps(b.get('m'))).toEqual({ land: ['passed', '1 of 2 landed, 1 left out'] })
     expect(w.reports.map((r) => r.status)).toEqual(['done'])
-    expect(w.reports[0].text).toContain('The batch is done: 1 of 2 landed · 1 left out.')
+    expect(w.reports[0].text).toContain('The batch is done: 1 of 2 landed, 1 left out.')
   })
 
   it('nothing landed (research only): the land step says so, and the steps after it still run on the project checkout', async () => {
@@ -468,7 +468,7 @@ describe('Batches: the end of the batch', () => {
     await b.review('m')
     expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release'])
     expect(steps(b.get('m'))).toEqual({ land: ['passed', 'nothing landed'], gate: ['passed', 'passed in 1m 12s'], release: ['passed', 'release-277 tagged'] })
-    expect(w.reports[0].text).toContain('The batch is done: nothing landed · gate passed in 1m 12s · release-277 tagged in 0s.')
+    expect(w.reports[0].text).toContain('The batch is done: nothing landed, gate passed in 1m 12s, release-277 tagged in 0s.')
   })
 
   it('children that landed on their own (never through merge_branch) still get the gate and the release; deploy without a release step before it is skipped as needing one', async () => {
@@ -478,7 +478,7 @@ describe('Batches: the end of the batch', () => {
     w.set('b', { status: 'idle' })
     await b.review('m')
     expect(w.runs.map((r) => r.step)).toEqual(['gate'])
-    expect(steps(b.get('m'))).toMatchObject({ land: ['passed', '0 of 2 landed · 2 left out'], gate: ['passed', 'passed in 1m 12s'], deploy: ['skipped', 'needs a release'] })
+    expect(steps(b.get('m'))).toMatchObject({ land: ['passed', '0 of 2 landed, 2 left out'], gate: ['passed', 'passed in 1m 12s'], deploy: ['skipped', 'needs a release'] })
     expect(w.deploy.requested).toEqual([])
   })
 
@@ -499,7 +499,7 @@ describe('Batches: the end of the batch', () => {
     expect(b.get('m').steps[0].detail).toBe('1 of 2 landed')
     b.landed(w.landed('chat'))
     await b.review('m')
-    expect(steps(b.get('m'))).toEqual({ land: ['passed', '2 of 3 landed · 1 left out'] })
+    expect(steps(b.get('m'))).toEqual({ land: ['passed', '2 of 3 landed, 1 left out'] })
     expect(b.get('m').steps[0].progress).toEqual({ done: 2, total: 3 })
   })
 
@@ -626,7 +626,7 @@ describe('Batches: the end of the batch', () => {
     const detail = 'vitest: FAIL  src/x.test.ts > suite > name'
     expect(steps(b.get('m')).gate).toEqual(['failed', detail])
     const notice = w.rows['m'].find((e) => e.type === 'notice' && e.kind === 'gate')
-    expect(notice).toMatchObject({ message: 'Gate failed on master · at vitest', gate: { ok: false, detail } })
+    expect(notice).toMatchObject({ message: 'Gate failed on master, at vitest', gate: { ok: false, detail } })
     expect(w.reports[0].text).toContain("The batch's gate FAILED at vitest")
   })
 
@@ -637,7 +637,7 @@ describe('Batches: the end of the batch', () => {
     w.set('b', { status: 'idle' })
     b.landed(w.landed('a', 'feat-a', ['a: one']))
     await b.review('m')
-    expect(steps(b.get('m')).land).toEqual(['passed', '1 of 2 landed · 1 left out'])
+    expect(steps(b.get('m')).land).toEqual(['passed', '1 of 2 landed, 1 left out'])
     expect(b.get('m').finishedAt).toBe(1000)
     expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release'])
     // b runs again and lands: the earlier landing stays, the steps reopen, and the end runs once more.
@@ -728,7 +728,7 @@ describe('Batches: publish and deploy', () => {
     expect(steps(b.get('m')).deploy).toEqual(['passed', 'v1.0.277 deployed in 3m10s'])
     expect(b.get('m').steps[4].progress).toEqual({ done: 7, total: 7 })
     expect(b.get('m').finishedAt).toBe(474_000)
-    expect(w.reports.at(-1)?.text).toContain('gate passed in 1m 12s · release-277 tagged in 0s · v1.0.277 published in 4m43s · v1.0.277 deployed in 3m10s')
+    expect(w.reports.at(-1)?.text).toContain('gate passed in 1m 12s, release-277 tagged in 0s, v1.0.277 published in 4m43s, v1.0.277 deployed in 3m10s')
     // The deploy of a v1.0.N says so again (the publish may have run elsewhere).
     expect(w.announced).toEqual(['1.0.277', '1.0.277'])
     expect(await b.stopStep('m', 'publish')).toEqual({ stopped: false })
@@ -1027,13 +1027,13 @@ describe('Batches: batch_gate', () => {
     const b = w.make()
     b.landed(w.landed('a', 'feat-a', ['a: one', 'a: two']))
     const answer = await b.gate(w.sessions.get('m')!)
-    expect(answer).toBe('passed in 1m 12s · release-277 tagged')
+    expect(answer).toBe('passed in 1m 12s, release-277 tagged')
     expect(w.runs.map((r) => [r.step, r.cwd, r.branch, r.push ?? false, r.notes])).toEqual([
       ['gate', '/repo', 'master', false, undefined],
       ['release', '/repo', 'master', true, 'T m; a: one; a: two']
     ])
     const state = b.get('m')
-    expect(steps(state)).toMatchObject({ land: ['passed', '1 of 2 landed · 1 left out'], gate: ['passed', 'passed in 1m 12s'], release: ['passed', 'release-277 tagged'] })
+    expect(steps(state)).toMatchObject({ land: ['passed', '1 of 2 landed, 1 left out'], gate: ['passed', 'passed in 1m 12s'], release: ['passed', 'release-277 tagged'] })
     expect(w.rows.m.filter((e) => e.type === 'notice').map((e) => (e as { message: string }).message)).toEqual(['Gate passed on master', 'Release passed on master'])
   })
 
@@ -1086,7 +1086,7 @@ describe('Batches: shell steps', () => {
     expect(state.steps[1].endedAt).toBe(1000)
     // The gate ran between the two shell steps.
     expect(w.runs.map((r) => r.step)).toEqual(['gate'])
-    expect(w.reports.at(-1)?.text).toContain('The batch is done: 1 of 2 landed · 1 left out · Build passed in 0s · gate passed in 1m 12s · Smoke test passed in 0s.')
+    expect(w.reports.at(-1)?.text).toContain('The batch is done: 1 of 2 landed, 1 left out, Build passed in 0s, gate passed in 1m 12s, Smoke test passed in 0s.')
     expect(b.open('m')).toBe(false)
     // A step without a cwd runs in the project checkout; a missing directory is the step's failure.
     const w2 = world()
@@ -1113,10 +1113,10 @@ describe('Batches: shell steps', () => {
     w.set('b', { status: 'idle' })
     b.landed(w.landed('a'))
     await b.review('m')
-    expect(steps(b.get('m'))).toEqual({ land: ['passed', '1 of 2 landed · 1 left out'], build: ['failed', 'exit 3 after 0s · error: boom'], gate: ['pending', ''] })
+    expect(steps(b.get('m'))).toEqual({ land: ['passed', '1 of 2 landed, 1 left out'], build: ['failed', 'exit 3 after 0s, error: boom'], gate: ['pending', ''] })
     expect(w.runs).toHaveLength(0)
     expect(w.reports.map((r) => r.status)).toEqual(['failed'])
-    expect(w.reports[0].text).toContain('The batch\'s step "Build" FAILED: exit 3 after 0s · error: boom')
+    expect(w.reports[0].text).toContain('The batch\'s step "Build" FAILED: exit 3 after 0s, error: boom')
     expect(w.reports[0].text).toContain('error: boom')
     expect(b.get('m').finishedAt).toBeNull()
   })
@@ -1163,7 +1163,7 @@ describe('Batches: shell steps', () => {
     // The end ran the gate and release, and left the each-landing step as it stood.
     expect(w.runs.map((r) => r.step)).toEqual(['gate'])
     expect(steps(b2.get('m'))).toEqual({ land: ['passed', '2 of 2 landed'], dev: ['passed', 'passed in 0s'], gate: ['passed', 'passed in 1m 12s'] })
-    expect(w.reports.at(-1)?.text).toContain('The batch is done: 2 of 2 landed · Deploy to dev passed in 0s · gate passed in 1m 12s.')
+    expect(w.reports.at(-1)?.text).toContain('The batch is done: 2 of 2 landed, Deploy to dev passed in 0s, gate passed in 1m 12s.')
     // A red each-landing step: the master hears, the end still comes.
     const w3 = world()
     const b3 = w3.make({ shell: sh })
@@ -1862,7 +1862,7 @@ describe('Batches: a release with nothing new', () => {
     const b = w.make()
     w.setOutcome((o) => (o.step === 'release' ? { log: none } : {}))
     b.landed(w.landed('a'))
-    expect(await b.gate(w.sessions.get('m')!)).toBe('passed in 1m 12s · nothing to release since release-276')
+    expect(await b.gate(w.sessions.get('m')!)).toBe('passed in 1m 12s, nothing to release since release-276')
     expect(releaseOutcome(none)).toEqual({ tag: 'release-276', fresh: false })
     expect(releaseOutcome('released v277 (tag release-277, package.json 1.0.277)')).toEqual({ tag: 'release-277', fresh: true })
     expect(releaseOutcome('stub: release passed on master')).toBeNull()

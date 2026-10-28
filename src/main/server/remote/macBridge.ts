@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { leadDetail } from '@shared/statusWords'
 import { existsSync, statSync } from 'node:fs'
 import { lstat, open, readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -90,7 +91,7 @@ import { MacLoadGuard, type HoldEnd, type LoadSample } from './macLoadGuard'
  *    load is over `macBridge.loadLimit` (default 2 × cores, back under at
  *    1.5 ×) none starts. A call it holds is `held`, not refused: it waits
  *    its turn in order within the call's own deadline, shows its place on
- *    the Mac ("Waiting for the Mac · load 12.3 of 8 · 3rd in line") and can
+ *    the Mac ("Waiting for the Mac, load 12.3 of 8, 3rd in line") and can
  *    be stopped there. Reads, listings, fetches and writes are never held.
  *    `macBridge.maxThreads.<envId>` (default 2) caps the Mac-local threads
  *    a host starts here; crossHostThreads.ts asks `admitThread` first.
@@ -697,7 +698,7 @@ export class MacBridge {
       p.request = { ...p.request, status: 'held', held: gate.held }
       this.emit({ push: 'macBridge.request', request: p.request })
     }
-    line(`held (${heldLine(gate.held).slice('Waiting for the Mac · '.length).replace(' · ', ', ')})`)
+    line(`held (${leadDetail(heldLine(gate.held), 'Waiting for the Mac') ?? heldLine(gate.held)})`)
     const end: HoldEnd = await gate.done
     if (end === 'admitted') {
       line('released')

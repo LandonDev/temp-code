@@ -55,9 +55,10 @@ public struct StripWords: Hashable, Sendable {
     }
 
     /// A queued thread. The host writes its reason into the activity line as
-    /// "Queued · waiting for <sibling>", "Queued · 120 of 120 running" or
-    /// "Queued · waiting for memory"; the title is "Queued" and the reason,
-    /// with its first letter raised, is the detail.
+    /// "Queued  waiting for <sibling>", "Queued  120 of 120 running" or
+    /// "Queued  waiting for memory" (two spaces after the word; older rows
+    /// carry " · "); the title is "Queued" and the reason, with its first
+    /// letter raised, is the detail.
     public static func queued(activity: String?) -> StripWords {
         guard let activity, activity.hasPrefix("Queued") else { return StripWords(title: "Queued") }
         let rest = activity.dropFirst("Queued".count).drop { $0 == " " || $0 == "·" }
@@ -67,14 +68,15 @@ public struct StripWords: Hashable, Sendable {
 
     /// A turn's phase before its first content, as the host words it onto
     /// the activity line (sessions.ts `phaseLine`): "Starting the CLI",
-    /// "Initializing", "Waiting for the provider · 25 s", "Rate limited ·
-    /// retry 3 in 32 s", "Provider overloaded · retry 1 in 5 s", "Retrying",
-    /// "Reconnecting · retry 2 of 5". The words before the first " · " are
-    /// the title, the rest (its first letter raised) the detail; nil for any
-    /// other activity ("Thinking", a tool's line).
+    /// "Initializing", "Waiting for the provider, 25 s", "Rate limited,
+    /// retry 3 in 32 s", "Provider overloaded, retry 1 in 5 s", "Retrying",
+    /// "Reconnecting, retry 2 of 5". The words before the first ", " (the
+    /// " · " of an older row) are the title, the rest (its first letter
+    /// raised) the detail; nil for any other activity ("Thinking", a tool's
+    /// line).
     public static func phase(activity: String?) -> StripWords? {
         guard let activity else { return nil }
-        let split = activity.range(of: " · ")
+        let split = activity.range(of: ", ") ?? activity.range(of: " · ")
         let title = split.map { String(activity[..<$0.lowerBound]) } ?? activity
         guard phaseTitles.contains(title) else { return nil }
         guard let split else { return StripWords(title: title) }

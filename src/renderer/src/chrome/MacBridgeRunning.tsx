@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
-import { heldLine, startMacBridge, stopMacBridgeAll, useMacBridgeRunning } from '../lib/macBridge'
+import { heldParts, startMacBridge, stopMacBridgeAll, useMacBridgeRunning } from '../lib/macBridge'
 import { requestCode } from './MacBridgeCards'
 import { Button } from '../components/ui/button'
 import { Row } from '../surfaces/settings/hosts/Group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
-import { Facts, splitFacts } from '../surfaces/settings/hosts/Facts'
+import { Facts } from '../surfaces/settings/hosts/Facts'
 import { Pause } from './icons'
 
 /**
@@ -73,7 +73,7 @@ export function MacBridgeRunningList({
           description={sessionId === undefined && r.threadTitle ? r.threadTitle : undefined}
         >
           {r.status === 'held' && r.held ? (
-            <Facts parts={splitFacts(heldLine(r.held))} className="text-xs text-muted-foreground" />
+            <Facts parts={heldParts(r.held)} className="text-xs text-muted-foreground" />
           ) : null}
           {r.status === 'paused' ? (
             // Held on its host while the thread is paused: the same slot as Stop, as a fact rather than a control.

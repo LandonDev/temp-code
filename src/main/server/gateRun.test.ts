@@ -127,9 +127,9 @@ describe('gate lines', () => {
     expect(isErrorLine('✓ typecheck 2s passed')).toBe(false)
   })
   it('reads as one line', () => {
-    expect(gateLine({ step: 'typecheck', branch: 'b', ok: false, log: 'Found 3 errors.', at: 1 })).toBe('Typecheck failed on b · 3 errors')
+    expect(gateLine({ step: 'typecheck', branch: 'b', ok: false, log: 'Found 3 errors.', at: 1 })).toBe('Typecheck failed on b, 3 errors')
     expect(gateLine({ step: 'typecheck', branch: 'b', ok: true, log: '', at: 1 })).toBe('Typecheck passed on b')
-    expect(gateLine({ step: 'gate', branch: 'master', ok: false, log: '✗ vitest 1s failed', at: 1 })).toBe('Gate failed on master · at vitest')
+    expect(gateLine({ step: 'gate', branch: 'master', ok: false, log: '✗ vitest 1s failed', at: 1 })).toBe('Gate failed on master, at vitest')
     expect(gateLine({ step: 'release', branch: 'master', ok: false, log: '', at: 1 })).toBe('Release failed on master')
   })
 })

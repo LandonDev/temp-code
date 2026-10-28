@@ -321,7 +321,7 @@ public enum Fleet {
 
     /// The row's one-line status and its colour; compaction shows while live.
     /// `activity` is the host's own line for the row (`SessionMeta.activity`,
-    /// "Queued · waiting for <sibling>"), read for a queued agent, whose row
+    /// "Queued  waiting for <sibling>"), read for a queued agent, whose row
     /// shows the reason alone ("Waiting for <sibling>"): its dot says queued.
     public static func line(status: SessionStatus?, items: [ThreadEntry], compacting: Bool = false, activity: String? = nil) -> Line {
         if isLive(status), compacting { return Line("compacting the context…", tone: .muted) }

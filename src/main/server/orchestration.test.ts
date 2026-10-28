@@ -297,17 +297,17 @@ it('the total cap counts the whole batch too', async () => {
 })
 
 it('a spawn_agent child past the host running cap is created queued and says so in the spawn, list_agents and check_agent', async () => {
-  vi.spyOn(stub, 'queuedLine').mockReturnValue('Queued · 120 of 120 running')
+  vi.spyOn(stub, 'queuedLine').mockReturnValue('Queued  120 of 120 running')
   const child = { id: 'child-1', title: 'do the thing', status: 'queued', parentId: parent.id } as unknown as SessionMeta
   sessions[child.id] = child
   const reply = JSON.parse(await orchSpawnAgent(parent, { model: 'claude-opus-5', task: 'do the thing', useWorktree: false }))
   expect(reply.agentId).toBe('child-1')
-  expect(reply.status).toBe('queued · 120 of 120 running')
+  expect(reply.status).toBe('queued, 120 of 120 running')
   expect(reply.note).toMatch(/^queued at this host's running cap: it starts when a slot frees/)
   children = [child]
   const rows = JSON.parse(await orchListAgents(parent)) as { agentId: string; status: string }[]
-  expect(rows).toMatchObject([{ agentId: 'child-1', status: 'queued · 120 of 120 running' }])
-  expect(JSON.parse(await orchCheckAgent(parent, 'child-1')).status).toBe('queued · 120 of 120 running')
+  expect(rows).toMatchObject([{ agentId: 'child-1', status: 'queued, 120 of 120 running' }])
+  expect(JSON.parse(await orchCheckAgent(parent, 'child-1')).status).toBe('queued, 120 of 120 running')
   // A running child reads its plain status.
   sessions[child.id] = { ...child, status: 'running' } as SessionMeta
   expect(JSON.parse(await orchCheckAgent(parent, 'child-1')).status).toBe('running')

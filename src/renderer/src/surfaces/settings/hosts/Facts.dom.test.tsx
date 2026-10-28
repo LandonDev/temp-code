@@ -18,6 +18,6 @@ describe("Facts", () => {
   });
   it("splits a dotted line from another module into facts", () => {
     expect(splitFacts("2 simulators, 1 booted · load 3.2 / 16 cores")).toEqual(["2 simulators, 1 booted", "load 3.2 / 16 cores"]);
-    expect(splitFacts("Waiting for the Mac · load 12.3 of 8 · 3rd in line")).toEqual(["Waiting for the Mac", "load 12.3 of 8", "3rd in line"]);
+    expect(splitFacts(" one ·  two · ")).toEqual(["one", "two"]);
   });
 });

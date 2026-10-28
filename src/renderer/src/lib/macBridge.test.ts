@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { MacBridgeRequest } from "@server/shared/contract-macbridge";
 import {
   bridgeableEnvironment,
+  heldFacts,
   heldLine,
+  heldParts,
   heldSuffix,
   heldTotal,
   inFlightRequests,
@@ -111,12 +113,15 @@ const held = (position: number, reason: "cap" | "load" = "cap") => ({
 
 describe("held requests (the load guard)", () => {
   it("heldLine says why and where: the load figure, or the host's running count, and the place in line", () => {
-    expect(heldLine(held(3, "load"))).toBe("Waiting for the Mac · load 12.3 of 8 · 3rd in line");
-    expect(heldLine(held(1))).toBe("Waiting for the Mac · 4 of 4 running · 1st in line");
-    expect(heldLine(held(2))).toBe("Waiting for the Mac · 4 of 4 running · 2nd in line");
-    expect(heldLine(held(11))).toBe("Waiting for the Mac · 4 of 4 running · 11th in line");
-    expect(heldLine(held(22))).toBe("Waiting for the Mac · 4 of 4 running · 22nd in line");
-    expect(heldLine({ ...held(1, "load"), limit: 4.5 })).toBe("Waiting for the Mac · load 12.3 of 4.5 · 1st in line");
+    expect(heldLine(held(3, "load"))).toBe("Waiting for the Mac, load 12.3 of 8, 3rd in line");
+    expect(heldLine(held(1))).toBe("Waiting for the Mac, 4 of 4 running, 1st in line");
+    expect(heldLine(held(2))).toBe("Waiting for the Mac, 4 of 4 running, 2nd in line");
+    expect(heldLine(held(11))).toBe("Waiting for the Mac, 4 of 4 running, 11th in line");
+    expect(heldLine(held(22))).toBe("Waiting for the Mac, 4 of 4 running, 22nd in line");
+    // The facts apart, for a line that sets them apart by margin (MacBridgeRunning).
+    expect(heldFacts(held(3, "load"))).toEqual(["load 12.3 of 8", "3rd in line"]);
+    expect(heldParts(held(3, "load"))).toEqual(["Waiting for the Mac", "load 12.3 of 8", "3rd in line"]);
+    expect(heldLine({ ...held(1, "load"), limit: 4.5 })).toBe("Waiting for the Mac, load 12.3 of 4.5, 1st in line");
   });
 
   it("a held request is never a card: shownRequests and queueOf leave it out", () => {

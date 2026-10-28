@@ -201,19 +201,20 @@ export function approvalLine(toolName: string, input: unknown, title?: string): 
  * The body of a batch engine row on a master (batch.ts): "Batch done: 3
  * landed, gate passed in 4m 12s" from its `Batch done: <line>` notice, or
  * "Batch stopped: gate failed at vitest" from a failing gate or release
- * step (the row's message is `gateLine`; what follows its " · " is kept,
- * an `at …` place joined with a space, anything else with a comma).
+ * step (the row's message is `gateLine`; what follows its lead, a comma
+ * now, the old " · " on a stored row, is kept, an `at …` place joined with
+ * a space, anything else with a comma).
  * Null for any other notice row.
  */
 export function batchBody(event: { kind: string; message: string; gate?: { step: string; ok: boolean } }): { body: string; failed: boolean } | null {
   if (event.kind === 'batch') {
     const m = /^Batch done(?::\s*(.*))?$/s.exec(firstLine(event.message))
     if (!m) return null
-    const line = m[1] ? m[1].split(' · ').map((part) => part.trim()).filter(Boolean).join(', ') : ''
+    const line = m[1] ? m[1].split(/\s·\s|,\s/).map((part) => part.trim()).filter(Boolean).join(', ') : ''
     return { body: cut(line ? `Batch done: ${line}` : 'Batch done', BODY_CHARS), failed: false }
   }
   if (event.kind === 'gate' && event.gate && !event.gate.ok) {
-    const tail = firstLine(event.message).split(' · ').slice(1).map((part) => part.trim()).filter(Boolean).join(', ')
+    const tail = firstLine(event.message).split(/\s·\s|,\s/).slice(1).map((part) => part.trim()).filter(Boolean).join(', ')
     const join = !tail ? '' : tail.startsWith('at ') ? ` ${tail}` : `, ${tail}`
     return { body: cut(`Batch stopped: ${event.gate.step} failed${join}`, BODY_CHARS), failed: true }
   }

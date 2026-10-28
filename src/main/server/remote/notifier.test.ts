@@ -443,7 +443,7 @@ describe("a master's batch", () => {
     settle()
     expect(notices.map((n) => n.kind)).toEqual(['batch', 'finished'])
     // A gate row on a thread that is not a master is merge_branch's own gate: nothing.
-    reg.row('c', { type: 'notice', kind: 'gate', message: 'Gate failed on c · at vitest', gate: gate(false) })
+    reg.row('c', { type: 'notice', kind: 'gate', message: 'Gate failed on c, at vitest', gate: gate(false) })
     reg.status('c', 'idle')
     settle()
     expect(notices.map((n) => n.threadId)).toEqual(['m', 'm', 'c'])

@@ -1336,8 +1336,8 @@ group, the folders in its Mac bridge settings dialog.
     change of standing, and the box thread's tool result is simply later.
     On the Mac it is a row after the running ones in the host's running
     list (the host's Mac bridge on Settings → Hosts) and in the thread's "Mac
-    approvals…" dialog, never a card: "Waiting for the Mac · load 12.3 of
-    8 · 3rd in line" (or "4 of 4 running"), with Stop, which takes it out of
+    approvals…" dialog, never a card: "Waiting for the Mac, load 12.3 of
+    8, 3rd in line" (or "4 of 4 running"), with Stop, which takes it out of
     the line and fails the call as stopped. The count line says "n commands
     running on this Mac from <host> · m waiting". It waits only as long as
     the call's own deadline allows: a command until its approval window

@@ -252,6 +252,9 @@ private let pendingApproval: [AgentEvent] = [
         let limited = line(.running, host: "box", activity: "Rate limited · retry 3 in 32 s")
         #expect(limited.parts == [.host("box")] + type + [.elapsed(since: 500), .words("Rate limited", detail: "Retry 3 in 32 s")])
         #expect(limited.compact == [.words("Rate limited")])
+        // The host's words since 2026-10-28: a comma before the detail; the dot above is an older row's.
+        #expect(line(.running, activity: "Rate limited, retry 3 in 32 s").parts == type + [.elapsed(since: 500), .words("Rate limited", detail: "Retry 3 in 32 s")])
+        #expect(line(.running, activity: "Waiting for the provider, 25 s").parts == type + [.elapsed(since: 500), .words("Waiting for the provider", detail: "25 s")])
         #expect(line(.starting, activity: "Starting the CLI").parts == type + [.elapsed(since: 500), .words("Starting the CLI")])
         #expect(line(.running, activity: "Thinking").parts == type + [.elapsed(since: 500)])
         #expect(line(.idle, activity: "Initializing").parts == type, "a settled thread has no phase")
