@@ -621,6 +621,20 @@ describe("the master view", () => {
     expect(document.querySelector("[data-child-pane]")).toBeNull();
   });
 
+  it("picking Stop from a row's ⋯ stops the thread and does not open it; a plain click still opens", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running", busySince: 1, createdAt: 1 })]);
+    renderView();
+    await flush();
+    fireEvent.click(within(screen.getByRole("button", { name: /Home/ })).getByRole("button", { name: "Thread actions" }));
+    const menu = await screen.findByRole("menu", { name: "Thread actions" });
+    fireEvent.click(within(menu).getByText("Stop"));
+    await flush();
+    expect(link.calls.some((c) => c.method === "session.interrupt")).toBe(true);
+    expect(document.querySelector("[data-child-pane]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Home/ }));
+    expect(document.querySelector("[data-child-pane='c-run']")).toBeTruthy();
+  });
+
   it("the board's text has no middle dot or bullet", async () => {
     seed([
       meta({ id: "c-run", title: "Home", status: "running", activity: "Running ios:test", createdAt: 1 }),

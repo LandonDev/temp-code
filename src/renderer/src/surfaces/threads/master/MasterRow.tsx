@@ -138,8 +138,12 @@ export function MasterRowView({
   const Glyph = meta.threadType ? THREAD_GLYPHS[meta.threadType] : null;
   const type = typeWord(meta);
 
+  // React bubbles a portal's events through the tree: a pick in the ⋯
+  // menu (rendered in a portal) reaches this row's handlers. Only a click
+  // or key inside the row's own DOM opens the thread.
+  const own = (e: { currentTarget: EventTarget; target: EventTarget }) => (e.currentTarget as Node).contains(e.target as Node);
   const onKey = (e: KeyboardEvent) => {
-    if (e.target !== e.currentTarget) return;
+    if (e.target !== e.currentTarget || !own(e)) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onOpen(meta.id);
@@ -159,7 +163,9 @@ export function MasterRowView({
       size="xs"
       role="button"
       tabIndex={0}
-      onClick={() => onOpen(meta.id)}
+      onClick={(e) => {
+        if (own(e)) onOpen(meta.id);
+      }}
       onKeyDown={onKey}
       data-menu-id={meta.id}
       className={cn(
