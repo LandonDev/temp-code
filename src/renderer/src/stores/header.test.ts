@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { orderChips } from "../lib/threadHeaderModel";
 import {
   header,
   headerStore,
@@ -6,6 +7,7 @@ import {
   loadStripOrder,
   publish,
   STRIP_ORDER_CAP,
+  STRIP_ORDER_REFRESH_MS,
   STRIP_ORDER_TTL_MS,
   stripOrder,
   tabProjectOf,
@@ -66,11 +68,34 @@ describe("strip order", () => {
     expect(stripOrder.of("p3")).toEqual([]);
   });
 
-  it("keeps at most the cap, newest arrivals last", () => {
+  it("keeps the first places up to the cap", () => {
     const ids = Array.from({ length: STRIP_ORDER_CAP + 5 }, (_, i) => `t${i}`);
     stripOrder.set("p1", ids);
     expect(stripOrder.of("p1")).toHaveLength(STRIP_ORDER_CAP);
-    expect(stripOrder.of("p1").at(-1)).toBe(`t${STRIP_ORDER_CAP + 4}`);
+    expect(stripOrder.of("p1")[0]).toBe("t0");
+    expect(stripOrder.of("p1").at(-1)).toBe(`t${STRIP_ORDER_CAP - 1}`);
+  });
+
+  it("65 chips save once and keep their order", () => {
+    const chips = Array.from({ length: STRIP_ORDER_CAP + 1 }, (_, i) => ({ id: `t${i}`, updatedAt: i }));
+    const first = orderChips([], chips);
+    stripOrder.set("p1", first, 1000);
+    expect(storage.setItem).toHaveBeenCalledTimes(1);
+    const second = orderChips(stripOrder.of("p1"), chips);
+    expect(second).toEqual(first);
+    stripOrder.set("p1", second, 2000);
+    expect(storage.setItem).toHaveBeenCalledTimes(1);
+  });
+
+  it("an order shown every day outlives the TTL, and writes at most once a day", () => {
+    stripOrder.set("p1", ["a"], 0);
+    storage.setItem.mockClear();
+    stripOrder.set("p1", ["a"], STRIP_ORDER_REFRESH_MS - 1);
+    expect(storage.setItem).not.toHaveBeenCalled();
+    for (let day = 1; day <= 31; day++) stripOrder.set("p1", ["a"], day * STRIP_ORDER_REFRESH_MS);
+    expect(storage.setItem).toHaveBeenCalledTimes(31);
+    stripOrder.reload();
+    expect(loadStripOrder(31 * STRIP_ORDER_REFRESH_MS + 1000).p1?.ids).toEqual(["a"]);
   });
 
   it("drops a project not shown for 30 days on load, and ignores a corrupt value", () => {

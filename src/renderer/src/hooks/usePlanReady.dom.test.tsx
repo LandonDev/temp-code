@@ -17,9 +17,10 @@ function Probe({ threads, onReady }: { threads: Input[]; onReady: (r: Record<str
 afterEach(() => readFile.mockReset());
 
 describe("isSettledPlanning", () => {
-  it("counts idle and watching planning threads that have a plan path", () => {
+  it("counts idle, watching and done planning threads that have a plan path", () => {
     expect(isSettledPlanning({ threadType: "planning", status: "idle", planPath: "p.md" })).toBe(true);
     expect(isSettledPlanning({ threadType: "planning", status: "watching", planPath: "p.md" })).toBe(true);
+    expect(isSettledPlanning({ threadType: "planning", status: "done", planPath: "p.md" })).toBe(true);
     expect(isSettledPlanning({ threadType: "planning", status: "running", planPath: "p.md" })).toBe(false);
     expect(isSettledPlanning({ threadType: "planning", status: "watching", planPath: null })).toBe(false);
     expect(isSettledPlanning({ threadType: "implementation", status: "watching", planPath: "p.md" })).toBe(false);
@@ -55,12 +56,13 @@ describe("usePlanReady with plan_complete", () => {
     let ready: Record<string, boolean> = {};
     const threads: Input[] = [
       { id: "c", threadType: "planning", status: "idle", planPath: "c.md", planCompletedAt: 5 },
+      { id: "d", threadType: "planning", status: "done", planPath: "d.md", planCompletedAt: 5 },
       { id: "r", threadType: "planning", status: "running", planPath: "r.md", planCompletedAt: 5 },
       { id: "u", threadType: "planning", status: "idle", planPath: "u.md" },
     ];
     render(<Probe threads={threads} onReady={(r) => (ready = r)} />);
     await act(async () => {});
-    expect(ready).toEqual({ c: true, u: false });
+    expect(ready).toEqual({ c: true, d: true, u: false });
     expect(readFile).not.toHaveBeenCalledWith(expect.anything(), "c.md");
   });
 });

@@ -89,10 +89,13 @@ export type StripOrderEntry = { ids: readonly string[]; seenAt: number };
 export type StripOrder = Readonly<Record<string, StripOrderEntry>>;
 
 const STRIP_ORDER_KEY = "monocode.stripOrder";
-/** Ids kept per project: the newest arrivals win past it. */
+/** Ids kept per project: the first places; chips past it follow by age. */
 export const STRIP_ORDER_CAP = 64;
 /** A project the strip has not shown for this long drops out on load. */
 export const STRIP_ORDER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** An unchanged order is written again once it is this old, so a project
+ *  used every day never reaches the TTL. */
+export const STRIP_ORDER_REFRESH_MS = 24 * 60 * 60 * 1000;
 
 /** The saved order, with stale projects dropped; a corrupt value reads as empty. */
 export function loadStripOrder(now = Date.now()): StripOrder {
@@ -104,7 +107,7 @@ export function loadStripOrder(now = Date.now()): StripOrder {
       const { ids, seenAt } = (entry ?? {}) as Partial<StripOrderEntry>;
       if (!Array.isArray(ids) || typeof seenAt !== "number") continue;
       if (now - seenAt > STRIP_ORDER_TTL_MS) continue;
-      out[key] = { ids: ids.filter((id): id is string => typeof id === "string").slice(-STRIP_ORDER_CAP), seenAt };
+      out[key] = { ids: ids.filter((id): id is string => typeof id === "string").slice(0, STRIP_ORDER_CAP), seenAt };
     }
     return out;
   } catch {
@@ -120,7 +123,8 @@ function saveStripOrder(order: StripOrder): void {
   }
 }
 
-/** Set one project's order; the same ids keep the state (and write nothing). */
+/** Set one project's order; the same ids keep the state (and write nothing)
+ *  until they are a day old, when `seenAt` moves to now. */
 export function withStripOrder(
   order: StripOrder,
   scopeKey: string,
@@ -128,10 +132,9 @@ export function withStripOrder(
   now: number,
 ): StripOrder {
   const prev = order[scopeKey];
-  const capped = ids.length > STRIP_ORDER_CAP ? ids.slice(-STRIP_ORDER_CAP) : ids;
-  if (prev && prev.ids.length === capped.length && prev.ids.every((id, i) => id === capped[i])) {
-    return order;
-  }
+  const capped = ids.length > STRIP_ORDER_CAP ? ids.slice(0, STRIP_ORDER_CAP) : ids;
+  const same = prev && prev.ids.length === capped.length && prev.ids.every((id, i) => id === capped[i]);
+  if (same && now - prev.seenAt < STRIP_ORDER_REFRESH_MS) return order;
   return { ...order, [scopeKey]: { ids: [...capped], seenAt: now } };
 }
 

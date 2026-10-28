@@ -378,6 +378,28 @@ describe("installActiveSessionSync", () => {
     expect(createWorkspace).toHaveBeenCalledWith("local", "/repo");
   });
 
+  it("a switch before the throttle flushes marks the thread leaving at its latest update", async () => {
+    vi.useFakeTimers();
+    setTabs([tab("a"), tab("b")], "a");
+    sessionStore.mutate([session("s-a"), session("s-b")]);
+    sessionStore.adopt(meta({ id: "s-a", updatedAt: 7 }));
+    sessionStore.adopt(meta({ id: "s-b", updatedAt: 1 }));
+    teardown = installActiveSessionSync();
+    expect(markSessionSeen).toHaveBeenLastCalledWith("s-a", 7);
+    sessionStore.adopt(meta({ id: "s-a", updatedAt: 9, status: "idle" }));
+    await microtasks();
+    workspace.setActiveTabId("b");
+    await microtasks();
+    expect(markSessionSeen).toHaveBeenCalledWith("s-a", 9);
+    expect(markSessionSeen).toHaveBeenLastCalledWith("s-b", 1);
+    // The pending timer never marks again, and never the thread that left.
+    vi.mocked(markSessionSeen).mockClear();
+    sessionStore.adopt(meta({ id: "s-a", updatedAt: 11 }));
+    vi.advanceTimersByTime(1000);
+    expect(markSessionSeen).not.toHaveBeenCalledWith("s-a", 11);
+    vi.useRealTimers();
+  });
+
   it("re-marks the streaming active thread at most once a second, and only when it moved", () => {
     vi.useFakeTimers();
     setTabs([tab("a")]);

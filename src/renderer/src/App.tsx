@@ -240,7 +240,7 @@ import {
   useSessionShells,
 } from "./lib/tcserver/store";
 import { rightPanel } from "./lib/rightPanel";
-import { headerNeighbour, slotTarget } from "./lib/threadHeaderModel";
+import { archiveNeighbour, slotTarget } from "./lib/threadHeaderModel";
 import type { ThreadRules } from "@server/shared/rules";
 import * as serverCommands from "./lib/tcserver/commands";
 import { requestTranscriptJump } from "./lib/transcriptJump";
@@ -1746,13 +1746,10 @@ export default function App() {
       }
       if (archived) {
         forgetLastSession(sessionId);
-        // The chip leaves the strip; its same-slot neighbour takes selection.
-        const model = headerStore.getState().model;
-        if (model.activeId === sessionId) {
-          const next = headerNeighbour(model, sessionId);
-          if (next?.tabId) activateTab(next.tabId);
-          else if (next) void onSelectHistorySession(next.id);
-        }
+        // The chip leaves the strip; its neighbour takes selection as a click
+        // on it would, so a neighbour sharing a split takes the pane's focus.
+        const next = archiveNeighbour(headerStore.getState().model, sessionId);
+        if (next) void onSelectHistorySession(next.id);
       }
       await setSessionArchived(sessionId, archived).catch(() => undefined);
       historyStore.set((current) => {
@@ -1769,7 +1766,7 @@ export default function App() {
         });
       });
     },
-    [activateTab, onSelectHistorySession],
+    [onSelectHistorySession],
   );
 
   const onRestoreThread = useCallback(

@@ -8,13 +8,14 @@ import type { SessionMeta, SessionStatus, ThreadType } from "./tcserver/types";
 
 /**
  * temp-code's thread strip rules, as pure functions over server metas.
- * The strip shows the selected project's root threads — every one of them,
- * open in a tab or not — or, with no project selected, the scope's loose
- * chats (the workspace's Chats, or the home's). Live chips (working,
- * paused, recoverable, needs-you, unread, plan-ready) hold the top row,
- * the rest settle on the shelf; each row is freshest activity first.
- * Being open or selected earns nothing, and a blank thread is not forced
- * live: once looked at it goes to the shelf like any other.
+ * The strip shows the selected project's root threads (every copy of a
+ * linked one), open in a tab or not, or with no project selected the
+ * scope's loose chats (the workspace's and its linked copies' Chats, or
+ * the home's). Live chips (working, paused, recoverable, needs-you,
+ * unread, plan-ready) hold the top row in a stable order; the settled
+ * rest sit on the shelf under it, freshest first. Being open earns
+ * nothing: the thread on screen keeps its chip wherever it sits, and a
+ * blank thread once looked at settles like any other.
  */
 
 export type StripThread = Pick<
@@ -35,7 +36,10 @@ export type SeenMap = Record<string, number>;
 export type ReadyMap = Record<string, boolean>;
 
 /** A root thread of a master's batch (CLAUDE.md "Master threads"): it
- *  lives on the master's board and never on the strip or its shelf. */
+ *  lives on the master's board, and the master's chip stands for it. The
+ *  one exception is a batch child on screen: it keeps a chip while it is
+ *  (the thread menu acts on it), at the live row's end and never saved
+ *  into the strip's order (`buildHeaderModel`'s outside chip). */
 export function isBatchChild(thread: Pick<StripThread, "parentId" | "masterId">): boolean {
   return !thread.parentId && !!thread.masterId;
 }
@@ -61,25 +65,31 @@ export function projectRootThreads<T extends StripThread>(
 }
 
 /** What a strip holds: a project's roots (every copy of a linked one), or
- *  the loose chats of a workspace (`loose: null`: the home's, outside every
- *  workspace). */
+ *  the loose chats of a workspace and its linked copies (`loose: null`: the
+ *  home's, outside every workspace). */
 export type StripScope =
   | { project: ProjectScope }
-  | { loose: string | null; catalog: Catalog };
+  | { loose: ReadonlySet<string> | null; catalog: Catalog };
+
+/** The loose scope of `workspaceId`: it and every linked copy of it on other
+ *  hosts, so a box copy's chats sit with the Mac's; null is the home. */
+export function looseScopeOf(workspaceId: string | null, catalog: Catalog): ReadonlySet<string> | null {
+  if (!workspaceId) return null;
+  const linkId = catalog.workspaces.find((w) => w.id === workspaceId)?.linkId;
+  const copies = linkId ? catalog.workspaces.filter((w) => w.linkId === linkId).map((w) => w.id) : [];
+  return new Set([workspaceId, ...copies]);
+}
 
 /** The scope's root, unarchived threads, freshest first; never a batch child. */
 export function stripRootThreads<T extends StripThread>(threads: readonly T[], scope: StripScope): T[] {
   if ("project" in scope) return projectRootThreads(threads, scope.project);
   const { catalog, loose } = scope;
   return threads
-    .filter(
-      (t) =>
-        !t.projectId &&
-        !t.parentId &&
-        !t.archived &&
-        !isBatchChild(t) &&
-        workspaceIdOf({ ...t, cwd: t.cwd ?? "" }, catalog.projects, catalog.workspaces) === loose,
-    )
+    .filter((t) => {
+      if (t.projectId || t.parentId || t.archived || isBatchChild(t)) return false;
+      const workspaceId = workspaceIdOf({ ...t, cwd: t.cwd ?? "" }, catalog.projects, catalog.workspaces);
+      return loose ? !!workspaceId && loose.has(workspaceId) : workspaceId === null;
+    })
     .sort(freshestFirst);
 }
 

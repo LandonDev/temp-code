@@ -10,7 +10,8 @@ import { readFile } from "../lib/tcserver/commands";
  *
  * `watching` counts as settled: a planning thread whose turn ended on a
  * background wait (a Monitor, a cron, a run_in_background Bash) has still
- * written its plan, and before v184 that same thread read idle.
+ * written its plan, and before v184 that same thread read idle. `done` is
+ * the server's terminal status for a finished run and settles the same way.
  */
 export function isSettledPlanning(t: {
   threadType?: string | null;
@@ -18,7 +19,9 @@ export function isSettledPlanning(t: {
   planPath?: string | null;
 }): boolean {
   return (
-    t.threadType === "planning" && (t.status === "idle" || t.status === "watching") && !!t.planPath
+    t.threadType === "planning" &&
+    (t.status === "idle" || t.status === "watching" || t.status === "done") &&
+    !!t.planPath
   );
 }
 

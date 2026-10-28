@@ -261,14 +261,15 @@ export function installActiveSessionSync(): Teardown {
   };
 
   // What is on screen counts as read, and the rail knows what is on screen.
-  // A focus change marks at once. The active thread's own meta pushes (many
-  // a second while it streams) mark at most once a second, and only once
-  // its updatedAt moved, so the seen map is not re-serialized per push.
+  // A focus change marks at once: the thread leaving at its latest updatedAt
+  // (what landed while it was on screen, before the throttle flushed it),
+  // then the one arriving. The active thread's own meta pushes (many a
+  // second while it streams) mark at most once a second, and only once its
+  // updatedAt moved, so the seen map is not re-serialized per push.
   let focusedId: string | undefined;
   let marked: { id: string; updatedAt: number } | null = null;
   let markTimer: ReturnType<typeof setTimeout> | null = null;
-  const mark = () => {
-    const id = currentActiveSession()?.id;
+  const markId = (id: string | undefined) => {
     const meta = id ? sessionStore.metaOf(id) : null;
     if (!id || !meta) return;
     if (marked?.id === id && marked.updatedAt === meta.updatedAt) return;
@@ -279,15 +280,21 @@ export function installActiveSessionSync(): Teardown {
     if (markTimer != null) return;
     markTimer = setTimeout(() => {
       markTimer = null;
-      mark();
+      markId(focusedId);
     }, MARK_SEEN_MS);
   };
   const syncFocus = () => {
     const id = currentActiveSession()?.id;
     if (id === focusedId) return;
+    const leaving = focusedId;
     focusedId = id;
+    if (markTimer != null) {
+      clearTimeout(markTimer);
+      markTimer = null;
+    }
     liveAgentTracker.setFocused(id);
-    mark();
+    markId(leaving);
+    markId(id);
   };
 
   const sync = () => {
