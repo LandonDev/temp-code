@@ -18,6 +18,7 @@ import {
   Search,
   Users,
   Settings,
+  StickyNote,
   Trash2,
 } from "./icons";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -93,7 +94,7 @@ import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { SettingsNav } from "./SettingsRail";
 import { CUSTOMIZE, groupMenuRows } from "./TabGroupMenu";
 import { RowsContextMenu, type MenuRow } from "./menuRows";
-import { aliaxChunk, inboxChunk, searchChunk, settingsChunk, customizeChunk } from "../surfaces/chunks";
+import { aliaxChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, customizeChunk } from "../surfaces/chunks";
 
 /** The Customize dialog loads with the click (its menu warms it). */
 const CustomizeGroupDialog = customizeChunk.surface("CustomizeGroupDialog");
@@ -150,7 +151,8 @@ type Props = {
   onGoForward?: () => void;
   onSearch?: () => void;
   onOpenInbox?: () => void;
-  /** The foot's Accounts and Stats rows: the embedded Aliax pages. */
+  onOpenNotes?: () => void;
+  /** The Accounts group's rows: the embedded Aliax pages. */
   onOpenAccountsPage?: (page: AliaxPageId) => void;
   /** The home: the chats outside every workspace. */
   onOpenChats?: () => void;
@@ -175,6 +177,7 @@ export function ProjectRail({
   onGoForward,
   onSearch,
   onOpenInbox,
+  onOpenNotes,
   onOpenAccountsPage,
   onOpenChats,
   onSelectProject,
@@ -446,6 +449,70 @@ export function ProjectRail({
     axis: "y",
     onActivate: onSelectProject,
   });
+  const inboxUnseen = useInboxUnseen();
+  const topIds = railTopRows({ chats: onOpenChats !== undefined, notes: onOpenNotes !== undefined });
+  const accountIds = railAccountRows({ aliax: onOpenAccountsPage !== undefined });
+  const topRow = (id: RailTopRowId) => {
+    switch (id) {
+      case "search":
+        return (
+          <RailRow
+            key={id}
+            icon={Search}
+            label="Search"
+            selected={searchActive}
+            onClick={onSearch}
+            intent={searchChunk.intent}
+            tooltip={<Kbd>{`${MOD}K`}</Kbd>}
+          />
+        );
+      case "inbox":
+        return (
+          <RailRow
+            key={id}
+            icon={Inbox}
+            label="Inbox"
+            ariaLabel={inboxUnseen ? "Inbox, new items" : "Inbox"}
+            emphasis={inboxUnseen}
+            selected={inboxActive}
+            onClick={onOpenInbox}
+            intent={inboxChunk.intent}
+          />
+        );
+      case "read":
+        return <RailRow key={id} icon={ListChecks} label="Mark all read" onClick={() => markRead(null)} />;
+      case "notes":
+        return <RailRow key={id} icon={StickyNote} label="Notes" selected={notesActive} onClick={onOpenNotes} intent={notesChunk.intent} />;
+      case "chats":
+        return (
+          <RailRow
+            key={id}
+            icon={MessageSquare}
+            label="Chats"
+            ariaLabel={chatsAriaLabel(busy.has("~"), needsYou.has("~"))}
+            onClick={onOpenChats}
+            selected={!overlayOpen && cwd === "~"}
+            trailing={
+              needsYou.has("~") ? (
+                <StatusMark state="waiting" word={false} />
+              ) : busy.has("~") ? (
+                <StatusMark state="working" word={false} />
+              ) : null
+            }
+          />
+        );
+    }
+  };
+  const accountRow = (id: RailAccountRowId) => (
+    <RailRow
+      key={id}
+      icon={id === "accounts" ? Users : ChartBar}
+      label={id === "accounts" ? "Accounts" : "Stats"}
+      selected={accountsPage === id}
+      onClick={() => onOpenAccountsPage?.(id)}
+      intent={aliaxChunk.intent}
+    />
+  );
   return (
     <nav
       ref={resize.setPaneRef}
@@ -494,22 +561,11 @@ export function ProjectRail({
               openRef={projectMenu}
             >
             <div className="contents">
-            {onOpenChats ? (
-              <div className="shrink-0 px-2">
-                <RailRow
-                  icon={MessageSquare}
-                  label="Chats"
-                  ariaLabel={chatsAriaLabel(busy.has("~"), needsYou.has("~"))}
-                  onClick={onOpenChats}
-                  selected={!overlayOpen && cwd === "~"}
-                  trailing={
-                    needsYou.has("~") ? (
-                      <StatusMark state="waiting" word={false} />
-                    ) : busy.has("~") ? (
-                      <StatusMark state="working" word={false} />
-                    ) : null
-                  }
-                />
+            <div className="shrink-0 px-2">{topIds.map(topRow)}</div>
+            {accountIds.length > 0 ? (
+              <div className="shrink-0 px-2 pt-4">
+                <RailHeading>Accounts</RailHeading>
+                {accountIds.map(accountRow)}
               </div>
             ) : null}
             {rows.pinned.length > 0 ? (
@@ -566,9 +622,6 @@ export function ProjectRail({
           </div>
           <RailFoot
             activeSessionId={activeSessionId}
-            onSearch={onSearch}
-            onOpenInbox={onOpenInbox}
-            onOpenAccountsPage={onOpenAccountsPage}
             onOpenWhatsNew={onOpenWhatsNew}
             onAddWorkspace={(environmentId) => onOpenProject(environmentId, ADD_WORKSPACE)}
           />
@@ -847,19 +900,34 @@ export function workspaceRowAriaLabel(name: string, busy: boolean, needsYou = fa
   return name;
 }
 
-export type RailFootRowId = "signIn" | "update" | "hosts" | "inbox" | "search" | "accounts" | "stats" | "settings";
+export type RailTopRowId = "search" | "inbox" | "read" | "notes" | "chats";
+
+/** The rail's navigation group, first in its list: Search, Inbox, Mark all
+ *  read, Notes (where the view can open) and Chats (where the home is). */
+export function railTopRows(facts: { chats: boolean; notes: boolean }): RailTopRowId[] {
+  const rows: RailTopRowId[] = ["search", "inbox", "read"];
+  if (facts.notes) rows.push("notes");
+  if (facts.chats) rows.push("chats");
+  return rows;
+}
+
+export type RailAccountRowId = "accounts" | "stats";
+
+/** The Accounts group's rows, only where their pages open (never at /ui). */
+export function railAccountRows(facts: { aliax: boolean }): RailAccountRowId[] {
+  return facts.aliax ? ["accounts", "stats"] : [];
+}
+
+export type RailFootRowId = "signIn" | "update" | "hosts" | "settings";
 
 /** The foot's rows, in order: the sign-in while this machine has no account,
  *  the update when there is one to act on, the hosts with two or more, then
- *  Inbox, Search, Accounts and Stats (where their pages can open: never at
- *  /ui), Settings. */
-export function railFootRows(facts: { signIn: boolean; update: boolean; hosts: number; aliax: boolean }): RailFootRowId[] {
+ *  Settings. */
+export function railFootRows(facts: { signIn: boolean; update: boolean; hosts: number }): RailFootRowId[] {
   const rows: RailFootRowId[] = [];
   if (facts.signIn) rows.push("signIn");
   if (facts.update) rows.push("update");
   if (facts.hosts >= 2) rows.push("hosts");
-  rows.push("inbox", "search");
-  if (facts.aliax) rows.push("accounts", "stats");
   rows.push("settings");
   return rows;
 }
@@ -870,23 +938,13 @@ export function railFootRows(facts: { signIn: boolean; update: boolean; hosts: n
  */
 export function RailFoot({
   activeSessionId,
-  onSearch,
-  onOpenInbox,
-  onOpenAccountsPage,
   onOpenWhatsNew,
   onAddWorkspace,
 }: {
   activeSessionId?: string;
-  onSearch?: () => void;
-  onOpenInbox?: () => void;
-  onOpenAccountsPage?: (page: AliaxPageId) => void;
   onOpenWhatsNew?: (version: string, markdown?: string) => void;
   onAddWorkspace: (environmentId: string) => void;
 }) {
-  const searchActive = useShell((s) => s.searchViewOpen);
-  const inboxActive = useShell((s) => s.inboxViewOpen);
-  const accountsPage = useShell((s) => s.accountsPage);
-  const inboxUnseen = useInboxUnseen();
   const environments = useEnvironments();
   const update = useUpdateRowState();
   const signIn = useSignInTarget();
@@ -894,7 +952,6 @@ export function RailFoot({
     signIn: signIn !== null,
     update: update !== null,
     hosts: environments.length,
-    aliax: onOpenAccountsPage !== undefined,
   });
   const row = (id: RailFootRowId) => {
     switch (id) {
@@ -904,53 +961,6 @@ export function RailFoot({
         return <UpdateRow key={id} state={update} onOpenWhatsNew={onOpenWhatsNew} />;
       case "hosts":
         return <HostsRow key={id} onAddWorkspace={onAddWorkspace} />;
-      case "inbox":
-        return (
-          <RailRow
-            key={id}
-            icon={Inbox}
-            label="Inbox"
-            ariaLabel={inboxUnseen ? "Inbox, new items" : "Inbox"}
-            emphasis={inboxUnseen}
-            selected={inboxActive}
-            onClick={onOpenInbox}
-            intent={inboxChunk.intent}
-          />
-        );
-      case "search":
-        return (
-          <RailRow
-            key={id}
-            icon={Search}
-            label="Search"
-            selected={searchActive}
-            onClick={onSearch}
-            intent={searchChunk.intent}
-            tooltip={<Kbd>{`${MOD}K`}</Kbd>}
-          />
-        );
-      case "accounts":
-        return (
-          <RailRow
-            key={id}
-            icon={Users}
-            label="Accounts"
-            selected={accountsPage === "accounts"}
-            onClick={() => onOpenAccountsPage?.("accounts")}
-            intent={aliaxChunk.intent}
-          />
-        );
-      case "stats":
-        return (
-          <RailRow
-            key={id}
-            icon={ChartBar}
-            label="Stats"
-            selected={accountsPage === "stats"}
-            onClick={() => onOpenAccountsPage?.("stats")}
-            intent={aliaxChunk.intent}
-          />
-        );
       case "settings":
         return (
           <RailRow

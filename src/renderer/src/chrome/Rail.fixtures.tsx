@@ -1,7 +1,8 @@
 // The rail's look, for `bun run ui:preview src/renderer/src/chrome/Rail.fixtures.tsx#RailSketch`.
 // Presentational rows only (RailRow, the headings, the foot's shapes) fed plain props: no stores.
+import type { ReactNode } from "react";
 import { StatusMark } from "../components/ui/status";
-import { ChartBar, FolderPlus, Inbox, MessageSquare, MoreHorizontal, Plus, Search, Server, Settings, Users } from "./icons";
+import { ChartBar, FolderPlus, Inbox, ListChecks, MessageSquare, MoreHorizontal, Plus, Search, Server, Settings, StickyNote, Users } from "./icons";
 import { ProjectMascot } from "./ProjectMascot";
 import { RailHeading, RailRow } from "./RailRow";
 import { SignInRowView } from "./SignInRow";
@@ -37,15 +38,38 @@ function Workspace({ name, color, mark, unread = false, selected = false }: { na
   );
 }
 
+/** The navigation group, first in the list (`railTopRows`). */
+function Navigation({ inboxUnseen = false, chats, chatsSelected = false }: { inboxUnseen?: boolean; chats?: ReactNode; chatsSelected?: boolean }) {
+  return (
+    <div className="px-2">
+      <RailRow icon={Search} label="Search" />
+      <RailRow icon={Inbox} label="Inbox" emphasis={inboxUnseen} />
+      <RailRow icon={ListChecks} label="Mark all read" />
+      <RailRow icon={StickyNote} label="Notes" />
+      <RailRow icon={MessageSquare} label="Chats" selected={chatsSelected} trailing={chats} />
+    </div>
+  );
+}
+
+/** The Accounts group (`railAccountRows`), desktop only. */
+function AccountsGroup({ selected }: { selected?: "accounts" | "stats" }) {
+  return (
+    <div className="px-2 pt-4">
+      <RailHeading>Accounts</RailHeading>
+      <RailRow icon={Users} label="Accounts" selected={selected === "accounts"} />
+      <RailRow icon={ChartBar} label="Stats" selected={selected === "stats"} />
+    </div>
+  );
+}
+
 /** `width` is the rail's: 200 by default in the app, 180 to 360 by drag. */
 export function RailSketch({ width = 260 }: { width?: number }) {
   return (
     <nav aria-label="Workspaces" className="flex h-[720px] flex-col border-r border-border bg-sidebar" style={{ width }}>
       <div className="h-10 shrink-0" />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">
-        <div className="px-2">
-          <RailRow icon={MessageSquare} label="Chats" trailing={<StatusMark state="working" word={false} />} />
-        </div>
+        <Navigation inboxUnseen chats={<StatusMark state="working" word={false} />} />
+        <AccountsGroup selected="stats" />
         <div className="px-2 pt-4">
           <RailHeading>Pinned</RailHeading>
           <Workspace name="temp-code" color="var(--chart-1)" selected />
@@ -70,10 +94,6 @@ export function RailSketch({ width = 260 }: { width?: number }) {
               </span>
             }
           />
-          <RailRow icon={Inbox} label="Inbox" emphasis />
-          <RailRow icon={Search} label="Search" />
-          <RailRow icon={Users} label="Accounts" />
-          <RailRow icon={ChartBar} label="Stats" selected />
           <RailRow icon={Settings} label="Settings" />
         </div>
       </div>
@@ -81,16 +101,16 @@ export function RailSketch({ width = 260 }: { width?: number }) {
   );
 }
 
-/** A new install: Chats, the empty Workspaces list, and the foot led by the
- *  sign-in row until an account arrives (`signedIn`), with no meter yet. */
+/** A new install: the navigation and Accounts groups, the empty Workspaces
+ *  list, and the foot led by the sign-in row until an account arrives
+ *  (`signedIn`), with no meter yet. */
 function FirstRun({ signedIn, pending = false }: { signedIn: boolean; pending?: boolean }) {
   return (
     <nav aria-label="Workspaces" className="flex h-[720px] w-[260px] flex-col border-r border-border bg-sidebar">
       <div className="h-10 shrink-0" />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">
-        <div className="px-2">
-          <RailRow icon={MessageSquare} label="Chats" selected />
-        </div>
+        <Navigation chatsSelected />
+        <AccountsGroup />
         <div className="px-2 pt-4">
           <RailHeading>Workspaces</RailHeading>
           <RailRow icon={FolderPlus} label="Add workspace…" onClick={noop} />
@@ -99,10 +119,6 @@ function FirstRun({ signedIn, pending = false }: { signedIn: boolean; pending?: 
       <div className="flex shrink-0 flex-col border-t border-border">
         <div className="flex flex-col p-2">
           {signedIn ? null : <SignInRowView provider="claude" pending={pending} onClick={noop} />}
-          <RailRow icon={Inbox} label="Inbox" />
-          <RailRow icon={Search} label="Search" />
-          <RailRow icon={Users} label="Accounts" />
-          <RailRow icon={ChartBar} label="Stats" />
           <RailRow icon={Settings} label="Settings" />
         </div>
       </div>

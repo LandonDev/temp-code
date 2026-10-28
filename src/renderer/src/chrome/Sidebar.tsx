@@ -110,6 +110,7 @@ function SidebarComponent({
   onNew,
   onSearch,
   onOpenInbox,
+  onOpenNotes,
   onOpenAccountsPage,
   onOpenChats,
   onSelectProjectCard,
@@ -352,9 +353,6 @@ function SidebarComponent({
       {showSidebarFooter && onOpenProject ? (
         <RailFoot
           activeSessionId={activeSessionId}
-          onSearch={onSearch}
-          onOpenInbox={onOpenInbox}
-          onOpenAccountsPage={onOpenAccountsPage}
           onOpenWhatsNew={onOpenWhatsNew}
           onAddWorkspace={(environmentId) => onOpenProject(environmentId, ADD_WORKSPACE)}
         />
@@ -408,6 +406,7 @@ function SidebarComponent({
           onGoForward={onGoForward}
           onSearch={onSearch}
           onOpenInbox={onOpenInbox}
+          onOpenNotes={onOpenNotes}
           onOpenAccountsPage={onOpenAccountsPage}
           onOpenChats={onOpenChats}
           onSelectProject={onSelectProject}

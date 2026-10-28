@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatsAriaLabel, projectMenuExtraItems, railFootRows, workspaceRowAriaLabel } from "./ProjectRail";
+import { chatsAriaLabel, projectMenuExtraItems, railAccountRows, railFootRows, railTopRows, workspaceRowAriaLabel } from "./ProjectRail";
 
 describe("workspaceRowAriaLabel", () => {
   it("reads the name alone when the workspace is quiet", () => {
@@ -48,23 +48,36 @@ describe("projectMenuExtraItems", () => {
   });
 });
 
+describe("railTopRows", () => {
+  it("puts navigation first: Search, Inbox, Mark all read, Notes, Chats", () => {
+    expect(railTopRows({ chats: true, notes: true })).toEqual(["search", "inbox", "read", "notes", "chats"]);
+  });
+
+  it("leaves Notes and Chats out where they cannot open", () => {
+    expect(railTopRows({ chats: false, notes: false })).toEqual(["search", "inbox", "read"]);
+  });
+});
+
+describe("railAccountRows", () => {
+  it("is Accounts and Stats on the desktop, nothing at /ui", () => {
+    expect(railAccountRows({ aliax: true })).toEqual(["accounts", "stats"]);
+    expect(railAccountRows({ aliax: false })).toEqual([]);
+  });
+});
+
 describe("railFootRows", () => {
-  it("is Inbox, Search, Accounts, Stats, Settings with one host and nothing to update", () => {
-    expect(railFootRows({ signIn: false, update: false, hosts: 1, aliax: true })).toEqual(["inbox", "search", "accounts", "stats", "settings"]);
+  it("is Settings alone with one host and nothing to update", () => {
+    expect(railFootRows({ signIn: false, update: false, hosts: 1 })).toEqual(["settings"]);
   });
 
   it("puts the update first and the hosts after it, the hosts only with two or more", () => {
-    expect(railFootRows({ signIn: false, update: true, hosts: 2, aliax: true })).toEqual(["update", "hosts", "inbox", "search", "accounts", "stats", "settings"]);
-    expect(railFootRows({ signIn: false, update: true, hosts: 1, aliax: true })[0]).toBe("update");
-    expect(railFootRows({ signIn: false, update: false, hosts: 3, aliax: true })[0]).toBe("hosts");
+    expect(railFootRows({ signIn: false, update: true, hosts: 2 })).toEqual(["update", "hosts", "settings"]);
+    expect(railFootRows({ signIn: false, update: true, hosts: 1 })[0]).toBe("update");
+    expect(railFootRows({ signIn: false, update: false, hosts: 3 })[0]).toBe("hosts");
   });
 
-  it("leaves Accounts and Stats out where their pages cannot open (/ui)", () => {
-    expect(railFootRows({ signIn: false, update: false, hosts: 1, aliax: false })).toEqual(["inbox", "search", "settings"]);
-  });
-
-  it("leads with the sign-in, before the update, and leaves it out when there is an account", () => {
-    expect(railFootRows({ signIn: true, update: true, hosts: 1, aliax: true })).toEqual(["signIn", "update", "inbox", "search", "accounts", "stats", "settings"]);
-    expect(railFootRows({ signIn: false, update: true, hosts: 1, aliax: true })).not.toContain("signIn");
+  it("leads with the sign-in on first run, before the update, and leaves it out when there is an account", () => {
+    expect(railFootRows({ signIn: true, update: true, hosts: 1 })).toEqual(["signIn", "update", "settings"]);
+    expect(railFootRows({ signIn: false, update: true, hosts: 1 })).not.toContain("signIn");
   });
 });

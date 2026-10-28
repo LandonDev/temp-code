@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { registry, type Environment, type EnvironmentStatus, type Link } from "../lib/connection";
 import type { ServerPush, SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { sessionStore } from "../lib/tcserver/store";
+import { loadLastSeen, seenFloor } from "../lib/sessionSeen";
 import { workspaceStore } from "../lib/tcserver/workspaces";
 import { groupWorkspaceSessions } from "../lib/workspaceSessions";
 import { mountProbe } from "../test/renderProbe";
@@ -142,7 +143,11 @@ describe("the rail", () => {
     environments: Environment[],
     statuses: Record<string, EnvironmentStatus> = {},
     onSelectProject = (_: string) => {},
-    { recents = RECENTS, onOpenProject = (_?: string) => {} }: { recents?: typeof RECENTS; onOpenProject?: (environmentId?: string) => void } = {},
+    {
+      recents = RECENTS,
+      onOpenProject = (_?: string) => {},
+      onOpenNotes = () => {},
+    }: { recents?: typeof RECENTS; onOpenProject?: (environmentId?: string) => void; onOpenNotes?: () => void } = {},
   ) {
     pairHosts(environments, statuses);
     for (const e of environments) {
@@ -157,6 +162,8 @@ describe("the rail", () => {
         onSelectProject={onSelectProject}
         onOpenProject={onOpenProject}
         onOpenChats={() => {}}
+        onOpenNotes={onOpenNotes}
+        onOpenAccountsPage={() => {}}
       />,
     );
     await probe.act(flush);
@@ -176,13 +183,32 @@ describe("the rail", () => {
     expect(workspaceRows(root)[0].getAttribute("data-rail-path")).toBe(MAC_PATH);
   });
 
-  it("opens with Chats as the list's first row, with no Accounts heading", async () => {
+  it("opens with the navigation group, then the Accounts group, before Pinned and Workspaces", async () => {
     const root = await mountRail([LOCAL, BOX]);
     const list = root.querySelector('nav[aria-label="Workspaces"] .overflow-y-auto')!;
-    expect(list.querySelector("button")?.textContent).toBe("Chats");
-    expect(headers(root)).not.toContain("Accounts");
+    const labels = [...list.querySelectorAll("[data-rail-row] > button")].map((b) => b.textContent);
+    expect(labels.slice(0, 7)).toEqual(["Search", "Inbox", "Mark all read", "Notes", "Chats", "Accounts", "Stats"]);
+    expect(headers(root)).toEqual(["Accounts", "Workspaces"]);
+    const accounts = [...list.querySelectorAll("[data-rail-heading]")].find((h) => h.textContent?.trim() === "Accounts")!.closest(".pt-4")!;
+    expect([...accounts.querySelectorAll("[data-rail-row] > button")].map((b) => b.textContent)).toEqual(["Accounts", "Stats"]);
     // The rows themselves carry no title= (the word at the end is the status mark).
     expect(list.querySelector("[data-rail-row] > button[title]")).toBeNull();
+  });
+
+  it("Mark all read marks every thread on every host seen", async () => {
+    const root = await mountRail([LOCAL, BOX]);
+    const read = [...root.querySelectorAll("nav [data-rail-row] > button")].find((b) => b.textContent === "Mark all read")!;
+    fireEvent.click(read);
+    const seen = loadLastSeen();
+    for (const m of METAS) expect(seen[m.id]).toBeGreaterThanOrEqual(m.updatedAt);
+    expect(seenFloor()).toBeGreaterThan(0);
+  });
+
+  it("Notes opens the Notes view", async () => {
+    const onOpenNotes = vi.fn();
+    const root = await mountRail([LOCAL, BOX], {}, undefined, { onOpenNotes });
+    fireEvent.click([...root.querySelectorAll("nav [data-rail-row] > button")].find((b) => b.textContent === "Notes")!);
+    expect(onOpenNotes).toHaveBeenCalledOnce();
   });
 
   it("selects a workspace from a click on its row, which the drag's pointer capture sends to the wrapper", async () => {
