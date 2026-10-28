@@ -4,6 +4,8 @@ import { agentModelsFor } from "./catalog";
 import type { ProviderInfo } from "./types";
 import {
   BUILT_IN_SCOPE,
+  PERMISSION_HINTS,
+  PERMISSION_LABELS,
   clampReasoning,
   coerceDefaults,
   draftFromDefaults,
@@ -139,5 +141,13 @@ describe("draftFromDefaults", () => {
     expect(
       draftFromDefaults({ provider: "claude", model: "claude-opus-5", reasoning: "high", permission: "edits" }, "research").model,
     ).toBe("claude:claude-opus-5");
+  });
+});
+
+describe("permission words", () => {
+  it("name each policy as the composer's permission picker does", () => {
+    expect(PERMISSION_LABELS).toEqual({ safe: "Supervised", edits: "Auto-accept edits", auto: "Full access" });
+    expect(PERMISSION_HINTS.safe).toBe("Ask before edits and commands that change things.");
+    expect(PERMISSION_HINTS.auto).toBe("Allow commands and edits without prompts.");
   });
 });

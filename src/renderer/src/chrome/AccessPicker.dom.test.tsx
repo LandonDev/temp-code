@@ -32,6 +32,16 @@ describe("AccessPicker", () => {
     expect(option.textContent).not.toContain("file changes");
   });
 
+  it("offers one mode per policy, and a thread stored as auto reads Auto-accept edits", async () => {
+    render(<AccessPicker value="auto" onChange={() => {}} onClose={() => {}} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("combobox", { name: "Permission mode: Auto-accept edits" }));
+    });
+    const names = screen.getAllByRole("option").map((o) => o.querySelector("span > span")?.textContent);
+    expect(names).toEqual(["Supervised", "Auto-accept edits", "Full access"]);
+    expect(document.body.textContent).not.toContain("AI reviewer");
+  });
+
   it("a pick hands the focus to the field", async () => {
     const onClose = vi.fn();
     const onChange = vi.fn();

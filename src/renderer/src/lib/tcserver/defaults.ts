@@ -1,5 +1,5 @@
 import { DEFAULT_THREAD_DEFAULTS } from "@server/shared/defaults";
-import { HARNESSES, HARNESS_TITLE, type HarnessId, type RuntimeMode } from "../session";
+import { HARNESSES, HARNESS_TITLE, RUNTIME_MODE_HINT, RUNTIME_MODE_LABEL, type HarnessId, type RuntimeMode } from "../session";
 import { modelsFor, resolveModel, type AgentModel } from "../models";
 import { modeForPolicy } from "./access";
 import type { ThreadDefaults, ThreadType } from "./types";
@@ -35,17 +35,16 @@ export const EFFORT_LABELS: Record<Reasoning, string> = {
   ultra: "Ultra",
 };
 
-export const PERMISSION_LABELS: Record<Permission, string> = {
-  safe: "Ask first",
-  edits: "Auto-edits",
-  auto: "Full access",
-};
+/** The composer's permission picker names the same three policies; one set of words for both. */
+const PERMISSIONS = ["safe", "edits", "auto"] as const satisfies readonly Permission[];
 
-export const PERMISSION_HINTS: Record<Permission, string> = {
-  safe: "Every tool call asks before running.",
-  edits: "File edits run freely; commands still ask.",
-  auto: "Everything runs without asking.",
-};
+export const PERMISSION_LABELS = Object.fromEntries(
+  PERMISSIONS.map((p) => [p, RUNTIME_MODE_LABEL[modeForPolicy(p)]]),
+) as Record<Permission, string>;
+
+export const PERMISSION_HINTS = Object.fromEntries(
+  PERMISSIONS.map((p) => [p, RUNTIME_MODE_HINT[modeForPolicy(p)]]),
+) as Record<Permission, string>;
 
 export const BUILT_IN_SCOPE: DefaultsScope = { defaults: DEFAULT_THREAD_DEFAULTS, overridden: false };
 
@@ -133,7 +132,7 @@ export type DraftSeed = {
 /** What a draft session is built from: harness, picker model id, access mode, effort.
  *  A research thread runs on claude whatever the default provider: it has
  *  both a search and a fetch tool, and its web tools run free under
- *  Auto-edits (codex has no fetch, and its Auto-edits sandbox has no network). */
+ *  Auto-accept edits (codex has no fetch, and its edits sandbox has no network). */
 export function draftFromDefaults(d: ThreadDefaults, threadType?: ThreadType | null): DraftSeed {
   const seed = threadType === "research" && d.provider !== "claude" ? { ...d, provider: "claude" as const, model: "" } : d;
   const harness = seed.provider as HarnessId;

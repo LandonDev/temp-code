@@ -241,10 +241,21 @@ export const RUNTIME_MODES: RuntimeMode[] = [
 
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "supervised";
 
+/** The modes the permission picker offers: one per server policy
+ *  (tcserver/access.ts). `auto` is the edits policy on this server, so it
+ *  is offered once, as Auto-accept edits, and a thread stored with it reads
+ *  that way too. */
+export const PICKER_RUNTIME_MODES: RuntimeMode[] = ["supervised", "auto-accept-edits", "full-access"];
+
+/** The mode a picker shows for a thread's stored mode. */
+export function shownRuntimeMode(mode: RuntimeMode): RuntimeMode {
+  return mode === "auto" ? "auto-accept-edits" : mode;
+}
+
 export const RUNTIME_MODE_LABEL: Record<RuntimeMode, string> = {
   supervised: "Supervised",
   "auto-accept-edits": "Auto-accept edits",
-  auto: "Auto",
+  auto: "Auto-accept edits",
   "full-access": "Full access",
 };
 
@@ -254,7 +265,7 @@ export const RUNTIME_MODE_LABEL: Record<RuntimeMode, string> = {
 export const RUNTIME_MODE_HINT: Record<RuntimeMode, string> = {
   supervised: "Ask before edits and commands that change things.",
   "auto-accept-edits": "Auto-approve edits, ask before other actions.",
-  auto: "An AI reviewer approves routine actions; risky ones still ask.",
+  auto: "Auto-approve edits, ask before other actions.",
   "full-access": "Allow commands and edits without prompts.",
 };
 

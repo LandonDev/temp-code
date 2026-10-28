@@ -78,7 +78,7 @@ describe("Thread defaults", () => {
     render(<ThreadDefaultsPage />);
     expect(screen.queryByRole("heading", { name: "New threads" })).toBeNull();
     expect(screen.getByRole("region", { name: "Plans" })).toBeTruthy();
-    for (const name of ["Provider", "Model", "Reasoning", "Security"]) {
+    for (const name of ["Provider", "Model", "Reasoning", "Permission mode"]) {
       expect(screen.getByRole("combobox", { name })).toBeTruthy();
     }
     expect(screen.getByRole("combobox", { name: "Model" }).textContent).toContain("Provider default");
@@ -123,7 +123,7 @@ describe("Thread defaults", () => {
     const dialog = await screen.findByRole("dialog");
     expect(screen.getByRole("heading", { name: "Thread defaults" })).toBeTruthy();
     expect(dialog.textContent).toContain("Alpha");
-    for (const name of ["Provider", "Model", "Security"]) expect(screen.getByRole("combobox", { name })).toBeTruthy();
+    for (const name of ["Provider", "Model", "Permission mode"]) expect(screen.getByRole("combobox", { name })).toBeTruthy();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });

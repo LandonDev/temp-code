@@ -82,8 +82,8 @@ export function ThreadDefaultsFields({ value, onChange, environmentId }: { value
           <ChoiceSelect label="Reasoning" {...rows.reasoning} />
         </PageRow>
       ) : null}
-      <PageRow title="Security" description={PERMISSION_HINTS[value.permission]}>
-        <ChoiceSelect label="Security" {...rows.permission} />
+      <PageRow title="Permission mode" description={PERMISSION_HINTS[value.permission]}>
+        <ChoiceSelect label="Permission mode" {...rows.permission} />
       </PageRow>
     </>
   );
@@ -239,8 +239,8 @@ function DialogFields({ value, onChange, environmentId, hint }: { value: ThreadD
           <ChoiceSelect label="Reasoning" size="sm" {...rows.reasoning} />
         </FieldRow>
       ) : null}
-      <FieldRow label="Security" description={hint}>
-        <ChoiceSelect label="Security" size="sm" {...rows.permission} />
+      <FieldRow label="Permission mode" description={hint}>
+        <ChoiceSelect label="Permission mode" size="sm" {...rows.permission} />
       </FieldRow>
     </div>
   );
