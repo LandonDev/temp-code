@@ -436,6 +436,8 @@ export function batchFromPush(push: unknown, masterId: string): BatchState | nul
     pending: Array.isArray(batch.pending) ? batch.pending : [],
     held: Array.isArray(batch.held) ? batch.held : [],
     blocked: batch.blocked ?? null,
+    // The host's done list, an empty one included: without it Archive done falls back to the old rule.
+    ...(Array.isArray(batch.done) ? { done: batch.done } : {}),
     finishedAt: batch.finishedAt ?? null,
     ...(children.length ? { children } : {}),
   } as BatchState;

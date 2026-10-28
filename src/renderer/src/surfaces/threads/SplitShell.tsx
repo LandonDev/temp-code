@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Toggle } from "../../components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { MessageSquare } from "../../chrome/icons";
@@ -162,6 +162,16 @@ export function SplitShell({
   const folded = hasBoard && collapsed;
   const chatRef = useRef<HTMLDivElement | null>(null);
   const width = useShownWidth(chatRef, !folded);
+  // Continue or Stop on the held row takes the row away with the focus in
+  // it: the focus lands on the conversation toggle, not the page.
+  const showHeld = folded && !!held;
+  const heldFocus = useRef(false);
+  useLayoutEffect(() => {
+    if (showHeld || !heldFocus.current) return;
+    heldFocus.current = false;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    rootRef.current?.querySelector<HTMLElement>("[data-board] [aria-label='Conversation']")?.focus();
+  }, [showHeld, rootRef]);
   return (
     <div ref={rootRef} className={`relative flex min-h-0 min-w-0 flex-1 overflow-hidden ${className}`}>
       {hasBoard ? (
@@ -181,8 +191,15 @@ export function SplitShell({
               onToggleChat={onToggleChat}
             />
           ) : null}
-          {folded && held ? (
-            <div data-board-held className="shrink-0 border-b border-border">
+          {showHeld ? (
+            <div
+              data-board-held
+              className="shrink-0 border-b border-border"
+              onFocus={() => (heldFocus.current = true)}
+              onBlur={(e) => {
+                if (e.relatedTarget) heldFocus.current = false;
+              }}
+            >
               {held}
             </div>
           ) : null}

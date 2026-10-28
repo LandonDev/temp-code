@@ -55,6 +55,8 @@ describe("rowStatus", () => {
   it("paused says what it was doing, never the word again; stopped says nothing unless it blocks the batch", () => {
     expect(rowStatus(m({ status: "paused", activity: "Running bun test" }), {}, false)).toEqual({ state: "paused", detail: "running bun test" });
     expect(rowStatus(m({ status: "paused", activity: "Paused" }), {}, false)).toEqual({ state: "paused", detail: "" });
+    // The host clears the activity on a pause: an implementation still says its task in hand.
+    expect(rowStatus(m({ status: "paused", activity: null }), { todos }, false)).toEqual({ state: "paused", detail: "write the view" });
     expect(rowStatus(m({ status: "stopped" }), {}, false)).toEqual({ state: "stopped", detail: "" });
     expect(rowStatus(m({ status: "stopped" }), {}, false, "was stopped")).toEqual({ state: "stopped", detail: "was stopped" });
   });

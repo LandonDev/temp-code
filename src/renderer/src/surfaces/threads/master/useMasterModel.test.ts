@@ -259,6 +259,10 @@ describe("the batch", () => {
     const rules = { ...DEFAULT_BATCH_RULES, deploy: "box", summary: "Land all seven" };
     expect(batchFromPush({ push: "batch", state: { masterId: "m", steps, rules } }, "m")?.rules).toEqual(rules);
     expect(batchFromPush({ push: "batch", state: { masterId: "m", steps } }, "m")?.landed).toEqual([]);
+    // The host's done list survives a push, an empty one too, so Archive done keeps the host's count.
+    expect(batchFromPush({ push: "batch", state: { masterId: "m", steps, done: ["a", "box:f"] } }, "m")?.done).toEqual(["a", "box:f"]);
+    expect(batchFromPush({ push: "batch", state: { masterId: "m", steps, done: [] } }, "m")?.done).toEqual([]);
+    expect(batchFromPush({ push: "batch", state: { masterId: "m", steps } }, "m")).not.toHaveProperty("done");
     const children = [{ sessionId: "a", environmentId: "box", status: "running" }];
     expect(batchChildrenOf(batchFromPush({ push: "batch", state: { masterId: "m", steps, children } }, "m"))).toEqual(children);
     expect(batchFromPush({ push: "batch", masterId: "m", steps }, "m")).toBeNull();

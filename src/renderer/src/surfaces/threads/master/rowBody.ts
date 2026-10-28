@@ -73,8 +73,9 @@ export function rowStatus(
     case "queued":
       return said(leadStripped(activity, state));
     case "paused":
-      // What it was doing; the host's bare "Paused" would repeat the word.
-      return said(/^paused\b/i.test(activity) ? "" : activity);
+      // What it was doing: an implementation's task in hand, else the
+      // activity (the host's bare "Paused" would repeat the word).
+      return said((meta.threadType === "implementation" && taskInHand(taskList(digest))) || (/^paused\b/i.test(activity) ? "" : activity));
     case "stopped":
       return said(blocked);
     case "done":

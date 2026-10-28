@@ -159,6 +159,9 @@ export function stepState(status: StepStatus): ThreadState {
  *  with `$ <run>`. */
 export function stepDetail(step: Pick<LiveStep, "kind" | "status" | "detail" | "progress">, rules: Pick<BatchRules, "land">): { text: string; label: string | null } {
   const plain = (text: string) => ({ text, label: null });
+  // A failure is said once, on its row, as the vocabulary writes a detail;
+  // ahead of a land step's progress, which would hide it.
+  if (step.status === "failed") return plain(lowerFirst(step.detail) ?? "");
   if (step.kind === "land") {
     if (step.status === "pending") return plain(rules.land === "all-at-once" ? "all at once" : "as they finish");
     if (step.progress && step.progress.total > 0) return plain(`${step.progress.done} of ${step.progress.total} landed`);
@@ -168,8 +171,6 @@ export function stepDetail(step: Pick<LiveStep, "kind" | "status" | "detail" | "
     const progress = progressText(step.progress);
     if (progress) return { text: progress.count, label: progress.label };
   }
-  // A failure is said once, on its row, as the vocabulary writes a detail.
-  if (step.status === "failed") return plain(lowerFirst(step.detail) ?? "");
   return plain(step.detail.trim());
 }
 

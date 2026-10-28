@@ -81,6 +81,9 @@ describe("a step as the foot reads it", () => {
     const rules = { land: "as-they-finish" } as const;
     expect(stepDetail(live({ status: "failed", detail: "The gate failed at vitest." }), rules).text).toBe("the gate failed at vitest");
     expect(stepDetail(live({ status: "failed", detail: "FAILED at vitest" }), rules).text).toBe("FAILED at vitest");
+    // A failed land step says its failure, not its progress.
+    const land = live({ id: "land", kind: "land", status: "failed", detail: "Merge of ios/home failed: rebase it onto master.", progress: { done: 1, total: 3 } });
+    expect(stepDetail(land, rules).text).toBe("merge of ios/home failed: rebase it onto master");
   });
 });
 

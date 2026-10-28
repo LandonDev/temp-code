@@ -1090,6 +1090,9 @@ describe("the master view", () => {
     // The row says it, lower-case with no stop; the console shows the log alone, without the repeat.
     expect(gate.querySelector("[data-step-detail]")?.textContent).toBe("gate failed at vitest");
     expect(gate.querySelector("[data-log] .text-destructive")).toBeNull();
+    // Said only on its row, so it wraps rather than being cut.
+    expect(gate.querySelector("[data-step-detail]")?.className).toContain("break-words");
+    expect(gate.querySelector("[data-step-detail]")?.className).not.toContain("truncate");
     expect(gate.querySelector("[data-log]")?.textContent).toBe("✓ typecheck 12s\n✗ vitest: 2 failed");
     expect((foot.textContent ?? "").toLowerCase().split("gate failed at vitest")).toHaveLength(2);
     expect(within(foot as HTMLElement).queryByRole("button", { name: "Stop" })).toBeNull();

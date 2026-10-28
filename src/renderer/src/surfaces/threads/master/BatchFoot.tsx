@@ -156,10 +156,11 @@ function StepRow({
 
   return (
     <li data-step={step.id} data-step-status={step.status}>
-      <div className="flex h-7 min-w-0 items-center gap-2">
+      <div className="flex min-h-7 min-w-0 items-center gap-2">
         <StatusMark state={stepState(step.status)} word={false} />
         <span className={cn("shrink-0 text-[13px]", quiet ? "text-muted-foreground" : "text-foreground")}>{step.name}</span>
-        <span className={cn("min-w-0 flex-1 truncate text-xs", failed ? "text-destructive" : "text-muted-foreground")} data-step-detail>
+        {/* A failure is said only here, so it wraps rather than being cut. */}
+        <span className={cn("min-w-0 flex-1 text-xs", failed ? "py-1.5 break-words text-destructive" : "truncate text-muted-foreground")} data-step-detail>
           {detail.text ? <span className="tabular-nums">{detail.text}</span> : null}
           {detail.label ? <span className="ml-2">{detail.label}</span> : null}
         </span>

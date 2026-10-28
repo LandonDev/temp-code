@@ -75,6 +75,21 @@ describe("the paused row on a folded board", () => {
     expect(reachable("Continue")).toHaveLength(1);
   });
 
+  it("Continue taking the row away leaves the focus on the conversation toggle, not the page", () => {
+    metas.list = [];
+    const { rerender } = view(master, true);
+    const cont = reachable("Continue")[0]!;
+    cont.focus();
+    expect(document.activeElement).toBe(cont);
+    const running = { ...master, status: "running" } as Session;
+    const renderSlots = (): ChatSlots => ({ transcript: null, strip: <WorkingStrip session={running} onStop={() => {}} onResume={() => {}} />, composer: null });
+    rerender(
+      <SplitShell board={<p>the board</p>} chat={null} hasBoard collapsed onToggleChat={() => {}} title="Batch" held={heldRowOf({ renderChat: () => null, renderSlots }, running)} />,
+    );
+    expect(document.querySelector("[data-board-held]")).toBeNull();
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Conversation");
+  });
+
   it("a thread that is not paused gets nothing on its board", () => {
     view({ ...master, status: "running" } as Session, true);
     expect(document.querySelector("[data-board-held]")).toBeNull();
