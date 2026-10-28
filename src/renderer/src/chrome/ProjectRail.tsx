@@ -90,6 +90,7 @@ import { DevModeSlot, TabVisitNav } from "./TitleBar";
 import { UpdateRow, useUpdateRowState } from "./UpdateRow";
 import { SignInRow, useSignInTarget } from "./SignInRow";
 import { UsageMeter } from "./UsageMeter";
+import { RailWorking } from "./RailWorking";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { SettingsNav } from "./SettingsRail";
 import { CUSTOMIZE, groupMenuRows } from "./TabGroupMenu";
@@ -620,6 +621,7 @@ export function ProjectRail({
             </div>
             </RowsContextMenu>
           </div>
+          <RailWorking activeSessionId={activeSessionId} onSelect={onSelectAgent} />
           <RailFoot
             activeSessionId={activeSessionId}
             onOpenWhatsNew={onOpenWhatsNew}

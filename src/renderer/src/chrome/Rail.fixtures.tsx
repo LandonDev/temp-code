@@ -10,6 +10,9 @@ import { UpdateRow } from "./UpdateRow";
 import type { GroupMark } from "../lib/sidebarRows";
 import type { ThreadRow } from "../lib/workspaceSessions";
 import { WorkspaceLineView, WorkspaceMarkView } from "./WorkspaceRowMarks";
+import { RailWorkingView } from "./RailWorking";
+import type { WorkingRow } from "../lib/railWorking";
+import type { SessionMeta } from "../lib/tcserver/types";
 
 const noop = () => {};
 
@@ -62,8 +65,9 @@ function AccountsGroup({ selected }: { selected?: "accounts" | "stats" }) {
   );
 }
 
-/** `width` is the rail's: 200 by default in the app, 180 to 360 by drag. */
-export function RailSketch({ width = 260 }: { width?: number }) {
+/** `width` is the rail's: 200 by default in the app, 180 to 360 by drag.
+ *  `working` stands the Working section between the list and the foot. */
+export function RailSketch({ width = 260, working = false }: { width?: number; working?: boolean }) {
   return (
     <nav aria-label="Workspaces" className="flex h-[720px] flex-col border-r border-border bg-sidebar" style={{ width }}>
       <div className="h-10 shrink-0" />
@@ -81,6 +85,7 @@ export function RailSketch({ width = 260 }: { width?: number }) {
           <Workspace name="landing-site" color="var(--chart-4)" unread />
         </div>
       </div>
+      {working ? <RailWorkingView rows={WORKING} now={NOW} projectOf={() => "temp-code"} /> : null}
       <div className="flex shrink-0 flex-col border-t border-border">
         <div className="flex flex-col p-2">
           <UpdateRow state={{ kind: "ready" }} onInstall={noop} onDismiss={noop} />
@@ -99,6 +104,28 @@ export function RailSketch({ width = 260 }: { width?: number }) {
       </div>
     </nav>
   );
+}
+
+const NOW = Date.now();
+
+const working = (id: string, title: string, state: WorkingRow["state"], minutes = 0): WorkingRow => ({
+  id,
+  state,
+  meta: { id, title, environmentId: "local", status: state === "working" ? "running" : state === "waiting" ? "waiting" : "idle", busySince: minutes ? NOW - minutes * 60_000 : null } as SessionMeta,
+});
+
+const WORKING: WorkingRow[] = [
+  working("w1", "Approve Bash on deploy", "waiting"),
+  working("w2", "Restore the cards", "working", 2.2),
+  working("w3", "Probe the gateway", "working", 14),
+  working("w4", "Docs pass", "done"),
+  working("w5", "Typecheck the rail", "working", 31),
+  working("w6", "Fix login", "done"),
+];
+
+/** The rail with the Working section: four rows and "2 more". */
+export function RailWithWorking({ width = 260 }: { width?: number }) {
+  return <RailSketch width={width} working />;
 }
 
 /** A new install: the navigation and Accounts groups, the empty Workspaces

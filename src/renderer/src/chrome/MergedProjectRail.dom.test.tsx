@@ -188,7 +188,8 @@ describe("the rail", () => {
     const list = root.querySelector('nav[aria-label="Workspaces"] .overflow-y-auto')!;
     const labels = [...list.querySelectorAll("[data-rail-row] > button")].map((b) => b.textContent);
     expect(labels.slice(0, 7)).toEqual(["Search", "Inbox", "Mark all read", "Notes", "Chats", "Accounts", "Stats"]);
-    expect(headers(root)).toEqual(["Accounts", "Workspaces"]);
+    // Two threads wait on the person, so the Working section stands under the list.
+    expect(headers(root)).toEqual(["Accounts", "Workspaces", "Working"]);
     const accounts = [...list.querySelectorAll("[data-rail-heading]")].find((h) => h.textContent?.trim() === "Accounts")!.closest(".pt-4")!;
     expect([...accounts.querySelectorAll("[data-rail-row] > button")].map((b) => b.textContent)).toEqual(["Accounts", "Stats"]);
     // The rows themselves carry no title= (the word at the end is the status mark).
