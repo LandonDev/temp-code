@@ -1626,6 +1626,24 @@ proof and the sizing rules; the pieces, by name:
   "Master threads" above.
 - The gateway's byte path runs in a utility process ("Provider traffic"
   above); the route scope carries the model, so no body is parsed.
+- Stats off the loop: `aliax:stats:get` ran the Stats bundle (a dozen
+  synchronous `node:sqlite` aggregates over 30 to 120 days, queries.ts) on
+  the main loop, 3.2 to 3.5 s every other open once its 60 s cache missed,
+  and the first open ran the index (indexer.ts: `statSync` per file, a
+  per-line parse, prepared inserts) beside it. Both run in the stats worker
+  now (`src/main/aliax/stats/statsWorker.ts`, a fourth main entry beside
+  `gateway` in electron.vite.config.ts, a worker thread `statsService.ts`
+  starts over `<userData>/stats.db`): `statsEngine.ts` is the index and the
+  bundle over one connection (the bundle cached in the worker until it
+  writes anything: an index pass, a usage sample, an app event),
+  `statsHost.ts` is main's side (one bundle ask in flight shared by every
+  caller, the progress mirrored, the samples and app events forwarded, one
+  restart, then `unavailable`: the last bundle it gave, else an empty one,
+  with the reason on `StatsBundle.unavailable`); the pages' three handlers
+  and aliax.ts's usage sample and app event hooks go through the host, and
+  main never opens stats.db. Proof `bun run script:e2e-stats-loop` (the
+  box's real logs indexed twice, on the loop and through the worker, the
+  loop's worst lag under each).
 - `admission.get` / `admission.set`: the running cap; "Master threads"
   above.
 

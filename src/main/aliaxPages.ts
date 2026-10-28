@@ -9,9 +9,7 @@ import { mintInWindow } from './aliax/staticMint'
 import { CANCELLED, cliInstallNote, cliRepairNote, cliTakesSignIn, holdsGrant, signInNotes } from '@shared/signInWords'
 import { StaticTokens } from './aliax/staticTokens'
 import type { AccountSync } from './server/remote/accountSync'
-import { indexAll, indexProgress } from './aliax/stats/indexer'
-import { bundle, invalidate } from './aliax/stats/queries'
-import { recordUsage } from './aliax/stats/store'
+import { statsHost } from './aliax/stats/statsService'
 import { ACCOUNT_PROVIDERS, SERVICE_OF, type AccountsSnapshot, type MintProgress } from '@shared/accounts'
 
 /**
@@ -176,7 +174,7 @@ function recordSnapshot(snapshot: AccountsSnapshot): void {
   for (const p of ACCOUNT_PROVIDERS) {
     for (const r of snapshot.providers[p].reports) {
       for (const w of r.windows) {
-        recordUsage(SERVICE_OF[p], r.profileName, w.label, w.usedPercent, w.resetsAt, w.periodMs)
+        statsHost().sample(SERVICE_OF[p], r.profileName, w.label, w.usedPercent, w.resetsAt, w.periodMs)
       }
     }
   }
@@ -299,24 +297,24 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
     if (/^https?:\/\//.test(String(url))) void shell.openExternal(String(url))
   })
   handle('aliax:stats:get', () => {
-    // First ask kicks the incremental index; the page polls `aliax:stats:status`
-    // and asks again when it lands. Later asks read what is there.
+    // First ask kicks the incremental index in the stats worker; the page
+    // polls `aliax:stats:status` and asks again when it lands. Later asks
+    // read the worker's bundle (cached there until it writes anything).
     if (!indexKicked) {
       indexKicked = true
-      indexAll()
-        .then(invalidate)
+      statsHost()
+        .index()
         .catch(() => {})
     }
-    return bundle()
+    return statsHost().bundle()
   })
   handle('aliax:stats:status', () => {
-    const p = indexProgress()
+    const p = statsHost().progress()
     return { indexing: p.running, filesDone: p.filesDone, filesTotal: p.filesTotal, rows: p.rows }
   })
   handle('aliax:stats:reindex', () =>
     asResult(async () => {
-      await indexAll()
-      invalidate()
+      await statsHost().reindex()
       return { ok: true }
     })
   )

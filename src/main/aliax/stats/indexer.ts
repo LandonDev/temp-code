@@ -2,7 +2,7 @@ import { createReadStream, readdirSync, statSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { open } from './store'
+import type { DatabaseSync } from 'node:sqlite'
 
 /**
  * Reads the CLIs' own session logs into the analytics store.
@@ -12,8 +12,15 @@ import { open } from './store'
  * there are thousands of Codex rollout files and a full rescan on every launch
  * would be minutes of work for no new rows.
  */
-const CLAUDE_ROOT = join(homedir(), '.claude', 'projects')
-const CODEX_ROOT = join(homedir(), '.codex', 'sessions')
+/** Where the CLIs keep their logs: Claude Code's projects and Codex's sessions. */
+export interface IndexRoots {
+  claude: string
+  codex: string
+}
+export const defaultRoots = (): IndexRoots => ({
+  claude: join(homedir(), '.claude', 'projects'),
+  codex: join(homedir(), '.codex', 'sessions')
+})
 
 export interface IndexProgress {
   running: boolean
@@ -21,9 +28,6 @@ export interface IndexProgress {
   filesTotal: number
   rows: number
 }
-
-let progress: IndexProgress = { running: false, filesDone: 0, filesTotal: 0, rows: 0 }
-export const indexProgress = (): IndexProgress => ({ ...progress })
 
 function* walk(dir: string): Generator<string> {
   let entries: { name: string; isDirectory: () => boolean }[]
@@ -55,10 +59,10 @@ const toolKind = (name: string): string =>
   name.startsWith('mcp__') ? 'mcp' : name === 'Skill' ? 'skill' : 'builtin'
 
 interface Sink {
-  turn: ReturnType<ReturnType<typeof open>['prepare']>
-  tool: ReturnType<ReturnType<typeof open>['prepare']>
-  event: ReturnType<ReturnType<typeof open>['prepare']>
-  usage: ReturnType<ReturnType<typeof open>['prepare']>
+  turn: ReturnType<DatabaseSync['prepare']>
+  tool: ReturnType<DatabaseSync['prepare']>
+  event: ReturnType<DatabaseSync['prepare']>
+  usage: ReturnType<DatabaseSync['prepare']>
 }
 
 function parseClaudeLine(line: string, project: string, sink: Sink): number {
@@ -195,10 +199,10 @@ async function readFrom(path: string, offset: number, onLine: (l: string) => voi
   })
 }
 
-/** Index everything new. Safe to call repeatedly; only fresh bytes are parsed. */
-export async function indexAll(): Promise<IndexProgress> {
-  if (progress.running) return indexProgress()
-  const db = open()
+/** Index everything new under `roots` into `db`. Safe to call repeatedly;
+ *  only fresh bytes are parsed. `onProgress` hears the count at the start,
+ *  after every file and at the end (the engine mirrors it to the page). */
+export async function indexAll(db: DatabaseSync, roots: IndexRoots, onProgress?: (p: IndexProgress) => void): Promise<IndexProgress> {
   const sink: Sink = {
     turn: db.prepare(
       `INSERT INTO turns (service, ts, session, project, branch, model, surface, effort,
@@ -222,10 +226,12 @@ export async function indexAll(): Promise<IndexProgress> {
   )
 
   const files = [
-    ...[...walk(CLAUDE_ROOT)].map((p) => ({ path: p, service: 'claude-code' as const })),
-    ...[...walk(CODEX_ROOT)].map((p) => ({ path: p, service: 'codex' as const }))
+    ...[...walk(roots.claude)].map((p) => ({ path: p, service: 'claude-code' as const })),
+    ...[...walk(roots.codex)].map((p) => ({ path: p, service: 'codex' as const }))
   ]
-  progress = { running: true, filesDone: 0, filesTotal: files.length, rows: 0 }
+  const progress: IndexProgress = { running: true, filesDone: 0, filesTotal: files.length, rows: 0 }
+  const tell = (): void => onProgress?.({ ...progress })
+  tell()
 
   for (const { path, service } of files) {
     progress.filesDone++
@@ -259,11 +265,13 @@ export async function indexAll(): Promise<IndexProgress> {
     } catch {
       db.exec('ROLLBACK')
     }
-    // Let the loop breathe between files: the first pass over thousands of
-    // rollouts shares the main thread with every request the app serves.
+    tell()
+    // Let the loop breathe between files: the worker's own loop answers the
+    // host's asks (a bundle, a sample) between them.
     if (progress.filesDone % 20 === 0) await new Promise((r) => setImmediate(r))
   }
 
   progress.running = false
-  return indexProgress()
+  tell()
+  return { ...progress }
 }

@@ -1,9 +1,8 @@
+import type { DatabaseSync } from 'node:sqlite'
 import type { StatsBundle, PaceSeries } from '@shared/aliaxStats'
-import { open } from './store'
 
 const DAY = 86_400_000
-const rows = <T>(sql: string, ...args: (string | number | null)[]): T[] =>
-  open().prepare(sql).all(...args) as T[]
+type RowsFn = <T>(sql: string, ...args: (string | number | null)[]) => T[]
 
 /** Milliseconds a window label covers, used to place a sample inside its cycle. */
 const periodOf = (label: string): number => {
@@ -22,7 +21,7 @@ const periodOf = (label: string): number => {
  * sample sits at its elapsed fraction, so cycles of any wall-clock start line
  * up on one axis.
  */
-function pace(service: string, label: string, buckets = 24): PaceSeries | null {
+function paceOf(rows: RowsFn, service: string, label: string, buckets = 24): PaceSeries | null {
   const period = periodOf(label)
   const since = Date.now() - 120 * DAY
   const bucket = Math.max(60_000, Math.round(period / 120))
@@ -107,21 +106,12 @@ function pace(service: string, label: string, buckets = 24): PaceSeries | null {
   }
 }
 
-let cached: { at: number; value: StatsBundle } | null = null
-const CACHE_MS = 60_000
-
-export function invalidate(): void {
-  cached = null
-}
-
-export function bundle(): StatsBundle {
-  if (cached && Date.now() - cached.at < CACHE_MS) return cached.value
-  const value = computeBundle()
-  cached = { at: Date.now(), value }
-  return value
-}
-
-function computeBundle(): StatsBundle {
+/** The whole Stats page's data from `db`: a dozen aggregates over 30 to 120
+ *  days, synchronous, so it runs in the stats worker (statsEngine.ts caches
+ *  it until the next write), never on the host's loop. */
+export function computeBundle(db: DatabaseSync): StatsBundle {
+  const rows: RowsFn = (sql, ...args) => db.prepare(sql).all(...args) as never
+  const pace = (service: string, label: string, buckets = 24): PaceSeries | null => paceOf(rows, service, label, buckets)
   const since30 = Date.now() - 30 * DAY
 
   const totals = rows<{

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { configure, isLive, readMarker, type Role } from 'aliax-core'
 import { notifyAccountsChanged } from './aliaxPages'
-import { recordAppEvent, recordUsage } from './aliax/stats/store'
+import { statsHost } from './aliax/stats/statsService'
 import { gateway } from './server/gateway'
 import { accountSyncHooks } from './server/remote/accountSync'
 import { fakeProviderRewrite, Upstream } from './server/upstream'
@@ -82,8 +82,8 @@ export function configureAliax(environmentId?: string): void {
     // a consumer's ask go to the account sync once the server made it.
     hooks: {
       onUsageSample: (s) =>
-        recordUsage(s.service, s.account, s.label, s.usedPercent, s.resetsAt, s.periodMs),
-      onAppEvent: recordAppEvent,
+        statsHost().sample(s.service, s.account, s.label, s.usedPercent, s.resetsAt, s.periodMs),
+      onAppEvent: (kind, service, account, detail) => statsHost().appEvent(kind, service, account, detail),
       onAccountsChanged: notifyAccountsChanged,
       onSecretSaved: (service, name, origin) => {
         // The gateway's own process asks again for that service's credentials.

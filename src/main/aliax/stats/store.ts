@@ -1,8 +1,6 @@
-import { app } from 'electron'
 import { DatabaseSync } from 'node:sqlite'
 import { copyFileSync, existsSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
-import { ALIAX_DATA_DIR } from '../../aliax'
+import { dirname, join } from 'node:path'
 
 /**
  * Local analytics store, ported from Aliax (src/main/stats/store.ts). Everything
@@ -15,38 +13,36 @@ import { ALIAX_DATA_DIR } from '../../aliax'
  * lock. When Aliax has a stats.db and we have none yet, its file is copied
  * once as the seed, so months of usage history and every indexed log carry
  * over and the first index only reads what is new since.
+ *
+ * Opened by the stats engine (statsEngine.ts) inside the stats worker; the
+ * main process never opens it (CLAUDE.md "Stats off the loop"). Every
+ * function here takes the connection it works on.
  */
-let db: DatabaseSync | null = null
-
 const FILES = ['stats.db', 'stats.db-wal', 'stats.db-shm']
 
-function seedFromAliax(dest: string): void {
-  const src = join(ALIAX_DATA_DIR, 'stats.db')
+/** Copies Aliax's stats.db (with its WAL files) beside `dest` once, when
+ *  `dest` does not exist yet; a copy taken mid-write can be torn, and a torn
+ *  seed is thrown away so the indexer rebuilds from the logs instead. */
+export function seedFromAliax(dest: string, seedDir: string | null | undefined): void {
+  if (!seedDir) return
+  const src = join(seedDir, 'stats.db')
   if (existsSync(dest) || !existsSync(src)) return
+  const destDir = dirname(dest)
   try {
     for (const f of FILES) {
-      const from = join(ALIAX_DATA_DIR, f)
-      if (existsSync(from)) copyFileSync(from, join(app.getPath('userData'), f))
+      const from = join(seedDir, f)
+      if (existsSync(from)) copyFileSync(from, join(destDir, f))
     }
-    // A copy taken mid-write can be torn; a torn seed is thrown away and the
-    // indexer rebuilds from the logs instead.
     const probe = new DatabaseSync(dest)
     const ok = (probe.prepare('PRAGMA quick_check').get() as { quick_check?: string })?.quick_check === 'ok'
     probe.close()
     if (!ok) throw new Error('seed failed quick_check')
   } catch {
-    for (const f of FILES) rmSync(join(app.getPath('userData'), f), { force: true })
+    for (const f of FILES) rmSync(join(destDir, f), { force: true })
   }
 }
 
-export function open(): DatabaseSync {
-  if (db) return db
-  const path = join(app.getPath('userData'), 'stats.db')
-  seedFromAliax(path)
-  // The busy timeout covers the one moment a poll's sample insert meets the
-  // indexer's transaction; SQLite waits instead of throwing.
-  db = new DatabaseSync(path, { timeout: 5_000 })
-  db.exec(`
+export const STATS_SCHEMA = `
     PRAGMA journal_mode = WAL;
 
     -- One row per assistant turn. Tokens are the raw counters the CLI recorded.
@@ -123,18 +119,27 @@ export function open(): DatabaseSync {
       size INTEGER NOT NULL,
       offset INTEGER NOT NULL
     );
-  `)
+`
+
+/** Opens (and creates) the stats database at `path`, seeded from Aliax's
+ *  copy under `seedDir` when `path` is new. The busy timeout covers the one
+ *  moment a poll's sample insert meets the indexer's transaction. */
+export function openStatsDb(path: string, seedDir?: string | null): DatabaseSync {
+  seedFromAliax(path, seedDir)
+  const db = new DatabaseSync(path, { timeout: 5_000 })
+  db.exec(STATS_SCHEMA)
   return db
 }
 
 export function recordAppEvent(
+  db: DatabaseSync,
   kind: string,
   service?: string,
   account?: string,
   detail?: string
 ): void {
   try {
-    open()
+    db
       .prepare('INSERT INTO app_events (ts, kind, service, account, detail) VALUES (?,?,?,?,?)')
       .run(Date.now(), kind, service ?? null, account ?? null, detail ?? null)
   } catch {
@@ -142,28 +147,31 @@ export function recordAppEvent(
   }
 }
 
-/** Append a live usage reading. De-duplicated by (service, account, label, minute). */
+/** Append a live usage reading, de-duplicated by (service, account, label,
+ *  minute); true when a row landed. */
 export function recordUsage(
+  db: DatabaseSync,
   service: string,
   account: string,
   label: string,
   usedPercent: number,
   resetsAt?: number,
-  periodMs?: number
-): void {
+  periodMs?: number,
+  now = Date.now()
+): boolean {
   try {
-    const d = open()
-    const minute = Math.floor(Date.now() / 60_000) * 60_000
-    const dup = d
+    const minute = Math.floor(now / 60_000) * 60_000
+    const dup = db
       .prepare(
         'SELECT 1 FROM usage_samples WHERE service=? AND account=? AND label=? AND ts=? LIMIT 1'
       )
       .get(service, account, label, minute)
-    if (dup) return
-    d.prepare(
+    if (dup) return false
+    db.prepare(
       'INSERT INTO usage_samples (service, account, ts, label, used_percent, resets_at, period_ms) VALUES (?,?,?,?,?,?,?)'
     ).run(service, account, minute, label, usedPercent, resetsAt ?? null, periodMs ?? null)
+    return true
   } catch {
-    // ignore
+    return false
   }
 }

@@ -58,6 +58,36 @@ export interface StatsBundle {
   utilisation: { account: string; label: string; peak: number; avg: number }[]
   modelDaily: { day: string; model: string; value: number }[]
   flow: { surface: string; model: string; project: string; value: number }[]
+  /** The stats worker is down and this is the last bundle it gave (or an
+   *  empty one): why, in one line. Absent when the worker answered. */
+  unavailable?: string
+}
+
+/** A bundle with nothing in it: what the page gets before any index, or
+ *  when the worker never answered. */
+export function emptyBundle(): StatsBundle {
+  return {
+    generatedAt: 0,
+    totals: { turns: 0, input: 0, output: 0, cache_read: 0, cache_write: 0, eph_1h: 0, eph_5m: 0 },
+    pace: [],
+    bySurface: [],
+    byModel: [],
+    byProject: [],
+    byBranch: [],
+    byTool: [],
+    byEffort: [],
+    stopReasons: [],
+    daily: [],
+    cacheDaily: [],
+    worstCache: [],
+    heatmap: [],
+    sessionLengths: [],
+    events: [],
+    switchesDaily: [],
+    utilisation: [],
+    modelDaily: [],
+    flow: []
+  }
 }
 
 export interface StatsStatus {
