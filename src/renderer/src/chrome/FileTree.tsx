@@ -80,6 +80,7 @@ function warmFileSurfaces(): void {
   mediaChunk.preload();
 }
 import type { OpenFileFn } from "../lib/search";
+import { isWebMode } from "../lib/nativeWeb";
 
 const GIT_STATUS_COLOR: Record<string, string> = {
   modified: "text-warning",
@@ -184,7 +185,7 @@ function explorerItems(
   ];
   if (editorLabel && !target.isDir) rows.push({ kind: "item", id: "open-editor", label: editorLabel, icon: ExternalLink, shortcut: shortcutFor("Files", "Open in Editor") });
   if (canOpenTerminal) rows.push({ kind: "item", id: "open-terminal", label: "Open in Terminal", icon: Terminal });
-  rows.push({ kind: "item", id: "reveal", label: REVEAL_LABEL, icon: FolderOpen });
+  if (!isWebMode()) rows.push({ kind: "item", id: "reveal", label: REVEAL_LABEL, icon: FolderOpen });
   return rows;
 }
 

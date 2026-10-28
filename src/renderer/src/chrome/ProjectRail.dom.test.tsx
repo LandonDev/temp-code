@@ -49,3 +49,21 @@ describe("Add workspace", () => {
     expect(onOpenProject).toHaveBeenCalledWith(undefined, "Add workspace");
   });
 });
+
+describe("Rail foot", () => {
+  const rail = (props: { onOpenAccountsPage?: () => void }) =>
+    render(<ProjectRail cwd="~" recents={[]} busyPaths={new Set()} onSelectProject={() => {}} onOpenProject={() => {}} {...props} />);
+
+  it("lists Accounts and Stats in the desktop app", () => {
+    rail({ onOpenAccountsPage: () => {} });
+    expect(screen.getByRole("button", { name: "Accounts" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stats" })).toBeTruthy();
+  });
+
+  it("has no Accounts or Stats row in web mode, where App passes no page opener", () => {
+    rail({});
+    expect(screen.queryByRole("button", { name: "Accounts" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stats" })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Settings/ })).toBeTruthy();
+  });
+});

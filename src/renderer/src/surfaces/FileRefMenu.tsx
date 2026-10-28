@@ -8,6 +8,7 @@ import { revealPath } from "../lib/fs";
 import { editorLabelFor, openInEditor } from "../lib/openInEditor";
 import type { OpenFileFn } from "../lib/search";
 import { useTranscriptHost } from "./transcriptSession";
+import { isWebMode } from "../lib/nativeWeb";
 
 /**
  * Right-click on any file link in the transcript: Open in <editor> (Open
@@ -37,7 +38,7 @@ export function FileRefMenu({
   const editorLabel = editorLabelFor(ref.abs, editorConfig, threadHost);
   const items: MenuRow[] = [
     ...(editorLabel ? [{ kind: "item", id: "editor", label: editorLabel, icon: ExternalLink } as const] : []),
-    ...(ref.abs ? [{ kind: "item", id: "reveal", label: "Reveal in Finder", icon: FolderOpen } as const] : []),
+    ...(ref.abs && !isWebMode() ? [{ kind: "item", id: "reveal", label: "Reveal in Finder", icon: FolderOpen } as const] : []),
     { kind: "item", id: "path", label: "Copy Path", icon: Copy },
     { kind: "item", id: "name", label: "Copy File Name", icon: FileText },
   ];

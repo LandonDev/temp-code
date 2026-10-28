@@ -113,6 +113,25 @@ describe("FileTree", () => {
     expect(writeText).toHaveBeenCalledWith(ROOT);
   });
 
+  it("offers Reveal only in the desktop app", async () => {
+    await mount();
+    fireEvent.contextMenu(screen.getByRole("treeitem", { name: /README\.md/ }));
+    const desktop = await screen.findByRole("menu", { name: "File actions" });
+    expect(within(desktop).queryByText(/Reveal|Containing Folder/)).not.toBeNull();
+    cleanup();
+    // Web mode is a page with no preload bridge.
+    const api = (window as { api?: unknown }).api;
+    delete (window as { api?: unknown }).api;
+    try {
+      await mount();
+      fireEvent.contextMenu(screen.getByRole("treeitem", { name: /README\.md/ }));
+      const menu = await screen.findByRole("menu", { name: "File actions" });
+      expect(within(menu).queryByText(/Reveal|Containing Folder/)).toBeNull();
+    } finally {
+      (window as { api?: unknown }).api = api;
+    }
+  });
+
   it("a row's context menu targets that row", async () => {
     await mount();
     fireEvent.contextMenu(screen.getByRole("treeitem", { name: /README\.md/ }));

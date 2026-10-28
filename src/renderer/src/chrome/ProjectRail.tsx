@@ -35,6 +35,7 @@ import {
   saveProjectRailWidth,
 } from "../lib/appearance";
 import { basename, revealPath } from "../lib/fs";
+import { isWebMode } from "../lib/nativeWeb";
 import { IS_MAC, MOD } from "../lib/platform";
 import { projectName } from "../lib/paths";
 import {
@@ -108,19 +109,21 @@ const REVEAL_LABEL = IS_MAC
     ? "Reveal in File Explorer"
     : "Open Containing Folder";
 
-/** The project menu's rows after the label, colour and mascot: pin, reveal,
- *  Mark all read, the fleet switches, then archive and remove (the folder
- *  stays; its threads go). */
+/** The project menu's rows after the label, colour and mascot: pin, reveal
+ *  (in the desktop app only: a browser has no file manager), Mark all read,
+ *  the fleet switches, then archive and remove (the folder stays; its
+ *  threads go). */
 export function projectMenuExtraItems(
   pinned: boolean,
   canRemove: boolean,
   counts: BatchCounts | null,
+  desktop = !isWebMode(),
 ): MenuRow[] {
   const items: MenuRow[] = [
     pinned
       ? { kind: "item", id: "unpin", label: "Unpin workspace", icon: PinOff }
       : { kind: "item", id: "pin", label: "Pin workspace", icon: Pin },
-    { kind: "item", id: "reveal", label: REVEAL_LABEL, icon: FolderOpen },
+    ...(desktop ? [{ kind: "item", id: "reveal", label: REVEAL_LABEL, icon: FolderOpen } as const] : []),
     { kind: "sep" },
     { kind: "item", id: "read", label: "Mark all read", icon: ListChecks },
     ...batchMenuRows(counts),
@@ -849,13 +852,16 @@ export type RailFootRowId = "signIn" | "update" | "hosts" | "inbox" | "search" |
 
 /** The foot's rows, in order: the sign-in while this machine has no account,
  *  the update when there is one to act on, the hosts with two or more, then
- *  Inbox, Search, Accounts, Stats, Settings. */
-export function railFootRows(facts: { signIn: boolean; update: boolean; hosts: number }): RailFootRowId[] {
+ *  Inbox, Search, Accounts and Stats (where their pages can open: never at
+ *  /ui), Settings. */
+export function railFootRows(facts: { signIn: boolean; update: boolean; hosts: number; aliax: boolean }): RailFootRowId[] {
   const rows: RailFootRowId[] = [];
   if (facts.signIn) rows.push("signIn");
   if (facts.update) rows.push("update");
   if (facts.hosts >= 2) rows.push("hosts");
-  rows.push("inbox", "search", "accounts", "stats", "settings");
+  rows.push("inbox", "search");
+  if (facts.aliax) rows.push("accounts", "stats");
+  rows.push("settings");
   return rows;
 }
 
@@ -885,7 +891,12 @@ export function RailFoot({
   const environments = useEnvironments();
   const update = useUpdateRowState();
   const signIn = useSignInTarget();
-  const ids = railFootRows({ signIn: signIn !== null, update: update !== null, hosts: environments.length });
+  const ids = railFootRows({
+    signIn: signIn !== null,
+    update: update !== null,
+    hosts: environments.length,
+    aliax: onOpenAccountsPage !== undefined,
+  });
   const row = (id: RailFootRowId) => {
     switch (id) {
       case "signIn":

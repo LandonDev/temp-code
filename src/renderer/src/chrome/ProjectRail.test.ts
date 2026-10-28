@@ -30,6 +30,12 @@ describe("projectMenuExtraItems", () => {
     expect(items.find((i) => i.id === "batch-pause")?.disabled).toBe(false);
   });
 
+  it("has no reveal in a browser, which has no file manager", () => {
+    const rows = projectMenuExtraItems(false, true, null, false);
+    expect(rows.some((r) => r.kind === "item" && r.id === "reveal")).toBe(false);
+    expect(projectMenuExtraItems(false, true, null, true).some((r) => r.kind === "item" && r.id === "reveal")).toBe(true);
+  });
+
   it("names the root workspace's removal Remove…, as its dialog does", () => {
     const items = projectMenuExtraItems(false, true, null).flatMap((r) => (r.kind === "item" ? [r] : []));
     expect(items.find((i) => i.id === "delete")?.label).toBe("Remove…");
@@ -44,17 +50,21 @@ describe("projectMenuExtraItems", () => {
 
 describe("railFootRows", () => {
   it("is Inbox, Search, Accounts, Stats, Settings with one host and nothing to update", () => {
-    expect(railFootRows({ signIn: false, update: false, hosts: 1 })).toEqual(["inbox", "search", "accounts", "stats", "settings"]);
+    expect(railFootRows({ signIn: false, update: false, hosts: 1, aliax: true })).toEqual(["inbox", "search", "accounts", "stats", "settings"]);
   });
 
   it("puts the update first and the hosts after it, the hosts only with two or more", () => {
-    expect(railFootRows({ signIn: false, update: true, hosts: 2 })).toEqual(["update", "hosts", "inbox", "search", "accounts", "stats", "settings"]);
-    expect(railFootRows({ signIn: false, update: true, hosts: 1 })[0]).toBe("update");
-    expect(railFootRows({ signIn: false, update: false, hosts: 3 })[0]).toBe("hosts");
+    expect(railFootRows({ signIn: false, update: true, hosts: 2, aliax: true })).toEqual(["update", "hosts", "inbox", "search", "accounts", "stats", "settings"]);
+    expect(railFootRows({ signIn: false, update: true, hosts: 1, aliax: true })[0]).toBe("update");
+    expect(railFootRows({ signIn: false, update: false, hosts: 3, aliax: true })[0]).toBe("hosts");
+  });
+
+  it("leaves Accounts and Stats out where their pages cannot open (/ui)", () => {
+    expect(railFootRows({ signIn: false, update: false, hosts: 1, aliax: false })).toEqual(["inbox", "search", "settings"]);
   });
 
   it("leads with the sign-in, before the update, and leaves it out when there is an account", () => {
-    expect(railFootRows({ signIn: true, update: true, hosts: 1 })).toEqual(["signIn", "update", "inbox", "search", "accounts", "stats", "settings"]);
-    expect(railFootRows({ signIn: false, update: true, hosts: 1 })).not.toContain("signIn");
+    expect(railFootRows({ signIn: true, update: true, hosts: 1, aliax: true })).toEqual(["signIn", "update", "inbox", "search", "accounts", "stats", "settings"]);
+    expect(railFootRows({ signIn: false, update: true, hosts: 1, aliax: true })).not.toContain("signIn");
   });
 });
