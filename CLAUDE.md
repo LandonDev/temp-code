@@ -479,7 +479,18 @@ routed to (aliax-core's `forward`). Two listeners:
 - Every error row carries the host's verdict (`failure` on the event and the
   session row: `failureKind.ts`, stamped in `Sessions.append` from the
   harness's words, the gateway's last refusal for the thread and the
-  routing). The transcript's FailureCard prints its two lines and at most
+  routing), except a stop: the row of a turn the person stopped is stamped
+  `stopped: true` and never classified. A turn the CLI ended itself (its
+  result's `error_*` subtype, the row `turn ended: <subtype>[: <the CLI's
+  first error line>]`) is kind `turn_ended`, summary `TURN_ENDED_SUMMARY`
+  (the fallback's words), cause the CLI's line or the subtype's meaning; a
+  line naming a death or a network cut keeps that kind. The stop rule
+  (`stopping` in sessions.ts): the flag survives the `running` a question's
+  or an approval's cleanup emits and a `waiting`, clears on a settle, on
+  `starting` and at the top of `send()`; a Stop while the harness boots
+  (`stopBooting`) puts the handle down when it lands, writes the stopped
+  row and idle, and delivers nothing. The transcript's FailureCard prints
+  its two lines and at most
   three actions that fit the kind, Retry last, for every failure (a row
   with no verdict reads `fallbackFailure`, src/shared/failureFallback.ts,
   never the harness's raw words; Retry only where the host can continue,
@@ -488,7 +499,8 @@ routed to (aliax-core's `forward`). Two listeners:
   the thread's title. docs/box.md
   "A failed turn says what happened". Nothing in a renderer parses an error
   string; add a kind to `FailureKindSchema`, a rule to `failureKindOf`, its
-  actions to `failureActions`, and run `bun run gen:swift`.
+  actions to `failureActions` and the phone's `FailureActions`, and run
+  `bun run gen:swift`.
 - Accounts across hosts (thread V): every profile in Aliax's `profiles.json`
   has an owner environment (absent = this machine) and only the owner ever
   presents a refresh token; other hosts hold access-only copies kept fresh

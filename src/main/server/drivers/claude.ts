@@ -929,9 +929,13 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
           outputTokens: msg.usage.output_tokens
         })
       } else {
-        // Includes interrupts and max-turn stops — the session stays usable,
-        // so this is an error event but an idle status.
-        emit({ type: 'error', message: `turn ended: ${msg.subtype}` })
+        // Includes interrupts and the CLI's own limits: the session stays
+        // usable, so this is an error event but an idle status. The CLI's
+        // first error line rides along, so the host's verdict can name the
+        // cause (failureKind.ts: a death keeps its own kind, a stop is
+        // stamped by the registry and never classified).
+        const line = msg.errors?.find((e) => e.trim())?.split('\n')[0]?.trim()
+        emit({ type: 'error', message: line ? `turn ended: ${msg.subtype}: ${line}` : `turn ended: ${msg.subtype}` })
       }
       settleTurn(ctx, state)
       checkForgottenTasks(ctx, state)

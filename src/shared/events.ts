@@ -175,6 +175,8 @@ export const FailureKindSchema = z.enum([
   'network',
   /** the harness process died or its stream ended mid-turn */
   'harness_crashed',
+  /** the CLI ended the turn itself: its turn or spend limit, or an execution error it named */
+  'turn_ended',
   'unknown'
 ])
 export type FailureKind = z.infer<typeof FailureKindSchema>

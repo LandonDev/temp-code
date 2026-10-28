@@ -51,6 +51,16 @@ import { FOLD_VERSION, type FoldRow, type ResumeAfterBootRow } from './db'
 
 /** How a harness words a 401 the gateway could not route around (codex: "workspace routing discovery unauthorized (401)"). */
 const UNAUTHORIZED_WORDING = /unauthorized|\(401\)/i
+/** The statuses that end a person's Stop (the turn settled, or a new one
+ *  starts); `running` and `waiting` keep it. */
+const STOP_CLEARING_STATUSES = new Set<SessionMeta['status']>(['idle', 'error', 'watching', 'stopped', 'done', 'starting'])
+/** Thrown to everyone waiting on a boot the person stopped: the rows are
+ *  written, the handle is down, and nothing is to be sent. */
+class BootStopped extends Error {
+  constructor() {
+    super('stopped while booting')
+  }
+}
 /** How long a gateway refusal explains the error row that follows it. */
 const REFUSAL_FRESH_MS = 2 * 60_000
 
@@ -554,9 +564,16 @@ export class SessionRegistry {
   private erroredTurns = new Set<string>()
   /** Sessions the user just hit Stop on. Drivers report an interrupt as an
    *  error event ("turn ended: …"); while this flag is up that event is
-   *  stamped stopped:true so a stop never reads as a failure. Cleared when
-   *  the turn settles. */
+   *  stamped stopped:true so a stop never reads as a failure. It survives
+   *  the `running` a question's or an approval's cleanup emits (the CLI's
+   *  result comes after it) and a `waiting`; it clears when the turn
+   *  settles (idle, error, watching, stopped, done), on `starting`, and at
+   *  the top of send(): a new turn is never the old stop. */
   private stopping = new Set<string>()
+  /** Sessions the user hit Stop on while their harness was still booting
+   *  (no handle to interrupt yet). When the handle lands it is disposed,
+   *  the stopped row and idle are written, and nothing is sent. */
+  private stopBooting = new Set<string>()
   /** Threads told their account needs sign-in, and which account: one row per account, the harness's 401 wording dropped meanwhile. */
   private readonly signIns = new Map<string, string>()
   /** Sessions whose harness must reboot once the current turn settles —
@@ -1118,6 +1135,7 @@ export class SessionRegistry {
         `<host-restarted>\n${cause} Check your task list and your last few actions, finish anything half-done, and keep going. Do not restart completed work. If the work was already complete, say so in one short line.\n</host-restarted>`
       )
     } catch (error) {
+      if (error instanceof BootStopped) return false
       const current = this.store.getSession(sessionId)
       if (current && current.status !== 'paused') {
         this.append(sessionId, { type: 'status', status: 'error' })
@@ -2564,6 +2582,9 @@ export class SessionRegistry {
     this.spans.begin(sessionId)
     // A turn starts: a master the person stopped watching may watch again after it.
     this.stopWatching.delete(sessionId)
+    // A new turn is never the old stop.
+    this.stopping.delete(sessionId)
+    this.stopBooting.delete(sessionId)
     // A paused tree accepts no harness input. User work stays ordered in the
     // same queue and releases only after the resumed turn settles.
     if (this.isTreePaused(sessionId)) {
@@ -2698,13 +2719,16 @@ export class SessionRegistry {
     const hadHandle = this.handles.has(sessionId)
     try {
       handle = await this.handleFor(sessionId)
-    } catch {
+    } catch (err) {
+      this.spans.drop(sessionId)
+      // The person stopped the thread while it booted: the rows are written
+      // and the message stays on the transcript, undelivered.
+      if (err instanceof BootStopped) return
       // The harness never started — a missing binary, a logged-out CLI.
       // handleFor has already put the reason on the transcript; hold the
       // message at the front of the queue instead of dropping it, so once
       // the cause is fixed the thread runs what the user actually asked for
       // rather than an empty continue.
-      this.spans.drop(sessionId)
       this.queueAdd(sessionId, text, retry, true)
       return
     }
@@ -2877,7 +2901,14 @@ export class SessionRegistry {
       // boot a fresh one and deliver there; resume keeps the conversation.
       if (err instanceof Error && err.message.includes('harness gone')) {
         await this.dropHandle(sessionId)
-        const fresh = await this.handleFor(sessionId)
+        const fresh = await this.handleFor(sessionId).catch((e: unknown) => {
+          if (e instanceof BootStopped) return null
+          throw e
+        })
+        if (!fresh) {
+          this.spans.drop(sessionId)
+          return
+        }
         await fresh.send(out, sendAttachments)
         this.spans.mark(sessionId, 'delivered')
         return
@@ -2914,6 +2945,13 @@ export class SessionRegistry {
     if (handle) {
       this.stopping.add(sessionId)
       handle.interrupt()
+      return
+    }
+    // The harness is still booting (an eager boot, a send's, a Continue's):
+    // there is nothing to interrupt yet, so the stop waits for the handle,
+    // which handleFor then puts down instead of handing over.
+    if (this.starting.has(sessionId)) {
+      this.stopBooting.add(sessionId)
       return
     }
     // No live harness (crashed, disposed, or the app restarted) — nothing is
@@ -3460,6 +3498,7 @@ export class SessionRegistry {
       this.passPending.delete(id)
       this.passActive.delete(id)
       this.stopping.delete(id)
+      this.stopBooting.delete(id)
       this.pendingReboot.delete(id)
       this.pendingApprovals.delete(id)
       this.lastActivity.delete(id)
@@ -3521,6 +3560,7 @@ export class SessionRegistry {
     for (const id of ids) {
       await this.dropHandle(id)
       this.stopping.delete(id)
+      this.stopBooting.delete(id)
       this.pendingReboot.delete(id)
       this.pendingApprovals.delete(id)
       this.subscribers.delete(id)
@@ -3772,6 +3812,8 @@ export class SessionRegistry {
       this.limited.delete(sessionId)
     } catch (error) {
       this.limited.delete(sessionId)
+      // Stopped while the replacement booted: its rows are written already.
+      if (error instanceof BootStopped) return
       const current = this.store.getSession(sessionId)
       if (current && current.status !== 'paused') {
         this.append(sessionId, { type: 'status', status: 'error' })
@@ -3883,9 +3925,22 @@ export class SessionRegistry {
           }
         })
       )
-      .then((handle) => {
-        this.handles.set(sessionId, handle)
+      .then(async (handle) => {
         this.starting.delete(sessionId)
+        // The person hit Stop while this booted: put it down unsent, write
+        // the stop the interrupt would have produced, and tell every
+        // caller that waited on the boot to send nothing.
+        if (this.stopBooting.delete(sessionId)) {
+          await handle.dispose().catch(() => {})
+          this.scheduler.schedule()
+          const status = this.store.getSession(sessionId)?.status
+          if (status && LIVE_STATUSES.has(status)) {
+            this.append(sessionId, { type: 'error', message: 'turn ended: interrupted', stopped: true })
+            this.append(sessionId, { type: 'status', status: 'idle' })
+          }
+          throw new BootStopped()
+        }
+        this.handles.set(sessionId, handle)
         // A thread that went idle while its harness booted can now give its
         // slot to the queue (reclaimIdle only puts down a booted harness).
         if (this.indexOf().byId.get(sessionId)?.status === 'idle') this.scheduler.schedule()
@@ -3893,6 +3948,8 @@ export class SessionRegistry {
       })
       .catch((err) => {
         this.starting.delete(sessionId)
+        this.stopBooting.delete(sessionId)
+        if (err instanceof BootStopped) throw err
         this.append(sessionId, {
           type: 'error',
           message: err instanceof Error ? err.message : String(err)
@@ -3988,13 +4045,16 @@ export class SessionRegistry {
     if (event.type === 'error' && this.stopping.has(sessionId)) {
       event = { ...event, stopped: true }
     }
-    // A failure (never a stop or a wind-down note) carries the host's
-    // verdict from here on; a driver that already classified keeps its own.
-    if (event.type === 'error' && !event.stopped && !event.failure && !event.message.startsWith('turn ended:')) {
+    // A failure (never a stop) carries the host's verdict from here on; a
+    // driver that already classified keeps its own. A "turn ended:" row
+    // the person did not stop is the CLI's own limit or error (turn_ended).
+    if (event.type === 'error' && !event.stopped && !event.failure) {
       event = { ...event, failure: this.classify(sessionId, event) }
     }
     if (event.type === 'status') {
-      this.stopping.delete(sessionId)
+      // The stop outlives a question's or an approval's `running` cleanup
+      // and a `waiting`: the CLI's result still has to arrive.
+      if (STOP_CLEARING_STATUSES.has(event.status)) this.stopping.delete(sessionId)
       // A tune saved mid-turn waits here: the turn has settled, so the
       // harness can now reboot with the new rules (resume keeps the
       // conversation).

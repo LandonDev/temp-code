@@ -49,6 +49,7 @@ function ids(kind: FailureKind, ctx: FailureActionContext): FailureActionId[] {
       return ["pick-model", "retry"];
     case "network":
     case "harness_crashed":
+    case "turn_ended":
     case "unknown":
       return ["retry"];
   }

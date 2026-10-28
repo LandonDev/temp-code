@@ -22,6 +22,9 @@ const gones = new Map<string, () => void>()
 const sends = new Map<string, string[]>()
 const spawns = new Map<string, number>()
 const dead = new Set<string>()
+/** A boot held open until released (a Stop during a boot), and the disposals per thread. */
+const boots = { gate: null as Promise<void> | null }
+const disposed = new Map<string, number>()
 
 vi.mock('./drivers', () => ({
   BUILT_IN_DRIVERS: {
@@ -29,6 +32,7 @@ vi.mock('./drivers', () => ({
       id: 'claude',
       start: async (ctx: DriverCtx): Promise<DriverHandle> => {
         const id = ctx.session.id
+        if (boots.gate) await boots.gate
         spawns.set(id, (spawns.get(id) ?? 0) + 1)
         dead.delete(id)
         emits.set(id, ctx.emit)
@@ -41,7 +45,9 @@ vi.mock('./drivers', () => ({
           },
           interrupt: () => {},
           alive: () => !dead.has(id),
-          dispose: async () => {}
+          dispose: async () => {
+            disposed.set(id, (disposed.get(id) ?? 0) + 1)
+          }
         }
       }
     }
@@ -77,6 +83,8 @@ beforeEach(async () => {
   sends.clear()
   spawns.clear()
   dead.clear()
+  boots.gate = null
+  disposed.clear()
   hangGate.on = false
 })
 afterEach(async () => {
@@ -277,13 +285,30 @@ describe('the watching master', () => {
     expect(registry.get(master)?.activity).toBe('Blocked: A errored')
   })
 
-  it('P11 a child whose only turn ended without completing blocks as no-turn and the master is told', async () => {
+  it("P11 a child whose only turn the CLI ended itself blocks as failed with the verdict's words, and the master is told", async () => {
     const { master } = await pinnedMaster()
     const a = await child(master, 'A')
     idle(master)
     await settle()
     const before = sent(master)
     emit(a, { type: 'error', message: 'turn ended: error_max_turns' })
+    idle(a)
+    await settle(120)
+    expect(batches.get(master).blocked).toEqual({ sessionId: a, why: 'failed' })
+    expect(sends.get(master)!.slice(before).filter((t) => t.includes('failed: The turn ended before it finished'))).toHaveLength(1)
+    if (status(master) === 'running') {
+      idle(master)
+      await settle(80)
+    }
+    expect(registry.get(master)?.activity).toBe('Blocked: A failed')
+  })
+
+  it('P11b a child idle on a turn it never completed, with no verdict, blocks as no-turn and the master is told', async () => {
+    const { master } = await pinnedMaster()
+    const a = await child(master, 'A')
+    idle(master)
+    await settle()
+    const before = sent(master)
     idle(a)
     await settle(120)
     expect(batches.get(master).blocked).toEqual({ sessionId: a, why: 'no-turn' })
@@ -308,6 +333,34 @@ describe('the watching master', () => {
     await settle(120)
     expect(batches.open(master)).toBe(true)
     expect(batches.get(master).blocked).toBeNull()
+  })
+})
+
+describe('a Stop during a boot', () => {
+  it('puts the handle down when it lands, writes one stopped row and idle, and sends nothing; the next send boots afresh', async () => {
+    let release!: () => void
+    boots.gate = new Promise<void>((r) => (release = r))
+    const s = await registry.create({ cwd: root, provider: 'claude', title: 'Booting' })
+    const turn = registry.send(s.id, 'go')
+    await settle()
+    expect(status(s.id)).toBe('starting')
+    await registry.interrupt(s.id)
+    // Nothing to interrupt yet: the stop waits for the handle.
+    expect(status(s.id)).toBe('starting')
+    release()
+    await turn
+    await settle()
+    expect(disposed.get(s.id)).toBe(1)
+    expect(sent(s.id)).toBe(0)
+    const evs = registry.eventsAfter(s.id, 0).map((r) => r.event)
+    expect(evs.filter((e) => e.type === 'error')).toEqual([expect.objectContaining({ message: 'turn ended: interrupted', stopped: true })])
+    expect(evs.at(-1)).toEqual(expect.objectContaining({ type: 'status', status: 'idle' }))
+    expect(status(s.id)).toBe('idle')
+    await registry.send(s.id, 'again')
+    await settle()
+    expect(sent(s.id)).toBe(1)
+    expect(spawns.get(s.id)).toBe(2)
+    expect(status(s.id)).toBe('running')
   })
 })
 

@@ -557,14 +557,18 @@ it('an error row carries the host verdict with the routed account, folded onto t
   expect(store.getFold(id)?.failure).toBeNull()
 })
 
-it("a stop and a wind-down note are never classified; the gateway's refusal and the vault explain the rest", async () => {
+it("a stop is never classified, a turn the CLI ended itself is turn_ended with its cause; the gateway's refusal and the vault explain the rest", async () => {
   registry.limits = limits(null)
   const { id, emit } = await running()
-  emit({ type: 'error', message: 'turn ended: max_turns' })
-  expect(registry.lastEvents(id, 1)[0].event).not.toHaveProperty('failure')
   emit({ type: 'error', message: 'turn ended: interrupted', stopped: true })
   expect(registry.lastEvents(id, 1)[0].event).not.toHaveProperty('failure')
   expect(registry.get(id)?.failure).toBeNull()
+  emit({ type: 'error', message: 'turn ended: error_max_turns' })
+  expect(registry.lastEvents(id, 1)[0].event).toMatchObject({
+    failure: { kind: 'turn_ended', account: 'a@x.com', summary: 'The turn ended before it finished', cause: "The CLI's turn limit was reached." }
+  })
+  expect(registry.get(id)?.failure?.kind).toBe('turn_ended')
+  expect(store.getFold(id)?.canContinue).toBe(true)
   // A 401 token_expired the gateway held back for this thread names the kind.
   registry.noteRefusal(id, { status: 401, code: 'token_expired', account: 'a@x.com' })
   emit({ type: 'error', message: 'API Error: 401 {"type":"error","error":{"type":"authentication_error","message":"x"}}' })

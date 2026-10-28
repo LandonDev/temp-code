@@ -6,11 +6,14 @@ import type { AgentEvent, Failure, SessionMeta } from './events'
 export function foldContinuableError(current: boolean, event: AgentEvent): boolean {
   switch (event.type) {
     case 'error':
-      // A user Stop is not a failure, and neither is the Claude driver's
-      // "turn ended: <subtype>" wind-down note (interrupts, max turns —
-      // the session stays usable and settles idle). Matching the message
-      // also heals threads persisted before the stopped stamp existed.
-      return event.stopped || event.message.startsWith('turn ended:') ? current : true
+      // A user Stop is not a failure. A "turn ended: <subtype>" row with
+      // the host's verdict is one (the CLI's own limit or error, kind
+      // turn_ended); one without a verdict is a row written before the
+      // host classified them, or a stop persisted before the stopped stamp
+      // existed, and stays the wind-down note it was.
+      if (event.stopped) return current
+      if (event.failure) return true
+      return event.message.startsWith('turn ended:') ? current : true
     case 'errors-cleared':
     case 'user-text':
     case 'assistant-text':
@@ -28,8 +31,9 @@ export function foldContinuableError(current: boolean, event: AgentEvent): boole
 export function foldFailure(current: Failure | null, event: AgentEvent): Failure | null {
   switch (event.type) {
     case 'error':
-      if (event.stopped || event.message.startsWith('turn ended:')) return current
-      return event.failure ?? null
+      if (event.stopped) return current
+      if (event.failure) return event.failure
+      return event.message.startsWith('turn ended:') ? current : null
     case 'errors-cleared':
     case 'user-text':
     case 'assistant-text':

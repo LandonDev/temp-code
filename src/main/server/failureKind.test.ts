@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { FailureKindSchema } from '@shared/events'
+import { fallbackFailure } from '@shared/failureFallback'
 import { UpstreamTimeout } from './upstream'
 import { classifyFailure, describeFailure, failureKindOf, networkRefusalOf, refusalCodeOf, type FailureContext } from './failureKind'
 
@@ -130,6 +132,32 @@ describe('failureKindOf on captured messages', () => {
       expect(failureKindOf(ctx({ message })), message).toBe('harness_crashed')
     }
     expect(classifyFailure(ctx({ provider: 'codex', message: 'codex app-server exited unexpectedly (137)' })).summary).toBe('The Codex process died mid-turn')
+  })
+
+  it("a turn the CLI ended itself is turn_ended, after the deaths and the network, with the CLI's line as the cause", () => {
+    expect(FailureKindSchema.options).toContain('turn_ended')
+    expect(failureKindOf(ctx({ message: 'turn ended: error_during_execution' }))).toBe('turn_ended')
+    expect(failureKindOf(ctx({ message: 'turn ended: error_max_turns' }))).toBe('turn_ended')
+    // A real death or a network cut keeps its own kind.
+    expect(failureKindOf(ctx({ message: 'turn ended: error_during_execution: process exited with code 1' }))).toBe('harness_crashed')
+    expect(failureKindOf(ctx({ message: 'turn ended: error_during_execution: fetch failed' }))).toBe('network')
+    expect(classifyFailure(ctx({ message: 'turn ended: error_during_execution: Invalid tool input: missing field' }))).toMatchObject({
+      kind: 'turn_ended',
+      account: 'landon@example.com',
+      summary: 'The turn ended before it finished',
+      cause: 'Invalid tool input: missing field'
+    })
+    expect(classifyFailure(ctx({ message: 'turn ended: error_during_execution' })).cause).toBe('Claude Code reported error_during_execution and gave no reason.')
+    expect(classifyFailure(ctx({ message: 'turn ended: error_max_turns' })).cause).toBe("The CLI's turn limit was reached.")
+    expect(classifyFailure(ctx({ message: 'turn ended: error_max_budget_usd' })).cause).toBe("The CLI's spend limit was reached.")
+    expect(classifyFailure(ctx({ message: 'turn ended: error_max_structured_output_retries' })).cause).toBe('The CLI gave up on a structured answer.')
+    expect(classifyFailure(ctx({ provider: 'codex', message: 'turn ended: error_during_execution' })).cause).toBe('Codex reported error_during_execution and gave no reason.')
+  })
+
+  it("an unknown with no reason reads as the renderer's fallback, word for word", () => {
+    const failure = classifyFailure(ctx({ message: '   ' }))
+    expect(failure.kind).toBe('unknown')
+    expect({ summary: failure.summary, cause: failure.cause }).toEqual({ summary: fallbackFailure().summary, cause: fallbackFailure().cause })
   })
 
   it('anything else is unknown and keeps the words on the second line', () => {

@@ -89,6 +89,19 @@ it('killed between turns with nothing open: the registry is told and no row is w
   expect(gone).toBe(1)
 })
 
+it("a result the CLI ended itself carries its first error line; one without reads the subtype alone", () => {
+  state.working = true
+  handleMessage(ctx, state, msg({ type: 'result', subtype: 'error_during_execution', errors: ['  ', 'Invalid tool input\nsecond line'], total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } }))
+  expect(events).toEqual([
+    { type: 'error', message: 'turn ended: error_during_execution: Invalid tool input' },
+    { type: 'status', status: 'idle' }
+  ])
+  events.length = 0
+  state.working = true
+  handleMessage(ctx, state, msg({ type: 'result', subtype: 'error_max_turns', total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } }))
+  expect(events[0]).toEqual({ type: 'error', message: 'turn ended: error_max_turns' })
+})
+
 it('aliveOf reads a signal from outside as the process gone', () => {
   expect(aliveOf(false, { exitCode: null, signalCode: 'SIGKILL', killed: false })).toBe(false)
   expect(aliveOf(false, { exitCode: null, signalCode: null, killed: false })).toBe(true)

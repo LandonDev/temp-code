@@ -11,6 +11,37 @@ import type { AgentEvent } from '../../shared/events'
 const answers: boolean[] = []
 vi.mock('./drivers', () => ({
   BUILT_IN_DRIVERS: {
+    /** A claude-shaped fake: a send asks a question ('ask') or an approval
+     *  ('run it') the way drivers/claude.ts does, and its interrupt aborts
+     *  the wait with the CLI's own sequence: the card's resolution, the
+     *  cleanup's `running`, then the result row and idle. */
+    cursor: {
+      id: 'cursor',
+      start: async (ctx: DriverCtx) => {
+        let abort: (() => void) | null = null
+        return {
+          send: async (text: string) => {
+            ctx.emit({ type: 'status', status: 'running' })
+            if (text === 'ask') {
+              ctx.emit({ type: 'question-request', requestId: 'q1', questions: [{ question: 'Tabs or spaces?', options: [{ label: 'Tabs' }] }] } as AgentEvent)
+              ctx.emit({ type: 'status', status: 'waiting', detail: 'awaiting answer' })
+              await new Promise<void>((resolve) => (abort = resolve))
+              ctx.emit({ type: 'question-resolved', requestId: 'q1', answers: null } as AgentEvent)
+            } else {
+              ctx.emit({ type: 'approval-request', requestId: 'a1', toolName: 'Bash', input: { command: 'ls' } } as AgentEvent)
+              ctx.emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
+              await new Promise<void>((resolve) => (abort = resolve))
+              ctx.emit({ type: 'approval-resolved', requestId: 'a1', allow: false, auto: true } as AgentEvent)
+            }
+            ctx.emit({ type: 'status', status: 'running' })
+            ctx.emit({ type: 'error', message: 'turn ended: error_during_execution' })
+            ctx.emit({ type: 'status', status: 'idle' })
+          },
+          interrupt: () => abort?.(),
+          dispose: async () => {}
+        }
+      }
+    },
     grok: {
       id: 'grok',
       start: async (ctx: DriverCtx) => ({
@@ -71,6 +102,34 @@ it('emits approval-request/waiting, then approval-resolved/running once approve(
   await registry.approve(s.id, req!.requestId, false)
   expect(answers).toEqual([true])
 })
+
+for (const [what, text, resolved] of [
+  ['question', 'ask', { type: 'question-resolved', requestId: 'q1', answers: null }],
+  ['approval', 'run it', { type: 'approval-resolved', requestId: 'a1', allow: false, auto: true }]
+] as const) {
+  it(`a Stop while a ${what} waits: the card resolves, the running in between keeps the stop, and the row idles stopped, not failed`, async () => {
+    const s = await registry.create({ cwd: root, provider: 'cursor' })
+    const turn = registry.send(s.id, text)
+    await settle()
+    expect(types(s.id).at(-1)).toBe('status:waiting')
+    await registry.interrupt(s.id)
+    await turn
+    await settle()
+    const evs = registry.eventsAfter(s.id, 0).map((r) => r.event)
+    expect(evs).toContainEqual(expect.objectContaining(resolved))
+    expect(types(s.id).slice(-3)).toEqual(['status:running', 'error', 'status:idle'])
+    const error = evs.find((e) => e.type === 'error')
+    expect(error).toMatchObject({ message: 'turn ended: error_during_execution', stopped: true })
+    expect(error).not.toHaveProperty('failure')
+    expect(registry.get(s.id)?.status).toBe('idle')
+    expect(registry.get(s.id)?.failure ?? null).toBeNull()
+    // The next turn is never the old stop: its own ending is classified.
+    const next = registry.send(s.id, text)
+    await settle()
+    await registry.answer(s.id, 'q1', null).catch(() => {})
+    void next
+  })
+}
 
 it('auto-denies after five minutes', async () => {
   vi.useFakeTimers()

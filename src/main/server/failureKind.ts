@@ -1,6 +1,7 @@
 import type { Failure, FailureKind, LimitWindow } from '@shared/events'
 import type { ProviderId } from '@shared/catalog'
 import { isRoutedProvider, SIGN_IN_NAME } from '@shared/accounts'
+import { fallbackFailure, TURN_ENDED_SUMMARY } from '@shared/failureFallback'
 import { splitPath } from 'aliax-core'
 import type { NetworkInfo } from './gatewayCore'
 
@@ -68,6 +69,10 @@ const NETWORK =
   /econnrefused|econnreset|etimedout|enotfound|eai_again|epipe|ehostunreach|enetunreach|fetch failed|network error|connection error|socket hang up|getaddrinfo|stream disconnected|certificate|unable to verify|tls|dns|request timed out|timed out/i
 const HARNESS_CRASHED =
   /harness stream ended mid-turn|exited unexpectedly|never reported the turn done|process exited|exited with code|exit code|\benoent\b|closed before|crashed|killed|sigkill|sigterm|out of memory|heap out of memory|the harness is gone|harness (was )?lost/i
+/** The claude driver's row for a result the CLI ended itself: the subtype,
+ *  then the CLI's own first error line when it gave one. A stop is the
+ *  same row stamped `stopped` by the registry and never reaches here. */
+const TURN_ENDED = /^turn ended: (\w+)(?:: ([\s\S]*))?$/
 
 const PROVIDER_NAME: Record<ProviderId, string> = {
   claude: 'Anthropic',
@@ -116,7 +121,24 @@ export function failureKindOf(ctx: FailureContext): FailureKind {
   if (gateway && gateway.status === 404) return 'model_unavailable'
   if (HARNESS_CRASHED.test(text)) return 'harness_crashed'
   if (NETWORK.test(text) || (gateway && gateway.status >= 500)) return 'network'
+  // After the deaths and the network: a turn the CLI ended with a cause of
+  // its own keeps that cause's kind.
+  if (TURN_ENDED.test(text)) return 'turn_ended'
   return 'unknown'
+}
+
+/** Why the CLI ended the turn, when it gave no line of its own. */
+function turnEndedCause(subtype: string, harness: string): string {
+  switch (subtype) {
+    case 'error_max_turns':
+      return "The CLI's turn limit was reached."
+    case 'error_max_budget_usd':
+      return "The CLI's spend limit was reached."
+    case 'error_max_structured_output_retries':
+      return 'The CLI gave up on a structured answer.'
+    default:
+      return `${harness} reported ${subtype || 'an error'} and gave no reason.`
+  }
 }
 
 function limitLabel(window: LimitWindow | undefined): string {
@@ -211,8 +233,19 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext): { summa
         summary: `The ${harness} process died mid-turn`,
         cause: 'Its stream ended before the turn finished; the conversation can pick up from its last message.'
       }
-    case 'unknown':
-      return { summary: 'The turn failed', cause: oneLine(ctx.message) || 'The harness gave no reason.' }
+    case 'turn_ended': {
+      const [, subtype = '', line = ''] = TURN_ENDED.exec(ctx.message) ?? []
+      return { summary: TURN_ENDED_SUMMARY, cause: line.trim() ? oneLine(line) : turnEndedCause(subtype, harness) }
+    }
+    case 'unknown': {
+      // No reason at all reads as the renderer's fallback, word for word.
+      const line = oneLine(ctx.message)
+      if (!line) {
+        const { summary, cause } = fallbackFailure()
+        return { summary, cause }
+      }
+      return { summary: 'The turn failed', cause: line }
+    }
   }
 }
 

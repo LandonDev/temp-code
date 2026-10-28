@@ -110,7 +110,7 @@ private func review(_ outcome: ReviewOutcome, blocking: Int = 0, minor: Int = 0,
 }
 
 @Suite struct FailureActionsTests {
-    static let kinds: [FailureKind] = [.oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota, .modelUnavailable, .network, .harnessCrashed, .unknown, .unrecognized("x")]
+    static let kinds: [FailureKind] = [.oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota, .modelUnavailable, .network, .harnessCrashed, .turnEnded, .unknown, .unrecognized("x")]
     static let providers: [ProviderId] = [.claude, .codex, .cursor]
 
     @Test(arguments: Self.kinds, Self.providers)
@@ -138,7 +138,7 @@ private func review(_ outcome: ReviewOutcome, blocking: Int = 0, minor: Int = 0,
         #expect(FailureActions.actions(kind: .modelUnavailable, provider: .claude).map(\.label) == ["Retry"])
         #expect(FailureActions.note(kind: .modelUnavailable, provider: .claude) == "Pick another model on the desktop.")
         #expect(FailureActions.note(kind: .modelUnavailable, provider: .cursor) == "Pick another model on the desktop.")
-        for kind in [FailureKind.network, .harnessCrashed, .unknown, .unrecognized("x")] {
+        for kind in [FailureKind.network, .harnessCrashed, .turnEnded, .unknown, .unrecognized("x")] {
             #expect(FailureActions.actions(kind: kind, provider: .claude).map(\.label) == ["Retry"])
             #expect(FailureActions.note(kind: kind, provider: .claude) == nil)
         }

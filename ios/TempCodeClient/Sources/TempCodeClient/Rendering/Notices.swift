@@ -180,7 +180,7 @@ public enum FailureActions {
         let ids: [FailureAction.ID] = switch kind {
         case .oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota:
             isRouted(provider) ? [.route, .retry] : [.retry]
-        case .modelUnavailable, .network, .harnessCrashed, .unknown, .unrecognized:
+        case .modelUnavailable, .network, .harnessCrashed, .turnEnded, .unknown, .unrecognized:
             [.retry]
         }
         // Retry closes every set, whatever the kind added before it; the cap leaves room for it.
@@ -200,7 +200,7 @@ public enum FailureActions {
             isRouted(provider) ? "Pick another account on the desktop." : nil
         case .modelUnavailable:
             "Pick another model on the desktop."
-        case .network, .harnessCrashed, .unknown, .unrecognized:
+        case .network, .harnessCrashed, .turnEnded, .unknown, .unrecognized:
             nil
         }
     }

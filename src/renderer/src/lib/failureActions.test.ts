@@ -11,6 +11,7 @@ const KINDS: FailureKind[] = [
   "model_unavailable",
   "network",
   "harness_crashed",
+  "turn_ended",
   "unknown",
 ];
 
@@ -51,7 +52,7 @@ describe("failureActions", () => {
   });
 
   it("network, a dead harness and the unknown only retry", () => {
-    for (const kind of ["network", "harness_crashed", "unknown"] as const) {
+    for (const kind of ["network", "harness_crashed", "turn_ended", "unknown"] as const) {
       expect(labels(kind)).toEqual(["Retry"]);
     }
   });

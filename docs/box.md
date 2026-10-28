@@ -593,15 +593,29 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   `visibleModels`: does the catalog offer its model here) fold into one
   `failure` on the event: a kind (`oauth_expired`, `account_unknown`,
   `token_expired`, `rate_limited`, `quota`, `model_unavailable`, `network`,
-  `harness_crashed`, `unknown`), the account the turn was routed to, one
+  `harness_crashed`, `turn_ended`, `unknown`), the account the turn was routed to, one
   line naming what happened ("Anthropic session for landon@… expired and
   could not be refreshed", "Account work@… is no longer on file") and one
   with the likely cause. A gateway control call that times out (30 s; a
   credential miss is `credential_timeout`, a 503) and an upstream request
   past its deadline (headers 60 s, body idle 120 s, total 10 min) are
   `network`, the stage named in the summary; a codex RPC past its timer
-  (30 s, `turn/start` 60 s) fails the turn instead of hanging it. A stop and a "turn ended:" wind-down note are never
-  classified. The verdict is folded onto the session row (`session_folds.failure`,
+  (30 s, `turn/start` 60 s) fails the turn instead of hanging it. A stop is
+  never classified: the registry's `stopping` flag stamps the driver's
+  "turn ended:" row `stopped: true`, and it survives the `running` a
+  question's or an approval's cleanup emits (the CLI's result comes after
+  it), clearing on a settle, on `starting` and at the top of the next send;
+  a Stop while the harness still boots is remembered (`stopBooting`), and
+  the handle is put down when it lands, the stopped row and idle written,
+  nothing delivered. A "turn ended: <subtype>" row the person did not stop
+  is the CLI's own ending (`error_max_turns`, `error_max_budget_usd`,
+  `error_max_structured_output_retries`, or an `error_during_execution`
+  with the CLI's first error line appended): kind `turn_ended`, summary
+  "The turn ended before it finished" (the renderer's fallback words,
+  `TURN_ENDED_SUMMARY`), cause the CLI's line or the subtype's meaning
+  ("The CLI's turn limit was reached."); a line that names a death or a
+  network cut keeps that kind, and an `unknown` with no reason reads the
+  fallback word for word. The verdict is folded onto the session row (`session_folds.failure`,
   `SessionMeta.failure`, cleared by whatever settles the error) so the tab
   edge and the workspace popover's failed row print the summary instead of
   "Failed", and the phone contract carries it (`Failure` in the generated
