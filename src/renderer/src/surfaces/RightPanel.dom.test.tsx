@@ -174,7 +174,7 @@ describe("RightPanel", () => {
     const chat = { ...session, cwd: "/w", projectId: null, workspaceId: "w1" } as unknown as Session;
     rightPanel.open("s1");
     const r = render(<RightPanel session={chat} onOpenFile={noop} onOpenDiff={noop} />);
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Changes", "Notes", "Files"]);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"))).toEqual(["Changes", "Notes", "Files"]);
     expect(screen.getByTestId("changes-body")).toBeTruthy();
     r.unmount();
   });
@@ -184,7 +184,7 @@ describe("RightPanel", () => {
     const chat = { ...session, cwd: "/w", projectId: null, workspaceId: "w1" } as unknown as Session;
     rightPanel.open("s1");
     const r = render(<RightPanel session={chat} onOpenFile={noop} onOpenDiff={noop} />);
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Notes"]);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"))).toEqual(["Notes"]);
     r.unmount();
   });
 

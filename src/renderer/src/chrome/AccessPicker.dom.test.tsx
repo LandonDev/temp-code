@@ -7,7 +7,7 @@ afterEach(cleanup);
 
 async function openMenu() {
   await act(async () => {
-    fireEvent.click(screen.getByRole("combobox", { name: "Permission mode" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Permission mode: Supervised" }));
   });
 }
 
@@ -15,7 +15,7 @@ describe("AccessPicker", () => {
   it("Escape leaves the focus on its trigger and the field alone", async () => {
     const onClose = vi.fn();
     render(<AccessPicker value="supervised" onChange={() => {}} onClose={onClose} />);
-    const trigger = screen.getByRole("combobox", { name: "Permission mode" });
+    const trigger = screen.getByRole("combobox", { name: "Permission mode: Supervised" });
     await openMenu();
     await act(async () => {
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
