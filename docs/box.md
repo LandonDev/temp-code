@@ -2991,6 +2991,12 @@ renderer session.
 
 ## One project across hosts: the linker
 
+On each host, workspace creation matches real folder paths, so symlinks and
+trailing slashes reuse one row; new rows keep the supplied path with trailing
+slashes stripped. Once at boot (`workspaces-folded:v1`), old duplicates fold
+into the oldest row with all project and session references and its link id
+(or the oldest linked duplicate's id).
+
 A workspace or project row carries a link id (`wl_…`, `pl_…`) that its
 copies on other hosts share. The linker
 (`src/main/server/remote/projectLinks.ts`) stamps those ids. It runs on the

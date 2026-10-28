@@ -1259,6 +1259,32 @@ export class Store {
     this.stmt(`UPDATE workspaces SET account_pins = ? WHERE id = ?`).run(serializeAccountPins(pins), id)
   }
 
+  /** Fold duplicate rows without the project deletion of deleteWorkspace.
+   *  Include archived and hidden sessions, then refresh row observers only
+   *  after the transaction commits. */
+  mergeWorkspaceRows(keeperId: string, duplicateIds: readonly string[], linkId: string | null): boolean {
+    const sessionIds: string[] = []
+    let projectsMoved = false
+    this.db.exec('BEGIN')
+    try {
+      if (linkId) this.setWorkspaceLink(keeperId, linkId)
+      for (const id of duplicateIds) {
+        const rows = this.stmt('SELECT id FROM sessions WHERE workspace_id = ?').all(id) as unknown as { id: string }[]
+        sessionIds.push(...rows.map((row) => row.id))
+        const moved = this.stmt('UPDATE projects SET workspace_id = ? WHERE workspace_id = ?').run(keeperId, id)
+        projectsMoved ||= Number(moved.changes) > 0
+        this.stmt('UPDATE sessions SET workspace_id = ? WHERE workspace_id = ?').run(keeperId, id)
+        this.stmt('DELETE FROM workspaces WHERE id = ?').run(id)
+      }
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+    for (const id of sessionIds) this.rowWritten(id)
+    return projectsMoved
+  }
+
   deleteWorkspace(id: string): string[] {
     const projectIds = (
       this.stmt(`SELECT id FROM projects WHERE workspace_id = ?`).all(id) as unknown as {

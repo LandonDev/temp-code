@@ -1183,6 +1183,13 @@ routed to (aliax-core's `forward`). Two listeners:
   row model (`SearchRows.swift`) as an `AsyncStream<SearchAnswer>` the
   Search tab iterates; `notes.search` is in the phone's subset for it.
 ## One project across hosts: linked projects, one rail, host glyphs
+
+On each host, workspace creation matches real folder paths, so symlinks and
+trailing slashes reuse one row; new rows keep the supplied path with trailing
+slashes stripped. Once at boot (`workspaces-folded:v1`), old duplicates fold
+into the oldest row with all project and session references and its link id
+(or the oldest linked duplicate's id).
+
 docs/box.md "One project across hosts" (four sections) and
 docs/LAYOUT.md's sidebar rows are the long account; the proof is
 `bun run script:e2e-linked-projects` (scripts/e2e-linked-projects.ts: two

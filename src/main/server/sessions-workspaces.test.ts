@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -106,4 +106,57 @@ it('deleting a workspace leaves the others’ repos intact', async () => {
   await registry.createWorkspace(await checkout('b', 'git@github.com:o/b.git'))
   await registry.deleteWorkspace(a.id)
   expect(store.listWorkspaces().map((w) => w.githubRepo)).toEqual(['o/b'])
+})
+
+it('a trailing slash answers the existing workspace, including legacy path spelling', async () => {
+  const folder = await checkout('slash', null)
+  const workspace = await registry.createWorkspace(folder)
+  expect((await registry.createWorkspace(`${folder}///`)).id).toBe(workspace.id)
+  db.prepare('UPDATE workspaces SET path = ? WHERE id = ?').run(`${folder}/`, workspace.id)
+  expect((await registry.createWorkspace(folder)).id).toBe(workspace.id)
+  expect(store.listWorkspaces()).toHaveLength(1)
+})
+
+it('a symlink answers the existing workspace in either direction', async () => {
+  const folder = await checkout('target', null)
+  const alias = join(root, 'alias')
+  await symlink(folder, alias)
+  const workspace = await registry.createWorkspace(folder)
+  expect((await registry.createWorkspace(alias)).id).toBe(workspace.id)
+  db.prepare('UPDATE workspaces SET path = ? WHERE id = ?').run(alias, workspace.id)
+  expect((await registry.createWorkspace(folder)).id).toBe(workspace.id)
+  expect(store.listWorkspaces()).toHaveLength(1)
+})
+
+it('concurrent creates through symlinks and trailing slashes join one promise and push once', async () => {
+  const folder = await checkout('concurrent', null)
+  const alias = join(root, 'alias')
+  await symlink(folder, alias)
+  const pushes = vi.fn()
+  registry.onCatalog(pushes)
+  const first = registry.createWorkspace(`${alias}///`)
+  expect(registry.createWorkspace(folder)).toBe(first)
+  expect(registry.createWorkspace(`${folder}/`)).toBe(first)
+  const workspace = await first
+  expect(workspace.path).toBe(alias)
+  expect(workspace.name).toBe('alias')
+  expect(store.listWorkspaces()).toHaveLength(1)
+  expect(pushes.mock.calls).toEqual([['workspaces']])
+})
+
+it('new workspaces adopt loose sessions whose cwd uses the same real folder', async () => {
+  const folder = await checkout('loose', null)
+  const alias = join(root, 'alias')
+  await symlink(folder, alias)
+  const session = await registry.create({ cwd: `${alias}/` })
+  const workspace = await registry.createWorkspace(`${folder}/`)
+  expect(workspace.path).toBe(folder)
+  expect(store.getSession(session.id)?.workspaceId).toBe(workspace.id)
+})
+
+it('a failed create releases its normalized in-flight key', async () => {
+  const folder = join(root, 'later')
+  await expect(registry.createWorkspace(`${folder}/`)).rejects.toThrow('no such folder')
+  await mkdir(folder)
+  expect((await registry.createWorkspace(folder)).path).toBe(folder)
 })

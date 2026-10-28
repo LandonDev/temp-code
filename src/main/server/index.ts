@@ -420,6 +420,8 @@ export async function startServer(
   // The bulk lane, one per host: polls and walks wait while the loop lags (lane.ts).
   const laneGate = new LaneGate()
   setLaneStats(() => laneGate.stats())
+  // Fold old rows for the same real folder before seeding workspace defaults.
+  registry.foldWorkspaces()
   // The temp-code workspace's default preamble, seeded once (projectPreamble.ts).
   seedHousePreamble(store)
   migrateHousePreamble(store)

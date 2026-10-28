@@ -69,6 +69,7 @@ import { BUILT_IN_DRIVERS } from './drivers'
 import { generateTitle } from './drivers/title'
 import type { ApprovalRequest, DriverHandle } from './drivers/types'
 import type { Store } from './db'
+import { foldWorkspaces, stripWorkspaceTrailingSlashes, workspacePathKey } from './workspaceFold'
 import { checkpointCwd } from './checkpoint'
 import type { CheckpointTurns } from './checkpointTurns'
 import {
@@ -1753,27 +1754,29 @@ export class SessionRegistry {
 
   // ── workspaces & projects ──────────────────────────────────────────
 
-  /** Creates in flight, by path: the git reads between the existing-path
+  /** Creates in flight, by normalized path: the git reads between the existing-path
    *  check and the insert let a second create for the folder pass the check. */
   private readonly creatingWorkspaces = new Map<string, Promise<WorkspaceMeta>>()
 
-  /** One workspace per folder: a concurrent create for the same path joins
-   *  the first and answers its row. */
+  /** One workspace per real folder, including symlinks and trailing slashes. */
   createWorkspace(path: string, name?: string, opts: { linkId?: string } = {}): Promise<WorkspaceMeta> {
-    const inFlight = this.creatingWorkspaces.get(path)
+    const key = workspacePathKey(path)
+    const inFlight = this.creatingWorkspaces.get(key)
     if (inFlight) return inFlight
-    const run = this.createWorkspaceNow(path, name, opts).finally(() => this.creatingWorkspaces.delete(path))
-    this.creatingWorkspaces.set(path, run)
+    const run = this.createWorkspaceNow(path, key, name, opts).finally(() => this.creatingWorkspaces.delete(key))
+    this.creatingWorkspaces.set(key, run)
     return run
   }
 
-  private async createWorkspaceNow(path: string, name: string | undefined, opts: { linkId?: string }): Promise<WorkspaceMeta> {
-    const existing = this.store.listWorkspaces().find((w) => w.path === path)
+  private async createWorkspaceNow(path: string, key: string, name: string | undefined, opts: { linkId?: string }): Promise<WorkspaceMeta> {
+    const existing = this.store.listWorkspaces().find((w) => workspacePathKey(w.path) === key)
     if (existing) return existing
     // A workspace names a folder on this host. A client that has not yet
     // heard which host owns a folder (another host's catalog still loading)
     // falls back to this one; a folder that is not here is not ours.
     if (!isDirectory(path)) throw new Error(`no such folder on this host: ${path}`)
+    // Keep the caller's folder spelling for cwd consumers, without a trailing slash.
+    path = stripWorkspaceTrailingSlashes(path)
     const git = await isGitRepo(path)
     const meta: WorkspaceMeta = {
       id: nanoid(12),
@@ -1787,13 +1790,20 @@ export class SessionRegistry {
     }
     this.store.insertWorkspace(meta)
     for (const session of this.store.listSessions()) {
-      if (session.projectId || session.workspaceId || session.cwd !== path) continue
+      if (session.projectId || session.workspaceId || workspacePathKey(session.cwd) !== key) continue
       this.store.setSessionWorkspace(session.id, meta.id)
       const next = this.store.getSession(session.id)
       if (next) this.notifyMeta(next)
     }
     this.notifyCatalog('workspaces')
     return meta
+  }
+
+  /** Boot migration: publish each changed catalog once, after all folds. */
+  foldWorkspaces(): void {
+    const folded = foldWorkspaces(this.store)
+    if (folded.removed) this.notifyCatalog('workspaces')
+    if (folded.projectsMoved) this.notifyCatalog('projects')
   }
 
   listWorkspaces(): WorkspaceMeta[] {
