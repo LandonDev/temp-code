@@ -73,6 +73,18 @@ describe("searchConversationTitles", () => {
     expect(hits.map((hit) => hit.sessionId)).toEqual(["s1"]);
     expect(hits[0]?.title).toBe("Fix sidebar search");
   });
+
+  it("carries the thread's type for its glyph, and leaves it out when the row has none", () => {
+    const hits = searchConversationTitles(
+      [
+        { id: "p", cwd: "/tmp/a", harness: "claude", threadType: "planning", title: "Plan the rail", updatedAt: 2 },
+        { id: "c", cwd: "/tmp/a", harness: "claude", title: "Rail question", updatedAt: 1 },
+      ],
+      "rail",
+    );
+    expect(hits.find((hit) => hit.sessionId === "p")?.threadType).toBe("planning");
+    expect(hits.find((hit) => hit.sessionId === "c")).not.toHaveProperty("threadType");
+  });
 });
 
 describe("searchSessionMessages", () => {
@@ -178,6 +190,13 @@ describe("merge and group", () => {
 });
 
 describe("hitsFromSessionSearch", () => {
+  it("carries a conversation row's thread type", () => {
+    const [hit] = hitsFromSessionSearch([
+      { kind: "conversation", sessionId: "s1", cwd: "/tmp/a", harness: "claude", threadType: "research", title: "Survey", updatedAt: 1, preview: "" },
+    ]);
+    expect(hit).toMatchObject({ kind: "conversation", threadType: "research" });
+  });
+
   it("normalizes harness titles", () => {
     const hits = hitsFromSessionSearch([
       {
@@ -205,6 +224,7 @@ describe("hitsFromSessionSearch", () => {
       kind: "conversation",
       title: "Fix search",
     });
+    expect(hits[0]).not.toHaveProperty("threadType");
     expect(hits[1]).toMatchObject({
       kind: "message",
       blockId: "u1",

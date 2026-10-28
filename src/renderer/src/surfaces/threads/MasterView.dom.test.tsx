@@ -801,6 +801,8 @@ describe("the master view", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getAllByRole("checkbox").map((c) => c.closest("label")?.textContent)).toEqual(["A stray chatChat", "AnotherImplementation"]);
     expect(within(dialog).queryByText("In another batch")).toBeNull();
+    expect(within(dialog).getByText("A stray chat").closest("label")!.querySelector("svg[data-type-glyph]")?.getAttribute("class")).toContain("text-type-chat");
+    expect(within(dialog).getByText("Another").closest("label")!.querySelector("svg[data-type-glyph]")?.getAttribute("class")).toContain("text-type-implementation");
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /A stray chat/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
     await flush();
@@ -1398,6 +1400,22 @@ describe("a row's subagents", () => {
     expect(rowOf(/A question/).querySelector("[data-agents]")).toBeNull();
     // Agents are not rows of the board.
     expect(document.querySelectorAll("[data-status]")).toHaveLength(2);
+  });
+
+  it("a row's type glyph is its type's tint; a subagent's role glyph stays plain, a typed line without a role is tinted", async () => {
+    seed([
+      meta({ id: "c-impl", title: "Home screen", status: "running" }),
+      agent("a1", "c-impl", "running", { title: "Rail rows" }),
+      agent("a2", "c-impl", "running", { title: "Survey", agentType: null as unknown as SessionMeta["agentType"], threadType: "research", createdAt: 2 }),
+    ]);
+    renderView();
+    await flush();
+    const row = rowOf(/Home screen/);
+    expect(row.querySelector("[role=img] svg[data-type-glyph]")?.getAttribute("class")).toContain("text-type-implementation");
+    const role = row.querySelector("[data-agent='a1'] svg:not([data-slot=status-mark] svg)")!;
+    expect(role.hasAttribute("data-type-glyph")).toBe(false);
+    expect(role.getAttribute("class")).toContain("text-muted-foreground");
+    expect(row.querySelector("[data-agent='a2'] svg[data-type-glyph]")?.getAttribute("class")).toContain("text-type-research");
   });
 
   it("caps the lines at three and counts the rest", async () => {

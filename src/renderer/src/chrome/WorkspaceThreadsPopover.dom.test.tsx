@@ -271,6 +271,37 @@ describe("WorkspaceThreadsList", () => {
     expect(text).not.toContain("Finished one");
   });
 
+  it("a root leads with its type's glyph and its batch threads sit one step past it, their glyphs under its title", () => {
+    const groups: WorkspaceSessionGroups = {
+      projects: [
+        {
+          project: project("p1", { name: "Alpha" }),
+          threads: [
+            {
+              ...threadRow(meta("m", { title: "Batch", isMaster: true, status: "watching", threadType: "orchestration" }), {}),
+              batch: [threadRow(meta("w", { masterId: "m", title: "Ask", status: "waiting", threadType: "planning" }), {}, 0, true)],
+            },
+            threadRow(meta("r", { title: "Look", status: "running", busySince: 5, threadType: "research" }), {}),
+          ],
+          latest: 100,
+          archivedCount: 0,
+        },
+      ],
+      archived: [],
+      chats: [],
+    };
+    const probe = mountProbe(<WorkspaceThreadsList groups={groups} activeSessionId={null} onSelectThread={() => {}} />);
+    const rows = Array.from(probe.container.querySelectorAll<HTMLElement>("[data-thread-row]"));
+    const byTitle = (title: string) => rows.find((r) => r.textContent?.includes(title))!;
+    const leadGlyph = (row: HTMLElement) => row.firstElementChild!.querySelector("svg");
+    expect(leadGlyph(byTitle("Batch"))?.getAttribute("class")).toContain("text-type-orchestration");
+    expect(leadGlyph(byTitle("Look"))?.getAttribute("class")).toContain("text-type-research");
+    // The batch thread: an empty lead column, then its own glyph in the root's title column.
+    const child = byTitle("Ask");
+    expect(leadGlyph(child)).toBeNull();
+    expect(child.children[1]!.querySelector("svg")?.getAttribute("class")).toContain("text-type-planning");
+  });
+
   it("shows a failed thread as its own row and jumps to it on click", () => {
     const onSelectThread = vi.fn();
     const groups: WorkspaceSessionGroups = {

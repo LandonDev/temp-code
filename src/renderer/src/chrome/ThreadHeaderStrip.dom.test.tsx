@@ -136,6 +136,19 @@ describe("ThreadHeaderStrip chip", () => {
     for (const el of document.querySelectorAll("[role=tab], [role=tab] *")) expect(el.hasAttribute("title")).toBe(false);
   });
 
+  it("tints every chip's type glyph, active or not; a chip with no type draws chat's", () => {
+    const research: StripChip = { ...chip("b", "Beta"), thread: { ...thread("b", "Beta"), threadType: "research" } };
+    const untyped: StripChip = { ...chip("c", "Gamma"), thread: { ...thread("c", "Gamma"), threadType: null } };
+    mount({ model: { ...model, live: [model.live[0]!, research, untyped] } });
+    const glyph = (name: string) => tab(name).querySelector("svg[data-type-glyph]")!;
+    expect(tab("Alpha").getAttribute("aria-selected")).toBe("true");
+    expect(glyph("Alpha").getAttribute("class")).toContain("text-type-chat");
+    expect(tab("Beta").getAttribute("aria-selected")).toBe("false");
+    expect(glyph("Beta").getAttribute("class")).toContain("text-type-research");
+    expect(glyph("Gamma").getAttribute("data-type-glyph")).toBe("chat");
+    expect(glyph("Gamma").getAttribute("class")).toContain("text-type-chat");
+  });
+
   it("only the active chip is in the tab order; arrows move focus and Enter selects", () => {
     const { onSelect } = mount();
     expect(tab("Alpha").tabIndex).toBe(0);

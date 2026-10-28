@@ -11,7 +11,7 @@ import {
 } from "react";
 import { HostGlyph } from "../chrome/HostGlyph";
 import { FileTypeIcon } from "../chrome/FileTypeIcon";
-import { HarnessIcon } from "../chrome/HarnessIcon";
+import { TypeGlyph } from "./threads/TypeGlyph";
 import { MatchText } from "../chrome/MatchText";
 import { SearchFiltersMenu } from "../chrome/SearchFiltersMenu";
 import { ProjectLogoIcon } from "../chrome/ProjectLogoIcon";
@@ -234,7 +234,7 @@ export function SearchView({
       const host = env.id;
       const rows = metas
         .filter((meta) => meta.environmentId === host && !meta.parentId && !meta.archived)
-        .map((meta) => ({ id: meta.id, cwd: meta.cwd, harness: meta.provider as HarnessId, title: meta.title, updatedAt: meta.updatedAt }));
+        .map((meta) => ({ id: meta.id, cwd: meta.cwd, harness: meta.provider as HarnessId, threadType: meta.threadType, title: meta.title, updatedAt: meta.updatedAt }));
       const hits: AppSearchHit[] = [
         ...searchConversationTitles(rows, text).map((hit) => ({ ...hit, host })),
         ...searchSessionMessages(
@@ -371,7 +371,7 @@ export function SearchView({
     return browseHits({
       threads: metas
         .filter((meta) => asked.has(meta.environmentId) && !meta.parentId && !meta.archived)
-        .map((meta) => ({ host: meta.environmentId, id: meta.id, cwd: meta.cwd, harness: meta.provider as HarnessId, title: meta.title, updatedAt: meta.updatedAt })),
+        .map((meta) => ({ host: meta.environmentId, id: meta.id, cwd: meta.cwd, harness: meta.provider as HarnessId, threadType: meta.threadType, title: meta.title, updatedAt: meta.updatedAt })),
       files:
         asked.has(currentHost) && looksLikeProject(cwd)
           ? rankProjectFiles(files, "", recentOpenedFiles(cwd)).map((file) => ({ ...file, host: currentHost }))
@@ -734,7 +734,7 @@ type RowCopy = { icon: ReactNode; title: ReactNode; meta: string; mono: boolean 
 function rowCopy(hit: AppSearchHit, query: string): RowCopy {
   if (hit.kind === "conversation") {
     return {
-      icon: <HarnessIcon harness={hit.harness} className="size-3.5" />,
+      icon: <TypeGlyph type={hit.threadType} className="size-3.5" />,
       title: <MatchText text={hit.title} positions={hit.positions} />,
       meta: projectName(hit.cwd),
       mono: false,

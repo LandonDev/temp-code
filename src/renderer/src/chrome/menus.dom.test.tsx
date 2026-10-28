@@ -10,6 +10,7 @@ import { Archive, Pause, Trash2 } from "./icons";
 import { MenuRows } from "./menuBody";
 import { resetMenus, RowsContextMenu, RowsMenu, tidy, warmMenus, type MenuRow } from "./menuRows";
 import { menuChunk } from "../surfaces/chunks";
+import { THREAD_MENU_ICONS } from "../surfaces/threads/threadTypes";
 
 afterEach(cleanup);
 
@@ -103,6 +104,38 @@ describe("MenuRows", () => {
     const context = await screen.findByRole("menu", { name: "context" });
     const archive = within(context).getByRole("menuitem", { name: /Archive/ });
     for (const c of rowClasses) expect(archive.className.split(/\s+/)).toContain(c);
+  });
+
+  it("leaves an icon that names its own colour alone, and mutes the rest, in both menus", async () => {
+    const rule = "[&_svg:not([class*='text-'])]:text-muted-foreground";
+    const rows: MenuRow[] = [
+      { kind: "item", id: "research", label: "Research", icon: THREAD_MENU_ICONS.research },
+      { kind: "sub", id: "type", label: "Type", icon: THREAD_MENU_ICONS.planning, items: [{ kind: "item", id: "type:chat", label: "Chat", checked: true }] },
+      { kind: "item", id: "archive", label: "Archive", icon: Archive },
+    ];
+    const check = (root: HTMLElement) => {
+      const research = within(root).getByRole("menuitem", { name: /Research/ });
+      expect(research.className.split(/\s+/)).toContain(rule);
+      expect(research.className.split(/\s+/)).not.toContain("[&_svg]:text-muted-foreground");
+      expect(research.querySelector("svg")!.getAttribute("class")).toContain("text-type-research");
+      const type = within(root).getByRole("menuitem", { name: /Type/ });
+      expect(type.className.split(/\s+/)).toContain(rule);
+      expect(type.querySelector("svg")!.getAttribute("class")).toContain("text-type-planning");
+      const plain = within(root).getByRole("menuitem", { name: /Archive/ }).querySelector("svg")!;
+      expect(plain.getAttribute("class") ?? "").not.toMatch(/\btext-/);
+    };
+    const { list } = await openDropdown(rows);
+    check(list);
+    cleanup();
+    render(
+      <ContextMenu defaultOpen>
+        <ContextMenuTrigger>open</ContextMenuTrigger>
+        <ContextMenuContent aria-label="context">
+          <MenuRows kind="context" items={rows} onPick={() => {}} />
+        </ContextMenuContent>
+      </ContextMenu>,
+    );
+    check(await screen.findByRole("menu", { name: "context" }));
   });
 
   it("the context menu renders the same rows", async () => {

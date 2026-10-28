@@ -92,16 +92,16 @@ function AgentsLine({ summary, className }: { summary: AgentSummary; className: 
 function MasterRows({ block, activeId, onSelect }: { block: MasterBlock; activeId: string | null; onSelect: (id: string) => void }) {
   return (
     <div className="flex flex-col">
-      <ThreadRowView row={block.master} word lead={false} selected={block.master.id === activeId} onOpen={() => onSelect(block.master.id)} />
-      {block.agents ? <AgentsLine summary={block.agents} className="pl-3" /> : null}
+      <ThreadRowView row={block.master} word selected={block.master.id === activeId} onOpen={() => onSelect(block.master.id)} />
+      {block.agents ? <AgentsLine summary={block.agents} className="pl-9" /> : null}
       {block.lines.map(({ thread, agents }) => (
         <div key={thread.id} className="flex flex-col">
-          <ThreadRowView row={thread} child word lead={false} selected={thread.id === activeId} onOpen={() => onSelect(thread.id)} />
-          {agents ? <AgentsLine summary={agents} className="pl-9" /> : null}
+          <ThreadRowView row={thread} child word selected={thread.id === activeId} onOpen={() => onSelect(thread.id)} />
+          {agents ? <AgentsLine summary={agents} className="pl-15" /> : null}
         </div>
       ))}
       {block.queued > 0 ? (
-        <div className="flex h-7 items-center pl-9 text-[12px] text-muted-foreground">{block.queued} queued</div>
+        <div className="flex h-7 items-center pl-15 text-[12px] text-muted-foreground">{block.queued} queued</div>
       ) : null}
     </div>
   );
@@ -136,7 +136,6 @@ export function WorkspaceThreadsList({
                 key={entry.id}
                 row={entry.row}
                 word
-                lead={false}
                 selected={entry.id === activeSessionId}
                 onOpen={() => onSelectThread(entry.id)}
               />

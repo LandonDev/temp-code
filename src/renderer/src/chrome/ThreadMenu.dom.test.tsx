@@ -115,6 +115,7 @@ describe("ThreadMenu", () => {
     const list = await screen.findByRole("dialog", { name: "Recent threads" });
     const rows = [...list.querySelectorAll("[data-listed]")].map((el) => el.getAttribute("data-listed"));
     expect(rows).toEqual(recent.map((c) => c.id));
+    expect(list.querySelector("[data-listed='r0'] svg[data-type-glyph]")?.getAttribute("class")).toContain("text-type-chat");
     fireEvent.click(within(list).getByText("Thread 2"));
     expect(props.onOpenRecent).toHaveBeenCalledWith("r2");
   });
@@ -145,8 +146,10 @@ describe("ThreadMenu", () => {
   });
 
   it("Archived threads opens the list, and Restore brings one back", async () => {
-    const props = menu({ archived: [{ id: "x", title: "Old work", type: "chat", updatedAt: 1 }] });
+    const props = menu({ archived: [{ id: "x", title: "Old work", type: "research", updatedAt: 1 }] });
     fireEvent.click(within(await openMenu()).getByText("Archived threads…"));
+    const row = (await screen.findByText("Old work")).closest("[data-listed]")!;
+    expect(row.querySelector("svg[data-type-glyph]")?.getAttribute("class")).toContain("text-type-research");
     fireEvent.click(await screen.findByText("Old work"));
     expect(props.onRestore).toHaveBeenCalledWith("x");
   });

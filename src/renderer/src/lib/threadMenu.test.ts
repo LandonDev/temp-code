@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MenuRow } from "../chrome/menuRows";
+import { THREAD_MENU_ICONS } from "../surfaces/threads/threadTypes";
+import type { ThreadType } from "./tcserver/types";
 import { threadMenuRows, type ThreadMenuFacts } from "./threadMenu";
 
 const facts = (over: Partial<ThreadMenuFacts> = {}): ThreadMenuFacts => ({
@@ -74,6 +76,8 @@ describe("threadMenuRows: Type", () => {
     expect(ids(type.items)).toEqual(["type:chat", "type:planning", "type:project-plan", "type:implementation", "type:orchestration", "type:research"]);
     expect(type.items.filter((i) => i.kind === "item" && i.checked).map((i) => i.kind === "item" && i.id)).toEqual(["type:planning"]);
     expect(type.disabled).toBe(false);
+    // Each type's row draws that type's tinted glyph.
+    for (const item of type.items) if (item.kind === "item") expect(item.icon, item.id).toBe(THREAD_MENU_ICONS[item.id.slice("type:".length) as ThreadType]);
     for (const status of ["running", "waiting", "watching", "paused"] as const)
       expect(row(threadMenuRows(facts({ status })), "type")).toMatchObject({ disabled: true });
   });

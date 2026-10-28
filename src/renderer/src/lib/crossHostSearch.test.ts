@@ -265,7 +265,7 @@ describe("foldFileHits", () => {
 describe("browseHits", () => {
   const input = {
     threads: [
-      { host: "local", id: "old", cwd: "/Users/me/app", harness: "claude" as const, title: "Old", updatedAt: 1 },
+      { host: "local", id: "old", cwd: "/Users/me/app", harness: "claude" as const, threadType: "implementation" as const, title: "Old", updatedAt: 1 },
       { host: "box", id: "new", cwd: "/work/alpha", harness: "codex" as const, title: "New", updatedAt: 9 },
     ],
     files: [
@@ -296,6 +296,9 @@ describe("browseHits", () => {
       "project:/work/alpha",
     ]);
     expect(flat.find((hit) => hit.id === "note:box:n1")).toMatchObject({ preview: "Ship the fold", title: "Plan" });
+    // A thread carries its type for its glyph; one with none leaves it out.
+    expect(flat.find((hit) => hit.id === "conversation:old")).toMatchObject({ threadType: "implementation" });
+    expect(flat.find((hit) => hit.id === "conversation:new")).not.toHaveProperty("threadType");
   });
 
   it("goes through the same type: and project: filters as a search", () => {

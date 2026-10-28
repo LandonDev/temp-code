@@ -14,6 +14,7 @@ import type {
 } from "./sessionStore";
 import type { RankedFile } from "./fileIndex";
 import type { ProjectSearchMatch } from "./search";
+import type { ThreadType } from "./tcserver/types";
 
 export type SearchScope = "all" | "conversations" | "files" | "projects";
 
@@ -34,6 +35,8 @@ export type ConversationHit = Located & {
   sessionId: string;
   cwd: string;
   harness: HarnessId;
+  /** The thread's type, for its row's glyph; absent draws chat. */
+  threadType?: ThreadType | null;
   title: string;
   updatedAt: number;
   score: number;
@@ -232,6 +235,7 @@ export function searchConversationTitles(
     id: string;
     cwd: string;
     harness: HarnessId;
+    threadType?: ThreadType | null;
     title: string;
     updatedAt: number;
   }>,
@@ -252,6 +256,7 @@ export function searchConversationTitles(
       sessionId: row.id,
       cwd: row.cwd,
       harness: row.harness,
+      ...(row.threadType ? { threadType: row.threadType } : {}),
       title,
       updatedAt: row.updatedAt,
       score: match.score + recencyBonus(row.updatedAt),
@@ -367,6 +372,7 @@ export function hitsFromSessionSearch(
         sessionId: row.sessionId,
         cwd: row.cwd,
         harness,
+        ...(row.threadType ? { threadType: row.threadType } : {}),
         title,
         updatedAt: row.updatedAt,
         score: 10 + recencyBonus(row.updatedAt),

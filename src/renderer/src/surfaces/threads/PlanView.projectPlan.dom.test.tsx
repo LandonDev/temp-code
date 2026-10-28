@@ -169,8 +169,20 @@ describe("PlanView for a project plan", () => {
     expect(document.querySelector("[data-plan-ready]")).toBeNull();
     const handoff = screen.getByRole("button", { name: /Implementation/ });
     expect(handoff.textContent).toContain("Working");
+    // The build's type glyph leads the noun, in its type's tint.
+    expect(handoff.firstElementChild?.getAttribute("data-type-glyph")).toBe("implementation");
+    expect(handoff.firstElementChild?.getAttribute("class")).toContain("text-type-implementation");
     fireEvent.click(handoff);
     expect(onOpenSession).toHaveBeenCalledWith("build-1");
     delete metas["build-1"];
+  });
+
+  it("an orchestration build's button leads with the orchestration glyph", () => {
+    doc = "# Plan\n\n## Tasks\n- [ ] a\n";
+    metas["build-2"] = { id: "build-2", threadType: "orchestration", status: "idle", planPath: "/repo/.temp-code/plan-x.md" };
+    render(<PlanView {...props(session({ threadType: "planning", planPath: "/repo/.temp-code/plan-x.md", implementationId: "build-2" }))} />);
+    const glyph = screen.getByRole("button", { name: /Orchestration/ }).querySelector("svg[data-type-glyph]");
+    expect(glyph?.getAttribute("class")).toContain("text-type-orchestration");
+    delete metas["build-2"];
   });
 });

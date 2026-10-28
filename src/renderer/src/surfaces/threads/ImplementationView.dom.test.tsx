@@ -7,7 +7,8 @@ import type { TodoItem } from "../../lib/tcserver/todos";
 vi.mock("../../hooks/usePlanFile", () => ({ usePlanFile: () => null }));
 let liveEdits: Record<string, unknown> = {};
 vi.mock("../../lib/tcserver/store", () => ({ useLiveEdits: () => liveEdits }));
-vi.mock("../../lib/threads/agents", () => ({ useMetaById: () => null }));
+let metaById: Record<string, unknown> = {};
+vi.mock("../../lib/threads/agents", () => ({ useMetaById: (id: string | null) => (id ? (metaById[id] ?? null) : null) }));
 vi.mock("../../lib/models", () => ({ resolveModel: (_h: string, m: string) => ({ name: m }) }));
 vi.mock("../AgentMarkdown", () => ({ AgentMarkdown: ({ text }: { text: string }) => <div data-md>{text}</div> }));
 vi.mock("../../chrome/FilePreview", () => ({
@@ -19,12 +20,16 @@ vi.mock("./SplitShell", () => ({
     board: React.ReactNode;
     chat: React.ReactNode;
     title?: React.ReactNode;
+    actions?: React.ReactNode;
     hasBoard: boolean;
     collapsed: boolean;
     onToggleChat: (open: boolean) => void;
   }) => (
     <div data-collapsed={String(p.collapsed)}>
-      <header data-view-header>{p.title}</header>
+      <header data-view-header>
+        {p.title}
+        {p.actions}
+      </header>
       <button type="button" onClick={() => p.onToggleChat(false)}>
         fold
       </button>
@@ -46,6 +51,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   resetChatFolds();
+  metaById = {};
 });
 
 const todo = (content: string, status: TodoItem["status"]): TodoItem => ({ content, status });
@@ -89,6 +95,18 @@ const view = (s: Session, extra: Record<string, unknown> = {}) => {
 };
 
 const first = { id: "u0", role: "user", text: "Build the thing\nmore", round: 0 } as Block;
+
+describe("the implementation header", () => {
+  it("links back to the planning thread with the plan type's tinted glyph", () => {
+    metaById = { plan1: { id: "plan1", title: "The plan", archived: false } };
+    const s = { ...session({ blocks: [first], todos: [] }), planThreadId: "plan1" } as Session;
+    const props = view(s, { onOpenSession: vi.fn() });
+    const link = screen.getByRole("button", { name: "Open the planning thread" });
+    expect(link.querySelector("svg[data-type-glyph]")?.getAttribute("class")).toContain("text-type-planning");
+    fireEvent.click(link);
+    expect(props.onOpenSession).toHaveBeenCalledWith("plan1");
+  });
+});
 
 describe("the implementation board", () => {
   it("is one TaskList and the changes, with no Subagents section and no inline colours", () => {

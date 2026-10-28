@@ -1,6 +1,7 @@
 import type { ThreadType } from "../lib/tcserver/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { THREAD_GLYPHS, THREAD_HINTS, THREAD_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
+import { THREAD_HINTS, THREAD_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
+import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 
 type Props = {
   value: ThreadType;
@@ -14,7 +15,6 @@ const ITEMS = THREAD_TYPES.map((type) => ({ value: type, label: THREAD_LABELS[ty
  *  the thread types, each with its hint under its name. Closing hands the
  *  focus back to the composer through `onClose`. */
 export function ThreadTypeChip({ value, onChange, onClose }: Props) {
-  const Glyph = THREAD_GLYPHS[value];
   return (
     <Select
       items={ITEMS}
@@ -33,7 +33,7 @@ export function ThreadTypeChip({ value, onChange, onClose }: Props) {
         className="shrink-0 border-transparent px-1.5 text-xs text-muted-foreground hover:bg-foreground/7 hover:text-foreground data-popup-open:text-foreground [&>svg]:size-3"
       >
         <SelectValue>
-          <Glyph className="size-3.5" strokeWidth={1.5} />
+          <TypeGlyph type={value} className="size-3.5" />
           {THREAD_LABELS[value]}
         </SelectValue>
       </SelectTrigger>
@@ -45,10 +45,9 @@ export function ThreadTypeChip({ value, onChange, onClose }: Props) {
         className="w-72 p-1"
       >
         {THREAD_TYPES.map((type) => {
-          const Icon = THREAD_GLYPHS[type];
           return (
             <SelectItem key={type} value={type} label={THREAD_LABELS[type]} className="items-start py-1.5">
-              <Icon className="mt-0.5 size-3.5 text-muted-foreground" strokeWidth={1.5} />
+              <TypeGlyph type={type} className="mt-0.5 size-3.5" />
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span>{THREAD_LABELS[type]}</span>
                 <span className="whitespace-normal text-xs text-muted-foreground">{THREAD_HINTS[type]}</span>

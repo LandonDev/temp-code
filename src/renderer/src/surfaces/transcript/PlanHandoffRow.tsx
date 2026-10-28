@@ -6,7 +6,7 @@ import { StatusMark, type ThreadState } from "../../components/ui/status";
 import type { Block } from "../../lib/session";
 import { useMetaById } from "../../lib/threads/agents";
 import { SelectSessionContext } from "../AgentMarkdown";
-import { THREAD_GLYPHS } from "../threads/threadTypes";
+import { TypeGlyph } from "../threads/TypeGlyph";
 import { NoticeLine } from "./NoticeLine";
 
 /** A build's session status in the status vocabulary's words. */
@@ -34,11 +34,11 @@ export function PlanHandoffRow({ block }: { block: Block }) {
   const meta = useMetaById(handoff?.id ?? null);
   const onSelectSession = useContext(SelectSessionContext);
   if (!handoff) return null;
-  const Glyph = THREAD_GLYPHS[meta?.threadType === "orchestration" ? "orchestration" : "implementation"];
+  const type = meta?.threadType === "orchestration" ? "orchestration" : "implementation";
   const title = meta?.title || handoff.title;
   return (
     <NoticeLine
-      glyph={<Glyph />}
+      glyph={<TypeGlyph type={type} className="size-3.5" />}
       lead={handoff.how === "auto" ? "Started the build" : "Build started"}
       details={[
         <Button

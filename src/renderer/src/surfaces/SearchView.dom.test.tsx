@@ -29,7 +29,7 @@ const h = vi.hoisted(() => {
     metas: [
       { id: "s-local", environmentId: "local", parentId: null, archived: false, cwd: "/Users/me/app", provider: "claude", title: "Gateway trace", updatedAt: 5 },
       { id: "s-box", environmentId: "env_box", parentId: null, archived: false, cwd: "/work/app", provider: "codex", title: "Box thread", updatedAt: 6 },
-      { id: "s-alpha", environmentId: "local", parentId: null, archived: false, cwd: "/Users/me/alpha", provider: "claude", title: "Alpha thread", updatedAt: 7 },
+      { id: "s-alpha", environmentId: "local", parentId: null, archived: false, cwd: "/Users/me/alpha", provider: "claude", threadType: "planning", title: "Alpha thread", updatedAt: 7 },
     ],
     workspaces: [
       { id: "w1", environmentId: "local", name: "app", path: "/Users/me/app", git: true, createdAt: 1 },
@@ -241,6 +241,20 @@ describe("SearchView across hosts", () => {
     fireEvent.keyDown(input, { key: "ArrowUp" });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(p.onOpenFile).toHaveBeenCalledWith("/Users/me/app/src/gateway.ts");
+    view.unmount();
+  });
+
+  it("a thread hit leads with its type's tinted glyph; one with no type draws chat's", async () => {
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "thread type:thread");
+    const glyphOf = (title: string) =>
+      rows(view)
+        .find((row) => row.textContent?.includes(title))
+        ?.querySelector("svg[data-type-glyph]");
+    expect(glyphOf("Alpha thread")?.getAttribute("class")).toContain("text-type-planning");
+    expect(glyphOf("Box thread")?.getAttribute("data-type-glyph")).toBe("chat");
+    expect(glyphOf("Box thread")?.getAttribute("class")).toContain("text-type-chat");
+    expect(view.container.querySelector('[data-icon="harness"]')).toBeNull();
     view.unmount();
   });
 

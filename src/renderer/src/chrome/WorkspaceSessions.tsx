@@ -33,7 +33,8 @@ import {
 } from "./icons";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { agentSummaryParts, modelLabel, type AgentSummary } from "../lib/threads/agents";
-import { AGENT_GLYPHS, THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
+import { AGENT_GLYPHS, THREAD_MENU_ICONS } from "../surfaces/threads/threadTypes";
+import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 import { STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/status";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -313,8 +314,9 @@ const ROW =
 
 /**
  * A thread row, presentational: a root in the workspace column (32px, its
- * title in the project name's column) or a child one step in (a subagent or
- * a batch thread, 28px, the role's or type's glyph before its title, what a
+ * type's glyph in the lead column, so its title sits in the project name's
+ * column) or a child one step in (a subagent or a batch thread, 28px, the
+ * role's plain glyph or the type's tinted one before its title, what a
  * running one does after). It ends in its mark: the glyph alone, the word,
  * what it is about and a child's model on hover. Unread is weight on the title, never a dot.
  * Selection is a `muted` fill; nothing tints a paused row.
@@ -325,7 +327,6 @@ export function ThreadRowView({
   offline = false,
   child = false,
   word = false,
-  lead = true,
   fold,
   title,
   onOpen,
@@ -340,9 +341,6 @@ export function ThreadRowView({
   /** The mark with its word (the popover, where the width allows it); a
    *  failed row then prints the host's verdict under its title. */
   word?: boolean;
-  /** The empty 16px slot that puts a root's title in the project name's
-   *  column; the popover, with no chevrons, leaves it out. */
-  lead?: boolean;
   fold?: Fold;
   /** In place of the title: the rename field. */
   title?: ReactNode;
@@ -354,7 +352,7 @@ export function ThreadRowView({
   onRename?: () => void;
 }) {
   const tally = batchTally(row);
-  const Glyph = child ? (row.agentType ? AGENT_GLYPHS[row.agentType] : row.threadType ? THREAD_GLYPHS[row.threadType] : null) : null;
+  const RoleGlyph = child && row.agentType ? AGENT_GLYPHS[row.agentType] : null;
   const live = child && row.running ? row.activity?.trim() : "";
   const editing = title != null;
   const planReady = !!useContext(PlanReadyContext)[row.id];
@@ -406,10 +404,17 @@ export function ThreadRowView({
         offline && "opacity-50",
       )}
     >
-      {lead ? <span aria-hidden className="size-4 shrink-0" /> : null}
-      {Glyph ? (
+      {/* The lead column: a root's type glyph; under it a child's one step in. */}
+      <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+        {child ? null : <TypeGlyph type={row.threadType} className="size-3" />}
+      </span>
+      {RoleGlyph ? (
         <span aria-hidden className="grid size-4 shrink-0 place-items-center text-muted-foreground">
-          <Glyph className="size-3" strokeWidth={1.5} />
+          <RoleGlyph className="size-3" strokeWidth={1.5} />
+        </span>
+      ) : child && row.threadType ? (
+        <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+          <TypeGlyph type={row.threadType} className="size-3" />
         </span>
       ) : null}
       {editing ? (
@@ -729,8 +734,7 @@ function LineMark({ state }: { state: ThreadState | null }) {
 
 /** A line's type glyph: the thread's kind at 12px, muted. */
 function LineGlyph({ thread }: { thread: ThreadRow }) {
-  const Glyph = THREAD_GLYPHS[thread.threadType ?? "chat"];
-  return <Glyph aria-hidden className="size-3 shrink-0 text-muted-foreground" strokeWidth={1.5} />;
+  return <TypeGlyph type={thread.threadType} className="size-3" />;
 }
 
 const LINE = "flex h-6 min-w-0 items-center gap-2";
@@ -1086,7 +1090,7 @@ export const ProjectCard = memo(function ProjectCard({
         icon: Archive,
         disabled: all.length === 0,
       },
-      ...dormantByType(all).map((g): MenuRow => ({ kind: "item", id: `archive-dormant:${g.type}`, label: g.label, icon: THREAD_GLYPHS[g.type] })),
+      ...dormantByType(all).map((g): MenuRow => ({ kind: "item", id: `archive-dormant:${g.type}`, label: g.label, icon: THREAD_MENU_ICONS[g.type] })),
       { kind: "item", id: "archive", label: teardown ? "Archive project…" : "Archive project", icon: Archive },
       { kind: "sep" },
       { kind: "item", id: "delete", label: "Delete project…", icon: Trash2, danger: true },

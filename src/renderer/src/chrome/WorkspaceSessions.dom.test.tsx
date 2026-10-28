@@ -119,6 +119,18 @@ describe('a project card', () => {
     probe.unmount()
   })
 
+  it("a thread line's type glyph is its type's tint", () => {
+    const probe = mountProbe(
+      projectCard([
+        threadRow(meta('r', { title: 'Survey', threadType: 'research', status: 'running', busySince: 5 }), {}),
+        threadRow(meta('c', { title: 'Question', status: 'paused' }), {})
+      ])
+    )
+    expect(lineOf(probe.container, 'Survey').querySelector('svg[data-type-glyph]')?.getAttribute('class')).toContain('text-type-research')
+    expect(lineOf(probe.container, 'Question').querySelector('svg[data-type-glyph]')?.getAttribute('class')).toContain('text-type-chat')
+    probe.unmount()
+  })
+
   it('a working implementation thread carries its task line under its title', () => {
     const probe = mountProbe(
       projectCard([
@@ -363,6 +375,27 @@ describe('ThreadRows fold', () => {
     // The model is on the hover line, never at the row's end.
     expect(kids[1].textContent).not.toContain('Claude Opus 5.5')
     expect(kids[1].querySelector('svg')).not.toBeNull()
+    probe.unmount()
+  })
+
+  it("a root leads with its type's tinted glyph; a batch thread's glyph is tinted one step in, a subagent's role glyph is not", () => {
+    const master: ThreadRow = {
+      ...threadRow(meta('master', { isMaster: true, threadType: 'orchestration' }), {}),
+      children: [threadRow(meta('own', { parentId: 'master', status: 'running', agentType: 'explorer' }), {})],
+      batch: [threadRow(meta('b1', { masterId: 'master', threadType: 'research', status: 'running', busySince: 5 }), {})]
+    }
+    const probe = mountProbe(<ThreadList threads={[master]} actions={actions} className="" />)
+    const [root, batch, own] = Array.from(probe.container.querySelectorAll<HTMLElement>('[role="button"]'))
+    // The root's first slot is its lead column, holding its type's glyph.
+    const lead = root.firstElementChild!
+    expect(lead.querySelector('svg')?.getAttribute('data-type-glyph')).toBe('orchestration')
+    expect(lead.querySelector('svg')?.getAttribute('class')).toContain('text-type-orchestration')
+    // A child keeps the lead column empty, then its own glyph: the tree indents one step.
+    expect(batch.firstElementChild!.querySelector('svg')).toBeNull()
+    expect(batch.querySelector('svg[data-type-glyph]')?.getAttribute('class')).toContain('text-type-research')
+    expect(own.firstElementChild!.querySelector('svg')).toBeNull()
+    expect(own.querySelector('svg[data-type-glyph]')).toBeNull()
+    expect(own.children[1]!.querySelector('svg')?.getAttribute('class') ?? '').not.toContain('text-type-')
     probe.unmount()
   })
 

@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import type { ThreadType } from "../lib/tcserver/types";
-import { THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
+import { THREAD_MENU_ICONS } from "../surfaces/threads/threadTypes";
 import { Archive, FileText, FolderPlus, MessageSquarePlus, Settings, SlidersHorizontal, Workflow, X } from "./icons";
 import { RowsMenu, tidy, type MenuRow } from "./menuRows";
 
@@ -57,7 +57,7 @@ export function WorkspaceMenu({
         kind: "item",
         id: `archive-dormant:${g.type}`,
         label: g.label,
-        icon: THREAD_GLYPHS[g.type as ThreadType] ?? Archive,
+        icon: THREAD_MENU_ICONS[g.type as ThreadType] ?? Archive,
       })),
       { kind: "sep" },
       ...(onThreadDefaults ? [{ kind: "item", id: "thread-defaults", label: "Thread defaults", icon: SlidersHorizontal } as const] : []),

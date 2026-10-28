@@ -6,7 +6,7 @@ import { Input } from "../components/ui/input";
 import { ItemButton, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
 import { NO_ROOM_LABEL } from "../lib/rightPanel";
 import { shortcutFor } from "../lib/settings";
-import { THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
+import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 import { timeAgo } from "../lib/duration";
 import { LazyPopover, RowsMenu, tidy, type MenuRow } from "./menuRows";
 import { HostGlyph } from "./HostGlyph";
@@ -213,32 +213,29 @@ export function ThreadListPopover({
       ) : null}
       <div className="max-h-80 overflow-y-auto">
         {shown.length === 0 ? <p className="px-2 py-3 text-center text-[12px] text-muted-foreground">No matches</p> : null}
-        {shown.map((thread) => {
-          const Glyph = THREAD_GLYPHS[thread.type ?? "chat"];
-          return (
-            <ItemButton
-              key={thread.id}
-              size="xs"
-              data-listed={thread.id}
-              onClick={() => onPick(thread.id)}
-              className="text-left hover:bg-muted"
-            >
-              <ItemMedia>
-                <Glyph className="size-3.5" strokeWidth={1.5} />
-              </ItemMedia>
-              <ItemContent className="min-w-0">
-                <ItemTitle className="w-full truncate font-normal">{thread.title || "Untitled"}</ItemTitle>
-                <ItemDescription className="tabular-nums">{timeAgo(thread.updatedAt)}</ItemDescription>
-              </ItemContent>
-              {restore ? (
-                <ItemActions className="gap-1 text-[12px] text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) group-hover/item:opacity-100 group-focus-visible/item:opacity-100">
-                  <ArchiveRestore className="size-3.5" strokeWidth={1.5} />
-                  Restore
-                </ItemActions>
-              ) : null}
-            </ItemButton>
-          );
-        })}
+        {shown.map((thread) => (
+          <ItemButton
+            key={thread.id}
+            size="xs"
+            data-listed={thread.id}
+            onClick={() => onPick(thread.id)}
+            className="text-left hover:bg-muted"
+          >
+            <ItemMedia>
+              <TypeGlyph type={thread.type} className="size-3.5" />
+            </ItemMedia>
+            <ItemContent className="min-w-0">
+              <ItemTitle className="w-full truncate font-normal">{thread.title || "Untitled"}</ItemTitle>
+              <ItemDescription className="tabular-nums">{timeAgo(thread.updatedAt)}</ItemDescription>
+            </ItemContent>
+            {restore ? (
+              <ItemActions className="gap-1 text-[12px] text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) group-hover/item:opacity-100 group-focus-visible/item:opacity-100">
+                <ArchiveRestore className="size-3.5" strokeWidth={1.5} />
+                Restore
+              </ItemActions>
+            ) : null}
+          </ItemButton>
+        ))}
       </div>
     </>
   );

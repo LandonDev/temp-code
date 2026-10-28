@@ -18,7 +18,7 @@ import { actKind, changeStat, editPath } from "../../lib/threads/rounds";
 import { AgentMarkdown } from "../AgentMarkdown";
 import { OpenAgentDetailContext } from "../agentDetailContext";
 import { duration } from "../../lib/duration";
-import { THREAD_GLYPHS } from "./threadTypes";
+import { TypeGlyph } from "./TypeGlyph";
 import { ChangeRows } from "./ChangeRows";
 import { AgentDetail } from "./fleet/AgentDetail";
 import {
@@ -183,7 +183,6 @@ export function ImplementationView(props: ThreadViewProps) {
   // The planning thread the plan came from: the server's link, so the
   // build points back even once the plan is archived.
   const plan = useMetaById(session.planThreadId ?? null);
-  const PlanGlyph = THREAD_GLYPHS.planning;
   const planPath = session.planPath;
   const actions = (
     <>
@@ -211,7 +210,7 @@ export function ImplementationView(props: ThreadViewProps) {
               />
             }
           >
-            <PlanGlyph />
+            <TypeGlyph type="planning" />
           </TooltipTrigger>
           <TooltipContent>
             Planned in {plan.title}

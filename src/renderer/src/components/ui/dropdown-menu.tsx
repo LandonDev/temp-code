@@ -26,7 +26,7 @@ const SIZE = {
 } as const;
 
 const ROW =
-  "flex cursor-default select-none items-center outline-hidden focus:bg-muted focus:text-foreground data-highlighted:bg-muted [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-muted-foreground";
+  "flex cursor-default select-none items-center outline-hidden focus:bg-muted focus:text-foreground data-highlighted:bg-muted [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='text-'])]:text-muted-foreground";
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />;

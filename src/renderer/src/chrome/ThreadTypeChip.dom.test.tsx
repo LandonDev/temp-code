@@ -35,6 +35,18 @@ describe("ThreadTypeChip", () => {
     );
   });
 
+  it("tints the trigger's glyph and every item's glyph with its type's colour", async () => {
+    render(<ThreadTypeChip value="orchestration" onChange={() => {}} />);
+    const trigger = screen.getByRole("combobox", { name: "Thread type" });
+    expect(trigger.querySelector("svg[data-type-glyph]")?.getAttribute("class")).toContain("text-type-orchestration");
+    await open();
+    for (const option of await screen.findAllByRole("option")) {
+      const glyph = option.querySelector("svg[data-type-glyph]")!;
+      expect(glyph.getAttribute("class")).toContain(`text-type-${glyph.getAttribute("data-type-glyph")}`);
+      expect(glyph.getAttribute("class")).not.toContain("text-muted-foreground");
+    }
+  });
+
   it("calls onChange with the type picked and onClose as it closes", async () => {
     const onChange = vi.fn();
     const onClose = vi.fn();

@@ -54,12 +54,12 @@ function Workspace({ name, color, mark, unread = false, selected = false }: { na
 }
 
 const alpha = [
-  row("a1", "Plan A2: rail marks", { status: "running", activity: "Running bun test" }),
-  row("a2", "The global UI standard", { status: "waiting" }),
-  row("a3", "Queue the stability build", { status: "queued" }),
+  row("a1", "Plan A2: rail marks", { status: "running", activity: "Running bun test", threadType: "planning" }),
+  row("a2", "The global UI standard", { status: "waiting", threadType: "implementation" }),
+  row("a3", "Queue the stability build", { status: "queued", threadType: "research" }),
   row("a4", "Retry the deploy", { status: "stopped" }),
   {
-    ...row("m", "iOS batch 2", { status: "watching", isMaster: true }),
+    ...row("m", "iOS batch 2", { status: "watching", isMaster: true, threadType: "orchestration" }),
     batch: [
       row("b1", "Board rows", { status: "done", masterId: "m" }),
       row("b2", "Board foot", { status: "done", masterId: "m" }),
@@ -91,7 +91,8 @@ export function RailMarksSketch() {
         {alpha.map((t) => (
           <ThreadRowView key={t.id} row={t} selected={t.id === "a1"} />
         ))}
-        <ThreadRowView row={row("b4", "Rules dialog", { status: "running", masterId: "m", activity: "Editing rulesEdit.ts", provider: "claude", model: "claude-opus-5-5" })} child />
+        <ThreadRowView row={row("b4", "Rules dialog", { status: "running", masterId: "m", threadType: "implementation", activity: "Editing rulesEdit.ts", provider: "claude", model: "claude-opus-5-5" })} child />
+        <ThreadRowView row={row("s1", "Survey the tests", { status: "running", parentId: "a1", agentType: "explorer", activity: "Reading gate.ts" })} child />
         <ProjectRowView name="Beta" open={false} mark={markOf([row("p", "Paused work", { status: "paused" })])} menu={{ rows: () => [], onPick: noop }} />
         <ProjectRowView name="Gamma" open={false} mark={null} menu={{ rows: () => [], onPick: noop }} />
       </div>

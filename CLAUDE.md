@@ -269,7 +269,12 @@ app replaces itself from the feed, and only from the feed.
   (Kobra on Base UI, adapted flat to the tokens at the top of
   `src/renderer/src/index.css`, to `chrome/icons` and to the motion tokens;
   `StatusMark` is the one status vocabulary, `threadStateOf` turns a wire
-  status into its state; sonner is the one toast stack, seated 8px above the
+  status into its state; `TypeGlyph` (surfaces/threads/TypeGlyph.tsx) is
+  the one coloured type glyph, each type's tint a `--type-*` token on the
+  glyph alone, `THREAD_MENU_ICONS` its menu-row form, a test in
+  threadTypes.test.ts refusing any other read of `THREAD_GLYPHS` and
+  lib/typeTint.test.ts holding the tints to 3:1 and 30° from amber and red;
+  sonner is the one toast stack, seated 8px above the
   focused thread's strip and inside its column (no wider than it less 16px
   a side, so a master's chat beside its board holds it), above the board's
   foot while a master's chat is folded, `toastInset` in
@@ -1209,8 +1214,9 @@ routed to (aliax-core's `forward`). Two listeners:
   it has not stamped yet) into one row on the newer copy (`search.project`
   matches carry `mtime`), folds each file's name and matching lines into
   one row (`foldFileHits`: the first line, `+N more` for the others; a name
-  hit opens at its first line), marks each hit with the host glyph when more
-  than one host is paired, and, with two or more hosts paired, says "box:
+  hit opens at its first line), leads a thread hit with its tinted type
+  glyph (`ConversationHit.threadType`, chat when absent), marks each hit
+  with the host glyph when more than one host is paired, and, with two or more hosts paired, says "box:
   1.2 s" per host at the foot (skipped when offline). Filters are typed in the box (`host:` and `type:` take a
   comma list, `project:` a name) or ticked in the field's filter menu
   (chrome/SearchFiltersMenu.tsx), which writes the same tokens

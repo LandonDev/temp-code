@@ -418,6 +418,7 @@ export type ThreadMeta = {
   id: string;
   cwd: string;
   harness: MessageHit["harness"];
+  threadType?: ConversationHit["threadType"];
   title: string;
   updatedAt: number;
 };
@@ -505,6 +506,7 @@ export function browseHits(input: BrowseInput): Map<string, AppSearchHit[]> {
       sessionId: thread.id,
       cwd: thread.cwd,
       harness: thread.harness,
+      ...(thread.threadType ? { threadType: thread.threadType } : {}),
       title: input.displayTitle(thread.title, thread.harness),
       updatedAt: thread.updatedAt,
       score: 0,

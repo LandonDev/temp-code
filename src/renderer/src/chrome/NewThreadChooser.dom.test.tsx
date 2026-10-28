@@ -41,6 +41,14 @@ describe("NewThreadChooser", () => {
     ]);
   });
 
+  it("draws each type's row with its type's tinted glyph", async () => {
+    render(<NewThreadChooser workspaceId={null} empty={false} onStart={() => {}} />);
+    await click(screen.getByRole("button", { name: "New thread" }));
+    const glyphs = [...(await screen.findByRole("dialog")).querySelectorAll("svg[data-type-glyph]")];
+    expect(glyphs.map((g) => g.getAttribute("data-type-glyph"))).toEqual(["chat", "planning", "project-plan", "implementation", "orchestration", "research"]);
+    for (const g of glyphs) expect(g.getAttribute("class")).toContain(`text-type-${g.getAttribute("data-type-glyph")}`);
+  });
+
   it("starts the picked type with no rules", async () => {
     const onStart = vi.fn();
     render(<NewThreadChooser workspaceId={null} empty={false} onStart={onStart} />);

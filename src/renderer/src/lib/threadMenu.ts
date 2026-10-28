@@ -21,7 +21,7 @@ import {
   Trash2,
   X,
 } from "../chrome/icons";
-import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
+import { THREAD_LABELS, THREAD_MENU_ICONS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
 import { masterMenuLabel } from "./masterThread";
 import type { SessionStatus, ThreadType } from "./tcserver/types";
 
@@ -108,7 +108,7 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
       kind: "item",
       id: `type:${each}`,
       label: THREAD_LABELS[each],
-      icon: THREAD_GLYPHS[each],
+      icon: THREAD_MENU_ICONS[each],
       checked: each === type,
     })),
   });

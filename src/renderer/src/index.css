@@ -45,6 +45,15 @@
   --success: var(--thread-success);
   --warning: var(--thread-warning);
   --info: var(--thread-info);
+  /* Type identity: one colour per thread type, on its glyph only, never a
+     status, a title, a fill or a border. Literals, so retuning a status
+     colour never moves a type (lib/typeTint.test.ts). */
+  --type-chat: #60a5fa;
+  --type-planning: #a78bfa;
+  --type-project-plan: var(--type-planning);
+  --type-implementation: #34d399;
+  --type-orchestration: #cedd59;
+  --type-research: #22d3ee;
   /* Floating layers: one shadow, soft. Docked chrome has none. */
   /* Chart series, from the dataviz reference palette, checked on the dark surfaces (A4's plan). */
   --chart-1: #3987e5;
@@ -105,6 +114,11 @@ html.theme-light {
   --primary: oklch(0.2 0 0);
   --primary-foreground: oklch(0.99 0 0);
   --accent: hsl(211 92% 48%);
+  --type-chat: #2563eb;
+  --type-planning: #7c3aed;
+  --type-implementation: #059669;
+  --type-orchestration: #7d6700;
+  --type-research: #0891b2;
   --chart-1: #2a78d6;
   --chart-2: #eb6834;
   --chart-3: #1baf7a;
@@ -137,6 +151,12 @@ html.theme-light {
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-type-chat: var(--type-chat);
+  --color-type-planning: var(--type-planning);
+  --color-type-project-plan: var(--type-project-plan);
+  --color-type-implementation: var(--type-implementation);
+  --color-type-orchestration: var(--type-orchestration);
+  --color-type-research: var(--type-research);
   --shadow-overlay: var(--shadow-overlay);
 }
 @source "../../../node_modules/streamdown/dist/*.js";

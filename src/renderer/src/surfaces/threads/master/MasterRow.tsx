@@ -15,7 +15,8 @@ import type { SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
 import { marksAtRest } from "../../../lib/threadStripModel";
 import { modelLabel } from "../../../lib/threads/agents";
-import { AGENT_GLYPHS, THREAD_GLYPHS } from "../threadTypes";
+import { AGENT_GLYPHS } from "../threadTypes";
+import { TypeGlyph } from "../TypeGlyph";
 import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
 import { rowStatus, taskList, taskTally } from "./rowBody";
 import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
@@ -135,7 +136,6 @@ export function MasterRowView({
   // The section heading says the word; a state it does not name says its own.
   const ownWord = STATUS_WORD[state] !== GROUP_LABEL[group];
   const quiet = group === "done" || group === "queued";
-  const Glyph = meta.threadType ? THREAD_GLYPHS[meta.threadType] : null;
   const type = typeWord(meta);
 
   // React bubbles a portal's events through the tree: a pick in the ⋯
@@ -180,10 +180,10 @@ export function MasterRowView({
     >
       {/* Line one: the type's glyph, the title, the host; the model at the end. */}
       <span className="flex h-5 items-center justify-center">
-        {Glyph ? (
+        {meta.threadType ? (
           <Tooltip>
             <TooltipTrigger render={<span className="flex" role="img" aria-label={type || undefined} />}>
-              <Glyph className="size-4 text-muted-foreground" strokeWidth={1.5} />
+              <TypeGlyph type={meta.threadType} className="size-4" />
             </TooltipTrigger>
             {type ? <TooltipContent>{type}</TooltipContent> : null}
           </Tooltip>
@@ -310,7 +310,7 @@ function AgentLines({ agents, hostGlyph, onOpen }: { agents: RowAgents; hostGlyp
 }
 
 function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph: HostGlyphOf; onOpen: (id: string) => void }) {
-  const Glyph = line.agentType ? AGENT_GLYPHS[line.agentType] : line.threadType ? THREAD_GLYPHS[line.threadType] : null;
+  const RoleGlyph = line.agentType ? AGENT_GLYPHS[line.agentType] : null;
   return (
     <li>
       <Button
@@ -325,7 +325,11 @@ function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph:
         data-agent={line.id}
       >
         <StatusMark state={line.state} word={false} />
-        {Glyph ? <Glyph className="size-3 shrink-0 text-muted-foreground" strokeWidth={1.5} /> : null}
+        {RoleGlyph ? (
+          <RoleGlyph className="size-3 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+        ) : line.threadType ? (
+          <TypeGlyph type={line.threadType} className="size-3" />
+        ) : null}
         <span className="max-w-[45%] min-w-0 truncate text-muted-foreground">{line.title || "Subagent"}</span>
         <span className={cn("min-w-0 flex-1 truncate", statusNeedsYou(line.state) ? statusToneClass(line.state) : "text-muted-foreground")} data-agent-what>
           {line.detail}

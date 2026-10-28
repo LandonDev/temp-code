@@ -15,7 +15,8 @@ bubble on the right, the model's as plain text on the left, its actions
 clumped into one muted line per paragraph that opens into a single
 thin-bordered list. Colour means something or is absent: amber when the
 person is needed, red when something failed, green for lines added, the one
-blue accent for links and focus. Motion is short, physical and interruptible;
+blue accent for links and focus, and a thread's type on its glyph alone.
+Motion is short, physical and interruptible;
 nothing bounces, glows, slides in from nowhere or stays on screen when it is
 done.
 
@@ -77,6 +78,33 @@ The status colours (`success`, `warning`, `destructive`, `info`) are text
 as often as fills, so each reaches 4.5:1 as small text on `background`,
 `sidebar`, `card` and a selected (`muted`) row in both themes; the light
 theme's are the darker steps for that (`lib/statusContrast.test.ts`).
+
+### Type tints
+
+A thread's type has one colour, and only its glyph takes it: never a title,
+a label, a fill or a border. `TypeGlyph` (surfaces/threads/TypeGlyph.tsx) is
+the one thing that draws a type's glyph, and a menu row naming a type uses
+`THREAD_MENU_ICONS`. The tints are v1.0.303's, held as literals so a status
+colour's retune never moves a type.
+
+| Token | Type | Dark | Light |
+| --- | --- | --- | --- |
+| `type-chat` | chat | `#60a5fa` | `#2563eb` |
+| `type-planning` | plan | `#a78bfa` | `#7c3aed` |
+| `type-project-plan` | project plan | planning's | planning's |
+| `type-implementation` | implementation | `#34d399` | `#059669` |
+| `type-orchestration` | orchestration | `#cedd59` | `#7d6700` |
+| `type-research` | research | `#22d3ee` | `#0891b2` |
+
+Orchestration was amber at v1.0.303, the same amber as Needs you; it now
+sits 31° (dark) and 42° (light) of OKLCH hue from `warning`. The rule, held
+by `lib/typeTint.test.ts`: each tint reaches 3:1 (the non-text bar) on
+`background`, `sidebar`, `card` and `muted` in both themes, and stands at
+least 30° of OKLCH hue from `warning` and `destructive`. Light
+implementation (3.30) and research (3.23) are under 4.5:1, which is why no
+text may take a type tint. A glyph is always tinted, on an active chip or
+an idle one; a row's own dimming (offline, disabled) dims it with the row,
+and it never brightens to mean active.
 
 Opacities on `foreground` are the hover vocabulary: `/5` a hovered row,
 `/7` a hovered ghost button, `/12` a pressed one. Status colours never fill
@@ -284,6 +312,9 @@ notes are a row under Release, whose one button is the updater's. Switching page
 buttons, 14px in dense chrome, 12px as a mark beside text, 1.5px stroke,
 `currentColor`. An icon never carries meaning alone where a word fits; a
 tool row in the transcript keeps its tool icon beside its humanized verb.
+Two glyphs carry colour: `StatusMark`'s, for a state, and the type glyph
+(`TypeGlyph`), in its type's tint ("Type tints"). Every other glyph is
+uncoloured: a subagent's role glyph (`AGENT_GLYPHS`), a tool's, the host's.
 The host glyph (chrome/HostGlyph.tsx) stays as it is: 12px, uncoloured, the
 name on hover, drawn only with two or more hosts.
 

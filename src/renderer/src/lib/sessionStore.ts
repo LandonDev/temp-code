@@ -4,7 +4,7 @@ import type { HarnessId, RuntimeMode, Session } from "./session";
 import { normalizeProjectPath, sameProjectPath } from "./recents";
 import * as commands from "./tcserver/commands";
 import { sessionFromMeta, sessionStore } from "./tcserver/store";
-import type { SessionMeta } from "./tcserver/types";
+import type { SessionMeta, ThreadType } from "./tcserver/types";
 
 /**
  * Session history over the server's session list. The server owns every
@@ -80,6 +80,7 @@ export type SessionSearchHit = {
   sessionId: string;
   cwd: string;
   harness: string;
+  threadType?: ThreadType | null;
   title: string;
   updatedAt: number;
   blockId?: string;
@@ -135,6 +136,7 @@ export async function searchSessions(options: {
     sessionId: meta.id,
     cwd: normalizeProjectPath(meta.cwd),
     harness: meta.provider,
+    threadType: meta.threadType,
     title: meta.title,
     updatedAt: meta.updatedAt,
   });

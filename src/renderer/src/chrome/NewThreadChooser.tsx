@@ -10,7 +10,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popove
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
 import { ThreadTune, normalizeTune } from "./ThreadTune";
-import { THREAD_GLYPHS, THREAD_HINTS, THREAD_LABELS, THREAD_START_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
+import { THREAD_HINTS, THREAD_LABELS, THREAD_START_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
+import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 
 const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
 
@@ -124,7 +125,6 @@ export function NewThreadChooser({
           </>
         ) : (
           THREAD_TYPES.map((type) => {
-            const Glyph = THREAD_GLYPHS[type];
             const tunable = TUNABLE.has(type);
             return (
               <div key={type} className="group/row flex items-center rounded-lg hover:bg-muted">
@@ -134,7 +134,7 @@ export function NewThreadChooser({
                   onClick={() => start(type)}
                 >
                   <ItemMedia>
-                    <Glyph className="size-3.5" strokeWidth={1.5} />
+                    <TypeGlyph type={type} className="size-3.5" />
                   </ItemMedia>
                   <ItemContent className="min-w-0">
                     <ItemTitle>{THREAD_START_LABELS[type] ?? THREAD_LABELS[type]}</ItemTitle>

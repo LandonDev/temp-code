@@ -5,7 +5,7 @@ import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
 import { Modal, useModalClose } from "../../../chrome/Modal";
 import type { SessionMeta } from "../../../lib/tcserver/types";
-import { THREAD_GLYPHS } from "../threadTypes";
+import { TypeGlyph } from "../TypeGlyph";
 import { typeWord } from "./useMasterModel";
 
 /**
@@ -100,13 +100,12 @@ function AdoptBody({
         <ScrollArea className="-mx-2 max-h-80 [&>[data-slot=scroll-area-viewport]]:max-h-80">
           <ItemGroup aria-label="Threads in no batch">
             {candidates.map((c) => {
-              const Glyph = c.threadType ? THREAD_GLYPHS[c.threadType] : null;
               return (
                 <Item key={c.id} size="xs" role="listitem" render={<label />} className="hover:bg-foreground/5 has-aria-disabled:hover:bg-transparent">
                   <ItemMedia>
                     <Checkbox checked={picked.has(c.id)} onCheckedChange={() => toggle(c.id)} disabled={pending} />
                   </ItemMedia>
-                  <ItemMedia className="w-4 text-muted-foreground">{Glyph ? <Glyph className="size-3.5" strokeWidth={1.75} /> : null}</ItemMedia>
+                  <ItemMedia className="w-4">{c.threadType ? <TypeGlyph type={c.threadType} className="size-3.5" /> : null}</ItemMedia>
                   <ItemContent className="min-w-0 flex-row items-baseline gap-2 group-data-[size=xs]/item:gap-2">
                     <ItemTitle className="min-w-0 font-normal">
                       <span className="truncate">{c.title || "Untitled"}</span>

@@ -33,7 +33,7 @@ import {
 } from "../lib/threadStripModel";
 import type { ActivityKind } from "../lib/session";
 import { RowsContextMenu, type MenuRow } from "./menuRows";
-import { THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
+import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 import { ThreadStatusMark } from "./TabIndicator";
 
 /** The tooltip is inverted (foreground on background), so the hover line takes its muted tone whole. */
@@ -335,7 +335,6 @@ function Chip({
   const status = chipStatus(chip, events.planReady);
   const title = chipTitle(chip);
   const unread = !active && chip.unread;
-  const Glyph = THREAD_GLYPHS[chip.thread.threadType ?? "chat"];
   return (
     <div
       ref={active ? events.activeRef : undefined}
@@ -363,7 +362,7 @@ function Chip({
               />
             }
           >
-            <Glyph className="size-3.5 shrink-0" strokeWidth={1.5} />
+            <TypeGlyph type={chip.thread.threadType} className="size-3.5" />
             <span className="min-w-0 truncate">{title}</span>
             {events.masterIds?.has(chip.id) ? (
               <span className="shrink-0 font-normal text-muted-foreground" data-master-word>

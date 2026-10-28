@@ -110,10 +110,12 @@ something runs; a failure is a toast), Dev server checked while the Dev
 servers pane is open (only when a host can serve the project), Terminal
 with ⌘\`, Recent threads… and Archived threads…: each a `Popover` from
 the ⋯ button over one list body (`ThreadListPopover`), freshest first, a
-row the type glyph, the title and the age, a filter past six and one muted
+row the tinted type glyph, the title and the age, a filter past six and one muted
 "No matches" row; Recent threads… lists every settled root of the strip's
 scope and a row opens it, Archived threads… restores one (Restore on
-hover); Escape gives focus back to ⋯. The branch is the top row
+hover); Escape gives focus back to ⋯. A menu row that names a type (the
+thread's Type submenu, the workspace's Archive dormant rows) draws
+`THREAD_MENU_ICONS`: its type's glyph in its tint. The branch is the top row
 of the right panel's Changes section, not the header's.
 
 ### Sidebar
@@ -124,15 +126,15 @@ of the right panel's Changes section, not the header's.
 | Row | `chrome/RailRow.tsx` (`RailRow`) | every row in the rail and the settings list: 36px, a 16px glyph, a 13px label, `text-muted-foreground` at rest and `text-foreground` on hover, focus and selection; selection is `aria-current` with a `bg-muted` fill, hover `bg-foreground/5`, never a bar, border or shadow; at most one trailing mark (`trailingInteractive` puts a control such as a workspace's status word beside the row's button) and one hover action (an icon Button with its Tooltip that takes the trailing slot's place); a Tooltip, never `title=`, and a label the row cuts (a long workspace name) is its own tooltip while it is cut (`useTruncated`); rows never animate in or out. The lists sit in an 8px inset |
 | Heading | `RailHeading` in `chrome/RailRow.tsx` | 28px, 12px `font-medium` muted, sentence case, on the rows' glyph column; "Pinned" only when pins exist, "Workspaces" ends in Add workspace (one always-visible icon button) unless the list is empty, when an Add workspace… row stands under it instead |
 | List | Chats, then Pinned, then Workspaces | Chats is the first row (the home's loose chats, its trailing mark the waiting or working glyph); Notes and Mark all read are not in the rail (Search finds notes with `type:note`, each thread's notes are the right panel's; Mark all read is in the Threads menu and every workspace and host menu) |
-| Workspace row | `WorkspaceRow` in `chrome/ProjectRail.tsx` on `lib/linkedRail.ts` | the glyph, the alias-resolved name, its one `StatusMark` word as its trailing mark (the glyph alone in a rail under 15rem, the row being the `railrow` container: the name keeps its room, and the button's name and the line under the row still say the word) and ⋯ (the right-click's menu: Customize… (name, logo, colour and mascot in one dialog, applied on Save), Pin or Unpin, Reveal, Mark all read, the fleet switches, Archive, Delete) as its hover action; drag reorders it, a 2px accent line marks the drop. One "Workspaces" section for every host, no host headers; a workspace linked across hosts (one `linkId`) is one row led by this machine's copy, its threads, word, Mark all read, pin and drag spanning every copy; order, pins, recents, labels, colours and mascots keep their keys, the other copies alias to the leader's (`aliasKeys`). No diff stat, no pin button, no shimmer on the name. The glyph (logo or mascot, never animated or tinted by state), the word (Needs you, Failed, Working, Paused, Watching, loudest first: Working is a thread running a turn, Watching one that waits on its batch, subagents or background work; a click opens the workspace's threads in a Popover) and the 24px line under the row naming the thread behind the word (`+N` for the others) are A2's, in `chrome/WorkspaceRowMarks.tsx`; unread is the row's emphasis |
+| Workspace row | `WorkspaceRow` in `chrome/ProjectRail.tsx` on `lib/linkedRail.ts` | the glyph, the alias-resolved name, its one `StatusMark` word as its trailing mark (the glyph alone in a rail under 15rem, the row being the `railrow` container: the name keeps its room, and the button's name and the line under the row still say the word) and ⋯ (the right-click's menu: Customize… (name, logo, colour and mascot in one dialog, applied on Save), Pin or Unpin, Reveal, Mark all read, the fleet switches, Archive, Delete) as its hover action; drag reorders it, a 2px accent line marks the drop. One "Workspaces" section for every host, no host headers; a workspace linked across hosts (one `linkId`) is one row led by this machine's copy, its threads, word, Mark all read, pin and drag spanning every copy; order, pins, recents, labels, colours and mascots keep their keys, the other copies alias to the leader's (`aliasKeys`). No diff stat, no pin button, no shimmer on the name. The glyph (logo or mascot, never animated or tinted by state), the word (Needs you, Failed, Working, Paused, Watching, loudest first: Working is a thread running a turn, Watching one that waits on its batch, subagents or background work; a click opens the workspace's threads in a Popover, each row led by its type's tinted glyph and a master's batch threads one step past it) and the 24px line under the row naming the thread behind the word (`+N` for the others) are A2's, in `chrome/WorkspaceRowMarks.tsx`; unread is the row's emphasis |
 | Offline tint | `chrome/hostOffline.ts` | with two or more hosts, a row whose host's link is not open (a rail row: every host of it) sits at `opacity-50` with `data-host-offline`, as the master board's rows do; its rows are the launch mirror's and lift when the host is back |
 | Foot | `RailFoot` in `chrome/ProjectRail.tsx` (`railFootRows`) | under a 1px hairline, in order: the sign-in row while this machine has no Claude or Codex account, the update row when there is something to act on, the Hosts row with two or more hosts, Inbox (medium foreground while something is unseen), Search (Tooltip ⌘K), Accounts and Stats (the desktop app only: at /ui their pages cannot open, so the rows are absent), Settings (Tooltip ⌘,), then the usage meter. The same foot sits under the workspace column while the rail is collapsed |
 | Update row | `chrome/UpdateRow.tsx` (`updateRowState`) | one RailRow, absent while idle or checking: "Updated to 1.0.N" (opens What's new, ✕ dismisses), "Update to 1.0.N" or "Retry update" (installs; What's new as the hover action when there are notes), "Downloading" with its percentage, "Restart to update"; the glyph is the accent while there is something to do, no tinted fill. Check for updates is in the app menu and Settings, General |
 | Hosts row | `HostsRow` in `chrome/HostRows.tsx` | only with two or more hosts: one row ending in a 6px dot per host (`toneOf`), its aria-label naming each host and its state; a click opens a `DropdownMenu` with a submenu per host (the `HostGlyph`, the name, the state word and the `+N` deploy drift), holding Switch to <host> (not for the host on screen), Add workspace here…, Mark all read, Pause all, Resume all, Stop all and Archive done, then Host settings. A host's boot resume is a sonner toast ("7 threads resumed after restart", the host's name under it with two or more hosts; `useBootResumeToasts`) |
 | Usage meter | `chrome/UsageMeter.tsx` on `src/shared/usageMeter.ts` (`meterFor`), the foot's last block | one 36px ghost row per provider with accounts: the provider glyph, an 80px 4px `Progress` of the pooled share (the mean room over every account routing could pick, each account's room its tighter of 5h and week; expired and unreported accounts left out; amber below 10%), then "in 2h" (the next refill) in 12px `text-muted-foreground`, or "Limited 3m" in `text-warning` while every account is throttled; before any report an empty track and no text. A provider whose every account answered that its plan has no caps (Cursor's "no usage caps on this plan", `NO_CAPS_NOTE`) has no row; an account still unanswered, expired or whose poll failed keeps the empty track. No account name. Hover (the tooltip's delays), click or Enter opens a `Popover` to the right: the provider and "62% left", one row per usage window (5h, Week, each per-model cap) with its refill, percent and bar, and one muted foot line, "3 accounts with room". It moves on the `accounts` push alone |
 | Settings list | `SettingsNav` in `chrome/SettingsRail.tsx` | while settings are open the rail's list is the pages as RailRows under RailHeadings, then the workspaces (another host's names its host as muted trailing text; two of one name on one host each name where they sit there: the shortest end of the parent folder's path that tells them apart, "work" or "me/work", else the whole path, `workspaceHint`), and Back as the foot's one row |
-| Workspace column | `chrome/Sidebar.tsx` | column two holds the workspace's project cards, then its loose chats and archived projects (`WorkspaceSessions`), under one 40px header (a 40px content box with its hairline under it, as the title bar's rows, so its buttons sit on the strip's y 6 line): the workspace's name (Chats at the home) in 13px medium, New thread (Tooltip ⌘N) and the workspace ⋯ menu. No tabs: files and changes are the right panel's Files and Changes sections; ⌘P still goes to a file. While the rail is collapsed a 40px row with the traffic lights and the toggle sits above the header and the rail's foot sits under the threads. The column's own element scrolls the list (the virtualizer's scroll element, as state); across Settings and Back it keeps, per workspace, its offset (re-applied as the rows measure when the list first lays out shorter than it was, until it fits or the person scrolls), its list pages and the Chats fold, and does not replay the selection's reveal. Threads are not listed under projects: a project's threads are picked from the title bar's strip and its ⋯ menu's Recent threads…; only the Chats and Archived folds keep thread rows (a loose chat has no project to go to). A right-click on any thread row opens that thread's menu, and an inline rename ended by Enter or Escape gives focus back to the row's or card's ⋯ |
-| Project card | `ProjectCardView` / `ProjectCard` in `chrome/WorkspaceSessions.tsx` on `cardLines`, `cardCounts` and `projectCardAriaLabel` (lib/sidebarRows.ts) | one `<button>` with no border or shadow, `rounded-lg`, `px-3 py-2`, a `bg-foreground/5` hover and a `bg-muted` fill while selected (`aria-current`), 4px from the next card, never animated. A 20px line: the name in 13px (foreground when selected, `font-medium` foreground while a thread in it is unread, else muted) and its last-active time in 12px muted `tabular-nums`, which gives way to ⋯ on hover and focus. A 16px branch line 2px under it: the branch glyph and the branch (else "local checkout"), then "worktree" or "local" two spaces on. Then 24px read-only lines in 12px, aligned under the name: each master with something to say as a block (its line with the batch's done tally, its working subagents in the fleet's words, its batch threads one step in, "N queued"), then the working roots (the spinner or the watching ring, the type glyph, the title, the host glyph, the elapsed past 3 s; an implementation thread's "3/7  task" under it), the paused ones ("Paused" and the frozen elapsed), the unread ones (no mark, the title's weight); a thread housed in a master prints only in its block. One page of lines, then "N more" beside the button. Last, a count line when there is something to count: "1 needs you" in amber and "N failed" in red with their glyphs, then muted "N dormant" and "N archived" (a thread inside a master is never dormant), two spaces apart; "No threads" for a project with none; paused is never counted. A click or Enter anywhere on it, a line included, selects the project (App's `onSelectProjectCard`); lines never open a thread. A double-click renames it in place; ⋯ and a right-click open the same menu. Its accessible name says what needs saying ("Alpha, 1 needs you, 2 working, 3 unread"). Dimmed under the offline tint when every copy's host is out of reach. The Archived fold's project rows keep `ProjectRowView`, a 32px fold |
+| Workspace column | `chrome/Sidebar.tsx` | column two holds the workspace's project cards, then its loose chats and archived projects (`WorkspaceSessions`), under one 40px header (a 40px content box with its hairline under it, as the title bar's rows, so its buttons sit on the strip's y 6 line): the workspace's name (Chats at the home) in 13px medium, New thread (Tooltip ⌘N) and the workspace ⋯ menu. No tabs: files and changes are the right panel's Files and Changes sections; ⌘P still goes to a file. While the rail is collapsed a 40px row with the traffic lights and the toggle sits above the header and the rail's foot sits under the threads. The column's own element scrolls the list (the virtualizer's scroll element, as state); across Settings and Back it keeps, per workspace, its offset (re-applied as the rows measure when the list first lays out shorter than it was, until it fits or the person scrolls), its list pages and the Chats fold, and does not replay the selection's reveal. Threads are not listed under projects: a project's threads are picked from the title bar's strip and its ⋯ menu's Recent threads…; only the Chats and Archived folds keep thread rows (a loose chat has no project to go to), each a 32px `ThreadRowView` leading with its type's tinted glyph (`TypeGlyph`, 12px in the 16px lead column) and ending in its status glyph; its subagents one step in, the lead column left empty, then the role's plain glyph. A right-click on any thread row opens that thread's menu, and an inline rename ended by Enter or Escape gives focus back to the row's or card's ⋯ |
+| Project card | `ProjectCardView` / `ProjectCard` in `chrome/WorkspaceSessions.tsx` on `cardLines`, `cardCounts` and `projectCardAriaLabel` (lib/sidebarRows.ts) | one `<button>` with no border or shadow, `rounded-lg`, `px-3 py-2`, a `bg-foreground/5` hover and a `bg-muted` fill while selected (`aria-current`), 4px from the next card, never animated. A 20px line: the name in 13px (foreground when selected, `font-medium` foreground while a thread in it is unread, else muted) and its last-active time in 12px muted `tabular-nums`, which gives way to ⋯ on hover and focus. A 16px branch line 2px under it: the branch glyph and the branch (else "local checkout"), then "worktree" or "local" two spaces on. Then 24px read-only lines in 12px, aligned under the name: each master with something to say as a block (its line with the batch's done tally, its working subagents in the fleet's words, its batch threads one step in, "N queued"), then the working roots (the spinner or the watching ring, the type's tinted glyph, the title, the host glyph, the elapsed past 3 s; an implementation thread's "3/7  task" under it), the paused ones ("Paused" and the frozen elapsed), the unread ones (no mark, the title's weight); a thread housed in a master prints only in its block. One page of lines, then "N more" beside the button. Last, a count line when there is something to count: "1 needs you" in amber and "N failed" in red with their glyphs, then muted "N dormant" and "N archived" (a thread inside a master is never dormant), two spaces apart; "No threads" for a project with none; paused is never counted. A click or Enter anywhere on it, a line included, selects the project (App's `onSelectProjectCard`); lines never open a thread. A double-click renames it in place; ⋯ and a right-click open the same menu. Its accessible name says what needs saying ("Alpha, 1 needs you, 2 working, 3 unread"). Dimmed under the offline tint when every copy's host is out of reach. The Archived fold's project rows keep `ProjectRowView`, a 32px fold |
 
 **The project's home.** A project card's click selects the project
 (`onSelectProjectCard` in App.tsx): any full-window view closes, its open
@@ -367,8 +369,8 @@ reached from the ⋯ menu's Recent threads.
   it is (`slotTarget`), so a chip sharing a split focuses its own pane and a
   chip with no tab opens its thread.
 - **The chip.** A ghost `Button` with `role="tab"`, 28px tall, 12px
-  padding, `rounded-md`, 2px apart: the type glyph (14px, 1.5 stroke,
-  uncoloured), 8px, the title (13px, truncated at 224px), "Master" in
+  padding, `rounded-md`, 2px apart: the type glyph (`TypeGlyph`, 14px,
+  1.5 stroke, its type's tint on every chip, active or not), 8px, the title (13px, truncated at 224px), "Master" in
   muted type when pinned, then the `StatusMark` glyph (none for an idle or
   done thread). Muted at rest, `foreground/5` and foreground on hover (the
   colour swap takes `--dur-fast`), `bg-muted` when active (no transition),
@@ -394,7 +396,8 @@ reached from the ⋯ menu's Recent threads.
   typecheck", "Needs you  approve Bash", a tally, a failure's verdict).
 - **New thread.** The "+" after the last chip (chrome/NewThreadChooser.tsx)
   is a ghost icon button, or "New thread" in words on an empty strip, opening
-  a `Popover` of `Item` rows, one per thread type; Orchestrate and Research
+  a `Popover` of `Item` rows, one per thread type, each with its tinted
+  `TypeGlyph`; Orchestrate and Research
   keep an options button whose tune view swaps in place with Back.
 
 File and terminal tabs (chrome/SurfaceTabs.tsx) take the chip's shape on a
@@ -421,7 +424,10 @@ the window while the thread has a reading). A pick hands the focus back to
 the field; Escape or a click outside returns it to the model button, and the
 permission select follows the same rule. Right: the permission
 mode as a quiet select (none for fx) and the send button, whose glyph is
-what Enter would do. No mascot runs along the composer.
+what Enter would do. Until the thread's first message the box's top row
+holds the type select (chrome/ThreadTypeChip.tsx): the type's tinted glyph
+and its name, each item the same glyph over its hint. No mascot runs along
+the composer.
 
 The row is the `composer-bar` size container, so a narrow box gives way in
 one order, by container variants and never by script: the free space
@@ -624,7 +630,8 @@ before the handoff one primary **Start build** opens `StartBuildDialog`
 (Implement or Orchestrate, model, effort, access, the goal prefilled from
 the plan, the orchestration rules only for Orchestrate; Start calls
 `plan.implement`, one build). After the handoff the header names the build
-("Implementation" and its `StatusMark`) and opens it. With the chat folded,
+(the build's tinted type glyph, "Implementation" and its `StatusMark`) and
+opens it. With the chat folded,
 a heading outline sits at the left edge when the board leaves it room
 beside the centred 672px document (a container query on the board,
 `@min-[69rem]`, never the window's width); it lists the sections the page
@@ -672,6 +679,8 @@ Earlier passes fold into rows above (number, request, tally, diffstat and
 the run's record), each opening its tasks and changes; a pure Q&A pass has
 no row. A finished pass offers **Start pass N**, which arms the next
 message as a new pass; folding the chat while a pass is armed puts it back.
+The header's [planned in] button opens the planning thread and draws the
+plan type's tinted glyph.
 Live subagents and the working tree's changes are the right panel's
 Agents and Changes; the transcript keeps every tool call. The pure folds
 are `implementationBoard.ts`.
@@ -792,7 +801,7 @@ in the whole pane, with Back.
   existing thread… (`master/AdoptThreadDialog.tsx`: the project's
   unarchived root threads in no batch and no master themselves, on this
   host and on the project's paired copies elsewhere (`pairedProjectIds`,
-  lib/projectPairs.ts), one checkbox row each (the type glyph, the title,
+  lib/projectPairs.ts), one checkbox row each (the tinted type glyph, the title,
   the type word) with the host's name at the right when they span hosts, in
   a list that scrolls past 320px; Add is one `batch.adopt` on the master's
   host, a thread of another host named `<envId>:<id>`, the host's
@@ -819,7 +828,7 @@ in the whole pane, with Back.
   `master/rowBody.ts`) is an `Item` (a `div role="button"`, `rounded-md`,
   hover `foreground/5`, no border) with two lines on a 16px glyph column,
   and nothing on it is separated by a dot. Line one: the type's glyph
-  (`THREAD_GLYPHS`, muted; its word in a tooltip and as its accessible
+  (`TypeGlyph`, its type's tint; its word in a tooltip and as its accessible
   name, never printed beside the title), the 13px medium title (muted
   while the row sits in Done or Queued), the host's glyph, and at the end
   the provider's mark, the model's name, then its effort and context. Line
@@ -847,7 +856,8 @@ in the whole pane, with Back.
   is the launch mirror's and lifts when the host is back.
   Under the lines, the thread's live subagents, one 20px line each in the
   text column: `StatusMark`'s glyph, the role's glyph (`AGENT_GLYPHS`,
-  muted), the title, what its state is about in the board row's own words
+  muted; a line with no role, a batch thread, takes its type's tinted
+  glyph), the title, what its state is about in the board row's own words
   (`rowStatus` from the meta: the activity, "approve Bash" in amber, the
   failure in red) and the host's glyph. Its whole tree by the parentId
   chain (archived ones left out, a far child's from that host's rows in

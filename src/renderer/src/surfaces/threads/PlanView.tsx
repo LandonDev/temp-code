@@ -13,6 +13,7 @@ import { loadProjectPlan, useProjectPlan } from "../../lib/projectPlan";
 import { MilestoneList, ProjectPlanCard, ProjectPlanPin } from "./ProjectPlanCard";
 import { AgentMarkdown } from "../AgentMarkdown";
 import { THREAD_LABELS } from "./threadTypes";
+import { TypeGlyph } from "./TypeGlyph";
 import { heldRowOf } from "./chatSlots";
 import { SplitShell } from "./SplitShell";
 import { StartBuildDialog } from "./StartBuildDialog";
@@ -310,9 +311,10 @@ function HandoffButton({ spawned, onOpen }: { spawned: SessionMeta; onOpen: () =
   const type: ThreadType = spawned.threadType ?? "implementation";
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="sm" onClick={onOpen} />}>
+      <TooltipTrigger render={<Button variant="ghost" size="sm" className="gap-2" onClick={onOpen} />}>
+        <TypeGlyph type={type} className="size-3.5" />
         {BUILD_NOUN[type] ?? THREAD_LABELS[type]}
-        <StatusMark className="ml-2" state={threadStateOf(spawned.status, { settled: true })} />
+        <StatusMark className="ml-1" state={threadStateOf(spawned.status, { settled: true })} />
       </TooltipTrigger>
       <TooltipContent>Open the build</TooltipContent>
     </Tooltip>
