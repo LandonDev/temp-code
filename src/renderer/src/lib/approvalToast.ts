@@ -1,11 +1,15 @@
 import { leafIds, type WorkspaceTab } from "./layout";
 import { hasPendingApproval, type Block, type Session } from "./session";
 import { toolCallLabel } from "../surfaces/transcriptActivity";
+import { humanName } from "./toolPhrase";
 
 export type PendingApprovalNotice = {
   sessionId: string;
   requestId: string | number;
+  /** What the call does, in words ("Creating empty file notes.txt"): the toast's line, where no card shows it. */
   label: string;
+  /** The tool's name ("Bash"): a state's detail, "Needs you  approve Bash", beside a card that shows the rest. */
+  tool: string;
   block: Block;
 };
 
@@ -20,6 +24,7 @@ export function pendingApprovalForSession(
       sessionId: session.id,
       requestId: block.approval.requestId,
       label: toolCallLabel(block, session.cwd),
+      tool: block.tool?.name ? humanName(block.tool.name) : "a tool",
       block,
     };
   }

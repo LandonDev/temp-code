@@ -372,7 +372,7 @@ function tabThreadOf(session: Session | undefined, planReady: Record<string, boo
     planReady: !!planReady[session.id],
     frozenElapsed: session.frozenActiveElapsed ?? null,
     failure: session.failure?.summary ?? null,
-    waitingOn: status === "waiting" ? (pendingApprovalForSession(session)?.label ?? null) : null,
+    waitingOn: status === "waiting" ? (pendingApprovalForSession(session)?.tool ?? null) : null,
     background: sessionStore.metaOf(session.id)?.background ?? null,
     backgroundWork: backgroundWorkOf(sessionStore.metaOf(session.id)?.background),
   };

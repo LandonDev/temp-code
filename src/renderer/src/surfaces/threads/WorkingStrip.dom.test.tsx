@@ -237,10 +237,9 @@ describe('WorkingStrip: a thread that needs you', () => {
       id: `b-${requestId}`,
       role: 'tool',
       kind: 'tool',
-      tool: 'Bash',
+      tool: { name: 'Bash', kind: 'execute', title: 'Bash', input: { command: 'bun test' } },
       title: 'Bash',
       text: '',
-      input: { command: 'bun test' },
       approval: { requestId, decided },
     }) as unknown as Block
 
@@ -256,7 +255,8 @@ describe('WorkingStrip: a thread that needs you', () => {
         />
       </Probe>,
     )
-    expect(probe.container.textContent).toMatch(/^Needs youapprove \S/)
+    // The tool's name, as DESIGN's "Needs you  approve Bash": the card above says the rest.
+    expect(probe.container.textContent).toMatch(/^Needs youapprove BashDeny/)
     const buttons = [...probe.container.querySelectorAll('button')]
     expect(buttons.map((b) => b.textContent)).toEqual(['Deny', 'Allow'])
     await probe.act(async () => buttons[0]!.click())

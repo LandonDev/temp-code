@@ -191,7 +191,7 @@ export function chipStatus(chip: StripChip, planReady: ReadyMap): ThreadStatus {
     tasks: t.tasks,
     failure: t.failure?.summary ?? null,
     planReady: !!planReady[chip.id],
-    waitingOn: session ? (pendingApprovalForSession(session)?.label ?? null) : null,
+    waitingOn: session ? (pendingApprovalForSession(session)?.tool ?? null) : null,
     asking: session ? hasPendingQuestion(session.blocks) : false,
     background: t.background ?? null,
   });

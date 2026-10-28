@@ -73,7 +73,7 @@ export const WorkingStrip = memo(function WorkingStrip({
     treeCanContinue: !session.parentId && session.treeCanContinue,
     activity: session.activity,
     tasks: session.tasks,
-    waitingOn: approval?.label ?? null,
+    waitingOn: approval?.tool ?? null,
     asking: status === "waiting" && hasPendingQuestion(session.blocks),
     background: session.background,
   });

@@ -32,6 +32,23 @@ describe("pendingApprovalForSession", () => {
     const pending = pendingApprovalForSession(session);
     expect(pending?.requestId).toBe(2);
     expect(pending?.label).toBe("Running a command");
+    expect(pending?.tool).toBe("a tool");
+  });
+
+  it("names the tool for a state's detail and keeps the long words for the toast", () => {
+    const session = newSession("local");
+    session.blocks = [
+      {
+        id: "b1",
+        role: "tool",
+        text: "",
+        tool: { name: "Bash", kind: "execute", title: "Bash", input: { command: "touch notes.txt", description: "Create an empty notes file" } },
+        approval: { requestId: 7 },
+      } as Block,
+    ];
+    const pending = pendingApprovalForSession(session)!;
+    expect(pending.tool).toBe("Bash");
+    expect(pending.label).not.toBe("Bash");
   });
 });
 
