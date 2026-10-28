@@ -1283,8 +1283,13 @@ export class Store {
         ).run(id, keeperId)
         for (const prefix of WORKSPACE_SETTING_PREFIXES) {
           const value = this.getSetting(`${prefix}:${id}`)
-          if (value !== null && this.getSetting(`${prefix}:${keeperId}`) === null) this.setSetting(`${prefix}:${keeperId}`, value)
+          if (value !== null && this.getSetting(`${prefix}:${keeperId}`) === null) {
+            this.setSetting(`${prefix}:${keeperId}`, value)
+            // A value moves with its marker (orchestration rules' `:explicit`, sessions.ts).
+            this.setSetting(`${prefix}:${keeperId}:explicit`, this.getSetting(`${prefix}:${id}:explicit`))
+          }
           this.setSetting(`${prefix}:${id}`, null)
+          this.setSetting(`${prefix}:${id}:explicit`, null)
         }
         const rows = this.stmt('SELECT id FROM sessions WHERE workspace_id = ?').all(id) as unknown as { id: string }[]
         sessionIds.push(...rows.map((row) => row.id))

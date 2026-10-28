@@ -219,6 +219,8 @@ it("carries a duplicate's preamble, account pins and workspace settings to the k
   store.setSetting('build:dup', '{"run":"make"}')
   store.setSetting('thread-defaults:dup', '{"model":"x"}')
   store.setSetting('thread-defaults:old', '{"model":"mine"}')
+  store.setSetting('orchestration-rules:dup', '{"models":{}}')
+  store.setSetting('orchestration-rules:dup:explicit', '1')
   registry.foldWorkspaces()
   const kept = store.listWorkspaces()
   expect(kept.map((w) => w.id)).toEqual(['old'])
@@ -229,4 +231,8 @@ it("carries a duplicate's preamble, account pins and workspace settings to the k
   expect(store.getSetting('thread-defaults:old')).toBe('{"model":"mine"}')
   expect(store.getSetting('build:dup')).toBeNull()
   expect(store.getSetting('thread-defaults:dup')).toBeNull()
+  // Rules keep their explicit marker, so a model they never listed stays off.
+  expect(store.getSetting('orchestration-rules:old')).toBe('{"models":{}}')
+  expect(store.getSetting('orchestration-rules:old:explicit')).toBe('1')
+  expect(store.getSetting('orchestration-rules:dup:explicit')).toBeNull()
 })
