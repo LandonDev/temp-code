@@ -63,35 +63,38 @@ export function passNumbers(rounds: RoundData[]): number[] {
   return rounds.map((r) => (isHiddenPass(r) ? 0 : ++n));
 }
 
-/** Each task's worked time over the pass's blocks, counted as activeMs
- *  counts the pass (the union of the spans, no gap before a user message):
- *  a block's own run goes to its task, the gap before it to the task of the
- *  block it followed, the one live then. The call that starts the next task
- *  is stamped with that task (applyTodoCall moves activeTodo first), so a
- *  task keeps the time it showed when it finished. `live` is the task the
- *  time since `from`, the last block's end, goes to. */
+/** Each task's worked time over the pass's blocks: the instants activeMs
+ *  counts (the union of the spans, no gap before a user message), each
+ *  going to the task in progress then, the task of the last block born by
+ *  it. The call that starts the next task is stamped with that task
+ *  (applyTodoCall moves activeTodo first), so a task keeps the time it
+ *  showed when it finished, and a tool of an earlier task that settles
+ *  late lends its run to the task that was running meanwhile. `live` is
+ *  the task in progress now, and the time since `from`, the last counted
+ *  instant, is its. */
 export function taskTimes(blocks: Block[], todoCount: number): { ms: Map<number, number>; live: number; from?: number } {
   const ms = new Map<number, number>();
-  const add = (k: number, v: number) => {
-    if (v > 0) ms.set(k, (ms.get(k) ?? 0) + v);
-  };
+  const spans: [number, number][] = [];
+  const marks: { at: number; k: number }[] = [];
   let from: number | undefined;
-  let live = -1;
   for (const b of blocks) {
     if (b.ts === undefined) continue;
-    const k = todoKey(b, todoCount);
     const end = b.role === "tool" ? (b.doneTs ?? b.ts) : b.ts;
-    if (from === undefined || b.role === "user") add(k, end - b.ts);
-    else {
-      add(live, b.ts - from);
-      add(k, end - Math.max(from, b.ts));
-    }
-    if (from === undefined || end >= from) {
-      from = end;
-      live = k;
+    const start = from === undefined || b.role === "user" ? b.ts : from;
+    if (end > start) spans.push([start, end]);
+    marks.push({ at: Math.max(b.ts, marks.at(-1)?.at ?? b.ts), k: todoKey(b, todoCount) });
+    from = Math.max(from ?? end, end);
+  }
+  let m = 0;
+  for (const [s, e] of spans) {
+    for (let t = s; t < e; ) {
+      while (m + 1 < marks.length && marks[m + 1].at <= t) m++;
+      const next = m + 1 < marks.length ? Math.min(e, marks[m + 1].at) : e;
+      ms.set(marks[m].k, (ms.get(marks[m].k) ?? 0) + next - t);
+      t = next;
     }
   }
-  return { ms, live, from };
+  return { ms, live: marks.at(-1)?.k ?? -1, from };
 }
 
 /** The pass's todos as the TaskList reads them: an in-progress task is

@@ -98,6 +98,16 @@ describe("tasksOf", () => {
     expect(tasks[1].time).toEqual({ ms: 10, from: at + 10 });
   });
 
+  it("gives the running task the time an earlier task's late result covers, and keeps it ticking", () => {
+    const pending = [run("a", 0, 2_000), run("todo", 1, 5_000, 5_000)];
+    const live = tasksOf([todo("a", "completed"), todo("b", "in_progress")], 0, true, pending)[1].time!;
+    const settled = [{ ...pending[0], doneTs: 10_000 } as Block, pending[1]];
+    const after = tasksOf([todo("a", "completed"), todo("b", "in_progress")], 0, true, settled);
+    expect(after[0].time).toEqual({ ms: 3_000 });
+    expect(after[1].time!.from).toBe(10_000);
+    expect(after[1].time!.ms + (10_000 - after[1].time!.from!)).toBe(live.ms + (10_000 - live.from!));
+  });
+
   it("splits the pass's worked time over its tasks without losing or doubling any", () => {
     const blocks = [user("u", 0, "go", { ts: 0 }), say("s", -1, 500), run("a", 0, 800, 3_000), run("p", 0, 1_000, 4_000), say("b", 1, 6_000), run("c", 1, 7_000, 7_500)];
     const { ms } = taskTimes(blocks, 2);
