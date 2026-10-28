@@ -150,7 +150,7 @@ export function DevStarter({ starter }: { starter: DevStarterState }) {
       </div>
       {starter.asking ? (
         <div data-dev-replace="" className="flex flex-col gap-2 px-3 pb-2">
-          <p className="text-xs text-muted-foreground">This thread already runs a dev server. Replace it, or start another for a different feature?</p>
+          <p className="text-xs text-muted-foreground">This thread already runs a dev server.</p>
           <div className="flex gap-1">
             <Button size="xs" onClick={() => void starter.answer("replace")}>
               Replace

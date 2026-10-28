@@ -119,6 +119,10 @@ describe("splitThreads", () => {
 });
 
 describe("threadStatus", () => {
+  it("says Failed alone when the host's summary only repeats the word", () => {
+    expect(threadStatus({ status: "error", failure: "The turn failed" })).toEqual({ state: "failed", detail: null, tally: null });
+    expect(threadStatus({ status: "error", failure: "Usage cap reached" })).toMatchObject({ state: "failed", detail: "usage cap reached" });
+  });
   const bg = (over: Partial<BackgroundWork> = {}): BackgroundWork => ({ tasks: [], agents: [], ...over }) as BackgroundWork;
 
   it("reads a paused descendant as paused, outranking everything", () => {

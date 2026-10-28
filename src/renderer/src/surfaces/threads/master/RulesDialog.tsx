@@ -13,7 +13,7 @@ import { Item, ItemActions, ItemContent } from "../../../components/ui/item";
 import { cn } from "../../../lib/cn";
 import { addableKinds, addStep, moveStep, normalizeSteps, pinned, removeStep, renameStep, shellDraftValid, stepLine, stepsValid, type ShellDraft } from "./rulesEdit";
 import { stepsOf } from "./steps";
-import { rulesSentence, type Rules } from "./useMasterModel";
+import type { Rules } from "./useMasterModel";
 
 /**
  * The batch's rules as a form: how branches land, the steps in order
@@ -124,9 +124,12 @@ function RulesForm({
                     className="h-7 w-40 shrink-0"
                   />
                   <ItemContent className="min-w-0">
-                    <span className={cn("truncate text-xs text-muted-foreground", step.kind === "shell" && "font-mono text-[11px]")} data-rule-line>
-                      {stepLine(step)}
-                    </span>
+                    {/* What the step does, unless its name already says it word for word. */}
+                    {sameWords(step.name, stepLine(step)) ? null : (
+                      <span className={cn("truncate text-xs text-muted-foreground", step.kind === "shell" && "font-mono text-[11px]")} data-rule-line>
+                        {stepLine(step)}
+                      </span>
+                    )}
                   </ItemContent>
                   {pinned(step) ? null : (
                     <ItemActions className="gap-0">
@@ -219,12 +222,11 @@ function RulesForm({
         <Field label="Summary">
           <Input value={rules.summary ?? ""} onChange={(e) => set("summary", e.target.value)} placeholder="One line on what this batch is for" />
         </Field>
-        <p className="text-xs text-muted-foreground" data-rules-preview>
-          {rulesSentence(rules)}
-        </p>
         <ErrorLine error={error} />
       </div>
       <DialogFooter onCancel={onClose} confirmLabel="Save" pending={pending} disabled={!valid} />
     </form>
   );
 }
+
+const sameWords = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();

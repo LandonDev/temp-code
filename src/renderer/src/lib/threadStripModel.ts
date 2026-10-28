@@ -250,12 +250,19 @@ export type ThreadStatus = { state: ThreadState; detail: string | null; tally: s
  * detail. A detail starts lower-case, never ends in a full stop and never
  * repeats the word.
  */
+/** A failure's detail after the word Failed: the host's summary, unless it is
+ *  the generic one ("The turn failed"), which only says the word again. */
+function failedDetail(summary: string | null | undefined): string | null {
+  const detail = lowerFirst(summary);
+  return detail === "the turn failed" ? null : detail;
+}
+
 export function threadStatus(input: ThreadStatusInput): ThreadStatus {
   const { status } = input;
   if (input.treeHasPaused) return { state: "paused", detail: null, tally: null };
   // The host clears treeCanContinue while the tree has live work.
   if (input.treeCanContinue)
-    return { state: "failed", detail: lowerFirst(input.failure), tally: null };
+    return { state: "failed", detail: failedDetail(input.failure), tally: null };
   const own = threadStateOf(status, { planReady: input.planReady });
   // A settled parent whose subagents still work is watching them, whatever each one does.
   const state = settledWithAgents(own, input.background) ? "watching" : own;
@@ -286,7 +293,7 @@ export function threadStatus(input: ThreadStatusInput): ThreadStatus {
     case "stopped":
       return { state, detail: "the harness is gone", tally: null };
     case "failed":
-      return { state, detail: lowerFirst(input.failure), tally: null };
+      return { state, detail: failedDetail(input.failure), tally: null };
     default:
       return none;
   }

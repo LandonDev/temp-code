@@ -146,7 +146,7 @@ describe('DevStarter', () => {
     await flush()
     const button = (name: string) => [...probe!.container.querySelectorAll('button')].find((b) => b.textContent?.trim() === name) as HTMLElement
     await probe.act(async () => button('Run').click())
-    expect(probe.container.textContent).toContain('This thread already runs a dev server. Replace it, or start another for a different feature?')
+    expect(probe.container.textContent).toContain('This thread already runs a dev server.')
     expect(requests.some(([, m]) => m === 'devServer.start')).toBe(false)
     await probe.act(async () => button('Replace').click())
     await flush()
@@ -182,7 +182,7 @@ describe('DevStarter', () => {
     await probe.act(async () => button('Run').click())
     await flush()
     expect(requests).toContainEqual(['env_mac', 'devServer.start', { projectId: 'p1', targetId: 'apps/web#dev', sessionId: 't1' }])
-    expect(probe.container.textContent).toContain('This thread already runs a dev server. Replace it, or start another for a different feature?')
+    expect(probe.container.textContent).toContain('This thread already runs a dev server.')
     expect(devPaneStore.getState().open).toBe(false)
     startAnswer = null
     await probe.act(async () => button('Start another').click())

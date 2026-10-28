@@ -1758,8 +1758,8 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   on a Mac only, each as "web (Vite dev server)" (src/shared/devServerWords.ts).
   Run starts it for the thread on screen (`devServer.start { sessionId }`,
   `DevRun.sessionId`, a subagent's root). One dev server per thread: Run
-  for a thread that already has one asks "Replace it, or start another for
-  a different feature?" (Replace stops the first; a thread's own `port`
+  for a thread that already has one says "This thread already runs a dev
+  server." over Replace and Start another (Replace stops the first; a thread's own `port`
   rows count), the host holds the same rule (`devServer.start` for a thread
   with a live run or `port` row answers `{ replace: true, existing }` unless
   the request says `another`, or `replace`, which stops its runs and removes

@@ -9,7 +9,6 @@ import {
   type BoardDigest,
 } from "@server/shared/contract-batch";
 import { batchThreadId, remoteArchivePlan, type ArchiveWhich, type BatchDone } from "./boardActions";
-import { stepsOf } from "./steps";
 import { blockedWords } from "@shared/batchWords";
 import { AgentSummaries } from "./agentSummary";
 import { registry } from "../../../lib/connection";
@@ -202,11 +201,13 @@ export const GROUP_LABEL: Record<MasterGroupId, string> = {
 
 /** Which section a row sits in. A paused thread holds a live turn the
  *  person can resume, so it sits with the running ones; a queued one
- *  waits for a sibling. */
-export function groupOf(status: SessionStatus): MasterGroupId {
+ *  waits for a sibling; a settled one whose subagents still work is
+ *  watching them (its row says so), so it sits with the work too. */
+export function groupOf(status: SessionStatus, background?: SessionMeta["background"]): MasterGroupId {
   if (status === "waiting" || status === "error") return "needsYou";
   if (isLiveStatus(status) || status === "watching" || status === "paused") return "running";
   if (status === "queued") return "queued";
+  if ((status === "idle" || status === "done") && background?.agents.length) return "running";
   return "done";
 }
 
@@ -217,7 +218,7 @@ export type MasterGroup = { id: MasterGroupId; label: string; rows: MasterRowMod
 export function groupRows(rows: readonly MasterRowModel[]): MasterGroup[] {
   const by = new Map<MasterGroupId, MasterRowModel[]>();
   for (const row of rows) {
-    const g = groupOf(row.meta.status);
+    const g = groupOf(row.meta.status, row.meta.background);
     (by.get(g) ?? by.set(g, []).get(g)!).push(row);
   }
   return GROUP_ORDER.filter((id) => by.has(id)).map((id) => ({ id, label: GROUP_LABEL[id], rows: by.get(id)! }));
@@ -225,9 +226,9 @@ export function groupRows(rows: readonly MasterRowModel[]): MasterGroup[] {
 
 export type MasterCounts = Record<MasterGroupId, number>;
 
-export function masterCounts(rows: readonly { meta: { status: SessionStatus } }[]): MasterCounts {
+export function masterCounts(rows: readonly { meta: Pick<SessionMeta, "status" | "background"> }[]): MasterCounts {
   const counts: MasterCounts = { needsYou: 0, running: 0, queued: 0, done: 0 };
-  for (const r of rows) counts[groupOf(r.meta.status)]++;
+  for (const r of rows) counts[groupOf(r.meta.status, r.meta.background)]++;
   return counts;
 }
 
@@ -262,28 +263,6 @@ export function mergedLine(batch: Pick<BatchState, "landed" | "pending">): strin
 export type { BatchRules };
 
 export type Rules = BatchRules;
-
-/** The rules as one plain sentence from the master's step list: "Branches
- *  land as they finish, then Gate, Release and Deploy to the box. Then
- *  you are notified." A list with no merge step says so. */
-export function rulesSentence(rules: Rules): string {
-  const steps = stepsOf(rules);
-  const merges = steps.some((s) => s.kind === "land");
-  const landing = !merges
-    ? "The branches are left unmerged"
-    : rules.land === "all-at-once"
-      ? "Branches land together once every thread is done"
-      : "Branches land as they finish";
-  const after = steps.filter((s) => s.kind !== "land").map((s) => s.name.trim() || s.id);
-  const first = after.length === 0 ? `${landing}, nothing runs after.` : `${landing}, then ${listWords(after)}.`;
-  const then = rules.then === "archive-children" ? "Then the threads are archived." : "Then you are notified.";
-  return `${first} ${then}`;
-}
-
-function listWords(parts: string[]): string {
-  if (parts.length <= 1) return parts.join("");
-  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
-}
 
 /** What blocks the batch's end, as the foot says it: "Blocked: <title> errored". */
 export function blockedLine(
@@ -664,7 +643,7 @@ export function boardLayout(
       key: row.key,
       id: row.meta.id,
       planId: row.plan?.id ?? null,
-      group: groupOf(row.meta.status),
+      group: groupOf(row.meta.status, (stored ?? row.meta).background),
       environmentId: row.meta.environmentId,
       fallback: stored ? null : row.meta,
       override:

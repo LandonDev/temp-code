@@ -1027,8 +1027,8 @@ routed to (aliax-core's `forward`). Two listeners:
   `dev-run` pushes, `devServer.runs` for every running run) on this Mac or
   the box's copy of the project, for the thread on screen
   (`devServer.start { sessionId }`, `DevRun.sessionId`). One dev server per
-  thread: Run for a thread that has one asks "Replace it, or start another
-  for a different feature?" (`runChoice`; Replace stops the first), the
+  thread: Run for a thread that has one says "This thread already runs a
+  dev server." over Replace and Start another (`runChoice`; Replace stops the first), the
   host holds the rule too (`devServer.start` for a thread with a live run
   or `port` row answers `{ replace: true, existing }` unless the request
   says `another` or `replace`, which stops the old ones first), and a

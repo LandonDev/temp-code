@@ -1147,9 +1147,11 @@ describe("the master view", () => {
     fireEvent.change(within(dialog).getByLabelText("Step 3 name"), { target: { value: "Deploy to the box" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "All at once" }));
     fireEvent.change(within(dialog).getByPlaceholderText(/One line/), { target: { value: "Land all seven" } });
-    expect(dialog.querySelector("[data-rules-preview]")?.textContent).toBe(
-      "Branches land together once every thread is done, then Release, Deploy to the box and Smoke test. Then you are notified.",
-    );
+    // The form is the rules: no sentence under it reads them back.
+    expect(dialog.querySelector("[data-rules-preview]")).toBeNull();
+    // A step whose name is its kind's words says them once (the shell step keeps its command beside its name).
+    expect(dialog.querySelector("[data-rule-step='release'] [data-rule-line]")).toBeNull();
+    expect(dialog.querySelector("[data-rule-step='deploy'] [data-rule-line]")).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await flush();
     const call = link.calls.find((c) => c.method === "batch.setRules");
