@@ -140,6 +140,12 @@ describe("Monaco review header", () => {
     await waitFor(() => expect(stage().disabled).toBe(true));
   });
 
+  it("a review opened against HEAD, as the Changes section opens one, offers Stage", async () => {
+    h.changes = [change(2, 2, 2, 2)];
+    const { getByRole } = render(<DiffSurface path="/repo/src/file.ts" cwd="/repo" base="HEAD" />);
+    await waitFor(() => expect(getByRole<HTMLButtonElement>("button", { name: "Stage change" }).disabled).toBe(false));
+  });
+
   it("a change partly staged stages the rest of it whole, around a staged middle", async () => {
     h.changes = [change(2, 4, 2, 4)];
     h.text = "one\nTWO\nTHREE\nFOUR\n";

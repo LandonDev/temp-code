@@ -9,7 +9,7 @@ import { hostOfCwd, projectForCwd } from "../../lib/tcserver/projects";
 import { SurfaceSkeleton } from "../SurfaceSkeleton";
 import { FileHeader, fileFolder } from "../FileHeader";
 import { ConflictBar } from "../ConflictBar";
-import { changeLineOffsets, changeOffset, minimalEdit, positionAt } from "./diffActions";
+import { changeLineOffsets, changeOffset, minimalEdit, positionAt, reviewStageable } from "./diffActions";
 import { trackEditor } from "./keys";
 import { ensureForModel } from "./lsp/idea";
 import { registerProviders } from "./lsp/providers";
@@ -71,7 +71,7 @@ export function DiffSurface({
   const [busy, setBusy] = useState(false);
   // Stage is offered against HEAD only, for a path inside the checkout.
   const relative = displayPath(path, cwd);
-  const stageable = !base && relative !== path;
+  const stageable = reviewStageable(base, path, relative);
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
   const [fileState, setFileState] = useState<FileState>({ pending: false, conflict: null });
   const [changes, setChanges] = useState<monaco.editor.ILineChange[]>([]);

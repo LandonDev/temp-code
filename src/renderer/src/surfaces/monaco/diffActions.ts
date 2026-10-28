@@ -4,6 +4,13 @@
  * LF text. Kept apart from Monaco so they test without an editor.
  */
 
+/** Stage builds on the index, so it is offered for a review against HEAD
+ *  (`base` unset or "HEAD", which the Changes section passes) and a path
+ *  inside the checkout (`relative`, its checkout-relative form, differs). */
+export function reviewStageable(base: string | undefined, path: string, relative: string): boolean {
+  return (!base || base === "HEAD") && relative !== path;
+}
+
 /** The part of a Monaco line change the helpers read. */
 export type LineChange = { modifiedStartLineNumber: number; modifiedEndLineNumber: number };
 

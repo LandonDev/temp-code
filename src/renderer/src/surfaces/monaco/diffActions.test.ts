@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changeLineOffsets, changeOffset, minimalEdit, positionAt } from "./diffActions";
+import { changeLineOffsets, changeOffset, minimalEdit, positionAt, reviewStageable } from "./diffActions";
 
 const text = "one\ntwo\nthree\n";
 
@@ -26,5 +26,13 @@ describe("diffActions", () => {
     expect(positionAt(text, 0)).toEqual({ lineNumber: 1, column: 1 });
     expect(positionAt(text, 5)).toEqual({ lineNumber: 2, column: 2 });
     expect(positionAt(text, 14)).toEqual({ lineNumber: 4, column: 1 });
+  });
+
+  it("offers Stage for a review against HEAD inside the checkout only", () => {
+    expect(reviewStageable(undefined, "/repo/a.ts", "a.ts")).toBe(true);
+    expect(reviewStageable("HEAD", "/repo/a.ts", "a.ts")).toBe(true);
+    expect(reviewStageable("index", "/repo/a.ts", "a.ts")).toBe(false);
+    expect(reviewStageable("review-base", "/repo/a.ts", "a.ts")).toBe(false);
+    expect(reviewStageable("HEAD", "/elsewhere/a.ts", "/elsewhere/a.ts")).toBe(false);
   });
 });
