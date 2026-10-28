@@ -175,6 +175,19 @@ describe("threadStatus", () => {
     expect(threadStatus({ status: "watching", background: lone }).detail).toBe("sleep 45 seconds in the background");
   });
 
+  it("a watching master whose batch is blocked says why ahead of what it watches", () => {
+    const batch = bg({ batch: { out: 1, total: 3 } } as Partial<BackgroundWork>);
+    expect(threadStatus({ status: "watching", background: batch, activity: "Blocked: A errored" })).toEqual({
+      state: "watching",
+      detail: "blocked: A errored",
+      tally: null,
+    });
+    expect(threadStatus({ status: "watching", background: batch, activity: "Blocked: Inbox ended its turn without completing." }).detail).toBe(
+      "blocked: Inbox ended its turn without completing",
+    );
+    expect(threadStatus({ status: "watching", background: batch, activity: "Waiting on a batch thread" }).detail).toBe("a batch thread");
+  });
+
   it("reads a settled parent with live subagents as watching them", () => {
     expect(threadStatus({ status: "idle", background: bg({ agents: ["a"] }) })).toEqual({
       state: "watching",

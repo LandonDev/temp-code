@@ -271,7 +271,13 @@ export function threadStatus(input: ThreadStatusInput): ThreadStatus {
     case "watching":
       return {
         state,
-        detail: lowerFirst(watchPhrase(input.background)) || lowerFirst(after(input.activity, "Waiting on")) || "background work",
+        // A master whose batch cannot end says why first (the host's
+        // `decorate`: "Blocked: A errored"), ahead of what it watches.
+        detail:
+          (input.activity?.trim().startsWith("Blocked:") ? lowerFirst(input.activity) : null) ||
+          lowerFirst(watchPhrase(input.background)) ||
+          lowerFirst(after(input.activity, "Waiting on")) ||
+          "background work",
         tally: null,
       };
     case "queued":
