@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Button } from "../../components/ui/button";
 import type { Block } from "../../lib/session";
 import { NoticeLine } from "./NoticeLine";
-import { ErrorChip } from "../ErrorChip";
 import { NoticeRow, PassRow } from "./NoticeRow";
 
 afterEach(cleanup);
@@ -103,8 +102,8 @@ describe("NoticeLine in a narrow pane", () => {
     expect(spans[3].className).toContain("shrink-0");
   });
 
-  it("a failure's message wraps instead of truncating", () => {
-    const { container } = render(<ErrorChip sessionId="s1" row={{ stopped: false, message: "x ".repeat(200), showContinue: false, failure: null }} />);
+  it("a wrapping line's details wrap instead of truncating", () => {
+    const { container } = render(<NoticeLine lead="Failed" wrap details={["x ".repeat(200)]} />);
     const message = [...container.querySelectorAll('[data-slot="notice-line"] > div > div > span')][1];
     expect(message.className).not.toContain("truncate");
   });

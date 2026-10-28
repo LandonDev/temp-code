@@ -1,25 +1,23 @@
 import type { Failure } from "@server/shared/events";
+import { fallbackFailure } from "@server/shared/failureFallback";
 import type { Block, Session } from "./session";
 
 /**
  * Stopped versus Failed. The fold keeps a harness error as a system row
  * with an `err:` id; the user's own Stop lands the same way with the
  * thread's `stopped` flag (and, once the fold stamps it, the row's). A stop
- * is a quiet gray note and never offers Continue. A failure offers one
- * Continue, on the last error still showing, when the server says the
- * tree can pick the work back up.
+ * is a quiet gray note. Every failure carries a verdict: the host's, else
+ * the shared fallback (src/shared/failureFallback.ts), so the transcript
+ * draws one FailureCard for all of them and never the harness's raw words.
  */
 
-export type ErrorRow = {
-  stopped: boolean;
-  message: string;
-  showContinue: boolean;
-  /** The host's verdict, when the row carries one: the card prints its lines and actions. */
-  failure: Failure | null;
-};
+/** A stop, or a failure with its verdict (the host's, else the fallback): the card prints its lines and actions. */
+export type ErrorRow =
+  | { stopped: true; message: string; failure: null }
+  | { stopped: false; message: string; failure: Failure };
 
-/** `treeCanContinue` is the server's tree-wide verdict (M4); `stopped` on the row is stamped by the fold. */
-export type OutcomeSession = Pick<Session, "blocks" | "status" | "thread"> & { treeCanContinue?: boolean };
+/** `stopped` on the row is stamped by the fold. */
+export type OutcomeSession = Pick<Session, "blocks" | "status" | "thread">;
 type StoppableBlock = Block & { stopped?: boolean };
 
 export function isErrorBlock(block: Block): boolean {
@@ -40,15 +38,9 @@ export function isStoppedRow(session: OutcomeSession, block: Block): boolean {
   return !!session.thread?.stopped && lastErrorBlock(session.blocks)?.id === block.id;
 }
 
-/** Continue belongs on one row: the last error, when the server allows recovery and nothing is paused. */
-export function canContinueFrom(session: OutcomeSession, block: Block): boolean {
-  if (!session.treeCanContinue || session.status === "paused") return false;
-  return lastErrorBlock(session.blocks)?.id === block.id;
-}
-
 export function errorRowOf(session: OutcomeSession, block: Block): ErrorRow {
   if (isStoppedRow(session, block)) {
-    return { stopped: true, message: block.text, showContinue: false, failure: null };
+    return { stopped: true, message: block.text, failure: null };
   }
-  return { stopped: false, message: block.text, showContinue: canContinueFrom(session, block), failure: block.failure ?? null };
+  return { stopped: false, message: block.text, failure: block.failure ?? fallbackFailure() };
 }

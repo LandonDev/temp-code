@@ -2,7 +2,6 @@
 import type { Block } from "../../lib/session";
 import { errorRowOf, isErrorBlock } from "../../lib/turnOutcome";
 import { passActionsOf } from "../../lib/turnClock";
-import { useSessionMeta } from "../../lib/tcserver/store";
 import type { OpenFileFn } from "../../lib/search";
 import { ErrorChip } from "../ErrorChip";
 import { CompactionCard } from "../CompactionCard";
@@ -56,18 +55,11 @@ export function NoticeRow({
   return null;
 }
 
-/** A driver error row: gray Stopped, or Failed with Continue when the tree can. */
+/** A driver error row: gray Stopped, or the failure card with its verdict. */
 export function ErrorRowView({ block }: { block: Block }) {
   const session = useTurnState();
   const sessionId = useTranscriptSession();
-  // The tree's continue flag lives on the meta until the projection carries it.
-  const meta = useSessionMeta(sessionId);
-  const row = errorRowOf(
-    session
-      ? { ...session, treeCanContinue: session.treeCanContinue ?? meta?.treeCanContinue }
-      : { blocks: [block], status: "idle", thread: undefined },
-    block,
-  );
+  const row = errorRowOf(session ?? { blocks: [block], status: "idle", thread: undefined }, block);
   if (!sessionId) return null;
   return <ErrorChip sessionId={sessionId} row={row} busy={session?.busy} />;
 }
