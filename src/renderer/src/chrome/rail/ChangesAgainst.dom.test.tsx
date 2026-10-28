@@ -11,18 +11,22 @@ const h = vi.hoisted(() => ({
   land: vi.fn((): Promise<MergeResult> => Promise.resolve({ ok: true, sha: "fff0000aaa", fastForward: true })),
   review: vi.fn(),
   toast: vi.fn(),
+  head: "head",
+  fetchCompare: vi.fn(),
+  fetchLog: vi.fn(() => Promise.resolve()),
+  fetchBranches: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("../../lib/projectRailStore", () => ({
-  fetchBranches: () => Promise.resolve(),
-  fetchCompare: () => (h.fetchError ? Promise.reject(h.fetchError) : Promise.resolve(h.compare)),
-  fetchLog: () => Promise.resolve(),
+  fetchBranches: h.fetchBranches,
+  fetchCompare: h.fetchCompare,
+  fetchLog: h.fetchLog,
   mergeFrom: h.merge,
   mergeInto: h.land,
   useBranchList: () => h.branches,
   useBuild: () => undefined,
   useCompare: () => h.compare,
-  useGitLog: () => [{ sha: "head" }],
+  useGitLog: () => [{ sha: h.head }],
 }));
 vi.mock("../../lib/tcserver/workspaces", () => ({
   useProjects: () => [
@@ -84,7 +88,9 @@ beforeEach(() => {
   h.compare = compareOf();
   h.branches = { locals: ["feat", "master"], remotes: ["origin/master"], current: "feat" };
   h.fetchError = null;
+  h.head = "head";
   vi.clearAllMocks();
+  h.fetchCompare.mockImplementation(() => (h.fetchError ? Promise.reject(h.fetchError) : Promise.resolve(h.compare)));
 });
 afterEach(cleanup);
 
@@ -206,6 +212,34 @@ describe("ChangesAgainst", () => {
     expect(screen.queryByText("Fold Branch into Changes")).toBeNull();
     rerender(<ChangesAgainst projectId={null} onOpenDiff={onOpenDiff} />);
     expect(screen.queryByRole("region", { name: "Against" })).toBeNull();
+  });
+
+  it("a mount asks once for the comparison, the log and the branches, also when it adopts the host's target; a moved HEAD asks again", async () => {
+    localStorage.removeItem("compare-target:p1");
+    const { rerender } = mount();
+    await flush();
+    await flush();
+    expect(h.fetchCompare.mock.calls).toEqual([["p1", undefined]]);
+    expect(h.fetchLog).toHaveBeenCalledTimes(1);
+    expect(h.fetchBranches).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("combobox", { name: "Compare against" }).textContent).toContain("master");
+    h.head = "moved";
+    rerender(<ChangesAgainst projectId="p1" onOpenDiff={onOpenDiff} />);
+    await flush();
+    expect(h.fetchCompare.mock.calls).toEqual([["p1", undefined], ["p1", "master"]]);
+  });
+
+  it("an answer for a project left behind is dropped", async () => {
+    localStorage.removeItem("compare-target:p1");
+    localStorage.setItem("compare-target:p2", "origin/master");
+    let answer: (r: CompareResult) => void = () => {};
+    h.fetchCompare.mockImplementationOnce(() => new Promise<CompareResult>((r) => (answer = r)));
+    const { rerender } = mount();
+    rerender(<ChangesAgainst projectId="p2" onOpenDiff={onOpenDiff} />);
+    await flush();
+    answer(compareOf({ target: "stale" }));
+    await flush();
+    expect(screen.getByRole("combobox", { name: "Compare against" }).textContent).toContain("origin/master");
   });
 
   it("a picked branch that is gone says so in words", async () => {

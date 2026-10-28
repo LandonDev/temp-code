@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadToast } from "../../components/ui/toaster";
 import type { CommitInfo, CompareResult, FileChange, MergeResult } from "@server/shared/domain";
 import { Alert, AlertDescription, AlertTitle } from "@renderer/components/ui/alert";
@@ -101,22 +101,39 @@ export function useAgainst(projectId: string | null, onOpenDiff: (path: string) 
     setCommitsOpen(false);
   }
 
+  // The project an answer may still land on: one for a project left behind is dropped.
+  const live = useRef(projectId);
+  // The target the host's answer named when none was picked: adopting it
+  // needs no second comparison, log or branch list.
+  const adopted = useRef<{ projectId: string; target: string } | null>(null);
+  // HEAD as last seen, so the log's first answer is not taken for a move.
+  const lastHead = useRef(headSha);
+
   const refresh = useCallback(
     async (t: string | null): Promise<void> => {
       if (!projectId) return;
       try {
         const r = await fetchCompare(projectId, t ?? undefined);
+        if (live.current !== projectId) return;
         setError(null);
-        if (!t && r) setTarget(r.target);
+        if (!t && r) {
+          adopted.current = { projectId, target: r.target };
+          setTarget(r.target);
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (live.current === projectId) setError(err instanceof Error ? err.message : String(err));
       }
     },
     [projectId],
   );
 
   useEffect(() => {
+    live.current = projectId;
+    lastHead.current = headSha;
+    const answered = adopted.current;
+    adopted.current = null;
     if (!projectId) return;
+    if (answered?.projectId === projectId && answered.target === target) return;
     void refresh(target);
     void fetchLog(projectId).catch(() => undefined);
     if (project) void fetchBranches(project.workspaceId).catch(() => undefined);
@@ -125,6 +142,9 @@ export function useAgainst(projectId: string | null, onOpenDiff: (path: string) 
 
   // Counts stay live: a commit moves HEAD; edits come as file events.
   useEffect(() => {
+    const previous = lastHead.current;
+    lastHead.current = headSha;
+    if (previous === undefined || previous === headSha) return;
     void refresh(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [headSha]);
@@ -160,6 +180,7 @@ export function useAgainst(projectId: string | null, onOpenDiff: (path: string) 
 
   const move = async (kind: AgainstMove): Promise<void> => {
     if (!target || moving) return;
+    const stillHere = (): boolean => live.current === projectId;
     setMoving(kind);
     setConflicts(null);
     setMoveError(null);
@@ -170,15 +191,15 @@ export function useAgainst(projectId: string | null, onOpenDiff: (path: string) 
         const words =
           kind === "rebase" ? `Rebased onto ${target}` : kind === "land" ? `${r.fastForward ? "Fast-forwarded" : "Merged into"} ${target}` : `${r.fastForward ? "Fast-forwarded to" : "Merged"} ${target}`;
         void loadToast().then((toast) => toast.success(`${words}  ${sha}`, r.where ? { description: `In ${r.where.replace(/^\/(Users|home)\/[^/]+/, "~")}` } : undefined));
-      } else {
+      } else if (stillHere()) {
         setConflicts(r.conflicts);
       }
     } catch (err) {
-      setMoveError(err instanceof Error ? err.message : String(err));
+      if (stillHere()) setMoveError(err instanceof Error ? err.message : String(err));
     }
     notifyGitChanged();
     await Promise.all([refresh(target), fetchLog(projectId).catch(() => undefined)]);
-    setMoving(null);
+    if (stillHere()) setMoving(null);
   };
 
   return {

@@ -23,6 +23,10 @@
  *             the cycle: each thread's workspace in the rail, then its project
  *             card, in turn; one click every gap ms (default 12 and 6000).
  * --targets   overrides the cycle: `ws:<name>,card:<name>,…`.
+ * --cpuprofile
+ *             a CPU profile of each click from the press to its paint
+ *             (<label>.click<i>.cpuprofile), its heaviest functions by self
+ *             time printed under the click and summed over the run.
  *
  * Per click it prints click → paint (two frames after the mouseup), the long
  * tasks (count, sum, longest), React commit ms (the TEMP_CODE_PROFILE build's
@@ -54,6 +58,7 @@ const clicks = Number(flag('--clicks', '12'))
 const gap = Number(flag('--gap', '6000'))
 const port = Number(flag('--port', '9243'))
 const sshKey = flag('--ssh-key', join(homedir(), '.orbstack/ssh/id_ed25519'))!
+const cpuprofile = argv.includes('--cpuprofile')
 if (!/^[a-z0-9-]+$/i.test(label)) throw new Error('--label <letters, digits and dashes> is required')
 if (panel !== 'changes' && panel !== 'closed') throw new Error('--panel is changes or closed')
 if (!Number.isInteger(scratchFiles) || scratchFiles < 0) throw new Error('--scratch-untracked takes a count')
@@ -61,7 +66,7 @@ if (!threads.length && !scratchFiles) throw new Error('nothing to measure: give 
 
 const userData = join(ROOT, `${label}.userData`)
 const scratchRepo = join(ROOT, 'scratch')
-const SCRATCH_WS = 'switch-scratch'
+const SCRATCH_WS = 'scratch'
 const SCRATCH_PROJECT = 'scratch'
 
 // ── the box: a read-only pairing that lives as long as this process ───────
@@ -97,6 +102,28 @@ function listeners(): number[] {
     return []
   }
 }
+
+// ── CPU profiles ──────────────────────────────────────────────────────────
+type CpuProfile = {
+  nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number } }[]
+  samples: number[]
+  timeDeltas: number[]
+}
+/** Self ms per function (name, file and line), heaviest first. */
+function selfTimes(profile: CpuProfile): Map<string, number> {
+  const names = new Map<number, string>()
+  for (const n of profile.nodes) {
+    const f = n.callFrame
+    names.set(n.id, f.url ? `${f.functionName || '(anonymous)'} ${f.url.split('/').pop()}:${f.lineNumber + 1}` : f.functionName || '(anonymous)')
+  }
+  const out = new Map<string, number>()
+  profile.samples.forEach((id, i) => {
+    const name = names.get(id)!
+    out.set(name, (out.get(name) ?? 0) + (profile.timeDeltas[i + 1] ?? 0) / 1000)
+  })
+  return new Map([...out].filter(([name]) => name !== '(idle)').sort((a, b) => b[1] - a[1]))
+}
+const top = (times: Map<string, number>, n: number): string[] => [...times].slice(0, n).map(([name, ms]) => `${ms.toFixed(1).padStart(7)} ms  ${name}`)
 
 // ── the scratch checkout ──────────────────────────────────────────────────
 function seedScratch(): void {
@@ -281,27 +308,11 @@ async function main(): Promise<void> {
       await sleep(3000)
     }
 
-    // The scratch workspace: one project, one draft thread on it.
-    let scratch: Target[] = []
-    if (scratchFiles) {
-      const ws = await request<{ id: string }>(local, 'workspace.create', { path: scratchRepo, name: SCRATCH_WS })
-      await request(local, 'project.create', { workspaceId: ws.id, name: SCRATCH_PROJECT, mode: 'local' })
-      await click('ws', SCRATCH_WS)
-      await click('card', SCRATCH_PROJECT)
-      await sleep(1000)
-      await c.eval('window.__app.newSession()')
-      await sleep(2000)
-      await setPanel()
-      scratch = [{ kind: 'ws', name: SCRATCH_WS }, { kind: 'card', name: SCRATCH_PROJECT }]
-      const index = await request<{ files: { relative: string }[] }>(local, 'git.diffIndex', { cwd: scratchRepo })
-      result.scratchIndex = { files: index.files.length, appFiles: index.files.filter((f) => f.relative.includes('.temp-code/')).length }
-    }
-
     // The box threads, each with its panel set; the cycle from their workspaces and cards.
     const cycle: Target[] = []
     const checkouts: Record<string, unknown>[] = []
     for (const id of threads) {
-      await c.eval(`window.__app.openSession(${JSON.stringify(id)})`)
+      await c.eval(`window.__tcOpening = window.__app.openSession(${JSON.stringify(id)})`)
       await waitFor(`[...document.querySelectorAll('[data-session-drop="${id}"]')].find(${visible})`, 240_000, `thread ${id}`)
       await sleep(2000)
       await setPanel()
@@ -319,6 +330,30 @@ async function main(): Promise<void> {
       }
     }
     result.checkouts = checkouts
+
+    // Set up scratch last: opening a box thread would replace its blank pane.
+    let scratch: Target[] = []
+    if (scratchFiles) {
+      const ws = await request<{ id: string }>(local, 'workspace.create', { path: scratchRepo, name: SCRATCH_WS })
+      await request(local, 'project.create', { workspaceId: ws.id, name: SCRATCH_PROJECT, mode: 'local' })
+      await click('ws', SCRATCH_WS)
+      await click('card', SCRATCH_PROJECT)
+      await sleep(1000)
+      // Empty drafts skip ThreadView (and its panel). Mount its view without
+      // adding a message or sending anything: only this scratch draft's load flag.
+      await c.eval(`(() => {
+        const s = window.__app.store.getState().find((s) => s.cwd === ${JSON.stringify(scratchRepo)})
+        if (!s?.load) throw new Error('the scratch draft has no load state')
+        s.load.empty = false
+        window.__monocode.sessionStore.patch(s.id, { load: s.load })
+      })()`)
+      await sleep(2000)
+      await setPanel()
+      scratch = [{ kind: 'ws', name: SCRATCH_WS }, { kind: 'card', name: SCRATCH_PROJECT }]
+      const index = await request<{ files: { relative: string }[] }>(local, 'git.diffIndex', { cwd: scratchRepo })
+      result.scratchIndex = { files: index.files.length, appFiles: index.files.filter((f) => f.relative.includes('.temp-code/')).length }
+    }
+
     const override = flag('--targets')
     const targets: Target[] = override
       ? override.split(',').map((t) => {
@@ -334,13 +369,27 @@ async function main(): Promise<void> {
 
     // The cycle.
     await c.eval('window.__app.profile.start()')
+    if (cpuprofile) {
+      await c.send('Profiler.enable')
+      await c.send('Profiler.setSamplingInterval', { interval: 100 })
+    }
+    const total = new Map<string, number>()
     const rows: Click[] = []
     for (let i = 0; i < clicks; i++) {
       const target = targets[i % targets.length]!
       const at = await point(controlExpr(target.kind, target.name), `${target.kind} ${target.name}`)
       const before = await c.eval<{ start: number; profile: Record<string, number> }>(`(() => { window.__tcArmed = { start: performance.now(), paint: null }; return { start: window.__tcArmed.start, profile: window.__app.profile.read() } })()`)
+      if (cpuprofile) await c.send('Profiler.start')
       const wall = Date.now()
       await press(at)
+      let self: Map<string, number> | null = null
+      if (cpuprofile) {
+        while (Date.now() - wall < 5000 && (await c.eval<number | null>('window.__tcArmed.paint')) === null) await sleep(4)
+        const { profile } = (await c.send('Profiler.stop')) as { profile: CpuProfile }
+        writeFileSync(join(ROOT, `${label}.click${i}.cpuprofile`), JSON.stringify(profile))
+        self = selfTimes(profile)
+        for (const [name, ms] of self) total.set(name, (total.get(name) ?? 0) + ms)
+      }
       await sleep(Math.max(0, Math.min(gap, 5000) - (Date.now() - wall)))
       const after = await c.eval<{ paint: number | null; tasks: { start: number; duration: number }[]; profile: Record<string, number> }>(`(() => { const a = window.__tcArmed; return { paint: a.paint, tasks: window.__tcTasks.filter((t) => t.start >= a.start && t.start < a.start + ${Math.min(gap, 5000)}), profile: window.__app.profile.read() } })()`)
       const heap = (await c.send('Runtime.getHeapUsage')) as { usedSize: number }
@@ -360,19 +409,22 @@ async function main(): Promise<void> {
         requests,
         receivedBytes: inWindow.filter((w) => w.dir === 'received').reduce((n, w) => n + w.bytes, 0),
         fileReads: requests['file.read'] ?? 0,
+        ...(self ? { topSelf: top(self, 12) } : {}),
         ...(await c.eval<Record<string, unknown>>(SNAPSHOT))
       }
       rows.push(row)
       ;(result.clicks as Click[]).push(row)
       save()
       console.log(
-        [`${i}`.padStart(2), row.target.padEnd(28), `paint ${row.paintMs?.toFixed(0) ?? '—'} ms`.padEnd(15), `tasks ${row.longTasks} ${row.longTaskMs.toFixed(0)} ms max ${row.maxLongTaskMs.toFixed(0)}`.padEnd(26), `react ${row.reactRenderMs.toFixed(0)} ms/${row.reactCommits}`.padEnd(16), `rows ${(row.changesRows as number[]).join('+')}`.padEnd(16), `dom ${row.domNodes}`.padEnd(12), `file.read ${row.fileReads}`, `in ${(row.receivedBytes / 1024).toFixed(0)} kB`].join('  ')
+        [`${i}`.padStart(2), row.target.padEnd(28), `paint ${row.paintMs?.toFixed(0) ?? '>5000'} ms`.padEnd(15), `tasks ${row.longTasks} ${row.longTaskMs.toFixed(0)} ms max ${row.maxLongTaskMs.toFixed(0)}`.padEnd(26), `react ${row.reactRenderMs.toFixed(0)} ms/${row.reactCommits}`.padEnd(16), `rows ${(row.changesRows as number[]).join('+')}`.padEnd(16), `dom ${row.domNodes}`.padEnd(12), `file.read ${row.fileReads}`, `in ${(row.receivedBytes / 1024).toFixed(0)} kB`].join('  ')
       )
+      if (self) for (const line of top(self, 6)) console.log(`      ${line}`)
       await sleep(Math.max(0, gap - (Date.now() - wall)))
     }
     await c.eval('window.__app.profile.stop()').catch(() => undefined)
 
-    const sorted = rows.map((r) => r.paintMs ?? Infinity).sort((a, b) => a - b)
+    // A paint still pending at the end of its window counts as the window.
+    const sorted = rows.map((r) => r.paintMs ?? 5000).sort((a, b) => a - b)
     const q = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]!
     const summary = {
       paintMedianMs: q(0.5),
@@ -390,6 +442,12 @@ async function main(): Promise<void> {
     console.log(`longest task   ${summary.maxLongTaskMs.toFixed(0)} ms  clicks with one over 100 ms: ${summary.longTasksOver100}`)
     console.log(`Changes rows   ${summary.maxChangesRowsPerPanel} at most in one panel  .temp-code rows shown: ${summary.appRowsShown}`)
     console.log(`file.read      ${summary.fileReadsPerClick.toFixed(1)} per click`)
+    if (cpuprofile) {
+      result.topSelf = top(new Map([...total].sort((a, b) => b[1] - a[1])), 40)
+      console.log('press → paint, self time summed over the clicks:')
+      for (const line of top(new Map([...total].sort((a, b) => b[1] - a[1])), 20)) console.log(`  ${line}`)
+      save()
+    }
     for (const k of checkouts) console.log(`git.diffIndex  ${k.cwd}: ${k.files} files, ${k.appFiles} under .temp-code/`)
     if (result.scratchIndex) console.log(`git.diffIndex  scratch: ${JSON.stringify(result.scratchIndex)}`)
     console.log(join(ROOT, `${label}.json`))
