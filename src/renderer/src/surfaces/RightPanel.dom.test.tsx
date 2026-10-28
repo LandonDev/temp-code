@@ -193,6 +193,22 @@ describe("RightPanel", () => {
     r.unmount();
   });
 
+  it("a loose chat whose folder is a project's checkout lists Changes, Notes and Files, never Build", () => {
+    const chat = { ...session, cwd: "/p", projectId: null } as unknown as Session;
+    rightPanel.open("s1");
+    const r = render(<RightPanel session={chat} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"))).toEqual(["Changes", "Notes", "Files"]);
+    r.unmount();
+  });
+
+  it("a project thread in a worktree still lists Build", () => {
+    const inWorktree = { ...session, cwd: "/p/.claude/worktrees/x" } as unknown as Session;
+    rightPanel.open("s1");
+    const r = render(<RightPanel session={inWorktree} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"))).toContain("Build");
+    r.unmount();
+  });
+
   it("a loose chat in a workspace that is no repository has notes alone", () => {
     state.workspaces = [{ id: "w1", environmentId: "local", path: "/w", git: false }];
     const chat = { ...session, cwd: "/w", projectId: null, workspaceId: "w1" } as unknown as Session;

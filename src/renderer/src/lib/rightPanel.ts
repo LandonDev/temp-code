@@ -49,7 +49,7 @@ export const NO_ROOM_LABEL = "No room for the panel";
 export type PanelFacts = {
   /** A root thread (a subagent has no panel). */
   root: boolean;
-  /** The thread's cwd resolves to a project with a checkout. */
+  /** A thread of a project (it has a projectId) whose project has a checkout; never a loose chat, even in a project's folder. */
   project: boolean;
   /** A git checkout to show: the project's, or a loose chat's git workspace. */
   checkout: boolean;

@@ -201,7 +201,7 @@ function usePanelFacts(session: Session, state: PanelState): PanelPlace {
   const facts = useMemo<PanelFacts>(
     () => ({
       root: !session.parentId,
-      project: !!project?.cwd,
+      project: !!session.projectId && !!project?.cwd,
       checkout: !!project?.cwd || !!workspace,
       agents: agents.length,
       liveAgents: counts.working + counts.waiting,

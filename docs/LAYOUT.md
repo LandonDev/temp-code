@@ -192,7 +192,8 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   never here); Changes when its cwd is a project checkout, or when it is a
   loose chat whose workspace's folder is a git repository (`checkout`,
   read on the workspace's path); Notes for every root; Files with Changes;
-  Build for a project thread (dev servers live in the bottom dock's tab),
+  Build for a thread of a project (never a loose chat, even in a project's
+  folder; dev servers live in the bottom dock's tab),
   and Debug for one on a dev build or once "Debug this file" asked for it
   on the thread. The default is Activity if it exists, else Agents when
   the thread has subagents (live or done), else Changes, else Notes; a remembered section that no
