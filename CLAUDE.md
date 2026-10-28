@@ -2161,8 +2161,11 @@ this is the short one.
   muted "Master" after the title; nothing else marks it.
   `isMasterSession(session)` (orchestration.ts) reads the flag off the live
   row when the registry knows the id (the harness boots eagerly at create,
-  so a thread pinned after that still gets the batch tools at spawn and
-  supervises its batch), `registry.isMaster(id)` in the registry,
+  so a thread pinned after that still gets the batch tools and supervises
+  its batch; its prompt was built at that spawn, so `setMaster` drops the
+  handle of an idle thread, whose next send spawns a harness that knows it
+  is the master, and whispers `masterPinNotice` into one mid-turn or
+  watching, the next spawn carrying the change), `registry.isMaster(id)` in the registry,
   `isMasterThread` (lib/masterThread.ts) in the renderer. The master's
   prompt carries `MASTER_MECHANICS` through `mechanicsFor`, and the claude
   driver denies it Edit, MultiEdit, Write and NotebookEdit: it steers, the

@@ -1328,6 +1328,17 @@ and reports wake you, and you stay live (watching) until the batch is
 done. A person's message reaches you at once, into a live turn as a
 <user-steer> or as a wake; a wait_for_agent in flight returns on it.`
 
+/** What a thread hears when it is pinned as a master, or unpinned, while
+ *  its harness is up: the harness's prompt was built at its spawn
+ *  (mechanicsFor), so until the next spawn carries the change the
+ *  mechanics ride the conversation, into the live turn or ahead of the
+ *  next message (sessions.ts setMaster). */
+export function masterPinNotice(master: boolean): string {
+  return master
+    ? `<master-pinned>\nThis thread was just pinned as its project's master thread. From here on:\n\n${MASTER_MECHANICS}\n</master-pinned>`
+    : '<master-unpinned>\nThis thread is no longer a master thread: it has no batch, the batch tools refuse it, and it works as an ordinary thread again.\n</master-unpinned>'
+}
+
 /** The mechanics a session is prompted with: the spawn toolset, plus the
  *  master block when the session is its project's master. */
 export function mechanicsFor(session: SessionMeta): string {

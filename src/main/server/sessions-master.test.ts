@@ -6,7 +6,9 @@ import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { Batches, setBatches } from './batch'
 import { cancelMirrors } from './mirror'
-import { orchWaitForAgent, setOrchestrationRegistry, isMasterSession } from './orchestration'
+import { orchCheckAgent, orchListAgents, orchSendToAgent, orchWaitForAgent, setOrchestrationRegistry, isMasterSession } from './orchestration'
+import { appStartThread } from './apptools'
+import { writeFileSync } from 'node:fs'
 import type { DriverCtx, DriverHandle } from './drivers/types'
 import type { SessionMeta, AgentEvent } from '../../shared/events'
 
@@ -23,6 +25,7 @@ const sends = new Map<string, string[]>()
 const interrupts: string[] = []
 /** The session each spawn was handed: the harness boots eagerly at create, before the pin. */
 const spawnedWith = new Map<string, SessionMeta>()
+const spawns = new Map<string, number>()
 
 vi.mock('./drivers', () => ({
   BUILT_IN_DRIVERS: {
@@ -31,6 +34,7 @@ vi.mock('./drivers', () => ({
       start: async (ctx: DriverCtx): Promise<DriverHandle> => {
         const id = ctx.session.id
         spawnedWith.set(id, ctx.session)
+        spawns.set(id, (spawns.get(id) ?? 0) + 1)
         emits.set(id, ctx.emit)
         return {
           send: async (text: string) => {
@@ -62,6 +66,7 @@ beforeEach(async () => {
   setBatches(batches)
   emits.clear()
   sends.clear()
+  spawns.clear()
   interrupts.length = 0
 })
 afterEach(async () => {
@@ -105,11 +110,14 @@ async function child(_projectId: string, masterId: string, title: string): Promi
 }
 
 describe('the watching master', () => {
-  it('a master with no children idles as any thread; its harness was spawned with the pin', async () => {
+  it('a master with no children idles as any thread; pinned while its harness booted, it hears the mechanics ahead of its first message', async () => {
     const { master } = await pinnedMaster()
-    // The harness booted at create, before setMaster: the meta it holds has no pin, and the live read has it.
+    // The harness booted at create, before setMaster: the meta it holds has no pin, the live read has it, and the first send carried the words.
+    expect(spawns.get(master)).toBe(1)
     expect(spawnedWith.get(master)?.isMaster).toBe(false)
     expect(isMasterSession(spawnedWith.get(master)!)).toBe(true)
+    expect(sends.get(master)?.[0]).toContain('<master-pinned>')
+    expect(sends.get(master)?.[0]?.endsWith('open the batch')).toBe(true)
     expect(status(master)).toBe('running')
     idle(master)
     await settle()
@@ -309,6 +317,42 @@ describe('the batch follows the starter', () => {
     expect(other.masterId).toBe(chat.id)
   })
 
+  it('a thread pinned or unpinned mid-turn hears the change in the turn; pinned once booted and idle, its next send spawns a harness with the pin; a flip-flop leaves no stale line', async () => {
+    const t = await registry.create({ cwd: root, provider: 'claude', title: 'T' })
+    await registry.send(t.id, 'go')
+    await settle()
+    expect(status(t.id)).toBe('running')
+    registry.setMaster(t.id, true)
+    await settle()
+    expect(spawns.get(t.id)).toBe(1)
+    expect(sends.get(t.id)?.at(-1)).toContain('<master-pinned>')
+    expect(sends.get(t.id)?.at(-1)).toContain('## You are a master thread')
+    registry.setMaster(t.id, false)
+    await settle()
+    expect(sends.get(t.id)?.at(-1)).toContain('<master-unpinned>')
+    // Idle with its harness up: the pin drops the handle, and the next send spawns one that knows the pin.
+    idle(t.id)
+    await settle()
+    registry.setMaster(t.id, true)
+    await settle()
+    await registry.send(t.id, 'again')
+    await settle()
+    expect(spawns.get(t.id)).toBe(2)
+    expect(spawnedWith.get(t.id)?.isMaster).toBe(true)
+    expect(sends.get(t.id)?.at(-1)).toBe('again')
+    // Unpinned while idle, then pinned again before any message: the held unpin line is withdrawn, the pin drops the handle.
+    idle(t.id)
+    await settle()
+    registry.setMaster(t.id, false)
+    registry.setMaster(t.id, true)
+    await settle()
+    expect(registry.heldNotices(t.id)).toEqual([])
+    await registry.send(t.id, 'once more')
+    await settle()
+    expect(spawns.get(t.id)).toBe(3)
+    expect(sends.get(t.id)?.at(-1)).toBe('once more')
+  })
+
   it('setMaster pins and unpins a root, refuses a subagent, and pushes the meta', async () => {
     const t = await registry.create({ cwd: root, provider: 'claude', title: 'T' })
     const pushed: boolean[] = []
@@ -345,5 +389,67 @@ describe('archive a batch', () => {
     expect(interrupts).toContain(b)
     expect(store.getSession(b)?.archived).toBe(true)
     expect(store.getSession(master)?.archived).toBe(false)
+  })
+})
+
+describe('what the master supervises (V1 M4: an adopted thread read as "not part of my batch")', () => {
+  const PLAN = '# Ship the widget\n\n## Tasks\n- [ ] one\n'
+  /** The master lists it as a batch thread and may check and steer it. */
+  async function supervises(master: string, id: string): Promise<void> {
+    const m = registry.get(master)!
+    const rows = JSON.parse(await orchListAgents(m)) as { agentId: string; kind: string }[]
+    expect(rows.find((r) => r.agentId === id)?.kind).toBe('thread')
+    expect(JSON.parse(await orchCheckAgent(m, id)).agentId).toBe(id)
+    expect(await orchSendToAgent(m, id, 'carry on')).toBe('sent')
+  }
+
+  it("an implementation root the person started and adopted from the board is the master's to list and steer, and its settle wakes the master", async () => {
+    const { master } = await pinnedMaster()
+    idle(master)
+    await settle()
+    const impl = await registry.create({ cwd: root, provider: 'claude', threadType: 'implementation', title: 'Impl' })
+    await registry.send(impl.id, 'work')
+    await settle()
+    expect(impl.masterId).toBeNull()
+    expect(batches.adopt(master, [impl.id])).toMatchObject({ adopted: [impl.id], refused: [] })
+    expect(registry.get(impl.id)).toMatchObject({ masterId: master, startedBy: master })
+    await supervises(master, impl.id)
+    const before = (sends.get(master) ?? []).length
+    finish(impl.id)
+    await settle(150)
+    const woke = sends.get(master)!.slice(before).find((t) => t.includes('<subagent-report>'))
+    expect(woke).toContain('batch thread "Impl"')
+  })
+
+  it("a build started by hand from a plan the master started joins the batch and is the master's to supervise", async () => {
+    const { master } = await pinnedMaster()
+    const started = await appStartThread(registry, registry.get(master)!, {
+      threadType: 'planning',
+      provider: 'claude',
+      model: 'claude-haiku-5-5',
+      firstMessage: 'plan it'
+    })
+    expect(typeof started).toBe('object')
+    const planId = (started as { threadId: string }).threadId
+    const plan = registry.get(planId)!
+    expect(plan).toMatchObject({ masterId: master, startedBy: master, threadType: 'planning' })
+    writeFileSync(plan.planPath!, PLAN)
+    const build = await registry.implementPlan(planId)
+    expect(build).toMatchObject({ masterId: master, threadType: 'implementation', planThreadId: planId })
+    await settle()
+    await supervises(master, build.id)
+  })
+
+  it('a plan made before the master was pinned and adopted into the batch hands the batch to its hand-started build', async () => {
+    const plan = await registry.create({ cwd: root, provider: 'claude', threadType: 'planning', title: 'Plan' })
+    await registry.send(plan.id, 'plan it')
+    await settle()
+    const { master } = await pinnedMaster()
+    expect(batches.adopt(master, [plan.id]).adopted).toEqual([plan.id])
+    writeFileSync(registry.get(plan.id)!.planPath!, PLAN)
+    const build = await registry.implementPlan(plan.id)
+    expect(build).toMatchObject({ masterId: master, startedBy: master })
+    await settle()
+    await supervises(master, build.id)
   })
 })

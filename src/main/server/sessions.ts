@@ -121,7 +121,7 @@ import {
   reportPathFor,
   threadPreamble
 } from './threads'
-import { batchMembershipOf, isMasterSession, notifyParentOfSettle, settleTargets } from './orchestration'
+import { batchMembershipOf, isMasterSession, masterPinNotice, notifyParentOfSettle, settleTargets } from './orchestration'
 import { batches } from './batch'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
@@ -2006,6 +2006,22 @@ export class SessionRegistry {
     if (!!thread.isMaster === master) return
     const next = this.store.updateSession(sessionId, { isMaster: master })
     if (next) this.notifyMeta(next)
+    // The harness's prompt and tool set were built at its spawn
+    // (mechanicsFor, the editing tools denied to a master), and the harness
+    // boots eagerly at create, before any pin. Pinned once booted with no
+    // turn running, the thread loses its handle, so its next send spawns a
+    // harness that knows it is the master; pinned while it boots, or pinned
+    // or unpinned mid-turn or while it watches, it hears the change in the
+    // conversation (into the live turn, else ahead of its next message) and
+    // the next spawn carries it. A pin that undoes a held unpin, or the
+    // reverse, withdraws the stale line. Without this the master's model was
+    // never told what a batch thread is and called an adopted thread "not
+    // part of my batch" (V1 M4).
+    const booted = this.handles.has(sessionId)
+    const up = booted || this.starting.has(sessionId)
+    this.dropNotice(sessionId, masterPinNotice(!master))
+    if (booted && master && thread.status === 'idle') void this.dropHandle(sessionId)
+    else if (up) this.whisper(sessionId, masterPinNotice(master))
     // Unpinned, a master watching its batch has nothing to watch: idle.
     if (!master && thread.status === 'watching') this.append(sessionId, { type: 'status', status: 'idle' })
   }
@@ -4607,6 +4623,13 @@ export class SessionRegistry {
     const list = this.notices.get(sessionId) ?? []
     if (!list.includes(text)) list.push(text)
     this.notices.set(sessionId, list)
+  }
+
+  /** A held line withdrawn (a pin notice its unpin cancels). */
+  private dropNotice(sessionId: string, text: string): void {
+    const kept = (this.notices.get(sessionId) ?? []).filter((t) => t !== text)
+    if (kept.length) this.notices.set(sessionId, kept)
+    else this.notices.delete(sessionId)
   }
 
   /** The held lines, once; '' when none. */
