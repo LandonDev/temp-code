@@ -516,7 +516,7 @@ describe("ChangesPanel's virtual list", () => {
 
   it("a focused row stays mounted, and focused, when the list scrolls it out of the window", async () => {
     h.index = indexOf({ files: many(10_000) });
-    mount();
+    const { rerender } = mount();
     await flush();
     const open = screen.getByRole("button", { name: "Open the diff of notes/00001.md" });
     open.focus();
@@ -526,6 +526,12 @@ describe("ChangesPanel's virtual list", () => {
     });
     await flush();
     expect(rowOf("u:notes/05005.md")).toBeTruthy();
+    expect(open.isConnected).toBe(true);
+    expect(document.activeElement).toBe(open);
+    // A refresh drops a file above it: the place stays with the same file.
+    h.index = indexOf({ files: many(10_000).slice(1) });
+    rerender(<ChangesPanel cwd="/p" onOpenDiff={onOpenDiff} onOpenFile={() => {}} />);
+    await flush();
     expect(open.isConnected).toBe(true);
     expect(document.activeElement).toBe(open);
     open.blur();

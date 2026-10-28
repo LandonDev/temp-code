@@ -83,8 +83,9 @@ export function VirtualRows({
   sizeKey?: string;
 }) {
   // The row holding focus stays mounted when it scrolls out of the window:
-  // unmounting it would drop the keyboard's place to the page.
-  const focused = useRef<number | null>(null);
+  // unmounting it would drop the keyboard's place to the page. By key, so a
+  // row added or removed above it does not hand the place to another row.
+  const focused = useRef<string | null>(null);
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
     count,
     getScrollElement: () => scroller,
@@ -96,8 +97,10 @@ export function VirtualRows({
     measureElement: measureRow,
     rangeExtractor: (range) => {
       const rows = defaultRangeExtractor(range);
-      const keep = focused.current;
-      return keep === null || keep >= range.count || rows.includes(keep) ? rows : [...rows, keep].sort((a, b) => a - b);
+      const key = focused.current;
+      if (key === null || rows.some((i) => getItemKey(i) === key)) return rows;
+      for (let i = 0; i < range.count; i++) if (getItemKey(i) === key) return [...rows, i].sort((a, b) => a - b);
+      return rows;
     },
     ...(sizeKey ? { observeElementRect: rectFromObserver(sizeKey), initialRect: lastRects.get(sizeKey) } : {}),
     // Swapped in under a list the person may have scrolled: start where it
@@ -117,7 +120,7 @@ export function VirtualRows({
       style={{ height: virtualizer.getTotalSize() }}
       onFocus={(event) => {
         const row = (event.target as HTMLElement).closest("[data-index]");
-        focused.current = row ? Number(row.getAttribute("data-index")) : null;
+        focused.current = row ? getItemKey(Number(row.getAttribute("data-index"))) : null;
       }}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) focused.current = null;
