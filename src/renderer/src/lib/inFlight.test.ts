@@ -174,9 +174,9 @@ describe("markTurnInterrupted", () => {
 });
 
 describe("quitWhileBusyMessage", () => {
-  it("mentions resume on reopen", () => {
-    expect(quitWhileBusyMessage(1)).toContain("1 chat is still running");
-    expect(quitWhileBusyMessage(3)).toContain("3 chats are still running");
+  it("counts threads, names the app and says they resume on reopen", () => {
+    expect(quitWhileBusyMessage(1)).toBe("1 thread is still running. Quit anyway? It resumes when you reopen TempCode.");
+    expect(quitWhileBusyMessage(3)).toBe("3 threads are still running. Quit anyway? They resume when you reopen TempCode.");
   });
 });
 
@@ -222,6 +222,15 @@ describe("canAutoContinue", () => {
       }),
     ).toBe(false);
     expect(canAutoContinue({ ...interrupted, busy: true })).toBe(false);
+  });
+
+  it("still reads a note saved under the app's old name", () => {
+    const interrupted = markTurnInterrupted(
+      chat("/tmp/a", { busy: true, providerSessionId: "p1" }),
+    );
+    const last = interrupted.blocks[interrupted.blocks.length - 1]!;
+    const old = { ...interrupted, blocks: [...interrupted.blocks.slice(0, -1), { ...last, text: "Turn interrupted when MonoCode quit." }] };
+    expect(canAutoContinue(old)).toBe(true);
   });
 });
 

@@ -3,8 +3,9 @@ import type { ProjectTerminalDock } from "./projectTerminal";
 import { hasPendingApproval, type Session } from "./session";
 import { stopStreaming } from "./harness/toolBlock";
 
-export const INTERRUPT_MESSAGE =
-  "Turn interrupted when MonoCode quit.";
+export const INTERRUPT_MESSAGE = "Turn interrupted when TempCode quit.";
+/** The note's words before the app's rename, still in snapshots saved then. */
+const LEGACY_INTERRUPT_MESSAGE = "Turn interrupted when MonoCode quit.";
 
 export const CONTINUE_PROMPT = "Continue from where you left off.";
 
@@ -58,9 +59,9 @@ export function inFlightRefs(
 
 export function quitWhileBusyMessage(count: number): string {
   if (count === 1) {
-    return "1 chat is still running. Quit anyway? It will resume when you reopen MonoCode.";
+    return "1 thread is still running. Quit anyway? It resumes when you reopen TempCode.";
   }
-  return `${count} chats are still running. Quit anyway? They will resume when you reopen MonoCode.`;
+  return `${count} threads are still running. Quit anyway? They resume when you reopen TempCode.`;
 }
 
 /**
@@ -112,7 +113,10 @@ export function canAutoContinue(session: Session): boolean {
 
 function lastBlockIsInterrupt(session: Session): boolean {
   const last = session.blocks[session.blocks.length - 1];
-  return last?.role === "system" && last.text === INTERRUPT_MESSAGE;
+  return (
+    last?.role === "system" &&
+    (last.text === INTERRUPT_MESSAGE || last.text === LEGACY_INTERRUPT_MESSAGE)
+  );
 }
 
 export function inFlightSnapshotKey(refs: InFlightRef[]): string {
