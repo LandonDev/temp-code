@@ -201,13 +201,13 @@ export const GROUP_LABEL: Record<MasterGroupId, string> = {
 
 /** Which section a row sits in. A paused thread holds a live turn the
  *  person can resume, so it sits with the running ones; a queued one
- *  waits for a sibling; a settled one whose subagents still work is
- *  watching them (its row says so), so it sits with the work too. */
-export function groupOf(status: SessionStatus, background?: SessionMeta["background"]): MasterGroupId {
+ *  waits for a sibling. A settled one whose subagents still work stays in
+ *  Done, where the host's done rule and Archive done count it (its row
+ *  says Watching). */
+export function groupOf(status: SessionStatus): MasterGroupId {
   if (status === "waiting" || status === "error") return "needsYou";
   if (isLiveStatus(status) || status === "watching" || status === "paused") return "running";
   if (status === "queued") return "queued";
-  if ((status === "idle" || status === "done") && background?.agents.length) return "running";
   return "done";
 }
 
@@ -218,7 +218,7 @@ export type MasterGroup = { id: MasterGroupId; label: string; rows: MasterRowMod
 export function groupRows(rows: readonly MasterRowModel[]): MasterGroup[] {
   const by = new Map<MasterGroupId, MasterRowModel[]>();
   for (const row of rows) {
-    const g = groupOf(row.meta.status, row.meta.background);
+    const g = groupOf(row.meta.status);
     (by.get(g) ?? by.set(g, []).get(g)!).push(row);
   }
   return GROUP_ORDER.filter((id) => by.has(id)).map((id) => ({ id, label: GROUP_LABEL[id], rows: by.get(id)! }));
@@ -226,9 +226,9 @@ export function groupRows(rows: readonly MasterRowModel[]): MasterGroup[] {
 
 export type MasterCounts = Record<MasterGroupId, number>;
 
-export function masterCounts(rows: readonly { meta: Pick<SessionMeta, "status" | "background"> }[]): MasterCounts {
+export function masterCounts(rows: readonly { meta: { status: SessionStatus } }[]): MasterCounts {
   const counts: MasterCounts = { needsYou: 0, running: 0, queued: 0, done: 0 };
-  for (const r of rows) counts[groupOf(r.meta.status, r.meta.background)]++;
+  for (const r of rows) counts[groupOf(r.meta.status)]++;
   return counts;
 }
 
@@ -643,7 +643,7 @@ export function boardLayout(
       key: row.key,
       id: row.meta.id,
       planId: row.plan?.id ?? null,
-      group: groupOf(row.meta.status, (stored ?? row.meta).background),
+      group: groupOf(row.meta.status),
       environmentId: row.meta.environmentId,
       fallback: stored ? null : row.meta,
       override:

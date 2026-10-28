@@ -28,6 +28,13 @@ const bash = (command: string, id = command) => call("Bash", { command }, { id }
 const grep = (pattern: string) => call("Grep", { pattern }, { id: `g:${pattern}` });
 
 describe("groupPhrase", () => {
+  it("words what ran: a refused call is the red figure's, and a run refused whole says what it asked", () => {
+    const deny = (b: Block): Block => ({ ...b, approval: { requestId: b.id, decided: "deny" }, tool: { ...b.tool!, status: "failed" } });
+    expect(groupPhrase([read("src/a.ts"), deny(write("notes.txt"))], CWD)).toBe("Read a.ts");
+    expect(groupPhrase([deny(write("notes.txt"))], CWD)).toBe("Create notes.txt");
+    expect(groupPhrase([deny(bash("npm test", "b1")), deny(bash("git status", "b2"))], CWD)).not.toMatch(/^Ran /);
+  });
+
   it("joins phrases with commas, the first capitalized, the rest lowercase", () => {
     expect(groupPhrase([write("src/diag.ts"), bash("make")], CWD)).toBe("Created diag.ts, ran a command");
     expect(

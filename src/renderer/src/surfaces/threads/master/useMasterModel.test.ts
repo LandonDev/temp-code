@@ -48,9 +48,8 @@ describe("grouping by status", () => {
     expect(groupOf("running")).toBe("running");
     expect(groupOf("watching")).toBe("running");
     expect(groupOf("paused")).toBe("running");
-    // Settled, but its subagents still work: the row says Watching, so it sits with the work.
-    expect(groupOf("idle", { tasks: [], agents: ["a1"] } as never)).toBe("running");
-    expect(groupOf("done", { tasks: [], agents: [] } as never)).toBe("done");
+    // Settled with subagents still working: Done, where the host's done rule and Archive done count it.
+    expect(groupOf("idle")).toBe("done");
     expect(groupOf("queued")).toBe("queued");
     expect(groupOf("idle")).toBe("done");
     expect(groupOf("stopped")).toBe("done");

@@ -125,6 +125,22 @@ describe("TurnEnd of a queued turn", () => {
     expect(container.textContent).not.toMatch(/Worked for/);
     expect(container.querySelector('[data-slot="thinking-tail"]')).toBeNull();
   });
+
+  it("where no strip says it (the fleet's agent detail), the live row says Queued, not Working", () => {
+    const user = { id: "u", role: "user" as const, text: "go" };
+    const state = { status: "queued", busy: false, blocks: [user] } as unknown as TurnSession;
+    const { container } = render(
+      <TurnStateContext.Provider value={state}>
+        <TurnEnd
+          turn={{ id: "t", index: 0, isLast: true, settled: false, blocks: [user], userBlock: user, durationMs: undefined, startedAt: undefined }}
+          harnessOf={() => undefined}
+          turnState={state}
+        />
+      </TurnStateContext.Provider>,
+    );
+    expect(container.querySelector('[data-state="queued"]')).not.toBeNull();
+    expect(container.textContent).not.toMatch(/Working/);
+  });
 });
 
 describe("TurnEnd's live state", () => {

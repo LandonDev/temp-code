@@ -1,6 +1,6 @@
 import type { Block } from "./session";
 import { displayPath, projectName } from "./paths";
-import { isLive, kindOf, pathOf, runClauses, toolPhrase } from "./toolPhrase";
+import { isLive, isRefused, kindOf, pathOf, runClauses, toolPhrase } from "./toolPhrase";
 import { editModel, isEditBlock } from "../surfaces/editModel";
 import { splitEditCards } from "../surfaces/editCards";
 
@@ -119,13 +119,20 @@ function stretchPhrases(stretch: Stretch, blocks: Block[], cwd: string | undefin
  * left out, the run is live while any call in it still runs.
  */
 export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean): string {
-  const tools = blocks.filter((b) => b.role === "tool" || b.role === "approval");
-  if (tools.length === 0) return "";
-  const running = live ?? tools.some(isLive);
+  const all = blocks.filter((b) => b.role === "tool" || b.role === "approval");
+  if (all.length === 0) return "";
+  const running = live ?? all.some(isLive);
   const phrases: string[] = [];
   const push = (p: string): void => {
     if (p && !phrases.includes(p)) phrases.push(p);
   };
+  // A refused call never ran: the words say what ran, and the line's red
+  // figure counts the refusals. A run refused whole reads as what it asked
+  // to do, each call in its plain verb ("Create notes.txt").
+  const tools = all.filter((b) => !isRefused(b));
+  if (tools.length === 0) {
+    all.forEach((b) => push(toolPhrase(b, cwd, false)));
+  }
   let stretch: Stretch | null = null;
   let run: Block[] = [];
   const flush = (): void => {
@@ -142,7 +149,7 @@ export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean): stri
   }
   flush();
   if (phrases.length === 0) {
-    return running ? "Working" : `Ran ${tools.length} ${tools.length === 1 ? "tool" : "tools"}`;
+    return running ? "Working" : `Ran ${all.length} ${all.length === 1 ? "tool" : "tools"}`;
   }
   const shown = phrases.slice(0, MAX_PHRASES).map((p, i) => trim(i === 0 ? p : lower(p)));
   const extra = phrases.length - MAX_PHRASES;

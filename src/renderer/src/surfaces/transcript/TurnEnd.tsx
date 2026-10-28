@@ -98,13 +98,15 @@ export function TurnEnd({
 export function LiveTurnDuration({ turn }: { turn: Block[] }) {
   const session = useTurnState();
   const paused = session ? isTurnPaused(session) : false;
-  const now = useClock(!paused && usePaneVisible());
+  // Queued before it ran: the word, no clock (the fleet's agent detail draws this row; a pane has the strip).
+  const queued = session?.status === "queued";
+  const now = useClock(!paused && !queued && usePaneVisible());
   const elapsed = session ? turnElapsed(session, now) : null;
   const waiting = turn.some(
     (b) => needsApproval(b) || (b.question != null && b.question.answers === undefined),
   );
   return (
-    <TurnDuration elapsedMs={elapsed} live waiting={waiting} paused={paused} />
+    <TurnDuration elapsedMs={elapsed} live waiting={waiting} paused={paused} queued={queued} />
   );
 }
 
@@ -142,6 +144,7 @@ export function TurnDuration({
   stopped = false,
   waiting = false,
   paused = false,
+  queued = false,
   copyText: output,
   onSaveNote,
   fromHarness,
@@ -156,6 +159,8 @@ export function TurnDuration({
   waiting?: boolean;
   /** Frozen mid-turn: the elapsed time holds. */
   paused?: boolean;
+  /** Waiting for its turn to start: the word alone. */
+  queued?: boolean;
   copyText?: string;
   onSaveNote?: (text: string) => void;
   fromHarness?: HarnessId;
@@ -178,7 +183,7 @@ export function TurnDuration({
       </div>
     );
   }
-  const state = paused ? "paused" : waiting ? "waiting" : "working";
+  const state = queued ? "queued" : paused ? "paused" : waiting ? "waiting" : "working";
   return (
     <div role={live ? "status" : undefined} aria-label={STATUS_WORD[state]} className={LINE}>
       <StatusMark state={state} />
