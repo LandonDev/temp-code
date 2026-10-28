@@ -6,7 +6,7 @@ Date: 2026-10-27 (evening, box time). Tree verified: master 10d2d40c (every V1 f
 
 Round one's defects are mostly gone. Of the 94 round-one lines, 73 are fixed, 11 fixed in part, 5 still there, 4 not reached again and 1 settled by a decision (section 3). The app reads as one product in both themes at both widths: the rail, the strip, the transcript, the panel, the dialogs and the Settings pages measure to the standard's numbers almost everywhere, and the host-side rules H landed hold on the Mac: a killed watching harness settles idle in 50 ms, a killed watching master reads Stopped with Resume in 51 ms with its clock at zero, a message into a watching master starts its turn in 30–43 ms, and warm turns answer in 0.8 s (section 1).
 
-What remains is a shorter list of sixty-odd defects (section 2), eight of them broken: ⌘1…⌘6 pick the wrong chip while the pointer holds departed chips on the strip (16 of 20 presses); Thread defaults' Plans section never loads on a reload; a checkpoint Undo deleted three files the person made by hand before the writing turn; the terminal dock lands below the window after a project switch; a sent master with no children has no board and no + Thread; a child opened from the board is blank with no skeleton; an orchestration parent watching a subagent has no strip at all; and a loose chat's workspace column loses its scroll offset on every Settings round trip. The cold send still shows "thinking" through a two-second initialize handshake, and the host's loop stalled for up to 7.5 s on the Mac during an hour of page churn (Stats indexing, github.prStatus and checkpoint.status). Section 6 groups the fixes into nine planners (eight Opus, one Fable for the host side); section 7 lists the threads.
+What remains is a shorter list of sixty-odd defects (section 2), eight of them broken: ⌘1…⌘6 pick the wrong chip while the pointer holds departed chips on the strip (16 of 20 presses); Thread defaults' Plans section never loads on a reload; a checkpoint Undo deleted three files the person made by hand before the writing turn; the terminal dock lands below the window after a project switch; a sent master with no children has no board and no + Thread; a child opened from the board is blank with no skeleton; an orchestration parent watching a subagent has no strip at all; and a loose chat's workspace column loses its scroll offset on every Settings round trip. The cold send still shows "thinking" through a two-second initialize handshake, and the host's loop stalled for up to 7.5 s on the Mac during an hour of page churn (Stats indexing, github.prStatus and checkpoint.status). Section 6 groups the fixes into eight planners (seven Opus, one Fable for the host side); section 7 lists the threads.
 
 ## 1. Performance and stability, measured
 
@@ -207,4 +207,15 @@ One planner per group below (Opus 5.5 high 1M; the host group Fable 5.1 max 1M),
 | H | host side (2.10), one Fable thread |
 
 ## 7. Fix threads
-(filled in once started)
+All started 2026-10-27 (late evening, box time) by this thread (CZZF5j_Mf2M5); each planner auto-starts its build, lands by fast-forward and ends with the usability loop; they join the master's batch on their own, and their questions go to the master.
+
+| Group | Thread | Title | Model |
+| --- | --- | --- | --- |
+| A | 68wjVVI9B5dX | V2 fix A: the rail, the strip's keyboard order, the window title and first run | Opus 5.5 high 1M |
+| B | y3UWnSi4EyXs | V2 fix B: the transcript's closing lines, the failure line, counts and clocks | Opus 5.5 high 1M |
+| C | fbf0p3m9wkr2 | V2 fix C: the right panel's sections, Activity rows and the dev servers pane | Opus 5.5 high 1M |
+| D | HNb9MOrp4ej8 | V2 fix D: Settings pages, Accounts, Stats and web mode | Opus 5.5 high 1M |
+| E | 1WkHnlnouFFF | V2 fix E: the master board | Opus 5.5 high 1M |
+| F | zCMFXU60duTi | V2 fix F: the orchestration view's strip, the agent detail and the project plan | Opus 5.5 high 1M |
+| G | YrQz3xgjtJJX | V2 fix G: the editor, the diff pane, Changes, find, the terminal dock, search and light-theme contrast | Opus 5.5 high 1M |
+| H | 9sD3sdc3ULOu | V2 fix H: host-side defects (checkpoint Undo baseline, phase words, failure kinds, batch reasons, dev-server line, loop stalls) | Fable 5.1 max 1M |
