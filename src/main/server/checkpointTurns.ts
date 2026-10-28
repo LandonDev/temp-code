@@ -107,17 +107,17 @@ export class CheckpointTurns {
    *  listing or the status budget, and a refresh ahead of it would snapshot
    *  that turn's own files as the person's (gone from review, kept by Undo). */
   ensure(sessionId: string, cwd: string): Promise<void> {
+    const ensured = this.queue(sessionId, () => this.deps.store.ensure(sessionId, cwd))
     const turn = this.turnFor(sessionId, cwd)
+    // A touch from here on waits for the refreshed manifest (a write tool's
+    // call can land before the ensure is done: its path must not be dropped
+    // against a manifest that is not there yet). The settle and the flush
+    // queued ahead of this ensure keep the `known` they had when queued
+    // (settle, flush), so neither waits on an ensure behind it.
+    turn.known = ensured.then(() => this.read(sessionId, cwd))
     turn.open = true
     this.listings.delete(turn.root)
-    // The refreshed manifest is read inside the queued work, never promised
-    // ahead of it: a settle queued before it awaits the turn's `known`, and a
-    // promise that waited on this ensure would wait on the settle itself.
-    return this.queue(sessionId, async () => {
-      await this.deps.store.ensure(sessionId, cwd)
-      const current = this.turnFor(sessionId, cwd)
-      current.known = this.read(sessionId, cwd)
-    })
+    return ensured
   }
 
   /** A live edit; a settled one tells each owner with a checkpoint about its path. */
@@ -183,11 +183,14 @@ export class CheckpointTurns {
    *  after the turn (2 s after its last write) has no settle to follow its
    *  flush, so writing it here would list the temporary file for good. */
   private flush(sessionId: string): Promise<void> {
+    // The manifest as known when the flush was queued: an ensure queued after
+    // it replaces the turn's promise with one that waits behind this work.
+    const knownWhenQueued = this.turns.get(sessionId)?.known
     return this.queue(sessionId, async () => {
       const turn = this.turns.get(sessionId)
       if (!turn) return
       this.stopTimer(turn)
-      const known = await turn.known
+      const known = await (knownWhenQueued ?? turn.known)
       if (!known || turn.unsaved.size === 0) return
       const present: string[] = []
       for (const relative of turn.unsaved) if (await onDisk(join(turn.root, relative))) present.push(relative)
@@ -211,8 +214,11 @@ export class CheckpointTurns {
     if (!turn) return Promise.resolve()
     const open = turn.open
     turn.open = false
+    // Captured now: the next send's ensure replaces the turn's promise with
+    // one that waits behind this settle.
+    const knownWhenQueued = turn.known
     return this.queue(sessionId, async () => {
-      const known = open ? await turn.known : null
+      const known = open ? await knownWhenQueued : null
       if (open) this.stopTimer(turn)
       if (known) {
         const pending = [...turn.unasked, ...turn.unsaved]

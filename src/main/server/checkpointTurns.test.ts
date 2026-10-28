@@ -325,6 +325,27 @@ describe('checkpoint turns', () => {
     expect(t.manifest('root').touched).toEqual(['a.txt', 'b.txt'])
   })
 
+  it("a write tool's call that lands while the first baseline is still being made waits for it and is never dropped", async () => {
+    const t = setup()
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    const ensure = CheckpointStore.prototype.ensure
+    const spy = vi.spyOn(CheckpointStore.prototype, 'ensure').mockImplementation(async function (this: CheckpointStore, id: string, cwd: string) {
+      await held
+      return ensure.call(this, id, cwd)
+    })
+    const armed = t.turns.ensure('s1', t.dir)
+    // The tool's complete call lands before the baseline is on disk.
+    const touched = t.call('Write', { file_path: 'made.txt', content: 'x' })
+    release()
+    await Promise.all([armed, touched])
+    spy.mockRestore()
+    t.file('made.txt')
+    await t.end()
+    expect(t.manifest().touched).toEqual(['made.txt'])
+    expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual(['made.txt'])
+  })
+
   it("the next send's refresh waits behind a settle still on its listing: the turn's own file is claimed, never snapshotted as the person's", async () => {
     const t = setup()
     await t.turns.ensure('s1', t.dir)
