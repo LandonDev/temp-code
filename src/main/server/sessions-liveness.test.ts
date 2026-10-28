@@ -257,6 +257,33 @@ describe('the watching master', () => {
     expect(batches.open(master)).toBe(true)
   })
 
+  it('P4b a paused child the person then stops ends its turn on one stopped row and blocks as was stopped', async () => {
+    const { master } = await pinnedMaster()
+    const a = await child(master, 'A')
+    idle(master)
+    await settle()
+    await registry.pauseRun(a)
+    await settle()
+    // The pause's own cut-off turn reaches no row: paused drops it.
+    emit(a, { type: 'error', message: 'turn ended: interrupted' })
+    await settle(120)
+    expect(registry.eventsAfter(a, 0).filter((r) => r.event.type === 'error')).toHaveLength(0)
+    // The master hears "is paused" first; its turn on that settles.
+    if (status(master) === 'running') {
+      idle(master)
+      await settle(80)
+    }
+    const before = sent(master)
+    await registry.interrupt(a)
+    await settle(120)
+    expect(status(a)).toBe('idle')
+    const evs = registry.eventsAfter(a, 0).map((r) => r.event)
+    expect(evs.filter((e) => e.type === 'error')).toEqual([expect.objectContaining({ message: 'turn ended: interrupted', stopped: true })])
+    expect(evs.at(-1)).toEqual(expect.objectContaining({ type: 'status', status: 'idle' }))
+    expect(batches.get(master).blocked).toEqual({ sessionId: a, why: 'interrupted' })
+    expect(sends.get(master)!.slice(before).filter((t) => t.includes('was stopped'))).toHaveLength(1)
+  })
+
   it('P5 unpinning a watching master idles it', async () => {
     const { master } = await pinnedMaster()
     await child(master, 'A')

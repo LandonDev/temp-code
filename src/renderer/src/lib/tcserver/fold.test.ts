@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toolCallLabel } from "../../surfaces/transcriptActivity";
+import { turnEndsStopped } from "../turnOutcome";
 import { emptyFold, foldAll, foldEvent, foldOptimisticUser } from "./fold";
 import type { AgentEvent, EventRow } from "./types";
 
@@ -596,6 +597,17 @@ describe("M4 transcript fixes", () => {
     expect(s.blocks[0].startedAt).toBe(17_000);
     s = step(s, { type: "turn-complete" }, 21_000);
     expect(s.blocks[0].durationMs).toBe(4_000);
+  });
+
+  it("a paused turn the person stops closes Stopped: the host's stopped row lands before the idle", () => {
+    let s = foldAll(rows([[{ type: "user-text", text: "go" }, { ts: 10_000 }]]), CWD);
+    s = step(s, { type: "status", status: "running" }, 10_000);
+    s = step(s, { type: "assistant-text", text: "Lighthouses ", delta: true, msgId: "m1", blockIndex: 0 }, 11_000);
+    s = step(s, { type: "status", status: "paused" }, 28_000);
+    s = step(s, { type: "error", message: "turn ended: interrupted", stopped: true }, 40_000);
+    s = step(s, { type: "status", status: "idle" }, 40_000);
+    expect(s.busy).toBe(false);
+    expect(turnEndsStopped({ blocks: s.blocks, status: "idle", thread: s.thread }, s.blocks)).toBe(true);
   });
 
   it("a turn the host put down with its harness gone (a stopped row) carries its span through Resume, the way the strip's clock does", () => {

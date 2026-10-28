@@ -607,7 +607,9 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   it), clearing on a settle, on `starting` and at the top of the next send;
   a Stop while the harness still boots is remembered (`stopBooting`), and
   the handle is put down when it lands, the stopped row and idle written,
-  nothing delivered. A "turn ended: <subtype>" row the person did not stop
+  nothing delivered; a Stop on a paused turn writes the stopped row the
+  pause dropped, so that turn closes Stopped too. A "turn ended: <subtype>"
+  row the person did not stop
   is the CLI's own ending (`error_max_turns`, `error_max_budget_usd`,
   `error_max_structured_output_retries`, or an `error_during_execution`
   with the CLI's first error line appended): kind `turn_ended`, summary

@@ -2990,13 +2990,18 @@ export class SessionRegistry {
   async interrupt(sessionId: string): Promise<void> {
     const meta = this.store.getSession(sessionId)
     if (meta?.status === 'paused') {
-      this.appendStatus(sessionId, 'idle')
+      // The pause cut the turn off and its row was dropped (paused takes
+      // no error row), so the Stop writes the row a Stop on a running turn
+      // gets: the turn closes Stopped, never "Worked for", and a batch
+      // child blocks as "was stopped". The row leaves paused first.
       const next = this.store.updateSession(sessionId, {
         status: 'idle',
         busySince: null,
         pausedAt: null,
         frozenActiveElapsed: null
       })
+      this.append(sessionId, { type: 'error', message: 'turn ended: interrupted', stopped: true })
+      this.appendStatus(sessionId, 'idle')
       if (next) this.notifyMeta(next)
       await this.dropHandle(sessionId)
       return

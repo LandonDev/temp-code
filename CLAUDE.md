@@ -491,7 +491,10 @@ routed to (aliax-core's `forward`). Two listeners:
   or an approval's cleanup emits and a `waiting`, clears on a settle, on
   `starting` and at the top of `send()`; a Stop while the harness boots
   (`stopBooting`) puts the handle down when it lands, writes the stopped
-  row and idle, and delivers nothing. The transcript's FailureCard prints
+  row and idle, and delivers nothing; a Stop on a paused turn writes the
+  stopped row the pause dropped (paused takes no error row), so the turn
+  closes Stopped and a batch child blocks as "was stopped". The
+  transcript's FailureCard prints
   its two lines and at most
   three actions that fit the kind, Retry last, for every failure (a row
   with no verdict reads `fallbackFailure`, src/shared/failureFallback.ts,
