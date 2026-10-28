@@ -37,6 +37,11 @@ describe('the batch shapes', () => {
     expect(BatchStepSchema.safeParse({ id: 'gate', name: 'Gate', kind: 'gate', status: 'done', detail: '', at: null, log: [] }).success).toBe(false)
     expect(BatchStepSchema.safeParse({ id: 'gate', name: 'Gate', kind: 'gate', status: 'skipped', detail: '', at: null }).success).toBe(false)
   })
+  it("blocked's why names a person's stop as interrupted", () => {
+    expect(BatchStateSchema.safeParse({ ...emptyBatch('m'), blocked: { sessionId: 'b', why: 'interrupted' } }).success).toBe(true)
+    expect(BatchStateSchema.safeParse({ ...emptyBatch('m'), blocked: { sessionId: 'b', why: 'cancelled' } }).success).toBe(false)
+  })
+
   it('the empty batch has the default three steps pending, the default rules and the children pending', () => {
     const b = emptyBatch('m1', ['x', 'y'])
     expect(BatchStateSchema.parse(b)).toEqual(b)

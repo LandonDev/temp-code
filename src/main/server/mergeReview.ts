@@ -2,7 +2,7 @@ import { nanoid } from 'nanoid'
 import { existsSync, readFileSync } from 'node:fs'
 import { modelInfo, resolveModel } from '@shared/catalog'
 import type { SessionMeta } from '@shared/events'
-import { GATE_TEXT_TAIL, gateLine, logTail, type GateNotice, type GateStep } from '@shared/gate'
+import { GATE_TEXT_TAIL, gateLine, logTail, type GateNotice, type GateStep, gateFailureDetail } from '@shared/gate'
 import {
   MERGE_BRANCH_TOOL_NAME,
   REPORT_FINDINGS_TOOL_NAME,
@@ -639,7 +639,14 @@ ${bundle.diff}
    *  lands its row; the caller words the text from the verdict. */
   private async gate(session: SessionMeta, run: ReviewRun, step: GateStep, cwd: string): Promise<GateVerdict> {
     const result = await this.runGate({ cwd, step, branch: run.branch, since: step === 'gate' ? run.base : undefined })
-    const notice: GateNotice = { step, branch: run.branch, ok: result.ok, log: result.log, at: this.now() }
+    const notice: GateNotice = {
+      step,
+      branch: run.branch,
+      ok: result.ok,
+      log: result.log,
+      at: this.now(),
+      ...(result.ok ? {} : { detail: gateFailureDetail(step, result.log, result.firstError) })
+    }
     this.deps.registry.append(session.id, { type: 'notice', kind: 'gate', message: gateLine(notice), gate: notice })
     return { ok: result.ok, line: gateLine(notice), ms: result.ms, log: result.log }
   }

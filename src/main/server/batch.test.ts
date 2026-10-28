@@ -580,7 +580,9 @@ describe('Batches: the end of the batch', () => {
     w.set('b', { status: 'idle' })
     b.landed(w.landed('a'))
     await b.review('m')
-    expect(steps(b.get('m')).gate).toEqual(['failed', "The batch's gate FAILED at vitest in 1m 12s; nothing was tagged."])
+    // The step's detail is the failing step and its first error line, no duration; the master gets the long sentence.
+    expect(steps(b.get('m')).gate).toEqual(['failed', 'vitest: FAIL x.test.ts'])
+    expect(w.reports[0].text).toContain("The batch's gate FAILED at vitest in 1m 12s; nothing was tagged.")
     expect(steps(b.get('m')).release).toEqual(['pending', ''])
     expect(w.reports.map((r) => r.status)).toEqual(['failed'])
     expect(w.reports[0].text).toContain('FAIL x.test.ts')
@@ -599,6 +601,33 @@ describe('Batches: the end of the batch', () => {
     await b.review('m')
     expect(w.runs.map((r) => r.step)).toEqual(['gate', 'gate', 'release'])
     expect(steps(b.get('m')).release).toEqual(['passed', 'release-277 tagged'])
+  })
+
+  it("a red gate step's detail reads the step's printed tail first, the notice carries the same words, and fail() keeps it", async () => {
+    const w = world()
+    const b = w.make()
+    const log = [
+      'gate: commit tier, 3 steps: typecheck, vitest, build',
+      '✓ typecheck 12s passed',
+      '✗ vitest 40s failed',
+      '',
+      '--- vitest (last lines) ---',
+      ' ❯ src/x.test.ts (3 tests | 1 failed) 40ms',
+      ' FAIL  src/x.test.ts > suite > name',
+      'AssertionError: expected 1 to be 2',
+      '--- end vitest ---',
+      '',
+      'gate failed: vitest in 1m 12s'
+    ].join('\n')
+    w.setOutcome((o) => (o.step === 'gate' ? { ok: false, log, firstError: 'src/early.ts(1,1): error TS2322: early' } : {}))
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    await b.review('m')
+    const detail = 'vitest: FAIL  src/x.test.ts > suite > name'
+    expect(steps(b.get('m')).gate).toEqual(['failed', detail])
+    const notice = w.rows['m'].find((e) => e.type === 'notice' && e.kind === 'gate')
+    expect(notice).toMatchObject({ message: 'Gate failed on master · at vitest', gate: { ok: false, detail } })
+    expect(w.reports[0].text).toContain("The batch's gate FAILED at vitest")
   })
 
   it('a landing after the end keeps what landed, reopens the steps after land, and runs them again on the new head', async () => {
@@ -820,13 +849,19 @@ describe('Batches: publish and deploy', () => {
     await b.review('m')
     expect(b.get('m').blocked).toEqual({ sessionId: 'b', why: 'no-turn' })
     expect(w.reports.at(-1)).toMatchObject({ status: 'blocked', text: expect.stringContaining('ended its turn without completing: send it a message or remove it') })
+    // The same child when a person's Stop ended that turn: interrupted, "was stopped".
+    w.registry.lastTurnStopped = (id) => id === 'b'
+    await b.review('m')
+    expect(b.get('m').blocked).toEqual({ sessionId: 'b', why: 'interrupted' })
+    expect(w.reports.at(-1)).toMatchObject({ status: 'blocked', text: expect.stringContaining('was stopped: send it a message or remove it') })
+    w.registry.lastTurnStopped = () => false
     // A completed turn clears it.
     w.registry.hasCompletedTurn = () => true
     await b.review('m')
     expect(b.get('m').blocked).toBeNull()
   })
 
-  it('lists the children it counts done: done, or idle on a completed turn with no failure; never paused or idle without a completed turn', () => {
+  it('lists the children it counts done: done, or idle on a completed turn with no failure; never paused or idle without a completed turn', async () => {
     const w = world({
       children: [
         meta('m'),
@@ -838,7 +873,11 @@ describe('Batches: publish and deploy', () => {
       ]
     })
     w.registry.hasCompletedTurn = (id) => id !== 'c'
-    expect(w.make().get('m').done).toEqual(['a', 'b'])
+    const b = w.make()
+    expect(b.get('m').done).toEqual(['a', 'b'])
+    // What the wire lists done is exactly what Archive done archives.
+    await b.archive('m', 'done')
+    expect(w.batchCalls).toEqual([{ action: 'archive', ids: ['a', 'b'], cleanup: false }])
   })
 
   it('a publish that was running at the restart is failed with a pointer to the Mac', async () => {
@@ -1005,7 +1044,7 @@ describe('Batches: batch_gate', () => {
     w.setOutcome((o) => (o.step === 'gate' ? { ok: false, log: '✓ typecheck 12s passed\n✗ vitest 40s failed\nFAIL x.test.ts' } : {}))
     const answer = await b.gate(w.sessions.get('m')!)
     expect(answer).toMatch(/^FAILED at vitest in 1m 12s; nothing was tagged\./)
-    expect(steps(b.get('m')).gate).toEqual(['failed', 'failed at vitest · FAIL x.test.ts'])
+    expect(steps(b.get('m')).gate).toEqual(['failed', 'vitest: FAIL x.test.ts'])
     expect(w.runs.map((r) => r.step)).toEqual(['gate'])
     w.setOutcome(() => ({}))
     expect(await b.gate(w.sessions.get('m')!, { release: false })).toBe('passed in 1m 12s. Release left for later (release: false).')

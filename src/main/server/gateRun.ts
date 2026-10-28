@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { GATE_LOG_TAIL, type GateStep } from '@shared/gate'
+import { GATE_LOG_TAIL, isErrorLine, type GateStep } from '@shared/gate'
 import { trackChild } from './spawnBudget'
 
 /**
@@ -43,6 +43,9 @@ export interface GateRunResult {
   log: string
   ms: number
   exitCode: number | null
+  /** the first error line the run printed (shared/gate.ts isErrorLine), kept
+   *  past the tail: the one line a red step is named by (gateFailureDetail) */
+  firstError?: string | null
 }
 
 export interface GateStubRule {
@@ -117,7 +120,7 @@ function stubbed(rules: GateStubRule[], opts: GateRunOptions): GateRunResult {
   const ok = rule?.ok ?? true
   const log = rule?.log ?? `stub: ${opts.step} ${ok ? 'passed' : 'failed'} on ${opts.branch}`
   for (const line of log.split('\n')) if (line.trim()) opts.onLine?.(line)
-  return { ok, log: tailOf(log), ms: 0, exitCode: ok ? 0 : 1 }
+  return { ok, log: tailOf(log), ms: 0, exitCode: ok ? 0 : 1, firstError: log.split('\n').find(isErrorLine) ?? null }
 }
 
 export function tailOf(log: string, n = GATE_LOG_TAIL): string {
@@ -133,6 +136,7 @@ export function runGateStep(opts: GateRunOptions): Promise<GateRunResult> {
     const started = Date.now()
     const env = gateEnv(opts.env ?? process.env)
     const lines: string[] = []
+    let firstError: string | null = null
     let partial = ''
     const feed = (chunk: Buffer): void => {
       partial += chunk.toString('utf8')
@@ -141,6 +145,7 @@ export function runGateStep(opts: GateRunOptions): Promise<GateRunResult> {
       for (const raw of parts) {
         const line = raw.replace(/\r/g, '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
         if (!line.trim()) continue
+        if (firstError === null && isErrorLine(line)) firstError = line
         lines.push(line)
         if (lines.length > GATE_LOG_TAIL * 5) lines.splice(0, lines.length - GATE_LOG_TAIL * 5)
         opts.onLine?.(line)
@@ -166,7 +171,7 @@ export function runGateStep(opts: GateRunOptions): Promise<GateRunResult> {
     child.on('close', (code) => {
       clearTimeout(timer)
       if (partial.trim()) feed(Buffer.from('\n'))
-      resolve({ ok: code === 0, log: tailOf(lines.join('\n')), ms: Date.now() - started, exitCode: code })
+      resolve({ ok: code === 0, log: tailOf(lines.join('\n')), ms: Date.now() - started, exitCode: code, firstError })
     })
   })
 }

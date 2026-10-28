@@ -380,11 +380,67 @@ function describeTool(name: string, input: unknown): Activity {
       return { text: 'Planning', kind: 'think' }
     case 'AskUserQuestion':
       return { text: 'Asking you', kind: 'think' }
+    case 'Skill':
+      return { text: typeof i.skill === 'string' && i.skill.trim() ? `Using skill ${i.skill.trim()}` : 'Using a skill', kind: 'think' }
     default: {
-      const mcp = /^mcp__([^_]+)__/.exec(name)
-      return { text: `Using ${mcp ? mcp[1] : name}`, kind: 'investigate' }
+      // An MCP tool is named by its tool alone (`mcp__app__update_notes`,
+      // `mcp__orchestrator__spawn_agent`): the app's and the orchestrator's
+      // have words of their own, any other reads as its server.
+      const mcp = /^mcp__(.+?)__(.+)$/.exec(name)
+      const known = TOOL_WORDS[mcp ? mcp[2] : name]
+      if (known) return known
+      if (mcp) return { text: `Using ${mcp[1]}`, kind: 'investigate' }
+      return { text: `Using ${humanizeToolName(name)}`, kind: 'investigate' }
     }
   }
+}
+
+/** The words for the tools with no input worth reading: the CLI's task
+ *  tools, the app's tools, the orchestrator's, and the CLI's own planning,
+ *  scheduling and workflow tools. Never a raw name. */
+const TOOL_WORDS: Record<string, Activity> = {
+  TaskCreate: { text: 'Creating a task', kind: 'think' },
+  TaskUpdate: { text: 'Updating tasks', kind: 'think' },
+  TaskList: { text: 'Listing tasks', kind: 'investigate' },
+  TaskGet: { text: 'Reading a task', kind: 'investigate' },
+  TaskStop: { text: 'Stopping a task', kind: 'edit' },
+  update_notes: { text: 'Updating notes', kind: 'edit' },
+  plan_complete: { text: 'Completing the plan', kind: 'think' },
+  merge_branch: { text: 'Landing the branch', kind: 'edit' },
+  report_findings: { text: 'Reporting findings', kind: 'think' },
+  ReportFindings: { text: 'Reporting findings', kind: 'think' },
+  batch_rules: { text: 'Setting batch rules', kind: 'think' },
+  batch_gate: { text: 'Running the gate', kind: 'edit' },
+  adopt_thread: { text: 'Adding a thread', kind: 'think' },
+  app_start_thread: { text: 'Starting a thread', kind: 'think' },
+  app_read_thread: { text: 'Reading a thread', kind: 'investigate' },
+  app_list_threads: { text: 'Listing threads', kind: 'investigate' },
+  spawn_agent: { text: 'Spawning an agent', kind: 'think' },
+  wait_for_agent: { text: 'Waiting for an agent', kind: 'think' },
+  check_agent: { text: 'Checking an agent', kind: 'investigate' },
+  send_to_agent: { text: 'Messaging an agent', kind: 'think' },
+  answer_agent: { text: 'Answering an agent', kind: 'think' },
+  interrupt_agent: { text: 'Interrupting an agent', kind: 'think' },
+  list_agents: { text: 'Listing agents', kind: 'investigate' },
+  Monitor: { text: 'Monitoring', kind: 'investigate' },
+  CronCreate: { text: 'Scheduling a wake-up', kind: 'think' },
+  ScheduleWakeup: { text: 'Scheduling a wake-up', kind: 'think' },
+  EnterPlanMode: { text: 'Planning', kind: 'think' },
+  ExitPlanMode: { text: 'Finishing the plan', kind: 'think' },
+  Workflow: { text: 'Running a workflow', kind: 'think' },
+  ToolSearch: { text: 'Finding tools', kind: 'investigate' }
+}
+
+/** A tool name the table does not know, in words: CamelCase and snake_case
+ *  split, the first word capitalized ("ListMcpResourcesTool" reads "list mcp
+ *  resources tool" after "Using"). */
+function humanizeToolName(name: string): string {
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .toLowerCase()
+  return words || 'a tool'
 }
 
 /** Tools that write the disk, across all three harnesses (claude / codex /
@@ -4489,6 +4545,11 @@ export class SessionRegistry {
   /** Has the thread finished a turn (batch.ts: an idle child is done only then)? */
   hasCompletedTurn(sessionId: string): boolean {
     return this.store.hasCompletedTurn(sessionId)
+  }
+
+  /** The thread's last turn ended on a person's Stop (batch.ts reads it as `interrupted`). */
+  lastTurnStopped(sessionId: string): boolean {
+    return this.store.lastTurnStopped(sessionId)
   }
 
   /** Has the person (or a starter) written into the thread (batch.ts: an idle child with a user turn but no completed one is stuck)? */

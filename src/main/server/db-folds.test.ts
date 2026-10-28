@@ -137,6 +137,29 @@ describe('persisted event flags', () => {
       .toEqual({ has_user_text: 1, has_completed_turn: 1 })
   })
 
+  it('the stop mark: an error row stamped stopped sets it, a user row or a completed turn clears it, a fold write leaves it', () => {
+    store.insertSession(meta('s'))
+    expect(store.lastTurnStopped('s')).toBe(false)
+    store.appendEvent('s', { type: 'user-text', text: 'go' })
+    store.appendEvent('s', { type: 'error', message: 'turn ended: interrupted', stopped: true })
+    expect(store.lastTurnStopped('s')).toBe(true)
+    store.appendEvent('s', { type: 'user-text', text: 'again' })
+    expect(store.lastTurnStopped('s')).toBe(false)
+    store.appendEvent('s', { type: 'error', message: 'turn ended: interrupted', stopped: true })
+    store.appendEvent('s', { type: 'turn-complete', costUsd: 0 })
+    expect(store.lastTurnStopped('s')).toBe(false)
+    store.appendEvent('s', { type: 'error', message: 'turn ended: interrupted', stopped: true })
+    store.flushEvents()
+    store.putFold(fold('s'))
+    expect(store.lastTurnStopped('s')).toBe(true)
+    // A failure that was no stop leaves the mark where it was.
+    store.appendEvent('s', { type: 'error', message: 'fetch failed' })
+    expect(store.lastTurnStopped('s')).toBe(true)
+    store.appendEvent('s', { type: 'status', status: 'idle' })
+    expect(store.lastTurnStopped('s')).toBe(true)
+    expect(store.lastTurnStopped('never')).toBe(false)
+  })
+
   it('backfills a legacy cold log once; type names inside text do not count', () => {
     store.insertSession(meta('a'))
     store.appendEvent('a', { type: 'assistant-text', text: '"user-text" "turn-complete"', delta: false })

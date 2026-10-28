@@ -377,13 +377,15 @@ public struct GateNotice: Codable, Hashable, Sendable {
     public let ok: Bool
     public let log: String
     public let at: Int
+    public let detail: String?
 
-    public init(step: GateStep, branch: String, ok: Bool, log: String, at: Int) {
+    public init(step: GateStep, branch: String, ok: Bool, log: String, at: Int, detail: String? = nil) {
         self.step = step
         self.branch = branch
         self.ok = ok
         self.log = log
         self.at = at
+        self.detail = detail
     }
 }
 
@@ -1578,6 +1580,7 @@ public struct BatchState: Codable, Hashable, Sendable {
             case unreachable
             case paused
             case noTurn
+            case interrupted
             /// A value this build does not know; `rawValue` keeps it.
             case unknown(String)
 
@@ -1589,6 +1592,7 @@ public struct BatchState: Codable, Hashable, Sendable {
                 case "unreachable": self = .unreachable
                 case "paused": self = .paused
                 case "no-turn": self = .noTurn
+                case "interrupted": self = .interrupted
                 default: self = .unknown(rawValue)
                 }
             }
@@ -1601,6 +1605,7 @@ public struct BatchState: Codable, Hashable, Sendable {
                 case .unreachable: "unreachable"
                 case .paused: "paused"
                 case .noTurn: "no-turn"
+                case .interrupted: "interrupted"
                 case .unknown(let value): value
                 }
             }

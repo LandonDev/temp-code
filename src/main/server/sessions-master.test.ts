@@ -489,3 +489,29 @@ describe('what the master supervises (V1 M4: an adopted thread read as "not part
     await supervises(master, build.id)
   })
 })
+
+describe('a child the person stopped', () => {
+  it("blocks the batch as interrupted ('was stopped'): the mark is set by the stopped row and cleared by the next message", async () => {
+    const { projectId, master } = await pinnedMaster()
+    const a = await child(projectId, master, 'A')
+    idle(master)
+    await settle()
+    const before = (sends.get(master) ?? []).length
+    await registry.interrupt(a)
+    expect(interrupts).toContain(a)
+    emit(a, { type: 'error', message: 'turn ended: interrupted' })
+    idle(a)
+    await settle(120)
+    expect(registry.lastEvents(a, 2)[0].event).toMatchObject({ type: 'error', stopped: true })
+    expect(registry.lastTurnStopped(a)).toBe(true)
+    expect(batches.get(master).blocked).toEqual({ sessionId: a, why: 'interrupted' })
+    expect(sends.get(master)!.slice(before).filter((t) => t.includes('was stopped: send it a message or remove it'))).toHaveLength(1)
+    // A new message clears the mark; the turn it completes ends the block.
+    await registry.send(a, 'go on')
+    await settle()
+    expect(registry.lastTurnStopped(a)).toBe(false)
+    finish(a)
+    await settle(120)
+    expect(batches.get(master).blocked).toBeNull()
+  })
+})

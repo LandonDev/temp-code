@@ -322,7 +322,11 @@ end a batch early). A child that errored or stopped blocks the end, and
 so does a child idle on a turn that ended in a failure (its row carries
 `failure`: a usage cap, a refused route; `blocked.why` is `failed`): it did
 no work, and counting it done once ended a batch with nothing new every
-time it retried. `blocked` names the child, the master is told once as a
+time it retried. An idle child with a user turn but no completed one
+blocks as `interrupted` ("was stopped") when a person's Stop ended that
+turn (`Store.lastTurnStopped`: the `last_turn_stopped` mark on
+`session_folds`, set by an error row stamped `stopped`, cleared by a user
+row or a completed turn) and as `no-turn` otherwise. `blocked` names the child, the master is told once as a
 `<batch-report>`, and nothing runs until it is fixed or archived. Then, on the host's
 `GateQueue`: the held merges (all-at-once) under the land step, and the
 steps after it in the order written (`runSteps`), the each-landing ones
@@ -365,7 +369,13 @@ stops the Mac's publish job; a gate or release step runs to its end.
 
 Each step carries its telemetry on the wire (`BatchStep`): its spec's
 `id`, `name` and `kind`, `status`
-pending | running | passed | failed | skipped, `detail` (one line),
+pending | running | passed | failed | skipped, `detail` (one line; a red
+gate or release step's is the failing step and its first error line,
+`gateFailureDetail` in src/shared/gate.ts: "vitest: FAIL src/x.test.ts >
+name", "typecheck: src/x.ts(12,3): error TS2322 …", with no duration, and
+the gate notice row carries the same words as `GateNotice.detail`; the
+runner keeps the first error line past its 40-line tail; `fail()` never
+overwrites a detail a step already set),
 `startedAt`, `endedAt`, `progress { done, total, label? }` (land: branches
 merged of total; gate: the tier's steps done of total with the running
 one as label, read from gate.ts's own `gate: … N steps`, `› step` and
@@ -524,9 +534,10 @@ of waking the thread alone. `MASTER_MECHANICS` tells the master to prefer
 ending its turn and being woken over blocking waits.
 
 The batch's blocks and a restart. `blockOf` names a paused child
-(`paused`: "is paused: Resume it or remove it") and one idle on a turn it
+(`paused`: "is paused: Resume it or remove it"), one idle on a turn it
 never completed (`no-turn`: "ended its turn without completing: send it a
-message or remove it") beside an errored, stopped or failed one, the master
+message or remove it") and one a person stopped mid-turn (`interrupted`:
+"was stopped: send it a message or remove it") beside an errored, stopped or failed one, the master
 told once as a `<batch-report>`; a complete plan with no build still holds
 the batch open, unblocked. The engine fails any step still running at a
 restart other than a deploy it can follow (gate, release and land join

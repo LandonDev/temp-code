@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { blockedWords } from './batchWords'
+import { blockedReason, blockedWords } from './batchWords'
 
 describe('blockedWords', () => {
   it('says every reason in words', () => {
@@ -10,6 +10,8 @@ describe('blockedWords', () => {
     expect(say('failed')).toBe('Blocked: Inbox failed')
     expect(say('paused')).toBe('Blocked: Inbox paused')
     expect(say('no-turn')).toBe('Blocked: Inbox ended its turn without completing')
+    expect(say('interrupted')).toBe('Blocked: Inbox was stopped')
+    expect(blockedReason('interrupted')).toBe('was stopped')
     expect(say('unreachable', 'box')).toBe('Blocked: Inbox is out of reach on box')
     expect(say('unreachable')).toBe('Blocked: Inbox is out of reach on another host')
   })

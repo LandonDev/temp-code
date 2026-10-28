@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { failedGateStep, gateLine, gateReason, typecheckErrorCount } from '@shared/gate'
+import { failedGateStep, gateFailureDetail, gateLine, gateReason, isErrorLine, typecheckErrorCount } from '@shared/gate'
 import { gateCommand, gateEnv, nodeBinary, parseGateStub, runGateStep, tailOf } from './gateRun'
 
 describe('gateRun', () => {
@@ -51,6 +51,25 @@ describe('gateRun', () => {
     expect(gateEnv({ HOME: home, PATH: already }).PATH).toBe(already)
   })
 
+  it('keeps the first error line past the tail, from a stub and from a child', async () => {
+    const early = 'src/early.ts(1,1): error TS2322: early'
+    const log = [early, ...Array.from({ length: 300 }, (_, i) => `line ${i}`)].join('\n')
+    const stub = JSON.stringify([{ step: 'typecheck', ok: false, log }])
+    const red = await runGateStep({ cwd: '/nowhere', step: 'typecheck', branch: 'b', stub })
+    expect(red.log).not.toContain(early)
+    expect(red.firstError).toBe(early)
+    // A child that prints the same: the runner keeps the line while it streams.
+    const home = mkdtempSync(join(tmpdir(), 'tc-gate-first-'))
+    const bin = join(home, '.bun', 'bin')
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(join(bin, 'bun'), `#!/bin/sh\necho '${early}'\ni=0\nwhile [ $i -lt 300 ]; do echo "line $i"; i=$((i+1)); done\nexit 1\n`)
+    chmodSync(join(bin, 'bun'), 0o755)
+    const child = await runGateStep({ cwd: home, step: 'typecheck', branch: 'b', env: { ...process.env, HOME: home, BUN_INSTALL: join(home, '.bun') } })
+    expect(child.ok).toBe(false)
+    expect(child.log).not.toContain(early)
+    expect(child.firstError).toBe(early)
+  })
+
   it('a bad stub is ignored', () => {
     expect(parseGateStub('nope')).toBeNull()
     expect(parseGateStub(null)).toBeNull()
@@ -75,6 +94,37 @@ describe('gate lines', () => {
     expect(gateReason('$ bun scripts/gate.ts\nerror: Module not found "scripts/gate.ts"\n\n')).toBe('error: Module not found "scripts/gate.ts"')
     expect(gateReason('\x1b[31m  fatal: not a git repository  \x1b[0m')).toBe('fatal: not a git repository')
     expect(gateReason('  \n')).toBeNull()
+  })
+  it('gateFailureDetail: the failing step and its first error line, by precedence, never a duration', () => {
+    const gateLog = [
+      'gate: commit tier, 3 steps: typecheck, vitest, build',
+      '✓ typecheck 12s passed',
+      '✗ vitest 40s failed',
+      '--- vitest (last lines) ---',
+      ' ❯ src/x.test.ts (3 tests | 1 failed) 40ms',
+      ' FAIL  src/x.test.ts > suite > name',
+      'AssertionError: expected 1 to be 2',
+      '--- end vitest ---',
+      'gate failed: vitest in 1m 12s'
+    ].join('\n')
+    // The step's printed tail wins over the runner's first error line.
+    expect(gateFailureDetail('gate', gateLog, 'src/early.ts(1,1): error TS1 early')).toBe('vitest: FAIL  src/x.test.ts > suite > name')
+    // No printed tail: the log's first error line; the gate's own ✗ line is never it.
+    expect(gateFailureDetail('gate', '✗ vitest 40s failed\nFAIL x.test.ts', null)).toBe('vitest: FAIL x.test.ts')
+    // The step from the final line, the error from the runner.
+    expect(gateFailureDetail('gate', 'gate failed: build in 2m', 'error: Module not found "x"')).toBe('build: error: Module not found "x"')
+    // Nothing named: the kind and the last line.
+    expect(gateFailureDetail('gate', 'something odd\n', null)).toBe('gate: something odd')
+    expect(gateFailureDetail('typecheck', 'x\nFound 2 errors.', 'src/a.ts(1,1): error TS2322: no')).toBe('typecheck: src/a.ts(1,1): error TS2322: no')
+    expect(gateFailureDetail('release', '\x1b[31mfatal: not a git repository\x1b[0m', null)).toBe('release: fatal: not a git repository')
+    expect(gateFailureDetail('release', '', null)).toBe('release failed')
+    const long = gateFailureDetail('typecheck', '', 'e'.repeat(400))
+    expect(long.length).toBe('typecheck: '.length + 160)
+    expect(long.endsWith('…')).toBe(true)
+    expect(isErrorLine('✗ vitest 40s failed')).toBe(false)
+    expect(isErrorLine('AssertionError: x')).toBe(true)
+    expect(isErrorLine('  × suite > name 12ms')).toBe(true)
+    expect(isErrorLine('✓ typecheck 2s passed')).toBe(false)
   })
   it('reads as one line', () => {
     expect(gateLine({ step: 'typecheck', branch: 'b', ok: false, log: 'Found 3 errors.', at: 1 })).toBe('Typecheck failed on b · 3 errors')

@@ -19,7 +19,10 @@ export const GateNoticeSchema = z.object({
   ok: z.boolean(),
   /** the run's last lines (gateRun.ts keeps GATE_LOG_TAIL of them) */
   log: z.string(),
-  at: z.number().int()
+  at: z.number().int(),
+  /** a red run's one line: the failing step and its first error line
+   *  (`gateFailureDetail`); the batch step's detail says the same */
+  detail: z.string().optional()
 })
 export type GateNotice = z.infer<typeof GateNoticeSchema>
 
@@ -71,6 +74,57 @@ export function gateLine(n: GateNotice): string {
     return `${label} failed on ${n.branch}${step ? ` · at ${step}` : ''}`
   }
   return `${label} failed on ${n.branch}`
+}
+
+/** A line that names an error in a step's output: tsc's `error TS`, a test
+ *  runner's FAIL or × line, a thrown `Error:`, a shell's `error:` or
+ *  `fatal:`. The gate's own `✗ step` line is not one: the step is read from
+ *  it, the error from the step's output. */
+export function isErrorLine(line: string): boolean {
+  return /\berror TS\d+|^\s*(?:FAIL|×|✖)\s|\w*Error:|^\s*(?:error|fatal):/i.test(line)
+}
+
+/** The steps the gate's final line names: `gate failed: vitest, build in 4m`. */
+function gateFailedSteps(log: string): string[] {
+  const m = /gate failed: (.+?) in \S+$/m.exec(log)
+  return m ? m[1].split(',').map((s) => s.trim()).filter(Boolean) : []
+}
+
+/** The lines the gate printed for a failed step, between its
+ *  `--- <step> (last lines) ---` and `--- end <step> ---`; none when it did not. */
+function stepTail(lines: readonly string[], step: string): string[] {
+  const start = lines.findIndex((l) => l.trim() === `--- ${step} (last lines) ---`)
+  if (start < 0) return []
+  const end = lines.findIndex((l, i) => i > start && l.trim() === `--- end ${step} ---`)
+  return lines.slice(start + 1, end < 0 ? undefined : end)
+}
+
+const MAX_DETAIL = 160
+
+/** A red gate step's one line, for the step's detail and the notice: the
+ *  failing step and its first error line ("vitest: FAIL src/x.test.ts >
+ *  name", "typecheck: src/x.ts(12,3): error TS2322 …"). The step is the
+ *  gate's `✗ <step>` line, else its final `gate failed:` line, else the
+ *  kind itself; the line is the first error line of that step's printed
+ *  tail, else `firstError` (what the runner saw first while the run
+ *  streamed, kept past the tail), else the log's first error line, else its
+ *  last line. Never a duration: the board's time column has it. */
+export function gateFailureDetail(step: GateStep, log: string, firstError?: string | null): string {
+  const lines = log
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .split('\n')
+    .map((l) => l.replace(/\r/g, ''))
+  const failing = step === 'gate' ? (failedGateStep(log) ?? gateFailedSteps(log)[0] ?? 'gate') : step
+  const tail = stepTail(lines, failing)
+  const line = (
+    tail.find(isErrorLine) ??
+    (firstError?.trim() || null) ??
+    lines.find(isErrorLine) ??
+    tail.find((l) => l.trim()) ??
+    logTail(lines.join('\n'), 1)
+  ).trim()
+  if (!line) return `${failing} failed`
+  return `${failing}: ${line.length > MAX_DETAIL ? `${line.slice(0, MAX_DETAIL - 1)}…` : line}`
 }
 
 /** The last `n` non-empty lines of a log. */

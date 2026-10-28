@@ -150,3 +150,48 @@ it('a first-output silence re-queues the message once into a fresh harness; a se
   const errors = registry.eventsAfter(id, 0).flatMap((r) => (r.event.type === 'error' ? [r.event.message] : []))
   expect(errors.at(-1)).toBe(FIRST_OUTPUT_GAVE_UP)
 })
+
+it('describeTool words every tool the strip can meet; an unknown name is humanized, never raw', async () => {
+  const id = await live()
+  const say = (name: string, input: unknown = {}): string | null | undefined => {
+    emit(id, { type: 'tool-call', callId: `c-${name}`, name, input })
+    return registry.get(id)?.activity
+  }
+  const table: [string, string][] = [
+    ['TaskCreate', 'Creating a task'],
+    ['TaskUpdate', 'Updating tasks'],
+    ['TaskList', 'Listing tasks'],
+    ['TaskGet', 'Reading a task'],
+    ['TaskStop', 'Stopping a task'],
+    ['mcp__app__update_notes', 'Updating notes'],
+    ['mcp__app__plan_complete', 'Completing the plan'],
+    ['mcp__app__merge_branch', 'Landing the branch'],
+    ['ReportFindings', 'Reporting findings'],
+    ['mcp__app__batch_rules', 'Setting batch rules'],
+    ['mcp__app__batch_gate', 'Running the gate'],
+    ['mcp__app__adopt_thread', 'Adding a thread'],
+    ['mcp__app__app_start_thread', 'Starting a thread'],
+    ['mcp__app__app_read_thread', 'Reading a thread'],
+    ['mcp__app__app_list_threads', 'Listing threads'],
+    ['mcp__orchestrator__spawn_agent', 'Spawning an agent'],
+    ['mcp__orchestrator__wait_for_agent', 'Waiting for an agent'],
+    ['mcp__orchestrator__check_agent', 'Checking an agent'],
+    ['mcp__orchestrator__send_to_agent', 'Messaging an agent'],
+    ['mcp__orchestrator__answer_agent', 'Answering an agent'],
+    ['mcp__orchestrator__interrupt_agent', 'Interrupting an agent'],
+    ['mcp__orchestrator__list_agents', 'Listing agents'],
+    ['Monitor', 'Monitoring'],
+    ['CronCreate', 'Scheduling a wake-up'],
+    ['EnterPlanMode', 'Planning'],
+    ['ScheduleWakeup', 'Scheduling a wake-up'],
+    ['ExitPlanMode', 'Finishing the plan'],
+    ['Workflow', 'Running a workflow'],
+    ['ToolSearch', 'Finding tools'],
+    ['mcp__cosmic-admin__file_read', 'Using cosmic-admin'],
+    ['ListMcpResourcesTool', 'Using list mcp resources tool'],
+    ['some_other_tool', 'Using some other tool']
+  ]
+  for (const [name, words] of table) expect(say(name), name).toBe(words)
+  expect(say('Skill', { skill: 'impeccable' })).toBe('Using skill impeccable')
+  expect(say('Skill', {})).toBe('Using a skill')
+})

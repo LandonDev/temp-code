@@ -2385,8 +2385,14 @@ this is the short one.
   carrying the masterId is `done`, or `idle` with a turn completed,
   `Store.hasCompletedTurn`); an errored or stopped child blocks the end,
   and so does one idle on a turn that ended in a failure (its row's
-  `failure`, a usage cap; `blocked.why` `failed`; a paused child `paused`, one idle on a turn it never completed `no-turn`), `blocked` names it and
-  the master is told once as a `<batch-report>`.
+  `failure`, a usage cap; `blocked.why` `failed`; a paused child `paused`, one idle on a turn it never completed `no-turn`, or `interrupted` ("was stopped") when a person's Stop ended that turn, `Store.lastTurnStopped`), `blocked` names it and
+  the master is told once as a `<batch-report>`. A red gate or release
+  step's `detail` is the failing step and its first error line
+  (`gateFailureDetail`, src/shared/gate.ts; the runner keeps the first
+  error line past its tail), no duration, and the gate notice carries the
+  same words as `GateNotice.detail`. `describeTool` (sessions.ts) words
+  every tool the strip can meet, the CLI's task tools, the app's and the
+  orchestrator's included; an unknown name is humanized, never printed raw.
   Steps run in order on the host's `GateQueue`, a gate or release outcome a
   `gate` notice row on the master; a red step stops the rest and tells the
   master; the steps after land run whenever the batch ends, on the project

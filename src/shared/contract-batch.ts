@@ -168,7 +168,7 @@ export const BatchStateSchema = z.object({
   blocked: z
     .object({
       sessionId: z.string(),
-      why: z.enum(['errored', 'stopped', 'failed', 'unreachable', 'paused', 'no-turn']),
+      why: z.enum(['errored', 'stopped', 'failed', 'unreachable', 'paused', 'no-turn', 'interrupted']),
       /** `unreachable`: the host the child lives on */
       environmentId: z.string().optional()
     })

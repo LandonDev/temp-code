@@ -22,7 +22,7 @@ import {
 import type { DeployStatus, HostLogPush } from '@shared/contract-host'
 import type { SessionMeta } from '@shared/events'
 import { STALE_WATCH_MS } from '@shared/watch'
-import { gateLine, type GateNotice } from '@shared/gate'
+import { gateLine, type GateNotice, gateFailureDetail } from '@shared/gate'
 import { ADOPT_THREAD_TOOL_NAME, BATCH_GATE_TOOL_NAME, BATCH_RULES_TOOL_NAME, GATE_TEXT_TAIL, logTail } from '@shared/gate'
 import { PUBLISH_PHASES, PhaseTracker, deployProgress, formatDuration } from '@shared/releasePhases'
 import { gateQueue, type GateQueue, type GateWait } from './gateQueue'
@@ -222,6 +222,8 @@ export interface BatchesDeps {
     hasUserText?: (id: string) => boolean
     /** has the thread finished a turn: an idle child counts as done only then (a fresh thread between its first row and its first turn is idle too) */
     hasCompletedTurn?(sessionId: string): boolean
+    /** did the thread's last turn end on a person's Stop: an idle child with no completed turn then blocks as `interrupted` ("was stopped"), not `no-turn` */
+    lastTurnStopped?(sessionId: string): boolean
     /** when the thread last moved (its last row), for the stall watch */
     lastActivityAt?(sessionId: string): number
     setArchived?(sessionId: string, archived: boolean): Promise<void>
@@ -272,18 +274,24 @@ export interface BatchesDeps {
 const ROW_PREFIX = 'batch:'
 const DONE = new Set<SessionMeta['status']>(['done'])
 const BLOCKS: Partial<Record<SessionMeta['status'], 'errored' | 'stopped' | 'paused'>> = { error: 'errored', stopped: 'stopped', paused: 'paused' }
-type BlockWhy = 'errored' | 'stopped' | 'failed' | 'paused' | 'no-turn'
+type BlockWhy = 'errored' | 'stopped' | 'failed' | 'paused' | 'no-turn' | 'interrupted'
+type MemberLike = { id: string; local?: SessionMeta | null }
 /** What blocks the end on one child: errored, stopped, paused, or idle on a
  *  turn that ended in a failure (a usage limit, a refused route: the row's
  *  `failure`). An idle child after a capped turn did no work; counting it
  *  done once ended a batch with nothing new, every time the child retried.
- *  `noTurn` says whether an idle child has a user turn but no completed one
- *  (an interrupted or max-turns ending): it blocks too, as `no-turn`. */
-function blockOf(m: { id: string; status: SessionMeta['status']; local?: SessionMeta | null }, noTurn?: (m: { id: string; local?: SessionMeta | null }) => boolean): BlockWhy | null {
+ *  `noTurn` says whether an idle child has a user turn but no completed one:
+ *  it blocks too, as `interrupted` ("was stopped") when `interrupted` says a
+ *  person's Stop ended that turn, else as `no-turn`. */
+function blockOf(
+  m: MemberLike & { status: SessionMeta['status'] },
+  noTurn?: (m: MemberLike) => boolean,
+  interrupted?: (m: MemberLike) => boolean
+): BlockWhy | null {
   if (m.local && m.local.status === 'idle' && m.local.failure) return 'failed'
   const base = BLOCKS[m.status]
   if (base) return base
-  if (m.local && m.local.status === 'idle' && noTurn?.(m)) return 'no-turn'
+  if (m.local && m.local.status === 'idle' && noTurn?.(m)) return interrupted?.(m) ? 'interrupted' : 'no-turn'
   return null
 }
 /** A thread on another host is done when its host said so, or when it went idle (its host reports a settle only after a turn). */
@@ -1007,11 +1015,12 @@ export class Batches {
     const away = down?.size ? members.find((m) => m.remote && down.has(m.remote.environmentId) && !this.memberDone(m)) : undefined
     // An idle child with a user turn but no completed one ended without
     // completing (interrupted, max turns): nobody would ever move it.
-    const noTurn = (m: { id: string; local?: SessionMeta | null }): boolean =>
+    const noTurn = (m: MemberLike): boolean =>
       !!m.local && (this.deps.registry.hasUserText?.(m.id) ?? false) && !(this.deps.registry.hasCompletedTurn?.(m.id) ?? true)
-    const blocker = members.find((m) => blockOf(m, noTurn))
+    const interrupted = (m: MemberLike): boolean => this.deps.registry.lastTurnStopped?.(m.id) ?? false
+    const blocker = members.find((m) => blockOf(m, noTurn, interrupted))
     const blocked: BatchState['blocked'] = blocker
-      ? { sessionId: blocker.id, why: blockOf(blocker, noTurn)! }
+      ? { sessionId: blocker.id, why: blockOf(blocker, noTurn, interrupted)! }
       : away
         ? { sessionId: away.id, why: 'unreachable', environmentId: away.environmentId! }
         : null
@@ -1037,7 +1046,9 @@ export class Batches {
                     ? 'is paused: Resume it or remove it'
                     : blocked.why === 'no-turn'
                       ? 'ended its turn without completing: send it a message or remove it'
-                      : blocked.why
+                      : blocked.why === 'interrupted'
+                        ? 'was stopped: send it a message or remove it'
+                        : blocked.why
               }. Fix it (a message, a new thread) or remove it (archive); the batch's steps run once every thread is done.`
         )
       }
@@ -1115,7 +1126,11 @@ export class Batches {
   }
 
   private fail(master: SessionMeta, row: StoredBatch, stepId: string, text: string): void {
-    this.end(row, stepId, 'failed', text.split('\n')[0].slice(0, 160))
+    // A step that already failed with its own detail (a gate's failing step
+    // and its first error line) keeps it; the long sentence is the master's.
+    const step = this.step(row, stepId)
+    if (step.status === 'failed' && step.detail) step.at = this.now()
+    else this.end(row, stepId, 'failed', text.split('\n')[0].slice(0, 160))
     this.save(row)
     this.tell(master, 'failed', text)
   }
@@ -1501,14 +1516,18 @@ export class Batches {
       this.save(row)
       return { ...result, waited }
     }
-    const notice: GateNotice = { step: kind, branch: opts.branch, ok: result.ok, log: result.log, at: this.now() }
+    // A red run's one line (the failing step and its first error line) is
+    // the step's detail, with no duration (the foot's time column has it),
+    // and rides the notice as `detail` too.
+    const failure = result.ok ? null : gateFailureDetail(kind, result.log, result.firstError)
+    const notice: GateNotice = { step: kind, branch: opts.branch, ok: result.ok, log: result.log, at: this.now(), ...(failure ? { detail: failure } : {}) }
     this.deps.registry.append(master.id, { type: 'notice', kind: 'gate', message: gateLine(notice), gate: notice })
     const detail =
       kind === 'release' && result.ok
         ? `${releaseTag(result.log) ?? lastLine(result.log)} tagged`
         : result.ok
           ? `passed in ${fmtMs(result.ms)}`
-          : `${kind === 'gate' ? `failed at ${failedAt(result.log)}` : 'failed'} · ${lastLine(result.log)}`
+          : failure!
     this.end(row, id, result.ok ? 'passed' : 'failed', detail)
     this.save(row)
     return { ...result, waited }

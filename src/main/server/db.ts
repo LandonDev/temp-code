@@ -252,6 +252,7 @@ export function openDb(path: string): DatabaseSync {
     // -1 means this pre-upgrade fold has not checked its log yet.
     `ALTER TABLE session_folds ADD COLUMN has_user_text INTEGER NOT NULL DEFAULT -1`,
     `ALTER TABLE session_folds ADD COLUMN has_completed_turn INTEGER NOT NULL DEFAULT -1`,
+    `ALTER TABLE session_folds ADD COLUMN last_turn_stopped INTEGER NOT NULL DEFAULT 0`,
     // A plan's completion and the handoff links (plans.ts): when the
     // planner called plan_complete, the build started from the plan, the
     // plan a build came from, and the thread that started this one.
@@ -371,6 +372,15 @@ interface FoldRowRaw {
   can_continue: number
   failure: string | null
   todo: string | null
+}
+
+/** An error row the registry stamped `stopped: true` (a person's Stop). */
+function isStoppedPayload(payload: string): boolean {
+  try {
+    return (JSON.parse(payload) as { stopped?: unknown }).stopped === true
+  } catch {
+    return false
+  }
 }
 
 function toFold(r: FoldRowRaw): FoldRow {
@@ -1034,7 +1044,7 @@ export class Store {
     const tier = this.stmt(`SELECT cold FROM sessions WHERE id = ?`)
     for (const id of ids) {
       this.nextSeq.delete(id)
-      this.stmt(`UPDATE session_folds SET has_user_text = -1, has_completed_turn = -1 WHERE session_id = ?`).run(id)
+      this.stmt(`UPDATE session_folds SET has_user_text = -1, has_completed_turn = -1, last_turn_stopped = 0 WHERE session_id = ?`).run(id)
       if (this.moving === id) this.moving = null
       const r = tier.get(id) as { cold: number } | undefined
       if (r?.cold) this.coldIds.add(id)
@@ -1171,21 +1181,27 @@ export class Store {
             row.seq = seq
           }
         }
-        const flags = new Map<string, { user: number; completed: number }>()
+        const flags = new Map<string, { user: number; completed: number; stopped: number }>()
         for (const row of rows) {
           const type = row.type
-          if (type !== 'user-text' && type !== 'turn-complete') continue
-          const flag = flags.get(row.sessionId) ?? { user: -1, completed: -1 }
+          // The stop mark (lastTurnStopped): an error row stamped stopped sets
+          // it, a user row or a completed turn clears it; -1 leaves it.
+          const stopped =
+            type === 'user-text' || type === 'turn-complete' ? 0 : type === 'error' && isStoppedPayload(row.payload) ? 1 : -1
+          if (type !== 'user-text' && type !== 'turn-complete' && stopped < 0) continue
+          const flag = flags.get(row.sessionId) ?? { user: -1, completed: -1, stopped: -1 }
           if (type === 'user-text') flag.user = 1
-          else flag.completed = 1
+          else if (type === 'turn-complete') flag.completed = 1
+          if (stopped >= 0) flag.stopped = stopped
           flags.set(row.sessionId, flag)
         }
         for (const [id, flag] of flags) {
-          this.stmt(`INSERT INTO session_folds (session_id, folded_seq, fold_version, has_user_text, has_completed_turn)
-            VALUES (?, 0, 0, ?, ?) ON CONFLICT(session_id) DO UPDATE SET
+          this.stmt(`INSERT INTO session_folds (session_id, folded_seq, fold_version, has_user_text, has_completed_turn, last_turn_stopped)
+            VALUES (?, 0, 0, ?, ?, MAX(?, 0)) ON CONFLICT(session_id) DO UPDATE SET
             has_user_text = MAX(has_user_text, excluded.has_user_text),
-            has_completed_turn = MAX(has_completed_turn, excluded.has_completed_turn)`)
-            .run(id, flag.user, flag.completed)
+            has_completed_turn = MAX(has_completed_turn, excluded.has_completed_turn),
+            last_turn_stopped = CASE WHEN ? >= 0 THEN ? ELSE last_turn_stopped END`)
+            .run(id, flag.user, flag.completed, flag.stopped, flag.stopped, flag.stopped)
         }
         this.turnIndex.insertLanded(rows)
         this.db.exec('COMMIT')
@@ -1584,6 +1600,18 @@ export class Store {
   hasUserText(sessionId: string): boolean {
     this.flushEvents()
     return this.eventFlags(sessionId).has_user_text === 1
+  }
+
+  /** Did the thread's last turn end on a person's Stop: an error row stamped
+   *  `stopped`, with no user row or completed turn since? The batch reads it
+   *  to say "was stopped" (`interrupted`) instead of "ended its turn without
+   *  completing" (batch.ts blockOf). */
+  lastTurnStopped(sessionId: string): boolean {
+    this.flushEvents()
+    const r = this.stmt(`SELECT last_turn_stopped FROM session_folds WHERE session_id = ?`).get(sessionId) as
+      | { last_turn_stopped: number }
+      | undefined
+    return r?.last_turn_stopped === 1
   }
 
   /** A legacy or imported log fills both flags once, on its first read. */
