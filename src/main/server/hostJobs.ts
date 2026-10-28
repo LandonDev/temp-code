@@ -26,7 +26,7 @@ import {
 } from '@shared/contract-host'
 import { PhaseTracker, formatDuration } from '@shared/releasePhases'
 import { updatePhaseLine, type SelfUpdateOutcome } from '../updateTrigger'
-import { loginShell } from './loginShell'
+import { loginShell, withToolPath } from './loginShell'
 import { trackChild } from './spawnBudget'
 
 /**
@@ -587,7 +587,7 @@ export class Publisher {
 
 function gitThroughShell(shell: string, args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(shell, ['-lc', 'exec git "$@"', 'git', ...args], { cwd, env, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(shell, ['-lc', withToolPath('exec git "$@"'), 'git', ...args], { cwd, env, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) reject(new Error(String(stderr || err.message).trim()))
       else resolve(String(stdout))
     })
@@ -607,8 +607,8 @@ async function fetchFeedVersion(): Promise<string | null> {
 
 /** Cut then publish by default; peers publish the release already cut on the box. */
 export function releaseCommand({ train = true }: { train?: boolean } = {}): string {
-  if (!train) return 'bun run release:publish'
-  return 'bun scripts/release.ts "$TC_RELEASE_NOTES" && bun run release:publish'
+  if (!train) return withToolPath('bun run release:publish')
+  return withToolPath('bun scripts/release.ts "$TC_RELEASE_NOTES" && bun run release:publish')
 }
 
 function spawnReleaseScripts(opts: { cwd: string; notes: string; shell: string; env: NodeJS.ProcessEnv; train: boolean }): ChildProcess {

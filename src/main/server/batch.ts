@@ -27,7 +27,7 @@ import { ADOPT_THREAD_TOOL_NAME, BATCH_GATE_TOOL_NAME, BATCH_RULES_TOOL_NAME, GA
 import { PUBLISH_PHASES, PhaseTracker, deployProgress, formatDuration } from '@shared/releasePhases'
 import { gateQueue, type GateQueue, type GateWait } from './gateQueue'
 import { runGateStep } from './gateRun'
-import { loginShell } from './loginShell'
+import { loginShell, withToolPath } from './loginShell'
 import { encodeAgentId, isRemoteAgentId } from '@shared/contract-crosshost'
 import type { RemoteBatchAction, RemoteChildRecord, RemoteLanding } from './crossHostAgents'
 import { branchOf, fastForwardFromOrigin, fastForwardMerge, fetchFastForward, revParse, type MergeResult } from './mergeBranch'
@@ -304,7 +304,7 @@ export const STALL_CHECK_MS = 60_000
 
 /** `run` through the login shell in `cwd`, detached so Stop kills the whole process group. */
 export function spawnShellStep(run: string, cwd: string, onLine: (line: string) => void, shell: string = loginShell()): ShellRun {
-  const child = spawn(shell, ['-lc', run], { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: process.env })
+  const child = spawn(shell, ['-lc', withToolPath(run)], { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: process.env })
   for (const stream of [child.stdout, child.stderr]) {
     if (stream) createInterface({ input: stream }).on('line', onLine)
   }

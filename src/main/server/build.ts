@@ -19,7 +19,7 @@ import { harnessEnv } from './drivers/binaries'
 import { branches, checkouts, currentBranch } from './git'
 
 import { execFileBudgeted as execFileP, spawnBudgeted, trackChild } from './spawnBudget'
-import { loginShell } from './loginShell'
+import { loginShell, withToolPath } from './loginShell'
 
 /**
  * The Build rail's engine: one build per project at a time, run in the
@@ -379,7 +379,7 @@ export class BuildRunner {
     const env = { ...(await harnessEnv()), NO_COLOR: '1', TERM: 'dumb' }
     // Its own group so cancel() can kill the whole tree; tracked so quit kills it too.
     const child = trackChild(
-      spawn(loginShell(), ['-lc', build.command], {
+      spawn(loginShell(), ['-lc', withToolPath(build.command)], {
         cwd,
         env,
         detached: true,

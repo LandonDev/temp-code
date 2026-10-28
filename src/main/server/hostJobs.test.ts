@@ -16,6 +16,7 @@ import {
   scriptsEnv,
   subjectClause
 } from './hostJobs'
+import { withToolPath } from './loginShell'
 
 let root: string
 beforeEach(() => {
@@ -361,8 +362,9 @@ describe('Publisher', () => {
     const status = await publisher.publish('notes', { train: false })
     expect(status.target).toBe('v1.0.273')
     expect(spawned).toEqual([expect.objectContaining({ cwd: checkout, train: false })])
-    expect(releaseCommand({ train: false })).toBe('bun run release:publish')
-    expect(releaseCommand()).toBe('bun scripts/release.ts "$TC_RELEASE_NOTES" && bun run release:publish')
+    expect(releaseCommand({ train: false })).toBe(withToolPath('bun run release:publish'))
+    expect(releaseCommand()).toBe(withToolPath('bun scripts/release.ts "$TC_RELEASE_NOTES" && bun run release:publish'))
+    expect(releaseCommand({ train: false })).toMatch(/^for d in .*; export PATH; bun run release:publish$/)
     expect(releaseCommand({ train: true })).toBe(releaseCommand())
     children[0].emit('exit', 0, null)
   })

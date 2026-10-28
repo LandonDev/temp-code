@@ -837,7 +837,13 @@ routed to (aliax-core's `forward`). Two listeners:
   command; nothing when current or unknown. docs/box.md "Knowing the box
   is behind". Every "ask the login shell" call goes
   through src/main/server/loginShell.ts (`$SHELL`, else zsh on macOS, bash
-  elsewhere): never hardcode /bin/zsh.
+  elsewhere): never hardcode /bin/zsh. `-lc` skips .zshrc and .bashrc,
+  so a job that runs a tool by name there (the publish scripts, a batch
+  shell step, a dev server, a project build) wraps its command in
+  `withToolPath`, which puts `~/.bun/bin`, `/opt/homebrew/bin` and
+  `/usr/local/bin` (macOS) or `~/.bun/bin` and `~/.local/bin` (elsewhere)
+  first when the PATH lacks them; a publish once died `command not found:
+  bun` without it.
 - Harness config (skills under `~/.claude/skills`, `~/.codex/skills` and
   `~/.agents/skills`, commands, agents, `~/.claude/hooks`, settings.json,
   plugins, Codex config and `~/.codex/hooks.json`, two keys of ~/.claude.json)

@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid'
 import type { DevRun, DevRunPush, DevTarget, DevServerStartResult } from '@shared/contract-devservers'
 import type { ForwardedPort, PortForwardInfo } from '@shared/contract-ports'
 import { detectDevTargets } from './devTargets'
-import { loginShell } from './loginShell'
+import { loginShell, withToolPath } from './loginShell'
 import { trackChild } from './spawnBudget'
 import type { SharedScanner } from './threadPorts'
 import { announcedPorts, byPort, descendants, validPort } from './threadPortsParse'
@@ -201,7 +201,7 @@ export class DevRuns {
     this.prune(projectId, targetId)
     this.slots.set(s.run.id, s)
     const env = { ...(this.deps.env ? await this.deps.env() : process.env), BROWSER: 'none', FORCE_COLOR: '1' }
-    const child = trackChild(spawn(loginShell(), ['-lc', target.command], { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }))
+    const child = trackChild(spawn(loginShell(), ['-lc', withToolPath(target.command)], { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }))
     s.child = child
     s.run.pid = child.pid ?? null
     this.log(`${p.name}: ${target.name} ${target.script} started (pid ${s.run.pid ?? '?'})`)
