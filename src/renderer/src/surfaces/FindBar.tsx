@@ -110,14 +110,15 @@ export function FindBar(props: FindBarProps) {
         />
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-1">
-            <InputGroup className={cn("h-7 w-60 min-w-36 gap-1 pe-2", missed && "border-destructive")}>
+            {/* The 144px floor is the input's own; the group fits around it and the count. */}
+            <InputGroup className={cn("h-7 w-60 min-w-fit gap-1 pe-2", missed && "border-destructive")}>
               <GroupInput
                 ref={props.searchRef}
                 main-field="true"
                 aria-label="Find"
                 aria-invalid={missed || undefined}
                 placeholder="Find"
-                className="font-mono text-[12px]"
+                className="min-w-36 font-mono text-[12px]"
                 value={props.search}
                 onChange={(event) => props.onSearch(event.currentTarget.value)}
                 onCompositionStart={props.onCompositionStart}
@@ -172,12 +173,12 @@ export function FindBar(props: FindBarProps) {
           </div>
           {replaceVisible ? (
             <div className="flex flex-wrap items-center gap-1">
-              <InputGroup className="h-7 w-60 min-w-36">
+              <InputGroup className="h-7 w-60 min-w-fit">
                 <GroupInput
                   ref={props.replaceRef}
                   aria-label="Replace"
                   placeholder="Replace"
-                  className="font-mono text-[12px]"
+                  className="min-w-36 font-mono text-[12px]"
                   value={props.replace}
                   onChange={(event) => props.onReplace(event.currentTarget.value)}
                   {...FIELD_ATTRS}

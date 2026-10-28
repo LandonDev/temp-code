@@ -102,15 +102,20 @@ describe("FindBar", () => {
     expect(container.querySelector("[title]")).toBeNull();
   });
 
-  it("wraps instead of squeezing at a narrow width: the fields keep a minimum, the controls move as one group", () => {
-    const { container } = render(<FindBar {...props({ replaceVisible: true })} />);
+  it("wraps instead of squeezing at a narrow width: the inputs keep a minimum, the controls move as one group", () => {
+    const { container } = render(<FindBar {...props({ replaceVisible: true, count: { text: "1 of 150", state: "ok" } })} />);
     const [findField, replaceField] = container.querySelectorAll<HTMLElement>('[data-slot="input-group"]');
     for (const field of [findField, replaceField]) {
-      expect(field.className).toContain("min-w-36");
-      expect(field.className).not.toContain("min-w-0");
+      // The floor is the input's, so the group's floor is the input plus what sits beside it.
+      expect(field.className).not.toContain("min-w-36");
+      expect(field.className).toContain("min-w-fit");
+      expect(field.querySelector("input")!.className).toContain("min-w-36");
       expect(field.parentElement!.className).toContain("flex-wrap");
     }
-    expect(findField.contains(container.querySelector("[data-count]"))).toBe(true);
+    const count = container.querySelector<HTMLElement>("[data-count]")!;
+    expect(findField.contains(count)).toBe(true);
+    expect(byLabel(container, "Find").contains(count)).toBe(false);
+    expect(count.className).toContain("shrink-0");
     const controls = container.querySelector<HTMLElement>("[data-find-controls]")!;
     expect(controls.className).toContain("shrink-0");
     for (const label of ["Match case", "Match whole word", "Use regular expression", "Previous match", "Next match", "Close"]) {
