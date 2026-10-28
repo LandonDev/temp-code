@@ -19,7 +19,7 @@ const WORKING: MenuRow[] = [
     removable: 2,
     goal: false,
     side: true,
-    moves: [{ kind: "item", id: "move:box", label: "Move to box…", icon: Server, disabled: true, description: "The thread is working" }],
+    moves: [{ kind: "item", id: "move:box", label: "Move to box…", icon: Server, disabled: true, reason: "The thread is working" }],
   }),
 ];
 

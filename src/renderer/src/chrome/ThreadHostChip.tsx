@@ -78,7 +78,7 @@ export function useThreadHost(sessionId: string | null): {
         label: `Move to ${t.name}…`,
         icon: Server,
         disabled: !t.ok,
-        ...(t.ok ? {} : { description: t.reason }),
+        ...(t.ok ? {} : { reason: t.reason }),
       }));
   const pick = (id: string): boolean => {
     if (!id.startsWith("move:")) return false;

@@ -91,13 +91,13 @@ describe("ThreadMenu", () => {
     menu({
       host: { environmentId: "env_box", name: "box" },
       rows: threadMenuRows(
-        facts({ moves: [{ kind: "item", id: "move:local", label: "Move to This Mac…", disabled: true, description: "The thread is running" }] }),
+        facts({ moves: [{ kind: "item", id: "move:local", label: "Move to This Mac…", disabled: true, reason: "The thread is running" }] }),
       ),
     });
     const list = await openMenu();
     expect(list.querySelector("[data-menu-note='line']")?.textContent).toBe("box");
     expect(within(list).getByText("Move to This Mac…")).toBeTruthy();
-    expect(within(list).getByText("The thread is running")).toBeTruthy();
+    expect(within(list).getByRole("menuitem", { name: "Move to This Mac…" }).getAttribute("aria-description")).toBe("The thread is running");
   });
 
   it("shows the cost only above zero", async () => {

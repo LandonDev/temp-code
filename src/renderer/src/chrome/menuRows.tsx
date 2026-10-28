@@ -51,8 +51,11 @@ export type MenuRow =
       icon?: MenuIcon;
       /** One chord's caps, from `shortcutFor`; never typed by hand. */
       shortcut?: string;
-      /** A second line under the label (a disabled move's reason). */
+      /** A second line under the label (a recent project's parent folder). */
       description?: string;
+      /** Why a disabled row is disabled ("Send a message first"): its
+       *  tooltip and accessible description, never a second line. */
+      reason?: string;
       /** A quiet fact at the row's end: a count, a time. */
       hint?: string;
       disabled?: boolean;

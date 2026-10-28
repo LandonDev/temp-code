@@ -18,7 +18,7 @@ const ROWS: MenuRow[] = [
   { kind: "item", id: "pause", label: "Pause", icon: Pause, shortcut: "⌘P" },
   { kind: "item", id: "bridge", label: "Mac bridge", checked: true },
   { kind: "sub", id: "type", label: "Type", items: [{ kind: "item", id: "type:chat", label: "Chat", checked: true }] },
-  { kind: "item", id: "move", label: "Move to box…", disabled: true, description: "The box is offline" },
+  { kind: "item", id: "move", label: "Move to box…", disabled: true, reason: "The box is offline" },
   { kind: "sep" },
   { kind: "item", id: "archive", label: "Archive", icon: Archive },
   { kind: "item", id: "delete", label: "Delete…", icon: Trash2, danger: true },
@@ -51,7 +51,25 @@ describe("MenuRows", () => {
     expect(within(list).getByRole("menuitemcheckbox", { name: "Mac bridge" }).getAttribute("aria-checked")).toBe("true");
     const move = within(list).getByRole("menuitem", { name: /Move to box/ });
     expect(move.getAttribute("aria-disabled")).toBe("true");
-    expect(within(move).getByText("The box is offline")).toBeTruthy();
+    // The reason is the row's tooltip and accessible description, not a second line.
+    expect(within(move).queryByText("The box is offline")).toBeNull();
+    expect(move.getAttribute("aria-description")).toBe("The box is offline");
+    expect(move.className).toContain("min-h-7");
+    expect(move.querySelectorAll("span.flex-col")).toHaveLength(0);
+    expect((list.querySelector("[data-menu-reason='move']") as HTMLElement).contains(move)).toBe(true);
+  });
+
+  it("a disabled row's reason opens as a tooltip on hover", async () => {
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+    const { list } = await openDropdown(ROWS);
+    const trigger = list.querySelector("[data-menu-reason='move']") as HTMLElement;
+    fireEvent.pointerEnter(trigger);
+    fireEvent.mouseEnter(trigger);
+    fireEvent.focus(trigger);
+    await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe("The box is offline"), { timeout: 2000 });
   });
 
   it("a pick calls onPick with the row's id, in a submenu too", async () => {

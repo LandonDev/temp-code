@@ -171,17 +171,23 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
       ) : null}
     </>
   );
-  if (item.checked !== undefined) {
-    return (
-      <Check data-menu-row={item.id} checked={item.checked} disabled={item.disabled} closeOnClick={!item.keepOpen} onCheckedChange={() => onPick(item.id)}>
+  const row =
+    item.checked !== undefined ? (
+      <Check data-menu-row={item.id} checked={item.checked} disabled={item.disabled} closeOnClick={!item.keepOpen} onCheckedChange={() => onPick(item.id)} aria-description={item.reason}>
         {body}
       </Check>
+    ) : (
+      <Item data-menu-row={item.id} disabled={item.disabled} variant={item.danger ? "destructive" : "default"} onClick={() => onPick(item.id)} aria-description={item.reason}>
+        {body}
+      </Item>
     );
-  }
+  if (!item.reason) return row;
+  // A disabled row takes no pointer events: the wrapper is the tooltip's
+  // trigger, so the reason shows on hover and the row stays one 28px line.
   return (
-    <Item data-menu-row={item.id} disabled={item.disabled} variant={item.danger ? "destructive" : "default"} onClick={() => onPick(item.id)}>
-      {body}
-    </Item>
+    <Tip label={item.reason} side="right">
+      <div data-menu-reason={item.id}>{row}</div>
+    </Tip>
   );
 }
 

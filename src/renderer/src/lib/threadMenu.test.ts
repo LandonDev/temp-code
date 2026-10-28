@@ -102,7 +102,7 @@ describe("threadMenuRows: the master pin", () => {
     expect(row(threadMenuRows(facts({ draft: true })), "master")).toMatchObject({
       label: "Make master thread",
       disabled: true,
-      description: "Send a message first",
+      reason: "Send a message first",
     });
     expect(row(threadMenuRows(facts()), "master")).not.toHaveProperty("disabled");
   });
@@ -144,13 +144,13 @@ describe("threadMenuRows: resources, the bridge and the host moves", () => {
   });
 
   it("puts the moves in their own group before Archive, a refused one disabled with its reason", () => {
-    const moves: MenuRow[] = [{ kind: "item", id: "move:box", label: "Move to box…", disabled: true, description: "The box is offline" }];
+    const moves: MenuRow[] = [{ kind: "item", id: "move:box", label: "Move to box…", disabled: true, reason: "The box is offline" }];
     const rows = threadMenuRows(facts({ moves }));
     const at = rows.findIndex((r) => r.kind === "item" && r.id === "move:box");
     expect(rows[at - 1]?.kind).toBe("sep");
     expect(rows[at + 1]?.kind).toBe("sep");
     expect(rows[at + 2]).toMatchObject({ id: "archive" });
-    expect(rows[at]).toMatchObject({ disabled: true, description: "The box is offline" });
+    expect(rows[at]).toMatchObject({ disabled: true, reason: "The box is offline" });
   });
 });
 

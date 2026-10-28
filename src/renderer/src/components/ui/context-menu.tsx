@@ -7,7 +7,8 @@ import { MENU_ROW } from "./menu-row";
 
 /** The right-click menu: the dropdown's one row (28px, 12px padding, 8px
  *  glyph gap), opened at the pointer with a plain fade (nothing to scale
- *  from). A row with a description line grows past 28px. */
+ *  from). A disabled row's reason is its tooltip; only a row with a
+ *  description line (a folder's path) grows past 28px. */
 const ROW = `${MENU_ROW} flex cursor-default select-none items-center rounded-lg outline-hidden focus:bg-muted data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-50 data-inset:ps-8.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-muted-foreground [&_svg:not([class*='size-'])]:size-3.5`;
 
 function ContextMenu({ ...props }: ContextMenuPrimitive.Root.Props) {

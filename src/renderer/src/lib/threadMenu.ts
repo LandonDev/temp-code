@@ -156,7 +156,7 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
       label: masterMenuLabel(facts.master),
       icon: Star,
       // The host pins only a thread it knows: a draft becomes one on its first message.
-      ...(facts.draft ? { disabled: true, description: "Send a message first" } : {}),
+      ...(facts.draft ? { disabled: true, reason: "Send a message first" } : {}),
     });
   rows.push({ kind: "sep" }, ...facts.moves, { kind: "sep" });
 

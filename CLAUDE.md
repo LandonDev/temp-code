@@ -2180,7 +2180,7 @@ this is the short one.
   thread's context menu, rail row and tab; RPC `session.setMaster
   { sessionId, master }`, admin, a subagent refused, answered as the
   thread's meta push; the row is disabled on an unsent draft with "Send a
-  message first", since the host pins only a thread it knows). Several threads of one project may be, each with
+  message first" as its tooltip, since the host pins only a thread it knows). Several threads of one project may be, each with
   its own batch keyed by its id. `projects.master_thread_id` is read once
   into the flag when the column is added and ignored since (the column
   stays; `ProjectMeta.masterThreadId` left the wire). Its tab reads one

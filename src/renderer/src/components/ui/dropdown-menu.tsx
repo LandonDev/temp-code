@@ -8,7 +8,8 @@ export { MENU_ROW };
 
 /**
  * The one menu opened from a trigger, in one size (DESIGN.md "Spacing"):
- * rows 28px (more only for a description line) with 12px padding and 8px
+ * rows 28px (more only for a description line; a disabled row's reason is
+ * its tooltip) with 12px padding and 8px
  * from the 14px glyph to the label; the highlighted row is a muted fill,
  * never a left colour bar. The context menu (context-menu.tsx) shares the row.
  */

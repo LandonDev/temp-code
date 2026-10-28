@@ -1,5 +1,6 @@
 /** Every menu row's box (DESIGN.md "Spacing"): 28px tall, 12px either side,
- *  8px between glyph and label; a row with a description grows. The
+ *  8px between glyph and label; a disabled row's reason is its tooltip, and
+ *  only a row with a description line (a folder's path) grows. The
  *  dropdown menu (which exports it), the context menu and the select's items
  *  use it; a check row's end padding and an inset row's start padding refine
  *  it. Its own module, so the select does not import the menu primitive. */
