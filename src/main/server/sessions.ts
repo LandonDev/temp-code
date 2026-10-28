@@ -1188,6 +1188,17 @@ export class SessionRegistry {
           : 0
     )
     const when = opts.restartedAt ? new Date(opts.restartedAt).toISOString() : null
+    // The clock's anchor, once, before the boot: the strip counts the
+    // carried elapsed through the boot and the nudge's send alike (m4/
+    // master-resume.json read 4 s on the strip and "Worked for 1s" on the
+    // closing line when the stamp came after both). The `starting` row's
+    // own stamp (fresh from a stopped row) is replaced by the anchor, and
+    // the `running` row after the send keeps it (`starting` is no settled
+    // row). A watching master's frozen 0 starts the clock now.
+    const anchor = Date.now() - frozen
+    this.append(sessionId, { type: 'status', status: 'starting' })
+    const anchored = this.store.updateSession(sessionId, { busySince: anchor, pausedAt: null, frozenActiveElapsed: null })
+    if (anchored) this.notifyMeta(anchored)
     try {
       void this.armBaseline(sessionId)
       const handle = await this.handleFor(sessionId)
@@ -1206,20 +1217,12 @@ export class SessionRegistry {
       }
       throw error
     }
-    const now = Date.now()
     this.append(sessionId, {
       type: 'status',
       status: 'running',
       detail: when ? `Resumed after the host restarted at ${when}` : 'Resumed on a fresh harness'
     })
-    const next = this.store.updateSession(sessionId, {
-      status: 'running',
-      busySince: now - frozen,
-      pausedAt: null,
-      frozenActiveElapsed: null
-    })
-    this.lastActivity.set(sessionId, now)
-    if (next) this.notifyMeta(next)
+    this.lastActivity.set(sessionId, Date.now())
     return true
   }
 

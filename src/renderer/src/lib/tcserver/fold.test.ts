@@ -598,6 +598,23 @@ describe("M4 transcript fixes", () => {
     expect(s.blocks[0].durationMs).toBe(4_000);
   });
 
+  it("a turn the host put down with its harness gone (a stopped row) carries its span through Resume, the way the strip's clock does", () => {
+    let s = foldAll(rows([[{ type: "user-text", text: "go" }, { ts: 10_000 }]]), CWD);
+    s = step(s, { type: "status", status: "running" }, 10_000);
+    s = step(s, { type: "status", status: "stopped", detail: "The harness behind this turn is gone" }, 40_000);
+    expect(s.blocks[0]).toMatchObject({ durationMs: 30_000, doneTs: 40_000, stoppedTs: 40_000 });
+    // Resume, minutes later: the resumed stretch adds to the span; the dead gap does not.
+    s = step(s, { type: "status", status: "starting" }, 300_000);
+    expect(s.blocks[0]).toMatchObject({ startedAt: 270_000 });
+    expect(s.blocks[0].durationMs).toBeUndefined();
+    expect(s.blocks[0].doneTs).toBeUndefined();
+    expect(s.blocks[0].stoppedTs).toBeUndefined();
+    s = step(s, { type: "status", status: "running", detail: "Resumed on a fresh harness" }, 301_000);
+    expect(s.blocks[0].startedAt).toBe(270_000);
+    s = step(s, { type: "turn-complete" }, 310_000);
+    expect(s.blocks[0].durationMs).toBe(40_000);
+  });
+
   it("Resume after a Stop restarts the turn's clock, so the closing line states the resumed stretch", () => {
     let s = foldAll(rows([[{ type: "user-text", text: "go" }, { ts: 10_000 }]]), CWD);
     s = step(s, { type: "status", status: "running" }, 10_000);

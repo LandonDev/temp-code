@@ -134,6 +134,9 @@ export type Block = {
   startedAt?: number;
   /** How long the agent worked on this user turn, in ms. */
   durationMs?: number;
+  /** The host put the turn down with its harness gone (a `stopped` status
+   *  row): a Resume carries its span on, the way the strip's clock does. */
+  stoppedTs?: number;
   tool?: {
     callId?: string;
     title?: string;

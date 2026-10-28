@@ -398,7 +398,7 @@ it('resumes up to the running cap and leaves the rest queued with their nudge, s
   expect(resumer.notice).toEqual({ count: 2, at: 777 })
   for (const id of result.queued) {
     expect(store.getSession(id)?.status).toBe('queued')
-    expect(registry.get(id)?.activity).toBe('Queued · 2 of 2 running')
+    expect(registry.get(id)?.activity).toBe('Queued  2 of 2 running')
     expect(sends.has(id)).toBe(false)
   }
   // The queued ones keep their ledger rows: another restart now resumes them all the same.

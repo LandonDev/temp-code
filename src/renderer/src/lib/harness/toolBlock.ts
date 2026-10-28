@@ -375,14 +375,17 @@ export function settleOpenTools(blocks: Block[]): Block[] {
  * A busy status reopens the last turn with no new message of the person's.
  * Paused: its clock restarts where the pause stopped it. Closed on a stop or
  * a failure (Resume, Continue): its clock restarts at the reopen, so the
- * closing line states the resumed stretch, the span the strip counts.
+ * closing line states the resumed stretch, the span the strip counts. Put
+ * down by the host with its harness gone (a `stopped` status row, the
+ * block's `stoppedTs`): its clock carries the span on, the way the host
+ * carries the strip's (`resumeStopped`), so the two agree.
  */
 export function resumeTurnClock(blocks: Block[], now: number): Block[] {
   for (let i = blocks.length - 1; i >= 0; i--) {
     const block = blocks[i];
     if (block.role !== "user") continue;
     if (block.durationMs == null || block.startedAt == null) return blocks;
-    const { durationMs, doneTs, ...rest } = block;
+    const { durationMs, doneTs, stoppedTs, ...rest } = block;
     // An error already resumed from (older than the turn's current start)
     // leaves a later pause's span to the pause rule below.
     const error = endingError(blocks, i);
@@ -391,7 +394,7 @@ export function resumeTurnClock(blocks: Block[], now: number): Block[] {
       next[i] = { ...rest, startedAt: now };
       return next;
     }
-    if (doneTs !== undefined) return blocks;
+    if (doneTs !== undefined && stoppedTs === undefined) return blocks;
     const next = blocks.slice();
     next[i] = { ...rest, startedAt: now - durationMs };
     return next;

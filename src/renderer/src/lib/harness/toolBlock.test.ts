@@ -27,6 +27,14 @@ describe("resumeTurnClock", () => {
     }
   });
 
+  it("a turn the host put down with its harness gone carries its span on at the reopen", () => {
+    const [u] = resumeTurnClock([user({ durationMs: 30_000, doneTs: 40_000, stoppedTs: 40_000 }), reply, note], 300_000);
+    expect(u).toMatchObject({ startedAt: 270_000 });
+    expect(u.durationMs).toBeUndefined();
+    expect(u.doneTs).toBeUndefined();
+    expect(u.stoppedTs).toBeUndefined();
+  });
+
   it("a pause after a Resume counts on from its span: the error was already resumed from", () => {
     const [u] = resumeTurnClock([user({ startedAt: 20_000, durationMs: 3_000 }), stop], 30_000);
     expect(u).toMatchObject({ startedAt: 27_000 });

@@ -87,14 +87,16 @@ function stampTail(blocks: Block[], thread: ThreadState, ts: number | undefined)
   return next;
 }
 
-/** The turn ending closes every open user section — each gets its own timer. */
-function closeUserTurns(blocks: Block[], ts: number): Block[] {
+/** The turn ending closes every open user section — each gets its own
+ *  timer. `stopped`: the host put the turn down with its harness gone, and
+ *  a Resume carries the span on (resumeTurnClock). */
+function closeUserTurns(blocks: Block[], ts: number, stopped = false): Block[] {
   let next = blocks;
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
     if (b.role === "user" && b.doneTs === undefined && !b.pending) {
       if (next === blocks) next = blocks.slice();
-      next[i] = { ...b, doneTs: ts };
+      next[i] = { ...b, doneTs: ts, ...(stopped ? { stoppedTs: ts } : {}) };
     }
   }
   return next;
@@ -543,7 +545,7 @@ export function foldEvent(
         const t = th();
         t.turnOpen = false;
         t.inPass = false;
-        blocks = closeUserTurns(blocks, row.ts);
+        blocks = closeUserTurns(blocks, row.ts, e.status === "stopped");
       }
       // "awaiting approval"/"awaiting answer" already show as cards.
       if (e.detail && e.status !== "waiting") {
