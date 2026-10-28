@@ -44,13 +44,14 @@ is "Make master thread" / "Not the master" on the thread's context menu
 (the rail row and the tab) and the RPC `session.setMaster { sessionId,
 master }` (admin; a subagent is refused). Clients hear it as the thread's
 meta push. The harness's prompt and tool set were built at its spawn, and
-the harness boots eagerly at create, before any pin: pinned once booted
-with no turn running, the thread loses its handle and its next send spawns
-a harness that knows it is the master (the master block in the prompt,
-the editing tools off); pinned while it boots, or pinned or unpinned
-mid-turn or while it watches, it hears the change in the conversation
-(`masterPinNotice`, into the live turn or ahead of its next message) and
-the next spawn carries it. V1's M4 saw a master call an adopted thread
+the harness boots eagerly at create, before any pin: pinned or unpinned
+once booted with no turn running (a watching master unpinned idles first),
+the thread loses its handle and its next send spawns a harness that knows
+what it is (the master block in the prompt and the editing tools off, or
+neither); pinned while it boots, or pinned or unpinned mid-turn, it hears
+the change in the conversation (`masterPinNotice`, into the live turn or
+ahead of its next message) and the next spawn carries it. V1's M4 saw a
+master call an adopted thread
 "not part of my batch": its prompt had never said what a batch thread
 is. The master's tab reads one muted "Master" after its title;
 nothing else in the rail marks it or its children. Until wave 4 the pin

@@ -1128,9 +1128,9 @@ routed to (aliax-core's `forward`). Two listeners:
   no error row either way, since the "died mid-turn" words are true only
   for a turn that was running, which keeps the error path. The clock: a
   turn that starts from a watching, error or stopped row counts from its
-  own start (`append` stamps `busySince` fresh), a stopped watcher freezes
-  nothing, and only a turn that died mid-stream carries its elapsed through
-  Resume. The boot reset idles only waiting and watching rows now.
+  own start (`append` stamps `busySince` fresh; a retry that queues after a
+  failure from its queueing), a stopped watcher freezes nothing, and only a
+  turn that died mid-stream carries its elapsed through Resume. The boot reset idles only waiting and watching rows now.
   docs/box.md "Surviving a restart"; proof `bun scripts/e2e-survive-restart.ts`.
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
   `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live
@@ -2173,10 +2173,12 @@ this is the short one.
   `isMasterSession(session)` (orchestration.ts) reads the flag off the live
   row when the registry knows the id (the harness boots eagerly at create,
   so a thread pinned after that still gets the batch tools and supervises
-  its batch; its prompt was built at that spawn, so `setMaster` drops the
-  handle of an idle thread, whose next send spawns a harness that knows it
-  is the master, and whispers `masterPinNotice` into one mid-turn or
-  watching, the next spawn carrying the change), `registry.isMaster(id)` in the registry,
+  its batch; its prompt and tool set were built at that spawn, so
+  `setMaster` drops the handle of a booted thread with no turn running,
+  pinned or unpinned (a watching master unpinned idles first), whose next
+  send spawns a harness that knows what it is, and whispers
+  `masterPinNotice` into one mid-turn or still booting, the next spawn
+  carrying the change), `registry.isMaster(id)` in the registry,
   `isMasterThread` (lib/masterThread.ts) in the renderer. The master's
   prompt carries `MASTER_MECHANICS` through `mechanicsFor`, and the claude
   driver denies it Edit, MultiEdit, Write and NotebookEdit: it steers, the

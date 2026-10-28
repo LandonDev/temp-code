@@ -413,3 +413,28 @@ it('a steer keeps the stretch, and so does a message queued behind the turn that
   expect(sends.get(id)).toEqual(['go', 'next'])
   expect(registry.get(id)).toMatchObject({ status: 'running', busySince: first })
 })
+
+it('a retry that queues after a failure counts from its queueing, not from the failed turn', async () => {
+  const id = await live()
+  const failed = registry.get(id)!.busySince!
+  emit(id, { type: 'error', message: 'boom' })
+  emit(id, { type: 'status', status: 'error' })
+  // The harness died with the failure: its handle is gone, so the retry needs a slot.
+  dead.add(id)
+  gones.get(id)!()
+  await settle()
+  expect(registry.get(id)?.status).toBe('error')
+  registry.admission = { cap: () => 0, memoryLow: () => false }
+  await tick()
+  await registry.send(id, 'try again')
+  expect(registry.get(id)!.status).toBe('queued')
+  const queuedAt = statusRow(id, 'queued')
+  expect(registry.get(id)!.busySince).toBe(queuedAt)
+  expect(queuedAt).toBeGreaterThan(failed)
+  // A slot frees: the turn starts and keeps the clock it was queued with.
+  registry.admission = { cap: () => 10, memoryLow: () => false }
+  expect(await registry.startQueued(id)).toBe(true)
+  await settle()
+  expect(registry.get(id)).toMatchObject({ status: 'running', busySince: queuedAt })
+  expect(sends.get(id)?.at(-1)).toBe('try again')
+})

@@ -353,6 +353,42 @@ describe('the batch follows the starter', () => {
     expect(sends.get(t.id)?.at(-1)).toBe('once more')
   })
 
+  it('unpinning once booted drops the handle too, idle or watching, so the next send spawns a plain harness with its editing tools back', async () => {
+    const { master } = await pinnedMaster()
+    const a = await child('p', master, 'A')
+    idle(master)
+    await settle()
+    expect(status(master)).toBe('watching')
+    const spawned = spawns.get(master)!
+    registry.setMaster(master, false)
+    await settle()
+    expect(status(master)).toBe('idle')
+    expect(registry.liveIds().has(master)).toBe(false)
+    expect(registry.heldNotices(master)).toEqual([])
+    await registry.send(master, 'carry on as a thread')
+    await settle()
+    expect(spawns.get(master)).toBe(spawned + 1)
+    expect(spawnedWith.get(master)?.isMaster).toBe(false)
+    expect(sends.get(master)?.at(-1)).toBe('carry on as a thread')
+    // Idle and pinned again, then unpinned while idle: the same drop.
+    idle(master)
+    await settle()
+    registry.setMaster(master, true)
+    await registry.send(master, 'as master')
+    await settle()
+    expect(spawnedWith.get(master)?.isMaster).toBe(true)
+    idle(master)
+    await settle()
+    registry.setMaster(master, false)
+    await settle()
+    expect(registry.liveIds().has(master)).toBe(false)
+    await registry.send(master, 'as a thread')
+    await settle()
+    expect(spawnedWith.get(master)?.isMaster).toBe(false)
+    expect(sends.get(master)?.at(-1)).toBe('as a thread')
+    void a
+  })
+
   it('setMaster pins and unpins a root, refuses a subagent, and pushes the meta', async () => {
     const t = await registry.create({ cwd: root, provider: 'claude', title: 'T' })
     const pushed: boolean[] = []

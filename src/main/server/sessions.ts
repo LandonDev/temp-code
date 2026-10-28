@@ -2008,22 +2008,24 @@ export class SessionRegistry {
     if (next) this.notifyMeta(next)
     // The harness's prompt and tool set were built at its spawn
     // (mechanicsFor, the editing tools denied to a master), and the harness
-    // boots eagerly at create, before any pin. Pinned once booted with no
-    // turn running, the thread loses its handle, so its next send spawns a
-    // harness that knows it is the master; pinned while it boots, or pinned
-    // or unpinned mid-turn or while it watches, it hears the change in the
-    // conversation (into the live turn, else ahead of its next message) and
-    // the next spawn carries it. A pin that undoes a held unpin, or the
-    // reverse, withdraws the stale line. Without this the master's model was
-    // never told what a batch thread is and called an adopted thread "not
-    // part of my batch" (V1 M4).
+    // boots eagerly at create, before any pin. Pinned or unpinned once
+    // booted with no turn running, the thread loses its handle, so its next
+    // send spawns a harness that knows what it is (the master block and the
+    // editing tools off, or neither); pinned while it boots, or pinned or
+    // unpinned mid-turn, it hears the change in the conversation (into the
+    // live turn, else ahead of its next message) and the next spawn carries
+    // it. A pin that undoes a held unpin, or the reverse, withdraws the
+    // stale line. Without this the master's model was never told what a
+    // batch thread is and called an adopted thread "not part of my batch"
+    // (V1 M4).
     const booted = this.handles.has(sessionId)
     const up = booted || this.starting.has(sessionId)
     this.dropNotice(sessionId, masterPinNotice(!master))
-    if (booted && master && thread.status === 'idle') void this.dropHandle(sessionId)
-    else if (up) this.whisper(sessionId, masterPinNotice(master))
     // Unpinned, a master watching its batch has nothing to watch: idle.
-    if (!master && thread.status === 'watching') this.append(sessionId, { type: 'status', status: 'idle' })
+    const unwatched = !master && thread.status === 'watching'
+    if (unwatched) this.append(sessionId, { type: 'status', status: 'idle' })
+    if (booted && (thread.status === 'idle' || unwatched)) void this.dropHandle(sessionId)
+    else if (up) this.whisper(sessionId, masterPinNotice(master))
   }
 
   /** An existing root thread joins a master's batch (batch.ts adopt): its
@@ -4078,8 +4080,10 @@ export class SessionRegistry {
     // its elapsed on, through resumeStopped's own stamp after this row.
     if (event.type === 'status') {
       const cur = this.row(sessionId)
+      // A queued row is a turn waiting to start: a retry queued after a
+      // failure (error → queued → starting) counts from its queueing too.
       const fresh =
-        (event.status === 'running' || event.status === 'starting') &&
+        (event.status === 'running' || event.status === 'starting' || event.status === 'queued') &&
         (cur?.status === 'watching' || cur?.status === 'error' || cur?.status === 'stopped')
       const busySince =
         event.status === 'idle'

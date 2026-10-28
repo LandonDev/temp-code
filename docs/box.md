@@ -444,7 +444,8 @@ each one by hand. Now:
   died. The clock follows the same line (`append`'s busySince rule): a
   turn that starts from a watching, error or stopped row counts from its
   own start, and only a turn that died mid-stream carries its elapsed on
-  through Resume. The batch engine
+  through Resume (a retry that queues after a failure counts from its
+  queueing). The batch engine
   fails any step still running at a restart but a deploy it can follow
   (gate, release, land and shell alike), tells the master, and lets the
   batch close (`Batches.resumeAfterBoot`).
