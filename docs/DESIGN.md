@@ -98,7 +98,9 @@ up, none below. Numbers in tables and tallies are `tabular-nums`.
 The 4px grid. Inside a row: 8px between glyph and label, 12px horizontal
 padding, rows 28px tall in menus and dense lists, 36px for `RailRow` (the
 rail and the settings list), 32px for the workspace column's project and
-thread rows and 28px for the rows nested under them. Between groups in a panel or page: 16px; between sections: 24px.
+thread rows and 28px for the rows nested under them. Every menu, context menu and
+select row takes its box from `MENU_ROW` (components/ui/menu-row.ts,
+exported by dropdown-menu.tsx). Between groups in a panel or page: 16px; between sections: 24px.
 A panel's inset is 12px; a dialog's 20px. Never a value off the grid.
 
 ### Radius ladder

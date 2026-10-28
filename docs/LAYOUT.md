@@ -45,7 +45,8 @@ component builds each surface, and how**. Nothing here is built yet.
 
 A new install opens the ordinary window, with no welcome screen or wizard:
 a blank chat at the home, set to Claude, with the empty thread and its
-composer. The rail adds two rows that each leave once their step is done.
+composer. It starts empty wherever the app was launched from: no folder is
+adopted as a workspace, in a dev, preview or packaged build alike. The rail adds two rows that each leave once their step is done.
 While this machine has no Claude or Codex account, the foot's first row is
 "Sign in to Claude" (ChatGPT when the default harness is Codex), its glyph
 in the accent, the one call to action in the window; it opens the sign-in
@@ -53,7 +54,8 @@ window, reads "Signing in…" while that runs, and gives way to the usage
 meter once the account arrives. A failure is one toast and a cancel says
 nothing; a person who sends first gets a failure card that says "Not
 signed in to Claude". While the Workspaces list is empty its heading has no
-+ and one "Add workspace…" row stands under it, opening the folder picker;
++ and one "Add workspace…" row stands under it, opening the folder picker
+titled Add workspace (⌘O's Open Project keeps "Open project");
 the first workspace takes the row's place and gives the heading its +
 back. Column two at an empty home keeps its header and shows nothing under
 it, so the first send fills it without moving the transcript. Removing the
@@ -125,9 +127,9 @@ of the right panel's Changes section, not the header's.
 | Update row | `chrome/UpdateRow.tsx` (`updateRowState`) | one RailRow, absent while idle or checking: "Updated to 1.0.N" (opens What's new, ✕ dismisses), "Update to 1.0.N" or "Retry update" (installs; What's new as the hover action when there are notes), "Downloading" with its percentage, "Restart to update"; the glyph is the accent while there is something to do, no tinted fill. Check for updates is in the app menu and Settings, General |
 | Hosts row | `HostsRow` in `chrome/HostRows.tsx` | only with two or more hosts: one row ending in a 6px dot per host (`toneOf`), its aria-label naming each host and its state; a click opens a `DropdownMenu` with a submenu per host (the `HostGlyph`, the name, the state word and the `+N` deploy drift), holding Switch to <host> (not for the host on screen), Add workspace here…, Mark all read, Pause all, Resume all, Stop all and Archive done, then Host settings. A host's boot resume is a sonner toast ("7 threads resumed after restart", the host's name under it with two or more hosts; `useBootResumeToasts`) |
 | Usage meter | `chrome/UsageMeter.tsx` on `src/shared/usageMeter.ts` (`meterFor`), the foot's last block | one 36px ghost row per provider with accounts: the provider glyph, an 80px 4px `Progress` of the pooled share (the mean room over every account routing could pick, each account's room its tighter of 5h and week; expired and unreported accounts left out; amber below 10%), then "in 2h" (the next refill) in 12px `text-muted-foreground`, or "Limited 3m" in `text-warning` while every account is throttled; before any report an empty track and no text. No account name. Hover (the tooltip's delays), click or Enter opens a `Popover` to the right: the provider and "62% left", one row per usage window (5h, Week, each per-model cap) with its refill, percent and bar, and one muted foot line, "3 accounts with room". It moves on the `accounts` push alone |
-| Settings list | `SettingsNav` in `chrome/SettingsRail.tsx` | while settings are open the rail's list is the pages as RailRows under RailHeadings, then the workspaces (another host's names its host as muted trailing text), and Back as the foot's one row |
-| Workspace column | `chrome/Sidebar.tsx` | column two holds only the workspace's projects and threads (`WorkspaceSessions`) under one 40px header: the workspace's name (Chats at the home) in 13px medium, New thread (Tooltip ⌘N) and the workspace ⋯ menu. No tabs: files and changes are the right panel's Files and Changes sections; ⌘P still goes to a file. While the rail is collapsed a 40px row with the traffic lights and the toggle sits above the header and the rail's foot sits under the threads |
-| Project row | `ProjectRowView` / `ProjectRow` in `chrome/WorkspaceSessions.tsx` | a 32px fold: the chevron, the name (`font-medium` while a thread in it is unread) and one `StatusMark` word at the end, the loudest of Needs you, Failed, Working and Paused (`groupMark`, lib/sidebarRows.ts), nothing when quiet; ⋯ and a right-click open its menu. Open by default, the person's close remembered (`lib/projectFolds.ts`). Its threads are 32px `ThreadRowView` rows under it, each ending in its glyph alone (`rowState` → `StatusMark`; the word and what it is about on hover), a settled row in nothing, unread by weight; subagents and a master's batch one step in as 28px rows, the master with its batch's done tally. No border, branch line, time, dot or tint |
+| Settings list | `SettingsNav` in `chrome/SettingsRail.tsx` | while settings are open the rail's list is the pages as RailRows under RailHeadings, then the workspaces (another host's names its host as muted trailing text; two of one name on one host each name their parent folder there), and Back as the foot's one row |
+| Workspace column | `chrome/Sidebar.tsx` | column two holds only the workspace's projects and threads (`WorkspaceSessions`) under one 40px header: the workspace's name (Chats at the home) in 13px medium, New thread (Tooltip ⌘N) and the workspace ⋯ menu. No tabs: files and changes are the right panel's Files and Changes sections; ⌘P still goes to a file. While the rail is collapsed a 40px row with the traffic lights and the toggle sits above the header and the rail's foot sits under the threads. The column's own element scrolls the list (the virtualizer's scroll element, as state); across Settings and Back it keeps, per workspace, its offset, its list pages and the Chats fold, and does not replay the selection's reveal. A right-click on any row opens that thread's menu, and an inline rename ended by Enter or Escape gives focus back to the row's ⋯ |
+| Project row | `ProjectRowView` / `ProjectRow` in `chrome/WorkspaceSessions.tsx` | a 32px fold: the chevron, the name (`font-medium` while a thread in it is unread) and one `StatusMark` word at the end, the loudest of Needs you, Failed, Working and Paused (`groupMark`, lib/sidebarRows.ts), nothing when quiet; ⋯ and a right-click open its menu. Open by default, the person's close remembered (`lib/projectFolds.ts`). Its threads are 32px `ThreadRowView` rows under it, each ending in its glyph alone (`rowState` → `StatusMark`; the word and what it is about on hover, and the whole title above them while it is cut), a settled row in nothing, unread by weight; subagents and a master's batch one step in as 28px rows, the master with its batch's done tally. No border, branch line, time, dot or tint |
 
 ### Settings → Hosts
 
@@ -415,8 +417,9 @@ type on the shell's new-thread screen and until a thread's first message;
 the project picker ends in "Choose folder…", the folder dialog whose pick
 becomes the draft's project. After the first message the row is gone: the
 branch is changed in the Changes section's head and the type is the thread
-menu's Type submenu. The goal is the thread menu's "Goal…"
-(chrome/GoalDialog.tsx); usage and accounts are the rail's meter (A3); the
+menu's Type submenu. The goal is the thread menu's "Goal…", on every
+surface and for every root claude or codex thread, answered by the app's one
+dialog (`GoalDialogHost` in chrome/GoalDialog.tsx); usage and accounts are the rail's meter (A3); the
 context ring and its breakdown are gone, the percent is on the model menu.
 
 The host in that row (chrome/DraftHostPicker.tsx) shows for a draft of a

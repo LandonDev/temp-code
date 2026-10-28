@@ -34,7 +34,9 @@ env -u ELECTRON_RUN_AS_NODE \
   TEMP_CODE_DEBUG_PORT=9224 bun run dev
 ```
 - Own database, own window; CDP on 9224 for driving and screenshots
-  (`window.__app` exposes the store in dev builds).
+  (`window.__app` exposes the store in dev builds). A fresh userData starts
+  with an empty rail, wherever it was launched from: add the folder with
+  Add workspace….
 - These are ENFORCED in code: a dev build without TEMP_CODE_USER_DATA
   exits immediately (it would open the installed app's database — a
   second SQLite writer there freezes the user's live threads), and each
