@@ -292,13 +292,17 @@ function TitleBarComponent({
     el.scrollBy({ left: direction * amount, behavior: "smooth" });
   }, []);
   const activeTabRef = useRef<HTMLDivElement | null>(null);
+  // The active chip comes into view when the tab changes, when another pane
+  // of the tab takes focus and when it moves between the rows.
+  const activeChip = header.model.activeId;
+  const activeOnShelf = header.model.dormant.some((chip) => chip.id === activeChip);
 
   useEffect(() => {
     activeTabRef.current?.scrollIntoView({
       inline: "nearest",
       block: "nearest",
     });
-  }, [activeId]);
+  }, [activeId, activeChip, activeOnShelf]);
 
   useLayoutEffect(() => {
     const el = tabStripRef.current;

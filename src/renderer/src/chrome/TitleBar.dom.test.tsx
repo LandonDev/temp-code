@@ -137,6 +137,34 @@ describe("TitleBar", () => {
     }
   });
 
+  it("brings the active chip into view when another pane of the tab takes focus, and when it moves to the shelf", () => {
+    const reveal = vi.fn();
+    Element.prototype.scrollIntoView = reveal;
+    const chip = (id: string, title: string) => ({
+      id,
+      thread: { ...chat, id, title, status: "running" as const },
+      tabId: "tab",
+      live: true,
+      status: "running" as const,
+      unread: false,
+      updatedAt: 1,
+    });
+    const live = [chip("a", "Alpha"), chip("b", "Beta")];
+    const props = (model: ThreadHeaderProps["model"]) => ({ header: { ...header, model }, activeId: "tab" });
+    const view = render(<TitleBar tabs={[]} cwd="/r" onToggleSidebar={() => {}} onNew={() => {}} {...props({ live, dormant: [], activeId: "a" })} />);
+    const shown = () => reveal.mock.instances.at(-1) as unknown as HTMLElement;
+    expect(shown().textContent).toContain("Alpha");
+    view.rerender(<TitleBar tabs={[]} cwd="/r" onToggleSidebar={() => {}} onNew={() => {}} {...props({ live, dormant: [], activeId: "b" })} />);
+    expect(shown().textContent).toContain("Beta");
+    const settled = { ...live[1], live: false };
+    const calls = reveal.mock.calls.length;
+    view.rerender(
+      <TitleBar tabs={[]} cwd="/r" onToggleSidebar={() => {}} onNew={() => {}} {...props({ live: [live[0]], dormant: [settled], activeId: "b" })} />,
+    );
+    expect(reveal.mock.calls.length).toBe(calls + 1);
+    expect(shown().closest('[role="tablist"]')?.getAttribute("aria-label")).toBe("Settled threads");
+  });
+
   it("names the rail's toggle by what it shows, as the panel's and the sidebar's are", () => {
     render(<TabVisitNav onTogglePanel={() => {}} />);
     expect(screen.getByRole("button", { name: "Workspaces" })).toBeTruthy();
