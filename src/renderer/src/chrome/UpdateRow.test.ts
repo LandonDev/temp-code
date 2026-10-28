@@ -66,8 +66,10 @@ describe("UpdateRow", () => {
   it("idle: Check for updates with the running version, which asks the feed", () => {
     const onCheck = vi.fn();
     render(createElement(UpdateRow, { state: { kind: "check", version: "v1.0.307" }, onCheck }));
-    const row = screen.getByRole("button", { name: /^Check for updates/ });
+    const row = screen.getByRole("button", { name: "Check for updates, v1.0.307" });
     expect(row.textContent).toContain("v1.0.307");
+    // In a narrow rail the version yields to the label; the name still says it.
+    expect(screen.getByText("v1.0.307").className).toContain("@max-[15rem]/railrow:hidden");
     fireEvent.click(row);
     expect(onCheck).toHaveBeenCalledOnce();
   });

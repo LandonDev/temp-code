@@ -162,9 +162,9 @@ export function RailWithWorking({ width = 260 }: { width?: number }) {
 /** A new install: the navigation and Accounts groups, the empty Workspaces
  *  list, and the foot led by the sign-in row until an account arrives
  *  (`signedIn`), with no meter yet. */
-function FirstRun({ signedIn, pending = false }: { signedIn: boolean; pending?: boolean }) {
+function FirstRun({ signedIn, pending = false, width = 260 }: { signedIn: boolean; pending?: boolean; width?: number }) {
   return (
-    <nav aria-label="Workspaces" className="flex h-[720px] w-[260px] flex-col border-r border-border bg-sidebar">
+    <nav aria-label="Workspaces" className="flex h-[720px] flex-col border-r border-border bg-sidebar" style={{ width }}>
       <div className="h-10 shrink-0" />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">
         <Navigation chatsSelected />
@@ -185,10 +185,10 @@ function FirstRun({ signedIn, pending = false }: { signedIn: boolean; pending?: 
   );
 }
 
-export function FirstRunRail({ pending = false }: { pending?: boolean }) {
-  return <FirstRun signedIn={false} pending={pending} />;
+export function FirstRunRail({ pending = false, width = 260 }: { pending?: boolean; width?: number }) {
+  return <FirstRun signedIn={false} pending={pending} width={width} />;
 }
 
-export function SignedInRail() {
-  return <FirstRun signedIn />;
+export function SignedInRail({ width = 260 }: { width?: number }) {
+  return <FirstRun signedIn width={width} />;
 }

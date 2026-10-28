@@ -41,6 +41,14 @@ export function useUpdateRowState(): UpdateRowState | null {
   return updateRowState(snapshot, notice, updateStore.manualCheck);
 }
 
+const versioned = (label: string, version?: string) => (version ? `${label}, ${version}` : label);
+
+/** The running version at the row's end; in a rail under 15rem it yields
+ *  to the label, which the row's name still pairs it with. */
+function Version({ version }: { version?: string }) {
+  return version ? <span className="@max-[15rem]/railrow:hidden">{version}</span> : null;
+}
+
 /**
  * The rail's update row, one RailRow: "Check for updates" with the running
  * version at its end (asks the feed), "Checking…" with the spinner while
@@ -67,9 +75,27 @@ export function UpdateRow({
   const label = (text: string) => <span className="text-foreground">{text}</span>;
   switch (state.kind) {
     case "check":
-      return <RailRow icon={RefreshCw} label="Check for updates" trailing={state.version} onClick={onCheck} />;
+      return (
+        <RailRow
+          icon={RefreshCw}
+          label="Check for updates"
+          ariaLabel={versioned("Check for updates", state.version)}
+          trailing={<Version version={state.version} />}
+          onClick={onCheck}
+          className="@container/railrow"
+        />
+      );
     case "checking":
-      return <RailRow glyph={<Spinner />} label="Checking…" trailing={state.version} disabled />;
+      return (
+        <RailRow
+          glyph={<Spinner />}
+          label="Checking…"
+          ariaLabel={versioned("Checking…", state.version)}
+          trailing={<Version version={state.version} />}
+          disabled
+          className="@container/railrow"
+        />
+      );
     case "updated":
       return (
         <RailRow
