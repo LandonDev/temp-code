@@ -339,12 +339,12 @@ describe("ThreadHeaderStrip: the held row is the published row", () => {
     view.rerender(<Bar built={departed} />);
     expect(drawn()).toEqual(ids);
     await waitFor(() => expect(headerStore.getState().model.live.map((c) => c.id)).toEqual(ids));
-    expect(slotTarget(headerStore.getState().model, 4)).toEqual({ tabId: "tab-e" });
+    expect(slotTarget(headerStore.getState().model, 4)).toBe("e");
     expect(drawn()[4]).toBe("e");
 
     fireEvent.pointerLeave(screen.getByRole("tablist"));
     await waitFor(() => expect(drawn()).toEqual(["a", "b", "d", "e", "f"]));
-    expect(slotTarget(headerStore.getState().model, 4)).toEqual({ tabId: "tab-f" });
+    expect(slotTarget(headerStore.getState().model, 4)).toBe("f");
   });
 });
 

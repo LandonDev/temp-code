@@ -185,7 +185,7 @@ describe('UsageMeter', () => {
   it('draws no row for a provider whose every account answered with no caps', async () => {
     const { root, link } = await mount()
     const s = snapshot()
-    s.providers.cursor.reports = [{ profileName: 'cursor@x.com', windows: [] }]
+    s.providers.cursor.reports = [{ profileName: 'cursor@x.com', windows: [], note: 'no usage caps on this plan' }]
     await probe!.act(async () => {
       for (const l of link.listeners) l({ push: 'accounts', snapshot: s } as ServerPush)
     })

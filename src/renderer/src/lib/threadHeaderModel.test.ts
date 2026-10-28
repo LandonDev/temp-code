@@ -242,11 +242,11 @@ describe("holdModel and slotTarget", () => {
     expect(holdModel(gone, shown, true).live.map((c) => c.id)).toEqual(["a", "b", "d", "e"]);
   });
 
-  it("picks the nth chip of the held row, opening a tabless chip's thread", () => {
+  it("picks the nth chip of the held row, tab or no tab", () => {
     const held = holdModel(settled, shown, true);
-    expect(slotTarget(held, 2)).toEqual({ tabId: "t-c" });
-    expect(slotTarget(held, 3)).toEqual({ tabId: "t-d" });
-    expect(slotTarget(held, -1)).toEqual({ sessionId: "e" });
+    expect(slotTarget(held, 2)).toBe("c");
+    expect(slotTarget(held, 3)).toBe("d");
+    expect(slotTarget(held, -1)).toBe("e");
     expect(slotTarget(held, 7)).toBeNull();
   });
 });

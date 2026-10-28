@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ProfileView, UsageReport } from 'aliax-core/shared/types'
 import { emptyAccounts, type AccountHeadroom, type AccountsSnapshot } from './accounts'
-import { isLow, meterFor, untilShort, untilWords, windowName } from './usageMeter'
+import { isLow, meterFor, NO_CAPS_NOTE, untilShort, untilWords, windowName } from './usageMeter'
 
 const NOW = 1_000_000_000
 const MIN = 60_000
@@ -37,20 +37,25 @@ describe('meterFor', () => {
     expect(meterFor('claude', s, NOW)).toEqual({ share: null, resetsAt: null, limited: null, withRoom: 0, windows: [] })
   })
 
-  it('is null when every account answered with no usage window: a plan with no caps has no row', () => {
-    expect(meterFor('cursor', snapshot([report('a', []), report('b', [])], {}, 'cursor'), NOW)).toBeNull()
+  const capless = (name: string) => report(name, [], { note: NO_CAPS_NOTE })
+
+  it('is null when every account answered that its plan has no caps', () => {
+    expect(meterFor('cursor', snapshot([capless('a'), capless('b')], {}, 'cursor'), NOW)).toBeNull()
   })
 
-  it('keeps the empty track while an account has not answered, or answered only with an expired report', () => {
-    const waiting = snapshot([report('a', [])], {}, 'cursor')
+  it('keeps the empty track while an account has not answered, its report expired or its poll failed', () => {
+    const empty = { share: null, resetsAt: null, limited: null, withRoom: 0, windows: [] }
+    const waiting = snapshot([capless('a')], {}, 'cursor')
     waiting.providers.cursor.profiles.push(profile('b'))
-    expect(meterFor('cursor', waiting, NOW)).toEqual({ share: null, resetsAt: null, limited: null, withRoom: 0, windows: [] })
-    const stale = snapshot([report('a', []), report('b', [], { expired: true })], {}, 'cursor')
-    expect(meterFor('cursor', stale, NOW)?.share).toBeNull()
+    expect(meterFor('cursor', waiting, NOW)).toEqual(empty)
+    const stale = snapshot([capless('a'), report('b', [], { expired: true, note: NO_CAPS_NOTE })], {}, 'cursor')
+    expect(meterFor('cursor', stale, NOW)).toEqual(empty)
+    const failed = snapshot([report('a', [], { note: 'usage temporarily unavailable' })], {}, 'cursor')
+    expect(meterFor('cursor', failed, NOW)).toEqual(empty)
   })
 
   it('draws a meter once one account reports a window', () => {
-    const m = meterFor('cursor', snapshot([report('a', []), report('b', [['month', 40]])], {}, 'cursor'), NOW)!
+    const m = meterFor('cursor', snapshot([capless('a'), report('b', [['month', 40]])], {}, 'cursor'), NOW)!
     expect(m.share).toBeCloseTo(0.6)
     expect(m.windows.map((w) => w.label)).toEqual(['month'])
   })

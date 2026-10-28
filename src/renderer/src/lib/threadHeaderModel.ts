@@ -184,15 +184,12 @@ export function stripScopeKey(
   return `loose:${workspaceId ?? ""}`;
 }
 
-/** What ⌘1–9 opens: the nth chip as drawn (`slot` < 0 the last), its tab when
- *  it has one, else the thread itself, as a click on the chip would. */
-export function slotTarget<T extends StripThread>(
-  model: HeaderModel<T>,
-  slot: number,
-): { tabId: string } | { sessionId: string } | null {
+/** The thread ⌘1–9 selects: the nth chip as drawn (`slot` < 0 the last),
+ *  opened as a click on it opens it, so a chip sharing a split focuses its
+ *  own pane and a chip with no tab opens its thread. */
+export function slotTarget<T extends StripThread>(model: HeaderModel<T>, slot: number): string | null {
   const chip = slot < 0 ? model.live[model.live.length - 1] : model.live[slot];
-  if (!chip) return null;
-  return chip.tabId ? { tabId: chip.tabId } : { sessionId: chip.id };
+  return chip?.id ?? null;
 }
 
 /** Strip order for next/previous: the live row, then the shelf. */

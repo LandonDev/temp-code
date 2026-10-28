@@ -64,6 +64,10 @@ interface AccountRoom {
   throttledUntil: number | null
 }
 
+/** What a provider answers for a plan with no caps (aliax-core's Cursor
+ *  adapter). Any other report with no windows is a failed or pending poll. */
+export const NO_CAPS_NOTE = 'no usage caps on this plan'
+
 const usable = (r: UsageReport): boolean => !r.expired && (r.windows.length > 0 || r.rateLimit !== undefined)
 
 function accountRoom(report: UsageReport, accounts: ProviderAccounts, general: Set<string> | null, now: number): AccountRoom {
@@ -95,8 +99,8 @@ const soonest = (times: (number | null)[]): number | null => {
 
 /**
  * The provider's meter, or null when there is nothing to show: no accounts,
- * or every account answered with no usage window and no limit (a plan with
- * no caps, as Cursor's says). Before the first answer it is an empty track.
+ * or every account answered that its plan has no caps (`NO_CAPS_NOTE`).
+ * Before the first answer, or while a poll fails, it is an empty track.
  * Pure, so the rail and the phone agree.
  */
 export function meterFor(provider: AccountProvider, snapshot: AccountsSnapshot, now = Date.now()): UsageMeter | null {
@@ -105,8 +109,8 @@ export function meterFor(provider: AccountProvider, snapshot: AccountsSnapshot, 
   const names = new Set(accounts.profiles.map((p) => p.name))
   const reports = accounts.reports.filter((r) => names.has(r.profileName) && usable(r))
   if (reports.length === 0) {
-    const answered = new Set(accounts.reports.filter((r) => !r.expired).map((r) => r.profileName))
-    if ([...names].every((name) => answered.has(name))) return null
+    const capless = new Set(accounts.reports.filter((r) => !r.expired && r.note === NO_CAPS_NOTE).map((r) => r.profileName))
+    if ([...names].every((name) => capless.has(name))) return null
     return { share: null, resetsAt: null, limited: null, withRoom: 0, windows: [] }
   }
 

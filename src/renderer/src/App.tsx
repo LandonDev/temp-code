@@ -1380,17 +1380,11 @@ export default function App() {
     if (id) activateTab(id);
   }, [activateTab]);
 
-  /** ⌘1–9: the nth chip as drawn (⌘9 the last). A chip with no tab, a held
-   *  departure or a thread never opened here, opens as a click on it does. */
-  const onActivate = useCallback(
-    (slot: number) => {
-      const target = slotTarget(headerStore.getState().model, slot);
-      if (!target) return;
-      if ("tabId" in target) activateTab(target.tabId);
-      else void onSelectHistorySessionRef.current?.(target.sessionId);
-    },
-    [activateTab],
-  );
+  /** ⌘1–9: the nth chip as drawn (⌘9 the last), selected as a click on it is. */
+  const onActivate = useCallback((slot: number) => {
+    const id = slotTarget(headerStore.getState().model, slot);
+    if (id) void onSelectHistorySessionRef.current?.(id);
+  }, []);
 
   const onFocusPane = useCallback(
     (paneId: string) => {

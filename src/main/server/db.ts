@@ -559,6 +559,9 @@ export interface ResumeAfterBootRow {
 
 type PageRaw = { seq: number; ts: number; payload: string }
 
+/** Settings keyed `<prefix>:<workspace id>` (sessions.ts): a workspace fold carries them to the kept row. */
+const WORKSPACE_SETTING_PREFIXES = ['orchestration-rules', 'thread-defaults', 'turn-pass', 'build'] as const
+
 export class Store {
   /** Session search runs on the reader worker while it is up (dbWorkers.ts). */
   private reader: EventReader | undefined
@@ -1269,6 +1272,20 @@ export class Store {
     try {
       if (linkId) this.setWorkspaceLink(keeperId, linkId)
       for (const id of duplicateIds) {
+        // The keeper takes what it has not set from the duplicate, oldest first:
+        // the preamble and account pins on the row, and the settings keyed by its id.
+        this.stmt(
+          `UPDATE workspaces SET
+             preamble = COALESCE(preamble, (SELECT preamble FROM workspaces WHERE id = ?1)),
+             preamble_enabled = CASE WHEN preamble IS NULL THEN (SELECT preamble_enabled FROM workspaces WHERE id = ?1) ELSE preamble_enabled END,
+             account_pins = COALESCE(account_pins, (SELECT account_pins FROM workspaces WHERE id = ?1))
+           WHERE id = ?2`
+        ).run(id, keeperId)
+        for (const prefix of WORKSPACE_SETTING_PREFIXES) {
+          const value = this.getSetting(`${prefix}:${id}`)
+          if (value !== null && this.getSetting(`${prefix}:${keeperId}`) === null) this.setSetting(`${prefix}:${keeperId}`, value)
+          this.setSetting(`${prefix}:${id}`, null)
+        }
         const rows = this.stmt('SELECT id FROM sessions WHERE workspace_id = ?').all(id) as unknown as { id: string }[]
         sessionIds.push(...rows.map((row) => row.id))
         const moved = this.stmt('UPDATE projects SET workspace_id = ? WHERE workspace_id = ?').run(keeperId, id)
