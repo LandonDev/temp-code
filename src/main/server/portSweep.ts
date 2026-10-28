@@ -229,8 +229,8 @@ export interface SweepDeps {
   anyLive: () => boolean
   /** A port the Dev Server button's runs hold (devRuns.ts). */
   claimed: (port: number) => boolean
-  /** A row was recorded: the live-row watch starts (threadPorts.ts). */
-  recorded?: () => void
+  /** Rows were recorded (their ids): the live-row watch starts (threadPorts.ts) and the tail tells the thread (portTail.ts). */
+  recorded?: (ids: readonly string[]) => void
   ownPid?: number
   home?: string
   platform?: NodeJS.Platform
@@ -392,7 +392,7 @@ export class PortSweep {
     }
 
     const reports: SweepReport[] = []
-    let recorded = false
+    const recorded: string[] = []
     const decide = (key: string, final: boolean): void => {
       if (!dryRun) this.decided.set(key, { at: now, final })
     }
@@ -437,11 +437,11 @@ export class PortSweep {
         removed: []
       })
       if (made.length) {
-        recorded = true
+        recorded.push(...made.map((r) => r.id))
         this.log(`thread=${sessionId} port ${l.port} pid ${l.pid} by ${by}`)
       }
     }
-    if (recorded) this.deps.recorded?.()
+    if (recorded.length) this.deps.recorded?.(recorded)
     return reports
   }
 }

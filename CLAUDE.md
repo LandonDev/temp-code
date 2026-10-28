@@ -1012,10 +1012,14 @@ routed to (aliax-core's `forward`). Two listeners:
   frames (remote/macPorts.ts, portStreams.ts: in order, paused while the
   link holds 1 MiB or 32 frames are unanswered); the box dials its loopback
   only. "Dev server forwarding" per host in its Mac bridge settings dialog
-  (`ports.forward.<envId>`, on by default). The thread hears "Forwarded to
-  http://localhost:5174 on the Mac (5173 is taken there)" in the shell
-  call's result (claude's PostToolUse hook; a whispered `<dev-server>` line
-  otherwise, portTail.ts); the call's transcript row ends with "Open on the
+  (`ports.forward.<envId>`, on by default). The thread hears where its dev server is: "Forwarded to
+  http://localhost:5174 on the Mac (5173 is taken there)" with a Mac, "The
+  dev server (bun run dev) is listening on http://localhost:5173" without
+  one (`devServerLine`, portTail.ts), in the shell call's result (claude's
+  PostToolUse hook; a backgrounded call's listener is looked for through
+  the hook's wait, `POLL_MS`) or whispered as a `<dev-server>` line once
+  the row lands (a row the grace-period poll or the host-wide sweep records
+  reaches the tail through `recorded(ids)`); the call's transcript row ends with "Open on the
   Mac :5174", and the Activity section and the dev servers pane have Open
   and Stop. The bottom dock's
   Dev servers tab starts one (its starter, surfaces/DevStarter.tsx):
@@ -1164,9 +1168,13 @@ routed to (aliax-core's `forward`). Two listeners:
   turn that starts from a watching, error or stopped row counts from its
   own start (`append` stamps `busySince` fresh; a retry that queues after a
   failure from its queueing), a stopped watcher freezes nothing, and only a
-  turn that died mid-stream carries its elapsed through Resume; the
-  transcript's closing line of a turn resumed from its Stopped or failure
-  row states the resumed stretch (`resumeTurnClock`). The boot reset idles only waiting and watching rows now.
+  turn that died mid-stream carries its elapsed through Resume
+  (`resumeStopped` anchors `busySince` once, before the boot, and appends
+  `starting` then `running`, both keeping it); the transcript's closing
+  line of a turn resumed from its failure or Stop row states the resumed
+  stretch, and one resumed from the host's `stopped` row (the harness gone
+  under it) carries its span on, so the line and the strip agree
+  (`resumeTurnClock`, the block's `stoppedTs`). The boot reset idles only waiting and watching rows now.
   docs/box.md "Surviving a restart"; proof `bun scripts/e2e-survive-restart.ts`.
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
   `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live

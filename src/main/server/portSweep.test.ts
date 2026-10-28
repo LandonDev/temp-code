@@ -182,7 +182,7 @@ describe('PortSweep', () => {
   let threads: Omit<SweepThread, 'harnessStartedAt'>[]
   let claimed: Set<number>
   let sweep: PortSweep
-  let recorded: number
+  let recorded: string[]
 
   beforeEach(() => {
     db = openDb(':memory:')
@@ -195,7 +195,7 @@ describe('PortSweep', () => {
     probes = []
     threads = [{ id: 'a', cwd: '/srv/agents/work/a', harnessPid: null, live: true, createdAt: T0, activeAt: T0 }]
     claimed = new Set()
-    recorded = 0
+    recorded = []
     let now = T0 + 100_000
     sweep = new PortSweep({
       resources: ledger,
@@ -204,7 +204,7 @@ describe('PortSweep', () => {
       threads: () => threads,
       anyLive: () => true,
       claimed: (port) => claimed.has(port),
-      recorded: () => recorded++,
+      recorded: (ids) => recorded.push(...ids),
       ownPid: 7,
       home: '/srv/agents/home',
       probe: async (pid) => {
@@ -233,7 +233,7 @@ describe('PortSweep', () => {
     const first = await sweep.sweep()
     expect(first.find((r) => r.port === 3001)?.verdict).toEqual({ credit: { sessionId: 'a', callId: null, by: 'cwd' } })
     expect(ledger.live(ME, 'port', '3001')).toMatchObject({ sessionId: 'a', pid: 300, label: 'bun run dev' })
-    expect(recorded).toBe(1)
+    expect(recorded).toHaveLength(1)
     // Infrastructure never costs a probe; nothing new costs nothing at all.
     expect(probes).toEqual([300])
     expect(await sweep.sweep()).toEqual([])
@@ -252,6 +252,8 @@ describe('PortSweep', () => {
     serve(8081, 300, { cwd: '/elsewhere', files: ['/tmp/cc/tasks/b1.output (deleted)'] })
     await sweep.sweep()
     expect(ledger.live(ME, 'port', '8081')).toMatchObject({ sessionId: 'a', callId: 'c1', label: 'npx expo start --tunnel' })
+    // The row reaches the tail by its id once the sweep settled it.
+    expect(recorded).toEqual([ledger.live(ME, 'port', '8081')!.id])
     expect(sweep.fileOfCall('c1')).toBe('/tmp/cc/tasks/b1.output')
     expect(sweep.fileOfTask('b1')).toBe('/tmp/cc/tasks/b1.output')
     expect(sweep.fileOfTask('b2')).toBeNull()
@@ -279,7 +281,7 @@ describe('PortSweep', () => {
       { skip: 'a test run or the gate', final: true }
     ])
     expect(ledger.listAll({ kind: 'port' })).toEqual([])
-    expect(recorded).toBe(0)
+    expect(recorded).toHaveLength(0)
   })
 
   it('leaves Dev Server runs and rows already on the ledger alone, and a dry run records nothing', async () => {

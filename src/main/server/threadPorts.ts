@@ -98,6 +98,8 @@ export interface ThreadPortsDeps {
   environmentId: string
   harnessPid: (sessionId: string) => number | null
   scanner: SharedScanner
+  /** Rows this filed (their ids): the tail tells the thread (portTail.ts `recorded`). */
+  recorded?: (ids: readonly string[]) => void
   now?: () => number
   log?: (line: string) => void
 }
@@ -210,6 +212,11 @@ export class ThreadPorts {
     return this.deps.resources.listAll({ kind: 'port', environmentId: this.deps.environmentId }).filter((r) => r.callId === callId)
   }
 
+  /** The live port rows filed under a call so far (the hook polls it for a backgrounded call, portTail.ts). */
+  portsOf(callId: string): ThreadResource[] {
+    return this.callPorts(callId).filter((r) => r.removedAt === null)
+  }
+
   private under(scan: Scan, root: number): Listener[] {
     const tree = descendants(scan.parents, [root])
     return scan.listeners.filter((l) => tree.has(l.pid))
@@ -251,7 +258,10 @@ export class ThreadPorts {
       created: [{ kind: 'port', identifier: String(port), label, branch: null, pid, callId, what }],
       removed: []
     })
-    if (made.length) this.log(`thread=${sessionId} port ${port} pid ${pid}`)
+    if (made.length) {
+      this.log(`thread=${sessionId} port ${port} pid ${pid}`)
+      this.deps.recorded?.(made.map((r) => r.id))
+    }
   }
 
   /** Follow the live rows (a row the host-wide sweep recorded, portSweep.ts). */

@@ -1821,12 +1821,18 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   Mac :5174" for the port its command opened (src/renderer/src/surfaces/
   CallPortLink.tsx; "Open in browser" for a Mac thread's own server); the
   Activity section and the dev servers pane list the port with where it
-  opens here, Open and Stop; and the thread hears the Mac's URL: claude in the shell call's own result
-  through a PostToolUse hook ("Forwarded to http://localhost:5174 on the
-  Mac (5173 is taken there)"), other harnesses as a `<dev-server>` line
-  whispered into the turn once the Mac bound it (src/main/server/
-  portTail.ts). A thread can hand that URL to a Mac child or a computer-use
-  run. The Dev servers pane lists it while it listens.
+  opens here, Open and Stop; and the thread hears where the server is: the
+  Mac's URL when a Mac forwards it ("Forwarded to http://localhost:5174 on
+  the Mac (5173 is taken there)"), else where it listens here ("The dev
+  server (bun run dev) is listening on http://localhost:5173": a Mac
+  thread's own server, a box with no Mac registered), claude in the shell
+  call's own result through a PostToolUse hook (a call that went to the
+  background has its listener looked for through the hook's wait), other
+  harnesses and a row the poll or the host-wide sweep filed after the call
+  as a `<dev-server>` line whispered into the turn once it landed and any
+  Mac bound it (src/main/server/portTail.ts). A thread can hand that URL to
+  a Mac child or a computer-use run. The Dev servers pane lists it while it
+  listens.
 - **The Dev Server button.** The thread header shows "Dev server" when a
   host can serve the thread's project, with a dot while one runs; it opens
   and closes the Dev servers pane. The rail's Dev tab

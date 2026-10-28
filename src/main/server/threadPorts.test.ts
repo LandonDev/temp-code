@@ -17,6 +17,7 @@ describe('ThreadPorts', () => {
   let db: ReturnType<typeof openDb>
   let ledger: ThreadResources
   let ports: ThreadPorts
+  let recordedIds: string[] = []
   let listeners: Listener[]
   let parents: Map<number, number>
   let args: Map<number, string>
@@ -34,7 +35,8 @@ describe('ThreadPorts', () => {
     parents = new Map([[1, 0], [HARNESS, 1], [150, HARNESS]])
     args = new Map()
     const scanner = new SharedScanner(async (): Promise<Scan> => ({ listeners: [...listeners], parents: new Map(parents), args: new Map(args) }), () => now)
-    ports = new ThreadPorts({ resources: ledger, environmentId: ME, harnessPid: (id) => (id === 'child' || id === 'root' ? HARNESS : null), scanner, now: () => now, log: () => {} })
+    recordedIds = []
+    ports = new ThreadPorts({ recorded: (ids) => recordedIds.push(...ids), resources: ledger, environmentId: ME, harnessPid: (id) => (id === 'child' || id === 'root' ? HARNESS : null), scanner, now: () => now, log: () => {} })
   })
   afterEach(() => {
     ports.close()
@@ -149,6 +151,8 @@ describe('ThreadPorts', () => {
     spawnServer(5174, 501)
     await ports.tick()
     expect(ledger.listAll({ kind: 'port' }).map((r) => r.identifier)).toEqual(['5174'])
+    // The row the grace-period poll filed reaches the tail by its id.
+    expect(recordedIds).toEqual([ledger.listAll({ kind: 'port' })[0]!.id])
     now += 20_000
     spawnServer(5175, 502)
     await ports.tick()

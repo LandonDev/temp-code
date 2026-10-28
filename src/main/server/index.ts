@@ -817,7 +817,15 @@ export async function startServer(
   // ledger (threadPorts.ts), go to every registered Mac (remote/portForward.ts), and
   // the thread hears the Mac's URL (portTail.ts).
   const listenerScanner = new SharedScanner()
-  const threadPorts = new ThreadPorts({ resources, environmentId, harnessPid: (id) => registry.harnessPid(id), scanner: listenerScanner })
+  // The tail that tells a thread where its dev server is (portTail.ts), built below once its deps exist.
+  let devServerTail: PortTail | null = null
+  const threadPorts = new ThreadPorts({
+    resources,
+    environmentId,
+    harnessPid: (id) => registry.harnessPid(id),
+    scanner: listenerScanner,
+    recorded: (ids) => devServerTail?.recorded(ids)
+  })
   registry.onEvent((row) => threadPorts.observeEvent(row))
   // The live poll runs from boot while rows exist: a row from before a restart whose server is gone leaves on the first sweep.
   threadPorts.arm()
@@ -871,7 +879,10 @@ export async function startServer(
       }),
     anyLive: () => registry.harnessPids().length > 0,
     claimed: (port) => devRuns.offers().some((o) => o.port === port),
-    recorded: () => threadPorts.arm()
+    recorded: (ids) => {
+      threadPorts.arm()
+      devServerTail?.recorded(ids)
+    }
   })
   registry.onEvent((row) => portSweep.observeEvent(row))
   threadPorts.onCallEnd(() => portSweep.callEnded())
@@ -924,6 +935,7 @@ export async function startServer(
     },
     running: (callId) => threadPorts.running(callId),
     sessionOfCall: (callId) => threadPorts.sessionOfCall(callId),
+    portsOf: (callId) => threadPorts.portsOf(callId),
     whisper: (sessionId, text) => registry.whisper(sessionId, text),
     others: (row) => [
       ...resources
@@ -955,6 +967,7 @@ export async function startServer(
     const lines = [guard.tail(callId), await portTail.tail(sessionId, callId, output)].filter((l): l is string => !!l)
     return lines.length ? lines.join('\n') : null
   }
+  devServerTail = portTail
   threadPorts.onCallEnd((_sessionId, callId) => portTail.callEnded(resources.listAll({ kind: 'port', environmentId }).filter((r) => r.callId === callId).map((r) => r.id)))
   portHost.onBound((ids) => {
     portTail.bound(ids)
