@@ -123,7 +123,8 @@ export function RightPanel(props: RightPanelProps) {
   const sashKeys = useSashKeys({
     label: "Resize panel",
     orientation: "vertical",
-    value: resize.width,
+    // The drawn width: a fitted panel's keys step from what is on screen.
+    value: props.width ?? resize.width,
     min: PANEL_MIN,
     max: Math.min(PANEL_MAX, props.maxWidth ?? Math.floor(window.innerWidth * 0.5)),
     getSpan: (handle) => handle.parentElement?.parentElement?.getBoundingClientRect().width || window.innerWidth,

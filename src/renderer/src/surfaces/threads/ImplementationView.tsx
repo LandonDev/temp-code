@@ -142,13 +142,13 @@ export function ImplementationView(props: ThreadViewProps) {
   // replayed, so a first mount before hydration never folds.
   const settled = !running && !waiting && allDone && !stopped;
   const loaded = session.loaded === true;
-  const [chatOpen, setChatOpen] = useChatFold(session.id, !(loaded && settled));
+  const [chatOpen, setChatOpen] = useChatFold(session.id, !(loaded && settled), waiting);
   const [sawLoaded, setSawLoaded] = useState(loaded);
   if (loaded !== sawLoaded) {
     setSawLoaded(loaded);
     if (loaded && settled) setChatOpen(false);
   }
-  const [sawWaiting, setSawWaiting] = useState(false); // false: a remount while waiting still opens the chat
+  const [sawWaiting, setSawWaiting] = useState(waiting);
   if (waiting !== sawWaiting) {
     setSawWaiting(waiting);
     if (waiting) setChatOpen(true);

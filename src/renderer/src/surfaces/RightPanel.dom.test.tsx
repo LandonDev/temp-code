@@ -99,6 +99,20 @@ describe("RightPanel", () => {
     expect(rightPanel.get("s1").width).toBe(320);
   });
 
+  it("a fitted panel's keys step from the width on screen, not a stale drag width", () => {
+    rightPanel.open("s1");
+    rightPanel.setWidth("s1", 400);
+    // Mounted narrow: fitted to 280 (the drag clamps to the row's room).
+    const { container, rerender } = render(<RightPanel session={session} width={280} maxWidth={280} onOpenFile={noop} onOpenDiff={noop} />);
+    vi.spyOn(container, "getBoundingClientRect").mockReturnValue({ width: 1000 } as DOMRect);
+    // The row widened: the panel draws its stored 400 again.
+    rerender(<RightPanel session={session} width={400} maxWidth={640} onOpenFile={noop} onOpenDiff={noop} />);
+    const handle = screen.getByRole("separator", { name: "Resize panel" });
+    expect(handle.getAttribute("aria-valuenow")).toBe("400");
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    expect(rightPanel.get("s1").width).toBe(420);
+  });
+
   it("renders nothing while closed, and nothing for a subagent", () => {
     const { container } = render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     expect(container.querySelector("aside")).toBeNull();

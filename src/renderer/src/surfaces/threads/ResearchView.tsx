@@ -120,9 +120,9 @@ export function ResearchView(props: ThreadViewProps) {
   // run starting reopens it, and the run that COMPLETES the report folds
   // it — that run's deliverable is the report. Later runs are answer-first
   // follow-ups whose deliverable is the chat answer, so they stay open.
-  const [chatOpen, setChatOpen] = useChatFold(session.id, true);
+  const [chatOpen, setChatOpen] = useChatFold(session.id, true, waiting);
   const completeAtRunStart = useRef(complete);
-  const [sawWaiting, setSawWaiting] = useState(false); // false: a remount while waiting still opens the chat
+  const [sawWaiting, setSawWaiting] = useState(waiting);
   if (waiting !== sawWaiting) {
     setSawWaiting(waiting);
     if (waiting) setChatOpen(true);

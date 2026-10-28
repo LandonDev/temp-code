@@ -13,6 +13,8 @@ import { archiveThread, isRemovable, liveResources, loadThreadResources, startTh
 import { leafIds } from "../lib/layout";
 import { shortcutFor } from "../lib/settings";
 import { workspaceTabsStore } from "../stores/workspace";
+import { headerStore } from "../stores/header";
+import { planCloseFocused } from "../lib/workspaceTabGroups";
 import { workspaceActions } from "../stores/workspaceActions";
 import { SessionActionsContext } from "../surfaces/threadChat";
 import { RenameThreadDialog } from "../surfaces/threads/master/RenameThreadDialog";
@@ -71,11 +73,12 @@ function sidePane(id: string): string | null {
   return pane && pane !== id ? pane : null;
 }
 
-/** Close tab's fact: the thread has an open tab; split when it shares it, ⌘W's caps when it is the focused pane. */
+/** Close tab's fact: the thread has a tab it can close (planCloseFocused: never the strip's
+ *  last); split when it shares it, ⌘W's caps when it is the focused pane. */
 function closeFact(id: string): { split: boolean; shortcut?: string } | undefined {
   const state = workspaceTabsStore.getState();
   const tab = state.tabs.find((t) => leafIds(t.layout).includes(id));
-  if (!tab) return undefined;
+  if (!tab || planCloseFocused(tab, headerStore.getState().stripTabs).kind === "none") return undefined;
   const focused = state.activeTabId === tab.id && tab.focusedId === id;
   return { split: leafIds(tab.layout).length > 1, ...(focused ? { shortcut: shortcutFor("Panes", "Close") } : {}) };
 }

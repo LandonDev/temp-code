@@ -40,6 +40,7 @@ vi.mock("../stores/workspace", () => ({ workspaceTabsStore: { getState: () => ta
 vi.mock("../stores/workspaceActions", () => ({ workspaceActions: { dropThread } }));
 
 import { SessionActionsContext, type SessionActions } from "../surfaces/threadChat";
+import { headerStore } from "../stores/header";
 import { RowsContextMenu, RowsMenu } from "./menuRows";
 import { useThreadMenu } from "./useThreadMenu";
 
@@ -159,6 +160,28 @@ describe("one thread menu on every surface", () => {
     fireEvent.contextMenu(screen.getByText("Row t1"));
     fireEvent.click(within(await screen.findByRole("menu", { name: "Rail" })).getByText("Open to the side"));
     expect(dropThread).toHaveBeenCalledWith("t1", "other", "right");
+  });
+
+  it("Close tab shows only for a tab it can close: never the strip's last", async () => {
+    thread("t1", { status: "idle" });
+    const prev = tabs.state;
+    tabs.state = { activeTabId: "tab1", tabs: [{ id: "tab1", focusedId: "t1", layout: { type: "leaf", id: "t1" } }] } as typeof tabs.state;
+    const onCloseTab = vi.fn();
+    try {
+      headerStore.setState({ stripTabs: ["tab1"] });
+      render(withActions(<Surfaces />, { onCloseTab }));
+      fireEvent.contextMenu(screen.getByText("Row t1"));
+      expect(labels(await screen.findByRole("menu", { name: "Rail" }))).not.toContain("Close tab");
+      cleanup();
+      headerStore.setState({ stripTabs: ["tab1", "tab2"] });
+      render(withActions(<Surfaces />, { onCloseTab }));
+      fireEvent.contextMenu(screen.getByText("Row t1"));
+      fireEvent.click(within(await screen.findByRole("menu", { name: "Rail" })).getByText("Close tab"));
+      expect(onCloseTab).toHaveBeenCalledWith("t1");
+    } finally {
+      tabs.state = prev;
+      headerStore.setState({ stripTabs: [] });
+    }
   });
 
   it("Delete… confirms before it deletes", async () => {

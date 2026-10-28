@@ -35,6 +35,9 @@ vi.mock("./SplitShell", () => ({
       <button type="button" onClick={() => p.onToggleChat(false)}>
         fold
       </button>
+      <button type="button" onClick={() => p.onToggleChat(true)}>
+        open
+      </button>
     </div>
   ),
 }));
@@ -80,6 +83,24 @@ describe("PlanView's chat fold", () => {
     cleanup();
     render(<PlanView {...props(session({}))} />);
     expect(collapsed()).toBe("true");
+  });
+
+  it("a chat reopened on a settled plan stays open when the file arrives after the remount", () => {
+    const text = "# A plan\n\n## Tasks\n- [ ] one\n";
+    const settled = session({ status: "idle" });
+    // usePlanFile answers null until it has read the file.
+    const mount = () => {
+      doc = null;
+      const view = render(<PlanView {...props(settled)} />);
+      doc = text;
+      view.rerender(<PlanView {...props({ ...settled } as Session)} />);
+    };
+    mount();
+    expect(collapsed()).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "open" }));
+    cleanup();
+    mount();
+    expect(collapsed()).toBe("false");
   });
 
   it("is per thread: another plan opens on its own default", () => {

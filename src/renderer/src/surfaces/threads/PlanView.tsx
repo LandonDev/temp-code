@@ -128,20 +128,24 @@ export function PlanView(props: ThreadViewProps) {
   // answers live in the chat. All are render-time adjusts (the prevLen
   // pattern above), not effects, so a manual toggle wins until the next
   // phase change.
-  const [chatOpen, setChatOpen] = useChatFold(session.id, true);
+  const [chatOpen, setChatOpen, remembered] = useChatFold(session.id, true, waiting);
   const [sawSpawned, setSawSpawned] = useState(!!spawned);
   if (!!spawned !== sawSpawned) {
     setSawSpawned(!!spawned);
     if (spawned) setChatOpen(false);
   }
-  const [sawWaiting, setSawWaiting] = useState(false); // false: a remount while waiting still opens the chat
+  const [sawWaiting, setSawWaiting] = useState(waiting);
   if (waiting !== sawWaiting) {
     setSawWaiting(waiting);
     if (waiting) setChatOpen(true);
   }
   const settledDoc = hasDoc && session.status === "idle";
-  const [sawSettledDoc, setSawSettledDoc] = useState(settledDoc);
-  if (settledDoc !== sawSettledDoc) {
+  // The file arriving after a remount (usePlanFile starts at null) is not a
+  // new phase: a remembered fold keeps, so null means "not read yet".
+  const [sawSettledDoc, setSawSettledDoc] = useState<boolean | null>(remembered && doc === null ? null : settledDoc);
+  if (sawSettledDoc === null) {
+    if (doc !== null) setSawSettledDoc(settledDoc);
+  } else if (settledDoc !== sawSettledDoc) {
     setSawSettledDoc(settledDoc);
     if (settledDoc) setChatOpen(false);
   }
