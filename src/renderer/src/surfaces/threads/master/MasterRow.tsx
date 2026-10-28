@@ -338,16 +338,19 @@ function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph:
 
 /** The provider's mark, the model, then its effort and context; it gives
  *  way to the row's actions on hover and focus. */
+/** The model at the line's end: secondary, so in a narrow board it gives
+ *  its width up before the title does (it shrinks a thousand times faster
+ *  and clips), and the title keeps the lead. */
 function ModelMark({ meta }: { meta: SessionMeta }) {
   const rest = [meta.reasoning, meta.context1m ? "1M" : null].filter(Boolean).join(" ");
   return (
     <span
-      className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-muted-foreground transition-opacity duration-(--dur-fast) group-focus-within:opacity-0 group-hover:opacity-0"
+      className="flex min-w-0 shrink-[1000] items-center gap-1.5 overflow-hidden text-xs whitespace-nowrap text-muted-foreground transition-opacity duration-(--dur-fast) group-focus-within:opacity-0 group-hover:opacity-0"
       data-model
     >
-      <HarnessIcon harness={asHarness(meta.provider)} className="size-3" />
-      <span>{modelLabel(meta.provider, meta.model)}</span>
-      {rest ? <span className="ml-0.5">{rest}</span> : null}
+      <HarnessIcon harness={asHarness(meta.provider)} className="size-3 shrink-0" />
+      <span className="min-w-0 truncate">{modelLabel(meta.provider, meta.model)}</span>
+      {rest ? <span className="ml-0.5 shrink-0">{rest}</span> : null}
     </span>
   );
 }

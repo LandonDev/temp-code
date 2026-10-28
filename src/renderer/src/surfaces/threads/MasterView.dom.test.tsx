@@ -493,6 +493,18 @@ describe("the master view", () => {
     expect(states).toEqual({ waiting: "waiting", running: "working", error: "failed", paused: "paused", queued: "queued", idle: undefined });
   });
 
+  it("the title keeps the lead: the model at the line's end gives its width up first", async () => {
+    seed([meta({ id: "c-run", title: "A batch thread with a long title", status: "running", createdAt: 1 })]);
+    renderView();
+    await flush();
+    const row = document.querySelector<HTMLElement>("[data-status=running]")!;
+    expect(row.querySelector("[data-row-title]")!.className).toContain("truncate");
+    const model = row.querySelector<HTMLElement>("[data-model]")!;
+    expect(model.className).toContain("shrink-[1000]");
+    expect(model.className).toContain("overflow-hidden");
+    expect(model.className).not.toContain("shrink-0");
+  });
+
   it("a done row says its detail alone, no glyph, and keeps the state word for readers", async () => {
     seed([meta({ id: "c-done", title: "Design foundations", status: "idle", createdAt: 2, updatedAt: new Date(2026, 9, 21, 12, 8).getTime() })]);
     renderView();
