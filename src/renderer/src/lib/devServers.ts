@@ -278,6 +278,10 @@ export interface LiveServer {
   port: { number: number; environmentId: string; forwards: PortForwardInfo[] | undefined } | null
   runId: string | null
   resource: { id: string; sessionId: string } | null
+  /** A ledger row's tool call that opened it (a background shell's call); null for a run. */
+  callId: string | null
+  /** The command it runs: a run's, a ledger row's label. */
+  command: string | null
   startedAt: number
   /** Stop was asked and the host has not dropped it yet: the reason it waits ("Mac offline, waiting"), else ''. */
   stopping?: string
@@ -314,6 +318,8 @@ export function liveServers(src: LiveServerSources): LiveServer[] {
         port: p ? { number: p.port, environmentId, forwards: p.forwards } : null,
         runId: run.id,
         resource: null,
+        callId: null,
+        command: run.command,
         startedAt: run.startedAt
       })
     }
@@ -335,6 +341,8 @@ export function liveServers(src: LiveServerSources): LiveServer[] {
         port: { number, environmentId: row.environmentId, forwards: row.forwards },
         runId: null,
         resource: { id: row.id, sessionId },
+        callId: row.callId ?? null,
+        command: row.label,
         startedAt: row.createdAt,
         ...(row.removeRequestedAt ? { stopping: row.note ?? '' } : {})
       })

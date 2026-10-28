@@ -1360,9 +1360,11 @@ names the far child).
   rail's `rowState` decides (`settledWithAgents`, lib/threadStripModel.ts),
   and the fleet header counts watching on its own ("1 watching, 1 done").
 - Renderer: `lib/activity.ts` joins the meta's `background`, the thread's
-  dev servers (its tree's ledger rows) and its running Mac calls into
+  dev servers (its tree's ledger rows and the runs the pane started for it,
+  `threadServers`) and its running Mac calls into
   `activityRows` (subagents as one summary row, a master's batch as one,
-  then oldest first; `rowStale`, `hasActivity`, `stopActivity`, `stopAll` =
+  then oldest first; a background shell that opened a listed dev server is
+  that server's row, matched by call id, else by command; `rowStale`, `hasActivity`, `stopActivity`, `stopAll` =
   `session.killBackground`). `surfaces/threads/ActivitySection.tsx` is the
   right panel's Activity section: 28px rows (glyph, label, a shell's
   command under it, the age, Stop; a failed Stop toasts), a shell row

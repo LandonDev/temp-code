@@ -106,6 +106,18 @@ describe('the live dev servers', () => {
     expect(list[1]).toMatchObject({ environmentId: 'env_box', sessionId: 't1', resource: { id: 'res1', sessionId: 't1' }, runId: null })
   })
 
+  it("carries a ledger row's call and command, and a run's command with no call", () => {
+    const list = liveServers(
+      sources({
+        runs: { 'env_mac/p1': [run({ id: 'r1', startedAt: 9, ports: [{ port: 5173, url: 'http://localhost:5173' }] })] },
+        resources: { t1: [port({ callId: 'toolu_7' })] }
+      })
+    )
+    expect(list[0]).toMatchObject({ key: 'env_mac/r1', callId: null, command: run({}).command })
+    expect(list[1]).toMatchObject({ key: 'env_box/res1', callId: 'toolu_7', command: 'cd apps/web && bun run dev' })
+    expect(liveServers(sources({ resources: { t1: [port()] } }))[0].callId).toBeNull()
+  })
+
   it('titles a port row by what the host says its process is, else by its label', () => {
     const list = liveServers(sources({ resources: { t1: [port({ what: 'Bun server' }), port({ id: 'res2', identifier: '3008', label: 'npx vite --port 3008' })] } }))
     expect(Object.fromEntries(list.map((s) => [s.key, s.title]))).toEqual({ 'env_box/res1': 'Bun server', 'env_box/res2': 'Vite dev server' })

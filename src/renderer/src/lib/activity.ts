@@ -85,6 +85,8 @@ export function activityRows(src: ActivitySources): ActivityRow[] {
     const cron = t.kind === "cron";
     // The host's guard marks a call's shell; the row shows the command as written.
     const command = t.command ? unwrapBashCommand(t.command) : undefined;
+    // A background shell that opened a listed dev server is that server's row.
+    if (src.devServers.some((s) => opened(s, t.callId, command))) continue;
     rest.push({
       key: `task:${t.id}`,
       kind: t.kind,
@@ -118,6 +120,12 @@ export function activityRows(src: ActivitySources): ActivityRow[] {
   }
   rest.sort((a, b) => a.since - b.since);
   return [...head, ...rest];
+}
+
+/** The server came from this task: by the call that opened it, else (an id missing) by its command. */
+function opened(server: LiveServer, callId: string | undefined, command: string | undefined): boolean {
+  if (server.callId && callId) return server.callId === callId;
+  return !!command && command === server.command;
 }
 
 /** A row's age turns amber once its thread watches stale and the row is that old: tasks, crons and the batch only (the rest have their own liveness). */

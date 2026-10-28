@@ -121,6 +121,29 @@ describe("activityRows", () => {
   });
 });
 
+describe("a background shell that opened a dev server", () => {
+  const shell = (callId?: string) => ({ id: "t1", label: "Start the dev server", kind: "shell" as const, startedAt: 100, command: "bun run dev", ...(callId ? { callId } : {}) });
+  const rowsFor = (tasks: BackgroundWork["tasks"], devServers: LiveServer[]) =>
+    activityRows({ meta: { id: "s1", status: "running", background: bg({ tasks }) }, agents: [], devServers, macCalls: [] });
+
+  it("is that server's row when they share a call", () => {
+    const rows = rowsFor([shell("c1")], [{ ...server, callId: "c1", command: "bun run dev --port 5173" }]);
+    expect(rows.map((r) => r.kind)).toEqual(["dev"]);
+  });
+
+  it("is that server's row by its command when an id is missing", () => {
+    expect(rowsFor([shell()], [{ ...server, callId: "c1", command: "bun run dev" }]).map((r) => r.kind)).toEqual(["dev"]);
+    expect(rowsFor([shell("c1")], [{ ...server, callId: null, command: "bun run dev" }]).map((r) => r.kind)).toEqual(["dev"]);
+  });
+
+  it("keeps an unrelated shell task", () => {
+    const rows = rowsFor([shell("c2")], [{ ...server, callId: "c1", command: "bun run dev" }]);
+    expect(rows.map((r) => r.kind)).toEqual(["shell", "dev"]);
+    const sleep = { id: "t2", label: "sleep 90", kind: "shell" as const, startedAt: 50, command: "sleep 90" };
+    expect(rowsFor([sleep], [{ ...server, callId: null, command: "bun run dev" }]).map((r) => r.kind)).toEqual(["shell", "dev"]);
+  });
+});
+
 describe("threadServers", () => {
   it("keeps a pane-started run by its thread and a subagent's ledger row, and drops another thread's run", () => {
     const run = { ...server, key: "env/run1", sessionId: "s1", runId: "run1", resource: null };
