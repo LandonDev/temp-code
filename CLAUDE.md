@@ -1366,9 +1366,9 @@ names the far child).
   then oldest first; a background shell that opened a listed dev server is
   that server's row, matched by call id, else by command; `rowStale`, `hasActivity`, `stopActivity`, `stopAll` =
   `session.killBackground`). `surfaces/threads/ActivitySection.tsx` is the
-  right panel's Activity section: 28px rows (glyph, label, a shell's
-  command under it, the age, Stop; a failed Stop toasts), a shell row
-  folding open onto its `session.taskLog` output (a monitor writes no file
+  right panel's Activity section: 28px rows (glyph, label, the age, Stop;
+  a failed Stop toasts), a shell row folding open onto its command and its
+  `session.taskLog` output (a monitor writes no file
   the host can read, so it opens nothing; a failed read says so), the
   subagents row opening the Agents section, a dev server row the dev
   servers pane. The working strip's watching case says "Watching

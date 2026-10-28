@@ -58,12 +58,16 @@ function mount(onOpenAgents = vi.fn()) {
 const rowOf = (kind: string): HTMLElement => document.querySelector(`[data-kind="${kind}"]`) as HTMLElement;
 
 describe("ActivitySection", () => {
-  it("lists subagents first, then oldest first, the shell's command under it and the stale monitor's age in amber", () => {
+  it("lists subagents first, then oldest first, each one plain line, and the stale monitor's age in amber", () => {
     mount();
     const kinds = [...document.querySelectorAll("[data-kind]")].map((e) => e.getAttribute("data-kind"));
     expect(kinds).toEqual(["subagents", "monitor", "shell", "dev"]);
     expect(rowOf("subagents").textContent).toContain("3 subagents");
-    expect(rowOf("shell").textContent).toContain("bun run dev --port 5173");
+    // Folded, a shell row is its label alone: the command shows only in its fold.
+    expect(rowOf("shell").textContent).toContain("Serve the app");
+    expect(document.body.textContent).not.toContain("bun run dev --port 5173");
+    expect(rowOf("shell").className).toContain("min-h-7");
+    expect(rowOf("shell").className).toContain("py-0");
     expect(rowOf("dev").textContent).toContain("Dev server :5173");
     // Live subagents carry the wait, so nothing is stale yet.
     expect(rowOf("monitor").querySelector(".text-warning")).toBeNull();
@@ -96,15 +100,25 @@ describe("ActivitySection", () => {
     expect(taskLog).toHaveBeenCalledWith("s1", "t1", undefined);
   });
 
-  it("Enter on the shell row opens it and shows the whole command, untruncated, with no pointer", async () => {
+  it("Enter on the shell row opens its fold: the command first as $ <command>, then the output", async () => {
     mount();
-    const command = () => [...rowOf("shell").querySelectorAll("span")].find((e) => e.textContent === "bun run dev --port 5173")!;
-    expect(command().className).toContain("truncate");
     rowOf("shell").focus();
     fireEvent.keyDown(rowOf("shell"), { key: "Enter" });
     expect(rowOf("shell").getAttribute("aria-expanded")).toBe("true");
-    expect(command().className).not.toContain("truncate");
+    const head = document.querySelector('[data-slot="task-command"]')!;
+    expect(head.textContent).toBe("$ bun run dev --port 5173");
+    expect(head.className).toContain("font-mono");
+    const output = await screen.findByText(/listening on :5173/);
+    // The command line comes before the output.
+    expect(head.compareDocumentPosition(output) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("a shell row whose command is its label opens on the output alone", async () => {
+    const plain = { ...meta, background: { ...background, agents: [], tasks: [{ id: "t2", label: "sleep 90", kind: "shell" as const, startedAt: now, command: "sleep 90" }] } };
+    render(<ActivityRows threadId="s1" rows={activityRows({ meta: plain, agents: [], devServers: [], macCalls: [] })} meta={plain} />);
+    fireEvent.click(rowOf("shell"));
     expect(await screen.findByText(/listening on :5173/)).toBeTruthy();
+    expect(document.querySelector('[data-slot="task-command"]')).toBeNull();
   });
 
   it("writes ages in whole minutes", () => {

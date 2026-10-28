@@ -17,11 +17,11 @@ import { useSlowClock } from "../../lib/turnClock";
 
 /**
  * The right panel's Activity section: what a thread has running in the
- * background, one 28px row each (docs/DESIGN.md "Panels"). No heading, no
+ * background, one 28px line each (docs/DESIGN.md "Panels"). No heading, no
  * card, no separators. A row carries its kind's glyph, the work in the
- * model's words (a shell's command under it), its age, and Stop. A shell
- * row opens its live output under it (session.taskLog, every 1.5 s while
- * open and on screen; a read that fails says so and keeps what it had); the subagents
+ * model's words, its age, and Stop. A shell row opens under it onto its
+ * command and its live output (session.taskLog, every 1.5 s while open and
+ * on screen; a read that fails says so and keeps what it had); the subagents
  * row opens the Agents section; a dev server opens the dev servers pane.
  * Rows have no enter or leave motion: a row leaves when its push says the
  * work ended, and an open log closes with it.
@@ -160,9 +160,9 @@ function Row({
             }
           : undefined
       }
-      className={cn("min-h-7 flex-nowrap", row.detail ? "py-1" : "py-0", onActivate && "hover:bg-foreground/5", expanded && "bg-muted")}
+      className={cn("min-h-7 flex-nowrap py-0", onActivate && "hover:bg-foreground/5", expanded && "bg-muted")}
     >
-      <ItemMedia className={row.detail ? "self-start pt-0.5" : undefined}>
+      <ItemMedia>
         <Glyph className="size-3.5 text-muted-foreground" />
       </ItemMedia>
       <ItemContent className="min-w-0">
@@ -170,17 +170,8 @@ function Row({
           <TooltipTrigger render={<span className="block truncate text-[13px] text-foreground" />}>{row.label}</TooltipTrigger>
           <TooltipContent>{row.label}</TooltipContent>
         </Tooltip>
-        {/* Open (Enter on the row) the command shows whole; folded, it truncates under a tooltip. */}
-        {row.detail && expanded ? (
-          <span className="mt-0.5 block font-mono text-xs break-all whitespace-pre-wrap text-muted-foreground">{row.detail}</span>
-        ) : row.detail ? (
-          <Tooltip>
-            <TooltipTrigger render={<span className="mt-0.5 block truncate font-mono text-xs text-muted-foreground" />}>{row.detail}</TooltipTrigger>
-            <TooltipContent className="max-w-sm font-mono break-all">{row.detail}</TooltipContent>
-          </Tooltip>
-        ) : null}
       </ItemContent>
-      <ItemActions className={cn("gap-1", row.detail && "self-start")}>
+      <ItemActions className="gap-1">
         {now > 0 ? (
           <span className={cn("text-xs tabular-nums", stale ? "text-warning" : "text-muted-foreground")}>{ageText(now - row.since)}</span>
         ) : null}
@@ -216,14 +207,14 @@ function Row({
     <Collapsible open={expanded}>
       {item}
       <CollapsibleContent>
-        {expanded ? <TaskLogFold threadId={threadId} taskId={row.taskId} live={live} /> : null}
+        {expanded ? <TaskLogFold threadId={threadId} taskId={row.taskId} command={row.detail} live={live} /> : null}
       </CollapsibleContent>
     </Collapsible>
   );
 }
 
-/** A task's live output, pinned to its end while the reader has not scrolled up. */
-function TaskLogFold({ threadId, taskId, live }: { threadId: string; taskId: string; live: boolean }) {
+/** A task's command (when it says more than the label) and its live output, pinned to its end while the reader has not scrolled up. */
+function TaskLogFold({ threadId, taskId, command, live }: { threadId: string; taskId: string; command?: string; live: boolean }) {
   const [text, setText] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const next = useRef<number | undefined>(undefined);
@@ -273,22 +264,35 @@ function TaskLogFold({ threadId, taskId, live }: { threadId: string; taskId: str
     if (viewport && pinned.current) viewport.scrollTop = viewport.scrollHeight;
   }, [text]);
 
+  const head = command ? (
+    <p data-slot="task-command" className="font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-muted-foreground">
+      $ {command}
+    </p>
+  ) : null;
+  let body;
   if (text === null) {
-    return (
-      <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+    body = (
+      <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
         <Spinner className="size-3" />
         Loading…
       </div>
     );
+  } else if (!text) {
+    body = <p className="py-1 text-xs text-muted-foreground">{failed ? "Couldn't read the output" : "No output yet"}</p>;
+  } else {
+    body = (
+      <>
+        <ScrollArea className="max-h-60 [&>[data-slot=scroll-area-viewport]]:max-h-60">
+          <pre className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">{text}</pre>
+        </ScrollArea>
+        {failed ? <p className="pt-1 text-xs text-muted-foreground">Couldn't read the output</p> : null}
+      </>
+    );
   }
-  const failure = failed ? <p className="pt-1 text-xs text-muted-foreground">Couldn't read the output</p> : null;
-  if (!text) return <div className="px-2 py-1.5 text-xs text-muted-foreground">{failure ?? "No output yet"}</div>;
   return (
     <div ref={box} className="px-2 pt-0.5 pb-2">
-      <ScrollArea className="max-h-60 [&>[data-slot=scroll-area-viewport]]:max-h-60">
-        <pre className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">{text}</pre>
-      </ScrollArea>
-      {failure}
+      {head}
+      {body}
     </div>
   );
 }
