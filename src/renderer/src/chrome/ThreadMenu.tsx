@@ -12,14 +12,15 @@ import { LazyPopover, RowsMenu, tidy, type MenuRow } from "./menuRows";
 import { HostGlyph } from "./HostGlyph";
 import { ArchiveRestore, Clock, MoreHorizontal, PanelRight, Pause, Terminal } from "./icons";
 import { chipTitle, type ArchivedThread, type StripChip } from "./ThreadHeaderStrip";
+import type { ThreadType } from "../lib/tcserver/types";
 
 /**
  * The title bar's right end in deck layout: the ⋯ thread menu, then the
  * panel toggle (last, nearest the panel it opens). The menu holds a quiet
  * line naming the host and the thread's cost, the active thread's own rows
  * (lib/threadMenu.ts, the list its chip's right-click shows), and the
- * project's rows: Pause all, Terminal, Recent threads and Archived
- * threads.
+ * project's rows: Pause all, Terminal, Recent threads… and Archived
+ * threads…, each a popover listing every one of them.
  */
 
 export type ThreadMenuProps = {
@@ -36,7 +37,7 @@ export type ThreadMenuProps = {
   running: number;
   onPauseAll: () => Promise<unknown>;
   terminal: { onShow?: () => void; onNew?: () => void; active: boolean };
-  /** Settled threads, freshest first. */
+  /** Every settled root of the strip's scope, freshest first. */
   recent: readonly StripChip[];
   onOpenRecent: (id: string) => void;
   archived: readonly ArchivedThread[];
@@ -44,8 +45,6 @@ export type ThreadMenuProps = {
   /** `room` false: the thread's row is too narrow to draw the panel. */
   panel: { open: boolean; room?: boolean; onToggle: () => void };
 };
-
-const RECENT_MAX = 12;
 
 export function ThreadMenu({
   host,
@@ -63,7 +62,7 @@ export function ThreadMenu({
   panel,
 }: ThreadMenuProps) {
   const anchor = useRef<HTMLButtonElement | null>(null);
-  const [archivedOpen, setArchivedOpen] = useState(false);
+  const [list, setList] = useState<"recent" | "archived" | null>(null);
   const shownCost = cost != null && cost > 0 ? `$${cost.toFixed(2)}` : null;
   const openTerminal = terminal.active ? (terminal.onShow ?? terminal.onNew) : terminal.onNew;
 
@@ -89,28 +88,13 @@ export function ThreadMenu({
   all.push(...rows, { kind: "sep" });
   if (running > 0) all.push({ kind: "item", id: "pause-all", label: "Pause all", icon: Pause, hint: String(running) });
   if (openTerminal) all.push({ kind: "item", id: "terminal", label: "Terminal", icon: Terminal, shortcut: shortcutFor("Terminal", "New") });
-  if (recent.length > 0) {
-    all.push({
-      kind: "sub",
-      id: "recent",
-      label: "Recent threads",
-      icon: Clock,
-      items: recent.slice(0, RECENT_MAX).map((chip) => ({
-        kind: "item",
-        id: `recent:${chip.id}`,
-        label: chipTitle(chip),
-        icon: THREAD_GLYPHS[chip.thread.threadType ?? "chat"],
-        hint: timeAgo(chip.updatedAt),
-      })),
-    });
-  }
+  if (recent.length > 0) all.push({ kind: "item", id: "recent", label: "Recent threads…", icon: Clock });
   if (archived.length > 0) all.push({ kind: "item", id: "archived", label: "Archived threads…", icon: ArchiveRestore });
 
   const pick = (id: string) => {
     if (id === "pause-all") onPauseAll().catch(() => loadToast().then((toast) => toast.error("Couldn't pause every thread")));
     else if (id === "terminal") openTerminal?.();
-    else if (id === "archived") setArchivedOpen(true);
-    else if (id.startsWith("recent:")) onOpenRecent(id.slice("recent:".length));
+    else if (id === "recent" || id === "archived") setList(id);
     else onPick(id);
   };
 
@@ -153,14 +137,35 @@ export function ThreadMenu({
           <PanelRight strokeWidth={1.5} />
         </Button>
       </Tip>
-      <LazyPopover open={archivedOpen} onOpenChange={setArchivedOpen} anchor={anchor.current} align="end" className="w-72 gap-1 p-1" label="Archived threads">
-        <ArchivedList
-          archived={archived}
-          onRestore={(id) => {
-            if (archived.length === 1) setArchivedOpen(false);
-            onRestore(id);
-          }}
-        />
+      <LazyPopover
+        open={list !== null}
+        onOpenChange={(open) => !open && setList(null)}
+        anchor={anchor.current}
+        finalFocus={anchor}
+        align="end"
+        className="w-72 gap-1 p-1"
+        label={list === "archived" ? "Archived threads" : "Recent threads"}
+      >
+        {list === "archived" ? (
+          <ThreadListPopover
+            heading="Archived"
+            threads={archived}
+            restore
+            onPick={(id) => {
+              if (archived.length === 1) setList(null);
+              onRestore(id);
+            }}
+          />
+        ) : (
+          <ThreadListPopover
+            heading="Recent"
+            threads={recent.map((chip) => ({ id: chip.id, title: chipTitle(chip), type: chip.thread.threadType ?? null, updatedAt: chip.updatedAt }))}
+            onPick={(id) => {
+              setList(null);
+              onOpenRecent(id);
+            }}
+          />
+        )}
       </LazyPopover>
     </div>
   );
@@ -168,26 +173,37 @@ export function ThreadMenu({
 
 const SEARCH_PAST = 6;
 
-/** The selected project's archived threads, freshest first; Restore on hover
- *  puts the thread back and opens it. A search field past six. */
-export function ArchivedList({
-  archived,
-  onRestore,
+/** A thread the list names: its title, type and age. */
+type ListedThread = { id: string; title: string; type: ThreadType | null; updatedAt: number };
+
+/**
+ * The body of the menu's two thread lists, freshest first: Recent threads…
+ * (every settled thread of the strip's scope; a row opens it) and Archived
+ * threads… (`restore`: Restore on hover puts the thread back and opens it).
+ * A filter past six; a filter with no match is one muted row.
+ */
+export function ThreadListPopover({
+  heading,
+  threads,
+  restore = false,
+  onPick,
 }: {
-  archived: readonly ArchivedThread[];
-  onRestore: (id: string) => void;
+  heading: string;
+  threads: readonly ListedThread[];
+  restore?: boolean;
+  onPick: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
-  const shown = q ? archived.filter((t) => t.title.toLowerCase().includes(q)) : archived;
+  const shown = q ? threads.filter((t) => t.title.toLowerCase().includes(q)) : threads;
   return (
     <>
-      <div className="px-2 pt-1.5 pb-1 text-[12px] font-medium text-muted-foreground">Archived</div>
-      {archived.length > SEARCH_PAST ? (
+      <div className="px-2 pt-1.5 pb-1 text-[12px] font-medium text-muted-foreground">{heading}</div>
+      {threads.length > SEARCH_PAST ? (
         <div className="px-1 pb-1">
           <Input
             autoFocus
-            aria-label="Search archived threads"
+            aria-label={`Search ${heading.toLowerCase()} threads`}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search"
@@ -203,8 +219,8 @@ export function ArchivedList({
             <ItemButton
               key={thread.id}
               size="xs"
-              data-archived={thread.id}
-              onClick={() => onRestore(thread.id)}
+              data-listed={thread.id}
+              onClick={() => onPick(thread.id)}
               className="text-left hover:bg-muted"
             >
               <ItemMedia>
@@ -214,10 +230,12 @@ export function ArchivedList({
                 <ItemTitle className="w-full truncate font-normal">{thread.title || "Untitled"}</ItemTitle>
                 <ItemDescription className="tabular-nums">{timeAgo(thread.updatedAt)}</ItemDescription>
               </ItemContent>
-              <ItemActions className="gap-1 text-[12px] text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) group-hover/item:opacity-100 group-focus-visible/item:opacity-100">
-                <ArchiveRestore className="size-3.5" strokeWidth={1.5} />
-                Restore
-              </ItemActions>
+              {restore ? (
+                <ItemActions className="gap-1 text-[12px] text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) group-hover/item:opacity-100 group-focus-visible/item:opacity-100">
+                  <ArchiveRestore className="size-3.5" strokeWidth={1.5} />
+                  Restore
+                </ItemActions>
+              ) : null}
             </ItemButton>
           );
         })}

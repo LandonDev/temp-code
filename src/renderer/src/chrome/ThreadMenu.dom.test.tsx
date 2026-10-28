@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/ui/context-menu";
@@ -108,16 +108,40 @@ describe("ThreadMenu", () => {
     expect((await openMenu()).querySelector("[data-menu-note='line']")?.textContent).toBe("$1.24");
   });
 
-  it("Recent threads lists settled threads in the order given, at most twelve, and opens one", async () => {
-    const recent = Array.from({ length: 14 }, (_, i) => chip(`r${i}`, `Thread ${i}`, 1000 - i));
+  it("Recent threads… lists every settled thread, newest first, and a row opens its thread", async () => {
+    const recent = Array.from({ length: 20 }, (_, i) => chip(`r${i}`, `Thread ${i}`, 1000 - i));
     const props = menu({ recent });
-    const list = await openMenu();
-    fireEvent.click(within(list).getByText("Recent threads"));
-    const rows = (await screen.findAllByText(/^Thread \d+$/)).map((el) => el.textContent);
-    expect(rows).toHaveLength(12);
-    expect(rows[0]).toBe("Thread 0");
-    fireEvent.click(screen.getByText("Thread 2"));
+    fireEvent.click(within(await openMenu()).getByText("Recent threads…"));
+    const list = await screen.findByRole("dialog", { name: "Recent threads" });
+    const rows = [...list.querySelectorAll("[data-listed]")].map((el) => el.getAttribute("data-listed"));
+    expect(rows).toEqual(recent.map((c) => c.id));
+    fireEvent.click(within(list).getByText("Thread 2"));
     expect(props.onOpenRecent).toHaveBeenCalledWith("r2");
+  });
+
+  it("Recent threads… filters past six, and a filter with no match is one muted row", async () => {
+    menu({ recent: Array.from({ length: 6 }, (_, i) => chip(`r${i}`, `Thread ${i}`, 100 - i)) });
+    fireEvent.click(within(await openMenu()).getByText("Recent threads…"));
+    expect(within(await screen.findByRole("dialog", { name: "Recent threads" })).queryByRole("textbox")).toBeNull();
+    cleanup();
+    menu({ recent: [...Array.from({ length: 6 }, (_, i) => chip(`r${i}`, `Thread ${i}`, 100 - i)), chip("x", "Fix login", 1)] });
+    fireEvent.click(within(await openMenu()).getByText("Recent threads…"));
+    const list = await screen.findByRole("dialog", { name: "Recent threads" });
+    const field = within(list).getByRole("textbox", { name: "Search recent threads" });
+    fireEvent.change(field, { target: { value: "login" } });
+    expect([...list.querySelectorAll("[data-listed]")].map((el) => el.textContent)).toEqual([expect.stringContaining("Fix login")]);
+    fireEvent.change(field, { target: { value: "nothing like it" } });
+    expect(list.querySelectorAll("[data-listed]")).toHaveLength(0);
+    expect(within(list).getByText("No matches")).toBeTruthy();
+  });
+
+  it("Escape closes Recent threads… and gives focus back to ⋯", async () => {
+    menu({ recent: [chip("r0", "Thread 0", 10)] });
+    fireEvent.click(within(await openMenu()).getByText("Recent threads…"));
+    const list = await screen.findByRole("dialog", { name: "Recent threads" });
+    fireEvent.keyDown(list, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Recent threads" })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Thread menu" })));
   });
 
   it("Archived threads opens the list, and Restore brings one back", async () => {

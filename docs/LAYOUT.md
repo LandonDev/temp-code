@@ -108,9 +108,12 @@ chrome/ThreadHostChip.tsx; a disabled one carries its reason as a second
 line). Then the project: Pause all with the running count (only when
 something runs; a failure is a toast), Dev server checked while the Dev
 servers pane is open (only when a host can serve the project), Terminal
-with ⌘\`, Recent threads (the settled threads, freshest first, at most
-12, each with its age) and Archived threads… (a `Popover` from the ⋯ button
-with a search field past six; Restore on hover). The branch is the top row
+with ⌘\`, Recent threads… and Archived threads…: each a `Popover` from
+the ⋯ button over one list body (`ThreadListPopover`), freshest first, a
+row the type glyph, the title and the age, a filter past six and one muted
+"No matches" row; Recent threads… lists every settled root of the strip's
+scope and a row opens it, Archived threads… restores one (Restore on
+hover); Escape gives focus back to ⋯. The branch is the top row
 of the right panel's Changes section, not the header's.
 
 ### Sidebar
@@ -130,6 +133,13 @@ of the right panel's Changes section, not the header's.
 | Settings list | `SettingsNav` in `chrome/SettingsRail.tsx` | while settings are open the rail's list is the pages as RailRows under RailHeadings, then the workspaces (another host's names its host as muted trailing text; two of one name on one host each name where they sit there: the shortest end of the parent folder's path that tells them apart, "work" or "me/work", else the whole path, `workspaceHint`), and Back as the foot's one row |
 | Workspace column | `chrome/Sidebar.tsx` | column two holds the workspace's project cards, then its loose chats and archived projects (`WorkspaceSessions`), under one 40px header (a 40px content box with its hairline under it, as the title bar's rows, so its buttons sit on the strip's y 6 line): the workspace's name (Chats at the home) in 13px medium, New thread (Tooltip ⌘N) and the workspace ⋯ menu. No tabs: files and changes are the right panel's Files and Changes sections; ⌘P still goes to a file. While the rail is collapsed a 40px row with the traffic lights and the toggle sits above the header and the rail's foot sits under the threads. The column's own element scrolls the list (the virtualizer's scroll element, as state); across Settings and Back it keeps, per workspace, its offset (re-applied as the rows measure when the list first lays out shorter than it was, until it fits or the person scrolls), its list pages and the Chats fold, and does not replay the selection's reveal. Threads are not listed under projects: a project's threads are picked from the title bar's strip and its ⋯ menu's Recent threads…; only the Chats and Archived folds keep thread rows (a loose chat has no project to go to). A right-click on any thread row opens that thread's menu, and an inline rename ended by Enter or Escape gives focus back to the row's or card's ⋯ |
 | Project card | `ProjectCardView` / `ProjectCard` in `chrome/WorkspaceSessions.tsx` on `cardLines`, `cardCounts` and `projectCardAriaLabel` (lib/sidebarRows.ts) | one `<button>` with no border or shadow, `rounded-lg`, `px-3 py-2`, a `bg-foreground/5` hover and a `bg-muted` fill while selected (`aria-current`), 4px from the next card, never animated. A 20px line: the name in 13px (foreground when selected, `font-medium` foreground while a thread in it is unread, else muted) and its last-active time in 12px muted `tabular-nums`, which gives way to ⋯ on hover and focus. A 16px branch line 2px under it: the branch glyph and the branch (else "local checkout"), then "worktree" or "local" two spaces on. Then 24px read-only lines in 12px, aligned under the name: each master with something to say as a block (its line with the batch's done tally, its working subagents in the fleet's words, its batch threads one step in, "N queued"), then the working roots (the spinner or the watching ring, the type glyph, the title, the host glyph, the elapsed past 3 s; an implementation thread's "3/7  task" under it), the paused ones ("Paused" and the frozen elapsed), the unread ones (no mark, the title's weight); a thread housed in a master prints only in its block. One page of lines, then "N more" beside the button. Last, a count line when there is something to count: "1 needs you" in amber and "N failed" in red with their glyphs, then muted "N dormant" and "N archived" (a thread inside a master is never dormant), two spaces apart; "No threads" for a project with none; paused is never counted. A click or Enter anywhere on it, a line included, selects the project (App's `onSelectProjectCard`); lines never open a thread. A double-click renames it in place; ⋯ and a right-click open the same menu. Its accessible name says what needs saying ("Alpha, 1 needs you, 2 working, 3 unread"). Dimmed under the offline tint when every copy's host is out of reach. The Archived fold's project rows keep `ProjectRowView`, a 32px fold |
+
+**The project's home.** A project card's click selects the project
+(`onSelectProjectCard` in App.tsx): any full-window view closes, its open
+tab comes forward, else the thread it was last on, else a new chat. The
+project's threads are then the title bar's strip ("Thread strip" below) and
+the ⋯ menu's Recent threads…, which lists every one that has settled. There
+is no project page in the pane.
 
 ### Settings → Hosts
 
