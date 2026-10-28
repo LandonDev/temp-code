@@ -48,6 +48,21 @@ export function findProjectTerminal(
   return docks.find((dock) => sameProjectPath(dock.projectPath, projectPath));
 }
 
+/**
+ * The one dock on screen: the shown project's (`dockCwd`) when it is open
+ * and the Dev servers pane is not taking its place. It decides both the
+ * grid's dock row and which dock is visible, so the two never disagree.
+ */
+export function shownDock(
+  docks: ProjectTerminalDock[],
+  dockCwd: string,
+  devPaneOpen: boolean,
+): ProjectTerminalDock | null {
+  if (devPaneOpen) return null;
+  const dock = findProjectTerminal(docks, dockCwd);
+  return dock?.open ? dock : null;
+}
+
 export function createProjectTerminal(
   projectPath: string,
   file: FilePaneTab,

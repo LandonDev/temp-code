@@ -87,7 +87,7 @@ import { orderByIds } from "./lib/reorder";
 import {
   applyDockGridStyle,
   closeTerminalInDock,
-  findProjectTerminal,
+  shownDock,
   nextDockTerminalTitle,
   reorderDockTerminals,
   selectDockTerminal,
@@ -415,11 +415,11 @@ export default function App() {
   const setComposerFocused = focus.composer;
   const projectOfTab = tabProjectOf;
   const projectRailOpen = useShell((s) => s.projectRailOpen);
-  const currentProjectDock = findProjectTerminal(projectTerminals, dockCwd);
   // The Dev servers pane takes the dock's place while it is open; the terminal dock keeps its own open flag.
   const devPaneOpen = useDevPane((s) => s.open);
   const devPaneSize = useDevPane((s) => s.size);
-  const dockVisible = !!currentProjectDock?.open && !devPaneOpen;
+  const visibleDock = shownDock(projectTerminals, dockCwd, devPaneOpen);
+  const dockVisible = visibleDock != null;
   useNativeMenuState({ dockOpen: dockVisible, dockUsable: looksLikeProject(dockCwd) });
   const searchViewOpen = useShell((s) => s.searchViewOpen);
   const searchViewFocusToken = useShell((s) => s.searchViewFocusToken);
@@ -3282,8 +3282,8 @@ export default function App() {
     const el = dockGridRef.current;
     if (!el) return;
     if (devPaneOpen) applyDockGridStyle(el, devPaneSize);
-    else applyDockGridStyle(el, dockVisible && currentProjectDock ? currentProjectDock.size : null);
-  }, [currentProjectDock, dockVisible, devPaneOpen, devPaneSize]);
+    else applyDockGridStyle(el, visibleDock ? visibleDock.size : null);
+  }, [visibleDock, devPaneOpen, devPaneSize]);
 
   const sessionActions = useMemo<SessionActions>(
     () => ({
@@ -3406,10 +3406,7 @@ export default function App() {
             className="absolute inset-0 grid h-full min-h-0 min-w-0"
           >
             {projectTerminals.map((dock) => {
-              const show =
-                dock.open &&
-                !devPaneOpen &&
-                sameProjectPath(dock.projectPath, projectCwd);
+              const show = dock === visibleDock;
               return (
                 <div
                   key={dock.projectPath}

@@ -12,6 +12,7 @@ import {
   patchProjectTerminals,
   projectTerminalFileIds,
   selectDockTerminal,
+  shownDock,
   splitProjectTerminalsForMove,
   withDockOpen,
 } from "./projectTerminal";
@@ -201,5 +202,25 @@ describe("splitProjectTerminalsForMove", () => {
     const allA = splitProjectTerminalsForMove(docks, [a1, a2], [b1], sessions);
     expect(allA.moving.map((dock) => dock.projectPath)).toEqual(["/tmp/a"]);
     expect(allA.remaining.map((dock) => dock.projectPath)).toEqual(["/tmp/b"]);
+  });
+});
+
+describe("shownDock", () => {
+  const a = createProjectTerminal("/work/a", newTerminalFile("/work/a"));
+  const b = createProjectTerminal("/work/b", newTerminalFile("/work/b"));
+
+  it("shows only the shown project's dock, whatever the workspace root is", () => {
+    // The selected project's cwd (/work/b) differs from the workspace's projectCwd (/work/a).
+    expect(shownDock([a, b], "/work/b", false)).toBe(b);
+    expect(shownDock([a, b], "/work/b/", false)).toBe(b);
+  });
+
+  it("shows none while the Dev servers pane is open", () => {
+    expect(shownDock([a, b], "/work/b", true)).toBeNull();
+  });
+
+  it("shows none when the shown project has no dock or its dock is closed", () => {
+    expect(shownDock([a], "/work/b", false)).toBeNull();
+    expect(shownDock([a, withDockOpen(b, false)], "/work/b", false)).toBeNull();
   });
 });

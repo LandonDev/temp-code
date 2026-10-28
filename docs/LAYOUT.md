@@ -445,7 +445,10 @@ then a "Dev servers" tab with the live count beside it, then New terminal
 the project, a server runs or the pane is open. Switching is instant.
 
 - **Terminals** (surfaces/ProjectTerminalDock.tsx): one dock per project,
-  the picked terminal below the bar.
+  the picked terminal below the bar. Only the shown project's dock is on
+  screen (`shownDock` in lib/projectTerminal.ts decides the grid's dock row
+  and the dock alike); another project's dock leaves the screen whole and
+  keeps its terminals running.
 - **Dev servers** (surfaces/DevServersPane.tsx): a 288px column, the
   starter (one 36px row: the target `Select`, "web (Vite dev server)", and
   Run; the hosts as a `ToggleGroup` with two or more; Replace, Start another
