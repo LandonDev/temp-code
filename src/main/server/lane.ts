@@ -41,6 +41,8 @@ const BULK_POLL_MS = 50
 const BULK_METHODS: ReadonlySet<string> = new Set([
   // The git status reads the changes panel and the rail poll.
   'project.changes',
+  // The branch compare: several git children, asked on every mount and focus.
+  'project.compare',
   'git.diffStats',
   'git.diffIndex',
   'checkpoint.status',

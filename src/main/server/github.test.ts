@@ -473,8 +473,61 @@ describe('GitHub gh bridge', () => {
       url: 'https://github.test/pr/2',
       state: 'open'
     })
+    // Each ask here is fresh: the cache (tested below) would answer the first otherwise.
+    github.invalidatePrStatus()
     await expect(github.githubPrStatus('/repo')).rejects.toThrow('authentication required')
+    github.invalidatePrStatus()
     await expect(github.githubPrStatus('/repo')).resolves.toBeNull()
+  })
+
+  describe('the PR status cache', () => {
+    const branch = (stdout = 'topic\n') => ({ program: 'git', args: ['--no-pager', '-C', '/repo', 'symbolic-ref', '--short', 'HEAD'], stdout })
+    const list = (stdout: string, head = 'topic') => ({
+      args: ['pr', 'list', '--head', head, '--json', 'number,title,url,state', '--limit', '20', '--state', 'all'],
+      stdout
+    })
+    const open = JSON.stringify([{ number: 2, title: 'Open', url: 'https://github.test/pr/2', state: 'OPEN' }])
+
+    it('answers a repeat ask within 60 s from the cache, concurrent asks share one gh run, and past the TTL gh runs again', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      try {
+        queue(branch(), branch(), list(open))
+        const [a, b] = await Promise.all([github.githubPrStatus('/repo'), github.githubPrStatus('/repo')])
+        expect(a).toMatchObject({ number: 2, state: 'open' })
+        expect(b).toBe(a)
+        queue(branch())
+        expect(await github.githubPrStatus('/repo')).toBe(a)
+        vi.advanceTimersByTime(github.PR_STATUS_TTL_MS + 1)
+        queue(branch(), list(open))
+        expect(await github.githubPrStatus('/repo')).not.toBe(a)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('keeps a null answer, asks again after a rejected one, and forgets the checkout after one of its own mutations', async () => {
+      queue(branch(), list('[]'))
+      expect(await github.githubPrStatus('/repo')).toBeNull()
+      queue(branch())
+      expect(await github.githubPrStatus('/repo')).toBeNull()
+      // Another branch of the same checkout: its own entry; a refusal is not kept.
+      queue(branch('other\n'), { ...list('', 'other'), error: failure(), stderr: 'authentication required' })
+      await expect(github.githubPrStatus('/repo')).rejects.toThrow('authentication required')
+      queue(branch('other\n'), list(open, 'other'))
+      expect(await github.githubPrStatus('/repo')).toMatchObject({ number: 2 })
+      // A mutation of the checkout, even one refused before gh ran, forgets its entries.
+      await expect(github.githubCreatePr('/repo', '', 'body', 'main', 'topic')).rejects.toThrow('title')
+      queue(branch(), list(open))
+      expect(await github.githubPrStatus('/repo')).toMatchObject({ number: 2 })
+      queue(branch())
+      expect(await github.githubPrStatus('/repo')).toMatchObject({ number: 2 })
+      github.invalidatePrStatus('/elsewhere')
+      queue(branch())
+      expect(await github.githubPrStatus('/repo')).toMatchObject({ number: 2 })
+      github.invalidatePrStatus('/repo')
+      queue(branch(), list('[]'))
+      expect(await github.githubPrStatus('/repo')).toBeNull()
+    })
   })
 
   it('creates PRs through a body file and removes it after success and failure', async () => {

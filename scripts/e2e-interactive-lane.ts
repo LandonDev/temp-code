@@ -19,8 +19,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createRequire, syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Worker } from 'node:worker_threads'
 import { configure } from 'aliax-core'
 import { WebSocket } from 'ws'
+import { StatsHost } from '../src/main/aliax/stats/statsHost'
+import { defaultRoots } from '../src/main/aliax/stats/indexer'
 
 const root = mkdtempSync(join(tmpdir(), 'tc-lane-'))
 process.env.CLAUDE_CONFIG_DIR = join(root, 'claude-config')
@@ -155,6 +158,34 @@ setTimeout(() => (baselineDone = true), 1_500)
 const baseline = await readLoop(() => baselineDone, 50)
 console.log(`baseline  session.events ${fmt(baseline)}`)
 
+// ── --stats: the stats worker asked for its bundle beside the reads (fix H 11a) ──
+// The bundle used to run on this loop (3.2 to 3.5 s); through the worker the
+// loop's WORST lag, not its mean, must stay under STATS_LAG_MS while the
+// flood runs and the bundle is asked for at its start and its end.
+const STATS = process.argv.includes('--stats')
+const STATS_LAG_MS = 50
+let statsHost: StatsHost | null = null
+let maxLateness = 0
+let latenessTimer: ReturnType<typeof setInterval> | null = null
+if (STATS) {
+  const statsOut = join(repoRoot, 'scripts', '.out', 'statsWorker.cjs')
+  execFileSync(join(repoRoot, 'node_modules', '.bin', 'esbuild'), [
+    'src/main/aliax/stats/statsWorker.ts', '--bundle', '--platform=node', '--format=cjs', '--packages=external',
+    '--alias:@shared=./src/shared', `--outfile=${statsOut}`
+  ], { cwd: repoRoot, stdio: 'inherit' })
+  const statsDir = mkdtempSync(join(tmpdir(), 'tc-lane-stats-'))
+  statsHost = new StatsHost({ spawn: () => new Worker(statsOut, { workerData: { dbPath: join(statsDir, 'stats.db'), roots: defaultRoots() } }) })
+  const indexed = await statsHost.index()
+  console.log(`stats     ${indexed.filesTotal} files indexed in the worker, ${indexed.rows} rows`)
+  let last = performance.now()
+  latenessTimer = setInterval(() => {
+    const now = performance.now()
+    maxLateness = Math.max(maxLateness, now - last - 10)
+    last = now
+  }, 10)
+  void statsHost.bundle()
+}
+
 // ── the flood: 200 git.diffStats in waves of 20 every 25 ms ──
 const FLOOD = 200
 let answered = 0
@@ -196,6 +227,14 @@ check(
   children < (FLOOD * perRun) / 4,
   `${children} children; one run spawns ${perRun}, so 200 runs would spawn ${FLOOD * perRun}`
 )
+if (statsHost) {
+  const bundle = await statsHost.bundle()
+  if (latenessTimer) clearInterval(latenessTimer)
+  console.log(`stats     bundle of ${bundle.totals.turns} turns answered through the worker; loop lag max ${maxLateness.toFixed(1)} ms`)
+  check('the stats bundle answers through the worker', bundle.unavailable === undefined, bundle.unavailable ?? '')
+  check(`the loop's worst lag stays under ${STATS_LAG_MS} ms with the stats bundle asked beside the reads`, maxLateness < STATS_LAG_MS, `${maxLateness.toFixed(1)} ms`)
+  await statsHost.stop()
+}
 
 focused.ws.close()
 flooder.ws.close()

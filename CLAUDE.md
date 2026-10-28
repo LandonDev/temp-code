@@ -1548,10 +1548,16 @@ names the far child).
 - Requests sort into lanes (src/main/server/lane.ts): interactive (names an
   interactive thread, or the renderer marked it `lane: 'ui'`: send,
   approve, answer, stop, pause, resume, start now, archive, the fleet
-  switches), bulk (project.changes, git.diffStats, git.diffIndex, an
-  unfocused checkpoint.status, search.project, session.search,
-  commands.list, github.*, resources.*, doctor.get, fs.watch, the deploy,
-  publish and sync methods), normal (the rest). attach() answers through
+  switches), bulk (project.changes, project.compare, git.diffStats,
+  git.diffIndex, an unfocused checkpoint.status, search.project,
+  session.search, commands.list, github.*, resources.*, doctor.get,
+  fs.watch, the deploy, publish and sync methods), normal (the rest). Two
+  of them answer from a host cache, since the panels ask on every mount,
+  focus and branch change: `github.prStatus` for 60 s per checkout and
+  branch (concurrent asks share one gh child; the host's own PR and
+  comment mutations forget the checkout, `invalidatePrStatus`) and
+  `project.compare` for 30 s per checkout, target and HEAD
+  (`COMPARE_TTL_MS`). attach() answers through
   `serve(req, sendFrame)`; the `LaneGate` runs bulk two at a time while the
   loop's mean lag is under 50 ms, joins a duplicate read (method and a
   digest of params, from any socket) to the one waiting or running, runs a

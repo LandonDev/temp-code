@@ -736,7 +736,12 @@ function reviewReplyUrl(output: string): string {
   throw new Error('GitHub did not return a comment URL')
 }
 
-export async function githubComment(
+/** Post a comment or a review reply; the checkout's PR status cache is forgotten after it. */
+export function githubComment(cwd: string, kindInput: string, number: number, bodyInput: string, inReplyToInput = ''): Promise<string> {
+  return githubCommentNow(cwd, kindInput, number, bodyInput, inReplyToInput).finally(() => invalidatePrStatus(cwd))
+}
+
+async function githubCommentNow(
   cwd: string,
   kindInput: string,
   number: number,
@@ -825,12 +830,33 @@ function parsePrList(output: string): GitHubPr | null {
   return best
 }
 
+/** How long a PR status answer serves repeat asks for the same checkout and
+ *  branch: the panel asks on every mount, focus and branch change (111 gh
+ *  children in an hour, 0.5 to 4.1 s each, m4/stalls-selected.log). */
+export const PR_STATUS_TTL_MS = 60_000
+/** `cwd\0branch` → the ask in flight (concurrent asks share it) or its fresh answer; a rejected ask is never kept. */
+const prStatusCache = new Map<string, { at: number; value: Promise<GitHubPr | null> }>()
+
+/** Forget the cached PR status of a checkout (of every checkout with none
+ *  named): the host's own mutations (a PR opened, a comment posted) call it. */
+export function invalidatePrStatus(cwd?: string): void {
+  if (cwd === undefined) {
+    prStatusCache.clear()
+    return
+  }
+  for (const key of [...prStatusCache.keys()]) if (key.startsWith(`${cwd}\0`)) prStatusCache.delete(key)
+}
+
 export async function githubPrStatus(cwd: string): Promise<GitHubPr | null> {
   const branch =
     (await gitStdout(cwd, ['symbolic-ref', '--short', 'HEAD'])) ??
     (await gitStdout(cwd, ['rev-parse', '--short', 'HEAD']))
   if (!branch) return null
-  const output = await ghRun(cwd, [
+  const key = `${cwd}\0${branch}`
+  const now = Date.now()
+  const hit = prStatusCache.get(key)
+  if (hit && now - hit.at < PR_STATUS_TTL_MS) return hit.value
+  const value = ghRun(cwd, [
     'pr',
     'list',
     '--head',
@@ -841,11 +867,20 @@ export async function githubPrStatus(cwd: string): Promise<GitHubPr | null> {
     '20',
     '--state',
     'all'
-  ])
-  return parsePrList(output)
+  ]).then(parsePrList)
+  prStatusCache.set(key, { at: now, value })
+  value.catch(() => {
+    if (prStatusCache.get(key)?.value === value) prStatusCache.delete(key)
+  })
+  return value
 }
 
-export async function githubCreatePr(
+/** Open a pull request; the checkout's PR status cache is forgotten after it. */
+export function githubCreatePr(cwd: string, titleInput: string, bodyInput: string, baseInput: string, headInput: string): Promise<string> {
+  return githubCreatePrNow(cwd, titleInput, bodyInput, baseInput, headInput).finally(() => invalidatePrStatus(cwd))
+}
+
+async function githubCreatePrNow(
   cwd: string,
   titleInput: string,
   bodyInput: string,

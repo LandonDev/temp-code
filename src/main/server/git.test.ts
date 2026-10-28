@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { compare, defaultTarget } from './git'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { compare, COMPARE_TTL_MS, defaultTarget } from './git'
 
 let dir: string
 const git = (...args: string[]): string =>
@@ -27,6 +27,34 @@ describe('the compare target', () => {
   it('a repository on master with no other branch has no default target and compares to nothing', async () => {
     expect(await defaultTarget(dir)).toBeNull()
     expect(await compare(dir)).toBeNull()
+  })
+
+  it('compare answers repeat asks from a cache keyed by the checkout, the target and HEAD, for 30 s', async () => {
+    git('checkout', '-q', '-b', 'feature')
+    await writeFile(join(dir, 'b.txt'), 'two\n')
+    git('add', 'b.txt')
+    git('commit', '-q', '-m', 'second')
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const first = await compare(dir)
+      expect(first).toMatchObject({ target: 'master', ahead: 1 })
+      expect(await compare(dir)).toBe(first)
+      expect(await compare(dir, 'master')).toBe(first)
+      // HEAD moved: a fresh answer.
+      await writeFile(join(dir, 'c.txt'), 'three\n')
+      git('add', 'c.txt')
+      git('commit', '-q', '-m', 'third')
+      const moved = await compare(dir)
+      expect(moved).not.toBe(first)
+      expect(moved).toMatchObject({ ahead: 2 })
+      // Past the TTL: asked again, the same answer as a new object.
+      vi.advanceTimersByTime(COMPARE_TTL_MS + 1)
+      const later = await compare(dir)
+      expect(later).not.toBe(moved)
+      expect(later).toMatchObject({ ahead: 2 })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('defaults to another branch when one exists', async () => {

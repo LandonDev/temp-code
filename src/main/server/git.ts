@@ -607,12 +607,39 @@ async function diffFiles(dir: string, from: string, to: string): Promise<FileCha
     .sort((a, b) => a.path.localeCompare(b.path))
 }
 
+/** How long a compare answer serves repeat asks for the same checkout,
+ *  target and HEAD: the panel asks on every mount, focus and branch change
+ *  (36 in an hour, about 1 s and several git children each). */
+export const COMPARE_TTL_MS = 30_000
+/** `dir\0target\0HEAD` → the ask in flight or its fresh answer; a rejected ask is never kept. */
+const compareCache = new Map<string, { at: number; value: Promise<CompareResult> }>()
+
+export function invalidateCompare(): void {
+  compareCache.clear()
+}
+
 /** This checkout vs `target` (default: defaultTarget); null with no target
- *  given and none to default to. A named target that is unknown throws. */
+ *  given and none to default to. A named target that is unknown throws.
+ *  Answered from the cache while HEAD, the target and the checkout are the
+ *  ones a fresh answer was computed for. */
 export async function compare(dir: string, target?: string): Promise<CompareResult | null> {
   const t = target ?? (await defaultTarget(dir))
   if (t === null) return null
   if (!(await refExists(dir, t))) throw new Error(`unknown branch: ${t}`)
+  const head = (await execFileP('git', ['-C', dir, 'rev-parse', 'HEAD']).catch(() => ({ stdout: '' }))).stdout.trim()
+  const key = `${dir}\0${t}\0${head}`
+  const now = Date.now()
+  const hit = compareCache.get(key)
+  if (hit && now - hit.at < COMPARE_TTL_MS) return hit.value
+  const value = compareNow(dir, t)
+  compareCache.set(key, { at: now, value })
+  value.catch(() => {
+    if (compareCache.get(key)?.value === value) compareCache.delete(key)
+  })
+  return value
+}
+
+async function compareNow(dir: string, t: string): Promise<CompareResult> {
   let mergeBase: string
   try {
     mergeBase = (await execFileP('git', ['-C', dir, 'merge-base', t, 'HEAD'])).stdout.trim()
