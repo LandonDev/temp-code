@@ -227,9 +227,11 @@ html.theme-light {
   --color-skill: #a07c10;
   --color-mention: #0284c7;
   --color-markdown-heading: #be185d;
-  --thread-success: #059669;
-  --thread-warning: #d97706;
-  --thread-danger: #dc2626;
+  /* Text as often as fills: each reaches 4.5:1 on the background, the
+     sidebar, a card and a selected (muted) row (lib/statusContrast.test.ts). */
+  --thread-success: #047857;
+  --thread-warning: #a8530b;
+  --thread-danger: #c81e1e;
   --thread-info: #2563eb;
   --thread-violet: #7c3aed;
   --thread-cyan: #0891b2;

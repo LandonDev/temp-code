@@ -73,6 +73,11 @@ or glass setting any more.
 | `success` | lines added, passed | green | green |
 | `info` | the one informational tint | blue | blue |
 
+The status colours (`success`, `warning`, `destructive`, `info`) are text
+as often as fills, so each reaches 4.5:1 as small text on `background`,
+`sidebar`, `card` and a selected (`muted`) row in both themes; the light
+theme's are the darker steps for that (`lib/statusContrast.test.ts`).
+
 Opacities on `foreground` are the hover vocabulary: `/5` a hovered row,
 `/7` a hovered ghost button, `/12` a pressed one. Status colours never fill
 a surface above `/10`.
