@@ -179,6 +179,10 @@ export interface GitChangedFile {
   deletions: number
   staged: boolean
   unstaged: boolean
+  /** A file both staged and unstaged: HEAD → index. Absent otherwise (and from an older host). */
+  stagedCounts?: { additions: number; deletions: number }
+  /** A file both staged and unstaged: index → working tree. */
+  unstagedCounts?: { additions: number; deletions: number }
 }
 export interface GitDiffIndex {
   branch: string | null

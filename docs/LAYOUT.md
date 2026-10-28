@@ -237,7 +237,8 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     default branch confirms. Then the index: Staged and Changes headed
     only when both have rows, each row the file's type icon, its name with
     the folder after it, Unstage or Discard and Stage on hover or focus,
-    and `+n −n` (New, Deleted); a click opens the diff against HEAD, the
+    and `+n −n` (New, Deleted; a file in both groups counts each group's
+    own lines, `stagedCounts`/`unstagedCounts` from the host); a click opens the diff against HEAD, the
     right-click menu adds Open in <editor>, and a modified file folds open
     into hunks (the caret takes the icon's place on hover), each stageable
     (`hunksOf` in surfaces/editorGit.ts, reached through `import()`). Under

@@ -162,12 +162,33 @@ export async function gitDiffStats(cwd: string): Promise<GitDiffStats> {
   const { files } = await changes(cwd)
   return { files: files.size, additions: [...files.values()].reduce((n, f) => n + f.additions, 0), deletions: [...files.values()].reduce((n, f) => n + f.deletions, 0) }
 }
+/** Each side's counts for the files both staged and unstaged: two numstats
+ *  limited to those paths, run only when such a file exists, so the common
+ *  index spawns nothing more. */
+async function sideCounts(cwd: string, partly: string[]): Promise<{ staged: Map<string, FileAcc>; unstaged: Map<string, FileAcc> }> {
+  const staged = new Map<string, FileAcc>()
+  const unstaged = new Map<string, FileAcc>()
+  if (!partly.length) return { staged, unstaged }
+  const [cached, worktree] = await Promise.all([
+    optional(cwd, ['diff', '--no-ext-diff', '--numstat', '-z', '--cached', '--', ...partly]),
+    optional(cwd, ['diff', '--no-ext-diff', '--numstat', '-z', '--', ...partly])
+  ])
+  addNumstat(cached ?? '', staged)
+  addNumstat(worktree ?? '', unstaged)
+  return { staged, unstaged }
+}
+const countsOf = (acc: FileAcc | undefined): { additions: number; deletions: number } => ({ additions: acc?.additions ?? 0, deletions: acc?.deletions ?? 0 })
 export async function gitDiffIndex(cwd: string): Promise<GitDiffIndex> {
   const { files, statuses, info } = await changes(cwd)
+  const partly = [...files].filter(([, acc]) => acc.staged && acc.unstaged && !acc.untracked).map(([rel]) => rel)
+  const sides = await sideCounts(cwd, partly)
   const out: GitChangedFile[] = []
   for (const [relative, acc] of files) {
     const path = join(rootPath(cwd), relative)
-    out.push({ path, relative, status: acc.untracked ? 'untracked' : statuses.get(relative) ?? ((await stat(path).catch(() => null)) ? 'modified' : 'deleted'), additions: acc.additions, deletions: acc.deletions, staged: acc.staged, unstaged: acc.untracked || acc.unstaged })
+    const split = acc.staged && acc.unstaged && !acc.untracked
+      ? { stagedCounts: countsOf(sides.staged.get(relative)), unstagedCounts: countsOf(sides.unstaged.get(relative)) }
+      : {}
+    out.push({ path, relative, status: acc.untracked ? 'untracked' : statuses.get(relative) ?? ((await stat(path).catch(() => null)) ? 'modified' : 'deleted'), additions: acc.additions, deletions: acc.deletions, staged: acc.staged, unstaged: acc.untracked || acc.unstaged, ...split })
   }
   out.sort((a, b) => a.relative < b.relative ? -1 : a.relative > b.relative ? 1 : 0)
   const remote = await remoteName(cwd)

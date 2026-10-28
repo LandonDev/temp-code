@@ -161,6 +161,21 @@ describe("ChangesPanel", () => {
     expect(screen.getByRole("heading", { name: /Changes/ }).textContent).toBe("Changes1");
   });
 
+  it("a partly staged file counts each group's own lines; without the split both rows show the file's", async () => {
+    const both = { staged: true, unstaged: true, additions: 3, deletions: 1 };
+    h.index = indexOf({ files: [file("a.ts", { ...both, stagedCounts: { additions: 1, deletions: 1 }, unstagedCounts: { additions: 2, deletions: 0 } })] });
+    const { rerender } = mount();
+    await flush();
+    const rowText = (group: string) => screen.getByRole("heading", { name: new RegExp(group) }).parentElement!.textContent;
+    expect(rowText("Staged")).toContain("+1 −1");
+    expect(rowText("Changes")).toContain("+2");
+    expect(rowText("Changes")).not.toContain("−");
+    h.index = indexOf({ files: [file("a.ts", both)] });
+    rerender(<ChangesPanel cwd="/p" onOpenDiff={onOpenDiff} />);
+    expect(rowText("Staged")).toContain("+3 −1");
+    expect(rowText("Changes")).toContain("+3 −1");
+  });
+
   it("a row opens its diff against HEAD; a deleted file does not open", async () => {
     h.index = indexOf({ files: [file("src/a.ts"), file("src/gone.ts", { status: "deleted" })] });
     mount();

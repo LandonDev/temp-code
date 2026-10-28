@@ -41,6 +41,10 @@ export type GitChangedFile = {
   deletions: number;
   staged: boolean;
   unstaged: boolean;
+  /** Only for a file both staged and unstaged: HEAD → index. */
+  stagedCounts?: { additions: number; deletions: number };
+  /** Only for a file both staged and unstaged: index → working tree. */
+  unstagedCounts?: { additions: number; deletions: number };
 };
 
 export type GitDiffIndex = {

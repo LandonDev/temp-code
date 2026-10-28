@@ -111,6 +111,25 @@ describe('donor git methods', () => {
     expect(await readFile(join(cwd, '[a].txt'), 'utf8')).toBe('literal\n')
   })
 
+  it('diffIndex splits a partly staged file\'s counts by side and leaves a one-sided file whole', async () => {
+    const lines = ['first', ...Array(20).fill('middle'), 'last']
+    await write('file.txt', ['FIRST', ...lines.slice(1)].join('\n') + '\n')
+    command(cwd, 'add', 'file.txt')
+    await write('file.txt', ['FIRST', ...lines.slice(1), 'more', 'again'].join('\n') + '\n')
+    await write('other.txt', 'one\n')
+    command(cwd, 'add', 'other.txt')
+    const files = (await git.gitDiffIndex(cwd)).files
+    expect(files.find((f) => f.relative === 'file.txt')).toMatchObject({
+      additions: 3, deletions: 1,
+      stagedCounts: { additions: 1, deletions: 1 },
+      unstagedCounts: { additions: 2, deletions: 0 }
+    })
+    const other = files.find((f) => f.relative === 'other.txt')
+    expect(other).toMatchObject({ staged: true, unstaged: false })
+    expect(other).not.toHaveProperty('stagedCounts')
+    expect(other).not.toHaveProperty('unstagedCounts')
+  })
+
   it('diffIndex retains files whose staged and unstaged changes cancel and handles unusual names', async () => {
     const original = await readFile(join(cwd, 'file.txt'), 'utf8')
     await git.gitStageContents(cwd, 'file.txt', 'staged\n')

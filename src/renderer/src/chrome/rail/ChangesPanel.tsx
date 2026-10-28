@@ -648,6 +648,13 @@ function Group({ heading, count, children }: { heading: string | null; count: nu
   );
 }
 
+/** A row's counts: its side's when the host split them (a file both staged
+ *  and unstaged), else the file's own (one side only, or an older host). */
+export function countsFor(file: GitChangedFile, side: "staged" | "unstaged"): { additions: number; deletions: number } {
+  const split = side === "staged" ? file.stagedCounts : file.unstagedCounts;
+  return split ?? { additions: file.additions, deletions: file.deletions };
+}
+
 function FileRow({
   file,
   side,
@@ -735,7 +742,7 @@ function FileRow({
             )}
           </span>
         )}
-        <Counts status={file.status} additions={file.additions} deletions={file.deletions} />
+        <Counts status={file.status} {...countsFor(file, side)} />
       </ItemActions>
     </Item>
   );
