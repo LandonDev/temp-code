@@ -56,8 +56,11 @@ export function ChildPane({
   const actions = useSessionActions();
   const paneRef = useRef<HTMLDivElement>(null);
 
-  // SessionPane's rule: no rows yet and the host has not answered.
-  const loading = !meta || !session || (session.blocks.length === 0 && (session.load?.phase ?? "loaded") !== "loaded");
+  // No rows yet and the host has not answered. A child the board knows only
+  // from its meta has no `load` at all until useSessionById's fetch starts:
+  // that is loading too, never an empty thread.
+  const answered = session?.loaded === true || session?.load?.phase === "loaded";
+  const loading = !meta || !session || (session.blocks.length === 0 && !answered);
   const block = useEnvironmentBlock(environmentId);
 
   // The composer mounts with the rows: until then the pane holds focus, so Escape still goes back.

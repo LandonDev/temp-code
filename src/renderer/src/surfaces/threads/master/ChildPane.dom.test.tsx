@@ -71,4 +71,31 @@ describe("ChildPane", () => {
     expect(skeleton()).toBeNull();
     expect(screen.getByTestId("thread-view")).toBeTruthy();
   });
+
+  it("a paused child whose rows were never fetched shows the skeleton, then the thread once the store marks it loaded", () => {
+    h.meta = { id: "c1", environmentId: "local", title: "Home", status: "paused" } as SessionMeta;
+    h.session = { id: "c1", blocks: [] } as unknown as Session;
+    const { rerender } = pane();
+    expect(skeleton()).toBeTruthy();
+    expect(screen.queryByTestId("thread-view")).toBeNull();
+    h.session = { id: "c1", blocks: [], loaded: true } as unknown as Session;
+    rerender(<ChildPane sessionId="c1" environmentId="local" title="Home screen" focusComposer={false} onBack={noop} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(skeleton()).toBeNull();
+    expect(screen.getByTestId("thread-view")).toBeTruthy();
+  });
+
+  it("an errored child with no rows fetched is a skeleton too, never a blank body", () => {
+    h.meta = { id: "c1", environmentId: "local", title: "Home", status: "error" } as SessionMeta;
+    h.session = { id: "c1", blocks: [] } as unknown as Session;
+    pane();
+    expect(skeleton()).toBeTruthy();
+    expect(screen.queryByTestId("thread-view")).toBeNull();
+  });
+
+  it("an empty thread the host answered opens its view", () => {
+    h.meta = { id: "c1", environmentId: "local", title: "Home" } as SessionMeta;
+    h.session = { id: "c1", blocks: [], load: { phase: "loaded", since: 0, attempt: 0, empty: true } } as unknown as Session;
+    pane();
+    expect(screen.getByTestId("thread-view")).toBeTruthy();
+  });
 });
