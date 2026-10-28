@@ -701,7 +701,7 @@ tab's or the rail row's menu makes one ("Make master thread" / "Not a
 master", `session.setMaster`; disabled on an unsent draft with "Send a
 message first", since the host pins only a thread it knows). The board | sash | chat recipe (SplitShell):
 the batch on the left, the master's own chat on the right, folding from
-the toggle at the end of the view header. Until the first child the chat is the whole view. A child of the
+the toggle at the end of the view header. A pinned master has its board from the first message: with no child yet the header (+ Thread, the batch actions) and the foot stand over an empty list that says nothing of its own. A child of the
 batch is never a tab: it lives on the board, and a click puts its full view
 in the whole pane, with Back.
 

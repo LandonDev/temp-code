@@ -52,8 +52,10 @@ import { useChatFold } from "../../lib/chatFold";
  * scroll it was left at. A right-click on a row, or on a subagent line
  * under it, opens that thread's menu (lib/threadMenu.ts): New pass… first,
  * a dialog with the thread's own composer (NewPassDialog), then Open and
- * the thread's rows as every surface has them (chrome/useThreadMenu.tsx). Until the master has a first child the chat is
- * the whole view, the way an orchestration thread opens.
+ * the thread's rows as every surface has them (chrome/useThreadMenu.tsx).
+ * A pinned master has its board from the first message: with no child yet
+ * the header (+ Thread, the batch actions) and the foot (the steps, then
+ * notify) stand over an empty list, which says nothing of its own.
  *
  * The board paints from one `batch.board` answer (useMasterModel) and
  * mounts only the rows on screen: the list is virtualized with the
@@ -214,12 +216,6 @@ export function MasterView(props: ThreadViewProps) {
     setOpenId(id);
   };
   const open = useCallback((id: string, focus?: boolean) => openRef.current(id, focus), []);
-
-  if (!hasBoard) {
-    return (
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col [contain:layout_style]">{chatOf(props)}</div>
-    );
-  }
 
   const byHost = (list: readonly { meta: SessionMeta }[], action: "pause" | "resume") => {
     const map = new Map<string, string[]>();

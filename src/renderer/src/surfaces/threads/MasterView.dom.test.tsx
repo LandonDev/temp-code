@@ -382,13 +382,44 @@ function seedBox(children: SessionMeta[], linked = false): void {
 const boxMeta = (over: Partial<SessionMeta>): SessionMeta => meta({ environmentId: "box", projectId: "p1-box", cwd: "/srv/repo/.claude/worktrees/x", ...over });
 
 describe("the master view", () => {
-  it("paints the chat alone until the first child", async () => {
+  it("a master with no child yet has its board: the header, + Thread opening the add sheet, the foot's steps, and no rows or prose", async () => {
     seed([]);
     renderView();
     await flush();
     expect(screen.getByTestId("chat")).toBeTruthy();
-    expect(screen.queryByText("Needs you")).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Thread$/ })).toBeNull();
+    const head = document.querySelector("[data-view-header]") as HTMLElement;
+    expect(head.querySelector("[data-view-title]")?.textContent).toBe("iOS batch 2");
+    expect(within(head).getByRole("button", { name: "Batch actions" })).toBeTruthy();
+    expect(headers()).toHaveLength(0);
+    expect(document.querySelector("[data-board-scroller]")?.textContent).toBe("");
+    const foot = document.querySelector("[data-batch-foot]") as HTMLElement;
+    expect(within(foot).getByRole("heading", { name: "When done" })).toBeTruthy();
+    expect([...foot.querySelectorAll("[data-step]")].map((li) => li.getAttribute("data-step"))).toEqual(["land", "gate", "release"]);
+    expect(foot.querySelector("[data-then]")?.textContent).toBe("Then notify you");
+    fireEvent.click(within(head).getByRole("button", { name: /^Thread$/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "New thread…" }));
+    expect(within(await screen.findByRole("dialog")).getByText("Add a thread to iOS batch 2")).toBeTruthy();
+  });
+
+  it("a reloaded master with no child keeps the foot's skeleton until batch.board answers, then draws the empty board", async () => {
+    seed([]);
+    let answer: (v: unknown) => void = () => {};
+    const request = link.request.bind(link);
+    const spy = vi.spyOn(link, "request").mockImplementation(((method: string, params?: unknown) =>
+      method === "batch.board" ? new Promise((r) => (answer = r)) : request(method, params)) as typeof link.request);
+    try {
+      renderView();
+      await flush();
+      expect(document.querySelector("[data-view-header]")).toBeTruthy();
+      expect(document.querySelector("[data-batch-foot]")?.getAttribute("data-foot-mode")).toBe("loading");
+      await act(async () => answer({ children: [], digests: {}, state: batch }));
+      await flush();
+      expect(document.querySelector("[data-batch-foot]")?.getAttribute("data-foot-mode")).toBe("console");
+      expect(document.querySelectorAll("[data-batch-foot] [data-step]")).toHaveLength(3);
+      expect(headers()).toHaveLength(0);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("a master woken only by its batch's reports (no user-text in its log) loads as a thread with rows and draws its board", async () => {
