@@ -32,6 +32,8 @@ export const SETTINGS_SECTIONS: {
   group: SettingsGroupId;
   label: string;
   description: string;
+  /** Only the desktop app can show it: absent from the list at /ui. */
+  desktopOnly?: true;
 }[] = [
   { id: "general", group: "app", label: "General", description: "How the app behaves, and the release you run." },
   { id: "appearance", group: "app", label: "Appearance", description: "Theme and the editor's type size." },
@@ -62,6 +64,7 @@ export const SETTINGS_SECTIONS: {
     group: "threads",
     label: "Appshots",
     description: "Double-tap ⌘ over another app to drop its window into a chat.",
+    desktopOnly: true,
   },
   {
     id: "archive",
@@ -76,6 +79,17 @@ export const SETTINGS_SECTION_DEFAULT: SettingsSectionId = "general";
 /** The page a stored id names now: Environments became part of Hosts. */
 export function normalizeSettingsSection(value: unknown): unknown {
   return value === "environments" ? "remote" : value;
+}
+
+/** The sections this window can show: every one in the desktop app, the
+ *  desktop-only ones left out in web mode. */
+export function visibleSettingsSections(web: boolean) {
+  return web ? SETTINGS_SECTIONS.filter((section) => !section.desktopOnly) : SETTINGS_SECTIONS;
+}
+
+/** The keybinding groups this window handles: the terminal's only in the desktop app. */
+export function visibleKeybindingGroups(web: boolean): KeybindingGroup[] {
+  return web ? KEYBINDING_GROUPS.filter((group) => !group.desktopOnly) : KEYBINDING_GROUPS;
 }
 
 export function isSettingsSectionId(
@@ -168,7 +182,8 @@ export type Keybinding = {
   scope?: "editor" | "outside-editor" | "files";
 };
 
-export type KeybindingGroup = { title: string; bindings: Keybinding[] };
+/** `desktopOnly`: the bindings act only in the desktop app (the terminal), so /ui leaves the group out. */
+export type KeybindingGroup = { title: string; bindings: Keybinding[]; desktopOnly?: true };
 
 /**
  * Mirrors the bindings we actually handle: the command map in
@@ -228,6 +243,7 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
   },
   {
     title: "Terminal",
+    desktopOnly: true,
     bindings: [
       { name: "New", keys: [[CTL, "`"]] },
       { name: "New Tab", keys: [[CTL, SHF, "`"]] },

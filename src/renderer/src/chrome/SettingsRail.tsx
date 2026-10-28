@@ -15,9 +15,10 @@ import {
   type IconComponent,
 } from "./icons";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { isWebMode } from "../lib/nativeWeb";
 import {
   SETTINGS_GROUPS,
-  SETTINGS_SECTIONS,
+  visibleSettingsSections,
   workspaceSettingsSection,
   type SettingsSectionId,
   type StaticSettingsSectionId,
@@ -79,7 +80,7 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
             className={`flex flex-col ${index === 0 ? "" : "pt-4"}`}
           >
             <RailHeading id={`settings-group-${group.id}`}>{group.label}</RailHeading>
-            {SETTINGS_SECTIONS.filter((item) => item.group === group.id).map((item) => (
+            {visibleSettingsSections(isWebMode()).filter((item) => item.group === group.id).map((item) => (
               <RailRow
                 key={item.id}
                 label={item.label}

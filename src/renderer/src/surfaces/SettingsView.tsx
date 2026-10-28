@@ -12,6 +12,8 @@ import { HostsPage } from "./settings/hosts/HostsPage";
 import { shell, useShell } from "../stores/shell";
 import { PAGE_SCROLLER, Page } from "../components/page";
 import { cn } from "../lib/cn";
+import { DESKTOP_ONLY_LINE, isWebMode } from "../lib/nativeWeb";
+import { Empty, EmptyTitle } from "../components/ui/empty";
 import { GeneralPage } from "./settings/General";
 import { ThreadDefaultsPage } from "./settings/ThreadDefaults";
 import { AppearancePage } from "./settings/Appearance";
@@ -128,7 +130,15 @@ export function SettingsView({
           {section === "providers" ? <ProvidersPage /> : null}
           {section === "orchestration" ? <OrchestrationPage /> : null}
           {section === "reviews" ? <ReviewsPage /> : null}
-          {section === "appshots" ? <AppshotsPage /> : null}
+          {section === "appshots" ? (
+            isWebMode() ? (
+              <Empty>
+                <EmptyTitle>{DESKTOP_ONLY_LINE}</EmptyTitle>
+              </Empty>
+            ) : (
+              <AppshotsPage />
+            )
+          ) : null}
           {section === "remote" ? <HostsPage onOpenSession={onOpenSession} /> : null}
           {section === "archive" ? (
             <ArchivePage

@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { KeybindingsPage } from "./Keybindings";
+import { asWebPage } from "../../test/webMode";
 
 afterEach(cleanup);
 
@@ -22,6 +23,18 @@ describe("Keybindings", () => {
     ]);
     const search = row("Search");
     expect(search?.querySelectorAll("kbd[data-slot=kbd]")).toHaveLength(2);
+  });
+
+  it("leaves the terminal's group out at /ui, where there is no terminal", () => {
+    const restore = asWebPage();
+    try {
+      render(<KeybindingsPage />);
+      const groups = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+      expect(groups).not.toContain("Terminal");
+      expect(groups).toContain("Tabs");
+    } finally {
+      restore();
+    }
   });
 
   it("puts or between alternatives", () => {

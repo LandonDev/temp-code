@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { registry, type Environment } from "../lib/connection";
 import type { WorkspaceMeta } from "../lib/tcserver/types";
 import { SettingsNav, workspaceHint } from "./SettingsRail";
+import { asWebPage } from "../test/webMode";
 
 const workspaces = vi.hoisted(() => ({ list: [] as WorkspaceMeta[] }));
 vi.mock("../lib/tcserver/workspaces", () => ({ useWorkspaces: () => workspaces.list }));
@@ -32,6 +33,22 @@ describe("SettingsNav", () => {
     expect(screen.getByRole("button", { name: "Appearance" }).getAttribute("aria-current")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
     expect(onSelect).toHaveBeenCalledWith("appearance");
+  });
+
+  it("lists Appshots in the desktop app and leaves it out at /ui", () => {
+    hosts([env("local", "This Mac")]);
+    workspaces.list = [];
+    render(<SettingsNav section="general" onSelect={() => {}} onClose={() => {}} />);
+    expect(screen.getByRole("button", { name: "Appshots" })).toBeTruthy();
+    cleanup();
+    const restore = asWebPage();
+    try {
+      render(<SettingsNav section="general" onSelect={() => {}} onClose={() => {}} />);
+      expect(screen.queryByRole("button", { name: "Appshots" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Reviews" })).toBeTruthy();
+    } finally {
+      restore();
+    }
   });
 
   it("names another host's workspace as muted trailing text, never after a middle dot", () => {

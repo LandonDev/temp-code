@@ -1,12 +1,13 @@
 import { Fragment, useMemo, useState } from "react";
 import { PageRow, PageSection } from "../../components/page";
 import { Input } from "../../components/ui/input";
-import { filterKeybindings, KEYBINDING_GROUPS, KEYBINDING_SCOPE_LABEL } from "../../lib/settings";
+import { filterKeybindings, KEYBINDING_SCOPE_LABEL, visibleKeybindingGroups } from "../../lib/settings";
+import { isWebMode } from "../../lib/nativeWeb";
 import { Keys } from "./keys";
 
 export function KeybindingsPage() {
   const [query, setQuery] = useState("");
-  const groups = useMemo(() => filterKeybindings(KEYBINDING_GROUPS, query), [query]);
+  const groups = useMemo(() => filterKeybindings(visibleKeybindingGroups(isWebMode()), query), [query]);
 
   return (
     <>

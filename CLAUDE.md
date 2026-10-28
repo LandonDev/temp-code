@@ -735,7 +735,10 @@ routed to (aliax-core's `forward`). Two listeners:
   terminal, no Aliax pages, its own `web` workspace slot). A desktop-only
   control goes through `desktopOnly(handler)` (undefined at /ui, so its row
   is not drawn: the terminal's entry points, Choose logo…, the Updates
-  row); a desktop-only surface reached anyway shows `DESKTOP_ONLY_LINE`
+  row, the rail's Accounts and Stats, every Reveal row; a settings section
+  or keybinding group marked `desktopOnly` in lib/settings.ts, Appshots and
+  Terminal, is left out of the list); a desktop-only surface reached anyway
+  (a stored Appshots route) shows `DESKTOP_ONLY_LINE`
   ("Available in the desktop app") in `Empty`; Open project browses the
   host's folders (`folderPickOn` in lib/fs.ts). A signed-out tab: `/ui`
   answers a refused cookie `302 /pair?signed-out` (no cookie: `/pair`), and

@@ -19,6 +19,7 @@ vi.mock("../lib/tcserver/workspaces", () => ({ useWorkspaces: () => [] }));
 vi.mock("../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
 const { SettingsView } = await import("./SettingsView");
+const { asWebPage } = await import("../test/webMode");
 const { useState } = await import("react");
 const { shell, shellStore } = await import("../stores/shell");
 
@@ -44,6 +45,21 @@ describe("SettingsView", () => {
     expect(screen.getAllByText("General")).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("General");
     expect(screen.getByText("How the app behaves, and the release you run.")).toBeTruthy();
+  });
+
+  it("shows the desktop-only line for a stored Appshots route at /ui, and the page on the desktop", () => {
+    act(() => shell.openSettings("appshots"));
+    render(view());
+    expect(document.querySelector("[data-page=appshots]")).not.toBeNull();
+    cleanup();
+    const restore = asWebPage();
+    try {
+      render(view());
+      expect(document.querySelector("[data-page=appshots]")).toBeNull();
+      expect(screen.getByText("Available in the desktop app").closest("[data-slot=empty]")).toBeTruthy();
+    } finally {
+      restore();
+    }
   });
 
   it("shows the Hosts page under the remote id", () => {
