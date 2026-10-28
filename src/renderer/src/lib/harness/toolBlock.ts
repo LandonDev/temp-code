@@ -371,20 +371,44 @@ export function settleOpenTools(blocks: Block[]): Block[] {
   return next;
 }
 
-/** A paused turn resumes: its clock restarts where the pause stopped it. */
+/**
+ * A busy status reopens the last turn with no new message of the person's.
+ * Paused: its clock restarts where the pause stopped it. Closed on a stop or
+ * a failure (Resume, Continue): its clock restarts at the reopen, so the
+ * closing line states the resumed stretch, the span the strip counts.
+ */
 export function resumeTurnClock(blocks: Block[], now: number): Block[] {
   for (let i = blocks.length - 1; i >= 0; i--) {
     const block = blocks[i];
     if (block.role !== "user") continue;
-    if (block.durationMs == null || block.doneTs !== undefined || block.startedAt == null) {
-      return blocks;
+    if (block.durationMs == null || block.startedAt == null) return blocks;
+    const { durationMs, doneTs, ...rest } = block;
+    if (endsOnError(blocks, i)) {
+      const next = blocks.slice();
+      next[i] = { ...rest, startedAt: now };
+      return next;
     }
-    const { durationMs, ...rest } = block;
+    if (doneTs !== undefined) return blocks;
     const next = blocks.slice();
     next[i] = { ...rest, startedAt: now - durationMs };
     return next;
   }
   return blocks;
+}
+
+/** The turn opened at `user` ends on an error row (a stop or a failure):
+ *  nothing but system rows after its last one. */
+function endsOnError(blocks: Block[], user: number): boolean {
+  let error = -1;
+  for (let j = blocks.length - 1; j > user; j--) {
+    if (blocks[j].role === "system" && blocks[j].id.startsWith("err:")) {
+      error = j;
+      break;
+    }
+  }
+  if (error < 0) return false;
+  for (let j = error + 1; j < blocks.length; j++) if (blocks[j].role !== "system") return false;
+  return true;
 }
 
 function displayLabel(

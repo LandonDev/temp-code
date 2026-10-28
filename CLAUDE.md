@@ -1133,7 +1133,9 @@ routed to (aliax-core's `forward`). Two listeners:
   turn that starts from a watching, error or stopped row counts from its
   own start (`append` stamps `busySince` fresh; a retry that queues after a
   failure from its queueing), a stopped watcher freezes nothing, and only a
-  turn that died mid-stream carries its elapsed through Resume. The boot reset idles only waiting and watching rows now.
+  turn that died mid-stream carries its elapsed through Resume; the
+  transcript's closing line of a turn resumed from its Stopped or failure
+  row states the resumed stretch (`resumeTurnClock`). The boot reset idles only waiting and watching rows now.
   docs/box.md "Surviving a restart"; proof `bun scripts/e2e-survive-restart.ts`.
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
   `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live

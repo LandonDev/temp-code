@@ -598,6 +598,49 @@ describe("M4 transcript fixes", () => {
     expect(s.blocks[0].durationMs).toBe(4_000);
   });
 
+  it("Resume after a Stop restarts the turn's clock, so the closing line states the resumed stretch", () => {
+    let s = foldAll(rows([[{ type: "user-text", text: "go" }, { ts: 10_000 }]]), CWD);
+    s = step(s, { type: "status", status: "running" }, 10_000);
+    s = step(s, { type: "error", message: "Stopped", stopped: true }, 11_000);
+    s = step(s, { type: "status", status: "idle" }, 11_000);
+    expect(s.blocks[0].durationMs).toBe(1_000);
+    expect(s.blocks[0].doneTs).toBe(11_000);
+    s = step(s, { type: "status", status: "running" }, 20_000);
+    expect(s.blocks[0]).toMatchObject({ startedAt: 20_000 });
+    expect(s.blocks[0].durationMs).toBeUndefined();
+    expect(s.blocks[0].doneTs).toBeUndefined();
+    s = step(s, { type: "assistant-text", text: "ok", delta: false, msgId: "m", blockIndex: 0 }, 22_000);
+    s = step(s, { type: "status", status: "running" }, 23_000);
+    expect(s.blocks[0].startedAt).toBe(20_000);
+    s = step(s, { type: "turn-complete" }, 24_000);
+    expect(s.blocks[0].durationMs).toBe(4_000);
+  });
+
+  it("Continue after a failure does the same, and a second Resume restarts it again", () => {
+    let s = foldAll(rows([[{ type: "user-text", text: "go" }, { ts: 10_000 }]]), CWD);
+    s = step(s, { type: "error", message: "turn ended: error_during_execution" }, 12_000);
+    s = step(s, { type: "status", status: "error" }, 12_000);
+    s = step(s, { type: "status", status: "running" }, 30_000);
+    s = step(s, { type: "error", message: "Stopped", stopped: true }, 33_000);
+    s = step(s, { type: "status", status: "idle" }, 33_000);
+    expect(s.blocks[0].durationMs).toBe(3_000);
+    s = step(s, { type: "status", status: "running" }, 40_000);
+    s = step(s, { type: "status", status: "idle" }, 42_000);
+    expect(s.blocks[0].durationMs).toBe(2_000);
+  });
+
+  it("a completed turn reopened with no message keeps its time, and a new message starts its own", () => {
+    let s = foldAll(rows([[{ type: "user-text", text: "go" }, { ts: 10_000 }]]), CWD);
+    s = step(s, { type: "assistant-text", text: "done", delta: false, msgId: "m", blockIndex: 0 }, 12_000);
+    s = step(s, { type: "turn-complete" }, 13_000);
+    s = step(s, { type: "status", status: "running" }, 30_000);
+    expect(s.blocks[0]).toMatchObject({ startedAt: 10_000, durationMs: 3_000, doneTs: 13_000 });
+    s = step(s, { type: "user-text", text: "next" }, 40_000);
+    s = step(s, { type: "status", status: "running" }, 40_000);
+    expect(s.blocks[0]).toMatchObject({ durationMs: 3_000 });
+    expect(s.blocks.at(-1)?.durationMs).toBeUndefined();
+  });
+
   it("errors-cleared drops every error row plus the trailing system rows", () => {
     let s = foldAll(
       rows([

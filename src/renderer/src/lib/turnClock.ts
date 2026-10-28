@@ -4,7 +4,10 @@ import type { Block, Session } from "./session";
 /**
  * One clock for every timer in a thread. The server stamps `busySince`
  * when work starts and freezes the active span on pause; the renderer only
- * reads. The second hand is a single shared timer, aligned to the wall-clock
+ * reads. A settled turn's closing line reads its user row's span, which
+ * the fold keeps (resumeTurnClock): a pause carries it on, and a Resume or
+ * Continue of a turn closed on its Stopped or failure row restarts it, so
+ * the line states the resumed stretch, the span the strip counted. The second hand is a single shared timer, aligned to the wall-clock
  * second, that subscribed rows pick up through `useClock` — a row that is
  * not live never subscribes and never re-renders on the tick.
  */
