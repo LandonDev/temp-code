@@ -1,5 +1,5 @@
 import {
-  useRef,
+  useEffect,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -17,11 +17,12 @@ import { DRAG_THRESHOLD, setGrabbing, suppressTextSelection } from "../lib/drag"
 import type { PaneEdge } from "../lib/layout";
 import { paneDropFromPoint, setExternalPaneDrop } from "../lib/paneDrop";
 import { focus } from "../stores/focus";
+import { stripHold } from "../stores/header";
 import { workspaceActions } from "../stores/workspaceActions";
 import { HARNESSES, sessionDisplayTitle, type HarnessId } from "../lib/session";
 import { sessionStore } from "../lib/tcserver/store";
 import type { ThreadType } from "../lib/tcserver/types";
-import { holdDepartures, type HeaderChip, type HeaderModel } from "../lib/threadHeaderModel";
+import type { HeaderChip, HeaderModel } from "../lib/threadHeaderModel";
 import {
   hasPendingQuestion,
   marksAtRest,
@@ -118,8 +119,11 @@ export function ThreadHeaderStrip({
   end?: ReactNode;
 }) {
   const activeId = model.activeId;
-  const held = useHeldChips(model.live, model.dormant);
-  const focusable = held.chips.some((c) => c.id === activeId) ? activeId : held.chips[0]?.id;
+  // The row as published: a departed chip already holds its place in it
+  // while the pointer is over the strip (`holdModel`, in the title bar).
+  const chips = model.live;
+  const focusable = chips.some((c) => c.id === activeId) ? activeId : chips[0]?.id;
+  useEffect(() => () => stripHold.set(false), []);
   return (
     // One 40px row box: the strip stretches to it and the end group centres in
     // it, so the chips, New thread, the thread menu and Panel share one centre
@@ -136,8 +140,8 @@ export function ThreadHeaderStrip({
         <div
           ref={stripRef}
           onWheel={wheelToX}
-          onPointerEnter={held.hold}
-          onPointerLeave={held.release}
+          onPointerEnter={() => stripHold.set(true)}
+          onPointerLeave={() => stripHold.set(false)}
           role="tablist"
           aria-label="Threads"
           aria-orientation="horizontal"
@@ -145,7 +149,7 @@ export function ThreadHeaderStrip({
           data-tauri-drag-region="false"
           className="scrollbar-none flex min-w-0 self-stretch items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none pl-[var(--strip-pad-l,6px)] pr-[var(--strip-pad-r,6px)]"
         >
-          {held.chips.map((chip) => (
+          {chips.map((chip) => (
             <Chip
               key={chip.id}
               chip={chip}
@@ -163,30 +167,6 @@ export function ThreadHeaderStrip({
       {end}
     </div>
   );
-}
-
-/**
- * The chips as drawn: while the pointer is over the strip a chip whose thread
- * left the row stays in its place (a click never shifts the row under the
- * cursor); when the pointer leaves, the departures go.
- */
-function useHeldChips(
-  next: StripChip[],
-  settled: StripChip[],
-): { chips: StripChip[]; hold: () => void; release: () => void } {
-  const [holding, setHolding] = useState(false);
-  const shown = useRef<StripChip[]>(next);
-  // Only a chip whose thread settled in this project holds; another project's never does.
-  const byId = new Map(settled.map((chip) => [chip.id, chip]));
-  for (const chip of next) byId.set(chip.id, chip);
-  const ids = holdDepartures(
-    shown.current.map((chip) => chip.id).filter((id) => byId.has(id)),
-    next.map((chip) => chip.id),
-    holding,
-  );
-  const chips = ids.length === next.length ? next : ids.map((id) => byId.get(id)!);
-  shown.current = chips;
-  return { chips, hold: () => setHolding(true), release: () => setHolding(false) };
 }
 
 export function chipTitle(chip: StripChip): string {

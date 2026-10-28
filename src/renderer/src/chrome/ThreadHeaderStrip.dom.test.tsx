@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ComponentProps } from "react";
+import { useEffect, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { HeaderModel } from "../lib/threadHeaderModel";
+import { slotTarget, type HeaderModel } from "../lib/threadHeaderModel";
 import { getExternalPaneDrop } from "../lib/paneDrop";
 import type { Session } from "../lib/session";
 import { sessionStore } from "../lib/tcserver/store";
 import { focusStore, initialFocusState } from "../stores/focus";
+import { header, headerStore, initialHeaderState, stripHold, useHeldStripModel } from "../stores/header";
 
 const { dropThread } = vi.hoisted(() => ({ dropThread: vi.fn() }));
 vi.mock("../stores/workspaceActions", () => ({ workspaceActions: { dropThread } }));
@@ -119,25 +120,6 @@ describe("ThreadHeaderStrip row", () => {
     ]);
   });
 
-  it("a chip whose thread settles while the pointer is over the strip stays until the pointer leaves", () => {
-    const { rerender } = mount();
-    const row = document.querySelector('[role="tablist"]')!;
-    fireEvent.pointerEnter(row);
-    const settled = { ...model, live: model.live.filter((c) => c.id !== "b"), dormant: [chip("b", "Beta")] };
-    rerender(strip({ model: settled }));
-    expect(screen.getAllByRole("tab")).toHaveLength(3);
-    fireEvent.pointerLeave(row);
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
-    expect(screen.queryByRole("tab", { name: /Beta/ })).toBeNull();
-  });
-
-  it("a project switch with the pointer over the strip shows only the new project's chips", () => {
-    const { rerender } = mount();
-    fireEvent.pointerEnter(document.querySelector('[role="tablist"]')!);
-    const other = { live: [chip("x", "Other")], dormant: [], activeId: "x" };
-    rerender(strip({ model: other }));
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([expect.stringContaining("Other")]);
-  });
 });
 
 describe("ThreadHeaderStrip chip", () => {
@@ -301,5 +283,67 @@ describe("ThreadHeaderStrip chip drag", () => {
     expect(dropThread).not.toHaveBeenCalled();
     expect(onSelect).not.toHaveBeenCalled();
     restore();
+  });
+});
+
+// What the title bar does: hold, draw and publish one model.
+function Bar({ built }: { built: HeaderModel<ChipThread> }) {
+  const shown = useHeldStripModel(built);
+  useEffect(() => header.publish({ ...headerStore.getState(), model: shown }), [shown]);
+  return strip({ model: shown });
+}
+
+describe("ThreadHeaderStrip: the held row is the published row", () => {
+  const ids = ["a", "b", "c", "d", "e", "f"];
+  const full: HeaderModel<ChipThread> = {
+    live: ids.map((id) => chip(id, `T${id}`)),
+    dormant: [],
+    activeId: "a",
+  };
+  // "c" settled and left the live row.
+  const departed: HeaderModel<ChipThread> = {
+    live: full.live.filter((c) => c.id !== "c"),
+    dormant: [{ ...chip("c", "Tc"), live: false }],
+    activeId: "a",
+  };
+  const drawn = () => screen.getAllByRole("tab").map((el) => el.closest("[data-menu-id]")?.getAttribute("data-menu-id"));
+
+  afterEach(() => {
+    stripHold.set(false);
+    headerStore.setState(initialHeaderState());
+  });
+
+  it("a chip whose thread settles while the pointer is over the strip stays until the pointer leaves", () => {
+    const view = render(<Bar built={model} />);
+    const row = screen.getByRole("tablist");
+    fireEvent.pointerEnter(row);
+    const settled = { ...model, live: model.live.filter((c) => c.id !== "b"), dormant: [chip("b", "Beta")] };
+    view.rerender(<Bar built={settled} />);
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    fireEvent.pointerLeave(row);
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.queryByRole("tab", { name: /Beta/ })).toBeNull();
+  });
+
+  it("a project switch with the pointer over the strip shows only the new project's chips", () => {
+    const view = render(<Bar built={model} />);
+    fireEvent.pointerEnter(screen.getByRole("tablist"));
+    const other = { live: [chip("x", "Other")], dormant: [], activeId: "x" };
+    view.rerender(<Bar built={other} />);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([expect.stringContaining("Other")]);
+  });
+
+  it("with the pointer over the strip and a chip departed, ⌘5 picks the fifth chip drawn", async () => {
+    const view = render(<Bar built={full} />);
+    fireEvent.pointerEnter(screen.getByRole("tablist"));
+    view.rerender(<Bar built={departed} />);
+    expect(drawn()).toEqual(ids);
+    await waitFor(() => expect(headerStore.getState().model.live.map((c) => c.id)).toEqual(ids));
+    expect(slotTarget(headerStore.getState().model, 4)).toEqual({ tabId: "tab-e" });
+    expect(drawn()[4]).toBe("e");
+
+    fireEvent.pointerLeave(screen.getByRole("tablist"));
+    await waitFor(() => expect(drawn()).toEqual(["a", "b", "d", "e", "f"]));
+    expect(slotTarget(headerStore.getState().model, 4)).toEqual({ tabId: "tab-f" });
   });
 });

@@ -4,8 +4,12 @@ import {
   headerNeighbour,
   headerOrder,
   holdDepartures,
+  holdModel,
   orderChips,
+  slotTarget,
   stripChips,
+  type HeaderChip,
+  type HeaderModel,
 } from "./threadHeaderModel";
 import type { StripThread } from "./threadStripModel";
 
@@ -205,6 +209,45 @@ describe("holdDepartures", () => {
 
   it("still lets a new chip join at the end while holding", () => {
     expect(holdDepartures(["a", "b"], ["a", "n"], true)).toEqual(["a", "b", "n"]);
+  });
+});
+
+describe("holdModel and slotTarget", () => {
+  const chipOf = (id: string, tabId: string | null): HeaderChip => ({
+    id,
+    thread: thread(id),
+    tabId,
+    live: true,
+    status: "idle",
+    unread: false,
+    updatedAt: 100,
+  });
+  // "c" settled: it left the live row for the shelf; "e" has no tab.
+  const settled: HeaderModel = {
+    live: ["a", "b", "d", "e"].map((id) => chipOf(id, id === "e" ? null : `t-${id}`)),
+    dormant: [{ ...chipOf("c", "t-c"), live: false }],
+    activeId: "a",
+  };
+  const shown = ["a", "b", "c", "d", "e"];
+
+  it("keeps a departed chip in its place while holding, and out of the shelf", () => {
+    const held = holdModel(settled, shown, true);
+    expect(held.live.map((c) => c.id)).toEqual(shown);
+    expect(held.dormant).toEqual([]);
+    expect(holdModel(settled, shown, false)).toBe(settled);
+  });
+
+  it("never holds a chip that is gone from the scope", () => {
+    const gone = { ...settled, dormant: [] };
+    expect(holdModel(gone, shown, true).live.map((c) => c.id)).toEqual(["a", "b", "d", "e"]);
+  });
+
+  it("picks the nth chip of the held row, opening a tabless chip's thread", () => {
+    const held = holdModel(settled, shown, true);
+    expect(slotTarget(held, 2)).toEqual({ tabId: "t-c" });
+    expect(slotTarget(held, 3)).toEqual({ tabId: "t-d" });
+    expect(slotTarget(held, -1)).toEqual({ sessionId: "e" });
+    expect(slotTarget(held, 7)).toBeNull();
   });
 });
 

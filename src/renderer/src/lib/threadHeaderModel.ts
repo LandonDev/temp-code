@@ -130,6 +130,34 @@ export function holdDepartures(
   return [...shown, ...next.filter((id) => !shownSet.has(id))];
 }
 
+/**
+ * The model with departures held: while `holding`, a chip in `shown` (the row
+ * last drawn) whose thread settled in this scope keeps its place in `live` and
+ * leaves `dormant`; another scope's chip never holds. Once `holding` is false
+ * the model is as built.
+ */
+export function holdModel<T extends StripThread>(
+  model: HeaderModel<T>,
+  shown: readonly string[],
+  holding: boolean,
+): HeaderModel<T> {
+  if (!holding) return model;
+  const byId = new Map(model.dormant.map((chip) => [chip.id, chip]));
+  for (const chip of model.live) byId.set(chip.id, chip);
+  const ids = holdDepartures(
+    shown.filter((id) => byId.has(id)),
+    model.live.map((chip) => chip.id),
+    true,
+  );
+  if (ids.length === model.live.length) return model;
+  const held = new Set(ids);
+  return {
+    live: ids.map((id) => byId.get(id)!),
+    dormant: model.dormant.filter((chip) => !held.has(chip.id)),
+    activeId: model.activeId,
+  };
+}
+
 /** The model as the strip draws it: `live` is the drawn chips in their
  *  stable order (`order` is the saved one; see orderChips), `dormant` the
  *  rest for "Recent threads". */
@@ -154,6 +182,17 @@ export function stripScopeKey(
 ): string {
   if (project) return project.linkId ? `link:${project.linkId}` : project.id;
   return `loose:${workspaceId ?? ""}`;
+}
+
+/** What ⌘1–9 opens: the nth chip as drawn (`slot` < 0 the last), its tab when
+ *  it has one, else the thread itself, as a click on the chip would. */
+export function slotTarget<T extends StripThread>(
+  model: HeaderModel<T>,
+  slot: number,
+): { tabId: string } | { sessionId: string } | null {
+  const chip = slot < 0 ? model.live[model.live.length - 1] : model.live[slot];
+  if (!chip) return null;
+  return chip.tabId ? { tabId: chip.tabId } : { sessionId: chip.id };
 }
 
 /** Strip order for next/previous: the live row, then the shelf. */

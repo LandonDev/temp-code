@@ -10,7 +10,7 @@ import {
   tabArchived,
 } from "../lib/workspaceTabGroups";
 import { useEditors } from "../stores/editors";
-import { header, stripOrder, stripOrderStore } from "../stores/header";
+import { header, stripOrder, stripOrderStore, useHeldStripModel } from "../stores/header";
 import { useStore } from "zustand";
 import { dockCwdOf, useProject, useProjectCwds } from "../stores/project";
 import { useTerminals } from "../stores/terminals";
@@ -228,18 +228,20 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   useEffect(() => {
     stripOrder.set(orderKey, headerModel.live.map((chip) => chip.id));
   }, [headerModel, orderKey]);
+  // The saved order above never takes a held chip.
+  const stripModel = useHeldStripModel(headerModel);
   const stripTabs = useMemo(() => {
     const chipTabIds = new Set(
-      headerOrder(headerModel).flatMap((chip) => (chip.tabId ? [chip.tabId] : [])),
+      headerOrder(stripModel).flatMap((chip) => (chip.tabId ? [chip.tabId] : [])),
     );
     return [
       ...chipTabIds,
       ...deckTabs.filter((tab) => !chipTabIds.has(tab.id)).map((tab) => tab.id),
     ];
-  }, [deckTabs, headerModel]);
+  }, [deckTabs, stripModel]);
   useEffect(() => {
-    header.publish({ tabProjects, stripTabs, model: headerModel, chipThreads });
-  }, [chipThreads, headerModel, stripTabs, tabProjects]);
+    header.publish({ tabProjects, stripTabs, model: stripModel, chipThreads });
+  }, [chipThreads, stripModel, stripTabs, tabProjects]);
 
   // The live list leaves archived threads out; the shelf asks for the
   // selected project's own when it is shown.
@@ -272,7 +274,7 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   );
   const headerProps = useMemo<ThreadHeaderProps>(
     () => ({
-      model: headerModel,
+      model: stripModel,
       planReady,
       archived: archivedThreads,
       workspaceId: headerWorkspaceId,
@@ -282,7 +284,7 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       panelRoom,
       ...headerEvents,
     }),
-    [archivedThreads, cost, headerEvents, headerModel, headerWorkspaceId, panelRoom, planReady, railOpen, running],
+    [archivedThreads, cost, headerEvents, headerWorkspaceId, panelRoom, planReady, railOpen, running, stripModel],
   );
 
   const titleTabsRef = useRef(nextTitleTabs);
@@ -510,3 +512,4 @@ function toTitleTab(
     groupId: tab.groupId,
   };
 }
+

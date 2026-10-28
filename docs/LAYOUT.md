@@ -345,9 +345,12 @@ reached from the ⋯ menu's Recent threads.
   shown for 30 days dropped on load) under the link id, so the copies of a
   linked project share one order; the title bar orders the model before it
   publishes, so ⌘1–9 and ⌃Tab walk the chips as they sit. While the pointer
-  is over the strip a chip whose thread settled holds its place
-  (`holdDepartures`), so nothing shifts under the cursor; it goes when the
-  pointer leaves.
+  is over the strip a chip whose thread settled holds its place, so nothing
+  shifts under the cursor; it goes when the pointer leaves. The title bar
+  holds it (`holdModel` on the strip's `stripHold` flag, `useHeldStripModel`
+  in stores/header.ts) before it publishes, so the row drawn and the row the
+  keys walk are one list: ⌘5 is the fifth chip drawn, and a chip with no tab
+  opens its thread as a click does (`slotTarget`).
 - **The chip.** A ghost `Button` with `role="tab"`, 28px tall, 12px
   padding, `rounded-md`, 2px apart: the type glyph (14px, 1.5 stroke,
   uncoloured), 8px, the title (13px, truncated at 224px), "Master" in

@@ -1,13 +1,17 @@
+import { useEffect, useMemo, useRef } from "react";
+import { useStore } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { createStore } from "zustand/vanilla";
 import type { ChipThread } from "../chrome/ThreadHeaderStrip";
-import type { HeaderModel } from "../lib/threadHeaderModel";
+import { holdModel, type HeaderModel } from "../lib/threadHeaderModel";
 
 /**
  * The title bar's projection of the tabs, published by `ShellTitleBar` after
  * each commit for App's callbacks to read: the project each tab shows, the
  * strip's tab order for cycling, the header model for picking a neighbour,
- * and the chip threads (the server's, plus local drafts).
+ * and the chip threads (the server's, plus local drafts). The model is the
+ * row as the strip draws it, a held departure in its place (`stripHold`), so
+ * ⌘1–9 and ⌃Tab walk the chips the person sees.
  */
 export type HeaderState = {
   tabProjects: ReadonlyMap<string, string>;
@@ -48,6 +52,35 @@ export function tabProjectOf(tabId: string): string | undefined {
 export const header = {
   publish: (next: HeaderState) => headerStore.setState((s) => publish(s, next)),
 };
+
+/** Whether the pointer is over the strip. The strip sets it; the title bar
+ *  holds a departed chip in its place while it is (`holdModel`) before it
+ *  publishes, so the drawn row and the published one are one list. */
+export const stripHoldStore = createStore<{ holding: boolean }>()(() => ({ holding: false }));
+
+export const stripHold = {
+  set: (holding: boolean) => {
+    if (stripHoldStore.getState().holding !== holding) stripHoldStore.setState({ holding });
+  },
+};
+
+/**
+ * The row as drawn and published: while the pointer is over the strip a
+ * departed chip holds its place (`holdModel`), so ⌘1–9 and ⌃Tab walk what
+ * the person sees.
+ */
+export function useHeldStripModel(headerModel: HeaderModel<ChipThread>): HeaderModel<ChipThread> {
+  const holding = useStore(stripHoldStore, (s) => s.holding);
+  const shownRef = useRef<readonly string[]>([]);
+  const stripModel = useMemo(
+    () => holdModel(headerModel, shownRef.current, holding),
+    [headerModel, holding],
+  );
+  useEffect(() => {
+    shownRef.current = stripModel.live.map((chip) => chip.id);
+  }, [stripModel]);
+  return stripModel;
+}
 
 // ── the strip's order ──────────────────────────────────────────────────
 

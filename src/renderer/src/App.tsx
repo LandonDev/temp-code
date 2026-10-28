@@ -240,7 +240,7 @@ import {
   useSessionShells,
 } from "./lib/tcserver/store";
 import { rightPanel } from "./lib/rightPanel";
-import { headerNeighbour } from "./lib/threadHeaderModel";
+import { headerNeighbour, slotTarget } from "./lib/threadHeaderModel";
 import type { ThreadRules } from "@server/shared/rules";
 import * as serverCommands from "./lib/tcserver/commands";
 import { requestTranscriptJump } from "./lib/transcriptJump";
@@ -1383,13 +1383,16 @@ export default function App() {
     if (id) activateTab(id);
   }, [activateTab]);
 
+  /** ⌘1–9: the nth chip as drawn (⌘9 the last). A chip with no tab, a held
+   *  departure or a thread never opened here, opens as a click on it does. */
   const onActivate = useCallback(
     (slot: number) => {
-      const scope = cycleScope();
-      const tab = slot < 0 ? scope[scope.length - 1] : scope[slot];
-      if (tab) activateTab(tab.id);
+      const target = slotTarget(headerStore.getState().model, slot);
+      if (!target) return;
+      if ("tabId" in target) activateTab(target.tabId);
+      else void onSelectHistorySessionRef.current?.(target.sessionId);
     },
-    [activateTab, cycleScope],
+    [activateTab],
   );
 
   const onFocusPane = useCallback(
