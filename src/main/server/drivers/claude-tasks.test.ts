@@ -5,7 +5,7 @@ import type { DriverCtx } from './types'
 
 vi.mock('electron', () => ({ nativeImage: {} }))
 
-const { checkForgottenTasks, handleMessage, kindOf, newStreamState, NOTICE_RESULT_GRACE_MS, noteSend, permittedWebTools, stopHookFor, taskLabel } =
+const { checkForgottenTasks, handleMessage, kindOf, newStreamState, NOTICE_RESULT_GRACE_MS, noteSend, permittedWebTools, phaseAfterSend, stopHookFor, taskLabel } =
   await import('./claude')
 
 /**
@@ -67,6 +67,16 @@ const sendTurn = (): void => {
   noteSend(state)
 }
 const turnCompletes = (): number => events.filter((e) => e.type === 'turn-complete').length
+
+it("phaseAfterSend: the boot's word a send says again after its running, until the CLI's init", () => {
+  expect(phaseAfterSend(newStreamState())).toBe('initializing')
+  expect(phaseAfterSend({ initialized: false, phase: 'cli-starting' })).toBe('cli-starting')
+  expect(phaseAfterSend({ initialized: false, phase: 'retrying' })).toBe('initializing')
+  expect(phaseAfterSend({ initialized: true, phase: null })).toBeNull()
+  sendTurn()
+  handleMessage(ctx, state, msg({ type: 'system', subtype: 'init', session_id: 'n1' }))
+  expect(phaseAfterSend(state)).toBeNull()
+})
 
 it("a dead task's notice answered ahead of the pending message: the notice turn's result settles nothing, the message's own does", () => {
   sendTurn()

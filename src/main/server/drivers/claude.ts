@@ -264,6 +264,17 @@ export function noteSend(state: StreamState): void {
   state.contentSinceSend = false
 }
 
+/** The boot's word a send says again right after its `running`, while the
+ *  CLI's init has not come: `cli-starting` for a process spawned cold (its
+ *  phase already, from the eager boot), `initializing` for a warm or live
+ *  one. Without it the registry's `running` read Thinking through the
+ *  two-second handshake (measured on a Mac, 2026-10-27: handle 2 ms live,
+ *  init at 2,030 ms). Null once initialized. */
+export function phaseAfterSend(state: Pick<StreamState, 'initialized' | 'phase'>): 'cli-starting' | 'initializing' | null {
+  if (state.initialized) return null
+  return state.phase === 'cli-starting' ? 'cli-starting' : 'initializing'
+}
+
 /**
  * How long a notice turn's result is held before it is taken as the turn's
  * own. A CLI resumed on a transcript whose background task died answers the
@@ -1770,12 +1781,17 @@ export const claudeDriver: HarnessDriver = {
         state.working = true
         noteSend(state)
         emit({ type: 'status', status: 'running' })
+        // Until the CLI's init has come once, the wait is its boot: said
+        // again after the running, before anything is awaited.
+        const boot = phaseAfterSend(state)
+        if (boot) {
+          state.phase = null
+          setPhase(ctx, state, boot)
+        }
         // The harness only runs a LEADING /command natively; mid-message
         // and additional skill references get expanded server-side.
         input.push(await expandSlashRefs('claude', session.cwd, text), attachments)
         state.sentAt = Date.now()
-        // Until the CLI's init has come once, the wait is its boot.
-        if (!state.initialized && state.phase !== 'cli-starting') setPhase(ctx, state, 'initializing')
       },
       interrupt(): void {
         void q.interrupt()

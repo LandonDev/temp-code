@@ -636,7 +636,12 @@ routed to (aliax-core's `forward`). Two listeners:
   models available.
 - What a turn says while it waits (S3): a `phase` event is activity, never
   a row. The claude driver emits `cli-starting` on a cold spawn,
-  `initializing` from a send until `system/init`, `retrying` on the CLI's
+  `initializing` from a send until `system/init` (the boot's word is said
+  again right after the send's `running`, `phaseAfterSend`; the registry
+  keeps each session's live phase and a `starting` or `running` leaves its
+  words as the activity, so a cold eager handle reads "Starting the CLI"
+  through the handshake, not Thinking; a phase that lands on an idle row
+  is kept and surfaces at the send), `retrying` on the CLI's
   own `api_retry` (attempt, delay, status) and clears it at the first text,
   thinking or tool call; the codex driver emits `retrying` on
   `willRetry`/`Reconnecting`; sessions.ts words them ("Starting the CLI",

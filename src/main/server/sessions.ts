@@ -51,6 +51,8 @@ import { FOLD_VERSION, type FoldRow, type ResumeAfterBootRow } from './db'
 
 /** How a harness words a 401 the gateway could not route around (codex: "workspace routing discovery unauthorized (401)"). */
 const UNAUTHORIZED_WORDING = /unauthorized|\(401\)/i
+/** The statuses a turn's phase lives through; any other drops it. */
+const PHASE_STATUSES = new Set<SessionMeta['status']>(['starting', 'running', 'waiting'])
 /** The statuses that end a person's Stop (the turn settled, or a new one
  *  starts); `running` and `waiting` keep it. */
 const STOP_CLEARING_STATUSES = new Set<SessionMeta['status']>(['idle', 'error', 'watching', 'stopped', 'done', 'starting'])
@@ -647,6 +649,12 @@ export class SessionRegistry {
    *  transient by design: server memory only, cleared when the turn
    *  settles, attached to every meta push for the tab strip. */
   private activities = new Map<string, Activity>()
+  /** Each session's live phase (a non-null `phase` event), until a null
+   *  phase or a settle: a `starting` or `running` appended meanwhile keeps
+   *  its words as the activity instead of writing Thinking, and a phase
+   *  that landed on an idle row (the eager boot's cold spawn) surfaces at
+   *  the send. */
+  private phases = new Map<string, Extract<AgentEvent, { type: 'phase' }>>()
   /** What a watching thread waits on (background task and cron
    *  descriptions from the driver's background-tasks event) — transient
    *  like activities; decorate() turns it into the "Waiting on …" line. */
@@ -3559,6 +3567,7 @@ export class SessionRegistry {
       this.pendingApprovals.delete(id)
       this.lastActivity.delete(id)
       this.activities.delete(id)
+      this.phases.delete(id)
       this.todoFolds.delete(id)
       this.warming.delete(id)
       this.folds.delete(id)
@@ -3622,6 +3631,7 @@ export class SessionRegistry {
       this.subscribers.delete(id)
       this.lastActivity.delete(id)
       this.activities.delete(id)
+      this.phases.delete(id)
       this.todoFolds.delete(id)
       this.warming.delete(id)
       this.folds.delete(id)
@@ -4057,10 +4067,15 @@ export class SessionRegistry {
     // A turn's phase before its first content is activity, never a row:
     // folded onto the meta and pushed, then dropped.
     if (event.type === 'phase') {
+      if (event.phase === null) this.phases.delete(sessionId)
+      else this.phases.set(sessionId, event)
+      const meta = this.row(sessionId)
+      // On a row not yet in a turn (the eager boot's cold spawn) the phase
+      // is kept for the send and shows nothing now.
+      if (event.phase !== null && !(meta && PHASE_STATUSES.has(meta.status))) return
       const act = activityOf(event)
       if (act === null) this.activities.delete(sessionId)
       else if (act) this.activities.set(sessionId, act)
-      const meta = this.row(sessionId)
       if (meta) this.notifyMeta(meta)
       return
     }
@@ -4111,6 +4126,8 @@ export class SessionRegistry {
       // The stop outlives a question's or an approval's `running` cleanup
       // and a `waiting`: the CLI's result still has to arrive.
       if (STOP_CLEARING_STATUSES.has(event.status)) this.stopping.delete(sessionId)
+      // A settle ends the turn's phase with it.
+      if (!PHASE_STATUSES.has(event.status)) this.phases.delete(sessionId)
       // A tune saved mid-turn waits here: the turn has settled, so the
       // harness can now reboot with the new rules (resume keeps the
       // conversation).
@@ -4169,7 +4186,10 @@ export class SessionRegistry {
     if (event.type === 'turn-complete') this.maybeRetitle(sessionId)
     // Track "where it's at" for the tabs; a change on a non-status event
     // pushes its own meta update (status events notify below regardless).
-    const act = activityOf(event)
+    // A send's `running` (and the `starting` before it) keeps the turn's
+    // live phase: the strip reads "Starting the CLI" through the boot.
+    const kept = event.type === 'status' && (event.status === 'running' || event.status === 'starting') ? this.phases.get(sessionId) : undefined
+    const act = kept ? activityOf(kept) : activityOf(event)
     const actMoved = act !== undefined && act?.text !== this.activities.get(sessionId)?.text
     if (actMoved) {
       if (act === null) this.activities.delete(sessionId)

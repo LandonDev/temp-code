@@ -89,6 +89,35 @@ it('a phase event is activity on the meta and never a transcript row; the first 
   expect(types(id)).not.toContain('phase')
 })
 
+it("an eager cold handle's phase is kept until the send, which reads Starting the CLI until init, then Thinking; a repeated running keeps it", async () => {
+  const s = await registry.create({ cwd: root, provider: 'claude' })
+  await settle()
+  // The eager boot spawned cold: its phase lands on an idle row and shows nothing yet.
+  emit(s.id, { type: 'phase', phase: 'cli-starting' })
+  expect(registry.get(s.id)?.activity ?? null).toBeNull()
+  await registry.send(s.id, 'go')
+  await settle()
+  expect(registry.get(s.id)?.status).toBe('running')
+  expect(registry.get(s.id)?.activity).toBe('Starting the CLI')
+  emit(s.id, { type: 'status', status: 'running' })
+  expect(registry.get(s.id)?.activity).toBe('Starting the CLI')
+  emit(s.id, { type: 'phase', phase: null })
+  expect(registry.get(s.id)?.activity).toBe('Thinking')
+  emit(s.id, { type: 'status', status: 'running' })
+  expect(registry.get(s.id)?.activity).toBe('Thinking')
+})
+
+it('a live handle reads Initializing after the send, kept through a repeated running and dropped by a settle', async () => {
+  const id = await live()
+  emit(id, { type: 'phase', phase: 'initializing' })
+  expect(registry.get(id)?.activity).toBe('Initializing')
+  emit(id, { type: 'status', status: 'running' })
+  expect(registry.get(id)?.activity).toBe('Initializing')
+  emit(id, { type: 'status', status: 'idle' })
+  emit(id, { type: 'status', status: 'running' })
+  expect(registry.get(id)?.activity).toBe('Thinking')
+})
+
 it('phaseLine words every phase', () => {
   expect(phaseLine({ type: 'phase', phase: 'waiting-provider' })).toBe('Waiting for the provider')
   expect(phaseLine({ type: 'phase', phase: 'retrying' })).toBe('Retrying')
