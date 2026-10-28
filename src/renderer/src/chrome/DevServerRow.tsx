@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useStore } from "zustand";
+import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { Item, ItemActions, ItemContent, ItemTitle } from "../components/ui/item";
 import { Spinner } from "../components/ui/spinner";
@@ -12,7 +13,9 @@ import { HostGlyph } from "./HostGlyph";
 /**
  * One live dev server (docs/box.md "Dev servers on the box"), a row of the
  * Dev servers pane: what it is in plain words, its address on its host,
- * "Open on the Mac :5174" when it opens here, and Stop. `onPick` makes the row pick its console (the pane).
+ * "Open on the Mac :5174" when it opens here, and Stop. The address is the
+ * row's Open control (a local server's own address, else the Mac's link);
+ * Stop is its one word button. `onPick` makes the row pick its console (the pane).
  */
 export function DevServerRow({ server, picked = false, onPick }: { server: LiveServer; picked?: boolean; onPick?: () => void }) {
   const localId = useStore(macBridgeStore, (s) => s.localId);
@@ -30,10 +33,11 @@ export function DevServerRow({ server, picked = false, onPick }: { server: LiveS
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setStopping(false));
   };
-  const link = (text: string, url: string) => (
+  const link = (text: string, url: string, name: string) => (
     <Button
       variant="link"
       size="xs"
+      aria-label={name}
       className="h-auto px-0 text-xs font-normal tabular-nums text-muted-foreground hover:text-foreground"
       onClick={(event) => {
         event.stopPropagation();
@@ -63,8 +67,12 @@ export function DevServerRow({ server, picked = false, onPick }: { server: LiveS
         </ItemTitle>
         {port ? (
           <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground tabular-nums">
-            {local && open ? link(`localhost:${port.number}`, open.url) : <span className="shrink-0">localhost:{port.number}</span>}
-            {open && !local ? link(`${open.label} :${open.port}`, open.url) : null}
+            {local && open ? (
+              <Tip label="Open in browser">{link(`localhost:${port.number}`, open.url, `Open localhost:${port.number}`)}</Tip>
+            ) : (
+              <span className="shrink-0">localhost:{port.number}</span>
+            )}
+            {open && !local ? link(`${open.label} :${open.port}`, open.url, `${open.label}, port ${open.port}`) : null}
           </div>
         ) : null}
         {error || server.stopping ? (

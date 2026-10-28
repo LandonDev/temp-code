@@ -460,7 +460,9 @@ the project, a server runs or the pane is open. Switching is instant.
   threads (a 12px muted heading per thread), and the picked one's console
   filling the rest. A row (chrome/DevServerRow.tsx) is what it is in plain
   words with the host glyph, its address and "Open on the Mac :5174" under
-  it, Stop at its end. It lists only what a host still lists; a row the
+  it, Stop at its end. The address is the row's Open control ("Open
+  localhost:5199", "Open in browser" on hover); a server on another host
+  opens from "Open on the Mac :5174" and its own address stays plain text. It lists only what a host still lists; a row the
   host drops leaves at once, nothing animates in or out. With nothing live
   the console's place is one `Empty`: "No dev servers running" over the
   command Run would start. Closed until opened (the thread menu's Dev

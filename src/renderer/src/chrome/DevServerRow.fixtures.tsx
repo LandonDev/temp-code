@@ -7,6 +7,8 @@ const server = {
   port: { number: 5173, environmentId: "env_box" },
   runId: null,
   resource: { id: "res1", sessionId: "t1" },
+  callId: null,
+  command: "bun run dev",
   startedAt: 1,
 };
 export default [

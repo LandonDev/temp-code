@@ -1010,7 +1010,8 @@ routed to (aliax-core's `forward`). Two listeners:
   connected host now (a running run, or a ledger `port` row still listening
   that passes the shared rules; a port a run holds is listed once), under
   the thread it belongs to, in plain words ("Vite dev server") with its
-  address, "Open on the Mac :5174" and the word Stop (chrome/DevServerRow.tsx), its
+  address (the row's Open control, or "Open on the Mac :5174" for a server
+  on another host) and the word Stop (chrome/DevServerRow.tsx), its
   console the server's log alone; a row leaves the moment its host
   drops it. The dock
   is bottom only and has one bar (chrome/DockBar.tsx: the project's
