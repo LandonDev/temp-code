@@ -5,7 +5,8 @@ import type { DriverCtx } from './types'
 
 vi.mock('electron', () => ({ nativeImage: {} }))
 
-const { checkForgottenTasks, handleMessage, kindOf, newStreamState, permittedWebTools, stopHookFor, taskLabel } = await import('./claude')
+const { checkForgottenTasks, handleMessage, kindOf, newStreamState, NOTICE_RESULT_GRACE_MS, noteSend, permittedWebTools, stopHookFor, taskLabel } =
+  await import('./claude')
 
 /**
  * Background work over the SDK stream: the task level and edges, the Stop
@@ -60,6 +61,67 @@ const itemLists = () => events.flatMap((e) => (e.type === 'background-tasks' ? [
 const startTurn = (): void => {
   state.working = true
 }
+/** A message pushed into the CLI: send() marks it pending until its own result. */
+const sendTurn = (): void => {
+  startTurn()
+  noteSend(state)
+}
+const turnCompletes = (): number => events.filter((e) => e.type === 'turn-complete').length
+
+it("a dead task's notice answered ahead of the pending message: the notice turn's result settles nothing, the message's own does", () => {
+  sendTurn()
+  // The resumed CLI answers the task's notification first: the notice, its turn, its result.
+  handleMessage(ctx, state, notification('t1', 'failed'))
+  expect(events).toContainEqual({ type: 'background-task', taskId: 't1', description: 'background task', status: 'failed' })
+  handleMessage(ctx, state, assistant([{ type: 'text', text: 'The task died.' }]))
+  handleMessage(ctx, state, result())
+  expect(statuses()).toEqual([])
+  expect(turnCompletes()).toBe(0)
+  expect(state.working).toBe(true)
+  // Then the message's own turn.
+  handleMessage(ctx, state, assistant([{ type: 'text', text: 'On it.' }]))
+  handleMessage(ctx, state, result())
+  expect(statuses()).toEqual(['idle'])
+  expect(turnCompletes()).toBe(1)
+  expect(state.working).toBe(false)
+  expect(state.pendingSend).toBe(false)
+})
+
+it("a swallowed notice result is replayed after the grace when nothing follows it, so a CLI that never wakes cannot hold the row running", () => {
+  vi.useFakeTimers()
+  sendTurn()
+  handleMessage(ctx, state, notification('t1', 'completed'))
+  handleMessage(ctx, state, assistant())
+  handleMessage(ctx, state, result())
+  expect(statuses()).toEqual([])
+  vi.advanceTimersByTime(NOTICE_RESULT_GRACE_MS - 1)
+  expect(statuses()).toEqual([])
+  vi.advanceTimersByTime(1)
+  expect(statuses()).toEqual(['idle'])
+  expect(turnCompletes()).toBe(1)
+  expect(state.working).toBe(false)
+})
+
+it("a notification after the send's first content is an ordinary mid-turn one: the result settles as today", () => {
+  sendTurn()
+  handleMessage(ctx, state, assistant([{ type: 'text', text: 'Working.' }]))
+  handleMessage(ctx, state, notification('t1', 'completed'))
+  handleMessage(ctx, state, result())
+  expect(statuses()).toEqual(['idle'])
+  expect(turnCompletes()).toBe(1)
+})
+
+it("a notification with no send pending (a wake from a watch) keeps today's wake turn", () => {
+  startTurn()
+  handleMessage(ctx, state, level([{ task_id: 't1', description: 'poll CI' }]))
+  handleMessage(ctx, state, result())
+  events.length = 0
+  handleMessage(ctx, state, notification('t1', 'completed'))
+  handleMessage(ctx, state, assistant())
+  handleMessage(ctx, state, result())
+  expect(statuses()).toEqual(['running', 'idle'])
+  expect(state.noticeTurn).toBe(false)
+})
 
 it("the CLI's own retry is a phase on the meta, cleared by the first content, never a row", () => {
   startTurn()

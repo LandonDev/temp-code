@@ -189,6 +189,21 @@ it("a master's batch counts the children still out, and a child settling re-push
   expect(pushed.at(-1)).toBe('Waiting on a batch thread')
 })
 
+it("a send's busySince is stamped once and survives a repeated running; an idle with nothing queued is what used to reset it", async () => {
+  const s = await registry.create({ cwd: root, provider: 'claude' })
+  await registry.send(s.id, 'go')
+  const anchor = registry.get(s.id)?.busySince
+  expect(anchor).toBeTypeOf('number')
+  await new Promise((r) => setTimeout(r, 5))
+  emit(s.id, { type: 'status', status: 'running' })
+  expect(registry.get(s.id)?.busySince).toBe(anchor)
+  // The defect's mechanism (fixed in the driver): a notice turn's result idled the row mid-send.
+  emit(s.id, { type: 'status', status: 'idle' })
+  expect(registry.get(s.id)?.busySince).toBeNull()
+  emit(s.id, { type: 'status', status: 'running' })
+  expect(registry.get(s.id)?.busySince).not.toBe(anchor)
+})
+
 it('stopTask reaches the live handle, and refuses without one', async () => {
   const id = await live()
   await registry.stopTask(id, 't1')

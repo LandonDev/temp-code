@@ -648,7 +648,13 @@ routed to (aliax-core's `forward`). Two listeners:
   settles the turn with the silence error and puts the process down; the
   registry re-queues the message once at the front, and a second silence
   on the same message leaves the row errored `harness_crashed`
-  (drivers/silence.ts). Every `session.send` writes one span line to
+  (drivers/silence.ts). A CLI resumed on a transcript whose background
+  task died answers the task's notification before the pending message:
+  the driver takes a `task_notification` ahead of the send's own content
+  as a notice turn, holds that turn's result for `NOTICE_RESULT_GRACE_MS`
+  (10 s; the row stays running, the clock untouched) and drops it at the
+  next message, replaying it as the turn's own only when nothing follows.
+  Every `session.send` writes one span line to
   stalls.log (sendSpans.ts: `send session=<id> accepted=0 prepared=12
   handle=340(warm) delivered=… init=… first-message=… first-content=2100`,
   flushed at the first content or 15 s in, a phase never reached `-`), and

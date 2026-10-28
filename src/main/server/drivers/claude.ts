@@ -208,6 +208,18 @@ interface StreamState {
   initialized: boolean
   /** when the last message was pushed and the CLI has not spoken since (the first-output watchdog) */
   sentAt: number | null
+  /** a message was pushed and its turn has not ended (its result is still to come) */
+  pendingSend: boolean
+  /** the pending send has had content of its own (text, thinking, a tool
+   *  call outside a notice turn) */
+  contentSinceSend: boolean
+  /** a task's notification arrived ahead of the pending send's content: the
+   *  CLI is answering the notice first, and the next result is the notice
+   *  turn's, not the send's */
+  noticeTurn: boolean
+  /** the notice turn's result, held for NOTICE_RESULT_GRACE_MS: replayed as
+   *  the turn's own when nothing follows it, dropped by the next message */
+  noticeResult: { msg: SDKMessage; timer: NodeJS.Timeout } | null
   /** armed when the task set empties while idle: settles idle unless a
    *  wake turn starts first */
   settleTimer: NodeJS.Timeout | null
@@ -238,7 +250,46 @@ export function newStreamState(): StreamState {
     watching: false,
     phase: null,
     initialized: false,
-    sentAt: null
+    sentAt: null,
+    pendingSend: false,
+    contentSinceSend: false,
+    noticeTurn: false,
+    noticeResult: null
+  }
+}
+
+/** A message was pushed: its turn is open until its own result. */
+export function noteSend(state: StreamState): void {
+  state.pendingSend = true
+  state.contentSinceSend = false
+}
+
+/**
+ * How long a notice turn's result is held before it is taken as the turn's
+ * own. A CLI resumed on a transcript whose background task died answers the
+ * task's notification first: its notification, a short turn about it and a
+ * result, all ahead of the pending message's own turn (measured on a Mac,
+ * 2026-10-27: the row read idle at 2066 ms and running again at 2107 ms, and
+ * the strip's clock restarted). That result is held, so the row stays running
+ * and the clock untouched; a message after it drops it, and a CLI that never
+ * wakes for the message gets it replayed, so nothing holds the row running.
+ */
+export const NOTICE_RESULT_GRACE_MS = 10_000
+
+function clearNoticeResult(state: StreamState): void {
+  if (state.noticeResult) clearTimeout(state.noticeResult.timer)
+  state.noticeResult = null
+}
+
+/** Hold a notice turn's result; replay it as the turn's own after the grace. */
+function holdNoticeResult(ctx: DriverCtx, state: StreamState, msg: SDKMessage): void {
+  clearNoticeResult(state)
+  state.noticeResult = {
+    msg,
+    timer: setTimeout(() => {
+      state.noticeResult = null
+      handleMessage(ctx, state, msg)
+    }, NOTICE_RESULT_GRACE_MS)
   }
 }
 
@@ -371,7 +422,10 @@ export function settleStreamEnd(ctx: DriverCtx, state: StreamState, err?: unknow
   const watched = state.watching
   state.working = false
   state.watching = false
+  state.pendingSend = false
+  state.noticeTurn = false
   clearSettle(state)
+  clearNoticeResult(state)
   if (midTurn) {
     if (err === undefined) {
       ctx.emit({ type: 'error', message: 'harness stream ended mid-turn' })
@@ -625,6 +679,10 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
   state.armedAt = null
   state.nudged = false
   state.sentAt = null
+  // A message after a notice turn's result: the CLI went on to the pending
+  // send, so that result was the notice's alone.
+  clearNoticeResult(state)
+  if ((msg.type === 'assistant' || msg.type === 'stream_event') && !state.noticeTurn) state.contentSinceSend = true
   ctx.mark?.('first-message')
   switch (msg.type) {
     case 'system':
@@ -704,6 +762,11 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
           }
         }
       } else if (msg.subtype === 'task_notification') {
+        // Ahead of the pending send's own content: the CLI answers the
+        // notice first, and the result that follows is the notice turn's
+        // (NOTICE_RESULT_GRACE_MS). A notification mid-turn, with the send's
+        // content already seen, changes nothing.
+        if (state.pendingSend && !state.contentSinceSend) state.noticeTurn = true
         // One settled task — the transcript's record of why the thread
         // woke. The wake turn itself shows what the model made of it.
         if (!msg.ambient && !state.ambient.has(msg.task_id)) {
@@ -920,6 +983,15 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
     }
     case 'result':
       state.toolInput.clear()
+      // The notice turn's result: the pending send's turn is still to come,
+      // so the row stays running and the clock untouched; held in case
+      // nothing follows.
+      if (state.noticeTurn) {
+        state.noticeTurn = false
+        holdNoticeResult(ctx, state, msg)
+        break
+      }
+      state.pendingSend = false
       state.working = false
       if (msg.subtype === 'success') {
         emit({
@@ -1696,6 +1768,7 @@ export const claudeDriver: HarnessDriver = {
       async send(text: string, attachments?: Attachment[]): Promise<void> {
         if (dead) throw new Error('harness gone')
         state.working = true
+        noteSend(state)
         emit({ type: 'status', status: 'running' })
         // The harness only runs a LEADING /command natively; mid-message
         // and additional skill references get expanded server-side.
@@ -1772,6 +1845,7 @@ export const claudeDriver: HarnessDriver = {
       async dispose(): Promise<void> {
         disposed = true
         clearSettle(state)
+        clearNoticeResult(state)
         for (const finish of [...pendingApprovals.values()]) finish(false, true)
         for (const finish of [...pendingQuestions.values()]) finish(null)
         input.close()
