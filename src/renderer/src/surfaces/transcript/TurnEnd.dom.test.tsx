@@ -108,6 +108,25 @@ describe("TurnEnd of a paused turn", () => {
   });
 });
 
+describe("TurnEnd of a queued turn", () => {
+  it("draws no closing line and no thinking tail before the turn ran: the strip says Queued", () => {
+    const user = { id: "u", role: "user" as const, text: "go", startedAt: 10, durationMs: 1000 };
+    const state = { status: "queued", busy: false, blocks: [user] } as unknown as TurnSession;
+    const { container } = render(
+      <TurnStateContext.Provider value={state}>
+        <TurnEnd
+          turn={{ id: "t", index: 0, isLast: true, settled: false, blocks: [user], userBlock: user, durationMs: 1000, startedAt: 10 }}
+          harnessOf={() => undefined}
+          turnState={state}
+          liveState={false}
+        />
+      </TurnStateContext.Provider>,
+    );
+    expect(container.textContent).not.toMatch(/Worked for/);
+    expect(container.querySelector('[data-slot="thinking-tail"]')).toBeNull();
+  });
+});
+
 describe("TurnEnd's live state", () => {
   const user = { id: "u", role: "user" as const, text: "go" };
   const reply = { id: "a", role: "assistant" as const, text: "on it" };

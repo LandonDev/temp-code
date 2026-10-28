@@ -186,3 +186,13 @@ describe("stopped clock", () => {
     }
   });
 });
+
+describe("isTurnHeld", () => {
+  it("holds a paused turn and a queued one open, and nothing else", async () => {
+    const { isTurnHeld } = await import("./turnClock");
+    expect(isTurnHeld({ status: "paused" } as never)).toBe(true);
+    expect(isTurnHeld({ status: "queued" } as never)).toBe(true);
+    expect(isTurnHeld({ status: "idle" } as never)).toBe(false);
+    expect(isTurnHeld({ status: "running" } as never)).toBe(false);
+  });
+});

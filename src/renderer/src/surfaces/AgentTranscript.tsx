@@ -23,7 +23,7 @@ import { useReducedMotion } from "motion/react";
 import { type Block, type HarnessId } from "../lib/session";
 import { sessionStore } from "../lib/tcserver/store";
 import { TurnStateContext, type TurnSession } from "./turnState";
-import { isTurnPaused } from "../lib/turnClock";
+import { isTurnHeld } from "../lib/turnClock";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { usePaneVisible } from "../hooks/paneVisibility";
 import { saveTranscriptScroll, takeTranscriptScroll, type TranscriptScrollMemory } from "../lib/transcriptScrollMemory";
@@ -537,8 +537,8 @@ export function AgentTranscript({
   // Remote profile: the next page of history comes from the server and
   // lands above; the reader's anchor row keeps them where they were.
   const moreHistory = !!sessionId && sessionStore.hasOlderHistory(sessionId);
-  // A turn paused mid-way is not over: no closing line until it settles.
-  const paused = !busy && !!turnState && isTurnPaused(turnState);
+  // A turn paused mid-way, or queued before it ran, is not over: no closing line until it settles.
+  const paused = !busy && !!turnState && isTurnHeld(turnState);
   const { rows, rowOfBlock } = useMemo(
     () => flattenTurns(turns, !!busy, { loadEarlier: moreHistory, paused }),
     [turns, busy, moreHistory, paused],

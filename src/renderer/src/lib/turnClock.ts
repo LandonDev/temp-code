@@ -114,6 +114,13 @@ export function isTurnPaused(session: ClockSession): boolean {
   return session.status === "paused";
 }
 
+/** The last turn waits without running: paused mid-way, or queued before
+ *  it started. It is not over (no closing line), and nothing in it reads
+ *  as running. */
+export function isTurnHeld(session: ClockSession): boolean {
+  return session.status === "paused" || session.status === "queued";
+}
+
 /** Work is in flight (starting, running, waiting on the user, or
  *  watching background work — the clock runs through the wait). */
 export function isTurnActive(session: ClockSession): boolean {

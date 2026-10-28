@@ -9,7 +9,7 @@ import { copyText } from "../../lib/clipboard";
 import { playCue } from "../../lib/sounds";
 import { type TurnInfo } from "../transcriptRows";
 import { type Block, type HarnessId } from "../../lib/session";
-import { isTurnPaused, turnElapsed, useClock, useSlowClock } from "../../lib/turnClock";
+import { isTurnHeld, isTurnPaused, turnElapsed, useClock, useSlowClock } from "../../lib/turnClock";
 import { duration } from "../../lib/duration";
 import { threadStatus } from "../../lib/threadStripModel";
 import { useTurnState, type TurnSession } from "../turnState";
@@ -45,7 +45,8 @@ export function TurnEnd({
   onHandoff?: HandoffHandler;
 }) {
   const { settled, durationMs, isLast } = turn;
-  const paused = turnState ? isTurnPaused(turnState) : false;
+  // Paused, or queued before it ran: no thinking tail, nothing reads as running.
+  const paused = turnState ? isTurnHeld(turnState) : false;
   const stopped = useMemo(
     () =>
       settled &&
