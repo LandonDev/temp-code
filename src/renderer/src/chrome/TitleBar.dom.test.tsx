@@ -12,6 +12,7 @@ import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 import { TabVisitNav, TitleBar } from "./TitleBar";
 
 vi.mock("./WindowControls", () => ({ WindowControls: () => null }));
+vi.mock("./ProjectPlanChip", () => ({ ProjectPlanChip: () => <button type="button">Plan</button> }));
 
 const header: ThreadHeaderProps = {
   model: { live: [], dormant: [], activeId: null },
@@ -109,6 +110,33 @@ describe("TitleBar", () => {
     await waitFor(() => expect(screen.getByText("No room for the panel")).toBeTruthy(), { timeout: 1500 });
   });
 
+  it("New thread stays out of the chips' tablist, and the Plan chip sits before the thread menu", () => {
+    bar({ header: { ...header, model: { live: [], dormant: [], activeId: null } } });
+    const plus = screen.getByRole("button", { name: "New thread" });
+    expect(plus.closest('[role="tablist"]')).toBeNull();
+    const plan = screen.getByRole("button", { name: "Plan" });
+    const menu = screen.getByRole("button", { name: "Thread menu" });
+    expect(plan.closest('[role="tablist"]')).toBeNull();
+    expect(plan.compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("an overflowing live row draws its right arrow in its own box, clear of the Panel toggle", () => {
+    const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollWidth");
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 100 });
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => 300 });
+    try {
+      bar();
+      const arrow = screen.getByRole("button", { name: "Scroll threads right" });
+      const box = arrow.parentElement!.closest(".relative")!;
+      expect(box.contains(screen.getByRole("tablist", { name: "Threads" }))).toBe(true);
+      expect(box.contains(screen.getByRole("button", { name: "Panel" }))).toBe(false);
+    } finally {
+      if (width) Object.defineProperty(HTMLElement.prototype, "clientWidth", width);
+      if (scroll) Object.defineProperty(HTMLElement.prototype, "scrollWidth", scroll);
+    }
+  });
+
   it("names the rail's toggle by what it shows, as the panel's and the sidebar's are", () => {
     render(<TabVisitNav onTogglePanel={() => {}} />);
     expect(screen.getByRole("button", { name: "Workspaces" })).toBeTruthy();
@@ -125,9 +153,8 @@ describe("TitleBar with no project selected", () => {
       buildHeaderModel({
         threads: [chat],
         tabs: [{ id: "tab", sessionIds: [chat.id] }],
-        scope: { loose: "w1", catalog },
+        scope: { loose: new Set(["w1"]), catalog },
         activeTabId: "tab",
-        onScreenId: chat.id,
         lastSeen: { [chat.id]: 1 },
         planReady: {},
       }),
@@ -135,6 +162,9 @@ describe("TitleBar with no project selected", () => {
     );
     bar({ header: { ...header, model } });
     expect(screen.getByText("A loose chat")).toBeTruthy();
+    // Settled and seen, it is the active chip on the shelf.
+    const shelf = screen.getByRole("tablist", { name: "Settled threads" });
+    expect(shelf.querySelector('[aria-selected="true"]')?.textContent).toContain("A loose chat");
     fireEvent.click(screen.getByRole("button", { name: "Thread menu" }));
     for (const name of ["Rename", "Type", /^Archive/]) expect(await screen.findByRole("menuitem", { name })).toBeTruthy();
   });

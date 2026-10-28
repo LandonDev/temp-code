@@ -60,7 +60,7 @@ export function ProjectPlanChip() {
         </TooltipTrigger>
         <TooltipContent side="bottom">{state.pinned ? "The project's plan" : "The project plan"}</TooltipContent>
       </Tooltip>
-      <PopoverContent side="bottom" align="start" aria-label="Project plan" className="w-80 gap-0 p-1">
+      <PopoverContent side="bottom" align="end" aria-label="Project plan" className="w-80 gap-0 p-1">
         <Button variant="ghost" size="sm" onClick={openPlan} className="h-8 w-full justify-start font-normal">
           Open the plan
         </Button>

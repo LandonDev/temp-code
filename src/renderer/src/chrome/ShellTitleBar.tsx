@@ -153,6 +153,7 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       .map(
         (session): ChipThread => ({
           id: session.id,
+          environmentId: session.environmentId,
           title: session.title,
           threadType: session.threadType ?? null,
           provider: session.harness,

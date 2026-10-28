@@ -98,32 +98,6 @@ export function tabStripOverflow(
   };
 }
 
-function TabStripChevron({
-  side,
-  onClick,
-}: {
-  side: "left" | "right";
-  onClick: () => void;
-}) {
-  const label = side === "left" ? "Scroll tabs left" : "Scroll tabs right";
-  const Icon = side === "left" ? ChevronLeft : ChevronRight;
-  return (
-    <Tip label={label} side="bottom">
-      <Button
-        variant="outline"
-        size="icon-xs"
-        aria-label={label}
-        data-tauri-drag-region="false"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={onClick}
-        className={`absolute top-5 z-40 -translate-y-1/2 bg-background text-muted-foreground hover:text-foreground ${side === "left" ? "left-1" : "right-1"}`}
-      >
-        <Icon className="size-3.5" strokeWidth={1.75} />
-      </Button>
-    </Tip>
-  );
-}
-
 export function IconButton({
   label,
   shortcut,
@@ -448,27 +422,17 @@ function TitleBarComponent({
           showProjectButton ? " border-l border-border" : ""
         }`}
       >
-        <div
-          className="relative flex min-w-0 flex-1 overflow-hidden"
-          // A chevron sits over the strip's edge; the strip pads that end by the
-          // chevron's width (24px + 4px inset + 4px), so no chip sits under it.
-          style={{
-            ["--strip-pad-l" as string]: tabOverflow.left ? "32px" : undefined,
-            ["--strip-pad-r" as string]: tabOverflow.right ? "32px" : undefined,
-          }}
-        >
-          {tabOverflow.left ? (
-            <TabStripChevron side="left" onClick={() => scrollTabsBy(-1)} />
-          ) : null}
-          {tabOverflow.right ? (
-            <TabStripChevron side="right" onClick={() => scrollTabsBy(1)} />
-          ) : null}
+        {/* The scroll arrows belong to the live row (the strip draws them
+            over its own scroller), never over the end group. */}
+        <div className="flex min-w-0 flex-1 overflow-hidden">
           <ThreadHeader
             {...header}
             onShowTerminal={onShowTerminal}
             onNewTerminal={onNewTerminal}
             projectTerminalActive={projectTerminalActive}
             stripRef={setTabStripRef}
+            overflow={tabOverflow}
+            onScrollBy={scrollTabsBy}
             activeRef={(el) => {
               activeTabRef.current = el;
             }}

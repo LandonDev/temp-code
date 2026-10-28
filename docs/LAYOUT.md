@@ -86,14 +86,19 @@ progress bar.
 ### Titlebar
 
 Drag region (`titlebar-drag`), hiddenInset traffic lights. In deck layout
-the bar is one row: the thread strip (below) fills it, and its right end
-holds exactly two ghost icon buttons, each with a `Tooltip`: the ⋯ thread
-menu, then the panel toggle (`aria-pressed` while the right panel is open,
-"Panel ⌘⇧R"; disabled with "No room for the panel" while the thread's row
-is too narrow for it), last because it is nearest the panel it opens. The
-chips, New thread, the ⋯ menu and the toggle share one 40px row box
-(the strip stretches to it, the end group centres in it), so all of them
-sit on one 28px line at y 6. The rail-closed
+the thread strip (below) fills the bar: its live row is the bar's first
+40px, and its shelf of settled threads, when it has a chip, a 32px row
+under it, so the bar (`min-h-10`) grows by 32px while the scope has a
+settled thread; the rail and the workspace column keep their 40px headers.
+The live row's right end is the end group: the project plan's chip when
+the project has one, then exactly two ghost icon buttons, each with a
+`Tooltip`: the ⋯ thread menu, then the panel toggle (`aria-pressed` while
+the right panel is open, "Panel ⌘⇧R"; disabled with "No room for the
+panel" while the thread's row is too narrow for it), last because it is
+nearest the panel it opens. The live chips, New thread and the end group
+share one 40px row box, so all of them sit on one 28px line at y 6. The
+scroll arrows belong to the live row: they sit over its own box, never over
+the end group. The rail-closed
 stand-ins (Inbox, Notes, Go to File, New Thread, Settings) and the Windows
 controls keep their places, each named on hover with its key by a `Tip`.
 In the classic strip one right-click menu serves the tabs and the group
@@ -345,63 +350,94 @@ note.
 
 ### Thread strip
 
-chrome/ThreadHeaderStrip.tsx: the scope's live root threads as one row of
-chips, a hand-made `role="tablist"` (DESIGN.md keeps the tab strip
-hand-made). The scope is the selected project, or with no project selected
-the loose chats of the workspace (its Chats) or of the home (the chats
-outside every workspace): `StripScope` and `stripRootThreads` in
-lib/threadStripModel.ts. A loose strip keeps the project rules: stable
-order, Recent threads, the whole ⋯ menu, ⌘1–9; only the archived shelf is
-project-only. The thread on screen always has its chip, in the scope or not
-(`onScreenId` in `buildHeaderModel`); settled threads leave the row and are
-reached from the ⋯ menu's Recent threads.
+chrome/ThreadHeaderStrip.tsx: every root thread of the scope on two rows,
+each a hand-made `role="tablist"` (DESIGN.md keeps the tab strip
+hand-made), "Threads" and "Settled threads". The scope is the selected
+project and every linked copy of it, or with no project selected the loose
+chats of the workspace and its linked copies (its Chats) or of the home
+(the chats outside every workspace): `StripScope`, `looseScopeOf` and
+`stripRootThreads` in lib/threadStripModel.ts. A batch child has no chip
+(its master's chip stands for the batch) except while it is on screen. The
+live row holds the live threads (working, needs you, failed, paused,
+queued, plan ready, unread) in a stable order; the shelf under it holds the
+settled ones, freshest first, and is drawn only while it has a chip. A
+thread moves between the rows when its state changes. The thread on screen
+always has a chip and is the active one, whichever row it sits on: the
+root of the focused thread pane, or with a file pane focused the root of
+the tab's first thread (`tabRoot` in lib/threadHeaderModel.ts). When the
+scope does not hold it (another scope's thread, a batch child) its chip
+ends the live row and is never saved into the order (`outsideId`,
+`saveIds`). A loose strip keeps the project rules; only the archived list
+is project-only. ⌘1–9 walk the live row; ⌃Tab walks the live row, then the
+shelf. Archiving the active chip selects its neighbour on its own row, else
+the other row's first, as a click on it would (`archiveNeighbour`).
 
-- **Order.** Stable, like a browser's tabs: a chip keeps its place, a new
-  one joins at the end (oldest first when several arrive together), and a
-  status change never moves one (`orderChips` in lib/threadHeaderModel.ts).
-  The order is saved per project (a loose strip under `loose:<workspace>`) in localStorage (`monocode.stripOrder`,
-  `stripOrderStore` in stores/header.ts, 64 ids per project, a project not
-  shown for 30 days dropped on load) under the link id, so the copies of a
-  linked project share one order; the title bar orders the model before it
+- **Order.** Stable, like a browser's tabs: a live chip keeps its place, a
+  new one joins at the end (oldest first when several arrive together), and
+  a status change never moves one (`orderChips` in lib/threadHeaderModel.ts).
+  The order is saved per project (a loose strip under `loose:<workspace>`)
+  in localStorage (`monocode.stripOrder`, `stripOrderStore` in
+  stores/header.ts: the first 64 ids per project, a chip past them following
+  by age; an unchanged order rewritten once a day, and a project not shown
+  for 30 days dropped on load) under the link id, so the copies of a linked
+  project share one order; the title bar orders the model before it
   publishes, so ⌘1–9 and ⌃Tab walk the chips as they sit. While the pointer
-  is over the strip a chip whose thread settled holds its place, so nothing
-  shifts under the cursor; it goes when the pointer leaves. The title bar
-  holds it (`holdModel` on the strip's `stripHold` flag, `useHeldStripModel`
-  in stores/header.ts) before it publishes, so the row drawn and the row the
-  keys walk are one list: ⌘5 is the fifth chip drawn, selected as a click on
-  it is (`slotTarget`), so a chip sharing a split focuses its own pane and a
-  chip with no tab opens its thread.
-- **The chip.** A ghost `Button` with `role="tab"`, 28px tall, 12px
+  is over either row a chip whose thread settled holds its place on the
+  live row, so nothing shifts under the cursor; it goes to the shelf when
+  the pointer leaves the strip, the window loses focus or the page hides.
+  The title bar holds it (`holdModel` on the strip's `stripHold` flag,
+  `useHeldStripModel` in stores/header.ts) before it publishes, so the row
+  drawn and the row the keys walk are one list: ⌘5 is the fifth chip drawn,
+  selected as a click on it is (`slotTarget`), so a chip sharing a split
+  focuses its own pane and a chip with no tab opens its thread.
+- **The live chip.** A ghost `Button` with `role="tab"`, 28px tall, 12px
   padding, `rounded-md`, 2px apart: the type glyph (`TypeGlyph`, 14px,
-  1.5 stroke, its type's tint on every chip, active or not), 8px, the title (13px, truncated at 224px), "Master" in
-  muted type when pinned, then the `StatusMark` glyph (none for an idle or
-  done thread). Muted at rest, `foreground/5` and foreground on hover (the
-  colour swap takes `--dur-fast`), `bg-muted` when active (no transition),
-  medium weight when unread, the accent ring on keyboard focus. No motion:
-  list rows take none.
-- **Input.** A primary click selects, on release; dragged 5px it carries
-  the thread onto a pane's edge instead ("Panes" below). A right press or a
-  Control-click never selects, and the contextmenu opens the thread's menu
-  at the pointer (one `RowsContextMenu` over the strip reading the chip's
-  `data-menu-id`; rows from lib/threadMenu.ts). Double-click renames in place
-  on an `Input`. Arrows, Home and End move focus along the row (only the
-  active chip is in the tab order), Enter or Space selects. The row and its
-  gaps are outside the window's drag region.
+  1.5 stroke, its type's tint on every chip, active or not), 8px, the title
+  (13px, truncated at 224px), "Master" in
+  muted type when pinned, the host glyph (12px, two or more hosts), then
+  the `StatusMark` glyph (none for an idle or done thread). Muted at rest,
+  `foreground/5` and foreground on hover (the colour swap takes
+  `--dur-fast`), `bg-muted` when active (no transition), medium weight when
+  unread, the accent ring on keyboard focus. A chip whose host's link is
+  down takes the rail's offline tint (`opacity-50`, `data-host-offline`).
+  No motion: list rows take none.
+- **The shelf chip.** The same ghost `Button`, quieter: 24px tall, 8px
+  padding, 6px from glyph to title, 12px muted type, a 12px tinted glyph, the
+  title truncated at 160px, and no status mark (a shelf chip is settled and
+  seen by rule). The row is 32px: its chips sit 2px below the live row's box
+  and 6px above the bar's hairline. Hover, active, the host glyph and the
+  offline tint are the live chip's.
+- **Input.** A primary click selects, on release, and so does a click on
+  the active chip (its pane may not be the focused one); dragged 5px it
+  carries the thread onto a pane's edge instead ("Panes" below). A right
+  press or a Control-click never selects, and the contextmenu opens the
+  thread's menu at the pointer (one `RowsContextMenu` over both rows reading
+  the chip's `data-menu-id`; rows from lib/threadMenu.ts). Double-click
+  renames in place on an `Input`. Arrows, Home and End move focus along a
+  row (each row's active chip, else its first, is in the tab order), Enter
+  or Space selects. The rows and their gaps are outside the window's drag
+  region.
 - **Closing a tab.** ⌘W on a thread alone in its tab closes the tab and
   brings the neighbouring tab forward (right, else left, in strip order;
   `planCloseFocused` in lib/workspaceTabGroups.ts); on the strip's last tab
   it does nothing. The thread stays: a live one keeps its chip, a settled
-  one leaves for Recent threads. The thread menu's "Close tab" (after Open
-  to the side, only while the thread has a tab; "Close pane" when it shares
-  one) does the same. A chip has no hover X: it would read as archive.
+  one sits on the shelf. The thread menu's "Close tab" (after Open to the
+  side, only while the thread has a tab; "Close pane" when it shares one)
+  does the same. A chip has no hover X: it would read as archive.
 - **Hover.** One `Tooltip` per chip under a shared `TooltipProvider`: the
-  title, and under it the status word with what it is about ("Working
-  typecheck", "Needs you  approve Bash", a tally, a failure's verdict).
-- **New thread.** The "+" after the last chip (chrome/NewThreadChooser.tsx)
-  is a ghost icon button, or "New thread" in words on an empty strip, opening
-  a `Popover` of `Item` rows, one per thread type, each with its tinted
-  `TypeGlyph`; Orchestrate and Research
-  keep an options button whose tune view swaps in place with Back.
+  title, under it the status word with what it is about ("Working
+  typecheck", "Needs you  approve Bash", a tally, a failure's verdict), and
+  the host's name with two or more hosts.
+- **Overflow.** A live row wider than its room scrolls sideways (a mouse
+  wheel scrolls it too), and each end that hides chips gets a ghost
+  `icon-xs` arrow on the bar's tone, over the row's own box, that scrolls it
+  by most of a width. The shelf scrolls on its own.
+- **New thread.** The "+" right after the live row, outside its tablist so
+  it never scrolls away (chrome/NewThreadChooser.tsx), is a ghost icon
+  button, or "New thread" in words on an empty strip, opening a `Popover`
+  of `Item` rows, one per thread type, each with its tinted `TypeGlyph`;
+  Orchestrate and Research keep an options button whose tune view swaps in
+  place with Back.
 
 File and terminal tabs (chrome/SurfaceTabs.tsx) take the chip's shape on a
 line `Tabs`: a 36px bar with its hairline, each tab 28px with the file-type

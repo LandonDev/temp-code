@@ -5,7 +5,12 @@ import type { HeaderModel } from "../lib/threadHeaderModel";
 import type { ReadyMap } from "../lib/threadStripModel";
 import { NewThreadChooser } from "./NewThreadChooser";
 import { ProjectPlanChip } from "./ProjectPlanChip";
-import { ThreadHeaderStrip, type ArchivedThread, type ChipThread } from "./ThreadHeaderStrip";
+import {
+  ThreadHeaderStrip,
+  type ArchivedThread,
+  type ChipThread,
+  type StripOverflow,
+} from "./ThreadHeaderStrip";
 import { ThreadMenu } from "./ThreadMenu";
 import { useThreadHost } from "./ThreadHostChip";
 import { useThreadMenu } from "./useThreadMenu";
@@ -16,7 +21,8 @@ import { useMasterIds } from "../lib/masterThread";
  * controls inside MonoCode's shell. The chips' right-click and the ⋯ menu
  * are the thread's one menu (chrome/useThreadMenu.tsx); this keeps the
  * inline rename, Pause all and the panel toggle, and hands rename, archive,
- * delete, the type and the options back to App by thread id.
+ * delete, the type and the options back to App by thread id. The end group
+ * is the project plan's chip when there is one, then ⋯, then Panel.
  */
 
 export type ThreadHeaderProps = {
@@ -68,9 +74,14 @@ export function ThreadHeader({
   onNewTerminal,
   projectTerminalActive = false,
   stripRef,
+  overflow,
+  onScrollBy,
   activeRef,
 }: ThreadHeaderProps & {
   stripRef: (el: HTMLDivElement | null) => void;
+  /** The live row's overflow and its scroll, from the title bar. */
+  overflow?: StripOverflow;
+  onScrollBy?: (direction: -1 | 1) => void;
   activeRef: (el: HTMLDivElement | null) => void;
   /** The project terminal, from the title bar: the menu's Terminal row. */
   onShowTerminal?: () => void;
@@ -87,7 +98,11 @@ export function ThreadHeader({
   });
   const host = useThreadHost(model.activeId);
   const masterIds = useMasterIds();
-  const activeChip = model.live.find((c) => c.id === model.activeId) ?? null;
+  // The active chip sits on either row: a settled thread on screen is on the shelf.
+  const activeChip =
+    model.live.find((c) => c.id === model.activeId) ??
+    model.dormant.find((c) => c.id === model.activeId) ??
+    null;
 
   const commitRename = (id: string, title: string) => {
     setRenamingId(null);
@@ -113,14 +128,13 @@ export function ThreadHeader({
         activeRef={activeRef}
         masterIds={masterIds}
         stripRef={stripRef}
-        trailing={
-          <>
-            <NewThreadChooser workspaceId={workspaceId} empty={empty} onStart={onNew} />
-            <ProjectPlanChip />
-          </>
-        }
+        overflow={overflow}
+        onScrollBy={onScrollBy}
+        trailing={<NewThreadChooser workspaceId={workspaceId} empty={empty} onStart={onNew} />}
         end={
-          <ThreadMenu
+          <div className="flex shrink-0 items-center gap-0.5">
+            <ProjectPlanChip />
+            <ThreadMenu
             host={activeChip ? host.host : null}
             cost={cost}
             rows={activeChip ? menu.rowsFor(activeChip.id) : []}
@@ -134,7 +148,8 @@ export function ThreadHeader({
             archived={archived}
             onRestore={onRestore}
             panel={{ open: railOpen, room: panelRoom, onToggle: onToggleRail }}
-          />
+            />
+          </div>
         }
       />
       {menu.dialogs}

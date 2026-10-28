@@ -9,8 +9,18 @@ import { sessionStore } from "../lib/tcserver/store";
 import { focusStore, initialFocusState } from "../stores/focus";
 import { header, headerStore, initialHeaderState, stripHold, useHeldStripModel } from "../stores/header";
 
-const { dropThread } = vi.hoisted(() => ({ dropThread: vi.fn() }));
+const { dropThread, hosts } = vi.hoisted(() => ({
+  dropThread: vi.fn(),
+  hosts: { environments: [] as { id: string; name: string }[], offline: new Set<string>() },
+}));
 vi.mock("../stores/workspaceActions", () => ({ workspaceActions: { dropThread } }));
+vi.mock("../lib/connection/status", () => ({ useEnvironments: () => hosts.environments }));
+vi.mock("./hostOffline", () => ({
+  useHostsOffline: (ids: readonly (string | undefined)[]) => ids.some((id) => !!id && hosts.offline.has(id)),
+}));
+vi.mock("./HostGlyph", () => ({
+  HostGlyph: ({ environmentId }: { environmentId?: string }) => <span data-host-glyph={environmentId} />,
+}));
 
 import { ChipHoverLabel, ThreadHeaderStrip, chipStatus, chipTitle, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 
@@ -70,8 +80,14 @@ function mount(over: Partial<ComponentProps<typeof ThreadHeaderStrip>> = {}) {
 }
 
 const tab = (name: string) => screen.getByRole("tab", { name: new RegExp(name) });
+const liveRow = () => screen.getByRole("tablist", { name: "Threads" });
+const shelfRow = () => screen.queryByRole("tablist", { name: "Settled threads" });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  hosts.environments = [];
+  hosts.offline.clear();
+});
 
 describe("ThreadHeaderStrip pointer", () => {
   it("a right press does not select, and the contextmenu that follows opens that chip's menu", async () => {
@@ -109,10 +125,18 @@ describe("ThreadHeaderStrip pointer", () => {
   });
 });
 
-describe("ThreadHeaderStrip row", () => {
-  it("draws one row of chips", () => {
+describe("ThreadHeaderStrip rows", () => {
+  const settled = (id: string, title: string): StripChip => ({ ...chip(id, title), live: false });
+  const twoRows: HeaderModel<ChipThread> = {
+    live: [chip("a", "Alpha"), chip("b", "Beta")],
+    dormant: [settled("s", "Settled one"), settled("t", "Settled two")],
+    activeId: "t",
+  };
+
+  it("draws the live row alone while nothing has settled", () => {
     mount();
     expect(document.querySelectorAll('[role="tablist"]')).toHaveLength(1);
+    expect(shelfRow()).toBeNull();
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
       expect.stringContaining("Alpha"),
       expect.stringContaining("Beta"),
@@ -120,6 +144,99 @@ describe("ThreadHeaderStrip row", () => {
     ]);
   });
 
+  it("draws the settled chips on a shelf under the live row, the active one selected there", () => {
+    mount({ model: twoRows });
+    const shelf = shelfRow()!;
+    expect([...shelf.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(["Settled one", "Settled two"]);
+    expect([...liveRow().querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(["Alpha", "Beta"]);
+    expect(tab("Settled two").getAttribute("aria-selected")).toBe("true");
+    expect(tab("Alpha").getAttribute("aria-selected")).toBe("false");
+    // Each row has its own Tab stop: the active chip on the shelf, the first on the live row.
+    expect(tab("Settled two").tabIndex).toBe(0);
+    expect(tab("Alpha").tabIndex).toBe(0);
+    expect(tab("Settled one").tabIndex).toBe(-1);
+    // A shelf chip is the quiet variant and never shows a status mark.
+    expect(tab("Settled one").dataset.shelf).toBe("true");
+    expect(tab("Settled one").querySelector('[data-slot="status-mark"]')).toBeNull();
+  });
+
+  it("arrows move within a row, and a shelf chip opens its menu and drags like a live one", async () => {
+    const restore = paneUnderPointer();
+    const { onContextMenu, onSelect } = mount({ model: twoRows });
+    tab("Settled one").focus();
+    fireEvent.keyDown(tab("Settled one"), { key: "ArrowRight" });
+    expect(document.activeElement).toBe(tab("Settled two"));
+    fireEvent.keyDown(tab("Settled two"), { key: "ArrowRight" });
+    expect(document.activeElement).toBe(tab("Settled one"));
+    fireEvent.pointerDown(tab("Settled one"), { button: 0, clientX: 380, clientY: 150 });
+    fireEvent.pointerMove(window, { clientX: 390, clientY: 150 });
+    fireEvent.pointerUp(window, { clientX: 390, clientY: 150 });
+    expect(dropThread).toHaveBeenCalledWith("s", "p1", "right");
+    expect(onSelect).not.toHaveBeenCalled();
+    dropThread.mockReset();
+    restore();
+    fireEvent.contextMenu(tab("Settled one"));
+    await waitFor(() => expect(onContextMenu).toHaveBeenCalledWith("s"));
+  });
+
+  it("a click on the active chip selects it too, so its pane takes focus", () => {
+    const { onSelect } = mount();
+    fireEvent.pointerDown(tab("Alpha"), { button: 0 });
+    fireEvent.pointerUp(window);
+    expect(onSelect).toHaveBeenCalledWith("a");
+  });
+
+  it("New thread sits after the live row, outside it", () => {
+    mount({ trailing: <button type="button">New thread</button> });
+    const plus = screen.getByRole("button", { name: "New thread" });
+    expect(plus.closest('[role="tablist"]')).toBeNull();
+  });
+
+  it("the scroll arrows sit over the live row's own box, never over the end group", () => {
+    const onScrollBy = vi.fn();
+    mount({
+      overflow: { left: true, right: true },
+      onScrollBy,
+      end: <button type="button">Panel</button>,
+    });
+    const right = screen.getByRole("button", { name: "Scroll threads right" });
+    const box = right.parentElement!.closest(".relative")!;
+    expect(box.contains(liveRow())).toBe(true);
+    expect(box.contains(screen.getByRole("button", { name: "Panel" }))).toBe(false);
+    fireEvent.click(right);
+    fireEvent.click(screen.getByRole("button", { name: "Scroll threads left" }));
+    expect(onScrollBy.mock.calls).toEqual([[1], [-1]]);
+  });
+
+  it("shows the host glyph after the title with two hosts, none with one, and tints an offline host's chip", () => {
+    const onHost = (c: StripChip, environmentId: string): StripChip => ({ ...c, thread: { ...c.thread, environmentId } });
+    const hosted = {
+      ...twoRows,
+      live: [onHost(chip("a", "Alpha"), "local"), onHost(chip("b", "Beta"), "env_box")],
+      dormant: [onHost(settled("s", "Settled one"), "env_box")],
+    };
+    const view = mount({ model: hosted });
+    expect(document.querySelector("[data-host-glyph]")).toBeNull();
+    view.unmount();
+    hosts.environments = [
+      { id: "local", name: "This Mac" },
+      { id: "env_box", name: "The box" },
+    ];
+    hosts.offline.add("env_box");
+    mount({ model: hosted });
+    const glyphOf = (name: string) => tab(name).querySelector("[data-host-glyph]")?.getAttribute("data-host-glyph");
+    expect(glyphOf("Alpha")).toBe("local");
+    expect(glyphOf("Settled one")).toBe("env_box");
+    // The glyph follows the title.
+    const alpha = tab("Alpha");
+    expect([...alpha.children].indexOf(alpha.querySelector("[data-host-glyph]")!)).toBeGreaterThan(
+      [...alpha.children].findIndex((el) => el.textContent === "Alpha"),
+    );
+    const offline = (name: string) => tab(name).closest("[data-menu-id]")!.hasAttribute("data-host-offline");
+    expect(offline("Beta")).toBe(true);
+    expect(offline("Settled one")).toBe(true);
+    expect(offline("Alpha")).toBe(false);
+  });
 });
 
 describe("ThreadHeaderStrip chip", () => {
@@ -204,20 +321,21 @@ describe("ThreadHeaderStrip chip", () => {
   });
 });
 
+// A pane 400px wide at the origin; the pointer at x 390 is on its right edge.
+function paneUnderPointer() {
+  const pane = document.createElement("div");
+  pane.dataset.paneId = "p1";
+  pane.getBoundingClientRect = () => ({ left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0, toJSON: () => ({}) });
+  document.body.append(pane);
+  // jsdom has no hit testing.
+  document.elementFromPoint = (x: number) => (x > 100 ? pane : document.body);
+  return () => {
+    pane.remove();
+    delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+  };
+}
+
 describe("ThreadHeaderStrip chip drag", () => {
-  // A pane 400px wide at the origin; the pointer at x 390 is on its right edge.
-  function paneUnderPointer() {
-    const pane = document.createElement("div");
-    pane.dataset.paneId = "p1";
-    pane.getBoundingClientRect = () => ({ left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0, toJSON: () => ({}) });
-    document.body.append(pane);
-    // jsdom has no hit testing.
-    document.elementFromPoint = (x: number) => (x > 100 ? pane : document.body);
-    return () => {
-      pane.remove();
-      delete (document as { elementFromPoint?: unknown }).elementFromPoint;
-    };
-  }
   afterEach(() => {
     dropThread.mockReset();
   });
@@ -319,28 +437,49 @@ describe("ThreadHeaderStrip: the held row is the published row", () => {
     dormant: [{ ...chip("c", "Tc"), live: false }],
     activeId: "a",
   };
-  const drawn = () => screen.getAllByRole("tab").map((el) => el.closest("[data-menu-id]")?.getAttribute("data-menu-id"));
+  const drawn = () =>
+    [...liveRow().querySelectorAll('[role="tab"]')].map((el) => el.closest("[data-menu-id]")?.getAttribute("data-menu-id"));
 
   afterEach(() => {
     stripHold.set(false);
     headerStore.setState(initialHeaderState());
   });
 
-  it("a chip whose thread settles while the pointer is over the strip stays until the pointer leaves", () => {
+  const settledBeta = () => ({ ...model, live: model.live.filter((c) => c.id !== "b"), dormant: [{ ...chip("b", "Beta"), live: false }] });
+  const liveIds = () => [...liveRow().querySelectorAll('[role="tab"]')].map((t) => t.textContent);
+
+  it("a chip whose thread settles while the pointer is over the strip stays until the pointer leaves, then joins the shelf", () => {
     const view = render(<Bar built={model} />);
-    const row = screen.getByRole("tablist");
-    fireEvent.pointerEnter(row);
-    const settled = { ...model, live: model.live.filter((c) => c.id !== "b"), dormant: [chip("b", "Beta")] };
-    view.rerender(<Bar built={settled} />);
-    expect(screen.getAllByRole("tab")).toHaveLength(3);
-    fireEvent.pointerLeave(row);
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
-    expect(screen.queryByRole("tab", { name: /Beta/ })).toBeNull();
+    const region = liveRow().closest("[data-strip-region]")!;
+    fireEvent.pointerEnter(region);
+    view.rerender(<Bar built={settledBeta()} />);
+    expect(liveIds()).toEqual(["Alpha", "Beta", "Gamma"]);
+    expect(shelfRow()).toBeNull();
+    fireEvent.pointerLeave(region);
+    expect(liveIds()).toEqual(["Alpha", "Gamma"]);
+    expect([...shelfRow()!.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(["Beta"]);
+  });
+
+  it("the window losing focus ends the hold, and so does the page hiding", () => {
+    for (const end of ["blur", "hidden"] as const) {
+      const view = render(<Bar built={model} />);
+      fireEvent.pointerEnter(liveRow());
+      view.rerender(<Bar built={settledBeta()} />);
+      expect(liveIds()).toEqual(["Alpha", "Beta", "Gamma"]);
+      if (end === "blur") fireEvent(window, new Event("blur"));
+      else {
+        Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+        fireEvent(document, new Event("visibilitychange"));
+        delete (document as { visibilityState?: unknown }).visibilityState;
+      }
+      expect(liveIds()).toEqual(["Alpha", "Gamma"]);
+      view.unmount();
+    }
   });
 
   it("a project switch with the pointer over the strip shows only the new project's chips", () => {
     const view = render(<Bar built={model} />);
-    fireEvent.pointerEnter(screen.getByRole("tablist"));
+    fireEvent.pointerEnter(liveRow());
     const other = { live: [chip("x", "Other")], dormant: [], activeId: "x" };
     view.rerender(<Bar built={other} />);
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([expect.stringContaining("Other")]);
@@ -348,14 +487,14 @@ describe("ThreadHeaderStrip: the held row is the published row", () => {
 
   it("with the pointer over the strip and a chip departed, ⌘5 picks the fifth chip drawn", async () => {
     const view = render(<Bar built={full} />);
-    fireEvent.pointerEnter(screen.getByRole("tablist"));
+    fireEvent.pointerEnter(liveRow());
     view.rerender(<Bar built={departed} />);
     expect(drawn()).toEqual(ids);
     await waitFor(() => expect(headerStore.getState().model.live.map((c) => c.id)).toEqual(ids));
     expect(slotTarget(headerStore.getState().model, 4)).toBe("e");
     expect(drawn()[4]).toBe("e");
 
-    fireEvent.pointerLeave(screen.getByRole("tablist"));
+    fireEvent.pointerLeave(liveRow());
     await waitFor(() => expect(drawn()).toEqual(["a", "b", "d", "e", "f"]));
     expect(slotTarget(headerStore.getState().model, 4)).toBe("f");
   });
