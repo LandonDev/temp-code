@@ -1551,8 +1551,13 @@ proof and the sizing rules; the pieces, by name:
   `currentLag()` and `untilLoopIdle()` in stalls.ts are what the lane and
   the host's own jobs read.
 - `session.focus` and the lanes: "The interactive lane" above.
-- Checkpoints are the host's (src/main/server/checkpointTurns.ts): a
-  settled live edit costs a set lookup, a write tool's complete call (Edit,
+- Checkpoints are the host's (src/main/server/checkpointTurns.ts): every
+  send refreshes the baseline (`CheckpointStore.ensure`: one `git diff`
+  listing per send, none per path; a path that became dirty between turns
+  is the person's, snapshotted, never claimed by the settle's sync, never
+  undone, and shown only once a write tool edits it, when Undo restores
+  their bytes), a
+  settled live edit costs a set lookup (a baseline path's is a no-op), a write tool's complete call (Edit,
   MultiEdit, Write, NotebookEdit) touches the path its input names the same
   way (`writtenPath`; the Edit tool writes through a temporary name and
   renames it onto the target, so the checkpoint never depends on what the

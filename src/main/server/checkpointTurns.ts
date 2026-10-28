@@ -3,24 +3,36 @@ import { isAbsolute, join } from 'node:path'
 import type { ServerPush } from '@shared/contract'
 import type { CheckpointStatus } from '@shared/contract-checkpoint'
 import type { EventRow } from '@shared/events'
-import { checkpointCwd, checkpointRoot, relativeToRoot, type CheckpointStore, type TouchedPath } from './checkpoint'
+import {
+  checkpointCwd,
+  checkpointRoot,
+  relativeToRoot,
+  type CheckpointStore,
+  type ManifestPaths,
+  type TouchedPath
+} from './checkpoint'
 import type { LiveEditPush } from './livediff'
 import { statusBudget, withBudget } from './spawnBudget'
 
 /**
  * Undo checkpoints, kept by the host from its own turn events.
  *
- * A send arms the baseline (`ensure`, from sessions.ts armBaseline). A
- * settled live edit (livediff.ts) costs a set lookup: a path the session's
- * manifest does not know yet joins its unsaved paths. A write tool's call
- * (Edit, MultiEdit, Write, NotebookEdit) touches the path its input names
- * the same way: the tool writes through a temporary name and renames it
- * onto the target, so what reaches the checkpoint as a settled edit can be
- * the temporary file and never the target (measured on a Mac, 2026-10-27:
- * fs.watch itself reports the target's rename with the file present and
- * the temporary name created then gone; livediff's ownership and settle
- * decide what is emitted), and the checkpoint must not depend on how a tool
- * writes. The watcher stays for what the shell writes. When the turn settles
+ * Every send arms the baseline (`ensure`, from sessions.ts armBaseline: the
+ * store snapshots what is dirty at the first send and, at every later one,
+ * what became dirty between turns by the person's hand). A settled live
+ * edit (livediff.ts) costs a set lookup: a path the session's manifest does
+ * not know yet joins its unsaved paths, and a baseline path is left alone,
+ * since the watcher cannot tell the agent's shell write from the person's
+ * own save. A write tool's call (Edit, MultiEdit, Write, NotebookEdit)
+ * touches the path its input names, a baseline path too (the agent edited
+ * the person's file, and Undo restores their bytes): the tool writes
+ * through a temporary name and renames it onto the target, so what reaches
+ * the checkpoint as a settled edit can be the temporary file and never the
+ * target (measured on a Mac, 2026-10-27: fs.watch itself reports the
+ * target's rename with the file present and the temporary name created then
+ * gone; livediff's ownership and settle decide what is emitted), and the
+ * checkpoint must not depend on how a tool writes. The watcher stays for
+ * what the shell writes. When the turn settles
  * (turn-complete, or a status of idle, error or paused) the unsaved paths
  * are written in one manifest write together with one sync (the newly dirty
  * paths no other session claims), and the sockets watching the thread hear
@@ -69,8 +81,8 @@ export interface CheckpointTurnsDeps {
 interface Turn {
   cwd: string
   root: string
-  /** Every path the manifest knows; null when the session has no checkpoint here. */
-  known: Promise<Set<string> | null>
+  /** What the manifest knows; null when the session has no checkpoint here. */
+  known: Promise<ManifestPaths | null>
   /** Paths touched since the last write. */
   unsaved: Set<string>
   /** Paths written without asking HEAD; the settle asks. */
@@ -89,7 +101,8 @@ export class CheckpointTurns {
 
   constructor(private readonly deps: CheckpointTurnsDeps) {}
 
-  /** Snapshot what is dirty before a turn; the registry's send calls it. */
+  /** Snapshot what is dirty before a turn (the person's baseline, refreshed
+   *  at every send); the registry's send calls it. */
   ensure(sessionId: string, cwd: string): Promise<void> {
     const ensured = this.deps.store.ensure(sessionId, cwd)
     const known = ensured.catch(() => {}).then(() => this.read(sessionId, cwd))
@@ -104,7 +117,7 @@ export class CheckpointTurns {
   async liveEdit(push: Pick<LiveEditPush, 'cwd' | 'sessionIds' | 'edit'>): Promise<void> {
     if (!push.edit.settled) return
     const path = isAbsolute(push.edit.path) ? push.edit.path : join(push.cwd, push.edit.path)
-    await Promise.all(push.sessionIds.map((sessionId) => this.touch(sessionId, path)))
+    await Promise.all(push.sessionIds.map((sessionId) => this.touch(sessionId, path, false)))
   }
 
   /** A row the registry appended: a write tool's complete call touches the
@@ -113,7 +126,7 @@ export class CheckpointTurns {
     const { event } = row
     if (event.type === 'tool-call') {
       const path = event.partial ? null : writtenPath(event.name, event.input)
-      if (path) await this.touch(row.sessionId, path)
+      if (path) await this.touch(row.sessionId, path, true)
     } else if (event.type === 'turn-complete' || (event.type === 'status' && SETTLES.has(event.status))) {
       await this.settle(row.sessionId)
     }
@@ -137,15 +150,19 @@ export class CheckpointTurns {
     return this.chains.get(sessionId) ?? Promise.resolve()
   }
 
-  private async touch(sessionId: string, path: string): Promise<void> {
+  /** A path a turn wrote. `tool`: a write tool's call named it, which claims
+   *  even a baseline path (the agent edited the person's file); a live edit
+   *  of a baseline path may be the person's own save and claims nothing. */
+  private async touch(sessionId: string, path: string, tool: boolean): Promise<void> {
     const cwd = checkpointCwd(this.deps.session(sessionId))
     if (!cwd) return
     const turn = this.turnFor(sessionId, cwd)
     const known = await turn.known
     if (!known || this.turns.get(sessionId) !== turn) return
     const relative = relativeToRoot(turn.root, path)
-    if (relative === null || known.has(relative)) return
-    known.add(relative)
+    if (relative === null || known.touched.has(relative)) return
+    if (!tool && known.baseline.has(relative)) return
+    known.touched.add(relative)
     turn.unsaved.add(relative)
     turn.open = true
     turn.timer ??= setTimeout(() => void this.flush(sessionId), FLUSH_MS)
@@ -211,7 +228,7 @@ export class CheckpointTurns {
         const written = await withBudget(statusBudget, () =>
           this.deps.store.record(sessionId, turn.cwd, touched, { sync: true, forget })
         ).catch(() => null)
-        for (const relative of forget) known.delete(relative)
+        for (const relative of forget) known.touched.delete(relative)
         if (this.learn(turn, known, written)) this.changed(sessionId)
       }
       this.release(sessionId, turn)
@@ -232,13 +249,16 @@ export class CheckpointTurns {
     return status
   }
 
-  /** Fold a write's answer into the turn; true when the checkpoint is there. */
-  private learn(turn: Turn, known: Set<string>, written: Set<string> | null): boolean {
+  /** Fold a write's answer into the turn; true when the checkpoint is there.
+   *  (A touch made while the write ran stays known; a baseline entry a
+   *  tool's touch outgrew is harmless behind the touched check.) */
+  private learn(turn: Turn, known: ManifestPaths, written: ManifestPaths | null): boolean {
     if (!written) {
       turn.known = Promise.resolve(null)
       return false
     }
-    for (const relative of written) known.add(relative)
+    for (const relative of written.touched) known.touched.add(relative)
+    for (const relative of written.baseline) known.baseline.add(relative)
     return true
   }
 
@@ -257,13 +277,13 @@ export class CheckpointTurns {
     return listed
   }
 
-  private read(sessionId: string, cwd: string): Promise<Set<string> | null> {
+  private read(sessionId: string, cwd: string): Promise<ManifestPaths | null> {
     return this.deps.store.record(sessionId, cwd, []).catch(() => null)
   }
 
   /** The session's turn in `cwd`; a new one (reading the manifest unless
    *  `known` is given) when it has none, or had one in another cwd. */
-  private turnFor(sessionId: string, cwd: string, known?: Promise<Set<string> | null>): Turn {
+  private turnFor(sessionId: string, cwd: string, known?: Promise<ManifestPaths | null>): Turn {
     const prior = this.turns.get(sessionId)
     if (prior?.cwd === cwd) return prior
     if (prior) this.stopTimer(prior)

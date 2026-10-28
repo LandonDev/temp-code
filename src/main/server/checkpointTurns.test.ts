@@ -314,6 +314,38 @@ describe('checkpoint turns', () => {
     expect(t.manifest('root').touched).toEqual(['a.txt', 'b.txt'])
   })
 
+  it("the second send's ensure refreshes the baseline: a live edit of the person's file is a no-op, a write tool's call claims it", async () => {
+    const t = setup()
+    await t.turns.ensure('s1', t.dir)
+    t.file('a.txt')
+    await t.edit('a.txt')
+    await t.end()
+    expect(t.manifest().touched).toEqual(['a.txt'])
+    // Between the turns the person makes a file by hand; the next send snapshots it.
+    t.file('hand.txt', 'person\n')
+    git.dirty = ['a.txt', 'hand.txt']
+    await t.turns.ensure('s1', t.dir)
+    expect(t.manifest().files).toEqual({ 'hand.txt': 'contents' })
+    expect(t.manifest().touched).toEqual(['a.txt'])
+    // The watcher's edit of it may be the person's own save: nothing is written.
+    const writes = t.writes.mock.calls.length
+    await t.edit('hand.txt')
+    await t.end()
+    expect(t.writes.mock.calls.length).toBe(writes)
+    expect(t.manifest().touched).toEqual(['a.txt'])
+    expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual(['a.txt'])
+    // The agent's write tool names it: claimed, shown against the person's bytes, undone to them.
+    await t.turns.ensure('s1', t.dir)
+    await t.call('Edit', { file_path: 'hand.txt', old_string: 'person', new_string: 'agent' })
+    t.file('hand.txt', 'agent\n')
+    await t.end()
+    expect(t.manifest().touched).toEqual(['a.txt', 'hand.txt'])
+    expect(t.manifest().files).toEqual({ 'hand.txt': 'contents' })
+    expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual(['a.txt', 'hand.txt'])
+    await t.turns.undo('s1', 'hand.txt')
+    expect(readFileSync(join(t.dir, 'hand.txt'), 'utf8')).toBe('person\n')
+  })
+
   it('status, undo and keep find the cwd on the session row', async () => {
     const t = setup()
     await t.turns.ensure('s1', t.dir)

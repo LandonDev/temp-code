@@ -7,10 +7,13 @@
  *      host captured them from its own live edits and settle, no window open.
  *   2. checkpoint.status (the host-side function the RPC calls, the cwd read
  *      off the session row) lists both.
- *   3. Undo all removes both files and drops the checkpoint.
- *   4. The git children the checkpoint spent on the turn are bounded: the
+ *   3. A file the person makes by hand between the turns is snapshotted as
+ *      their baseline by the second send's ensure (in `files`, not
+ *      `touched`), the review omits it, and Undo all leaves it on disk
+ *      while it removes the thread's files and drops the checkpoint.
+ *   4. The git children the checkpoint spent on a turn are bounded: the
  *      ensure's diff, one ls-files, the HEAD lookups and one settle diff,
- *      never one per path.
+ *      never one per path; the second send's refresh is one diff more.
  * Run: bun run script:e2e-checkpoint-turn
  */
 import { execFileSync } from 'node:child_process'
@@ -75,11 +78,12 @@ const offWatch = onLiveEdit((push) => {
   if (push.edit.settled) settledEdits.push(push.edit.path)
 })
 
-function settled(sessionId: string, timeoutMs = 240_000): Promise<AgentEvent> {
+/** The turn's settle past `afterSeq`: a scan from 0 would answer an earlier turn's. */
+function settled(sessionId: string, afterSeq = 0, timeoutMs = 240_000): Promise<AgentEvent> {
   const isSettle = (e: AgentEvent): boolean =>
     e.type === 'turn-complete' || (e.type === 'status' && (e.status === 'waiting' || e.status === 'error'))
   return new Promise((resolve, reject) => {
-    const prior = registry.eventsAfter(sessionId, 0).find((r) => isSettle(r.event))
+    const prior = registry.eventsAfter(sessionId, afterSeq).find((r) => isSettle(r.event))
     if (prior) return resolve(prior.event)
     const timer = setTimeout(() => {
       off()
@@ -152,13 +156,40 @@ check('at most one ls-files', (counts['ls-files'] ?? 0) <= 1, `${counts['ls-file
 check('at most two HEAD lookups (the settle\'s unknown paths, the sync\'s claims)', (counts['ls-tree'] ?? 0) <= 2, `${counts['ls-tree'] ?? 0}`)
 check(`bounded: ${turnChildren.length} ≤ 2 × ${perDiff} + 1 + 2`, turnChildren.length <= bound)
 
+// ── the person's file between the turns ───────────────────────────────────
+console.log('\n[4] a file made by hand between the turns, then a second turn')
+writeFileSync(join(repo, 'hand.txt'), 'by hand\n')
+const lastSeq = registry.eventsAfter(s.id, 0).at(-1)?.seq ?? 0
+children.length = 0
+await registry.send(
+  s.id,
+  'Create one more file in the current directory with the Write tool: c.txt containing exactly the line `gamma`. ' +
+    'Do nothing else, then reply with exactly: done.'
+)
+const end2 = await settled(s.id, lastSeq)
+check('the second turn completed', end2.type === 'turn-complete', end2.type === 'status' ? end2.status : end2.type)
+await sleep(8_000)
+await turns.written(s.id)
+const turn2Children = children.slice()
+const manifest2 = JSON.parse(readFileSync(manifestPath, 'utf8')) as { touched: string[]; files: Record<string, string> }
+check('the second send snapshotted the hand-made file as the baseline', manifest2.files['hand.txt'] === 'contents', JSON.stringify(manifest2.files))
+check('the hand-made file is not touched', !manifest2.touched.includes('hand.txt'), manifest2.touched.join(','))
+check('the manifest holds all three of the thread\'s paths', ['a.txt', 'b.txt', 'c.txt'].every((p) => manifest2.touched.includes(p)), manifest2.touched.join(','))
+const status2 = await turns.status(s.id)
+check('checkpoint.status lists the thread\'s three and omits the hand-made file', status2.files.map((f) => f.relative).join(',') === 'a.txt,b.txt,c.txt', status2.files.map((f) => f.relative).join(','))
+const counts2 = turn2Children.reduce<Record<string, number>>((n, args) => ({ ...n, [kind(args)]: (n[kind(args)] ?? 0) + 1 }), {})
+console.log(`      ${turn2Children.length} children: ${JSON.stringify(counts2)}`)
+check('two index diffs on the second turn: the refresh and the settle', counts2.diff === 2, `${counts2.diff ?? 0}`)
+check(`bounded: ${turn2Children.length} ≤ 2 × ${perDiff} + 1 + 3`, turn2Children.length <= 2 * perDiff + 1 + 3)
+
 // ── undo ──────────────────────────────────────────────────────────────────
-console.log('\n[4] undo all')
+console.log('\n[5] undo all')
 const undone = await turns.undo(s.id)
 check('undo answers an empty review', undone.files.length === 0)
-check('both files are gone', !existsSync(join(repo, 'a.txt')) && !existsSync(join(repo, 'b.txt')))
+check('the thread\'s files are gone', ['a.txt', 'b.txt', 'c.txt'].every((p) => !existsSync(join(repo, p))))
+check('the hand-made file survives with its bytes', existsSync(join(repo, 'hand.txt')) && readFileSync(join(repo, 'hand.txt'), 'utf8') === 'by hand\n')
 check('the checkpoint is dropped', !existsSync(join(dataDir, 'checkpoints', s.id)))
-check('the tree is back to HEAD', git('status', '--porcelain').trim() === '', git('status', '--porcelain').trim())
+check('the tree holds only the hand-made file', git('status', '--porcelain').trim() === '?? hand.txt', git('status', '--porcelain').trim())
 
 offSpawns()
 offWatch()

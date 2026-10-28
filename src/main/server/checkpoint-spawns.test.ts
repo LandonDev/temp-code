@@ -98,6 +98,26 @@ describe('checkpoint store spawns', () => {
     expect(headLookups()).toHaveLength(1)
   })
 
+  it('a later send refreshes the baseline with one listing and one HEAD lookup, none per path; nothing new costs the listing alone', async () => {
+    const { repo, store } = setup({ 'a.txt': 'a\n' })
+    await store.ensure('s1', repo)
+    spawned.args.length = 0
+    spawned.gitops.length = 0
+    for (let i = 0; i < 12; i++) writeFileSync(join(repo, `hand${i}.txt`), 'hand\n')
+    writeFileSync(join(repo, 'a.txt'), 'hand edit\n')
+    await store.ensure('s1', repo)
+    expect(spawned.gitops.filter((args) => args.includes('--numstat'))).toHaveLength(1)
+    expect(headLookups()).toHaveLength(1)
+    expect(headLookups()[0].filter((a) => a.startsWith('hand') || a === 'a.txt')).toHaveLength(13)
+    expect(spawned.args).toHaveLength(1)
+    spawned.args.length = 0
+    spawned.gitops.length = 0
+    await store.ensure('s1', repo)
+    expect(spawned.gitops.filter((args) => args.includes('--numstat'))).toHaveLength(1)
+    expect(spawned.args).toEqual([])
+    expect((await store.status('s1', repo)).files).toEqual([])
+  })
+
   it('a capture queued while ensure is still running lands on the baseline it made', async () => {
     const { repo, store } = setup({ 'a.txt': 'a\n', 'user.txt': 'user\n' })
     writeFileSync(join(repo, 'user.txt'), 'user edit\n')

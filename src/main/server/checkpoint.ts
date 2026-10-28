@@ -9,13 +9,19 @@ import { gitDiffIndex } from './gitops'
 /**
  * Per-session undo checkpoints (port of the donor's checkpoint.rs).
  *
- * `ensure` runs once per session and cwd before a turn: every path that is
- * already dirty against HEAD gets its bytes (or its absence) snapshotted so
- * the user's own edits survive an undo. `record` marks the paths a turn
- * touches (snapshotting only files that do not exist yet, so a late record
- * can never freeze the agent's write as the baseline) and, with `sync`,
- * claims newly dirty paths that no other session in the same project has
- * claimed; checkpointTurns.ts drives it from the host's own turn events.
+ * `ensure` runs before every turn of a session: the first time it snapshots
+ * every path already dirty against HEAD (its bytes, or its absence) so the
+ * user's own edits survive an undo; each later time it refreshes that
+ * baseline with the paths that became dirty since and that no turn touched,
+ * which is what the person did by hand between turns (one `git diff`
+ * listing per send, a snapshot per new path, no write when nothing is new).
+ * A baseline path is never shown and never undone unless a turn's write
+ * tool edits it, and then Undo restores the person's bytes. `record` marks
+ * the paths a turn touches (snapshotting only files that do not exist yet,
+ * so a late record can never freeze the agent's write as the baseline) and,
+ * with `sync`, claims newly dirty paths that no other session in the same
+ * project has claimed and that are not the person's baseline;
+ * checkpointTurns.ts drives it from the host's own turn events.
  * `status` lists touched paths that still differ from their baseline;
  * `undo` restores bytes, missing state or HEAD and resets the index entry;
  * `keep` advances the baseline (one path) or drops the checkpoint (all).
@@ -48,6 +54,18 @@ export interface TouchedPath {
   inHead: boolean | null
 }
 
+/** What a session's manifest knows: the paths its turns touched, and the
+ *  paths it holds only as the person's baseline (dirty at a send, touched
+ *  by no turn). */
+export interface ManifestPaths {
+  touched: Set<string>
+  baseline: Set<string>
+}
+const manifestPaths = (manifest: Manifest): ManifestPaths => ({
+  touched: new Set(manifest.touched),
+  baseline: new Set([...manifest.files.keys()].filter((relative) => !manifest.touched.has(relative)))
+})
+
 const empty = (): CheckpointStatus => ({ files: [] })
 
 /** What sync needs to know about every other session's manifest. */
@@ -69,46 +87,48 @@ export class CheckpointStore {
   private manifests: Promise<Map<string, IndexedManifest>> | null = null
   constructor(readonly root: string) {}
 
+  /** Before a turn: the session's baseline in this cwd, made at the first
+   *  send and refreshed at every later one (`refresh`). */
   ensure(sessionId: string, cwd: string): Promise<void> {
     return this.serialized(sessionId, async () => {
       const root = await projectRoot(cwd)
       const dir = this.sessionDir(sessionId)
       const existing = await readManifest(dir)
-      if (existing) {
-        if (await sameCwd(existing.cwd, cwd)) return
-        await this.drop(sessionId)
-      }
+      if (existing && (await sameCwd(existing.cwd, cwd))) return this.refresh(sessionId, dir, root, existing)
+      if (existing) await this.drop(sessionId)
       await mkdir(join(dir, 'files'), { recursive: true })
       const manifest: Manifest = { cwd: root, files: new Map(), touched: new Set(), tracked: new Set() }
-      const dirtyNow: string[] = []
-      for (const file of (await gitDiffIndex(root)).files) {
-        if (dirtyNow.length >= MAX_SNAPSHOT_FILES) break
-        const relative = tryRepoPath(file.relative)
-        if (relative !== null) dirtyNow.push(relative)
-      }
-      const head = await inHeadMany(root, dirtyNow)
-      for (const relative of dirtyNow) {
-        if (head.has(relative)) manifest.tracked.add(relative)
-        manifest.files.set(relative, await snapshotFile(dir, root, relative))
-      }
+      await snapshotBaseline(dir, root, manifest, await dirtyPaths(root))
       await this.save(sessionId, manifest)
     })
+  }
+
+  /** A later send: a path dirty now that the manifest knows neither as a
+   *  snapshot nor as touched became dirty between turns, by the person's
+   *  hand. It is snapshotted as their baseline, so the settle's sync never
+   *  claims it and Undo never removes it; a send with nothing new writes
+   *  nothing. */
+  private async refresh(sessionId: string, dir: string, root: string, manifest: Manifest): Promise<void> {
+    const fresh = (await dirtyPaths(root)).filter((relative) => !manifest.files.has(relative) && !manifest.touched.has(relative))
+    if (fresh.length === 0) return
+    await snapshotBaseline(dir, root, manifest, fresh)
+    await this.save(sessionId, manifest)
   }
 
   /**
    * The paths a turn touched, merged into the manifest with at most one
    * write; with `sync`, also the newly dirty paths no other session in the
    * project has claimed; `forget` drops paths a turn touched that it also
-   * removed (nothing to show or undo). Answers every path the manifest
-   * knows (snapshots and touched), or null when the session has no
-   * checkpoint for this cwd.
+   * removed (nothing to show or undo). Answers what the manifest knows
+   * (its touched paths and the person's baseline paths), or null when the
+   * session has no checkpoint for this cwd.
    */
   record(
     sessionId: string,
     cwd: string,
     touched: readonly TouchedPath[],
     options: { sync?: boolean; forget?: readonly string[] } = {}
-  ): Promise<Set<string> | null> {
+  ): Promise<ManifestPaths | null> {
     return this.serialized(sessionId, async () => {
       const manifest = await this.loadMatching(sessionId, cwd)
       if (!manifest) return null
@@ -120,7 +140,7 @@ export class CheckpointStore {
       }
       if (options.sync && (await this.claimDirty(sessionId, cwd, root, manifest))) dirty = true
       if (dirty) await this.save(sessionId, manifest)
-      return new Set([...manifest.files.keys(), ...manifest.touched])
+      return manifestPaths(manifest)
     })
   }
 
@@ -142,8 +162,9 @@ export class CheckpointStore {
     await this.record(sessionId, cwd, [], { sync: true })
   }
 
-  /** Claim the paths dirty now that were clean at ensure, untouched so far
-   *  and unclaimed by any other session in the project. */
+  /** Claim the paths dirty now that were clean at the send (a baseline
+   *  path is the person's), untouched so far and unclaimed by any other
+   *  session in the project. */
   private async claimDirty(sessionId: string, cwd: string, root: string, manifest: Manifest): Promise<boolean> {
     const index = (await gitDiffIndex(root)).files
     const foreign = await this.foreignTouchedPaths(cwd, sessionId)
@@ -151,7 +172,7 @@ export class CheckpointStore {
     const candidates: string[] = []
     for (const file of index) {
       const relative = tryRepoPath(file.relative)
-      // Dirty at ensure (snapshotted): only a record may mark these.
+      // Dirty at a send (snapshotted as the baseline): only a record may mark these.
       if (relative === null || foreign.has(relative) || manifest.files.has(relative)) continue
       if (!manifest.touched.has(relative)) candidates.push(relative)
     }
@@ -423,6 +444,29 @@ async function markTouched(root: string, manifest: Manifest, touched: readonly T
     dirty = true
   }
   return dirty
+}
+
+/** The repo-relative paths dirty against HEAD, at most MAX_SNAPSHOT_FILES. */
+async function dirtyPaths(root: string): Promise<string[]> {
+  const paths: string[] = []
+  for (const file of (await gitDiffIndex(root)).files) {
+    if (paths.length >= MAX_SNAPSHOT_FILES) break
+    const relative = tryRepoPath(file.relative)
+    if (relative !== null) paths.push(relative)
+  }
+  return paths
+}
+
+/** Snapshot `relatives` as the person's baseline (bytes, or their absence)
+ *  and note which of them HEAD has, from one git child for all of them;
+ *  the manifest holds at most MAX_SNAPSHOT_FILES snapshots. */
+async function snapshotBaseline(dir: string, root: string, manifest: Manifest, relatives: readonly string[]): Promise<void> {
+  const head = await inHeadMany(root, [...relatives])
+  for (const relative of relatives) {
+    if (manifest.files.size >= MAX_SNAPSHOT_FILES) break
+    if (head.has(relative)) manifest.tracked.add(relative)
+    manifest.files.set(relative, await snapshotFile(dir, root, relative))
+  }
 }
 
 async function snapshotFile(dir: string, root: string, relative: string): Promise<SnapshotKind> {

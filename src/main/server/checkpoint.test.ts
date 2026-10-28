@@ -2,12 +2,13 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CheckpointStore, validateSessionId } from './checkpoint'
 
 const roots: string[] = []
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+  vi.restoreAllMocks()
 })
 
 const git = (dir: string, ...args: string[]): string =>
@@ -249,5 +250,74 @@ describe('checkpoint store', () => {
   it('rejects an invalid session id', () => {
     expect(() => validateSessionId('../x')).toThrow()
     expect(() => validateSessionId('ok_id-1')).not.toThrow()
+  })
+})
+
+describe('the baseline refreshed at every send', () => {
+  const manifest = (store: CheckpointStore, id = 's1') =>
+    JSON.parse(readFileSync(join(store.root, id, 'manifest.json'), 'utf8')) as {
+      files: Record<string, string>
+      touched: string[]
+      tracked: string[]
+    }
+
+  it("a file the person makes between turns is their baseline: not touched, not shown, and Undo all leaves it", async () => {
+    const { repo, store } = setup()
+    await store.ensure('s1', repo)
+    write(repo, 'a.txt', 'agent a\n')
+    await record(store, 's1', repo, ['a.txt'])
+    // Between the turns: the person makes a file and edits a tracked one by hand.
+    write(repo, 'hand.txt', 'hand\n')
+    write(repo, 'user.txt', 'user edit\n')
+    await store.ensure('s1', repo)
+    expect(manifest(store).files).toEqual({ 'hand.txt': 'contents', 'user.txt': 'contents' })
+    expect(manifest(store).touched).toEqual(['a.txt'])
+    expect(manifest(store).tracked).toEqual(['a.txt', 'user.txt'])
+    write(repo, 'b.txt', 'agent b\n')
+    await record(store, 's1', repo, ['b.txt'])
+    expect(relatives(await store.status('s1', repo))).toEqual(['a.txt', 'b.txt'])
+    await store.undo('s1', repo)
+    expect(read(repo, 'a.txt')).toBe('a\n')
+    expect(read(repo, 'b.txt')).toBe('b\n')
+    expect(read(repo, 'hand.txt')).toBe('hand\n')
+    expect(read(repo, 'user.txt')).toBe('user edit\n')
+  })
+
+  it("a write tool editing the person's file in the next turn shows it, and Undo restores their bytes", async () => {
+    const { repo, store } = setup()
+    await store.ensure('s1', repo)
+    write(repo, 'hand.txt', 'person\n')
+    await store.ensure('s1', repo)
+    write(repo, 'hand.txt', 'agent\n')
+    await record(store, 's1', repo, ['hand.txt'])
+    expect(relatives(await store.status('s1', repo))).toEqual(['hand.txt'])
+    await store.undo('s1', repo)
+    expect(read(repo, 'hand.txt')).toBe('person\n')
+  })
+
+  it('a shell write during the turn is still claimed at the settle, the baseline never', async () => {
+    const { repo, store } = setup()
+    await store.ensure('s1', repo)
+    write(repo, 'hand.txt', 'hand\n')
+    await store.ensure('s1', repo)
+    write(repo, 'shell.txt', 'shell\n')
+    await store.sync('s1', repo)
+    expect(relatives(await store.status('s1', repo))).toEqual(['shell.txt'])
+    await store.undo('s1', repo)
+    expect(existsSync(join(repo, 'shell.txt'))).toBe(false)
+    expect(read(repo, 'hand.txt')).toBe('hand\n')
+  })
+
+  it('a second ensure with nothing new writes nothing', async () => {
+    const { repo, store } = setup()
+    write(repo, 'user.txt', 'dirty before\n')
+    await store.ensure('s1', repo)
+    const saves = vi.spyOn(CheckpointStore.prototype as unknown as { save: () => Promise<void> }, 'save')
+    await store.ensure('s1', repo)
+    expect(saves).not.toHaveBeenCalled()
+    write(repo, 'hand.txt', 'hand\n')
+    await store.ensure('s1', repo)
+    expect(saves).toHaveBeenCalledTimes(1)
+    expect(Object.keys(manifest(store).files)).toEqual(['hand.txt', 'user.txt'])
   })
 })
