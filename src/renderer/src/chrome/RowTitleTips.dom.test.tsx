@@ -6,6 +6,8 @@ import { threadRow } from "../lib/workspaceSessions";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { AgentRowView } from "../surfaces/threads/fleet/AgentRow";
 import { FLEET_ROWS } from "../surfaces/threads/fleet/fleetFixture";
+import { Folder } from "./icons";
+import { RailRow } from "./RailRow";
 import { rowMark, ThreadRowView } from "./WorkspaceSessions";
 
 const TITLE = "Port the settings pages onto the shared row and keep their widths";
@@ -82,5 +84,30 @@ describe("a clipped title", () => {
     render(<AgentRowView meta={agent} status={status} onOpen={() => {}} />);
     hover(screen.getByText(agent.title!));
     await waitFor(() => expect(tipText()).toBe(agent.title), { timeout: 2000 });
+  });
+});
+
+describe("a clipped rail row label", () => {
+  const NAME = "temp-code-verify-second-checkout";
+
+  it("shows the whole workspace name on hover while it is cut; one that fits shows none", async () => {
+    cutEverything();
+    const cut = render(<RailRow icon={Folder} label={NAME} onClick={() => {}} />);
+    hover(screen.getByRole("button", { name: NAME }));
+    await waitFor(() => expect(tipText()).toBe(NAME), { timeout: 2000 });
+    expect(document.querySelector("[title]")).toBeNull();
+    cut.unmount();
+    vi.restoreAllMocks();
+    render(<RailRow icon={Folder} label={NAME} onClick={() => {}} />);
+    hover(screen.getByRole("button", { name: NAME }));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(tipText()).toBeNull();
+  });
+
+  it("keeps a given tooltip over the cut label", async () => {
+    cutEverything();
+    render(<RailRow icon={Folder} label={NAME} tooltip="Inbox ⌘I" onClick={() => {}} />);
+    hover(screen.getByRole("button", { name: NAME }));
+    await waitFor(() => expect(tipText()).toBe("Inbox ⌘I"), { timeout: 2000 });
   });
 });

@@ -1,6 +1,7 @@
 import type { HTMLAttributes, MouseEvent, ReactNode, Ref } from "react";
 import { Button } from "../components/ui/button";
 import { DropdownMenuTrigger } from "../components/ui/dropdown-menu";
+import { useTruncated } from "../components/tip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
 import type { IntentProps } from "../lib/lazyChunk";
@@ -31,7 +32,8 @@ type Props = {
    *  a popover): it sits beside the row's button instead of inside it. */
   trailingInteractive?: boolean;
   hoverAction?: RailRowAction;
-  /** A label on hover (a shortcut as `Kbd`); never a `title=`. */
+  /** A label on hover (a shortcut as `Kbd`); never a `title=`. Without
+   *  one, a string label that is cut shows whole on hover. */
   tooltip?: ReactNode;
   /** The row is the trigger of the `DropdownMenu` around it. */
   menuTrigger?: boolean;
@@ -78,6 +80,10 @@ export function RailRow({
   children,
   ...wrapper
 }: Props) {
+  // A string label the row cuts is its own tooltip, only while it is cut.
+  const text = typeof label === "string" ? label : "";
+  const { ref: labelRef, cut } = useTruncated(text);
+  const tip = tooltip ?? (cut ? text : null);
   const hasTrailing = trailing != null || !!hoverAction;
   // A control in the trailing slot (a status chip) keeps its place and the
   // hover action follows it; a plain mark yields its place to the action.
@@ -108,7 +114,9 @@ export function RailRow({
       <span aria-hidden className={cn("grid size-4 shrink-0 place-items-center", glyphClassName)}>
         {glyph ?? (Icon ? <Icon className="size-4" strokeWidth={1.5} /> : null)}
       </span>
-      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+      <span ref={text ? labelRef : undefined} className="min-w-0 flex-1 truncate text-left">
+        {label}
+      </span>
       {trailingInteractive ? null : trailingSlot}
     </>
   );
@@ -128,10 +136,11 @@ export function RailRow({
     >
       {menuTrigger ? (
         <DropdownMenuTrigger render={<Button {...rowProps} />}>{content}</DropdownMenuTrigger>
-      ) : tooltip ? (
-        <Tooltip>
+      ) : tooltip || text ? (
+        // One trigger whether or not the label is cut: a resize never remounts the row.
+        <Tooltip disabled={!tip}>
           <TooltipTrigger render={<Button {...rowProps} />}>{content}</TooltipTrigger>
-          <TooltipContent side="right">{tooltip}</TooltipContent>
+          <TooltipContent side="right">{tip}</TooltipContent>
         </Tooltip>
       ) : (
         <Button {...rowProps}>{content}</Button>
