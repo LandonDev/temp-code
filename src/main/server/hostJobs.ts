@@ -47,7 +47,7 @@ import { trackChild } from './spawnBudget'
  *    request nobody picks up within PICKUP_MS means the path unit is not
  *    watching: the trigger is not installed, and the refusal names the one
  *    command to run.
- *  - Publisher, the Mac's side of "Publish Mac release": `bun
+ *  - Publisher, the Mac's side of the Mac release row's Publish…: `bun
  *    scripts/release.ts "<notes>"` then `bun run release:publish` through
  *    the login shell in the checkout `release.checkout` names, in a process
  *    group Stop can kill. It refuses what the scripts refuse (a dirty tree,

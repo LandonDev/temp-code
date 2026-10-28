@@ -101,11 +101,12 @@ const phoneConnection = (props: Record<string, unknown> | undefined): PhoneConne
 /** devicectl pairs Apple TVs and watches too; the row is for the phones (and iPads) a thread builds to. */
 const PHONE_TYPES = new Set(['iphone', 'ipad'])
 
+/** USB or Wi-Fi; any other devicectl word ("samemachine") names nothing a person reads, so it is left out. */
 const transportLabel = (props: Record<string, unknown> | undefined): string | undefined => {
   const t = typeof props?.transportType === 'string' ? props.transportType.toLowerCase() : ''
   if (t === 'wired') return 'USB'
   if (t === 'localnetwork') return 'Wi-Fi'
-  return t || undefined
+  return undefined
 }
 
 /**

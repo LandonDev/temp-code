@@ -80,11 +80,11 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
     }
   }, []);
 
-  // The heading says what the rows cannot: the phones' state and the Xcode in use. The simulator count is the
-  // rows themselves; the load is the Load limit row's when the page has one for this Mac.
+  // The heading says what the rows cannot: the Xcode in use, and the load when the page has no Load limit row
+  // for this Mac. Each simulator and phone, with its state, is a row of its own, so the heading names none.
   const summaryParts = report
     ? [
-        ...splitFacts(devicesSummary(report)).filter((part) => !/^(No simulators|\d+ simulators?)/.test(part) && !(loadElsewhere && part.startsWith("load "))),
+        ...splitFacts(devicesSummary(report)).filter((part) => part.startsWith("load ") && !loadElsewhere),
         ...(report.xcode ? [`${report.xcode.name}${report.xcode.version ? ` ${report.xcode.version}` : ""}`] : []),
         ...(report.xcode?.from === "developerDir" ? ["DEVELOPER_DIR"] : []),
         ...report.problems,
@@ -123,7 +123,7 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
             >
               {sim.state === "booted" ? (
                 <Button variant="ghost" size="xs" disabled={busy !== null} onClick={() => void run(sim.udid, () => onShutdown(sim.udid))}>
-                  Shutdown
+                  Shut down
                 </Button>
               ) : null}
               <Button variant="destructive" size="xs" disabled={busy !== null} onClick={() => setConfirm(sim)}>
@@ -168,10 +168,10 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
   );
 }
 
-/** "Booted", "34% CPU"; "Shutdown"; the simulator's own word while it changes. */
+/** "Booted", "34% CPU"; "Shut down"; the simulator's own word while it changes. */
 export const simulatorState = (sim: Simulator): string[] => {
   if (sim.state === "booted") return sim.cpu !== undefined ? ["Booted", `${Math.round(sim.cpu)}% CPU`] : ["Booted"];
-  if (sim.state === "shutdown") return ["Shutdown"];
+  if (sim.state === "shutdown") return ["Shut down"];
   return [sim.stateText ?? "Changing"];
 };
 

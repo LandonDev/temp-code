@@ -25,7 +25,7 @@ import { publishParts } from "./parts";
  * Deploy and publish (docs/box.md "Deploy from the app"; CLAUDE.md
  * "Releases"), each in its host's section: a paired host's Deploy row with
  * "Deploy master…" (the confirm names the versions), and this Mac's Release
- * group with "Publish Mac release…". A job's log folds open under its row.
+ * group's Mac release row with Publish…. A job's log folds open under its row.
  */
 
 const POLL_MS = 5000;
@@ -110,9 +110,9 @@ export function LocalRelease() {
   const busy = publish?.phase === "running" || publish?.phase === "pending";
   return (
     <Group title="Release">
-      <Row title="Publish" description={<Facts parts={publishParts(publish)} />}>
+      <Row title="Mac release" description={<Facts parts={publishParts(publish)} />}>
         <Button variant="secondary" size="sm" disabled={!publish || !publish.readable || busy} onClick={() => setDialog(true)}>
-          Publish Mac release…
+          Publish…
         </Button>
       </Row>
       <Row title="Release checkout" error={error}>

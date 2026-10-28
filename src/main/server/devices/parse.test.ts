@@ -70,12 +70,19 @@ describe('devicectl list devices', () => {
             connectionProperties: { pairingState: 'paired', tunnelState: 'disconnected' },
             deviceProperties: { name: 'Other', osVersionNumber: '18.5' },
             hardwareProperties: { deviceType: 'iPhone', productType: 'iPhone15,2', platform: 'iOS', udid: 'U2' }
+          },
+          {
+            identifier: 'z',
+            connectionProperties: { pairingState: 'paired', tunnelState: 'connected', transportType: 'samemachine' },
+            deviceProperties: { name: 'Duo', osVersionNumber: '27.1' },
+            hardwareProperties: { deviceType: 'iPhone', marketingName: 'iPhone Duo', platform: 'iOS', udid: 'U3' }
           }
         ]
       }
     })
     const rows = parseDevicectlDevices(json)
     expect(rows.map((r) => [r.udid, r.connection, r.transport, r.model])).toEqual([
+      ['U3', 'connected', undefined, 'iPhone Duo'],
       ['U1', 'connected', 'USB', 'iPhone 16 Pro'],
       ['U2', 'paired', undefined, 'iPhone15,2']
     ])

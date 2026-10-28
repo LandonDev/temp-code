@@ -60,15 +60,15 @@ afterEach(cleanup);
 describe("DevicesBlock", () => {
   it("the summary at the heading, one row per device with its state words and holder", () => {
     const { root } = mount();
-    // The rows say how many simulators there are, the Load limit row says the load: the heading keeps the phone and Xcode.
-    expect(facts(root.querySelector("[data-summary]"))).toEqual(["iPhone 17 Pro Max connected", "Xcode-beta 27.0"]);
+    // The rows name every device with its state, the Load limit row says the load: the heading keeps the Xcode alone.
+    expect(facts(root.querySelector("[data-summary]"))).toEqual(["Xcode-beta 27.0"]);
     const [sim, ipad, phone] = rows(root);
     expect(sim!.textContent).toContain("iPhone 17 Pro");
     expect(sim!.textContent).toContain("iOS 27.0");
     expect(facts(sim!).slice(-2)).toEqual(["Booted", "12% CPU"]);
     expect(sim!.querySelector("[data-slot=item-description] [data-holder]")).not.toBeNull();
     expect(sim!.querySelector("[data-holder]")!.textContent).toBe("iOS: Home, running");
-    expect(facts(ipad!)).toEqual(["Shutdown"]);
+    expect(facts(ipad!)).toEqual(["Shut down"]);
     expect(ipad!.querySelector("[data-holder]")).toBeNull();
     // A named phone: its name is the title, the model and the OS under it.
     expect(phone!.querySelector("[data-slot=item-title]")!.textContent).toContain("Landon’s iPhone");
@@ -90,7 +90,7 @@ describe("DevicesBlock", () => {
 
   it("a Mac with no Load limit row on the page (a linked Mac, or the Mac serving a web page) keeps its load in the heading", () => {
     const { root } = mount({ loadElsewhere: false });
-    expect(facts(root.querySelector("[data-summary]"))).toEqual(["iPhone 17 Pro Max connected", "load 2.1 / 10 cores", "Xcode-beta 27.0"]);
+    expect(facts(root.querySelector("[data-summary]"))).toEqual(["load 2.1 / 10 cores", "Xcode-beta 27.0"]);
   });
 
   it("the holder links to its thread", () => {
@@ -99,11 +99,11 @@ describe("DevicesBlock", () => {
     expect(props.onOpenSession).toHaveBeenCalledWith("s1");
   });
 
-  it("Shutdown shows on a booted simulator only; Open in Xcode on a phone", async () => {
+  it("Shut down shows on a booted simulator only; Open in Xcode on a phone", async () => {
     const { props } = mount();
-    expect(screen.getAllByRole("button", { name: "Shutdown" }).length).toBe(1);
+    expect(screen.getAllByRole("button", { name: "Shut down" }).length).toBe(1);
     expect(screen.getAllByRole("button", { name: "Delete" }).length).toBe(2);
-    fireEvent.click(screen.getByRole("button", { name: "Shutdown" }));
+    fireEvent.click(screen.getByRole("button", { name: "Shut down" }));
     expect(props.onShutdown).toHaveBeenCalledWith("AAA");
     // While one action runs every other is disabled; once it settles they come back.
     expect((screen.getByRole("button", { name: "Open in Xcode" }) as HTMLButtonElement).disabled).toBe(true);

@@ -213,7 +213,7 @@ Two separate steps, on purpose, over one gate.
    Hosts: a box's Deploy row and This Mac's Release group;
    src/main/server/hostJobs.ts, src/shared/contract-host.ts,
    src/renderer/src/surfaces/settings/hosts/Deploy.tsx).
-   "Publish Mac release…" on This Mac's Publish row runs `bun scripts/release.ts
+   Publish… on This Mac's Mac release row runs `bun scripts/release.ts
    "<notes>"` then `bun run release:publish` through the login shell in the
    checkout the `release.checkout` setting names (default
    ~/IdeaProjects/temp-code, the field beside the button), the notes

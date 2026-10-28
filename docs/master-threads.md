@@ -418,7 +418,7 @@ One `publish.start` call (90 minutes) carries the box's caller, the
 fetches origin, pulls the branch `--ff-only` in its release checkout
 (`release.checkout`, the Publisher's login-shell git), refuses a HEAD that
 is not that SHA or whose package.json is not that version, and runs the
-job exactly as the "Publish Mac release" button does except for the
+job exactly as the Mac release row's Publish… button does except for the
 train: `Publisher.publish(notes, { train: false })` is `bun run
 release:publish` alone, since the box already cut release N (running
 release.ts again would cut N+1). The Publisher's refusals (dirty tree, not
