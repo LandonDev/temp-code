@@ -15,8 +15,12 @@ export function activeMs(list: Block[], liveNow?: number): number {
   let prev: number | undefined;
   for (const b of list) {
     if (b.ts === undefined) continue;
-    if (prev !== undefined && b.role !== "user") total += Math.max(0, b.ts - prev);
     const end = b.role === "tool" ? (b.doneTs ?? b.ts) : b.ts;
+    // Counted time is the union of the spans: from the furthest point
+    // counted so far (a user block, or the first, from its own start) to
+    // the block's end.
+    const from = prev === undefined || b.role === "user" ? b.ts : prev;
+    total += Math.max(0, end - from);
     prev = Math.max(prev ?? end, end);
   }
   if (liveNow !== undefined && prev !== undefined) total += Math.max(0, liveNow - prev);

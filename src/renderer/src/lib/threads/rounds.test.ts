@@ -26,8 +26,21 @@ describe("rounds", () => {
       { id: "u2", role: "user", text: "more", ts: 10_000 },
       { id: "a2", role: "assistant", text: "done", ts: 10_200 },
     ];
-    expect(activeMs(blocks)).toBe(100 + 100 + 200);
-    expect(activeMs(blocks, 10_500)).toBe(700);
+    expect(activeMs(blocks)).toBe(100 + 300 + 100 + 200);
+    expect(activeMs(blocks, 10_500)).toBe(1_000);
+  });
+
+  it("activeMs counts a parallel tool's run once, and never drops when a running tool settles", () => {
+    const parallel: Block[] = [
+      { id: "t1", role: "tool", text: "Bash", ts: 0, doneTs: 1_000 },
+      { id: "t2", role: "tool", text: "Bash", ts: 200, doneTs: 600 },
+      { id: "a1", role: "assistant", text: "ok", ts: 1_500 },
+    ];
+    expect(activeMs(parallel)).toBe(1_500);
+    const running: Block = { id: "t", role: "tool", text: "Bash", ts: 1_000 };
+    const before = activeMs([{ id: "a", role: "assistant", text: "", ts: 0 }, running], 5_000);
+    const after = activeMs([{ id: "a", role: "assistant", text: "", ts: 0 }, { ...running, doneTs: 5_000 }], 5_000);
+    expect(after).toBe(before);
   });
 
   it("groups by todo with clamping", () => {

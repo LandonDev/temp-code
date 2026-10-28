@@ -63,14 +63,34 @@ export function passNumbers(rounds: RoundData[]): number[] {
   return rounds.map((r) => (isHiddenPass(r) ? 0 : ++n));
 }
 
+/** Where a running task's live time counts from: the end of its last
+ *  timed block, the running maximum `activeMs` keeps, so
+ *  `activeMs(list) + (now − liveFrom(list))` is `activeMs(list, now)`. */
+export function liveFrom(list: Block[]): number | undefined {
+  let from: number | undefined;
+  for (const b of list) {
+    if (b.ts === undefined) continue;
+    const end = b.role === "tool" ? (b.doneTs ?? b.ts) : b.ts;
+    from = Math.max(from ?? end, end);
+  }
+  return from;
+}
+
 /** The pass's todos as the TaskList reads them: an in-progress task is
- *  active only while the thread runs, else it waits. */
-export function tasksOf(todos: TodoItem[], round: number, running: boolean): Task[] {
-  return todos.map((t, i) => ({
-    id: `${round}:${i}`,
-    label: t.content,
-    state: t.status === "completed" ? "done" : t.status === "in_progress" && running ? "active" : "pending",
-  }));
+ *  active only while the thread runs, else it waits. A started task
+ *  carries the time its blocks worked; the running one also where its
+ *  live time counts from. */
+export function tasksOf(todos: TodoItem[], round: number, running: boolean, blocks: Block[] = []): Task[] {
+  const byTodo = groupByTodo(blocks, todos.length);
+  return todos.map((t, i) => {
+    const state = t.status === "completed" ? "done" : t.status === "in_progress" && running ? "active" : "pending";
+    const task: Task = { id: `${round}:${i}`, label: t.content, state };
+    if (t.status === "pending") return task;
+    const list = byTodo.get(i) ?? [];
+    const from = state === "active" ? liveFrom(list) : undefined;
+    task.time = from === undefined ? { ms: activeMs(list) } : { ms: activeMs(list), from };
+    return task;
+  });
 }
 
 export type ChangeRow = {

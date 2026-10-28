@@ -1,17 +1,23 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useReducedMotion } from "motion/react";
 import { ChevronDown } from "@renderer/chrome/icons";
+import { TruncateTip } from "@renderer/components/tip";
 import { cn } from "@renderer/lib/cn";
+import { duration, useNow } from "@renderer/lib/duration";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./collapsible";
-import { TextShimmer } from "./text-shimmer";
 
 /**
  * A task list an agent works through: a header with a donut of done over
  * total (or, folded, the active task's label), rows whose mark draws a
- * check as they finish, and a cursor that slides to the active row.
+ * check as they finish, and a cursor that slides to the active row. Each
+ * task is one line cut at the column's edge, its whole text on hover; the
+ * active task alone shows its whole label. A started task's time ends its
+ * row, the active one's ticking.
  */
 export type TaskState = "pending" | "active" | "done";
-export type Task = { id: string; label: string; state: TaskState; progress?: number };
+/** `time` is how long a started task worked; with `from`, it is still
+ *  running and its live time is `ms + (now − from)`. */
+export type TaskTime = { ms: number; from?: number };
+export type Task = { id: string; label: string; state: TaskState; progress?: number; time?: TaskTime };
 
 const CHECK = "M4.8 8.4 7.04 10.8 11.52 6.0";
 const ARROW = "M5.5 8h5M8.6 6.1 10.5 8 8.6 9.9";
@@ -29,6 +35,18 @@ const DONUT_R = 8 - DONUT_W / 2;
 const DONUT_C = 2 * Math.PI * DONUT_R;
 
 const DONE_LINE = "All tasks complete";
+
+/** A task's time shows once it says something: under this it is noise. */
+const TIME_SHOWN_FROM_MS = 1500;
+
+/** The row's time, its own leaf so only it re-renders on the clock. A
+ *  parked pane's clock reads 0, and the time holds its counted part. */
+function TaskTimeText({ time }: { time: TaskTime }) {
+  const now = useNow(time.from !== undefined);
+  const ms = time.from !== undefined && now > 0 ? time.ms + Math.max(0, now - time.from) : time.ms;
+  if (ms < TIME_SHOWN_FROM_MS) return null;
+  return <span className="ms-auto shrink-0 text-xs leading-5 tabular-nums text-muted-foreground">{duration(ms)}</span>;
+}
 
 function TaskDonut({ done, total }: { done: number; total: number }) {
   const filled = total > 0 ? done / total : 0;
@@ -64,7 +82,6 @@ function TaskCursor({ at }: { at: Spot }) {
 const shareText = (value: number) => `${String(Math.round(Math.min(1, Math.max(0, value)) * 100))}%`;
 
 export function TaskList({ tasks, title = "Tasks", defaultOpen = true, className }: { tasks: readonly Task[]; title?: string; defaultOpen?: boolean; className?: string }) {
-  const still = useReducedMotion() ?? false;
   const [open, setOpen] = useState(defaultOpen);
 
   const done = tasks.filter((task) => task.state === "done").length;
@@ -72,7 +89,6 @@ export function TaskList({ tasks, title = "Tasks", defaultOpen = true, className
   const active = activeAt === -1 ? undefined : tasks[activeAt];
   const complete = tasks.length > 0 && done === tasks.length;
   const headline = open ? title : complete ? DONE_LINE : (active?.label ?? title);
-  const shimmering = !still && !open && !complete && active !== undefined;
 
   const rows = useRef<HTMLUListElement>(null);
   const [cursor, setCursor] = useState<Spot | null>(null);
@@ -112,9 +128,9 @@ export function TaskList({ tasks, title = "Tasks", defaultOpen = true, className
         <span className="relative mt-[3px] block size-3.5 shrink-0">
           {complete ? <TaskMark state="done" /> : <TaskDonut done={done} total={tasks.length} />}
         </span>
-        <span className="block h-5 min-w-0 flex-1">
-          <span className="max-w-full truncate align-top text-[13px] font-medium leading-5 text-foreground">{shimmering ? <TextShimmer>{headline}</TextShimmer> : headline}</span>
-        </span>
+        <TruncateTip text={headline}>
+          <span className="block min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-foreground">{headline}</span>
+        </TruncateTip>
         <span className={cn("flex shrink-0 items-center gap-1 text-[13px] leading-5 tabular-nums transition-colors", complete ? "text-foreground" : "text-muted-foreground")}>
           <span dir="ltr">
             {done}/{tasks.length}
@@ -128,10 +144,14 @@ export function TaskList({ tasks, title = "Tasks", defaultOpen = true, className
           {tasks.map((task) => (
             <li key={task.id} className="flex min-h-7 items-start gap-2.5 py-1">
               <TaskMark state={task.state} className="mt-[3px]" />
-              <span data-state={task.state} className={cn("task-label relative w-fit text-[13px] leading-5", task.state === "active" ? "text-foreground" : task.state === "done" ? "text-(--task-done)" : "text-muted-foreground")}>
-                {task.state === "active" && !still ? <TextShimmer>{task.label}</TextShimmer> : task.label}
-                <span aria-hidden className="task-strike" />
-              </span>
+              {/* One element in every state, so the strike draws when the active row finishes. */}
+              <TruncateTip text={task.label}>
+                <span data-state={task.state} className={cn("task-label relative min-w-0 text-[13px] leading-5", task.state === "active" ? "break-words text-foreground" : task.state === "done" ? "truncate text-(--task-done)" : "truncate text-muted-foreground")}>
+                  {task.label}
+                  <span aria-hidden className="task-strike" />
+                </span>
+              </TruncateTip>
+              {task.time ? <TaskTimeText time={task.time} /> : null}
               {task.state === "active" && task.progress !== undefined ? <span className="sr-only">{shareText(task.progress)} complete</span> : null}
             </li>
           ))}

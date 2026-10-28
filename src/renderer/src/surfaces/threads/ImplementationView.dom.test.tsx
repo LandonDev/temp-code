@@ -109,6 +109,24 @@ describe("the implementation board", () => {
     }
   });
 
+  it("ends a done task's row in its time and shows the running task's label whole", () => {
+    const run = (id: string, todoIx: number, ts: number, doneTs?: number) =>
+      ({ id, role: "tool", text: "", round: 0, todo: todoIx, ts, doneTs, tool: { kind: "execute", name: "Bash" } }) as unknown as Block;
+    const long = "Run the publish gate beside the electron-vite build so the upload starts sooner";
+    view(
+      session({
+        status: "running",
+        blocks: [first, run("a", 0, 0, 12_000), run("b", 1, 13_000)],
+        todos: [todo("Read the brief", "completed"), todo(long, "in_progress")],
+      }),
+    );
+    const rows = document.querySelectorAll('[data-slot="task-list"] li');
+    expect(rows[0].querySelector(".tabular-nums")?.textContent).toBe("12s");
+    const label = rows[1].querySelector<HTMLElement>(".task-label")!;
+    expect(label.textContent).toBe(long);
+    expect(label.className).not.toContain("truncate");
+  });
+
   it("the chat's fold survives the view unmounting, as a tab switch does", () => {
     const running = session({ status: "running", blocks: [first], todos: [todo("Write a", "in_progress")] });
     view(running);

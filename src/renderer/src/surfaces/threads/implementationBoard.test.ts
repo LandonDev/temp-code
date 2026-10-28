@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { Block } from "../../lib/session";
 import type { LiveEditState } from "../../lib/tcserver/store";
 import type { TodoItem } from "../../lib/tcserver/todos";
+import { activeMs } from "../../lib/threads/rounds";
 import {
   changesByTask,
   foldRounds,
   isHiddenPass,
   lastFailure,
+  liveFrom,
   needsYou,
   passCost,
   passNumbers,
@@ -63,6 +65,45 @@ describe("tasksOf", () => {
       ["2:2", "pending"],
     ]);
     expect(tasksOf(todos, 2, false)[1].state).toBe("pending");
+  });
+
+  const run = (id: string, todo: number, ts: number, doneTs?: number): Block =>
+    ({ id, role: "tool", text: "", round: 0, todo, ts, doneTs, tool: { kind: "execute", name: "Bash" } }) as unknown as Block;
+  const say = (id: string, todo: number, ts: number): Block => ({ id, role: "assistant", text: "", round: 0, todo, ts }) as Block;
+
+  it("gives a done task the time its blocks worked", () => {
+    const blocks = [run("a", 0, 1_000, 4_000), say("b", 0, 9_000), run("c", 1, 10_000, 11_000)];
+    const tasks = tasksOf([todo("a", "completed"), todo("b", "completed")], 0, true, blocks);
+    expect(tasks[0].time).toEqual({ ms: 8_000 });
+    expect(tasks[1].time).toEqual({ ms: 1_000 });
+  });
+
+  it("gives the running task where its live time counts from, and it adds up to activeMs at that moment", () => {
+    const blocks = [run("a", 0, 1_000, 2_000), run("b", 1, 3_000, 6_000), say("c", 1, 5_000)];
+    const tasks = tasksOf([todo("a", "completed"), todo("b", "in_progress")], 0, true, blocks);
+    const time = tasks[1].time!;
+    expect(time.from).toBe(6_000);
+    expect(liveFrom(blocks.slice(1))).toBe(6_000);
+    const now = 20_000;
+    expect(time.ms + (now - time.from!)).toBe(activeMs(blocks.slice(1), now));
+  });
+
+  it("gives an in-progress task no live clock while the thread is not running", () => {
+    const blocks = [run("a", 0, 1_000, 3_000)];
+    const tasks = tasksOf([todo("a", "in_progress")], 0, false, blocks);
+    expect(tasks[0].state).toBe("pending");
+    expect(tasks[0].time).toEqual({ ms: 2_000 });
+  });
+
+  it("gives a pending task no time", () => {
+    const tasks = tasksOf([todo("a", "in_progress"), todo("b", "pending")], 0, true, [run("a", 0, 1_000, 3_000)]);
+    expect(tasks[1].time).toBeUndefined();
+  });
+
+  it("leaves the blocks before the first task out of task 0", () => {
+    const blocks = [run("setup", -1, 0, 50_000), run("a", 0, 60_000, 61_000)];
+    const tasks = tasksOf([todo("a", "completed")], 0, true, blocks);
+    expect(tasks[0].time).toEqual({ ms: 1_000 });
   });
 });
 

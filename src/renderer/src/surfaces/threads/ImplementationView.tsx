@@ -225,6 +225,7 @@ export function ImplementationView(props: ThreadViewProps) {
   const asking = needsYou(cur.work);
   const failure = running ? undefined : lastFailure(cur.work);
   const changes = useMemo(() => changesByTask(cur, diskOnly, true, running), [cur, diskOnly, running]);
+  const tasks = useMemo(() => tasksOf(cur.todos, curRound, running, cur.blocks), [cur, curRound, running]);
   const pastPasses = rounds.slice(0, curRound);
 
   const board = (
@@ -258,7 +259,7 @@ export function ImplementationView(props: ThreadViewProps) {
           <p className="mb-2 text-sm font-medium text-foreground">{firstLine(cur.header)}</p>
         ) : null}
         {cur.todos.length > 0 ? (
-          <TaskList key={curRound} title="Tasks" tasks={tasksOf(cur.todos, curRound, running)} />
+          <TaskList key={curRound} title="Tasks" tasks={tasks} />
         ) : running && cur.work.length === 0 ? (
           <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
             <Spinner />
@@ -385,6 +386,7 @@ function PastPass({
   const stat = changeStat(data.work);
   const facts = recordFacts(record, session.harness);
   const groups = useMemo(() => changesByTask(data, diskOnly, false, false), [data, diskOnly]);
+  const tasks = useMemo(() => tasksOf(data.todos, round, false, data.blocks), [data, round]);
   return (
     <Collapsible data-pass={passNum}>
       <CollapsibleTrigger className="group/pass flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none">
@@ -415,7 +417,7 @@ function PastPass({
       <CollapsibleContent>
         <div className="flex flex-col gap-4 px-2 pt-2 pb-3">
           {data.todos.length > 0 ? (
-            <TaskList title="Tasks" defaultOpen={false} tasks={tasksOf(data.todos, round, false)} />
+            <TaskList title="Tasks" defaultOpen={false} tasks={tasks} />
           ) : null}
           {groups.length > 0 ? (
             <ChangeRows groups={groups} cwd={session.cwd} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} />
