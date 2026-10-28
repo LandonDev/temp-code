@@ -24,6 +24,14 @@ describe("AccessPicker", () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
+  it("Supervised says what its rules do: read-only commands run, edits and changing commands ask", async () => {
+    render(<AccessPicker value="supervised" onChange={() => {}} onClose={() => {}} />);
+    await openMenu();
+    const option = screen.getByRole("option", { name: /Supervised/ });
+    expect(option.textContent).toContain("Ask before edits and commands that change things.");
+    expect(option.textContent).not.toContain("file changes");
+  });
+
   it("a pick hands the focus to the field", async () => {
     const onClose = vi.fn();
     const onChange = vi.fn();

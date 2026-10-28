@@ -248,8 +248,11 @@ export const RUNTIME_MODE_LABEL: Record<RuntimeMode, string> = {
   "full-access": "Full access",
 };
 
+// Supervised is Claude Code's default mode: a read-only command (ls, git
+// status) runs without a card; an edit, or a command that changes things,
+// asks. The words say that, and not more than the rules do.
 export const RUNTIME_MODE_HINT: Record<RuntimeMode, string> = {
-  supervised: "Ask before commands and file changes.",
+  supervised: "Ask before edits and commands that change things.",
   "auto-accept-edits": "Auto-approve edits, ask before other actions.",
   auto: "An AI reviewer approves routine actions; risky ones still ask.",
   "full-access": "Allow commands and edits without prompts.",
