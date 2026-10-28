@@ -35,7 +35,7 @@ export function paceLine(p: PaceSeries): { text: string; warning: boolean } {
 }
 
 /** The headings, in order, while the bundle loads. */
-const HEADINGS = ["Pace", "Daily output", "Model mix", "Top projects", "Cache hit rate", "When you burn limit", "Tools used"];
+const HEADINGS = ["Pace", "Daily output", "Model mix", "Top projects", "Cache hit rate", "Busiest hours", "Tools used"];
 
 const percent = (v: number): string => `${Math.round(v)}%`;
 type TooltipProps = Parameters<typeof ChartTooltipContent>[0];
@@ -261,7 +261,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
         )}
       </Section>
 
-      <Section title="When you burn limit" description={`Output tokens by weekday and hour, last 60 days, times in ${TIMEZONE}`}>
+      <Section title="Busiest hours" description={`Output tokens by weekday and hour, last 60 days, times in ${TIMEZONE}`}>
         {data.heatmap.length === 0 ? <NoData /> : <Heatmap data={data.heatmap} />}
       </Section>
 

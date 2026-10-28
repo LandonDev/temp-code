@@ -7,7 +7,7 @@ import { STATS } from "./stats.fixtures";
 afterEach(cleanup);
 
 const headings = () => screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-const ORDER = ["Pace", "Daily output", "Model mix", "Top projects", "Cache hit rate", "When you burn limit", "Tools used"];
+const ORDER = ["Pace", "Daily output", "Model mix", "Top projects", "Cache hit rate", "Busiest hours", "Tools used"];
 
 describe("Stats", () => {
   it("holds every pace series in one Pace section: seven sections in all", () => {

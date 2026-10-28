@@ -185,13 +185,16 @@ describe('AccountsPage', () => {
     await addClaude()
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText("Couldn't reach claude.ai")).toBeTruthy()
+    // The instruction leaves with the wait: nothing is left to finish in the window.
+    expect(within(dialog).queryByText('Finish in the window that opened')).toBeNull()
     expect(toasts.error).not.toHaveBeenCalled()
     aliax.loginStart.mockReturnValue(new Promise(() => {}))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Try again' }))
     await act(flush)
     expect(aliax.loginStart).toHaveBeenCalledTimes(2)
     expect(aliax.loginStart).toHaveBeenLastCalledWith('claude-code', undefined)
-    expect(within(screen.getByRole('dialog')).getByText('Waiting for sign-in')).toBeTruthy()
+    expect(within(screen.getByRole('dialog')).getByText('Finish in the window that opened')).toBeTruthy()
+    expect(within(screen.getByRole('dialog')).queryByText('Waiting for sign-in')).toBeNull()
   })
 
   it('a refreshed sign-in says Updated, and a new one Added with Switch to it', async () => {
@@ -288,12 +291,12 @@ describe('StatsPage', () => {
     expect(screen.queryByText('Nothing to show yet')).toBeNull()
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
     expect(headings).toEqual([
-      'Claude Code 5-hour limit',
+      'Pace',
       'Daily output',
       'Model mix',
       'Top projects',
       'Cache hit rate',
-      'When you burn limit',
+      'Busiest hours',
       'Tools used'
     ])
     expect(screen.queryByText('Least headroom')).toBeNull()

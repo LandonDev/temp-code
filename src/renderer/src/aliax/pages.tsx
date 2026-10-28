@@ -165,16 +165,14 @@ export function AccountsPage(): React.JSX.Element {
         <DialogContent size="sm" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Sign in to {loginName}</DialogTitle>
-            <DialogDescription>Finish in the window that opened.</DialogDescription>
+            {login?.error ? null : (
+              <DialogDescription className="flex items-center gap-2">
+                <Spinner />
+                Finish in the window that opened
+              </DialogDescription>
+            )}
           </DialogHeader>
-          {login?.error ? (
-            <p className="text-[13px] text-destructive">{login.error}</p>
-          ) : (
-            <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-              <Spinner />
-              Waiting for sign-in
-            </div>
-          )}
+          {login?.error ? <p className="text-[13px] text-destructive">{login.error}</p> : null}
           <DialogFooter>
             <Button variant={login?.error ? "ghost" : "secondary"} onClick={closeLogin}>
               Cancel
