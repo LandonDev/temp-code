@@ -955,11 +955,16 @@ export class Batches {
   /** A planning thread whose plan is complete is done only once its build
    *  exists: the build starts after the plan settles (planFlow.ts), and in
    *  that gap the batch must not end on the plan alone. */
+  /** Done: `done`, or idle after a completed turn with no failure and no
+   *  subagent still working (an idle root over live subagents is watching
+   *  them, not done: the board files it with the work, and Archive done
+   *  must not archive it and kill them, V3-C F02). */
   private done(s: SessionMeta): boolean {
     if (s.threadType === 'planning' && s.planCompletedAt && !s.implementationId) return false
     if (DONE.has(s.status)) return true
-    if (s.status === 'idle' && s.failure) return false
-    return s.status === 'idle' && (this.deps.registry.hasCompletedTurn?.(s.id) ?? true)
+    if (s.status !== 'idle' || s.failure) return false
+    if ((s.background?.agents.length ?? 0) > 0) return false
+    return this.deps.registry.hasCompletedTurn?.(s.id) ?? true
   }
 
   private memberDone(m: BatchMember): boolean {

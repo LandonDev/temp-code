@@ -168,6 +168,7 @@ let statsHost: StatsHost | null = null
 let maxLateness = 0
 let latenessTimer: ReturnType<typeof setInterval> | null = null
 if (STATS) {
+  const repoRoot = process.cwd()
   const statsOut = join(repoRoot, 'scripts', '.out', 'statsWorker.cjs')
   execFileSync(join(repoRoot, 'node_modules', '.bin', 'esbuild'), [
     'src/main/aliax/stats/statsWorker.ts', '--bundle', '--platform=node', '--format=cjs', '--packages=external',

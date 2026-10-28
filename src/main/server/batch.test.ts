@@ -861,6 +861,28 @@ describe('Batches: publish and deploy', () => {
     expect(b.get('m').blocked).toBeNull()
   })
 
+  it('an idle root whose subagents still work is not done: it stays out of the list, holds the batch open, and Archive done leaves it', async () => {
+    const watching = { tasks: [], agents: ['sub-1'], batch: null, watchingSince: null }
+    const w = world({
+      children: [
+        meta('m'),
+        meta('a', { masterId: 'm', createdAt: 2, status: 'idle' }),
+        meta('b', { masterId: 'm', createdAt: 3, status: 'idle', background: watching })
+      ]
+    })
+    w.registry.hasCompletedTurn = () => true
+    const b = w.make()
+    expect(b.get('m').done).toEqual(['a'])
+    expect(b.get('m').pending).toEqual(['a', 'b'])
+    expect(b.open('m')).toBe(true)
+    await b.archive('m', 'done')
+    expect(w.batchCalls).toEqual([{ action: 'archive', ids: ['a'], cleanup: false }])
+    expect(w.sessions.get('b')?.archived).toBe(false)
+    // Its subagents settle: done, and the batch can end.
+    w.set('b', { status: 'idle', background: { ...watching, agents: [] } })
+    expect(b.get('m').done).toEqual(['b'])
+  })
+
   it('lists the children it counts done: done, or idle on a completed turn with no failure; never paused or idle without a completed turn', async () => {
     const w = world({
       children: [

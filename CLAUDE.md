@@ -2424,7 +2424,8 @@ this is the short one.
   a new list keeps the telemetry of every step whose id and kind stay.
   The engine runs when the last child is done (every unarchived root
   carrying the masterId is `done`, or `idle` with a turn completed,
-  `Store.hasCompletedTurn`); an errored or stopped child blocks the end,
+  `Store.hasCompletedTurn`, and no subagent still working: an idle root
+  over live subagents is watching, not done, and Archive done leaves it); an errored or stopped child blocks the end,
   and so does one idle on a turn that ended in a failure (its row's
   `failure`, a usage cap; `blocked.why` `failed`; a paused child `paused`, one idle on a turn it never completed `no-turn`, or `interrupted` ("was stopped") when a person's Stop ended that turn, `Store.lastTurnStopped`), `blocked` names it and
   the master is told once as a `<batch-report>`. A red gate or release

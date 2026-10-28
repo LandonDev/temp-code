@@ -318,7 +318,10 @@ child's status change, archive or removal reviews its batch) and runs when
 the last child is done: every unarchived root carrying the masterId is
 `done`, or `idle` with a turn completed (`Store.hasCompletedTurn`: a thread
 between its first user row and its first turn is idle too, and must not
-end a batch early). A child that errored or stopped blocks the end, and
+end a batch early) and no subagent still working (`background.agents`: an
+idle root over live subagents is watching them, not done, so the board
+files it with the work and Archive done leaves it instead of archiving it
+and killing them). A child that errored or stopped blocks the end, and
 so does a child idle on a turn that ended in a failure (its row carries
 `failure`: a usage cap, a refused route; `blocked.why` is `failed`): it did
 no work, and counting it done once ended a batch with nothing new every
