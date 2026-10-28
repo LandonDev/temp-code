@@ -14,7 +14,10 @@
  *             remote.pairings.create` straight into this process (never
  *             printed or written), pairs, and revokes the key and the code at
  *             exit. Without, it measures the scratch workspace alone.
- * --panel     changes | closed: the right panel of every opened thread.
+ * --panel     changes | notes | closed: the right panel of every opened thread
+ *             (notes: open on another section, to tell the panel's own cost
+ *             from the Changes section's; a thread without Notes keeps its
+ *             default section).
  * --scratch-untracked <n>
  *             a scratch repo under /tmp with n untracked files (and 100 under
  *             .temp-code/, which the Changes list must never show), added as a
@@ -60,7 +63,7 @@ const port = Number(flag('--port', '9243'))
 const sshKey = flag('--ssh-key', join(homedir(), '.orbstack/ssh/id_ed25519'))!
 const cpuprofile = argv.includes('--cpuprofile')
 if (!/^[a-z0-9-]+$/i.test(label)) throw new Error('--label <letters, digits and dashes> is required')
-if (panel !== 'changes' && panel !== 'closed') throw new Error('--panel is changes or closed')
+if (!['changes', 'notes', 'closed'].includes(panel)) throw new Error('--panel is changes, notes or closed')
 if (!Number.isInteger(scratchFiles) || scratchFiles < 0) throw new Error('--scratch-untracked takes a count')
 if (!threads.length && !scratchFiles) throw new Error('nothing to measure: give --threads, --scratch-untracked or both')
 
@@ -295,15 +298,20 @@ async function main(): Promise<void> {
       await c.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', clickCount: 1 })
     }
     const click = async (kind: 'ws' | 'card' | 'button', name: string, scope?: string): Promise<void> => press(await point(controlExpr(kind, name, scope), `${kind} ${name}`))
-    /** The thread on screen gets its right panel as asked: on Changes, or closed. */
+    /** The thread on screen gets its right panel as asked: on Changes, on Notes, or closed. */
     const setPanel = async (): Promise<void> => {
       const toggle = `[...document.querySelectorAll('button[aria-label="Panel"]')].find(${visible})`
+      const aside = `[...document.querySelectorAll('aside[aria-label="Thread panel"]')].find(${visible})`
       await waitFor(toggle, 30_000, 'the Panel toggle')
-      const open = await c.eval<boolean>(`!![...document.querySelectorAll('aside[aria-label="Thread panel"]')].find(${visible})`)
-      if (open !== (panel === 'changes')) await press(await point(toggle, 'the Panel toggle'))
+      const open = await c.eval<boolean>(`!!${aside}`)
+      if (open !== (panel !== 'closed')) await press(await point(toggle, 'the Panel toggle'))
       if (panel === 'changes') {
-        await click('button', 'Changes', `[...document.querySelectorAll('aside[aria-label="Thread panel"]')].find(${visible})`)
+        await click('button', 'Changes', aside)
         await waitFor(`[...document.querySelectorAll('[data-slot="changes-section"]')].find(${visible})`, 60_000, 'the Changes section')
+      } else if (panel === 'notes') {
+        await waitFor(aside, 30_000, 'the panel')
+        const notes = controlExpr('button', 'Notes', aside)
+        if (await c.eval<boolean>(`!!(${notes})`)) await click('button', 'Notes', aside)
       }
       await sleep(3000)
     }
