@@ -93,6 +93,21 @@ async function excludePids(): Promise<string> {
 
 /** One window gets the shot: the one in front if it listens, else any
  *  that does. With none ready yet (cold launch) it waits in the queue. */
+/** A window's renderer announced its appshot listeners are mounted. The
+ *  preload sends it at every registration (each pane that listens, every
+ *  remount), so the window is watched for its end once, not once per
+ *  announcement: a `destroyed` listener per announcement piled past ten
+ *  and Node warned of a leak at boot (V1 §2.10). The queued captures flush
+ *  to it. */
+export function appshotReady(sender: { id: number; once: (event: 'destroyed', fn: () => void) => unknown; send: (channel: string, payload: unknown) => void }): void {
+  if (!ready.has(sender.id)) {
+    const id = sender.id
+    ready.add(id)
+    sender.once('destroyed', () => ready.delete(id))
+  }
+  while (queue.length > 0) sender.send('appshot', queue.shift())
+}
+
 function sendToRenderer(channel: string, payload: unknown): BrowserWindow | null {
   const target = targetWindow()
   const win =
@@ -216,11 +231,7 @@ export function registerAppshots(server: RunningServer, createWindow: () => void
       return sendToRenderer('appshot', attachment)?.id ?? null
     })
   // The renderer announces its listeners are mounted; queued captures flush.
-  ipcMain.on('appshot-ready', (e) => {
-    ready.add(e.sender.id)
-    e.sender.once('destroyed', () => ready.delete(e.sender.id))
-    while (queue.length > 0) e.sender.send('appshot', queue.shift())
-  })
+  ipcMain.on('appshot-ready', (e) => appshotReady(e.sender))
   if (!armed()) return
   startMonitor(server, createWindow)
   app.on('will-quit', () => {

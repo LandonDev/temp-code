@@ -44,6 +44,7 @@ import {
 } from './windows'
 import { setSignInParent } from './aliax/signInWindow'
 import { aboutPanelOptions, buildInfo } from './buildInfo'
+import { installWarningLog } from './warningLog'
 
 // First statement of the bundle: everything before this mark is Electron's
 // own init plus the compile of out/main/index.js (through boot.js). `start=`
@@ -52,6 +53,11 @@ bootMark(
   'index',
   `start=${Date.now() - Math.round(process.uptime() * 1000)} compile-cache=${getCompileCacheDir() ? 'on' : 'off'}`
 )
+
+// Every Node warning from here on lands in the log with the site that
+// raised it (warningLog.ts): a MaxListenersExceededWarning names its
+// emitter and its listener, which Node's own print leaves out.
+installWarningLog()
 
 let server: RunningServer | null = null
 

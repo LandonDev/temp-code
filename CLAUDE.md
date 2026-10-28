@@ -2063,6 +2063,14 @@ Terminal, ⌃`) shows its key but leaves it to the page. The in-app bar
 desktop window off macOS has the native bar. Go to Symbol is ⌘⇧O and
 Open Project ⌘O, in the menu and the renderer's resolver alike; New
 Terminal is ⌃` (⌘` is macOS's window cycle).
+Every Node warning the main process raises lands in its log with the site
+that raised it (src/main/warningLog.ts `installWarningLog`, the first thing
+index.ts does after its boot mark): Node prints a warning's name and message
+alone, so the `MaxListenersExceededWarning` V1 saw at boot named neither its
+emitter nor its listener. It was appshots.ts: the preload sends
+`appshot-ready` at every registration of a capture listener (each pane,
+each remount), and each announcement added a `destroyed` listener to the
+window; `appshotReady` watches a window for its end once.
 
 ## The fleet switches: one click for every thread of a scope
 Pause all, Resume all, Stop all and Archive done sit beside Mark all read in
