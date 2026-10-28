@@ -1,4 +1,5 @@
 // The words and numbers the Stats page prints; colours are tokens (aliax/charts/palette.ts).
+import { modelLabel as catalogName } from '@renderer/lib/threads/agents'
 
 export const compact = (n: number): string => {
   if (!Number.isFinite(n)) return '0'
@@ -40,6 +41,13 @@ export const TIMEZONE =
 export const clip = (s: string, max = 18): string =>
   s.length > max ? `${s.slice(0, max - 1)}…` : s
 
-/** Trim a model id to something readable on an axis. */
-export const modelLabel = (m: string): string =>
-  m.replace(/^claude-/, '').replace(/-\d{8}$/, '').replace(/-latest$/, '')
+/** A model as the rest of the app names it ("Claude Fable 5.1"), from the
+ *  catalogs; an id no catalog knows, trimmed to read on an axis. */
+export const modelLabel = (m: string): string => {
+  const bare = m.replace(/-\d{8}$/, '').replace(/-latest$/, '')
+  for (const provider of ['claude', 'codex']) {
+    const name = catalogName(provider, bare)
+    if (name !== bare) return name
+  }
+  return bare.replace(/^claude-/, '')
+}
