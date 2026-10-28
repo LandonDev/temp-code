@@ -19,8 +19,8 @@ vi.mock("../../../lib/threads/agents", async (importOriginal) => ({
   useMetaById: (id: string | null) => (id ? (h.metas.get(id) ?? null) : null),
   useSessionById: (id: string | null) => (id ? { id, blocks: [], busy: false, loaded: true, environmentId: "local", thread: { cost: 0.42, todos: [] } } : undefined),
 }));
-vi.mock("./contextCache", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./contextCache")>()),
+vi.mock("../../../lib/contextCache", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../lib/contextCache")>()),
   useContextReading: () => null,
 }));
 vi.mock("../../../lib/tcserver/commands", async (importOriginal) => ({

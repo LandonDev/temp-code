@@ -1,7 +1,6 @@
-import { Fragment, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
-import { contextPercent, formatTokens, type ContextUsage } from "../lib/contextUsage";
 import { getModelSnapshot, resolveModel, subscribeModels, type ModelSetting } from "../lib/models";
 import type { HarnessId } from "../lib/session";
 import { speedChoices, speedOf, withSpeed, type Speed } from "../lib/speed";
@@ -13,8 +12,6 @@ type Props = {
   environmentId?: string;
   values: Record<string, string>;
   onChange: (settings: Record<string, string>) => void;
-  /** The thread's context reading: the Context row shows its percent. */
-  context?: ContextUsage;
 };
 
 /** Settings in the order the rows stand; speed tiers fold into one row. */
@@ -42,56 +39,36 @@ export function effortLabel(settings: readonly ModelSetting[], values: Record<st
 
 /**
  * The model menu's foot: one 32px row per setting of the current model,
- * the label on the left and its control on the right. Effort, Context (with
- * the thread's percent), Speed when the model carries a tier, then any
- * other setting a harness's catalog sends. A catalog with no context
- * setting (Codex) still gets a read-only Context row, in the same place,
- * while the thread has a reading: the percent and the window.
+ * the label on the left and its control on the right. Effort, Context,
+ * Speed when the model carries a tier, then any other setting a harness's
+ * catalog sends. How full the window is lives in the composer's context
+ * meter, not here.
  */
-export function ModelSettingsRows({ harness, model, environmentId, values, onChange, context }: Props) {
+export function ModelSettingsRows({ harness, model, environmentId, values, onChange }: Props) {
   const settings = useModelSettings(harness, model, environmentId);
   const speeds = speedChoices(settings);
-  const percent = contextPercent(context);
-  const readOnlyContext = percent !== null && !settings.some((s) => s.id === "context");
-  if (settings.length === 0 && !readOnlyContext) return null;
+  if (settings.length === 0) return null;
   const set = (id: string, value: string) => onChange({ ...values, [id]: value });
   const rows = settings.filter((s) => !SPEED_IDS.has(s.id));
-  // The read-only row stands where a context setting would: after Effort.
-  const contextAt = readOnlyContext ? rows.filter((s) => s.id === "effort").length : -1;
-  const contextRow = readOnlyContext ? (
-    <SettingRow label="Context">
-      <span className="flex items-center gap-2 pe-2 text-xs tabular-nums">
-        <span className="text-foreground">{percent}%</span>
-        {context?.window ? <span className="text-muted-foreground">{formatTokens(context.window)}</span> : null}
-      </span>
-    </SettingRow>
-  ) : null;
   return (
     <div data-model-settings-rows className="flex flex-col">
-      {contextAt === 0 ? contextRow : null}
-      {rows.map((setting, index) => (
-        <Fragment key={setting.id}>
-          <SettingRow label={setting.label}>
-            {setting.id === "context" && percent !== null ? (
-              <span className="me-2 text-xs tabular-nums text-muted-foreground">{percent}%</span>
-            ) : null}
-            {setting.kind === "toggle" ? (
-              <Switch
-                aria-label={setting.label}
-                checked={(values[setting.id] ?? setting.value) === "true"}
-                onCheckedChange={(on) => set(setting.id, on ? "true" : "false")}
-              />
-            ) : (
-              <RowSelect
-                label={setting.label}
-                value={values[setting.id] ?? setting.value}
-                options={setting.options}
-                onChange={(value) => set(setting.id, value)}
-              />
-            )}
-          </SettingRow>
-          {index + 1 === contextAt ? contextRow : null}
-        </Fragment>
+      {rows.map((setting) => (
+        <SettingRow key={setting.id} label={setting.label}>
+          {setting.kind === "toggle" ? (
+            <Switch
+              aria-label={setting.label}
+              checked={(values[setting.id] ?? setting.value) === "true"}
+              onCheckedChange={(on) => set(setting.id, on ? "true" : "false")}
+            />
+          ) : (
+            <RowSelect
+              label={setting.label}
+              value={values[setting.id] ?? setting.value}
+              options={setting.options}
+              onChange={(value) => set(setting.id, value)}
+            />
+          )}
+        </SettingRow>
       ))}
       {speeds.length ? (
         <SettingRow label="Speed">

@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { sessionStore } from "../../../lib/tcserver/store";
+import { sessionStore } from "./tcserver/store";
 
 /**
  * A per-session cache of the server's `session.context` reading, polled

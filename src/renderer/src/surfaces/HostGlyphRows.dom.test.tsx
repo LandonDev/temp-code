@@ -27,8 +27,8 @@ vi.mock("../lib/threads/agents", async (importOriginal) => ({
   useMetaById: (id: string | null) => (id ? (h.metas.get(id) ?? null) : null),
   useSessionById: () => null,
 }));
-vi.mock("./threads/fleet/contextCache", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./threads/fleet/contextCache")>()),
+vi.mock("../lib/contextCache", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/contextCache")>()),
   useContextReading: () => null,
 }));
 vi.mock("./AgentTranscript", () => ({ AgentTranscript: () => null }));

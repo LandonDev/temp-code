@@ -13,7 +13,8 @@ import {
   type AgentStatus,
   type FleetCounts,
 } from "../../../lib/threads/agents";
-import { readingPercent, type ContextReading } from "./contextCache";
+import { readingPercent, type ContextReading } from "../../../lib/contextCache";
+import { isCompacting } from "../../../lib/contextUsage";
 
 /**
  * The fleet as one model: ranked rows, counts, whether the panel should be
@@ -34,11 +35,6 @@ export type FleetStats = AgentStats & {
   /** The latest compaction never settled: the detail says Compacting over the context. */
   compacting: boolean;
 };
-
-/** M4's fold flags `thread.compacting`; older projections just lack it. */
-export function isCompacting(session: Session | undefined): boolean {
-  return (session?.thread as { compacting?: boolean } | undefined)?.compacting === true;
-}
 
 /**
  * Store stats plus the polled reading: the server's window wins over the

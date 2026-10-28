@@ -27,8 +27,8 @@ vi.mock("../../../lib/threads/agents", async (importOriginal) => ({
   useSessionById: (id: string | null) => (id ? { id, blocks: [], loaded: true, environmentId: "local", ...h.session } : undefined),
 }));
 vi.mock("../../../lib/tcserver/commands", () => ({ send: h.send, steer: h.steer }));
-vi.mock("./contextCache", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./contextCache")>()),
+vi.mock("../../../lib/contextCache", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../lib/contextCache")>()),
   useContextReading: () => null,
 }));
 vi.mock("../../AgentTranscript", () => ({

@@ -17,7 +17,6 @@ import { Separator } from "../components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
-import type { ContextUsage } from "../lib/contextUsage";
 import {
   allModels,
   coerceModelPickerTab,
@@ -71,7 +70,6 @@ type Props = {
   settings?: {
     values: Record<string, string>;
     onChange: (settings: Record<string, string>) => void;
-    context?: ContextUsage;
   };
 };
 
@@ -462,7 +460,6 @@ export function ModelPicker({
               environmentId={environmentId}
               values={settings.values}
               onChange={settings.onChange}
-              context={settings.context}
             />
           </>
         ) : null}

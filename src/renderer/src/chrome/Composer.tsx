@@ -21,7 +21,10 @@ import {
   pickAttachments,
   revokeAttachment
 } from '../lib/attachments'
-import type { ContextUsage } from '../lib/contextUsage'
+import { isCompacting, type ContextUsage } from '../lib/contextUsage'
+import { canCompact } from '../lib/threadMenu'
+import { compact as compactSession } from '../lib/tcserver/commands'
+import { ContextMeter } from './ContextMeter'
 import { loadProjectFiles, peekProjectFiles } from '../lib/fileIndex'
 import { buildMentionIndex, fileMentionParts } from '../lib/fileMentions'
 import {
@@ -760,6 +763,11 @@ export function Composer({
   }
 
   const fieldOf = () => boxRef.current?.querySelector<HTMLElement>('[data-composer-input]') ?? null
+  // The field as a focus target, for a popover that hands the caret back on close.
+  const fieldTarget = { get current() { return fieldOf() } }
+  const compacting = useSyncExternalStore(sessionStore.subscribe, () =>
+    sessionId ? isCompacting(sessionStore.get(sessionId)) : false
+  )
 
   /** The `+` menu's Mention and Skills rows: type the mark at the caret so the list opens there. */
   const insertTrigger = (mark: '@' | '/') => {
@@ -899,8 +907,21 @@ export function Composer({
                 hotkeys={hotkeys && enabled}
                 onChange={changeModel}
                 onClose={() => inputRef.current?.focus()}
-                settings={{ values: modelSettings, onChange: changeModelSettings, context }}
+                settings={{ values: modelSettings, onChange: changeModelSettings }}
               />
+            }
+            context={
+              sessionId ? (
+                <ContextMeter
+                  sessionId={sessionId}
+                  usage={context}
+                  busy={busy}
+                  compacting={compacting}
+                  compactable={!!sessionMeta && canCompact(sessionMeta)}
+                  onCompact={() => void compactSession(sessionId).catch((err) => console.warn('[context-meter]', err))}
+                  finalFocus={fieldTarget}
+                />
+              ) : null
             }
             send={
               <SendButton

@@ -41,6 +41,7 @@ DESIGN.md wins.
 | A disclosure | `Collapsible` (collapsible.tsx) | Height eases through `.collapsible-resize`. A fold with no trigger of its own is the same panel, opened by `open`. |
 | An icon replacing another (Copy → Check) | `SwapIcon` (../../motion/IconSwap.tsx) | The new glyph grows from a quarter size on `SPRING_LAYOUT`; reduced motion cross-fades. |
 | A scrolling panel | `ScrollArea` (scroll-area.tsx) | Panels and lists; the transcript keeps its native scroller. |
+| How full a thread's context window is | `ContextMeter` (chrome/ContextMeter.tsx) on `Button`, `Spinner`, `Tip`, `LazyPopover` and `Skeleton` | One per composer, before the permission mode: the 14px ring and the percent, muted then amber from 85% (`contextTone`, never red), a `Spinner` while compacting; its popover is the breakdown with Compact under `canCompact`. Nothing for a harness that reports no window. |
 | A determinate bar | `Progress` (progress.tsx) | Usage meter, tallies. `fill` is foreground, muted or warning; the fill is a transform, so a live update never relayouts. |
 | Loading, indeterminate | `Spinner` (spinner.tsx) | 16px arc, with a word. The nine other spinners are retired. A small section's wait is `LoadingLine` (surfaces/SurfaceSkeleton.tsx). |
 | Loading, a shape | `Skeleton` (skeleton.tsx) | Shaped like what it stands in for; still. A whole surface is `SurfaceSkeleton` (surfaces/SurfaceSkeleton.tsx) by kind. |

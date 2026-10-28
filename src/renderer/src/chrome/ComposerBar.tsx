@@ -19,12 +19,14 @@ import { ArrowUp, AtSign, CornerDownRight, ListPlus, Paperclip, Pause, Plus, Sla
 
 /**
  * The composer's one row under the field, 32px tall and never scrolling:
- * the `+` menu and the model button on the left, the permission mode
- * (absent for fx, which has none) and the send button on the right. It is
- * the `composer-bar` size container, so a narrow box gives way in order:
- * the free space, then the model's effort word and name (down to its
- * harness icon), then the mode's label (down to its icon). Add and Send
- * never shrink; every control fits a 220px box.
+ * the `+` menu and the model button on the left, the context meter (an
+ * existing thread with a reading), the permission mode (absent for fx,
+ * which has none) and the send button on the right. It is the
+ * `composer-bar` size container, so a narrow box gives way in order: the
+ * free space, then the meter's percent (down to its ring), then the model's
+ * effort word and name (down to its harness icon), then the mode's label
+ * (down to its icon). Add and Send never shrink; every control fits a 220px
+ * box.
  */
 export function ComposerBar({
   harness,
@@ -35,6 +37,7 @@ export function ComposerBar({
   onInsert,
   fieldOf,
   onClose,
+  context,
   send,
 }: {
   harness: HarnessId;
@@ -48,6 +51,8 @@ export function ComposerBar({
   /** The field, where a closing menu returns the focus. */
   fieldOf: () => HTMLElement | null;
   onClose: () => void;
+  /** The context meter, before the permission mode. */
+  context?: ReactNode;
   send: ReactNode;
 }) {
   return (
@@ -56,6 +61,7 @@ export function ComposerBar({
         <AddMenu attachable={harnessSupportsAttachments(harness)} onAttach={onAttach} onInsert={onInsert} fieldOf={fieldOf} />
         {model}
         <div className="ms-auto flex shrink-0 items-center gap-1">
+          {context}
           {harness !== "fx" ? <AccessPicker value={runtimeMode} onChange={onRuntimeModeChange} onClose={onClose} /> : null}
           {send}
         </div>

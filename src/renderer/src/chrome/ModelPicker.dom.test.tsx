@@ -2,15 +2,14 @@
 /**
  * The model menu: the button reads the model and the effort; the foot
  * holds the current model's settings, with Speed only for the tiers the
- * serving CLI lists (never a claim about the account) and the context
- * percent only when there is a reading.
+ * serving CLI lists (never a claim about the account). How full the
+ * context window is lives in the composer's meter, never here.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { resetHarnessModelOverlays, setHarnessModels } from "../lib/models";
 import { agentModelsFor } from "../lib/tcserver/catalog";
 import type { ModelInfo, ProviderInfo } from "../lib/tcserver/types";
-import type { ContextUsage } from "../lib/contextUsage";
 import { ModelPicker } from "./ModelPicker";
 import type { HarnessId } from "../lib/session";
 
@@ -32,11 +31,9 @@ function seed(provider: "claude" | "codex", models: ModelInfo[]) {
   setHarnessModels(provider, agentModelsFor(info), models[0].id);
 }
 
-function picker(harness: HarnessId, model: string, values: Record<string, string> = {}, context?: ContextUsage) {
+function picker(harness: HarnessId, model: string, values: Record<string, string> = {}) {
   const onChange = vi.fn();
-  render(
-    <ModelPicker harness={harness} model={model} onChange={() => {}} settings={{ values, onChange, context }} />,
-  );
+  render(<ModelPicker harness={harness} model={model} onChange={() => {}} settings={{ values, onChange }} />);
   return onChange;
 }
 
@@ -120,38 +117,22 @@ describe("ModelPicker", () => {
     expect(onChange).toHaveBeenLastCalledWith({ fast: "false", ultrafast: "true" });
   });
 
-  it("Context shows its percent only with a reading", async () => {
+  it("Claude's Context row is its window setting alone, with no percent", async () => {
     seed("claude", [{ id: "claude-opus-5-5", label: "Opus 5.5", reasoning: EFFORTS, context: 1_000_000 }]);
-    picker("claude", "claude:claude-opus-5-5", {}, { used: 84_000, window: 200_000 });
-    let menu = await open(/Opus 5\.5/);
-    expect(menu.textContent).toContain("42%");
-    cleanup();
     picker("claude", "claude:claude-opus-5-5");
-    menu = await open(/Opus 5\.5/);
-    expect(menu.textContent).not.toMatch(/\d+%/);
-  });
-
-  it("Codex has no context setting, so a reading gets a read-only Context row after Effort", async () => {
-    seed("codex", [{ id: "gpt-a", label: "A", reasoning: ["low", "high"], speedTiers: ["priority"] }]);
-    picker("codex", "codex:gpt-a", {}, { used: 28_500, window: 475_000 });
-    let menu = await open(/^Codex A/);
-    const rows = menu.querySelector("[data-model-settings-rows]")!;
-    const labels = [...rows.children].map((row) => row.firstElementChild?.textContent);
-    expect(labels).toEqual(["Effort", "Context", "Speed"]);
-    expect(rows.children[1].textContent).toBe("Context6%475K");
-    expect(within(rows.children[1] as HTMLElement).queryByRole("combobox")).toBeNull();
-    cleanup();
-    picker("codex", "codex:gpt-a");
-    menu = await open(/^Codex A/);
-    expect(menu.textContent).not.toContain("Context");
-  });
-
-  it("Claude's Context row keeps its select, with the percent beside it", async () => {
-    seed("claude", [{ id: "claude-opus-5-5", label: "Opus 5.5", reasoning: EFFORTS, context: 1_000_000 }]);
-    picker("claude", "claude:claude-opus-5-5", {}, { used: 84_000, window: 200_000 });
     const menu = await open(/Opus 5\.5/);
     expect(within(menu).getAllByText("Context")).toHaveLength(1);
     expect(within(menu).getByRole("combobox", { name: "Context" })).toBeTruthy();
+    expect(menu.textContent).not.toMatch(/\d+%/);
+  });
+
+  it("Codex has no context setting and so no Context row", async () => {
+    seed("codex", [{ id: "gpt-a", label: "A", reasoning: ["low", "high"], speedTiers: ["priority"] }]);
+    picker("codex", "codex:gpt-a");
+    const menu = await open(/^Codex A/);
+    const rows = menu.querySelector("[data-model-settings-rows]")!;
+    expect([...rows.children].map((row) => row.firstElementChild?.textContent)).toEqual(["Effort", "Speed"]);
+    expect(menu.textContent).not.toMatch(/\d+%/);
   });
 
   it("Escape returns focus to the model button; a pick hands it to the field", async () => {

@@ -68,6 +68,17 @@ export type ThreadMenuFacts = {
 
 export type ThreadMenuExtra = { open?: boolean; newPass?: boolean };
 
+/** Compact runs as a turn, so only a thread with no turn in flight offers it:
+ *  the thread menu's row and the context meter's button share this rule. */
+export function canCompact(
+  facts: Pick<ThreadMenuFacts, "status" | "treeHasLiveWork" | "treeHasPaused">,
+): boolean {
+  const { status } = facts;
+  const working = !!facts.treeHasLiveWork || status === "running" || status === "starting";
+  const paused = status === "paused" || !!facts.treeHasPaused;
+  return !working && !paused && status !== "stopped" && status !== "queued" && status !== "waiting";
+}
+
 /** The thread types with an options dialog (chrome/ThreadTune.tsx). */
 const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
 
@@ -120,9 +131,7 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
   // The harness is gone: the same resume boots a fresh one on the transcript.
   else if (stopped) rows.push({ kind: "item", id: "resume", label: "Resume", icon: Play });
   else if (working) rows.push({ kind: "item", id: "pause", label: "Pause", icon: Pause });
-  // Compact runs as a turn, so only a thread with no turn in flight offers it.
-  if (!working && !paused && !stopped && !queued && status !== "waiting")
-    rows.push({ kind: "item", id: "compact", label: "Compact", icon: FoldVertical });
+  if (canCompact(facts)) rows.push({ kind: "item", id: "compact", label: "Compact", icon: FoldVertical });
   // A watching thread is idle behind its background tasks: this ends them.
   if (status === "watching") rows.push({ kind: "item", id: "killBackground", label: "Kill background tasks", icon: StopCircle, danger: true });
   if (live) rows.push({ kind: "item", id: "stop", label: "Stop", icon: Square, danger: true });

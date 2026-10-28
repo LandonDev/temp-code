@@ -27,6 +27,22 @@ export function contextPercent(usage: ContextUsage | undefined): number | null {
   return Math.round(ratio * 100);
 }
 
+/** The fill at which the context meter turns amber: the window is nearly
+ *  full and the person decides whether to compact. Never red: red is for
+ *  failed (docs/DESIGN.md "Colour"). */
+export const CONTEXT_WARN_RATIO = 0.85;
+
+/** The context meter's ink for a fill: muted, then amber from 85%. */
+export function contextTone(ratio: number): "text-muted-foreground" | "text-warning" {
+  return ratio >= CONTEXT_WARN_RATIO ? "text-warning" : "text-muted-foreground";
+}
+
+/** A compaction in progress: the fold's `thread.compacting` (fold.ts);
+ *  older projections just lack it. */
+export function isCompacting(session: { thread?: unknown } | null | undefined): boolean {
+  return (session?.thread as { compacting?: boolean } | undefined)?.compacting === true;
+}
+
 /** Compact token count for chrome: 980, 176K, 1.2M. */
 export function formatTokens(count: number): string {
   if (!Number.isFinite(count) || count < 0) return "0";

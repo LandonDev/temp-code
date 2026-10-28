@@ -457,25 +457,46 @@ over the 15px field, and one 32px row under it that never scrolls
 Skills and commands; the last two type `@` or `/` at the caret) and the
 model button, which reads the model and the effort ("Opus 5.5  High") and
 opens the model menu: providers, search, the list, then the model's
-settings as rows (Effort, Context with the thread's percent, Speed only for
-the tiers the serving CLI lists, any other setting; a catalog with no
-context setting, Codex's, gets a read-only Context row with the percent and
-the window while the thread has a reading). A pick hands the focus back to
-the field; Escape or a click outside returns it to the model button, and the
-permission select follows the same rule. Right: the permission
-mode as a quiet select (none for fx) and the send button, whose glyph is
-what Enter would do. Until the thread's first message the box's top row
+settings as rows (Effort, Context, Speed only for the tiers the serving CLI
+lists, any other setting). A pick hands the focus back to the field; Escape
+or a click outside returns it to the model button, and the permission
+select follows the same rule. Right: the context meter, the permission mode
+as a quiet select (none for fx) and the send button, whose glyph is what
+Enter would do.
+
+The context meter (chrome/ContextMeter.tsx) is the one place the window's
+fill shows: a 28px ghost `Button` holding a 14px ring (a 25% track and the
+filled arc in the current colour) and the percent in 12px `tabular-nums`,
+muted below 85% and amber from 85% (`contextTone` in lib/contextUsage.ts;
+never red), the ring a 14px `Spinner` while the harness compacts. It draws
+only for an existing thread once the harness has reported both the level
+and the window (`SessionMeta.context`); Cursor reports none, so it has no
+meter. Its hover says "124K of 200K tokens", or "Compacting". A click opens
+a 320px popover (a `LazyPopover`, out of the first paint) above it: "Context"
+with the live total at the end, "Compacting" with its spinner while that
+runs, then the harness's categories largest first, the memory files and MCP
+tools each under the category it details (at most six, largest first, then
+"+N more"; a list the harness sent no category for stands after them with
+its total), `Skeleton` rows until the first reading and "Breakdown after
+this turn" mid-turn without one, and Compact at the foot when the thread
+can (`canCompact` in lib/threadMenu.ts, the thread menu's rule). The
+breakdown is `session.context` through lib/contextCache.ts, polled only
+while the popover is open and the turn has settled; mid-turn the host
+answers null and the last reading stays under the live total. The popover
+gives the focus back to the field when it closes. Until the thread's first message the box's top row
 holds the type select (chrome/ThreadTypeChip.tsx): the type's tinted glyph
 and its name, each item the same glyph over its hint. No mascot runs along
 the composer.
 
 The row is the `composer-bar` size container, so a narrow box gives way in
 one order, by container variants and never by script: the free space
-first, then the model button's effort word (under 384px of row) and its
-name, truncating and then gone under 208px so the harness icon is left,
-then the permission mode's label under 336px, so its icon is left (its
-accessible name and tooltip still say "Permission mode: <mode>"). Add and
-Send never shrink; every control fits a 220px box.
+first, then the context meter's percent (under 416px of row; the ring
+stays), then the model button's effort word (under 384px) and its name,
+truncating and then gone under 208px so the harness icon is left, then the
+permission mode's label under 336px, so its icon is left (its accessible
+name and tooltip still say "Permission mode: <mode>"). Add and Send never
+shrink; every control fits a 220px box: Add, the model icon, the ring, the
+mode icon and Send.
 
 Under the box, one quiet row (`DraftRow`) holds project, host, branch and
 type on the shell's new-thread screen and until a thread's first message;
@@ -484,8 +505,8 @@ becomes the draft's project. After the first message the row is gone: the
 branch is changed in the Changes section's head and the type is the thread
 menu's Type submenu. The goal is the thread menu's "Goal…", on every
 surface and for every root claude or codex thread, answered by the app's one
-dialog (`GoalDialogHost` in chrome/GoalDialog.tsx); usage and accounts are the rail's meter (A3); the
-context ring and its breakdown are gone, the percent is on the model menu.
+dialog (`GoalDialogHost` in chrome/GoalDialog.tsx); usage and accounts are the rail's meter (A3), and
+the context window is the composer's meter above.
 
 The host in that row (chrome/DraftHostPicker.tsx) shows for a draft of a
 project linked across hosts: the host's glyph and name, and a menu of every

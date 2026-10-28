@@ -14,7 +14,8 @@ generous: 15px prose on a 1.6 line height, the person's words in a soft
 bubble on the right, the model's as plain text on the left, its actions
 clumped into one muted line per paragraph that opens into a single
 thin-bordered list. Colour means something or is absent: amber when the
-person is needed, red when something failed, green for lines added, the one
+person is needed (and on the context meter from 85% full), red when
+something failed, green for lines added, the one
 blue accent for links and focus, and a thread's type on its glyph alone.
 Motion is short, physical and interruptible;
 nothing bounces, glows, slides in from nowhere or stays on screen when it is
@@ -69,7 +70,7 @@ or glass setting any more.
 | `muted-foreground` | text that supports it | oklch 0.68 | oklch 0.5 |
 | `primary` / `primary-foreground` | the one primary button per surface, a checked box, a switch on | near-white / near-black | near-black / white |
 | `accent` | links, focus rings, the rare call to action | blue 62% | blue 48% |
-| `warning` | the person is needed | amber | amber |
+| `warning` | the person is needed; the context meter from 85% full | amber | amber |
 | `destructive` | failed, delete | red | red |
 | `success` | lines added, passed | green | green |
 | `info` | the one informational tint | blue | blue |

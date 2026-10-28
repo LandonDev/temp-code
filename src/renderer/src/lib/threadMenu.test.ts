@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MenuRow } from "../chrome/menuRows";
 import { THREAD_MENU_ICONS } from "../surfaces/threads/threadTypes";
 import type { ThreadType } from "./tcserver/types";
-import { threadMenuRows, type ThreadMenuFacts } from "./threadMenu";
+import { canCompact, threadMenuRows, type ThreadMenuFacts } from "./threadMenu";
 
 const facts = (over: Partial<ThreadMenuFacts> = {}): ThreadMenuFacts => ({
   status: "idle",
@@ -190,5 +190,17 @@ describe("threadMenuRows: what a surface adds", () => {
       if (r.kind === "item" || r.kind === "sub") expect(r.icon, r.id).toBeTruthy();
       if (r.kind === "item" && r.id !== "close-tab") expect(r.shortcut, r.id).toBeUndefined();
     }
+  });
+});
+
+describe("canCompact", () => {
+  it("holds only with no turn in flight, for the menu row and the context meter alike", () => {
+    expect(canCompact({ status: "idle" })).toBe(true);
+    expect(canCompact({ status: "done" })).toBe(true);
+    expect(canCompact({ status: "watching" })).toBe(true);
+    for (const status of ["running", "starting", "waiting", "paused", "stopped", "queued"] as const)
+      expect(canCompact({ status })).toBe(false);
+    expect(canCompact({ status: "idle", treeHasLiveWork: true })).toBe(false);
+    expect(canCompact({ status: "idle", treeHasPaused: true })).toBe(false);
   });
 });

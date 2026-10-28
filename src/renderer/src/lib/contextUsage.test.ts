@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  CONTEXT_WARN_RATIO,
   contextPercent,
   contextRatio,
+  contextTone,
   contextTooltip,
   dropContextWindow,
   formatTokens,
+  isCompacting,
   mergeContextUsage,
 } from "./contextUsage";
 
@@ -117,5 +120,24 @@ describe("dropContextWindow", () => {
 
   it("leaves the ring hidden until the next turn re-reports", () => {
     expect(contextRatio(dropContextWindow({ used: 30_000, window: 200_000 }))).toBeNull();
+  });
+});
+
+describe("contextTone", () => {
+  it("is muted below 85% and amber from 85%, never red", () => {
+    expect(CONTEXT_WARN_RATIO).toBe(0.85);
+    expect(contextTone(0)).toBe("text-muted-foreground");
+    expect(contextTone(0.849)).toBe("text-muted-foreground");
+    expect(contextTone(0.85)).toBe("text-warning");
+    expect(contextTone(1)).toBe("text-warning");
+  });
+});
+
+describe("isCompacting", () => {
+  it("reads the fold's compacting flag, and false for a projection without one", () => {
+    expect(isCompacting({ thread: { compacting: true } })).toBe(true);
+    expect(isCompacting({ thread: { compacting: false } })).toBe(false);
+    expect(isCompacting({ thread: {} })).toBe(false);
+    expect(isCompacting(undefined)).toBe(false);
   });
 });

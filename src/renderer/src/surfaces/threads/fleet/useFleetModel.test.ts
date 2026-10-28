@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Session } from "../../../lib/session";
-import { agentNumbers, fleetActive, fleetStats, isCompacting } from "./useFleetModel";
+import { isCompacting } from "../../../lib/contextUsage";
+import { agentNumbers, fleetActive, fleetStats } from "./useFleetModel";
 
 const session = (extra: Partial<Session> = {}): Session => ({ id: "s", blocks: [], ...extra }) as unknown as Session;
 

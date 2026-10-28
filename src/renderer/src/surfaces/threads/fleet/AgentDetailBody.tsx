@@ -19,7 +19,7 @@ import {
 } from "../../../lib/threads/agents";
 import { AgentTranscript } from "../../AgentTranscript";
 import { AGENT_GLYPHS } from "../threadTypes";
-import { useContextReading } from "./contextCache";
+import { useContextReading } from "../../../lib/contextCache";
 import { AgentNumbersLine } from "./rowBits";
 import { agentNumbers, fleetStats, type NumberPart } from "./useFleetModel";
 

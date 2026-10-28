@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 /**
- * The composer's bar: one row of `+`, the model button, the permission
- * mode and send (no mode for fx; no account, goal or context control for
- * anyone); the `+` menu's three rows; the send button speaking the intent
- * Enter would carry out.
+ * The composer's bar: one row of `+`, the model button, the context meter
+ * (an existing thread with a reading), the permission mode and send (no
+ * mode for fx; no account or goal control for anyone); the `+` menu's
+ * three rows; the send button speaking the intent Enter would carry out.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 
 const store = vi.hoisted(() => ({ blocks: new Map<string, unknown[]>(), listeners: new Set<() => void>() }));
 vi.mock("../lib/tcserver/store", () => ({
@@ -19,10 +20,17 @@ vi.mock("../lib/tcserver/store", () => ({
   },
 }));
 
+vi.mock("../lib/contextCache", () => ({ useContextReading: () => null }));
+
 import { ComposerBar, SendButton, useDraftRow } from "./ComposerBar";
+import { ContextMeter } from "./ContextMeter";
 import type { HarnessId } from "../lib/session";
 
-function bar(harness: HarnessId, handlers: { onAttach?: () => void; onInsert?: (mark: "@" | "/") => void } = {}) {
+function bar(
+  harness: HarnessId,
+  handlers: { onAttach?: () => void; onInsert?: (mark: "@" | "/") => void } = {},
+  context?: ReactNode,
+) {
   return render(
     <ComposerBar
       harness={harness}
@@ -33,6 +41,7 @@ function bar(harness: HarnessId, handlers: { onAttach?: () => void; onInsert?: (
       onInsert={handlers.onInsert ?? (() => {})}
       fieldOf={() => null}
       onClose={() => {}}
+      context={context}
       send={<SendButton intent="send" disabled onSubmit={() => {}} onPause={() => {}} />}
     />,
   );
@@ -70,12 +79,24 @@ describe("ComposerBar", () => {
     for (const name of ["Add", "Send"]) expect(screen.getByRole("button", { name }).className).toContain("shrink-0");
   });
 
-  it("fx has no permission mode; nobody has an account, goal or context control", () => {
+  it("fx has no permission mode; nobody has an account or goal control", () => {
     const { container } = bar("fx");
     expect(rowNames(container)).toEqual(["Add", "Opus 5.5", "Send"]);
     for (const name of [/account/i, /goal/i, /context/i]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
+  });
+
+  it("the context meter stands between the model and the mode, and its percent gives way first", () => {
+    const meter = <ContextMeter sessionId="s" usage={{ used: 84_000, window: 200_000 }} />;
+    const { container, unmount } = bar("claude", {}, meter);
+    expect(rowNames(container)).toEqual(["Add", "Opus 5.5", "Context 42% full", "Permission mode: Supervised", "Send"]);
+    const percent = within(screen.getByRole("button", { name: "Context 42% full" })).getByText("42%");
+    // Under 26rem the percent goes, before the model's effort word (24rem).
+    expect(percent.className).toContain("@max-[26rem]/composer-bar:hidden");
+    unmount();
+    const fx = bar("fx", {}, meter);
+    expect(rowNames(fx.container)).toEqual(["Add", "Opus 5.5", "Context 42% full", "Send"]);
   });
 
   it("the + menu: attach, mention and skills", async () => {
