@@ -117,13 +117,15 @@ export function rowState(t: RowStateInput, planReady = false): ThreadState {
   return threadStateOf(t.status);
 }
 
-/** The states a group's word says, loudest first; watching counts as working. */
-export type GroupState = "waiting" | "failed" | "working" | "paused";
+/** The states a group's word says, loudest first. Working is a thread
+ *  running a turn; watching (a master on its batch, a parent on its
+ *  subagents, a thread on its background work) is quieter than paused. */
+export type GroupState = "waiting" | "failed" | "working" | "paused" | "watching";
 
-const GROUP_ORDER: readonly GroupState[] = ["waiting", "failed", "working", "paused"];
+const GROUP_ORDER: readonly GroupState[] = ["waiting", "failed", "working", "paused", "watching"];
 
 const groupStateOf = (state: ThreadState): GroupState | null =>
-  state === "watching" ? "working" : (GROUP_ORDER as readonly ThreadState[]).includes(state) ? (state as GroupState) : null;
+  (GROUP_ORDER as readonly ThreadState[]).includes(state) ? (state as GroupState) : null;
 
 /** The row a group's word names: a batch thread is named by its master. */
 type GroupRow = RowStateInput & {
@@ -139,7 +141,7 @@ type GroupRow = RowStateInput & {
 export type GroupMark<T> = { state: GroupState; about: T; others: T[]; more: number };
 
 /**
- * The loudest of waiting > failed > working > paused over every root and
+ * The loudest of waiting > failed > working > paused > watching over every root and
  * every batch thread (`cardThreads`), or null when the group is quiet.
  * `about` is the newest root in that state, a batch thread's master standing
  * in for it; `more` counts the other roots in that state.

@@ -186,7 +186,7 @@ const row = (id: string, extra: Partial<SessionMeta> = {}, seen: Record<string, 
   threadRow(meta(id, extra), seen, 0, housed);
 
 describe("groupMark", () => {
-  it("says the loudest state: needs you, failed, working, paused", () => {
+  it("says the loudest state: needs you, failed, working, paused, watching", () => {
     const paused = row("p", { status: "paused" });
     const running = row("r", { status: "running" });
     const failed = row("f", { status: "error" });
@@ -195,7 +195,17 @@ describe("groupMark", () => {
     expect(groupMark([paused, running, failed])?.state).toBe("failed");
     expect(groupMark([paused, running])?.state).toBe("working");
     expect(groupMark([paused])?.state).toBe("paused");
-    expect(groupMark([row("watch", { status: "watching" })])?.state).toBe("working");
+    const watch = row("watch", { status: "watching" });
+    expect(groupMark([watch])).toEqual({ state: "watching", about: watch, others: [], more: 0 });
+    expect(groupMark([watch, running])?.state).toBe("working");
+    expect(groupMark([watch, paused])?.state).toBe("paused");
+    expect(groupMark([watch, failed])?.state).toBe("failed");
+  });
+
+  it("reads a parent settled over its live subagents as watching, never working", () => {
+    const parent = row("parent", { status: "idle", background: { tasks: [], agents: ["k1"], batch: null, watchingSince: 1 } });
+    expect(groupMark([parent])?.state).toBe("watching");
+    expect(groupMark([parent])?.about).toBe(parent);
   });
 
   it("is null for a quiet group", () => {

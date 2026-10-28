@@ -115,6 +115,21 @@ describe('a project row', () => {
     expect(word([threadRow(meta('d', { status: 'done' }), { d: 500 })])).toBeNull()
   })
 
+  it('says Watching, never Working, when its only live thread watches; Paused and a running turn beat it', () => {
+    const word = (threads: ThreadRow[]) => {
+      const probe = mountProbe(projectRow(threads))
+      const mark = headerOf(probe.container).querySelector('[data-slot="status-word"]')?.textContent ?? null
+      probe.unmount()
+      return mark
+    }
+    // A master watching its batch, a parent watching its subagents, a thread watching its background work.
+    expect(word([threadRow(meta('m', { status: 'watching', isMaster: true }), {})])).toBe('Watching')
+    expect(word([threadRow(meta('o', { status: 'idle', background: { tasks: [], agents: ['k1'], batch: null, watchingSince: 1 } }), {})])).toBe('Watching')
+    expect(word([threadRow(meta('b', { status: 'watching', background: { tasks: [{ id: 't1', label: 'sleep 45', kind: 'shell', startedAt: 1 }], agents: [], batch: null, watchingSince: 1 } }), {})])).toBe('Watching')
+    expect(word([threadRow(meta('m', { status: 'watching' }), {}), threadRow(meta('p', { status: 'paused' }), {})])).toBe('Paused')
+    expect(word([threadRow(meta('m', { status: 'watching' }), {}), threadRow(meta('r', { status: 'running' }), {})])).toBe('Working')
+  })
+
   it('is open by default and lists its threads; closed, it holds none and stays closed across a remount', async () => {
     const threads = rows(3)
     const probe = mountProbe(projectRow(threads))
