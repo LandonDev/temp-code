@@ -347,11 +347,13 @@ function RuleRow({
   const model = provider?.models.find((m) => m.id === modelId);
   const approved = modelApproved(rules, rule.provider, modelId);
   const orchestratorsOnly = !approved && modelApproved(rules, rule.provider, modelId, "orchestrator");
+  const factsId = useId();
   // The row keeps the page's hairline; the button inside it carries the hover fill.
   return (
     <div data-slot="page-row" className="py-1 [[data-slot=page-row]+&]:border-t [[data-slot=page-row]+&]:border-border">
       <ItemButton
         aria-label={`Edit rule: ${rule.task}`}
+        aria-describedby={factsId}
         onClick={onEdit}
         className="-mx-2 w-[calc(100%+1rem)] rounded-md px-2 py-2 hover:bg-foreground/5"
       >
@@ -360,7 +362,7 @@ function RuleRow({
         </ItemMedia>
         <ItemContent className="min-w-0">
           <ItemTitle className={rule.enabled ? undefined : "text-muted-foreground"}>{rule.task}</ItemTitle>
-          <ItemDescription className="line-clamp-none">
+          <ItemDescription id={factsId} className="line-clamp-none">
             <span className="flex flex-wrap items-center gap-2">
               {rule.enabled ? null : <span>Off</span>}
               <span>{model?.label ?? modelId}</span>

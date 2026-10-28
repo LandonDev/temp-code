@@ -527,7 +527,8 @@ function ProjectSettingsBody({
   const [pins, setPins] = useState<AccountPins>(home.accountPins ?? {});
   const { snapshot } = useAccounts(home.environmentId);
   const { pass, setPass, inherited } = useTurnPass(homeWorkspace.id, home.id);
-  const reviewScope = useReviewScope(home.environmentId, home.id).scope;
+  const reviewLoad = useReviewScope(home.environmentId, home.id);
+  const reviewScope = reviewLoad.scope;
   // undefined until the scope loads; null = follows the global set.
   const [review, setReview] = useState<ReviewSettings | null | undefined>(undefined);
   useEffect(() => {
@@ -641,7 +642,17 @@ function ProjectSettingsBody({
                 {pass ? linkButton("Use workspace setting", () => setPass(null)) : null}
               </Section>
               <Section label="Reviews">
-                <ReviewFields value={shownReview} onChange={setReview} environmentId={home.environmentId} compact />
+                {/* Editable once the project's scope answered, as Plans below. */}
+                {reviewScope ? (
+                  <ReviewFields value={shownReview} onChange={setReview} environmentId={home.environmentId} compact />
+                ) : reviewLoad.error ? (
+                  <>
+                    <p className="text-xs text-destructive">{reviewLoad.error}</p>
+                    {linkButton("Retry", reviewLoad.retry)}
+                  </>
+                ) : (
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                )}
                 {review ? linkButton("Use global setting", () => setReview(null)) : null}
               </Section>
               <Section label="Accounts">

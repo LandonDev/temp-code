@@ -65,6 +65,7 @@ let calls: Call[] = []
 let boxOpen = true
 // A project-scope plans.get that fails for good (the global one still answers).
 let projectPlansFail = false
+let projectReviewFail = false
 
 const status = (slot: string): EnvironmentStatus => {
   const box = slot === BOX
@@ -88,6 +89,7 @@ const linkFor = (slot: string): Link =>
     request: async (method: string, params: Record<string, unknown> = {}) => {
       calls.push({ slot, method, params })
       if (projectPlansFail && method === 'plans.get' && params.projectId) throw new Error('not connected')
+      if (projectReviewFail && method === 'review.get' && params.projectId) throw new Error('unknown method')
       return null
     }
   }) as unknown as Link
@@ -98,6 +100,7 @@ beforeEach(() => {
   calls = []
   boxOpen = true
   projectPlansFail = false
+  projectReviewFail = false
   resetPlanSettingsForTests()
   workspaceStore.reset()
   workspaceStore.hydrate([
@@ -212,6 +215,20 @@ describe('ProjectSettingsDialog when the project\'s plans fail to load', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     })
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Auto-start' })).toBeTruthy())
+  })
+})
+
+describe('ProjectSettingsDialog when the project\'s review set fails to load', () => {
+  it('says why with Retry instead of fields that would never save', async () => {
+    projectReviewFail = true
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByText('unknown method')).toBeTruthy())
+    expect(screen.queryByRole('switch', { name: 'Review before merge' })).toBeNull()
+    projectReviewFail = false
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    })
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Review before merge' })).toBeTruthy())
   })
 })
 

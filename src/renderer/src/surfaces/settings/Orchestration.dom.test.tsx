@@ -201,6 +201,9 @@ describe("Orchestration page", () => {
       expect(controls[0].getAttribute("aria-label")).toBe(`Edit rule: ${task}`);
     }
     expect(within(ruleRow("Reviews")).getByText("Off")).toBeTruthy();
+    // The facts stay with the button for a screen reader, Off first.
+    const reviews = screen.getByRole("button", { name: "Edit rule: Reviews" });
+    expect(document.getElementById(reviews.getAttribute("aria-describedby")!)?.textContent).toMatch(/^Off/);
     expect(within(ruleRow("Bulk work")).queryByText("Off")).toBeNull();
   });
 

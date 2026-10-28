@@ -129,6 +129,18 @@ describe("Reviews page", () => {
     expect(screen.queryByText("The host did not answer")).toBeNull();
   });
 
+  it("lands an answer that comes after the deadline, with no Retry and no new socket", async () => {
+    vi.useFakeTimers();
+    let answerNow: (v: unknown) => void = () => {};
+    state.get = () => new Promise((resolve) => (answerNow = resolve));
+    render(<ReviewsPage />);
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(screen.getByText("The host did not answer")).toBeTruthy();
+    await act(async () => answerNow({ override: null, global: SETTINGS, settings: SETTINGS, source: "global" }));
+    expect(screen.getByRole("switch", { name: "Review before merge" })).toBeTruthy();
+    expect(screen.queryByText("The host did not answer")).toBeNull();
+  });
+
   it("says why the load failed, and Retry asks again", async () => {
     state.get = async () => {
       throw new Error("not connected");

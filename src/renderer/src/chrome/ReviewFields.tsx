@@ -54,11 +54,9 @@ export function ReviewSkeleton() {
   );
 }
 
-/** A scope's review set. The read waits for the socket to open and is
- *  refused with NO_ANSWER past LOAD_DEADLINE_MS. */
+/** A scope's review set; the read waits for the socket to open. */
 export async function loadReviewScope(environmentId: string, projectId: string | null): Promise<ReviewScope> {
-  const raw = await withDeadline(readWhenOpen(registry.linkOf(environmentId), "review.get", { projectId }));
-  return parseReviewScope(raw);
+  return parseReviewScope(await readWhenOpen(registry.linkOf(environmentId), "review.get", { projectId }));
 }
 
 /** A scope's review set, loaded on mount, asked again on every new socket
@@ -81,16 +79,21 @@ export function useReviewScope(environmentId: string, projectId: string | null) 
     let live = true;
     pending.current = true;
     setError(null);
-    loadReviewScope(environmentId, projectId)
-      .then((s) => {
-        if (!live) return;
-        setScope(s);
-        setError(null);
-      })
-      .catch((err) => live && setError(err instanceof Error ? err.message : String(err)))
+    const read = loadReviewScope(environmentId, projectId);
+    // Past the deadline the error shows, and an answer that comes later still lands.
+    read
+      .then(
+        (s) => {
+          if (!live) return;
+          setScope(s);
+          setError(null);
+        },
+        () => {},
+      )
       .finally(() => {
         if (live) pending.current = false;
       });
+    withDeadline(read).catch((err) => live && setError(err instanceof Error ? err.message : String(err)));
     return () => {
       live = false;
     };
