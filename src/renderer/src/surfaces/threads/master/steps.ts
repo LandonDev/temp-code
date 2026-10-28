@@ -1,3 +1,4 @@
+import { lowerFirst } from "../../../lib/threadStripModel";
 import {
   BatchStepKindSchema,
   DEFAULT_BATCH_STEPS,
@@ -167,7 +168,19 @@ export function stepDetail(step: Pick<LiveStep, "kind" | "status" | "detail" | "
     const progress = progressText(step.progress);
     if (progress) return { text: progress.count, label: progress.label };
   }
+  // A failure is said once, on its row, as the vocabulary writes a detail.
+  if (step.status === "failed") return plain(lowerFirst(step.detail) ?? "");
   return plain(step.detail.trim());
+}
+
+/** A failed step's console: its log, less a last line that only repeats
+ *  the failure its row already says. */
+export function consoleLines(step: Pick<LiveStep, "status" | "detail" | "log">, limit = 200): string[] {
+  const lines = tailLines(step.log, limit);
+  const said = (text: string) => text.trim().replace(/\.$/, "").toLowerCase();
+  const last = lines[lines.length - 1];
+  if (step.status === "failed" && last !== undefined && step.detail.trim() && said(last) === said(step.detail)) return lines.slice(0, -1);
+  return lines;
 }
 
 /** The step the console shows: the running one, else a failed one (it

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BatchState, BatchStep, BatchStepSpec } from "@server/shared/contract-batch";
-import { consoleStep, liveStep, liveSteps, nearBottom, progressText, specOf, stepDetail, stepState, stepTime, tailLines, type LiveStep } from "./steps";
+import { consoleLines, consoleStep, liveStep, liveSteps, nearBottom, progressText, specOf, stepDetail, stepState, stepTime, tailLines, type LiveStep } from "./steps";
 
 const batch = { landed: ["a"], pending: ["b", "c"] };
 const live = (over: Partial<LiveStep>): LiveStep => ({ id: "gate", name: "Gate", kind: "gate", status: "pending", detail: "", log: [], ...over });
@@ -75,6 +75,21 @@ describe("a step as the foot reads it", () => {
     expect(stepDetail(live({ status: "skipped", detail: "needs a release" }), rules).text).toBe("needs a release");
     expect(stepDetail(live({ status: "failed", detail: "vitest: 2 failed" }), rules).text).toBe("vitest: 2 failed");
     expect(stepDetail(live({ status: "pending", kind: "shell", run: "bun run smoke" }), rules).text).toBe("");
+  });
+
+  it("a failed step's detail starts lower-case and loses its full stop; an acronym keeps its case", () => {
+    const rules = { land: "as-they-finish" } as const;
+    expect(stepDetail(live({ status: "failed", detail: "The gate failed at vitest." }), rules).text).toBe("the gate failed at vitest");
+    expect(stepDetail(live({ status: "failed", detail: "FAILED at vitest" }), rules).text).toBe("FAILED at vitest");
+  });
+});
+
+describe("a failed step's console", () => {
+  it("drops a last line that only repeats the row's detail, and keeps everything else", () => {
+    const failed = live({ status: "failed", detail: "Gate failed at vitest.", log: ["✓ typecheck", "✗ vitest", "gate failed at vitest"] });
+    expect(consoleLines(failed)).toEqual(["✓ typecheck", "✗ vitest"]);
+    expect(consoleLines({ ...failed, log: ["✓ typecheck", "✗ vitest"] })).toEqual(["✓ typecheck", "✗ vitest"]);
+    expect(consoleLines({ ...failed, status: "running" })).toEqual(failed.log);
   });
 });
 

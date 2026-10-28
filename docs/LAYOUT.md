@@ -918,7 +918,9 @@ in the whole pane, with Back.
   bottom, it follows again), "Starting…" before the first line; a shell
   step's command shows once, as its console's first line (`$ <run>`, the
   host writes it). A failed step's console stays open with its last lines
-  and the failure in red until Hide. No progress bar: the row's detail
+  until Hide; the failure is said once, red on its row, lower-case without
+  a stop (`stepDetail`), and the console drops a last line that only
+  repeats it (`consoleLines`). No progress bar: the row's detail
   says the count. The last line says what happens then: "Then notify you"
   or "Then archive the threads". Until `batch.board` answers the foot is
   a `Skeleton` of the heading and three rows. Read from the `batch.board`

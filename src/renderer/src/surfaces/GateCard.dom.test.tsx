@@ -38,6 +38,12 @@ describe("GateCard", () => {
     expect(parts(tagged.container)).toEqual(["Release passed", "master", "release-277"]);
   });
 
+  it("says a red gate's reason once on its line, the log folded behind the caret", () => {
+    const { container } = render(<GateCard block={block({ step: "gate", branch: "master", ok: false, log: "✓ typecheck 2s passed\n✗ vitest 40s failed", at: 1 })} />);
+    expect((container.textContent ?? "").split("at vitest")).toHaveLength(2);
+    expect(container.querySelector("pre")).toBeNull();
+  });
+
   it("a gate that never ran names its log's last line, as does a red release", () => {
     const missing = render(
       <GateCard block={block({ step: "gate", branch: "master", ok: false, log: '$ bun scripts/gate.ts\nerror: Module not found "scripts/gate.ts"', at: 1 })} />,

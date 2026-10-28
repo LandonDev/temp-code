@@ -1063,7 +1063,7 @@ describe("the master view", () => {
     expect(link.calls.find((c) => c.method === "batch.stopStep")?.params).toEqual({ masterId: "m", stepId: "build" });
   });
 
-  it("a failed step stays open with its last lines and the failure in red until Hide, and Show opens it again", async () => {
+  it("a failed step stays open with its last lines, the failure said once in red on its row, until Hide, and Show opens it again", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     renderView();
     await flush();
@@ -1075,7 +1075,7 @@ describe("the master view", () => {
           ...batch,
           steps: [
             { id: "land", status: "passed", detail: "", at: 1, startedAt: t - 120_000, endedAt: t },
-            { id: "gate", status: "failed", detail: "FAILED at vitest", at: 3, startedAt: t, endedAt: t + 30_000, log: ["✓ typecheck 12s", "✗ vitest: 2 failed"] },
+            { id: "gate", status: "failed", detail: "Gate failed at vitest.", at: 3, startedAt: t, endedAt: t + 30_000, log: ["✓ typecheck 12s", "✗ vitest: 2 failed", "Gate failed at vitest."] },
             { id: "release", status: "skipped", detail: "", at: 4 },
           ],
         },
@@ -1087,7 +1087,11 @@ describe("the master view", () => {
     expect(gate.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("failed");
     expect(gate.querySelector("[data-step-detail]")?.className).toContain("text-destructive");
     expect(gate.querySelector("[data-step-time]")?.textContent).toBe("30s");
-    expect(gate.querySelector("[data-log] .text-destructive")?.textContent).toBe("FAILED at vitest");
+    // The row says it, lower-case with no stop; the console shows the log alone, without the repeat.
+    expect(gate.querySelector("[data-step-detail]")?.textContent).toBe("gate failed at vitest");
+    expect(gate.querySelector("[data-log] .text-destructive")).toBeNull();
+    expect(gate.querySelector("[data-log]")?.textContent).toBe("✓ typecheck 12s\n✗ vitest: 2 failed");
+    expect((foot.textContent ?? "").toLowerCase().split("gate failed at vitest")).toHaveLength(2);
     expect(within(foot as HTMLElement).queryByRole("button", { name: "Stop" })).toBeNull();
     expect(foot.querySelector("[data-step='release']")?.textContent).toBe("Releaseskipped");
     fireEvent.click(within(gate).getByRole("button", { name: /Hide/ }));
