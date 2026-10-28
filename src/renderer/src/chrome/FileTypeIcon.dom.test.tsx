@@ -20,4 +20,13 @@ describe("FileTypeIcon", () => {
     for (const icon of icons) expect(icon.className).toContain("material-icon");
     expect(container.querySelector("[title]")).toBeNull();
   });
+
+  it("holds the glyph's box and alignment while the pack loads, so the row never shifts", async () => {
+    const { container } = render(<FileTypeIcon name="README.md" isDir={false} />);
+    const box = container.querySelector<HTMLElement>("span[aria-hidden]")!;
+    const before = box.className;
+    expect(before).toContain("align-middle");
+    await waitFor(() => expect(container.querySelector("svg")).not.toBeNull());
+    expect(container.querySelector<HTMLElement>("span[aria-hidden]")!.className).toBe(before);
+  });
 });

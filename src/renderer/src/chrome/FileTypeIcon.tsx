@@ -55,10 +55,11 @@ export function FileTypeIcon({
     : null;
   // The glyph is drawn here, not by the pack's components: they always write
   // a native `title` ("typescript icon"), and the row beside it already names the file.
+  // The empty box before the pack loads sits exactly where the glyph will, so nothing moves when it lands.
   return (
     <span
       aria-hidden
-      className={svg ? "material-icon inline-block shrink-0 align-middle" : "inline-block shrink-0"}
+      className="material-icon inline-block shrink-0 align-middle"
       style={{ width: size, height: size }}
       dangerouslySetInnerHTML={svg ? { __html: svg } : undefined}
     />
