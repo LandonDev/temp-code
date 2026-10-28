@@ -32,6 +32,9 @@ type Props = {
    *  a popover): it sits beside the row's button instead of inside it. */
   trailingInteractive?: boolean;
   hoverAction?: RailRowAction;
+  /** An action that takes the glyph's place on hover and focus (a
+   *  workspace's Pin); its press never reaches the row. */
+  glyphAction?: RailRowAction;
   /** A label on hover (a shortcut as `Kbd`); never a `title=`. Without
    *  one, a string label that is cut shows whole on hover. */
   tooltip?: ReactNode;
@@ -52,6 +55,9 @@ type Props = {
 
 const TRAILING =
   "flex shrink-0 items-center justify-end gap-1 text-[12px] tabular-nums text-muted-foreground";
+/** With a glyph action, the glyph fades while the action shows in its place. */
+const GLYPH_YIELDS =
+  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-focus-within/row:opacity-0 group-hover/row:opacity-0 motion-reduce:transition-none";
 /** With a hover action, the trailing slot reserves its place and fades. */
 const YIELDS =
   "min-w-5 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-focus-within/row:opacity-0 group-hover/row:opacity-0 motion-reduce:transition-none";
@@ -72,6 +78,7 @@ export function RailRow({
   trailing,
   trailingInteractive = false,
   hoverAction,
+  glyphAction,
   tooltip,
   menuTrigger = false,
   onClick,
@@ -115,7 +122,7 @@ export function RailRow({
   };
   const content = (
     <>
-      <span aria-hidden className={cn("grid size-4 shrink-0 place-items-center", glyphClassName)}>
+      <span aria-hidden className={cn("grid size-4 shrink-0 place-items-center", glyphClassName, glyphAction && GLYPH_YIELDS)}>
         {glyph ?? (Icon ? <Icon className="size-4" strokeWidth={1.5} /> : null)}
       </span>
       <span ref={text ? labelRef : undefined} className="min-w-0 flex-1 truncate text-left">
@@ -151,12 +158,16 @@ export function RailRow({
       )}
       {trailingInteractive ? trailingSlot : null}
       {hoverAction && !trailingInteractive ? <HoverAction action={hoverAction} /> : null}
+      {glyphAction ? <HoverAction action={glyphAction} over="glyph" /> : null}
       {children}
     </div>
   );
 }
 
-function HoverAction({ action, inline = false }: { action: RailRowAction; inline?: boolean }) {
+/** An icon Button with its Tooltip, shown on the row's hover and focus: at
+ *  the row's end, inline after an interactive trailing node, or over the
+ *  16px glyph slot (`over="glyph"`). */
+function HoverAction({ action, inline = false, over = "end" }: { action: RailRowAction; inline?: boolean; over?: "end" | "glyph" }) {
   const { icon: Icon } = action;
   return (
     <Tooltip>
@@ -175,7 +186,7 @@ function HoverAction({ action, inline = false }: { action: RailRowAction; inline
               action.onClick(event);
             }}
             className={cn(
-              !inline && "absolute top-1/2 right-1 -translate-y-1/2",
+              !inline && (over === "glyph" ? "absolute top-1/2 left-2 size-6 -translate-y-1/2" : "absolute top-1/2 right-1 -translate-y-1/2"),
               "text-muted-foreground hover:text-foreground",
               "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
               "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100",

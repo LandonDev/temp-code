@@ -11,6 +11,16 @@ import { mountProbe } from "../test/renderProbe";
 import { ProjectRail } from "./ProjectRail";
 import { ThreadList } from "./WorkspaceSessions";
 
+/** git's answer for the selected row; any other row must not ask. */
+const git = vi.hoisted(() => ({ asked: [] as [string | null | undefined, boolean][] }));
+vi.mock("../lib/gitIndexStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/gitIndexStore")>()),
+  useGitDiffStats: (cwd: string | null | undefined, enabled = true) => {
+    git.asked.push([cwd, enabled]);
+    return enabled ? { files: 3, additions: 12, deletions: 4 } : null;
+  },
+}));
+
 /**
  * One workspace linked across this Mac and the box: the rail shows one row
  * for it under one "Workspaces" header, the sidebar one list of both hosts'
@@ -147,7 +157,8 @@ describe("the rail", () => {
       recents = RECENTS,
       onOpenProject = (_?: string) => {},
       onOpenNotes = () => {},
-    }: { recents?: typeof RECENTS; onOpenProject?: (environmentId?: string) => void; onOpenNotes?: () => void } = {},
+      cwd = "~",
+    }: { recents?: typeof RECENTS; onOpenProject?: (environmentId?: string) => void; onOpenNotes?: () => void; cwd?: string } = {},
   ) {
     pairHosts(environments, statuses);
     for (const e of environments) {
@@ -157,7 +168,7 @@ describe("the rail", () => {
     await flush();
     probe = mountProbe(
       <ProjectRail
-        cwd="~"
+        cwd={cwd}
         recents={recents}
         onSelectProject={onSelectProject}
         onOpenProject={onOpenProject}
@@ -273,5 +284,25 @@ describe("the rail", () => {
     expect(addRow(root)).toHaveLength(0);
     expect(headingAdd(root)).not.toBeNull();
     expect(root.textContent).not.toContain("No workspaces yet");
+  });
+
+  it("only the selected row asks git for its diff, and shows it before its word", async () => {
+    git.asked = [];
+    const root = await mountRail([LOCAL, BOX], {}, undefined, { cwd: MAC_PATH });
+    const enabled = [...new Set(git.asked.filter(([, on]) => on).map(([cwd]) => cwd))];
+    expect(enabled).toEqual([MAC_PATH]);
+    const [selected, other] = workspaceRows(root);
+    expect(selected.querySelector("[data-workspace-diff]")?.textContent).toBe("+12 −4");
+    expect(selected.querySelector("button")?.getAttribute("aria-label")).toContain("3 files changed, +12, -4");
+    expect(other.querySelector("[data-workspace-diff]")).toBeNull();
+  });
+
+  it("pins a workspace from the button in its glyph's place, without selecting it", async () => {
+    const onSelect = vi.fn();
+    const root = await mountRail([LOCAL, BOX], {}, onSelect);
+    const [, other] = workspaceRows(root);
+    fireEvent.click(other.querySelector('[aria-label="Pin workspace"]')!);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(headers(root)).toContain("Pinned");
   });
 });

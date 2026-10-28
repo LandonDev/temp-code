@@ -11,6 +11,8 @@ import type { GroupMark } from "../lib/sidebarRows";
 import type { ThreadRow } from "../lib/workspaceSessions";
 import { WorkspaceLineView, WorkspaceMarkView } from "./WorkspaceRowMarks";
 import { RailWorkingView } from "./RailWorking";
+import { Counts } from "./rail/changeRows";
+import { Pin, PinOff } from "./icons";
 import type { WorkingRow } from "../lib/railWorking";
 import type { SessionMeta } from "../lib/tcserver/types";
 
@@ -23,7 +25,24 @@ const markOf = (state: GroupMark<ThreadRow>["state"], title: string, more = 0): 
   more,
 });
 
-function Workspace({ name, color, mark, unread = false, selected = false }: { name: string; color: string; mark?: GroupMark<ThreadRow>; unread?: boolean; selected?: boolean }) {
+function Workspace({
+  name,
+  color,
+  mark,
+  unread = false,
+  selected = false,
+  pinned = false,
+  diff,
+}: {
+  name: string;
+  color: string;
+  mark?: GroupMark<ThreadRow>;
+  unread?: boolean;
+  selected?: boolean;
+  pinned?: boolean;
+  /** The selected row's uncommitted +/−. */
+  diff?: [number, number];
+}) {
   return (
     <>
       <RailRow
@@ -33,7 +52,19 @@ function Workspace({ name, color, mark, unread = false, selected = false }: { na
         emphasis={unread}
         className="@container/railrow"
         trailingInteractive
-        trailing={mark ? <WorkspaceMarkView mark={mark} /> : null}
+        trailing={
+          diff || mark ? (
+            <>
+              {diff ? (
+                <span className="@max-[15rem]/railrow:hidden">
+                  <Counts status="modified" additions={diff[0]} deletions={diff[1]} />
+                </span>
+              ) : null}
+              {mark ? <WorkspaceMarkView mark={mark} /> : null}
+            </>
+          ) : null
+        }
+        glyphAction={{ label: pinned ? "Unpin workspace" : "Pin workspace", icon: pinned ? PinOff : Pin, onClick: noop }}
         hoverAction={{ label: "Workspace options", icon: MoreHorizontal, menu: true, onClick: noop }}
       />
       {mark ? <WorkspaceLineView mark={mark} /> : null}
@@ -76,7 +107,7 @@ export function RailSketch({ width = 260, working = false }: { width?: number; w
         <AccountsGroup selected="stats" />
         <div className="px-2 pt-4">
           <RailHeading>Pinned</RailHeading>
-          <Workspace name="temp-code" color="var(--chart-1)" selected />
+          <Workspace name="temp-code" color="var(--chart-1)" selected pinned diff={[12, 4]} mark={markOf("working", "Restore the cards")} />
         </div>
         <div className="px-2 pt-4">
           <RailHeading action={{ label: "Add workspace", icon: Plus, onClick: noop }}>Workspaces</RailHeading>

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Inbox, MoreHorizontal, Plus } from "./icons";
+import { Inbox, MoreHorizontal, Pin, Plus } from "./icons";
 import { RailHeading, RailRow } from "./RailRow";
 
 afterEach(cleanup);
@@ -60,6 +60,36 @@ describe("RailRow", () => {
     expect(onAction).toHaveBeenCalledOnce();
     expect(onRowDown).not.toHaveBeenCalled();
     expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it("a glyph action takes the glyph's place on hover and focus, and its press never selects the row", () => {
+    const onRowDown = vi.fn();
+    const onRowClick = vi.fn();
+    const onPin = vi.fn();
+    const { container } = render(
+      <RailRow
+        icon={Inbox}
+        label="alpha"
+        onClick={onRowClick}
+        onPointerDown={onRowDown}
+        glyphAction={{ label: "Pin workspace", icon: Pin, onClick: onPin }}
+      />,
+    );
+    const glyph = screen.getByRole("button", { name: "alpha" }).querySelector("span[aria-hidden]")!;
+    expect(glyph.className).toContain("group-hover/row:opacity-0");
+    expect(glyph.className).toContain("group-focus-within/row:opacity-0");
+    expect(glyph.className).toContain("motion-reduce:transition-none");
+    const pin = screen.getByRole("button", { name: "Pin workspace" });
+    expect(pin.className).toContain("left-2");
+    expect(pin.className).toContain("group-hover/row:opacity-100");
+    expect(pin.className).toContain("group-focus-within/row:opacity-100");
+    expect(pin.hasAttribute("data-no-drag")).toBe(true);
+    fireEvent.pointerDown(pin, { button: 0 });
+    fireEvent.click(pin);
+    expect(onPin).toHaveBeenCalledOnce();
+    expect(onRowDown).not.toHaveBeenCalled();
+    expect(onRowClick).not.toHaveBeenCalled();
+    expect(container.querySelector("[title]")).toBeNull();
   });
 
   it("an interactive trailing control stays shown, with the hover action after it, never over it", () => {

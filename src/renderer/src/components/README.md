@@ -66,8 +66,10 @@ strip, the editor (CodeMirror), the terminal (xterm), the charts
 chart shares, on recharts and the `--chart-1..4` tokens). Each is built
 from the components above wherever it has a button, a menu, a field or a state word. The rail's one row is `RailRow`
 (chrome/RailRow.tsx, with `RailHeading`): a ghost `Button`, a 16px glyph, a
-13px label, one trailing mark and one hover action, used by the rail, its
-foot and the settings list.
+13px label, one trailing mark, one hover action and one `glyphAction` (an
+icon `Button` with its Tooltip that takes the glyph's place on hover and
+focus, as a workspace's Pin does), used by the rail, its foot and the
+settings list.
 
 ## Icons
 

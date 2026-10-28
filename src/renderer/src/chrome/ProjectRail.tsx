@@ -91,6 +91,9 @@ import { UpdateRow, useUpdateRowState } from "./UpdateRow";
 import { SignInRow, useSignInTarget } from "./SignInRow";
 import { UsageMeter } from "./UsageMeter";
 import { RailWorking } from "./RailWorking";
+import { Counts } from "./rail/changeRows";
+import { useGitDiffStats } from "../lib/gitIndexStore";
+import type { GitDiffStats } from "../lib/fs";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { SettingsNav } from "./SettingsRail";
 import { CUSTOMIZE, groupMenuRows } from "./TabGroupMenu";
@@ -584,6 +587,8 @@ export function ProjectRail({
                 searchActive={overlayOpen}
                 onSelect={onSelectProject}
                 onOpenMenu={openProjectMenu}
+                pinned
+                onTogglePin={onTogglePin}
                 menuPath={menuPath}
                 groupLabels={groupLabels}
                 groupColors={groupColors}
@@ -611,6 +616,8 @@ export function ProjectRail({
               searchActive={overlayOpen}
               onSelect={onSelectProject}
               onOpenMenu={openProjectMenu}
+              pinned={false}
+              onTogglePin={onTogglePin}
               menuPath={menuPath}
               groupLabels={groupLabels}
               groupColors={groupColors}
@@ -688,6 +695,8 @@ function ProjectSection({
   searchActive,
   onSelect,
   onOpenMenu,
+  pinned,
+  onTogglePin,
   menuPath,
   groupLabels,
   groupColors,
@@ -714,6 +723,9 @@ function ProjectSection({
   searchActive: boolean;
   onSelect: (path: string) => void;
   onOpenMenu: (path: string, x: number, y: number) => void;
+  /** The section's rows are pinned: their glyph action unpins. */
+  pinned: boolean;
+  onTogglePin: (path: string) => void;
   /** The folder whose menu is open: its ⋯ stays shown. */
   menuPath: string | null;
   groupLabels: Record<string, string>;
@@ -743,6 +755,8 @@ function ProjectSection({
             index={indexOf ? indexOf(item) : index}
             onSelect={onSelect}
             onOpenMenu={onOpenMenu}
+            pinned={pinned}
+            onTogglePin={onTogglePin}
             menuOpen={menuPath !== null && item.paths.some((p) => sameProjectPath(p, menuPath))}
             groupLabels={groupLabels}
             groupColors={groupColors}
@@ -757,9 +771,11 @@ function ProjectSection({
 }
 
 /**
- * One workspace: its glyph, its alias-resolved name, the status chip as
- * its trailing mark and ⋯ (the same menu as a right-click) as its hover
- * action; drag reorders it. A busy one has its working line under it.
+ * One workspace: its glyph (Pin or Unpin in its place on hover and focus),
+ * its alias-resolved name, the selected row's uncommitted +/− and the
+ * status chip as its trailing marks, and ⋯ (the same menu as a right-click)
+ * as its hover action; drag reorders it. A busy one has its working line
+ * under it.
  */
 function WorkspaceRow({
   item,
@@ -773,6 +789,8 @@ function WorkspaceRow({
   index,
   onSelect,
   onOpenMenu,
+  pinned,
+  onTogglePin,
   menuOpen,
   groupLabels,
   groupColors,
@@ -791,6 +809,8 @@ function WorkspaceRow({
   index: number;
   onSelect: (path: string) => void;
   onOpenMenu: (path: string, x: number, y: number) => void;
+  pinned: boolean;
+  onTogglePin: (path: string) => void;
   menuOpen: boolean;
   groupLabels: Record<string, string>;
   groupColors: Record<string, number>;
@@ -814,6 +834,9 @@ function WorkspaceRow({
   const dropping = sortable.draggingId && sortable.toIndex === index && sortable.fromIndex !== null;
   const showStart = dropping && sortable.toIndex! < sortable.fromIndex!;
   const showEnd = dropping && sortable.toIndex! > sortable.fromIndex!;
+  // Only the selected row asks git, on the bulk lane; the rest say nothing.
+  const stats = useGitDiffStats(item.path, selected && item.path !== "~");
+  const changed = !!stats && (stats.additions > 0 || stats.deletions > 0);
 
   return (
     <>
@@ -833,20 +856,35 @@ function WorkspaceRow({
           />
         }
         label={name}
-        ariaLabel={workspaceRowAriaLabel(name, busy, needsYou)}
+        ariaLabel={workspaceRowAriaLabel(name, busy, needsYou, stats)}
         selected={selected}
         emphasis={!!railStatus?.unread}
         trailingInteractive
         trailing={
-          railStatus?.mark && workspaceId ? (
-            <WorkspaceMarkTrigger
-              mark={railStatus.mark}
-              workspaceIds={item.workspaceIds.length > 0 ? item.workspaceIds : [workspaceId]}
-              activeSessionId={activeSessionId}
-              onSelectThread={onSelectAgent}
-            />
+          changed || (railStatus?.mark && workspaceId) ? (
+            <>
+              {changed ? (
+                // Like the word, it yields to the name in a rail under 15rem; the button's name still says it.
+                <span data-workspace-diff className="pointer-events-none @max-[15rem]/railrow:hidden">
+                  <Counts status="modified" additions={stats.additions} deletions={stats.deletions} />
+                </span>
+              ) : null}
+              {railStatus?.mark && workspaceId ? (
+                <WorkspaceMarkTrigger
+                  mark={railStatus.mark}
+                  workspaceIds={item.workspaceIds.length > 0 ? item.workspaceIds : [workspaceId]}
+                  activeSessionId={activeSessionId}
+                  onSelectThread={onSelectAgent}
+                />
+              ) : null}
+            </>
           ) : null
         }
+        glyphAction={{
+          label: pinned ? "Unpin workspace" : "Pin workspace",
+          icon: pinned ? PinOff : Pin,
+          onClick: () => onTogglePin(item.path),
+        }}
         hoverAction={{
           label: "Workspace options",
           icon: MoreHorizontal,
@@ -894,12 +932,21 @@ export function chatsAriaLabel(busy: boolean, needsYou: boolean): string {
   return "Chats";
 }
 
-/** A workspace row's name for assistive tech: the name, then the one
- *  state that matters (needs you outranks working). */
-export function workspaceRowAriaLabel(name: string, busy: boolean, needsYou = false): string {
-  if (needsYou) return `${name}, needs you`;
-  if (busy) return `${name}, working`;
-  return name;
+/** A workspace row's name for assistive tech: the name, the one state that
+ *  matters (needs you outranks working), then the selected row's
+ *  uncommitted changes ("3 files changed, +12, -4"). */
+export function workspaceRowAriaLabel(
+  name: string,
+  busy: boolean,
+  needsYou = false,
+  stats?: Pick<GitDiffStats, "files" | "additions" | "deletions"> | null,
+): string {
+  const parts = [name];
+  if (needsYou) parts.push("needs you");
+  else if (busy) parts.push("working");
+  if (stats && (stats.files > 0 || stats.additions > 0 || stats.deletions > 0))
+    parts.push(`${stats.files} ${stats.files === 1 ? "file" : "files"} changed`, `+${stats.additions}`, `-${stats.deletions}`);
+  return parts.join(", ");
 }
 
 export type RailTopRowId = "search" | "inbox" | "read" | "notes" | "chats";

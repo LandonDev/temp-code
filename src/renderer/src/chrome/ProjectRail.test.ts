@@ -81,3 +81,14 @@ describe("railFootRows", () => {
     expect(railFootRows({ signIn: false, update: true, hosts: 1 })).not.toContain("signIn");
   });
 });
+
+describe("workspaceRowAriaLabel", () => {
+  it("names the row, its state, then the selected row's uncommitted changes", () => {
+    expect(workspaceRowAriaLabel("alpha", false)).toBe("alpha");
+    expect(workspaceRowAriaLabel("alpha", true, true)).toBe("alpha, needs you");
+    expect(workspaceRowAriaLabel("alpha", true, false, { files: 3, additions: 12, deletions: 4 })).toBe(
+      "alpha, working, 3 files changed, +12, -4",
+    );
+    expect(workspaceRowAriaLabel("alpha", false, false, { files: 0, additions: 0, deletions: 0 })).toBe("alpha");
+  });
+});
