@@ -228,6 +228,10 @@ export function useGitDiffStats(cwd: string | null | undefined, enabled = true):
   return useMemo(() => statsOf(index), [index]);
 }
 
+function sameCounts(a?: { additions: number; deletions: number }, b?: { additions: number; deletions: number }): boolean {
+  return a?.additions === b?.additions && a?.deletions === b?.deletions;
+}
+
 export function sameIndex(prev: GitDiffIndex, next: GitDiffIndex): boolean {
   if (
     prev.branch !== next.branch ||
@@ -252,7 +256,10 @@ export function sameIndex(prev: GitDiffIndex, next: GitDiffIndex): boolean {
       file.additions === other.additions &&
       file.deletions === other.deletions &&
       file.staged === other.staged &&
-      file.unstaged === other.unstaged
+      file.unstaged === other.unstaged &&
+      // A hunk staged or unstaged in a partly staged file moves only these.
+      sameCounts(file.stagedCounts, other.stagedCounts) &&
+      sameCounts(file.unstagedCounts, other.unstagedCounts)
     );
   });
 }

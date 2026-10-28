@@ -210,6 +210,24 @@ describe("gitIndexStore", () => {
     stop();
   });
 
+  it("takes a new snapshot when only a partly staged file's per-side counts moved", async () => {
+    // Unstaging one hunk keeps the file's HEAD-to-tree total and both flags; only the split moves.
+    const partly = (staged: number, unstaged: number) => ({
+      ...file("a.ts", 3),
+      staged: true,
+      stagedCounts: { additions: staged, deletions: 0 },
+      unstagedCounts: { additions: unstaged, deletions: 0 },
+    });
+    gitDiffIndex.mockReset();
+    gitDiffIndex.mockResolvedValueOnce(index(1, [partly(2, 1)])).mockResolvedValueOnce(index(1, [partly(1, 2)]));
+    const stop = holdGitSnapshot("/w/one");
+    await vi.advanceTimersByTimeAsync(0);
+    const first = getGitSnapshot("/w/one");
+    await refreshGitSnapshot("/w/one");
+    expect(getGitSnapshot("/w/one")).not.toBe(first);
+    stop();
+  });
+
   it("defers a refresh while the window is hidden and runs it on focus", async () => {
     const stop = holdGitSnapshot("/w/one");
     await vi.advanceTimersByTimeAsync(0);
