@@ -102,15 +102,22 @@ export class CheckpointTurns {
   constructor(private readonly deps: CheckpointTurnsDeps) {}
 
   /** Snapshot what is dirty before a turn (the person's baseline, refreshed
-   *  at every send); the registry's send calls it. */
+   *  at every send); the registry's send calls it. It runs behind the
+   *  session's queued writes: the prior turn's settle may still wait on its
+   *  listing or the status budget, and a refresh ahead of it would snapshot
+   *  that turn's own files as the person's (gone from review, kept by Undo). */
   ensure(sessionId: string, cwd: string): Promise<void> {
-    const ensured = this.deps.store.ensure(sessionId, cwd)
-    const known = ensured.catch(() => {}).then(() => this.read(sessionId, cwd))
-    const turn = this.turnFor(sessionId, cwd, known)
-    turn.known = known
+    const turn = this.turnFor(sessionId, cwd)
     turn.open = true
     this.listings.delete(turn.root)
-    return ensured
+    // The refreshed manifest is read inside the queued work, never promised
+    // ahead of it: a settle queued before it awaits the turn's `known`, and a
+    // promise that waited on this ensure would wait on the settle itself.
+    return this.queue(sessionId, async () => {
+      await this.deps.store.ensure(sessionId, cwd)
+      const current = this.turnFor(sessionId, cwd)
+      current.known = this.read(sessionId, cwd)
+    })
   }
 
   /** A live edit; a settled one tells each owner with a checkpoint about its path. */
@@ -281,16 +288,16 @@ export class CheckpointTurns {
     return this.deps.store.record(sessionId, cwd, []).catch(() => null)
   }
 
-  /** The session's turn in `cwd`; a new one (reading the manifest unless
-   *  `known` is given) when it has none, or had one in another cwd. */
-  private turnFor(sessionId: string, cwd: string, known?: Promise<ManifestPaths | null>): Turn {
+  /** The session's turn in `cwd`; a new one (reading the manifest) when it
+   *  has none, or had one in another cwd. */
+  private turnFor(sessionId: string, cwd: string): Turn {
     const prior = this.turns.get(sessionId)
     if (prior?.cwd === cwd) return prior
     if (prior) this.stopTimer(prior)
     const turn: Turn = {
       cwd,
       root: checkpointRoot(cwd),
-      known: known ?? this.read(sessionId, cwd),
+      known: this.read(sessionId, cwd),
       unsaved: new Set(),
       unasked: new Set(),
       open: false,

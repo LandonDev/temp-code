@@ -142,12 +142,15 @@ export function ThreadComposer({
   const block = useEnvironmentBlock(session.environmentId);
   const macRequests = useMacBridgeRequests(session.environmentId, session.id);
   const paused = session.status === "paused";
-  const queue = visibleQueue(useQueue(session.id));
+  const queued = session.status === "queued";
+  const queueItems = useQueue(session.id);
+  const queue = visibleQueue(queueItems, queued);
   const id = session.id;
   const queueStrip =
     queue.length > 0 ? (
       <MessageQueue
-        items={queue}
+        items={queueItems}
+        queued={queued}
         sessionId={id}
         paused={paused}
         onSteer={(item) => void serverCommands.queueSteer(id, item).catch(() => undefined)}

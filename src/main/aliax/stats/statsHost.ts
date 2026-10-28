@@ -55,15 +55,19 @@ export class StatsHost {
       return
     }
     this.worker = worker
-    worker.on('message', (message) => this.onMessage(message as StatsReply))
-    worker.on('error', (error) => this.ended(`crashed: ${error.message}`))
-    worker.on('exit', (code) => this.ended(`exited (${code})`))
+    // Each handler is this worker's own: a crash emits error and then exit,
+    // and the exit of a worker already replaced must not put its replacement down.
+    worker.on('message', (message) => {
+      if (this.worker === worker) this.onMessage(message as StatsReply)
+    })
+    worker.on('error', (error) => this.ended(worker, `crashed: ${error.message}`))
+    worker.on('exit', (code) => this.ended(worker, `exited (${code})`))
     worker.unref?.()
   }
 
   /** The worker is gone: its waiters hear why, and it starts again once. */
-  private ended(why: string): void {
-    if (this.stopped || !this.worker) return
+  private ended(worker: WorkerLike, why: string): void {
+    if (this.stopped || this.worker !== worker) return
     this.worker = null
     this.ready = false
     for (const p of this.pending.values()) p.reject(new Error(why))

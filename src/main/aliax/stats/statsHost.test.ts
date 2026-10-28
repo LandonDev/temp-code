@@ -105,6 +105,21 @@ describe('StatsHost', () => {
     expect(r.logs.some((l) => l.includes('reads unavailable'))).toBe(true)
   })
 
+  it("a crash emits error and then exit: the old worker's exit never puts its replacement down", async () => {
+    const r = rig()
+    const first = r.worker()
+    first.emit('error', new Error('boom'))
+    expect(r.workers).toHaveLength(2)
+    first.emit('exit', 1)
+    expect(r.workers).toHaveLength(2)
+    expect(r.host.status()).toMatchObject({ restarts: 1, unavailable: null })
+    expect(await r.host.bundle()).toMatchObject({ generatedAt: 1 })
+    expect((await r.host.bundle()).unavailable).toBeUndefined()
+    // A late message from the dead worker is ignored too.
+    first.emit('message', { type: 'progress', progress: { running: true, filesDone: 9, filesTotal: 9, rows: 1 } })
+    expect(r.host.progress().filesDone).not.toBe(9)
+  })
+
   it('a worker that never gave a bundle leaves an empty one saying why; stop ends the worker without a restart', async () => {
     const r = rig()
     r.worker().emit('exit', 0)

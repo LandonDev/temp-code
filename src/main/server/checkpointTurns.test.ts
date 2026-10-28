@@ -55,18 +55,29 @@ function setup({ tracked = [] as string[], head = [] as string[], sinks = 1 } = 
   const store = new CheckpointStore(join(base, 'checkpoints'))
   const writes = vi.spyOn(CheckpointStore.prototype as unknown as { save: () => Promise<void> }, 'save')
   const listings: string[] = []
+  let held: { promise: Promise<void>; release: () => void } | null = null
+  const holdListing = (): (() => void) => {
+    let release!: () => void
+    held = { promise: new Promise<void>((r) => (release = r)), release }
+    return () => {
+      held = null
+      release()
+    }
+  }
   const asked: string[][] = []
   const pushed: string[][] = Array.from({ length: sinks }, () => [])
   const turns = new CheckpointTurns({
     store,
     session: (id) => (id === 'gone' ? null : { cwd: dir }),
-    listTracked: async (root) => {
-      listings.push(root)
-      return new Set(tracked)
-    },
     inHeadMany: async (_root, relatives) => {
       asked.push([...relatives].sort())
       return new Set(relatives.filter((relative) => head.includes(relative)))
+    },
+    // The settle's git listing held open by the test (holdListing) to overlap it with the next send.
+    listTracked: async (root) => {
+      listings.push(root)
+      if (held) await held.promise
+      return new Set(tracked)
     },
     // The index's fan-out: every socket subscribed to the session hears it.
     push: (sessionId) => {
@@ -87,7 +98,7 @@ function setup({ tracked = [] as string[], head = [] as string[], sinks = 1 } = 
   /** A write tool's call row, as the registry appends it. */
   const call = (name: string, input: unknown, partial?: boolean, id = 's1') =>
     turns.observe({ sessionId: id, seq: 2, ts: 0, event: { type: 'tool-call', callId: 'c1', name, input, ...(partial ? { partial } : {}) } } satisfies EventRow)
-  return { dir, turns, writes, listings, asked, pushed, manifest, file, edit, end, call }
+  return { dir, turns, writes, listings, asked, pushed, manifest, file, edit, end, call, holdListing }
 }
 
 describe('checkpoint turns', () => {
@@ -312,6 +323,23 @@ describe('checkpoint turns', () => {
     await t.end('root')
     expect(t.manifest('sub').touched).toEqual(['b.txt'])
     expect(t.manifest('root').touched).toEqual(['a.txt', 'b.txt'])
+  })
+
+  it("the next send's refresh waits behind a settle still on its listing: the turn's own file is claimed, never snapshotted as the person's", async () => {
+    const t = setup()
+    await t.turns.ensure('s1', t.dir)
+    t.file('agent.txt', 'agent\n')
+    git.dirty = ['agent.txt']
+    await t.edit('agent.txt')
+    const release = t.holdListing()
+    const settled = t.end()
+    // The next send, while the settle waits on git: its refresh must not see agent.txt as the person's.
+    const armed = t.turns.ensure('s1', t.dir)
+    release()
+    await Promise.all([settled, armed, t.turns.written('s1')])
+    expect(t.manifest().files).toEqual({})
+    expect(t.manifest().touched).toEqual(['agent.txt'])
+    expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual(['agent.txt'])
   })
 
   it("the second send's ensure refreshes the baseline: a live edit of the person's file is a no-op, a write tool's call claims it", async () => {

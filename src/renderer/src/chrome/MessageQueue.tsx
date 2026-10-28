@@ -20,16 +20,31 @@ type Props = {
   sessionId?: string
   /** The turn is paused: rows wait for Continue, so ↑ is hidden. */
   paused?: boolean
+  /** The thread is queued: its stored first message is the transcript's row, not a row here. */
+  queued?: boolean
   onSteer: (messageId: string) => void
   onRemove: (messageId: string) => void
   onUpdate: (messageId: string, text: string) => void
   onReorder: (order: string[]) => void
 }
 
-/** The items the queue shows: a stored one (the held-back boot's first
- *  message, already the transcript's user row) is left to the transcript. */
-export function visibleQueue(items: readonly QueuedMessage[]): QueuedMessage[] {
-  return items.filter((m) => !m.stored)
+/** The items the queue shows. On a queued thread a stored item (the
+ *  held-back boot's first message, already the transcript's user row) is
+ *  left to the transcript; anywhere else every item shows, its controls
+ *  with it (a retry the harness refused is removed or edited here). */
+export function visibleQueue(items: readonly QueuedMessage[], queued: boolean): QueuedMessage[] {
+  return queued ? items.filter((m) => !m.stored) : [...items]
+}
+
+/** The whole queue's order after the shown rows were reordered: a hidden
+ *  item keeps its place, the shown ids fill the rest in their new order
+ *  (the host puts an id left out at the end, which would send the thread's
+ *  first message after its follow-ups). */
+export function mergeOrder(items: readonly QueuedMessage[], shown: readonly string[]): string[] {
+  const hidden = new Set(items.map((m) => m.id))
+  for (const id of shown) hidden.delete(id)
+  const queue = [...shown]
+  return items.map((m) => (hidden.has(m.id) ? m.id : (queue.shift() ?? m.id)))
 }
 
 /**
@@ -43,6 +58,7 @@ export function MessageQueue({
   items,
   sessionId,
   paused,
+  queued,
   onSteer,
   onRemove,
   onUpdate,
@@ -52,7 +68,7 @@ export function MessageQueue({
   const reduce = useReducedMotion()
   // The thread sits in a wait_for_agent: the list drains when the wait does.
   const awaiting = (useSessionMeta(sessionId)?.awaiting?.length ?? 0) > 0
-  const shown = visibleQueue(items)
+  const shown = visibleQueue(items, !!queued)
 
   if (shown.length === 0) return null
 
@@ -70,7 +86,7 @@ export function MessageQueue({
       <Reorder.Group
         axis="y"
         values={shown.map((m) => m.id)}
-        onReorder={(order) => onReorder(order as string[])}
+        onReorder={(order) => onReorder(mergeOrder(items, order as string[]))}
         className="flex flex-col gap-1"
       >
         <AnimatePresence initial={false}>
