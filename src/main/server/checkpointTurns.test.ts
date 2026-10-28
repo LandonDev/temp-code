@@ -346,6 +346,26 @@ describe('checkpoint turns', () => {
     expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual(['made.txt'])
   })
 
+  it("Undo with no turn open queues a flush that a send's ensure behind it never hangs on", async () => {
+    const t = setup()
+    await t.turns.ensure('s1', t.dir)
+    t.file('a.txt')
+    git.dirty = ['a.txt']
+    await t.edit('a.txt')
+    await t.end()
+    // The turn is released; Undo all flushes nothing and drops the checkpoint …
+    const undone = t.turns.undo('s1')
+    // … while a send arrives before that flush ran: its ensure queues behind it.
+    const armed = t.turns.ensure('s1', t.dir)
+    await expect(Promise.all([undone, armed])).resolves.toBeDefined()
+    expect(existsSync(join(t.dir, 'a.txt'))).toBe(false)
+    // The new turn works: an edit lands in the fresh checkpoint.
+    t.file('b.txt')
+    await t.edit('b.txt')
+    await t.end()
+    expect(t.manifest().touched).toEqual(['b.txt'])
+  })
+
   it("the next send's refresh waits behind a settle still on its listing: the turn's own file is claimed, never snapshotted as the person's", async () => {
     const t = setup()
     await t.turns.ensure('s1', t.dir)

@@ -183,14 +183,16 @@ export class CheckpointTurns {
    *  after the turn (2 s after its last write) has no settle to follow its
    *  flush, so writing it here would list the temporary file for good. */
   private flush(sessionId: string): Promise<void> {
-    // The manifest as known when the flush was queued: an ensure queued after
-    // it replaces the turn's promise with one that waits behind this work.
-    const knownWhenQueued = this.turns.get(sessionId)?.known
+    // The turn and the manifest it knew when the flush was queued: an ensure
+    // queued after it replaces the turn's promise with one that waits behind
+    // this work, and a flush queued with no turn (Undo's, Keep's) has nothing
+    // to write, whatever turn a send makes meanwhile.
+    const turn = this.turns.get(sessionId)
+    const knownWhenQueued = turn?.known
     return this.queue(sessionId, async () => {
-      const turn = this.turns.get(sessionId)
-      if (!turn) return
+      if (!turn || !knownWhenQueued || this.turns.get(sessionId) !== turn) return
       this.stopTimer(turn)
-      const known = await (knownWhenQueued ?? turn.known)
+      const known = await knownWhenQueued
       if (!known || turn.unsaved.size === 0) return
       const present: string[] = []
       for (const relative of turn.unsaved) if (await onDisk(join(turn.root, relative))) present.push(relative)
