@@ -267,7 +267,9 @@ app replaces itself from the feed, and only from the feed.
   `src/renderer/src/index.css`, to `chrome/icons` and to the motion tokens;
   `StatusMark` is the one status vocabulary, `threadStateOf` turns a wire
   status into its state; sonner is the one toast stack, seated 8px above the
-  focused thread's strip and inside its column, `toastInset` in
+  focused thread's strip and inside its column (no wider than it less 16px
+  a side, so a master's chat beside its board holds it), above the board's
+  foot while a master's chat is folded, `toastInset` in
   components/ui/toaster.tsx). Nothing in
   src/renderer writes a literal colour, duration or curve, and no bullet
   lists appear in the UI. The motion guard has no application timing

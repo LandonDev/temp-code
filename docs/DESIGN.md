@@ -375,9 +375,12 @@ narrated. No colour without meaning. No shadows on docked UI. No left colour
 bar for focus or selection (a focused or selected row is a `muted` fill).
 No bullet points in the UI. A toast never covers a control: the stack sits
 8px above the focused thread's strip, 16px inside its column's right edge
-(`toastInset` in components/ui/toaster.tsx, measured from the footer
-`ChatFooter` registers in lib/toastAnchor.ts), and 16px from the window's
-corner where no thread is focused. Confirmation dialogs only for destructive,
+and no wider than that column less 16px a side (`toastInset` in
+components/ui/toaster.tsx, measured from the footer `ChatFooter` registers in
+lib/toastAnchor.ts); on a master view whose chat is folded, 8px above the
+board's foot (BatchFoot registers while the chat is folded, and a folded,
+inert column seats nothing); and 16px from the window's corner where no
+thread is focused. Confirmation dialogs only for destructive,
 irreversible actions. Every spacing and timing value is a token we can name.
 
 ## Verifying without a dev instance

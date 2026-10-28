@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { refreshToastAnchor } from "../../lib/toastAnchor";
 import { Toggle } from "../../components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { MessageSquare } from "../../chrome/icons";
@@ -165,6 +166,10 @@ export function SplitShell({
   // Continue or Stop on the held row takes the row away with the focus in
   // it: the focus lands on the conversation toggle, not the page.
   const showHeld = folded && !!held;
+  // The folded chat is inert, so its footer seats no toast: the stack asks again.
+  useLayoutEffect(() => {
+    refreshToastAnchor();
+  }, [folded]);
   const heldFocus = useRef(false);
   useLayoutEffect(() => {
     if (showHeld || !heldFocus.current) return;

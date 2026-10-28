@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { registerToastAnchor } from "../../../lib/toastAnchor";
 import type { BatchState } from "@server/shared/contract-batch";
 import { Button } from "../../../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../../../components/ui/collapsible";
@@ -34,6 +35,7 @@ export function BatchFoot({
   hostName,
   onSave,
   onStop,
+  toastAnchor = false,
 }: {
   batch: BatchState;
   /** False until the board's first answer: the foot is its skeleton. */
@@ -44,6 +46,8 @@ export function BatchFoot({
   hostName?: (environmentId: string) => string | undefined;
   onSave: (rules: Rules) => Promise<void>;
   onStop: (stepId: string) => Promise<void>;
+  /** The master's chat is folded: the toast stack sits above this foot, not over it. */
+  toastAnchor?: boolean;
 }) {
   const rules = batch.rules;
   const [editing, setEditing] = useState(false);
@@ -56,7 +60,7 @@ export function BatchFoot({
   const now = useNow(running);
   const blocked = blockedLine(batch, titleOf, hostName);
 
-  if (!loaded) return <FootSkeleton />;
+  if (!loaded) return <FootSkeleton toastAnchor={toastAnchor} />;
 
   const fold = (id: string, hide: boolean) => {
     const next = new Set(folded);
@@ -66,7 +70,12 @@ export function BatchFoot({
   };
 
   return (
-    <div className="flex shrink-0 flex-col border-t border-border bg-background px-5 py-3" data-batch-foot data-foot-mode={active ? "console" : "idle"}>
+    <div
+      ref={toastAnchor ? registerToastAnchor : undefined}
+      className="flex shrink-0 flex-col border-t border-border bg-background px-5 py-3"
+      data-batch-foot
+      data-foot-mode={active ? "console" : "idle"}
+    >
       <div className="flex h-6 items-center gap-2">
         <h3 className="flex-1 text-xs font-medium text-muted-foreground">When done</h3>
         <Button variant="ghost" size="xs" onClick={() => setEditing(true)}>
@@ -103,9 +112,15 @@ export function BatchFoot({
 }
 
 /** The foot's shape before the answer: the heading and three step rows. */
-function FootSkeleton() {
+function FootSkeleton({ toastAnchor }: { toastAnchor: boolean }) {
   return (
-    <div className="flex shrink-0 flex-col border-t border-border bg-background px-5 py-3" data-batch-foot data-foot-mode="loading" aria-busy="true">
+    <div
+      ref={toastAnchor ? registerToastAnchor : undefined}
+      className="flex shrink-0 flex-col border-t border-border bg-background px-5 py-3"
+      data-batch-foot
+      data-foot-mode="loading"
+      aria-busy="true"
+    >
       <div className="flex h-6 items-center">
         <Skeleton className="h-3 w-16" />
       </div>

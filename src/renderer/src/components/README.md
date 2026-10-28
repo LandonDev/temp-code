@@ -49,7 +49,7 @@ DESIGN.md wins.
 | An inline callout | `Alert` (alert.tsx) | Tinted by tone. Not for transcript notices. |
 | A thread's state | `StatusMark` (status.tsx) | One glyph, one word, one tone per state; `detail` is what it is about, muted after the word ("Working  typecheck", a tally). The only status-to-colour map; `threadStateOf(status, { settled, planReady })` turns a session's wire status into the state (a written plan is `plan-ready`, muted), `linkMarkOf(transport)` a host link into its state and word. A thread's row reads `threadStatus` (lib/threadStripModel.ts: the state with the tree's overrides, the detail and the tally) and draws it with `ThreadStatusMark` (chrome/TabIndicator.tsx); `marksAtRest` leaves idle and done unmarked. |
 | A key cap | `Kbd` (kbd.tsx) | In menus, tooltips, buttons. |
-| A toast | sonner `toast()`; one `<Toaster>` (toaster.tsx) mounted lazily in main.tsx | The four custom toast stacks are retired. The stack sits above the focused thread's strip (`toastInset`, lib/toastAnchor.ts). |
+| A toast | sonner `toast()`; one `<Toaster>` (toaster.tsx) mounted lazily in main.tsx | The four custom toast stacks are retired. The stack sits above the focused thread's strip and inside its column, or above a master board's foot while its chat is folded (`toastInset`, lib/toastAnchor.ts). |
 | A question from the agent | `QuestionCard` (question-card.tsx) | Lettered options, free-form field, `multiSelect` for several picks, ⌘⏎ (keys only while focus is inside the card). |
 | A plan to approve | `PlanCard` (plan-card.tsx) | To-dos, Approve ⌘⏎, optional countdown. |
 | Tasks the agent works through | `TaskList` (task-list.tsx) | Donut header, marks that draw their check. |

@@ -339,6 +339,7 @@ export function MasterView(props: ThreadViewProps) {
           hostName={(id) => hostNames.get(id)}
           onSave={(next) => setBatchRules(session.environmentId, session.id, next)}
           onStop={(stepId) => stopBatchStep(session.environmentId, session.id, stepId)}
+          toastAnchor={!chatOpen}
         />
     </div>
   );

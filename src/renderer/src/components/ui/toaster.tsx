@@ -17,27 +17,33 @@ export function loadToast(): Promise<ToastApi> {
 
 const Sonner = lazy(() => import("sonner").then((m) => ({ default: m.Toaster })));
 
-/** The stack's distance from the window's bottom and right edges. */
-export type ToastInset = { bottom: number; right: number };
+/** The stack's distance from the window's bottom and right edges, and a toast's width. */
+export type ToastInset = { bottom: number; right: number; width: number };
 
 /** Gap between the stack and the strip, and between the stack and the column's edge. */
 const ABOVE = 8;
 const INSIDE = 16;
+/** A toast's width where its column has the room (sonner's `--width`). */
+export const TOAST_WIDTH = 340;
 
 /**
  * Where the stack sits so a toast never covers a control: 8px above the
- * anchor's top (the focused thread's strip, above its composer) and 16px
- * inside its right edge (clear of the right panel); 16/16 from the window's
- * corner with no anchor. Never closer than 16px to either edge.
+ * anchor's top (the focused thread's strip, above its composer; a master
+ * board's foot while its chat is folded) and 16px inside its right edge
+ * (clear of the right panel), no wider than the column less 16px a side
+ * (a master's chat beside its board is narrower than a toast); 16/16 from
+ * the window's corner with no anchor. Never closer than 16px to either edge.
  */
 export function toastInset(
   viewport: { width: number; height: number },
-  anchor: { top: number; right: number } | null,
+  anchor: { top: number; right: number; left?: number } | null,
 ): ToastInset {
-  if (!anchor) return { bottom: INSIDE, right: INSIDE };
+  if (!anchor) return { bottom: INSIDE, right: INSIDE, width: TOAST_WIDTH };
+  const room = anchor.left === undefined ? TOAST_WIDTH : Math.round(anchor.right - anchor.left - 2 * INSIDE);
   return {
     bottom: Math.max(INSIDE, Math.round(viewport.height - anchor.top + ABOVE)),
     right: Math.max(INSIDE, Math.round(viewport.width - anchor.right + INSIDE)),
+    width: Math.max(0, Math.min(TOAST_WIDTH, room)),
   };
 }
 
@@ -48,14 +54,14 @@ function viewport(): { width: number; height: number } {
 /** The measured inset for the current anchor, kept as it resizes or moves. */
 function useToastInset(): ToastInset {
   const anchor = useSyncExternalStore(subscribeToastAnchor, toastAnchor, () => null);
-  const [inset, setInset] = useState<ToastInset>({ bottom: INSIDE, right: INSIDE });
+  const [inset, setInset] = useState<ToastInset>({ bottom: INSIDE, right: INSIDE, width: TOAST_WIDTH });
   useEffect(() => {
     let frame = 0;
     const measure = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const next = toastInset(viewport(), anchor?.getBoundingClientRect() ?? null);
-        setInset((prev) => (prev.bottom === next.bottom && prev.right === next.right ? prev : next));
+        setInset((prev) => (prev.bottom === next.bottom && prev.right === next.right && prev.width === next.width ? prev : next));
       });
     };
     measure();
@@ -79,7 +85,7 @@ function useToastInset(): ToastInset {
  *  line, an optional second line, at most one action, and leaves on its own.
  *  It sits above the focused thread's strip, never over a control. */
 export function Toaster(props: ToasterProps) {
-  const offset = useToastInset();
+  const { width, ...offset } = useToastInset();
   return (
     <Suspense fallback={null}>
       <Sonner
@@ -111,7 +117,7 @@ export function Toaster(props: ToasterProps) {
             "--normal-text": "var(--popover-foreground)",
             "--normal-border": "var(--border)",
             "--border-radius": "12px",
-            "--width": "340px",
+            "--width": `${width}px`,
           } as CSSProperties
         }
         {...props}
