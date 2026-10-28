@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** A child opened from the board: Back and the title at once, the transcript's skeleton until its rows land. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Session } from "../../../lib/session";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 
@@ -12,6 +12,13 @@ vi.mock("../../threadChat", () => ({
   useThreadChat: () => ({ renderChat: () => null, renderSlots: () => null, newPassArmed: false, armNewPass: () => {} }),
 }));
 vi.mock("../ThreadView", () => ({ ThreadView: () => <div data-testid="thread-view" /> }));
+const retryLoad = vi.hoisted(() => vi.fn());
+vi.mock("../../../lib/tcserver/store", () => ({ sessionStore: { retryLoad } }));
+vi.mock("../../../chrome/ConnectionLine", () => ({ useEnvironmentBlock: () => ({ name: "box", degraded: null }) }));
+vi.mock("../../SessionPane", () => ({
+  LoadLine: ({ load, onRetry }: { load: { phase: string }; onRetry: () => void }) =>
+    load.phase === "failed" ? <button onClick={onRetry}>Retry now</button> : null,
+}));
 
 import { ChildPane } from "./ChildPane";
 
@@ -33,6 +40,24 @@ describe("ChildPane", () => {
     expect(screen.getByText("Home screen")).toBeTruthy();
     expect(skeleton()).toBeTruthy();
     expect(screen.queryByTestId("thread-view")).toBeNull();
+  });
+
+  it("a failed load says so with Retry beside the skeleton", () => {
+    h.meta = { id: "c1", environmentId: "local", title: "Home" } as SessionMeta;
+    h.session = { id: "c1", blocks: [], load: { phase: "failed", since: 0, attempt: 2 } } as unknown as Session;
+    pane();
+    expect(skeleton()).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry now" }));
+    expect(retryLoad).toHaveBeenCalledWith("c1");
+  });
+
+  it("holds focus on the pane while a Message open waits for the rows, so Escape still goes back", () => {
+    const onBack = vi.fn();
+    render(<ChildPane sessionId="c1" environmentId="local" title="Home screen" focusComposer onBack={onBack} onOpenFile={noop} onOpenDiff={noop} />);
+    const root = document.querySelector("[data-child-pane]") as HTMLElement;
+    expect(document.activeElement).toBe(root);
+    fireEvent.keyDown(root, { key: "Escape" });
+    expect(onBack).toHaveBeenCalled();
   });
 
   it("keeps the skeleton while the rows load, then shows the thread", () => {

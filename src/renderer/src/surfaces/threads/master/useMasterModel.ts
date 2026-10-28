@@ -287,14 +287,16 @@ function listWords(parts: string[]): string {
 
 /** What blocks the batch's end, as the foot says it: "Blocked: <title> errored". */
 export function blockedLine(
-  batch: Pick<BatchState, "blocked">,
+  batch: Pick<BatchState, "blocked" | "children">,
   titleOf: (id: string) => string | undefined,
   hostName?: (environmentId: string) => string | undefined,
 ): string | null {
   const { blocked } = batch;
   if (!blocked) return null;
   const host = blocked.environmentId ? hostName?.(blocked.environmentId) : undefined;
-  return blockedWords(blocked, titleOf(blocked.sessionId), host);
+  // A child on another host is blocked as `<env>:<session>`; the batch's list has its title.
+  const listed = batch.children?.find((c) => blocked.sessionId === `${c.environmentId}:${c.sessionId}`)?.title;
+  return blockedWords(blocked, titleOf(blocked.sessionId) ?? listed, host);
 }
 
 export async function setBatchRules(environmentId: string, masterId: string, rules: Rules): Promise<void> {

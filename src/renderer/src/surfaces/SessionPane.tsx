@@ -239,7 +239,7 @@ export function loadLineText(name: string, load: LoadState, now: number): string
   return [`${host} did not answer`, ...why, wait > 0 ? `retrying in ${wait} s` : "retrying…"];
 }
 
-function LoadLine({ name, load, onRetry }: { name: string; load: LoadState; onRetry: () => void }) {
+export function LoadLine({ name, load, onRetry }: { name: string; load: LoadState; onRetry: () => void }) {
   const ticking = load.phase === "slow" || load.phase === "failed";
   const [now, setNow] = useState(Date.now);
   useEffect(() => {

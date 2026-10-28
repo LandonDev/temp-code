@@ -8,6 +8,9 @@ import type { Session } from "../../../lib/session";
 import { useMetaById, useSessionById } from "../../../lib/threads/agents";
 import { useSessionActions, useThreadChat, type SessionActions } from "../../threadChat";
 import { SurfaceSkeleton } from "../../SurfaceSkeleton";
+import { LoadLine } from "../../SessionPane";
+import { useEnvironmentBlock } from "../../../chrome/ConnectionLine";
+import { sessionStore } from "../../../lib/tcserver/store";
 import { ThreadView } from "../ThreadView";
 
 /**
@@ -53,9 +56,14 @@ export function ChildPane({
   const actions = useSessionActions();
   const paneRef = useRef<HTMLDivElement>(null);
 
+  // SessionPane's rule: no rows yet and the host has not answered.
+  const loading = !meta || !session || (session.blocks.length === 0 && (session.load?.phase ?? "loaded") !== "loaded");
+  const block = useEnvironmentBlock(environmentId);
+
+  // The composer mounts with the rows: until then the pane holds focus, so Escape still goes back.
   useEffect(() => {
-    if (!focusComposer) paneRef.current?.focus();
-  }, [sessionId, focusComposer]);
+    if (!focusComposer || loading) paneRef.current?.focus();
+  }, [sessionId, focusComposer, loading]);
 
   const onKey = (e: KeyboardEvent) => {
     if (e.defaultPrevented || !paneRef.current?.contains(e.target as Node)) return;
@@ -68,8 +76,6 @@ export function ChildPane({
 
   // A thread of the same id on another host is not this one.
   if (meta && meta.environmentId !== environmentId) return null;
-  // SessionPane's rule: no rows yet and the host has not answered.
-  const loading = !meta || !session || (session.blocks.length === 0 && (session.load?.phase ?? "loaded") !== "loaded");
 
   return (
     <div ref={paneRef} tabIndex={-1} onKeyDown={onKey} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none" data-child-pane={sessionId} data-child-host={environmentId}>
@@ -86,8 +92,12 @@ export function ChildPane({
         <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{meta?.title || title || "Untitled"}</span>
       </div>
       {loading ? (
-        <div className="min-h-0 flex-1">
-          <SurfaceSkeleton kind="transcript" label="Loading thread" />
+        <div className="flex min-h-0 flex-1 flex-col" data-transcript-loading={session?.load?.phase ?? "loading"}>
+          {/* Slow or failed: SessionPane's one line, with Retry. */}
+          {session?.load ? <LoadLine name={block.name} load={session.load} onRetry={() => sessionStore.retryLoad(sessionId)} /> : null}
+          <div className="min-h-0 flex-1">
+            <SurfaceSkeleton kind="transcript" label="Loading thread" />
+          </div>
         </div>
       ) : (
         <ChildThread

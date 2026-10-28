@@ -212,6 +212,8 @@ export function PlanView(props: ThreadViewProps) {
                   <MilestoneList
                     doc={doc}
                     projectId={session.projectId}
+                    cwd={session.cwd}
+                    onOpenFile={props.onOpenFile}
                     onTicked={() => {
                       setRevision((n) => n + 1);
                       if (session.projectId) void loadProjectPlan(session.projectId);

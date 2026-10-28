@@ -227,6 +227,16 @@ describe("the rules sentence", () => {
         id === "env_box" ? "box" : undefined,
       ),
     ).toBe("Blocked: Inbox is out of reach on box");
+    // A far child is blocked by its `<env>:<session>` id: the batch's list names it.
+    expect(
+      blockedLine(
+        {
+          blocked: { sessionId: "env_box:s7", why: "errored" },
+          children: [{ sessionId: "s7", environmentId: "env_box", title: "Pricing survey", status: "error", threadType: null, provider: "", model: "" }],
+        },
+        titleOf,
+      ),
+    ).toBe("Blocked: Pricing survey errored");
   });
 });
 

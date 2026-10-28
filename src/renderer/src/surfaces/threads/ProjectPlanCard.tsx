@@ -17,6 +17,7 @@ import {
 } from "../../lib/projectPlan";
 import type { Session } from "../../lib/session";
 import { RevisePlanDialog } from "./RevisePlanDialog";
+import type { OpenFileFn } from "../../lib/search";
 import { AgentMarkdown } from "../AgentMarkdown";
 
 /**
@@ -32,10 +33,15 @@ export function MilestoneList({
   doc,
   projectId,
   onTicked,
+  cwd,
+  onOpenFile,
 }: {
   doc: string;
   projectId: string | null | undefined;
   onTicked?: () => void;
+  /** Where a scope's file links resolve and open, as the plan's own text does. */
+  cwd?: string;
+  onOpenFile?: OpenFileFn;
 }) {
   const { milestones } = parseProjectPlan(doc);
   const [busy, setBusy] = useState<number | null>(null);
@@ -70,7 +76,7 @@ export function MilestoneList({
             {m.scope ? (
               // Scope is markdown (`code`, links): the app's own renderer, at the description's size and ink.
               <ItemDescription className="line-clamp-none [&_.agent-markdown]:text-xs [&_.agent-markdown]:leading-normal" data-milestone-scope>
-                <AgentMarkdown text={m.scope} size="compact" className="agent-reasoning" />
+                <AgentMarkdown text={m.scope} size="compact" className="agent-reasoning" cwd={cwd} onOpenFile={onOpenFile} />
               </ItemDescription>
             ) : null}
             {m.dependencies ? (

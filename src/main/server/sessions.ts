@@ -4500,7 +4500,10 @@ export class SessionRegistry {
     try {
       const state = engine.get(session.id)
       if (state.blocked) {
-        return blockedWords(state.blocked, this.store.getSession(state.blocked.sessionId)?.title)
+        // A far child's id is `<env>:<session>`: its member row has the title.
+        const id = state.blocked.sessionId
+        const who = engine.members(session.id).find((m) => m.id === id)?.title ?? this.store.getSession(id)?.title
+        return blockedWords(state.blocked, who)
       }
       const running = state.steps.find((s) => s.status === 'running')
       if (running) {

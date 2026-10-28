@@ -6,7 +6,7 @@
  */
 import "../../test/domSetup";
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/highlight", () => ({ highlight: () => Promise.resolve(null), highlightCached: () => undefined }));
@@ -24,5 +24,15 @@ describe("MilestoneList scope", () => {
     const scope = container.querySelector("[data-milestone-scope]")!;
     expect(scope.querySelector("code")?.textContent).toBe("main");
     expect(scope.textContent).not.toContain("`");
+  });
+
+  it("opens a file the scope names, as the plan's own text does", () => {
+    const onOpenFile = vi.fn();
+    const doc = "# Acme\n\n## Milestones\n\n### [ ] 1. Ship\n- Scope: start in `src/store.ts`\n";
+    const { container } = render(<MilestoneList doc={doc} projectId="p1" cwd="/repo" onOpenFile={onOpenFile} />);
+    const code = container.querySelector('[data-milestone-scope] code[role="link"]')!;
+    fireEvent.click(code);
+    expect(onOpenFile).toHaveBeenCalled();
+    expect(String(onOpenFile.mock.calls[0][0])).toContain("store.ts");
   });
 });
