@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { measureElement, observeElementRect, useVirtualizer, type Rect, type VirtualizerOptions } from "@tanstack/react-virtual";
+import { defaultRangeExtractor, measureElement, observeElementRect, useVirtualizer, type Rect, type VirtualizerOptions } from "@tanstack/react-virtual";
 
 /** What the rail's list hands either mode (chrome/railRows.tsx). */
 export type RailRowsProps = {
@@ -82,6 +82,9 @@ export function VirtualRows({
   /** Lists that share a key share a remembered scroller size (`rectFromObserver`). */
   sizeKey?: string;
 }) {
+  // The row holding focus stays mounted when it scrolls out of the window:
+  // unmounting it would drop the keyboard's place to the page.
+  const focused = useRef<number | null>(null);
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
     count,
     getScrollElement: () => scroller,
@@ -91,6 +94,11 @@ export function VirtualRows({
     overscan: 4,
     gap,
     measureElement: measureRow,
+    rangeExtractor: (range) => {
+      const rows = defaultRangeExtractor(range);
+      const keep = focused.current;
+      return keep === null || keep >= range.count || rows.includes(keep) ? rows : [...rows, keep].sort((a, b) => a - b);
+    },
     ...(sizeKey ? { observeElementRect: rectFromObserver(sizeKey), initialRect: lastRects.get(sizeKey) } : {}),
     // Swapped in under a list the person may have scrolled: start where it
     // is; mounted again before its scroller: start where the column was.
@@ -104,7 +112,17 @@ export function VirtualRows({
     virtualizer.scrollToIndex(reveal.index, { align: "auto" });
   }, [reveal, virtualizer]);
   return (
-    <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+    <div
+      className="relative w-full"
+      style={{ height: virtualizer.getTotalSize() }}
+      onFocus={(event) => {
+        const row = (event.target as HTMLElement).closest("[data-index]");
+        focused.current = row ? Number(row.getAttribute("data-index")) : null;
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) focused.current = null;
+      }}
+    >
       {virtualizer.getVirtualItems().map((row) => (
         <div
           key={row.key}

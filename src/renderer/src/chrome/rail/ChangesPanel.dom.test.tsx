@@ -514,6 +514,29 @@ describe("ChangesPanel's virtual list", () => {
     expect(rowsMounted()).toBeLessThan(60);
   });
 
+  it("a focused row stays mounted, and focused, when the list scrolls it out of the window", async () => {
+    h.index = indexOf({ files: many(10_000) });
+    mount();
+    await flush();
+    const open = screen.getByRole("button", { name: "Open the diff of notes/00001.md" });
+    open.focus();
+    act(() => {
+      viewport().scrollTop = 28 * 5_000;
+      viewport().dispatchEvent(new Event("scroll"));
+    });
+    await flush();
+    expect(rowOf("u:notes/05005.md")).toBeTruthy();
+    expect(open.isConnected).toBe(true);
+    expect(document.activeElement).toBe(open);
+    open.blur();
+    act(() => {
+      viewport().scrollTop = 28 * 5_001;
+      viewport().dispatchEvent(new Event("scroll"));
+    });
+    await flush();
+    expect(open.isConnected).toBe(false);
+  });
+
   it("a fold opens inside its row without remounting the toggle, and the row's growth moves the rows under it", async () => {
     h.index = indexOf({ files: [file("a.ts"), file("b.ts")] });
     mount();
