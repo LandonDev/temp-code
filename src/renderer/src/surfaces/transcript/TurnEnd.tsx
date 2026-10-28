@@ -9,7 +9,9 @@ import { copyText } from "../../lib/clipboard";
 import { playCue } from "../../lib/sounds";
 import { type TurnInfo } from "../transcriptRows";
 import { type Block, type HarnessId } from "../../lib/session";
-import { isTurnPaused, turnElapsed, useClock } from "../../lib/turnClock";
+import { isTurnPaused, turnElapsed, useClock, useSlowClock } from "../../lib/turnClock";
+import { duration } from "../../lib/duration";
+import { threadStatus } from "../../lib/threadStripModel";
 import { useTurnState, type TurnSession } from "../turnState";
 import { usePaneVisible } from "../../hooks/paneVisibility";
 import { storeTitleOf, threadMentionsToTitles } from "../../lib/threadMentions";
@@ -20,8 +22,9 @@ import { spanWords } from "./thinking";
 import { ThinkingTail } from "./ThinkingRow";
 
 /** A turn's closing row: the thinking tail while it starts, its duration
- *  line once it is over, the live state while it runs or waits (unless
- *  `liveState` is off: a strip above the composer says it). */
+ *  line once it is over, the live state while it runs or waits, and a
+ *  watching line under the last settled turn while the thread watches
+ *  (unless `liveState` is off: a strip above the composer says it). */
 export function TurnEnd({
   turn,
   harnessOf,
@@ -71,6 +74,9 @@ export function TurnEnd({
       {liveState && isLast && !settled ? (
         <LiveTurnDuration turn={turn.blocks} />
       ) : null}
+      {liveState && isLast && settled && turnState && isWatching(turnState) ? (
+        <WatchingLine since={turnState.background?.watchingSince ?? null} />
+      ) : null}
     </>
   );
 }
@@ -89,6 +95,25 @@ export function LiveTurnDuration({ turn }: { turn: Block[] }) {
   );
   return (
     <TurnDuration elapsedMs={elapsed} live waiting={waiting} paused={paused} />
+  );
+}
+
+function isWatching(session: TurnSession): boolean {
+  return threadStatus({ status: session.status, background: session.background, activity: session.activity }).state === "watching";
+}
+
+/**
+ * A settled turn's thread still watching its background work or its
+ * subagents: the word and the stretch's age on the half-minute clock. What
+ * it watches is the surface's header, as the working row's phrase is.
+ */
+export function WatchingLine({ since }: { since: number | null }) {
+  const now = useSlowClock(since != null && usePaneVisible());
+  return (
+    <div role="status" aria-label={STATUS_WORD.watching} className={LINE}>
+      <StatusMark state="watching" />
+      {since != null && now > 0 ? <span aria-hidden>{duration(Math.max(0, now - since))}</span> : null}
+    </div>
   );
 }
 

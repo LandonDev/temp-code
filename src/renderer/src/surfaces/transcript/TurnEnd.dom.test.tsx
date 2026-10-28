@@ -130,3 +130,53 @@ describe("TurnEnd's live state", () => {
     expect(live(false).container.textContent).toBe("");
   });
 });
+
+describe("TurnEnd of a watching thread", () => {
+  const user = { id: "u", role: "user" as const, text: "go" };
+  const reply = { id: "a", role: "assistant" as const, text: "started it" };
+  const settledTurn = { id: "t", index: 0, isLast: true, settled: true, blocks: [user, reply], userBlock: user, durationMs: 2_000, startedAt: 10 };
+  const end = (state: TurnSession, liveState?: boolean) =>
+    render(
+      <TurnStateContext.Provider value={state}>
+        <TurnEnd turn={settledTurn} harnessOf={() => undefined} turnState={state} liveState={liveState} />
+      </TurnStateContext.Provider>,
+    );
+  const watching = {
+    status: "watching",
+    busy: false,
+    blocks: [user, reply],
+    background: {
+      tasks: [{ id: "b1", label: "sleep 90 seconds", kind: "shell", startedAt: Date.now() - 5 * 60_000 }],
+      agents: [],
+      batch: null,
+      watchingSince: Date.now() - 5 * 60_000,
+    },
+  } as unknown as TurnSession;
+
+  it("draws Worked for, then Watching with its age, as a live status row", () => {
+    const { container } = end(watching);
+    expect(container.textContent).toMatch(/^Worked for 2s/);
+    const row = container.querySelector('[role="status"]')!;
+    expect(row.getAttribute("aria-label")).toBe("Watching");
+    expect(row.querySelector('[data-state="watching"]')).not.toBeNull();
+    expect(row.textContent).toBe("Watching5m");
+    expect(container.textContent?.indexOf("Worked for")).toBeLessThan(container.textContent!.indexOf("Watching"));
+  });
+
+  it("reads an idle parent with a live subagent as watching, with no age", () => {
+    const parent = { status: "idle", busy: false, blocks: [user, reply], background: { tasks: [], agents: ["c1"], watchingSince: null } } as unknown as TurnSession;
+    const row = end(parent).container.querySelector('[role="status"]')!;
+    expect(row.textContent).toBe("Watching");
+  });
+
+  it("draws no watching line under a strip", () => {
+    expect(end(watching, false).container.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it("draws none for an idle settled turn", () => {
+    const idle = { status: "idle", busy: false, blocks: [user, reply] } as unknown as TurnSession;
+    const { container } = end(idle);
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.textContent).toBe("Worked for 2s");
+  });
+});

@@ -344,7 +344,9 @@ task lines: live work is the right panel's Activity section. No timestamps
 in the flow; the closing line says what the turn took and nothing else. A
 live turn's state is the strip's: the transcript draws the closing line
 once the turn is over, and a paused turn is not over (only a surface with
-no strip, the fleet's agent detail, draws the live state as its last row).
+no strip, the fleet's agent detail, draws the live state as its last row,
+and a watching agent's sheet ends in "Watching" with the watch's age under
+its last closing line).
 An approval card carries the amber glyph and its two buttons, not the
 word. A thought is one row
 of that list: "Thinking" shimmering with its newest sentence while it

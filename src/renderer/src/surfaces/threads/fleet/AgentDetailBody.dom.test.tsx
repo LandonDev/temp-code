@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   send: vi.fn(async () => {}),
   steer: vi.fn(async () => {}),
   transcript: null as Record<string, unknown> | null,
+  session: null as Record<string, unknown> | null,
 }));
 
 vi.mock("../../../lib/connection/status", async (importOriginal) => ({
@@ -23,7 +24,7 @@ vi.mock("../../../lib/connection/status", async (importOriginal) => ({
 vi.mock("../../../lib/threads/agents", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../lib/threads/agents")>()),
   useMetaById: (id: string | null) => (id ? (h.metas.get(id) ?? null) : null),
-  useSessionById: (id: string | null) => (id ? { id, blocks: [], loaded: true, environmentId: "local" } : undefined),
+  useSessionById: (id: string | null) => (id ? { id, blocks: [], loaded: true, environmentId: "local", ...h.session } : undefined),
 }));
 vi.mock("../../../lib/tcserver/commands", () => ({ send: h.send, steer: h.steer }));
 vi.mock("./contextCache", async (importOriginal) => ({
@@ -38,6 +39,8 @@ vi.mock("../../AgentTranscript", () => ({
 }));
 
 import { AgentDetailBody, AgentDetailHeader } from "./AgentDetailBody";
+import { TurnEnd } from "../../transcript/TurnEnd";
+import type { TurnSession } from "../../turnState";
 import { FLEET, fixtureMeta } from "./fleetFixture";
 import { agentStatus } from "../../../lib/threads/agents";
 
@@ -47,6 +50,7 @@ afterEach(() => {
   h.send.mockClear();
   h.steer.mockClear();
   h.environments = [{ id: "local", name: "This Mac" }];
+  h.session = null;
 });
 
 describe("AgentDetailHeader", () => {
@@ -118,6 +122,26 @@ describe("AgentDetailBody", () => {
     await waitFor(() => expect(h.transcript).not.toBeNull());
     expect(h.transcript?.turn).toMatchObject({ id: "old" });
     expect(h.transcript?.liveState).toBeUndefined();
+  });
+
+  it("a watching agent's sheet ends in the Watching row: its transcript gets the session's background", async () => {
+    const user = { id: "u", role: "user", text: "go" };
+    const background = { tasks: [{ id: "b1", label: "sleep 90 seconds", kind: "shell", startedAt: 1 }], agents: [], batch: null, watchingSince: Date.now() - 120_000 };
+    h.metas.set("w", fixtureMeta("w", { status: "watching" }));
+    h.session = { status: "watching", blocks: [user], background };
+    render(<AgentDetailBody agentId="w" parentCwd="/repo" onClose={() => {}} />);
+    await waitFor(() => expect(h.transcript).not.toBeNull());
+    const turn = h.transcript?.turn as TurnSession;
+    expect(turn.background).toEqual(background);
+    expect(h.transcript?.liveState).toBeUndefined();
+    const { container } = render(
+      <TurnEnd
+        turn={{ id: "t", index: 0, isLast: true, settled: true, blocks: turn.blocks, userBlock: turn.blocks[0], durationMs: 2_000, startedAt: 1 }}
+        harnessOf={() => undefined}
+        turnState={turn}
+      />,
+    );
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("Watching2m");
   });
 
   it("names a far child's host", () => {
