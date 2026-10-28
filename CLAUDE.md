@@ -962,7 +962,9 @@ routed to (aliax-core's `forward`). Two listeners:
   credits a background shell's server, reparented to init, by ancestry, the
   `~t=` scope or CLAUDE_PID in its environment, the output file a call
   named, or the thread folder holding its cwd, and skips databases,
-  infrastructure, proxies, MCP servers, test runs and the gate's workers
+  infrastructure, proxies, MCP servers, test runs, the gate's workers and
+  the repository's own proofs (`scripts/e2e-*`, `scripts/.out/*.mjs`, the
+  electron-stub preload)
   (src/shared/devServerRules.ts, which threadPorts.ts and the renderer apply
   too) and ports bound before a thread worked there
   (`bun scripts/port-sweep-dry-run.ts` prints its verdicts live); a sweep

@@ -19,9 +19,12 @@ export const NOT_DEV_NAMES =
 export const NOT_DEV_COMMAND =
   /modelcontextprotocol|\bmcp[-_](?:server|proxy|remote)\b|[-_]mcp\b(?![/.-])|^(?:\S*\/)?(?:nginx|caddy|haproxy|envoy|traefik|mitmproxy|mitmdump|socat)\b|--remote-debugging-port/i
 
-/** A test run, a typecheck or the release gate: their workers listen on throwaway ports while they run. */
+/** A test run, a typecheck, the release gate, or one of this repository's
+ *  own proofs (`scripts/e2e-*`, their esbuild output under `scripts/.out/`,
+ *  a run under the electron-stub preload): their workers, fake providers
+ *  and in-process servers listen on throwaway ports while they run. */
 export const NOT_DEV_RUNNER =
-  /\bscripts\/gate\.ts\b|\/node_modules\/(?:\.bin\/)?(?:vitest|jest|mocha|@playwright\/test)\b|(?:^|[\s;&|(])(?:bunx\s+|npx\s+|pnpm\s+(?:exec\s+)?|yarn\s+)?(?:vitest|jest|mocha|tsc)(?=\s|$)|\bplaywright\s+test\b|\bbun\s+test\b|\b(?:bun|npm|pnpm|yarn)\s+(?:run\s+)?(?:test|typecheck|gate)(?=[\s:]|$)/
+  /\bscripts\/gate\.ts\b|\bscripts\/e2e-[\w-]+\.(?:ts|mjs|js)\b|\bscripts\/\.out\/[\w-]+\.mjs\b|--preload\s+scripts\/lib\/electron-stub\.ts\b|\/node_modules\/(?:\.bin\/)?(?:vitest|jest|mocha|@playwright\/test)\b|(?:^|[\s;&|(])(?:bunx\s+|npx\s+|pnpm\s+(?:exec\s+)?|yarn\s+)?(?:vitest|jest|mocha|tsc)(?=\s|$)|\bplaywright\s+test\b|\bbun\s+test\b|\b(?:bun|npm|pnpm|yarn)\s+(?:run\s+)?(?:test|typecheck|gate)(?=[\s:]|$)/
 
 /** A listener under a test run, a typecheck or the gate, by ANY process
  *  above it: a vitest worker's own command names tinypool, not the gate

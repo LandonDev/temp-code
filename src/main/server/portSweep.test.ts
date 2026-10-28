@@ -75,6 +75,9 @@ describe('skipReason', () => {
     expect(skipReason(listener(43401, 10), chain('npm run typecheck'), 7)).toBe(gate)
     expect(skipReason(listener(5173, 10), chain('node node_modules/.bin/vite', 'bun run dev'), 7)).toBeNull()
     expect(skipReason(listener(5174, 10), chain('cd apps/vitest-demo && bun run dev'), 7)).toBeNull()
+    // A proof script's own listeners (its fake provider, its in-process server), as the box's release-300 host filed them.
+    expect(skipReason(listener(41876, 10), chain('node /tmp/tc-e2e/fake-provider.mjs', 'bun --preload scripts/lib/electron-stub.ts scripts/e2e-queue.ts'), 7)).toBe(gate)
+    expect(skipReason(listener(41877, 10), chain('node scripts/.out/e2e-quota-routing.mjs'), 7)).toBe(gate)
     // The merge gate's vitest worker, as the box saw it filed: the worker's own command names tinypool, the gate is two above.
     expect(skipReason(listener(45649, 10), chain('node /srv/agents/work/temp-code/node_modules/tinypool/dist/entry/process.js', 'node /srv/agents/work/temp-code/node_modules/vitest/dist/cli.js', '/srv/agents/home/.bun/bin/bun scripts/gate.ts --tier commit --since 00bb5d7c288…'), 7)).toBe(gate)
   })

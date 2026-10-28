@@ -127,6 +127,20 @@ describe('ThreadPorts', () => {
     expect(ledger.listAll({ kind: 'port' }).map((r) => r.identifier)).toEqual(['5173'])
   })
 
+  it("never files a proof script's own listeners under the call that ran it: the proof is found above them", async () => {
+    // The call ran a proof; its fake provider and in-process server listen under it.
+    call('root', 'c1', 'bun run script:e2e-quota-routing')
+    await flush()
+    parents.set(260, HARNESS)
+    args.set(260, 'node scripts/.out/e2e-quota-routing.mjs')
+    args.set(270, 'node /tmp/tc-e2e/fake-provider.mjs')
+    spawnServer(41876, 270, 260)
+    spawnServer(41877, 260)
+    now += 2_000
+    await ports.tick()
+    expect(ledger.listAll({ kind: 'port' })).toEqual([])
+  })
+
   it('keeps polling for the grace period after the last call, then stops', async () => {
     call('root', 'c1', 'nohup bun run dev &')
     await flush()

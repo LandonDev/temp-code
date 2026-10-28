@@ -1712,7 +1712,11 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   naming an MCP server or a proxy (`@modelcontextprotocol/…`,
   `chrome-devtools-mcp`, `mcp-server…`), a test run, typecheck or the gate
   anywhere above the listener (`scripts/gate.ts`, vitest, jest, `bun test`,
-  their workers), all in src/shared/devServerRules.ts, which the shell-call
+  their workers), one of this repository's own proofs the same way
+  (`scripts/e2e-*`, their esbuild output under `scripts/.out/`, a run under
+  the `scripts/lib/electron-stub.ts` preload: their fake providers and
+  in-process servers were filed as dev servers and forwarded to the Mac
+  once), all in src/shared/devServerRules.ts, which the shell-call
   detector applies too,
   the app's own process, the Dev Server button's runs,
   anything the harness started within 15 s of itself that no tool call
