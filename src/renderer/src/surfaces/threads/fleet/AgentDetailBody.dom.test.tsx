@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   metas: new Map<string, SessionMeta>(),
   send: vi.fn(async () => {}),
   steer: vi.fn(async () => {}),
+  transcript: null as Record<string, unknown> | null,
 }));
 
 vi.mock("../../../lib/connection/status", async (importOriginal) => ({
@@ -29,7 +30,12 @@ vi.mock("./contextCache", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./contextCache")>()),
   useContextReading: () => null,
 }));
-vi.mock("../../AgentTranscript", () => ({ AgentTranscript: () => null }));
+vi.mock("../../AgentTranscript", () => ({
+  AgentTranscript: (props: Record<string, unknown>) => {
+    h.transcript = props;
+    return null;
+  },
+}));
 
 import { AgentDetailBody, AgentDetailHeader } from "./AgentDetailBody";
 import { FLEET, fixtureMeta } from "./fleetFixture";
@@ -104,6 +110,14 @@ describe("AgentDetailBody", () => {
     h.metas.set("old", fixtureMeta("old", { status: "running", createdAt: Date.now() - 252_000 }));
     const { container } = render(<AgentDetailBody agentId="old" parentCwd="/repo" onClose={() => {}} />);
     expect(container.textContent).not.toMatch(/\d+m \d+s/);
+  });
+
+  it("hands the agent's session to its transcript, so a paused turn reads Paused, not Worked for", async () => {
+    h.metas.set("old", fixtureMeta("old", { status: "paused" }));
+    render(<AgentDetailBody agentId="old" parentCwd="/repo" onClose={() => {}} />);
+    await waitFor(() => expect(h.transcript).not.toBeNull());
+    expect(h.transcript?.turn).toMatchObject({ id: "old" });
+    expect(h.transcript?.liveState).toBeUndefined();
   });
 
   it("names a far child's host", () => {

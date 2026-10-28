@@ -46,9 +46,10 @@ export type BannerThreads = {
 /**
  * Paused and recovery span every workspace — a resume or a continue acts on
  * a thread by id, so switching to its project first buys nothing. Needs-you
- * stays scoped to `projectId` (null for every root). None of them counts
- * the thread already on screen: its strip offers Stop and Continue, its
- * question and its failure ride the transcript.
+ * stays scoped to `projectId` (null for every root). The thread already on
+ * screen is left out where it says the state itself: its strip offers Stop
+ * and Continue (not an orchestration thread's, which has no strip), its
+ * question and its own failure ride the transcript.
  */
 export function bannerThreads(
   metas: readonly SessionMeta[],
@@ -61,7 +62,8 @@ export function bannerThreads(
   for (const m of metas) {
     if (GLOBAL_ROOT(m)) {
       if (m.treeHasPaused) allPaused.push(m);
-      if (m.treeCanContinue && m.id !== activeSessionId) recovery.push(m);
+      // Its own failure's card carries Continue; a failed descendant's does not.
+      if (m.treeCanContinue && !(m.id === activeSessionId && m.status === "error")) recovery.push(m);
     }
     if (ROOT(m, projectId) && m.status === "waiting" && m.id !== activeSessionId) {
       needsYou.push(m);
@@ -70,7 +72,8 @@ export function bannerThreads(
   // A batch thread paused with its master folds under the master's line.
   const pausedIds = new Set(allPaused.map((m) => m.id));
   const folded = (m: SessionMeta): boolean => !!m.masterId && pausedIds.has(m.masterId);
-  const paused = allPaused.filter((m) => !folded(m) && m.id !== activeSessionId);
+  // An orchestration thread has no strip, so it keeps its line.
+  const paused = allPaused.filter((m) => !folded(m) && (m.id !== activeSessionId || m.threadType === "orchestration"));
   const shownIds = new Set(paused.map((m) => m.id));
   const batchPaused = allPaused.filter((m) => folded(m) && shownIds.has(m.masterId!)).length;
   return { paused, recovery, needsYou, batchPaused };

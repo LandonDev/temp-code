@@ -73,12 +73,21 @@ describe("bannerThreads", () => {
     expect(result.needsYou).toEqual([]);
   });
 
-  it("leaves the thread on screen out of paused and recovery, its strip says it", () => {
-    const open = meta("o", { treeHasPaused: true, treeCanContinue: true });
+  it("leaves the thread on screen out of paused, and out of recovery for its own failure", () => {
+    const open = meta("o", { treeHasPaused: true, treeCanContinue: true, status: "error" });
     const other = meta("p", { treeHasPaused: true });
     const result = bannerThreads([open, other], null, "o");
     expect(result.paused).toEqual([other]);
     expect(result.recovery).toEqual([]);
+  });
+
+  it("keeps the thread on screen where nothing on it offers Continue", () => {
+    // A descendant failed: the root's transcript has no failure card.
+    const failedBelow = meta("f", { treeCanContinue: true, status: "idle" });
+    expect(bannerThreads([failedBelow], null, "f").recovery).toEqual([failedBelow]);
+    // An orchestration thread has no strip.
+    const orchestration = meta("o", { treeHasPaused: true, threadType: "orchestration" });
+    expect(bannerThreads([orchestration], null, "o").paused).toEqual([orchestration]);
   });
 
   it("drops a master on screen with the batch threads folded under it", () => {

@@ -149,6 +149,7 @@ export function AgentDetailBody({
           <div className="absolute inset-0">
             <AgentTranscript
               sessionId={agentId}
+              turn={session ?? null}
               blocks={session?.blocks ?? []}
               busy={!!session?.busy}
               visible
