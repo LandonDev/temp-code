@@ -1,7 +1,6 @@
 import { acceptCompletion, completionStatus } from "@codemirror/autocomplete";
 import { indentLess, indentMore, isolateHistory } from "@codemirror/commands";
 import {
-  foldGutter,
   foldKeymap,
   getIndentUnit,
   indentUnit,
@@ -65,7 +64,7 @@ import { MarkdownPreview } from "./AgentMarkdown";
 import { ConflictBar } from "./ConflictBar";
 import { FileHeader, fileFolder, type SaveState } from "./FileHeader";
 import { editorAutocomplete } from "./editorAutocomplete";
-import { languageForPath, schemeExtensions } from "./editorChrome";
+import { editorFolding, languageForPath, schemeExtensions } from "./editorChrome";
 import { preserveEditorViewport, replaceEditorDoc } from "./editorDoc";
 import { editorMatching, editorTyping, tryExpandEmmet } from "./editorEditing";
 import {
@@ -852,7 +851,7 @@ function CodeMirrorEditor({
             )
           : [],
         lineNumbers(),
-        foldGutter(),
+        editorFolding,
         highlightActiveLine(),
         highlightActiveLineGutter(),
         EditorView.lineWrapping,

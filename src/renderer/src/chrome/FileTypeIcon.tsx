@@ -50,33 +50,17 @@ export function FileTypeIcon({
 }: Props) {
   const icons = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-  if (!icons) {
-    return (
-      <span
-        aria-hidden
-        className="inline-block shrink-0"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-
-  if (isDir) {
-    return (
-      <icons.FolderIcon
-        folderName={name}
-        isOpen={isOpen}
-        isRoot={isRoot}
-        size={size}
-        className="shrink-0"
-      />
-    );
-  }
-
+  const svg = icons
+    ? icons.getIconSvg(isDir ? icons.getFolderIcon({ folderName: name, isOpen, isRoot }) : resolveFileIcon(icons, name))
+    : null;
+  // The glyph is drawn here, not by the pack's components: they always write
+  // a native `title` ("typescript icon"), and the row beside it already names the file.
   return (
-    <icons.MaterialIcon
-      name={resolveFileIcon(icons, name)}
-      size={size}
-      className="shrink-0"
+    <span
+      aria-hidden
+      className={svg ? "material-icon inline-block shrink-0 align-middle" : "inline-block shrink-0"}
+      style={{ width: size, height: size }}
+      dangerouslySetInnerHTML={svg ? { __html: svg } : undefined}
     />
   );
 }

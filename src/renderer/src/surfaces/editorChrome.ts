@@ -1,6 +1,8 @@
 import {
   HighlightStyle,
   LanguageSupport,
+  codeFolding,
+  foldGutter,
   syntaxHighlighting,
 } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
@@ -128,6 +130,30 @@ function editorThemeStyles(dark: boolean) {
  * style-src that rejects inline sheets leaves the editor completely unstyled.
  * See `cspStyleNonce` for why this is currently a no-op.
  */
+/** A fold gutter marker: CodeMirror's glyphs without its native `title`
+ *  ("Fold line"), which no label on hover in the app ever is. */
+export function foldMarkerDOM(open: boolean): HTMLElement {
+  const span = document.createElement("span");
+  span.textContent = open ? "⌄" : "›";
+  return span;
+}
+
+/** The folded range's placeholder: CodeMirror's, named for screen readers, without its `title`. */
+export function foldPlaceholderDOM(_view: EditorView, onclick: (event: Event) => void): HTMLElement {
+  const span = document.createElement("span");
+  span.className = "cm-foldPlaceholder";
+  span.textContent = "…";
+  span.setAttribute("aria-label", "folded code");
+  span.onclick = onclick;
+  return span;
+}
+
+/** Code folding with the gutter, both drawn by the two builders above. */
+export const editorFolding: Extension = [
+  codeFolding({ placeholderDOM: foldPlaceholderDOM }),
+  foldGutter({ markerDOM: foldMarkerDOM }),
+];
+
 export function editorThemeFor(scheme: ColorScheme): Extension {
   return [
     editorThemeStyles(scheme === "dark"),
