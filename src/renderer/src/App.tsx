@@ -235,6 +235,7 @@ import {
   setSessionArchived,
 } from "./lib/sessionStore";
 import {
+  sessionFromMeta,
   sessionStore,
   useSessionShells,
 } from "./lib/tcserver/store";
@@ -296,7 +297,7 @@ const RemoteFolderDialog = dialogsChunk.surface("RemoteFolderDialog");
 const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="page" label="Loading inbox" />);
 const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" label="Loading notes" />);
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
-import { threadPane, windowTitle } from "./lib/windowTitle";
+import { threadPane, titleThread, windowTitle } from "./lib/windowTitle";
 import {
   linearIssueDetails,
   peekLinearIssueDetails,
@@ -488,7 +489,11 @@ export default function App() {
   const titleFile = activeTab ? focusedFileTab(activeTab) : undefined;
   // The project terminal dock, focused, names the window as a terminal of the selected project.
   const titleDock = dockVisible && projectTerminalFocused;
-  const titleProjectId = active && !titleDock ? active.projectId : selectedProjectId;
+  const titleSession = titleThread(activeTab, sessions, (id) => {
+    const meta = sessionStore.metaOf(id);
+    return meta ? sessionFromMeta(meta) : null;
+  });
+  const titleProjectId = titleSession && !titleDock ? titleSession.projectId : selectedProjectId;
   const titleProject = (titleProjectId && projects.find((project) => project.id === titleProjectId)?.name) || null;
   const titleText = windowTitle({
     page: settingsOpen ? "settings" : accountsPage ?? (notesViewOpen ? "notes" : inboxViewOpen ? "inbox" : searchViewOpen ? "search" : null),
@@ -497,8 +502,8 @@ export default function App() {
         ? { kind: "terminal" }
         : titleFile
           ? { kind: "file", path: titleFile.path }
-          : active
-            ? threadPane(active)
+          : titleSession
+            ? threadPane(titleSession)
             : null,
     project: titleProject,
   });

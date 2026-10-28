@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { threadPane, windowTitle } from "./windowTitle";
+import type { LayoutNode } from "./layout";
+import { threadPane, titleThread, windowTitle } from "./windowTitle";
 
 describe("windowTitle", () => {
   it("names a thread and its project", () => {
@@ -58,5 +59,37 @@ describe("windowTitle", () => {
 
   it("leaves the project off when there is none", () => {
     expect(windowTitle({ page: null, pane: { kind: "thread", title: "A chat" }, project: null })).toBe("A chat");
+  });
+});
+
+describe("titleThread: a split names its focused pane", () => {
+  const split: LayoutNode = {
+    type: "split",
+    id: "s",
+    dir: "right",
+    children: [
+      { type: "leaf", id: "a" },
+      { type: "leaf", id: "b" },
+    ],
+    sizes: [0.5, 0.5],
+  };
+  const a = { id: "a", title: "First", harness: "claude" as const, projectId: "p1" };
+  const b = { id: "b", title: "Second", harness: "claude" as const, projectId: "p2" };
+  const none = () => null;
+
+  it("names the second pane once it has the focus", () => {
+    expect(titleThread({ focusedId: "b", layout: split }, [a, b], none)?.title).toBe("Second");
+    expect(titleThread({ focusedId: "a", layout: split }, [a, b], none)?.title).toBe("First");
+  });
+
+  it("names the focused pane from its meta while its thread is still opening, never the other pane", () => {
+    const thread = titleThread({ focusedId: "b", layout: split }, [a], (id) => (id === "b" ? b : null));
+    expect(thread?.title).toBe("Second");
+    expect(thread?.projectId).toBe("p2");
+  });
+
+  it("falls back to the tab's first thread when the focus names no thread", () => {
+    expect(titleThread({ focusedId: "editor-1", layout: split }, [a, b], none)?.title).toBe("First");
+    expect(titleThread(undefined, [a, b], none)).toBeUndefined();
   });
 });
