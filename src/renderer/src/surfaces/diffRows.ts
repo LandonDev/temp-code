@@ -1,4 +1,5 @@
 import type { Block, ToolPreviewLine } from "../lib/session";
+import { textLines } from "@shared/textLines";
 
 /**
  * The rows behind an edit row's diff. Two sources feed it: the tool input
@@ -36,7 +37,7 @@ const rec = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
     : {};
-const lines = (s: string): string[] => (s === "" ? [] : s.split("\n"));
+const lines = textLines;
 const nonEmpty = (h: Hunk): boolean => h.old.length > 0 || h.new.length > 0;
 
 /** Server preview lines → rows. `number` is the new-side line for adds and
@@ -227,7 +228,7 @@ export function locateStart(lines: string[], h: Hunk): number {
  *  lines of context. Added rows render the file's CURRENT lines, so an
  *  in-place tweak shows up when the diff re-locates after a save. */
 export function locateHunks(hunks: Hunk[], content: string): DiffRow[] {
-  const lines = content.split("\n");
+  const lines = textLines(content);
   const rows: DiffRow[] = [];
   hunks.forEach((h, n) => {
     if (n > 0) rows.push({ type: "gap", text: "" });

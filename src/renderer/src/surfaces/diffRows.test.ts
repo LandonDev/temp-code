@@ -63,6 +63,13 @@ describe("editDiff", () => {
       { type: "add", newNo: 2, text: "two" },
     ]);
   });
+  it("Write ending in a newline has no empty added row at the end", () => {
+    const d = editDiff(editBlock("Write", { content: "one\ntwo\n" }));
+    expect(d.rows).toEqual([
+      { type: "add", newNo: 1, text: "one" },
+      { type: "add", newNo: 2, text: "two" },
+    ]);
+  });
   it("Edit with no text yet carries no hunks", () => {
     expect(editDiff(editBlock("Edit", {})).hunks).toEqual([]);
   });
@@ -136,6 +143,10 @@ describe("locating hunks", () => {
       { type: "ctx", newNo: 6, text: "tail" },
       { type: "ctx", newNo: 7, text: "end" },
     ]);
+  });
+  it("a file ending in a newline gets no empty context row after its last line", () => {
+    const rows = locateHunks([{ old: [], new: ["tail", "end"] }], file + "\n");
+    expect(rows.at(-1)).toEqual({ type: "add", newNo: 7, text: "end" });
   });
   it("an unlocated hunk falls back to plain del/add rows, with a gap between hunks", () => {
     const rows = locateHunks(

@@ -101,6 +101,13 @@ describe("editModel", () => {
     expect(m).toMatchObject({ path: "/p/n.md", adds: 3, dels: 0, create: true });
   });
 
+  it("counts a file ending in a newline by its lines, not the empty part after it", () => {
+    const m = editModel(tool("Write", { file_path: "/p/n.md", content: "one\ntwo\nthree\n" }));
+    expect(m).toMatchObject({ adds: 3, dels: 0 });
+    const e = editModel(tool("Edit", { file_path: "/p/a.ts", old_string: "a\n", new_string: "b\nc\n" }));
+    expect(e).toMatchObject({ adds: 2, dels: 1 });
+  });
+
   it("falls back to the preview counts while input is still streaming", () => {
     const m = editModel(
       tool("Edit", { file_path: "/p/a.ts" }, { preview: { kind: "write", path: "/p/a.ts", additions: 4, deletions: 1 } }),

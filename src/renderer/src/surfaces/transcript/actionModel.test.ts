@@ -42,6 +42,11 @@ describe("actionOf", () => {
     expect(a).toMatchObject({ glyph: "write", verb: "Created", object: "diag.ts", adds: 3, dels: 0, opens: "diff" });
   });
 
+  it("a created file ending in a newline counts its three lines", () => {
+    const a = actionOf(call("Write", { file_path: "/repo/diag.ts", content: "a\nb\nc\n" }), CWD);
+    expect(a).toMatchObject({ verb: "Created", adds: 3, dels: 0 });
+  });
+
   it("a delete leads with the trash glyph", () => {
     const b: Block = {
       id: "d",

@@ -60,10 +60,12 @@ export function encodedBytes(value: unknown): number {
 
 // ── bodies ───────────────────────────────────────────────────────────
 
+/** Lines as a person counts them (src/shared/textLines.ts): the empty part
+ *  after a final newline is not a line. */
 function countLines(text: string): number {
   let n = 1
   for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) n++
-  return n
+  return text.endsWith('\n') ? n - 1 : n
 }
 
 function omittedString(text: string): OmittedBody {

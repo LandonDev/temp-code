@@ -134,6 +134,8 @@ describe('projectRow', () => {
     expect(out.preview).toMatchObject({ kind: 'write', fileName: 'a.ts', additions: 4, deletions: 3 })
     const write = row(2, { type: 'tool-call', callId: 'w', name: 'Write', input: { file_path: '/b.ts', content: big(3000) } })
     expect((projectRow(write).event as { preview?: { additions?: number } }).preview?.additions).toBe(2)
+    const created = row(4, { type: 'tool-call', callId: 'n', name: 'Write', input: { file_path: '/d.ts', content: `a\nb\n${'c'.repeat(3000)}\n` } })
+    expect((projectRow(created).event as { preview?: { additions?: number } }).preview?.additions).toBe(3)
     const small = row(3, { type: 'tool-call', callId: 's', name: 'Edit', input: { file_path: '/c.ts', old_string: 'a', new_string: 'b' } })
     expect(projectRow(small)).toBe(small)
   })

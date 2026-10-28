@@ -1,4 +1,5 @@
 import type { Block, ToolPreview } from "../lib/session";
+import { textLines } from "@shared/textLines";
 import { displayPath } from "../lib/paths";
 
 /**
@@ -32,7 +33,7 @@ const rec = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
     : {};
-const lines = (s: string): string[] => (s === "" ? [] : s.split("\n"));
+const lines = textLines;
 
 /** Edits, writes, patches, and deletes — by provider tool name, then by kind. */
 export function isEditBlock(block: Block): boolean {
