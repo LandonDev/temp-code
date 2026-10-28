@@ -713,8 +713,9 @@ routed to (aliax-core's `forward`). Two listeners:
   concurrent redeems answer one key (R2 M1). The link's origin is learned
   only from an admin's own authenticated request, never from the Host of an
   anonymous loopback request (L1); `/api/hello` without a key answers only
-  the environment id and contract (L2); the `/pair` page's script runs under
-  a per-response nonce, no `'unsafe-inline'` for scripts (L3).
+  the environment id and contract (L2); the `/pair` page's script and style
+  run under a per-response nonce, the policy on the meta tag and the
+  response header alike (`pairPageCsp`), no `'unsafe-inline'` anywhere (L3).
   `POST /api/pair` with `kind: 'key'` answers the raw key once; with
   `kind: 'session'` it sets the HttpOnly `tc_session` cookie that `/ui` and
   cookie upgrades of `/ws` use. The page (remote/pairPage.ts, on the app's

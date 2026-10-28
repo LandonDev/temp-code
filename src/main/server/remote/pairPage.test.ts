@@ -3,15 +3,23 @@ import { join } from 'node:path'
 import { JSDOM } from 'jsdom'
 import { describe, expect, it, vi } from 'vitest'
 import { SESSION_NEEDS_CLIENT } from './auth'
-import { PAIR_INVALID_LINE, PAIR_TOKENS, pairPageHtml, pairPageScript } from './pairPage'
+import { PAIR_INVALID_LINE, PAIR_TOKENS, pairPageCsp, pairPageHtml, pairPageScript } from './pairPage'
 
 describe('pairPageHtml', () => {
-  it('allows its script by nonce only, never inline (R2 L3)', () => {
+  it('allows its script and its style by nonce only, never inline, with one policy for the meta and the header (R2 L3)', () => {
     const html = pairPageHtml('n0nce+Abc/==')
+    expect(html).toContain(`content="${pairPageCsp('n0nce+Abc/==')}"`)
     expect(html).toMatch(/script-src 'nonce-n0nce\+Abc\/=='; /)
+    expect(html).toMatch(/style-src 'nonce-n0nce\+Abc\/=='; /)
     expect(html).toContain('<script nonce="n0nce+Abc/==">')
-    expect(html).not.toMatch(/script-src[^;]*unsafe-inline/)
+    expect(html).toContain('<style nonce="n0nce+Abc/==">')
+    expect(html).not.toContain('unsafe-inline')
     expect(html.match(/<script/g)).toHaveLength(1)
+    expect(html.match(/<style/g)).toHaveLength(1)
+  })
+  it('the refused line is one sentence', () => {
+    expect(PAIR_INVALID_LINE.match(/\./g)).toHaveLength(1)
+    expect(PAIR_INVALID_LINE.endsWith('.')).toBe(true)
   })
   it('carries no code, no key and no literal colour outside the tokens', () => {
     const html = pairPageHtml('n')
@@ -131,6 +139,15 @@ describe('the pair page', () => {
     expect(p.$('code').value).toBe('')
     expect(p.window.document.activeElement).toBe(p.$('code'))
     expect(p.$('go').disabled).toBe(false)
+  })
+
+  it('a malformed code (a 400 that is not the bot case) reads the same line as an unknown one', async () => {
+    const p = page('https://h.example/pair#ABCDE', [{ status: 400, body: { error: 'code must look like XXXXX-XXXXX' } }])
+    await p.submit()
+    expect(p.$('line').textContent).toBe(PAIR_INVALID_LINE)
+    expect(p.$('line').className).toBe('failed')
+    expect(p.$('code').tagName).toBe('INPUT')
+    expect(p.window.document.activeElement).toBe(p.$('code'))
   })
 
   it('a typed code: an empty field posts nothing, a value goes trimmed', async () => {

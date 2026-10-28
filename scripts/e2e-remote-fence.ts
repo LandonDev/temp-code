@@ -47,7 +47,7 @@ const check = (name: string, ok: boolean, detail = ''): void => {
 }
 
 /** node:http rather than fetch: fetch drops a caller's Host header, and a chosen Host is part of what is under test. */
-function api(method: string, path: string, init: { headers?: Record<string, string>; body?: unknown } = {}): Promise<{ status: number; body: any }> {
+function api(method: string, path: string, init: { headers?: Record<string, string>; body?: unknown } = {}): Promise<{ status: number; body: any; headers: Record<string, string | string[] | undefined> }> {
   return new Promise((resolve, reject) => {
     const payload = init.body !== undefined ? JSON.stringify(init.body) : undefined
     const req = httpRequest(
@@ -59,9 +59,9 @@ function api(method: string, path: string, init: { headers?: Record<string, stri
         res.on('end', () => {
           const text = Buffer.concat(chunks).toString('utf8')
           try {
-            resolve({ status: res.statusCode ?? 0, body: JSON.parse(text) })
+            resolve({ status: res.statusCode ?? 0, body: JSON.parse(text), headers: res.headers })
           } catch {
-            resolve({ status: res.statusCode ?? 0, body: text })
+            resolve({ status: res.statusCode ?? 0, body: text, headers: res.headers })
           }
         })
       }
@@ -261,6 +261,8 @@ check('hello with a key carries the hostname and version', typeof known.body.nam
 const page = await api('GET', '/pair')
 const nonce = /script-src 'nonce-([^']+)'/.exec(String(page.body))?.[1]
 check('the /pair page has a nonced script-src and no unsafe-inline for scripts', !!nonce && String(page.body).includes(`<script nonce="${nonce}">`) && !/script-src[^;]*unsafe-inline/.test(String(page.body)))
+const pageCsp = String(page.headers['content-security-policy'] ?? '')
+check('the /pair page sends its policy as a header equal to its meta, the style nonced too, nothing inline', pageCsp.length > 0 && String(page.body).includes(`content="${pageCsp}"`) && String(page.body).includes(`<style nonce="${nonce}">`) && !pageCsp.includes('unsafe-inline'), pageCsp)
 
 // ── A bot link on the pair page: no session, and the code is still good for a key ──
 const botPairing = await api('POST', '/api/pairings', { headers: bearer(admin), body: { name: 'bot', audience: 'mcp', caps: ['read'] } })

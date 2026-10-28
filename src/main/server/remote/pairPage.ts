@@ -7,7 +7,9 @@ import { SESSION_NEEDS_CLIENT } from './auth'
  * browser in and goes to `/ui/`; a bot (MCP) link is refused a session before
  * its code is spent, so the page redeems the same code as a key and shows it
  * once. Nothing redeems on load: a link preview that runs scripts never burns
- * the code. The one script runs under a per-response nonce (R2 L3).
+ * the code. The one script and the one style block run under a per-response
+ * nonce, the policy on the meta tag and the response header alike (R2 L3;
+ * `pairPageCsp`, sent by remote/ui.ts).
  */
 
 /** The values the page needs from the top of src/renderer/src/index.css;
@@ -48,8 +50,17 @@ export const PAIR_TOKENS = {
   }
 } as const
 
-/** The page's one line for a refused code, whatever the reason (the wire keeps one 401, R2). */
-export const PAIR_INVALID_LINE = 'This code is invalid or has expired. Make a new one in Settings → Hosts on your computer.'
+/** The page's one line for a refused code, whatever the reason: an unknown
+ *  or spent code (the wire's one 401, R2) and a malformed one (a 400) read
+ *  the same, so the page never says which. */
+export const PAIR_INVALID_LINE = 'This code is invalid or has expired.'
+
+/** The page's policy, on the meta tag and the response header alike:
+ *  nothing but its own nonced style and script, and this origin for the
+ *  pair request. */
+export function pairPageCsp(nonce: string): string {
+  return `default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; connect-src 'self'; form-action 'none'; base-uri 'none'`
+}
 
 const vars = (tokens: Record<string, string>): string =>
   Object.entries(tokens)
@@ -105,7 +116,7 @@ export function pairPageScript(): string {
   }
   function refused(r) {
     go.disabled = false;
-    if (r.status === 401) {
+    if (r.status === 401 || r.status === 400) {
       say(INVALID, true);
       if (code.tagName !== 'INPUT') {
         var input = field();
@@ -185,9 +196,9 @@ export function pairPageScript(): string {
 export function pairPageHtml(nonce: string): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="${pairPageCsp(nonce)}">
 <title>Pair this browser</title>
-<style>
+<style nonce="${nonce}">
   :root { color-scheme: light dark; ${vars(PAIR_TOKENS.dark)} ${vars(PAIR_TOKENS.shared)} }
   @media (prefers-color-scheme: light) { :root { ${vars(PAIR_TOKENS.light)} } }
   * { box-sizing: border-box; }

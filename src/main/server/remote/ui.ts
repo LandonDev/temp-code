@@ -6,7 +6,7 @@ import { ASSET_SCHEME } from '@shared/assets'
 import type { RequestContext, UiHandler } from './listener'
 import { notFound } from './listener'
 import type { Verified } from './auth'
-import { pairPageHtml } from './pairPage'
+import { pairPageCsp, pairPageHtml } from './pairPage'
 
 /**
  * The browser face of the fixed port (plan 5jtfkIC45Cbr): `/pair` signs a
@@ -103,7 +103,10 @@ export function createUiHandler(options: UiOptions): UiHandler {
     const { req, res, path } = ctx
     if (req.method !== 'GET' && req.method !== 'HEAD') return false
     if (path === '/pair') {
-      send(res, 200, pairPageHtml(randomBytes(16).toString('base64')), 'text/html; charset=utf-8', { 'Cache-Control': 'no-store' })
+      // The policy rides the header too: the meta alone leaves the document's
+      // own headers unspoken, and a header is what a scanner reads.
+      const nonce = randomBytes(16).toString('base64')
+      send(res, 200, pairPageHtml(nonce), 'text/html; charset=utf-8', { 'Cache-Control': 'no-store', 'Content-Security-Policy': pairPageCsp(nonce) })
       return true
     }
     const isAsset = path.startsWith('/asset/')

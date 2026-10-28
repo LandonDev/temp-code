@@ -116,6 +116,20 @@ describe('createUiHandler: the lazy chunks over /ui', () => {
     expect(res.body).toBe('export const SettingsView = 1')
   })
 
+  it('/pair answers its policy as a header equal to the meta, the script and the style nonced', async () => {
+    const res = await serve('/pair', dir, false)
+    expect(res.status).toBe(200)
+    const policy = String(res.headers['Content-Security-Policy'])
+    expect(res.body).toContain(`content="${policy}"`)
+    const nonce = /script-src 'nonce-([^']+)'/.exec(policy)?.[1]
+    expect(nonce).toBeTruthy()
+    expect(policy).toContain(`style-src 'nonce-${nonce}'`)
+    expect(policy).not.toContain('unsafe-inline')
+    expect(res.body).toContain(`<style nonce="${nonce}">`)
+    expect(res.body).toContain(`<script nonce="${nonce}">`)
+    expect(res.headers['Cache-Control']).toBe('no-store')
+  })
+
   it('a chunk without a session is a plain 401, never a redirect', async () => {
     const res = await serve('/ui/assets/SettingsView-def.js', dir, false)
     expect(res.status).toBe(401)

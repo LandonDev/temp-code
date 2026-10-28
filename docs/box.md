@@ -366,8 +366,10 @@ authentication. To let a device in, mint a pairing on the box and open its
 link within ten minutes. The link's page (`/pair`, src/main/server/remote/pairPage.ts)
 shows the code and one Pair button and redeems nothing until it is pressed; a
 client link signs the browser in and lands on `/ui/`, a bot (`mcp`) link shows
-its key once with Copy. A refused code reads "This code is invalid or has
-expired. Make a new one in Settings → Hosts on your computer." A `/ui` tab whose
+its key once with Copy. A refused code, unknown, spent or malformed, reads
+one sentence, "This code is invalid or has expired."; the page's script and
+style run under a per-response nonce, with the policy on the meta tag and
+the response header alike. A `/ui` tab whose
 session lapsed or was revoked goes to `/pair?signed-out` ("Signed out.")
 instead of reconnecting:
 
