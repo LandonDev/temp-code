@@ -480,7 +480,9 @@ routed to (aliax-core's `forward`). Two listeners:
   session row: `failureKind.ts`, stamped in `Sessions.append` from the
   harness's words, the gateway's last refusal for the thread and the
   routing). The transcript's FailureCard prints its two lines and at most
-  three actions that fit the kind, Retry last; the tab edge prints the
+  three actions that fit the kind, Retry last, for every failure (a row
+  with no verdict reads `fallbackFailure`, src/shared/failureFallback.ts,
+  never the harness's raw words); the tab edge prints the
   summary instead of "Failed", and the workspace popover prints it under
   the thread's title. docs/box.md
   "A failed turn says what happened". Nothing in a renderer parses an error
