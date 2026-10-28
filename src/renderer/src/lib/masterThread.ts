@@ -27,7 +27,7 @@ export function useMasterIds(): ReadonlySet<string> {
   });
 }
 
-/** The menu's word for the pin: a master may stop being one. */
+/** The menu's verb for the pin: a master may stop being one. */
 export function masterMenuLabel(master: boolean): string {
-  return master ? "Not a master" : "Make master thread";
+  return master ? "Remove as master" : "Make master thread";
 }

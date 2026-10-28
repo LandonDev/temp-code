@@ -26,6 +26,6 @@ describe("masterIdsOf", () => {
 describe("masterMenuLabel", () => {
   it("offers the pin to a thread and the unpin to a master", () => {
     expect(masterMenuLabel(false)).toBe("Make master thread");
-    expect(masterMenuLabel(true)).toBe("Not a master");
+    expect(masterMenuLabel(true)).toBe("Remove as master");
   });
 });

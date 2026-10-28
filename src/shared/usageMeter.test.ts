@@ -158,7 +158,7 @@ describe('meterFor', () => {
     )
     const m = meterFor('cursor', s, NOW)!
     expect(m.share).toBeCloseTo(0.1)
-    expect(m.windows.map((w) => w.name)).toEqual(['Cursor models', 'other models'])
+    expect(m.windows.map((w) => w.name)).toEqual(['Cursor models', 'Other models'])
   })
 
   it('pools the worked example', () => {
@@ -185,6 +185,11 @@ describe('windowName and isLow', () => {
     expect(windowName('week')).toBe('Week')
     expect(windowName('5h')).toBe('5h')
     expect(windowName('Opus')).toBe('Opus')
+  })
+
+  it("starts a provider's lower-case label with a capital, as its neighbours do", () => {
+    expect(windowName('other models')).toBe('Other models')
+    expect(windowName('Cursor models')).toBe('Cursor models')
   })
 
   it('is low below a tenth', () => {

@@ -95,7 +95,7 @@ describe("threadMenuRows: Goal…", () => {
 describe("threadMenuRows: the master pin", () => {
   it("only on a root thread in a project, with the other word on a master", () => {
     expect(row(threadMenuRows(facts()), "master")).toMatchObject({ label: "Make master thread" });
-    expect(row(threadMenuRows(facts({ master: true })), "master")).toMatchObject({ label: "Not a master" });
+    expect(row(threadMenuRows(facts({ master: true })), "master")).toMatchObject({ label: "Remove as master" });
     expect(ids(threadMenuRows(facts({ projectId: null })))).not.toContain("master");
     expect(ids(threadMenuRows(facts({ parentId: "root" })))).not.toContain("master");
     // A draft the host has never seen cannot be pinned yet: the row says why.

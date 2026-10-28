@@ -40,7 +40,7 @@ A root thread is pinned as a master on its own row (`sessions.is_master`,
 `SessionMeta.isMaster`). Any root thread can be it; in practice a chat;
 several threads of one project may be, each with its own batch keyed by
 its id (one master per release train, another for a side quest). The pin
-is "Make master thread" / "Not the master" on the thread's context menu
+is "Make master thread" / "Remove as master" on the thread's context menu
 (the rail row and the tab) and the RPC `session.setMaster { sessionId,
 master }` (admin; a subagent is refused). Clients hear it as the thread's
 meta push. The harness's prompt and tool set were built at its spawn, and

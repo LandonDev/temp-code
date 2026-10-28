@@ -48,8 +48,9 @@ export const PROVIDER_NAME: Record<AccountProvider, string> = { claude: 'Claude'
 export const LOW_SHARE = 0.1
 export const isLow = (share: number | null): boolean => share !== null && share < LOW_SHARE
 
-/** The word a window label reads as. */
-export const windowName = (label: string): string => (label === 'Weekly' || label === 'week' ? 'Week' : label)
+/** The word a window label reads as, in sentence case whatever the provider sent ("other models" → "Other models"). */
+export const windowName = (label: string): string =>
+  label === 'Weekly' || label === 'week' ? 'Week' : label.charAt(0).toUpperCase() + label.slice(1)
 
 type Window = UsageReport['windows'][number]
 

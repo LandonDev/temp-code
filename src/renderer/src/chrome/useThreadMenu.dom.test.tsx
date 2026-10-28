@@ -25,7 +25,7 @@ vi.mock("../lib/macBridge", () => ({
   setThreadBridge: vi.fn(),
   useThreadBridge: () => null,
 }));
-vi.mock("../lib/masterThread", () => ({ useMasterIds: () => new Set<string>(), masterMenuLabel: (m: boolean) => (m ? "Not a master" : "Make master thread") }));
+vi.mock("../lib/masterThread", () => ({ useMasterIds: () => new Set<string>(), masterMenuLabel: (m: boolean) => (m ? "Remove as master" : "Make master thread") }));
 vi.mock("../lib/threadResources", () => ({
   archiveThread: vi.fn(() => Promise.resolve()),
   isRemovable: (row: { kind: string }) => row.kind !== "port",

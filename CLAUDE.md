@@ -2205,7 +2205,7 @@ docs/master-threads.md is the long account (why, the wire, the proofs);
 this is the short one.
 - **The master is a role, pinned on the thread.** Any root thread is
   pinned as a master on its own row (`sessions.is_master`,
-  `SessionMeta.isMaster`; "Make master thread" / "Not the master" on the
+  `SessionMeta.isMaster`; "Make master thread" / "Remove as master" on the
   thread's context menu, rail row and tab; RPC `session.setMaster
   { sessionId, master }`, admin, a subagent refused, answered as the
   thread's meta push; the row is disabled on an unsent draft with "Send a
@@ -2498,7 +2498,7 @@ this is the short one.
 - **The view** (docs/LAYOUT.md "Master"): `MasterView` (surfaces/threads,
   routed when the session's `isMaster` flag is on, whatever its type;
   `isMasterThread(session)` and `useMasterIds()` in lib/masterThread.ts,
-  the tab's and the rail row's "Make master thread" / "Not a master" over
+  the tab's and the rail row's "Make master thread" / "Remove as master" over
   `session.setMaster`) on the SplitShell recipe, the board left of the
   master's chat, from the first message (with no child yet the header's
   + Thread and batch actions and the foot stand over an empty list); the board, its rows, the foot, the dialogs and the add
