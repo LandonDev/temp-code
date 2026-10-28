@@ -66,6 +66,8 @@ let status: AppshotSettingsStatus = { loaded: false, loadError: null, writeError
 /** What the host last confirmed holding: a failed write goes back to it. */
 let stored: AppshotSettings = DEFAULT_APPSHOT_SETTINGS
 let writes: Promise<void> = Promise.resolve()
+/** Writes queued per setting, this one's included. */
+const queued: Partial<Record<keyof AppshotSettings, number>> = {}
 
 function setStatus(patch: Partial<AppshotSettingsStatus>): void {
   status = { ...status, ...patch }
@@ -88,6 +90,7 @@ export function setAppshotSettings(patch: Partial<AppshotSettings>): void {
   settings = { ...settings, ...patch }
   setStatus({ writeError: null })
   const keys = Object.keys(patch) as (keyof AppshotSettings)[]
+  for (const k of keys) queued[k] = (queued[k] ?? 0) + 1
   writes = writes.then(async () => {
     const sent = settings
     try {
@@ -95,8 +98,12 @@ export function setAppshotSettings(patch: Partial<AppshotSettings>): void {
       await registry.primary().request('appshots.set', { settings: sent })
       stored = sent
     } catch (err) {
-      settings = { ...settings, ...Object.fromEntries(keys.map((k) => [k, stored[k]])) }
+      // A setting a later queued write changes again keeps that newer choice.
+      const back = keys.filter((k) => queued[k] === 1)
+      settings = { ...settings, ...Object.fromEntries(back.map((k) => [k, stored[k]])) }
       setStatus({ writeError: { key: keys[0], message: message(err) } })
+    } finally {
+      for (const k of keys) queued[k] = (queued[k] ?? 1) - 1
     }
   })
 }
@@ -118,6 +125,7 @@ export function resetAppshotSettingsForTests(): void {
   settings = DEFAULT_APPSHOT_SETTINGS
   stored = DEFAULT_APPSHOT_SETTINGS
   writes = Promise.resolve()
+  for (const k of Object.keys(queued)) delete queued[k as keyof AppshotSettings]
   status = { loaded: false, loadError: null, writeError: null }
 }
 

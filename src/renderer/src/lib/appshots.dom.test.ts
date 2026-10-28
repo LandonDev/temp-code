@@ -94,6 +94,22 @@ describe("appshot settings", () => {
     expect(settingsNow()).toEqual({ ...stored, sound: false, destination: "automatic" });
   });
 
+  it("keeps a later queued choice of the same setting when an earlier write fails", async () => {
+    const load = store.loadAppshotSettings();
+    link.calls[0].resolve({ ...stored, destination: "automatic" });
+    await load;
+    store.setAppshotSettings({ destination: "new-chat" });
+    store.setAppshotSettings({ destination: "last-chat" });
+    await flush();
+    link.calls[1].reject(new Error("down"));
+    await flush();
+    expect(settingsNow().destination).toBe("last-chat");
+    expect(link.calls[2].params).toMatchObject({ settings: { destination: "last-chat" } });
+    link.calls[2].resolve({});
+    await flush();
+    expect(settingsNow().destination).toBe("last-chat");
+  });
+
   it("keeps a failed load's reason", async () => {
     const load = store.loadAppshotSettings();
     link.calls[0].reject(new Error("not connected"));
