@@ -539,6 +539,20 @@ describe("the master view", () => {
     expect(paused.querySelector("[data-slot=status-detail]")?.textContent).toBe("running bun test");
   });
 
+  it("a settled child whose subagents still work sits under Working and says Watching, then moves to Done once they settle", async () => {
+    const agents = { tasks: [], agents: ["sub-1"], batch: null, watchingSince: 1 };
+    seed([meta({ id: "c-over", title: "Overseer", status: "idle", background: agents } as Partial<SessionMeta>)]);
+    renderView();
+    await flush();
+    expect(headers().map((h) => h.getAttribute("data-group-header"))).toEqual(["running"]);
+    const row = () => screen.getByRole("button", { name: /Overseer/ }).querySelector("[data-row-status]")!;
+    expect(row().querySelector("[data-slot=status-word]")?.textContent).toBe("Watching");
+    const { environmentId: _e, ...settled } = meta({ id: "c-over", title: "Overseer", status: "idle", background: { ...agents, agents: [] } } as Partial<SessionMeta>);
+    act(() => link.push({ push: "session", session: settled } as unknown as ServerPush));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(headers().map((h) => h.getAttribute("data-group-header"))).toEqual(["done"]);
+  });
+
   it("draws no section that is empty", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     renderView();

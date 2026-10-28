@@ -199,15 +199,21 @@ export const GROUP_LABEL: Record<MasterGroupId, string> = {
   done: "Done",
 };
 
+/** What a row's section reads off its meta. */
+export type GroupedMeta = Pick<SessionMeta, "status"> & { background?: SessionMeta["background"] };
+
 /** Which section a row sits in. A paused thread holds a live turn the
  *  person can resume, so it sits with the running ones; a queued one
- *  waits for a sibling. A settled one whose subagents still work stays in
- *  Done, where the host's done rule and Archive done count it (its row
- *  says Watching). */
-export function groupOf(status: SessionStatus): MasterGroupId {
+ *  waits for a sibling. A settled one whose subagents still work is
+ *  watching them (its row says Watching, settledWithAgents) and sits with
+ *  the running ones too: the host's done rule and Archive done leave it
+ *  out until they settle (batch.ts). */
+export function groupOf(meta: GroupedMeta): MasterGroupId {
+  const { status } = meta;
   if (status === "waiting" || status === "error") return "needsYou";
   if (isLiveStatus(status) || status === "watching" || status === "paused") return "running";
   if (status === "queued") return "queued";
+  if ((status === "idle" || status === "done") && meta.background?.agents.length) return "running";
   return "done";
 }
 
@@ -218,7 +224,7 @@ export type MasterGroup = { id: MasterGroupId; label: string; rows: MasterRowMod
 export function groupRows(rows: readonly MasterRowModel[]): MasterGroup[] {
   const by = new Map<MasterGroupId, MasterRowModel[]>();
   for (const row of rows) {
-    const g = groupOf(row.meta.status);
+    const g = groupOf(row.meta);
     (by.get(g) ?? by.set(g, []).get(g)!).push(row);
   }
   return GROUP_ORDER.filter((id) => by.has(id)).map((id) => ({ id, label: GROUP_LABEL[id], rows: by.get(id)! }));
@@ -226,9 +232,9 @@ export function groupRows(rows: readonly MasterRowModel[]): MasterGroup[] {
 
 export type MasterCounts = Record<MasterGroupId, number>;
 
-export function masterCounts(rows: readonly { meta: { status: SessionStatus } }[]): MasterCounts {
+export function masterCounts(rows: readonly { meta: GroupedMeta }[]): MasterCounts {
   const counts: MasterCounts = { needsYou: 0, running: 0, queued: 0, done: 0 };
-  for (const r of rows) counts[groupOf(r.meta.status)]++;
+  for (const r of rows) counts[groupOf(r.meta)]++;
   return counts;
 }
 
@@ -643,7 +649,7 @@ export function boardLayout(
       key: row.key,
       id: row.meta.id,
       planId: row.plan?.id ?? null,
-      group: groupOf(row.meta.status),
+      group: groupOf(row.meta),
       environmentId: row.meta.environmentId,
       fallback: stored ? null : row.meta,
       override:

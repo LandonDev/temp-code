@@ -80,7 +80,7 @@ export const FIXTURE_ROWS: FixtureRow[] = [
 
 /** The fixture's rows in their sections, in the board's order. */
 export function fixtureGroups(rows: readonly FixtureRow[] = FIXTURE_ROWS): { id: MasterGroupId; label: string; rows: FixtureRow[] }[] {
-  return GROUP_ORDER.map((id) => ({ id, label: GROUP_LABEL[id], rows: rows.filter((r) => groupOf(r.meta.status) === id) })).filter((g) => g.rows.length > 0);
+  return GROUP_ORDER.map((id) => ({ id, label: GROUP_LABEL[id], rows: rows.filter((r) => groupOf(r.meta) === id) })).filter((g) => g.rows.length > 0);
 }
 
 const t = at - 5 * 60_000;

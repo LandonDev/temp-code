@@ -131,7 +131,7 @@ export function MasterRowView({
   // The word the glyph stands for and the detail, as one name for readers.
   const statusLabel = detail ? `${STATUS_WORD[state]}, ${detail}` : STATUS_WORD[state];
   const tally = taskTally(taskList(digest));
-  const group = groupOf(meta.status);
+  const group = groupOf(meta);
   // The section heading says the word; a state it does not name says its own.
   const ownWord = STATUS_WORD[state] !== GROUP_LABEL[group];
   const quiet = group === "done" || group === "queued";

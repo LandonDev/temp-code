@@ -781,8 +781,10 @@ in the whole pane, with Back.
   say them.
 - **Sections**, each a 12px medium muted heading in the status
   vocabulary's words and no count, in this order: Needs you (waiting,
-  error), Working (starting, running, watching, paused), Queued (waiting
-  for a sibling or the running cap), Done (idle, stopped). The heading
+  error), Working (starting, running, watching, paused, and an idle child
+  whose subagents still work, which the host's done rule leaves out too;
+  `groupOf`), Queued (waiting for a sibling or the running cap), Done
+  (idle, stopped). The heading
   says the state's word once, so the rows under it never repeat it. An
   empty section is not drawn. Rows oldest first within a section; nothing
   animates a reorder. The rows are the batch's children on every host the

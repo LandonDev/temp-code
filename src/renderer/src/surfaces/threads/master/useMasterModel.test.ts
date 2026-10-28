@@ -42,17 +42,24 @@ const rowOf = (m: SessionMeta) => ({ key: m.id, meta: m, plan: null, title: m.ti
 
 describe("grouping by status", () => {
   it("files every status into one of the four sections", () => {
-    expect(groupOf("waiting")).toBe("needsYou");
-    expect(groupOf("error")).toBe("needsYou");
-    expect(groupOf("starting")).toBe("running");
-    expect(groupOf("running")).toBe("running");
-    expect(groupOf("watching")).toBe("running");
-    expect(groupOf("paused")).toBe("running");
-    // Settled with subagents still working: Done, where the host's done rule and Archive done count it.
-    expect(groupOf("idle")).toBe("done");
-    expect(groupOf("queued")).toBe("queued");
-    expect(groupOf("idle")).toBe("done");
-    expect(groupOf("stopped")).toBe("done");
+    expect(groupOf({ status: "waiting" })).toBe("needsYou");
+    expect(groupOf({ status: "error" })).toBe("needsYou");
+    expect(groupOf({ status: "starting" })).toBe("running");
+    expect(groupOf({ status: "running" })).toBe("running");
+    expect(groupOf({ status: "watching" })).toBe("running");
+    expect(groupOf({ status: "paused" })).toBe("running");
+    expect(groupOf({ status: "queued" })).toBe("queued");
+    expect(groupOf({ status: "idle" })).toBe("done");
+    expect(groupOf({ status: "stopped" })).toBe("done");
+  });
+
+  it("files a settled thread whose subagents still work with the running ones, as the host's done rule leaves it out", () => {
+    const watching = { tasks: [], agents: ["a1"], batch: null, watchingSince: 1 } as unknown as SessionMeta["background"];
+    expect(groupOf({ status: "idle", background: watching })).toBe("running");
+    expect(groupOf({ status: "done", background: watching })).toBe("running");
+    expect(groupOf({ status: "idle", background: { ...watching!, agents: [] } })).toBe("done");
+    expect(groupOf({ status: "stopped", background: watching })).toBe("done");
+    expect(masterCounts([{ meta: { status: "idle", background: watching } }, { meta: { status: "idle" } }])).toEqual({ needsYou: 0, running: 1, queued: 0, done: 1 });
   });
 
   it("returns the non-empty sections in order", () => {
