@@ -246,7 +246,7 @@ describe('ThreadRows fold', () => {
     kid.unmount()
   })
 
-  it("a master's batch threads sit under it the way subagents do: the type's glyph, what a running one does, its model otherwise", () => {
+  it("a master's batch threads sit under it the way subagents do: the type's glyph and what a running one does; each ends in its glyph", () => {
     const master: ThreadRow = {
       ...threadRow(meta('master', { isMaster: true }), {}),
       children: [threadRow(meta('own', { parentId: 'master', status: 'running' }), {})],
@@ -264,7 +264,8 @@ describe('ThreadRows fold', () => {
     expect(kids[0].querySelector('[data-activity]')?.textContent).toBe('Writing the view')
     expect(kids[0].textContent).toContain('b1')
     expect(kids[1].querySelector('[data-activity]')).toBeNull()
-    expect(kids[1].textContent).toContain('Claude Opus 5.5')
+    // The model is on the hover line, never at the row's end.
+    expect(kids[1].textContent).not.toContain('Claude Opus 5.5')
     expect(kids[1].querySelector('svg')).not.toBeNull()
     probe.unmount()
   })

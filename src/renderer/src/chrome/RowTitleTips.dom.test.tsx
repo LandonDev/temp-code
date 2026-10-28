@@ -87,6 +87,19 @@ describe("a clipped title", () => {
   });
 });
 
+describe("a subagent row", () => {
+  it("ends in its glyph, with its model on the hover line", async () => {
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(100);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    const row = threadRow(meta({ id: "k1", parentId: "t0", title: "Read the docs", provider: "claude", model: "claude-opus-5-5" }), {});
+    render(<ThreadRowView row={row} child />);
+    const el = screen.getByText("Read the docs").closest<HTMLElement>("[data-thread-row]")!;
+    expect(el.textContent).not.toContain("Opus");
+    hover(el);
+    await waitFor(() => expect(tipText()).toContain("Claude Opus 5.5"), { timeout: 2000 });
+  });
+});
+
 describe("a clipped rail row label", () => {
   const NAME = "temp-code-verify-second-checkout";
 

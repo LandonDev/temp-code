@@ -303,9 +303,9 @@ const ROW =
 /**
  * A thread row, presentational: a root in the workspace column (32px, its
  * title in the project name's column) or a child one step in (a subagent or
- * a batch thread, 28px, the role's or type's glyph before its title, what it
- * does or its model after). It ends in its mark: the glyph alone, the word
- * and what it is about on hover. Unread is weight on the title, never a dot.
+ * a batch thread, 28px, the role's or type's glyph before its title, what a
+ * running one does after). It ends in its mark: the glyph alone, the word,
+ * what it is about and a child's model on hover. Unread is weight on the title, never a dot.
  * Selection is a `muted` fill; nothing tints a paused row.
  */
 export function ThreadRowView({
@@ -353,16 +353,27 @@ export function ThreadRowView({
   // Hover and focus put More over the glyph, so the row itself says the
   // word and its detail: the pointer anywhere on it, or the keyboard on it.
   const state = !word && !editing && marksAtRest(mark.state) ? mark.label : null;
+  // A subagent's model is said on hover, never at the row's end: a row ends in its glyph.
+  const model = child && !editing && row.provider && row.model ? modelLabel(row.provider, row.model) : null;
+  const detail =
+    state && model ? (
+      <span className="flex gap-2">
+        <span>{state}</span>
+        <span>{model}</span>
+      </span>
+    ) : (
+      state ?? model
+    );
   // A cut title is the row's one tooltip too: the whole title, the word under it.
   const { ref: titleRef, cut } = useTruncated(shownTitle);
   const tip =
     cut && !editing ? (
       <span className="flex flex-col text-left">
         <span>{shownTitle}</span>
-        {state ? <span className="font-normal text-background/60">{state}</span> : null}
+        {detail ? <span className="font-normal text-background/60">{detail}</span> : null}
       </span>
     ) : (
-      state
+      detail
     );
   const element = (
     <div
@@ -411,8 +422,6 @@ export function ThreadRowView({
             <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground" data-activity>
               {live}
             </span>
-          ) : child && row.provider && row.model ? (
-            <span className="shrink-0 text-[12px] text-muted-foreground">{modelLabel(row.provider, row.model)}</span>
           ) : null}
           {fold ? (
             <Button
