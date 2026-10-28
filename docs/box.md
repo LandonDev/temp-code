@@ -426,10 +426,23 @@ each one by hand. Now:
   spinner, the tab says Stopped, and the header menu offers Resume;
   `session.resume` on a stopped thread calls `resumeStopped`. The boot no
   longer flips running rows to idle; only waiting and watching rows are
-  idled at boot. A watching row is swept too (since 2026-10-27): a master
-  kept watching by its batch whose harness is gone reads stopped ("The
-  harness behind this master is gone; Resume brings it back"), and a
-  thread watching its own background work settles idle. The batch engine
+  idled at boot. A harness that dies with no turn open is settled at once,
+  not after the grace: the claude driver's stream ends with the process
+  (the SDK throws "terminated by signal SIGKILL" into its drain loop), and
+  with only a watch or nothing open it empties the task list and tells the
+  registry (`DriverCtx.harnessGone` → `registry.settleGoneHarness`, the
+  same decision the sweep makes as the fallback for a harness that dies
+  without the driver noticing): a master kept watching by its batch reads
+  stopped ("The harness behind this master is gone; Resume brings it
+  back") with nothing frozen, so Resume's clock starts at the resume; a
+  thread watching its own background work settles idle with its Activity
+  emptied; an idle row only loses the dead handle, and the next send boots
+  fresh. No error row in any of these: the "died mid-turn" words of
+  `harness_crashed` are kept for a turn that was running when the process
+  died. The clock follows the same line (`append`'s busySince rule): a
+  turn that starts from a watching, error or stopped row counts from its
+  own start, and only a turn that died mid-stream carries its elapsed on
+  through Resume. The batch engine
   fails any step still running at a restart but a deploy it can follow
   (gate, release, land and shell alike), tells the master, and lets the
   batch close (`Batches.resumeAfterBoot`).

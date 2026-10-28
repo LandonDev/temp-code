@@ -26,6 +26,7 @@ it('aliveOf reads the recovery flag and the process: exited or killed is dead, n
   expect(aliveOf(false, { exitCode: null, killed: false })).toBe(true)
   expect(aliveOf(false, { exitCode: 0, killed: false })).toBe(false)
   expect(aliveOf(false, { exitCode: null, killed: true })).toBe(false)
+  expect(aliveOf(false, { exitCode: null, signalCode: 'SIGKILL', killed: false })).toBe(false)
 })
 
 it('the forgotten-task timer asks about a stale task while the thread watches, never while it works or idles', async () => {

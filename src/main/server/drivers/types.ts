@@ -40,6 +40,14 @@ export interface DriverCtx {
    *  host) or lost it. The registry forgets the id, reboots fresh once the
    *  turn settles, seeded with the thread's own transcript, and continues. */
   nativeSessionLost?: () => void
+  /** The process behind this handle is gone with no turn open (its stream
+   *  ended, by a kill or a crash between turns). The registry settles the
+   *  row by its rule at once: a thread watching its own background work
+   *  idles with its tasks gone, a master kept watching by its batch reads
+   *  stopped with Resume, an idle row only loses the dead handle. A driver
+   *  with a turn open reports the death as an error instead. Absent, a
+   *  watching driver idles itself. */
+  harnessGone?: () => void
   /** Ask the user: emits approval-request + status waiting, resolves on
    *  session.approve (false after the timeout, on abort, or on dispose),
    *  then emits approval-resolved + status running. One path for harness

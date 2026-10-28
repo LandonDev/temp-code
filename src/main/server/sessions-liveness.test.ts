@@ -17,6 +17,8 @@ import type { AgentEvent } from '../../shared/events'
  * orchestration. P1-P12 are the probe's numbers.
  */
 const emits = new Map<string, (e: AgentEvent) => void>()
+/** The driver's word that its process is gone with no turn open. */
+const gones = new Map<string, () => void>()
 const sends = new Map<string, string[]>()
 const spawns = new Map<string, number>()
 const dead = new Set<string>()
@@ -30,6 +32,7 @@ vi.mock('./drivers', () => ({
         spawns.set(id, (spawns.get(id) ?? 0) + 1)
         dead.delete(id)
         emits.set(id, ctx.emit)
+        gones.set(id, ctx.harnessGone!)
         return {
           send: async (text: string) => {
             if (dead.has(id)) throw new Error('harness gone')
@@ -70,6 +73,7 @@ beforeEach(async () => {
   batches.attach()
   setBatches(batches)
   emits.clear()
+  gones.clear()
   sends.clear()
   spawns.clear()
   dead.clear()
@@ -166,6 +170,34 @@ describe('the watching master', () => {
     idle(master)
     await settle(120)
     expect(sends.get(master)?.some((t) => t.includes('<subagent-report>'))).toBe(true)
+  })
+
+  it("a watching master whose harness dies reads stopped at the driver's word, at once and without an error row; Resume starts the clock fresh", async () => {
+    const { master } = await pinnedMaster()
+    const a = await child(master, 'A')
+    idle(master)
+    await settle()
+    expect(status(master)).toBe('watching')
+    const rowsBefore = registry.eventsAfter(master, 0).length
+    dead.add(master)
+    emit(master, { type: 'background-tasks', tasks: [], items: [] })
+    gones.get(master)!()
+    expect(status(master)).toBe('stopped')
+    const rows = registry.eventsAfter(master, 0).slice(rowsBefore).map((r) => r.event)
+    expect(rows.map((e) => e.type)).not.toContain('error')
+    expect(rows.at(-1)).toMatchObject({ type: 'status', status: 'stopped', detail: 'The harness behind this master is gone; Resume brings it back' })
+    expect(registry.get(master)).toMatchObject({ failure: null, frozenActiveElapsed: 0 })
+    expect(registry.liveIds().has(master)).toBe(false)
+    // The child's report parks; Resume boots a fresh harness whose clock starts now.
+    finish(a)
+    await settle(100)
+    const before = Date.now()
+    expect(await registry.resumeStopped(master)).toBe(true)
+    await settle(60)
+    const meta = registry.get(master)!
+    expect(meta.status).toBe('running')
+    expect(meta.busySince).toBeGreaterThanOrEqual(before)
+    expect(meta.busySince).toBeLessThanOrEqual(Date.now())
   })
 
   it('P2b a dead watching master still gets a report delivered when drainReports finds the harness gone', async () => {

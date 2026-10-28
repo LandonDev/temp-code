@@ -457,13 +457,17 @@ keeps the row so a restart brings the master back (into a turn with the
 restart nudge, then watching again). The batch closing idles it: the next
 turn end is a real idle, and a batch that closes with nothing coming (its
 children deleted) idles the master through `registry.masterIdle` from
-the engine's review. The liveness sweep takes watching rows too (S4 of the
-stability sweep, 2026-10-27): a master kept watching by its batch whose
-harness is dead past the grace reads `stopped` ("The harness behind this
-master is gone; Resume brings it back": Resume boots a fresh harness with
-the restart nudge, and the parked reports follow at its settle), and a
-thread watching its own background work settles idle when its harness is
-gone (the tasks died with it). A report to a dead watching master boots a
+the engine's review. A dead harness under a watching row is settled by one
+rule, `registry.settleGoneHarness`: at once on the driver's word when its
+stream ends with the process and no turn is open (`DriverCtx.harnessGone`;
+V1 fix H, 2026-10-27), and past the grace by the liveness sweep as the
+fallback (S4 of the stability sweep). A master kept watching by its batch
+reads `stopped` ("The harness behind this master is gone; Resume brings it
+back"), with nothing frozen since no turn was open, so Resume boots a fresh
+harness with the restart nudge and a clock that starts then, and the parked
+reports follow at its settle; a thread watching its own background work
+settles idle (the tasks died with it); neither gets an error row, the
+"died mid-turn" words being kept for a turn that was running. A report to a dead watching master boots a
 fresh harness instead of parking for ever (`drainReports`); one to a
 stopped master parks until Resume. Stop and Kill background tasks on a
 watching master idle it for real (a one-shot `stopWatching` that

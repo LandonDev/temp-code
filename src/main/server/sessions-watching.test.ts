@@ -12,6 +12,8 @@ import type { AgentEvent, BackgroundTask, BackgroundWork } from '../../shared/ev
  * emit the test holds, so it can play the driver's status events by hand.
  */
 const emits = new Map<string, (e: AgentEvent) => void>()
+/** The driver's word that its process is gone with no turn open. */
+const gones = new Map<string, () => void>()
 const sends = new Map<string, string[]>()
 const disposed: string[] = []
 const stopped: string[] = []
@@ -25,6 +27,7 @@ vi.mock('./drivers', () => ({
       start: async (ctx: DriverCtx) => {
         const id = ctx.session.id
         emits.set(id, ctx.emit)
+        gones.set(id, ctx.harnessGone!)
         spawns.set(id, (spawns.get(id) ?? 0) + 1)
         dead.delete(id)
         return {
@@ -57,6 +60,7 @@ beforeEach(async () => {
   store = new Store(db)
   registry = new SessionRegistry(store)
   emits.clear()
+  gones.clear()
   sends.clear()
   disposed.length = 0
   stopped.length = 0
@@ -310,4 +314,102 @@ it('Kill background tasks leaves a running turn alone and reaches a watching chi
   expect(disposed).toEqual([child])
   expect(registry.get(parent)?.status).toBe('running')
   expect(registry.get(child)?.status).toBe('idle')
+})
+
+/** The driver's process died with no turn open (drivers/claude.ts
+ *  settleStreamEnd): the tasks list is emptied, then the registry is told. */
+const harnessDied = (id: string): void => {
+  dead.add(id)
+  emit(id, { type: 'background-tasks', tasks: [], items: [] })
+  gones.get(id)!()
+}
+
+it("a thread watching its own task whose harness dies settles idle at the driver's word: no error row, no failure, its Activity emptied", async () => {
+  const id = await live()
+  emit(id, { type: 'background-tasks', tasks: ['bun test --watch'] })
+  emit(id, { type: 'status', status: 'watching' })
+  harnessDied(id)
+  await settle()
+  expect(registry.get(id)).toMatchObject({ status: 'idle', activity: null, failure: null })
+  expect(registry.get(id)?.background ?? null).toBeNull()
+  expect(types(id).at(-1)).toBe('status:idle')
+  expect(types(id)).not.toContain('error')
+  expect(disposed).toEqual([id])
+  expect(registry.liveIds().has(id)).toBe(false)
+})
+
+it('a harness killed mid-turn still lands on error, the host reading it as the harness crashing', async () => {
+  const id = await live()
+  dead.add(id)
+  emit(id, { type: 'error', message: 'Claude Code process terminated by signal SIGKILL' })
+  emit(id, { type: 'status', status: 'error' })
+  expect(registry.get(id)?.status).toBe('error')
+  expect(registry.get(id)?.failure?.kind).toBe('harness_crashed')
+})
+
+it('a harness that dies between turns only loses its handle: the row stays idle with no new row', async () => {
+  const id = await live()
+  emit(id, { type: 'status', status: 'idle' })
+  const before = types(id)
+  dead.add(id)
+  gones.get(id)!()
+  await settle()
+  expect(types(id)).toEqual(before)
+  expect(registry.get(id)?.status).toBe('idle')
+  expect(disposed).toEqual([id])
+  expect(registry.liveIds().has(id)).toBe(false)
+})
+
+it("the driver's word is ignored while a live handle stands behind the row", async () => {
+  const id = await live()
+  emit(id, { type: 'background-tasks', tasks: ['bun test --watch'] })
+  emit(id, { type: 'status', status: 'watching' })
+  expect(registry.settleGoneHarness(id)).toBe(false)
+  expect(registry.get(id)?.status).toBe('watching')
+  expect(disposed).toEqual([])
+})
+
+/** The working clock (busySince): a turn from a settled row counts from its
+ *  own start; a stretch holds through steers and queue drains. */
+const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 5))
+const statusRow = (id: string, status: string, nth = -1): number => {
+  const rows = registry.eventsAfter(id, 0).filter((r) => r.event.type === 'status' && r.event.status === status)
+  return rows.at(nth)!.ts
+}
+
+it('a turn after a failure counts from its own start', async () => {
+  const id = await live()
+  const first = registry.get(id)!.busySince
+  emit(id, { type: 'error', message: 'boom' })
+  emit(id, { type: 'status', status: 'error' })
+  await tick()
+  await registry.send(id, 'again')
+  expect(registry.get(id)!.busySince).toBe(statusRow(id, 'starting'))
+  expect(registry.get(id)!.busySince).toBeGreaterThan(first!)
+})
+
+it('a wake-up from a watch counts from its own start', async () => {
+  const id = await live()
+  const first = registry.get(id)!.busySince
+  emit(id, { type: 'background-tasks', tasks: ['a monitor'] })
+  emit(id, { type: 'status', status: 'watching' })
+  expect(registry.get(id)!.busySince).toBe(first)
+  await tick()
+  emit(id, { type: 'status', status: 'running' })
+  expect(registry.get(id)!.busySince).toBe(statusRow(id, 'running'))
+  expect(registry.get(id)!.busySince).toBeGreaterThan(first!)
+})
+
+it('a steer keeps the stretch, and so does a message queued behind the turn that drains at its idle', async () => {
+  const id = await live()
+  const first = registry.get(id)!.busySince
+  await tick()
+  emit(id, { type: 'status', status: 'running' })
+  expect(registry.get(id)!.busySince).toBe(first)
+  expect(registry.queueAdd(id, 'next').kind).toBe('queued')
+  await tick()
+  emit(id, { type: 'status', status: 'idle' })
+  await settle()
+  expect(sends.get(id)).toEqual(['go', 'next'])
+  expect(registry.get(id)).toMatchObject({ status: 'running', busySince: first })
 })

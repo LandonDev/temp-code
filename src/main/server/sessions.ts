@@ -1175,23 +1175,39 @@ export class SessionRegistry {
         continue
       }
       if (now - since < graceMs) continue
-      this.harnessGoneSince.delete(s.id)
-      if (s.status === 'watching' && !this.masterKeepsWatching(s.id)) {
-        // Its background work died with the process: nothing left to wait on.
-        void this.dropHandle(s.id)
-      } else {
-        // A master kept watching by its batch reads stopped; Resume brings it
-        // back (the restart nudge, then watching again while the batch is open).
-        this.markStopped(s.id, now, s.status === 'watching' ? 'The harness behind this master is gone; Resume brings it back' : undefined)
-      }
-      flipped.push(s.id)
+      if (this.settleGoneHarness(s.id, now)) flipped.push(s.id)
     }
     return flipped
   }
 
+  /** The harness behind a row is gone for good: the driver's word (its
+   *  stream ended with the process and no turn was open, `DriverCtx.
+   *  harnessGone`, at once) or the sweep's (no live handle past the grace,
+   *  the fallback for a harness that dies without the driver noticing). A
+   *  running or starting row reads stopped with its clock frozen; a master
+   *  kept watching by its batch reads stopped too (Resume brings it back:
+   *  the restart nudge, then watching again while the batch is open); any
+   *  other row loses the dead handle (dropHandle: a thread watching its own
+   *  background work settles idle, the work died with the process; an idle
+   *  row stays as it is). A live handle behind the row, a replacement
+   *  already booted, is left alone. True when it acted. */
+  settleGoneHarness(sessionId: string, now = Date.now()): boolean {
+    const handle = this.handles.get(sessionId)
+    if (handle && handle.alive?.() !== false) return false
+    this.harnessGoneSince.delete(sessionId)
+    const status = this.store.getSession(sessionId)?.status
+    if (status === 'running' || status === 'starting') this.markStopped(sessionId, now)
+    else if (status === 'watching' && this.masterKeepsWatching(sessionId)) {
+      this.markStopped(sessionId, now, 'The harness behind this master is gone; Resume brings it back')
+    } else void this.dropHandle(sessionId)
+    return true
+  }
+
   /** The harness behind a running turn is gone for good: the row reads
    *  stopped with its working time frozen (Resume carries it on), the dead
-   *  handle is dropped, and the transcript gets the line that says why. */
+   *  handle is dropped, and the transcript gets the line that says why. A
+   *  watching row had no turn open: nothing is frozen, and Resume's clock
+   *  starts at the resume. */
   private markStopped(sessionId: string, now: number, detail = 'The harness behind this turn is gone'): void {
     const meta = this.store.getSession(sessionId)
     if (!meta) return
@@ -1201,7 +1217,7 @@ export class SessionRegistry {
       void handle.dispose().catch(() => {})
     }
     this.denyPendingApprovals(sessionId)
-    const frozen = Math.max(0, meta.busySince ? now - meta.busySince : (meta.frozenActiveElapsed ?? 0))
+    const frozen = meta.status === 'watching' ? 0 : Math.max(0, meta.busySince ? now - meta.busySince : (meta.frozenActiveElapsed ?? 0))
     this.append(sessionId, { type: 'status', status: 'stopped', detail })
     this.activities.delete(sessionId)
     this.watching.delete(sessionId)
@@ -3833,6 +3849,9 @@ export class SessionRegistry {
             const next = this.store.updateSession(sessionId, { nativeId: null })
             if (next) this.notifyMeta(next)
             void this.recoverLostNativeSession(sessionId)
+          },
+          harnessGone: () => {
+            this.settleGoneHarness(sessionId)
           }
         })
       )
@@ -4036,15 +4055,24 @@ export class SessionRegistry {
     // Status events also update the session row (drives the sidebar).
     // busySince anchors the "working for" timers: it is set when a stretch
     // of work begins and holds through steers and queue drains, so the
-    // clock counts from the first message, not the latest wake-up.
+    // clock counts from the first message, not the latest wake-up. A turn
+    // that starts from a settled row (watching, error or stopped) is a new
+    // stretch and counts from its own start: a wake-up from a watch, a
+    // Continue after a failure. Only a turn that died mid-stream carries
+    // its elapsed on, through resumeStopped's own stamp after this row.
     if (event.type === 'status') {
       const cur = this.row(sessionId)
+      const fresh =
+        (event.status === 'running' || event.status === 'starting') &&
+        (cur?.status === 'watching' || cur?.status === 'error' || cur?.status === 'stopped')
       const busySince =
         event.status === 'idle'
           ? (this.queues.get(sessionId)?.length ?? 0) > 0
             ? (cur?.busySince ?? null)
             : null
-          : (cur?.busySince ?? row.ts)
+          : fresh
+            ? row.ts
+            : (cur?.busySince ?? row.ts)
       if (event.status !== 'watching') this.watchingSince.delete(sessionId)
       else if (cur?.status !== 'watching' || !this.watchingSince.has(sessionId)) this.watchingSince.set(sessionId, row.ts)
       const next = this.store.updateSession(sessionId, { status: event.status, busySince })

@@ -1116,9 +1116,19 @@ routed to (aliax-core's `forward`). Two listeners:
   with no live harness for 20 s flips to the `stopped` status (liveness sweep
   `sweepLiveness`, `DriverHandle.alive`); the strip says "Stopped · the
   harness is gone" with Resume, and `session.resume` on it calls
-  `registry.resumeStopped`, the one resume path for a dead harness. The boot
-  reset idles only waiting and watching rows now. docs/box.md "Surviving a
-  restart"; proof `bun scripts/e2e-survive-restart.ts`.
+  `registry.resumeStopped`, the one resume path for a dead harness. A
+  harness that dies with no turn open is settled at once by the driver's
+  word (`DriverCtx.harnessGone` → `registry.settleGoneHarness`, the one
+  rule the sweep is the fallback for): a thread watching its own
+  background work idles with its tasks gone, a master kept watching by its
+  batch reads stopped with Resume, an idle row only loses the dead handle;
+  no error row either way, since the "died mid-turn" words are true only
+  for a turn that was running, which keeps the error path. The clock: a
+  turn that starts from a watching, error or stopped row counts from its
+  own start (`append` stamps `busySince` fresh), a stopped watcher freezes
+  nothing, and only a turn that died mid-stream carries its elapsed through
+  Resume. The boot reset idles only waiting and watching rows now.
+  docs/box.md "Surviving a restart"; proof `bun scripts/e2e-survive-restart.ts`.
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
   `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live
   files) and repo `mac` from the launchd agent `dev.landon.tempcode.backup`
@@ -2360,12 +2370,14 @@ this is the short one.
   ends: the harness stays up, the queue and the completed-turn pass drain
   on that watching as on idle, the boot ledger keeps it so a restart brings
   it back (into a turn, then watching again), and the batch closing idles
-  it (`registry.masterIdle` when nothing is coming). The liveness sweep
-  takes watching rows too: a master kept watching by its batch whose
-  harness is dead past the grace reads `stopped` (Resume boots a fresh
-  harness with the restart nudge; the parked reports follow at its settle),
-  a thread watching its own background work settles idle, a report to a
-  dead watching master boots a fresh harness (`drainReports`); Stop and
+  it (`registry.masterIdle` when nothing is coming). A dead harness under a
+  watching row is settled the moment the driver's stream ends
+  (`harnessGone` → `settleGoneHarness`), the liveness sweep being the
+  fallback past the grace: a master kept watching by its batch reads
+  `stopped` with its clock at zero (Resume boots a fresh harness with the
+  restart nudge and a clock that starts then; the parked reports follow at
+  its settle), a thread watching its own background work settles idle, a
+  report to a dead watching master boots a fresh harness (`drainReports`); Stop and
   Kill background tasks on a watching master idle it for real (a one-shot
   `stopWatching`), unpinning idles it, and `liveIds` counts handles and
   boots only. `decorate` gives a watching master its batch's reason ahead

@@ -255,10 +255,13 @@ export function firstOutputOverdue(state: Pick<StreamState, 'sentAt'>, now: numb
   return state.sentAt !== null && now - state.sentAt >= FIRST_OUTPUT_MS
 }
 
-/** Whether the handle's process is still there: not recovered or ended, and the CLI not exited or killed. */
-export function aliveOf(dead: boolean, cli: { exitCode: number | null; killed: boolean } | null): boolean {
+/** Whether the handle's process is still there: not recovered or ended, and
+ *  the CLI not exited, killed from here or ended by a signal from outside
+ *  (a SIGKILL from another process leaves `exitCode` null and sets
+ *  `signalCode`). */
+export function aliveOf(dead: boolean, cli: { exitCode: number | null; signalCode?: string | null; killed: boolean } | null): boolean {
   if (dead) return false
-  return cli === null || (cli.exitCode === null && !cli.killed)
+  return cli === null || (cli.exitCode === null && !cli.signalCode && !cli.killed)
 }
 
 /** How often a watching thread's forgotten tasks are checked without a turn. */
@@ -350,6 +353,38 @@ function settleTurn(ctx: DriverCtx, state: StreamState): void {
     state.watching = false
     ctx.emit({ type: 'status', status: 'idle' })
   }
+}
+
+/** The harness stream is over: the process died, the SDK dropped it, or it
+ *  threw (`err`). A turn still open never gets its result, so it ends as an
+ *  error: idle after a quiet end, error after a throw (the registry reads
+ *  it as the harness crashing mid-turn, which it did). With only a watch
+ *  open the tasks died with the process: the list is emptied and the
+ *  registry is told the harness is gone (`harnessGone`), which settles the
+ *  row by its rule (idle for a thread's own work, stopped with Resume for a
+ *  master its batch keeps); a context without the callback idles here. With
+ *  nothing open the registry is told too, so the dead handle is dropped and
+ *  the next send boots fresh, and no row is written: the thread was between
+ *  turns, and the words of a mid-turn death would be false. */
+export function settleStreamEnd(ctx: DriverCtx, state: StreamState, err?: unknown): void {
+  const midTurn = state.working
+  const watched = state.watching
+  state.working = false
+  state.watching = false
+  clearSettle(state)
+  if (midTurn) {
+    if (err === undefined) {
+      ctx.emit({ type: 'error', message: 'harness stream ended mid-turn' })
+      ctx.emit({ type: 'status', status: 'idle' })
+    } else {
+      ctx.emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
+      ctx.emit({ type: 'status', status: 'error' })
+    }
+    return
+  }
+  if (watched) ctx.emit({ type: 'background-tasks', tasks: [], items: [] })
+  if (ctx.harnessGone) ctx.harnessGone()
+  else if (watched) ctx.emit({ type: 'status', status: 'idle' })
 }
 
 /** A turn the CLI started on its own (a background task or cron woke it):
@@ -1601,31 +1636,25 @@ export const claudeDriver: HarnessDriver = {
             }
           }
         }
-        // Stream over with a turn still open: the result message is never
-        // coming (process died, or the SDK dropped it). Settle the status
-        // or the thread shows "working" forever. A watching thread's
-        // tasks died with the process — settle it too, without an error.
-        if ((state.working || state.watching) && !disposed) {
-          const midTurn = state.working
-          state.working = false
-          state.watching = false
-          clearSettle(state)
-          if (midTurn) emit({ type: 'error', message: 'harness stream ended mid-turn' })
-          else emit({ type: 'background-tasks', tasks: [], items: [] })
-          emit({ type: 'status', status: 'idle' })
+        // Stream over without a dispose: the process died, or the SDK
+        // dropped it. A turn still open shows "working" for ever unless it
+        // is settled here; a watch's tasks died with the process; the
+        // registry hears the harness is gone either way (settleStreamEnd).
+        // `dead` first: the registry reads alive() to tell this handle from
+        // a replacement, and finally has not run yet.
+        if (!disposed) {
+          dead = true
+          settleStreamEnd(watchedCtx, state)
         }
       } catch (err) {
         // A watchdog abort already settled the status — swallow its throw.
         if (disposed || abort.signal.aborted) return
-        state.working = false
-        state.watching = false
-        clearSettle(state)
+        dead = true
         // emit persists to SQLite; if THAT is what threw (a locked
         // database), a bare retry here would kill the drain loop entirely
         // and freeze the thread on "Working…" with nothing logged.
         try {
-          emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
-          emit({ type: 'status', status: 'error' })
+          settleStreamEnd(watchedCtx, state, err)
           if (err instanceof Error && LOST_NATIVE_SESSION.test(err.message)) markNativeLost()
         } catch {
           setTimeout(() => {
