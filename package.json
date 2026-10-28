@@ -1,6 +1,6 @@
 {
   "name": "temp-code",
-  "version": "1.0.305",
+  "version": "1.0.306",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/boot.js",
   "author": "Landon Hale",
