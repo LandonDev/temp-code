@@ -112,7 +112,7 @@ describe("AccountsView", () => {
     fireEvent.click(details);
     await flush();
     const pop = screen.getByRole("dialog");
-    expect(within(pop).getByText(/^Refills .+, in 2h 30m$/)).toBeTruthy();
+    expect(within(pop).getByText('Refills in 2h 30m')).toBeTruthy();
     expect(within(pop).getByText("2 answers in the last minute, every host")).toBeTruthy();
     fireEvent.keyDown(pop, { key: "Escape" });
     await flush();

@@ -38,15 +38,6 @@ export function untilLabel(resetsAt: number, now: number): string {
 export const resetLabel = (at: number): string =>
   new Date(at).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
 
-/** The reset moment, as short as the distance allows: "5:30 PM", "Wed 5:30 PM", "Aug 22". */
-export function resetPoint(at: number, now: number): string {
-  const d = new Date(at);
-  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  if (at - now < DAY) return time;
-  if (at - now < 7 * DAY) return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
 /** The report of one profile, if it has one. */
 export const reportOf = (reports: UsageReport[], name: string | null): UsageReport | undefined =>
   name === null ? undefined : reports.find((r) => r.profileName === name);

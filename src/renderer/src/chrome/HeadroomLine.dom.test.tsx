@@ -29,7 +29,7 @@ describe('HeadroomLine', () => {
     fireEvent.mouseEnter(line)
     fireEvent.focus(line)
     await waitFor(() => expect(screen.getByText('2 answers in the last minute, every host')).toBeTruthy(), { timeout: 2000 })
-    expect(screen.getByText(/^Refills .*, in 2m$/)).toBeTruthy()
+    expect(screen.getByText('Refills in 2m')).toBeTruthy()
   })
   it('a throttled account reads Limited and the time left in the warning tone', () => {
     const { container } = render(<HeadroomLine headroom={{ room: 0.9, ratePerMin: 0, seenAt: now, throttledUntil: now + 45_000 }} now={now} />)

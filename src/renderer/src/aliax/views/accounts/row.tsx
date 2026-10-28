@@ -24,7 +24,7 @@ import { Switch } from "@renderer/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
 import { headroomLook, type HeadroomLook } from "@renderer/lib/headroom";
-import { DEFAULT_COLOR, displayName, fillFor, onPaceLeft, percentLeft, resetLabel, toneFor, untilLabel } from "@aliax/lib/accounts";
+import { DEFAULT_COLOR, displayName, fillFor, onPaceLeft, percentLeft, toneFor, untilLabel } from "@aliax/lib/accounts";
 import { EditAccountDialog } from "@aliax/views/edit-account-dialog";
 import { rowLine, shortDay, type OwnerView, type RowAction } from "./rowLine";
 
@@ -74,7 +74,7 @@ function WindowDetail({ w, now }: { w: UsageWindow; now: number }) {
       </div>
       {w.resetsAt && w.resetsAt > now ? (
         <p className="text-xs text-muted-foreground">
-          Refills {resetLabel(w.resetsAt)}, in {untilLabel(w.resetsAt, now)}
+          Refills in {untilLabel(w.resetsAt, now)}
         </p>
       ) : null}
       {pace !== null ? <p className="text-xs text-muted-foreground">An even burn leaves {Math.round(pace)}% by now</p> : null}

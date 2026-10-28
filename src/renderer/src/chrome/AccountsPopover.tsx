@@ -13,7 +13,6 @@ import {
   percentLeft,
   reportOf,
   resetLabel,
-  resetPoint,
   toneFor,
   untilLabel,
 } from "../lib/accounts";
@@ -284,7 +283,8 @@ function UsageCell({ group, now }: { group: UsageWindow[]; now: number }) {
         {refills ? (
           <>
             {period ? <CycleRing fraction={cycleFraction(head.resetsAt as number, period, now)} /> : null}
-            <Facts parts={[`in ${untilLabel(head.resetsAt as number, now)}`, resetPoint(head.resetsAt as number, now)]} />
+            {/* The countdown alone; the moment is the tooltip's, so the cell says the refill once. */}
+            <span className="tabular-nums">in {untilLabel(head.resetsAt as number, now)}</span>
           </>
         ) : null}
       </span>

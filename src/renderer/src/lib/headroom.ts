@@ -1,5 +1,5 @@
 import type { AccountHeadroom } from "@server/shared/accounts";
-import { resetLabel, untilLabel } from "./accounts";
+import { untilLabel } from "./accounts";
 
 /**
  * One account's headroom as a row shows it: the bar's fill, the word beside
@@ -29,11 +29,12 @@ export function headroomLook(h: AccountHeadroom | undefined, now: number): Headr
   }
   if (h.throttledUntil !== undefined && h.throttledUntil > now) {
     const until = untilLabel(h.throttledUntil, now);
-    return { percent: 0, text: "Limited", until, tone: "limited", lines: lines(`Picks again ${resetLabel(h.throttledUntil)}, in ${until}`, rate) };
+    return { percent: 0, text: "Limited", until, tone: "limited", lines: lines(`Picks again in ${until}`, rate) };
   }
   const room = h.room ?? 1;
   const percent = Math.round(room * 100);
-  const lead = h.resetsAt !== undefined && h.resetsAt > now ? `Refills ${resetLabel(h.resetsAt)}, in ${untilLabel(h.resetsAt, now)}` : "No reset announced";
+  // One form of the refill, the countdown, as the meter and the bars say it.
+  const lead = h.resetsAt !== undefined && h.resetsAt > now ? `Refills in ${untilLabel(h.resetsAt, now)}` : "No reset announced";
   return {
     percent,
     text: `${percent}% left`,

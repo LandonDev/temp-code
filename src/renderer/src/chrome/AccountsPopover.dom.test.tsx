@@ -83,4 +83,17 @@ describe("an account row's lines", () => {
     expect(limited.children[1].textContent).toMatch(/ left$/);
     expect(row.textContent).not.toContain("·");
   });
+
+  it("says a window's refill once, the countdown, and leaves the moment to the hover", async () => {
+    const list = {
+      ...accounts,
+      reports: [{ profileName: "a", windows: [{ label: "5h", usedPercent: 40, resetsAt: 2 * 3_600_000 + 90_000, periodMs: 5 * 3_600_000 }] }],
+    } as unknown as ProviderAccounts;
+    render(<Harness onOpenChange={() => {}} list={list} />);
+    fireEvent.click(screen.getByRole("button", { name: "Pick another account" }));
+    const listbox = await screen.findByRole("listbox", { name: "claude accounts" });
+    const cell = listbox.querySelector("[data-cell]")!;
+    expect(cell.textContent).toContain("in 2h 1m");
+    expect(cell.textContent).not.toMatch(/AM|PM/);
+  });
 });
