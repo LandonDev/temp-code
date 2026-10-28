@@ -198,6 +198,20 @@ describe('UsageMeter', () => {
     expect(bar(row(root, 'codex')).getAttribute('aria-valuenow')).not.toBeNull()
   })
 
+  it('says <1m in the row under a minute, and the label keeps the words', async () => {
+    const { root, link } = await mount()
+    const s = snapshot()
+    s.providers.codex.headroom = {
+      'x@x.com': { room: 0, throttledUntil: now + 30_000, ratePerMin: 0, seenAt: now },
+      'y@x.com': { room: 0, throttledUntil: now + 20_000, ratePerMin: 0, seenAt: now }
+    }
+    await probe!.act(async () => {
+      for (const l of link.listeners) l({ push: 'accounts', snapshot: s } as ServerPush)
+    })
+    expect((row(root, 'codex').querySelector('.text-warning') as HTMLElement).textContent).toBe('Limited<1m')
+    expect(row(root, 'codex').getAttribute('aria-label')).toMatch(/limited for under a minute$/)
+  })
+
   it('opens the windows and the count of accounts with room on click, with no account named', async () => {
     const { root } = await mount()
     await probe!.act(async () => {

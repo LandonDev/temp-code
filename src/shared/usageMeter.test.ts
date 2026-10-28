@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ProfileView, UsageReport } from 'aliax-core/shared/types'
 import { emptyAccounts, type AccountHeadroom, type AccountsSnapshot } from './accounts'
-import { isLow, meterFor, untilShort, windowName } from './usageMeter'
+import { isLow, meterFor, untilShort, untilWords, windowName } from './usageMeter'
 
 const NOW = 1_000_000_000
 const MIN = 60_000
@@ -171,9 +171,16 @@ describe('windowName and isLow', () => {
   })
 })
 
+describe('untilWords', () => {
+  it('says under a minute in words and defers to untilShort otherwise', () => {
+    expect(untilWords(NOW + 30_000, NOW)).toBe('under a minute')
+    expect(untilWords(NOW + 14 * MIN, NOW)).toBe('14m')
+  })
+})
+
 describe('untilShort', () => {
   it('keeps the largest whole unit', () => {
-    expect(untilShort(NOW + 30_000, NOW)).toBe('under a minute')
+    expect(untilShort(NOW + 30_000, NOW)).toBe('<1m')
     expect(untilShort(NOW + 14 * MIN, NOW)).toBe('14m')
     expect(untilShort(NOW + 2.5 * HOUR, NOW)).toBe('2h')
     expect(untilShort(NOW + 76 * HOUR, NOW)).toBe('3d')

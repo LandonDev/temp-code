@@ -134,10 +134,15 @@ const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
-/** The largest whole unit until a reset, for a narrow row: "3d", "2h", "14m", "under a minute". */
+/** The largest whole unit until a reset, for a narrow row: "3d", "2h", "14m", "<1m". */
+/** The same in words, for a label read aloud: "under a minute", else untilShort's. */
+export function untilWords(resetsAt: number, now: number): string {
+  return resetsAt - now < MINUTE ? 'under a minute' : untilShort(resetsAt, now)
+}
+
 export function untilShort(resetsAt: number, now: number): string {
   const ms = resetsAt - now
-  if (ms < MINUTE) return 'under a minute'
+  if (ms < MINUTE) return '<1m'
   if (ms >= DAY) return `${Math.floor(ms / DAY)}d`
   if (ms >= HOUR) return `${Math.floor(ms / HOUR)}h`
   return `${Math.floor(ms / MINUTE)}m`

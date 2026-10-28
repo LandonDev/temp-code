@@ -8,7 +8,7 @@ import { useSlowClock } from "../lib/turnClock";
 import { sessionStore, useSessionMeta } from "../lib/tcserver/store";
 import { useAccounts } from "../stores/accounts";
 import { ACCOUNT_PROVIDERS, type AccountProvider } from "@server/shared/accounts";
-import { PROVIDER_NAME, isLow, meterFor, untilShort, type UsageMeter as Meter } from "@server/shared/usageMeter";
+import { PROVIDER_NAME, isLow, meterFor, untilShort, untilWords, type UsageMeter as Meter } from "@server/shared/usageMeter";
 
 /**
  * The rail's foot: one row per provider with accounts, the pooled share left
@@ -69,8 +69,8 @@ function rowLabel({ provider, meter, now }: MeterProps): string {
   const name = `${PROVIDER_NAME[provider]} usage`;
   if (meter.share === null) return `${name}, no report yet`;
   const parts = [name, `${percent(meter.share)}% left`];
-  if (meter.limited) parts.push(future(meter.limited.until, now) ? `limited for ${untilShort(meter.limited.until, now)}` : "limited");
-  else if (future(meter.resetsAt, now)) parts.push(`refills in ${untilShort(meter.resetsAt, now)}`);
+  if (meter.limited) parts.push(future(meter.limited.until, now) ? `limited for ${untilWords(meter.limited.until, now)}` : "limited");
+  else if (future(meter.resetsAt, now)) parts.push(`refills in ${untilWords(meter.resetsAt, now)}`);
   return parts.join(", ");
 }
 
