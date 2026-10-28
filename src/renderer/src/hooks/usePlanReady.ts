@@ -1,12 +1,12 @@
-import { hostOfCwd } from "../lib/tcserver/projects";
-import { useEffect, useMemo, useState } from "react";
-import { readFile } from "../lib/tcserver/commands";
+import { useMemo } from "react";
 
 /**
- * Which settled planning threads have a WRITTEN plan awaiting a build. Peeks
- * at each one's plan file on a slow poll — a planning thread that has not
- * produced a document yet does not count. Starting a build archives the
- * planning thread server-side, which drops it from the list on its own.
+ * Which settled planning threads have a plan awaiting a build: those whose
+ * planner called `plan_complete` (`planCompletedAt`), on the server's word
+ * alone. Nothing reads a plan file for it: the old 8 s peek at every
+ * settled planner's file sent hundreds of `file.read` per workspace click.
+ * Starting a build archives the planning thread server-side, which drops it
+ * from the list on its own.
  *
  * `watching` counts as settled: a planning thread whose turn ended on a
  * background wait (a Monitor, a cron, a run_in_background Bash) has still
@@ -25,46 +25,15 @@ export function isSettledPlanning(t: {
   );
 }
 
+const NONE: Readonly<Record<string, boolean>> = {};
+
 export function usePlanReady(
   threads: { id: string; threadType?: string | null; status?: string; planPath?: string | null; planCompletedAt?: number | null }[],
-): Record<string, boolean> {
-  const [ready, setReady] = useState<Record<string, boolean>>({});
-  // A plan the planner marked complete (plan_complete) is ready on the
-  // server's word; the file peek covers plans written before that tool.
-  const completed = threads.filter((t) => isSettledPlanning(t) && !!t.planCompletedAt).map((t) => t.id);
-  const idle = threads.filter((t) => isSettledPlanning(t) && !t.planCompletedAt);
-  const key = idle.map((t) => `${t.id}=${t.planPath}`).join(",");
-  useEffect(() => {
-    const entries = key ? key.split(",").map((pair) => pair.split("=") as [string, string]) : [];
-    if (entries.length === 0) {
-      setReady((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-      return;
-    }
-    let alive = true;
-    const poll = async (): Promise<void> => {
-      const next = await Promise.all(
-        entries.map(async ([id, path]) => [id, !!(await readFile(hostOfCwd(path), path))?.trim()] as const),
-      );
-      if (!alive) return;
-      setReady((prev) => {
-        const out = Object.fromEntries(next);
-        const same =
-          Object.keys(prev).length === next.length && next.every(([id, v]) => prev[id] === v);
-        return same ? prev : out;
-      });
-    };
-    void poll();
-    const t = setInterval(() => void poll(), 8000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [key]);
-  const completedKey = completed.join(",");
-  return useMemo(() => {
-    if (!completedKey) return ready;
-    const out = { ...ready };
-    for (const id of completedKey.split(",")) out[id] = true;
-    return out;
-  }, [ready, completedKey]);
+): Readonly<Record<string, boolean>> {
+  // One string, so the answer keeps its identity while the set holds.
+  const key = threads
+    .filter((t) => isSettledPlanning(t) && !!t.planCompletedAt)
+    .map((t) => t.id)
+    .join("\n");
+  return useMemo(() => (key ? Object.fromEntries(key.split("\n").map((id) => [id, true])) : NONE), [key]);
 }
