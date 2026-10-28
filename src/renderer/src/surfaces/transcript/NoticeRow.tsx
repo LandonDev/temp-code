@@ -2,6 +2,7 @@
 import type { Block } from "../../lib/session";
 import { errorRowOf, isErrorBlock, stopClosesTurn } from "../../lib/turnOutcome";
 import { passActionsOf } from "../../lib/turnClock";
+import { useSessionMeta } from "../../lib/tcserver/store";
 import type { OpenFileFn } from "../../lib/search";
 import { ErrorChip } from "../ErrorChip";
 import { CompactionCard } from "../CompactionCard";
@@ -59,7 +60,11 @@ export function NoticeRow({
 export function ErrorRowView({ block }: { block: Block }) {
   const session = useTurnState();
   const sessionId = useTranscriptSession();
-  const outcome = session ?? { blocks: [block], status: "idle" as const, thread: undefined };
+  // The tree's continue flag lives on the meta until the projection carries it.
+  const meta = useSessionMeta(sessionId);
+  const outcome = session
+    ? { ...session, treeCanContinue: session.treeCanContinue ?? meta?.treeCanContinue }
+    : { blocks: [block], status: "idle" as const, thread: undefined };
   // The turn's closing line (TurnEnd) says Stopped; the row stays only while its turn is open.
   if (!sessionId || stopClosesTurn(outcome, block)) return null;
   const row = errorRowOf(outcome, block);

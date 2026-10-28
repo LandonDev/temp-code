@@ -4,7 +4,7 @@ import { resumeTurnClock } from "./toolBlock";
 
 const user = (over: Partial<Block> = {}): Block => ({ id: "u", role: "user", text: "go", startedAt: 10_000, ...over });
 const reply: Block = { id: "a", role: "assistant", text: "ok" };
-const stop: Block = { id: "err:3", role: "system", text: "Stopped", stopped: true };
+const stop: Block = { id: "err:3", role: "system", text: "Stopped", stopped: true, ts: 11_000 };
 const note: Block = { id: "s:4", role: "system", text: "Context compacted" };
 
 describe("resumeTurnClock", () => {
@@ -25,6 +25,11 @@ describe("resumeTurnClock", () => {
       expect(u.durationMs).toBeUndefined();
       expect(u.doneTs).toBeUndefined();
     }
+  });
+
+  it("a pause after a Resume counts on from its span: the error was already resumed from", () => {
+    const [u] = resumeTurnClock([user({ startedAt: 20_000, durationMs: 3_000 }), stop], 30_000);
+    expect(u).toMatchObject({ startedAt: 27_000 });
   });
 
   it("leaves a completed turn, a running turn and a turn with no user row alone", () => {

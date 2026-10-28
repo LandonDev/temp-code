@@ -13,7 +13,7 @@ const err = (n: number, text = "boom", stopped?: boolean): Block => ({
 const note = (n: number): Block => ({ id: `s:${n}`, role: "system", text: "Context compacted" });
 
 function session(blocks: Block[], extra: Partial<OutcomeSession> = {}): OutcomeSession {
-  return { blocks, status: "error", thread: emptyThread(), ...extra };
+  return { blocks, status: "error", treeCanContinue: true, thread: emptyThread(), ...extra };
 }
 
 describe("isErrorBlock", () => {
@@ -42,7 +42,18 @@ describe("errorRowOf", () => {
       stopped: false,
       message: "turn ended: error_during_execution",
       failure: fallbackFailure(),
+      canRetry: true,
     });
+  });
+
+  it("offers Retry on the last error only, when the tree can continue and nothing is paused", () => {
+    const s = session([err(1), err(2)]);
+    expect(errorRowOf(s, s.blocks[0])).toMatchObject({ canRetry: false });
+    expect(errorRowOf(s, s.blocks[1])).toMatchObject({ canRetry: true });
+    const closed = session([err(1)], { treeCanContinue: false });
+    expect(errorRowOf(closed, closed.blocks[0])).toMatchObject({ canRetry: false });
+    const paused = session([err(1)], { status: "paused" });
+    expect(errorRowOf(paused, paused.blocks[0])).toMatchObject({ canRetry: false });
   });
 
   it("keeps the host's verdict when the row carries one", () => {

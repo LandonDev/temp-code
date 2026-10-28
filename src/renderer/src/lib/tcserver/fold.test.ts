@@ -629,6 +629,19 @@ describe("M4 transcript fixes", () => {
     expect(s.blocks[0].durationMs).toBe(2_000);
   });
 
+  it("a pause after a Resume keeps the resumed span through the next Resume", () => {
+    let s = foldAll(rows([[{ type: "user-text", text: "go" }, { ts: 10_000 }]]), CWD);
+    s = step(s, { type: "error", message: "Stopped", stopped: true }, 11_000);
+    s = step(s, { type: "status", status: "idle" }, 11_000);
+    s = step(s, { type: "status", status: "running" }, 20_000);
+    s = step(s, { type: "status", status: "paused" }, 23_000);
+    expect(s.blocks[0].durationMs).toBe(3_000);
+    s = step(s, { type: "status", status: "running" }, 30_000);
+    expect(s.blocks[0].startedAt).toBe(27_000);
+    s = step(s, { type: "turn-complete" }, 34_000);
+    expect(s.blocks[0].durationMs).toBe(7_000);
+  });
+
   it("a completed turn reopened with no message keeps its time, and a new message starts its own", () => {
     let s = foldAll(rows([[{ type: "user-text", text: "go" }, { ts: 10_000 }]]), CWD);
     s = step(s, { type: "assistant-text", text: "done", delta: false, msgId: "m", blockIndex: 0 }, 12_000);

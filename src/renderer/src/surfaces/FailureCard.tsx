@@ -82,26 +82,28 @@ export function FailureCardView({
       <div className="min-w-0 pl-5.5">
         <p className="mt-0.5 min-w-0 break-words text-[13px] leading-5 text-muted-foreground">{failure.cause}</p>
         {note ? <p className="mt-1 min-w-0 break-words text-xs text-muted-foreground">{note}</p> : null}
-        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
-          {actions.map((action, i) => {
-            const pending = state.pending === action.id;
-            const button = (
-              <Button
-                key={action.id}
-                size="sm"
-                variant={i === 0 ? "default" : "secondary"}
-                data-failure-action={action.id}
-                disabled={busy || state.pending !== null}
-                onClick={() => onAction(action.id)}
-              >
-                {pending ? <Spinner className="size-3.5" /> : null}
-                {pending ? pendingLabel(action.id) || action.label : action.label}
-              </Button>
-            );
-            const wrapped = renderAction?.(action.id, button);
-            return wrapped ? <Fragment key={action.id}>{wrapped}</Fragment> : button;
-          })}
-        </div>
+        {actions.length > 0 ? (
+          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
+            {actions.map((action, i) => {
+              const pending = state.pending === action.id;
+              const button = (
+                <Button
+                  key={action.id}
+                  size="sm"
+                  variant={i === 0 ? "default" : "secondary"}
+                  data-failure-action={action.id}
+                  disabled={busy || state.pending !== null}
+                  onClick={() => onAction(action.id)}
+                >
+                  {pending ? <Spinner className="size-3.5" /> : null}
+                  {pending ? pendingLabel(action.id) || action.label : action.label}
+                </Button>
+              );
+              const wrapped = renderAction?.(action.id, button);
+              return wrapped ? <Fragment key={action.id}>{wrapped}</Fragment> : button;
+            })}
+          </div>
+        ) : null}
         {state.outcome ? (
           <p className="mt-2 min-w-0 break-words text-xs text-muted-foreground" aria-live="polite">
             {state.outcome}
@@ -118,12 +120,23 @@ export function canSignInHere(environmentId: string | null | undefined): boolean
   return environmentId === LOCAL_ENVIRONMENT_ID && typeof window !== "undefined" && !!window.aliax;
 }
 
-export function FailureCard({ sessionId, failure, busy }: { sessionId: string; failure: Failure; busy?: boolean }) {
+export function FailureCard({
+  sessionId,
+  failure,
+  canRetry = true,
+  busy,
+}: {
+  sessionId: string;
+  failure: Failure;
+  /** The host can continue the work from this row; without it Retry would do nothing and is left out. */
+  canRetry?: boolean;
+  busy?: boolean;
+}) {
   const meta = useSessionMeta(sessionId);
   const environmentId = meta?.environmentId ?? LOCAL_ENVIRONMENT_ID;
   const provider = meta?.provider ?? "claude";
   const ctx: FailureActionContext = { provider, signInHere: canSignInHere(environmentId) };
-  const actions = failureActions(failure.kind, ctx);
+  const actions = failureActions(failure.kind, ctx).filter((a) => canRetry || a.id !== "retry");
   const note = failureNote(failure.kind, ctx);
   const [state, setState] = useState<FailureCardState>({ pending: null, outcome: null });
   const [picking, setPicking] = useState(false);

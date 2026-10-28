@@ -14,10 +14,10 @@ import type { Block, Session } from "./session";
 /** A stop, or a failure with its verdict (the host's, else the fallback): the card prints its lines and actions. */
 export type ErrorRow =
   | { stopped: true; message: string; failure: null }
-  | { stopped: false; message: string; failure: Failure };
+  | { stopped: false; message: string; failure: Failure; canRetry: boolean };
 
-/** `stopped` on the row is stamped by the fold. */
-export type OutcomeSession = Pick<Session, "blocks" | "status" | "thread">;
+/** `treeCanContinue` is the server's tree-wide verdict; `stopped` on the row is stamped by the fold. */
+export type OutcomeSession = Pick<Session, "blocks" | "status" | "thread"> & { treeCanContinue?: boolean };
 type StoppableBlock = Block & { stopped?: boolean };
 
 export function isErrorBlock(block: Block): boolean {
@@ -71,9 +71,23 @@ export function stopClosesTurn(session: OutcomeSession & { busy?: boolean }, blo
   return !lastTurn || !(session.busy || session.status === "paused");
 }
 
+/** Retry continues the work (`session.continue`), which the host does only
+ *  for the last error of a tree it can pick back up and nothing paused: a
+ *  bare "turn ended: …" wind-down settles the thread idle and is never
+ *  continuable, so its card offers no Retry and the composer is the way on. */
+export function canRetryFrom(session: OutcomeSession, block: Block): boolean {
+  if (!session.treeCanContinue || session.status === "paused") return false;
+  return lastErrorBlock(session.blocks)?.id === block.id;
+}
+
 export function errorRowOf(session: OutcomeSession, block: Block): ErrorRow {
   if (isStoppedRow(session, block)) {
     return { stopped: true, message: block.text, failure: null };
   }
-  return { stopped: false, message: block.text, failure: block.failure ?? fallbackFailure() };
+  return {
+    stopped: false,
+    message: block.text,
+    failure: block.failure ?? fallbackFailure(),
+    canRetry: canRetryFrom(session, block),
+  };
 }

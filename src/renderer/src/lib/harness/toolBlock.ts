@@ -383,7 +383,10 @@ export function resumeTurnClock(blocks: Block[], now: number): Block[] {
     if (block.role !== "user") continue;
     if (block.durationMs == null || block.startedAt == null) return blocks;
     const { durationMs, doneTs, ...rest } = block;
-    if (endsOnError(blocks, i)) {
+    // An error already resumed from (older than the turn's current start)
+    // leaves a later pause's span to the pause rule below.
+    const error = endingError(blocks, i);
+    if (error && (error.ts ?? Infinity) >= block.startedAt) {
       const next = blocks.slice();
       next[i] = { ...rest, startedAt: now };
       return next;
@@ -396,19 +399,15 @@ export function resumeTurnClock(blocks: Block[], now: number): Block[] {
   return blocks;
 }
 
-/** The turn opened at `user` ends on an error row (a stop or a failure):
- *  nothing but system rows after its last one. */
-function endsOnError(blocks: Block[], user: number): boolean {
-  let error = -1;
+/** The error row the turn opened at `user` ends on (a stop or a failure:
+ *  nothing but system rows after it), if it does. */
+function endingError(blocks: Block[], user: number): Block | undefined {
   for (let j = blocks.length - 1; j > user; j--) {
-    if (blocks[j].role === "system" && blocks[j].id.startsWith("err:")) {
-      error = j;
-      break;
-    }
+    const b = blocks[j];
+    if (b.role !== "system") return undefined;
+    if (b.id.startsWith("err:")) return b;
   }
-  if (error < 0) return false;
-  for (let j = error + 1; j < blocks.length; j++) if (blocks[j].role !== "system") return false;
-  return true;
+  return undefined;
 }
 
 function displayLabel(

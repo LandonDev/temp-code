@@ -571,6 +571,7 @@ export function foldEvent(
           id: `err:${row.seq}`,
           role: "system",
           text: e.message,
+          ts: row.ts,
           ...(e.stopped ? { stopped: true } : {}),
           ...(e.failure ? { failure: e.failure } : {}),
         },

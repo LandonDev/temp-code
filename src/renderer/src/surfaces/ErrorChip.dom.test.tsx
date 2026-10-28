@@ -15,9 +15,9 @@ vi.mock("../lib/tcserver/commands", () => ({
 import { ErrorChip } from "./ErrorChip";
 
 const RAW = "turn ended: error_during_execution";
-const rowOf = (text: string, stopped = false) => {
+const rowOf = (text: string, stopped = false, treeCanContinue = true) => {
   const block = { id: "err:1", role: "system" as const, text, ...(stopped ? { stopped } : {}) };
-  return errorRowOf({ blocks: [block], status: "error", thread: emptyThread() }, block);
+  return errorRowOf({ blocks: [block], status: "error", thread: emptyThread(), treeCanContinue }, block);
 };
 
 describe("ErrorChip", () => {
@@ -47,6 +47,13 @@ describe("ErrorChip", () => {
     });
     expect(continueSession).toHaveBeenCalledWith("s1");
     expect(root.querySelector("button")?.textContent).toBe("Retrying…");
+    probe.unmount();
+  });
+
+  it("offers no Retry where the host cannot continue, such as a bare turn ended wind-down", () => {
+    const probe = mountProbe(<ErrorChip sessionId="s1" row={rowOf(RAW, false, false)} />);
+    expect(probe.container.textContent).toContain(fallbackFailure().summary);
+    expect(probe.container.querySelector("button")).toBeNull();
     probe.unmount();
   });
 });
