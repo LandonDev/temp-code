@@ -15,7 +15,7 @@ vi.mock("./devServers", () => ({ stopLiveServer, useLiveDevServers: () => [] }))
 vi.mock("./macBridge", () => ({ stopMacBridgeAll, useMacBridgeRunning: () => [] }));
 vi.mock("./tcserver/store", () => ({ useSessionMeta: () => null, useSessionMetas: () => [] }));
 
-const { activityRows, hasActivity, rowStale, stopActivity, stopAll } = await import("./activity");
+const { activityRows, hasActivity, rowStale, stopActivity, stopAll, threadServers } = await import("./activity");
 
 const bg = (over: Partial<BackgroundWork>): BackgroundWork => ({ tasks: [], agents: [], batch: null, watchingSince: null, ...over });
 const server: LiveServer = {
@@ -118,6 +118,17 @@ describe("activityRows", () => {
     expect(rows).toEqual([]);
     expect(hasActivity(rows)).toBe(false);
     expect(hasActivity(activityRows({ meta: { id: "s1", status: "idle", background: null }, agents: [], devServers: [server], macCalls: [] }))).toBe(true);
+  });
+});
+
+describe("threadServers", () => {
+  it("keeps a pane-started run by its thread and a subagent's ledger row, and drops another thread's run", () => {
+    const run = { ...server, key: "env/run1", sessionId: "s1", runId: "run1", resource: null };
+    const subagentRow = { ...server, key: "env/r2", sessionId: "a1", resource: { id: "r2", sessionId: "a1" } };
+    const otherRun = { ...server, key: "env/run2", sessionId: "s9", runId: "run2", resource: null };
+    const noThread = { ...server, key: "env/run3", sessionId: null, runId: "run3", resource: null };
+    const kept = threadServers([run, subagentRow, otherRun, noThread], new Set(["s1", "a1"]));
+    expect(kept.map((s) => s.key)).toEqual(["env/run1", "env/r2"]);
   });
 });
 

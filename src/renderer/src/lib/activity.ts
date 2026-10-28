@@ -131,6 +131,11 @@ export function hasActivity(rows: readonly ActivityRow[]): boolean {
   return rows.length > 0;
 }
 
+/** The dev servers of a thread's tree: a ledger row by the thread that opened it, a run started from the pane by the thread on screen then. */
+export function threadServers(servers: readonly LiveServer[], tree: ReadonlySet<string>): LiveServer[] {
+  return servers.filter((s) => tree.has(s.resource?.sessionId ?? s.sessionId ?? ""));
+}
+
 /** Every session in the thread's tree, the thread first. */
 function treeIds(rootId: string, metas: readonly SessionMeta[]): Set<string> {
   const ids = new Set([rootId]);
@@ -159,7 +164,7 @@ export function useActivity(threadId: string): { rows: ActivityRow[]; meta: Sess
     return activityRows({
       meta,
       agents: metas.filter((m) => agentIds.has(m.id)),
-      devServers: servers.filter((s) => s.resource && tree.has(s.resource.sessionId)),
+      devServers: threadServers(servers, tree),
       macCalls,
     });
   }, [macCalls, meta, metas, servers, threadId]);
