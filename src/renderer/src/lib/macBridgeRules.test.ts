@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
 import type { MacBridgeRule } from '@server/shared/contract-macbridge-rules'
-import { chipMenuItems } from '../chrome/ThreadHeader'
-import type { StripChip } from '../chrome/ThreadHeaderStrip'
 import { ruleText, runRememberOptions } from './macBridgeRules'
 
 const run = (extra: Partial<MacBridgeRequest> = {}): MacBridgeRequest => ({
@@ -55,21 +53,5 @@ describe('ruleText', () => {
       "a 'b c'  (in /x)"
     )
     expect(ruleText(rule({ kind: 'read-folder', folder: '/r' })).what).toBe('Reads in')
-  })
-})
-
-describe('chipMenuItems: Mac approvals', () => {
-  const chip = {
-    id: 't1',
-    status: 'idle',
-    thread: { id: 't1', title: 't' }
-  } as unknown as StripChip
-  const ids = (macPeer: string | null) =>
-    chipMenuItems(chip, {
-      state: { sessionId: 't1', macPeer, inherited: false, online: true, registered: [] }
-    }).map((i) => (i.kind === 'item' ? i.id : '-'))
-  it('only with the bridge on', () => {
-    expect(ids('env_mac')).toContain('mac-bridge-rules')
-    expect(ids(null)).not.toContain('mac-bridge-rules')
   })
 })

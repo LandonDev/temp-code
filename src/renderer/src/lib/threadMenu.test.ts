@@ -140,6 +140,7 @@ describe("threadMenuRows: resources, the bridge and the host moves", () => {
     expect(bridge({ on: true, online: true, inherited: true, known: true })).toMatchObject({ disabled: true });
     expect(bridge({ on: false, online: false, inherited: false, known: false })).toMatchObject({ disabled: true });
     expect(ids(threadMenuRows(facts({ bridge: { on: true, online: true, inherited: false, known: true } })))).toContain("mac-bridge-rules");
+    expect(ids(threadMenuRows(facts({ bridge: { on: false, online: true, inherited: false, known: true } })))).not.toContain("mac-bridge-rules");
   });
 
   it("puts the moves in their own group before Archive, a refused one disabled with its reason", () => {
