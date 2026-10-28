@@ -73,9 +73,16 @@ async function choose(trigger: HTMLElement, name: string) {
   });
 }
 
-async function openMenu(row: HTMLElement) {
+async function openRule(task: string) {
   await act(async () => {
-    fireEvent.click(within(row).getByRole("button", { name: "Rule actions" }));
+    fireEvent.click(screen.getByRole("button", { name: `Edit rule: ${task}` }));
+  });
+  return screen.findByRole("dialog");
+}
+
+async function saveDialog(dialog: HTMLElement) {
+  await act(async () => {
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
   });
 }
 
@@ -184,17 +191,54 @@ describe("Orchestration page", () => {
     expect(within(ruleRow("Reviews")).queryByText("Not approved")).toBeNull();
   });
 
-  it("moves a rule down, and not past the last", async () => {
+  it("gives each rule row one control, the row itself", () => {
+    state.scope = { rules: rules({ routing: [...rules().routing.slice(0, 1), { ...rules().routing[1], enabled: false }] }), overridden: false };
     render(<OrchestrationPage />);
-    await openMenu(ruleRow("Reviews"));
-    expect(screen.getByRole("menuitem", { name: "Move down" }).getAttribute("aria-disabled")).toBe("true");
-    cleanup();
+    for (const task of ["Bulk work", "Reviews"]) {
+      const row = ruleRow(task);
+      const controls = row.querySelectorAll("button, [role=switch], input, select, a");
+      expect(controls).toHaveLength(1);
+      expect(controls[0].getAttribute("aria-label")).toBe(`Edit rule: ${task}`);
+    }
+    expect(within(ruleRow("Reviews")).getByText("Off")).toBeTruthy();
+    expect(within(ruleRow("Bulk work")).queryByText("Off")).toBeNull();
+  });
+
+  it("turns a rule off from its dialog", async () => {
     render(<OrchestrationPage />);
-    await openMenu(ruleRow("Bulk work"));
+    const dialog = await openRule("Reviews");
     await act(async () => {
-      fireEvent.click(screen.getByRole("menuitem", { name: "Move down" }));
+      fireEvent.click(within(dialog).getByRole("switch", { name: "Enabled" }));
     });
+    await saveDialog(dialog);
+    expect(saved().routing.find((r) => r.id === "r2")?.enabled).toBe(false);
+  });
+
+  it("reorders a rule from its dialog's Position", async () => {
+    render(<OrchestrationPage />);
+    const dialog = await openRule("Bulk work");
+    await choose(within(dialog).getByRole("combobox", { name: "Position" }), "2");
+    await saveDialog(dialog);
     expect(saved().routing.map((r) => r.id)).toEqual(["r2", "r1"]);
+  });
+
+  it("deletes a rule from its dialog", async () => {
+    render(<OrchestrationPage />);
+    const dialog = await openRule("Reviews");
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    });
+    expect(saved().routing.map((r) => r.id)).toEqual(["r1"]);
+  });
+
+  it("asks a new rule for no Position or Enabled", async () => {
+    render(<OrchestrationPage />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
+    });
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("combobox", { name: "Position" })).toBeNull();
+    expect(within(dialog).queryByRole("switch", { name: "Enabled" })).toBeNull();
   });
 
   it("saves a new rule's trimmed task, never an empty one", async () => {

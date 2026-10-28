@@ -1,25 +1,24 @@
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { registry } from "../lib/connection";
 import { Fragment, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { MoreHorizontal, Plus } from "./icons";
+import { ChevronRight, Plus } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
 import { PageRow, PageSection } from "../components/page";
+import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
 import { EFFORT_LABELS } from "../lib/tcserver/defaults";
 import {
   approvedLadder,
   modelApproved,
   modelKey,
-  moveRoutingRuleUp,
+  moveRoutingRule,
   newRuleId,
   patchModelPolicy,
   removeRoutingRule,
@@ -119,8 +118,10 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
   const patchConduct = (patch: Partial<OrchestrationRules["conduct"]>) =>
     push({ ...rules, conduct: { ...rules.conduct, ...patch } });
   const clearScope = () => void rulesStore.clear(environmentId, workspaceId);
-  const saveRule = (rule: RoutingRule) => {
-    push(upsertRoutingRule(rules, rule));
+  const saveRule = (rule: RoutingRule, position?: number) => {
+    const next = upsertRoutingRule(rules, rule);
+    const at = next.routing.findIndex((r) => r.id === rule.id);
+    push(position === undefined ? next : moveRoutingRule(next, at, position));
     setEditing(null);
   };
   const deleteRule = (id: string) => {
@@ -225,19 +226,8 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
           </Button>
         }
       >
-        {rules.routing.map((r, ix) => (
-          <RuleRow
-            key={r.id}
-            rule={r}
-            rules={rules}
-            catalog={catalog}
-            first={ix === 0}
-            last={ix === rules.routing.length - 1}
-            onToggle={(enabled) => push(upsertRoutingRule(rules, { ...r, enabled }))}
-            onMoveUp={() => push(moveRoutingRuleUp(rules, ix))}
-            onMoveDown={() => push(moveRoutingRuleUp(rules, ix + 1))}
-            onEdit={() => setEditing(r)}
-          />
+        {rules.routing.map((r) => (
+          <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} onEdit={() => setEditing(r)} />
         ))}
         {rules.routing.length === 0 ? (
           <p className="py-3 text-[12px] text-muted-foreground">No rules. Subagents use each provider's default model.</p>
@@ -340,25 +330,16 @@ function ModelRow({
   );
 }
 
+/** One rule: the whole row opens its dialog, which holds every change. */
 function RuleRow({
   rule,
   rules,
   catalog,
-  first,
-  last,
-  onToggle,
-  onMoveUp,
-  onMoveDown,
   onEdit,
 }: {
   rule: RoutingRule;
   rules: OrchestrationRules;
   catalog: RulesCatalog | null;
-  first: boolean;
-  last: boolean;
-  onToggle: (v: boolean) => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onEdit: () => void;
 }) {
   const provider = catalog?.[rule.provider as SpawnProviderId];
@@ -366,39 +347,31 @@ function RuleRow({
   const model = provider?.models.find((m) => m.id === modelId);
   const approved = modelApproved(rules, rule.provider, modelId);
   const orchestratorsOnly = !approved && modelApproved(rules, rule.provider, modelId, "orchestrator");
+  // The row keeps the page's hairline; the button inside it carries the hover fill.
   return (
-    <PageRow
-      media={<HarnessIcon harness={rule.provider as HarnessId} className="size-4 shrink-0" />}
-      title={<span className={rule.enabled ? undefined : "text-muted-foreground"}>{rule.task}</span>}
-      description={
-        <span className="flex flex-wrap items-center gap-2">
-          <span>{model?.label ?? modelId}</span>
-          {model?.reasoning.length ? <span>{EFFORT_LABELS[rule.reasoning]}</span> : null}
-          {orchestratorsOnly ? <span>Orchestrators only</span> : !approved ? <span className="text-warning">Not approved</span> : null}
-        </span>
-      }
-    >
-      <SettingSwitch label={`Enable rule: ${rule.task}`} on={rule.enabled} onChange={onToggle} />
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger
-            render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Rule actions" />} />}
-          >
-            <MoreHorizontal />
-          </TooltipTrigger>
-          <TooltipContent>Rule actions</TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={onEdit}>Edit…</DropdownMenuItem>
-          <DropdownMenuItem disabled={first} onClick={onMoveUp}>
-            Move up
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled={last} onClick={onMoveDown}>
-            Move down
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </PageRow>
+    <div data-slot="page-row" className="py-1 [[data-slot=page-row]+&]:border-t [[data-slot=page-row]+&]:border-border">
+      <ItemButton
+        aria-label={`Edit rule: ${rule.task}`}
+        onClick={onEdit}
+        className="-mx-2 w-[calc(100%+1rem)] rounded-md px-2 py-2 hover:bg-foreground/5"
+      >
+        <ItemMedia>
+          <HarnessIcon harness={rule.provider as HarnessId} className="size-4 shrink-0" />
+        </ItemMedia>
+        <ItemContent className="min-w-0">
+          <ItemTitle className={rule.enabled ? undefined : "text-muted-foreground"}>{rule.task}</ItemTitle>
+          <ItemDescription className="line-clamp-none">
+            <span className="flex flex-wrap items-center gap-2">
+              {rule.enabled ? null : <span>Off</span>}
+              <span>{model?.label ?? modelId}</span>
+              {model?.reasoning.length ? <span>{EFFORT_LABELS[rule.reasoning]}</span> : null}
+              {orchestratorsOnly ? <span>Orchestrators only</span> : !approved ? <span className="text-warning">Not approved</span> : null}
+            </span>
+          </ItemDescription>
+        </ItemContent>
+        <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+      </ItemButton>
+    </div>
   );
 }
 
@@ -425,11 +398,15 @@ export function RuleDialog({
   rule: RoutingRule | null;
   rules: OrchestrationRules;
   catalog: RulesCatalog | null;
-  onSave: (r: RoutingRule) => void;
+  /** The rule, and for an existing one its 0-based place in the list. */
+  onSave: (r: RoutingRule, position?: number) => void;
   onDelete?: () => void;
   onClose: () => void;
 }) {
   const providers = providersOf(catalog);
+  const index = rule ? rules.routing.findIndex((r) => r.id === rule.id) : -1;
+  const [enabled, setEnabled] = useState(rule?.enabled ?? true);
+  const [position, setPosition] = useState(Math.max(index, 0));
   const [task, setTask] = useState(rule?.task ?? "");
   const [provider, setProvider] = useState<SpawnProviderId>(
     (rule?.provider as SpawnProviderId | undefined) ?? providers[0] ?? "claude",
@@ -459,8 +436,8 @@ export function RuleDialog({
       provider,
       model,
       reasoning,
-      enabled: rule?.enabled ?? true,
-    });
+      enabled,
+    }, index >= 0 ? position : undefined);
   };
 
   return (
@@ -513,6 +490,24 @@ export function RuleDialog({
               </Field>
             ) : null}
           </div>
+          {index >= 0 ? (
+            <div className="flex gap-3">
+              <Field label="Position">
+                <ChoiceSelect
+                  label="Position"
+                  className="w-full"
+                  value={String(position)}
+                  onChange={(v) => setPosition(Number(v))}
+                  options={rules.routing.map((_, i) => ({ value: String(i), label: String(i + 1) }))}
+                />
+              </Field>
+              <Field label="Enabled">
+                <span className="flex h-8 items-center">
+                  <SettingSwitch label="Enabled" on={enabled} onChange={setEnabled} />
+                </span>
+              </Field>
+            </div>
+          ) : null}
           <DialogFooter className="items-center">
             {onDelete ? (
               <Button type="button" variant="destructive" onClick={onDelete}>

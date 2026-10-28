@@ -94,11 +94,14 @@ export function removeRoutingRule(rules: OrchestrationRules, id: string): Orches
   return { ...rules, routing: rules.routing.filter((r) => r.id !== id) };
 }
 
-/** Swap a rule with the one above it; the first rule stays put. */
-export function moveRoutingRuleUp(rules: OrchestrationRules, index: number): OrchestrationRules {
-  if (index <= 0 || index >= rules.routing.length) return rules;
+/** Move the rule at `from` to `to` (both clamped to the list); the others keep their order. */
+export function moveRoutingRule(rules: OrchestrationRules, from: number, to: number): OrchestrationRules {
+  const last = rules.routing.length - 1;
+  const target = Math.max(0, Math.min(to, last));
+  if (from < 0 || from > last || from === target) return rules;
   const routing = [...rules.routing];
-  [routing[index - 1], routing[index]] = [routing[index], routing[index - 1]];
+  const [rule] = routing.splice(from, 1);
+  routing.splice(target, 0, rule);
   return { ...rules, routing };
 }
 

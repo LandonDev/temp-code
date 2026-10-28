@@ -3,7 +3,7 @@ import type { Link } from "./store";
 import type { ProviderInfo, ServerPush } from "./types";
 import {
   DEFAULT_RULES,
-  moveRoutingRuleUp,
+  moveRoutingRule,
   patchModelPolicy,
   removeRoutingRule,
   rulesStore,
@@ -64,8 +64,12 @@ describe("pure helpers", () => {
     expect(added.routing.map((r) => r.id)).toEqual(["r1", "r2", "r3"]);
     const edited = upsertRoutingRule(added, rule({ id: "r2", task: "Edited" }));
     expect(edited.routing[1].task).toBe("Edited");
-    expect(moveRoutingRuleUp(edited, 2).routing.map((r) => r.id)).toEqual(["r1", "r3", "r2"]);
-    expect(moveRoutingRuleUp(edited, 0)).toBe(edited);
+    expect(moveRoutingRule(edited, 2, 1).routing.map((r) => r.id)).toEqual(["r1", "r3", "r2"]);
+    expect(moveRoutingRule(edited, 0, 2).routing.map((r) => r.id)).toEqual(["r2", "r3", "r1"]);
+    expect(moveRoutingRule(edited, 2, 0).routing.map((r) => r.id)).toEqual(["r3", "r1", "r2"]);
+    expect(moveRoutingRule(edited, 1, 9).routing.map((r) => r.id)).toEqual(["r1", "r3", "r2"]);
+    expect(moveRoutingRule(edited, 1, 1)).toBe(edited);
+    expect(moveRoutingRule(edited, 5, 0)).toBe(edited);
     expect(removeRoutingRule(edited, "r1").routing.map((r) => r.id)).toEqual(["r2", "r3"]);
     expect(base.routing).toHaveLength(2);
   });
