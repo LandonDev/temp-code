@@ -168,22 +168,28 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
 
   return (
     <>
-      {data.pace.length === 0 ? (
-        <Section title="Pace">
+      <Section title="Pace">
+        {data.pace.length === 0 ? (
           <Empty>
             <EmptyTitle>Needs three finished cycles</EmptyTitle>
           </Empty>
-        </Section>
-      ) : (
-        data.pace.map((p) => {
-          const line = paceLine(p);
-          return (
-            <Section key={`${p.service}-${p.label}`} title={paceTitle(p)} description={<span className={line.warning ? "text-warning" : undefined}>{line.text}</span>}>
-              <PaceChart series={p} />
-            </Section>
-          );
-        })
-      )}
+        ) : (
+          <div className="flex flex-col gap-4">
+            {data.pace.map((p) => {
+              const line = paceLine(p);
+              return (
+                <div key={`${p.service}-${p.label}`} data-slot="pace-series">
+                  <p className="mb-2 flex flex-wrap gap-x-2 text-[12px]">
+                    <span className="text-foreground">{paceTitle(p)}</span>
+                    <span className={line.warning ? "text-warning" : "text-muted-foreground"}>{line.text}</span>
+                  </p>
+                  <PaceChart series={p} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Section>
 
       <Section title="Daily output">
         {data.daily.length === 0 ? (
