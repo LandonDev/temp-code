@@ -80,19 +80,41 @@ export function MilestoneList({
               </ItemDescription>
             ) : null}
             {m.dependencies ? (
-              <ItemDescription className="line-clamp-none">
-                <span className="font-medium">Depends on</span> {m.dependencies}
-              </ItemDescription>
+              <MilestoneField label="Depends on" text={m.dependencies} field="dependencies" cwd={cwd} onOpenFile={onOpenFile} />
             ) : null}
             {m.doneWhen ? (
-              <ItemDescription className="line-clamp-none">
-                <span className="font-medium">Done when</span> {m.doneWhen}
-              </ItemDescription>
+              <MilestoneField label="Done when" text={m.doneWhen} field="done-when" cwd={cwd} onOpenFile={onOpenFile} />
             ) : null}
           </ItemContent>
         </Item>
       ))}
     </ItemGroup>
+  );
+}
+
+/** A milestone's labelled field, markdown like its scope: the label, then
+ *  the text's first paragraph on the same line; a list after it stays a block. */
+function MilestoneField({
+  label,
+  text,
+  field,
+  cwd,
+  onOpenFile,
+}: {
+  label: string;
+  text: string;
+  field: string;
+  cwd?: string;
+  onOpenFile?: OpenFileFn;
+}) {
+  return (
+    <ItemDescription
+      className="line-clamp-none [&>div]:inline [&_.agent-markdown]:inline [&_.agent-markdown]:text-xs [&_.agent-markdown]:leading-normal [&_.agent-markdown>p:first-child]:inline"
+      data-milestone-field={field}
+    >
+      <span className="font-medium">{label}</span>{" "}
+      <AgentMarkdown text={text} size="compact" className="agent-reasoning" cwd={cwd} onOpenFile={onOpenFile} />
+    </ItemDescription>
   );
 }
 

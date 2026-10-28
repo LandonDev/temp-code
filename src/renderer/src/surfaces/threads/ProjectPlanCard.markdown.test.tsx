@@ -36,3 +36,24 @@ describe("MilestoneList scope", () => {
     expect(String(onOpenFile.mock.calls[0][0])).toContain("store.ts");
   });
 });
+
+describe("MilestoneList fields", () => {
+  const doc =
+    "# Acme\n\n## Milestones\n\n### [ ] 1. Ship\n- Scope: land it\n- Dependencies: the `store` slice\n- Done when: `bun test` passes on `main`\n";
+
+  it("renders Done when's inline code as code after its label, with no literal backtick", () => {
+    const { container } = render(<MilestoneList doc={doc} projectId="p1" />);
+    const field = container.querySelector('[data-milestone-field="done-when"]')!;
+    expect([...field.querySelectorAll("code")].map((c) => c.textContent)).toEqual(["bun test", "main"]);
+    expect(field.textContent).not.toContain("`");
+    expect(field.textContent).toMatch(/^Done when bun test passes on main/);
+  });
+
+  it("renders Depends on the same way", () => {
+    const { container } = render(<MilestoneList doc={doc} projectId="p1" />);
+    const field = container.querySelector('[data-milestone-field="dependencies"]')!;
+    expect(field.querySelector("code")?.textContent).toBe("store");
+    expect(field.textContent).not.toContain("`");
+    expect(field.textContent).toMatch(/^Depends on the store slice/);
+  });
+});
