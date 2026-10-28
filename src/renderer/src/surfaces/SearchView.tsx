@@ -674,7 +674,7 @@ function ResultList({
             size="xs"
             id={`app-search-hit-${index}`}
             data-kind={hit.kind}
-            className={`h-8 flex-nowrap gap-2 rounded-md px-3 py-0 text-left transition-none ${highlighted ? "bg-muted" : ""}`}
+            className={`h-7 flex-nowrap gap-2 rounded-md px-3 py-0 text-left transition-none ${highlighted ? "bg-muted" : ""}`}
           >
             <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
               {row.icon}

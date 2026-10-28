@@ -183,6 +183,8 @@ describe("SearchView across hosts", () => {
 
     expect(kinds(view)).toEqual(["conversation", "message", "file", "content", "note", "project"]);
     const [thread, message, file, content, note, project] = rows(view);
+    // One line each: a dense list's 28px row.
+    for (const row of rows(view)) expect(row.className).toContain("h-7");
     expect(thread.textContent).toContain("Gateway trace");
     expect(hostOf(thread)).toBe("This Mac");
     expect(message.textContent).toContain("the gateway on the box");

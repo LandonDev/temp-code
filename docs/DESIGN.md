@@ -101,7 +101,8 @@ up, none below. Numbers in tables and tallies are `tabular-nums`.
 ### Spacing
 
 The 4px grid. Inside a row: 8px between glyph and label, 12px horizontal
-padding, rows 28px tall in menus and dense lists, 36px for `RailRow` (the
+padding, rows 28px tall in menus and dense lists (search results among
+them: one line each), 36px for `RailRow` (the
 rail and the settings list), 32px for the workspace column's project and
 thread rows and 28px for the rows nested under them. Every menu, context menu and
 select row takes its box from `MENU_ROW` (components/ui/menu-row.ts,
