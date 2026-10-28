@@ -150,13 +150,13 @@ describe("Orchestration page", () => {
     const { unmount } = render(<OrchestrationRulesEditor workspaceId="w1" />);
     expect(screen.getByRole("region", { name: "Orchestration" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Remove override" })).toBeTruthy();
-    expect(screen.getByText("This workspace overrides the global rules.")).toBeTruthy();
+    expect(screen.getByText("Overrides the global rules.")).toBeTruthy();
     unmount();
     state.scope = { rules: rules(), overridden: false };
     render(<OrchestrationRulesEditor workspaceId="w1" />);
     expect(screen.queryByRole("button", { name: "Remove override" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
-    expect(screen.getByText("Following the global rules. A change makes an override.")).toBeTruthy();
+    expect(screen.getByText("Follows the global rules.")).toBeTruthy();
   });
 
   it("lists the models in one table with a group row per provider", () => {

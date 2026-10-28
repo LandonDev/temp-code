@@ -131,8 +131,8 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
 
   const conductState = workspaceId
     ? overridden
-      ? "This workspace overrides the global rules."
-      : "Following the global rules. A change makes an override."
+      ? "Overrides the global rules."
+      : "Follows the global rules."
     : undefined;
   const conductAction =
     !workspaceId || overridden ? (

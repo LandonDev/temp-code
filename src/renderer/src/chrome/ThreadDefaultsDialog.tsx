@@ -93,8 +93,8 @@ export function ThreadDefaultsFields({ value, onChange, environmentId }: { value
 function scopeHint(workspaceId: string | null, scope: DefaultsScope): string | undefined {
   if (workspaceId === null) return undefined;
   return scope.overridden
-    ? "This workspace overrides the global defaults."
-    : "Using the global defaults; any change creates a workspace override.";
+    ? "Overrides the global defaults."
+    : "Follows the global defaults.";
 }
 
 /** Self-loading group for one scope; every change saves at once. */
