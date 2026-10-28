@@ -58,7 +58,7 @@ class FakeResizeObserver {
 
 /** The sidebar's shape: the scroller in state through a callback ref, the
  *  whole column unmounted while Settings shows (Sidebar.tsx). */
-function Column({ shown, scope = null }: { shown: boolean; scope?: string | null }) {
+function Column({ shown, scope = null, active }: { shown: boolean; scope?: string | null; active?: string }) {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const ref = useCallback((el: HTMLDivElement | null) => setScroller(el), []);
   if (!shown) return null;
@@ -68,6 +68,7 @@ function Column({ shown, scope = null }: { shown: boolean; scope?: string | null
         key={scope ?? "home"}
         workspaceId={scope}
         selectedProjectId={null}
+        activeSessionId={active}
         onSelectProject={() => {}}
         onOpenSession={() => {}}
         onNewChat={() => {}}
@@ -184,6 +185,86 @@ describe("the workspace column across a remount", () => {
     expect(again.scrollTop).toBe(248);
     expect(shownChats()).toBe(40);
     expect(screen.queryByText("8 more")).toBeNull();
+  });
+});
+
+describe("a loose chat's column across Settings", () => {
+  beforeAll(async () => {
+    await virtualChunk.load();
+  });
+
+  it("keeps a small offset with the loose chat selected", () => {
+    const view = render(<Column shown active="c2" />);
+    const scroller = screen.getByTestId("scroller");
+    scroller.scrollTop = 14;
+    act(() => {
+      scroller.dispatchEvent(new Event("scroll"));
+    });
+    view.rerender(<Column shown={false} active="c2" />);
+    view.rerender(<Column shown active="c2" />);
+    expect(screen.getByTestId("scroller").scrollTop).toBe(14);
+  });
+
+  /** A scroller that clamps like a browser's: it scrolls at most `room` px. */
+  function clamping(el: HTMLElement, room: { px: number }) {
+    let top = 0;
+    Object.defineProperty(el, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (v: number) => {
+        top = Math.max(0, Math.min(v, room.px));
+      },
+    });
+  }
+  const growList = () =>
+    act(() => {
+      for (const o of observers) o.cb([...o.els].map((target) => ({ target }) as ResizeObserverEntry), {} as ResizeObserver);
+    });
+
+  it("comes back at its offset when the list first lays out shorter than it measures", () => {
+    const room = { px: 14 };
+    const view = render(<Column shown active="c2" />);
+    const scroller = screen.getByTestId("scroller");
+    scroller.scrollTop = 14;
+    act(() => {
+      scroller.dispatchEvent(new Event("scroll"));
+    });
+    view.rerender(<Column shown={false} active="c2" />);
+    // Back: the new scroller, its list laid out from estimates, has 4px of room.
+    room.px = 4;
+    const proto = HTMLDivElement.prototype;
+    const scrollTop = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop")!;
+    Object.defineProperty(proto, "scrollTop", {
+      configurable: true,
+      get() {
+        if (this.dataset.testid === "scroller" && !Object.getOwnPropertyDescriptor(this, "scrollTop")) clamping(this, room);
+        return Object.getOwnPropertyDescriptor(this, "scrollTop")?.get?.call(this) ?? scrollTop.get!.call(this);
+      },
+      set(v: number) {
+        if (this.dataset.testid === "scroller" && !Object.getOwnPropertyDescriptor(this, "scrollTop")) clamping(this, room);
+        const own = Object.getOwnPropertyDescriptor(this, "scrollTop");
+        if (own?.set) own.set.call(this, v);
+        else scrollTop.set!.call(this, v);
+      },
+    });
+    try {
+      view.rerender(<Column shown active="c2" />);
+      const again = screen.getByTestId("scroller");
+      expect(again.scrollTop).toBe(4);
+      // The rows measure: the list is its full height, the offset fits again.
+      room.px = 14;
+      growList();
+      expect(again.scrollTop).toBe(14);
+      // A scroll by the person from here is theirs to keep.
+      again.scrollTop = 6;
+      act(() => {
+        again.dispatchEvent(new Event("scroll"));
+      });
+      growList();
+      expect(again.scrollTop).toBe(6);
+    } finally {
+      delete (proto as { scrollTop?: number }).scrollTop;
+    }
   });
 });
 

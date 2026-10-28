@@ -1062,17 +1062,37 @@ export default function WorkspaceSessions({
     memory.chatsOpen = chatsOpen;
     memory.pages = pages;
   }, [chatsOpen, memory, pages]);
-  // The offset follows the scroller, and comes back the render it arrives:
-  // the list has mounted by then, at its remembered pages, so the offset
-  // does not clamp to a shorter column.
+  // The offset follows the scroller, and comes back the render it arrives.
+  // The list's first layout is its rows' estimates, which can fall short of
+  // what they measure: an offset that clamps waits for the room, applied
+  // again as the list grows, until it fits or the person scrolls.
+  const listRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!scroller) return;
-    scroller.scrollTop = memory.offset;
+    let pending = false;
+    let applied = 0;
+    const restore = () => {
+      scroller.scrollTop = memory.offset;
+      applied = scroller.scrollTop;
+      pending = applied < memory.offset;
+      if (!pending) grow?.disconnect();
+    };
+    const grow =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => pending && restore());
+    restore();
+    if (pending && listRef.current) grow?.observe(listRef.current);
     const save = () => {
+      // Our own restore's scroll is not a choice; any other scroll is the person's.
+      if (pending && scroller.scrollTop === applied) return;
+      pending = false;
+      grow?.disconnect();
       memory.offset = scroller.scrollTop;
     };
     scroller.addEventListener("scroll", save, { passive: true });
-    return () => scroller.removeEventListener("scroll", save);
+    return () => {
+      grow?.disconnect();
+      scroller.removeEventListener("scroll", save);
+    };
   }, [memory, scroller]);
   const close = () => setDialog(null);
   // A dialog edits a project in its own workspace (a linked group's leader
@@ -1273,7 +1293,7 @@ export default function WorkspaceSessions({
     <PlanReadyContext.Provider value={planReady}>
     {/* The sidebar's element scrolls; this one only pads (pt-2 is the list's
     scroll margin). */}
-    <div className="px-2 pt-2 pb-2">
+    <div ref={listRef} className="px-2 pt-2 pb-2">
       {/* The menu's trigger is a DOM node: a component would drop its handler. */}
       <RowsContextMenu
         label="Thread actions"
