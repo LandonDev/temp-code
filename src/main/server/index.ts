@@ -1069,6 +1069,7 @@ export async function startServer(
   })
 
   batchRuns.attach()
+  batchRuns.startStallWatch()
   setBatches(batchRuns)
   // A master's board in one answer (batch.board) and its pushes, only to
   // the sockets watching that master (boardDigest.ts, boardWatch.ts).

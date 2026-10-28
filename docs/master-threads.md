@@ -478,7 +478,16 @@ reports follow at its settle; a thread watching its own background work
 settles idle (the tasks died with it); neither gets an error row, the
 "died mid-turn" words being kept for a turn that was running. A report to a dead watching master boots a
 fresh harness instead of parking for ever (`drainReports`); one to a
-stopped master parks until Resume. Stop and Kill background tasks on a
+stopped master parks until Resume. A batch that stops moving is said once:
+every minute the engine looks at each open batch whose master is watching
+and not blocked (`Batches.checkStalls`), takes the newest movement over the
+children's last rows, a far child's last settle, its own steps and the
+master itself, and past `STALE_WATCH_MS` (30 minutes) sends one
+`<batch-report>` naming every thread with its state and age ("No batch
+thread has moved for 32 min: "A" (a1) working (last event 32 min ago),
+"B" (b1) queued (waiting for "A"), "C" (c1) done."); the stamp stays on the
+row, and only movement after it re-arms the watch, so a quiet batch is
+never nagged. Stop and Kill background tasks on a
 watching master idle it for real (a one-shot `stopWatching` that
 `masterKeepsWatching` honours until the next turn starts: a send or a
 report drain), so it holds no running slot; unpinning a watching master

@@ -114,7 +114,10 @@ function world(opts: { master?: string | null; branch?: string | null; children?
   const settings = new Map<string, string>()
   const metaListeners = new Set<(s: SessionMeta) => void>()
   const spoke = new Set<string>(['a', 'b', 'r'])
+  /** when each thread last moved (lastActivityAt); unset reads as the world's start */
+  const activity = new Map<string, number>()
   const registry: BatchesDeps['registry'] = {
+    lastActivityAt: (id) => activity.get(id) ?? 1000,
     batchChildren: (masterId) =>
       [...sessions.values()].filter((s) => !s.archived && !s.parentId && s.masterId === masterId).sort((a, b) => a.createdAt - b.createdAt),
     get: (id) => sessions.get(id) ?? null,
@@ -227,6 +230,7 @@ function world(opts: { master?: string | null; branch?: string | null; children?
     make,
     landed,
     set,
+    activity,
     tick: (ms: number) => (now += ms),
     refuseMerge: (why: string | null) => (refuseMerge = why),
     setOutcome: (f: typeof outcome) => (outcome = f)
@@ -1808,5 +1812,97 @@ describe('Batches: a release with nothing new', () => {
     expect(releaseOutcome(none)).toEqual({ tag: 'release-276', fresh: false })
     expect(releaseOutcome('released v277 (tag release-277, package.json 1.0.277)')).toEqual({ tag: 'release-277', fresh: true })
     expect(releaseOutcome('stub: release passed on master')).toBeNull()
+  })
+})
+
+describe('the stall watch', () => {
+  const quiet = (w: ReturnType<typeof world>) => {
+    const b = w.make()
+    // The master watches an open batch: A works, B waits for A, C is done. The
+    // engine knows a batch by its row, which the first review of a child's
+    // change makes in production (attach); here the read makes it.
+    b.get('m')
+    return b
+  }
+  const stalled = () =>
+    world({
+      children: [
+        meta('m', { status: 'watching' }),
+        meta('a', { masterId: 'm', createdAt: 2, status: 'running', title: 'A' }),
+        meta('b', { masterId: 'm', createdAt: 3, status: 'queued', after: 'a', title: 'B' }),
+        meta('c', { masterId: 'm', createdAt: 4, status: 'idle', title: 'C' })
+      ]
+    })
+
+  it('a batch quiet for half an hour tells the master once, naming every thread with its state and age', () => {
+    const w = stalled()
+    w.registry.hasCompletedTurn = (id) => id === 'c'
+    const b = quiet(w)
+    w.tick(29 * 60_000)
+    expect(b.checkStalls()).toEqual([])
+    w.tick(2 * 60_000)
+    expect(b.checkStalls()).toEqual(['m'])
+    expect(w.reports).toHaveLength(1)
+    expect(w.reports[0]).toMatchObject({ to: 'm', status: 'blocked' })
+    expect(w.reports[0].text).toBe(
+      '<batch-report>\nNo batch thread has moved for 31 min: "A" (a) working (last event 31 min ago), "B" (b) queued (waiting for "A"), "C" (c) done.\n</batch-report>'
+    )
+    // Still quiet: told already.
+    w.tick(10 * 60_000)
+    expect(b.checkStalls()).toEqual([])
+    expect(w.reports).toHaveLength(1)
+    // The stamp is on the row: a fresh engine over the same store does not repeat it.
+    expect(w.make().checkStalls()).toEqual([])
+    b.dispose()
+  })
+
+  it('a thread moving re-arms the watch: a second quiet stretch is a second report', () => {
+    const w = stalled()
+    w.registry.hasCompletedTurn = (id) => id === 'c'
+    const b = quiet(w)
+    w.tick(31 * 60_000)
+    expect(b.checkStalls()).toEqual(['m'])
+    w.tick(5 * 60_000)
+    w.activity.set('a', 1000 + 36 * 60_000)
+    expect(b.checkStalls()).toEqual([])
+    w.tick(31 * 60_000)
+    expect(b.checkStalls()).toEqual(['m'])
+    expect(w.reports).toHaveLength(2)
+    expect(w.reports[1].text).toContain('"A" (a) working (last event 31 min ago)')
+    b.dispose()
+  })
+
+  it("a blocked batch is not a stall, nor is a master that is not watching or whose batch is closed", async () => {
+    const w = stalled()
+    w.registry.hasCompletedTurn = (id) => id === 'c'
+    const b = quiet(w)
+    w.tick(31 * 60_000)
+    w.set('a', { status: 'error' })
+    await b.review('m')
+    expect(w.reports.map((r) => r.status)).toEqual(['blocked'])
+    expect(b.checkStalls()).toEqual([])
+    expect(w.reports).toHaveLength(1)
+    // Unblocked and quiet, but the master is mid-turn: nothing; watching again: told.
+    w.set('a', { status: 'running' })
+    await b.review('m')
+    w.set('m', { status: 'running' })
+    expect(b.checkStalls()).toEqual([])
+    w.set('m', { status: 'watching' })
+    expect(b.checkStalls()).toEqual(['m'])
+    b.dispose()
+  })
+
+  it('the timer runs the check and stops with the engine', async () => {
+    const w = stalled()
+    w.registry.hasCompletedTurn = (id) => id === 'c'
+    const b = quiet(w)
+    w.tick(31 * 60_000)
+    b.startStallWatch(5)
+    await until(() => w.reports.length === 1)
+    b.dispose()
+    w.activity.set('a', 1000 + 31 * 60_000)
+    w.tick(31 * 60_000)
+    await new Promise((r) => setTimeout(r, 40))
+    expect(w.reports).toHaveLength(1)
   })
 })

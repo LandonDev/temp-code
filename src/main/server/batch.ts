@@ -21,6 +21,7 @@ import {
 } from '@shared/contract-batch'
 import type { DeployStatus, HostLogPush } from '@shared/contract-host'
 import type { SessionMeta } from '@shared/events'
+import { STALE_WATCH_MS } from '@shared/watch'
 import { gateLine, type GateNotice } from '@shared/gate'
 import { ADOPT_THREAD_TOOL_NAME, BATCH_GATE_TOOL_NAME, BATCH_RULES_TOOL_NAME, GATE_TEXT_TAIL, logTail } from '@shared/gate'
 import { PUBLISH_PHASES, PhaseTracker, deployProgress, formatDuration } from '@shared/releasePhases'
@@ -164,6 +165,8 @@ export interface StoredBatch {
   deployRef: string | null
   /** the land step's left-out count at the end, for the done line after a restart */
   leftOut: number
+  /** when the master was last told the batch had stalled (checkStalls); movement after it re-arms the watch */
+  stallToldAt: number | null
 }
 
 /** The row nobody has run: every step pending, nothing landed (a proof's seed starts from this). */
@@ -176,7 +179,8 @@ export const freshRow = (masterId: string, rules: BatchRules = DEFAULT_BATCH_RUL
   holds: {},
   version: null,
   deployRef: null,
-  leftOut: 0
+  leftOut: 0,
+  stallToldAt: null
 })
 
 /** The outcome of the Mac's publish job (remote/peerPublish.ts). */
@@ -218,6 +222,8 @@ export interface BatchesDeps {
     hasUserText?: (id: string) => boolean
     /** has the thread finished a turn: an idle child counts as done only then (a fresh thread between its first row and its first turn is idle too) */
     hasCompletedTurn?(sessionId: string): boolean
+    /** when the thread last moved (its last row), for the stall watch */
+    lastActivityAt?(sessionId: string): number
     setArchived?(sessionId: string, archived: boolean): Promise<void>
     deliverAgentReport?(sessionId: string, report: { text: string; agentId: string; title: string; status: string }): void
     /** the batch closed with nothing coming: a master left watching idles (sessions.ts) */
@@ -285,6 +291,8 @@ const REMOTE_DONE = new Set<SessionMeta['status']>(['done', 'idle'])
 /** The connection number the engine subscribes to the deploy log with (never a socket's). */
 const DEPLOY_LOG_CONNECTION = -7
 const PUSH_EVERY_MS = 250
+/** How often the stall watch looks (checkStalls). */
+export const STALL_CHECK_MS = 60_000
 
 /** `run` through the login shell in `cwd`, detached so Stop kills the whole process group. */
 export function spawnShellStep(run: string, cwd: string, onLine: (line: string) => void, shell: string = loginShell()): ShellRun {
@@ -1556,6 +1564,78 @@ export class Batches {
     return [master.title.trim(), ...subjects].filter(Boolean).join('; ')
   }
 
+  // ── the stall watch ──────────────────────────────────────────────────
+
+  private stallTimer: NodeJS.Timeout | null = null
+
+  /** Every minute: a master whose batch has not moved for STALE_WATCH_MS is
+   *  told once (checkStalls); stopped with the engine. */
+  startStallWatch(everyMs = STALL_CHECK_MS): void {
+    if (this.stallTimer) clearInterval(this.stallTimer)
+    this.stallTimer = setInterval(() => this.checkStalls(), everyMs)
+    this.stallTimer.unref?.()
+  }
+
+  /** One pass of the stall watch; answers the masters told. For every open
+   *  batch whose master is watching and not blocked (a blocked batch was
+   *  told why), the newest movement is taken over the children (their last
+   *  row), a far child's last settle, the engine's own steps and the master
+   *  itself; older than STALE_WATCH_MS, and nothing moved since the last
+   *  report, the master gets one <batch-report> naming every thread with
+   *  its state and age. The stamp stays on the row, so a restart does not
+   *  repeat it; any movement past it re-arms the watch. */
+  checkStalls(now = this.now()): string[] {
+    const told: string[] = []
+    for (const row of [...this.rows.values()]) {
+      const master = this.deps.registry.get(row.masterId)
+      if (!master || master.archived || !master.isMaster || master.status !== 'watching') continue
+      if (row.blocked || !this.open(row.masterId)) continue
+      const members = this.members(row.masterId)
+      const moved = (id: string): number => this.deps.registry.lastActivityAt?.(id) ?? 0
+      const newest = Math.max(
+        moved(master.id),
+        ...members.map((m) => (m.remote ? m.remote.seenAt : moved(m.id))),
+        ...row.steps.flatMap((s) => [s.startedAt ?? 0, s.endedAt ?? 0])
+      )
+      if (now - newest <= STALE_WATCH_MS) continue
+      if (row.stallToldAt !== null && row.stallToldAt >= newest) continue
+      const minutes = (at: number): string => `${Math.max(1, Math.round((now - at) / 60_000))} min`
+      const lines = members.map((m) => `"${m.title}" (${m.id}) ${this.stallWord(m, members, minutes(m.remote ? m.remote.seenAt : moved(m.id)))}`)
+      row.stallToldAt = now
+      this.save(row)
+      this.tell(master, 'blocked', `No batch thread has moved for ${minutes(newest)}: ${lines.join(', ')}.`)
+      told.push(row.masterId)
+    }
+    return told
+  }
+
+  /** A member's state in the stall report, with its age where the state is a live one. */
+  private stallWord(m: BatchMember, members: BatchMember[], age: string): string {
+    switch (m.status) {
+      case 'running':
+      case 'starting':
+        return `working (last event ${age} ago)`
+      case 'watching':
+        return `watching (last event ${age} ago)`
+      case 'waiting':
+        return `waiting on a decision (${age})`
+      case 'queued': {
+        const after = m.local?.after ? members.find((o) => o.sessionId === m.local!.after) : null
+        return after ? `queued (waiting for "${after.title}")` : 'queued'
+      }
+      case 'paused':
+        return 'paused'
+      case 'error':
+        return 'errored'
+      case 'stopped':
+        return 'stopped'
+      case 'done':
+        return 'done'
+      default:
+        return this.memberDone(m) ? 'done' : 'idle (no turn completed)'
+    }
+  }
+
   private disposed = false
 
   dispose(): void {
@@ -1563,6 +1643,8 @@ export class Batches {
     this.detach?.()
     if (this.pushTimer) clearTimeout(this.pushTimer)
     this.pushTimer = null
+    if (this.stallTimer) clearInterval(this.stallTimer)
+    this.stallTimer = null
     for (const off of this.following.values()) off()
     this.following.clear()
   }
@@ -1622,7 +1704,8 @@ function parseRow(raw: string | null | undefined): StoredBatch | null {
       holds: v.holds ?? {},
       version: v.version ?? null,
       deployRef: v.deployRef ?? null,
-      leftOut: v.leftOut ?? 0
+      leftOut: v.leftOut ?? 0,
+      stallToldAt: typeof v.stallToldAt === 'number' ? v.stallToldAt : null
     }
   } catch {
     return null

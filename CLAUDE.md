@@ -2404,7 +2404,13 @@ this is the short one.
   of the watch line ("Blocked: A errored", "Blocked: A ended its turn
   without completing": `blockedWords` in src/shared/batchWords.ts, which the
   board's foot and the phone say too) and every meta carries
-  `lastEventAt`.
+  `lastEventAt`. A batch that has not moved for `STALE_WATCH_MS` (30 min:
+  the children's last rows, a far child's last settle, the steps, the
+  master itself) while its master watches unblocked is told once as a
+  `<batch-report>` naming every thread with its state and age
+  (`Batches.checkStalls`, every minute, the stamp on the row), and again
+  only after the batch moves and goes quiet again; a blocked batch is not
+  a stall.
 - **A message to a live thread goes straight in.** To a watching master it
   starts a turn at once (the idle path). To any thread mid-turn and not
   paused, `queueAdd` whispers it into the live turn as a `<user-steer>`
