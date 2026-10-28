@@ -12,6 +12,7 @@ const actions: ChangesActions = {
   discard: noop,
   toggleHunks: noop,
   stageHunk: noop,
+  unstageHunk: noop,
   stageAll: noop,
   unstageAll: noop,
   pull: noop,
@@ -121,7 +122,7 @@ export default [
     props: base(mixed, "Fold Branch into Changes", {
       selectedPath: "src/renderer/src/lib/rightPanel.ts",
       folds: {
-        "src/renderer/src/surfaces/RightPanel.tsx": {
+        "u:src/renderer/src/surfaces/RightPanel.tsx": {
           hunks: [
             { from: 12, to: 14, additions: 2, deletions: 4, pos: 0 },
             { from: 198, to: 212, additions: 2, deletions: 5, pos: 0 },

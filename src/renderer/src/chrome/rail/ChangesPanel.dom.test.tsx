@@ -5,6 +5,7 @@ import type { GitDiffIndex, GitPr } from "../../lib/fs";
 
 const h = vi.hoisted(() => ({
   index: null as GitDiffIndex | null,
+  revertChunkText: vi.fn((_head: string, _index: string, _pos: number) => "unstaged text"),
   project: false,
   pr: null as GitPr | null,
   confirm: vi.fn(() => Promise.resolve(true)),
@@ -60,6 +61,7 @@ vi.mock("../../surfaces/editorGit", () => ({
     { from: 7, to: 7, additions: 1, deletions: 1, pos: 12 },
   ],
   stageChunkText: () => "staged text",
+  revertChunkText: h.revertChunkText,
 }));
 
 // The head's branch switch: BranchPicker's own tests cover its list; here it reports what the head gave it.
@@ -233,6 +235,55 @@ describe("ChangesPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stage lines 2" }));
     await act(() => new Promise((r) => setTimeout(r, 20)));
     expect(h.git.gitStageContents).toHaveBeenCalledWith("local", "/p", "a.ts", "staged text");
+  });
+
+  it("a staged modified file folds open into its hunks between HEAD and the index", async () => {
+    h.index = indexOf({ files: [file("a.ts", { staged: true, unstaged: false })] });
+    mount();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Show staged hunks of a.ts" }));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(h.git.gitFileDiff).toHaveBeenCalledWith("local", "/p", "a.ts", "HEAD");
+    expect(h.git.gitFileDiff).toHaveBeenCalledWith("local", "/p", "a.ts", "index");
+    expect(screen.getByText("L2")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Unstage lines 7" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Stage lines/ })).toBeNull();
+  });
+
+  it("Unstage lines writes the index with that hunk back to HEAD's, at its place in the index text", async () => {
+    const head = "a\nb\nc\nd\ne\nf\ng\nh\n";
+    const indexText = "a\nB\nc\nd\ne\nf\nG\nh\n";
+    const read = ((_env: string, _cwd: string, _rel: string, base?: string) =>
+      Promise.resolve({ original: base === "HEAD" ? head : indexText, current: indexText + "more\n", binary: false, tooLarge: false })) as never;
+    h.git.gitFileDiff.mockImplementationOnce(read).mockImplementationOnce(read);
+    h.index = indexOf({ files: [file("a.ts", { staged: true, unstaged: false })] });
+    mount();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Show staged hunks of a.ts" }));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    fireEvent.click(screen.getByRole("button", { name: "Unstage lines 7" }));
+    await act(() => new Promise((r) => setTimeout(r, 20)));
+    // HEAD → index, at the second hunk's offset in the index text; the first hunk stays staged.
+    expect(h.revertChunkText).toHaveBeenCalledWith(head, indexText, 12);
+    expect(h.git.gitStageContents).toHaveBeenCalledWith("local", "/p", "a.ts", "unstaged text");
+  });
+
+  it("a file in both groups folds each group on its own", async () => {
+    h.index = indexOf({ files: [file("a.ts", { staged: true, unstaged: true })] });
+    mount();
+    await flush();
+    const staged = screen.getByRole("button", { name: "Show staged hunks of a.ts" });
+    fireEvent.click(staged);
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(staged.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "Show hunks of a.ts" }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getAllByRole("button", { name: /^Unstage lines/ })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /^Stage lines/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show hunks of a.ts" }));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.getAllByRole("button", { name: /^Stage lines/ })).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Hide staged hunks of a.ts" }));
+    expect(screen.getAllByRole("button", { name: /^Stage lines/ })).toHaveLength(2);
   });
 
   it("generate fills the field; Commit and ⌘↩ commit the index", async () => {

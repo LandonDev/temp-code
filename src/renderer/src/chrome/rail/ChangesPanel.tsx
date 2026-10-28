@@ -64,8 +64,8 @@ import { ChevronDown, ChevronRight, Minus, MoreHorizontal, Plus, Undo2, WandSpar
  * are listed (docs/DESIGN.md "Panels"). The branch with Sync or Publish
  * and the pull request at the top, pull, push, stash and stage-all in a
  * ⋯ menu; the index staged and unstaged, rows opening the file against
- * HEAD, an unstaged modification folding open into hunks stageable one by
- * one; the branch against a target below (ChangesAgainst, the project's
+ * HEAD, a modification folding open into hunks, stageable one by one under
+ * Changes and unstageable one by one under Staged; the branch against a target below (ChangesAgainst, the project's
  * when the checkout is one); the
  * commit field pinned at the foot with the generated message and Commit's
  * menu (and push; push and create a PR). Refreshes ride the server's tree
@@ -82,24 +82,47 @@ export interface Hunk {
   pos: number;
 }
 
+/** A fold's two texts: index → working copy under Changes, HEAD → index
+ *  under Staged; either way `current` is the side the hunks sit in. */
 interface HunkSet {
   original: string;
   current: string;
   hunks: Hunk[];
 }
 
+export type ChangeSide = "staged" | "unstaged";
+
+/** A fold's key: a file in both groups folds each group on its own. */
+export function foldKey(side: ChangeSide, relative: string): string {
+  return `${side === "staged" ? "s" : "u"}:${relative}`;
+}
+
 /** A folded-open file's hunks, or "loading" while its diff is read. */
 export type HunkFold = { hunks: Hunk[] } | "loading";
 
-async function loadHunks(environmentId: string, cwd: string, relative: string): Promise<HunkSet> {
-  const diff = await gitFileDiff(environmentId, cwd, relative);
-  if (diff.binary || diff.tooLarge) return { original: "", current: "", hunks: [] };
+async function loadHunks(environmentId: string, cwd: string, relative: string, side: ChangeSide): Promise<HunkSet> {
+  let original: string;
+  let current: string;
+  if (side === "staged") {
+    // The staged side's texts: HEAD's (the original against HEAD) and the index's (the original against the index).
+    const [head, index] = await Promise.all([
+      gitFileDiff(environmentId, cwd, relative, "HEAD"),
+      gitFileDiff(environmentId, cwd, relative, "index"),
+    ]);
+    if (head.binary || head.tooLarge || index.binary || index.tooLarge) return { original: "", current: "", hunks: [] };
+    original = head.original;
+    current = index.original;
+  } else {
+    const diff = await gitFileDiff(environmentId, cwd, relative);
+    if (diff.binary || diff.tooLarge) return { original: "", current: "", hunks: [] };
+    original = diff.original;
+    current = diff.current;
+  }
   // The editor's git helpers (and CodeMirror's diff under them) stay out
   // of the index bundle (the editor chunk, surfaces/chunks.ts): the panel
   // only needs them once a file is folded open.
   const { hunksOf } = await import("../../surfaces/editorGit");
-  const hunks = hunksOf(diff.original, diff.current);
-  return { original: diff.original, current: diff.current, hunks };
+  return { original, current, hunks: hunksOf(original, current) };
 }
 
 /** What the section offers, from the index, the PR and the field. */
@@ -206,21 +229,24 @@ export function ChangesPanel({
   const [error, setError] = useState<string | null>(null);
   const [hunks, setHunks] = useState<Record<string, HunkSet | "loading">>({});
   const files = index?.files ?? [];
-  const unstaged = files.filter((f) => f.unstaged);
   const rules = changesRules(index, pr, message, !!busy);
+  const drop = (key: string) =>
+    setHunks((prev) => {
+      const { [key]: _gone, ...rest } = prev;
+      return rest;
+    });
 
   // Folded-open files keep their hunks current as the index moves.
   useEffect(() => {
-    for (const relative of Object.keys(hunks)) {
-      if (!unstaged.some((f) => f.relative === relative && f.status === "modified")) {
-        setHunks((prev) => {
-          const { [relative]: _gone, ...rest } = prev;
-          return rest;
-        });
+    for (const key of Object.keys(hunks)) {
+      const side: ChangeSide = key.startsWith("s:") ? "staged" : "unstaged";
+      const relative = key.slice(2);
+      if (!files.some((f) => f.relative === relative && f.status === "modified" && f[side])) {
+        drop(key);
         continue;
       }
-      void loadHunks(environmentId, cwd, relative).then((set) =>
-        setHunks((prev) => (relative in prev ? { ...prev, [relative]: set } : prev)),
+      void loadHunks(environmentId, cwd, relative, side).then((set) =>
+        setHunks((prev) => (key in prev ? { ...prev, [key]: set } : prev)),
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -282,32 +308,40 @@ export function ChangesPanel({
       );
       if (ok) await run(file.relative, () => gitDiscardFile(environmentId, cwd, file.relative), [file.path]);
     },
-    toggleHunks: (file) => {
-      if (file.relative in hunks) {
-        setHunks((prev) => {
-          const { [file.relative]: _gone, ...rest } = prev;
-          return rest;
-        });
+    toggleHunks: (file, side) => {
+      const key = foldKey(side, file.relative);
+      if (key in hunks) {
+        drop(key);
         return;
       }
-      setHunks((prev) => ({ ...prev, [file.relative]: "loading" }));
-      void loadHunks(environmentId, cwd, file.relative)
-        .then((set) => setHunks((prev) => (file.relative in prev ? { ...prev, [file.relative]: set } : prev)))
+      setHunks((prev) => ({ ...prev, [key]: "loading" }));
+      void loadHunks(environmentId, cwd, file.relative, side)
+        .then((set) => setHunks((prev) => (key in prev ? { ...prev, [key]: set } : prev)))
         .catch((e) => {
           setError(errorText(e));
-          setHunks((prev) => {
-            const { [file.relative]: _gone, ...rest } = prev;
-            return rest;
-          });
+          drop(key);
         });
     },
+    // Both write the index: Stage takes the hunk from the working copy into it,
+    // Unstage puts HEAD's lines back over the hunk in it (positions are the index text's).
     stageHunk: (file, hunk) => {
-      const set = hunks[file.relative];
+      const key = foldKey("unstaged", file.relative);
+      const set = hunks[key];
       if (!set || set === "loading") return;
       void import("../../surfaces/editorGit").then(({ stageChunkText }) => {
         const contents = stageChunkText(set.original, set.current, hunk.pos);
         if (contents == null) return;
-        void run(`${file.relative}#${hunk.from}`, () => gitStageContents(environmentId, cwd, file.relative, contents));
+        void run(`${key}#${hunk.from}`, () => gitStageContents(environmentId, cwd, file.relative, contents));
+      });
+    },
+    unstageHunk: (file, hunk) => {
+      const key = foldKey("staged", file.relative);
+      const set = hunks[key];
+      if (!set || set === "loading") return;
+      void import("../../surfaces/editorGit").then(({ revertChunkText }) => {
+        const contents = revertChunkText(set.original, set.current, hunk.pos);
+        if (contents == null) return;
+        void run(`${key}#${hunk.from}`, () => gitStageContents(environmentId, cwd, file.relative, contents));
       });
     },
     stageAll: () => void run("stage-all", () => gitStageAll(environmentId, cwd)),
@@ -363,7 +397,7 @@ export function ChangesPanel({
   };
 
   const folds: Record<string, HunkFold> = {};
-  for (const [relative, set] of Object.entries(hunks)) folds[relative] = set === "loading" ? set : { hunks: set.hunks };
+  for (const [key, set] of Object.entries(hunks)) folds[key] = set === "loading" ? set : { hunks: set.hunks };
 
   return (
     <ChangesView
@@ -402,8 +436,9 @@ export interface ChangesActions {
   stage: (file: GitChangedFile) => void;
   unstage: (file: GitChangedFile) => void;
   discard: (file: GitChangedFile) => void;
-  toggleHunks: (file: GitChangedFile) => void;
+  toggleHunks: (file: GitChangedFile, side: ChangeSide) => void;
   stageHunk: (file: GitChangedFile, hunk: Hunk) => void;
+  unstageHunk: (file: GitChangedFile, hunk: Hunk) => void;
   stageAll: () => void;
   unstageAll: () => void;
   pull: () => void;
@@ -441,6 +476,7 @@ export function ChangesView({
   error: string | null;
   message: string;
   onMessage: (text: string) => void;
+  /** keyed by `foldKey(side, relative)` */
   folds: Record<string, HunkFold>;
   editorLabel: (file: GitChangedFile) => string | null;
   actions: ChangesActions;
@@ -478,14 +514,14 @@ export function ChangesView({
                 {staged.length > 0 ? (
                   <Group heading={both ? "Staged" : null} count={staged.length}>
                     {staged.map((file) => (
-                      <FileRow key={`s:${file.relative}`} file={file} side="staged" {...rowProps} />
+                      <FileRow key={`s:${file.relative}`} file={file} side="staged" fold={folds[foldKey("staged", file.relative)]} {...rowProps} />
                     ))}
                   </Group>
                 ) : null}
                 {unstaged.length > 0 ? (
                   <Group heading={both ? "Changes" : null} count={unstaged.length}>
                     {unstaged.map((file) => (
-                      <FileRow key={`u:${file.relative}`} file={file} side="unstaged" fold={folds[file.relative]} {...rowProps} />
+                      <FileRow key={`u:${file.relative}`} file={file} side="unstaged" fold={folds[foldKey("unstaged", file.relative)]} {...rowProps} />
                     ))}
                   </Group>
                 ) : null}
@@ -673,7 +709,9 @@ function FileRow({
   actions: ChangesActions;
 }) {
   const deleted = file.status === "deleted";
-  const foldable = side === "unstaged" && file.status === "modified";
+  const foldable = file.status === "modified";
+  // Distinct names when the file is in both groups: each group folds on its own.
+  const hunksName = `${side === "staged" ? "staged hunks" : "hunks"} of ${basename(file.relative)}`;
   const open = fold !== undefined;
   const active = selectedPath === file.relative;
   const editor = actions.openInEditor ? editorLabel(file) : null;
@@ -694,9 +732,9 @@ function FileRow({
             <Button
               variant="ghost"
               size="icon-xs"
-              aria-label={open ? `Hide hunks of ${basename(file.relative)}` : `Show hunks of ${basename(file.relative)}`}
+              aria-label={open ? `Hide ${hunksName}` : `Show ${hunksName}`}
               aria-expanded={open}
-              onClick={() => actions.toggleHunks(file)}
+              onClick={() => actions.toggleHunks(file, side)}
               className={cn(
                 "absolute inset-0 size-4 rounded-sm text-muted-foreground hover:text-foreground",
                 open ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100",
@@ -769,7 +807,7 @@ function FileRow({
       </ContextMenu>
       {foldable ? (
         <CollapsibleContent>
-          <HunkRows file={file} fold={fold} busy={busy} actions={actions} />
+          <HunkRows file={file} side={side} fold={fold} busy={busy} actions={actions} />
         </CollapsibleContent>
       ) : null}
     </Collapsible>
@@ -777,7 +815,7 @@ function FileRow({
 }
 
 /** A folded-open file's hunks, aligned under its name. */
-function HunkRows({ file, fold, busy, actions }: { file: GitChangedFile; fold?: HunkFold; busy: string | null; actions: ChangesActions }) {
+function HunkRows({ file, side, fold, busy, actions }: { file: GitChangedFile; side: ChangeSide; fold?: HunkFold; busy: string | null; actions: ChangesActions }) {
   if (!fold) return null;
   if (fold === "loading") {
     return (
@@ -786,7 +824,10 @@ function HunkRows({ file, fold, busy, actions }: { file: GitChangedFile; fold?: 
       </div>
     );
   }
-  if (fold.hunks.length === 0) return <p className="flex h-7 items-center pl-8 text-xs text-muted-foreground">Nothing to stage line by line</p>;
+  const staged = side === "staged";
+  if (fold.hunks.length === 0) {
+    return <p className="flex h-7 items-center pl-8 text-xs text-muted-foreground">{staged ? "Nothing to unstage line by line" : "Nothing to stage line by line"}</p>;
+  }
   return (
     <div className="flex flex-col">
       {fold.hunks.map((h) => {
@@ -796,13 +837,19 @@ function HunkRows({ file, fold, busy, actions }: { file: GitChangedFile; fold?: 
             <span className="text-xs tabular-nums text-muted-foreground">{span}</span>
             <Counts status="modified" additions={h.additions} deletions={h.deletions} />
             <span className="flex-1" />
-            {busy === `${file.relative}#${h.from}` ? (
+            {busy === `${foldKey(side, file.relative)}#${h.from}` ? (
               <Spinner className="size-3 text-muted-foreground" />
             ) : (
               <span className="opacity-0 group-hover/hunk:opacity-100 group-focus-within/hunk:opacity-100">
-                <IconAction label={`Stage lines ${span.slice(1)}`} disabled={!!busy} onClick={() => actions.stageHunk(file, h)}>
-                  <Plus className="size-3.5" />
-                </IconAction>
+                {staged ? (
+                  <IconAction label={`Unstage lines ${span.slice(1)}`} disabled={!!busy} onClick={() => actions.unstageHunk(file, h)}>
+                    <Minus className="size-3.5" />
+                  </IconAction>
+                ) : (
+                  <IconAction label={`Stage lines ${span.slice(1)}`} disabled={!!busy} onClick={() => actions.stageHunk(file, h)}>
+                    <Plus className="size-3.5" />
+                  </IconAction>
+                )}
               </span>
             )}
           </div>

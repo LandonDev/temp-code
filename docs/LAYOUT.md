@@ -240,8 +240,11 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     and `+n −n` (New, Deleted; a file in both groups counts each group's
     own lines, `stagedCounts`/`unstagedCounts` from the host); a click opens the diff against HEAD, the
     right-click menu adds Open in <editor>, and a modified file folds open
-    into hunks (the caret takes the icon's place on hover), each stageable
-    (`hunksOf` in surfaces/editorGit.ts, reached through `import()`). Under
+    into hunks in both groups (the caret takes the icon's place on hover):
+    under Changes each is stageable (index → working copy), under Staged
+    each is unstageable (HEAD → index), and a file in both groups folds each
+    group on its own (`hunksOf` in surfaces/editorGit.ts, reached through
+    `import()`). Under
     them the Against group (`ChangesAgainst.tsx`, what the Branch section
     was): a `Select` of the target, a ⋯ menu with Update from, Rebase
     onto and Merge into (a local target only), the files changed since the
