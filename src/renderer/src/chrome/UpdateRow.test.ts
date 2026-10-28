@@ -2,18 +2,34 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { updateStore } from "../lib/updateStore";
 import type { UpdaterSnapshot } from "../lib/updater";
-import { UpdateRow, updateRowState, type UpdateRowState } from "./UpdateRow";
+import { UpdateRow, updateRowState, useUpdateRowState, type UpdateRowState } from "./UpdateRow";
+
+const web = vi.hoisted(() => ({ on: false }));
+vi.mock("../lib/nativeWeb", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/nativeWeb")>()),
+  isWebMode: () => web.on,
+}));
 
 afterEach(cleanup);
 
 const snap = (over: Partial<UpdaterSnapshot>): UpdaterSnapshot => ({ phase: "idle", currentVersion: "1.0.10", ...over });
 
 describe("updateRowState", () => {
-  it("says nothing while idle, checking or current", () => {
-    for (const phase of ["idle", "checking", "current"] as const) {
-      expect(updateRowState(snap({ phase }), null)).toBeNull();
+  it("offers a check with the running version while idle, current or after a failed check", () => {
+    for (const phase of ["idle", "current", "error"] as const) {
+      expect(updateRowState(snap({ phase }), null)).toEqual({ kind: "check", version: "v1.0.10" });
     }
+  });
+
+  it("says Checking… only while a check the person asked for runs", () => {
+    expect(updateRowState(snap({ phase: "checking" }), null, true)).toEqual({ kind: "checking", version: "v1.0.10" });
+    expect(updateRowState(snap({ phase: "checking" }), null, false)).toEqual({ kind: "check", version: "v1.0.10" });
+  });
+
+  it("names no version before the first status", () => {
+    expect(updateRowState(snap({ currentVersion: "…" }), null)).toEqual({ kind: "check", version: undefined });
   });
 
   it("names a waiting version, a retry and a download in hand", () => {
@@ -47,6 +63,22 @@ describe("UpdateRow", () => {
     expect(mount(null).view.container.innerHTML).toBe("");
   });
 
+  it("idle: Check for updates with the running version, which asks the feed", () => {
+    const onCheck = vi.fn();
+    render(createElement(UpdateRow, { state: { kind: "check", version: "v1.0.307" }, onCheck }));
+    const row = screen.getByRole("button", { name: /^Check for updates/ });
+    expect(row.textContent).toContain("v1.0.307");
+    fireEvent.click(row);
+    expect(onCheck).toHaveBeenCalledOnce();
+  });
+
+  it("checking: Checking… with the spinner, disabled", () => {
+    render(createElement(UpdateRow, { state: { kind: "checking", version: "v1.0.307" } }));
+    const row = screen.getByRole("button", { name: /^Checking…/ });
+    expect((row as HTMLButtonElement).disabled).toBe(true);
+    expect(row.querySelector('[data-slot="spinner"]')).not.toBeNull();
+  });
+
   it("just updated: the row opens What's new and its hover action dismisses", () => {
     const { onOpenWhatsNew, onDismiss } = mount({ kind: "updated", version: "1.0.10" });
     fireEvent.click(screen.getByRole("button", { name: /^Updated to 1\.0\.10/ }));
@@ -76,5 +108,26 @@ describe("UpdateRow", () => {
     const { onInstall } = mount({ kind: "ready" });
     fireEvent.click(screen.getByRole("button", { name: "Restart to update" }));
     expect(onInstall).toHaveBeenCalledOnce();
+  });
+});
+
+describe("useUpdateRowState", () => {
+  function Probe() {
+    const state = useUpdateRowState();
+    return createElement("span", { "data-kind": state?.kind ?? "none" });
+  }
+
+  afterEach(() => {
+    web.on = false;
+    updateStore.stop();
+  });
+
+  it("is always a row in the desktop app, and none at /ui", () => {
+    const desktop = render(createElement(Probe));
+    expect(desktop.container.querySelector("span")?.getAttribute("data-kind")).toBe("check");
+    cleanup();
+    web.on = true;
+    const page = render(createElement(Probe));
+    expect(page.container.querySelector("span")?.getAttribute("data-kind")).toBe("none");
   });
 });

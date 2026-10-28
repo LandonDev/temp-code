@@ -119,6 +119,7 @@ function FirstRun({ signedIn, pending = false }: { signedIn: boolean; pending?: 
       <div className="flex shrink-0 flex-col border-t border-border">
         <div className="flex flex-col p-2">
           {signedIn ? null : <SignInRowView provider="claude" pending={pending} onClick={noop} />}
+          <UpdateRow state={{ kind: "check", version: "v1.0.307" }} onCheck={noop} />
           <RailRow icon={Settings} label="Settings" />
         </div>
       </div>

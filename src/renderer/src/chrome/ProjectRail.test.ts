@@ -66,11 +66,11 @@ describe("railAccountRows", () => {
 });
 
 describe("railFootRows", () => {
-  it("is Settings alone with one host and nothing to update", () => {
+  it("is Settings alone at /ui with one host (no updater there)", () => {
     expect(railFootRows({ signIn: false, update: false, hosts: 1 })).toEqual(["settings"]);
   });
 
-  it("puts the update first and the hosts after it, the hosts only with two or more", () => {
+  it("on the desktop puts the update first and the hosts after it, the hosts only with two or more", () => {
     expect(railFootRows({ signIn: false, update: true, hosts: 2 })).toEqual(["update", "hosts", "settings"]);
     expect(railFootRows({ signIn: false, update: true, hosts: 1 })[0]).toBe("update");
     expect(railFootRows({ signIn: false, update: false, hosts: 3 })[0]).toBe("hosts");

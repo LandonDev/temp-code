@@ -66,6 +66,15 @@ afterEach(() => {
 });
 
 describe("updateStore", () => {
+  it("marks a check the person asked for, and an automatic one as not", async () => {
+    updateStore.start();
+    await flush();
+    expect(updateStore.manualCheck).toBe(false);
+    void updateStore.check(true);
+    expect(updateStore.manualCheck).toBe(true);
+    await flush();
+  });
+
   it("probes at launch and keeps the release notes on the snapshot", async () => {
     mocks.check.mockResolvedValue(
       status({ latest: "1.0.96", notes: "Build tab shows behind-origin counts\n" }),

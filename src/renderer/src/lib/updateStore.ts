@@ -30,6 +30,8 @@ class UpdateStore {
   private onFocus: (() => void) | null = null;
   private unwatch: (() => void) | null = null;
   private inflight: Promise<UpdaterSnapshot> | null = null;
+  /** The probe under way was asked for by the person (the rail says Checking…). */
+  manualCheck = false;
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -69,6 +71,7 @@ class UpdateStore {
     this.unwatch = null;
     this.lastCheckAt = 0;
     this.inflight = null;
+    this.manualCheck = false;
     this.state = INITIAL;
   }
 
@@ -81,6 +84,7 @@ class UpdateStore {
     if (this.inflight) return this.inflight;
     if (installing(this.state)) return Promise.resolve(this.state);
     this.lastCheckAt = Date.now();
+    this.manualCheck = manual;
     const run = runUpdateFlow(manual, this.set).then((result) => {
       // A failed probe is not worth showing; a failed install is, until the
       // user retries it.

@@ -42,6 +42,8 @@ type Props = {
   intent?: IntentProps;
   /** The glyph's colour, when the row is a call to action (`text-accent`). */
   glyphClassName?: string;
+  /** The row's button is disabled (an action already under way). */
+  disabled?: boolean;
   /** The wrapper: sortable pointer handlers, a context menu, data attributes;
    *  `children` draw over the row (a drag's drop marker). */
   rowRef?: Ref<HTMLDivElement>;
@@ -75,6 +77,7 @@ export function RailRow({
   onClick,
   intent,
   glyphClassName,
+  disabled,
   rowRef,
   className,
   children,
@@ -100,6 +103,7 @@ export function RailRow({
     variant: "ghost" as const,
     ...intent,
     onClick,
+    disabled,
     "aria-label": ariaLabel,
     "aria-current": selected ? ("true" as const) : undefined,
     className: cn(
