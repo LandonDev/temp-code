@@ -126,7 +126,7 @@ export function TaskList({ tasks, title = "Tasks", defaultOpen = true, className
       <CollapsibleContent>
         <ul ref={rows} className={cn("relative -mt-1 px-3 pb-2", activeShare !== undefined && "pe-14")}>
           {tasks.map((task) => (
-            <li key={task.id} className="flex items-start gap-2.5 py-[3px]">
+            <li key={task.id} className="flex min-h-7 items-start gap-2.5 py-1">
               <TaskMark state={task.state} className="mt-[3px]" />
               <span data-state={task.state} className={cn("task-label relative w-fit text-[13px] leading-5", task.state === "active" ? "text-foreground" : task.state === "done" ? "text-(--task-done)" : "text-muted-foreground")}>
                 {task.state === "active" && !still ? <TextShimmer>{task.label}</TextShimmer> : task.label}

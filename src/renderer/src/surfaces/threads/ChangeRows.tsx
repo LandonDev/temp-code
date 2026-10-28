@@ -53,7 +53,7 @@ function ChangeFile({
   const preview = block?.tool?.preview;
   return (
     <Collapsible data-change-row={file.path}>
-      <Item size="xs" render={<CollapsibleTrigger />} className="group/change text-left hover:bg-muted">
+      <Item size="xs" render={<CollapsibleTrigger />} className="group/change h-7 py-0 text-left hover:bg-muted">
         <Tooltip>
           <TooltipTrigger render={<span className="min-w-0 truncate text-[13px] text-foreground" />}>
             {file.name}
