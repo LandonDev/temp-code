@@ -96,6 +96,17 @@ describe("ActivitySection", () => {
     expect(taskLog).toHaveBeenCalledWith("s1", "t1", undefined);
   });
 
+  it("Enter on the shell row opens it and shows the whole command, untruncated, with no pointer", async () => {
+    mount();
+    const command = () => [...rowOf("shell").querySelectorAll("span")].find((e) => e.textContent === "bun run dev --port 5173")!;
+    expect(command().className).toContain("truncate");
+    rowOf("shell").focus();
+    fireEvent.keyDown(rowOf("shell"), { key: "Enter" });
+    expect(rowOf("shell").getAttribute("aria-expanded")).toBe("true");
+    expect(command().className).not.toContain("truncate");
+    expect(await screen.findByText(/listening on :5173/)).toBeTruthy();
+  });
+
   it("writes ages in whole minutes", () => {
     expect(ageText(10_000)).toBe("<1m");
     expect(ageText(12 * 60_000)).toBe("12m");

@@ -170,7 +170,10 @@ function Row({
           <TooltipTrigger render={<span className="block truncate text-[13px] text-foreground" />}>{row.label}</TooltipTrigger>
           <TooltipContent>{row.label}</TooltipContent>
         </Tooltip>
-        {row.detail ? (
+        {/* Open (Enter on the row) the command shows whole; folded, it truncates under a tooltip. */}
+        {row.detail && expanded ? (
+          <span className="mt-0.5 block font-mono text-xs break-all whitespace-pre-wrap text-muted-foreground">{row.detail}</span>
+        ) : row.detail ? (
           <Tooltip>
             <TooltipTrigger render={<span className="mt-0.5 block truncate font-mono text-xs text-muted-foreground" />}>{row.detail}</TooltipTrigger>
             <TooltipContent className="max-w-sm font-mono break-all">{row.detail}</TooltipContent>

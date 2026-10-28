@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changeOffset, minimalEdit, positionAt } from "./diffActions";
+import { changeLineOffsets, changeOffset, minimalEdit, positionAt } from "./diffActions";
 
 const text = "one\ntwo\nthree\n";
 
@@ -9,6 +9,11 @@ describe("diffActions", () => {
     expect(changeOffset(text, { modifiedStartLineNumber: 0, modifiedEndLineNumber: 0 })).toBe(0);
     expect(changeOffset(text, { modifiedStartLineNumber: 1, modifiedEndLineNumber: 0 })).toBe(4);
     expect(changeOffset(text, { modifiedStartLineNumber: 9, modifiedEndLineNumber: 0 })).toBe(14);
+  });
+
+  it("lists the start of every line a change covers, one offset for a pure deletion", () => {
+    expect(changeLineOffsets(text, { modifiedStartLineNumber: 2, modifiedEndLineNumber: 3 })).toEqual([4, 8]);
+    expect(changeLineOffsets(text, { modifiedStartLineNumber: 1, modifiedEndLineNumber: 0 })).toEqual([4]);
   });
 
   it("finds the smallest replacement", () => {

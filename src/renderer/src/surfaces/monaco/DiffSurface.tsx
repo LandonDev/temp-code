@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { loadToast } from "../../components/ui/toaster";
 import { registerEditorFlusher } from "../../lib/editorFlush";
-import { gitFileDiff, gitStageContents, notifyGitChanged } from "../../lib/fs";
+import { gitFileDiff, gitStageContents, notifyGitChanged, subscribeGitChanged } from "../../lib/fs";
 import type { FileState } from "../../lib/monaco/editorState";
 import { displayPath } from "../../lib/paths";
 import { registry } from "../../lib/connection";
@@ -9,7 +9,7 @@ import { hostOfCwd, projectForCwd } from "../../lib/tcserver/projects";
 import { SurfaceSkeleton } from "../SurfaceSkeleton";
 import { FileHeader, fileFolder } from "../FileHeader";
 import { ConflictBar } from "../ConflictBar";
-import { changeOffset, minimalEdit, positionAt } from "./diffActions";
+import { changeLineOffsets, changeOffset, minimalEdit, positionAt } from "./diffActions";
 import { trackEditor } from "./keys";
 import { ensureForModel } from "./lsp/idea";
 import { registerProviders } from "./lsp/providers";
@@ -146,7 +146,24 @@ export function DiffSurface({
           // -1 while the caret is above the first change, so Next reaches it.
           setChangeIndex(next.findLastIndex((change) => Math.max(1, change.modifiedStartLineNumber) <= line));
         };
-        cleanups.push(() => diffListener.dispose(), () => cursorListener.dispose());
+        // A caret placed in the base's pane names the change there, so Revert and Stage act on what was clicked.
+        const basePane = editor.getOriginalEditor();
+        const syncFromBase = () => {
+          const line = basePane.getPosition()?.lineNumber ?? 1;
+          const next = editor?.getLineChanges() ?? [];
+          setChangeIndex(next.findLastIndex((change) => Math.max(1, change.originalStartLineNumber) <= line));
+        };
+        // Focus moving between the panes moves the target too, with no caret move to say so.
+        cleanups.push(
+          () => diffListener.dispose(),
+          () => cursorListener.dispose(),
+          () => baseListener.dispose(),
+          () => baseFocus.dispose(),
+          () => modifiedFocus.dispose(),
+        );
+        const baseListener = basePane.onDidChangeCursorPosition(syncFromBase);
+        const baseFocus = basePane.onDidFocusEditorText(syncFromBase);
+        const modifiedFocus = modified.onDidFocusEditorText(syncChanges);
         const diffListener = editor.onDidUpdateDiff(syncChanges);
         const cursorListener = modified.onDidChangeCursorPosition(syncChanges);
         syncChanges();
@@ -174,11 +191,16 @@ export function DiffSurface({
   useEffect(() => {
     if (!stageable) return;
     let live = true;
-    void indexText(path, cwd).then((text) => {
-      if (live) setIndex(text);
-    });
+    const load = () =>
+      void indexText(path, cwd).then((text) => {
+        if (live) setIndex(text);
+      });
+    load();
+    // A stage or unstage elsewhere (the Changes section) moves the index under the review.
+    const off = subscribeGitChanged(load, cwd);
     return () => {
       live = false;
+      off();
       setIndex(null);
     };
   }, [path, cwd, stageable]);
@@ -194,7 +216,7 @@ export function DiffSurface({
     let live = true;
     void loadEditorGit().then(({ stageChunkText }) => {
       const text = model.getValue(monaco.editor.EndOfLinePreference.LF);
-      if (live) setStaged(stageChunkText(index, text, changeOffset(text, current)) === null);
+      if (live) setStaged(changeLineOffsets(text, current).every((at) => stageChunkText(index, text, at) === null));
     });
     return () => {
       live = false;
@@ -232,7 +254,9 @@ export function DiffSurface({
       const [{ stageChunkText }, fresh] = await Promise.all([loadEditorGit(), indexText(path, cwd)]);
       if (fresh === null) throw new Error("Git could not read this file's index");
       const text = model.getValue(monaco.editor.EndOfLinePreference.LF);
-      const contents = stageChunkText(fresh, text, changeOffset(text, current));
+      // Every part of the change the index lacks, applied in turn: a change partly staged stages the rest whole.
+      const staged = changeLineOffsets(text, current).reduce((index, at) => stageChunkText(index, text, at) ?? index, fresh);
+      const contents = staged === fresh ? null : staged;
       if (contents !== null) {
         await gitStageContents(hostOfCwd(path), cwd, relative, contents);
         notifyGitChanged();

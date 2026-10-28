@@ -16,6 +16,16 @@ export function changeOffset(text: string, change: LineChange): number {
   return starts[Math.min(starts.length, Math.max(1, line)) - 1];
 }
 
+/** The start of every line a change covers: a change part of which is
+ *  already staged still has its other lines to stage. */
+export function changeLineOffsets(text: string, change: LineChange): number[] {
+  if (change.modifiedEndLineNumber === 0) return [changeOffset(text, change)];
+  const starts = lineStarts(text);
+  const out: number[] = [];
+  for (let line = Math.max(1, change.modifiedStartLineNumber); line <= Math.min(starts.length, change.modifiedEndLineNumber); line++) out.push(starts[line - 1]);
+  return out;
+}
+
 /** The smallest replacement turning `prev` into `next`: offsets into `prev`. */
 export function minimalEdit(prev: string, next: string): { start: number; end: number; insert: string } {
   let start = 0;

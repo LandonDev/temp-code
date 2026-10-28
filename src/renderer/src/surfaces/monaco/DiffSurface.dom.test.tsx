@@ -15,6 +15,11 @@ const h = vi.hoisted(() => ({
   disposeCursor: vi.fn(),
   release: vi.fn(),
   text: "one\nTWO\nthree\n",
+  gitChanged: () => {},
+  basePosition: 1,
+  baseUpdate: () => {},
+  baseFocus: () => {},
+  modifiedFocus: () => {},
   originalText: "base",
   pushEdit: vi.fn(),
   setOriginal: vi.fn(),
@@ -25,7 +30,10 @@ const h = vi.hoisted(() => ({
   stageChunkText: vi.fn((o: string, c: string, _p: number): string | null => (o === c ? null : c)),
 }));
 vi.mock("../../lib/editorFlush", () => ({ registerEditorFlusher: () => () => {} }));
-vi.mock("../../lib/fs", () => ({ gitFileDiff: h.gitFileDiff, gitStageContents: h.stage, notifyGitChanged: vi.fn() }));
+vi.mock("../../lib/fs", () => ({
+  gitFileDiff: h.gitFileDiff, gitStageContents: h.stage, notifyGitChanged: vi.fn(),
+  subscribeGitChanged: (cb: () => void) => { h.gitChanged = cb; return () => {}; },
+}));
 vi.mock("../editorGit", () => ({ revertChunkText: h.revertChunkText, stageChunkText: h.stageChunkText }));
 vi.mock("../../lib/connection", () => ({ registry: { linkOf: () => ({ request: h.request }) } }));
 vi.mock("../../lib/tcserver/projects", () => ({ projectForCwd: () => ({ id: "project", environmentId: "host" }), hostOfCwd: () => "host" }));
@@ -47,11 +55,17 @@ vi.mock("./monaco", () => ({
       createDiffEditor: () => ({
         setModel: vi.fn(), dispose: vi.fn(), getLineChanges: () => h.changes,
         onDidUpdateDiff: (cb: () => void) => { h.diffUpdate = cb; return { dispose: h.disposeDiff }; },
+        getOriginalEditor: () => ({
+          getPosition: () => ({ lineNumber: h.basePosition }),
+          onDidChangeCursorPosition: (cb: () => void) => { h.baseUpdate = cb; return { dispose: vi.fn() }; },
+          onDidFocusEditorText: (cb: () => void) => { h.baseFocus = cb; return { dispose: vi.fn() }; },
+        }),
         getModifiedEditor: () => ({
           addCommand: vi.fn(), getPosition: () => ({ lineNumber: h.position }),
           setPosition: h.setPosition, revealLineInCenter: h.reveal, focus: h.focus,
           getModel: () => ({ getValue: () => h.text, pushStackElement: vi.fn(), pushEditOperations: h.pushEdit }),
           onDidChangeCursorPosition: (cb: () => void) => { h.cursorUpdate = cb; return { dispose: h.disposeCursor }; },
+          onDidFocusEditorText: (cb: () => void) => { h.modifiedFocus = cb; return { dispose: vi.fn() }; },
         }),
       }),
     },
@@ -63,7 +77,7 @@ const change = (start: number, end: number, originalStart: number, originalEnd: 
 });
 
 describe("Monaco review header", () => {
-  beforeEach(() => { vi.clearAllMocks(); h.changes = []; h.position = 1; h.text = "one\nTWO\nthree\n"; h.originalText = "base"; });
+  beforeEach(() => { vi.clearAllMocks(); h.changes = []; h.position = 1; h.text = "one\nTWO\nthree\n"; h.originalText = "base"; h.stageChunkText.mockImplementation((o: string, c: string) => (o === c ? null : c)); h.gitFileDiff.mockResolvedValue({ original: "one\ntwo\nthree\n", binary: false, tooLarge: false }); });
   afterEach(cleanup);
 
   it("shows the folder and base review counts, steps through changes and follows the caret", async () => {
@@ -124,6 +138,53 @@ describe("Monaco review header", () => {
     expect(h.stageChunkText).toHaveBeenCalledWith("one\ntwo\nthree\n", "one\nTWO\nthree\n", 4);
     // The index now has the change: nothing is left to stage there.
     await waitFor(() => expect(stage().disabled).toBe(true));
+  });
+
+  it("a change partly staged stages the rest of it whole, around a staged middle", async () => {
+    h.changes = [change(2, 4, 2, 4)];
+    h.text = "one\nTWO\nTHREE\nFOUR\n";
+    // The index already has line 3's edit; lines 2 and 4 are still to stage, each a chunk of its own.
+    const lines = ["one", "TWO", "THREE", "FOUR"];
+    h.stageChunkText.mockImplementation((o: string, _c: string, at: number) => {
+      const line = at === 4 ? 1 : at === 14 ? 3 : -1;
+      const index = o.split("\n");
+      if (line < 0 || index[line] === lines[line]) return null;
+      index[line] = lines[line];
+      return index.join("\n");
+    });
+    h.gitFileDiff.mockResolvedValue({ original: "one\ntwo\nTHREE\nfour\n", binary: false, tooLarge: false });
+    const { getByRole } = render(<DiffSurface path="/repo/src/file.ts" cwd="/repo" />);
+    const stage = () => getByRole<HTMLButtonElement>("button", { name: "Stage change" });
+    await waitFor(() => expect(stage().disabled).toBe(false));
+    fireEvent.click(stage());
+    await waitFor(() => expect(h.stage).toHaveBeenCalledOnce());
+    expect(h.stage).toHaveBeenCalledWith("host", "/repo", "src/file.ts", "one\nTWO\nTHREE\nFOUR\n");
+  });
+
+  it("a caret placed in the base's pane names the change there", async () => {
+    h.changes = [change(2, 3, 2, 2), change(9, 9, 8, 8)];
+    const { container, getByRole } = render(<DiffSurface path="/repo/src/file.ts" cwd="/repo" base="review-base" />);
+    await waitFor(() => expect(container.textContent).toContain("1/2"));
+    fireEvent.click(getByRole("button", { name: "Next change" }));
+    expect(container.textContent).toContain("2/2");
+    act(() => { h.basePosition = 2; h.baseUpdate(); });
+    expect(container.textContent).toContain("1/2");
+    // Back to the right pane's caret (still on change two) with no move: focus alone retargets.
+    act(() => { h.position = 9; h.modifiedFocus(); });
+    expect(container.textContent).toContain("2/2");
+    act(() => h.baseFocus());
+    expect(container.textContent).toContain("1/2");
+  });
+
+  it("an unstage elsewhere turns Stage back on", async () => {
+    h.changes = [change(2, 2, 2, 2)];
+    h.gitFileDiff.mockResolvedValue({ original: "one\nTWO\nthree\n", binary: false, tooLarge: false });
+    const { getByRole } = render(<DiffSurface path="/repo/src/file.ts" cwd="/repo" />);
+    const stage = () => getByRole<HTMLButtonElement>("button", { name: "Stage change" });
+    await waitFor(() => expect(stage().disabled).toBe(true));
+    h.gitFileDiff.mockResolvedValue({ original: "one\ntwo\nthree\n", binary: false, tooLarge: false });
+    act(() => h.gitChanged());
+    await waitFor(() => expect(stage().disabled).toBe(false));
   });
 
   it("anchors a deletion before the first line and disposes navigation listeners", async () => {
