@@ -4,6 +4,8 @@ import { IS_MAC } from "../lib/platform";
 import { isWebMode } from "../lib/native";
 import { DESKTOP_ONLY_LINE } from "../lib/nativeWeb";
 import { Empty, EmptyTitle } from "../components/ui/empty";
+import { PAGE_SCROLLER } from "../components/page";
+import { cn } from "../lib/cn";
 import type { AliaxPageId } from "../stores/shell";
 import { AccountsPage, StatsPage } from "@aliax/pages";
 
@@ -41,7 +43,7 @@ export function AliaxPagesView({ page, besideRail = false, onClose, onToggleSide
       </div>
       {/* Keyed by the page, so Stats opens at its top; the stable gutter keeps
           the column still when a page gains a scrollbar. */}
-      <div key={page} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]">
+      <div key={page} className={cn(PAGE_SCROLLER, "flex flex-col")}>
         {isWebMode() ? (
           <Empty>
             <EmptyTitle>{DESKTOP_ONLY_LINE}</EmptyTitle>

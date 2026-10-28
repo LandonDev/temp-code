@@ -285,7 +285,7 @@ import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
 // Lazy surfaces (surfaces/chunks.ts): none of these is on the first-paint path.
 const DevServersPane = terminalChunk.surface("DevServersPane", <SurfaceSkeleton kind="terminal" label="Loading dev servers" />);
 const SettingsView = settingsChunk.surface("SettingsView", <SurfaceSkeleton kind="column" label="Loading settings" />);
-const AliaxPagesView = aliaxChunk.surface("AliaxPagesView", <SurfaceSkeleton kind="column" label="Loading accounts" />);
+const AliaxPagesView = aliaxChunk.surface("AliaxPagesView", <SurfaceSkeleton kind="accounts" label="Loading accounts" />);
 // The full-body views ride their own chunks: none is in the first paint.
 const SearchView = searchChunk.surface("SearchView", <SurfaceSkeleton kind="page" label="Loading search" />);
 // The action-opened dialogs, mounted only while open (chrome/dialogs.ts).

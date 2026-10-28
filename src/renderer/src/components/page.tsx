@@ -3,6 +3,11 @@ import { cn } from "@renderer/lib/cn";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "./ui/item";
 import { Skeleton } from "./ui/skeleton";
 
+/** The scroller a page sits in (Settings, Accounts, Stats, and their
+ *  skeletons): the stable gutter keeps the column still when the page
+ *  gains a scrollbar, so a skeleton and its page land in one place. */
+const PAGE_SCROLLER = "min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]";
+
 /**
  * The frame of a settings or app page: a 672px column with a 24px inset,
  * one title, an optional one-line description and the page's actions on the
@@ -148,4 +153,4 @@ function PageEmpty({ className, children, ...rest }: ComponentPropsWithoutRef<"p
   );
 }
 
-export { Page, PageSection, PageRow, PageRowsSkeleton, PageEmpty };
+export { Page, PageSection, PageRow, PageRowsSkeleton, PageEmpty, PAGE_SCROLLER };

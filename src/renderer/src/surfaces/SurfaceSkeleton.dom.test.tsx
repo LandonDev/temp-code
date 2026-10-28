@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PAGE_SCROLLER } from "../components/page";
 import { EmptyState, LoadingLine, SurfaceSkeleton, type SkeletonKind } from "./SurfaceSkeleton";
 
 afterEach(cleanup);
 
-const KINDS: SkeletonKind[] = ["page", "column", "pane", "diff", "terminal", "frame", "transcript", "rows"];
+const KINDS: SkeletonKind[] = ["page", "column", "accounts", "pane", "diff", "terminal", "frame", "transcript", "rows"];
 
 describe("SurfaceSkeleton", () => {
   it.each(KINDS)("%s: a labelled status of still skeleton blocks", (kind) => {
@@ -36,6 +37,24 @@ describe("SurfaceSkeleton", () => {
     expect(column.className).toContain("mx-auto");
     expect(container.querySelector(".w-52")).toBeNull();
     expect(container.querySelector("[data-surface-skeleton] > .border-b")).not.toBeNull();
+  });
+
+  it.each(["column", "accounts"] as const)("%s: the column sits in the page's own scroller, so it lands where the page does", (kind) => {
+    const { container } = render(<SurfaceSkeleton kind={kind} />);
+    const scroller = container.querySelector("[data-skeleton-scroller]")!;
+    expect(scroller.className).toBe(PAGE_SCROLLER);
+    expect(scroller.querySelector("[data-skeleton-column]")).not.toBeNull();
+  });
+
+  it("accounts: count account rows, each a dot, two usage bars and a switch", () => {
+    const { container } = render(<SurfaceSkeleton kind="accounts" count={3} />);
+    const rows = container.querySelectorAll("[data-skeleton-row]");
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      expect(row.querySelectorAll("[data-skeleton-bar]")).toHaveLength(2);
+      expect(row.querySelectorAll("[data-skeleton-switch]")).toHaveLength(1);
+      expect(row.querySelector(".rounded-full.size-2")).not.toBeNull();
+    }
   });
 
   it("rows: count rows, four by default", () => {

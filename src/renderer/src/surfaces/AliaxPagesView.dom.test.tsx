@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../chrome/WindowControls", () => ({ WindowControls: () => null }));
 vi.mock("@aliax/pages", () => ({ AccountsPage: () => <h1>Accounts</h1>, StatsPage: () => <h1>Stats</h1> }));
 const { AliaxPagesView } = await import("./AliaxPagesView");
+const { PAGE_SCROLLER } = await import("../components/page");
 
 afterEach(() => {
   cleanup();
@@ -30,6 +31,8 @@ describe("AliaxPagesView", () => {
     const { rerender } = render(<AliaxPagesView page="accounts" onClose={() => {}} />);
     const scroller = () => screen.getByRole("heading").parentElement as HTMLElement;
     expect(scroller().className).toContain("[scrollbar-gutter:stable]");
+    // The lazy chunk's skeleton sits in the same scroller, so the page lands where it stood.
+    for (const cls of PAGE_SCROLLER.split(" ")) expect(scroller().classList).toContain(cls);
     scroller().scrollTop = 400;
     const before = scroller();
     rerender(<AliaxPagesView page="stats" onClose={() => {}} />);

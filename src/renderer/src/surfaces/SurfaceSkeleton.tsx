@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { PAGE_SCROLLER } from "../components/page";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { Skeleton } from "../components/ui/skeleton";
@@ -14,8 +15,10 @@ import { Spinner } from "../components/ui/spinner";
 export type SkeletonKind =
   /** A full page with a list column beside its content (Search, Inbox, Notes). */
   | "page"
-  /** A page in the one 672px column under the title strip (Settings, Accounts, Stats). */
+  /** A page in the one 672px column under the title strip (Settings, Stats). */
   | "column"
+  /** The Accounts page: the column with account rows (a dot, the name over its line, two usage bars, a switch). */
+  | "accounts"
   /** A pane of text lines (the editor, release notes, an issue body). */
   | "pane"
   /** A diff: a header strip and two hunks (a diff, an edit row's body, a PR diff). */
@@ -75,22 +78,46 @@ function body(kind: SkeletonKind, count: number): ReactNode {
         </div>
       );
     case "column":
-      // components/page.tsx's frame: the strip, then Page's column with its
-      // title, its line and rows in PageRowsSkeleton's shape.
+    case "accounts":
+      // components/page.tsx's frame: the strip, then Page's column in the
+      // page's own scroller, with its title, its line and rows in the shape
+      // of the page it stands in for.
       return (
         <>
           <div className="h-10 shrink-0 border-b border-border" />
-          <div data-skeleton-column className="mx-auto w-full max-w-2xl p-6">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="mt-2 h-3 w-64 max-w-full" />
-            <div className="mt-6 flex flex-col">
-              {Array.from({ length: count }, (_, i) => (
-                <div key={i} className="flex items-center gap-3 py-3">
-                  <Skeleton className="h-3.5 w-32" />
-                  <span className="flex-1" />
-                  <Skeleton className="h-8 w-40 rounded-lg" />
+          <div data-skeleton-scroller className={PAGE_SCROLLER}>
+            <div data-skeleton-column className="mx-auto w-full max-w-2xl p-6">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="mt-2 h-3 w-64 max-w-full" />
+              {kind === "accounts" ? (
+                <div className="mt-6">
+                  <Skeleton className="h-3 w-24" />
+                  <div className="mt-2 flex flex-col">
+                    {Array.from({ length: count }, (_, i) => (
+                      <div key={i} data-skeleton-row className="flex items-center gap-3 py-3">
+                        <Skeleton className="size-2 rounded-full" />
+                        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                          <Skeleton className="h-3.5 w-32" />
+                          <Skeleton className="h-3 w-48 max-w-full" />
+                        </div>
+                        <Skeleton data-skeleton-bar className="h-6 w-[72px]" />
+                        <Skeleton data-skeleton-bar className="h-6 w-[72px]" />
+                        <Skeleton data-skeleton-switch className="h-5 w-9 rounded-full" />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
+              ) : (
+                <div className="mt-6 flex flex-col">
+                  {Array.from({ length: count }, (_, i) => (
+                    <div key={i} className="flex items-center gap-3 py-3">
+                      <Skeleton className="h-3.5 w-32" />
+                      <span className="flex-1" />
+                      <Skeleton className="h-8 w-40 rounded-lg" />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </>
@@ -154,6 +181,7 @@ function body(kind: SkeletonKind, count: number): ReactNode {
 const FRAME: Record<SkeletonKind, string> = {
   page: "flex min-h-0 min-w-0 flex-1 flex-col",
   column: "flex min-h-0 min-w-0 flex-1 flex-col",
+  accounts: "flex min-h-0 min-w-0 flex-1 flex-col",
   pane: "h-full min-h-0 w-full overflow-hidden",
   diff: "flex h-full min-h-0 w-full flex-col overflow-hidden",
   terminal: "monocode-terminal flex h-full min-h-0 w-full flex-col",

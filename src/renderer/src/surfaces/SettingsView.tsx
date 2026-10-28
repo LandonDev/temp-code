@@ -10,7 +10,8 @@ import { AppshotsPage } from "./AppshotsSettings";
 import { ReviewsPage } from "./ReviewSettings";
 import { HostsPage } from "./settings/hosts/HostsPage";
 import { shell, useShell } from "../stores/shell";
-import { Page } from "../components/page";
+import { PAGE_SCROLLER, Page } from "../components/page";
+import { cn } from "../lib/cn";
 import { GeneralPage } from "./settings/General";
 import { ThreadDefaultsPage } from "./settings/ThreadDefaults";
 import { AppearancePage } from "./settings/Appearance";
@@ -104,7 +105,7 @@ export function SettingsView({
       <div
         key={section}
         ref={lockOverscroll}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-none [scrollbar-gutter:stable]"
+        className={cn(PAGE_SCROLLER, "overscroll-none")}
       >
         <Page
           title={title}
