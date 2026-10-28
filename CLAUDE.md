@@ -95,7 +95,7 @@ env -u ELECTRON_RUN_AS_NODE \
   then; an unknown `{{name}}` stays as written.
 - Display: the user-text row keeps the person's text as `text` and the
   rules as `preamble: { text, words }` (the stamp), so the transcript shows
-  the brief with "Project rules · 212 words" folded above it
+  the brief with "Project rules  212 words" folded above it
   (src/renderer/src/surfaces/PreambleRow.tsx; click opens the text). The
   thread keeps the text it started with: edits reach new threads only, and
   a first message held back by a failed boot reaches the harness with the

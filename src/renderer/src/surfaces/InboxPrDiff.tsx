@@ -112,7 +112,7 @@ export function InboxPrDiff({ diff }: Props) {
       </div>
       {diff?.truncated ? (
         <p className="text-[12px] text-muted-foreground">
-          Diff is too large to display in full. File list is shown without patches.
+          Too large to show in full; the files appear without their diffs.
         </p>
       ) : null}
       <div className="flex flex-col gap-2">
