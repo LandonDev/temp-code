@@ -116,6 +116,15 @@ describe('the live dev servers', () => {
     expect(list[0]).toMatchObject({ key: 'env_mac/r1', callId: null, command: run({}).command })
     expect(list[1]).toMatchObject({ key: 'env_box/res1', callId: 'toolu_7', command: 'cd apps/web && bun run dev' })
     expect(liveServers(sources({ resources: { t1: [port()] } }))[0].callId).toBeNull()
+    // A label that is the server's URL or its port names no command; a guarded call's label loses the host's marks.
+    const command = (label: string) => liveServers(sources({ resources: { t1: [port({ label })] } }))[0].command
+    expect(command('http://localhost:3007')).toBeNull()
+    expect(command(':3007')).toBeNull()
+    expect(command('node :3007')).toBeNull()
+    expect(command("export TEMP_CODE_THREAD='t1' TEMP_CODE_CALL='toolu_1'; bun run dev")).toBe('bun run dev')
+    // A URL-labelled row takes the command of the background task that shares its call.
+    const announced = liveServers(sources({ resources: { t1: [port({ label: 'http://localhost:3007', callId: 'toolu_7' })] }, callCommand: (id) => (id === 'toolu_7' ? 'bun run dev' : null) }))
+    expect(announced[0].command).toBe('bun run dev')
   })
 
   it('titles a port row by what the host says its process is, else by its label', () => {

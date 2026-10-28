@@ -107,11 +107,12 @@ export function DevServersPane({
         <div className="relative flex min-h-0 min-w-0 flex-1">
           {shown ? (
             <DevConsole
-              key={shown.key}
+              // A command that arrives after the console opened (the Stop hook names it) reopens it with its first line.
+              key={`${shown.key}:${shown.command ?? ""}`}
               source={{
                 environmentId: shown.environmentId,
                 ...(shown.runId ? { runId: shown.runId } : {}),
-                ...(shown.resource ? { resourceId: shown.resource.id } : {}),
+                ...(shown.resource ? { resourceId: shown.resource.id, command: shown.command } : {}),
               }}
               active
             />

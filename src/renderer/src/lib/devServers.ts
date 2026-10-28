@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
 import type { DevRun, DevRunPush, DevServerExisting, DevServerStartResult, DevTarget } from '@server/shared/contract-devservers'
+import { unwrapBashCommand } from '@server/shared/bashMarks'
 import type { ThreadResource } from '@server/shared/contract-resources'
 import type { PortForwardInfo } from '@server/shared/contract-ports'
 import { notDevServer } from '@server/shared/devServerRules'
@@ -280,7 +281,7 @@ export interface LiveServer {
   resource: { id: string; sessionId: string } | null
   /** A ledger row's tool call that opened it (a background shell's call); null for a run. */
   callId: string | null
-  /** The command it runs: a run's, a ledger row's label. */
+  /** The command it runs: a run's, or a ledger row's label when that names one (the host may label a row by its URL or its port instead). */
   command: string | null
   startedAt: number
   /** Stop was asked and the host has not dropped it yet: the reason it waits ("Mac offline, waiting"), else ''. */
@@ -293,6 +294,14 @@ export interface LiveServerSources {
   /** A thread's host, project and title; null for a thread this window does not know. */
   thread: (sessionId: string) => { environmentId: string; projectId: string | null; title: string } | null
   projectName: (environmentId: string, projectId: string) => string | null
+  /** The command of a live background task by the call that started it, for a row labelled by its URL or port. */
+  callCommand?: (callId: string) => string | null
+}
+
+/** A ledger row's label as the command that opened it, without the host's marks; null for a URL or port label (threadPortsParse.ts `portLabel`). */
+function labelCommand(label: string, port: number): string | null {
+  if (/^https?:\/\//.test(label) || label.startsWith(':') || label.endsWith(` :${port}`)) return null
+  return unwrapBashCommand(label)
 }
 
 /**
@@ -342,7 +351,7 @@ export function liveServers(src: LiveServerSources): LiveServer[] {
         runId: null,
         resource: { id: row.id, sessionId },
         callId: row.callId ?? null,
-        command: row.label,
+        command: labelCommand(row.label, number) ?? (row.callId ? (src.callCommand?.(row.callId) ?? null) : null),
         startedAt: row.createdAt,
         ...(row.removeRequestedAt ? { stopping: row.note ?? '' } : {})
       })
@@ -380,6 +389,8 @@ export function useLiveDevServers(): LiveServer[] {
   const projects = useProjects()
   return useMemo(() => {
     const byId = new Map(sessions.map((s) => [s.id, s]))
+    const byCall = new Map<string, string>()
+    for (const s of sessions) for (const t of s.background?.tasks ?? []) if (t.callId && t.command) byCall.set(t.callId, unwrapBashCommand(t.command))
     return liveServers({
       runs,
       resources,
@@ -388,7 +399,8 @@ export function useLiveDevServers(): LiveServer[] {
         const environmentId = s ? sessionStore.environmentOf(id) : null
         return s && environmentId ? { environmentId, projectId: s.projectId ?? null, title: s.title } : null
       },
-      projectName: (environmentId, projectId) => projects.find((p) => p.id === projectId && p.environmentId === environmentId)?.name ?? null
+      projectName: (environmentId, projectId) => projects.find((p) => p.id === projectId && p.environmentId === environmentId)?.name ?? null,
+      callCommand: (callId) => byCall.get(callId) ?? null
     })
   }, [runs, resources, sessions, projects])
 }

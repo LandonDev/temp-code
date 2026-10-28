@@ -1012,7 +1012,7 @@ routed to (aliax-core's `forward`). Two listeners:
   the thread it belongs to, in plain words ("Vite dev server") with its
   address (the row's Open control, or "Open on the Mac :5174" for a server
   on another host) and the word Stop (chrome/DevServerRow.tsx), its
-  console the server's log alone; a row leaves the moment its host
+  console the server's log alone under its command (a ledger row's label, else the background task that shares its call); a row leaves the moment its host
   drops it. The dock
   is bottom only and has one bar (chrome/DockBar.tsx: the project's
   terminals and the Dev servers tab as line tabs, New terminal, Hide); the

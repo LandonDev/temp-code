@@ -18,6 +18,8 @@ export interface DevConsoleSource {
   environmentId: string;
   runId?: string;
   resourceId?: string;
+  /** A ledger row's command, its console's first line (a run's log names its own). */
+  command?: string | null;
 }
 
 /**
@@ -25,7 +27,8 @@ export interface DevConsoleSource {
  * the server's own colours. A Dev Server run replays its buffered log
  * (`devServer.log`) and follows the `dev-run` pushes by line count; a port a
  * thread opened tails its output file, or shows the shell call's output,
- * through `devServer.portLog` from the offset it last read. When the host
+ * through `devServer.portLog` from the offset it last read; both open with
+ * the command, dimmed. When the host
  * drops the server its row leaves the pane and this console with it, so it
  * never writes an ending of its own; it just stops reading.
  */
@@ -121,6 +124,10 @@ export function DevConsole({ source, active }: { source: DevConsoleSource; activ
       let from: number | undefined;
       let shown: DevPortLog["source"] | null = null;
       let timer: ReturnType<typeof setTimeout> | null = null;
+      const head = () => {
+        if (source.command) term.write(dim(`$ ${source.command.split("\n")[0]}`));
+      };
+      head();
       const poll = async () => {
         try {
           const log = await link.request<DevPortLog>("devServer.portLog", { resourceId, ...(from === undefined ? {} : { from }) });
@@ -128,6 +135,7 @@ export function DevConsole({ source, active }: { source: DevConsoleSource; activ
           if (shown !== null && log.source !== shown && from !== undefined) {
             // The log moved (the call's output gave way to its file): start over.
             term.reset();
+            head();
             from = undefined;
           } else {
             if (log.data) term.write(log.data);

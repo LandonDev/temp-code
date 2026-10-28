@@ -46,4 +46,14 @@ describe("DevConsole", () => {
     expect(h.writes).toEqual(["ready on :5173\n"]);
     expect(h.writes.join("")).not.toContain("/tmp/claude");
   });
+
+  it("an agent's server opens with its command, dimmed, like a run", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    h.request.mockResolvedValue({ source: "file", data: "ready on :5173\n", next: 15, endedAt: 1 });
+    render(<DevConsole source={{ environmentId: "env_box", resourceId: "res1", command: "bun run dev" }} active />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(h.writes).toEqual(["\x1b[2m$ bun run dev\x1b[0m\r\n", "ready on :5173\n"]);
+  });
 });
