@@ -64,11 +64,10 @@ afterEach(() => {
 });
 
 describe("PreambleDialog", () => {
-  it("its placeholder is one line of prose, never a bullet list", () => {
+  it("an empty field says nothing: the description above it already says what the rules are", () => {
     render(<PreambleDialog scope={{ kind: "project", project: project(), workspace: WS }} onClose={() => {}} />);
-    const lines = field().placeholder.split("\n");
-    expect(lines).toEqual(["The rules every new thread in this project starts with."]);
-    expect(lines.some((l) => l.startsWith("- "))).toBe(false);
+    expect(field().placeholder).toBe("");
+    expect(screen.getByText(/^Opens every new thread in /)).toBeTruthy();
   });
 
   it("the word count follows typing", () => {

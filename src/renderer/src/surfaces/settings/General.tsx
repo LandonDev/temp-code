@@ -135,7 +135,6 @@ export function GeneralPage({
       <PageSection title="Extras">
         <SwitchRow
           title="Sounds"
-          description="Short cues for finished turns, inbox items and updates."
           on={soundsEnabled}
           onChange={setSoundsEnabled}
         />
@@ -231,8 +230,7 @@ function LinearSettings() {
           <PageRow
             media={<InboxProviderMark provider="linear" className="size-4" />}
             title="API key"
-            // Connected, the title and Disconnect say it all.
-            description={connected ? undefined : "Create a personal key in Linear, under Settings, Security and access."}
+            // The title and the one control say it all; where to make a key is Connect…'s line.
             error={error}
           >
             {connected ? (

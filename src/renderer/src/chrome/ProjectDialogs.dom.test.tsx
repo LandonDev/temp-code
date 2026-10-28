@@ -204,6 +204,14 @@ describe('ProjectSettingsDialog as a sheet', () => {
   })
 })
 
+describe('ProjectSettingsDialog while the plans load', () => {
+  it('holds the Plans section in the shape of its five rows', () => {
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    const plans = [...screen.getByRole('dialog').querySelectorAll('h3')].find((h) => h.textContent === 'Plans')!.parentElement!
+    expect(plans.querySelectorAll('[data-slot=page-row-skeleton]')).toHaveLength(5)
+  })
+})
+
 describe('ProjectSettingsDialog when the project\'s plans fail to load', () => {
   it('says why with Retry instead of fields from the global set that would never save', async () => {
     projectPlansFail = true

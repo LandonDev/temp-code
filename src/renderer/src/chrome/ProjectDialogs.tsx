@@ -21,6 +21,7 @@ import { Spinner } from "@renderer/components/ui/spinner";
 import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
 import { Skeleton } from "@renderer/components/ui/skeleton";
+import { PageRowsSkeleton } from "@renderer/components/page";
 import { ChoiceSelect } from "../components/choice-select";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
@@ -674,7 +675,8 @@ function ProjectSettingsBody({
                     {linkButton("Retry", plansFailure.retry)}
                   </>
                 ) : (
-                  <Skeleton className="h-16 w-full rounded-lg" />
+                  // The five rows PlanSettingsFields draws, in their shape.
+                  <PageRowsSkeleton rows={5} />
                 )}
                 {plans ? linkButton("Use global setting", () => setPlans(null)) : null}
               </Section>

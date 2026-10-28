@@ -127,6 +127,15 @@ describe("General", () => {
     expect(screen.queryByText(/Create a personal key/)).toBeNull();
   });
 
+  it("says where to make a Linear key in its dialog only, and nothing under Sounds", async () => {
+    page();
+    await act(async () => {});
+    expect(screen.queryByText(/Create a personal key/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Connect…" }));
+    expect(await screen.findByText(/Create a personal key/)).toBeTruthy();
+    expect(screen.queryByText(/Short cues/)).toBeNull();
+  });
+
   it("lists the teams with a box each, hidden ones unchecked", async () => {
     linear.connected = true;
     linear.teams = [

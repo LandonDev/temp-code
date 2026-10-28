@@ -24,7 +24,6 @@ const AgentMarkdown = lazy(() =>
   import("../surfaces/AgentMarkdown").then((m) => ({ default: m.AgentMarkdown })),
 );
 
-const PLACEHOLDER = "The rules every new thread in this project starts with.";
 
 const words = (n: number) => `${n} word${n === 1 ? "" : "s"}`;
 
@@ -158,7 +157,6 @@ function PreambleForm({
               ref={textRef}
               value={text}
               spellCheck={false}
-              placeholder={PLACEHOLDER}
               onChange={(e) => setText(e.target.value)}
               className="h-64 resize-none field-sizing-fixed"
             />

@@ -95,7 +95,7 @@ export function RulesSkeleton({ workspaceId }: { workspaceId: string | null }) {
 const titlesFor = (workspaceId: string | null) =>
   workspaceId
     ? { conduct: "Orchestration", models: "Subagent models", routing: "Subagent routing" }
-    : { conduct: "Conduct", models: "Models", routing: "Routing" };
+    : { conduct: "Conduct", models: "Subagent models", routing: "Routing" };
 
 export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string | null }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
@@ -141,7 +141,7 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
       </Button>
     ) : null;
 
-  const switchRow = (title: string, description: string, key: "selfEdit" | "selfShell" | "verifyResults" | "escalate" | "useWorktrees") => (
+  const switchRow = (title: string, description: string | undefined, key: "selfEdit" | "selfShell" | "verifyResults" | "escalate" | "useWorktrees") => (
     <PageRow title={title} description={description}>
       <SettingSwitch label={title} on={rules.conduct[key]} onChange={(on) => patchConduct({ [key]: on } as Partial<OrchestrationRules["conduct"]>)} />
     </PageRow>
@@ -160,10 +160,10 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
         </PageRow>
         {switchRow("File edits", "Off removes its edit tools.", "selfEdit")}
         {switchRow("Shell commands", "Off removes its shell; agents gather context.", "selfShell")}
-        {switchRow("Result checks", "Check results before relaying them.", "verifyResults")}
+        {switchRow("Result checks", undefined, "verifyResults")}
         {switchRow("Escalation", "Rerun with a smarter model when a result misses.", "escalate")}
         {switchRow("Worktree isolation", "Writing agents get their own git worktree.", "useWorktrees")}
-        <PageRow title="Parallel agents" description="Running at once.">
+        <PageRow title="Parallel agents">
           <CapSelect
             label="Parallel agents"
             value={rules.conduct.maxParallel}
@@ -181,7 +181,7 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
         </PageRow>
       </PageSection>
 
-      <PageSection title={titles.models} description="Applies to subagents. A thread may run any model.">
+      <PageSection title={titles.models} description="A thread may run any model.">
         <Table>
           <TableHeader>
             <TableRow>

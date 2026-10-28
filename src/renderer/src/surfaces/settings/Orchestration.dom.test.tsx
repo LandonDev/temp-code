@@ -159,6 +159,15 @@ describe("Orchestration page", () => {
     expect(screen.getByText("Follows the global rules.")).toBeTruthy();
   });
 
+  it("names the models section for subagents once, and leaves obvious rows bare", () => {
+    render(<OrchestrationPage />);
+    const models = screen.getByRole("region", { name: "Subagent models" });
+    expect(models.textContent).toContain("A thread may run any model.");
+    expect(models.textContent).not.toContain("Applies to subagents");
+    expect(screen.queryByText("Running at once.")).toBeNull();
+    expect(screen.queryByText("Check results before relaying them.")).toBeNull();
+  });
+
   it("lists the models in one table with a group row per provider", () => {
     render(<OrchestrationPage />);
     const table = screen.getByRole("table");
