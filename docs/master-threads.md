@@ -373,12 +373,16 @@ stops the Mac's publish job; a gate or release step runs to its end.
 Each step carries its telemetry on the wire (`BatchStep`): its spec's
 `id`, `name` and `kind`, `status`
 pending | running | passed | failed | skipped, `detail` (one line; a red
-gate or release step's is the failing step and its first error line,
-`gateFailureDetail` in src/shared/gate.ts: "vitest: FAIL src/x.test.ts >
-name", "typecheck: src/x.ts(12,3): error TS2322 …", with no duration, and
-the gate notice row carries the same words as `GateNotice.detail`; the
+gate or release step's is the step the gate names as failing and its
+first error line, less a test runner's own mark and a test's time,
+`gateFailureDetail` in src/shared/gate.ts: "vitest: src/x.test.ts >
+name", or the line alone when nothing finer than the row's
+own step failed: 'error: Module not found "scripts/gate.ts"' on a Gate
+row, "src/x.ts(12,3): error TS2322 …" on a Typecheck one; with no duration,
+and the gate notice row carries the same words as `GateNotice.detail`; the
 runner keeps the first error line past its 40-line tail; `fail()` never
-overwrites a detail a step already set),
+overwrites a detail a step already set; the foot opens no console for a
+failed step whose log only repeats its detail),
 `startedAt`, `endedAt`, `progress { done, total, label? }` (land: branches
 merged of total; gate: the tier's steps done of total with the running
 one as label, read from gate.ts's own `gate: … N steps`, `› step` and

@@ -9,7 +9,7 @@ import { ChevronDown, Square } from "../../../chrome/icons";
 import { cn } from "../../../lib/cn";
 import { useNow } from "../../../lib/duration";
 import { RulesDialog } from "./RulesDialog";
-import { consoleStep, liveSteps, nearBottom, stepDetail, stepState, stepTime, consoleLines, type LiveStep } from "./steps";
+import { consoleStep, liveSteps, nearBottom, stepDetail, stepState, stepTime, consoleLines, hasConsole, type LiveStep } from "./steps";
 import { blockedLine, type Rules } from "./useMasterModel";
 
 /**
@@ -189,7 +189,7 @@ function StepRow({
             <Square className="size-3" />
             Stop
           </Button>
-        ) : failed ? (
+        ) : failed && hasConsole(step) ? (
           <Button variant="ghost" size="xs" onClick={() => onFold(open)} aria-expanded={open}>
             {open ? "Hide" : "Show"}
             <ChevronDown className={cn("size-3 transition-transform duration-(--dur-fast)", open && "rotate-180")} />
@@ -207,7 +207,6 @@ function StepRow({
  *  person has not scrolled up. A failed step's failure is its row's detail,
  *  never repeated here. */
 function Console({ step }: { step: LiveStep }) {
-  const failed = step.status === "failed";
   const lines = consoleLines(step, LOG_LINES);
   const logRef = useRef<HTMLPreElement>(null);
   const follow = useRef(true);
@@ -230,7 +229,7 @@ function Console({ step }: { step: LiveStep }) {
       data-log
       className="mb-1 ml-[22px] max-h-44 min-h-15 overflow-y-auto rounded-lg bg-card px-3 py-2 font-mono text-xs leading-[1.5] whitespace-pre-wrap text-muted-foreground"
     >
-      {lines.length > 0 ? lines.join("\n") : failed ? "No output" : "Starting…"}
+      {lines.length > 0 ? lines.join("\n") : "Starting…"}
     </pre>
   );
 }

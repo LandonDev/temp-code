@@ -581,7 +581,7 @@ describe('Batches: the end of the batch', () => {
     b.landed(w.landed('a'))
     await b.review('m')
     // The step's detail is the failing step and its first error line, no duration; the master gets the long sentence.
-    expect(steps(b.get('m')).gate).toEqual(['failed', 'vitest: FAIL x.test.ts'])
+    expect(steps(b.get('m')).gate).toEqual(['failed', 'vitest: x.test.ts'])
     expect(w.reports[0].text).toContain("The batch's gate FAILED at vitest in 1m 12s; nothing was tagged.")
     expect(steps(b.get('m')).release).toEqual(['pending', ''])
     expect(w.reports.map((r) => r.status)).toEqual(['failed'])
@@ -623,7 +623,7 @@ describe('Batches: the end of the batch', () => {
     w.set('b', { status: 'idle' })
     b.landed(w.landed('a'))
     await b.review('m')
-    const detail = 'vitest: FAIL  src/x.test.ts > suite > name'
+    const detail = 'vitest: src/x.test.ts > suite > name'
     expect(steps(b.get('m')).gate).toEqual(['failed', detail])
     const notice = w.rows['m'].find((e) => e.type === 'notice' && e.kind === 'gate')
     expect(notice).toMatchObject({ message: 'Gate failed on master, at vitest', gate: { ok: false, detail } })
@@ -1066,7 +1066,7 @@ describe('Batches: batch_gate', () => {
     w.setOutcome((o) => (o.step === 'gate' ? { ok: false, log: '✓ typecheck 12s passed\n✗ vitest 40s failed\nFAIL x.test.ts' } : {}))
     const answer = await b.gate(w.sessions.get('m')!)
     expect(answer).toMatch(/^FAILED at vitest in 1m 12s; nothing was tagged\./)
-    expect(steps(b.get('m')).gate).toEqual(['failed', 'vitest: FAIL x.test.ts'])
+    expect(steps(b.get('m')).gate).toEqual(['failed', 'vitest: x.test.ts'])
     expect(w.runs.map((r) => r.step)).toEqual(['gate'])
     w.setOutcome(() => ({}))
     expect(await b.gate(w.sessions.get('m')!, { release: false })).toBe('passed in 1m 12s. Release left for later (release: false).')

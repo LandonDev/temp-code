@@ -108,18 +108,24 @@ describe('gate lines', () => {
       'gate failed: vitest in 1m 12s'
     ].join('\n')
     // The step's printed tail wins over the runner's first error line.
-    expect(gateFailureDetail('gate', gateLog, 'src/early.ts(1,1): error TS1 early')).toBe('vitest: FAIL  src/x.test.ts > suite > name')
+    expect(gateFailureDetail('gate', gateLog, 'src/early.ts(1,1): error TS1 early')).toBe('vitest: src/x.test.ts > suite > name')
     // No printed tail: the log's first error line; the gate's own ✗ line is never it.
-    expect(gateFailureDetail('gate', '✗ vitest 40s failed\nFAIL x.test.ts', null)).toBe('vitest: FAIL x.test.ts')
+    expect(gateFailureDetail('gate', '✗ vitest 40s failed\nFAIL x.test.ts', null)).toBe('vitest: x.test.ts')
     // The step from the final line, the error from the runner.
     expect(gateFailureDetail('gate', 'gate failed: build in 2m', 'error: Module not found "x"')).toBe('build: error: Module not found "x"')
-    // Nothing named: the kind and the last line.
-    expect(gateFailureDetail('gate', 'something odd\n', null)).toBe('gate: something odd')
-    expect(gateFailureDetail('typecheck', 'x\nFound 2 errors.', 'src/a.ts(1,1): error TS2322: no')).toBe('typecheck: src/a.ts(1,1): error TS2322: no')
-    expect(gateFailureDetail('release', '\x1b[31mfatal: not a git repository\x1b[0m', null)).toBe('release: fatal: not a git repository')
-    expect(gateFailureDetail('release', '', null)).toBe('release failed')
+    // Nothing finer than the row's own step failed: the line alone, never
+    // the row's name again ("Gate  gate: …", "Release  release: …").
+    expect(gateFailureDetail('gate', 'something odd\n', null)).toBe('something odd')
+    const missing = 'error: Module not found "scripts/gate.ts"'
+    expect(gateFailureDetail('gate', missing, missing)).toBe(missing)
+    expect(gateFailureDetail('typecheck', 'x\nFound 2 errors.', 'src/a.ts(1,1): error TS2322: no')).toBe('src/a.ts(1,1): error TS2322: no')
+    expect(gateFailureDetail('release', '\x1b[31mfatal: not a git repository\x1b[0m', null)).toBe('fatal: not a git repository')
+    expect(gateFailureDetail('release', '', null)).toBe('failed')
+    expect(gateFailureDetail('gate', '✗ vitest 40s failed', null)).toBe('vitest failed')
+    // The runner's own mark and a test's time are the row's glyph and time column.
+    expect(gateFailureDetail('gate', '✗ vitest 40s failed\n  × suite > rounds the total 12ms', null)).toBe('vitest: suite > rounds the total')
     const long = gateFailureDetail('typecheck', '', 'e'.repeat(400))
-    expect(long.length).toBe('typecheck: '.length + 160)
+    expect(long.length).toBe(160)
     expect(long.endsWith('…')).toBe(true)
     expect(isErrorLine('✗ vitest 40s failed')).toBe(false)
     expect(isErrorLine('AssertionError: x')).toBe(true)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BatchState, BatchStep, BatchStepSpec } from "@server/shared/contract-batch";
-import { consoleLines, consoleStep, liveStep, liveSteps, nearBottom, progressText, specOf, stepDetail, stepState, stepTime, tailLines, type LiveStep } from "./steps";
+import { consoleLines, consoleStep, hasConsole, liveStep, liveSteps, nearBottom, progressText, specOf, stepDetail, stepState, stepTime, tailLines, type LiveStep } from "./steps";
 
 const batch = { landed: ["a"], pending: ["b", "c"] };
 const live = (over: Partial<LiveStep>): LiveStep => ({ id: "gate", name: "Gate", kind: "gate", status: "pending", detail: "", log: [], ...over });
@@ -77,6 +77,20 @@ describe("a step as the foot reads it", () => {
     expect(stepDetail(live({ status: "pending", kind: "shell", run: "bun run smoke" }), rules).text).toBe("");
   });
 
+  it("a settled step's detail leaves its time to the time column, and a bare passed to the glyph", () => {
+    const rules = { land: "as-they-finish" } as const;
+    const settled = (over: Partial<LiveStep>) => stepDetail(live({ startedAt: 1, endedAt: 2, ...over }), rules).text;
+    expect(settled({ status: "passed", detail: "passed in 0s" })).toBe("");
+    expect(settled({ id: "smoke", kind: "shell", status: "passed", detail: "passed in 4m 12s" })).toBe("");
+    expect(settled({ id: "publish", kind: "publish", status: "passed", detail: "v1.0.312 published in 4m12s" })).toBe("v1.0.312 published");
+    expect(settled({ id: "deploy", kind: "deploy", status: "passed", detail: "master deployed in 1h02m" })).toBe("master deployed");
+    expect(settled({ id: "smoke", kind: "shell", status: "failed", detail: "exit 1 after 3s, Error: no route" })).toBe("exit 1, Error: no route");
+    expect(settled({ id: "smoke", kind: "shell", status: "failed", detail: "stopped after 12s" })).toBe("stopped");
+    expect(settled({ id: "release", kind: "release", status: "passed", detail: "release-278 tagged" })).toBe("release-278 tagged");
+    // No time column without both ends: the detail keeps its time.
+    expect(stepDetail(live({ status: "passed", detail: "passed in 0s" }), rules).text).toBe("passed in 0s");
+  });
+
   it("a failed step's detail starts lower-case and loses its full stop; an acronym keeps its case", () => {
     const rules = { land: "as-they-finish" } as const;
     expect(stepDetail(live({ status: "failed", detail: "The gate failed at vitest." }), rules).text).toBe("the gate failed at vitest");
@@ -98,11 +112,21 @@ describe("a failed step's console", () => {
 
 describe("the console", () => {
   it("shows the running step, else a failed one until it is folded, else nothing", () => {
-    const steps = [live({ id: "land", status: "passed" }), live({ id: "gate", status: "failed" }), live({ id: "release", status: "pending" })];
+    const gate = live({ id: "gate", status: "failed", detail: "vitest: x.test.ts", log: ["✗ vitest 40s failed", "FAIL x.test.ts"] });
+    const steps = [live({ id: "land", status: "passed" }), gate, live({ id: "release", status: "pending" })];
     expect(consoleStep(steps, new Set())?.id).toBe("gate");
     expect(consoleStep(steps, new Set(["gate"]))).toBeNull();
     expect(consoleStep([live({ id: "land", status: "running" }), ...steps], new Set())?.id).toBe("land");
     expect(consoleStep([live({ id: "land", status: "passed" })], new Set())).toBeNull();
+  });
+
+  it("opens no console for a failed step whose log only repeats its row, or has no lines", () => {
+    const missing = 'error: Module not found "scripts/gate.ts"';
+    const said = live({ id: "gate", status: "failed", detail: missing, log: [missing] });
+    expect(hasConsole(said)).toBe(false);
+    expect(consoleStep([said], new Set())).toBeNull();
+    expect(hasConsole(live({ id: "gate", status: "failed", detail: "failed", log: [] }))).toBe(false);
+    expect(hasConsole(live({ id: "gate", status: "failed", detail: missing, log: ["$ bun scripts/gate.ts", missing] }))).toBe(true);
   });
 
   it("keeps the last 200 lines and follows only while the scroller sits at its bottom", () => {

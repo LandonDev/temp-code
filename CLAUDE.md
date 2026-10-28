@@ -2434,10 +2434,13 @@ this is the short one.
   and so does one idle on a turn that ended in a failure (its row's
   `failure`, a usage cap; `blocked.why` `failed`; a paused child `paused`, one idle on a turn it never completed `no-turn`, or `interrupted` ("was stopped") when a person's Stop ended that turn, `Store.lastTurnStopped`), `blocked` names it and
   the master is told once as a `<batch-report>`. A red gate or release
-  step's `detail` is the failing step and its first error line
+  step's `detail` is the step the gate names as failing and its first
+  error line, or that line alone when nothing finer than the row's own
+  step failed, so the row's name is never said twice
   (`gateFailureDetail`, src/shared/gate.ts; the runner keeps the first
   error line past its tail), no duration, and the gate notice carries the
-  same words as `GateNotice.detail`. `describeTool` (sessions.ts) words
+  same words as `GateNotice.detail`; a failed step whose log only repeats
+  its detail opens no console (`hasConsole`, master/steps.ts). `describeTool` (sessions.ts) words
   every tool the strip can meet, the CLI's task tools, the app's and the
   orchestrator's included; an unknown name is humanized, never printed raw.
   Steps run in order on the host's `GateQueue`, a gate or release outcome a

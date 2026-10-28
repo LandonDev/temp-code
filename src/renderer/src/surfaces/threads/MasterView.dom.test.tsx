@@ -1116,6 +1116,34 @@ describe("the master view", () => {
     expect(foot.getAttribute("data-foot-mode")).toBe("console");
   });
 
+  it("a failed step whose log is only its detail says it once, on its row, with no console and no Show", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    renderView();
+    await flush();
+    const t = batch.steps[1].startedAt!;
+    const missing = 'error: Module not found "scripts/gate.ts"';
+    act(() => {
+      link.push({
+        push: "batch",
+        state: {
+          ...batch,
+          steps: [
+            { id: "land", status: "passed", detail: "nothing landed", at: 1, startedAt: t, endedAt: t },
+            { id: "gate", status: "failed", detail: missing, at: 3, startedAt: t, endedAt: t, log: [missing] },
+            { id: "release", status: "pending", detail: "", at: null, log: [] },
+          ],
+        },
+      } as unknown as ServerPush);
+    });
+    const foot = document.querySelector("[data-batch-foot]")!;
+    const gate = foot.querySelector("[data-step='gate']") as HTMLElement;
+    expect(gate.querySelector("[data-step-detail]")?.textContent).toBe(missing);
+    expect(foot.getAttribute("data-foot-mode")).toBe("idle");
+    expect(foot.querySelector("[data-console]")).toBeNull();
+    expect(within(gate).queryByRole("button", { name: /Show|Hide/ })).toBeNull();
+    expect((foot.textContent ?? "").split(missing)).toHaveLength(2);
+  });
+
   it("Edit opens the rules: the steps reorder, a built-in and a shell step are added, one is removed, and Save writes the list", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     renderView();

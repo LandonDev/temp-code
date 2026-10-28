@@ -152,16 +152,32 @@ export function stepState(status: StepStatus): ThreadState {
   }
 }
 
+/** A duration as the host writes one: "0s", "4m 12s", "4m12s", "1h02m". */
+const DURATION = String.raw`\d+(?:ms|h|m|s)(?: ?\d+(?:ms|h|m|s))*`;
+/** "… in 4m 12s" or "… after 3s", closing a detail or its first clause. */
+const TIME_PHRASE = new RegExp(String.raw` (?:in|after) ${DURATION}(?=,|$)`);
+
+/** A settled step's detail less its time, which the row's time column
+ *  says: the host writes it for the batch's notice ("passed in 4m 12s",
+ *  "v1.0.312 published in 4m12s", "exit 1 after 3s, …"). A bare "passed"
+ *  is the glyph's word, so it goes too. */
+function untimed(step: Pick<LiveStep, "status" | "detail" | "startedAt" | "endedAt">): string {
+  const detail = step.detail.trim();
+  if (step.status === "running" || step.startedAt === undefined || step.endedAt === undefined) return detail;
+  const out = detail.replace(TIME_PHRASE, "");
+  return out === "passed" ? "" : out;
+}
+
 /** What a step's row says after its name: the land step how branches
  *  land until it runs, then how many landed; a running step its progress;
  *  a skipped one the host's reason, else "skipped"; otherwise the host's
- *  detail. A shell step's command is never the row's: its console opens
- *  with `$ <run>`. */
-export function stepDetail(step: Pick<LiveStep, "kind" | "status" | "detail" | "progress">, rules: Pick<BatchRules, "land">): { text: string; label: string | null } {
+ *  detail, less a time the row's time column says. A shell step's command
+ *  is never the row's: its console opens with `$ <run>`. */
+export function stepDetail(step: Pick<LiveStep, "kind" | "status" | "detail" | "progress" | "startedAt" | "endedAt">, rules: Pick<BatchRules, "land">): { text: string; label: string | null } {
   const plain = (text: string) => ({ text, label: null });
   // A failure is said once, on its row, as the vocabulary writes a detail;
   // ahead of a land step's progress, which would hide it.
-  if (step.status === "failed") return plain(lowerFirst(step.detail) ?? "");
+  if (step.status === "failed") return plain(lowerFirst(untimed(step)) ?? "");
   if (step.kind === "land") {
     if (step.status === "pending") return plain(rules.land === "all-at-once" ? "all at once" : "as they finish");
     if (step.progress && step.progress.total > 0) return plain(`${step.progress.done} of ${step.progress.total} landed`);
@@ -171,7 +187,7 @@ export function stepDetail(step: Pick<LiveStep, "kind" | "status" | "detail" | "
     const progress = progressText(step.progress);
     if (progress) return { text: progress.count, label: progress.label };
   }
-  return plain(step.detail.trim());
+  return plain(untimed(step));
 }
 
 /** A failed step's console: its log, less a last line that only repeats
@@ -184,10 +200,18 @@ export function consoleLines(step: Pick<LiveStep, "status" | "detail" | "log">, 
   return lines;
 }
 
-/** The step the console shows: the running one, else a failed one (it
- *  stays open until folded); null when the foot is idle. */
+/** A failed step's log says more than its row: a script that never ran
+ *  ("error: Module not found …") is said once, on the row, with no console
+ *  and no Show under it. */
+export function hasConsole(step: Pick<LiveStep, "status" | "detail" | "log">): boolean {
+  return consoleLines(step).length > 0;
+}
+
+/** The step the console shows: the running one, else a failed one with
+ *  more to show than its row (it stays open until folded); null when the
+ *  foot is idle. */
 export function consoleStep(steps: readonly LiveStep[], folded: ReadonlySet<string>): LiveStep | null {
-  return steps.find((s) => s.status === "running") ?? steps.find((s) => s.status === "failed" && !folded.has(s.id)) ?? null;
+  return steps.find((s) => s.status === "running") ?? steps.find((s) => s.status === "failed" && !folded.has(s.id) && hasConsole(s)) ?? null;
 }
 
 /** The last `limit` console lines, oldest first. */

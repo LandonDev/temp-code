@@ -913,9 +913,12 @@ in the whole pane, with Back.
   it is about (`stepDetail`: the land step "as they finish" or "all at
   once" until it runs, then "2 of 5 landed"; a running step "12 of 31"
   and the host's label apart by margin; "skipped" or the host's reason; a
-  failed step's detail in red), its time (`tabular-nums`, ticking every
+  failed step's detail in red; a settled step's detail without the time
+  its time column says, and nothing for a bare "passed", which the glyph
+  says), its time (`tabular-nums`, ticking every
   second from `startedAt` while it runs), and Stop on the running step
-  (`batch.stopStep` with the step's id), Hide and Show on a failed one.
+  (`batch.stopStep` with the step's id), Hide and Show on a failed one
+  whose log says more than its row.
   The running step's console opens under its own row through
   `Collapsible` (the standard's fold, opacity under reduced motion),
   indented to the name: 12px mono on `card`, 60px to 176px tall, newest
@@ -925,7 +928,8 @@ in the whole pane, with Back.
   host writes it). A failed step's console stays open with its last lines
   until Hide; the failure is said once, red on its row, lower-case without
   a stop (`stepDetail`), and the console drops a last line that only
-  repeats it (`consoleLines`). No progress bar: the row's detail
+  repeats it (`consoleLines`); a log that is only that line opens no
+  console (`hasConsole`). No progress bar: the row's detail
   says the count. The last line says what happens then: "Then notify you"
   or "Then archive the threads". Until `batch.board` answers the foot is
   a `Skeleton` of the heading and three rows. Read from the `batch.board`
