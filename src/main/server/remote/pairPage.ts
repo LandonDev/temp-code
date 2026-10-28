@@ -39,7 +39,7 @@ export const PAIR_TOKENS = {
     primary: 'oklch(0.2 0 0)',
     'primary-foreground': 'oklch(0.99 0 0)',
     accent: 'hsl(211 92% 48%)',
-    destructive: '#dc2626'
+    destructive: '#c81e1e'
   },
   shared: {
     'dur-fast': '120ms',

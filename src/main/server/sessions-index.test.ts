@@ -111,7 +111,7 @@ it('the running cap counts from the index: queued roots and subagents, passes, s
   // This file's driver never reports running: a started thread reads starting.
   expect(ids.map((id) => store.getSession(id)?.status)).toEqual(['starting', 'queued', 'queued', 'queued'])
   expect(registry.scheduler.counts()).toEqual({ running: 2, queued: 3 })
-  expect(registry.get(ids[3]!)?.activity).toBe('Queued · 2 of 2 running')
+  expect(registry.get(ids[3]!)?.activity).toBe('Queued  2 of 2 running')
   // A settle frees a slot: the idle harness is put down and the oldest waiting thread starts.
   registry.append(ids[0]!, { type: 'status', status: 'idle' })
   await registry.scheduler.tick()

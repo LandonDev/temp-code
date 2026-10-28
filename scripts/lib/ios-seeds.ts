@@ -14,6 +14,7 @@ import type { BatchRules } from '../../src/shared/contract-batch'
 import type { HostDevicesReport } from '../../src/shared/contract-hostdevices'
 import type { BuildFacts } from '../../src/shared/deployDrift'
 import { emptyNotes } from '../../src/shared/notes'
+import { TURN_ENDED_SUMMARY } from '../../src/shared/failureFallback'
 import { freshRow, type StoredBatch } from '../../src/main/server/batch'
 import type { HolderRow, MacDevicesDeps } from '../../src/main/server/devices/hostDevices'
 
@@ -136,6 +137,7 @@ const FAILURE_LINES: Record<FailureKind, [summary: string, cause: string]> = {
   model_unavailable: ['claude-fable-5-1 is not available here', 'the model is orchestrators-only on this host'],
   network: ['api.anthropic.com could not be reached', 'the socket closed before the first byte'],
   harness_crashed: ['The harness exited mid-turn', 'claude exited with code 137'],
+  turn_ended: [TURN_ENDED_SUMMARY, 'the CLI reached its turn limit'],
   unknown: ['The turn failed', 'the harness gave no reason']
 }
 
@@ -143,7 +145,7 @@ const FAILURE_LINES: Record<FailureKind, [summary: string, cause: string]> = {
 export function failureRows(): AgentEvent[] {
   return FailureKindSchema.options.map((kind): AgentEvent => {
     const [summary, cause] = FAILURE_LINES[kind]
-    const account = kind === 'unknown' || kind === 'network' || kind === 'harness_crashed' ? null : 'work@example.com'
+    const account = kind === 'unknown' || kind === 'network' || kind === 'harness_crashed' || kind === 'turn_ended' ? null : 'work@example.com'
     return {
       type: 'error',
       message: `${summary}: ${cause}`,

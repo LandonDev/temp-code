@@ -547,12 +547,15 @@ describe('get_session, list_pending, respond', () => {
 
 describe('stop, archive', () => {
   it('stops a working thread and archives it out of the list', async () => {
+    // create() boots the harness eagerly, so the Stop lands while it boots:
+    // the host puts the handle down when it lands and writes the stopped
+    // row and idle (sessions.ts stopBooting), never running the turn.
     const t = await thread('stoppable', 'running')
-    expect(await stopSession(ctx(), { session: t.id })).toMatchObject({
-      ok: true,
-      status: 'done',
-      state: 'idle'
-    })
+    expect(await stopSession(ctx(), { session: t.id })).toMatchObject({ ok: true, session: t.id })
+    await vi.waitFor(() => expect(server.registry.get(t.id)?.status).toBe('idle'))
+    expect(await getSession(ctx(), { session: t.id })).toMatchObject({ status: 'done', state: 'idle' })
+    const last = server.registry.events(t.id, { tail: 20 }).filter((r) => r.event.type === 'error').at(-1)
+    expect(last?.event).toMatchObject({ message: 'turn ended: interrupted', stopped: true })
     expect(await archiveSession(ctx(), { session: t.id })).toEqual({
       ok: true,
       session: t.id,

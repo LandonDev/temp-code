@@ -14,7 +14,7 @@ vi.mock("../chrome/MacBridgeCards", () => ({ MacBridgeThreadCards: () => null })
 vi.mock("../lib/macBridge", () => ({ useMacBridgeRequests: () => [] }));
 vi.mock("../chrome/AppshotFlyIn", () => ({ AppshotFlyIn: () => null }));
 vi.mock("../lib/appshots", () => ({ noteActiveSession: () => {} }));
-vi.mock("../chrome/MessageQueue", () => ({ MessageQueue: () => null }));
+vi.mock("../chrome/MessageQueue", () => ({ MessageQueue: () => null, visibleQueue: (items: unknown[]) => items }));
 vi.mock("../chrome/SessionReview", () => ({ SessionReview: () => null }));
 vi.mock("../lib/recents", () => ({ looksLikeProject: () => true }));
 vi.mock("./AgentTranscript", () => ({ AgentTranscript: () => null }));
