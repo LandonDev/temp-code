@@ -174,6 +174,20 @@ describe("toolPhrase", () => {
       toolPhrase({ ...call("Bash", { command: "npm test" }), approval: { requestId: 1 } }),
     ).toBe("Running the tests");
   });
+
+  it("a refused call never ran, so it keeps the plain verb", () => {
+    const deny = { requestId: 1, decided: "deny" as const };
+    expect(
+      toolPhrase({ ...call("Bash", { command: "touch x.txt", description: "Create empty file x.txt" }, { status: "failed" }), approval: deny }),
+    ).toBe("Create empty file x.txt");
+    expect(toolPhrase({ ...call("Bash", { command: "npm test" }, { status: "failed" }), approval: deny })).toBe("Run the tests");
+    expect(toolPhrase({ ...call("Write", { file_path: "notes.txt", content: "hi" }, { status: "failed" }), approval: deny })).toBe("Create notes.txt");
+    expect(toolPhrase({ ...call("Edit", { file_path: "a.ts" }, { status: "failed" }), approval: deny })).toBe("Edit a.ts");
+    // Allowed, it ran: the settled verb.
+    expect(
+      toolPhrase({ ...call("Bash", { command: "touch x.txt", description: "Create empty file x.txt" }), approval: { requestId: 1, decided: "allow" } }),
+    ).toBe("Created empty file x.txt");
+  });
 });
 
 describe("toolPhraseParts", () => {

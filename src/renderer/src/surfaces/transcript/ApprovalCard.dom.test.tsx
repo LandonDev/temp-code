@@ -42,7 +42,7 @@ describe("ApprovalCard", () => {
     for (const [decided, auto, line] of [
       ["allow", false, "Allowed"],
       ["deny", false, "Denied"],
-      ["deny", true, "Denied, timed out"],
+      ["deny", true, "Denied automatically"],
     ] as const) {
       const { container, unmount } = render(<ApprovalCard block={approval("Bash", { command: "ls" }, decided, auto)} />);
       expect(container.textContent).toBe(line);

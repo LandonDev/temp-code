@@ -4,10 +4,11 @@ import { StatusMark } from "../../components/ui/status";
 import type { ApprovalDecision } from "../../lib/harness";
 import { type Block } from "../../lib/session";
 
-/** The decided approval's one line. */
+/** The decided approval's one line. An automatic denial is a timeout or a
+ *  person's Stop, and the event does not say which, so the line says neither. */
 export function decidedLine(approval: NonNullable<Block["approval"]>): string {
   if (approval.decided === "allow") return "Allowed";
-  return approval.auto ? "Denied, timed out" : "Denied";
+  return approval.auto ? "Denied automatically" : "Denied";
 }
 
 /**

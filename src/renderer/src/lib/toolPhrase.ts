@@ -160,6 +160,36 @@ function commandOf(block: Block): string {
 }
 
 /** Still running, streaming or waiting on a decision. */
+/** A call the person (or the host for them) denied: it never ran, so its words keep the plain verb. */
+export function isRefused(block: Block): boolean {
+  return block.approval?.decided === "deny";
+}
+
+/** The settled verbs a refused call takes back to their plain form: "Created" → "Create". */
+const PLAIN: Record<string, string> = {
+  ran: "run",
+  read: "read",
+  wrote: "write",
+  created: "create",
+  edited: "edit",
+  deleted: "delete",
+  searched: "search",
+  listed: "list",
+  fetched: "fetch",
+  updated: "update",
+  asked: "ask",
+  used: "use",
+};
+
+/** The phrase's first word in its plain form, its capital kept. */
+function plainForm(verb: string): string {
+  const [first, ...rest] = verb.split(" ");
+  const plain = PLAIN[first.toLowerCase()];
+  if (!plain) return verb;
+  const head = first.charAt(0) === first.charAt(0).toUpperCase() ? cap(plain) : plain;
+  return [head, ...rest].join(" ");
+}
+
 export function isLive(block: Block): boolean {
   const status = block.tool?.status?.toLowerCase() ?? "";
   return (
@@ -492,22 +522,25 @@ function foldedTitle(block: Block): RegExpExecArray | null {
  * joins the first two; the group line (lib/groupPhrase.ts) keeps the first.
  */
 export function runClauses(block: Block, cwd?: string, live = isLive(block)): string[] {
+  // A refused command never ran: its clauses keep the plain verb ("Create empty file x.txt").
+  const form = (p: string): string => (!live && isRefused(block) ? p : tense(p, live));
   const desc = str(inputOf(block).description).trim();
-  if (desc) return [cap(tense(trim(desc.charAt(0).toLowerCase() + desc.slice(1), 60), live))];
+  if (desc) return [cap(form(trim(desc.charAt(0).toLowerCase() + desc.slice(1), 60)))];
   const m = foldedTitle(block);
-  if (m) return [`${cap(tense(m[1] === "Find" ? "search for" : m[1].toLowerCase(), live))} ${m[2]}`];
-  return commandPhrases(commandOf(block), cwd).map((p, i) => (i === 0 ? cap(tense(p, live)) : tense(p, live)));
+  if (m) return [`${cap(form(m[1] === "Find" ? "search for" : m[1].toLowerCase()))} ${m[2]}`];
+  return commandPhrases(commandOf(block), cwd).map((p, i) => (i === 0 ? cap(form(p)) : form(p)));
 }
 
 /** The run row's words: a description or the command's gist, split at the verb. */
 function runParts(block: Block, cwd: string | undefined, live: boolean): PhraseParts {
+  const refused = !live && isRefused(block);
   const m = foldedTitle(block);
   if (m) {
     const verb = m[1] === "Find" ? "search for" : m[1].toLowerCase();
-    return { verb: cap(tense(verb, live)), object: m[2] };
+    return { verb: cap(refused ? verb : tense(verb, live)), object: m[2] };
   }
   const clauses = runClauses(block, cwd, live);
-  if (clauses.length === 0) return { verb: live ? "Running" : "Ran", object: "a command" };
+  if (clauses.length === 0) return { verb: live ? "Running" : refused ? "Run" : "Ran", object: "a command" };
   const extra = clauses.length - 2;
   return splitVerb(clauses.slice(0, 2).join(", ") + (extra > 0 ? ` and ${extra} more` : ""));
 }
@@ -564,6 +597,12 @@ export interface PhraseParts {
  * be said.
  */
 export function toolPhraseParts(block: Block, cwd?: string, live = isLive(block)): PhraseParts {
+  const parts = settledParts(block, cwd, live);
+  // A refused call never ran: "Create notes.txt", not "Created notes.txt" (a run's clauses are already plain).
+  return !live && isRefused(block) && kindOf(block) !== "run" ? { ...parts, verb: plainForm(parts.verb) } : parts;
+}
+
+function settledParts(block: Block, cwd: string | undefined, live: boolean): PhraseParts {
   const name = block.tool?.name ?? "";
   const kind = kindOf(block);
   const deleting = block.tool?.kind?.trim().toLowerCase() === "delete";
