@@ -26,7 +26,7 @@ const labelOf = (container: HTMLElement, text: string) =>
 const hover = (el: HTMLElement) => {
   fireEvent.pointerEnter(el);
   fireEvent.mouseEnter(el);
-  fireEvent.focus(el);
+  fireEvent.mouseMove(el);
 };
 const tipText = () => document.querySelector('[data-slot="tooltip-content"]')?.textContent ?? null;
 

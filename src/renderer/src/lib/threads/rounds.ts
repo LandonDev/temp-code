@@ -27,13 +27,18 @@ export function activeMs(list: Block[], liveNow?: number): number {
   return total;
 }
 
+/** The task a block was born under, as groupByTodo files it. */
+export function todoKey(b: Block, todoCount: number): number {
+  const todo = b.todo ?? -1;
+  return todoCount === 0 || todo < 0 ? -1 : Math.min(todo, todoCount - 1);
+}
+
 /** File blocks under the task in progress at their birth; -1 = before the
  *  round's first list. Indices past a shrunken list clamp to the last. */
 export function groupByTodo(list: Block[], todoCount: number): Map<number, Block[]> {
   const m = new Map<number, Block[]>();
   for (const b of list) {
-    const todo = b.todo ?? -1;
-    const k = todoCount === 0 ? -1 : todo < 0 ? -1 : Math.min(todo, todoCount - 1);
+    const k = todoKey(b, todoCount);
     const arr = m.get(k);
     if (arr) arr.push(b);
     else m.set(k, [b]);

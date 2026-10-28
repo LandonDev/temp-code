@@ -116,7 +116,7 @@ describe("the implementation board", () => {
     view(
       session({
         status: "running",
-        blocks: [first, run("a", 0, 0, 12_000), run("b", 1, 13_000)],
+        blocks: [first, run("a", 0, 0, 12_000), run("b", 1, 12_000)],
         todos: [todo("Read the brief", "completed"), todo(long, "in_progress")],
       }),
     );

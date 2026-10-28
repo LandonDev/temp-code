@@ -8,11 +8,11 @@ import {
   foldRounds,
   isHiddenPass,
   lastFailure,
-  liveFrom,
   needsYou,
   passCost,
   passNumbers,
   passRecord,
+  taskTimes,
   tasksOf,
 } from "./implementationBoard";
 
@@ -74,7 +74,7 @@ describe("tasksOf", () => {
   it("gives a done task the time its blocks worked", () => {
     const blocks = [run("a", 0, 1_000, 4_000), say("b", 0, 9_000), run("c", 1, 10_000, 11_000)];
     const tasks = tasksOf([todo("a", "completed"), todo("b", "completed")], 0, true, blocks);
-    expect(tasks[0].time).toEqual({ ms: 8_000 });
+    expect(tasks[0].time).toEqual({ ms: 9_000 });
     expect(tasks[1].time).toEqual({ ms: 1_000 });
   });
 
@@ -83,9 +83,25 @@ describe("tasksOf", () => {
     const tasks = tasksOf([todo("a", "completed"), todo("b", "in_progress")], 0, true, blocks);
     const time = tasks[1].time!;
     expect(time.from).toBe(6_000);
-    expect(liveFrom(blocks.slice(1))).toBe(6_000);
     const now = 20_000;
     expect(time.ms + (now - time.from!)).toBe(activeMs(blocks.slice(1), now));
+  });
+
+  it("keeps a finished task the time it showed, though the call that starts the next is the next task's", () => {
+    const before = [run("a", 0, 0, 1_000), say("b", 0, 2_000)];
+    const live = tasksOf([todo("a", "in_progress"), todo("b", "pending")], 0, true, before)[0].time!;
+    const at = 9_000;
+    const shown = live.ms + (at - live.from!);
+    const after = [...before, run("todo", 1, at, at + 10)];
+    const tasks = tasksOf([todo("a", "completed"), todo("b", "in_progress")], 0, true, after);
+    expect(tasks[0].time).toEqual({ ms: shown });
+    expect(tasks[1].time).toEqual({ ms: 10, from: at + 10 });
+  });
+
+  it("splits the pass's worked time over its tasks without losing or doubling any", () => {
+    const blocks = [user("u", 0, "go", { ts: 0 }), say("s", -1, 500), run("a", 0, 800, 3_000), run("p", 0, 1_000, 4_000), say("b", 1, 6_000), run("c", 1, 7_000, 7_500)];
+    const { ms } = taskTimes(blocks, 2);
+    expect([...ms.values()].reduce((a, b) => a + b, 0)).toBe(activeMs(blocks));
   });
 
   it("gives an in-progress task no live clock while the thread is not running", () => {

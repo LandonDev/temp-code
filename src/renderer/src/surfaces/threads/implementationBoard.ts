@@ -2,7 +2,7 @@ import type { Task } from "../../components/ui/task-list";
 import type { Block } from "../../lib/session";
 import type { LiveEditState } from "../../lib/tcserver/store";
 import type { TodoItem } from "../../lib/tcserver/todos";
-import { activeMs, editPath, groupByTodo } from "../../lib/threads/rounds";
+import { activeMs, editPath, groupByTodo, todoKey } from "../../lib/threads/rounds";
 
 /**
  * The implementation board's folds, pure: the thread's blocks cut into
@@ -63,32 +63,49 @@ export function passNumbers(rounds: RoundData[]): number[] {
   return rounds.map((r) => (isHiddenPass(r) ? 0 : ++n));
 }
 
-/** Where a running task's live time counts from: the end of its last
- *  timed block, the running maximum `activeMs` keeps, so
- *  `activeMs(list) + (now − liveFrom(list))` is `activeMs(list, now)`. */
-export function liveFrom(list: Block[]): number | undefined {
+/** Each task's worked time over the pass's blocks, counted as activeMs
+ *  counts the pass (the union of the spans, no gap before a user message):
+ *  a block's own run goes to its task, the gap before it to the task of the
+ *  block it followed, the one live then. The call that starts the next task
+ *  is stamped with that task (applyTodoCall moves activeTodo first), so a
+ *  task keeps the time it showed when it finished. `live` is the task the
+ *  time since `from`, the last block's end, goes to. */
+export function taskTimes(blocks: Block[], todoCount: number): { ms: Map<number, number>; live: number; from?: number } {
+  const ms = new Map<number, number>();
+  const add = (k: number, v: number) => {
+    if (v > 0) ms.set(k, (ms.get(k) ?? 0) + v);
+  };
   let from: number | undefined;
-  for (const b of list) {
+  let live = -1;
+  for (const b of blocks) {
     if (b.ts === undefined) continue;
+    const k = todoKey(b, todoCount);
     const end = b.role === "tool" ? (b.doneTs ?? b.ts) : b.ts;
-    from = Math.max(from ?? end, end);
+    if (from === undefined || b.role === "user") add(k, end - b.ts);
+    else {
+      add(live, b.ts - from);
+      add(k, end - Math.max(from, b.ts));
+    }
+    if (from === undefined || end >= from) {
+      from = end;
+      live = k;
+    }
   }
-  return from;
+  return { ms, live, from };
 }
 
 /** The pass's todos as the TaskList reads them: an in-progress task is
  *  active only while the thread runs, else it waits. A started task
- *  carries the time its blocks worked; the running one also where its
- *  live time counts from. */
+ *  carries the time it worked; the running one also where its live time
+ *  counts from. */
 export function tasksOf(todos: TodoItem[], round: number, running: boolean, blocks: Block[] = []): Task[] {
-  const byTodo = groupByTodo(blocks, todos.length);
+  const times = taskTimes(blocks, todos.length);
   return todos.map((t, i) => {
     const state = t.status === "completed" ? "done" : t.status === "in_progress" && running ? "active" : "pending";
     const task: Task = { id: `${round}:${i}`, label: t.content, state };
     if (t.status === "pending") return task;
-    const list = byTodo.get(i) ?? [];
-    const from = state === "active" ? liveFrom(list) : undefined;
-    task.time = from === undefined ? { ms: activeMs(list) } : { ms: activeMs(list), from };
+    const ms = times.ms.get(i) ?? 0;
+    task.time = state === "active" && times.live === i && times.from !== undefined ? { ms, from: times.from } : { ms };
     return task;
   });
 }
