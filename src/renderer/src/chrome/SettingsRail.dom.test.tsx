@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registry, type Environment } from "../lib/connection";
 import type { WorkspaceMeta } from "../lib/tcserver/types";
-import { SettingsNav } from "./SettingsRail";
+import { SettingsNav, workspaceHint } from "./SettingsRail";
 
 const workspaces = vi.hoisted(() => ({ list: [] as WorkspaceMeta[] }));
 vi.mock("../lib/tcserver/workspaces", () => ({ useWorkspaces: () => workspaces.list }));
@@ -55,6 +55,31 @@ describe("SettingsNav", () => {
     const rows = [...container.querySelectorAll('[aria-labelledby="settings-group-workspaces"] [data-rail-row]')];
     // The host still wins on another host's row.
     expect(rows.map((r) => r.querySelector("[data-rail-trailing]")?.textContent ?? null)).toEqual(["work", "old", null, "box"]);
+  });
+
+  it("names the parent's path as far as it differs, and the whole path when the parents are one folder", () => {
+    hosts([env("local", "This Mac")]);
+    workspaces.list = [
+      { ...ws("w1", "app", "local"), path: "/Users/me/work/app" },
+      { ...ws("w2", "app", "local"), path: "/Users/you/work/app" },
+      { ...ws("w3", "site", "local"), path: "/srv/site" },
+      { ...ws("w4", "site", "local"), path: "/srv/site/" },
+    ];
+    const { container } = render(<SettingsNav section="general" onSelect={() => {}} onClose={() => {}} />);
+    const rows = [...container.querySelectorAll('[aria-labelledby="settings-group-workspaces"] [data-rail-row]')];
+    expect(rows.map((r) => r.querySelector("[data-rail-trailing]")?.textContent ?? null)).toEqual([
+      "me/work",
+      "you/work",
+      "/srv/site",
+      "/srv/site/",
+    ]);
+  });
+
+  it("workspaceHint: no twin, no hint; a parent that differs by name, its name", () => {
+    const a = { ...ws("a", "x", "local"), path: "/p/one/x" };
+    const b = { ...ws("b", "x", "local"), path: "/p/two/x" };
+    expect(workspaceHint(a, [])).toBeNull();
+    expect(workspaceHint(a, [b])).toBe("one");
   });
 
   it("ends in Back at the foot", () => {

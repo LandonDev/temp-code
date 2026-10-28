@@ -22,7 +22,6 @@ import {
   type SettingsSectionId,
   type StaticSettingsSectionId,
 } from "../lib/settings";
-import { basename } from "../lib/fs";
 import type { WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { registry, useEnvironments } from "../lib/connection";
@@ -58,11 +57,12 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
     environments.length > 1 && environmentId !== registry.primaryEnvironmentId
       ? (environments.find((e) => e.id === environmentId)?.name ?? environmentId)
       : null;
-  // Two workspaces of one name on one host: each says the folder it sits in.
+  // Two workspaces of one name on one host: each says where it sits.
   const folderOf = (workspace: WorkspaceMeta): string | null =>
-    workspaces.some((w) => w.id !== workspace.id && w.environmentId === workspace.environmentId && w.name === workspace.name)
-      ? basename(workspace.path.replace(/\/+[^/]*\/*$/, "")) || null
-      : null;
+    workspaceHint(
+      workspace,
+      workspaces.filter((w) => w.id !== workspace.id && w.environmentId === workspace.environmentId && w.name === workspace.name),
+    );
 
   return (
     <>
@@ -114,4 +114,22 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
       </div>
     </>
   );
+}
+
+/**
+ * What tells a workspace apart from its same-named twins on one host: the
+ * shortest end of its parent folder's path that no twin shares ("work", or
+ * "me/work" when two parents are both called work), else its whole path.
+ * Null without a twin.
+ */
+export function workspaceHint(workspace: WorkspaceMeta, twins: readonly WorkspaceMeta[]): string | null {
+  if (twins.length === 0) return null;
+  const parentParts = (path: string) => path.replace(/\/+$/, "").split("/").slice(0, -1).filter(Boolean);
+  const own = parentParts(workspace.path);
+  const others = twins.map((twin) => parentParts(twin.path));
+  for (let n = 1; n <= own.length; n++) {
+    const tail = own.slice(-n).join("/");
+    if (others.every((parts) => parts.slice(-n).join("/") !== tail)) return tail;
+  }
+  return workspace.path;
 }
