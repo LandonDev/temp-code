@@ -2576,6 +2576,22 @@ a34a1c61, no scratch thread):
 | v1.0.303 | 632 ms, longest task 1,399 ms | 64.5 ms | 8,985 in one rail |
 | 1.0.307 (a34a1c61) | 5,286 ms, longest task 5,331 ms | 64.2 ms | 19,583 in three panels, 421,000 elements |
 
+With this script on the Mac on 2026-10-28, the same three threads plus a
+scratch draft over 10,000 untracked files, profiling builds, 12 clicks 6 s
+apart:
+
+| Build | Changes open | Notes open | Panel closed | Rows and requests |
+|---|---|---|---|---|
+| master before (dedf9956) | 9 of 12 paints later than 5 s, longest task 9,672 ms | | 37 ms | 10,000 rows in one panel, 630,191 elements; 7 `file.read` a click (43 with the panel closed) |
+| this fix (2b373300) | 54 ms (p90 73), longest task 62 ms | 62 ms (p90 80), longest task 67 ms | 37 ms (p90 46) | 26 rows a panel, 4,393 elements; no `file.read` |
+
+The Changes section costs no more than the panel open on another section;
+what separates both from a closed panel (about 17 ms of the 54) is laying
+out and painting the panel itself on a switch, the next thing to look at.
+The box listed NorthCentralRefs's 8,985 `.temp-code/` files to both runs
+because it still ran its deployed build; the scratch checkout, served by
+the Mac's own host, lists none of its 100.
+
 ## Profiling the host
 
 On the box, run `tc-local doctor.profile '{"seconds":15}'` (the local
