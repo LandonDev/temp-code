@@ -5,6 +5,8 @@ import type { GitDiffIndex, GitPr } from "../../lib/fs";
 
 const h = vi.hoisted(() => ({
   index: null as GitDiffIndex | null,
+  /** useAgainst's answer for a project's checkout; its row pieces stay real. */
+  against: null as unknown,
   revertChunkText: vi.fn((_head: string, _index: string, _pos: number) => "unstaged text"),
   project: false,
   pr: null as GitPr | null,
@@ -44,7 +46,12 @@ vi.mock("../../lib/tcserver/projects", () => ({
   projectForCwd: (cwd: string) => (h.project && cwd === "/p" ? { id: "p1", cwd: "/p" } : undefined),
 }));
 vi.mock("../../lib/tcserver/workspaces", () => ({ useProjects: () => [] }));
-vi.mock("./ChangesAgainst", () => ({ ChangesAgainst: ({ projectId }: { projectId: string }) => <section aria-label="Against">{projectId}</section> }));
+vi.mock("./ChangesAgainst", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./ChangesAgainst")>()),
+  useAgainst: (projectId: string | null) => (projectId ? h.against : null),
+}));
+vi.mock("../../lib/projectRailStore", () => ({}));
+vi.mock("../../lib/projectWatch", () => ({ onFileEvent: () => () => {} }));
 vi.mock("../../lib/editorConfig", () => ({ useEditorConfig: () => null }));
 vi.mock("../../lib/openInEditor", () => ({ editorLabelFor: () => "Open in VS Code", openInEditor: vi.fn() }));
 vi.mock("../../lib/fileWatch", () => ({ invalidateWatchedFiles: () => {} }));
@@ -76,7 +83,8 @@ vi.mock("../BranchPicker", () => ({
 // Base UI's scroll area asks for running animations; jsdom has none.
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
-import { ChangesPanel, changesRules } from "./ChangesPanel";
+import { ChangesPanel, changesRules, fileMenuRows } from "./ChangesPanel";
+import type { AgainstModel } from "./ChangesAgainst";
 import { SessionActionsContext, type SessionActions } from "../../surfaces/threadChat";
 
 const file = (relative: string, over: Partial<GitDiffIndex["files"][number]> = {}) => ({
@@ -104,19 +112,82 @@ const indexOf = (over: Partial<GitDiffIndex> = {}): GitDiffIndex => ({
   ...over,
 });
 
+const againstOf = (over: Partial<AgainstModel> = {}): AgainstModel => ({
+  current: "feat",
+  target: "master",
+  locals: ["master"],
+  remotes: [],
+  compare: {
+    target: "master",
+    mergeBase: "base",
+    ahead: 1,
+    behind: 0,
+    ours: [{ sha: "aaaaaaa1", subject: "One", authoredAt: Date.now() }],
+    theirs: [],
+    files: [{ path: "src/x.ts", adds: 2, dels: 1, status: "modified" }],
+  },
+  branchesKnown: true,
+  moving: null,
+  blocked: false,
+  conflicts: null,
+  error: null,
+  commitsOpen: false,
+  onCommitsOpen: vi.fn(),
+  onPick: vi.fn(),
+  onMove: vi.fn(),
+  onOpen: vi.fn(),
+  ...over,
+});
+
+/** The ResizeObservers the virtualizer made, driven by hand: jsdom has none. */
+const observers: { cb: ResizeObserverCallback; els: Set<Element> }[] = [];
+class FakeResizeObserver {
+  entry: { cb: ResizeObserverCallback; els: Set<Element> };
+  constructor(cb: ResizeObserverCallback) {
+    this.entry = { cb, els: new Set() };
+    observers.push(this.entry);
+  }
+  observe(el: Element) {
+    this.entry.els.add(el);
+  }
+  unobserve(el: Element) {
+    this.entry.els.delete(el);
+  }
+  disconnect() {
+    this.entry.els.clear();
+  }
+}
+/** jsdom lays nothing out: the section's scroller is 600px tall, every row has no size of its own. */
+const VIEWPORT = '[data-slot="scroll-area-viewport"]';
+const sized = (el: HTMLElement, size: number) => (el.matches?.(VIEWPORT) ? size : 0);
+const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+const offsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+const viewport = (): HTMLElement => document.querySelector(VIEWPORT) as HTMLElement;
+const rowsMounted = (): number => document.querySelectorAll("[data-menu-id]").length;
+
 const flush = (): Promise<void> => act(() => new Promise((r) => setTimeout(r, 0)));
 const onOpenDiff = vi.fn();
 const mount = () => render(<ChangesPanel cwd="/p" onOpenDiff={onOpenDiff} onOpenFile={() => {}} />);
 const menuItem = (name: string) => screen.getByRole("menuitem", { name });
 
 beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  observers.length = 0;
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get(this: HTMLElement) { return sized(this, 600); } });
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get(this: HTMLElement) { return sized(this, 320); } });
   h.index = null;
   h.pr = null;
   h.project = false;
+  h.against = againstOf();
   vi.clearAllMocks();
   h.confirm.mockImplementation(() => Promise.resolve(true));
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  if (offsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", offsetHeight);
+  if (offsetWidth) Object.defineProperty(HTMLElement.prototype, "offsetWidth", offsetWidth);
+});
 
 describe("ChangesPanel", () => {
   it("the head's branch name is the switch, with its upstream on hover; a switch there is the thread's branch change", async () => {
@@ -166,9 +237,9 @@ describe("ChangesPanel", () => {
   it("a partly staged file counts each group's own lines; without the split both rows show the file's", async () => {
     const both = { staged: true, unstaged: true, additions: 3, deletions: 1 };
     h.index = indexOf({ files: [file("a.ts", { ...both, stagedCounts: { additions: 1, deletions: 1 }, unstagedCounts: { additions: 2, deletions: 0 } })] });
-    const { rerender } = mount();
+    const { rerender, container } = mount();
     await flush();
-    const rowText = (group: string) => screen.getByRole("heading", { name: new RegExp(group) }).parentElement!.textContent;
+    const rowText = (group: string) => container.querySelector(`[data-menu-id="${group === "Staged" ? "s" : "u"}:a.ts"]`)!.textContent;
     expect(rowText("Staged")).toContain("+1 −1");
     expect(rowText("Changes")).toContain("+2");
     expect(rowText("Changes")).not.toContain("−");
@@ -410,13 +481,135 @@ describe("ChangesPanel", () => {
   });
 });
 
+describe("ChangesPanel's virtual list", () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => file(`notes/${String(i).padStart(5, "0")}.md`, { status: "untracked" }));
+  const rowOf = (key: string) => (document.querySelector(`[data-menu-id="${key}"]`)?.closest("[data-index]") ?? null) as HTMLElement | null;
+
+  it("10,000 untracked files mount a screen of rows and no menu until a right-click", async () => {
+    h.index = indexOf({ files: many(10_000) });
+    const { container } = mount();
+    await flush();
+    expect(rowsMounted()).toBeGreaterThan(10);
+    expect(rowsMounted()).toBeLessThan(60);
+    expect(container.querySelectorAll('[data-slot="context-menu-trigger"]')).toHaveLength(0);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Open the diff of notes/00003.md" }));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Open diff", "Open in VS Code", "Stage", "Delete…"]);
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+    expect(container.querySelectorAll('[data-slot="context-menu-trigger"]').length).toBeLessThanOrEqual(1);
+  });
+
+  it("scrolling the viewport mounts the rows under it", async () => {
+    h.index = indexOf({ files: many(10_000) });
+    mount();
+    await flush();
+    expect(rowOf("u:notes/00000.md")).toBeTruthy();
+    act(() => {
+      viewport().scrollTop = 28 * 5_000;
+      viewport().dispatchEvent(new Event("scroll"));
+    });
+    await flush();
+    expect(rowOf("u:notes/00000.md")).toBeFalsy();
+    expect(rowOf("u:notes/05005.md")?.style.transform).toBe(`translateY(${28 * 5_005}px)`);
+    expect(rowsMounted()).toBeLessThan(60);
+  });
+
+  it("a fold opens inside its row without remounting the toggle, and the row's growth moves the rows under it", async () => {
+    h.index = indexOf({ files: [file("a.ts"), file("b.ts")] });
+    mount();
+    await flush();
+    const toggle = screen.getByRole("button", { name: "Show hunks of a.ts" });
+    toggle.focus();
+    fireEvent.click(toggle);
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.getByRole("button", { name: "Hide hunks of a.ts" })).toBe(toggle);
+    expect(document.activeElement).toBe(toggle);
+    const rowA = rowOf("u:a.ts")!;
+    expect(within(rowA).getByText("L2")).toBeTruthy();
+    const rowB = () => rowOf("u:b.ts")!;
+    expect(rowB().style.transform).toBe("translateY(28px)");
+    act(() => {
+      for (const o of observers) {
+        if (o.els.has(rowA)) o.cb([{ target: rowA, borderBoxSize: [{ blockSize: 84, inlineSize: 320 }] } as unknown as ResizeObserverEntry], {} as ResizeObserver);
+      }
+    });
+    expect(rowB().style.transform).toBe("translateY(84px)");
+  });
+
+  it("a closed row carries no fold panel; an opened one keeps its Collapsible once closed", async () => {
+    h.index = indexOf({ files: [file("a.ts"), file("b.ts")] });
+    const { container } = mount();
+    await flush();
+    expect(container.querySelectorAll('[data-slot="collapsible"]')).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Show hunks of a.ts" }));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(container.querySelectorAll('[data-slot="collapsible"]')).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Hide hunks of a.ts" }));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.queryByText("L2")).toBeNull();
+    expect(container.querySelectorAll('[data-slot="collapsible"]')).toHaveLength(1);
+  });
+
+  it("the right-click menu acts on the row it opened on", async () => {
+    h.index = indexOf({ files: [file("a.ts"), file("b.ts", { staged: true, unstaged: false })] });
+    mount();
+    await flush();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Open the diff of b.ts" }));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Open diff", "Open in VS Code", "Unstage"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Unstage" }));
+    await flush();
+    expect(h.git.gitUnstageFile).toHaveBeenCalledWith("local", "/p", "b.ts");
+  });
+
+  it("a row's actions stay reachable from the keyboard", async () => {
+    h.index = indexOf({ files: [file("a.ts")] });
+    mount();
+    await flush();
+    const open = screen.getByRole("button", { name: "Open the diff of a.ts" });
+    open.focus();
+    expect(document.activeElement).toBe(open);
+    const stage = screen.getByRole("button", { name: "Stage" });
+    stage.focus();
+    fireEvent.click(stage);
+    await flush();
+    expect(h.git.gitStageFile).toHaveBeenCalledWith("local", "/p", "a.ts");
+  });
+
+  it("the Against group's head, files and commits fold are rows of the same list", async () => {
+    h.index = indexOf({ files: [file("a.ts")] });
+    h.project = true;
+    mount();
+    await flush();
+    const head = screen.getByRole("region", { name: "Against" }).closest("[data-index]")!;
+    const fileRow = screen.getByRole("button", { name: "Open the diff of src/x.ts against master" });
+    const fold = screen.getByRole("button", { name: /1 commit ahead/ });
+    expect([rowOf("u:a.ts"), head, fileRow.closest("[data-index]"), fold.closest("[data-index]")].map((el) => el?.getAttribute("data-index"))).toEqual(["0", "1", "2", "3"]);
+    fireEvent.click(fileRow);
+    expect((h.against as AgainstModel).onOpen).toHaveBeenCalledWith("src/x.ts");
+    fireEvent.click(fold);
+    expect((h.against as AgainstModel).onCommitsOpen).toHaveBeenCalledWith(true, expect.anything());
+  });
+});
+
+describe("fileMenuRows", () => {
+  const labels = (rows: ReturnType<typeof fileMenuRows>) => rows.map((r) => (r.kind === "item" ? r.label : r.kind));
+  it("offers the verbs a row's file and side allow", () => {
+    expect(labels(fileMenuRows(file("a.ts"), "unstaged", "Open in VS Code"))).toEqual(["Open diff", "Open in VS Code", "Stage", "sep", "Discard…"]);
+    expect(labels(fileMenuRows(file("a.ts", { status: "untracked" }), "unstaged", null))).toEqual(["Open diff", "Stage", "sep", "Delete…"]);
+    expect(labels(fileMenuRows(file("a.ts", { status: "deleted" }), "unstaged", "Open in VS Code"))).toEqual(["Stage", "sep", "Discard…"]);
+    expect(labels(fileMenuRows(file("a.ts"), "staged", "Open in VS Code"))).toEqual(["Open diff", "Open in VS Code", "Unstage"]);
+  });
+});
+
 describe("ChangesPanel against a target", () => {
   it("shows the Against group under the files when the checkout is a project's", async () => {
     h.index = indexOf();
     h.project = true;
     mount();
     await flush();
-    expect(screen.getByRole("region", { name: "Against" }).textContent).toBe("p1");
+    expect(screen.getByRole("region", { name: "Against" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Compare against" })).toBeTruthy();
     expect(screen.getByText("No changes")).toBeTruthy();
   });
 

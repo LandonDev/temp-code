@@ -24,14 +24,35 @@ vi.mock("../../lib/projectRailStore", () => ({
   useCompare: () => h.compare,
   useGitLog: () => [{ sha: "head" }],
 }));
-vi.mock("../../lib/tcserver/workspaces", () => ({ useProjects: () => [{ id: "p1", workspaceId: "w1", cwd: "/p", branch: "feat" }] }));
+vi.mock("../../lib/tcserver/workspaces", () => ({
+  useProjects: () => [
+    { id: "p1", workspaceId: "w1", cwd: "/p", branch: "feat" },
+    { id: "p2", workspaceId: "w1", cwd: "/q", branch: "other" },
+  ],
+}));
 vi.mock("../../lib/tcserver/projects", () => ({ dirPrefix: (cwd: string) => `${cwd}/` }));
 vi.mock("../../lib/projectWatch", () => ({ onFileEvent: () => () => {} }));
 vi.mock("../../lib/reviewRequest", () => ({ requestReview: h.review }));
 vi.mock("../../lib/fs", () => ({ notifyGitChanged: () => {}, basename: (p: string) => p.split("/").pop() }));
 vi.mock("sonner", () => ({ toast: { success: h.toast } }));
 
-import { ChangesAgainst } from "./ChangesAgainst";
+import { AgainstCommits, AgainstFileRow, AgainstHead, useAgainst } from "./ChangesAgainst";
+
+/** The group as the Changes list draws it (changesItems.ts): the head, a row per file, the commits fold. */
+function ChangesAgainst({ projectId, onOpenDiff }: { projectId: string | null; onOpenDiff: (path: string) => void }) {
+  const model = useAgainst(projectId, onOpenDiff);
+  if (!model) return null;
+  const compare = model.compare;
+  return (
+    <>
+      <AgainstHead model={model} />
+      {compare?.files.map((f) => <AgainstFileRow key={f.path} file={f} target={compare.target} onOpen={model.onOpen} />)}
+      {compare && (compare.ours.length > 0 || compare.theirs.length > 0) ? (
+        <AgainstCommits compare={compare} open={model.commitsOpen} onOpenChange={model.onCommitsOpen} />
+      ) : null}
+    </>
+  );
+}
 
 const compareOf = (over: Partial<CompareResult> = {}): CompareResult => ({
   target: "master",
@@ -167,6 +188,24 @@ describe("ChangesAgainst", () => {
     expect(container.querySelector("[aria-busy]")).toBeNull();
     expect(container.querySelector(".text-destructive")).toBeNull();
     expect(screen.queryByText(/main/)).toBeNull();
+  });
+
+  it("another project's checkout starts the group over with its own target", async () => {
+    localStorage.setItem("compare-target:p2", "origin/master");
+    h.merge.mockImplementationOnce(() => Promise.resolve({ ok: false, conflicts: ["src/a.ts"] }));
+    const { rerender } = mount();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /2 commits ahead/ }));
+    move("Update from master");
+    await flush();
+    expect(screen.getByRole("alert")).toBeTruthy();
+    rerender(<ChangesAgainst projectId="p2" onOpenDiff={onOpenDiff} />);
+    await flush();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Compare against" }).textContent).toContain("origin/master");
+    expect(screen.queryByText("Fold Branch into Changes")).toBeNull();
+    rerender(<ChangesAgainst projectId={null} onOpenDiff={onOpenDiff} />);
+    expect(screen.queryByRole("region", { name: "Against" })).toBeNull();
   });
 
   it("a picked branch that is gone says so in words", async () => {

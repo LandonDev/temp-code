@@ -38,9 +38,23 @@ const measureRow: VirtualizerOptions<HTMLElement, HTMLDivElement>["measureElemen
 /**
  * The rail's cards, virtualized: only those near the viewport are mounted.
  * Rides virtualChunk, out of the first paint; until it lands the rail
- * renders the same cards plainly (railRows.tsx).
+ * renders the same cards plainly (railRows.tsx). The right panel's Changes
+ * list (rail/ChangesPanel.tsx, in the lazy right panel chunk) uses it too.
  */
-export function VirtualRows({ count, scroller, scrollMargin, initialOffset, estimateSize, getItemKey, render, reveal }: RailRowsProps) {
+export function VirtualRows({
+  count,
+  scroller,
+  scrollMargin,
+  initialOffset,
+  estimateSize,
+  getItemKey,
+  render,
+  reveal,
+  gap = RAIL_GAP_PX,
+}: RailRowsProps & {
+  /** Between rows; the rail's cards by default (the Changes list sets its own spacing). */
+  gap?: number;
+}) {
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
     count,
     getScrollElement: () => scroller,
@@ -48,7 +62,7 @@ export function VirtualRows({ count, scroller, scrollMargin, initialOffset, esti
     estimateSize,
     getItemKey,
     overscan: 4,
-    gap: RAIL_GAP_PX,
+    gap,
     measureElement: measureRow,
     // Swapped in under a list the person may have scrolled: start where it
     // is; mounted again before its scroller: start where the column was.

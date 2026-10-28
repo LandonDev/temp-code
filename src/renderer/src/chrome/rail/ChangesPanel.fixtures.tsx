@@ -1,6 +1,6 @@
 // Fixtures for `bun run ui:preview src/renderer/src/chrome/rail/ChangesPanel.tsx#ChangesView`.
 import type { GitDiffIndex } from "../../lib/fs";
-import { AgainstView } from "./ChangesAgainst";
+import type { AgainstModel } from "./ChangesAgainst";
 import { changesRules, type ChangesActions } from "./ChangesPanel";
 
 const noop = () => {};
@@ -62,6 +62,7 @@ const base = (ix: GitDiffIndex | null, message = "", over: Record<string, unknow
   folds: {},
   editorLabel: () => "Open in VS Code",
   actions,
+  rowsInFlow: true,
   ...over,
 });
 
@@ -83,35 +84,36 @@ const mixed = index({
 });
 
 const now = Date.now();
-const against = (over: Partial<Parameters<typeof AgainstView>[0]> = {}) => (
-  <AgainstView
-    current="a5-right-panel-sections"
-    target="master"
-    locals={["master", "stable"]}
-    remotes={["origin/master"]}
-    compare={{
-      target: "master",
-      mergeBase: "base",
-      ahead: 3,
-      behind: 1,
-      ours: [{ sha: "8b258389aa", subject: "A5 slice 1: the Notes section edits in place", authoredAt: now - 3_600_000 }],
-      theirs: [{ sha: "2d4a9655bb", subject: "A3 docs: the usage meter", authoredAt: now - 600_000 }],
-      files: [
-        { path: "src/renderer/src/chrome/rail/ChangesPanel.tsx", adds: 640, dels: 420, status: "modified" },
-        { path: "src/renderer/src/chrome/rail/ChangesAgainst.tsx", adds: 330, dels: 0, status: "added" },
-        { path: "src/renderer/src/chrome/rail/BranchPanel.tsx", adds: 0, dels: 409, status: "deleted" },
-      ],
-    }}
-    moving={null}
-    blocked={false}
-    conflicts={null}
-    error={null}
-    onPick={noop}
-    onMove={noop}
-    onOpen={noop}
-    {...over}
-  />
-);
+const against = (over: Partial<AgainstModel> = {}): AgainstModel => ({
+  current: "a5-right-panel-sections",
+  target: "master",
+  locals: ["master", "stable"],
+  remotes: ["origin/master"],
+  compare: {
+    target: "master",
+    mergeBase: "base",
+    ahead: 3,
+    behind: 1,
+    ours: [{ sha: "8b258389aa", subject: "A5 slice 1: the Notes section edits in place", authoredAt: now - 3_600_000 }],
+    theirs: [{ sha: "2d4a9655bb", subject: "A3 docs: the usage meter", authoredAt: now - 600_000 }],
+    files: [
+      { path: "src/renderer/src/chrome/rail/ChangesPanel.tsx", adds: 640, dels: 420, status: "modified" },
+      { path: "src/renderer/src/chrome/rail/ChangesAgainst.tsx", adds: 330, dels: 0, status: "added" },
+      { path: "src/renderer/src/chrome/rail/BranchPanel.tsx", adds: 0, dels: 409, status: "deleted" },
+    ],
+  },
+  branchesKnown: true,
+  moving: null,
+  blocked: false,
+  conflicts: null,
+  error: null,
+  commitsOpen: false,
+  onCommitsOpen: noop,
+  onPick: noop,
+  onMove: noop,
+  onOpen: noop,
+  ...over,
+});
 
 export default [
   { name: "loading", props: base(null) },
@@ -141,6 +143,7 @@ export default [
   { name: "ready for a pull request", props: base(index({ aheadOfDefault: 3 })) },
   { name: "not published", props: base(index({ upstream: null })) },
   { name: "with the Against group", props: base(unstaged, "", { against: against() }) },
+  { name: "against: the commits fold open", props: base(index(), "", { against: against({ commitsOpen: true }) }) },
   { name: "nothing here, against master", props: base(index(), "", { against: against() }) },
   {
     name: "against: no file differs, commits do",

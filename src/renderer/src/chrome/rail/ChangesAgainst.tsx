@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { loadToast } from "../../components/ui/toaster";
-import type { CommitInfo, CompareResult, MergeResult } from "@server/shared/domain";
+import type { CommitInfo, CompareResult, FileChange, MergeResult } from "@server/shared/domain";
 import { Alert, AlertDescription, AlertTitle } from "@renderer/components/ui/alert";
 import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@renderer/components/ui/collapsible";
@@ -40,37 +40,70 @@ import { Counts, FileName } from "./changeRows";
  * the moves in a ⋯ menu: bring the target in (merge or rebase) or land the
  * branch on it. Conflicts never leave a half-merged tree; the group lists
  * the files instead. A move that lands says so in a toast.
+ *
+ * The state is `useAgainst`'s; the group renders as rows of the section's
+ * one virtual list (changesItems.ts): `AgainstHead`, an `AgainstFileRow`
+ * per file and `AgainstCommits`.
  */
 
 const targetKey = (projectId: string): string => `compare-target:${projectId}`;
+const savedTarget = (projectId: string | null): string | null => (projectId ? localStorage.getItem(targetKey(projectId)) : null);
 
 export type AgainstMove = "update" | "rebase" | "land";
 
-export function ChangesAgainst({
-  projectId,
-  selectedPath,
-  onOpenDiff,
-}: {
-  projectId: string;
-  /** the review file the focused tab shows, relative to the git root */
-  selectedPath?: string;
-  /** opens the file as a review tab; the base ref is parked beforehand */
-  onOpenDiff: (path: string) => void;
-}) {
+/** What the group shows and does (useAgainst; tests; ui:preview fixtures). */
+export interface AgainstModel {
+  current: string | null;
+  target: string | null;
+  locals: string[];
+  remotes: string[];
+  /** undefined while loading; null when the host has no branch to compare against */
+  compare: CompareResult | null | undefined;
+  /** the branch lists have loaded, so a target missing from them is gone */
+  branchesKnown: boolean;
+  moving: AgainstMove | null;
+  /** a build is running in the checkout: no move may start */
+  blocked: boolean;
+  conflicts: string[] | null;
+  error: string | null;
+  /** the commits fold, held here: its row unmounts when scrolled away */
+  commitsOpen: boolean;
+  onCommitsOpen: (open: boolean) => void;
+  onPick: (target: string) => void;
+  onMove: (kind: AgainstMove) => void;
+  /** opens a file's diff against the merge base */
+  onOpen: (path: string) => void;
+}
+
+/** The group's state for the project the checkout is (null outside one). */
+export function useAgainst(projectId: string | null, onOpenDiff: (path: string) => void): AgainstModel | null {
   const project = useProjects().find((p) => p.id === projectId);
-  const compare = useCompare(projectId);
+  const compare = useCompare(projectId ?? "");
   const branchList = useBranchList(project?.workspaceId ?? null);
-  const headSha = useGitLog(projectId)?.[0]?.sha;
-  const buildRunning = useBuild(projectId)?.run?.status === "running";
-  const [target, setTarget] = useState<string | null>(() => localStorage.getItem(targetKey(projectId)));
+  const headSha = useGitLog(projectId ?? "")?.[0]?.sha;
+  const buildRunning = useBuild(projectId ?? "")?.run?.status === "running";
+  const [scope, setScope] = useState(projectId);
+  const [target, setTarget] = useState<string | null>(() => savedTarget(projectId));
   const [error, setError] = useState<string | null>(null);
   // A move's refusal ("commit or stash first") outlives the refresh after it.
   const [moveError, setMoveError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<string[] | null>(null);
   const [moving, setMoving] = useState<AgainstMove | null>(null);
+  const [commitsOpen, setCommitsOpen] = useState(false);
+  // Another project's checkout starts the group over, as a remount did.
+  if (scope !== projectId) {
+    setScope(projectId);
+    setTarget(savedTarget(projectId));
+    setError(null);
+    setMoveError(null);
+    setConflicts(null);
+    setMoving(null);
+    setCommitsOpen(false);
+  }
 
   const refresh = useCallback(
     async (t: string | null): Promise<void> => {
+      if (!projectId) return;
       try {
         const r = await fetchCompare(projectId, t ?? undefined);
         setError(null);
@@ -83,6 +116,7 @@ export function ChangesAgainst({
   );
 
   useEffect(() => {
+    if (!projectId) return;
     void refresh(target);
     void fetchLog(projectId).catch(() => undefined);
     if (project) void fetchBranches(project.workspaceId).catch(() => undefined);
@@ -95,6 +129,7 @@ export function ChangesAgainst({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [headSha]);
   useEffect(() => {
+    if (!projectId) return;
     let timer: number | undefined;
     const off = onFileEvent((e) => {
       if (e.projectId !== projectId) return;
@@ -113,6 +148,8 @@ export function ChangesAgainst({
   const current = project?.branch ?? branchList?.current ?? null;
   const locals = useMemo(() => (branchList?.locals ?? []).filter((b) => b !== current), [branchList, current]);
   const remotes = branchList?.remotes ?? [];
+
+  if (!projectId) return null;
 
   const pick = (t: string): void => {
     localStorage.setItem(targetKey(projectId), t);
@@ -144,69 +181,35 @@ export function ChangesAgainst({
     setMoving(null);
   };
 
-  const openAgainstBase = (path: string): void => {
-    if (!compare || !project) return;
-    const abs = `${dirPrefix(project.cwd)}${path}`;
-    requestReview(abs, compare.mergeBase);
-    onOpenDiff(abs);
+  return {
+    current,
+    target,
+    locals,
+    remotes,
+    // A picked target whose answer has not come yet is loading, not "no target".
+    compare: compare === null && target ? undefined : compare,
+    branchesKnown: !!branchList,
+    moving,
+    blocked: buildRunning,
+    conflicts,
+    error: moveError ?? error,
+    commitsOpen,
+    onCommitsOpen: setCommitsOpen,
+    onPick: pick,
+    onMove: (kind) => void move(kind),
+    onOpen: (path) => {
+      if (!compare || !project) return;
+      const abs = `${dirPrefix(project.cwd)}${path}`;
+      requestReview(abs, compare.mergeBase);
+      onOpenDiff(abs);
+    },
   };
-
-  return (
-    <AgainstView
-      current={current}
-      target={target}
-      locals={locals}
-      remotes={remotes}
-      // A picked target whose answer has not come yet is loading, not "no target".
-      compare={compare === null && target ? undefined : compare}
-      branchesKnown={!!branchList}
-      selectedPath={selectedPath}
-      moving={moving}
-      blocked={buildRunning}
-      conflicts={conflicts}
-      error={moveError ?? error}
-      onPick={pick}
-      onMove={(kind) => void move(kind)}
-      onOpen={openAgainstBase}
-    />
-  );
 }
 
-/** The Against group given its data (ChangesAgainst; tests; ui:preview fixtures). */
-export function AgainstView({
-  current,
-  target,
-  locals,
-  remotes,
-  compare,
-  branchesKnown = true,
-  selectedPath,
-  moving,
-  blocked,
-  conflicts,
-  error,
-  onPick,
-  onMove,
-  onOpen,
-}: {
-  current: string | null;
-  target: string | null;
-  locals: string[];
-  remotes: string[];
-  /** undefined while loading; null when the host has no branch to compare against */
-  compare: CompareResult | null | undefined;
-  /** the branch lists have loaded, so a target missing from them is gone */
-  branchesKnown?: boolean;
-  selectedPath?: string;
-  moving: AgainstMove | null;
-  /** a build is running in the checkout: no move may start */
-  blocked: boolean;
-  conflicts: string[] | null;
-  error: string | null;
-  onPick: (target: string) => void;
-  onMove: (kind: AgainstMove) => void;
-  onOpen: (path: string) => void;
-}) {
+/** The group's head: its name, the target picker and the moves, then a
+ *  move's error or conflicts and the comparison's loading or "No file differs". */
+export function AgainstHead({ model }: { model: AgainstModel }) {
+  const { current, target, locals, remotes, compare, branchesKnown, moving, blocked, conflicts, error, onPick, onMove } = model;
   const ahead = compare?.ahead ?? 0;
   const behind = compare?.behind ?? 0;
   const known = [...locals, ...remotes];
@@ -304,53 +307,49 @@ export function AgainstView({
             </div>
           ))}
         </div>
-      ) : compare && compare.files.length === 0 ? (
+      ) : compare && compare.files.length === 0 && (ahead > 0 || behind > 0) ? (
         // The picker names the branch and the commits fold says ahead and behind; even says nothing.
-        ahead > 0 || behind > 0 ? <p className="flex h-7 items-center px-2 text-xs text-muted-foreground">No file differs</p> : null
-      ) : compare ? (
-        <div className="flex flex-col">
-          {compare.files.map((c) => {
-            const deleted = c.status === "deleted";
-            const active = selectedPath === c.path;
-            return (
-              <ItemButton
-                key={c.path}
-                size="xs"
-                disabled={deleted} onClick={() => onOpen(c.path)}
-                aria-current={active || undefined}
-                aria-label={deleted ? `${c.path}, deleted` : `Open the diff of ${c.path} against ${compare.target}`}
-                className={cn("min-h-7 flex-nowrap gap-2 py-0 text-left", !deleted && "hover:bg-foreground/5", active && "bg-muted hover:bg-muted")}
-              >
-                <ItemMedia className="size-4">
-                  <FileTypeIcon name={c.path} isDir={false} size={16} />
-                </ItemMedia>
-                <ItemContent className="min-w-0">
-                  <FileName relative={c.path} muted={deleted} />
-                </ItemContent>
-                <ItemActions>
-                  <Counts status={c.status} additions={c.adds} deletions={c.dels} />
-                </ItemActions>
-              </ItemButton>
-            );
-          })}
-        </div>
-      ) : null}
-
-      {compare && (compare.ours.length > 0 || compare.theirs.length > 0) ? (
-        <Commits ours={compare.ours} theirs={compare.theirs} ahead={ahead} behind={behind} />
+        <p className="flex h-7 items-center px-2 text-xs text-muted-foreground">No file differs</p>
       ) : null}
     </section>
   );
 }
 
-function Commits({ ours, theirs, ahead, behind }: { ours: CommitInfo[]; theirs: CommitInfo[]; ahead: number; behind: number }) {
-  const [open, setOpen] = useState(false);
+/** One file this branch changed since the merge base; opens its diff against it. */
+export function AgainstFileRow({ file, target, selectedPath, onOpen }: { file: FileChange; target: string; selectedPath?: string; onOpen: (path: string) => void }) {
+  const deleted = file.status === "deleted";
+  const active = selectedPath === file.path;
+  return (
+    <ItemButton
+      size="xs"
+      disabled={deleted}
+      onClick={() => onOpen(file.path)}
+      aria-current={active || undefined}
+      aria-label={deleted ? `${file.path}, deleted` : `Open the diff of ${file.path} against ${target}`}
+      className={cn("min-h-7 flex-nowrap gap-2 py-0 text-left", !deleted && "hover:bg-foreground/5", active && "bg-muted hover:bg-muted")}
+    >
+      <ItemMedia className="size-4">
+        <FileTypeIcon name={file.path} isDir={false} size={16} />
+      </ItemMedia>
+      <ItemContent className="min-w-0">
+        <FileName relative={file.path} muted={deleted} />
+      </ItemContent>
+      <ItemActions>
+        <Counts status={file.status} additions={file.adds} deletions={file.dels} />
+      </ItemActions>
+    </ItemButton>
+  );
+}
+
+/** The commits ahead and behind, behind one line. */
+export function AgainstCommits({ compare, open, onOpenChange }: { compare: CompareResult; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { ours, theirs, ahead, behind } = compare;
   const both = ours.length > 0 && theirs.length > 0;
   const commits = (n: number) => `${n} ${n === 1 ? "commit" : "commits"}`;
   // "3 commits ahead  1 behind": the noun once, on the first fact.
   const words = ahead > 0 ? [`${commits(ahead)} ahead`, behind > 0 ? `${behind} behind` : ""] : [`${commits(behind)} behind`];
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
+    <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger
         className="flex h-7 w-full items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >

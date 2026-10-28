@@ -1,7 +1,6 @@
-import { useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@renderer/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,11 +52,14 @@ import { useProjects } from "../../lib/tcserver/workspaces";
 import { IconAction } from "../../surfaces/transcript/IconAction";
 import { confirmAction, errorText } from "../ConfirmDialog";
 import { FileTypeIcon } from "../FileTypeIcon";
-import { ChangesAgainst } from "./ChangesAgainst";
+import { AgainstCommits, AgainstFileRow, AgainstHead, useAgainst, type AgainstModel } from "./ChangesAgainst";
 import { BranchPicker } from "../BranchPicker";
+import { RowsContextMenu, tidy, type MenuRow } from "../menuRows";
+import { VirtualRows } from "../railVirtualRows";
 import { SessionActionsContext } from "../../surfaces/threadChat";
 import { Counts, FileName } from "./changeRows";
-import { ChevronDown, ChevronRight, Minus, MoreHorizontal, Plus, Undo2, WandSparkles } from "../icons";
+import { changesItems, estimateItem, foldKey, type ChangeSide, type ChangesItem } from "./changesItems";
+import { ChevronDown, ChevronRight, ExternalLink, GitCompare, Minus, MoreHorizontal, Plus, Trash2, Undo2, WandSparkles } from "../icons";
 
 /**
  * The right panel's Changes section: the one place a checkout's changes
@@ -70,6 +72,11 @@ import { ChevronDown, ChevronRight, Minus, MoreHorizontal, Plus, Undo2, WandSpar
  * commit field pinned at the foot with the generated message and Commit's
  * menu (and push; push and create a PR). Refreshes ride the server's tree
  * watcher through `gitIndexStore`; nothing here polls.
+ *
+ * The scroll body is one virtual list (changesItems.ts, the rail's
+ * VirtualRows): only the rows near the viewport mount, one context menu
+ * serves them all, and a row carries a Collapsible only once its fold has
+ * opened, so the section costs the same with 10 files or 10,000.
  */
 
 export interface Hunk {
@@ -90,12 +97,7 @@ interface HunkSet {
   hunks: Hunk[];
 }
 
-export type ChangeSide = "staged" | "unstaged";
-
-/** A fold's key: a file in both groups folds each group on its own. */
-export function foldKey(side: ChangeSide, relative: string): string {
-  return `${side === "staged" ? "s" : "u"}:${relative}`;
-}
+export { foldKey, type ChangeSide };
 
 /** A folded-open file's hunks, or "loading" while its diff is read. */
 export type HunkFold = { hunks: Hunk[] } | "loading";
@@ -230,6 +232,7 @@ export function ChangesPanel({
   const [hunks, setHunks] = useState<Record<string, HunkSet | "loading">>({});
   const files = index?.files ?? [];
   const rules = changesRules(index, pr, message, !!busy);
+  const against = useAgainst(project?.id ?? null, onOpenDiff);
   const drop = (key: string) =>
     setHunks((prev) => {
       const { [key]: _gone, ...rest } = prev;
@@ -412,7 +415,7 @@ export function ChangesPanel({
       folds={folds}
       editorLabel={(file) => editorLabelFor(file.path, editorConfig)}
       actions={actions}
-      against={project ? <ChangesAgainst key={project.id} projectId={project.id} selectedPath={selectedPath} onOpenDiff={onOpenDiff} /> : null}
+      against={against}
       branchPicker={
         index ? (
           <BranchPicker
@@ -467,6 +470,7 @@ export function ChangesView({
   actions,
   against,
   branchPicker,
+  rowsInFlow = false,
 }: {
   index: GitDiffIndex | null;
   pr: GitPr | null;
@@ -480,15 +484,66 @@ export function ChangesView({
   folds: Record<string, HunkFold>;
   editorLabel: (file: GitChangedFile) => string | null;
   actions: ChangesActions;
-  against?: ReactNode;
+  /** The Against group's state when the checkout is a project's (useAgainst). */
+  against?: AgainstModel | null;
   /** The branch name as the switch (BranchPicker's head); plain text without it. */
   branchPicker?: ReactNode;
+  /** Every row in flow, no virtualizer: the ui:preview fixtures, whose document has no layout to measure. */
+  rowsInFlow?: boolean;
 }) {
   const files = index?.files ?? [];
-  const staged = files.filter((f) => f.staged);
-  const unstaged = files.filter((f) => f.unstaged);
-  const both = staged.length > 0 && unstaged.length > 0;
-  const rowProps = { selectedPath, busy, editorLabel, actions };
+  const hasStaged = files.some((f) => f.staged);
+  const compare = against?.compare;
+  const hasAgainst = !!against;
+  const items = useMemo(() => changesItems(index, hasAgainst ? { compare } : undefined), [index, hasAgainst, compare]);
+  const fileItems = useMemo(() => {
+    const byKey = new Map<string, { file: GitChangedFile; side: ChangeSide }>();
+    for (const item of items) if (item.kind === "file") byKey.set(item.key, item);
+    return byKey;
+  }, [items]);
+  // The element that scrolls, as state: the list attaches to it the render it arrives.
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+
+  const rowsFor = (id: string | null): MenuRow[] | null => {
+    const row = id ? fileItems.get(id) : undefined;
+    return row ? fileMenuRows(row.file, row.side, actions.openInEditor ? editorLabel(row.file) : null) : null;
+  };
+  const pick = (verb: string, id: string | null): void => {
+    const row = id ? fileItems.get(id) : undefined;
+    if (!row) return;
+    if (verb === "open") actions.open(row.file);
+    else if (verb === "editor") actions.openInEditor?.(row.file);
+    else if (verb === "stage") actions.stage(row.file);
+    else if (verb === "unstage") actions.unstage(row.file);
+    else if (verb === "discard") actions.discard(row.file);
+  };
+
+  const renderItem = (item: ChangesItem): ReactNode => {
+    const body =
+      item.kind === "loading" ? (
+        <RowsSkeleton />
+      ) : item.kind === "empty" ? (
+        <Empty className="flex-none py-6">
+          <EmptyHeader>
+            <EmptyTitle>No changes</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
+      ) : item.kind === "heading" ? (
+        <h3 className="flex h-6 items-center justify-between px-2 text-xs font-medium text-muted-foreground">
+          {item.label}
+          <span className="tabular-nums">{item.count}</span>
+        </h3>
+      ) : item.kind === "file" ? (
+        <FileRow file={item.file} side={item.side} fold={folds[item.key]} selectedPath={selectedPath} busy={busy} actions={actions} />
+      ) : !against ? null : item.kind === "against" ? (
+        <AgainstHead model={against} />
+      ) : item.kind === "against-file" ? (
+        <AgainstFileRow file={item.file} target={against.compare?.target ?? ""} selectedPath={selectedPath} onOpen={against.onOpen} />
+      ) : against.compare ? (
+        <AgainstCommits compare={against.compare} open={against.commitsOpen} onOpenChange={against.onCommitsOpen} />
+      ) : null;
+    return item.gap ? <div className="pt-4">{body}</div> : body;
+  };
 
   return (
     <TooltipProvider>
@@ -499,39 +554,28 @@ export function ChangesView({
             {error}
           </p>
         ) : null}
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-4 px-1 pb-3">
-            {!index ? (
-              <RowsSkeleton />
-            ) : files.length === 0 ? (
-              <Empty className="flex-none py-6">
-                <EmptyHeader>
-                  <EmptyTitle>No changes</EmptyTitle>
-                </EmptyHeader>
-              </Empty>
-            ) : (
-              <>
-                {staged.length > 0 ? (
-                  <Group heading={both ? "Staged" : null} count={staged.length}>
-                    {staged.map((file) => (
-                      <FileRow key={`s:${file.relative}`} file={file} side="staged" fold={folds[foldKey("staged", file.relative)]} {...rowProps} />
-                    ))}
-                  </Group>
-                ) : null}
-                {unstaged.length > 0 ? (
-                  <Group heading={both ? "Changes" : null} count={unstaged.length}>
-                    {unstaged.map((file) => (
-                      <FileRow key={`u:${file.relative}`} file={file} side="unstaged" fold={folds[foldKey("unstaged", file.relative)]} {...rowProps} />
-                    ))}
-                  </Group>
-                ) : null}
-              </>
-            )}
-            {against}
-          </div>
+        <ScrollArea className="min-h-0 flex-1" viewportRef={setScroller}>
+          <RowsContextMenu label="File actions" lazyMount rowsFor={rowsFor} onPick={pick}>
+            <div className="px-1 pb-3">
+              {rowsInFlow ? (
+                items.map((item) => <div key={item.key}>{renderItem(item)}</div>)
+              ) : (
+                <VirtualRows
+                  count={items.length}
+                  scroller={scroller}
+                  scrollMargin={0}
+                  gap={0}
+                  estimateSize={(i) => estimateItem(items[i]!)}
+                  getItemKey={(i) => items[i]!.key}
+                  render={(i) => renderItem(items[i]!)}
+                  reveal={null}
+                />
+              )}
+            </div>
+          </RowsContextMenu>
         </ScrollArea>
         {index && files.length > 0 ? (
-          <CommitFooter staged={staged.length > 0} message={message} onMessage={onMessage} rules={rules} busy={busy} actions={actions} />
+          <CommitFooter staged={hasStaged} message={message} onMessage={onMessage} rules={rules} busy={busy} actions={actions} />
         ) : null}
       </div>
     </TooltipProvider>
@@ -669,26 +713,46 @@ function TopRow({
   );
 }
 
-/** A group of rows; its heading shows only where two groups meet. */
-function Group({ heading, count, children }: { heading: string | null; count: number; children: ReactNode }) {
-  return (
-    <section aria-label={heading ?? undefined}>
-      {heading ? (
-        <h3 className="flex h-6 items-center justify-between px-2 text-xs font-medium text-muted-foreground">
-          {heading}
-          <span className="tabular-nums">{count}</span>
-        </h3>
-      ) : null}
-      <div className="flex flex-col">{children}</div>
-    </section>
-  );
-}
-
 /** A row's counts: its side's when the host split them (a file both staged
  *  and unstaged), else the file's own (one side only, or an older host). */
 export function countsFor(file: GitChangedFile, side: "staged" | "unstaged"): { additions: number; deletions: number } {
   const split = side === "staged" ? file.stagedCounts : file.unstagedCounts;
   return split ?? { additions: file.additions, deletions: file.deletions };
+}
+
+/** A row's right-click verbs (the list's one `RowsContextMenu`). */
+export function fileMenuRows(file: GitChangedFile, side: ChangeSide, editor: string | null): MenuRow[] {
+  const deleted = file.status === "deleted";
+  const untracked = file.status === "untracked";
+  return tidy([
+    ...(deleted ? [] : [{ kind: "item", id: "open", label: "Open diff", icon: GitCompare } as const]),
+    ...(editor && !deleted ? [{ kind: "item", id: "editor", label: editor, icon: ExternalLink } as const] : []),
+    side === "staged"
+      ? ({ kind: "item", id: "unstage", label: "Unstage", icon: Minus } as const)
+      : ({ kind: "item", id: "stage", label: "Stage", icon: Plus } as const),
+    ...(side === "unstaged"
+      ? [{ kind: "sep" } as const, { kind: "item", id: "discard", label: untracked ? "Delete…" : "Discard…", icon: untracked ? Trash2 : Undo2 } as const]
+      : []),
+  ]);
+}
+
+/** A fold's Collapsible mounts only once the fold opens on this row, so a
+ *  closed row carries none. A fresh open mounts it closed for a frame, so its
+ *  height animates; a row scrolled back into view with its fold open mounts
+ *  it open, with nothing to replay. */
+function useFoldPanel(open: boolean): { held: boolean; shown: boolean } {
+  const [held, setHeld] = useState(open);
+  const [shown, setShown] = useState(open);
+  useEffect(() => {
+    if (!open) {
+      setShown(false);
+      return;
+    }
+    setHeld(true);
+    const frame = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+  return { held, shown };
 }
 
 function FileRow({
@@ -697,15 +761,13 @@ function FileRow({
   fold,
   selectedPath,
   busy,
-  editorLabel,
   actions,
 }: {
   file: GitChangedFile;
-  side: "staged" | "unstaged";
+  side: ChangeSide;
   fold?: HunkFold;
   selectedPath?: string;
   busy: string | null;
-  editorLabel: (file: GitChangedFile) => string | null;
   actions: ChangesActions;
 }) {
   const deleted = file.status === "deleted";
@@ -714,8 +776,8 @@ function FileRow({
   const hunksName = `${side === "staged" ? "staged hunks" : "hunks"} of ${basename(file.relative)}`;
   const open = fold !== undefined;
   const active = selectedPath === file.relative;
-  const editor = actions.openInEditor ? editorLabel(file) : null;
   const rowBusy = busy === file.relative;
+  const panel = useFoldPanel(open);
 
   const row = (
     <Item
@@ -785,32 +847,20 @@ function FileRow({
     </Item>
   );
 
+  // The row stays first and keyed by position, so opening its fold never remounts the toggle under the keyboard.
   return (
-    <Collapsible open={open}>
-      <ContextMenu>
-        <ContextMenuTrigger render={<div className="relative" />}>{row}</ContextMenuTrigger>
-        <ContextMenuContent aria-label={`${basename(file.relative)} actions`}>
-          {!deleted ? <ContextMenuItem onClick={() => actions.open(file)}>Open diff</ContextMenuItem> : null}
-          {editor && !deleted ? <ContextMenuItem onClick={() => actions.openInEditor?.(file)}>{editor}</ContextMenuItem> : null}
-          {side === "staged" ? (
-            <ContextMenuItem onClick={() => actions.unstage(file)}>Unstage</ContextMenuItem>
-          ) : (
-            <ContextMenuItem onClick={() => actions.stage(file)}>Stage</ContextMenuItem>
-          )}
-          {side === "unstaged" ? (
-            <>
-              <ContextMenuSeparator />
-              <ContextMenuItem onClick={() => actions.discard(file)}>{file.status === "untracked" ? "Delete…" : "Discard…"}</ContextMenuItem>
-            </>
-          ) : null}
-        </ContextMenuContent>
-      </ContextMenu>
-      {foldable ? (
-        <CollapsibleContent>
-          <HunkRows file={file} side={side} fold={fold} busy={busy} actions={actions} />
-        </CollapsibleContent>
+    <>
+      <div className="relative" data-menu-id={foldKey(side, file.relative)}>
+        {row}
+      </div>
+      {foldable && panel.held ? (
+        <Collapsible open={panel.shown}>
+          <CollapsibleContent>
+            <HunkRows file={file} side={side} fold={fold} busy={busy} actions={actions} />
+          </CollapsibleContent>
+        </Collapsible>
       ) : null}
-    </Collapsible>
+    </>
   );
 }
 
