@@ -55,6 +55,7 @@ describe("appshot settings", () => {
     link.calls[0].resolve(stored);
     await load;
     store.setAppshotSettings({ sound: true });
+    await flush();
     expect(link.calls[1]).toMatchObject({ method: "appshots.set", params: { settings: { ...stored, sound: true } } });
     link.calls[1].reject(new Error("host refused"));
     await flush();
@@ -68,10 +69,29 @@ describe("appshot settings", () => {
     await load;
     store.setAppshotSettings({ sound: true });
     store.setAppshotSettings({ sound: false });
+    await flush();
     link.calls[1].reject(new Error("down"));
+    await flush();
     link.calls[2].reject(new Error("down"));
     await flush();
     expect(settingsNow().sound).toBe(false);
+  });
+
+  it("sends a later write after a failed one put its change back, so the host and the page agree", async () => {
+    const load = store.loadAppshotSettings();
+    link.calls[0].resolve(stored);
+    await load;
+    store.setAppshotSettings({ sound: true });
+    store.setAppshotSettings({ destination: "automatic" });
+    await flush();
+    // One write at a time: the second waits for the first's answer.
+    expect(link.calls).toHaveLength(2);
+    link.calls[1].reject(new Error("down"));
+    await flush();
+    expect(link.calls[2].params).toEqual({ settings: { ...stored, sound: false, destination: "automatic" } });
+    link.calls[2].resolve({});
+    await flush();
+    expect(settingsNow()).toEqual({ ...stored, sound: false, destination: "automatic" });
   });
 
   it("keeps a failed load's reason", async () => {

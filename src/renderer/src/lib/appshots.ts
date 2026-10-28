@@ -65,6 +65,7 @@ export type AppshotSettingsStatus = {
 let status: AppshotSettingsStatus = { loaded: false, loadError: null, writeError: null }
 /** What the host last confirmed holding: a failed write goes back to it. */
 let stored: AppshotSettings = DEFAULT_APPSHOT_SETTINGS
+let writes: Promise<void> = Promise.resolve()
 
 function setStatus(patch: Partial<AppshotSettingsStatus>): void {
   status = { ...status, ...patch }
@@ -79,25 +80,25 @@ const message = (err: unknown): string => (err instanceof Error ? err.message : 
 
 /** Optimistic: the page flips at once, the server row follows. A write is
  *  refused until the stored settings have loaded (it would send defaults
- *  over them); a failed one puts the changed settings back. */
+ *  over them). Writes go one at a time, each sending the whole set as it
+ *  stands when its turn comes, so a failed one put back (to what the host
+ *  last stored) is never overwritten by a later one's copy. */
 export function setAppshotSettings(patch: Partial<AppshotSettings>): void {
   if (!status.loaded) return
   settings = { ...settings, ...patch }
   setStatus({ writeError: null })
-  const sent = settings
-  // Appshots are this Mac's feature: its settings and chats live on the local server.
-  registry
-    .primary()
-    .request('appshots.set', { settings: sent })
-    .then(() => {
+  const keys = Object.keys(patch) as (keyof AppshotSettings)[]
+  writes = writes.then(async () => {
+    const sent = settings
+    try {
+      // Appshots are this Mac's feature: its settings and chats live on the local server.
+      await registry.primary().request('appshots.set', { settings: sent })
       stored = sent
-    })
-    .catch((err: unknown) => {
-      // Back to what the host last stored, never to another unsaved flip.
-      const keys = Object.keys(patch) as (keyof AppshotSettings)[]
+    } catch (err) {
       settings = { ...settings, ...Object.fromEntries(keys.map((k) => [k, stored[k]])) }
       setStatus({ writeError: { key: keys[0], message: message(err) } })
-    })
+    }
+  })
 }
 
 /** Ask the host for the stored settings, waiting for the link to open. */
@@ -116,6 +117,7 @@ export async function loadAppshotSettings(): Promise<void> {
 export function resetAppshotSettingsForTests(): void {
   settings = DEFAULT_APPSHOT_SETTINGS
   stored = DEFAULT_APPSHOT_SETTINGS
+  writes = Promise.resolve()
   status = { loaded: false, loadError: null, writeError: null }
 }
 
