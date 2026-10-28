@@ -40,12 +40,13 @@ const DONE_LINE = "All tasks complete";
 const TIME_SHOWN_FROM_MS = 1500;
 
 /** The row's time, its own leaf so only it re-renders on the clock. A
- *  parked pane's clock reads 0, and the time holds its counted part. */
-function TaskTimeText({ time }: { time: TaskTime }) {
+ *  parked pane's clock reads 0, and the time holds its counted part. A done
+ *  row's time recedes with its label. */
+function TaskTimeText({ time, state }: { time: TaskTime; state: TaskState }) {
   const now = useNow(time.from !== undefined);
   const ms = time.from !== undefined && now > 0 ? time.ms + Math.max(0, now - time.from) : time.ms;
   if (ms < TIME_SHOWN_FROM_MS) return null;
-  return <span className="ms-auto shrink-0 text-xs leading-5 tabular-nums text-muted-foreground">{duration(ms)}</span>;
+  return <span className={cn("ms-auto shrink-0 text-xs leading-5 tabular-nums", state === "done" ? "text-(--task-done)" : "text-muted-foreground")}>{duration(ms)}</span>;
 }
 
 function TaskDonut({ done, total }: { done: number; total: number }) {
@@ -151,7 +152,7 @@ export function TaskList({ tasks, title = "Tasks", defaultOpen = true, className
                   <span aria-hidden className="task-strike" />
                 </span>
               </TruncateTip>
-              {task.time ? <TaskTimeText time={task.time} /> : null}
+              {task.time ? <TaskTimeText time={task.time} state={task.state} /> : null}
               {task.state === "active" && task.progress !== undefined ? <span className="sr-only">{shareText(task.progress)} complete</span> : null}
             </li>
           ))}

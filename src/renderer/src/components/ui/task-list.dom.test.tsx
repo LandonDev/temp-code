@@ -114,6 +114,7 @@ describe("a task's time", () => {
       />,
     );
     expect(timeOf(container, 0)).toBe("12s");
+    expect(container.querySelector("li .tabular-nums")?.className).toContain("text-(--task-done)");
     expect(timeOf(container, 1)).toBeNull();
     expect(timeOf(container, 2)).toBeNull();
   });
@@ -123,6 +124,7 @@ describe("a task's time", () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(from + 10_000);
     const { container } = render(<TaskList tasks={[{ id: "1", label: LONG, state: "active", time: { ms: 5_000, from } }]} />);
     expect(timeOf(container, 0)).toBe("15s");
+    expect(container.querySelector("li .tabular-nums")?.className).toContain("text-muted-foreground");
     now.mockReturnValue(from + 20_000);
     act(() => clockForTest.tick());
     expect(timeOf(container, 0)).toBe("25s");
