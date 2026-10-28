@@ -182,6 +182,17 @@ describe('UsageMeter', () => {
     expect(row(root, 'claude').getAttribute('aria-label')).toBe('Claude usage, no report yet')
   })
 
+  it('draws no row for a provider whose every account answered with no caps', async () => {
+    const { root, link } = await mount()
+    const s = snapshot()
+    s.providers.cursor.reports = [{ profileName: 'cursor@x.com', windows: [] }]
+    await probe!.act(async () => {
+      for (const l of link.listeners) l({ push: 'accounts', snapshot: s } as ServerPush)
+    })
+    expect(root.querySelector('[data-provider="cursor"]')).toBeNull()
+    expect(root.querySelectorAll('[data-provider]')).toHaveLength(2)
+  })
+
   it('says Limited and the time in the warning tone when every account is throttled', async () => {
     const { root, link } = await mount()
     const s = snapshot()

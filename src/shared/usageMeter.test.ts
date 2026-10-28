@@ -37,6 +37,24 @@ describe('meterFor', () => {
     expect(meterFor('claude', s, NOW)).toEqual({ share: null, resetsAt: null, limited: null, withRoom: 0, windows: [] })
   })
 
+  it('is null when every account answered with no usage window: a plan with no caps has no row', () => {
+    expect(meterFor('cursor', snapshot([report('a', []), report('b', [])], {}, 'cursor'), NOW)).toBeNull()
+  })
+
+  it('keeps the empty track while an account has not answered, or answered only with an expired report', () => {
+    const waiting = snapshot([report('a', [])], {}, 'cursor')
+    waiting.providers.cursor.profiles.push(profile('b'))
+    expect(meterFor('cursor', waiting, NOW)).toEqual({ share: null, resetsAt: null, limited: null, withRoom: 0, windows: [] })
+    const stale = snapshot([report('a', []), report('b', [], { expired: true })], {}, 'cursor')
+    expect(meterFor('cursor', stale, NOW)?.share).toBeNull()
+  })
+
+  it('draws a meter once one account reports a window', () => {
+    const m = meterFor('cursor', snapshot([report('a', []), report('b', [['month', 40]])], {}, 'cursor'), NOW)!
+    expect(m.share).toBeCloseTo(0.6)
+    expect(m.windows.map((w) => w.label)).toEqual(['month'])
+  })
+
   it('reads one account’s tighter general window; a per-model cap is a row, not the share', () => {
     const s = snapshot([
       report('a', [

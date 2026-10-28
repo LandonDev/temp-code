@@ -94,15 +94,21 @@ const soonest = (times: (number | null)[]): number | null => {
 }
 
 /**
- * The provider's meter, or null when it has no accounts. Pure, so the rail
- * and the phone agree.
+ * The provider's meter, or null when there is nothing to show: no accounts,
+ * or every account answered with no usage window and no limit (a plan with
+ * no caps, as Cursor's says). Before the first answer it is an empty track.
+ * Pure, so the rail and the phone agree.
  */
 export function meterFor(provider: AccountProvider, snapshot: AccountsSnapshot, now = Date.now()): UsageMeter | null {
   const accounts = snapshot.providers[provider]
   if (!accounts || accounts.profiles.length === 0) return null
   const names = new Set(accounts.profiles.map((p) => p.name))
   const reports = accounts.reports.filter((r) => names.has(r.profileName) && usable(r))
-  if (reports.length === 0) return { share: null, resetsAt: null, limited: null, withRoom: 0, windows: [] }
+  if (reports.length === 0) {
+    const answered = new Set(accounts.reports.filter((r) => !r.expired).map((r) => r.profileName))
+    if ([...names].every((name) => answered.has(name))) return null
+    return { share: null, resetsAt: null, limited: null, withRoom: 0, windows: [] }
+  }
 
   const labels = GENERAL_LABELS[provider]
   const anyGeneral = reports.some((r) => r.windows.some((w) => labels.includes(w.label)))
