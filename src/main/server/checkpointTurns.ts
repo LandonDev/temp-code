@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import type { ServerPush } from '@shared/contract'
 import type { CheckpointStatus } from '@shared/contract-checkpoint'
@@ -11,7 +12,15 @@ import { statusBudget, withBudget } from './spawnBudget'
  *
  * A send arms the baseline (`ensure`, from sessions.ts armBaseline). A
  * settled live edit (livediff.ts) costs a set lookup: a path the session's
- * manifest does not know yet joins its unsaved paths. When the turn settles
+ * manifest does not know yet joins its unsaved paths. A write tool's call
+ * (Edit, MultiEdit, Write, NotebookEdit) touches the path its input names
+ * the same way: the tool writes through a temporary name and renames it
+ * onto the target, so what reaches the checkpoint as a settled edit can be
+ * the temporary file and never the target (measured on a Mac, 2026-10-27:
+ * fs.watch itself reports the target's rename with the file present and
+ * the temporary name created then gone; livediff's ownership and settle
+ * decide what is emitted), and the checkpoint must not depend on how a tool
+ * writes. The watcher stays for what the shell writes. When the turn settles
  * (turn-complete, or a status of idle, error or paused) the unsaved paths
  * are written in one manifest write together with one sync (the newly dirty
  * paths no other session claims), and the sockets watching the thread hear
@@ -30,6 +39,18 @@ export const FLUSH_MS = 5_000
 /** The statuses that end a turn, besides turn-complete. */
 const SETTLES = new Set(['idle', 'error', 'paused'])
 const EMPTY: ReadonlySet<string> = new Set()
+/** The tools whose input names the one file they write. */
+const WRITE_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
+
+/** The path a write tool's call names (`file_path`, a notebook's
+ *  `notebook_path`), absolute or relative to the thread's cwd; null for
+ *  any other tool or an input without one. */
+export function writtenPath(name: string, input: unknown): string | null {
+  if (!WRITE_TOOLS.has(name) || !input || typeof input !== 'object') return null
+  const { file_path, notebook_path } = input as { file_path?: unknown; notebook_path?: unknown }
+  const path = typeof file_path === 'string' ? file_path : typeof notebook_path === 'string' ? notebook_path : ''
+  return path.trim() ? path : null
+}
 
 export type CheckpointChangedPush = Extract<ServerPush, { push: 'checkpoint-changed' }>
 
@@ -59,6 +80,8 @@ interface Turn {
   timer: ReturnType<typeof setTimeout> | null
 }
 
+const onDisk = (path: string): Promise<boolean> => stat(path).then(() => true, () => false)
+
 export class CheckpointTurns {
   private readonly turns = new Map<string, Turn>()
   private readonly listings = new Map<string, Promise<Set<string>>>()
@@ -84,10 +107,14 @@ export class CheckpointTurns {
     await Promise.all(push.sessionIds.map((sessionId) => this.touch(sessionId, path)))
   }
 
-  /** A row the registry appended; a settled turn writes the manifest. */
+  /** A row the registry appended: a write tool's complete call touches the
+   *  path it names; a settled turn writes the manifest. */
   async observe(row: EventRow): Promise<void> {
     const { event } = row
-    if (event.type === 'turn-complete' || (event.type === 'status' && SETTLES.has(event.status))) {
+    if (event.type === 'tool-call') {
+      const path = event.partial ? null : writtenPath(event.name, event.input)
+      if (path) await this.touch(row.sessionId, path)
+    } else if (event.type === 'turn-complete' || (event.type === 'status' && SETTLES.has(event.status))) {
       await this.settle(row.sessionId)
     }
   }
@@ -124,8 +151,13 @@ export class CheckpointTurns {
     turn.timer ??= setTimeout(() => void this.flush(sessionId), FLUSH_MS)
   }
 
-  /** Mid-turn (or after it): write the unsaved paths, asking git nothing;
-   *  the settle tells the store which of them HEAD has. */
+  /** Mid-turn (or after it): write the unsaved paths that are on disk,
+   *  asking git nothing; the settle tells the store which of them HEAD has.
+   *  A path not on disk waits for the settle, which asks HEAD: a deleted
+   *  tracked file is recorded then (the settle's sync claims it anyway), a
+   *  temporary write file already gone is forgotten; an edit that settles
+   *  after the turn (2 s after its last write) has no settle to follow its
+   *  flush, so writing it here would list the temporary file for good. */
   private flush(sessionId: string): Promise<void> {
     return this.queue(sessionId, async () => {
       const turn = this.turns.get(sessionId)
@@ -133,9 +165,14 @@ export class CheckpointTurns {
       this.stopTimer(turn)
       const known = await turn.known
       if (!known || turn.unsaved.size === 0) return
-      const touched = [...turn.unsaved].map((relative): TouchedPath => ({ relative, inHead: null }))
-      for (const relative of turn.unsaved) turn.unasked.add(relative)
-      turn.unsaved.clear()
+      const present: string[] = []
+      for (const relative of turn.unsaved) if (await onDisk(join(turn.root, relative))) present.push(relative)
+      if (present.length === 0) return
+      const touched = present.map((relative): TouchedPath => ({ relative, inHead: null }))
+      for (const relative of present) {
+        turn.unasked.add(relative)
+        turn.unsaved.delete(relative)
+      }
       const written = await this.deps.store.record(sessionId, turn.cwd, touched).catch(() => null)
       if (this.learn(turn, known, written)) this.changed(sessionId)
     })
@@ -160,11 +197,21 @@ export class CheckpointTurns {
         const listed = pending.length > 0 ? await this.listing(turn.root) : EMPTY
         const ask = pending.filter((relative) => !listed.has(relative))
         const head = ask.length > 0 ? await this.deps.inHeadMany(turn.root, ask).catch(() => EMPTY) : EMPTY
-        const touched = pending.map((relative) => ({ relative, inHead: listed.has(relative) || head.has(relative) }))
+        const touched: TouchedPath[] = []
+        const forget: string[] = []
+        for (const relative of pending) {
+          const inHead = listed.has(relative) || head.has(relative)
+          // A path neither HEAD nor the disk has was made and removed inside
+          // the turn (a tool's temporary write file): nothing to show or
+          // undo, and a mid-turn flush that listed it is undone.
+          if (inHead || (await onDisk(join(turn.root, relative)))) touched.push({ relative, inHead })
+          else forget.push(relative)
+        }
         // The settle's diff is a review diff: the panels' lane, never the sends'.
         const written = await withBudget(statusBudget, () =>
-          this.deps.store.record(sessionId, turn.cwd, touched, { sync: true })
+          this.deps.store.record(sessionId, turn.cwd, touched, { sync: true, forget })
         ).catch(() => null)
+        for (const relative of forget) known.delete(relative)
         if (this.learn(turn, known, written)) this.changed(sessionId)
       }
       this.release(sessionId, turn)

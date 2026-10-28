@@ -98,20 +98,26 @@ export class CheckpointStore {
   /**
    * The paths a turn touched, merged into the manifest with at most one
    * write; with `sync`, also the newly dirty paths no other session in the
-   * project has claimed. Answers every path the manifest knows (snapshots
-   * and touched), or null when the session has no checkpoint for this cwd.
+   * project has claimed; `forget` drops paths a turn touched that it also
+   * removed (nothing to show or undo). Answers every path the manifest
+   * knows (snapshots and touched), or null when the session has no
+   * checkpoint for this cwd.
    */
   record(
     sessionId: string,
     cwd: string,
     touched: readonly TouchedPath[],
-    options: { sync?: boolean } = {}
+    options: { sync?: boolean; forget?: readonly string[] } = {}
   ): Promise<Set<string> | null> {
     return this.serialized(sessionId, async () => {
       const manifest = await this.loadMatching(sessionId, cwd)
       if (!manifest) return null
       const root = await projectRoot(cwd)
       let dirty = await markTouched(root, manifest, touched)
+      for (const relative of options.forget ?? []) {
+        if (manifest.touched.delete(relative)) dirty = true
+        if (manifest.files.get(relative) === 'missing' && manifest.files.delete(relative)) dirty = true
+      }
       if (options.sync && (await this.claimDirty(sessionId, cwd, root, manifest))) dirty = true
       if (dirty) await this.save(sessionId, manifest)
       return new Set([...manifest.files.keys(), ...manifest.touched])

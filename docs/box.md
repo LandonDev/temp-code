@@ -2446,7 +2446,7 @@ add the column here. What the proofs measured on the Mac:
 |---|---|---|
 | Profiler | `doctor.profile`, `currentLag()`, `untilLoopIdle()` | doctorProfile and stalls tests |
 | Gateway parse | the scope carries the model (`;m=`); the gateway reads `model` off the body's first 1,024 bytes; no JSON.parse | `script:e2e-quota-routing`: a 429 is charged to the body's model |
-| Checkpoints | the host captures from its own live edits; one manifest write and one sync per turn; capture, ensure and sync left the wire | `script:e2e-checkpoint-turn`: 9 to 11 git children per turn, none per path |
+| Checkpoints | the host captures from its own live edits and from each write tool's call (the path the call names, so a tool that writes through a temporary file still checkpoints its target); one manifest write and one sync per turn; capture, ensure and sync left the wire | `script:e2e-checkpoint-turn`: 9 to 11 git children per turn, none per path |
 | Loop costs | an incremental session index; one serialization per frame; a coalescer on every socket; folds and the mirror read on the reader worker | a test: 13,000 meta changes in half a second reach a local socket as at most ten frames |
 | Lane | `session.focus`, request lanes, duplicate reads joined | `script:e2e-interactive-lane`: focused reads p95 3.4 ms during 200 bulk requests; 15 git children instead of 600 |
 | Honest loading | `loading`, `slow` and `failed` instead of an empty thread; request deadlines and retries | `script:e2e-loading-states`: about 1,000 samples, never the empty state |

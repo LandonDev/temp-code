@@ -84,11 +84,14 @@ function setup({ tracked = [] as string[], head = [] as string[], sinks = 1 } = 
     turns.liveEdit({ cwd: dir, sessionIds, edit: { path: relative, kind: 'changed', diff: null, settled, ts: 0 } })
   const end = (id = 's1', event: AgentEvent = { type: 'turn-complete' }) =>
     turns.observe({ sessionId: id, seq: 1, ts: 0, event } satisfies EventRow)
-  return { dir, turns, writes, listings, asked, pushed, manifest, file, edit, end }
+  /** A write tool's call row, as the registry appends it. */
+  const call = (name: string, input: unknown, partial?: boolean, id = 's1') =>
+    turns.observe({ sessionId: id, seq: 2, ts: 0, event: { type: 'tool-call', callId: 'c1', name, input, ...(partial ? { partial } : {}) } } satisfies EventRow)
+  return { dir, turns, writes, listings, asked, pushed, manifest, file, edit, end, call }
 }
 
 describe('checkpoint turns', () => {
-  it('a settled live edit snapshots only a file that neither HEAD nor the disk has', async () => {
+  it("a settled live edit snapshots nothing of the agent's bytes, and a path made and removed inside the turn is not recorded", async () => {
     const t = setup({ tracked: ['a.txt'] })
     t.file('a.txt')
     await t.turns.ensure('s1', t.dir)
@@ -100,10 +103,87 @@ describe('checkpoint turns', () => {
     await t.edit('ignored.txt', ['s1'], false) // not settled yet
     await t.end()
     const manifest = t.manifest()
-    expect(manifest.files).toEqual({ 'scratch.txt': 'missing' })
-    expect(manifest.touched).toEqual(['a.txt', 'new.txt', 'scratch.txt'])
+    expect(manifest.files).toEqual({})
+    expect(manifest.touched).toEqual(['a.txt', 'new.txt'])
     expect(manifest.tracked).toEqual(['a.txt'])
     expect(git.children).toEqual([])
+  })
+
+  it("a write tool's call touches the path it names: the target, not the temporary file the watcher saw", async () => {
+    const t = setup({ tracked: ['src/app.ts'] })
+    mkdirSync(join(t.dir, 'src'))
+    t.file('src/app.ts')
+    await t.turns.ensure('s1', t.dir)
+    // The Edit tool wrote through a temporary name and renamed it onto the target.
+    await t.call('Edit', { file_path: 'src/app.ts', old_string: 'a', new_string: 'b' })
+    t.file('src/app.ts', 'edited\n')
+    await t.edit('src/app.ts.tmp.123')
+    await t.end()
+    expect(t.manifest().touched).toEqual(['src/app.ts'])
+    expect(t.manifest().files).toEqual({})
+    expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual([])
+    git.dirty = ['src/app.ts']
+    expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual(['src/app.ts'])
+  })
+
+  it('the flush writes only paths on disk; a temporary file it listed and the turn removed leaves the manifest at the settle', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const t = setup()
+    await t.turns.ensure('s1', t.dir)
+    t.file('a.txt')
+    t.file('a.txt.tmp.1')
+    await t.edit('a.txt')
+    await t.edit('a.txt.tmp.1')
+    await t.edit('gone.tmp.2') // never on disk by the time it is flushed
+    await vi.advanceTimersByTimeAsync(FLUSH_MS)
+    await t.turns.written('s1')
+    expect(t.manifest().touched).toEqual(['a.txt', 'a.txt.tmp.1'])
+    rmSync(join(t.dir, 'a.txt.tmp.1'))
+    await t.end()
+    expect(t.manifest().touched).toEqual(['a.txt'])
+    expect(t.manifest().files).toEqual({})
+    // The next turn makes the path for real: it is recorded then.
+    await t.turns.ensure('s1', t.dir)
+    t.file('a.txt.tmp.1')
+    await t.edit('a.txt.tmp.1')
+    await t.end()
+    expect(t.manifest().touched).toEqual(['a.txt', 'a.txt.tmp.1'])
+  })
+
+  it("an edit that settles after the turn waits for the next settle when its file is gone: the temporary file never lists; a deleted tracked file is the sync's", async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const t = setup({ tracked: ['kept.txt'] })
+    await t.turns.ensure('s1', t.dir)
+    t.file('a.txt')
+    await t.edit('a.txt')
+    await t.end()
+    expect(t.manifest().touched).toEqual(['a.txt'])
+    // The Edit tool's temporary file: its settled edit lands after the turn, the file already renamed away.
+    await t.edit('a.txt.tmp.9')
+    await vi.advanceTimersByTimeAsync(FLUSH_MS)
+    await t.turns.written('s1')
+    expect(t.manifest().touched).toEqual(['a.txt'])
+    // The next turn's settle asks HEAD: a path HEAD has is recorded, the rest forgotten.
+    await t.turns.ensure('s1', t.dir)
+    await t.edit('kept.txt') // a tracked file deleted by the shell
+    await t.end()
+    expect(t.manifest().touched).toEqual(['a.txt', 'kept.txt'])
+    expect(t.manifest().tracked).toEqual(['kept.txt'])
+  })
+
+  it('an absolute path, a Write, a MultiEdit and a notebook are touched; a partial call, another tool and a path outside the root are not', async () => {
+    const t = setup()
+    await t.turns.ensure('s1', t.dir)
+    await t.call('Write', { file_path: join(t.dir, 'made.txt'), content: 'x' })
+    await t.call('MultiEdit', { file_path: 'multi.txt', edits: [] })
+    await t.call('NotebookEdit', { notebook_path: 'nb.ipynb', new_source: '' })
+    await t.call('Edit', { file_path: 'streaming.txt' }, true)
+    await t.call('Read', { file_path: 'read.txt' })
+    await t.call('Write', { file_path: join(t.dir, '..', 'outside.txt'), content: 'x' })
+    await t.call('Write', { content: 'no path' })
+    for (const relative of ['made.txt', 'multi.txt', 'nb.ipynb']) t.file(relative)
+    await t.end()
+    expect(t.manifest().touched).toEqual(['made.txt', 'multi.txt', 'nb.ipynb'])
   })
 
   it('a second edit of a path costs nothing: no snapshot, no git, no write', async () => {
@@ -130,6 +210,7 @@ describe('checkpoint turns', () => {
     const t = setup({ tracked: ['a.txt', 'b.txt'] })
     await t.turns.ensure('s1', t.dir)
     const armed = t.writes.mock.calls.length
+    t.file('c.txt')
     for (const relative of ['a.txt', 'b.txt', 'c.txt']) await t.edit(relative)
     git.dirty = ['a.txt', 'd.txt'] // d.txt: a shell write no live edit saw
     expect(t.writes.mock.calls.length).toBe(armed)
@@ -152,6 +233,7 @@ describe('checkpoint turns', () => {
   it('a host with no socket open still captures', async () => {
     const t = setup({ sinks: 0 })
     await t.turns.ensure('s1', t.dir)
+    t.file('a.txt')
     await t.edit('a.txt')
     await t.end('s1', { type: 'status', status: 'paused' })
     expect(t.manifest().touched).toEqual(['a.txt'])
@@ -162,6 +244,8 @@ describe('checkpoint turns', () => {
     const t = setup({ tracked: ['a.txt'] })
     await t.turns.ensure('s1', t.dir)
     const armed = t.writes.mock.calls.length
+    t.file('a.txt')
+    t.file('b.txt')
     await t.edit('a.txt')
     await vi.advanceTimersByTimeAsync(FLUSH_MS - 1_000)
     await t.edit('b.txt') // inside the window: it does not push the write back
@@ -198,6 +282,7 @@ describe('checkpoint turns', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const t = setup()
     await t.turns.ensure('s1', t.dir)
+    t.file('a.txt')
     await t.edit('a.txt')
     vi.advanceTimersByTime(FLUSH_MS) // the write is in flight
     const settled = t.end() // queued behind it
@@ -214,6 +299,8 @@ describe('checkpoint turns', () => {
   it('an edit reaches every owner with a checkpoint: the subagent and its root', async () => {
     const t = setup()
     await t.turns.ensure('root', t.dir)
+    t.file('a.txt')
+    t.file('b.txt')
     await t.edit('a.txt', ['sub', 'root'])
     await t.end('root')
     await t.end('sub')

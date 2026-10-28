@@ -1528,9 +1528,15 @@ proof and the sizing rules; the pieces, by name:
   the host's own jobs read.
 - `session.focus` and the lanes: "The interactive lane" above.
 - Checkpoints are the host's (src/main/server/checkpointTurns.ts): a
-  settled live edit costs a set lookup, a turn's settle writes the manifest
-  and syncs once and pushes `checkpoint-changed`; status, undo and keep
-  take a sessionId only. The strip above the composer
+  settled live edit costs a set lookup, a write tool's complete call (Edit,
+  MultiEdit, Write, NotebookEdit) touches the path its input names the same
+  way (`writtenPath`; the Edit tool writes through a temporary name and
+  renames it onto the target, so the checkpoint never depends on what the
+  watcher saw), the mid-turn flush writes only paths on disk and the settle
+  forgets a path neither HEAD nor the disk has (made and removed inside the
+  turn, or the tool's temporary file whose edit settled after the turn),
+  a turn's settle writes the manifest and syncs once and pushes
+  `checkpoint-changed`; status, undo and keep take a sessionId only. The strip above the composer
   (chrome/SessionReview.tsx) is their only control, and its Undo confirms.
 - A thread's pane tells `loading`, `slow` and `failed` from empty (the
   store's `load` phase, request deadlines and retries in
