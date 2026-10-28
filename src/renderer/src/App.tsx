@@ -2090,8 +2090,9 @@ export default function App() {
     },
     [],
   );
+  /** Open Project's picker, or Add workspace's under that title. */
   const pickProject = useCallback(
-    (environmentId?: string) => void chooseFolder(environmentId, adoptFolder),
+    (environmentId?: string, title?: string) => void chooseFolder(environmentId, adoptFolder, title),
     [adoptFolder, chooseFolder],
   );
   /** A draft's "Choose folder…": the picked folder becomes its project, as a recent one would. */

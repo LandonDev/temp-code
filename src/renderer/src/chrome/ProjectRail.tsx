@@ -99,6 +99,9 @@ const CustomizeGroupDialog = customizeChunk.surface("CustomizeGroupDialog");
 import { Kbd } from "../components/ui/kbd";
 import { StatusMark } from "../components/ui/status";
 
+/** The folder picker's title when it adds a workspace (⌘O's says "Open project"). */
+export const ADD_WORKSPACE = "Add workspace";
+
 const REVEAL_LABEL = IS_MAC
   ? "Reveal in Finder"
   : typeof navigator !== "undefined" && /Win/.test(navigator.platform)
@@ -150,7 +153,8 @@ type Props = {
   onOpenChats?: () => void;
   onSelectProject: (path: string) => void;
   /** Add a workspace: this machine's folder dialog, or a host's folders when `environmentId` is another machine. */
-  onOpenProject: (environmentId?: string) => void;
+  /** The folder picker; Add workspace passes its own title. */
+  onOpenProject: (environmentId?: string, title?: string) => void;
   onRemoveProject?: (path: string, options: { purgeData: boolean }) => void;
   activeSessionId?: string;
   onSelectAgent?: (sessionId: string) => void;
@@ -534,9 +538,9 @@ export function ProjectRail({
               label="Workspaces"
               items={rows.projects}
               statusKey={statusKey}
-              onAdd={noWorkspaces ? undefined : () => onOpenProject()}
+              onAdd={noWorkspaces ? undefined : () => onOpenProject(undefined, ADD_WORKSPACE)}
               emptyRow={
-                noWorkspaces ? <RailRow icon={FolderPlus} label="Add workspace…" onClick={() => onOpenProject()} /> : null
+                noWorkspaces ? <RailRow icon={FolderPlus} label="Add workspace…" onClick={() => onOpenProject(undefined, ADD_WORKSPACE)} /> : null
               }
               cwd={cwd}
               busy={busy}
@@ -564,7 +568,7 @@ export function ProjectRail({
             onOpenInbox={onOpenInbox}
             onOpenAccountsPage={onOpenAccountsPage}
             onOpenWhatsNew={onOpenWhatsNew}
-            onAddWorkspace={(environmentId) => onOpenProject(environmentId)}
+            onAddWorkspace={(environmentId) => onOpenProject(environmentId, ADD_WORKSPACE)}
           />
         </>
       )}

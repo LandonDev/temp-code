@@ -39,7 +39,7 @@ import { useDragResize } from "../hooks/useDragResize";
 import { useSashKeys } from "../hooks/useSashKeys";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { looksLikeProject } from "../lib/recents";
-import { ProjectRail, RailFoot } from "./ProjectRail";
+import { ADD_WORKSPACE, ProjectRail, RailFoot } from "./ProjectRail";
 import {
   useProject,
   useProjectCwds,
@@ -81,7 +81,7 @@ type Props = {
   onShowSourceControl?: () => void;
   onSelectAgent?: (sessionId: string) => void;
   onSelectProject?: (path: string) => void;
-  onOpenProject?: (environmentId?: string) => void;
+  onOpenProject?: (environmentId?: string, title?: string) => void;
   onRemoveProject?: (path: string, options: { purgeData: boolean }) => void;
   onNew?: () => string | void;
   onNewTerminal?: () => void;
@@ -352,7 +352,7 @@ function SidebarComponent({
           onOpenInbox={onOpenInbox}
           onOpenAccountsPage={onOpenAccountsPage}
           onOpenWhatsNew={onOpenWhatsNew}
-          onAddWorkspace={(environmentId) => onOpenProject(environmentId)}
+          onAddWorkspace={(environmentId) => onOpenProject(environmentId, ADD_WORKSPACE)}
         />
       ) : null}
       {preambleOpen && workspace ? (

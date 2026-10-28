@@ -40,3 +40,12 @@ describe("ProjectRail sash", () => {
     expect(loadProjectRailWidth()).toBe(200);
   });
 });
+
+describe("Add workspace", () => {
+  it("opens the folder picker under its own title, never Open project's", () => {
+    const onOpenProject = vi.fn();
+    render(<ProjectRail cwd="~" recents={[]} busyPaths={new Set()} onSelectProject={() => {}} onOpenProject={onOpenProject} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add workspace…" }));
+    expect(onOpenProject).toHaveBeenCalledWith(undefined, "Add workspace");
+  });
+});
