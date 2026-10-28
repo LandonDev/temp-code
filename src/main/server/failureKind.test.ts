@@ -132,6 +132,8 @@ describe('failureKindOf on captured messages', () => {
       expect(failureKindOf(ctx({ message })), message).toBe('harness_crashed')
     }
     expect(classifyFailure(ctx({ provider: 'codex', message: 'codex app-server exited unexpectedly (137)' })).summary).toBe('The Codex process died mid-turn')
+    // The cause adds the way on, never the heading again.
+    expect(classifyFailure(ctx({ provider: 'codex', message: 'codex app-server exited unexpectedly (137)' })).cause).toBe('The conversation can pick up from its last message.')
   })
 
   it("a turn the CLI ended itself is turn_ended, after the deaths and the network, with the CLI's line as the cause", () => {

@@ -231,7 +231,7 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext): { summa
     case 'harness_crashed':
       return {
         summary: `The ${harness} process died mid-turn`,
-        cause: 'Its stream ended before the turn finished; the conversation can pick up from its last message.'
+        cause: 'The conversation can pick up from its last message.'
       }
     case 'turn_ended': {
       const [, subtype = '', line = ''] = TURN_ENDED.exec(ctx.message) ?? []
