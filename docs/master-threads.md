@@ -579,8 +579,12 @@ rows, the foot and the add sheet are the UI thread's
   glyph: a mark that only says "nothing is happening" is noise
   (docs/DESIGN.md "Status vocabulary").
 - **An opened child shows at once.** Back and the title draw from the
-  board's row; the transcript's skeleton holds the body until the thread's
-  rows land.
+  board's row; the transcript's skeleton holds the body until the host has
+  answered for the thread's rows (the store's `loaded`, or a `loaded` load
+  phase), never a blank body for a child the board knows only by its meta.
+- **The board is there from the first message.** A pinned master with no
+  child yet has the header (+ Thread, the batch actions) and the foot (its
+  steps, then notify) over an empty list that says nothing of its own.
 - **Left out on purpose.** No cost column, no per-row progress bars or task
   lists (the child pane has the list; the row says the task in hand and
   `3/7`), no counts, no badges on the title. The type is the row's glyph,

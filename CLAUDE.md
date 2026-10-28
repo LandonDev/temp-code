@@ -2477,7 +2477,8 @@ this is the short one.
   `isMasterThread(session)` and `useMasterIds()` in lib/masterThread.ts,
   the tab's and the rail row's "Make master thread" / "Not a master" over
   `session.setMaster`) on the SplitShell recipe, the board left of the
-  master's chat; the board, its rows, the foot, the dialogs and the add
+  master's chat, from the first message (with no child yet the header's
+  + Thread and batch actions and the foot stand over an empty list); the board, its rows, the foot, the dialogs and the add
   sheet are surfaces/threads/master/**. The rows are the children on
   every host the renderer knows (the session store holds each connected
   or mirrored host's rows; `batch.get`'s `children` list, when the host
