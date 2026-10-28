@@ -834,7 +834,7 @@ describe('Batches: publish and deploy', () => {
         meta('b', { masterId: 'm', createdAt: 3, status: 'idle' }),
         meta('c', { masterId: 'm', createdAt: 4, status: 'idle' }),
         meta('d', { masterId: 'm', createdAt: 5, status: 'paused' }),
-        meta('e', { masterId: 'm', createdAt: 6, status: 'idle', failure: { kind: 'usage_cap', summary: 'Usage cap' } as SessionMeta['failure'] })
+        meta('e', { masterId: 'm', createdAt: 6, status: 'idle', failure: { kind: 'quota', account: null, summary: 'Usage cap', cause: 'usage cap' } })
       ]
     })
     w.registry.hasCompletedTurn = (id) => id !== 'c'
