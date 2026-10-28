@@ -164,7 +164,8 @@ const project = await registry.createProject(ws.id, 'Batch', 'local')
 check('project on master in the scratch repo', project.cwd === repo && project.branch === 'master', `${project.cwd} ${project.branch}`)
 const MODEL = 'claude-haiku-5-5'
 const master = await registry.create({ provider: 'claude', model: MODEL, reasoning: 'low', agentType: 'orchestrator', permission: 'auto', projectId: project.id, threadType: 'chat', parentId: null, title: 'Batch proof' })
-registry.setProjectMaster(project.id, master.id)
+registry.setMaster(master.id, true)
+check('the master is pinned on its own row', store.getSession(master.id)?.isMaster === true && registry.isMaster(master.id))
 const child = (name: string, cwd: string) =>
   registry.create({ provider: 'claude', model: MODEL, reasoning: 'low', agentType: 'implementer', permission: 'auto', projectId: project.id, threadType: 'implementation', parentId: null, cwd, masterId: master.id, title: `child ${name}` })
 const a = await child('a', wtA)
@@ -193,14 +194,14 @@ console.log('\n[2] child b: typecheck red, HELD')
 await turn(b.id, brief('b', wtB))
 check('b.txt NOT on origin/master', !originHas('b.txt'))
 const gatesB = notices(b.id, 'gate')
-check('a red typecheck row on b with the log tail', gatesB.length === 1 && gatesB[0].gate?.ok === false && gatesB[0].gate?.log.includes('TS2322') && gatesB[0].message === 'Typecheck failed on child-b · 1 error', JSON.stringify(gatesB.map((n) => [n.message, n.gate?.log])))
+check('a red typecheck row on b with the log tail', gatesB.length === 1 && gatesB[0].gate?.ok === false && gatesB[0].gate?.log.includes('TS2322') && gatesB[0].message === 'Typecheck failed on child-b, 1 error', JSON.stringify(gatesB.map((n) => [n.message, n.gate?.log])))
 check('the tool answered HELD', toolResults(b.id).some((t) => /^HELD: typecheck failed on child-b/.test(t)), toolResults(b.id).at(-1)?.slice(0, 120))
 check('no merge row on b yet', notices(b.id, 'review').length === 0)
 // Child b idled on its HELD: an idle child is done, so the engine ended the
 // batch once with b left out (gate and release ran on a's head).
-await rowsUntil(master.id, (rs) => rs.some((x) => x.event.type === 'notice' && x.event.kind === 'batch' && /^Batch done: 1 of 2 landed · 1 left out/.test(x.event.message)), 120_000)
+await rowsUntil(master.id, (rs) => rs.some((x) => x.event.type === 'notice' && x.event.kind === 'batch' && /^Batch done: 1 of 2 landed, 1 left out/.test(x.event.message)), 120_000)
 state = batches.get(master.id)
-check('the engine ended the first cycle with b left out', steps(state).land === 'passed: 1 of 2 landed · 1 left out' && steps(state).release === 'passed: release-1 tagged', JSON.stringify(steps(state)))
+check('the engine ended the first cycle with b left out', steps(state).land === 'passed: 1 of 2 landed, 1 left out' && steps(state).release === 'passed: release-1 tagged', JSON.stringify(steps(state)))
 
 // ── 3. the fix: b lands ──────────────────────────────────────────────────
 console.log('\n[3] child b again, green')
@@ -217,19 +218,23 @@ check('land passed, 2 of 2 landed, the earlier landing kept', steps(state).land 
 
 // ── 4. the master gates and releases ─────────────────────────────────────
 console.log('\n[4] batch_gate on the master')
+// The engine's batch-report woke the master; its turn settles before the explicit gate turn, else the message steers into it.
+const doneSeq = registry.eventsAfter(master.id, 0).find((x) => x.event.type === 'notice' && x.event.kind === 'batch' && /^Batch done: 2 of 2 landed/.test(x.event.message))?.seq ?? 0
+await settledAfter(master.id, doneSeq)
 const before = pushes.length
 await turn(master.id, 'This is a test. Call the batch_gate tool ONCE with no arguments and report its whole answer verbatim in one sentence. Do nothing else.')
 const answer = toolResults(master.id).find((t) => /^passed in/.test(t))
 check('batch_gate answered passed and the tag', !!answer && answer.includes('release-1 tagged'), toolResults(master.id).at(-1)?.slice(0, 160))
 state = batches.get(master.id)
 check('every step done', steps(state).gate.startsWith('passed: passed in') && steps(state).release === 'passed: release-1 tagged', JSON.stringify(steps(state)))
+batches.flush()
 const gateLog = pushes.slice(before).at(-1)?.steps.find((s) => s.id === 'gate')?.log ?? []
 check('the gate streamed its ✓ lines into the step log (batch push, coalesced)', gateLog.some((l) => l.startsWith('✓ typecheck 1s')) && gateLog.some((l) => l.startsWith('✓ build 3s')), JSON.stringify(gateLog))
 check('the gate step carries its progress and times', (() => { const g = state.steps.find((s) => s.id === 'gate')!; return g.progress?.done === g.progress?.total && !!g.startedAt && !!g.endedAt })(), JSON.stringify(state.steps.find((s) => s.id === 'gate')))
 const masterGates = notices(master.id, 'gate').map((n) => [n.gate?.step, n.gate?.ok])
 check("gate and release rows on the master: the engine's two cycles, then batch_gate's", JSON.stringify(masterGates) === JSON.stringify([['gate', true], ['release', true], ['gate', true], ['release', true], ['gate', true], ['release', true]]), JSON.stringify(masterGates))
 const doneRows = notices(master.id, 'batch').filter((n) => /^Batch done:/.test(n.message)).map((n) => n.message)
-check('the engine ended the batch by its rules, twice', doneRows.length === 2 && /^Batch done: 1 of 2 landed · 1 left out · gate passed in \d+s · release-1 tagged$/.test(doneRows[0]) && /^Batch done: 2 of 2 landed · gate passed in \d+s · release-1 tagged$/.test(doneRows[1]), doneRows.join(' | '))
+check('the engine ended the batch by its rules, twice', doneRows.length === 2 && /^Batch done: 1 of 2 landed, 1 left out, gate passed in \d+s, release-1 tagged in \d+s$/.test(doneRows[0]) && /^Batch done: 2 of 2 landed, gate passed in \d+s, release-1 tagged in \d+s$/.test(doneRows[1]), doneRows.join(' | '))
 check('the release notes carry the master title and the landed subjects', batches.notes(master, { masterId: master.id, steps: [], landed: [a.id, b.id], branches: {}, subjects: { [a.id]: ['child a: add a.txt'], [b.id]: ['child b: add b.txt'] } } as never) === 'Batch proof; child a: add a.txt; child b: add b.txt')
 
 // ── 5. persistence ───────────────────────────────────────────────────────
