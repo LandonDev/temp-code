@@ -1147,7 +1147,6 @@ export default function WorkspaceSessions({
   const threadMenu = useThreadMenu({
     onRename: setRenamingId,
     onDelete: (id) => latest.current.onDeleteSession(id),
-    onScreen: (id) => id === latest.current.activeSessionId,
   });
   // The rows are memoized: they get one stable menu that reads the newest.
   const menuRef = useRef(threadMenu);

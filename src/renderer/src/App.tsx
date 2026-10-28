@@ -22,6 +22,7 @@ import { selectionFor } from "./lib/threadBatchSelection";
 const EVERYWHERE: BatchScope = { kind: "all" };
 const NOTES_OFF = ["open_notes"];
 import { ThreadBatchToasts } from "./chrome/ThreadBatchToasts";
+import { GoalDialogHost } from "./chrome/GoalDialog";
 import { MacBridgeToasts } from "./chrome/MacBridgeCards";
 import { environment, environmentAt, environmentStore, stepEnvironment } from "./stores/environment";
 import { subscribeEnvironmentSwitch, workspaceToLandOn } from "./lib/environmentSwitch";
@@ -3575,6 +3576,7 @@ export default function App() {
 
       <MoveToasts />
       <ThreadBatchToasts onOpen={onOpenApprovalSession} />
+      <GoalDialogHost />
       {batchPending ? <ThreadBatchDialog /> : null}
       <HiddenApprovalToasts
         onFocusSession={onOpenApprovalSession}

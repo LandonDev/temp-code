@@ -84,7 +84,6 @@ export function ThreadHeader({
     onDelete,
     onSetType,
     onSetRules,
-    onScreen: (id) => id === model.activeId,
   });
   const host = useThreadHost(model.activeId);
   const masterIds = useMasterIds();

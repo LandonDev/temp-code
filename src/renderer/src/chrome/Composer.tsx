@@ -37,9 +37,8 @@ import type { ProjectFile } from '../lib/fs'
 import { composeInboxMessage, type InboxComposerCard } from '../lib/githubTasks'
 import type { HandoffComposerCard } from '../lib/handoff'
 import { looksLikeProject, type RecentProject } from '../lib/recents'
-import type { Attachment, HarnessId, RuntimeMode, ThreadGoal } from '../lib/session'
+import type { Attachment, HarnessId, RuntimeMode } from '../lib/session'
 import { harnessSupportsAttachments } from '../lib/session'
-import { GoalDialog } from './GoalDialog'
 import { CommandPopover, type AtMatch, type PopoverMatches } from './CommandPopover'
 import { AttachmentChip, openAttachmentImages } from './AttachmentChip'
 import {
@@ -129,8 +128,6 @@ type Props = {
   busy?: boolean
   /** The turn is paused: Enter queues and the row waits for Continue. */
   paused?: boolean
-  /** The thread's standing goal, edited in the goal dialog (the thread menu's Goal…). */
-  goal?: ThreadGoal | null
   hotkeys?: boolean
   onFocus: () => void
   onCwdChange: (cwd: string) => void
@@ -183,7 +180,6 @@ export function Composer({
   handoffCard,
   busy = false,
   paused = false,
-  goal = null,
   onFocus,
   onCwdChange,
   onChooseFolder,
@@ -789,9 +785,6 @@ export function Composer({
     >
       {children}
       <Lightbox />
-      {sessionId ? (
-        <GoalDialog sessionId={sessionId} goal={goal} onClose={() => inputRef.current?.focus()} />
-      ) : null}
       <div className="relative overflow-visible">
         <CommandPopover
           matches={matches}

@@ -48,8 +48,6 @@ export type ThreadMenuHandlers = {
   onSetType?: (id: string, threadType: ThreadType) => void;
   /** The options dialog's save (App's, which also updates its own copy). */
   onSetRules?: (id: string, rules: ThreadRules | null) => void;
-  /** Whether the thread's composer is on screen to answer Goal…. */
-  onScreen?: (id: string) => boolean;
   /** A thread the surface knows before the store does (a board row the host's answer named). */
   metaFor?: (id: string) => SessionMeta | null;
 };
@@ -125,8 +123,8 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     if (!t) return [];
     const own = id === target;
     const environmentId = t.environmentId;
-    const goal =
-      !t.parentId && GOAL_HARNESSES.has(session?.harness ?? meta?.provider ?? "") && latest.current.onScreen?.(id) ? !!session?.goal : null;
+    // Every root thread of a goal harness: the app's one dialog answers it.
+    const goal = !t.parentId && GOAL_HARNESSES.has(session?.harness ?? meta?.provider ?? "") ? !!(session?.goal ?? metaOf(id)?.goal) : null;
     return threadMenuRows(
       {
         status: t.status ?? "idle",

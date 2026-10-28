@@ -12,8 +12,13 @@ const { setGoal, clearGoal } = vi.hoisted(() => ({
   clearGoal: vi.fn(() => Promise.resolve()),
 }));
 vi.mock("../lib/tcserver/commands", () => ({ setGoal, clearGoal }));
+/** A thread no composer has loaded: its goal is on its meta alone. */
+vi.mock("../lib/tcserver/store", () => ({
+  useSession: () => undefined,
+  useSessionMeta: (id: string | null) => (id === "off-screen" ? { id, goal: { condition: "the rail is fixed", iterations: 1, setAt: 1 } } : null),
+}));
 
-import { GoalDialog, goalDialog } from "./GoalDialog";
+import { GoalDialog, GoalDialogHost, goalDialog } from "./GoalDialog";
 
 afterEach(() => {
   act(() => goalDialog.close());
@@ -65,5 +70,17 @@ describe("GoalDialog", () => {
     expect(setGoal).not.toHaveBeenCalled();
     await act(async () => fireEvent.keyDown(field, { key: "Enter" }));
     expect(setGoal).toHaveBeenCalledWith("a", "green");
+  });
+
+  it("the app's one host answers Goal… for a thread with no composer mounted, from its meta's goal", async () => {
+    render(<GoalDialogHost />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    act(() => goalDialog.open("off-screen"));
+    expect((screen.getByRole("textbox", { name: "Goal" }) as HTMLTextAreaElement).value).toBe("the rail is fixed");
+    expect(screen.getByText("Checked once")).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Clear" })));
+    expect(clearGoal).toHaveBeenCalledWith("off-screen");
+    act(() => goalDialog.open("another"));
+    expect((screen.getByRole("textbox", { name: "Goal" }) as HTMLTextAreaElement).value).toBe("");
   });
 });

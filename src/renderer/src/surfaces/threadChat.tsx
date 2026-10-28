@@ -192,7 +192,6 @@ export function ThreadComposer({
       onSubmit={submit}
       busy={!!session.busy}
       paused={paused}
-      goal={session.goal}
       topSlot={
         topSlot || queueStrip || block.degraded || macRequests.length > 0 ? (
           <>

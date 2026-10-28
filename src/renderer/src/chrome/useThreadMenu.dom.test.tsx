@@ -55,8 +55,8 @@ const thread = (id: string, over: Record<string, unknown> = {}) =>
   sessions.set(id, { id, environmentId: "local", title: id, status: "running", threadType: "chat", projectId: "p1", parentId: null, harness: "claude", ...over });
 
 /** A rail-like list and a chip-like ⋯, both on the one hook. */
-function Surfaces({ onScreen = () => false }: { onScreen?: (id: string) => boolean }) {
-  const menu = useThreadMenu({ onRename: () => {}, onScreen });
+function Surfaces() {
+  const menu = useThreadMenu({ onRename: () => {} });
   return (
     <>
       <RowsContextMenu label="Rail" rowsFor={(id) => (id ? menu.rowsFor(id) : null)} onPick={(pick, id) => id && menu.onPick(id, pick)} onOpenChange={(open, id) => menu.onOpenChange(id, open)}>
@@ -133,16 +133,24 @@ describe("one thread menu on every surface", () => {
     expect(onThreadTypeChange).toHaveBeenCalledWith("t1", "planning");
   });
 
-  it("Goal… shows only with the thread's composer on screen, and opens its dialog", async () => {
+  it("Goal… is offered for a root claude or codex thread with no composer on screen, and opens its dialog", async () => {
     thread("t1", { status: "idle" });
+    render(<Surfaces />);
+    fireEvent.contextMenu(screen.getByText("Row t1"));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Rail" })).getByText("Goal…"));
+    expect(goalOpen).toHaveBeenCalledWith("t1");
+  });
+
+  it("Goal… is not offered for a subagent or a harness that keeps no goal", async () => {
+    thread("t1", { status: "idle", parentId: "root" });
     render(<Surfaces />);
     fireEvent.contextMenu(screen.getByText("Row t1"));
     expect(labels(await screen.findByRole("menu", { name: "Rail" }))).not.toContain("Goal…");
     cleanup();
-    render(<Surfaces onScreen={(id) => id === "t1"} />);
+    thread("t1", { status: "idle", harness: "cursor" });
+    render(<Surfaces />);
     fireEvent.contextMenu(screen.getByText("Row t1"));
-    fireEvent.click(within(await screen.findByRole("menu", { name: "Rail" })).getByText("Goal…"));
-    expect(goalOpen).toHaveBeenCalledWith("t1");
+    expect(labels(await screen.findByRole("menu", { name: "Rail" }))).not.toContain("Goal…");
   });
 
   it("Open to the side splits the focused pane and opens the thread on its right", async () => {
