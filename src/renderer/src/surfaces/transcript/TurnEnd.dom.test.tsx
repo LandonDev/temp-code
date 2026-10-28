@@ -8,6 +8,8 @@ vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
 
 import { TurnDuration, TurnEnd } from "./TurnEnd";
 import { TurnStateContext, type TurnSession } from "../turnState";
+import { TranscriptSessionContext } from "../transcriptSession";
+import { ErrorRowView } from "./NoticeRow";
 
 afterEach(() => {
   cleanup();
@@ -178,5 +180,68 @@ describe("TurnEnd of a watching thread", () => {
     const { container } = end(idle);
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.textContent).toBe("Worked for 2s");
+  });
+});
+
+describe("TurnEnd of a stopped turn", () => {
+  const user = { id: "u", role: "user" as const, text: "go", startedAt: 10, durationMs: 1_000 };
+  const reply = { id: "a", role: "assistant" as const, text: "half an answer" };
+  const stop = { id: "err:1", role: "system" as const, text: "Stopped", stopped: true };
+  const blocks = [user, reply, stop];
+  const state = { status: "idle", busy: false, blocks, thread: undefined } as unknown as TurnSession;
+  const stoppedTurn = { id: "t", index: 0, isLast: true, settled: true, blocks, userBlock: user, durationMs: 1_000, startedAt: 10 };
+  const view = () =>
+    render(
+      <TranscriptSessionContext.Provider value="s1">
+        <TurnStateContext.Provider value={state}>
+          <ErrorRowView block={stop} />
+          <TurnEnd
+            turn={stoppedTurn}
+            harnessOf={() => "claude"}
+            turnState={state}
+            onSaveNote={() => {}}
+            onHandoff={() => {}}
+            onSecondOpinion={() => {}}
+          />
+        </TurnStateContext.Provider>
+      </TranscriptSessionContext.Provider>,
+    );
+
+  it("closes on Stopped, said once, with no Worked for", () => {
+    const { container } = view();
+    expect(container.textContent).toBe("Stopped");
+    expect(container.querySelectorAll('[data-state="stopped"]')).toHaveLength(1);
+    expect(container.textContent).not.toMatch(/Worked/);
+  });
+
+  it("carries the four actions, reachable by keyboard focus", () => {
+    const { container } = view();
+    const group = container.querySelector(".group-hover\\/turnend\\:opacity-100") as HTMLElement;
+    expect(group.className).toContain("focus-within:opacity-100");
+    for (const name of ["Copy response", "Save as note", "Hand off", "Second opinion"]) {
+      const button = screen.getByRole("button", { name });
+      expect(group.contains(button)).toBe(true);
+      button.focus();
+      expect(document.activeElement).toBe(button);
+    }
+  });
+
+  it("a completed turn keeps Worked for", () => {
+    const done = { ...stoppedTurn, blocks: [user, reply] };
+    const { container } = render(<TurnEnd turn={done} harnessOf={() => undefined} turnState={{ ...state, blocks: [user, reply] }} />);
+    expect(container.textContent).toBe("Worked for 1s");
+  });
+
+  it("a stopped turn still open keeps its Stopped row and draws no closing line", () => {
+    const busy = { ...state, status: "running", busy: true } as unknown as TurnSession;
+    const { container } = render(
+      <TranscriptSessionContext.Provider value="s1">
+        <TurnStateContext.Provider value={busy}>
+          <ErrorRowView block={stop} />
+          <TurnEnd turn={{ ...stoppedTurn, settled: false }} harnessOf={() => undefined} turnState={busy} liveState={false} />
+        </TurnStateContext.Provider>
+      </TranscriptSessionContext.Provider>,
+    );
+    expect(container.textContent).toBe("Stopped");
   });
 });

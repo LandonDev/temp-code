@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Block } from "./session";
 import { emptyThread } from "./tcserver/todos";
 import { fallbackFailure } from "@server/shared/failureFallback";
-import { errorRowOf, isErrorBlock, lastErrorBlock, type OutcomeSession } from "./turnOutcome";
+import { errorRowOf, isErrorBlock, lastErrorBlock, stopClosesTurn, turnEndsStopped, type OutcomeSession } from "./turnOutcome";
 
 const err = (n: number, text = "boom", stopped?: boolean): Block => ({
   id: `err:${n}`,
@@ -49,5 +49,43 @@ describe("errorRowOf", () => {
     const failure = { kind: "network" as const, account: null, summary: "Could not reach Anthropic", cause: "The connection dropped." };
     const s = session([{ ...err(1), failure }]);
     expect(errorRowOf(s, s.blocks[0]).failure).toEqual(failure);
+  });
+});
+
+describe("turnEndsStopped", () => {
+  const user = (n: number): Block => ({ id: `u:${n}`, role: "user", text: "go" });
+  const reply = (n: number): Block => ({ id: `a:${n}`, role: "assistant", text: "ok" });
+
+  it("is true when the turn's last error is a stop and only notices follow it", () => {
+    const blocks = [user(1), reply(1), err(1, "Stopped", true), note(2)];
+    expect(turnEndsStopped(session(blocks), blocks)).toBe(true);
+  });
+
+  it("is false for a failure, a completed turn, or a stop the turn ran on past", () => {
+    const failed = [user(1), err(1)];
+    expect(turnEndsStopped(session(failed), failed)).toBe(false);
+    const done = [user(1), reply(1)];
+    expect(turnEndsStopped(session(done), done)).toBe(false);
+    const resumed = [user(1), err(1, "Stopped", true), reply(2)];
+    expect(turnEndsStopped(session(resumed), resumed)).toBe(false);
+  });
+});
+
+describe("stopClosesTurn", () => {
+  const user = (n: number): Block => ({ id: `u:${n}`, role: "user", text: "go" });
+
+  it("hides the row of a settled turn that ends on it, the last turn or an earlier one", () => {
+    const blocks = [user(1), err(1, "Stopped", true), user(2), err(2, "Stopped", true)];
+    const s = { ...session(blocks), status: "idle" as const };
+    expect(stopClosesTurn(s, blocks[1])).toBe(true);
+    expect(stopClosesTurn(s, blocks[3])).toBe(true);
+  });
+
+  it("keeps the row while its turn is open, and for a failure", () => {
+    const blocks = [user(1), err(1, "Stopped", true)];
+    expect(stopClosesTurn({ ...session(blocks), status: "running", busy: true }, blocks[1])).toBe(false);
+    expect(stopClosesTurn({ ...session(blocks), status: "paused" }, blocks[1])).toBe(false);
+    const failed = [user(1), err(1)];
+    expect(stopClosesTurn(session(failed), failed[1])).toBe(false);
   });
 });

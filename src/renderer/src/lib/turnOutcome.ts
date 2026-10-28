@@ -38,6 +38,39 @@ export function isStoppedRow(session: OutcomeSession, block: Block): boolean {
   return !!session.thread?.stopped && lastErrorBlock(session.blocks)?.id === block.id;
 }
 
+/** Nothing after `from` in its turn but the host's own notices: no error,
+ *  nothing the model or the person wrote. Stops at the next turn's start. */
+function onlyNoticesAfter(blocks: Block[], from: number): { closes: boolean; lastTurn: boolean } {
+  for (let i = from + 1; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (b.role === "user" || b.role === "handoff") return { closes: true, lastTurn: false };
+    if (b.role !== "system" || isErrorBlock(b)) return { closes: false, lastTurn: false };
+  }
+  return { closes: true, lastTurn: true };
+}
+
+/** The turn ends on the person's Stop: its last error row is a stopped
+ *  row and only host notices follow it. Its closing line is then
+ *  "Stopped" (TurnEnd.tsx), never a "Worked for". */
+export function turnEndsStopped(session: OutcomeSession, blocks: Block[]): boolean {
+  const last = lastErrorBlock(blocks);
+  if (!last || !isStoppedRow(session, last)) return false;
+  return onlyNoticesAfter(blocks, blocks.indexOf(last)).closes;
+}
+
+/** The stopped row the settled turn's closing line already says: the row
+ *  itself draws nothing then, so "Stopped" shows once. A turn still open
+ *  (the thread busy or paused on it) keeps the row, as it has no closing
+ *  line yet. */
+export function stopClosesTurn(session: OutcomeSession & { busy?: boolean }, block: Block): boolean {
+  if (!isStoppedRow(session, block)) return false;
+  const at = session.blocks.findIndex((b) => b.id === block.id);
+  if (at < 0) return false;
+  const { closes, lastTurn } = onlyNoticesAfter(session.blocks, at);
+  if (!closes) return false;
+  return !lastTurn || !(session.busy || session.status === "paused");
+}
+
 export function errorRowOf(session: OutcomeSession, block: Block): ErrorRow {
   if (isStoppedRow(session, block)) {
     return { stopped: true, message: block.text, failure: null };

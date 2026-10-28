@@ -1,6 +1,6 @@
 // A9 (notices): every typed notice row, through one switch.
 import type { Block } from "../../lib/session";
-import { errorRowOf, isErrorBlock } from "../../lib/turnOutcome";
+import { errorRowOf, isErrorBlock, stopClosesTurn } from "../../lib/turnOutcome";
 import { passActionsOf } from "../../lib/turnClock";
 import type { OpenFileFn } from "../../lib/search";
 import { ErrorChip } from "../ErrorChip";
@@ -55,12 +55,14 @@ export function NoticeRow({
   return null;
 }
 
-/** A driver error row: gray Stopped, or the failure card with its verdict. */
+/** A driver error row: the failure card with its verdict, or gray Stopped where no closing line says it. */
 export function ErrorRowView({ block }: { block: Block }) {
   const session = useTurnState();
   const sessionId = useTranscriptSession();
-  const row = errorRowOf(session ?? { blocks: [block], status: "idle", thread: undefined }, block);
-  if (!sessionId) return null;
+  const outcome = session ?? { blocks: [block], status: "idle" as const, thread: undefined };
+  // The turn's closing line (TurnEnd) says Stopped; the row stays only while its turn is open.
+  if (!sessionId || stopClosesTurn(outcome, block)) return null;
+  const row = errorRowOf(outcome, block);
   return <ErrorChip sessionId={sessionId} row={row} busy={session?.busy} />;
 }
 

@@ -16,13 +16,15 @@ import { useTurnState, type TurnSession } from "../turnState";
 import { usePaneVisible } from "../../hooks/paneVisibility";
 import { storeTitleOf, threadMentionsToTitles } from "../../lib/threadMentions";
 import { needsApproval, turnCopyText } from "../transcriptActivity";
+import { turnEndsStopped } from "../../lib/turnOutcome";
 import { SwapIcon } from "../../motion/IconSwap";
 import { IconAction, useArmOnIntent } from "./IconAction";
 import { spanWords } from "./thinking";
 import { ThinkingTail } from "./ThinkingRow";
 
 /** A turn's closing row: the thinking tail while it starts, its duration
- *  line once it is over, the live state while it runs or waits, and a
+ *  line once it is over ("Stopped" when the person stopped it: the stopped
+ *  error row then draws nothing), the live state while it runs or waits, and a
  *  watching line under the last settled turn while the thread watches
  *  (unless `liveState` is off: a strip above the composer says it). */
 export function TurnEnd({
@@ -44,6 +46,12 @@ export function TurnEnd({
 }) {
   const { settled, durationMs, isLast } = turn;
   const paused = turnState ? isTurnPaused(turnState) : false;
+  const stopped = useMemo(
+    () =>
+      settled &&
+      turnEndsStopped(turnState ?? { blocks: turn.blocks, status: "idle", thread: undefined }, turn.blocks),
+    [settled, turnState, turn.blocks],
+  );
   // Settled only: the live turn's harness is not known until it answers.
   const fromHarness = useMemo(
     () => (settled ? harnessOf(turn.blocks) : undefined),
@@ -54,10 +62,11 @@ export function TurnEnd({
       {!settled && !paused && showsThinkingTail(turn.blocks) ? (
         <ThinkingTail />
       ) : null}
-      {durationMs != null && settled ? (
+      {settled && (stopped || durationMs != null) ? (
         <TurnDuration
-          elapsedMs={durationMs}
+          elapsedMs={durationMs ?? null}
           done
+          stopped={stopped}
           copyText={threadMentionsToTitles(turnCopyText(turn.blocks), storeTitleOf)}
           onSaveNote={onSaveNote}
           fromHarness={fromHarness}
@@ -120,15 +129,16 @@ export function WatchingLine({ since }: { since: number | null }) {
 const LINE = "flex h-7 mt-1 mb-3 items-center gap-2 font-sans text-[13px] tabular-nums text-muted-foreground";
 
 /**
- * A turn's closing line. Settled: "Worked for 2m 4s", then copy, save as
- * note, hand off and second opinion, shown on the line's hover or focus.
- * Live: the state in StatusMark's words, with the time where it means
- * something.
+ * A turn's closing line. Settled: "Worked for 2m 4s", or "Stopped" for a
+ * turn the person stopped, then copy, save as note, hand off and second
+ * opinion, shown on the line's hover or keyboard focus. Live: the state in
+ * StatusMark's words, with the time where it means something.
  */
 export function TurnDuration({
   elapsedMs,
   live = false,
   done = false,
+  stopped = false,
   waiting = false,
   paused = false,
   copyText: output,
@@ -140,6 +150,8 @@ export function TurnDuration({
   elapsedMs: number | null;
   live?: boolean;
   done?: boolean;
+  /** Settled on the person's Stop: the line says so instead of the time. */
+  stopped?: boolean;
   waiting?: boolean;
   /** Frozen mid-turn: the elapsed time holds. */
   paused?: boolean;
@@ -153,7 +165,7 @@ export function TurnDuration({
   if (done) {
     return (
       <div className={cn(LINE, "group/turnend")} {...intent}>
-        <span>{formatWorkingDuration(elapsedMs, true)}</span>
+        {stopped ? <StatusMark state="stopped" className="text-[13px] font-normal" /> : <span>{formatWorkingDuration(elapsedMs, true)}</span>}
         <span className="flex items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) focus-within:opacity-100 group-hover/turnend:opacity-100 motion-reduce:transition-none">
           {output ? <CopyTurnButton text={output} armed={armed} /> : null}
           {output && onSaveNote ? <SaveNoteButton text={output} onSave={onSaveNote} armed={armed} /> : null}

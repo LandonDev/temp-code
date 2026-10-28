@@ -352,7 +352,8 @@ word. A thought is one row
 of that list: "Thinking" shimmering with its newest sentence while it
 streams, then "Thought for 4s ▸", which opens the text. The closing line
 reads "Worked for 2m 4s", its copy, note, hand-off and second-opinion
-buttons showing on hover. Every notice (a gate, a review, a compaction, a
+buttons showing on hover or keyboard focus; a turn the person stopped
+closes on "Stopped" instead, with the same buttons. Every notice (a gate, a review, a compaction, a
 pass, a batch, a second opinion asked of another harness) is one muted
 line with a glyph, a lead and its details; only a held review and a failure
 are cards. A handoff keeps its bubble: its text is the person's brief. A
