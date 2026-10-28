@@ -460,9 +460,9 @@ describe("the master view", () => {
     expect(headers().map((h) => h.textContent)).toEqual(["Needs you", "Working", "Queued", "Done"]);
     expect(header("running").tagName).toBe("H3");
     // Line two: the activity for a running row, the scheduler's note without its lead for a queued one, when a landed one landed.
-    expect(screen.getByText("Running ios:test:client")).toBeTruthy();
+    expect(screen.getByText("running ios:test:client")).toBeTruthy();
     expect(screen.getByText("waiting for Home")).toBeTruthy();
-    expect(screen.getByText("Landed 12:08")).toBeTruthy();
+    expect(screen.getByText("landed 12:08")).toBeTruthy();
     // The model at the end of line one: the name, then effort and context, no dots between them.
     expect(screen.getAllByText("Claude Opus 5.5")).toHaveLength(4);
     expect(screen.getAllByText("high 1M")).toHaveLength(4);
@@ -500,8 +500,31 @@ describe("the master view", () => {
     const status = screen.getByRole("button", { name: /Design foundations/ }).querySelector("[data-row-status]")!;
     expect(status.querySelector("[data-slot=status-mark]")).toBeNull();
     const detail = status.querySelector("[data-row-detail]")!;
-    expect(detail.textContent).toBe("Landed 12:08");
-    expect(detail.getAttribute("aria-label")).toBe("Done, Landed 12:08");
+    expect(detail.textContent).toBe("landed 12:08");
+    expect(detail.getAttribute("aria-label")).toBe("Done, landed 12:08");
+  });
+
+  it("the child that blocks the batch says why on its second line; a watching or paused child under Working says its own word", async () => {
+    seed([
+      meta({ id: "c-stuck", title: "C3", status: "idle", createdAt: 1 }),
+      meta({ id: "c-watch", title: "Sleeper", status: "watching", activity: "Waiting on Sleep 180 seconds in the background", createdAt: 2 }),
+      meta({ id: "c-held", title: "Held", status: "paused", activity: "Running bun test", createdAt: 3 }),
+    ]);
+    renderView();
+    await flush();
+    act(() => {
+      link.push({ push: "batch", state: { ...batch, blocked: { sessionId: "c-stuck", why: "no-turn" } } } as unknown as ServerPush);
+    });
+    await flush();
+    const line = (name: RegExp) => screen.getByRole("button", { name }).querySelector("[data-row-status]")!;
+    expect(line(/C3/).textContent).toBe("ended its turn without completing");
+    const watching = line(/Sleeper/);
+    expect(watching.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("watching");
+    expect(watching.querySelector("[data-slot=status-word]")?.textContent).toBe("Watching");
+    expect(watching.querySelector("[data-slot=status-detail]")?.textContent).toBe("sleep 180 seconds in the background");
+    const paused = line(/Held/);
+    expect(paused.querySelector("[data-slot=status-word]")?.textContent).toBe("Paused");
+    expect(paused.querySelector("[data-slot=status-detail]")?.textContent).toBe("running bun test");
   });
 
   it("draws no section that is empty", async () => {
@@ -526,15 +549,15 @@ describe("the master view", () => {
     await flush();
     await flush();
     const impl = screen.getByRole("button", { name: /Home screen/ });
-    expect(impl.querySelector("[data-row-status]")?.textContent).toBe("Write the view1/3");
+    expect(impl.querySelector("[data-row-status]")?.textContent).toBe("write the view1/3");
     expect(impl.querySelector("[data-tally]")?.textContent).toBe("1/3");
     // A reader hears the state and its detail, not the state alone.
-    expect(screen.getByRole("button", { name: /Working, Write the view/ })).toBe(impl);
+    expect(screen.getByRole("button", { name: /Working, write the view/ })).toBe(impl);
     expect(within(impl).queryByRole("list")).toBeNull();
     expect(within(impl).queryByRole("progressbar")).toBeNull();
     // A chat keeps its activity; the tally still ends its line.
     const chat = screen.getByRole("button", { name: /A question/ });
-    expect(chat.querySelector("[data-row-status]")?.textContent).toBe("Reading1/3");
+    expect(chat.querySelector("[data-row-status]")?.textContent).toBe("reading1/3");
   });
 
   it("research and orchestration rows say their summary once settled and their activity while working, from the one answer", async () => {
@@ -547,9 +570,9 @@ describe("the master view", () => {
     renderView();
     await flush();
     await flush();
-    expect(screen.getByRole("button", { name: /Pricing survey/ }).querySelector("[data-row-status]")?.textContent).toBe("Three sources read, two to go");
+    expect(screen.getByRole("button", { name: /Pricing survey/ }).querySelector("[data-row-status]")?.textContent).toBe("three sources read, two to go");
     const fleet = screen.getByRole("button", { name: /The fleet/ });
-    expect(fleet.querySelector("[data-row-status]")?.textContent).toBe("Running bun");
+    expect(fleet.querySelector("[data-row-status]")?.textContent).toBe("running bun");
     expect(within(fleet).queryByText("Spawned three implementers.")).toBeNull();
     // One batch.board, and nothing per row: no transcript, context or notes.
     expect(link.calls.filter((c) => c.method === "batch.board")).toHaveLength(1);
@@ -562,15 +585,15 @@ describe("the master view", () => {
       meta({ id: "c-err", title: "Inbox", status: "error", createdAt: 2 }),
       meta({ id: "c-ok", title: "Tabs", status: "waiting", createdAt: 3, activity: "Bash" }),
     ]);
-    link.digests.set("c-ask", { question: "Ad Hoc or Debug?" });
+    link.digests.set("c-ask", { question: "Which build, ad hoc or debug?" });
     link.digests.set("c-err", { failure: "Rate limited until 14:00" });
     renderView();
     await flush();
     const ask = screen.getByRole("button", { name: /Live Activity/ }).querySelector("[data-row-status]")!;
-    expect(ask.textContent).toBe("Ad Hoc or Debug?");
+    expect(ask.textContent).toBe("which build, ad hoc or debug?");
     expect(ask.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("waiting");
     const err = screen.getByRole("button", { name: /Inbox/ }).querySelector("[data-row-status]")!;
-    expect(err.textContent).toBe("Rate limited until 14:00");
+    expect(err.textContent).toBe("rate limited until 14:00");
     expect(err.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("failed");
     expect(screen.getByRole("button", { name: /Tabs/ }).querySelector("[data-row-status]")?.textContent).toBe("approve Bash");
   });
@@ -637,7 +660,7 @@ describe("the master view", () => {
     const digest: BoardDigest = { todos: [{ content: "Write the view", status: "completed" }, { content: "Tests", status: "in_progress" }] };
     act(() => link.push({ push: "board", masterId: "m", sessionId: "c-impl", digest } as ServerPush));
     expect(within(impl()).getByText("1/2")).toBeTruthy();
-    expect(within(impl()).getByText("Tests")).toBeTruthy();
+    expect(within(impl()).getByText("tests")).toBeTruthy();
     // Only that row rendered again; another master's push changes nothing.
     expect(new Set(rowReads.filter(Boolean))).toEqual(new Set(["c-impl"]));
     act(() => link.push({ push: "board", masterId: "other", sessionId: "c-impl", digest: {} } as ServerPush));
@@ -1260,7 +1283,7 @@ describe("a fleet of 300", () => {
     act(() => link.push({ push: "session", session: wire } as unknown as ServerPush));
     // The store tells meta listeners once per frame.
     await act(() => new Promise((r) => setTimeout(r, 50)));
-    expect(screen.getByText("Running lint")).toBeTruthy();
+    expect(screen.getByText("running lint")).toBeTruthy();
     expect(rowReads.filter((id) => id && id !== "f2")).toEqual([]);
     expect(rowReads.filter((id) => id === "f2").length).toBeGreaterThan(0);
   });
@@ -1288,8 +1311,8 @@ describe("a row's subagents", () => {
     await flush();
     expect(linesOf(/Home screen/)).toEqual([
       "waiting Testsapprove Bash",
-      "failed LintUsage cap",
-      "working Rail rowsEditing Rail.tsx",
+      "failed Lintusage cap",
+      "working Rail rowsediting Rail.tsx",
     ]);
     const waiting = rowOf(/Home screen/).querySelector("[data-agent='a11'] [data-agent-what]")!;
     expect(waiting.className).toContain("text-warning");
@@ -1332,12 +1355,12 @@ describe("a row's subagents", () => {
     ]);
     renderView();
     await flush();
-    expect(linesOf(/Home screen/)).toEqual(["working RailReading a.ts"]);
+    expect(linesOf(/Home screen/)).toEqual(["working Railreading a.ts"]);
     rowReads.length = 0;
     const { environmentId: _e, ...wire } = agent("a1", "c-impl", "running", { title: "Rail", activity: "Editing a.ts" });
     act(() => link.push({ push: "session", session: wire } as unknown as ServerPush));
     await act(() => new Promise((r) => setTimeout(r, 50)));
-    expect(linesOf(/Home screen/)).toEqual(["working RailEditing a.ts"]);
+    expect(linesOf(/Home screen/)).toEqual(["working Railediting a.ts"]);
     expect(rowReads.filter((id) => id === "c-other")).toEqual([]);
     const { environmentId: _g, ...settled } = agent("a1", "c-impl", "idle", { title: "Rail" });
     act(() => link.push({ push: "session", session: settled } as unknown as ServerPush));
@@ -1412,7 +1435,7 @@ describe("the batch across hosts", () => {
     await flush();
     const box = screen.getByRole("button", { name: /Inbox/ });
     expect(within(box).getByText("0/2")).toBeTruthy();
-    expect(box.querySelector("[data-row-status]")?.textContent).toBe("Swipe0/2");
+    expect(box.querySelector("[data-row-status]")?.textContent).toBe("swipe0/2");
     expect(boxLink.calls.filter((c) => c.method === "batch.board").map((c) => c.params)).toEqual([{ masterId: "m" }]);
     // Its board push moves the row; nothing is read per row on either host.
     act(() => boxLink.push({ push: "board", masterId: "m", sessionId: "c-box", digest: { todos: [{ content: "Swipe", status: "completed" }] } } as ServerPush));

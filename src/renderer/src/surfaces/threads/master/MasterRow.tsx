@@ -18,14 +18,16 @@ import { modelLabel } from "../../../lib/threads/agents";
 import { AGENT_GLYPHS, THREAD_GLYPHS } from "../threadTypes";
 import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
 import { rowStatus, taskList, taskTally } from "./rowBody";
-import { groupOf, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
+import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
 
 /**
  * One row of the batch (docs/LAYOUT.md "Master"). Line one: the type's
  * glyph (its word on hover), the title, the host's glyph, and at the end
  * the provider's mark, the model, its effort and context. Line two: the
  * status glyph with what the state is about (the section heading says
- * the word), and the task tally at the end. Under them the thread's live
+ * the word; a state its section does not name, a watching or paused
+ * thread under Working, says its own), and the task tally at the end. The
+ * child that blocks the batch's end says why (`blocked`). Under them the thread's live
  * subagents, one line each (AgentLines). A row of a host out of reach is
  * under the offline tint. A click opens the thread's full view in the
  * board's place; on hover the model mark gives way to Message, the one
@@ -57,6 +59,7 @@ const hostGlyph: HostGlyphOf = (environmentId, title) => <HostGlyph environmentI
 export const MasterRow = memo(function MasterRow({
   rowRef,
   landed,
+  blocked = null,
   host,
   onOpen,
   menu,
@@ -64,6 +67,8 @@ export const MasterRow = memo(function MasterRow({
   rowRef: BoardRowRef;
   /** The batch marked this row's branch landed. */
   landed: boolean;
+  /** Why this child blocks the batch's end ("ended its turn without completing"); null for every other row. */
+  blocked?: string | null;
   /** The thread's host when it is not the master's; null otherwise. */
   host: RowHost | null;
   /** Open the thread's full view; `focus` lands in its composer. */
@@ -84,6 +89,7 @@ export const MasterRow = memo(function MasterRow({
       digest={digest}
       agents={agents}
       landed={landed}
+      blocked={blocked}
       host={host}
       hostGlyph={hostGlyph}
       onOpen={onOpen}
@@ -101,6 +107,7 @@ export function MasterRowView({
   digest,
   agents,
   landed,
+  blocked = null,
   host,
   hostGlyph,
   onOpen,
@@ -113,17 +120,20 @@ export function MasterRowView({
   digest: BoardDigest;
   agents: RowAgents | null;
   landed: boolean;
+  blocked?: string | null;
   host: RowHost | null;
   hostGlyph: HostGlyphOf;
   onOpen: (id: string, focus?: boolean) => void;
   menu: RowMenu;
 }) {
   const title = planTitle || meta.title;
-  const { state, detail } = rowStatus(meta, digest, landed);
+  const { state, detail } = rowStatus(meta, digest, landed, blocked);
   // The word the glyph stands for and the detail, as one name for readers.
   const statusLabel = detail ? `${STATUS_WORD[state]}, ${detail}` : STATUS_WORD[state];
   const tally = taskTally(taskList(digest));
   const group = groupOf(meta.status);
+  // The section heading says the word; a state it does not name says its own.
+  const ownWord = STATUS_WORD[state] !== GROUP_LABEL[group];
   const quiet = group === "done" || group === "queued";
   const Glyph = meta.threadType ? THREAD_GLYPHS[meta.threadType] : null;
   const type = typeWord(meta);
@@ -195,7 +205,7 @@ export function MasterRowView({
             {detail}
           </span>
         ) : (
-          <StatusMark state={state} word={false} detail={detail || undefined} aria-label={statusLabel} className="min-w-0" />
+          <StatusMark state={state} word={ownWord} detail={detail || undefined} aria-label={statusLabel} className="min-w-0" />
         )}
         {tally ? <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground" data-tally>{tally}</span> : null}
       </span>

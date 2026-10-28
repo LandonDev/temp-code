@@ -733,7 +733,7 @@ in the whole pane, with Back.
 │     ◌ waiting for Home                                                 │
 │ Done                                                                   │
 │  ☷  Design foundations                    ✺ Claude Fable 5.1  high 1M │
-│     Landed 12:08                                                  4/4 │
+│     landed 12:08                                                  4/4 │
 ├────────────────────────────────────────────────────────────────────────┤
 │ When done                                                         Edit │
 │ ✓ Land        2 of 7 landed                                     1m 30s │
@@ -802,11 +802,16 @@ in the whole pane, with Back.
   (`3/7`, `tabular-nums`, no bar) at the end once the thread has a list.
   The detail: working, an implementation's task in hand (its `in_progress`
   todo), else the activity; waiting, the open question, else "approve"
-  and what it was doing; failed, the failure; watching and queued, the
-  activity without the lead the word says ("Waiting on ", "Queued · ");
-  paused and stopped, nothing (the glyph and the heading say it); done,
-  "Landed 12:08" once the batch lists it, else a research or orchestration
-  thread's summary (the notes' State line, else its last words). Amber and
+  and what it was doing; failed, the failure; watching, what it watches
+  (an idle child with live subagents is watching them, the strip's rule)
+  and queued, the activity without the lead the word says ("Waiting on ",
+  "Queued · "); paused, what it was doing; done, "landed 12:08" once the
+  batch lists it, else a research or orchestration thread's summary (the
+  notes' State line, else its last words). The child the batch's
+  `blocked` names says why ("ended its turn without completing", "errored",
+  `blockedReason` in src/shared/batchWords.ts). A state its section does
+  not name (watching or paused under Working) says its word before the
+  detail. Every detail starts lower-case and ends without a full stop. Amber and
   red details take the state's tone; every other detail is the mark's
   muted detail. No task list, third line or progress bar: the child pane
   has the list, one click away. A row of a host whose link is not open

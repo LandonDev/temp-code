@@ -10,7 +10,9 @@ export function blockedWords(blocked: Blocked, who: string | null | undefined, h
   return `Blocked: ${name} ${blockedReason(blocked.why, host)}`
 }
 
-function blockedReason(why: Blocked['why'], host: string | null | undefined): string {
+/** Why one child blocks the batch's end, after its name: "ended its turn
+ *  without completing", "errored"; the board row of that child says it. */
+export function blockedReason(why: Blocked['why'], host?: string | null): string {
   switch (why) {
     case 'no-turn':
       return 'ended its turn without completing'

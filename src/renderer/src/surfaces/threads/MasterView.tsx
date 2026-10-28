@@ -39,6 +39,7 @@ import {
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 import { useChatFold } from "../../lib/chatFold";
+import { blockedReason } from "@shared/batchWords";
 
 /**
  * A master thread (CLAUDE.md "Master threads", docs/LAYOUT.md "Master"):
@@ -209,6 +210,14 @@ export function MasterView(props: ThreadViewProps) {
     [],
   );
 
+  // The child that blocks the batch's end says why on its own row (a far
+  // child is named `<env>:<session>`); every other row gets null.
+  const blockedOf = (row: BoardRowRef): string | null => {
+    const b = batch.blocked;
+    if (!b || (b.sessionId !== row.id && b.sessionId !== `${row.environmentId}:${row.id}`)) return null;
+    return blockedReason(b.why, b.environmentId ? hostNames.get(b.environmentId) : null);
+  };
+
   const openRef = useRef<(id: string, focus?: boolean) => void>(() => {});
   openRef.current = (id: string, focus = false) => {
     savedScroll.current = scroller.current?.scrollTop ?? 0;
@@ -312,7 +321,7 @@ export function MasterView(props: ThreadViewProps) {
                         {item.group.label}
                       </h3>
                     ) : (
-                      <MasterRow rowRef={item.row} landed={landed.has(item.row.id)} host={hostOf(item.row.environmentId)} onOpen={open} menu={rowMenu} />
+                      <MasterRow rowRef={item.row} landed={landed.has(item.row.id)} blocked={blockedOf(item.row)} host={hostOf(item.row.environmentId)} onOpen={open} menu={rowMenu} />
                     )}
                   </div>
                 );

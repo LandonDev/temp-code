@@ -43,8 +43,8 @@ describe("rowAgents", () => {
     expect(r.lines.map((l) => l.id)).toEqual(["wait", "fail", "run"]);
     expect(r.lines.map((l) => [l.state, l.detail])).toEqual([
       ["waiting", "approve Bash"],
-      ["failed", "Usage cap until 14:00"],
-      ["working", "Editing Rail.tsx"],
+      ["failed", "usage cap until 14:00"],
+      ["working", "editing Rail.tsx"],
     ]);
     expect(r.lines[2]).toMatchObject({ title: "Edit the rail", environmentId: "local" });
     expect(r).toMatchObject({ more: 0, moreWaiting: 0, done: 1 });
@@ -79,7 +79,7 @@ describe("AgentSummaries", () => {
     store.update(["c1", "c2"], metas);
     expect(wake).toHaveBeenCalledTimes(1);
     const first = store.get("c1");
-    expect(first?.lines.map((l) => l.detail)).toEqual(["Reading a.ts"]);
+    expect(first?.lines.map((l) => l.detail)).toEqual(["reading a.ts"]);
     expect(store.get("c2")).toBeNull();
 
     store.update(["c1", "c2"], [...metas, meta("unrelated", "x", "running")]);
@@ -88,7 +88,7 @@ describe("AgentSummaries", () => {
 
     store.update(["c1", "c2"], [meta("c1", null), meta("c2", null), meta("a", "c1", "running", { activity: "Editing a.ts" })]);
     expect(wake).toHaveBeenCalledTimes(2);
-    expect(store.get("c1")?.lines[0]!.detail).toBe("Editing a.ts");
+    expect(store.get("c1")?.lines[0]!.detail).toBe("editing a.ts");
 
     store.update(["c1", "c2"], [meta("c1", null), meta("c2", null), meta("a", "c1", "idle")]);
     expect(wake).toHaveBeenCalledTimes(3);

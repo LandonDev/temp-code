@@ -574,7 +574,7 @@ rows, the foot and the add sheet are the UI thread's
 - **Land stays first.** The rules dialog pins the land step at the top,
   as the engine runs it: no move or remove of its own, nothing moves above
   it, and the add picker never offers it.
-- **A done row says only what it did.** "Landed 12:08" or the summary, no
+- **A done row says only what it did.** "landed 12:08" or the summary, no
   glyph: a mark that only says "nothing is happening" is noise
   (docs/DESIGN.md "Status vocabulary").
 - **An opened child shows at once.** Back and the title draw from the

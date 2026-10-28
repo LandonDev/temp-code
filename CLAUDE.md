@@ -2480,8 +2480,10 @@ this is the short one.
   the type glyph (its word in a tooltip), the title, the host glyph and the
   model mark; then `StatusMark`'s glyph with what the state is about (the
   task in hand, the question or "approve Bash" in amber, the failure in
-  red; a done row draws no glyph, only its detail, "Landed 12:08" or a
-  settled research thread's summary) and the task tally `3/7` at the end; the sections read Needs you, Working, Queued,
+  red; a done row draws no glyph, only its detail, "landed 12:08" or a
+  settled research thread's summary; the child the batch's `blocked`
+  names says why, "ended its turn without completing"; a watching or
+  paused child under Working says its own word) and the task tally `3/7` at the end; the sections read Needs you, Working, Queued,
   Done with no counts, and the board holds no task list or progress bar.
   On hover the model mark gives way to Message, the state's one verb
   (Pause, Resume, Start now) and ⋯, the row's menu, where Stop, Archive
