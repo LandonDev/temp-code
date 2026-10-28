@@ -221,7 +221,7 @@ describe("the rail", () => {
     expect(root.textContent).not.toContain("No workspaces yet");
     fireEvent.click(addRow(root)[0]);
     expect(onOpenProject).toHaveBeenCalledTimes(1);
-    expect(onOpenProject.mock.calls[0]).toEqual([]);
+    expect(onOpenProject.mock.calls[0]).toEqual([undefined, "Add workspace"]);
   });
 
   it("with a workspace, the heading keeps its + and the row is gone", async () => {

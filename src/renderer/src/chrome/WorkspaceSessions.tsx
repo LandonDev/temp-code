@@ -77,8 +77,7 @@ import {
   type ThreadRow,
 } from "../lib/workspaceSessions";
 import { dialogsChunk } from "../surfaces/chunks";
-import { RailRows } from "./railRows";
-import { RAIL_SCROLL_MARGIN_PX } from "./railVirtualRows";
+import { RAIL_SCROLL_MARGIN_PX, RailRows } from "./railRows";
 
 // Opened from a project's menu; mounted only while open (chrome/dialogs.ts).
 const ProjectSettingsDialog = dialogsChunk.surface("ProjectSettingsDialog");
@@ -1068,7 +1067,7 @@ export default function WorkspaceSessions({
   // does not clamp to a shorter column.
   useLayoutEffect(() => {
     if (!scroller) return;
-    if (memory.offset > 0) scroller.scrollTop = memory.offset;
+    scroller.scrollTop = memory.offset;
     const save = () => {
       memory.offset = scroller.scrollTop;
     };

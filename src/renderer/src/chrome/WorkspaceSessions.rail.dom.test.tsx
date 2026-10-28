@@ -58,14 +58,15 @@ class FakeResizeObserver {
 
 /** The sidebar's shape: the scroller in state through a callback ref, the
  *  whole column unmounted while Settings shows (Sidebar.tsx). */
-function Column({ shown }: { shown: boolean }) {
+function Column({ shown, scope = null }: { shown: boolean; scope?: string | null }) {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const ref = useCallback((el: HTMLDivElement | null) => setScroller(el), []);
   if (!shown) return null;
   return (
     <div ref={ref} data-testid="scroller" style={{ overflowY: "auto" }}>
       <WorkspaceSessions
-        workspaceId={null}
+        key={scope ?? "home"}
+        workspaceId={scope}
         selectedProjectId={null}
         onSelectProject={() => {}}
         onOpenSession={() => {}}
@@ -183,6 +184,30 @@ describe("the workspace column across a remount", () => {
     expect(again.scrollTop).toBe(248);
     expect(shownChats()).toBe(40);
     expect(screen.queryByText("8 more")).toBeNull();
+  });
+});
+
+describe("the workspace column across a workspace switch", () => {
+  beforeAll(async () => {
+    await virtualChunk.load();
+  });
+
+  it("each scope comes back at its own offset, a fresh one at the top, and keeps its own Chats fold", () => {
+    const view = render(<Column shown />);
+    const scroller = screen.getByTestId("scroller");
+    fireEvent.click(screen.getByRole("button", { name: "Chats" }));
+    expect(shownChats()).toBe(0);
+    scroller.scrollTop = 248;
+    act(() => {
+      scroller.dispatchEvent(new Event("scroll"));
+    });
+    view.rerender(<Column shown scope="w1" />);
+    // The sidebar's scroller stays; the new scope starts where it was, at the top.
+    expect(screen.getByTestId("scroller")).toBe(scroller);
+    expect(scroller.scrollTop).toBe(0);
+    view.rerender(<Column shown />);
+    expect(scroller.scrollTop).toBe(248);
+    expect(shownChats()).toBe(0);
   });
 });
 

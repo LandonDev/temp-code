@@ -233,6 +233,8 @@ function SidebarComponent({
   const workspaceSessions =
     sessionsScope !== undefined && onSelectProjectCard && onNewChat ? (
       <WorkspaceSessions
+        // One column per scope: a switch mounts the new scope's own memory.
+        key={sessionsScope ?? "home"}
         workspaceId={sessionsScope}
         workspaceIds={workspaceIds}
         selectedProjectId={selectedProjectId}

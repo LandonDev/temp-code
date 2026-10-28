@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceMeta } from "../lib/tcserver/types";
 
 const ws = { id: "w1", name: "alpha", path: "/w/alpha", environmentId: "local", createdAt: 1 } as WorkspaceMeta;
-const where = vi.hoisted(() => ({ cwd: "/w/alpha", workspaceId: "w1" as string | null }));
+const where = vi.hoisted(() => ({ cwd: "/w/alpha", workspaceId: "w1" as string | null, columns: [] as (string | null)[] }));
 
 vi.mock("../stores/project", () => ({
   useProject: (pick: (s: { projectCwd: string; selectedProjectId: null }) => unknown) =>
@@ -21,7 +21,16 @@ vi.mock("../lib/tcserver/workspaces", () => ({
   workspaceLabelKey: (_: unknown, __: string, fallback: string) => fallback,
 }));
 vi.mock("./ProjectRail", () => ({ ProjectRail: () => <nav data-testid="rail" />, RailFoot: () => <div data-testid="foot" /> }));
-vi.mock("./WorkspaceSessions", () => ({ default: () => <div data-testid="threads" /> }));
+vi.mock("./WorkspaceSessions", async () => {
+  const { useState } = await import("react");
+  return {
+    // Records the scope each mounted column was born with.
+    default: ({ workspaceId }: { workspaceId: string | null }) => {
+      useState(() => where.columns.push(workspaceId));
+      return <div data-testid="threads" />;
+    },
+  };
+});
 vi.mock("../lib/monaco/focusBoot", () => ({ warmProjectForCwd: () => Promise.resolve() }));
 
 import { Sidebar } from "./Sidebar";
@@ -93,6 +102,24 @@ describe("the workspace column", () => {
     try {
       mount();
       expect(screen.getByRole("heading", { name: "Chats" })).toBeTruthy();
+    } finally {
+      where.cwd = "/w/alpha";
+      where.workspaceId = "w1";
+    }
+  });
+
+  it("mounts one column per scope, so a switch never carries one workspace's folds and pages into another", () => {
+    where.columns = [];
+    const view = mount();
+    where.cwd = "~";
+    where.workspaceId = null;
+    try {
+      view.rerender(
+        <div className="app-shell">
+          <Sidebar onSelectSession={() => {}} onOpenFile={() => {}} onSelectProject={() => {}} onOpenProject={() => {}} onSelectProjectCard={() => {}} onNewChat={() => {}} onNew={() => {}} />
+        </div>,
+      );
+      expect(where.columns).toEqual(["w1", null]);
     } finally {
       where.cwd = "/w/alpha";
       where.workspaceId = "w1";

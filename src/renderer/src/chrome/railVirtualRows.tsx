@@ -18,10 +18,6 @@ export type RailRowsProps = {
   reveal: { index: number } | null;
 };
 
-/** The rail list's padding above its first card (WorkspaceSessions' pt-2),
- *  inside the sidebar's scroller: the virtualizer's scroll margin. */
-export const RAIL_SCROLL_MARGIN_PX = 8;
-
 /** The gap between cards, in both modes. */
 export const RAIL_GAP_PX = 4;
 

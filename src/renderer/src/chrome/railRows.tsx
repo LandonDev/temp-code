@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { virtualChunk } from "../surfaces/chunks";
 import type { RailRowsProps, VirtualRows as VirtualRowsType } from "./railVirtualRows";
 
+/** The rail list's padding above its first card (WorkspaceSessions' pt-2),
+ *  inside the sidebar's scroller: the virtualizer's scroll margin. Here, not
+ *  in railVirtualRows, which must stay out of the first paint. */
+export const RAIL_SCROLL_MARGIN_PX = 8;
+
 /** Past this many rows the virtualizer loads at once instead of in an idle slot. */
 export const VIRTUAL_AT_ROWS = 200;
 
