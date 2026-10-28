@@ -7,10 +7,9 @@ import type { ProjectMeta, SessionMeta } from '../lib/tcserver/types'
 import { mountProbe } from '../test/renderProbe'
 import { threadRow, type ThreadRow } from '../lib/workspaceSessions'
 import { nextPage } from '../lib/sidebarRows'
-import { PlanReadyContext, ProjectRow, ThreadList } from './WorkspaceSessions'
+import { PlanReadyContext, ProjectCard, ThreadList } from './WorkspaceSessions'
 import { screen, within } from '@testing-library/react'
 import { resetMenus } from './menuRows'
-import { projectFolds } from '../lib/projectFolds'
 import { subagentRowsStore } from '../stores/subagentRows'
 import { registry } from '../lib/connection'
 
@@ -73,18 +72,21 @@ const moreButton = (root: HTMLElement) =>
 const project = (id = 'p1') =>
   ({ environmentId: 'local', id, workspaceId: 'w1', name: `Project ${id}`, mode: 'local', branch: 'main', cwd: '/wt/p1', archived: false, createdAt: 1 }) as ProjectMeta
 
-const projectRow = (threads: ThreadRow[]) => (
-  <ProjectRow
-    group={{ project: project(), threads, latest: 100, archivedCount: 0 }}
-    selected={false}
+type CardOpts = { selected?: boolean; archivedCount?: number; onSelect?: (id: string) => void; onRename?: (id: string, name: string) => void; requested?: number }
+
+const projectCard = (threads: ThreadRow[], opts: CardOpts = {}) => (
+  <ProjectCard
+    group={{ project: project(), threads, latest: Date.now() - 3 * 60_000, archivedCount: opts.archivedCount ?? 0 }}
+    selected={opts.selected ?? false}
+    hosts="local"
     lastSeen={{}}
     seenFloor={0}
     rows={{ ...actions, focusedTree: new Set<string>() }}
-    requested={SESSION_LIST_PAGE}
+    requested={opts.requested ?? SESSION_LIST_PAGE}
     onMore={() => {}}
-    onSelect={() => {}}
+    onSelect={opts.onSelect ?? (() => {})}
     onNewChat={() => {}}
-    onRename={() => {}}
+    onRename={opts.onRename ?? (() => {})}
     onSettings={() => {}}
     onPreamble={() => {}}
     onArchive={() => {}}
@@ -92,97 +94,176 @@ const projectRow = (threads: ThreadRow[]) => (
   />
 )
 
-const threadRows = (root: HTMLElement) => root.querySelectorAll('[role="button"]:not([data-project-row])').length
-const headerOf = (root: HTMLElement) => root.querySelector<HTMLElement>('[data-project-row]')!
+const cardOf = (root: HTMLElement) => root.querySelector<HTMLButtonElement>('[data-project-card]')!
+const lineOf = (root: HTMLElement, title: string) =>
+  Array.from(root.querySelectorAll<HTMLElement>('[data-card-line]')).find((l) => l.textContent?.includes(title))!
 
-describe('a project row', () => {
-  beforeEach(() => {
-    localStorage.clear()
-    projectFolds.reload()
-  })
-
-  it("says the project's loudest state in one word, and nothing when it is quiet", () => {
-    const word = (threads: ThreadRow[]) => {
-      const probe = mountProbe(projectRow(threads))
-      const mark = headerOf(probe.container).querySelector('[data-slot="status-word"]')?.textContent ?? null
-      probe.unmount()
-      return mark
-    }
-    expect(word([threadRow(meta('w', { status: 'waiting' }), {}), threadRow(meta('r', { status: 'running' }), {})])).toBe('Needs you')
-    expect(word([threadRow(meta('f', { status: 'error' }), {}), threadRow(meta('r', { status: 'running' }), {})])).toBe('Failed')
-    expect(word([threadRow(meta('r', { status: 'running' }), {})])).toBe('Working')
-    expect(word([threadRow(meta('p', { status: 'paused' }), {})])).toBe('Paused')
-    expect(word([threadRow(meta('d', { status: 'done' }), { d: 500 })])).toBeNull()
-  })
-
-  it('says Watching, never Working, when its only live thread watches; Paused and a running turn beat it', () => {
-    const word = (threads: ThreadRow[]) => {
-      const probe = mountProbe(projectRow(threads))
-      const mark = headerOf(probe.container).querySelector('[data-slot="status-word"]')?.textContent ?? null
-      probe.unmount()
-      return mark
-    }
-    // A master watching its batch, a parent watching its subagents, a thread watching its background work.
-    expect(word([threadRow(meta('m', { status: 'watching', isMaster: true }), {})])).toBe('Watching')
-    expect(word([threadRow(meta('o', { status: 'idle', background: { tasks: [], agents: ['k1'], batch: null, watchingSince: 1 } }), {})])).toBe('Watching')
-    expect(word([threadRow(meta('b', { status: 'watching', background: { tasks: [{ id: 't1', label: 'sleep 45', kind: 'shell', startedAt: 1 }], agents: [], batch: null, watchingSince: 1 } }), {})])).toBe('Watching')
-    expect(word([threadRow(meta('m', { status: 'watching' }), {}), threadRow(meta('p', { status: 'paused' }), {})])).toBe('Paused')
-    expect(word([threadRow(meta('m', { status: 'watching' }), {}), threadRow(meta('r', { status: 'running' }), {})])).toBe('Working')
-  })
-
-  it('is open by default and lists its threads; closed, it holds none and stays closed across a remount', async () => {
-    const threads = rows(3)
-    const probe = mountProbe(projectRow(threads))
-    expect(headerOf(probe.container).getAttribute('aria-expanded')).toBe('true')
-    expect(threadRows(probe.container)).toBe(3)
-    await act(async () => {
-      fireEvent.click(headerOf(probe.container))
-    })
-    expect(headerOf(probe.container).getAttribute('aria-expanded')).toBe('false')
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 20))
-    })
-    expect(threadRows(probe.container)).toBe(0)
-    probe.unmount()
-    const again = mountProbe(projectRow(threads))
-    expect(threadRows(again.container)).toBe(0)
-    await act(async () => {
-      fireEvent.click(headerOf(again.container))
-    })
-    expect(threadRows(again.container)).toBe(3)
-    again.unmount()
-  })
-
-  it('reopening mid-close keeps its rows', async () => {
-    const probe = mountProbe(projectRow(rows(2)))
-    await act(async () => {
-      fireEvent.click(headerOf(probe.container))
-      fireEvent.click(headerOf(probe.container))
-    })
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 20))
-    })
-    expect(headerOf(probe.container).getAttribute('aria-expanded')).toBe('true')
-    expect(threadRows(probe.container)).toBe(2)
+describe('a project card', () => {
+  it('shows its name, its last-active time and its branch line', () => {
+    const probe = mountProbe(projectCard([]))
+    const card = cardOf(probe.container)
+    expect(card.textContent).toContain('Project p1')
+    expect(card.textContent).toContain('3m')
+    expect(card.textContent).toContain('main')
+    expect(card.textContent).toContain('local')
     probe.unmount()
   })
 
-  it('has no border, and the column separates nothing with dots', () => {
+  it('draws a working thread as a read-only line with the spinner mark and its title, never a button', () => {
+    const probe = mountProbe(projectCard([threadRow(meta('r', { title: 'Restore the cards', status: 'running', busySince: 5 }), {})]))
+    const line = lineOf(probe.container, 'Restore the cards')
+    expect(line.getAttribute('data-card-line')).toBe('working')
+    expect(line.querySelector('[data-slot="status-mark"]')?.getAttribute('data-state')).toBe('working')
+    expect(line.closest('button')).toBe(cardOf(probe.container))
+    expect(line.querySelector('button, [role="button"]')).toBeNull()
+    probe.unmount()
+  })
+
+  it('a working implementation thread carries its task line under its title', () => {
     const probe = mountProbe(
-      projectRow([
-        threadRow(meta('r', { status: 'running', activity: 'Running bun', tasks: { done: 1, total: 3 } as SessionMeta['tasks'] }), {}),
-        threadRow(meta('d', { status: 'done' }), {})
+      projectCard([
+        threadRow(meta('i', { title: 'Build', threadType: 'implementation', status: 'running', busySince: 5, tasks: { done: 3, total: 7, current: 'card fixtures' } as SessionMeta['tasks'] }), {})
       ])
     )
-    expect(probe.container.querySelector('[class*="border"]')).toBeNull()
+    expect(lineOf(probe.container, 'Build').textContent).toContain('3/7')
+    expect(lineOf(probe.container, 'Build').textContent).toContain('card fixtures')
+    probe.unmount()
+  })
+
+  it('a click anywhere on it, a thread line included, selects the project and never opens a thread', () => {
+    const onSelect = vi.fn()
+    const onOpen = vi.spyOn(actions, 'onOpen')
+    const probe = mountProbe(projectCard([threadRow(meta('r', { title: 'Restore', status: 'running', busySince: 5 }), {})], { onSelect }))
+    fireEvent.click(lineOf(probe.container, 'Restore'))
+    fireEvent.click(cardOf(probe.container))
+    expect(onSelect).toHaveBeenCalledTimes(2)
+    expect(onSelect).toHaveBeenCalledWith('p1')
+    expect(onOpen).not.toHaveBeenCalled()
+    onOpen.mockRestore()
+    probe.unmount()
+  })
+
+  it('lists no thread rows under the project', () => {
+    const probe = mountProbe(projectCard(rows(3)))
+    expect(probe.container.querySelectorAll('[data-thread-row]')).toHaveLength(0)
+    probe.unmount()
+  })
+
+  it('counts who needs you, what is dormant and archived, two spaces apart with no dots', () => {
+    const probe = mountProbe(
+      projectCard(
+        [
+          threadRow(meta('w', { status: 'waiting' }), {}),
+          ...Array.from({ length: 4 }, (_, i) => threadRow(meta(`d${i}`, { updatedAt: 0 }), {}))
+        ],
+        { archivedCount: 2 }
+      )
+    )
+    const counts = probe.container.querySelector<HTMLElement>('[data-card-counts]')!
+    expect(Array.from(counts.children).map((c) => c.textContent)).toEqual(['1 needs you', '4 dormant', '2 archived'])
+    expect(counts.querySelector('[data-state="waiting"]')).not.toBeNull()
     expect(probe.container.textContent).not.toMatch(/ · |•/)
     probe.unmount()
   })
 
-  it('an unread thread makes the name heavier', () => {
-    const probe = mountProbe(projectRow([threadRow(meta('d', { status: 'done', updatedAt: 200 }), { d: 100 })]))
-    const name = Array.from(headerOf(probe.container).querySelectorAll('span')).find((s) => s.textContent === 'Project p1')!
+  it('a paused thread is a line that says Paused, never a count', () => {
+    const probe = mountProbe(projectCard([threadRow(meta('p', { title: 'Docs pass', status: 'paused', frozenActiveElapsed: 6 * 60_000 }), {})]))
+    const line = lineOf(probe.container, 'Docs pass')
+    expect(line.getAttribute('data-card-line')).toBe('paused')
+    expect(line.textContent).toContain('Paused')
+    expect(probe.container.querySelector('[data-card-counts]')?.textContent ?? '').not.toContain('paused')
+    probe.unmount()
+  })
+
+  it('reads No threads when it has none', () => {
+    const probe = mountProbe(projectCard([]))
+    expect(probe.container.querySelector('[data-card-counts]')?.textContent).toBe('No threads')
+    probe.unmount()
+  })
+
+  it('selected, it is aria-current with the muted fill', () => {
+    const probe = mountProbe(projectCard([], { selected: true }))
+    expect(cardOf(probe.container).getAttribute('aria-current')).toBe('true')
+    expect(cardOf(probe.container).className).toContain('bg-muted')
+    probe.unmount()
+  })
+
+  it('an unread thread makes the name heavier and its line weight, with no dot', () => {
+    const probe = mountProbe(projectCard([threadRow(meta('d', { title: 'Fix login', status: 'done', updatedAt: 200 }), { d: 100 })]))
+    const name = Array.from(cardOf(probe.container).querySelectorAll('span')).find((s) => s.textContent === 'Project p1')!
     expect(name.className).toContain('font-medium')
+    const line = lineOf(probe.container, 'Fix login')
+    expect(line.getAttribute('data-card-line')).toBe('unread')
+    expect(line.querySelector('.font-medium')?.textContent).toBe('Fix login')
+    expect(line.querySelector('.rounded-full')).toBeNull()
+    probe.unmount()
+  })
+
+  it('has no border', () => {
+    const probe = mountProbe(projectCard([threadRow(meta('r', { status: 'running', busySince: 5 }), {})]))
+    expect(probe.container.querySelector('[class*="border"]')).toBeNull()
+    probe.unmount()
+  })
+
+  it("draws a master's batch as one block under the master, with its done tally", () => {
+    const master: ThreadRow = {
+      ...threadRow(meta('m', { title: 'Release train', status: 'watching', isMaster: true }), {}),
+      batch: [
+        threadRow(meta('b1', { title: 'Card view', masterId: 'm', status: 'running', busySince: 5 }), {}, 0, true),
+        threadRow(meta('b2', { title: 'Docs', masterId: 'm', status: 'done' }), {}, 0, true),
+        threadRow(meta('b3', { masterId: 'm', status: 'queued' }), {}, 0, true)
+      ]
+    }
+    const probe = mountProbe(projectCard([master]))
+    const block = lineOf(probe.container, 'Release train')
+    expect(block.getAttribute('data-card-line')).toBe('master')
+    expect(block.textContent).toContain('1/3')
+    expect(block.textContent).toContain('Card view')
+    expect(block.textContent).toContain('1 queued')
+    // A housed thread prints only in its master's block.
+    expect(probe.container.querySelectorAll('[data-card-line]')).toHaveLength(1)
+    probe.unmount()
+  })
+
+  it('its accessible name says what needs saying', () => {
+    const probe = mountProbe(projectCard([threadRow(meta('w', { status: 'waiting' }), {}), threadRow(meta('r', { status: 'running', busySince: 5 }), {})]))
+    expect(cardOf(probe.container).getAttribute('aria-label')).toBe('Project p1, 1 needs you, 1 working')
+    probe.unmount()
+  })
+
+  it('shows one page of lines and "N more" beside the card, not inside it', () => {
+    const many = Array.from({ length: SESSION_LIST_PAGE + 2 }, (_, i) => threadRow(meta(`r${i}`, { status: 'running', busySince: 5 }), {}))
+    const probe = mountProbe(projectCard(many))
+    expect(probe.container.querySelectorAll('[data-card-line]')).toHaveLength(SESSION_LIST_PAGE)
+    const more = moreButton(probe.container)!
+    expect(more.textContent).toBe('2 more')
+    expect(cardOf(probe.container).contains(more)).toBe(false)
+    probe.unmount()
+  })
+
+  it("⋯ and the right-click show the same project rows", async () => {
+    resetMenus()
+    const probe = mountProbe(projectCard([]))
+    const trigger = probe.container.querySelector<HTMLButtonElement>('button[aria-label="More"]')!
+    expect(cardOf(probe.container).contains(trigger)).toBe(false)
+    act(() => {
+      fireEvent.click(trigger)
+    })
+    const fromMore = (await screen.findByRole('menu', { name: 'Project actions' })).textContent
+    act(() => {
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20))
+    })
+    resetMenus()
+    act(() => {
+      fireEvent.contextMenu(cardOf(probe.container))
+    })
+    const fromRight = (await screen.findByRole('menu', { name: 'Project actions' })).textContent
+    expect(fromRight).toBe(fromMore)
+    expect(fromMore).toContain('New chat')
+    expect(fromMore).toContain('Delete project…')
     probe.unmount()
   })
 })
@@ -512,38 +593,19 @@ describe('the host glyph on rail rows', () => {
 
 
 describe('an inline rename ended from the keyboard', () => {
-  const mountProject = (onRename: (id: string, name: string) => void) =>
-    mountProbe(
-      <ProjectRow
-        group={{ project: project(), threads: [], latest: 100, archivedCount: 0 }}
-        selected={false}
-        lastSeen={{}}
-        seenFloor={0}
-        rows={{ ...actions, focusedTree: new Set<string>() }}
-        requested={SESSION_LIST_PAGE}
-        onMore={() => {}}
-        onSelect={() => {}}
-        onNewChat={() => {}}
-        onRename={onRename}
-        onSettings={() => {}}
-        onPreamble={() => {}}
-        onArchive={() => {}}
-        onDelete={() => {}}
-      />
-    )
+  const mountProject = (onRename: (id: string, name: string) => void) => mountProbe(projectCard([], { onRename }))
   const field = () => screen.getByRole('textbox') as HTMLInputElement
   const more = (root: HTMLElement) => root.querySelector<HTMLElement>('[data-project-row] [aria-label="More"]')
 
-  it("gives a project row's focus back to its More: Escape saves nothing, Enter saves once", async () => {
+  it("gives a project card's focus back to its More: Escape saves nothing, Enter saves once", async () => {
     const onRename = vi.fn()
     const probe = mountProject(onRename)
-    const row = probe.container.querySelector<HTMLElement>('[data-project-row]')!
-    fireEvent.doubleClick(row)
+    fireEvent.doubleClick(cardOf(probe.container))
     fireEvent.keyDown(field(), { key: 'Escape' })
     await act(async () => {})
     expect(document.activeElement).toBe(more(probe.container))
     expect(onRename).not.toHaveBeenCalled()
-    fireEvent.doubleClick(row)
+    fireEvent.doubleClick(cardOf(probe.container))
     fireEvent.change(field(), { target: { value: 'Renamed' } })
     fireEvent.keyDown(field(), { key: 'Enter' })
     await act(async () => {})
@@ -557,7 +619,7 @@ describe('an inline rename ended from the keyboard', () => {
     const probe = mountProject(() => {})
     const outside = document.createElement('button')
     document.body.append(outside)
-    fireEvent.doubleClick(probe.container.querySelector<HTMLElement>('[data-project-row]')!)
+    fireEvent.doubleClick(cardOf(probe.container))
     outside.focus()
     fireEvent.blur(field())
     await act(async () => {})

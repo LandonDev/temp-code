@@ -59,13 +59,11 @@ export function projectCardStatus<T extends CardThread>(
       !t.treeCanContinue &&
       (t.status === "running" || t.status === "starting" || t.status === "watching" || !!t.treeHasLiveWork),
   );
-  const waiting = threads.filter(
-    (t) => !isPaused.has(t) && !t.treeCanContinue && t.status === "waiting",
-  ).length;
+  const waiting = threads.filter((t) => !isPaused.has(t) && !t.treeCanContinue && t.status === "waiting");
   // Live work outranks a failure the thread already moved past.
   const failed = threads.filter(
     (t) => !isPaused.has(t) && !t.treeHasLiveWork && (t.status === "error" || !!t.treeCanContinue),
-  ).length;
+  );
   const unread = threads.filter(
     (t) =>
       !t.housed &&
@@ -75,13 +73,15 @@ export function projectCardStatus<T extends CardThread>(
       t.id !== selectedId &&
       t.updatedAt > (lastSeen[t.id] ?? floor),
   );
+  const said = new Set([...paused, ...running, ...unread, ...waiting, ...failed]);
   return {
     paused,
     running,
     unread,
-    waiting,
-    failed,
-    dormant: threads.length - running.length - paused.length - unread.length - waiting - failed,
+    waiting: waiting.length,
+    failed: failed.length,
+    // A thread inside a master is said by its master's block, never as dormant.
+    dormant: threads.filter((t) => !t.housed && !said.has(t)).length,
     total: threads.length,
     latest: threads.reduce((a, t) => Math.max(a, t.updatedAt), 0),
   };

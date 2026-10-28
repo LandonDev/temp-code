@@ -20,6 +20,7 @@ const RETIRED_KEYS = [
   "monocode.sidebarTabOrder",
   "monocode.transcriptLayout",
   "monocode.transcriptZen",
+  "monocode.tc.projectFolds",
 ];
 
 export type ColorScheme = "dark" | "light";

@@ -23,6 +23,15 @@ const thread = (id: string, extra: Partial<CardThread> = {}): CardThread => ({
 const ids = (list: CardThread[]) => list.map((t) => t.id);
 
 describe("projectCardStatus", () => {
+  it("never counts a thread inside a master as dormant: its master's block says it", () => {
+    const status = projectCardStatus(
+      [thread("root"), thread("done-in-batch", { status: "done", housed: true }), thread("queued-in-batch", { status: "queued", housed: true })],
+      null,
+      {},
+      1000,
+    );
+    expect(status.dormant).toBe(1);
+  });
   it("counts a thread watching its background work or batch as running", () => {
     const status = projectCardStatus([thread("w", { status: "watching" })], null, {});
     expect(ids(status.running)).toEqual(["w"]);

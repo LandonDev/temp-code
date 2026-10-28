@@ -20,6 +20,7 @@ import {
   ArchiveRestore,
   ChevronRight,
   FileText,
+  GitBranch,
   MessageSquarePlus,
   MoreHorizontal,
   Pause,
@@ -31,7 +32,7 @@ import {
   Trash2,
 } from "./icons";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { modelLabel } from "../lib/threads/agents";
+import { agentSummaryParts, modelLabel, type AgentSummary } from "../lib/threads/agents";
 import { AGENT_GLYPHS, THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
 import { STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/status";
 import { Button } from "../components/ui/button";
@@ -40,25 +41,35 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/toolti
 import { useTruncated } from "../components/tip";
 import { cn } from "../lib/cn";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
-import { projectFolds, projectFoldsStore, projectOpen, useProjectOpen } from "../lib/projectFolds";
 import {
+  cardTasks,
+  pausedElapsed,
   projectCardStatus,
   projectRunAction,
+  runningElapsed,
   stoppableThreads,
 } from "../lib/projectCardModel";
 import { SESSION_LIST_PAGE } from "../lib/sessionListWindow";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import {
-  groupMark,
+  cardCounts,
+  cardLines,
   groupUnread,
   nextPage,
+  projectCardAriaLabel,
   rowState,
+  type CardCount,
+  type CardLine,
   type GroupMark,
+  type MasterBlock,
   sessionItemIndex,
   sidebarItems,
   windowRows,
   type SidebarItem,
 } from "../lib/sidebarRows";
+import { duration } from "../lib/duration";
+import { timeAgo } from "../lib/format";
+import { useClock, useSlowClock } from "../lib/turnClock";
 import { archive as archiveThread, interrupt, pause, resume } from "../lib/tcserver/commands";
 import { dormantByType, dormantThreads, focusedTree, marksAtRest, threadStatus } from "../lib/threadStripModel";
 import { deleteProject } from "../lib/tcserver/projects";
@@ -632,10 +643,9 @@ function FoldChevron({ open, className }: { open: boolean; className?: string })
 }
 
 /**
- * A project row, presentational: the chevron, the name (heavier while a
- * thread in it is unread) and one word at the end, the project's loudest
- * state (Needs you, Failed, Working, Paused; nothing when quiet). Its
- * threads fold under it.
+ * An archived project's row, presentational: the chevron, the name and,
+ * for a live caller, one word at the end, the project's loudest state.
+ * Its threads fold under it.
  */
 export function ProjectRowView({
   name,
@@ -703,9 +713,306 @@ export function ProjectRowView({
   );
 }
 
-type ProjectRowProps = {
+// --- project cards -----------------------------------------------------------
+
+type CardMenu = { rows: () => readonly MenuRow[]; onPick: (id: string) => void };
+
+/** A card line's 12px lead: the state's glyph, so titles one level down
+ *  share one column whatever the mark; empty for an unread line. */
+function LineMark({ state }: { state: ThreadState | null }) {
+  return (
+    <span aria-hidden className="grid size-3 shrink-0 place-items-center">
+      {state && marksAtRest(state) ? <StatusMark state={state} word={false} className="[&_svg]:size-3" /> : null}
+    </span>
+  );
+}
+
+/** A line's type glyph: the thread's kind at 12px, muted. */
+function LineGlyph({ thread }: { thread: ThreadRow }) {
+  const Glyph = THREAD_GLYPHS[thread.threadType ?? "chat"];
+  return <Glyph aria-hidden className="size-3 shrink-0 text-muted-foreground" strokeWidth={1.5} />;
+}
+
+const LINE = "flex h-6 min-w-0 items-center gap-2";
+const LINE_TIME = "shrink-0 tabular-nums text-muted-foreground";
+/** Elapsed shows from three seconds in, as at 303: a turn that ends at once never flashes a clock. */
+const SHOWS_ELAPSED_MS = 3000;
+
+/** An implementation thread's tally and current task, under its title. */
+function TaskLine({ tasks, indent }: { tasks: NonNullable<ThreadRow["tasks"]>; indent: string }) {
+  return (
+    <span className={cn("flex h-4 min-w-0 items-center gap-2 text-muted-foreground", indent)}>
+      <span className={cn("shrink-0 tabular-nums", tasks.done === tasks.total && "text-success")}>
+        {tasks.done}/{tasks.total}
+      </span>
+      {tasks.current ? <span className="min-w-0 truncate">{tasks.current}</span> : null}
+    </span>
+  );
+}
+
+/** A thread's working subagents in the fleet's words, two spaces apart. */
+function AgentsLine({ summary, indent }: { summary: AgentSummary; indent: string }) {
+  return (
+    <span className={cn("flex h-4 min-w-0 items-center gap-2 text-muted-foreground", indent)}>
+      {agentSummaryParts(summary).map((part) => (
+        <span key={part.text} className={cn("shrink-0 truncate", part.tone)}>
+          {part.text}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** One root's line: its mark, type glyph, title and host; at the end the
+ *  elapsed while it works, Paused and the frozen elapsed while paused. */
+function ThreadLine({ kind, thread, now }: { kind: "working" | "paused" | "unread"; thread: ThreadRow; now: number }) {
+  const tasks = kind === "unread" ? null : cardTasks(thread);
+  const ms = kind === "working" ? runningElapsed(thread, now) : 0;
+  return (
+    <span className="flex min-w-0 flex-col" data-card-line={kind}>
+      <span className={LINE}>
+        <LineMark state={kind === "unread" ? null : rowState(thread)} />
+        <LineGlyph thread={thread} />
+        <span className={cn("min-w-0 flex-1 truncate", kind === "unread" ? "font-medium text-foreground" : "text-muted-foreground")}>
+          {thread.title || "Untitled"}
+        </span>
+        <HostGlyph environmentId={thread.environmentId} />
+        {kind === "working" && now > 0 && ms >= SHOWS_ELAPSED_MS ? <span className={LINE_TIME}>{duration(ms)}</span> : null}
+        {kind === "paused" ? (
+          <span className="flex shrink-0 gap-2 text-muted-foreground">
+            <span>Paused</span>
+            <span className="tabular-nums">{duration(pausedElapsed(thread))}</span>
+          </span>
+        ) : null}
+      </span>
+      {tasks ? <TaskLine tasks={tasks} indent="pl-10" /> : null}
+    </span>
+  );
+}
+
+/** A master and its batch: its line with the batch's done tally, its own
+ *  working subagents, each batch thread with something to say one step
+ *  in, and the queued ones as one count. Settled batch threads are the tally. */
+function MasterLines({ block, now }: { block: MasterBlock; now: number }) {
+  const { master, unread, done, total } = block;
+  return (
+    <span className="flex min-w-0 flex-col" data-card-line="master">
+      <span className={LINE}>
+        <LineMark state={unread && !marksAtRest(block.state) ? null : block.state} />
+        <LineGlyph thread={master} />
+        <span className={cn("min-w-0 flex-1 truncate", unread ? "font-medium text-foreground" : "text-muted-foreground")}>
+          {master.title || "Untitled"}
+        </span>
+        <HostGlyph environmentId={master.environmentId} />
+        <span className={cn(LINE_TIME, done === total && "text-success")}>
+          {done}/{total}
+        </span>
+      </span>
+      {block.agents ? <AgentsLine summary={block.agents} indent="pl-10" /> : null}
+      {block.lines.map(({ thread, state, agents }) => {
+        const tasks = state === "working" ? cardTasks(thread) : null;
+        const ms = state === "working" ? runningElapsed(thread, now) : 0;
+        return (
+          <span key={thread.id} className="flex min-w-0 flex-col pl-4">
+            <span className={LINE}>
+              <LineMark state={state} />
+              <LineGlyph thread={thread} />
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">{thread.title || "Untitled"}</span>
+              <HostGlyph environmentId={thread.environmentId} />
+              {tasks ? (
+                <span className={cn(LINE_TIME, tasks.done === tasks.total && "text-success")}>
+                  {tasks.done}/{tasks.total}
+                </span>
+              ) : state === "working" && now > 0 && ms >= SHOWS_ELAPSED_MS ? (
+                <span className={LINE_TIME}>{duration(ms)}</span>
+              ) : null}
+            </span>
+            {agents ? <AgentsLine summary={agents} indent="pl-10" /> : null}
+          </span>
+        );
+      })}
+      {block.queued > 0 ? (
+        <span className={cn(LINE, "pl-4 text-muted-foreground")}>
+          <LineMark state="queued" />
+          <span>{block.queued} queued</span>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/** The count line's facts, two spaces apart: needs you in amber and failed
+ *  in red with their glyphs, the rest muted. */
+function CountLine({ counts }: { counts: readonly CardCount[] }) {
+  return (
+    <span className="mt-1 flex h-4 min-w-0 items-center gap-2 tabular-nums text-muted-foreground" data-card-counts>
+      {counts.map((c) =>
+        c.kind === "waiting" || c.kind === "failed" ? (
+          <StatusMark key={c.kind} state={c.kind} word={c.text} className="shrink-0 font-normal [&_svg]:size-3" />
+        ) : (
+          <span key={c.kind} className="min-w-0 truncate">
+            {c.text}
+          </span>
+        ),
+      )}
+    </span>
+  );
+}
+
+export type ProjectCardViewProps = {
+  name: string;
+  branch: string | null | undefined;
+  mode: ProjectMeta["mode"];
+  /** Newest activity; 0 shows no time. */
+  latest: number;
+  /** The clock the time and the elapsed read; 0 before it has ticked. */
+  now: number;
+  lines: readonly CardLine[];
+  /** Lines behind "N more". */
+  hidden: number;
+  counts: readonly CardCount[];
+  ariaLabel: string;
+  selected?: boolean;
+  unread?: boolean;
+  offline?: boolean;
+  /** In place of the name: the rename field. */
+  title?: ReactNode;
+  onSelect?: () => void;
+  onRename?: () => void;
+  onMore?: () => void;
+  /** The project's menu: its right-click and its ⋯ show the same rows. */
+  menu?: CardMenu;
+};
+
+/**
+ * A project card, presentational: the name and its last-active time, the
+ * branch line, one read-only line per working, paused or unread thread (a
+ * master's batch as a block), then the counts. The card is one button: a
+ * click anywhere selects the project, and its lines never open a thread
+ * (the strip above the pane is where threads are picked). ⋯ and "N more"
+ * sit beside it, never inside.
+ */
+export function ProjectCardView({
+  name,
+  branch,
+  mode,
+  latest,
+  now,
+  lines,
+  hidden,
+  counts,
+  ariaLabel,
+  selected = false,
+  unread = false,
+  offline = false,
+  title,
+  onSelect,
+  onRename,
+  onMore,
+  menu,
+}: ProjectCardViewProps) {
+  const editing = title != null;
+  const ago = latest > 0 ? timeAgo(latest, now || Date.now()) : "";
+  const body = (
+    <>
+      <span className="flex h-5 min-w-0 items-center gap-2">
+        {editing ? (
+          title
+        ) : (
+          <>
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-[13px]",
+                unread && "font-medium",
+                selected || unread ? "text-foreground" : "text-muted-foreground group-hover/row:text-foreground",
+              )}
+            >
+              {name}
+            </span>
+            {ago ? <span className={cn("shrink-0 tabular-nums text-muted-foreground", menu && YIELDS)}>{ago}</span> : null}
+          </>
+        )}
+      </span>
+      <span className="mt-0.5 flex h-4 min-w-0 items-center gap-2 text-muted-foreground">
+        <span className="flex min-w-0 items-center gap-1">
+          <GitBranch aria-hidden className="size-3 shrink-0" strokeWidth={1.5} />
+          <span className="min-w-0 truncate">{branch ?? "local checkout"}</span>
+        </span>
+        <span className="shrink-0">{mode === "worktree" ? "worktree" : "local"}</span>
+      </span>
+      {lines.length ? (
+        <span className="mt-1 flex min-w-0 flex-col">
+          {lines.map((line) =>
+            line.kind === "master" ? (
+              <MasterLines key={line.id} block={line.block} now={now} />
+            ) : (
+              <ThreadLine key={line.id} kind={line.kind} thread={line.thread} now={now} />
+            ),
+          )}
+        </span>
+      ) : null}
+      {counts.length ? <CountLine counts={counts} /> : null}
+    </>
+  );
+  const box = cn(
+    "flex w-full min-w-0 cursor-default flex-col rounded-lg px-3 py-2 text-left text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-accent",
+    selected ? "bg-muted" : "hover:bg-foreground/5",
+  );
+  const card = (
+    <div data-project-row data-host-offline={offline || undefined} className={cn("group/row relative", offline && "opacity-50")}>
+      {editing ? (
+        <div aria-current={selected || undefined} className={box}>
+          {body}
+        </div>
+      ) : (
+        <button
+          type="button"
+          aria-current={selected || undefined}
+          aria-label={ariaLabel}
+          data-project-card
+          onClick={onSelect}
+          onDoubleClick={onRename}
+          className={box}
+        >
+          {body}
+        </button>
+      )}
+      {menu && !editing ? (
+        <RowsMenu
+          label="Project actions"
+          tip={{ label: "More", side: "right" }}
+          trigger={moreTrigger("absolute top-1.5 right-2")}
+          rows={menu.rows}
+          onPick={menu.onPick}
+          align="start"
+        />
+      ) : null}
+      {hidden > 0 && onMore ? <MoreRow hidden={hidden} onMore={onMore} /> : null}
+    </div>
+  );
+  return menu ? (
+    <RowsContextMenu label="Project actions" lazyMount rowsFor={menu.rows} onPick={(pick) => menu.onPick(pick)}>
+      {card}
+    </RowsContextMenu>
+  ) : (
+    card
+  );
+}
+
+/** A card's first-pass height: the two head lines and the padding, a line
+ *  per thread with something to say (one page at most), the count line.
+ *  The virtualizer measures the real card. */
+export function estimateCard(group: ProjectGroup): number {
+  const lines = group.threads.filter((t) => !t.housed && (t.unread || !!t.batch?.length || marksAtRest(rowState(t)))).length;
+  const counts = group.threads.length === 0 || group.archivedCount > 0 || lines < group.threads.length;
+  return 58 + 24 * Math.min(lines, SESSION_LIST_PAGE) + (counts ? 20 : 0);
+}
+
+type ProjectCardProps = {
   group: ProjectGroup;
   selected: boolean;
+  /** The hosts of the project's copies, one per line: the card dims when none is reachable. */
+  hosts: string;
   lastSeen: Record<string, number>;
   seenFloor: number;
   rows: RowActions;
@@ -720,12 +1027,13 @@ type ProjectRowProps = {
   onDelete: (project: ProjectMeta) => void;
 };
 
-/** A project and, unless the person folded it, its threads under it (open
- *  by default, the close remembered: lib/projectFolds.ts). A click selects
- *  the project and flips the fold; a double-click renames it. */
-export const ProjectRow = memo(function ProjectRow({
+/** A project's card, wired: its status over every root and batch thread,
+ *  the clocks its lines need, its menu. A click selects the project
+ *  (App's onSelectProjectCard); a double-click renames it in place. */
+export const ProjectCard = memo(function ProjectCard({
   group,
   selected,
+  hosts,
   lastSeen,
   seenFloor,
   rows,
@@ -738,13 +1046,20 @@ export const ProjectRow = memo(function ProjectRow({
   onPreamble: openPreamble,
   onArchive: archive,
   onDelete: remove,
-}: ProjectRowProps) {
-  const { project, threads } = group;
-  const open = useProjectOpen(project.id);
+}: ProjectCardProps) {
+  const { project, threads, latest, archivedCount } = group;
   const [renaming, setRenaming] = useState(false);
-  const mark = useMemo(() => groupMark(threads), [threads]);
+  const offline = useHostsOffline(hosts.split("\n"));
   const unread = useMemo(() => groupUnread(threads), [threads]);
   const status = projectCardStatus(cardThreads(threads), rows.activeSessionId ?? null, lastSeen, seenFloor);
+  const all = cardLines(threads, status);
+  const { shown, hidden } = windowRows(all, requested, null);
+  // The second hand only while a shown line counts one; the time-ago on the half minute.
+  const ticking = shown.some(
+    (l) => (l.kind === "working" && l.thread.running) || (l.kind === "master" && l.block.lines.some((b) => b.state === "working")),
+  );
+  const fast = useClock(ticking);
+  const slow = useSlowClock(!ticking && latest > 0);
   const runAction = projectRunAction(status);
   const stoppable = stoppableThreads(status);
   const teardown = project.mode === "worktree" && Boolean(project.branch);
@@ -796,43 +1111,37 @@ export const ProjectRow = memo(function ProjectRow({
   };
 
   return (
-    <Collapsible open={open} onOpenChange={() => projectFolds.toggle(project.id)}>
-      <ProjectRowView
-        name={project.name}
-        open={open}
-        selected={selected}
-        unread={unread}
-        mark={mark}
-        onClick={() => {
-          if (!selected) selectProject(project.id);
-          projectFolds.toggle(project.id);
-        }}
-        menu={{ rows: menuRows, onPick: onMenuPick }}
-        onRename={() => setRenaming(true)}
-        title={
-          renaming ? (
-            <InlineRename
-              value={project.name}
-              className="text-[13px]"
-              onCommit={(n) => {
-                setRenaming(false);
-                renameTo(project.id, n);
-              }}
-              onCancel={() => setRenaming(false)}
-            />
-          ) : undefined
-        }
-      />
-      <CollapsibleContent>
-        <ThreadList
-          threads={threads}
-          actions={rows}
-          requested={requested}
-          onMore={() => more(project.id)}
-          className="flex flex-col"
-        />
-      </CollapsibleContent>
-    </Collapsible>
+    <ProjectCardView
+      name={project.name}
+      branch={project.branch}
+      mode={project.mode}
+      latest={latest}
+      now={fast || slow}
+      lines={shown}
+      hidden={hidden}
+      counts={cardCounts(status, archivedCount)}
+      ariaLabel={projectCardAriaLabel(project.name, status)}
+      selected={selected}
+      unread={unread}
+      offline={offline}
+      onSelect={() => selectProject(project.id)}
+      onRename={() => setRenaming(true)}
+      onMore={() => more(project.id)}
+      menu={{ rows: menuRows, onPick: onMenuPick }}
+      title={
+        renaming ? (
+          <InlineRename
+            value={project.name}
+            className="text-[13px]"
+            onCommit={(n) => {
+              setRenaming(false);
+              renameTo(project.id, n);
+            }}
+            onCancel={() => setRenaming(false)}
+          />
+        ) : undefined
+      }
+    />
   );
 });
 
@@ -987,16 +1296,11 @@ const ROW_PX = 32;
 const HEADING_PX = 28;
 
 /** Heights for the virtualizer's first pass; every item is then measured.
- *  An open project and the chats section count their first page. */
+ *  A card counts its lines and the chats section its first page. */
 const estimateItem = (item: SidebarItem): number => {
   switch (item.kind) {
     case "project":
-      return (
-        ROW_PX +
-        (projectOpen(projectFoldsStore.getState(), item.group.project.id)
-          ? ROW_PX * Math.min(item.group.threads.length, SESSION_LIST_PAGE)
-          : 0)
-      );
+      return estimateCard(item.group);
     case "chats":
       return HEADING_PX + ROW_PX * Math.min(item.threads.length, SESSION_LIST_PAGE);
     case "archived":
@@ -1047,6 +1351,15 @@ export default function WorkspaceSessions({
   const planReady = usePlanReady(metas);
   const memory = memoryOf(workspaceId ?? "home");
   const { workspaces, projects } = useWorkspaceCatalog();
+  // Each copy's host, for the card's offline tint: one string, so a
+  // memoized card sees the same prop until a host changes.
+  const hostsOf = useCallback(
+    (group: ProjectGroup): string =>
+      (group.projectIds ?? [group.project.id])
+        .map((id) => projects.find((p) => p.id === id)?.environmentId ?? group.project.environmentId)
+        .join("\n"),
+    [projects],
+  );
   const lastSeen = useLastSeen();
   const seenFloor = useSeenFloor();
   const [cache] = useState(rowCache);
@@ -1200,12 +1513,11 @@ export default function WorkspaceSessions({
     [activeSessionId, focused, openSession, renameSession, railMenu, renamingId],
   );
 
-  // Cards are the list's unit (railRows.tsx, virtual once the chunk lands):
-  // each roots its own border and hover group, and the shared ActivePill
-  // lives inside one. Every item is measured, so a card that grows a live
-  // line pushes the ones below it. (A fold's
-  // height animation is measured too: the root re-renders per frame while
-  // a section opens or closes, and the memoized cards sit that out.)
+  // Cards are the list's unit (railRows.tsx, virtual once the chunk lands).
+  // Every item is measured, so a card that grows a line pushes the ones
+  // below it. (A fold's height animation is measured too: the root
+  // re-renders per frame while a section opens or closes, and the memoized
+  // cards sit that out.)
   const items = useMemo(
     () => sidebarItems(groups, workspaceId === null),
     [groups, workspaceId],
@@ -1241,9 +1553,10 @@ export default function WorkspaceSessions({
     switch (item.kind) {
       case "project":
         return (
-          <ProjectRow
+          <ProjectCard
             group={item.group}
             selected={groupHolds(item.group, selectedProjectId)}
+            hosts={hostsOf(item.group)}
             lastSeen={lastSeen}
             seenFloor={seenFloor}
             rows={rows}

@@ -2660,8 +2660,10 @@ this is the short one.
   subagents under it; a plan whose build has started takes no row
   (`startedPlan`), an archived thread never does, and a batch whose master
   is archived or unpinned shows as plain roots. In the workspace column a
-  project row lists the batch under its master, whose row ends in the
-  batch's done tally (`3/7`); the workspace popover (a rail row's word)
+  project's card draws a master's batch as one block under the master's
+  line, which ends in the batch's done tally (`3/7`; `cardLines` in
+  lib/sidebarRows.ts, `MasterLines` in chrome/WorkspaceSessions.tsx); the
+  workspace popover (a rail row's word)
   keeps a master as one block (`masterBlock` in lib/sidebarRows.ts,
   `MasterRows` in chrome/WorkspaceThreadsPopover.tsx): the master's row
   with the tally, its own working subagents under its title in the fleet's
@@ -2670,7 +2672,7 @@ this is the short one.
   the queued ones as one "N queued" line; settled ones are the tally.
   Nothing inside a master is unread (`housedIds`: the batch and every
   subagent of the master or of its batch): no weight and no count in the
-  project row, the rail row, the popover or Mark all read; the master
+  project card, the rail row, the popover or Mark all read; the master
   keeps its own. They still light their project's and workspace's Needs
   you and Working (`groupMark` over `cardThreads`).
 - **Proofs and tests.** `bun run script:e2e-master-batch`
