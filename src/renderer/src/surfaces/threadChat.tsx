@@ -29,6 +29,7 @@ import type { OpenFileFn } from "../lib/search";
 import {
   sessionDisplayTitle,
   sessionWorkCwd,
+  UNTITLED_THREAD,
   type Attachment,
   type Block,
   type HarnessId,
@@ -297,7 +298,7 @@ export function useThreadChat({
     (text: string) => {
       const sessionTitle = sessionDisplayTitle(session.title, session.harness);
       void createNote(session.environmentId, {
-        title: sessionTitle && sessionTitle !== "New session" ? sessionTitle : noteTitle(text),
+        title: sessionTitle && sessionTitle !== UNTITLED_THREAD ? sessionTitle : noteTitle(text),
         body: text,
         sourceSessionId: session.id,
         sourceCwd: session.cwd,

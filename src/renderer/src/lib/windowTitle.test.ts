@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { windowTitle } from "./windowTitle";
+import { threadPane, windowTitle } from "./windowTitle";
 
 describe("windowTitle", () => {
   it("names a thread and its project", () => {
@@ -12,6 +12,19 @@ describe("windowTitle", () => {
     expect(windowTitle({ page: null, pane: { kind: "thread", title: "  " }, project: "temp-code" })).toBe(
       "New thread — temp-code",
     );
+  });
+
+  it("reads a draft's bare harness title as New thread, and TempCode with nothing open", () => {
+    expect(windowTitle({ page: null, pane: threadPane({ title: "claude", harness: "claude" }), project: null })).toBe(
+      "New thread",
+    );
+    expect(windowTitle({ page: null, pane: threadPane({ title: "Claude Code", harness: "claude" }), project: "alpha" })).toBe(
+      "New thread — alpha",
+    );
+    expect(windowTitle({ page: null, pane: threadPane({ title: "claude · Fix it", harness: "claude" }), project: null })).toBe(
+      "Fix it",
+    );
+    expect(windowTitle({ page: null, pane: null, project: null })).toBe("TempCode");
   });
 
   it("names a file by its basename", () => {

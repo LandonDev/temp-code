@@ -12,7 +12,7 @@ import { header, headerStore, initialHeaderState, stripHold, useHeldStripModel }
 const { dropThread } = vi.hoisted(() => ({ dropThread: vi.fn() }));
 vi.mock("../stores/workspaceActions", () => ({ workspaceActions: { dropThread } }));
 
-import { ChipHoverLabel, ThreadHeaderStrip, chipStatus, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
+import { ChipHoverLabel, ThreadHeaderStrip, chipStatus, chipTitle, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 
 const thread = (id: string, title: string): ChipThread => ({
   id,
@@ -345,5 +345,14 @@ describe("ThreadHeaderStrip: the held row is the published row", () => {
     fireEvent.pointerLeave(screen.getByRole("tablist"));
     await waitFor(() => expect(drawn()).toEqual(["a", "b", "d", "e", "f"]));
     expect(slotTarget(headerStore.getState().model, 4)).toEqual({ tabId: "tab-f" });
+  });
+});
+
+describe("chipTitle", () => {
+  it("reads an untitled chip and a bare harness title as New thread", () => {
+    const titled = (title: string, provider?: string): StripChip => ({ ...chip("n", title), thread: { ...thread("n", title), provider } });
+    expect(chipTitle(titled("claude", "claude"))).toBe("New thread");
+    expect(chipTitle(titled("   "))).toBe("New thread");
+    expect(chipTitle(titled("Fix the badge", "claude"))).toBe("Fix the badge");
   });
 });

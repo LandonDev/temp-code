@@ -220,6 +220,7 @@ import {
   sessionDisplayTitle,
   sessionWorkCwd,
   titleFromPrompt,
+  UNTITLED_THREAD,
   type Attachment,
   type Block,
   type HarnessId,
@@ -295,7 +296,7 @@ const RemoteFolderDialog = dialogsChunk.surface("RemoteFolderDialog");
 const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="page" label="Loading inbox" />);
 const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" label="Loading notes" />);
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
-import { windowTitle } from "./lib/windowTitle";
+import { threadPane, windowTitle } from "./lib/windowTitle";
 import {
   linearIssueDetails,
   peekLinearIssueDetails,
@@ -497,7 +498,7 @@ export default function App() {
         : titleFile
           ? { kind: "file", path: titleFile.path }
           : active
-            ? { kind: "thread", title: active.title }
+            ? threadPane(active)
             : null,
     project: titleProject,
   });
@@ -2742,7 +2743,7 @@ export default function App() {
         ),
         title: formatSessionTitle(
           harness,
-          display === "New session" ? HANDOFF_TITLE : display,
+          display === UNTITLED_THREAD ? HANDOFF_TITLE : display,
         ),
         handoffCard: buildHandoffComposerCard({
           from,

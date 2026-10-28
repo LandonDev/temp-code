@@ -19,7 +19,7 @@ import { paneDropFromPoint, setExternalPaneDrop } from "../lib/paneDrop";
 import { focus } from "../stores/focus";
 import { stripHold } from "../stores/header";
 import { workspaceActions } from "../stores/workspaceActions";
-import { HARNESSES, sessionDisplayTitle, type HarnessId } from "../lib/session";
+import { HARNESSES, UNTITLED_THREAD, sessionDisplayTitle, type HarnessId } from "../lib/session";
 import { sessionStore } from "../lib/tcserver/store";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderChip, HeaderModel } from "../lib/threadHeaderModel";
@@ -175,7 +175,7 @@ export function chipTitle(chip: StripChip): string {
     provider && (HARNESSES as string[]).includes(provider)
       ? sessionDisplayTitle(title, provider as HarnessId)
       : title;
-  return shown.trim() || "New session";
+  return shown.trim() || UNTITLED_THREAD;
 }
 
 /** The chip's status in the one vocabulary: the tree's overrides, what it is about and its tally. */

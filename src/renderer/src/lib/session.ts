@@ -506,12 +506,16 @@ export function hasPendingApproval(blocks: Block[]): boolean {
   return pending;
 }
 
-/** Title without the harness prefix stored for the tab strip. */
+/** What an untitled thread is called, wherever its title would be. */
+export const UNTITLED_THREAD = "New thread";
+
+/** Title without the harness prefix stored for the tab strip; a bare
+ *  harness title ("claude", "Claude Code") is untitled. */
 export function sessionDisplayTitle(title: string, harness: HarnessId): string {
   const prefix = `${HARNESS_LABEL[harness]} · `;
   if (title.startsWith(prefix)) return title.slice(prefix.length);
   if (title === HARNESS_LABEL[harness] || title === HARNESS_TITLE[harness]) {
-    return "New session";
+    return UNTITLED_THREAD;
   }
   return title;
 }

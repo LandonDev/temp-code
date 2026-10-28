@@ -1,3 +1,5 @@
+import { sessionDisplayTitle, UNTITLED_THREAD, type HarnessId } from "./session";
+
 /** What the window's title reads: the page that covers the window, else
  *  the focused pane and its project. Electron copies `document.title` to
  *  the window, so this is the Window menu's, Mission Control's and ⌘`'s
@@ -25,12 +27,18 @@ const PAGE_TITLES: Record<TitlePage, string> = {
   stats: "Stats",
 };
 
+/** A thread's pane: its display title, so a bare harness title ("claude")
+ *  reads as untitled. */
+export function threadPane(session: { title: string; harness: HarnessId }): TitlePane {
+  return { kind: "thread", title: sessionDisplayTitle(session.title, session.harness) };
+}
+
 export function windowTitle({ page, pane, project }: TitleFacts): string {
   if (page) return PAGE_TITLES[page];
   if (!pane) return "TempCode";
   const name =
     pane.kind === "thread"
-      ? pane.title.trim() || "New thread"
+      ? pane.title.trim() || UNTITLED_THREAD
       : pane.kind === "file"
         ? pane.path.split(/[\\/]/).filter(Boolean).pop() || pane.path
         : "Terminal";

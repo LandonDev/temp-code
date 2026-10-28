@@ -30,6 +30,7 @@ import { releaseNotesTitle } from "../lib/releaseNotes";
 import {
   hasPendingApproval,
   sessionDisplayTitle,
+  UNTITLED_THREAD,
   type HarnessId,
   type Session,
 } from "../lib/session";
@@ -354,7 +355,7 @@ function useTitleSessions(metas: readonly SessionMeta[]): Session[] {
 
 function conversationTitle(session: Session): string {
   const title = sessionDisplayTitle(session.title, session.harness);
-  return title === "New session" ? "" : title;
+  return title === UNTITLED_THREAD ? "" : title;
 }
 
 /** The focused thread's live state for the tab edge; absent for drafts with no type. */
