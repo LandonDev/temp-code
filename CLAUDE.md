@@ -292,7 +292,15 @@ app replaces itself from the feed, and only from the feed.
   exposes `resizeTo` and `reset` to clamp, paint and save without a spring.
 - The right side of a thread is one panel (`lib/rightPanel.ts`,
   `surfaces/RightPanel.tsx`; docs/LAYOUT.md "The right side"); Modal and
-  ConfirmDialog ride `components/ui/dialog.tsx`.
+  ConfirmDialog ride `components/ui/dialog.tsx`. Its Changes section is one
+  virtual list (`chrome/rail/changesItems.ts` through the rail's
+  `VirtualRows`, one `RowsContextMenu` for its rows, a fold's `Collapsible`
+  only once it opens; `useAgainst` holds the Against group's state), so its
+  cost follows the viewport in every warm tab; the host never lists the
+  app's `.temp-code/` there (`APP_DIR_PATHSPEC` in
+  src/main/server/appDir.ts on git status, the numstats, Stage all, Stash
+  and the commit draft; a call carrying it runs without
+  GIT_LITERAL_PATHSPECS).
 - Verification for a renderer change: `bun run typecheck`, the tests you
   touched (every new behaviour gets a jsdom test), and a static render
   through `bun run ui:preview <module>#<Export> --props '<json>'`
@@ -1670,6 +1678,13 @@ proof and the sizing rules; the pieces, by name:
   loop's worst lag under each).
 - `admission.get` / `admission.set`: the running cap; "Master threads"
   above.
+- A project switch: `bun run script:measure-project-switch`
+  (scripts/measure-project-switch.ts, on the Mac: a TEMP_CODE_PROFILE=1
+  build under a fresh userData, paired read-only to the box and revoked at
+  exit, the named threads with the right panel on Changes or closed, a
+  scratch workspace with N untracked files) prints click → paint, long
+  tasks, React commit time, the Changes rows mounted and requests per
+  click; docs/box.md "Measuring a project switch" has the table.
 
 ## The iOS contract package is generated
 - `ios/TempCodeContract` holds the Swift `Codable` types of the remote wire,
@@ -2221,7 +2236,8 @@ threadBatch.test.ts), one `session.batch` per host.
   the notifier's "Ready to build" (nothing once the build started: it says
   Done itself) and the "Plan ready" mark on its tab, its rail row (the
   rail reads `usePlanReady` once, `PlanReadyContext`) and the plan view's
-  header (with the task count). With auto-start off
+  header (with the task count). Plan ready is `planCompletedAt` on a settled
+  planning thread alone: nothing reads the plan file for it. With auto-start off
   the plan view's single Start build button (it opens the Start dialog,
   surfaces/threads/StartBuildDialog.tsx), the phone's Start a build sheet (its
   confirm is `plan.implement` since thread 25) and `plan.implement` over the

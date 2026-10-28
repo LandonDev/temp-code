@@ -279,7 +279,14 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     pinned at the foot while there are changes: the generate button inside
     it, Commit (⌘↩) with a menu for Commit & push and Commit, push & create
     PR. Loading is skeleton rows, nothing is one Empty, "No changes", a
-    failure one red line.
+    failure one red line. The scroll body is one virtual list
+    (`changesItems.ts` through the rail's `VirtualRows`): only the rows near
+    the viewport mount, one `RowsContextMenu` serves them all, and a row
+    carries its fold's `Collapsible` only once the fold opens, so a checkout
+    with 10,000 untracked files costs what one with ten does, in every warm
+    tab. The app's own `.temp-code/` folder is never a change: the host
+    leaves it out of every listing behind the section (git status and
+    numstats, Stage all, Stash, the commit message's draft).
   - **Notes** (`NotesBody`): the state line ("Updated 2m ago", "Saving…",
     "Not saved" in red), Copy as brief and a pencil at the top; the pencil
     swaps the rendered notes (`AgentMarkdown size="compact"`) for the

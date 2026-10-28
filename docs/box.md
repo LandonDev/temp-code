@@ -2534,6 +2534,48 @@ the terminal poll and the composer runner's frame loop run only while
 their pane shows. Re-measure the box with the profiler and
 `stalls-summary.ts` on a working day and add the column above.
 
+### Measuring a project switch
+
+On 1.0.307 a switch to some projects froze the window for one to five
+seconds (the plan `.temp-code/plan-x8xXjUOTSHpE.md`; the Mac's evidence in
+`.temp-code/switch-perf/mac/`). Two facts multiplied: the host listed the
+app's own `.temp-code/` folder as untracked changes (8,985 files in
+NorthCentralRefs, 4,971 in cosmicweb), and the right panel's Changes
+section mounted a heavy row per file in every warm tab. A smaller cost rode
+along: Plan ready read every settled planner's plan file every 8 s, 129
+`file.read` per workspace click against the box.
+
+The fix: every git listing and whole-checkout action behind the Changes
+section carries `:(top,exclude,glob)**/.temp-code/**`
+(src/main/server/appDir.ts, gitops.ts); the section's rows are one virtual
+list (`changesItems`, the rail's VirtualRows, one context menu for the
+list); Plan ready is `plan_complete` alone (usePlanReady).
+
+`scripts/measure-project-switch.ts` repeats the measurement on a display
+(the Mac): a `TEMP_CODE_PROFILE=1` build of a tree under a fresh userData,
+paired read-only to the box (the code fetched over ssh into the process,
+the key revoked at exit), the threads named by `--threads` opened with the
+right panel on Changes or closed (`--panel`), a scratch workspace with
+`--scratch-untracked` files on a draft, and `--clicks` workspace and
+project-card clicks `--gap` ms apart. It prints click → paint, long tasks,
+React commit time, the Changes rows mounted, requests by method and bytes,
+and how many `.temp-code/` files each checkout's `git.diffIndex` lists.
+
+```bash
+TEMP_CODE_PROFILE=1 bun x electron-vite build
+bun scripts/measure-project-switch.ts --tree . --label after-changes \
+  --threads <id,id,id> --panel changes --scratch-untracked 10000
+```
+
+The user's three masters, 12 clicks 6 s apart, median click → paint and
+the longest task (before: round 3 of the planning thread, 1.0.307 at
+a34a1c61, no scratch thread):
+
+| Build | Changes open | Panel closed | Rows mounted |
+|---|---|---|---|
+| v1.0.303 | 632 ms, longest task 1,399 ms | 64.5 ms | 8,985 in one rail |
+| 1.0.307 (a34a1c61) | 5,286 ms, longest task 5,331 ms | 64.2 ms | 19,583 in three panels, 421,000 elements |
+
 ## Profiling the host
 
 On the box, run `tc-local doctor.profile '{"seconds":15}'` (the local
