@@ -280,7 +280,8 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     it, Commit (⌘↩) with a menu for Commit & push and Commit, push & create
     PR. Loading is skeleton rows, nothing is one Empty, "No changes", a
     failure one red line. The scroll body is one virtual list
-    (`changesItems.ts` through the rail's `VirtualRows`): only the rows near
+    (`changesItems.ts` through the rail's `VirtualRows`, on a native
+    scroller as the rail's and the board's lists are): only the rows near
     the viewport mount, one `RowsContextMenu` serves them all, and a row
     carries its fold's `Collapsible` only once the fold opens, so a checkout
     with 10,000 untracked files costs what one with ten does, in every warm

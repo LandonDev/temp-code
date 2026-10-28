@@ -294,7 +294,9 @@ app replaces itself from the feed, and only from the feed.
   `surfaces/RightPanel.tsx`; docs/LAYOUT.md "The right side"); Modal and
   ConfirmDialog ride `components/ui/dialog.tsx`. Its Changes section is one
   virtual list (`chrome/rail/changesItems.ts` through the rail's
-  `VirtualRows`, one `RowsContextMenu` for its rows, a fold's `Collapsible`
+  `VirtualRows` on a native scroller whose size comes from the
+  ResizeObserver, starting from the last one seen (`sizeKey`), so a cold
+  mount forces no layout; one `RowsContextMenu` for its rows, a fold's `Collapsible`
   only once it opens; `useAgainst` holds the Against group's state), so its
   cost follows the viewport in every warm tab; the host never lists the
   app's `.temp-code/` there (`APP_DIR_PATHSPEC` in

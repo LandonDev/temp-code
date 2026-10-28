@@ -158,7 +158,7 @@ class FakeResizeObserver {
   }
 }
 /** jsdom lays nothing out: the section's scroller is 600px tall, every row has no size of its own. */
-const VIEWPORT = '[data-slot="scroll-area-viewport"]';
+const VIEWPORT = '[data-slot="changes-scroller"]';
 const sized = (el: HTMLElement, size: number) => (el.matches?.(VIEWPORT) ? size : 0);
 const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
 const offsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
@@ -560,6 +560,27 @@ describe("ChangesPanel's virtual list", () => {
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Unstage" }));
     await flush();
     expect(h.git.gitUnstageFile).toHaveBeenCalledWith("local", "/p", "b.ts");
+  });
+
+  it("a list mounting again starts from its last scroller size, without reading the scroller", async () => {
+    h.index = indexOf({ files: many(100) });
+    const first = mount();
+    await flush();
+    const shown = rowsMounted();
+    expect(shown).toBeGreaterThan(10);
+    first.unmount();
+    // A read now would answer zero and mount nothing.
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 0 });
+    mount();
+    await flush();
+    expect(rowsMounted()).toBe(shown);
+    // The observer's report still wins.
+    act(() => {
+      for (const o of observers) {
+        for (const el of o.els) if (el.matches(VIEWPORT)) o.cb([{ target: el, borderBoxSize: [{ blockSize: 28 * 4, inlineSize: 320 }] } as unknown as ResizeObserverEntry], {} as ResizeObserver);
+      }
+    });
+    expect(rowsMounted()).toBeLessThan(shown);
   });
 
   it("a row's actions stay reachable from the keyboard", async () => {

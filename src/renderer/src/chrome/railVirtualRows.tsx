@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
+import { measureElement, observeElementRect, useVirtualizer, type Rect, type VirtualizerOptions } from "@tanstack/react-virtual";
 
 /** What the rail's list hands either mode (chrome/railRows.tsx). */
 export type RailRowsProps = {
@@ -35,6 +35,30 @@ const measureRow: VirtualizerOptions<HTMLElement, HTMLDivElement>["measureElemen
   return instance.measurementsCache[index]?.size ?? instance.options.estimateSize(index);
 };
 
+/** The last size each keyed scroller reported (`sizeKey`). */
+const lastRects = new Map<string, Rect>();
+
+/** The scroller's size from the ResizeObserver alone, which reports once on
+ *  observe after layout: a list mounting under a switch starts from the size
+ *  its key last had instead of reading the scroller, which would force a
+ *  layout in the middle of the commit. A key never seen reads once. */
+function rectFromObserver(key: string): VirtualizerOptions<HTMLElement, HTMLDivElement>["observeElementRect"] {
+  return (instance, cb) => {
+    const record = (rect: Rect) => {
+      if (rect.width > 0 || rect.height > 0) lastRects.set(key, rect);
+      cb(rect);
+    };
+    const element = instance.scrollElement;
+    if (!lastRects.has(key) || !element || typeof ResizeObserver === "undefined") return observeElementRect(instance, record);
+    const observer = new ResizeObserver(([entry]) => {
+      const box = entry?.borderBoxSize?.[0];
+      record(box ? { width: Math.round(box.inlineSize), height: Math.round(box.blockSize) } : { width: element.offsetWidth, height: element.offsetHeight });
+    });
+    observer.observe(element, { box: "border-box" });
+    return () => observer.disconnect();
+  };
+}
+
 /**
  * The rail's cards, virtualized: only those near the viewport are mounted.
  * Rides virtualChunk, out of the first paint; until it lands the rail
@@ -51,9 +75,12 @@ export function VirtualRows({
   render,
   reveal,
   gap = RAIL_GAP_PX,
+  sizeKey,
 }: RailRowsProps & {
   /** Between rows; the rail's cards by default (the Changes list sets its own spacing). */
   gap?: number;
+  /** Lists that share a key share a remembered scroller size (`rectFromObserver`). */
+  sizeKey?: string;
 }) {
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
     count,
@@ -64,6 +91,7 @@ export function VirtualRows({
     overscan: 4,
     gap,
     measureElement: measureRow,
+    ...(sizeKey ? { observeElementRect: rectFromObserver(sizeKey), initialRect: lastRects.get(sizeKey) } : {}),
     // Swapped in under a list the person may have scrolled: start where it
     // is; mounted again before its scroller: start where the column was.
     initialOffset: () => scroller?.scrollTop ?? initialOffset ?? 0,

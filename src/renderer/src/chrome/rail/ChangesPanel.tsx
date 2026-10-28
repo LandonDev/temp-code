@@ -10,7 +10,6 @@ import {
 } from "@renderer/components/ui/dropdown-menu";
 import { Empty, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
-import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Textarea } from "@renderer/components/ui/textarea";
@@ -554,7 +553,9 @@ export function ChangesView({
             {error}
           </p>
         ) : null}
-        <ScrollArea className="min-h-0 flex-1" viewportRef={setScroller}>
+        {/* A native scroller, as the rail's and the board's virtual lists have: the
+            ScrollArea's thumb measuring read and wrote layout on every mount and resize. */}
+        <div ref={setScroller} className="min-h-0 flex-1 overflow-y-auto" data-slot="changes-scroller">
           <RowsContextMenu label="File actions" lazyMount rowsFor={rowsFor} onPick={pick}>
             <div className="px-1 pb-3">
               {rowsInFlow ? (
@@ -569,11 +570,12 @@ export function ChangesView({
                   getItemKey={(i) => items[i]!.key}
                   render={(i) => renderItem(items[i]!)}
                   reveal={null}
+                  sizeKey="changes"
                 />
               )}
             </div>
           </RowsContextMenu>
-        </ScrollArea>
+        </div>
         {index && files.length > 0 ? (
           <CommitFooter staged={hasStaged} message={message} onMessage={onMessage} rules={rules} busy={busy} actions={actions} />
         ) : null}
