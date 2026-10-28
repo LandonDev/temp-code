@@ -63,6 +63,8 @@ export type AppshotSettingsStatus = {
 }
 
 let status: AppshotSettingsStatus = { loaded: false, loadError: null, writeError: null }
+/** What the host last confirmed holding: a failed write goes back to it. */
+let stored: AppshotSettings = DEFAULT_APPSHOT_SETTINGS
 
 function setStatus(patch: Partial<AppshotSettingsStatus>): void {
   status = { ...status, ...patch }
@@ -80,16 +82,20 @@ const message = (err: unknown): string => (err instanceof Error ? err.message : 
  *  over them); a failed one puts the changed settings back. */
 export function setAppshotSettings(patch: Partial<AppshotSettings>): void {
   if (!status.loaded) return
-  const before = settings
   settings = { ...settings, ...patch }
   setStatus({ writeError: null })
+  const sent = settings
   // Appshots are this Mac's feature: its settings and chats live on the local server.
   registry
     .primary()
-    .request('appshots.set', { settings })
+    .request('appshots.set', { settings: sent })
+    .then(() => {
+      stored = sent
+    })
     .catch((err: unknown) => {
+      // Back to what the host last stored, never to another unsaved flip.
       const keys = Object.keys(patch) as (keyof AppshotSettings)[]
-      settings = { ...settings, ...Object.fromEntries(keys.map((k) => [k, before[k]])) }
+      settings = { ...settings, ...Object.fromEntries(keys.map((k) => [k, stored[k]])) }
       setStatus({ writeError: { key: keys[0], message: message(err) } })
     })
 }
@@ -99,6 +105,7 @@ export async function loadAppshotSettings(): Promise<void> {
   setStatus({ loadError: null })
   try {
     settings = await registry.primary().request<AppshotSettings>('appshots.get', {}, { retry: true })
+    stored = settings
     setStatus({ loaded: true })
   } catch (err) {
     setStatus({ loadError: message(err) })
@@ -108,6 +115,7 @@ export async function loadAppshotSettings(): Promise<void> {
 /** Test seam. */
 export function resetAppshotSettingsForTests(): void {
   settings = DEFAULT_APPSHOT_SETTINGS
+  stored = DEFAULT_APPSHOT_SETTINGS
   status = { loaded: false, loadError: null, writeError: null }
 }
 

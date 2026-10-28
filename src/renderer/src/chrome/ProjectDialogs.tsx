@@ -668,7 +668,9 @@ function ProjectSettingsBody({
                 />
               </Section>
               <Section label="Plans">
-                {shownPlans ? (
+                {/* Editable only once the project's own scope answered: a
+                    change made on the inherited set alone would never save. */}
+                {planScope && shownPlans ? (
                   <PlanSettingsFields value={shownPlans} onChange={setPlans} environmentId={home.environmentId} compact />
                 ) : plansFailure ? (
                   <>

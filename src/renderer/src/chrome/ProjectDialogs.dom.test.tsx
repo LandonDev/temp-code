@@ -7,6 +7,7 @@ import { workspaceStore } from '../lib/tcserver/workspaces'
 import type { ProjectMeta, WorkspaceMeta } from '../lib/tcserver/types'
 import { NewProjectDialog, ProjectSettingsDialog, ProjectTeardownDialog } from './ProjectDialogs'
 import { PreambleDialog } from './PreambleDialog'
+import { resetPlanSettingsForTests } from '../lib/tcserver/plans'
 
 // jsdom has no Web Animations; the settings sheet's scroll area asks for them.
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => []
@@ -62,6 +63,8 @@ const SOLO = project(LOCAL_ENVIRONMENT_ID, { id: 'p_solo', workspaceId: 'w_mac',
 type Call = { slot: string; method: string; params: Record<string, unknown> }
 let calls: Call[] = []
 let boxOpen = true
+// A project-scope plans.get that fails for good (the global one still answers).
+let projectPlansFail = false
 
 const status = (slot: string): EnvironmentStatus => {
   const box = slot === BOX
@@ -83,6 +86,7 @@ const linkFor = (slot: string): Link =>
     connected: true,
     request: async (method: string, params: Record<string, unknown> = {}) => {
       calls.push({ slot, method, params })
+      if (projectPlansFail && method === 'plans.get' && params.projectId) throw new Error('not connected')
       return null
     }
   }) as unknown as Link
@@ -92,6 +96,8 @@ const writes = () => calls.filter((c) => !/\.(get|detect|list)$/.test(c.method) 
 beforeEach(() => {
   calls = []
   boxOpen = true
+  projectPlansFail = false
+  resetPlanSettingsForTests()
   workspaceStore.reset()
   workspaceStore.hydrate([
     { environmentId: LOCAL_ENVIRONMENT_ID, workspaces: [MAC_WS], projects: [MAC, SOLO] },
@@ -191,6 +197,20 @@ describe('ProjectSettingsDialog as a sheet', () => {
     expect(headings).toEqual(['Completed turn', 'Reviews', 'Accounts', 'Plans', 'Build'])
     expect(sheet.querySelector('[aria-expanded]:not([data-slot=select-trigger])')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Use workspace setting' })).toBeNull()
+  })
+})
+
+describe('ProjectSettingsDialog when the project\'s plans fail to load', () => {
+  it('says why with Retry instead of fields from the global set that would never save', async () => {
+    projectPlansFail = true
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByText('not connected')).toBeTruthy())
+    expect(screen.queryByRole('switch', { name: 'Auto-start' })).toBeNull()
+    projectPlansFail = false
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    })
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Auto-start' })).toBeTruthy())
   })
 })
 

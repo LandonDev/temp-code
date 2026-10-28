@@ -62,6 +62,18 @@ describe("appshot settings", () => {
     expect(statusNow().writeError).toEqual({ key: "sound", message: "host refused" });
   });
 
+  it("puts two overlapping failed writes back to what the host stored", async () => {
+    const load = store.loadAppshotSettings();
+    link.calls[0].resolve(stored);
+    await load;
+    store.setAppshotSettings({ sound: true });
+    store.setAppshotSettings({ sound: false });
+    link.calls[1].reject(new Error("down"));
+    link.calls[2].reject(new Error("down"));
+    await flush();
+    expect(settingsNow().sound).toBe(false);
+  });
+
   it("keeps a failed load's reason", async () => {
     const load = store.loadAppshotSettings();
     link.calls[0].reject(new Error("not connected"));
