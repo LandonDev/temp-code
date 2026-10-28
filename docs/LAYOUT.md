@@ -587,7 +587,11 @@ transcript's prose breaks a token longer than its column (a bare URL, a
 path) instead of widening it; a code block scrolls inside its own box. The board has one 36px header: a short title, one muted state line in
 `tabular-nums` (facts set apart by margin, never a middle dot), the view's
 actions, and last the conversation `Toggle` (`ChatToggle`, pressed while
-the chat shows). Folding is a toggle, not a tween: the board takes the full
+the chat shows). While the chat is folded and the thread is paused, the
+board draws the strip's paused row under its header (`held`, `heldRowOf`
+in chatSlots.tsx: Stop, Continue, a master's "and 3 batch threads with
+it"), so a pause never goes out of sight; with the chat shown the chat's
+own strip says it and the board draws nothing. Folding is a toggle, not a tween: the board takes the full
 width at once, the chat stays mounted (`inert`, parked at its last width)
 and fades back in over `--dur-fast` when shown again. The fold is
 remembered per thread for the app's run (`useChatFold`, lib/chatFold.ts),

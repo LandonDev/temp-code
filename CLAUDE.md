@@ -2454,7 +2454,10 @@ this is the short one.
   batch on this host (four at a time through sessionBatch.ts
   `batchChildIds`), `session.resume` resumes them, Stop stays per thread;
   the paused banner folds those children under the master as "and N batch
-  threads with it".
+  threads with it", and the master's own strip says the same when it is
+  on screen. A board view (master, plan, implementation, research) whose
+  chat is folded draws the thread's paused row under its header
+  (SplitShell `held`, `heldRowOf`), never while the chat shows.
 - **The gate out of the children** (src/main/server/{gateQueue,gateRun}.ts,
   src/shared/gate.ts, docs/review-before-merge.md): `merge_branch` gates
   the branch after the optional review and before the fast-forward: a

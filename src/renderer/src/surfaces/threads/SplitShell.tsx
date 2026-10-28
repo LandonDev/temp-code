@@ -134,6 +134,7 @@ export function SplitShell({
   title,
   detail,
   actions,
+  held,
   className = "",
 }: {
   /** The board's body; the header is drawn from `title`. */
@@ -150,6 +151,10 @@ export function SplitShell({
   detail?: ReactNode;
   /** The view's buttons, before the conversation toggle. */
   actions?: ReactNode;
+  /** The thread's paused row (`heldRowOf`): under the header while the
+   *  chat is folded, so a pause is never out of sight; with the chat
+   *  shown its own strip says it, and this is not drawn. */
+  held?: ReactNode;
   className?: string;
 }) {
   const { split, setSplit, dragging, rootRef, startDrag } = useSplit(50);
@@ -175,6 +180,11 @@ export function SplitShell({
               chatOpen={!folded}
               onToggleChat={onToggleChat}
             />
+          ) : null}
+          {folded && held ? (
+            <div data-board-held className="shrink-0 border-b border-border">
+              {held}
+            </div>
           ) : null}
           {board}
         </div>

@@ -13,7 +13,7 @@ import { resourcesHeldBy } from "../../lib/threadBatch";
 import { useProjects, useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useMetaById } from "../../lib/threads/agents";
 import { useSessionMetasWhen } from "../../lib/tcserver/store";
-import { chatOf } from "./chatSlots";
+import { chatOf, heldRowOf } from "./chatSlots";
 import { AddThreadDialog } from "./master/AddThreadDialog";
 import { AdoptThreadDialog } from "./master/AdoptThreadDialog";
 import { ArchiveBatchDialog } from "./master/ArchiveBatchDialog";
@@ -356,6 +356,7 @@ export function MasterView(props: ThreadViewProps) {
         title={title}
         detail={batch.rules.summary || undefined}
         actions={actions}
+        held={heldRowOf(props, session)}
       />
       {adding && meta ? <AddThreadDialog master={meta} siblings={children} onClose={() => setAdding(false)} /> : null}
       {adopting ? (

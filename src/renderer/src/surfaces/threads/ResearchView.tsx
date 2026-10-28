@@ -22,6 +22,7 @@ import {
 import { AgentMarkdown } from "../AgentMarkdown";
 import { AgentDetail } from "./fleet/AgentDetail";
 import { OpenAgentDetailContext } from "../agentDetailContext";
+import { heldRowOf } from "./chatSlots";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 import { useChatFold } from "../../lib/chatFold";
@@ -219,6 +220,7 @@ export function ResearchView(props: ThreadViewProps) {
         title="Research"
         detail={detail}
         actions={actions}
+        held={heldRowOf(props, session)}
       />
       </OpenAgentDetailContext.Provider>
       <AnimatePresence>

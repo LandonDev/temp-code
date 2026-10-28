@@ -63,6 +63,15 @@ export function chatOf(source: ChatSource, opts?: ChatOpts): ReactNode {
   return source.renderSlots ? <ChatColumn slots={source.renderSlots(opts)} /> : source.renderChat(opts);
 }
 
+/** The thread's own paused row for a board whose chat is folded
+ *  (SplitShell's `held`): the strip itself, with its Stop and Continue,
+ *  while the thread or its tree is paused; null otherwise and where the
+ *  pane did not split its chat. */
+export function heldRowOf(source: ChatSource, session: { status?: string | null; parentId?: string | null; treeHasPaused?: boolean }): ReactNode {
+  const paused = session.status === "paused" || (!session.parentId && !!session.treeHasPaused);
+  return paused && source.renderSlots ? source.renderSlots().strip : null;
+}
+
 /**
  * The column as parts when the pane split it, else the whole column in
  * `transcript` with the other slots empty: a view lays out its pieces

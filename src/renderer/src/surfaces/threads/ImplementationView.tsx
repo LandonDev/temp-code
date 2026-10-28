@@ -35,6 +35,7 @@ import {
   type PassRecord,
   type RoundData,
 } from "./implementationBoard";
+import { heldRowOf } from "./chatSlots";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 import { useChatFold } from "../../lib/chatFold";
@@ -320,6 +321,7 @@ export function ImplementationView(props: ThreadViewProps) {
           onToggleChat={toggleChat}
           title={title}
           actions={actions}
+          held={heldRowOf(props, session)}
         />
       </OpenAgentDetailContext.Provider>
       <AnimatePresence>

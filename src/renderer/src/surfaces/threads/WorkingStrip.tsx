@@ -11,6 +11,8 @@ import type { ApprovalDecision } from "../../lib/harness";
 import type { Session } from "../../lib/session";
 import { hasPendingQuestion, threadStatus } from "../../lib/threadStripModel";
 import { useClock, useSlowClock } from "../../lib/turnClock";
+import { isMasterThread } from "../../lib/masterThread";
+import { useSessionMetasWhen } from "../../lib/tcserver/store";
 import { duration } from "../../lib/duration";
 
 /**
@@ -22,7 +24,8 @@ import { duration } from "../../lib/duration";
  * ends with Stop (a person's Stop idles the thread, so the slot empties); a
  * pending approval reads "Needs you  approve Bash" with Deny and Allow (the
  * transcript's card keeps its own); a question says so and leaves the choice
- * to its card; paused keeps its frozen time with Stop and Continue; stopped
+ * to its card; paused keeps its frozen time with Stop and Continue (a
+ * master's says "and 3 batch threads with it"); stopped
  * (the harness behind the turn is gone) offers Resume; queued gives the
  * host's reason and Start now; watching says what it watches with the
  * stretch's age, amber with Stop all past 30 minutes, and opens the Activity
@@ -75,6 +78,8 @@ export const WorkingStrip = memo(function WorkingStrip({
     background: session.background,
   });
   const { state } = shownStatus;
+  // A paused master pauses its batch: the row says how many threads hold with it.
+  const batchPaused = useBatchPaused(session.id, state === "paused" && isMasterThread(session));
   const active = state === "working";
   const frozen = state === "paused" || state === "stopped";
   const visible = active || frozen || state === "waiting" || state === "queued" || state === "watching";
@@ -165,7 +170,11 @@ export const WorkingStrip = memo(function WorkingStrip({
       case "paused":
         return (
           <>
-            {mark}
+            {batchPaused > 0 ? (
+              <ThreadStatusMark status={{ ...shownStatus, detail: `and ${batchPaused} batch thread${batchPaused === 1 ? "" : "s"} with it` }} />
+            ) : (
+              mark
+            )}
             {elapsed > 0 ? time(elapsed) : null}
             <Actions>
               <Button variant="ghost" size="xs" onClick={onStop}>
@@ -233,6 +242,14 @@ export const WorkingStrip = memo(function WorkingStrip({
     </div>
   );
 });
+
+/** How many of a master's batch threads are paused with it; the metas are
+ *  read only while the master is paused. */
+function useBatchPaused(masterId: string, on: boolean): number {
+  const metas = useSessionMetasWhen(on);
+  if (!on) return 0;
+  return metas.filter((m) => m.masterId === masterId && !m.archived && !m.parentId && (m.status === "paused" || m.treeHasPaused)).length;
+}
 
 /** The row's actions, at its end. */
 function Actions({ children }: { children: ReactNode }) {

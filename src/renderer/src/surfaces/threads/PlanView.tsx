@@ -13,6 +13,7 @@ import { loadProjectPlan, useProjectPlan } from "../../lib/projectPlan";
 import { MilestoneList, ProjectPlanCard, ProjectPlanPin } from "./ProjectPlanCard";
 import { AgentMarkdown } from "../AgentMarkdown";
 import { THREAD_LABELS } from "./threadTypes";
+import { heldRowOf } from "./chatSlots";
 import { SplitShell } from "./SplitShell";
 import { StartBuildDialog } from "./StartBuildDialog";
 import type { ThreadViewProps } from "./ThreadView";
@@ -251,6 +252,7 @@ export function PlanView(props: ThreadViewProps) {
         title={projectPlan ? "Project plan" : "Plan"}
         detail={headerDetail}
         actions={headerActions}
+        held={heldRowOf(props, session)}
       />
       {!projectPlan && !spawned ? (
         <StartBuildDialog session={session} tasks={tasks} open={starting} onOpenChange={setStarting} />
