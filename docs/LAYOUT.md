@@ -576,7 +576,9 @@ absent. It is the one control for the host's checkpoint.
 Plan, research, project plan, implementation and master share
 `SplitShell` (surfaces/threads/SplitShell.tsx): the board on the left at a
 dragged split (30 to 70 %, double-click resets to 50), the chat on the
-right. The board has one 36px header: a short title, one muted state line in
+right, never under 360px beside the board (the board yields first). The
+transcript's prose breaks a token longer than its column (a bare URL, a
+path) instead of widening it; a code block scrolls inside its own box. The board has one 36px header: a short title, one muted state line in
 `tabular-nums` (facts set apart by margin, never a middle dot), the view's
 actions, and last the conversation `Toggle` (`ChatToggle`, pressed while
 the chat shows). Folding is a toggle, not a tween: the board takes the full

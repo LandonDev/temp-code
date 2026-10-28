@@ -266,7 +266,9 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   const ready = useMarkdownReady(shown, settled && !streamedHere.current);
   return (
     <FileOpenContext.Provider value={fileOpen}>
-      {/* Relative: the veil paints absolutely-positioned covers over new glyphs. */}
+      {/* Relative: the veil paints absolutely-positioned covers over new glyphs.
+          A token longer than the column (a bare URL, a path, an id) breaks
+          rather than widening the transcript; code blocks scroll in their own box. */}
       <div ref={veilRef} className="relative min-w-0">
         {!ready ? (
           <pre
@@ -277,7 +279,7 @@ export const AgentMarkdown = memo(function AgentMarkdown({
           </pre>
         ) : (
         <Streamdown
-          className={`agent-markdown min-w-0 font-sans ${SIZE_CLASS[size]} ${className ?? ""}`}
+          className={`agent-markdown min-w-0 wrap-break-word font-sans ${SIZE_CLASS[size]} ${className ?? ""}`}
           components={MARKDOWN_COMPONENTS}
           controls={false}
           isAnimating={!!streaming || shown.length < source.length}

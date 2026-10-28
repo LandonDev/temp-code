@@ -12,7 +12,8 @@ import { MessageSquare } from "../../chrome/icons";
  * `invisible`, parked at its last width) so the transcript keeps its
  * measurements; unfolding returns it to its slot, its content fading in.
  * The board fades in on its first live appearance, not when it was already
- * there at mount.
+ * there at mount. Beside the board the chat never goes under 360px: the
+ * board yields first (DESIGN "Panels").
  */
 
 export function useSplit(initial = 50): {
@@ -199,7 +200,7 @@ export function SplitShell({
         inert={folded || undefined}
         style={folded && width ? { width } : undefined}
         className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${
-          folded ? "invisible absolute inset-y-0 right-0" : "relative flex-1"
+          folded ? "invisible absolute inset-y-0 right-0" : hasBoard ? "relative min-w-90 flex-1" : "relative flex-1"
         }${hasBoard ? " [contain:layout_style]" : ""}`}
       >
         <div

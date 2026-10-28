@@ -37,6 +37,14 @@ describe("AgentMarkdown prose", () => {
     expect(cls).not.toContain("text-[15px]");
   });
 
+  it("a token longer than its column breaks instead of widening the transcript (a bare URL, a path)", () => {
+    const view = render(<AgentMarkdown text="https://github.com/LandonDev/temp-code/blob/master/src/renderer/src/surfaces/threads/MasterView.tsx" />);
+    const root = view.container.querySelector(".agent-markdown")!;
+    expect(root.className).toContain("wrap-break-word");
+    expect(root.className).toContain("min-w-0");
+    expect(root.className).not.toMatch(/\bmin-w-(?!0\b)|\bw-max\b|whitespace-nowrap/);
+  });
+
   it("inline code naming a file is a plain pill that opens the file", () => {
     const onOpenFile = vi.fn();
     const view = render(<AgentMarkdown text="See `src/lib/a.ts` here." cwd="/repo" onOpenFile={onOpenFile} />);

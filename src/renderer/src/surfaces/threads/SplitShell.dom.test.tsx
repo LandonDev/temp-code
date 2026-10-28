@@ -27,6 +27,17 @@ describe("SplitShell", () => {
     expect(screen.queryByRole("button", { name: "Conversation" })).toBeNull();
   });
 
+  it("beside the board the chat keeps 360px and the board yields; alone or folded it has no minimum", () => {
+    const view = render(shell());
+    const chat = () => document.querySelector("[data-chat]") as HTMLElement;
+    expect(chat().className).toContain("min-w-90");
+    expect((document.querySelector("[data-board]") as HTMLElement).className).toContain("min-w-0");
+    view.rerender(shell({ hasBoard: false }));
+    expect(chat().className).not.toContain("min-w-90");
+    view.rerender(shell({ collapsed: true }));
+    expect(chat().className).not.toContain("min-w-90");
+  });
+
   it("the header renders the title, the detail and the actions", () => {
     render(shell({ detail: "4 tasks", actions: <button type="button">Start build</button> }));
     expect(screen.getByText("Plan")).toBeTruthy();
