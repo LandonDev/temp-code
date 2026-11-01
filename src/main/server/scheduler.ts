@@ -1,5 +1,5 @@
 import type { SessionMeta } from '@shared/events'
-import { joinFacts } from '@shared/statusWords'
+import { legacyActivity } from '@shared/statusWords'
 import { currentLag, DEFAULT_IDLE_THRESHOLD_MS, untilLoopIdle } from './stalls'
 
 /**
@@ -351,11 +351,11 @@ export class ThreadScheduler {
 }
 
 function capLine(running: number, cap: number, low: boolean): string {
-  return joinFacts('Queued', low ? 'waiting for memory' : `${running} of ${cap} running`)
+  return legacyActivity('Queued', low ? 'waiting for memory' : `${running} of ${cap} running`)
 }
 
 function waitingLine(after: Extract<AfterState, { met: false }>): string {
-  const base = joinFacts('Queued', `waiting for ${after.title}`)
+  const base = legacyActivity('Queued', `waiting for ${after.title}`)
   switch (after.why) {
     case 'errored':
       return `${base} (errored)`

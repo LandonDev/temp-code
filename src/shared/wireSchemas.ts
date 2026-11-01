@@ -359,6 +359,7 @@ export const SessionMetaSchema = z.object({
   nativeId: z.string().nullable(),
   account: z.string().nullable().optional(),
   activity: z.string().nullable().optional(),
+  statusDetail: z.string().nullable().optional(),
   activityKind: z.enum(['think', 'investigate', 'edit']).nullable().optional(),
   background: BackgroundWorkSchema.nullable().optional(),
   awaiting: z.array(z.string()).optional(),

@@ -569,6 +569,13 @@ export interface SessionMeta {
   /** What a working thread is doing right now ("Editing PromptBar.tsx") —
    *  transient, server-memory only, null the moment the turn settles. */
   activity?: string | null
+  /** What the row's status word is about, with no state word, as written
+   *  (sentence-cased when it is a sentence: "Waiting for memory", "Editing
+   *  Rail.tsx"; a name or a count as it is: "3 subagents"); set for queued,
+   *  watching and working rows, absent otherwise. Current readers draw it;
+   *  `activity` keeps its legacy shape ("Queued  waiting for memory") for old
+   *  readers (statusWords.ts). Transient like `activity`. */
+  statusDetail?: string | null
   /** The activity's family, tinting the busy spinner: investigating
    *  (reads/searches), editing (writes/commands), or thinking. */
   activityKind?: 'think' | 'investigate' | 'edit' | null

@@ -1,22 +1,68 @@
 /**
  * The vocabulary of a status line, shared by every host writer and every
- * reader (the desktop's strip and agent rows; the phone's StripWords reads
- * the same): a phase is one fact with a comma before its detail ("Rate
- * limited, retry 3 in 32 s", "Waiting for the provider, 25 s", "Waiting for
- * the Mac, load 12.3 of 8, 3rd in line"); a state word and what it is about
- * are joined by two spaces ("Queued  120 of 120 running"). The middle dot
- * the host wrote until 2026-10-28 (" · ") and a colon are still read, so a
- * stored row keeps parsing. Titles, labels and model marks ("claude · opus")
- * are not status lines and keep their dot.
+ * reader (the desktop's strip, rows and board; the phone's StripWords reads
+ * the same).
+ *
+ * Drawn, a state is two spans: the word in medium weight and its tone, then
+ * what it is about in regular weight and muted, 6px after it ("Queued"
+ * "Waiting for memory"). Written as one string (a tooltip, an accessible
+ * name, a toast, a notification) it is `plainStatus`: "Queued: Waiting for
+ * memory", or the word alone. The host sends the detail on its own
+ * (`SessionMeta.statusDetail`); `activity` keeps its legacy shape
+ * (`legacyActivity`) for old readers only.
+ *
+ * A detail is sentence-cased when it is a sentence ("Waiting for memory",
+ * "Approve Bash", "Landed 12:08") and written as it is when it is a name or
+ * a count ("3 subagents", "sleep 45 seconds", "Rail.tsx"). It never ends in
+ * a full stop and never repeats the word. A phase keeps its comma inside
+ * the detail ("Rate limited, retry 3 in 32 s"): prose punctuation within one
+ * fact, not a joiner between two. No visible text separates two facts with
+ * a run of spaces, a middle dot, a pipe or a bullet. Titles, labels and
+ * model marks ("claude · opus") are not status lines and keep their dot.
  */
 
-/** What joins a state word and what it is about. */
-export const FACT_GAP = '  '
+/** A state word and what it is about as one string: "Queued: Waiting for memory"; the word alone with nothing to say. */
+export function plainStatus(word: string, detail?: string | null): string {
+  const d = detail ? detailText(detail) : null
+  return d ? `${word}: ${d}` : word
+}
 
-/** A state word and what it is about: "Queued  120 of 120 running"; the word alone with nothing to say. */
-export function joinFacts(word: string, detail?: string | null): string {
+/** What joined a state word and its detail in the legacy `activity` string. */
+const FACT_GAP = '  '
+
+/** The legacy `activity` string ("Queued  waiting for memory"), written ONLY
+ *  into `SessionMeta.activity` for old readers (older phone builds, an older
+ *  desktop, the MCP facade, the Live Activity's task line). Nothing current
+ *  draws it; current readers take `statusDetail`. */
+export function legacyActivity(word: string, detail?: string | null): string {
   const d = detail?.trim()
   return d ? `${word}${FACT_GAP}${d}` : word
+}
+
+/** A detail as written: trimmed, a trailing full stop dropped, its case
+ *  untouched; null when nothing is left. */
+export function detailText(text: string | null | undefined): string | null {
+  const t = text?.trim().replace(/\.+$/, '').trim()
+  return t ? t : null
+}
+
+/** The detail of an old host's legacy `activity` past its lead, the first
+ *  letter upper-cased when the first word is plain lower-case letters
+ *  ("Queued  waiting for memory" → "Waiting for memory"; "Waiting on 3
+ *  subagents" → "3 subagents"); reads the two spaces, the old dot and a colon
+ *  like `leadDetail`. */
+export function legacyDetail(line: string | null | undefined, lead: string): string | null {
+  return sentenceStart(detailText(leadDetail(line, lead)))
+}
+
+/** Upper-case the first letter when the first word is plain lower-case
+ *  letters ("waiting for memory" → "Waiting for memory"); a first word that
+ *  is a name or a count ("rail.tsx", "3 subagents") keeps its case. Only for
+ *  text an old host lower-cased: the current host sends details as written. */
+export function sentenceStart(text: string | null): string | null {
+  if (!text) return null
+  const first = /^\S+/.exec(text)?.[0] ?? ''
+  return /^[a-z]+$/.test(first) ? text[0]!.toUpperCase() + text.slice(1) : text
 }
 
 /** The detail after a lead ("Queued  3rd in line" → "3rd in line"): past
