@@ -21,3 +21,11 @@ describe('blockedWords', () => {
     expect(blockedWords({ sessionId: 's', why: 'errored' }, null)).toBe('Blocked: a thread errored')
   })
 })
+
+describe('blockedDetail', () => {
+  it('says the block after the word Watching with a comma, never a colon', async () => {
+    const { blockedDetail } = await import('./batchWords')
+    expect(blockedDetail({ sessionId: 'a', why: 'errored' }, 'A')).toBe('Blocked, A errored')
+    expect(blockedDetail({ sessionId: 'a', why: 'no-turn' }, null)).toBe('Blocked, a thread ended its turn without completing')
+  })
+})

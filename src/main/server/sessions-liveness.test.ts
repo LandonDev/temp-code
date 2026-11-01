@@ -310,6 +310,7 @@ describe('the watching master', () => {
     }
     expect(status(master)).toBe('watching')
     expect(registry.get(master)?.activity).toBe('Blocked: A errored')
+    expect(registry.get(master)?.statusDetail).toBe('Blocked, A errored')
   })
 
   it("P11 a child whose only turn the CLI ended itself blocks as failed with the verdict's words, and the master is told", async () => {

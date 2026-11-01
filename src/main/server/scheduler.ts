@@ -55,8 +55,8 @@ export interface SchedulerRegistry {
   hasUserText(sessionId: string): boolean
   /** Boot a queued thread and send its stored first message. */
   startQueued(sessionId: string): Promise<boolean>
-  /** A queued row's activity line changed: push its meta again. */
-  setQueuedLine(sessionId: string, line: string | null): void
+  /** A queued row's line changed: push its meta again. */
+  setQueuedLine(sessionId: string, line: QueuedLine | null): void
   onMeta(listener: (session: SessionMeta) => void): () => void
   onRemoved(listener: (sessionIds: string[]) => void): () => void
   /** The ids holding a running slot now (from the index and the live handles, never a table read); the scheduler adds the starts it reserved. */
@@ -84,7 +84,7 @@ export type AfterState =
   | { met: false; title: string; why: 'running' | 'errored' | 'stopped' | 'paused' | 'queued' }
 
 export class ThreadScheduler {
-  private readonly lines = new Map<string, string>()
+  private readonly lines = new Map<string, QueuedLine>()
   /** Queued ids whose start is in flight, so a pass never starts one twice. */
   private readonly inFlight = new Set<string>()
   private held = false
@@ -263,7 +263,7 @@ export class ThreadScheduler {
     let free = low ? 0 : cap - live.size
     const starts: SessionMeta[] = []
     const capped: string[] = []
-    const lines = new Map<string, string>()
+    const lines = new Map<string, QueuedLine>()
     for (const s of queued) {
       if (this.inFlight.has(s.id)) continue
       const after = this.afterState(s)
@@ -272,7 +272,7 @@ export class ThreadScheduler {
         continue
       }
       if (this.held) {
-        lines.set(s.id, 'Queued')
+        lines.set(s.id, QUEUED)
         continue
       }
       if (free <= 0) {
@@ -313,7 +313,7 @@ export class ThreadScheduler {
     }
     // Lines: push only what changed, drop what left the queue.
     for (const [id, line] of lines) {
-      if (this.lines.get(id) === line) continue
+      if (this.lines.get(id)?.line === line.line) continue
       this.lines.set(id, line)
       this.reg.setQueuedLine(id, line)
     }
@@ -325,15 +325,15 @@ export class ThreadScheduler {
   }
 
   /** Why a queued row waits, as it stands now (the line before a pass has pushed one). */
-  describe(session: Pick<SessionMeta, 'after'>): string {
+  describe(session: Pick<SessionMeta, 'after'>): QueuedLine {
     const after = this.afterState(session)
     if (!after.met) return waitingLine(after)
-    if (this.held) return 'Queued'
+    if (this.held) return QUEUED
     return capLine(this.live().size, this.cap(), this.reg.memoryLow?.() ?? false)
   }
 
   /** The line a queued row carries, null for a row not queued. */
-  lineOf(sessionId: string): string | null {
+  lineOf(sessionId: string): QueuedLine | null {
     return this.lines.get(sessionId) ?? null
   }
 
@@ -350,20 +350,23 @@ export class ThreadScheduler {
   }
 }
 
-function capLine(running: number, cap: number, low: boolean): string {
-  return legacyActivity('Queued', low ? 'waiting for memory' : `${running} of ${cap} running`)
+/** Why a queued row waits: `detail` as the row draws it ("Waiting for
+ *  memory", "120 of 120 running"; SessionMeta.statusDetail) and `line`, the
+ *  legacy activity string old readers take ("Queued  waiting for memory"). */
+export type QueuedLine = { line: string; detail: string | null }
+
+const QUEUED: QueuedLine = { line: 'Queued', detail: null }
+
+function queuedLine(detail: string): QueuedLine {
+  // The legacy line kept its detail lower-case after the word.
+  return { line: legacyActivity('Queued', detail[0]!.toLowerCase() + detail.slice(1)), detail }
 }
 
-function waitingLine(after: Extract<AfterState, { met: false }>): string {
-  const base = legacyActivity('Queued', `waiting for ${after.title}`)
-  switch (after.why) {
-    case 'errored':
-      return `${base} (errored)`
-    case 'stopped':
-      return `${base} (stopped)`
-    case 'paused':
-      return `${base} (paused)`
-    default:
-      return base
-  }
+function capLine(running: number, cap: number, low: boolean): QueuedLine {
+  return queuedLine(low ? 'Waiting for memory' : `${running} of ${cap} running`)
+}
+
+function waitingLine(after: Extract<AfterState, { met: false }>): QueuedLine {
+  const why = after.why === 'errored' || after.why === 'stopped' || after.why === 'paused' ? ` (${after.why})` : ''
+  return queuedLine(`Waiting for ${after.title}${why}`)
 }

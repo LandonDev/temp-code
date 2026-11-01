@@ -10,6 +10,12 @@ export function blockedWords(blocked: Blocked, who: string | null | undefined, h
   return `Blocked: ${name} ${blockedReason(blocked.why, host)}`
 }
 
+/** The same as a status detail after the word Watching, with no colon:
+ *  "Blocked, Inbox ended its turn without completing" (SessionMeta.statusDetail). */
+export function blockedDetail(blocked: Blocked, who: string | null | undefined, host?: string | null): string {
+  return `Blocked, ${who?.trim() || 'a thread'} ${blockedReason(blocked.why, host)}`
+}
+
 /** Why one child blocks the batch's end, after its name: "ended its turn
  *  without completing", "was stopped", "errored"; the board row of that
  *  child says it. */

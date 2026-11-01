@@ -94,14 +94,15 @@ it('watching shows the tasks it waits on and keeps its handle through the sweep'
   vi.useFakeTimers()
   emit(id, { type: 'background-tasks', tasks: ['upload the build'] })
   emit(id, { type: 'status', status: 'watching' })
-  expect(registry.get(id)).toMatchObject({ status: 'watching', activity: 'Waiting on upload the build' })
+  expect(registry.get(id)).toMatchObject({ status: 'watching', activity: 'Waiting on upload the build', statusDetail: 'upload the build' })
   registry.startIdleSweep(0)
   await vi.advanceTimersByTimeAsync(60_000)
   expect(disposed).toEqual([])
   emit(id, { type: 'background-tasks', tasks: ['upload the build', 'poll CI'] })
   expect(registry.get(id)?.activity).toBe('Waiting on 2 background tasks')
+  expect(registry.get(id)?.statusDetail).toBe('2 background tasks')
   emit(id, { type: 'status', status: 'idle' })
-  expect(registry.get(id)).toMatchObject({ status: 'idle', activity: null })
+  expect(registry.get(id)).toMatchObject({ status: 'idle', activity: null, statusDetail: null })
   await vi.advanceTimersByTimeAsync(60_000)
   expect(disposed).toEqual([id])
 })
@@ -179,7 +180,8 @@ it("a master's batch counts the children still out, and a child settling re-push
   store.updateSession(kids[2], { status: 'idle' })
   expect(registry.get(master.id)).toMatchObject({
     background: { batch: { out: 2, total: 3 } },
-    activity: 'Waiting on 2 batch threads'
+    activity: 'Waiting on 2 batch threads',
+    statusDetail: '2 batch threads'
   })
   const pushed: string[] = []
   registry.onMeta((m) => {

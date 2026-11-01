@@ -78,7 +78,7 @@ it('a phase event is activity on the meta and never a transcript row; the first 
     if (m.id === id) pushed.push(m.activity)
   })
   emit(id, { type: 'phase', phase: 'cli-starting' })
-  expect(registry.get(id)).toMatchObject({ activity: 'Starting the CLI', activityKind: 'think' })
+  expect(registry.get(id)).toMatchObject({ activity: 'Starting the CLI', statusDetail: 'Starting the CLI', activityKind: 'think' })
   emit(id, { type: 'phase', phase: 'initializing' })
   expect(registry.get(id)?.activity).toBe('Initializing')
   emit(id, { type: 'phase', phase: 'retrying', retry: { attempt: 3, delayMs: 32_000, reason: 'HTTP 429' } })
@@ -135,6 +135,7 @@ it('a request out at the provider past the threshold reads Waiting for the provi
   expect(registry.get(id)?.activity).toBe('Thinking')
   vi.setSystemTime(t0 + PROVIDER_WAIT_MS + 10_000)
   expect(registry.get(id)?.activity).toBe('Waiting for the provider, 25 s')
+  expect(registry.get(id)?.statusDetail).toBe('Waiting for the provider, 25 s')
   // A finer phase wins over the wait.
   emit(id, { type: 'phase', phase: 'retrying', retry: { attempt: 1, delayMs: 1_000, reason: 'HTTP 429' } })
   expect(registry.get(id)?.activity).toBe('Rate limited, retry 1 in 1 s')
@@ -154,6 +155,7 @@ it('a request out at the provider past the threshold reads Waiting for the provi
   registry.providerRequest(id, 8, t0)
   emit(id, { type: 'tool-call', callId: 'c1', name: 'Read', input: { file_path: '/a/b.ts' } })
   expect(registry.get(id)?.activity).toBe('Reading b.ts')
+  expect(registry.get(id)?.statusDetail).toBe('Reading b.ts')
 })
 
 it('a compaction reads Compacting context from its start to its outcome, through a running status and a long provider request', async () => {

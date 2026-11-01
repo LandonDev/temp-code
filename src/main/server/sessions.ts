@@ -21,7 +21,7 @@ import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import { COMPACTING_WORDS, providerWaitWords, retryWords } from '@shared/statusWords'
 import type { SessionBatchResult } from '@shared/contract'
 import { batchChildIds, runSessionBatch, type SessionBatchAction } from './sessionBatch'
-import { ThreadScheduler } from './scheduler'
+import { ThreadScheduler, type QueuedLine } from './scheduler'
 import type { Admission } from './admission'
 import { CATALOG, resolveModel, visibleModels, type ProviderId } from '@shared/catalog'
 import type {
@@ -36,7 +36,7 @@ import type {
   SteerState
 } from '@shared/events'
 import { watchSubject } from '@shared/watch'
-import { blockedWords } from '@shared/batchWords'
+import { blockedDetail, blockedWords } from '@shared/batchWords'
 import { classifyFailure, type GatewayRefusal } from './failureKind'
 import {
   LIVE_STATUSES,
@@ -596,7 +596,7 @@ export class SessionRegistry {
   /** Threads whose create asked to queue (`queue: true`); a master's children queue by their row. */
   private queueOptIn = new Set<string>()
   /** The lines queued rows carry (scheduler.ts): what the rail and the strip read. */
-  private queuedLines = new Map<string, string>()
+  private queuedLines = new Map<string, QueuedLine>()
   /** wait_for_agent calls waiting for the person's next steer into the thread's turn (nextSteer). */
   private steerWaiters = new Map<string, Set<(text: string) => void>>()
   /** Each thread's steers by id: the last state stamped, and whether the
@@ -877,6 +877,15 @@ export class SessionRegistry {
 
   /** The line a queued row carries ("Queued  120 of 120 running"), null when not queued. */
   queuedLine(sessionId: string): string | null {
+    return this.queuedOf(sessionId)?.line ?? null
+  }
+
+  /** What a queued row waits for as its board draws it ("Waiting for memory"), null when not queued or the word alone. */
+  queuedDetail(sessionId: string): string | null {
+    return this.queuedOf(sessionId)?.detail ?? null
+  }
+
+  private queuedOf(sessionId: string): QueuedLine | null {
     const line = this.queuedLines.get(sessionId)
     if (line) return line
     const meta = this.indexOf().byId.get(sessionId)
@@ -4897,10 +4906,11 @@ export class SessionRegistry {
   }
 
   /** A watching master's real reason, from its batch: a blocked child
-   *  ("Blocked: <title> errored"), a step running ("Gate running since
-   *  14:02"), else null (watchLine's words). Never re-entered: the batch's
-   *  state reads the children's rows, never the master's. */
-  private batchReason(session: SessionMeta): string | null {
+   *  (line "Blocked: <title> errored", detail "Blocked, <title> errored"), a
+   *  step running ("Gate running since 14:02"), else null (watchLine's
+   *  words). Never re-entered: the batch's state reads the children's rows,
+   *  never the master's. */
+  private batchReason(session: SessionMeta): { line: string; detail: string } | null {
     if (!session.isMaster || session.parentId || this.decoratingBatch.has(session.id)) return null
     const engine = batches()
     if (!engine) return null
@@ -4911,13 +4921,14 @@ export class SessionRegistry {
         // A far child's id is `<env>:<session>`: its member row has the title.
         const id = state.blocked.sessionId
         const who = engine.members(session.id).find((m) => m.id === id)?.title ?? this.store.getSession(id)?.title
-        return blockedWords(state.blocked, who)
+        return { line: blockedWords(state.blocked, who), detail: blockedDetail(state.blocked, who) }
       }
       const running = state.steps.find((s) => s.status === 'running')
       if (running) {
         const at = running.startedAt ? new Date(running.startedAt) : null
         const hhmm = at ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : null
-        return `${running.name} running${hhmm ? ` since ${hhmm}` : ''}`
+        const line = `${running.name} running${hhmm ? ` since ${hhmm}` : ''}`
+        return { line, detail: line }
       }
       return null
     } catch {
@@ -5443,15 +5454,7 @@ export class SessionRegistry {
       ...(awaiting?.size ? { awaiting: [...awaiting.keys()] } : {}),
       background,
       lastEventAt: this.lastActivity.get(session.id) ?? null,
-      activity:
-        session.status === 'watching'
-          ? (this.batchReason(session) ?? watchLine(background))
-          : session.status === 'queued'
-            ? (this.queuedLines.get(session.id) ?? 'Queued')
-            : // A request out at the provider past the threshold, with nothing finer known: say so.
-              (session.status === 'running' || session.status === 'starting') && (!act || act.text === 'Thinking')
-              ? (this.providerWaitLine(session.id) ?? act?.text ?? null)
-              : (act?.text ?? null),
+      ...this.statusWordsOf(session, background, act?.text ?? null),
       activityKind: act?.kind ?? null,
       tasks: this.tasksOf(session.id),
       goal: this.goalOf(session.id),
@@ -5463,6 +5466,30 @@ export class SessionRegistry {
       treeHasPaused: tree.hasPaused,
       treeFrozenActiveElapsed: tree.frozenActiveElapsed
     }
+  }
+
+  /** A row's status line both ways: `statusDetail`, what its word is about
+   *  as the row draws it, and `activity`, the legacy string old readers take
+   *  (statusWords.ts). Watching: the batch's reason or what it watches;
+   *  queued: why it waits; working: what it does, or the provider wait. */
+  private statusWordsOf(
+    session: SessionMeta,
+    background: BackgroundWork | null,
+    act: string | null
+  ): Pick<SessionMeta, 'activity' | 'statusDetail'> {
+    if (session.status === 'watching') {
+      const reason = this.batchReason(session)
+      if (reason) return { activity: reason.line, statusDetail: reason.detail }
+      return { activity: watchLine(background), statusDetail: watchSubject(background) }
+    }
+    if (session.status === 'queued') {
+      const line = this.queuedLines.get(session.id)
+      return { activity: line?.line ?? 'Queued', statusDetail: line?.detail ?? null }
+    }
+    // A request out at the provider past the threshold, with nothing finer known: say so.
+    const live = session.status === 'running' || session.status === 'starting'
+    const text = live && (!act || act === 'Thinking') ? (this.providerWaitLine(session.id) ?? act) : act
+    return { activity: text, statusDetail: live ? text : null }
   }
 
   /** Set during an account refresh pass: metas wait here and go out once

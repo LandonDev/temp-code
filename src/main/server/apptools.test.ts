@@ -125,10 +125,10 @@ it('app_start_thread says when the thread it started is queued at the running ca
   const queuedRegistry = {
     ...fakeRegistry,
     get: (id: string) => (id === caller.id ? caller : id === 'thread-1' ? { id, title: 'a thread', status: 'queued' } : null),
-    queuedLine: () => 'Queued · 120 of 120 running'
+    queuedDetail: () => '120 of 120 running'
   } as unknown as SessionRegistry
   const result = await appStartThread(queuedRegistry, caller, { threadType: 'chat', provider: 'claude', model: 'claude-opus-5', firstMessage: 'go' })
-  expect(result).toEqual({ threadId: 'thread-1', title: 'a thread', status: 'queued · 120 of 120 running' })
+  expect(result).toEqual({ threadId: 'thread-1', title: 'a thread', status: 'queued: 120 of 120 running' })
 })
 
 // ── app_start_thread follows no model policy ─────────────────────────

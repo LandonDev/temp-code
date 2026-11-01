@@ -373,7 +373,8 @@ export async function appStartThread(
   )
   const created = reg.get(thread.id) ?? thread
   // Held by `after` or the host's running cap (scheduler.ts): say why, in the words list_agents uses.
-  const queued = created.status === 'queued' ? (reg.queuedLine(thread.id) ?? 'Queued').replace(/^Queued/, 'queued') : null
+  const detail = created.status === 'queued' ? reg.queuedDetail(thread.id) : null
+  const queued = created.status === 'queued' ? (detail ? `queued: ${detail}` : 'queued') : null
   return { threadId: thread.id, title: created.title, ...(queued ? { status: queued } : {}) }
 }
 

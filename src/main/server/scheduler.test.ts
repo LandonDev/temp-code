@@ -69,6 +69,7 @@ afterEach(async () => {
 const settle = (ms = 30): Promise<void> => new Promise((r) => setTimeout(r, ms))
 const status = (id: string): string | undefined => store.getSession(id)?.status
 const line = (id: string): string | null | undefined => registry.get(id)?.activity
+const detail = (id: string): string | null | undefined => registry.get(id)?.statusDetail
 
 /** A root that opted into the queue, its first message sent. */
 async function queued(text: string, extra: { after?: string; masterId?: string; title?: string } = {}): Promise<string> {
@@ -139,6 +140,7 @@ describe('after', () => {
     // The sibling has not run: a fresh idle thread is not a settled one.
     expect(status(waiter)).toBe('queued')
     expect(line(waiter)).toBe('Queued  waiting for Sibling')
+    expect(detail(waiter)).toBe('Waiting for Sibling')
     await registry.send(sibling.id, 'go')
     await settle()
     expect(status(waiter)).toBe('queued')
@@ -156,6 +158,7 @@ describe('after', () => {
     await settle()
     expect(status(waiter)).toBe('queued')
     expect(line(waiter)).toBe('Queued  waiting for Broken (errored)')
+    expect(detail(waiter)).toBe('Waiting for Broken (errored)')
     await registry.setArchived(sibling.id, true)
     await settle()
     expect(status(waiter)).toBe('running')
@@ -248,6 +251,7 @@ describe('the running cap', () => {
     expect(ids.map(status)).toEqual(['running', 'running', 'queued'])
     expect(boots).not.toContain(ids[2])
     expect(line(ids[2]!)).toBe('Queued  2 of 2 running')
+    expect(detail(ids[2]!)).toBe('2 of 2 running')
     expect(registry.scheduler.counts()).toEqual({ running: 2, queued: 1 })
   })
 
@@ -388,7 +392,7 @@ describe('the scheduler alone', () => {
     await scheduler.tick()
     expect(started).toEqual(['a', 'b'])
     expect(scheduler.counts()).toEqual({ running: 2, queued: 5 })
-    expect(scheduler.lineOf('c')).toBe('Queued  2 of 2 running')
+    expect(scheduler.lineOf('c')).toEqual({ line: 'Queued  2 of 2 running', detail: '2 of 2 running' })
   })
 
   it('while the loop lags, a storm of changes is one pass per 250 ms, each after a quiet moment', async () => {
@@ -480,6 +484,6 @@ describe('the scheduler alone', () => {
     const scheduler = new ThreadScheduler({ ...reg, memoryLow: () => true })
     await scheduler.tick()
     expect(started).toEqual([])
-    expect(scheduler.lineOf('a')).toBe('Queued  waiting for memory')
+    expect(scheduler.lineOf('a')).toEqual({ line: 'Queued  waiting for memory', detail: 'Waiting for memory' })
   })
 })
