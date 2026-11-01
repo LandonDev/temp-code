@@ -2393,9 +2393,11 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: warmStatuses() })
             break
           }
-          case 'session.preconnect':
-            sendFrame({ id: req.id, ok: true, result: registry.preconnectIdle(req.params.sessionId) })
+          case 'session.preconnect': {
+            const p = req.params
+            sendFrame({ id: req.id, ok: true, result: 'draft' in p ? registry.preconnectDraft(p.draft) : registry.preconnectIdle(p.sessionId, { boot: p.boot }) })
             break
+          }
           case 'session.focus':
             focus.set(connection, req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })

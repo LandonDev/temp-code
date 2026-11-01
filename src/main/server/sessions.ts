@@ -82,6 +82,7 @@ import type {
   WorkspaceMeta
 } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
+import { touchWarm } from './drivers/warm'
 import { generateTitle } from './drivers/title'
 import type { ApprovalRequest, DriverHandle } from './drivers/types'
 import type { Store } from './db'
@@ -559,6 +560,8 @@ export function isSettleReport(from: SessionMeta['status'] | undefined, to: Sess
 
 /** A request at the provider this long with nothing back reads "Waiting for the provider" on the row. */
 export const PROVIDER_WAIT_MS = 15_000
+/** At most one focus boot per thread in this window (focusBoot), kept on the host so a reload or a second window cannot double it. */
+export const FOCUS_BOOT_EVERY_MS = 30_000
 /** Every foreign thread reference of one send resolves inside this, together. */
 export const FOREIGN_REFS_BUDGET_MS = 15_000
 /** How many threads an account re-pick writes before the loop gets a turn. */
@@ -738,6 +741,9 @@ export class SessionRegistry {
   accountKnown: ((provider: AccountProvider, name: string) => boolean | null) | null = null
   /** The gateway's last refusal per thread (a 401, a 429), read once by the failure classifier while fresh. */
   private refusals = new Map<string, GatewayRefusal & { ts: number }>()
+  /** When each thread last booted on focus (focusBoot), and the threads whose handle came from one, for the send's span. */
+  private readonly focusBoots = new Map<string, number>()
+  private readonly focusBooted = new Set<string>()
   /** Opens the upstream socket a thread's next request will ride (preconnect.ts). Set by the server; null does nothing. */
   preconnect: ((provider: string, account: string | null) => void) | null = null
   /** Sessions whose turn a usage limit cut off, until they continue: the
@@ -1632,12 +1638,59 @@ export class SessionRegistry {
     this.preconnect(meta.provider, account)
   }
 
-  /** The composer of an idle thread gained focus: a turn may follow. A live turn already holds its socket. */
-  preconnectIdle(sessionId: string): boolean {
+  /**
+   * The composer of an idle thread gained focus: a turn may follow. A live
+   * turn already holds its socket. With `boot` (the person's own pointer or
+   * keystroke in the composer), a thread whose harness is down boots it now
+   * (focusBoot), so the send finds it live.
+   */
+  preconnectIdle(sessionId: string, opts: { boot?: boolean } = {}): boolean {
     const meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
     if (meta.status === 'running' || meta.status === 'starting' || meta.status === 'waiting') return false
     this.preconnectFor(meta)
+    if (opts.boot) this.focusBoot(meta)
+    return true
+  }
+
+  /**
+   * Boot an idle thread's harness ahead of its send, as an eager create
+   * does: the handle lands idle and writes nothing to the transcript, and
+   * reclaimIdle may put it down like any idle handle. Only for an idle or
+   * done thread with no harness up or booting, not archived or moving, once
+   * per FOCUS_BOOT_EVERY_MS per thread, and only while the scheduler has
+   * room (under the cap, nothing queued, memory clear). Answers whether it
+   * booted.
+   */
+  focusBoot(meta: SessionMeta): boolean {
+    const id = meta.id
+    if (meta.archived || (meta.status !== 'idle' && meta.status !== 'done')) return false
+    if (this.handles.has(id) || this.starting.has(id) || this.store.movingTo(id)) return false
+    const now = Date.now()
+    const last = this.focusBoots.get(id)
+    if (last !== undefined && now - last < FOCUS_BOOT_EVERY_MS) return false
+    if (!this.scheduler.hasRoom()) return false
+    this.focusBoots.set(id, now)
+    this.focusBooted.add(id)
+    void this.handleFor(id).catch(() => this.focusBooted.delete(id))
+    return true
+  }
+
+  /**
+   * An unsent draft's composer gained focus: no thread exists yet (the
+   * draft is the renderer's), so the socket is the one the router would
+   * pick for a fresh thread of that project and model (its project's and
+   * workspace's pins), and the warm shapes in its folder are kept another
+   * retire period. Answers whether it was asked.
+   */
+  preconnectDraft(draft: { provider: string; model: string; projectId: string }): boolean {
+    const project = this.store.getProject(draft.projectId)
+    if (!project) throw new Error(`unknown project: ${draft.projectId}`)
+    if (draft.provider !== 'claude' && draft.provider !== 'codex') return false
+    const meta = { provider: draft.provider, model: draft.model, projectId: project.id, workspaceId: project.workspaceId, account: null, updatedAt: Date.now() } as unknown as SessionMeta
+    const account = this.limits?.routeFor(meta, this.pinOf(meta), { fresh: true }).current ?? null
+    this.preconnect?.(draft.provider, account)
+    touchWarm(project.cwd)
     return true
   }
 
@@ -2853,8 +2906,9 @@ export class SessionRegistry {
       this.queueAdd(sessionId, text, retry, true)
       return
     }
-    // A handle that was up is `live`; a fresh one said `warm` or `cold` itself (the claude driver).
-    this.spans.mark(sessionId, 'handle', hadHandle ? 'live' : undefined)
+    // A handle that was up is `live` (a focus boot's says so); a fresh one said `warm` or `cold` itself.
+    const focusBooted = this.focusBooted.delete(sessionId)
+    this.spans.mark(sessionId, 'handle', hadHandle ? (focusBooted ? 'live boot=focus' : 'live') : undefined)
     this.lastActivity.set(sessionId, Date.now())
     // A goal passed to session.create lands here, ahead of the kickoff:
     // claude queues its /goal turn first, codex sets the RPC before

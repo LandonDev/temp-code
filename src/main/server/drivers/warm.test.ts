@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { WARM_SHAPES, WarmPool, closeWarmPools, missField, setWarmMemoryFloor, shapeDiff, warmKey, warmStatuses, type WarmSpec } from './warm'
+import { WARM_SHAPES, WarmPool, closeWarmPools, missField, setWarmMemoryFloor, shapeDiff, touchWarm, warmKey, warmStatuses, type WarmSpec } from './warm'
 
 interface Fake {
   id: string
@@ -155,6 +155,17 @@ describe('WarmPool', () => {
     await vi.advanceTimersByTimeAsync(303_100)
     expect(spawned[1].killed).toBe(true)
     expect(pool.status().warm).toEqual([])
+  })
+
+  it("a draft in a folder keeps that folder's shapes another retire period, and no other", async () => {
+    pool.noteStart(spec())
+    pool.noteStart(spec({ cwd: '/work/b' }))
+    await vi.advanceTimersByTimeAsync(3_100)
+    await vi.advanceTimersByTimeAsync(9 * 60_000)
+    touchWarm('/work/a')
+    await vi.advanceTimersByTimeAsync(2 * 60_000)
+    expect(pool.status().warm.map((w) => w.cwd)).toEqual(['/work/a'])
+    expect(pool.touchCwd('/nowhere')).toBe(0)
   })
 
   it('nothing warms while memory is under the floor', async () => {

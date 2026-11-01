@@ -760,11 +760,18 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   // The composer of an idle thread gained focus: open the upstream socket its
   // next turn will ride (one per account per minute). Answers whether it was
-  // asked (false: the thread is mid-turn and already holds one).
+  // asked (false: the thread is mid-turn and already holds one). `boot` (the
+  // person's pointer or keystroke in the composer) boots a thread whose
+  // harness is down, within the host's bounds (sessions.ts focusBoot). A
+  // `draft` (an unsent new thread, no session yet) opens the socket the
+  // router would pick for a fresh thread of that project and model.
   z.object({
     id: z.string(),
     method: z.literal('session.preconnect'),
-    params: z.object({ sessionId: z.string() })
+    params: z.union([
+      z.object({ sessionId: z.string(), boot: z.boolean().optional() }),
+      z.object({ draft: z.object({ provider: z.string(), model: z.string(), projectId: z.string() }) })
+    ])
   }),
   // The thread this socket's window shows in its focused pane, or null when
   // the window loses focus (src/main/server/focus.ts): its requests and

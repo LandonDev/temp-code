@@ -285,6 +285,13 @@ export class WarmPool<T> {
     return field
   }
 
+  /** A thread may start in `cwd` soon (a draft is being written): its shapes' retirement is pushed out. */
+  touchCwd(cwd: string): number {
+    const shapes = this.shapes.filter((s) => s.spec.cwd === cwd)
+    for (const shape of shapes) this.touch(shape)
+    return shapes.length
+  }
+
   /** Kill every warm process and cancel every spawn; the next thread start warms again. */
   retire(reason = 'retired'): void {
     for (const shape of [...this.shapes]) this.drop(shape, reason)
@@ -426,6 +433,11 @@ export class WarmPool<T> {
 
 /** Every pool's status, for the doctor and the Remote access pane. */
 export const warmStatuses = (): WarmStatus[] => [...pools].map((p) => p.status())
+
+/** A draft in `cwd`: every pool keeps that cwd's shapes another retire period. */
+export function touchWarm(cwd: string): void {
+  for (const p of pools) p.touchCwd(cwd)
+}
 
 /** Kill every warm process now; the next thread start warms again. */
 export function retireWarmPools(): void {

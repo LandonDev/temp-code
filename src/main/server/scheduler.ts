@@ -160,6 +160,18 @@ export class ThreadScheduler {
     return ids
   }
 
+  /**
+   * Room for a start that is no one's turn yet (a focus boot): under the
+   * cap with nothing queued, memory clear and the boot resume done. Never
+   * the focused send's exemption: browsing threads must not crowd out a
+   * queue.
+   */
+  hasRoom(): boolean {
+    if (this.held || this.reg.memoryLow?.()) return false
+    if (this.reg.queued().length > 0) return false
+    return this.live().size < this.cap()
+  }
+
   /** Running slots taken and threads queued, for admission.get. */
   counts(): { running: number; queued: number } {
     return { running: this.live().size, queued: this.reg.queued().length }
