@@ -2570,7 +2570,28 @@ this is the short one.
   composer's Enter steers by default, `MID_TURN_DEFAULT`; `queue.add`
   answers `queued` with its item or `steered` with its id); a whisper into
   a dead handle boots a fresh harness that gets the text once; a provider
-  that cannot take mid-turn input front-queues it; and a send releases the
+  that cannot take mid-turn input, or any other failure to hand it over,
+  front-queues it. Every person's steer (the composer's, a queued item's
+  Send now, attachments and all, the phone's; never `send_to_agent`)
+  carries a `steerId` on its user row, and `steer { steerId, state, how?,
+  reason? }` rows say where it stands (src/shared/events.ts; the last row
+  wins): `sent` once the harness has it, `received` when the model read it
+  (claude: the CLI lists the id, sent as the SDK message's uuid, in
+  `user_message_uuids` on the frame after the fold, drivers/claude.ts
+  `readSteers`; codex: `turn/steer { expectedTurnId, clientUserMessageId }`,
+  falling back to `turn/start` with the id when the turn ended, and the
+  `userMessage` item carrying it as `clientId`), `in-turn` or `next-turn`,
+  `queued` while it waits for the next turn, `failed` with the reason when
+  it never reached a model. A driver without `confirmsSteers`, or a steer
+  still at sent when its turn settled, is received at the next turn's
+  first output (`steerFallback`). The text goes in as `wrapSteer` (the
+  `<user-steer>` block and one line asking for a one-line answer first;
+  `STEER_MECHANICS` says the same beside the notes mechanics in every
+  prompt). Under the bubble the transcript says one 12px word, Sent,
+  Received, Queued for the next turn or Not delivered, its time and how in
+  a tooltip (transcript/UserMessage.tsx `SteerLine`, lib/steerWords.ts);
+  the phone the same (`SteerStamp`, TranscriptRows.swift). Proof: `bun run
+  script:e2e-steer-ack` (docs/box.md "A steer says it was received"). And a send releases the
   thread's pending `wait_for_agent` as the steer does
   (`resolveSteerWaiters`): a master's wait in flight returns
   `{ status: 'steered', message }` in every mode, never swallowing the

@@ -789,6 +789,12 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   desktop's shows on hover only): the turn's closing line carries the
   time. The project rules the host put ahead of the first message fold
   inside the field above the brief (`PreambleRow`, the host rows thread's).
+  A steer (a message sent into a running turn) carries one word under the
+  field at its trailing edge, `caption` in the secondary colour: Sent,
+  Received, Queued for the next turn, or Not delivered in red; the time
+  and how it went in ("Received at 14:02, as its own turn") are its
+  accessibility value, and a changed word cross-fades on `Motion.crossFade`
+  (`SteerStamp` in the client package, folded by `ThreadFold`).
 - **Assistant**: markdown as the page, `body` size, no container, a
   generous measure, selectable, Copy Message in the context menu. Code
   blocks: the desktop's bordered block (10 pt radius, the content wash, a

@@ -528,7 +528,13 @@ and the text is whispered into the live turn as
 attachments still queues), and `queue.add` answers `{ kind: 'steered', id }`
 so the renderer never looks for its text in the pushed list. A whisper into
 a dead handle boots a fresh harness that gets the text as a plain message
-once; a provider that cannot take mid-turn input front-queues it. A send
+once; a provider that cannot take mid-turn input front-queues it. A
+master's steer and a batch child's are acknowledged like any thread's: the
+user row carries a `steerId`, one word under the bubble says Sent, then
+Received when the model read it (Queued for the next turn, or Not
+delivered with the reason), and the wrapper and `MASTER_MECHANICS` ask the
+model to answer the steer in one short line before it acts on it (CLAUDE.md
+"A message to a live thread goes straight in"). A send
 into a live turn releases the thread's pending `wait_for_agent` as the
 steer does (`resolveSteerWaiters`): a master's wait in flight returns
 `{ status: 'steered', message }` in every mode, so a blocking wait never

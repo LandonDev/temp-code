@@ -434,7 +434,12 @@ gesture; every animated class carries its `motion-reduce:` guard.
 The target is Claude desktop's transcript with our tool icons and
 humanized names kept (the plan at .temp-code/plan-h5M-bmLmzYd4.md fixes the
 rows). The person's message is a right-aligned bubble (`card`, `rounded-xl`,
-15px) with no avatar or timestamp. The model's prose is plain 15px text.
+15px) with no avatar or timestamp. A message the person sent into a running
+turn (a steer) carries one 12px `muted-foreground` word under the bubble at
+its right edge, Sent, Received or Queued for the next turn, or Not
+delivered in the red tone; its time is in the word's tooltip, never in the
+flow, and a word that changes on screen fades in on `--dur-fast`
+(transcript/UserMessage.tsx `SteerLine`). The model's prose is plain 15px text.
 Between paragraphs, the actions since the last paragraph are one muted line
 ("Created diag.ts, ran a command  +46 ▾") that opens into one thin-bordered
 `card` listing one row per action ("Created  diag.ts  +46 ▸", "Ran  npx
