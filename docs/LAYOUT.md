@@ -668,7 +668,25 @@ one-liner, "Thought for 2s" weight/dim pattern), *Tool Chips*
 (call/result pairs), *Code Block* (shiki stays), *Approval Card*, *Loading
 State* (shimmer + elapsed while waiting). User messages render as
 Cursor-style bordered rounded fields, not colored bubbles. Column
-max-w-3xl centered.
+max-w-4xl (896px) centered (`COLUMN_MAX_CLASS` in surfaces/transcriptOutline.ts).
+
+The transcript's left side lists the person's own messages
+(surfaces/TranscriptOutline.tsx, rules in surfaces/transcriptOutline.ts):
+one 28px row per user or handoff message (a steer and an optimistic send
+included; reports, nudges and notices never), its first line in 13px muted
+text and its clock time at the end in 12px `tabular-nums`; a thread that
+spans days heads each day with an 11px label (Today, Yesterday, Oct 30).
+The message being read (the row a third of the way down the viewport; the
+first at the top, the last at the end) is in foreground with
+`aria-current`, nothing else. It is 208px wide, 16px from the pane's edge
+and 24px before the column: from 1392px it sits in the centred column's
+gutter, from 864px the column moves right to start after it (never under
+600px), and under 864px or with fewer than two messages it hides. It
+mounts inside the scroller as a zero-height sticky child, so a wheel over
+it scrolls the thread, and caps at the viewport less 40px with its own
+scroll. One tab stop; arrows and Home/End move, Enter or Space lands at
+once, a click glides; "Earlier messages" heads it while older history
+remains. Nothing in it animates.
 
 While the thread has changes nobody kept, the checkpoint strip sits on the
 composer's top edge (chrome/SessionReview.tsx): one 32px row with the file's

@@ -1538,9 +1538,12 @@ names the far child).
   height and the offsets below it to the DOM and moves the scroll offset by
   the growth above the anchor row; the tail row growing while streaming
   touches its own box and the container height only. Scroll memory is the
-  anchor row (`TranscriptScrollMemory.anchor`); the minimap and search hits
-  jump by block id through `scrollToRow`, which lands exactly once the row
-  is measured. Never put `content-visibility` or size containment on a row:
+  anchor row (`TranscriptScrollMemory.anchor`); the message list
+  (surfaces/TranscriptOutline.tsx: the person's messages down the left
+  side, a zero-height sticky child of the scroller placed by
+  `outlinePlacement`) and search hits jump by block id through
+  `scrollToRow`, which lands exactly once the row is measured (a keyboard
+  jump with `instant`, no glide). Never put `content-visibility` or size containment on a row:
   the window measures natural heights.
 - Settled markdown parses in `lib/markdown.worker.ts` (streamdown's own
   block split and plugin chain, shared through `lib/markdownPipeline.ts`);

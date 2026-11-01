@@ -147,12 +147,14 @@ foreground, the same words the group line uses); the components only draw it.
   transcript is glued to its end. Scroll memory across a remount is the
   anchor row and the offset into it (`TranscriptScrollMemory.anchor`), so
   the place survives heights being estimates again.
-- **Jumps go through the window.** The minimap and a search hit name a
+- **Jumps go through the window.** The message list and a search hit name a
   block id; `scrollToRow` glides to a mounted row's box, or teleports to
   within 2.5 screens of an unmounted row's estimated offset, glides the
   rest, and lands exactly once the row is mounted and measured
-  (`landing`). The parked prompt of an own send waits for its row to mount
-  (`pendingPark`).
+  (`landing`). A keyboard jump from the message list (Enter or Space,
+  `scrollToRow(index, { instant: true })`) writes the offset at once and
+  lands the same way: a key is never animated. The parked prompt of an own
+  send waits for its row to mount (`pendingPark`).
 - **Markdown parses off the main thread.** A settled markdown row asks
   `lib/markdownParse.ts` for its tree; `lib/markdown.worker.ts` runs
   streamdown's own block split and remark → rehype chain (shared through

@@ -383,7 +383,7 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | Spinner | the one arc turning | — | still |
 | Appshot | fade + scale 0.95→1 centred, `--dur-slow`; holds; glides into its chip, `--dur-drawer` `--ease-drawer` | — | fade in and out in place, `--dur-fast` |
 | Released drag | settles on `SPRING_GLIDE` | — | none |
-| List rows (rail, tabs, fleet, attachments) | none | none | none |
+| List rows (rail, tabs, fleet, attachments, the transcript's message list) | none | none | none |
 | Transcript rows | one `--dur-fast` fade on first appearance, never replayed | — | none |
 | Streaming text | the jitter buffer (lib/smoothText); words fade `--dur-base` in `StreamingText` | — | none |
 | Composer send | the bubble glides up 16px, `--dur-slow` `--ease-drawer` | — | fade, `--dur-fast` |
@@ -425,7 +425,10 @@ pass, a batch, a second opinion asked of another harness) is one muted
 line with a glyph, a lead and its details; only a held review and a failure
 are cards. A compaction is one line that counts from its start, takes
 its outcome in place and reads "Compaction stopped" when its turn ended
-without one. A handoff keeps its bubble: its text is the person's brief. A
+without one. A handoff keeps its bubble: its text is the person's brief. The
+left side, where the column leaves room, lists the person's own messages,
+one line and a clock time each, the one being read in foreground
+(`TranscriptOutline` on `JumpList`; docs/LAYOUT.md "Chat"). A
 question card sets the sans face; mono is for code inside it. Every action
 row ends in a caret: it turns on a row that opens a body and stays still on
 one that opens its file.
