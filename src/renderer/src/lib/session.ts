@@ -372,6 +372,9 @@ export type Session = {
   /** Server-side status; `busy` is derived from it. */
   status?: SessionStatus;
   busySince?: number | null;
+  /** The local click that started the open turn (appendOptimisticUser), until it settles: the
+   *  timer counts from it rather than jumping back when the host's busySince arrives. */
+  sentAt?: number;
   pausedAt?: number | null;
   frozenActiveElapsed?: number | null;
   /** The trailing failure's verdict, folded by the server while its error row shows. */

@@ -106,7 +106,8 @@ export const clockForTest = {
 };
 
 /** The slice of a Session the clock reads; `treeFrozenActiveElapsed` is the server's tree-wide fold (M4). */
-export type ClockSession = Pick<Session, "status" | "busy" | "busySince" | "frozenActiveElapsed" | "blocks"> & {
+export type ClockSession = Pick<Session, "status" | "busy" | "busySince" | "frozenActiveElapsed" | "blocks"> &
+  Partial<Pick<Session, "sentAt">> & {
   treeFrozenActiveElapsed?: number | null;
 };
 
@@ -135,8 +136,14 @@ export function isTurnActive(session: ClockSession): boolean {
   );
 }
 
-/** When the current stretch of work began: the server's stamp, else the last user turn. */
+/**
+ * When the current stretch of work began: the local click that opened it
+ * (`sentAt`, kept even after the host's stamp arrives, so the timer never
+ * steps back by the round trip), else the server's stamp, else the last
+ * user turn.
+ */
 export function turnStartOf(session: ClockSession): number | undefined {
+  if (session.sentAt && isTurnActive(session)) return session.sentAt;
   if (session.busySince) return session.busySince;
   for (let i = session.blocks.length - 1; i >= 0; i--) {
     const b = session.blocks[i];

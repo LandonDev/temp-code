@@ -5,6 +5,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../compo
 import { StreamingText } from "../../components/ui/streaming-text";
 import { TextShimmer } from "../../components/ui/text-shimmer";
 import { cn } from "../../lib/cn";
+import { useHeldWord } from "../../lib/heldWord";
 import { type Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { AgentMarkdown } from "../AgentMarkdown";
@@ -14,13 +15,19 @@ import { latestLine, latestLineKey, thoughtLabel, thoughtMs } from "./thinking";
 const ROW = "flex min-h-8 min-w-0 items-center gap-2 font-sans text-sm";
 const GLYPH = <Sparkles className="size-3.5 shrink-0 text-muted-foreground" />;
 
-/** A live turn's tail before its first content: the thinking row's live
- *  shape with no sentence yet, so the row that replaces it does not jump. */
-export function ThinkingTail() {
+/**
+ * A live turn's tail before its first content: the thinking row's live shape
+ * with no sentence yet, so the row that replaces it does not jump. It says
+ * the turn's true phase (`tailWord`): Sending until the host echoes the
+ * message, then the host's word for the wait, else Thinking. A word stays at
+ * least 300 ms once painted; the swap is the text alone, instant.
+ */
+export function ThinkingTail({ word = "Thinking" }: { word?: string }) {
+  const shown = useHeldWord(word);
   return (
-    <div aria-label="Thinking" data-slot="thinking-tail" className={ROW}>
+    <div aria-label={shown} data-slot="thinking-tail" className={ROW}>
       {GLYPH}
-      <TextShimmer className="shrink-0">Thinking</TextShimmer>
+      <TextShimmer className="shrink-0">{shown}</TextShimmer>
     </div>
   );
 }

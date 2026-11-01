@@ -24,6 +24,20 @@ describe("turnStartOf", () => {
   });
 });
 
+describe("the click's clock (sentAt)", () => {
+  it("sentAt wins over the host's later busySince for the open stretch, so the timer never steps back", () => {
+    expect(turnStartOf(session({ status: "running", sentAt: 1_000, busySince: 1_180 }))).toBe(1_000);
+    expect(turnElapsed(session({ status: "running", sentAt: 1_000, busySince: 1_180 }), 4_000)).toBe(3_000);
+    // Before the host's row catches up, a busy idle row counts from the click too.
+    expect(turnElapsed(session({ status: "idle", busy: true, sentAt: 1_000 }), 1_500)).toBe(500);
+  });
+
+  it("a settled row ignores a leftover sentAt", () => {
+    expect(turnStartOf(session({ status: "idle", sentAt: 1_000, busySince: 3_000 }))).toBe(3_000);
+    expect(turnElapsed(session({ status: "idle", sentAt: 1_000 }), 9_000)).toBeNull();
+  });
+});
+
 describe("turnElapsed", () => {
   it("runs from busySince while active", () => {
     expect(turnElapsed(session({ status: "running", busySince: 1000 }), 4200)).toBe(3200);

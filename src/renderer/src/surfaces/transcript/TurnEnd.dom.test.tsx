@@ -89,6 +89,58 @@ describe("TurnEnd's thinking tail", () => {
   });
 });
 
+describe("TurnEnd's thinking tail says the turn's true phase", () => {
+  type Blocks = Parameters<typeof TurnEnd>[0]["turn"]["blocks"];
+  const live = (blocks: Blocks, activity?: string) => {
+    const state = { status: "running", busy: true, blocks, activity } as unknown as TurnSession;
+    return (
+      <TurnEnd
+        turn={{ id: "t", index: 0, isLast: true, settled: false, blocks, userBlock: blocks[0], durationMs: undefined, startedAt: undefined }}
+        harnessOf={() => undefined}
+        turnState={state}
+        liveState={false}
+      />
+    );
+  };
+  const tailOf = (container: HTMLElement) => container.querySelector('[data-slot="thinking-tail"]') as HTMLElement | null;
+  const pending = { id: "pending:1", role: "user" as const, text: "go", pending: true };
+  const echoed = { id: "u", role: "user" as const, text: "go" };
+
+  it("reads Sending while the message is not yet echoed, then each phase word, held 300 ms apiece", () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(live([pending], "Thinking"));
+      expect(tailOf(view.container)?.textContent).toBe("Sending");
+      for (const word of ["Starting the CLI", "Initializing", "Waiting for the provider", "Rate limited, retry 2 in 30 s", "Waiting for the provider, 25 s"]) {
+        view.rerender(live([echoed], word));
+        act(() => vi.advanceTimersByTime(300));
+        expect(tailOf(view.container)?.textContent).toBe(word);
+        expect(tailOf(view.container)?.getAttribute("aria-label")).toBe(word);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads Thinking when the host's word is the running word, or with nothing said yet", () => {
+    expect(tailOf(render(live([echoed], "Thinking")).container)?.textContent).toBe("Thinking");
+    cleanup();
+    expect(tailOf(render(live([echoed])).container)?.textContent).toBe("Thinking");
+  });
+
+  it("reads Thinking once the turn has content of its own, whatever the host still says", () => {
+    const blocks = [echoed, { id: "a", role: "tool" as const, text: "", tool: { name: "Read" } }, { id: "r", role: "reasoning" as const, text: "" }] as Blocks;
+    expect(tailOf(render(live(blocks, "Reading b.ts")).container)?.textContent).toBe("Thinking");
+  });
+
+  it("gives way to the streaming summary row, which keeps the tail's 32px shape", () => {
+    const view = render(live([echoed], "Waiting for the provider"));
+    expect(tailOf(view.container)?.className).toContain("min-h-8");
+    view.rerender(live([echoed, { id: "r", role: "reasoning", text: "Reading the plan first.", streaming: true }], "Thinking"));
+    expect(tailOf(view.container)).toBeNull();
+  });
+});
+
 describe("TurnEnd of a paused turn", () => {
   it("says Paused with the frozen time, never Worked for, and no thinking tail", () => {
     const user = { id: "u", role: "user" as const, text: "go", startedAt: 10, durationMs: 1000 };

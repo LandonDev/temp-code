@@ -37,8 +37,13 @@ export const WorkingStrip = memo(function WorkingStrip({
   onStart?: () => Promise<void> | void;
 }) {
   const raw = session.status ?? (session.busy ? "running" : "idle");
-  // A busy session whose row has not caught up still works.
-  const status = session.busy && (raw === "idle" || raw === "done") ? "running" : raw;
+  // A busy session whose row has not caught up still works, a send just
+  // made over a failure or a stop included (its click stamped sentAt).
+  const status =
+    session.busy &&
+    (raw === "idle" || raw === "done" || ((raw === "error" || raw === "stopped") && session.sentAt != null))
+      ? "running"
+      : raw;
   const shownStatus = threadStatus({
     status,
     // A paused subagent pauses the root's row, as on its chip; Continue resumes the tree.

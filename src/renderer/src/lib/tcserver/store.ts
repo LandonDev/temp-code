@@ -3,6 +3,7 @@ import { noteBootResume } from "../bootResume";
 import type { Attachment, Block, HarnessId, LoadState, Session } from "../session";
 import { HARNESSES, newSession } from "../session";
 import { resolveModel } from "../models";
+import { isTurnActive } from "../turnClock";
 import {
   ConnectionLostError,
   SLOW_MS,
@@ -319,7 +320,8 @@ export function applyMeta(
   if (changed("nativeId")) {
     set({ providerSessionId: meta.nativeId ?? undefined });
   }
-  if (changed("status")) set({ busy: isOpenStatus(meta.status) });
+  // A settle ends the click's clock (sentAt) with the turn.
+  if (changed("status")) set({ busy: isOpenStatus(meta.status), ...(isOpenStatus(meta.status) ? {} : { sentAt: undefined }) });
   if (meta.context && (!prev || prev.context !== meta.context)) {
     set({
       context: {
@@ -2056,7 +2058,7 @@ class SessionStore {
         !isOpenStatus(meta.status) &&
         !entry.session.blocks.some((b) => b.pending)
       ) {
-        entry.session = { ...entry.session, busy: false };
+        entry.session = { ...entry.session, busy: false, sentAt: undefined };
       }
     }
     entry.meta = meta;
@@ -2229,9 +2231,12 @@ class SessionStore {
   ): void {
     const entry = this.entries.get(id);
     if (!entry) return;
+    // A send that starts a turn stamps the click; a steer or a queue drain
+    // into a turn already open keeps that turn's clock.
+    const sentAt = isTurnActive(entry.session) ? entry.session.sentAt : Date.now();
     const after = foldOptimisticUser(foldStateOf(entry), text, attachments, extra, newPass);
     entry.nextId = after.nextId;
-    entry.session = { ...entry.session, blocks: after.blocks, busy: true, thread: after.thread };
+    entry.session = { ...entry.session, blocks: after.blocks, busy: true, thread: after.thread, sentAt };
     this.bump();
   }
 

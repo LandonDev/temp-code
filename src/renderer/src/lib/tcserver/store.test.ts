@@ -346,6 +346,33 @@ describe("sessionStore", () => {
     expect(sessionStore.get("build")!.load.empty).toBe(false);
   });
 
+  it("a send stamps the click (sentAt); a steer into the open turn keeps it; the settle clears it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(10_000);
+      link.metas = [wireMeta({ status: "idle" })];
+      sessionStore.attach(link);
+      await sessionStore.ready();
+      sessionStore.mutate([sessionStore.get("s1")!]);
+      sessionStore.appendOptimisticUser("s1", "go");
+      expect(sessionStore.get("s1")!.sentAt).toBe(10_000);
+      link.push({ push: "session", session: wireMeta({ status: "running", busySince: 10_200 }) });
+      expect(sessionStore.get("s1")!.sentAt).toBe(10_000);
+      vi.setSystemTime(14_000);
+      sessionStore.appendOptimisticUser("s1", "and also this");
+      expect(sessionStore.get("s1")!.sentAt).toBe(10_000);
+      link.push({ push: "session", session: wireMeta({ status: "idle", busySince: null }) });
+      expect(sessionStore.get("s1")!.sentAt).toBeUndefined();
+      // A send after a failure starts a clock of its own.
+      link.push({ push: "session", session: wireMeta({ status: "error" }) });
+      vi.setSystemTime(20_000);
+      sessionStore.appendOptimisticUser("s1", "again");
+      expect(sessionStore.get("s1")!.sentAt).toBe(20_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("waitIdle resolves when the turn settles", async () => {
     link.metas = [wireMeta({ status: "running" })];
     sessionStore.attach(link);

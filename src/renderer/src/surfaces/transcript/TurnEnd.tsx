@@ -21,7 +21,7 @@ import { needsApproval, turnCopyText } from "../transcriptActivity";
 import { turnEndsStopped } from "../../lib/turnOutcome";
 import { SwapIcon } from "../../motion/IconSwap";
 import { IconAction, useArmOnIntent } from "./IconAction";
-import { spanWords } from "./thinking";
+import { spanWords, tailWord } from "./thinking";
 import { ThinkingTail } from "./ThinkingRow";
 
 /** A turn's closing row: the thinking tail while it starts, its duration
@@ -67,7 +67,7 @@ export function TurnEnd({
   return (
     <>
       {!settled && !paused && showsThinkingTail(turn.blocks) ? (
-        <ThinkingTail />
+        <ThinkingTail word={tailWord(turn.blocks, turnState?.activity)} />
       ) : null}
       {settled && (stopped || durationMs != null) ? (
         <TurnDuration

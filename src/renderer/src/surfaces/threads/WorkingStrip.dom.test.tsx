@@ -135,6 +135,22 @@ describe('WorkingStrip: the timer while a turn is open', () => {
   })
 })
 
+describe('WorkingStrip: a send just made', () => {
+  it('shows the timer at once over a failed or stopped row, counting from the click', () => {
+    for (const status of ['error', 'stopped'] as const) {
+      const probe = mount(session({ status, busy: true, sentAt: Date.now() - 2_000, frozenActiveElapsed: 60_000 }))
+      expect(rowText(probe)).toMatch(/^2sStop$/)
+      probe.unmount()
+    }
+  })
+
+  it('a failed row with no send in flight keeps the slot empty', () => {
+    const probe = mount(session({ status: 'error', busy: true }))
+    expect(probe.container.textContent).toBe('')
+    probe.unmount()
+  })
+})
+
 describe('WorkingStrip: the slot is empty', () => {
   it('for an idle thread', () => {
     const probe = mount(session({ status: 'idle' }))

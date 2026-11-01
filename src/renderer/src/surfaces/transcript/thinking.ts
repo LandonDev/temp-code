@@ -69,3 +69,18 @@ export function latestLine(text: string): string {
 export function latestLineKey(text: string): number {
   return latestIndex(sentencesOf(text));
 }
+
+/**
+ * The working line's word before the turn's first content: Sending while the
+ * person's message is not yet echoed by the host, then the host's word for
+ * the wait (`activity`: Starting the CLI, Initializing, Waiting for the
+ * provider, a retry), Thinking once anything of the turn's own has come.
+ */
+export function tailWord(turn: Block[], activity: string | null | undefined): string {
+  const last = turn[turn.length - 1];
+  if (last?.role === "user" && last.pending) return "Sending";
+  const started = turn.some(
+    (b) => b.role !== "user" && !((b.role === "reasoning" || b.role === "assistant") && !b.text),
+  );
+  return !started && activity ? activity : "Thinking";
+}
