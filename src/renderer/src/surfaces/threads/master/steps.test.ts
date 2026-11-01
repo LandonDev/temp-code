@@ -61,18 +61,18 @@ describe("a step as the foot reads it", () => {
 
   it("says how branches land before the land step runs, then how many landed", () => {
     const land = live({ kind: "land", id: "land" });
-    expect(stepDetail(land, { land: "as-they-finish" })).toEqual({ text: "as they finish", label: null });
-    expect(stepDetail(land, { land: "all-at-once" }).text).toBe("all at once");
+    expect(stepDetail(land, { land: "as-they-finish" })).toEqual({ text: "As they finish", label: null });
+    expect(stepDetail(land, { land: "all-at-once" }).text).toBe("All at once");
     expect(stepDetail({ ...land, status: "running", progress: { done: 2, total: 5 } }, { land: "as-they-finish" }).text).toBe("2 of 5 landed");
-    expect(stepDetail({ ...land, status: "passed", detail: "nothing landed" }, { land: "as-they-finish" }).text).toBe("nothing landed");
+    expect(stepDetail({ ...land, status: "passed", detail: "nothing landed" }, { land: "as-they-finish" }).text).toBe("Nothing landed");
   });
 
   it("a running step says its progress, a skipped one why, a failed or passed one the host's detail", () => {
     const rules = { land: "as-they-finish" } as const;
     expect(stepDetail(live({ status: "running", progress: { done: 12, total: 31, label: "vitest" } }), rules)).toEqual({ text: "12 of 31", label: "vitest" });
     expect(stepDetail(live({ status: "running" }), rules)).toEqual({ text: "", label: null });
-    expect(stepDetail(live({ status: "skipped" }), rules).text).toBe("skipped");
-    expect(stepDetail(live({ status: "skipped", detail: "needs a release" }), rules).text).toBe("needs a release");
+    expect(stepDetail(live({ status: "skipped" }), rules).text).toBe("Skipped");
+    expect(stepDetail(live({ status: "skipped", detail: "needs a release" }), rules).text).toBe("Needs a release");
     expect(stepDetail(live({ status: "failed", detail: "vitest: 2 failed" }), rules).text).toBe("vitest: 2 failed");
     expect(stepDetail(live({ status: "pending", kind: "shell", run: "bun run smoke" }), rules).text).toBe("");
   });
@@ -83,21 +83,21 @@ describe("a step as the foot reads it", () => {
     expect(settled({ status: "passed", detail: "passed in 0s" })).toBe("");
     expect(settled({ id: "smoke", kind: "shell", status: "passed", detail: "passed in 4m 12s" })).toBe("");
     expect(settled({ id: "publish", kind: "publish", status: "passed", detail: "v1.0.312 published in 4m12s" })).toBe("v1.0.312 published");
-    expect(settled({ id: "deploy", kind: "deploy", status: "passed", detail: "master deployed in 1h02m" })).toBe("master deployed");
-    expect(settled({ id: "smoke", kind: "shell", status: "failed", detail: "exit 1 after 3s, Error: no route" })).toBe("exit 1, Error: no route");
-    expect(settled({ id: "smoke", kind: "shell", status: "failed", detail: "stopped after 12s" })).toBe("stopped");
+    expect(settled({ id: "deploy", kind: "deploy", status: "passed", detail: "master deployed in 1h02m" })).toBe("Master deployed");
+    expect(settled({ id: "smoke", kind: "shell", status: "failed", detail: "exit 1 after 3s, Error: no route" })).toBe("Exit 1, Error: no route");
+    expect(settled({ id: "smoke", kind: "shell", status: "failed", detail: "stopped after 12s" })).toBe("Stopped");
     expect(settled({ id: "release", kind: "release", status: "passed", detail: "release-278 tagged" })).toBe("release-278 tagged");
     // No time column without both ends: the detail keeps its time.
-    expect(stepDetail(live({ status: "passed", detail: "passed in 0s" }), rules).text).toBe("passed in 0s");
+    expect(stepDetail(live({ status: "passed", detail: "passed in 0s" }), rules).text).toBe("Passed in 0s");
   });
 
-  it("a failed step's detail starts lower-case and loses its full stop; an acronym keeps its case", () => {
+  it("a failed step's detail keeps the host's capital and loses its full stop; an acronym keeps its case", () => {
     const rules = { land: "as-they-finish" } as const;
-    expect(stepDetail(live({ status: "failed", detail: "The gate failed at vitest." }), rules).text).toBe("the gate failed at vitest");
+    expect(stepDetail(live({ status: "failed", detail: "The gate failed at vitest." }), rules).text).toBe("The gate failed at vitest");
     expect(stepDetail(live({ status: "failed", detail: "FAILED at vitest" }), rules).text).toBe("FAILED at vitest");
     // A failed land step says its failure, not its progress.
     const land = live({ id: "land", kind: "land", status: "failed", detail: "Merge of ios/home failed: rebase it onto master.", progress: { done: 1, total: 3 } });
-    expect(stepDetail(land, rules).text).toBe("merge of ios/home failed: rebase it onto master");
+    expect(stepDetail(land, rules).text).toBe("Merge of ios/home failed: rebase it onto master");
   });
 });
 

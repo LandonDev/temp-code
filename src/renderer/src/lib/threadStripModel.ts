@@ -1,5 +1,5 @@
 import type { BackgroundWork } from "@shared/events";
-import { leadDetail } from "@shared/statusWords";
+import { detailText, leadDetail, legacyDetail } from "@shared/statusWords";
 import { watchPhrase } from "@shared/watch";
 import { threadStateOf, type ThreadState } from "../components/ui/status";
 import type { Catalog } from "./projectContext";
@@ -239,8 +239,10 @@ export type ThreadStatusInput = {
   status: SessionStatus | null | undefined;
   treeHasPaused?: boolean;
   treeCanContinue?: boolean;
-  /** The host's activity line ("Running bun", "Queued · 3rd in line", "Waiting on …"). */
+  /** The host's legacy activity line ("Running bun", "Queued  3rd in line", "Waiting on …"), read only when `statusDetail` is absent (an older host). */
   activity?: string | null;
+  /** What the status word is about, as the host writes it ("Waiting for memory", "3 subagents"). */
+  statusDetail?: string | null;
   tasks?: { done: number; total: number } | null;
   /** The host's one-line failure verdict. */
   failure?: string | null;
@@ -259,14 +261,15 @@ export type ThreadStatus = { state: ThreadState; detail: string | null; tally: s
  * The one decision of what a thread's status row says (docs/DESIGN.md
  * "Status vocabulary"): `threadStateOf`, plus the tree's overrides (a paused
  * descendant reads paused, a recoverable failure in the tree failed) and the
- * detail. A detail starts lower-case, never ends in a full stop and never
- * repeats the word.
+ * detail. The detail is the host's `statusDetail` as written, else an old
+ * host's legacy `activity` read with a capital (statusWords.ts
+ * `legacyDetail`); it never ends in a full stop and never repeats the word.
  */
 /** A failure's detail after the word Failed: the host's summary, unless it is
  *  the generic one ("The turn failed"), which only says the word again. */
 function failedDetail(summary: string | null | undefined): string | null {
-  const detail = lowerFirst(summary);
-  return detail === "the turn failed" ? null : detail;
+  const detail = detailText(summary);
+  return detail?.toLowerCase() === "the turn failed" ? null : detail;
 }
 
 export function threadStatus(input: ThreadStatusInput): ThreadStatus {
@@ -279,31 +282,37 @@ export function threadStatus(input: ThreadStatusInput): ThreadStatus {
   // A settled parent whose subagents still work is watching them, whatever each one does.
   const state = settledWithAgents(own, input.background) ? "watching" : own;
   const none = { state, detail: null, tally: null };
+  // The host's detail, else what an old host's legacy line says past its word
+  // (a new host's null says the same as its legacy line).
+  const host = detailText(input.statusDetail);
   switch (state) {
     case "working": {
-      const detail = lowerFirst(input.activity) ?? (status === "starting" ? "starting" : null);
+      const detail = host ?? detailText(input.activity) ?? (status === "starting" ? "Starting" : null);
       const tally = input.tasks ? `${input.tasks.done}/${input.tasks.total}` : null;
       return { state, detail, tally };
     }
     case "waiting":
-      if (input.waitingOn) return { state, detail: `approve ${input.waitingOn}`, tally: null };
-      return { state, detail: input.asking ? "answer a question" : null, tally: null };
-    case "watching":
+      if (input.waitingOn) return { state, detail: `Approve ${input.waitingOn}`, tally: null };
+      return { state, detail: input.asking ? "Answer a question" : null, tally: null };
+    case "watching": {
+      // A master whose batch cannot end says why first (the host's
+      // `decorate`: "Blocked, A errored"), ahead of what it watches.
+      const blocked = detailText(leadDetail(input.activity, "Blocked:"));
       return {
         state,
-        // A master whose batch cannot end says why first (the host's
-        // `decorate`: "Blocked: A errored"), ahead of what it watches.
         detail:
-          (input.activity?.trim().startsWith("Blocked:") ? lowerFirst(input.activity) : null) ||
-          lowerFirst(watchPhrase(input.background)) ||
-          lowerFirst(after(input.activity, "Waiting on")) ||
-          "background work",
+          host ||
+          (blocked ? `Blocked, ${blocked}` : null) ||
+          detailText(watchPhrase(input.background)) ||
+          legacyDetail(input.activity, "Waiting on") ||
+          "Background work",
         tally: null,
       };
+    }
     case "queued":
-      return { state, detail: lowerFirst(after(input.activity, "Queued")), tally: null };
+      return { state, detail: host ?? legacyDetail(input.activity, "Queued"), tally: null };
     case "stopped":
-      return { state, detail: "the harness is gone", tally: null };
+      return { state, detail: "The harness is gone", tally: null };
     case "failed":
       return { state, detail: failedDetail(input.failure), tally: null };
     default:
@@ -314,20 +323,6 @@ export function threadStatus(input: ThreadStatusInput): ThreadStatus {
 /** Idle or done (never paused, failed or plan-ready) with live subagents under it. */
 export function settledWithAgents(state: ThreadState, background: BackgroundWork | null | undefined): boolean {
   return (state === "idle" || state === "done") && !!background?.agents.length;
-}
-
-/** The host's line past its leading word ("Queued  3rd in line" → "3rd in line"; statusWords.ts `leadDetail`, the old dot read too); null when it says nothing more. */
-function after(line: string | null | undefined, lead: string): string | null {
-  return leadDetail(line, lead);
-}
-
-/** A detail as the vocabulary writes it: lower-case first letter (an acronym keeps its case), no trailing full stop. */
-export function lowerFirst(text: string | null | undefined): string | null {
-  const t = text?.trim().replace(/\.$/, "");
-  if (!t) return null;
-  const head = t.split(/\s/, 1)[0];
-  if (head.length > 1 && head === head.toUpperCase() && /[A-Z]/.test(head)) return t;
-  return t[0].toLowerCase() + t.slice(1);
 }
 
 /** Does the state draw a mark at rest: not when it would only say "nothing is happening". */

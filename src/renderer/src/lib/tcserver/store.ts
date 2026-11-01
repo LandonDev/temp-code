@@ -365,6 +365,7 @@ export function applyThreadMeta(
   if (changed("treeHasPaused")) set({ treeHasPaused: meta.treeHasPaused });
   if (changed("treeFrozenActiveElapsed")) set({ treeFrozenActiveElapsed: meta.treeFrozenActiveElapsed });
   if (changed("activity")) set({ activity: meta.activity ?? null });
+  if (changed("statusDetail")) set({ statusDetail: meta.statusDetail ?? null });
   if (changed("activityKind")) set({ activityKind: meta.activityKind ?? null });
   if (!prev || JSON.stringify(prev.background ?? null) !== JSON.stringify(meta.background ?? null))
     set({ background: meta.background ?? null });

@@ -30,6 +30,7 @@ export type ThreadRow = {
   frozenActiveElapsed: number | null;
   tasks?: SessionMeta["tasks"];
   activity?: SessionMeta["activity"];
+  statusDetail?: SessionMeta["statusDetail"];
   activityKind?: SessionMeta["activityKind"];
   treeHasLiveWork?: boolean;
   /** What the thread waits on: a settled parent with live subagents reads watching. */
@@ -174,6 +175,7 @@ export function threadRow(
     frozenActiveElapsed: meta.frozenActiveElapsed ?? null,
     tasks: meta.tasks,
     activity: meta.activity,
+    statusDetail: meta.statusDetail,
     activityKind: meta.activityKind,
     treeHasLiveWork: meta.treeHasLiveWork,
     background: meta.background,

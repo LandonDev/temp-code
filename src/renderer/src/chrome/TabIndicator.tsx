@@ -12,6 +12,7 @@ export type TabThread = {
   /** when this working stretch began (its first message) */
   since: number;
   activity?: string | null;
+  statusDetail?: string | null;
   activityKind?: ActivityKind | null;
   /** implementation threads: this round's task tally */
   tasks?: { done: number; total: number } | null;

@@ -130,7 +130,7 @@ describe("agentStatus", () => {
   it("watching and queued drop the lead their word already says", () => {
     expect(agentStatus({ status: "watching", activity: "Waiting on bun test" })).toEqual({
       state: "watching",
-      detail: "bun test",
+      detail: "Bun test",
       phrase: false,
     });
     expect(agentStatus({ status: "queued", activity: "Queued · 120 of 120 running" })).toEqual({
@@ -140,14 +140,16 @@ describe("agentStatus", () => {
     });
   });
 
-  it("a watching, queued or failed detail starts lower-case; an acronym lead and the working phrase keep theirs", () => {
+  it("a detail keeps the host's capital; an old host's lower-case lead is read with one", () => {
     expect(agentStatus({ status: "watching", activity: "Waiting on Sleep 90 seconds in the alpha workspace" }).detail).toBe(
-      "sleep 90 seconds in the alpha workspace",
+      "Sleep 90 seconds in the alpha workspace",
     );
     expect(agentStatus({ status: "watching", activity: "Waiting on README check" }).detail).toBe("README check");
-    expect(agentStatus({ status: "queued", activity: "Queued · Waiting for Sibling" }).detail).toBe("waiting for Sibling");
+    expect(agentStatus({ status: "queued", activity: "Queued · Waiting for Sibling" }).detail).toBe("Waiting for Sibling");
     const capped: SessionMeta["failure"] = { kind: "quota", account: null, summary: "Usage cap", cause: "" };
-    expect(agentStatus({ status: "error", failure: capped }).detail).toBe("usage cap");
+    expect(agentStatus({ status: "error", failure: capped }).detail).toBe("Usage cap");
+    expect(agentStatus({ status: "watching", activity: "Waiting on sleep 45 seconds", statusDetail: "sleep 45 seconds" }).detail).toBe("sleep 45 seconds");
+    expect(agentStatus({ status: "running", activity: "Thinking", statusDetail: "Waiting for the provider, 25 s" }).detail).toBe("Waiting for the provider, 25 s");
     expect(agentStatus({ status: "running", activity: "Editing HomeView.swift" }).detail).toBe("Editing HomeView.swift");
   });
 
@@ -157,7 +159,7 @@ describe("agentStatus", () => {
     });
     expect(agentStatus({ status: "waiting" }, [q])).toEqual({ state: "waiting", detail: "Which db?", phrase: false });
     const a = block("approval", "", { approval: { requestId: 1 }, tool: { title: "rm -rf build" } });
-    expect(agentStatus({ status: "waiting" }, [a]).detail).toBe("approve rm -rf build");
+    expect(agentStatus({ status: "waiting" }, [a]).detail).toBe("Approve rm -rf build");
     const decided = block("approval", "", { approval: { requestId: 1, decided: "allow" }, tool: { title: "ls" } });
     expect(agentStatus({ status: "waiting" }, [decided]).detail).toBe("");
     expect(agentStatus({ status: "waiting" })).toEqual({ state: "waiting", detail: "", phrase: false });
@@ -166,7 +168,7 @@ describe("agentStatus", () => {
   it("a failed agent says the host's summary over the transcript's error line", () => {
     const err = block("system", "Rate limited\nstack", { id: "err:1" });
     expect(agentStatus({ status: "error", failure }, [err]).detail).toBe("usage cap");
-    expect(agentStatus({ status: "error" }, [err])).toEqual({ state: "failed", detail: "rate limited", phrase: false });
+    expect(agentStatus({ status: "error" }, [err])).toEqual({ state: "failed", detail: "Rate limited", phrase: false });
     expect(agentStatus({ status: "error" }).detail).toBe("");
   });
 
@@ -181,8 +183,9 @@ describe("agentStatus", () => {
 describe("leadStripped", () => {
   it("takes off only the lead of its own state", () => {
     expect(leadStripped("Waiting on 3 subagents, a monitor", "watching")).toBe("3 subagents, a monitor");
-    expect(leadStripped("Queued · waiting for Sibling", "queued")).toBe("waiting for Sibling");
+    expect(leadStripped("Queued · waiting for Sibling", "queued")).toBe("Waiting for Sibling");
     expect(leadStripped("Waiting on x", "queued")).toBe("Waiting on x");
+    expect(leadStripped("Queued  waiting for Sibling", "queued", "Waiting for Sibling")).toBe("Waiting for Sibling");
     expect(leadStripped("Editing a.ts", "working")).toBe("Editing a.ts");
   });
 });
@@ -283,9 +286,9 @@ describe("loadsTranscript", () => {
 
 it("the queued lead parses the host's two spaces as it parses the old dot", () => {
   expect(agentStatus({ status: "queued", activity: "Queued  120 of 120 running" }).detail).toBe("120 of 120 running");
-  expect(agentStatus({ status: "queued", activity: "Queued  waiting for Sibling" }).detail).toBe("waiting for Sibling");
-  expect(leadStripped("Queued  waiting for Sibling", "queued")).toBe("waiting for Sibling");
-  expect(leadStripped("Queued · waiting for Sibling", "queued")).toBe("waiting for Sibling");
+  expect(agentStatus({ status: "queued", activity: "Queued  waiting for Sibling" }).detail).toBe("Waiting for Sibling");
+  expect(leadStripped("Queued  waiting for Sibling", "queued")).toBe("Waiting for Sibling");
+  expect(leadStripped("Queued · waiting for Sibling", "queued")).toBe("Waiting for Sibling");
   expect(leadStripped("Waiting on 3 subagents", "watching")).toBe("3 subagents");
   expect(leadStripped("Thinking", "queued")).toBe("Thinking");
 });

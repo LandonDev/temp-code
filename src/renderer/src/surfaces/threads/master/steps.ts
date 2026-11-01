@@ -1,4 +1,4 @@
-import { lowerFirst } from "../../../lib/threadStripModel";
+import { detailText, sentenceStart } from "@shared/statusWords";
 import {
   BatchStepKindSchema,
   DEFAULT_BATCH_STEPS,
@@ -172,17 +172,21 @@ function untimed(step: Pick<LiveStep, "status" | "detail" | "startedAt" | "ended
  *  land until it runs, then how many landed; a running step its progress;
  *  a skipped one the host's reason, else "skipped"; otherwise the host's
  *  detail, less a time the row's time column says. A shell step's command
- *  is never the row's: its console opens with `$ <run>`. */
+ *  is never the row's: its console opens with `$ <run>`. The batch engine
+ *  writes its details lower-case ("nothing landed", "needs a release"), so
+ *  a plain first word takes its capital here, as a legacy detail does
+ *  (statusWords.ts `sentenceStart`); a name ("v1.0.312 published") keeps
+ *  its case. */
 export function stepDetail(step: Pick<LiveStep, "kind" | "status" | "detail" | "progress" | "startedAt" | "endedAt">, rules: Pick<BatchRules, "land">): { text: string; label: string | null } {
-  const plain = (text: string) => ({ text, label: null });
-  // A failure is said once, on its row, as the vocabulary writes a detail;
-  // ahead of a land step's progress, which would hide it.
-  if (step.status === "failed") return plain(lowerFirst(untimed(step)) ?? "");
+  const plain = (text: string) => ({ text: sentenceStart(detailText(text)) ?? "", label: null });
+  // A failure is said once, on its row; ahead of a land step's progress,
+  // which would hide it.
+  if (step.status === "failed") return plain(untimed(step));
   if (step.kind === "land") {
-    if (step.status === "pending") return plain(rules.land === "all-at-once" ? "all at once" : "as they finish");
+    if (step.status === "pending") return plain(rules.land === "all-at-once" ? "All at once" : "As they finish");
     if (step.progress && step.progress.total > 0) return plain(`${step.progress.done} of ${step.progress.total} landed`);
   }
-  if (step.status === "skipped") return plain(step.detail.trim() || "skipped");
+  if (step.status === "skipped") return plain(step.detail.trim() || "Skipped");
   if (step.status === "running") {
     const progress = progressText(step.progress);
     if (progress) return { text: progress.count, label: progress.label };

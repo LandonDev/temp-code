@@ -23,6 +23,7 @@ export function workingTipLine(row: WorkingRow, now: number): string {
     treeHasPaused: m.treeHasPaused,
     treeCanContinue: m.treeCanContinue,
     activity: m.activity,
+    statusDetail: m.statusDetail,
     tasks: m.tasks,
     failure: m.failure?.summary ?? null,
     background: m.background,

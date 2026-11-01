@@ -280,6 +280,7 @@ export function rowMark(row: ThreadRow, planReady = false): { state: ThreadState
     treeHasPaused: row.treeHasPaused,
     treeCanContinue: row.treeCanContinue,
     activity: row.activity,
+    statusDetail: row.statusDetail,
     tasks: row.tasks,
     failure: row.failure,
     background: row.background,

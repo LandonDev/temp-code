@@ -68,6 +68,7 @@ export type ChipThread = StripThread & {
   provider?: string;
   busySince?: number | null;
   activity?: string | null;
+  statusDetail?: string | null;
   activityKind?: ActivityKind | null;
   tasks?: { done: number; total: number } | null;
   threadRules?: ThreadRules | null;
@@ -297,6 +298,7 @@ export function chipStatus(chip: StripChip, planReady: ReadyMap): ThreadStatus {
     treeHasPaused: t.treeHasPaused,
     treeCanContinue: t.treeCanContinue,
     activity: t.activity,
+    statusDetail: t.statusDetail,
     tasks: t.tasks,
     failure: t.failure?.summary ?? null,
     planReady: !!planReady[chip.id],

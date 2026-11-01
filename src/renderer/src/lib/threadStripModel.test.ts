@@ -4,7 +4,6 @@ import {
   archivedRootThreads,
   composerSlotOf,
   hasPendingQuestion,
-  lowerFirst,
   marksAtRest,
   threadStatus,
   dormantByType,
@@ -122,7 +121,8 @@ describe("splitThreads", () => {
 describe("threadStatus", () => {
   it("says Failed alone when the host's summary only repeats the word", () => {
     expect(threadStatus({ status: "error", failure: "The turn failed" })).toEqual({ state: "failed", detail: null, tally: null });
-    expect(threadStatus({ status: "error", failure: "Usage cap reached" })).toMatchObject({ state: "failed", detail: "usage cap reached" });
+    expect(threadStatus({ status: "error", failure: "the turn failed." }).detail).toBeNull();
+    expect(threadStatus({ status: "error", failure: "Usage cap reached" })).toMatchObject({ state: "failed", detail: "Usage cap reached" });
   });
   const bg = (over: Partial<BackgroundWork> = {}): BackgroundWork => ({ tasks: [], agents: [], ...over }) as BackgroundWork;
 
@@ -137,7 +137,7 @@ describe("threadStatus", () => {
   it("reads a recoverable failure in the tree as failed with the host's summary", () => {
     expect(threadStatus({ status: "idle", treeCanContinue: true, failure: "Usage cap." })).toEqual({
       state: "failed",
-      detail: "usage cap",
+      detail: "Usage cap",
       tally: null,
     });
   });
@@ -145,24 +145,24 @@ describe("threadStatus", () => {
   it("says what a working thread does, with its round's tally", () => {
     expect(threadStatus({ status: "running", activity: "Running bun", tasks: { done: 3, total: 7 } })).toEqual({
       state: "working",
-      detail: "running bun",
+      detail: "Running bun",
       tally: "3/7",
     });
     expect(threadStatus({ status: "running" })).toEqual({ state: "working", detail: null, tally: null });
   });
 
   it("says starting for a starting thread with no activity yet", () => {
-    expect(threadStatus({ status: "starting" })).toEqual({ state: "working", detail: "starting", tally: null });
-    expect(threadStatus({ status: "starting", activity: "Booting claude" }).detail).toBe("booting claude");
+    expect(threadStatus({ status: "starting" })).toEqual({ state: "working", detail: "Starting", tally: null });
+    expect(threadStatus({ status: "starting", activity: "Booting claude" }).detail).toBe("Booting claude");
   });
 
   it("names the approval a waiting thread needs, else its question, else nothing", () => {
     expect(threadStatus({ status: "waiting", waitingOn: "Bash: bun test", asking: true })).toEqual({
       state: "waiting",
-      detail: "approve Bash: bun test",
+      detail: "Approve Bash: bun test",
       tally: null,
     });
-    expect(threadStatus({ status: "waiting", asking: true }).detail).toBe("answer a question");
+    expect(threadStatus({ status: "waiting", asking: true }).detail).toBe("Answer a question");
     expect(threadStatus({ status: "waiting" })).toEqual({ state: "waiting", detail: null, tally: null });
   });
 
@@ -175,20 +175,20 @@ describe("threadStatus", () => {
   it("says what a watching thread watches: the background, else the host's line, else background work", () => {
     expect(threadStatus({ status: "watching", background: bg({ agents: ["a", "b", "c"] }) }).detail).toBe("3 subagents");
     expect(threadStatus({ status: "watching", activity: "Waiting on 2 monitors" }).detail).toBe("2 monitors");
-    expect(threadStatus({ status: "watching" })).toEqual({ state: "watching", detail: "background work", tally: null });
+    expect(threadStatus({ status: "watching" })).toEqual({ state: "watching", detail: "Background work", tally: null });
     const lone = bg({ tasks: [{ id: "t", label: "Sleep 45 seconds in the background", kind: "shell", startedAt: 0 }] });
-    expect(threadStatus({ status: "watching", background: lone }).detail).toBe("sleep 45 seconds in the background");
+    expect(threadStatus({ status: "watching", background: lone }).detail).toBe("Sleep 45 seconds in the background");
   });
 
   it("a watching master whose batch is blocked says why ahead of what it watches", () => {
     const batch = bg({ batch: { out: 1, total: 3 } } as Partial<BackgroundWork>);
     expect(threadStatus({ status: "watching", background: batch, activity: "Blocked: A errored" })).toEqual({
       state: "watching",
-      detail: "blocked: A errored",
+      detail: "Blocked, A errored",
       tally: null,
     });
     expect(threadStatus({ status: "watching", background: batch, activity: "Blocked: Inbox ended its turn without completing." }).detail).toBe(
-      "blocked: Inbox ended its turn without completing",
+      "Blocked, Inbox ended its turn without completing",
     );
     expect(threadStatus({ status: "watching", background: batch, activity: "Waiting on a batch thread" }).detail).toBe("a batch thread");
   });
@@ -207,18 +207,33 @@ describe("threadStatus", () => {
     expect(threadStatus({ status: "idle", background: bg() }).state).toBe("idle");
   });
 
+  it("takes the host's statusDetail as written over the legacy line", () => {
+    expect(threadStatus({ status: "queued", statusDetail: "Waiting for memory", activity: "Queued  waiting for memory" }).detail).toBe(
+      "Waiting for memory",
+    );
+    expect(threadStatus({ status: "watching", statusDetail: "sleep 45 seconds", activity: "Waiting on sleep 45 seconds" }).detail).toBe(
+      "sleep 45 seconds",
+    );
+    expect(threadStatus({ status: "watching", statusDetail: "Blocked, A errored", activity: "Blocked: A errored" }).detail).toBe(
+      "Blocked, A errored",
+    );
+    expect(threadStatus({ status: "running", statusDetail: "Editing Rail.tsx", activity: "Editing Rail.tsx" }).detail).toBe("Editing Rail.tsx");
+    // A new host's null says the same as its legacy line.
+    expect(threadStatus({ status: "queued", statusDetail: null, activity: "Queued" }).detail).toBeNull();
+  });
+
   it("gives a queued thread the host's reason past the word", () => {
     expect(threadStatus({ status: "queued", activity: "Queued · 120 of 120 running" }).detail).toBe("120 of 120 running");
-    expect(threadStatus({ status: "queued", activity: "Queued · waiting for Plan A19" }).detail).toBe("waiting for Plan A19");
+    expect(threadStatus({ status: "queued", activity: "Queued · waiting for Plan A19" }).detail).toBe("Waiting for Plan A19");
     expect(threadStatus({ status: "queued" })).toEqual({ state: "queued", detail: null, tally: null });
   });
 
   it("says the harness is gone for a stopped thread", () => {
-    expect(threadStatus({ status: "stopped" })).toEqual({ state: "stopped", detail: "the harness is gone", tally: null });
+    expect(threadStatus({ status: "stopped" })).toEqual({ state: "stopped", detail: "The harness is gone", tally: null });
   });
 
   it("gives an errored thread its summary, or nothing", () => {
-    expect(threadStatus({ status: "error", failure: "Rate limited by the provider" }).detail).toBe("rate limited by the provider");
+    expect(threadStatus({ status: "error", failure: "Rate limited by the provider" }).detail).toBe("Rate limited by the provider");
     expect(threadStatus({ status: "error" })).toEqual({ state: "failed", detail: null, tally: null });
   });
 
@@ -232,14 +247,7 @@ describe("threadStatus", () => {
   });
 });
 
-describe("lowerFirst, marksAtRest and hasPendingQuestion", () => {
-  it("lower-cases the first letter, keeps an acronym, drops the full stop", () => {
-    expect(lowerFirst("Usage cap.")).toBe("usage cap");
-    expect(lowerFirst("PR checks failed")).toBe("PR checks failed");
-    expect(lowerFirst("  ")).toBeNull();
-    expect(lowerFirst(null)).toBeNull();
-  });
-
+describe("marksAtRest and hasPendingQuestion", () => {
   it("marks every state at rest but idle and done", () => {
     expect(marksAtRest("idle")).toBe(false);
     expect(marksAtRest("done")).toBe(false);
@@ -342,8 +350,8 @@ describe("focusedTree", () => {
 
 it("the strip's queued detail parses the host's two spaces as it parses the old dot", () => {
   expect(threadStatus({ status: "queued", activity: "Queued  120 of 120 running" }).detail).toBe("120 of 120 running");
-  expect(threadStatus({ status: "queued", activity: "Queued  waiting for Plan A19" }).detail).toBe("waiting for Plan A19");
-  expect(threadStatus({ status: "queued", activity: "Queued · waiting for Plan A19" }).detail).toBe("waiting for Plan A19");
+  expect(threadStatus({ status: "queued", activity: "Queued  waiting for Plan A19" }).detail).toBe("Waiting for Plan A19");
+  expect(threadStatus({ status: "queued", activity: "Queued · waiting for Plan A19" }).detail).toBe("Waiting for Plan A19");
   expect(threadStatus({ status: "queued", activity: "Queued" }).detail).toBeNull();
 });
 

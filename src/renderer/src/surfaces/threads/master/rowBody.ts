@@ -3,7 +3,8 @@ import { threadStateOf, type ThreadState } from "../../../components/ui/status";
 import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { leadStripped } from "../../../lib/threads/agents";
-import { lowerFirst, settledWithAgents } from "../../../lib/threadStripModel";
+import { settledWithAgents } from "../../../lib/threadStripModel";
+import { detailText, sentenceStart } from "@shared/statusWords";
 import { watchPhrase } from "@shared/watch";
 import { clockTime } from "./useMasterModel";
 
@@ -49,10 +50,11 @@ export function taskTally(tasks: readonly TodoItem[]): string | null {
  *  lead the word already says), what a paused thread was doing, then for
  *  the child that blocks the batch's end the reason (`blocked`, batchWords'
  *  words), when it landed, else a research or orchestration thread's
- *  summary once done. Every detail starts lower-case and ends without a
- *  full stop (docs/DESIGN.md "Status vocabulary"). */
+ *  summary once done. A detail is written as the host says it (a sentence
+ *  with its capital, a name or a count as it is) and ends without a full
+ *  stop (docs/DESIGN.md "Status vocabulary"). */
 export function rowStatus(
-  meta: Pick<SessionMeta, "status" | "activity" | "failure" | "updatedAt" | "threadType" | "background">,
+  meta: Pick<SessionMeta, "status" | "activity" | "statusDetail" | "failure" | "updatedAt" | "threadType" | "background">,
   digest: Pick<BoardDigest, "todos" | "state" | "last" | "question" | "failure">,
   landed: boolean,
   blocked: string | null = null,
@@ -60,37 +62,40 @@ export function rowStatus(
   const own = threadStateOf(meta.status, { settled: meta.status === "idle" });
   const state = settledWithAgents(own, meta.background) ? "watching" : own;
   const activity = meta.activity?.trim() ?? "";
-  const said = (detail: string | null | undefined): RowStatus => ({ state, detail: lowerFirst(detail) ?? "" });
+  const said = (detail: string | null | undefined): RowStatus => ({ state, detail: detailText(detail) ?? "" });
+  // The batch's words for the child it waits on ("ended its turn without
+  // completing", batchWords.ts) read as a sentence of their own here.
+  const why = sentenceStart(detailText(blocked));
   switch (state) {
     case "working":
-      return said((meta.threadType === "implementation" && taskInHand(taskList(digest))) || activity);
+      return said((meta.threadType === "implementation" && taskInHand(taskList(digest))) || detailText(meta.statusDetail) || activity);
     case "waiting":
-      return said(digest.question?.trim() || (activity ? `approve ${activity}` : ""));
+      return said(digest.question?.trim() || (activity ? `Approve ${activity}` : ""));
     case "failed":
-      return said(digest.failure?.trim() || meta.failure?.summary.trim() || blocked);
+      return said(digest.failure?.trim() || meta.failure?.summary.trim() || why);
     case "watching":
-      return said(watchPhrase(meta.background) || leadStripped(activity, state));
+      return said(detailText(meta.statusDetail) || watchPhrase(meta.background) || leadStripped(activity, state));
     case "queued":
-      return said(leadStripped(activity, state));
+      return said(leadStripped(activity, state, meta.statusDetail));
     case "paused":
       // What it was doing: an implementation's task in hand, else the
       // activity (the host's bare "Paused" would repeat the word).
       return said((meta.threadType === "implementation" && taskInHand(taskList(digest))) || (/^paused\b/i.test(activity) ? "" : activity));
     case "stopped":
-      return said(blocked);
+      return said(why);
     case "done":
-      if (blocked) return said(blocked);
-      if (landed) return said(`landed ${clockTime(meta.updatedAt)}`);
+      if (why) return said(why);
+      if (landed) return said(`Landed ${clockTime(meta.updatedAt)}`);
       return said(meta.threadType === "research" || meta.threadType === "orchestration" ? summaryLine(digest) : "");
     default:
-      return said(blocked);
+      return said(why);
   }
 }
 
 /** The New pass dialog's one line under the title: the board row's own
  *  status, else the thread's last words. */
 export function passLine(
-  meta: Pick<SessionMeta, "status" | "activity" | "failure" | "updatedAt" | "threadType" | "background">,
+  meta: Pick<SessionMeta, "status" | "activity" | "statusDetail" | "failure" | "updatedAt" | "threadType" | "background">,
   digest: BoardDigest,
   landed: boolean,
 ): RowStatus {

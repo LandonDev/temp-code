@@ -6,8 +6,7 @@ import type { Block, Session } from "../session";
 import { asHarness, pickerModelId, sessionStore } from "../tcserver/store";
 import { tallyOf } from "../tcserver/todos";
 import type { SessionMeta, SessionStatus } from "../tcserver/types";
-import { leadDetail } from "@shared/statusWords";
-import { lowerFirst } from "../threadStripModel";
+import { detailText, legacyDetail } from "@shared/statusWords";
 
 /**
  * Fleet selectors: which children a thread has, how they rank, the status
@@ -127,30 +126,33 @@ export const TONE_CLASS: Record<AgentTone, string> = {
 
 // ── status ─────────────────────────────────────────────────────────────
 
-/** The leads the host writes that the state's word already says:
- *  "Waiting on 3 subagents" under Watching, "Queued  120 of 120 running"
- *  under Queued (sessions.ts `watchLine`, scheduler.ts; the joiner is
- *  statusWords.ts's, read by `leadDetail` with the old dot). */
+/** The leads an old host's legacy activity carries that the state's word
+ *  already says: "Waiting on 3 subagents" under Watching, "Queued  120 of
+ *  120 running" under Queued (statusWords.ts `legacyDetail`, which reads the
+ *  old dot too). A current host sends the detail alone (`statusDetail`). */
 const LEADS: Partial<Record<ThreadState, string>> = {
   watching: "Waiting on",
   queued: "Queued",
 };
 
-/** The activity with the lead its state's word repeats taken off. */
-export function leadStripped(text: string, state: ThreadState): string {
+/** What a row's state is about: the host's `statusDetail` as written, else
+ *  an old host's legacy activity with the lead its word repeats taken off. */
+export function leadStripped(text: string, state: ThreadState, statusDetail?: string | null): string {
+  const host = detailText(statusDetail);
+  if (host) return host;
   const lead = LEADS[state];
-  return (lead && leadDetail(text, lead)) || text.trim();
+  return (lead && legacyDetail(text, lead)) || detailText(text) || "";
 }
 
 /** What a waiting agent asks: its open question's first line, else
- *  "approve <tool>" from the undecided approval. */
+ *  "Approve <tool>" from the undecided approval. */
 function waitingDetail(blocks: Block[]): string {
   for (let i = blocks.length - 1; i >= 0; i--) {
     const b = blocks[i];
     if (b.question) return firstLine(b.question.questions[0]?.question ?? "");
     if (b.approval && !b.approval.decided) {
       const title = b.tool?.title ?? b.tool?.name ?? "";
-      return title ? `approve ${firstLine(title)}` : "";
+      return title ? `Approve ${firstLine(title)}` : "";
     }
   }
   return "";
@@ -171,22 +173,25 @@ export type AgentStatus = {
  * `loadsTranscript` fetched it). A subagent's idle is done.
  */
 export function agentStatus(
-  meta: Pick<SessionMeta, "status" | "activity" | "failure">,
+  meta: Pick<SessionMeta, "status" | "activity" | "statusDetail" | "failure">,
   blocks: Block[] = [],
 ): AgentStatus {
   const state = threadStateOf(meta.status, { settled: true });
   const activity = meta.activity?.trim() ?? "";
   switch (state) {
     case "working":
-      return { state, detail: activity || (meta.status === "starting" ? "Starting" : "Thinking"), phrase: true };
+      return {
+        state,
+        detail: detailText(meta.statusDetail) || activity || (meta.status === "starting" ? "Starting" : "Thinking"),
+        phrase: true,
+      };
     case "watching":
     case "queued":
-      // A detail starts lower-case (docs/DESIGN.md); the working phrase leads its row and keeps its capital.
-      return { state, detail: lowerFirst(leadStripped(activity, state)) ?? "", phrase: false };
+      return { state, detail: leadStripped(activity, state, meta.statusDetail), phrase: false };
     case "waiting":
       return { state, detail: waitingDetail(blocks), phrase: false };
     case "failed":
-      return { state, detail: lowerFirst(meta.failure?.summary.trim() || lastErrorLine(blocks)) ?? "", phrase: false };
+      return { state, detail: detailText(meta.failure?.summary || lastErrorLine(blocks)) ?? "", phrase: false };
     default:
       return { state, detail: "", phrase: false };
   }

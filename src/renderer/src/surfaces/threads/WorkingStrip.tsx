@@ -46,6 +46,7 @@ export const WorkingStrip = memo(function WorkingStrip({
     treeHasPaused: !session.parentId && session.treeHasPaused,
     treeCanContinue: !session.parentId && session.treeCanContinue,
     activity: session.activity,
+    statusDetail: session.statusDetail,
     tasks: session.tasks,
     background: session.background,
   });

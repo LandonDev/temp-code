@@ -364,6 +364,8 @@ export type Session = {
   goal?: ThreadGoal | null;
   /** What a working thread is doing right now ("Editing Foo.tsx"). */
   activity?: string | null;
+  /** What the status word is about, as the host writes it ("Waiting for memory"); SessionMeta.statusDetail. */
+  statusDetail?: string | null;
   activityKind?: ActivityKind | null;
   /** What the thread waits on in the background (tasks, live subagents, a master's batch, the watching stretch). */
   background?: BackgroundWork | null;
