@@ -78,11 +78,63 @@ describe("appView", () => {
         call("spawn_agent", { agents: [{ task: "a" }, { task: "b" }, { task: "c" }] }, '{"agents":[{"agentId":"agent1"}]}'),
         titleOf,
       ),
-    ).toEqual({ label: "Spawned", detail: "3 agents", phrase: "spawned 3 subagents" });
+    ).toEqual({ label: "Spawned", detail: "3 agents", phrase: "spawned 3 agents" });
     expect(appView(call("send_to_agent", { agentId: "nope", message: "read @thread:thread1 first" }), titleOf)).toMatchObject({
       label: "Messaged",
       detail: "read @Auth rewrite first",
     });
     expect(appView(call("Bash", { command: "ls" }), titleOf)).toBeNull();
+  });
+  it("links a spawn to the child the host stamped on the call before its result lands", () => {
+    const running: Block = {
+      id: "b1",
+      role: "tool",
+      text: "spawn",
+      tool: { callId: "c1", name: "spawn_agent", input: { task: "x" }, status: "running", spawned: ["agent1"] },
+    };
+    expect(agentIdOf(running)).toBe("agent1");
+    expect(appView(running, titleOf)).toMatchObject({ label: "Spawning", detail: "Explorer", threadId: "agent1" });
+    expect(appView(running, titleOf, false)).toMatchObject({ label: "Spawned", phrase: "spawned “Explorer”" });
+  });
+  it("speaks a running wait in the present and a settled one in the past", () => {
+    const wait = call("wait_for_agent", { agentId: "agent1" });
+    expect(appView(wait, titleOf)).toMatchObject({ label: "Waited for", phrase: "waited for “Explorer”" });
+    expect(appView(wait, titleOf, true)).toMatchObject({ label: "Waiting for", phrase: "waiting for “Explorer”" });
+  });
+  it("names the app's own bookkeeping calls by what they did", () => {
+    expect(appView(call("mcp__app__update_notes", { section: "State", content: "x" }), titleOf)).toEqual({
+      label: "Updated",
+      detail: "the notes",
+      phrase: "updated the notes",
+    });
+    expect(appView(call("app.batch_rules", { steps: [] }), titleOf)).toEqual({
+      label: "Set",
+      detail: "the batch steps",
+      phrase: "set the batch steps",
+    });
+    expect(appView(call("mcp__app__merge_branch", { branch: "ui-3" }), titleOf)).toEqual({
+      label: "Merged",
+      detail: "ui-3",
+      phrase: "merged ui-3",
+    });
+    expect(appView(call("mcp__app__merge_branch", {}), titleOf, true)).toMatchObject({
+      label: "Merging",
+      detail: "the branch",
+    });
+    expect(appView(call("mcp__app__plan_complete", {}), titleOf)).toEqual({
+      label: "Marked",
+      detail: "the plan complete",
+      phrase: "marked the plan complete",
+    });
+    expect(appView(call("TaskCreate", { subject: "Wire the fold" }), titleOf)).toEqual({
+      label: "Added a task",
+      detail: "Wire the fold",
+      phrase: "added a task",
+    });
+    expect(appView(call("TaskUpdate", { taskId: "3", status: "completed" }), titleOf)).toEqual({
+      label: "Updated a task",
+      detail: "",
+      phrase: "updated a task",
+    });
   });
 });

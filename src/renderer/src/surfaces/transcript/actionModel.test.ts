@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Block } from "../../lib/session";
 import type { ToolKind } from "../../lib/toolPhrase";
+import { appView } from "../appTool";
 import { actionOf } from "./actionModel";
 import { GLYPH } from "./ToolGlyph";
 
@@ -147,5 +148,18 @@ describe("GLYPH", () => {
     for (const k of kinds) expect(GLYPH[k]).toBeTruthy();
     expect(GLYPH.delete).toBeTruthy();
     expect(GLYPH.app).toBeTruthy();
+  });
+
+  it("a spawn's row links to the child the host stamped on the call, before its result", () => {
+    const spawn = call("mcp__orchestrator__spawn_agent", { task: "x" }, { status: "running", spawned: ["k"] });
+    const view = appView(spawn, (id) => (id === "k" ? "Port the view" : undefined));
+    const a = actionOf(spawn, CWD, view);
+    expect(a).toMatchObject({ verb: "Spawning", object: "Port the view", threadId: "k", agent: true });
+  });
+
+  it("a todo update says how far the list is", () => {
+    const todos = [{ content: "a", status: "completed" }, { content: "b", status: "pending" }, { content: "c", status: "in_progress" }];
+    expect(actionOf(call("TodoWrite", { todos }), CWD)).toMatchObject({ verb: "Updated todos", object: "1/3" });
+    expect(actionOf(call("TodoWrite", {}), CWD).object).toBe("");
   });
 });

@@ -3,7 +3,7 @@ import { addonTitle } from "../../lib/addonNames";
 import type { Block } from "../../lib/session";
 import { useTitlesOf } from "../../lib/threadMentions";
 import { kindOf, toolPhraseParts, type ToolKind } from "../../lib/toolPhrase";
-import { inputOf } from "../../lib/toolDetails";
+import { inputOf, todoItems } from "../../lib/toolDetails";
 import { appThreadIds, appView, type AppView } from "../appTool";
 import { editModel, isEditBlock } from "../editModel";
 import { isAgentCall, mcpServerOf } from "../toolMarks";
@@ -117,6 +117,13 @@ export function actionOf(block: Block, cwd?: string, app: AppView | null = null,
 
   if (kind === "run") return { ...base, opens: "command" };
 
+  if (kind === "todo") {
+    // The row says how far the list is: "Updated todos  3/7"; its body is the list.
+    const items = todoItems(block);
+    const done = items.filter((t) => t.status === "completed").length;
+    return items.length ? { ...base, object: `${done}/${items.length}` } : base;
+  }
+
   if (kind === "read" || kind === "list") {
     const i = inputOf(block);
     const path =
@@ -139,5 +146,5 @@ export function actionOf(block: Block, cwd?: string, app: AppView | null = null,
 /** The row's action, kept current as the titles of the threads it names arrive. */
 export function useAction(block: Block, cwd?: string, live?: boolean): Action {
   const titleOf = useTitlesOf(appThreadIds(block));
-  return actionOf(block, cwd, appView(block, titleOf), live);
+  return actionOf(block, cwd, appView(block, titleOf, live), live);
 }

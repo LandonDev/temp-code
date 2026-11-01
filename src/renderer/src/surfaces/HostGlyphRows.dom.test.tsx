@@ -34,7 +34,7 @@ vi.mock("../lib/contextCache", async (importOriginal) => ({
 vi.mock("./AgentTranscript", () => ({ AgentTranscript: () => null }));
 
 import { AgentRow } from "./threads/fleet/AgentRow";
-import { AgentSpawnRow, hostOfAgentId } from "./AgentSpawnRow";
+import { AgentSpawnRow, hostOfAgentId, SpawnedAgentMarks } from "./AgentSpawnRow";
 import { InboxRow } from "./InboxView";
 
 const agent = (over: Partial<SessionMeta> = {}): SessionMeta =>
@@ -82,6 +82,14 @@ describe("the host glyph beside agents and Inbox items", () => {
     const far = render(<AgentSpawnRow block={{ agent: { id: "env_box:s9", title: "Far child" } } as never} />);
     expect(glyphOf(far.container)?.getAttribute("data-host-glyph")).toBe("env_box");
     expect(hostOfAgentId("plain-id")).toBeUndefined();
+  });
+
+  it("the spawn call's row carries its one child's host, a far child's from its host:id", () => {
+    h.metas.set("a1", agent({ environmentId: "local" }));
+    const known = render(<SpawnedAgentMarks id="a1" />);
+    expect(glyphOf(known.container)?.getAttribute("aria-label")).toBe("This Mac");
+    const far = render(<SpawnedAgentMarks id="env_box:s9" />);
+    expect(glyphOf(far.container)?.getAttribute("data-host-glyph")).toBe("env_box");
   });
 
   it("with one host nothing is drawn", () => {

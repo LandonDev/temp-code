@@ -6,11 +6,13 @@ import type { OpenFileFn } from "../../lib/search";
 import type { Block } from "../../lib/session";
 import { SelectSessionContext } from "../AgentMarkdown";
 import { useOpenAgentDetail } from "../agentDetailContext";
+import { SpawnedAgentMarks } from "../AgentSpawnRow";
 import { CallPortLink } from "../CallPortLink";
 import { FileRefMenu } from "../FileRefMenu";
 import { QuestionCard } from "../QuestionCard";
 import { ReconnectChip, SubagentSteps } from "../ToolChips";
 import { ToolDetails } from "../ToolDetails";
+import { inputOf } from "../../lib/toolDetails";
 import { useTranscriptHost } from "../transcriptSession";
 import { ActionLine } from "./ActionLine";
 import { CommandCard } from "./CommandCard";
@@ -123,14 +125,17 @@ function useThreadOpener(action: Action): (() => void) | undefined {
   return id && open ? () => open(id) : undefined;
 }
 
-/** The trailing slot, in its order: steps, the dev server it opened, reconnect. */
+/** The trailing slot, in its order: steps, the one child a spawn made (host, state), the dev server it opened, reconnect. */
 function Extras({ block }: { block: Block }) {
   const steps = block.tool?.subCount;
   const reauth = block.tool?.reauth;
+  // "Spawned 3 agents" has no one child to mark; a call that asked for one does.
+  const child = !Array.isArray(inputOf(block).agents) && block.tool?.spawned?.length === 1 ? block.tool.spawned[0] : null;
   if (!steps && !block.tool?.callId && !reauth) return null;
   return (
     <>
       <SubagentSteps count={steps} />
+      {child ? <SpawnedAgentMarks id={child} /> : null}
       <CallPortLink callId={block.tool?.callId} />
       {reauth ? <ReconnectChip reauth={reauth} /> : null}
     </>

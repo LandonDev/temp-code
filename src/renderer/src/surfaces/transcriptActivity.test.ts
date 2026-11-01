@@ -595,3 +595,82 @@ describe("thoughtEndTs", () => {
     expect(thoughtEndTs([thought("t")], 0)).toBeUndefined();
   });
 });
+
+describe("the host's steps fold into the run", () => {
+  const sys = (id: string, text: string, extra: Partial<Block> = {}): Block => ({ id, role: "system", text, ...extra });
+  const report = (id: string, status = "done") => sys(id, `Agent A: ${status}`, { agent: { id: "a", title: "A", status } });
+  const spawned = sys("sp", "Spawned agent k", { agent: { id: "k" } });
+  const gate = (ok: boolean) =>
+    sys(`g${ok}`, "Gate", { gate: { step: "gate", branch: "ui-3", ok, log: "", at: 0 } });
+  const review = (outcome: "pass" | "held" | "failed") =>
+    sys(`rv-${outcome}`, "Review", {
+      review: { runId: "r", provider: "codex", model: "m", outcome, branch: "b", target: "master", blocking: [], minor: [], merged: outcome !== "held", pushed: false },
+    });
+  const task = (status: "completed" | "failed" | "stopped") =>
+    sys(`t-${status}`, "lint", { task: { id: "t", label: "lint", status } });
+  const folding: Block[] = [
+    spawned,
+    report("rep"),
+    gate(true),
+    review("pass"),
+    task("completed"),
+    sys("chk", "Checking background tasks", { backgroundCheck: true }),
+    sys("pass", "Pass: Notes"),
+    sys("ho", "Implementation started: T", { planHandoff: { id: "x", title: "T", how: "auto" } }),
+    sys("bm", "Merged by the batch: ui-3", { notice: { kind: "batch" } }),
+    { id: "todo", role: "tool", text: "TodoWrite", tool: { name: "TodoWrite", status: "completed", input: { todos: [] } } },
+  ];
+
+  it("every folding kind joins the run between two calls", () => {
+    for (const step of folding) {
+      const items = groupTurnItems([shell("a"), step, shell("b")]);
+      expect(items.map((i) => i.type), step.id).toEqual(["activity"]);
+    }
+  });
+
+  it("what asks the person or ends the work stays a row of its own", () => {
+    const standing: Block[] = [
+      review("held"),
+      sys("err", "boom", { failure: { kind: "network", summary: "x", cause: "y" } as Block["failure"] }),
+      sys("stop", "turn ended: stopped", { stopped: true }),
+      sys("cmp", "Context compacted", { compaction: { phase: "done" } }),
+      sys("bd", "Batch done: 3 landed", { notice: { kind: "batch" } }),
+      sys("ag", "Account x is gone", { notice: { kind: "account-gone" } }),
+      sys("rs", "The host restarted during your turn"),
+      { id: "q", role: "tool", text: "Q", tool: { kind: "question", status: "running" }, question: { sessionId: "s", requestId: 1, questions: [] } },
+      shell("ap", "running", { requestId: 2 }),
+      {
+        id: "page",
+        role: "tool",
+        text: "html_render",
+        tool: { name: "mcp__app__html_render", status: "completed", detail: JSON.stringify({ htmlRender: { sessionId: "s", pageId: "p", title: "C", height: 1 } }) },
+      },
+    ];
+    for (const block of standing) {
+      const items = groupTurnItems([shell("a"), block, shell("b")]);
+      expect(items.map((i) => i.type), block.id).toEqual(["activity", "block", "activity"]);
+    }
+  });
+
+  it("a report at the head of a wake joins that wake's first run", () => {
+    const items = groupTurnItems([report("r1"), report("r2"), shell("a"), note("n", "Both landed."), shell("b")]);
+    expect(items.map((i) => i.type)).toEqual(["activity", "block", "activity"]);
+    expect(items[0].type === "activity" && items[0].blocks.map((b) => b.id)).toEqual(["r1", "r2", "a"]);
+  });
+
+  it("one report alone is lone; two steps make a line", () => {
+    expect(actionGroupOf([report("r")]).lone).toBe(true);
+    expect(actionGroupOf([report("r"), task("completed")]).lone).toBe(false);
+  });
+
+  it("counts a red gate, a review that failed to run, a failed report and a failed task", () => {
+    expect(actionGroupOf([gate(false), review("failed"), report("r", "error"), task("failed"), task("stopped"), gate(true)]).failed).toBe(4);
+  });
+
+  it("agent work leads with the agents kind", () => {
+    const spawn: Block = { id: "c", role: "tool", text: "spawn", tool: { name: "mcp__orchestrator__spawn_agent", status: "completed" } };
+    const wait: Block = { id: "w", role: "tool", text: "wait", tool: { name: "mcp__orchestrator__wait_for_agent", status: "completed" } };
+    expect(actionGroupOf([spawn, wait, report("r"), read("x")]).kind).toBe("agents");
+    expect(actionGroupOf([gate(true), task("completed")]).kind).toBe("other");
+  });
+});

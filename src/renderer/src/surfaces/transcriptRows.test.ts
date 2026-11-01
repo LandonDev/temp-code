@@ -76,6 +76,14 @@ describe("flattenTurns", () => {
     expect(estimateRowHeight(rows.find((r) => r.key === "r0")!)).toBe(32 * 2 + 4);
   });
 
+  it("counts the host's folded steps: a call and a report are one closed line", () => {
+    const report: Block = { id: "rp", role: "system", text: "Agent A: done", agent: { id: "a", title: "A", status: "done" } };
+    const { rows } = flattenTurns([[user("u0"), report, tool("t0"), reply("a0")]], false);
+    const run = rows.find((r) => r.key === "rp")!;
+    expect(run.kind === "item" && run.item.type).toBe("activity");
+    expect(estimateRowHeight(run)).toBe(32 + 4);
+  });
+
   it("estimates heights by what a row holds", () => {
     const { rows } = flattenTurns(
       [[user("u0", "one\ntwo"), tool("t0"), tool("t1"), tool("t2"), tool("t3"), reply("a0", "x".repeat(200) + "\n```ts\nconst a = 1\n```")]],

@@ -3,6 +3,7 @@ import { isAppshotPath, isInternalPath, memoryLabel } from "../lib/internalPath"
 import { threadMentionsToTitles, type TitleOf } from "../lib/threadMentions";
 import { inputOf, toolPathOf } from "../lib/toolDetails";
 import { hostOf } from "../lib/threads/researchBoard";
+import { isLive } from "../lib/toolPhrase";
 import { EDIT_TOOLS } from "./editModel";
 import { editPaths } from "./editCards";
 
@@ -27,17 +28,20 @@ export const AGENT_TOOLS = new Set([
   "answer_agent",
 ]);
 
-const AGENT_VERB: Record<string, string> = {
-  spawn_agent: "Spawned",
-  send_to_agent: "Messaged",
-  wait_for_agent: "Waited for",
-  interrupt_agent: "Stopped",
-  check_agent: "Checked",
-  answer_agent: "Answered",
+/** Each agent call's verb, settled and live. */
+const AGENT_VERB: Record<string, [past: string, live: string]> = {
+  spawn_agent: ["Spawned", "Spawning"],
+  send_to_agent: ["Messaged", "Messaging"],
+  wait_for_agent: ["Waited for", "Waiting for"],
+  interrupt_agent: ["Stopped", "Stopping"],
+  check_agent: ["Checked", "Checking"],
+  answer_agent: ["Answered", "Answering"],
 };
 
-/** The subagent this call is about — input arg, or the spawn result. */
+/** The subagent this call is about: the child the host stamped on the call, the input arg, or the spawn result. */
 export function agentIdOf(block: Block): string | null {
+  const spawned = block.tool?.spawned?.[0];
+  if (spawned) return spawned;
   const fromInput = str(inputOf(block).agentId);
   if (fromInput) return fromInput;
   const out = block.tool?.detail;
@@ -45,8 +49,10 @@ export function agentIdOf(block: Block): string | null {
   return m?.[1] ?? null;
 }
 
-export function appView(block: Block, titleOf: TitleOf): AppView | null {
+/** `live` speaks in the present ("Waiting for"); left out, the call's own state decides. */
+export function appView(block: Block, titleOf: TitleOf, live = isLive(block)): AppView | null {
   const name = block.tool?.name ?? "";
+  const tense = (past: string, now: string): string => (live ? now : past);
   const i = inputOf(block);
   if (isAppshotPath(toolPathOf(block))) {
     return { label: "Read", detail: "appshot", phrase: "read the appshot" };
@@ -62,12 +68,13 @@ export function appView(block: Block, titleOf: TitleOf): AppView | null {
   const short = shortName(name);
   if (short === "spawn_agent" && Array.isArray(i.agents) && i.agents.length > 1) {
     const n = i.agents.length;
-    return { label: "Spawned", detail: `${n} agents`, phrase: `spawned ${n} subagents` };
+    return { label: tense("Spawned", "Spawning"), detail: `${n} agents`, phrase: `${tense("spawned", "spawning")} ${n} agents` };
   }
   if (AGENT_TOOLS.has(short) || short === "Agent" || short === "Task") {
     const id = agentIdOf(block);
     const title = id ? titleOf(id) : undefined;
-    const verb = AGENT_VERB[short] ?? "Subagent";
+    const words = AGENT_VERB[short];
+    const verb = words ? tense(...words) : "Subagent";
     const task = trim(
       threadMentionsToTitles(str(i.description) || str(i.task) || str(i.prompt) || str(i.message), titleOf),
       48,
@@ -75,11 +82,37 @@ export function appView(block: Block, titleOf: TitleOf): AppView | null {
     return {
       label: verb,
       detail: title ?? task,
-      phrase: `${verb === "Subagent" ? "ran" : verb.toLowerCase()} ${title ? `“${trim(title, 24)}”` : "a subagent"}`,
+      phrase: `${verb === "Subagent" ? tense("ran", "running") : verb.toLowerCase()} ${title ? `“${trim(title, 24)}”` : "a subagent"}`,
       threadId: title && id ? id : undefined,
     };
   }
   switch (short) {
+    case "update_notes":
+      return { label: tense("Updated", "Updating"), detail: "the notes", phrase: `${tense("updated", "updating")} the notes` };
+    case "batch_rules":
+      return { label: tense("Set", "Setting"), detail: "the batch steps", phrase: `${tense("set", "setting")} the batch steps` };
+    case "merge_branch": {
+      const branch = str(i.branch);
+      return {
+        label: tense("Merged", "Merging"),
+        detail: branch || "the branch",
+        phrase: `${tense("merged", "merging")} ${branch ? trim(branch, 24) : "the branch"}`,
+      };
+    }
+    case "plan_complete":
+      return { label: tense("Marked", "Marking"), detail: "the plan complete", phrase: `${tense("marked", "marking")} the plan complete` };
+    case "TaskCreate":
+      return {
+        label: tense("Added a task", "Adding a task"),
+        detail: trim(str(i.subject), 48),
+        phrase: tense("added a task", "adding a task"),
+      };
+    case "TaskUpdate":
+      return {
+        label: tense("Updated a task", "Updating a task"),
+        detail: trim(str(i.subject), 48),
+        phrase: tense("updated a task", "updating a task"),
+      };
     case "list_agents":
       return { label: "Agents", detail: "listed", phrase: "listed the subagents" };
     case "app_list_threads":
@@ -112,7 +145,7 @@ export function appView(block: Block, titleOf: TitleOf): AppView | null {
       return {
         label: type ? `New ${type} thread` : "New thread",
         detail: title,
-        phrase: title ? `started thread “${trim(title, 24)}”` : "started a thread",
+        phrase: `${tense("started", "starting")} ${title ? `thread “${trim(title, 24)}”` : "a thread"}`,
       };
     }
     case "cite_source": {
@@ -138,7 +171,7 @@ export function appView(block: Block, titleOf: TitleOf): AppView | null {
 /** The thread ids a call's view could name — what a row subscribes to. */
 export function appThreadIds(block: Block): string[] {
   const i = inputOf(block);
-  const ids = [str(i.threadId), agentIdOf(block) ?? ""].filter(Boolean);
+  const ids = [str(i.threadId), agentIdOf(block) ?? "", ...(block.tool?.spawned ?? [])].filter(Boolean);
   const text = str(i.description) || str(i.task) || str(i.prompt) || str(i.message);
   for (const m of text.matchAll(/@thread:([\w-]{6,})/g)) ids.push(m[1]);
   return Array.from(new Set(ids));

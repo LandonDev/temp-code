@@ -1,13 +1,15 @@
 // A7 (turn structure): one run of actions, a line that opens into one list.
 import { useMemo } from "react";
-import { ChevronRight, Sparkles, type IconComponent } from "../../chrome/icons";
+import { Bot, ChevronRight, Sparkles, type IconComponent } from "../../chrome/icons";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
 import { TextShimmer } from "../../components/ui/text-shimmer";
 import type { Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { useLiveEdits } from "../../lib/tcserver/store";
+import { useTitlesOf } from "../../lib/threadMentions";
 import { useCountUp } from "../../motion/useCountUp";
 import { usePersistedOpen } from "../editOpenState";
+import { appThreadIds } from "../appTool";
 import { ReconnectChip, reauthOf } from "../ToolChips";
 import { useTranscriptSession } from "../transcriptSession";
 import {
@@ -25,8 +27,15 @@ import { Counts } from "./Counts";
 import { GLYPH } from "./ToolGlyph";
 import type { ApprovalHandler } from "./types";
 
-/** The line's glyph: the row glyph of the run's first call of its dominant kind, so a line and its rows show one icon per act. */
+/** The threads a step names: an app call's, a report's or a spawn row's agent. */
+function stepThreadIds(block: Block): string[] {
+  if (block.agent) return [block.agent.id];
+  return isToolBlock(block) ? appThreadIds(block) : [];
+}
+
+/** The line's glyph: the row glyph of the run's first call of its dominant kind, so a line and its rows show one icon per act; agent work leads with Bot. */
 function lineGlyph(blocks: Block[], kind: ActionGroupKind, cwd?: string): IconComponent {
+  if (kind === "agents") return Bot;
   const lead = blocks.find((b) => isToolBlock(b) && toolCategory(b) === kind);
   return lead ? GLYPH[actionOf(lead, cwd).glyph] : Sparkles;
 }
@@ -58,9 +67,14 @@ export function ActionGroup({
   const sessionId = useTranscriptSession() ?? "";
   // Only the live run reads the server's live diffs; a settled one has its counts.
   const liveEdits = useLiveEdits(live ? sessionId : "");
+  // The line names the threads its agent calls and reports are about; it re-words as their titles land.
+  const ids = useMemo(() => blocks.flatMap(stepThreadIds), [blocks]);
+  const titleOf = useTitlesOf(ids);
+  const titles = ids.map((id) => titleOf(id) ?? "").join("|");
   const group = useMemo(
-    () => actionGroupOf(blocks, { cwd, live, liveEdits: live ? liveEdits : undefined }),
-    [blocks, cwd, live, liveEdits],
+    () => actionGroupOf(blocks, { cwd, live, liveEdits: live ? liveEdits : undefined, titleOf }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `titles` is what changes when titleOf's answers do
+    [blocks, cwd, live, liveEdits, titleOf, titles],
   );
   const [saved, setSaved] = usePersistedOpen(`${sessionId}:a:${blocks[0]?.id}`);
   const adds = useCountUp(group.adds, live);

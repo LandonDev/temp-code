@@ -30,7 +30,8 @@ export function GateCard({ block }: { block: Block }) {
     >
       {foldable ? (
         <CollapsibleContent>
-          <pre className="mt-1 mb-2 min-w-0 overflow-x-auto whitespace-pre rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs leading-5 text-muted-foreground">
+          {/* Inside a group's list, already that card, the log draws no card of its own. */}
+          <pre className="mt-1 mb-2 min-w-0 overflow-x-auto whitespace-pre rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs leading-5 text-muted-foreground in-[.bg-card]:rounded-none in-[.bg-card]:border-0 in-[.bg-card]:bg-transparent in-[.bg-card]:px-0">
             {gate.log}
           </pre>
         </CollapsibleContent>

@@ -1,22 +1,29 @@
 import type { Block } from "./session";
 import { displayPath, projectName } from "./paths";
-import { isLive, isRefused, kindOf, pathOf, runClauses, toolPhrase } from "./toolPhrase";
+import { isLive, isRefused, kindOf, pathOf, runClauses, shortName, toolPhrase } from "./toolPhrase";
 import { editModel, isEditBlock } from "../surfaces/editModel";
 import { splitEditCards } from "../surfaces/editCards";
+import { agentIdOf, appView } from "../surfaces/appTool";
+import type { TitleOf } from "./threadMentions";
 
 /**
- * One line for a run of calls, the group line's words: "Created diag.ts,
- * ran a command". Like calls in a row fold into one phrase (reads by folder,
- * edits by verb, commands and searches by count); phrases join with ", ",
- * the first capitalized, at most three, then " and N more". The line names
- * files by basename; each row under it carries the path. Failures are the
- * line's own red figure, never words here.
+ * One line for a run of steps, the group line's words: "Created diag.ts,
+ * ran a command", "Spawned “Port the view”, waited for “Port the view”,
+ * heard from “Port the view”". Like steps in a row fold into one phrase
+ * (reads by folder, edits by verb, commands and searches by count, agent
+ * calls by agent, reports and finished tasks by count); app calls speak
+ * through appView, the host's steps (gate, review, pass, check, hand-off)
+ * in their own words. Phrases join with ", ", the first capitalized, at most
+ * three, then " and N more". The line names files by basename; each row
+ * under it carries the path. Failures are the line's own red figure, never
+ * words here.
  */
 
 const MAX_PHRASES = 3;
 
 const trim = (s: string, n = 48): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const lower = (s: string): string => s.charAt(0).toLowerCase() + s.slice(1);
+const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 const basename = (p: string): string => p.replace(/\/+$/, "").split("/").pop() || p;
 
 /** Shared folder of a set of cwd-relative paths, "" at the project root. */
@@ -75,9 +82,33 @@ function editsPhrases(edits: { verb: EditVerb; path: string }[], live: boolean):
   });
 }
 
-type Stretch = "read" | "edit" | "run" | "search" | "other";
+type Stretch = "read" | "edit" | "run" | "search" | "report" | "task" | `app:${string}` | "other";
+
+/** App calls whose stretch folds into one count: the plural, settled and live. */
+const COUNTED: Record<string, [past: string, live: string]> = {
+  spawn_agent: ["spawned # agents", "spawning # agents"],
+  app_start_thread: ["started # threads", "starting # threads"],
+  send_to_agent: ["messaged # agents", "messaging # agents"],
+  wait_for_agent: ["waited for # agents", "waiting for # agents"],
+  check_agent: ["checked # agents", "checking # agents"],
+  answer_agent: ["answered # agents", "answering # agents"],
+  interrupt_agent: ["stopped # agents", "stopping # agents"],
+  merge_branch: ["merged # branches", "merging # branches"],
+  TaskCreate: ["added # tasks", "adding # tasks"],
+  TaskUpdate: ["updated # tasks", "updating # tasks"],
+};
+
+const noTitles: TitleOf = () => undefined;
 
 function stretchOf(block: Block): Stretch {
+  if (block.role === "system") {
+    if (block.agent?.status !== undefined) return "report";
+    if (block.agent) return "app:spawn_agent";
+    if (block.task) return "task";
+    return "other";
+  }
+  const short = shortName(block.tool?.name ?? "");
+  if (COUNTED[short]) return `app:${short}`;
   const kind = kindOf(block);
   if (kind === "read" && pathOf(block)) return "read";
   if (isEditBlock(block) || ((kind === "edit" || kind === "write" || kind === "patch") && pathOf(block)))
@@ -87,8 +118,81 @@ function stretchOf(block: Block): Stretch {
   return "other";
 }
 
-/** The words for a stretch of like calls. */
-function stretchPhrases(stretch: Stretch, blocks: Block[], cwd: string | undefined, live: boolean): string[] {
+/** What one stretch step is about, for counting distinct targets: the agent, the branch, else the step itself. */
+function targetsOf(block: Block): string[] {
+  if (block.role === "system") return [block.agent?.id ?? block.id];
+  const short = shortName(block.tool?.name ?? "");
+  if (short === "spawn_agent") {
+    const agents = (block.tool?.input as { agents?: unknown } | undefined)?.agents;
+    const n = Array.isArray(agents) ? Math.max(1, agents.length) : 1;
+    return Array.from({ length: n }, (_, i) => `${block.id}:${i}`);
+  }
+  if (short === "merge_branch") return [String((block.tool?.input as { branch?: unknown } | undefined)?.branch ?? block.id)];
+  if (short === "TaskCreate" || short === "TaskUpdate") return [block.id];
+  return [agentIdOf(block) ?? block.id];
+}
+
+const quoted = (title: string): string => `“${trim(title, 24)}”`;
+
+/** A report's words: the agent by title, the master's batch as the batch. */
+function reportPhrase(block: Block, titleOf: TitleOf): string {
+  const agent = block.agent!;
+  if (agent.batch) return "heard from the batch";
+  const title = titleOf(agent.id) || agent.title;
+  return `heard from ${title ? quoted(title) : "a subagent"}`;
+}
+
+const TASK_WORD: Record<NonNullable<Block["task"]>["status"], string> = {
+  completed: "finished",
+  failed: "failed",
+  stopped: "stopped",
+};
+
+const REVIEW_WORDS: Record<string, string> = {
+  pass: "review passed",
+  held: "review held the merge",
+  timeout: "review timed out",
+  failed: "review failed to run",
+  "merged-anyway": "merged anyway",
+  skipped: "merged without review",
+};
+
+/** A host step on its own: a gate, a review, a pass, a check, a hand-off, a batch merge. */
+function hostPhrase(block: Block): string {
+  if (block.gate) {
+    const step = block.gate.step;
+    return block.gate.ok ? `${step} passed` : `${step} failed on ${block.gate.branch}`;
+  }
+  if (block.review) return REVIEW_WORDS[block.review.outcome] ?? "reviewed";
+  if (block.backgroundCheck) return "checked background tasks";
+  if (block.planHandoff) return "started the build";
+  if (block.notice?.kind === "batch") return "merged by the batch";
+  if (/^Pass:/.test(block.text)) return "ran the pass";
+  return "";
+}
+
+/** One step's words in an "other" stretch, or a stretch of one. */
+function stepPhrase(block: Block, cwd: string | undefined, live: boolean, titleOf: TitleOf): string {
+  if (block.role === "system") {
+    if (block.agent?.status !== undefined) return reportPhrase(block, titleOf);
+    if (block.agent) {
+      const title = titleOf(block.agent.id) || block.agent.title;
+      return `spawned ${title ? quoted(title) : "a subagent"}`;
+    }
+    if (block.task) return `${trim(block.task.label, 24)} ${TASK_WORD[block.task.status]}`;
+    return hostPhrase(block);
+  }
+  return appView(block, titleOf, live)?.phrase ?? toolPhrase(block, cwd, live);
+}
+
+/** The words for a stretch of like steps. */
+function stretchPhrases(
+  stretch: Stretch,
+  blocks: Block[],
+  cwd: string | undefined,
+  live: boolean,
+  titleOf: TitleOf,
+): string[] {
   switch (stretch) {
     case "read":
       return [readsPhrase([...new Set(blocks.map(pathOf))], cwd, live)];
@@ -109,18 +213,37 @@ function stretchPhrases(stretch: Stretch, blocks: Block[], cwd: string | undefin
     case "search":
       if (blocks.length === 1) return [toolPhrase(blocks[0], cwd, live)];
       return [`${live ? "Running" : "Ran"} ${blocks.length} searches`];
-    default:
-      return blocks.map((b) => toolPhrase(b, cwd, live));
+    case "report": {
+      const batch = blocks.filter((b) => b.agent?.batch);
+      const agents = new Set(blocks.filter((b) => !b.agent?.batch).map((b) => b.agent!.id));
+      const out = batch.length ? ["heard from the batch"] : [];
+      if (agents.size === 1) out.push(reportPhrase(blocks.find((b) => !b.agent?.batch)!, titleOf));
+      else if (agents.size > 1) out.push(`heard from ${agents.size} agents`);
+      return out;
+    }
+    case "task":
+      if (blocks.length === 1) return [stepPhrase(blocks[0], cwd, live, titleOf)];
+      return [`${blocks.length} tasks finished`];
+    case "other":
+      return blocks.map((b) => stepPhrase(b, cwd, live, titleOf));
+    default: {
+      const words = COUNTED[stretch.slice(4)];
+      const targets = new Set(blocks.flatMap(targetsOf));
+      if (targets.size <= 1 || !words) return blocks.map((b) => stepPhrase(b, cwd, live, titleOf));
+      return [words[live ? 1 : 0].replace("#", String(targets.size))];
+    }
   }
 }
 
 /**
  * The group line's phrase. `live` puts every phrase in the present tense;
- * left out, the run is live while any call in it still runs.
+ * left out, the run is live while any call in it still runs. `titleOf`
+ * names the threads the agent calls and reports are about.
  */
-export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean): string {
+export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean, titleOf: TitleOf = noTitles): string {
   const all = blocks.filter((b) => b.role === "tool" || b.role === "approval");
-  if (all.length === 0) return "";
+  const host = blocks.filter((b) => b.role === "system");
+  if (all.length === 0 && host.length === 0) return "";
   const running = live ?? all.some(isLive);
   const phrases: string[] = [];
   const push = (p: string): void => {
@@ -129,17 +252,17 @@ export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean): stri
   // A refused call never ran: the words say what ran, and the line's red
   // figure counts the refusals. A run refused whole reads as what it asked
   // to do, each call in its plain verb ("Create notes.txt").
-  const tools = all.filter((b) => !isRefused(b));
-  if (tools.length === 0) {
+  const steps = blocks.filter((b) => b.role === "system" || ((b.role === "tool" || b.role === "approval") && !isRefused(b)));
+  if (host.length === 0 && steps.length === 0) {
     all.forEach((b) => push(toolPhrase(b, cwd, false)));
   }
   let stretch: Stretch | null = null;
   let run: Block[] = [];
   const flush = (): void => {
-    if (stretch) stretchPhrases(stretch, run, cwd, running).forEach(push);
+    if (stretch) stretchPhrases(stretch, run, cwd, running, titleOf).forEach(push);
     run = [];
   };
-  for (const b of tools) {
+  for (const b of steps) {
     const s = stretchOf(b);
     if (s !== stretch || s === "other") {
       flush();
@@ -151,7 +274,7 @@ export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean): stri
   if (phrases.length === 0) {
     return running ? "Working" : `Ran ${all.length} ${all.length === 1 ? "tool" : "tools"}`;
   }
-  const shown = phrases.slice(0, MAX_PHRASES).map((p, i) => trim(i === 0 ? p : lower(p)));
+  const shown = phrases.slice(0, MAX_PHRASES).map((p, i) => trim(i === 0 ? cap(p) : lower(p)));
   const extra = phrases.length - MAX_PHRASES;
   return shown.join(", ") + (extra > 0 ? ` and ${extra} more` : "");
 }

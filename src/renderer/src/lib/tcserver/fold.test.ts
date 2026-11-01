@@ -299,7 +299,7 @@ describe("foldEvent", () => {
     expect(s.busy).toBe(false);
   });
 
-  it("watching closes the turn without busy, and a settled task adds no row", () => {
+  it("watching closes the turn without busy, and a settled task is one step block", () => {
     let s = foldAll(rows([{ type: "user-text", text: "run it in the background" }]), CWD);
     expect(s.busy).toBe(true);
     s = step(s, { type: "background-tasks", tasks: ["upload the build"] });
@@ -309,9 +309,38 @@ describe("foldEvent", () => {
     expect(s.thread.turnOpen).toBe(false);
     const before = s.blocks.length;
     s = step(s, { type: "background-task", taskId: "t1", description: "upload the build", status: "completed" });
-    expect(s.blocks).toHaveLength(before);
+    expect(s.blocks).toHaveLength(before + 1);
+    expect(s.blocks.at(-1)).toMatchObject({
+      role: "system",
+      task: { id: "t1", label: "upload the build", status: "completed" },
+    });
     s = step(s, { type: "status", status: "running" });
     expect(s.busy).toBe(true);
+  });
+
+  it("a failed task keeps its status; the live set makes no block", () => {
+    const s = foldAll(
+      rows([
+        { type: "background-tasks", tasks: ["lint"], items: [] },
+        { type: "background-task", taskId: "t9", description: "gradle build", status: "failed" },
+      ]),
+      CWD,
+    );
+    expect(s.blocks).toHaveLength(1);
+    expect(s.blocks[0].task).toEqual({ id: "t9", label: "gradle build", status: "failed" });
+  });
+
+  it("the check on idle background tasks is stamped as a step", () => {
+    const s = foldAll(
+      rows([
+        { type: "user-text", text: "go" },
+        { type: "status", status: "running", detail: "Checking background tasks" },
+        { type: "status", status: "running", detail: "Something else" },
+      ]),
+      CWD,
+    );
+    expect(s.blocks[1]).toMatchObject({ role: "system", text: "Checking background tasks", backgroundCheck: true });
+    expect(s.blocks[2].backgroundCheck).toBeUndefined();
   });
 
   it("errors append a system line, stopped clears busy, errors-cleared drops them", () => {
@@ -859,6 +888,67 @@ describe("M6c: compaction, agent and nested-step metadata", () => {
     );
     expect(s.blocks[0].agent).toEqual({ id: "k" });
     expect(s.blocks[1].agent).toEqual({ id: "k", title: "Explorer", status: "done" });
+  });
+
+  describe("a spawn lands on the call that asked for it", () => {
+    const spawnCall = (callId: string, name = "mcp__orchestrator__spawn_agent", input: unknown = { task: "port it" }): AgentEvent => ({
+      type: "tool-call",
+      callId,
+      name,
+      input,
+    });
+
+    it("one child: the call holds it and no row is added", () => {
+      const s = foldAll(rows([{ type: "user-text", text: "go" }, spawnCall("c1"), { type: "agent-spawned", childSessionId: "k" }]), CWD);
+      expect(s.blocks.map((b) => b.role)).toEqual(["user", "tool"]);
+      expect(s.blocks[1].tool?.spawned).toEqual(["k"]);
+      expect(s.thread.agents).toEqual(["k"]);
+    });
+
+    it("a call that asked for three takes three, the next spawn goes to the newer call", () => {
+      const s = foldAll(
+        rows([
+          { type: "user-text", text: "go" },
+          spawnCall("c1", "mcp__orchestrator__spawn_agent", { agents: [{ task: "a" }, { task: "b" }, { task: "c" }] }),
+          { type: "agent-spawned", childSessionId: "a" },
+          { type: "agent-spawned", childSessionId: "b" },
+          { type: "agent-spawned", childSessionId: "c" },
+          spawnCall("c2"),
+          { type: "agent-spawned", childSessionId: "d" },
+        ]),
+        CWD,
+      );
+      expect(s.blocks.filter((b) => b.role === "system")).toHaveLength(0);
+      expect(s.blocks.find((b) => b.tool?.callId === "c1")?.tool?.spawned).toEqual(["a", "b", "c"]);
+      expect(s.blocks.find((b) => b.tool?.callId === "c2")?.tool?.spawned).toEqual(["d"]);
+    });
+
+    it("codex's app.spawn_agent matches by its short name", () => {
+      const s = foldAll(rows([spawnCall("c1", "app.spawn_agent"), { type: "agent-spawned", childSessionId: "k" }]), CWD);
+      expect(s.blocks).toHaveLength(1);
+      expect(s.blocks[0].tool?.spawned).toEqual(["k"]);
+    });
+
+    it("with no call in the turn the spawn keeps its row", () => {
+      const s = foldAll(
+        rows([spawnCall("old"), { type: "user-text", text: "next" }, { type: "agent-spawned", childSessionId: "k" }]),
+        CWD,
+      );
+      expect(s.blocks.find((b) => b.tool?.callId === "old")?.tool?.spawned).toBeUndefined();
+      expect(s.blocks.at(-1)).toMatchObject({ role: "system", agent: { id: "k" } });
+    });
+
+    it("a repeated event changes nothing", () => {
+      const once = foldAll(rows([spawnCall("c1"), { type: "agent-spawned", childSessionId: "k" }]), CWD);
+      const twice = step(once, { type: "agent-spawned", childSessionId: "k" });
+      expect(twice.blocks).toBe(once.blocks);
+    });
+
+    it("a child on another host is named host:id, as the call's result names it", () => {
+      const s = foldAll(rows([spawnCall("c1"), { type: "agent-spawned", childSessionId: "k", environmentId: "env_box" }]), CWD);
+      expect(s.blocks[0].tool?.spawned).toEqual(["env_box:k"]);
+      expect(s.thread.agents).toEqual(["k"]);
+    });
   });
 
   it("nested steps carry their parent and count on the spawning call", () => {

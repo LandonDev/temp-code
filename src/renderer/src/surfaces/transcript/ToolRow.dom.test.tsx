@@ -217,7 +217,7 @@ describe("ActionRow", () => {
   });
 
 
-  it("a spawn row opens its agent and says where it stands", () => {
+  it("a report row is heard from: it opens its agent and says where it stands", () => {
     const onSelect = vi.fn();
     const block = { id: "sp", role: "system", text: "", agent: { id: "a1", title: "Port the view", status: "error" } } as Block;
     const { getByRole, getByText } = render(
@@ -225,9 +225,42 @@ describe("ActionRow", () => {
         <AgentSpawnRow block={block} />
       </SelectSessionContext.Provider>,
     );
-    expect(getByText("Reported").className).toContain("text-muted-foreground");
+    expect(getByText("Heard from").className).toContain("text-muted-foreground");
     expect(getByText("Failed")).toBeTruthy();
-    fireEvent.click(getByRole("button", { name: "Reported Port the view" }));
+    fireEvent.click(getByRole("button", { name: "Heard from Port the view" }));
     expect(onSelect).toHaveBeenCalledWith("a1");
+  });
+
+  it("the batch's own report reads as the batch and opens nothing", () => {
+    const onSelect = vi.fn();
+    const block = { id: "b", role: "system", text: "", agent: { id: "self", title: "Batch", status: "done", batch: true } } as Block;
+    const { container, queryByRole } = render(
+      <SelectSessionContext.Provider value={onSelect}>
+        <AgentSpawnRow block={block} />
+      </SelectSessionContext.Provider>,
+    );
+    expect(container.textContent).toContain("Heard from");
+    expect(container.textContent).toContain("the batch");
+    expect(queryByRole("button", { name: "Heard from the batch" })).toBeNull();
+  });
+
+  it("a spawn call links its one child; one asking for three counts them", () => {
+    const one = call("mcp__orchestrator__spawn_agent", { task: "x" }, { spawned: ["t1"] });
+    const { container, unmount } = render(<ActionRow block={one} />);
+    expect(container.textContent).toContain("Spawned");
+    expect(container.textContent).toContain("Auth rewrite");
+    unmount();
+    const many = call("mcp__orchestrator__spawn_agent", { agents: [{}, {}, {}] }, { spawned: ["t1"] });
+    const r = render(<ActionRow block={many} />);
+    expect(r.container.textContent).toContain("3 agents");
+  });
+
+  it("a finished background task is a step that opens nothing", () => {
+    const block = { id: "t", role: "system", text: "lint", task: { id: "t", label: "lint", status: "failed" } } as Block;
+    const { container, queryByRole } = render(<ActivityRow block={block} />);
+    expect(container.textContent).toContain("Task failed");
+    expect(container.textContent).toContain("lint");
+    expect(container.querySelector('[data-state="failed"]')).not.toBeNull();
+    expect(queryByRole("button", { name: /Task failed/ })).toBeNull();
   });
 });

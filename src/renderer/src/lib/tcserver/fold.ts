@@ -18,6 +18,8 @@ import {
 } from "../harness/toolBlock";
 import type { EventRow, ServerAttachment } from "./types";
 import { isOmittedBody } from "@server/shared/wire";
+import { BACKGROUND_CHECK_WORDS } from "@server/shared/statusWords";
+import { shortName } from "../toolPhrase";
 import type { ToolPreview } from "../session";
 import {
   applyTaskResult,
@@ -172,6 +174,36 @@ function withAgent(blocks: Block[], agent: NonNullable<Block["agent"]>): Block[]
   if (last?.role !== "system" || last.agent?.id === agent.id) return blocks;
   const next = blocks.slice();
   next[next.length - 1] = { ...last, agent };
+  return next;
+}
+
+/** How many children a spawn_agent call asked for: its `agents` list, else one. */
+function spawnsAskedFor(tool: NonNullable<Block["tool"]>): number {
+  const input = asRecord(tool.input ?? tool.partialInput);
+  return Array.isArray(input?.agents) ? Math.max(1, input.agents.length) : 1;
+}
+
+/**
+ * The host spawned a child: the call that asked for it gains the id, so the
+ * call's row is the one row of the spawn. The newest spawn_agent call of
+ * the turn with room left takes it; a repeat changes nothing. Null when no
+ * call in the turn asked (an older log): the caller appends a row instead.
+ */
+function stampSpawn(blocks: Block[], id: string): Block[] | null {
+  let start = blocks.length;
+  while (start > 0 && blocks[start - 1].role !== "user") start--;
+  let target = -1;
+  for (let i = blocks.length - 1; i >= start; i--) {
+    const tool = blocks[i].tool;
+    if (!tool?.name || shortName(tool.name) !== "spawn_agent") continue;
+    const spawned = tool.spawned ?? [];
+    if (spawned.includes(id)) return blocks;
+    if (target < 0 && spawned.length < spawnsAskedFor(tool)) target = i;
+  }
+  if (target < 0) return null;
+  const next = blocks.slice();
+  const b = next[target];
+  next[target] = { ...b, tool: { ...b.tool, spawned: [...(b.tool?.spawned ?? []), id] } };
   return next;
 }
 
@@ -566,7 +598,12 @@ export function foldEvent(
       }
       // "awaiting approval"/"awaiting answer" already show as cards.
       if (e.detail && e.status !== "waiting") {
+        const before = blocks;
         blocks = appendStatusBlock(blocks, e.detail, fresh("s"));
+        // The check on idle background tasks is a step of the work, not a row.
+        if (blocks !== before && e.detail === BACKGROUND_CHECK_WORDS) {
+          blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], backgroundCheck: true };
+        }
       }
       break;
     }
@@ -682,11 +719,29 @@ export function foldEvent(
       break;
     case "agent-report":
       blocks = appendStatusBlock(blocks, `Agent ${e.title}: ${e.status}`, fresh("s"));
-      blocks = withAgent(blocks, { id: e.agentId, title: e.title, status: e.status });
+      // The batch's own report names the master itself: it reads as the batch and links nowhere.
+      blocks = withAgent(blocks, {
+        id: e.agentId,
+        title: e.title,
+        status: e.status,
+        ...(e.agentId === row.sessionId ? { batch: true } : {}),
+      });
       break;
     case "background-task":
+      // A task that settled is a step of the run it woke (the driver never
+      // emits one for ambient housekeeping); live work is the Activity section.
+      blocks = [
+        ...sealLastStream(blocks),
+        {
+          id: fresh("t"),
+          role: "system",
+          text: e.description,
+          task: { id: e.taskId, label: e.description, status: e.status },
+        },
+      ];
+      break;
     case "background-tasks":
-      // No row: live work is the right panel's Activity section, its settle the wake turn.
+      // No row: the live set is the right panel's Activity section.
       break;
     case "plan-handoff": {
       // The plan's quiet record of its build: a row that links to the thread.
@@ -698,14 +753,23 @@ export function foldEvent(
       }
       break;
     }
-    case "agent-spawned":
-      blocks = appendStatusBlock(blocks, `Spawned agent ${e.childSessionId}`, fresh("s"));
-      blocks = withAgent(blocks, { id: e.childSessionId });
+    case "agent-spawned": {
+      // On the call, a child on another host is named as the call's result
+      // names it (`<env>:<id>`); the fallback row keeps the id the store knows.
+      const id = e.environmentId ? `${e.environmentId}:${e.childSessionId}` : e.childSessionId;
+      const stamped = stampSpawn(blocks, id);
+      if (stamped) {
+        blocks = stamped;
+      } else {
+        blocks = appendStatusBlock(blocks, `Spawned agent ${e.childSessionId}`, fresh("s"));
+        blocks = withAgent(blocks, { id: e.childSessionId });
+      }
       if (!thread.agents.includes(e.childSessionId)) {
         const t = th();
         t.agents = [...t.agents, e.childSessionId];
       }
       break;
+    }
     case "goal":
       blocks = appendStatusBlock(blocks, `Goal ${e.phase}: ${e.condition}`, fresh("s"));
       break;

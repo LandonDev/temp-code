@@ -157,6 +157,8 @@ export type Block = {
     parentCallId?: string;
     /** Steps a spawned subagent ran under this call so far. */
     subCount?: number;
+    /** A spawn_agent call: the children the host said it spawned (`agent-spawned`), in order. */
+    spawned?: string[];
     /** Remote profile: rows of this block whose large bodies stayed on the
      *  server, fetched when the row opens (`sessionStore.loadRowBodies`)
      *  and gone once the block is whole. `bytes` is what waits there. */
@@ -164,8 +166,13 @@ export type Block = {
   };
   /** A compaction system row: its lifecycle so the card can show progress and outcome. */
   compaction?: CompactionMeta;
-  /** A spawned-agent system row: the child the row stands for. */
-  agent?: { id: string; title?: string; status?: string };
+  /** A spawned-agent or report system row: the child the row stands for
+   *  (`status` on a report; `batch` when the master's batch reported). */
+  agent?: { id: string; title?: string; status?: string; batch?: boolean };
+  /** A background task that settled (`background-task`): a step of the run, never a row. */
+  task?: { id: string; label: string; status: "completed" | "failed" | "stopped" };
+  /** The harness checking on its background tasks: a step of the run. */
+  backgroundCheck?: boolean;
   /** A plan-handoff system row: the build thread started from this plan. */
   planHandoff?: { id: string; title: string; how: "auto" | "manual" };
   /** A merge-review row (shared/review.ts): the outcome card. `resolved`

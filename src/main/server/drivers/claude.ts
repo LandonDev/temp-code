@@ -16,6 +16,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { nativeImage } from 'electron'
 import type { Attachment, BackgroundTask, BackgroundTaskKind, PermissionPolicy } from '@shared/events'
+import { BACKGROUND_CHECK_WORDS } from '@shared/statusWords'
 import { limitField } from '../limitText'
 import { currentLag } from '../stalls'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
@@ -597,7 +598,7 @@ export function checkForgottenTasks(ctx: DriverCtx, state: StreamState): void {
   clearSettle(state)
   state.working = true
   state.watching = false
-  ctx.emit({ type: 'status', status: 'running', detail: 'Checking background tasks' })
+  ctx.emit({ type: 'status', status: 'running', detail: BACKGROUND_CHECK_WORDS })
   const lines = stale.map(
     ([id, description]) => `- ${id} — ${description} (started ${ago(now - (state.since.get(id) ?? now))})`
   )

@@ -4,16 +4,22 @@ import type { OpenFileFn } from "../../lib/search";
 import { EditRow } from "../EditRow";
 import { splitEditCards } from "../editCards";
 import { isEditBlock } from "../editModel";
-import { isThinkingBlock } from "../transcriptActivity";
+import { isFoldedStep, isThinkingBlock } from "../transcriptActivity";
+import { StatusMark, type ThreadState } from "../../components/ui/status";
+import { ActionLine } from "./ActionLine";
+import { NoticeLine } from "./NoticeLine";
+import { SystemRow } from "./SystemRow";
 import { ActivityThinkingRow } from "./ThinkingRow";
 import { ApprovalCard } from "./ApprovalCard";
 import { ActionRow } from "./ActionRow";
 import type { ApprovalHandler } from "./types";
 
 /**
- * One step of the agent's work, a tool call or a thought: each file an edit
- * changed as its own edit row, any other call as one action row. Every row
- * looks the same wherever the group puts it.
+ * One step of the agent's work, a tool call, a thought or a step the host
+ * wrote (a report, a gate, a finished task): each file an edit changed as
+ * its own edit row, any other call as one action row, a host step as the
+ * line it draws on its own. Every row looks the same wherever the group
+ * puts it.
  */
 export function ActivityRow({
   block,
@@ -35,6 +41,11 @@ export function ActivityRow({
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path: string) => void;
 }) {
+  if (isFoldedStep(block)) {
+    if (block.task) return <TaskStepRow task={block.task} />;
+    if (block.backgroundCheck) return <NoticeLine lead="Checked background tasks" />;
+    return <SystemRow block={block} cwd={cwd} onOpenFile={onOpenFile} />;
+  }
   if (isThinkingBlock(block)) {
     return (
       <ActivityThinkingRow block={block} cwd={cwd} expandable={expanded} endTs={endTs} onOpenFile={onOpenFile} />
@@ -54,4 +65,24 @@ export function ActivityRow({
     );
   }
   return <ActionRow block={block} cwd={cwd} onApproval={onApproval} onOpenFile={onOpenFile} />;
+}
+
+const TASK_STEP: Record<NonNullable<Block["task"]>["status"], { state: ThreadState; verb: string }> = {
+  completed: { state: "done", verb: "Task finished" },
+  failed: { state: "failed", verb: "Task failed" },
+  stopped: { state: "stopped", verb: "Task stopped" },
+};
+
+/** A background task that settled: its state's glyph, what happened, the model's label. Opens nothing. */
+export function TaskStepRow({ task }: { task: NonNullable<Block["task"]> }) {
+  const { state, verb } = TASK_STEP[task.status];
+  return (
+    <ActionLine
+      glyph={<StatusMark state={state} word={false} />}
+      verb={verb}
+      object={task.label}
+      title={task.label}
+      label={`${verb} ${task.label}`}
+    />
+  );
 }

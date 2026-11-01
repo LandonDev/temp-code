@@ -27,9 +27,12 @@ function stateOf(status: string | undefined): ThreadState | null {
 }
 
 /**
- * A spawned agent as one action line: its provider, Spawned or Reported, its
- * title, its host's glyph, where it stands. The line opens its transcript in
- * this pane's detail panel; a report row says the state it reported.
+ * A subagent as one action line: its provider, Heard from (a report) or
+ * Spawned (an older log's spawn with no call to stand on), its title, its
+ * host's glyph, where it stands. The line opens its transcript in this
+ * pane's detail panel; a report says the state it reported. The batch's
+ * own report reads "Heard from the batch" and opens nothing: it names this
+ * thread.
  */
 export function AgentSpawnRow({ block }: { block: Block }) {
   const agent = block.agent;
@@ -37,16 +40,16 @@ export function AgentSpawnRow({ block }: { block: Block }) {
   const openDetail = useOpenAgentDetail();
   const onSelectSession = useContext(SelectSessionContext);
   if (!agent) return null;
-  const title = meta?.title || agent.title || "Subagent";
   const report = agent.status !== undefined;
+  const title = agent.batch ? "the batch" : meta?.title || agent.title || "Subagent";
   const state = stateOf(report ? agent.status : meta?.status);
-  const open = openDetail ?? onSelectSession;
-  const verb = report ? "Reported" : "Spawned";
+  const open = agent.batch ? undefined : (openDetail ?? onSelectSession);
+  const verb = report ? "Heard from" : "Spawned";
   return (
     <ActionLine
       glyph={
         <span className="grid size-3.5 shrink-0 place-items-center text-muted-foreground">
-          {meta ? <ProviderMark harness={meta.provider} /> : <Bot className="size-3.5" strokeWidth={1.5} />}
+          {meta && !agent.batch ? <ProviderMark harness={meta.provider} /> : <Bot className="size-3.5" strokeWidth={1.5} />}
         </span>
       }
       verb={verb}
@@ -55,10 +58,22 @@ export function AgentSpawnRow({ block }: { block: Block }) {
       onActivate={open ? () => open(agent.id) : undefined}
       trailing={
         <>
-          <HostGlyph environmentId={meta?.environmentId ?? hostOfAgentId(agent.id)} />
+          {agent.batch ? null : <HostGlyph environmentId={meta?.environmentId ?? hostOfAgentId(agent.id)} />}
           {state ? <StatusMark state={state} /> : null}
         </>
       }
     />
+  );
+}
+
+/** What a spawn call's row says about the one child it spawned: its host's glyph and where it stands. */
+export function SpawnedAgentMarks({ id }: { id: string }) {
+  const meta = useMetaById(id);
+  const state = stateOf(meta?.status);
+  return (
+    <>
+      <HostGlyph environmentId={meta?.environmentId ?? hostOfAgentId(id)} />
+      {state ? <StatusMark state={state} /> : null}
+    </>
   );
 }

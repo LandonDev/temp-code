@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { Block } from "../../lib/session";
 import { TranscriptSessionContext } from "../transcriptSession";
 import { ActionGroup } from "./ActionGroup";
 
 import { setEditorConfigForTest } from "../../lib/editorConfig";
+
+// The agent's thread is titled "A" wherever a call or a report names it.
+vi.mock("../../lib/threadMentions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/threadMentions")>()),
+  useTitlesOf: () => (id: string) => (id === "a" ? "A" : undefined),
+}));
 
 // A row's file menu asks which editor opens files; there is no preload here.
 beforeAll(() => setEditorConfigForTest(null));
@@ -122,6 +128,70 @@ describe("ActionGroup", () => {
     });
     const rowSvg = container.querySelector(".divide-y [data-glyph] svg")!.innerHTML;
     expect(lineSvg).toBe(rowSvg);
+  });
+
+  describe("agent work and the host's steps", () => {
+    const orch = (id: string, name: string, input: unknown, extra: Partial<NonNullable<Block["tool"]>> = {}) =>
+      tool(id, `mcp__orchestrator__${name}`, input, extra);
+    const report = (id: string, status = "done"): Block => ({ id, role: "system", text: "", agent: { id: "a", title: "A", status } });
+    const gate = (ok: boolean): Block => ({
+      id: `g${ok}`,
+      role: "system",
+      text: "",
+      gate: { step: "gate", branch: "ui-3", ok, log: ok ? "" : "› vitest\ngate failed: vitest", at: 0 },
+    });
+    const open = (c: HTMLElement) =>
+      act(() => {
+        fireEvent.click(trigger(c)!);
+      });
+
+    it("a master's run reads as one line and opens onto its three rows, the report's state marked", () => {
+      const { container } = mount([
+        orch("s", "spawn_agent", { task: "x" }, { spawned: ["a"] }),
+        orch("w", "wait_for_agent", { agentId: "a" }),
+        report("r", "error"),
+      ]);
+      expect(trigger(container)!.textContent).toContain("Spawned “A”, waited for “A”, heard from “A”");
+      expect(container.querySelector("[data-kind]")?.getAttribute("data-kind")).toBe("agents");
+      open(container);
+      const list = container.querySelector(".divide-y")!;
+      expect(list.children.length).toBe(3);
+      expect(list.children[2].textContent).toContain("Heard from");
+      expect(list.children[2].querySelector('[data-slot="status-mark"]')?.getAttribute("data-state")).toBe("failed");
+    });
+
+    it("a red gate counts on the line's figure and opens its log in place", () => {
+      const { container } = mount([bash("b", "ls"), gate(false)]);
+      const mark = trigger(container)!.querySelector('[data-slot="status-mark"]')!;
+      expect(mark.textContent).toBe("1");
+      open(container);
+      const logTrigger = container.querySelector<HTMLButtonElement>('.divide-y [data-slot="collapsible-trigger"]')!;
+      act(() => {
+        fireEvent.click(logTrigger);
+      });
+      expect(container.querySelector(".divide-y pre")?.textContent).toContain("gate failed: vitest");
+    });
+
+    it("a todo update folds as a step, Updated todos 3/7, and opens its list", () => {
+      const todos = Array.from({ length: 7 }, (_, i) => ({ content: `step ${i}`, status: i < 3 ? "completed" : "pending" }));
+      const { container } = mount([bash("b", "ls"), tool("t", "TodoWrite", { todos })]);
+      expect(trigger(container)!.textContent).toContain("updated todos");
+      open(container);
+      const row = container.querySelector(".divide-y")!.children[1] as HTMLElement;
+      expect(row.textContent).toContain("Updated todos");
+      expect(row.textContent).toContain("3/7");
+      act(() => {
+        fireEvent.click(row.querySelector("button")!);
+      });
+      expect(row.textContent).toContain("step 6");
+    });
+
+    it("a lone report is its own line with no group", () => {
+      const { container } = mount([report("r")]);
+      expect(trigger(container)).toBeNull();
+      expect(container.textContent).toContain("Heard from");
+      expect(container.textContent).toContain("A");
+    });
   });
 
   it("never puts content-visibility or containment on the group", () => {

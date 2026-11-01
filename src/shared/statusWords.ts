@@ -59,3 +59,6 @@ export function providerWaitWords(seconds: number): string {
 /** A compaction in progress, from its start to its outcome: the activity,
  *  the context meter and the transcript's row all say it. */
 export const COMPACTING_WORDS = 'Compacting context'
+
+/** The claude driver's status detail while it asks the model about background tasks it left idle; the desktop folds it into the turn's working line. */
+export const BACKGROUND_CHECK_WORDS = 'Checking background tasks'

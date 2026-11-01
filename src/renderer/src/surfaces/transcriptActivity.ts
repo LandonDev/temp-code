@@ -9,11 +9,14 @@ import {
 import { displayPath } from "../lib/paths";
 import type { Block } from "../lib/session";
 import type { LiveEditState } from "../lib/tcserver/store";
+import type { TitleOf } from "../lib/threadMentions";
 import { groupPhrase } from "../lib/groupPhrase";
-import { kindOf, toolPhrase } from "../lib/toolPhrase";
+import { kindOf, shortName, toolPhrase } from "../lib/toolPhrase";
 import { editModel, isEditBlock } from "./editModel";
 import { splitEditCards } from "./editCards";
 import { htmlRenderOf } from "./htmlRenderBlock";
+import { passActionsOf } from "../lib/turnClock";
+import { AGENT_TOOLS } from "./appTool";
 
 export type ToolCallState = "pending" | "accepted" | "rejected";
 
@@ -123,6 +126,7 @@ export function isHiddenTool(block: Block): boolean {
  */
 export function isActivityBlock(block: Block): boolean {
   if (isThinkingBlock(block)) return true;
+  if (isFoldedStep(block)) return true;
   if (block.role !== "tool" && block.role !== "approval") return false;
   if (isHtmlRenderBlock(block)) return false;
   if (
@@ -136,6 +140,39 @@ export function isActivityBlock(block: Block): boolean {
     return false;
   }
   return !isHiddenTool(block);
+}
+
+/**
+ * A row the host wrote that is a step of the agent's work, so it folds into
+ * the run it sits in: a subagent spawned or heard from, a background task
+ * that finished or the check on idle ones, a gate or release outcome, a
+ * review that merged, the turn pass, the plan's build hand-off, a merge the
+ * batch made. What asks the person something or ends a stretch of work
+ * (a held review, a failure, Stopped, compaction, Batch done, an account
+ * gone, a plain host line) stays a row of its own.
+ */
+export function isFoldedStep(block: Block): boolean {
+  if (block.role !== "system") return false;
+  if (block.agent || block.task || block.backgroundCheck || block.gate || block.planHandoff) return true;
+  if (block.review) return block.review.outcome !== "held";
+  if (passActionsOf(block)) return true;
+  return block.notice?.kind === "batch" && block.text.startsWith("Merged by the batch");
+}
+
+/** A step of the run: a tool call or a folded host step (thoughts are not counted). */
+export function isStepBlock(block: Block): boolean {
+  return isToolBlock(block) || isFoldedStep(block);
+}
+
+const FAILED_REPORT = new Set(["error", "failed", "blocked"]);
+
+/** A folded host step that went wrong: a red gate, a review that failed to run, a report of a failure, a failed task. */
+function stepFailed(block: Block): boolean {
+  if (block.gate) return !block.gate.ok;
+  if (block.review) return block.review.outcome === "failed";
+  if (block.task) return block.task.status === "failed";
+  if (block.agent?.status) return FAILED_REPORT.has(block.agent.status);
+  return false;
 }
 
 /** Reasoning the agent streams while it works: a step in the run it sits in. */
@@ -216,9 +253,10 @@ export function groupTurns(blocks: Block[]): Block[][] {
 
 /**
  * A turn's items: every paragraph stands full size where it streamed, and
- * everything between two paragraphs (calls, settled edits, thinking) folds
- * into one run. A question or an undecided approval breaks the run and
- * stands alone.
+ * everything between two paragraphs (calls, settled edits, thinking, todo
+ * updates, the host's steps of isFoldedStep) folds into one run. A
+ * question, an undecided approval or an html_render page breaks the run
+ * and stands alone.
  */
 export function groupTurnItems(blocks: Block[]): TurnItem[] {
   const visible = blocks.filter(
@@ -236,11 +274,7 @@ export function groupTurnItems(blocks: Block[]): TurnItem[] {
     activity = [];
   };
   for (const block of visible) {
-    const folds =
-      !isTodoBlock(block) &&
-      !isHtmlRenderBlock(block) &&
-      !endsWork(block) &&
-      isActivityBlock(block);
+    const folds = !isHtmlRenderBlock(block) && !endsWork(block) && isActivityBlock(block);
     if (folds) {
       activity.push(block);
       continue;
@@ -252,7 +286,7 @@ export function groupTurnItems(blocks: Block[]): TurnItem[] {
   return items;
 }
 
-/** The agent's todo list stands as its own row where it was written. */
+/** A todo update (TodoWrite, update_plan): a step whose body is the list. */
 export function isTodoBlock(block: Block): boolean {
   return block.role === "tool" && kindOf(block) === "todo";
 }
@@ -305,17 +339,23 @@ export function turnCopyText(blocks: Block[]): string {
  * What a run of tool calls was for. Reads and searches are one thing — looking
  * around — so a grep followed by the file it turned up stays one group.
  */
-export type ActivityWorkKind = "research" | "edit" | "run" | "other";
+export type ActivityWorkKind = "research" | "edit" | "run" | "agents" | "other";
 
 /** Ties break towards the kind that changed the most: an edit outranks a read. */
 const WORK_KIND_ORDER: ActivityWorkKind[] = [
   "edit",
   "run",
   "research",
+  "agents",
   "other",
 ];
 
+/** Calls that start, steer or hear from other threads (in-harness subagents too). */
+const THREAD_CALLS = new Set([...AGENT_TOOLS, "app_start_thread", "list_agents", "Agent", "Task"]);
+
 export function toolCategory(block: Block): ActivityWorkKind {
+  if (block.role === "system") return block.agent ? "agents" : "other";
+  if (THREAD_CALLS.has(shortName(block.tool?.name ?? ""))) return "agents";
   const kind = block.tool?.kind;
   const title = block.text || block.tool?.title;
   const preview = block.tool?.preview;
@@ -329,7 +369,7 @@ export function toolCategory(block: Block): ActivityWorkKind {
 function dominantWorkKind(steps: Block[]): ActivityWorkKind | undefined {
   const counts = new Map<ActivityWorkKind, number>();
   for (const block of steps) {
-    if (!isToolBlock(block)) continue;
+    if (!isStepBlock(block)) continue;
     const kind = toolCategory(block);
     counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
@@ -351,10 +391,10 @@ export type ActionGroup = {
   /** Lines added and removed over every edit in the run. */
   adds: number;
   dels: number;
-  /** Calls that failed or were denied. */
+  /** Steps that failed or were denied: calls, red gates, failed reports and tasks. */
   failed: number;
   /**
-   * At most one call (with any thoughts around it): no line and no box, the
+   * At most one step (with any thoughts around it): no line and no box, the
    * steps draw as their own rows in order. A line over one call, or over a
    * thought, would only say the row again.
    */
@@ -375,9 +415,15 @@ export function liveEditFor(
 
 export function actionGroupOf(
   blocks: Block[],
-  { cwd, live = false, liveEdits }: { cwd?: string; live?: boolean; liveEdits?: Record<string, LiveEditState> } = {},
+  {
+    cwd,
+    live = false,
+    liveEdits,
+    titleOf,
+  }: { cwd?: string; live?: boolean; liveEdits?: Record<string, LiveEditState>; titleOf?: TitleOf } = {},
 ): ActionGroup {
   const tools = blocks.filter(isToolBlock);
+  const steps = blocks.filter(isStepBlock);
   let adds = 0;
   let dels = 0;
   for (const block of tools) {
@@ -394,14 +440,14 @@ export function actionGroupOf(
   const phrase =
     kind === "think"
       ? live ? "Thinking" : "Thought"
-      : groupPhrase(blocks, cwd, live) || (live ? "Working" : "Worked");
+      : groupPhrase(blocks, cwd, live, titleOf) || (live ? "Working" : "Worked");
   return {
     kind,
     phrase,
     adds,
     dels,
-    failed: tools.filter((b) => toolCallState(b) === "rejected").length,
-    lone: tools.length <= 1,
+    failed: tools.filter((b) => toolCallState(b) === "rejected").length + steps.filter(stepFailed).length,
+    lone: steps.length <= 1,
   };
 }
 

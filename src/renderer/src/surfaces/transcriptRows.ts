@@ -12,7 +12,7 @@
  * turn's array, so only the live turn regroups on a delta.
  */
 import type { Block } from "../lib/session";
-import { groupTurnItems, isProseBlock, isToolBlock, type TurnItem } from "./transcriptActivity";
+import { groupTurnItems, isProseBlock, isStepBlock, type TurnItem } from "./transcriptActivity";
 
 export type TurnInfo = {
   id: string;
@@ -154,7 +154,7 @@ export function estimateRowHeight(row: TranscriptRow): number {
   const { item } = row;
   if (item.type === "activity") {
     // Closed by default: one line; a lone run is its steps' own rows.
-    const lines = item.blocks.filter(isToolBlock).length <= 1 ? item.blocks.length : 1;
+    const lines = item.blocks.filter(isStepBlock).length <= 1 ? item.blocks.length : 1;
     return ACTION_LINE * lines + ROW_FOOT;
   }
   const block = item.block;
