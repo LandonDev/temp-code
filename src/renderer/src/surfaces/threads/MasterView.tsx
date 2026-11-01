@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { RowsContextMenu, RowsMenu } from "../../chrome/menuRows";
 import { useThreadMenu } from "../../chrome/useThreadMenu";
-import { ChevronDown, MoreHorizontal, Plus } from "../../chrome/icons";
+import { MoreHorizontal, Plus } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { registry } from "../../lib/connection";
 import { useEnvironments, useEnvironmentStatuses } from "../../lib/connection/status";
@@ -25,6 +25,7 @@ import { AgentSummaryContext } from "./master/agentSummary";
 import {
   archiveBatch,
   BoardDigestContext,
+  doneTally,
   rowHost,
   rowModels,
   setBatchRules,
@@ -285,12 +286,11 @@ export function MasterView(props: ThreadViewProps) {
         onOpenChange={(open) => setMenu(open ? "board" : null)}
       />
       <RowsMenu
-        label="Add a thread"
+        label="Add thread"
+        tip={{ label: "Add thread" }}
         trigger={
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="icon-sm" aria-label="Add thread">
             <Plus />
-            Thread
-            <ChevronDown className="text-muted-foreground" />
           </Button>
         }
         rows={() => addMenuItems(candidates.length)}
@@ -361,7 +361,7 @@ export function MasterView(props: ThreadViewProps) {
         collapsed={!chatOpen}
         onToggleChat={setChatOpen}
         title={title}
-        detail={batch.rules.summary || undefined}
+        detail={doneTally(layout) ?? undefined}
         actions={actions}
         held={heldRowOf(props, session)}
       />

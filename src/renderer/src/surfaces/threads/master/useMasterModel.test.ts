@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_BATCH_RULES, DEFAULT_BATCH_STEPS, emptyBatch, type BatchState } from "@server/shared/contract-batch";
 import type { SessionMeta, SessionStatus } from "../../../lib/tcserver/types";
+import { marksAtRest } from "../../../lib/threadStripModel";
+import { rowState } from "../../../lib/sidebarRows";
 import {
   batchChildrenOf,
   batchFromPush,
@@ -8,6 +10,7 @@ import {
   boardLayout,
   boardShown,
   BoardDigests,
+  doneTally,
   foldBatchPush,
   foldRows,
   GROUP_LABEL,
@@ -320,6 +323,23 @@ describe("the board's layout", () => {
     const byId = new Map(metas.map((m) => [m.id, m]));
     return (id: string) => byId.get(id) ?? null;
   };
+
+  it("tallies the settled rows over all of them, as the rail card's master line does", () => {
+    const rows = [
+      child("t1", "idle", { createdAt: 1 }),
+      child("t2", "done", { createdAt: 2 }),
+      child("t3", "stopped", { createdAt: 3 }),
+      child("t4", "running", { createdAt: 4 }),
+      child("t5", "queued", { createdAt: 5 }),
+      child("t6", "error", { createdAt: 6 }),
+      child("t7", "idle", { createdAt: 7, background: { tasks: [], agents: ["a"], batch: null, watchingSince: null } }),
+    ];
+    const layout = boardLayout("m", rows, of(rows), [], []);
+    expect(doneTally(layout)).toBe("2/7");
+    // The rail's rule (WorkspaceSessions `batchTally`): settled is a row whose mark rests.
+    expect(rows.filter((r) => !marksAtRest(rowState(r))).length).toBe(2);
+    expect(doneTally(boardLayout("m", [], of([]), [], []))).toBeNull();
+  });
 
   it("is the same object while only what a row shows changed, and new when a row changes section", () => {
     const a = child("la", "running", { createdAt: 1 });

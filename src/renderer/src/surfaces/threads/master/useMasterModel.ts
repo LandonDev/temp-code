@@ -591,6 +591,14 @@ export function useFarDigests(masterId: string, hostsKey: string, digests: Board
 
 // ── the layout ──────────────────────────────────────────────────────────
 
+/** The batch's done tally for the header: "3/7", the settled rows over all
+ *  of them, the same count the rail card's master line ends in (a stopped
+ *  thread sits under Done but has not finished); null with no row. */
+export function doneTally(layout: Pick<BoardLayout, "rows">): string | null {
+  if (layout.rows.length === 0) return null;
+  return `${layout.rows.filter((r) => r.done).length}/${layout.rows.length}`;
+}
+
 /** One row as the list lays it out: the thread, the plan it came from, its
  *  section and host. `fallback` is the meta for a thread the store does not
  *  hold (from the answer or the batch's list); `override` the batch's own
@@ -600,6 +608,8 @@ export type BoardRowRef = {
   id: string;
   planId: string | null;
   group: MasterGroupId;
+  /** Settled for the batch's done tally: under Done and not stopped (the rail card's rule, `batchTally`). */
+  done: boolean;
   environmentId: string;
   fallback: SessionMeta | null;
   override: { environmentId: string; status: SessionStatus } | null;
@@ -612,7 +622,7 @@ export type BoardLayout = { rows: BoardRowRef[]; groups: BoardGroup[]; counts: M
 const EMPTY_LAYOUT: BoardLayout = { rows: [], groups: [], counts: { needsYou: 0, running: 0, queued: 0, done: 0 } };
 
 const refSig = (r: BoardRowRef): string =>
-  [r.key, r.id, r.planId ?? "", r.group, r.environmentId, r.override?.status ?? "", r.fallback ? `${r.fallback.title}\u0001${r.fallback.status}` : ""].join("\u0000");
+  [r.key, r.id, r.planId ?? "", r.group, r.done ? "1" : "", r.environmentId, r.override?.status ?? "", r.fallback ? `${r.fallback.title}\u0001${r.fallback.status}` : ""].join("\u0000");
 
 /**
  * The board's rows from the store's metas, the answer's children it does
@@ -650,6 +660,7 @@ export function boardLayout(
       id: row.meta.id,
       planId: row.plan?.id ?? null,
       group: groupOf(row.meta),
+      done: groupOf(row.meta) === "done" && row.meta.status !== "stopped",
       environmentId: row.meta.environmentId,
       fallback: stored ? null : row.meta,
       override:
