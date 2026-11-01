@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { latestLine, thoughtLabel, thoughtMs } from "./thinking";
+import { latestLine, latestLineKey, thoughtLabel, thoughtMs } from "./thinking";
 
 describe("thoughtLabel", () => {
   it("reads the span, never under a second", () => {
@@ -41,5 +41,28 @@ describe("latestLine", () => {
     const long = latestLine(`${"word ".repeat(60)}end.`);
     expect(long.length).toBe(160);
     expect(long.endsWith("…")).toBe(true);
+  });
+});
+
+describe("latestLineKey", () => {
+  it("keeps its key while a lone sentence grows", () => {
+    expect(latestLineKey("Looking")).toBe(0);
+    expect(latestLineKey("Looking at the")).toBe(0);
+    expect(latestLineKey("Looking at the file.")).toBe(0);
+  });
+
+  it("keeps the shown sentence's key while the next one is being written", () => {
+    expect(latestLineKey("Looking at the file. Then")).toBe(0);
+    expect(latestLine("Looking at the file. Then")).toBe("Looking at the file.");
+  });
+
+  it("changes when a later sentence finishes", () => {
+    expect(latestLineKey("Looking at the file. Then the tests.")).toBe(1);
+    expect(latestLineKey("Looking at the file. Then the tests. Now")).toBe(1);
+    expect(latestLineKey("Looking at the file. Then the tests. Now the build.")).toBe(2);
+  });
+
+  it("is -1 for an empty thought", () => {
+    expect(latestLineKey("")).toBe(-1);
   });
 });

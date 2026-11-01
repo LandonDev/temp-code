@@ -1,7 +1,7 @@
 import { DUR, EASE_EXIT, EASE_IN_OUT, EASE_OUT, SPRING_LAYOUT } from "@renderer/lib/ease";
 import { RefreshCw } from "@renderer/chrome/icons";
 import { AnimatePresence, motion, MotionConfig, useReducedMotion, type Variants } from "motion/react";
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "@renderer/lib/cn";
 import { Button } from "./button";
 import { Kbd, KbdGroup } from "./kbd";
@@ -9,14 +9,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 /**
  * A question an agent needs answered before it continues: one question at
- * a time, lettered options (A, B, C…), a free-form option that opens a
- * field, Previous / Skip / Next, ⌘⏎ to continue. A `multiSelect` question
- * takes several options and one submit. Keys work only while focus is
- * inside the card, so ⌘⏎ in the composer never submits it. The reset
- * glyph swaps with a donut of how many are answered. Answers come back as
+ * a time, lettered options (A, B, C…) with an optional description line
+ * under each, a free-form option that opens a field, Previous / Skip /
+ * Next, ⌘⏎ to continue. A `multiSelect` question takes several options and
+ * one submit. Keys work only while focus is inside the card, so ⌘⏎ in the
+ * composer never submits it. With more than one question (`showProgress`)
+ * the reset glyph swaps with a donut of how many are answered. The caller's
+ * status glyph goes in `icon`, flat beside the title. Answers come back as
  * one array of labels per question (the typed text for a free-form pick).
  */
-export type QuestionOption = { label: string; freeform?: boolean };
+export type QuestionOption = { label: string; description?: string; freeform?: boolean };
 export type Question = { prompt: string; description?: string; options: Array<QuestionOption>; multiSelect?: boolean };
 
 const KEYS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -114,6 +116,7 @@ export function QuestionCard({
   onSubmitAnswers,
   onSkip,
   onReset,
+  showProgress = questions.length > 1,
   className,
 }: {
   icon?: ReactNode;
@@ -122,8 +125,11 @@ export function QuestionCard({
   onSubmitAnswers?: (answers: Array<Array<string>>) => void;
   onSkip?: () => void;
   onReset?: () => void;
+  /** The donut of answered questions and its reset; off for a single question. */
+  showProgress?: boolean;
   className?: string;
 }) {
+  const id = useId();
   const [at, setAt] = useState(0);
   const [turns, setTurns] = useState(0);
   const [turning, setTurning] = useState(false);
@@ -215,38 +221,48 @@ export function QuestionCard({
   if (!question) return null;
 
   return (
-    <div data-slot="question-card" onKeyDown={onKeyDown} className={cn("w-full max-w-lg rounded-xl border border-border bg-card p-4 font-sans text-card-foreground", className)}>
-      <div className="flex items-center gap-2.5">
-        {icon ? <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4">{icon}</span> : null}
-        <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
-        <span className="ms-auto flex items-center">
-          <span className="sr-only" aria-live="polite">
-            {answeredCount} of {questions.length} answered
+    <div
+      data-slot="question-card"
+      role="group"
+      aria-labelledby={`${id}-title`}
+      onKeyDown={onKeyDown}
+      className={cn("w-full max-w-lg rounded-xl border border-border bg-card p-4 font-sans text-card-foreground", className)}
+    >
+      <div className="flex items-center gap-2">
+        {icon ? <span className="flex shrink-0 [&_svg]:size-4">{icon}</span> : null}
+        <h3 id={`${id}-title`} className="text-sm font-medium text-foreground">
+          {title}
+        </h3>
+        {showProgress ? (
+          <span className="ms-auto flex items-center">
+            <span className="sr-only" aria-live="polite">
+              {answeredCount} of {questions.length} answered
+            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label="Reset the answers"
+                    data-turning={turning || undefined}
+                    onClick={reset}
+                    className="group/reset relative grid size-4 shrink-0 place-items-center rounded-full outline-none transition-[scale] duration-(--dur-base) ease-(--ease-out) after:absolute after:-inset-3 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
+                  />
+                }
+              >
+                <span className={cn(MARK_SWAP, "grid group-hover/reset:scale-90 group-hover/reset:opacity-0 group-hover/reset:blur-[2px] group-focus-visible/reset:scale-90 group-focus-visible/reset:opacity-0 group-data-turning/reset:scale-90 group-data-turning/reset:opacity-0")}>
+                  <ProgressDonut done={answeredCount} total={questions.length} />
+                </span>
+                <span aria-hidden className={cn(MARK_SWAP, "grid size-4 scale-90 place-items-center text-foreground opacity-0 blur-[2px] group-hover/reset:scale-100 group-hover/reset:opacity-100 group-hover/reset:blur-none group-focus-visible/reset:scale-100 group-focus-visible/reset:opacity-100 group-data-turning/reset:scale-100 group-data-turning/reset:opacity-100 group-data-turning/reset:blur-none")}>
+                  <motion.span animate={{ rotate: turns * 360 }} transition={still ? { duration: 0 } : TURN} className="flex">
+                    <RefreshCw className="size-4" />
+                  </motion.span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Reset</TooltipContent>
+            </Tooltip>
           </span>
-          <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label="Reset the answers"
-                data-turning={turning || undefined}
-                onClick={reset}
-                className="group/reset relative grid size-4 shrink-0 place-items-center rounded-full outline-none transition-[scale] duration-(--dur-base) ease-(--ease-out) after:absolute after:-inset-3 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
-              />
-            }
-          >
-            <span className={cn(MARK_SWAP, "grid group-hover/reset:scale-90 group-hover/reset:opacity-0 group-hover/reset:blur-[2px] group-focus-visible/reset:scale-90 group-focus-visible/reset:opacity-0 group-data-turning/reset:scale-90 group-data-turning/reset:opacity-0")}>
-              <ProgressDonut done={answeredCount} total={questions.length} />
-            </span>
-            <span aria-hidden className={cn(MARK_SWAP, "grid size-4 scale-90 place-items-center text-foreground opacity-0 blur-[2px] group-hover/reset:scale-100 group-hover/reset:opacity-100 group-hover/reset:blur-none group-focus-visible/reset:scale-100 group-focus-visible/reset:opacity-100 group-data-turning/reset:scale-100 group-data-turning/reset:opacity-100 group-data-turning/reset:blur-none")}>
-              <motion.span animate={{ rotate: turns * 360 }} transition={still ? { duration: 0 } : TURN} className="flex">
-                <RefreshCw className="size-4" />
-              </motion.span>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>Reset</TooltipContent>
-          </Tooltip>
-        </span>
+        ) : null}
       </div>
 
       <div className="mt-3">
@@ -256,34 +272,37 @@ export function QuestionCard({
             return (
               <div key={entry.prompt}>
                 <div aria-live="polite">
-                  <p className="text-sm">{entry.prompt}</p>
-                  {entry.description ? <p className="mt-0.5 text-[13px] text-muted-foreground">{entry.description}</p> : null}
+                  <p className="text-[15px] leading-[1.6]">{entry.prompt}</p>
+                  {entry.description ? <p className="mt-0.5 text-sm text-muted-foreground">{entry.description}</p> : null}
                 </div>
                 <ul
                   ref={(node) => {
                     lists.current[qIndex] = node;
                   }}
                   aria-multiselectable={entry.multiSelect || undefined}
-                  className="-mx-2.5 mt-2.5 space-y-1"
+                  className="-mx-2.5 mt-3 space-y-1"
                 >
                   {entry.options.map((option, index) => {
                     const active = choices.includes(index);
                     const key = KEYS[index];
+                    const optionId = `${id}-${qIndex}-${index}`;
                     return (
                       <li key={option.label}>
                         <button
                           type="button"
                           aria-pressed={active}
+                          aria-labelledby={option.freeform ? undefined : `${optionId}-label`}
+                          aria-describedby={option.description ? `${optionId}-description` : undefined}
                           onClick={(event) => {
                             if (active && event.target instanceof HTMLInputElement) return;
                             pick(index);
                           }}
                           className={cn(
-                            "flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-start outline-none transition-[background-color,border-color] duration-(--dur-fast) focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+                            "flex w-full items-start gap-3 rounded-lg border px-2.5 py-2 text-start outline-none transition-[background-color,border-color] duration-(--dur-fast) focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
                             active ? "border-border bg-foreground/5" : "border-transparent hover:bg-foreground/5",
                           )}
                         >
-                          <span aria-hidden className={cn("pointer-events-none flex size-5 shrink-0 items-center justify-center rounded-md text-[11px] font-medium tabular-nums", active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+                          <span aria-hidden className={cn("pointer-events-none flex size-6 shrink-0 items-center justify-center rounded-md text-[11px] font-medium tabular-nums", active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
                             {key}
                           </span>
                           {option.freeform ? (
@@ -295,10 +314,19 @@ export function QuestionCard({
                               readOnly={!active}
                               placeholder={option.label}
                               onChange={(event) => setTyped((all) => ({ ...all, [qIndex]: event.target.value }))}
-                              className="w-full cursor-[inherit] bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+                              className="h-6 w-full cursor-[inherit] bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                             />
                           ) : (
-                            <span className="text-[13px]">{option.label}</span>
+                            <span className="flex min-w-0 flex-col py-0.5">
+                              <span id={`${optionId}-label`} className="text-sm">
+                                {option.label}
+                              </span>
+                              {option.description ? (
+                                <span id={`${optionId}-description`} className="mt-0.5 text-[13px] text-muted-foreground">
+                                  {option.description}
+                                </span>
+                              ) : null}
+                            </span>
                           )}
                         </button>
                       </li>

@@ -13,6 +13,9 @@ import { Progress } from "./progress";
 import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY, Tooltip, TooltipContent, TooltipTrigger, resetTooltips, tooltipChunk, warmTooltips } from "./tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 import { Item, ItemButton } from "./item";
+import { StreamingText } from "./streaming-text";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 vi.mock("@renderer/hooks/paneVisibility", () => ({ usePaneVisible: () => true }));
 
@@ -391,5 +394,23 @@ describe("Table", () => {
     const container = screen.getByRole("table").parentElement!;
     expect(container.dataset.slot).toBe("table-container");
     expect(container.className).not.toMatch(/border|rounded/);
+  });
+});
+
+describe("StreamingText", () => {
+  it("draws one fading span per word and keeps the whitespace as text", () => {
+    const view = render(<StreamingText className="truncate">{"Reading  the\nfile."}</StreamingText>);
+    const line = view.container.firstElementChild as HTMLElement;
+    expect(line.className).toBe("truncate");
+    expect(Array.from(line.querySelectorAll(".streaming-word")).map((word) => word.textContent)).toEqual(["Reading", "the", "file."]);
+    expect(line.textContent).toBe("Reading  the\nfile.");
+    const texts = Array.from(line.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent);
+    expect(texts).toEqual(["  ", "\n"]);
+  });
+
+  it("fades on the motion tokens and stops under reduced motion", () => {
+    const css = readFileSync(resolve(__dirname, "../../assets/components.css"), "utf8");
+    expect(css).toMatch(/\.streaming-word\s*\{\s*animation:\s*streaming-word-fade var\(--dur-base\) var\(--ease-out\)/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.streaming-word\s*\{\s*animation:\s*none;/);
   });
 });

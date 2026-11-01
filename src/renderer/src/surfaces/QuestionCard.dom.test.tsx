@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../lib/tcserver/commands", () => ({ answer: vi.fn() }));
 
 import type { QuestionMeta, QuestionSpec } from "../lib/session";
-import { QuestionCard } from "./QuestionCard";
+import { QuestionCard, cardQuestions } from "./QuestionCard";
 
 const meta = (questions: QuestionSpec[], answers?: string[][] | null): QuestionMeta => ({
   sessionId: "s1",
@@ -103,27 +103,47 @@ describe("QuestionCard", () => {
     expect(screen.getByTestId("two").querySelector('[aria-pressed="true"]')).toBeNull();
   });
 
-  it("is the failure card's shape: full width, rounded-lg, p-3, a 13px medium title", () => {
+  it("is the failure card's frame (full width, rounded-lg, p-3) and leaves the type to the card", () => {
     const view = render(<QuestionCard question={meta([spec("Which?", ["A"], { header: "File" })])} onAnswer={() => {}} />);
     const card = view.container.querySelector<HTMLElement>('[data-slot="question-card"]')!;
-    for (const cls of ["max-w-none", "rounded-lg", "p-3", "[&_h3]:text-[13px]", "[&_h3]:font-medium"]) {
-      expect(card.className.split(" ")).toContain(cls);
-    }
+    for (const cls of ["max-w-none", "rounded-lg", "p-3"]) expect(card.className.split(" ")).toContain(cls);
     for (const cls of ["max-w-lg", "rounded-xl", "p-4"]) expect(card.className.split(" ")).not.toContain(cls);
+    expect(card.className).not.toContain("[&_h3]");
   });
 
-  it("hides the progress ring for a single question, and only then", () => {
-    const hide = "[&>div:first-child>span:last-child]:hidden";
+  it("carries the amber Needs you glyph by its title, without the word", () => {
+    const view = render(<QuestionCard question={meta([spec("Which?", ["A"], { header: "File" })])} onAnswer={() => {}} />);
+    const card = screen.getByRole("group", { name: "File" });
+    const mark = card.querySelector<HTMLElement>('[data-slot="status-mark"]')!;
+    expect(mark.dataset.state).toBe("waiting");
+    expect(mark.querySelector('[data-slot="status-word"]')).toBeNull();
+    expect(view.container.textContent).not.toContain("Needs you");
+  });
+
+  it("shows no progress mark for one question, and the donut for two", () => {
     const one = render(<QuestionCard question={meta([spec("Which?", ["A"])])} onAnswer={() => {}} />);
-    const card = one.container.querySelector<HTMLElement>('[data-slot="question-card"]')!;
-    expect(card.className.split(" ")).toContain(hide);
-    // The selector lands on the span that holds the ring and its count.
-    const target = card.querySelector(":scope > div:first-child > span:last-child")!;
-    expect(target.querySelector('button[aria-label="Reset the answers"]')).not.toBeNull();
-    expect(target.textContent).toContain("0 of 1 answered");
+    expect(one.container.querySelector('button[aria-label="Reset the answers"]')).toBeNull();
+    expect(one.container.textContent).not.toContain("answered");
     one.unmount();
     const two = render(<QuestionCard question={meta([spec("A?", ["A"]), spec("B?", ["B"])])} onAnswer={() => {}} />);
-    expect(two.container.querySelector<HTMLElement>('[data-slot="question-card"]')!.className.split(" ")).not.toContain(hide);
+    expect(two.container.querySelector('button[aria-label="Reset the answers"]')).not.toBeNull();
+    expect(two.container.textContent).toContain("0 of 2 answered");
+  });
+
+  it("cardQuestions passes descriptions through, keeps a header the title already says out, and adds Other", () => {
+    const question = meta([
+      { question: "Which?", header: "File", options: [{ label: "a.ts", description: "the old one" }, { label: "b.ts" }] },
+      { question: "How?", header: "Speed", options: [{ label: "Fast" }], allowFreeform: false },
+    ]);
+    expect(cardQuestions(question, "File")).toEqual([
+      {
+        prompt: "Which?",
+        description: undefined,
+        multiSelect: undefined,
+        options: [{ label: "a.ts", description: "the old one" }, { label: "b.ts", description: undefined }, { label: "Other", freeform: true }],
+      },
+      { prompt: "How?", description: "Speed", multiSelect: undefined, options: [{ label: "Fast", description: undefined }] },
+    ]);
   });
 
   it("shows an option's description and answers with its bare label", () => {
@@ -134,8 +154,7 @@ describe("QuestionCard", () => {
         onAnswer={onAnswer}
       />,
     );
-    const picked = option(view.container, "Count them");
-    expect(picked.textContent).toContain("Free items add to the total");
+    const picked = screen.getByRole("button", { name: "Count them", description: "Free items add to the total" });
     fireEvent.click(picked);
     fireEvent.click(advance());
     expect(onAnswer).toHaveBeenCalledWith("q1", [["Count them"]]);

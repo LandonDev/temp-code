@@ -67,4 +67,39 @@ describe("QuestionCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
     expect(onSubmitAnswers).toHaveBeenCalledWith([["Beta"], ["One", "Two"]]);
   });
+
+  it("draws an option's description as its own line and answers with the bare label", () => {
+    const onSubmitAnswers = vi.fn();
+    const questions: Question[] = [{ prompt: "Which?", options: [{ label: "Tabs", description: "Hard tabs, width 2" }, { label: "Spaces" }] }];
+    render(<QuestionCard questions={questions} onSubmitAnswers={onSubmitAnswers} />);
+    const tabs = screen.getByRole("button", { name: "Tabs" });
+    expect(screen.getByText("Hard tabs, width 2").className).toContain("text-muted-foreground");
+    expect(tabs.getAttribute("aria-describedby")).toBe(screen.getByText("Hard tabs, width 2").id);
+    expect(screen.getByRole("button", { name: "Spaces" }).hasAttribute("aria-describedby")).toBe(false);
+    fireEvent.click(tabs);
+    fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
+    expect(onSubmitAnswers).toHaveBeenCalledWith([["Tabs"]]);
+  });
+
+  it("is a group named by its title, with the caller's glyph flat beside it", () => {
+    render(<QuestionCard title="Indentation" icon={<svg data-testid="glyph" />} questions={one} />);
+    const group = screen.getByRole("group", { name: "Indentation" });
+    const slot = screen.getByTestId("glyph").parentElement!;
+    expect(group.contains(slot)).toBe(true);
+    expect(slot.className).not.toContain("bg-muted");
+  });
+
+  it("shows the progress donut and reset only for more than one question, or when asked", () => {
+    const two: Question[] = [...one, { prompt: "And?", options: [{ label: "Yes" }] }];
+    const { rerender } = render(<QuestionCard questions={one} />);
+    expect(screen.queryByRole("button", { name: "Reset the answers" })).toBeNull();
+    expect(screen.queryByText(/answered/)).toBeNull();
+    rerender(<QuestionCard questions={two} />);
+    expect(screen.getByRole("button", { name: "Reset the answers" })).toBeTruthy();
+    expect(screen.getByText("0 of 2 answered")).toBeTruthy();
+    rerender(<QuestionCard questions={two} showProgress={false} />);
+    expect(screen.queryByRole("button", { name: "Reset the answers" })).toBeNull();
+    rerender(<QuestionCard questions={one} showProgress />);
+    expect(screen.getByRole("button", { name: "Reset the answers" })).toBeTruthy();
+  });
 });

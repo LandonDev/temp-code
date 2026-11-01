@@ -53,12 +53,10 @@ DESIGN.md wins.
 | A thread's type | `TypeGlyph` (surfaces/threads/TypeGlyph.tsx); `THREAD_MENU_ICONS` (surfaces/threads/threadTypes.ts) for a menu row's icon | The type's glyph in its tint (`typeTint`, `text-type-<type>`; docs/DESIGN.md "Type tints"), the one coloured glyph besides `StatusMark`. The caller sets the size; an absent type draws chat. Glyph only: never a title, a fill or a border. A subagent's role glyph (`AGENT_GLYPHS`) stays uncoloured. |
 | A key cap | `Kbd` (kbd.tsx) | In menus, tooltips, buttons. |
 | A toast | sonner `toast()`; one `<Toaster>` (toaster.tsx) mounted lazily in main.tsx | The four custom toast stacks are retired. The stack sits above the focused thread's strip and inside its column, or above a master board's foot while its chat is folded (`toastInset`, lib/toastAnchor.ts). |
-| A question from the agent | `QuestionCard` (question-card.tsx) | Lettered options, free-form field, `multiSelect` for several picks, ⌘⏎ (keys only while focus is inside the card). |
-| A plan to approve | `PlanCard` (plan-card.tsx) | To-dos, Approve ⌘⏎, optional countdown. |
+| A question from the agent | `QuestionCard` (question-card.tsx) | Lettered options, each with an optional `description` line under its label; the free-form field; `multiSelect` for several picks; `showProgress` (the donut and its reset, on for more than one question); the caller's status glyph flat in `icon` (the transcript's is the amber Needs you); ⌘⏎ and the letters only while focus is inside the card. The prompt sits at the prose's 15px, options at 14px. |
 | Tasks the agent works through | `TaskList` (task-list.tsx) | Donut header, marks that draw their check; one line per task cut to its column, the running task whole, each task's time at the end. A task's `detail` (the running task's steps, `TaskSteps`) opens under its label, which becomes its trigger; `onFitWidth` reports the width the widest task needs (lib/taskListWidth.ts). |
-| A live short line | `StreamingText` (streaming-text.tsx) | Words fade in. Not the transcript's prose. |
+| A live short line | `StreamingText` (streaming-text.tsx) | A live short line that rewrites (the thinking row's newest sentence, keyed by `latestLineKey`): appended words fade in `--dur-base`, a new key fades the line in whole. Not the transcript's prose (its jitter buffer and veil), and never inside `TextShimmer`, whose gradient paints through every descendant's glyphs so a word's fade cannot show. |
 | A file in or on a turn | `Attachment` (attachment.tsx) | Media, name, one line, an action. |
-| The frame of one message | `Message` (message.tsx) | The user bubble itself is the transcript's. |
 
 Hand-made and staying hand-made (they are the product, not a primitive):
 the transcript's rows and its markdown pipeline (streamdown, the worker,
@@ -115,10 +113,21 @@ beside motionGuard and counts each named palette exception.
 4. Add a row to the map above and a case to `ui.dom.test.tsx`.
 
 Not installed on purpose: `toast` (892 lines plus a canvas dissolve; sonner
-instead), `code-block` and `file-diff` (we have Shiki and DiffBody),
-`reasoning-steps` (demo-timed), `chat-input` (ElevenLabs and voice deps),
-`conversation` (iMessage bubbles), `command-menu` (kmenu), `resizable`
-(our pane tree), `sidebar`, `card`, `badge`, `sound`, `orb`.
+instead), `code-block` (five languages; we have Shiki) and `file-diff`
+(DiffBody), `reasoning-steps` (demo-timed; the thinking row stays one line),
+`chat-input` (ElevenLabs voice, faked uploads, brand logos; the composer's
+field stays hand-made), `composer` (an email draft card with versions),
+`message-scroller` (it owns the scroller and uses `content-visibility`, both
+of which the transcript window forbids), `chat-history` (the transcript's own
+list of the person's messages runs on `scrollToRow`), `inline-citations` (we
+cite files, not web sources, and it fetches favicons from a third party),
+`trace-waterfall` (a timeline tool on a literal palette), `marker` (it would
+only re-skin the notice line), `hover-card` (no caller), `conversation`
+(iMessage bubbles), `morphing-icons` (looping glyphs, against the motion
+rules), `command-menu` (kmenu), `resizable` (our pane tree), `sidebar`,
+`card`, `badge`, `sound`, `orb`. Removed for want of a caller: `plan-card`
+(no surface asks to approve a plan) and `message` (layout divs the
+transcript's rows already are).
 
 ## Verification
 

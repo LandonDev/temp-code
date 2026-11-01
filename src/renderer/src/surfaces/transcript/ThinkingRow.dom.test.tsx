@@ -24,6 +24,22 @@ describe("ActivityThinkingRow", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  it("live: the sentence's words fade in, a growing sentence keeps its first words, a new one remounts", () => {
+    const view = render(<ActivityThinkingRow block={thought({ text: "Looking at the", streaming: true })} />);
+    const words = () => Array.from(view.container.querySelectorAll(".streaming-word"));
+    expect(words().map((word) => word.textContent)).toEqual(["Looking", "at", "the"]);
+    expect(words()[0]?.parentElement?.className).toContain("truncate");
+    const first = words()[0];
+
+    view.rerender(<ActivityThinkingRow block={thought({ text: "Looking at the file.", streaming: true })} />);
+    expect(words().map((word) => word.textContent)).toEqual(["Looking", "at", "the", "file."]);
+    expect(words()[0]).toBe(first);
+
+    view.rerender(<ActivityThinkingRow block={thought({ text: "Looking at the file. Then the tests.", streaming: true })} />);
+    expect(words().map((word) => word.textContent)).toEqual(["Then", "the", "tests."]);
+    expect(words()[0]).not.toBe(first);
+  });
+
   it("settled: Thought for 4s, closed until clicked", () => {
     const view = render(<ActivityThinkingRow block={thought()} endTs={14_000} expandable />);
     const trigger = screen.getByRole("button");

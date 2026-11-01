@@ -25,7 +25,7 @@ done.
 
 Kobra (kobra.systems) on Base UI is the component library. Every button,
 field, menu, popover, dialog, sheet, tab, switch, tooltip, list row, empty
-state, spinner, skeleton, question card, plan card and task list is the
+state, spinner, skeleton, question card and task list is the
 component under `src/renderer/src/components/ui`, adapted once at install
 to the tokens below, to `chrome/icons` and to the motion values below.
 The README's table is the authority on which component renders which class
@@ -385,7 +385,7 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | Released drag | settles on `SPRING_GLIDE` | — | none |
 | List rows (rail, tabs, fleet, attachments, the transcript's message list) | none | none | none |
 | Transcript rows | one `--dur-fast` fade on first appearance, never replayed | — | none |
-| Streaming text | the jitter buffer (lib/smoothText); words fade `--dur-base` in `StreamingText` | — | none |
+| Streaming text | the prose: the jitter buffer (surfaces/smoothText) and the paint-only veil (surfaces/streamVeil); a live short line (the thinking row's newest sentence): its words fade `--dur-base` in `StreamingText` | — | none |
 | Composer send | the bubble glides up 16px, `--dur-slow` `--ease-drawer` | — | fade, `--dur-fast` |
 
 Rules: animate `transform` and `opacity` (and height only through the
@@ -429,7 +429,10 @@ without one. A handoff keeps its bubble: its text is the person's brief. The
 left side, where the column leaves room, lists the person's own messages,
 one line and a clock time each, the one being read in foreground
 (`TranscriptOutline` on `JumpList`; docs/LAYOUT.md "Chat"). A
-question card sets the sans face; mono is for code inside it. Every action
+question card sets the sans face; mono is for code inside it. Its question
+is at the prose's 15px, its options at 14px with an option's description
+as a muted 13px line under it, and the amber Needs you glyph sits by its
+title. Every action
 row ends in a caret: it turns on a row that opens a body and stays still on
 one that opens its file.
 

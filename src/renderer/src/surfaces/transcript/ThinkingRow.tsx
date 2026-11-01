@@ -2,12 +2,13 @@
 import { useState } from "react";
 import { ChevronRight, Sparkles } from "../../chrome/icons";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
+import { StreamingText } from "../../components/ui/streaming-text";
 import { TextShimmer } from "../../components/ui/text-shimmer";
 import { cn } from "../../lib/cn";
 import { type Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { AgentMarkdown } from "../AgentMarkdown";
-import { latestLine, thoughtLabel, thoughtMs } from "./thinking";
+import { latestLine, latestLineKey, thoughtLabel, thoughtMs } from "./thinking";
 
 /** One row of the action list: the 14px glyph slot, then the words. */
 const ROW = "flex min-h-8 min-w-0 items-center gap-2 font-sans text-sm";
@@ -26,7 +27,8 @@ export function ThinkingTail() {
 
 /**
  * A thought, as one row of the paragraph's action list. While it streams:
- * "Thinking" shimmering and the newest finished sentence after it. Once it
+ * "Thinking" shimmering and the newest finished sentence after it, its words
+ * fading in (a new sentence whole, a growing one only its new words). Once it
  * ends: "Thought for 4s", which opens the whole text. Reasoning is only read
  * on purpose.
  */
@@ -57,7 +59,11 @@ export function ActivityThinkingRow({
       <div aria-label="Thinking" className={ROW}>
         {GLYPH}
         <TextShimmer className="shrink-0">Thinking</TextShimmer>
-        {line ? <span className="min-w-0 truncate text-muted-foreground">{line}</span> : null}
+        {line ? (
+          <StreamingText key={latestLineKey(block.text)} className="min-w-0 truncate text-muted-foreground">
+            {line}
+          </StreamingText>
+        ) : null}
       </div>
     );
   }
