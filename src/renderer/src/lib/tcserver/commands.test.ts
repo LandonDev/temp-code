@@ -182,6 +182,18 @@ describe("thread commands", () => {
     expect(link.of("session.create")[1]).toMatchObject({ threadType: "chat", agentType: "implementer" });
   });
 
+  it("a New plan draft reaches the host only with its first message, rules aboard", async () => {
+    const rules = { maxAgents: 2 } as never;
+    const draft = newSession("local", "claude", "/repo", undefined, undefined, undefined, { threadType: "planning" });
+    sessionStore.mutate([draft]);
+    await setThreadRules(draft.id, rules);
+    expect(link.of("session.create")).toHaveLength(0);
+    expect(link.of("session.setThreadRules")).toHaveLength(0);
+    await send(sessionStore.get(draft.id)!, "plan the login rewrite", [], undefined, undefined);
+    expect(link.of("session.create")).toHaveLength(1);
+    expect(link.of("session.create")[0]).toMatchObject({ id: draft.id, threadType: "planning", threadRules: rules });
+  });
+
   it("a new pass rides the send and opens a round", async () => {
     link.push({ push: "session", session: wireMeta({ id: "s1" }) });
     const session = sessionStore.get("s1")!;

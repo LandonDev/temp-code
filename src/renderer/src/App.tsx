@@ -1,6 +1,14 @@
 import { registry } from "./lib/connection";
 import { environmentOfCwd } from "./lib/tcserver/projects";
-import { newThreadContext } from "./lib/projectHostChoice";
+import { copiesOf, newThreadContext } from "./lib/projectHostChoice";
+import {
+  draftKeyOf,
+  draftPicks,
+  planProjectDraft,
+  projectDrafts,
+  sessionFromDraft,
+  type DraftRetype,
+} from "./lib/projectDrafts";
 import { invoke, listen, getCurrentWindow, isWebMode, message } from "./lib/native";
 import {
   useCallback,
@@ -186,7 +194,7 @@ import {
   workspace,
   workspaceTabsStore,
 } from "./stores/workspace";
-import { projectTabTarget, workspaceActions, workspaceTabTarget } from "./stores/workspaceActions";
+import { openSessionIds, projectTabTarget, workspaceActions, workspaceTabTarget } from "./stores/workspaceActions";
 import { refreshHistory, skipForgetSessionIds } from "./stores/subscriptions";
 import { editors, useEditors } from "./stores/editors";
 import { headerStore, tabProjectOf } from "./stores/header";
@@ -364,6 +372,14 @@ function withHarnessChoice(
   };
 }
 
+
+/** A draft retyped by New thread… of another type; research runs on claude. */
+function retypedDraft(session: Session, retype: DraftRetype): Session {
+  const next = { ...session, threadType: retype.threadType, threadRules: retype.threadRules };
+  if (retype.threadType !== "research" || session.harness === "claude") return next;
+  const resolved = resolveModel("claude");
+  return withHarnessChoice(next, "claude", resolved.id, preferredModelSettings(resolved, session.modelSettings));
+}
 
 /** The session new chats copy their runtime mode from: the one on screen, else the first open. */
 /** The host a file tab reads from: decided once at open when a thread named the path (lib/pathHost.ts). */
@@ -570,23 +586,6 @@ export default function App() {
     },
     [],
   );
-  const createSessionHere = useCallback(
-    (
-      opts: {
-        projectId?: string | null;
-        runtimeMode?: RuntimeMode;
-        threadType?: ThreadType;
-        threadRules?: ThreadRules | null;
-      } = {},
-    ) => {
-      // A linked project starts its thread on the host of the thread on
-      // screen, else the one last used for it, else here (projectHostChoice.ts).
-      const ctx = newThreadContext(sessionContext(opts.projectId), workspaceStore.projects, currentActivePane().active);
-      const session = seededSession(ctx, ctx.cwd, undefined, opts.threadType, opts.threadRules);
-      return opts.runtimeMode ? { ...session, runtimeMode: opts.runtimeMode } : session;
-    },
-    [seededSession, sessionContext],
-  );
   const sidebarCwd = sidebarCwdOf({ projectCwd, selectedProjectId }, projects, active, activeTab);
   const gitCwd = gitCwdOf(active, sidebarCwd);
 
@@ -693,30 +692,94 @@ export default function App() {
     });
   }, []);
 
+  /**
+   * The one way to a project's draft (lib/projectDrafts.ts): focus it where
+   * a pane shows it, else rebuild it from its record, else seed one. `scope`
+   * is a project (undefined: the selected one) or a folder. `tab` opens it
+   * in a tab of its own, `beside` splits the focused pane, and `replace`
+   * only puts the session in the store for the caller to lay out (`placed`
+   * is false when it was focused elsewhere instead).
+   */
+  const openProjectDraft = useCallback(
+    (
+      scope: { projectId?: string | null } | { cwd: string },
+      opts: {
+        placement: "tab" | "beside" | "replace";
+        focus?: boolean;
+        dir?: SplitDir;
+        threadType?: ThreadType;
+        threadRules?: ThreadRules | null;
+      },
+    ): { id: string; placed: boolean } => {
+      const base = "cwd" in scope ? cwdContext(scope.cwd) : sessionContext(scope.projectId);
+      const ctx = newThreadContext(base, workspaceStore.projects, currentActivePane().active);
+      const catalog = workspaceStore.getSnapshot();
+      const key = draftKeyOf(
+        { projectId: ctx.projectId, environmentId: environmentForContext(ctx), workspaceId: ctx.workspaceId },
+        catalog,
+      );
+      const linkId = ctx.projectId ? catalog.projects.find((p) => p.id === ctx.projectId)?.linkId : null;
+      const plan = planProjectDraft({
+        record: projectDrafts.get(key),
+        inPane: (id) => openSessionIds(workspaceTabsStore.getState().tabs).has(id),
+        hasMeta: (id) => !!sessionStore.metaOf(id),
+        copies: copiesOf(catalog.projects, linkId),
+        connected: (id) => registry.statusOf(id).transport === "open",
+        primary: registry.primaryEnvironmentId,
+        threadType: opts.threadType,
+        threadRules: opts.threadRules,
+      });
+      if (plan.kind === "focus") {
+        const { retype } = plan;
+        if (retype) setSessions((prev) => prev.map((s) => (s.id === plan.id ? retypedDraft(s, retype) : s)));
+        const tabId = workspaceActions.focusSession(plan.id);
+        if (tabId) activateTab(tabId);
+        if (opts.focus) setComposerFocused(true);
+        return { id: plan.id, placed: false };
+      }
+      let session =
+        plan.kind === "rebuild"
+          ? sessionFromDraft(plan.record, plan.place)
+          : seededSession(ctx, ctx.cwd, undefined, opts.threadType, opts.threadRules ?? null);
+      if (plan.kind === "rebuild" && plan.retype) session = retypedDraft(session, plan.retype);
+      projectDrafts.put(
+        key,
+        plan.kind === "seed" ? { ...draftPicks(session), segments: [], attachments: [] } : draftPicks(session),
+      );
+      setSessions((prev) => [...prev.filter((s) => s.id !== session.id), session]);
+      const tab = currentActiveTab();
+      if (opts.placement === "beside" && tab) {
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === tab.id
+              ? { ...t, layout: splitPane(t.layout, t.focusedId, opts.dir ?? "right", session.id), focusedId: session.id }
+              : t,
+          ),
+        );
+      } else if (opts.placement !== "replace") {
+        const next = newTab(session.id);
+        appendTab(next, session.cwd);
+        setActiveTabId(next.id);
+      }
+      if (opts.focus) setComposerFocused(true);
+      return { id: session.id, placed: true };
+    },
+    [activateTab, appendTab, cwdContext, seededSession, sessionContext],
+  );
+
   const onNew = useCallback(() => {
     shell.closeViews();
-    const session = createSessionHere();
-    const tab = newTab(session.id);
-    setSessions((prev) => [...prev, session]);
-    appendTab(tab, session.cwd);
-    setActiveTabId(tab.id);
-    setComposerFocused(true);
-    return session.id;
-  }, [appendTab, createSessionHere]);
+    return openProjectDraft({}, { placement: "tab", focus: true }).id;
+  }, [openProjectDraft]);
 
   /** Sidebar: a chat in the given project (null = loose chat in this workspace). */
   const onNewChat = useCallback(
     (projectId: string | null) => {
       shell.closeViews();
       project.selectProject(projectId);
-      const session = createSessionHere({ projectId });
-      const tab = newTab(session.id);
-      setSessions((prev) => [...prev, session]);
-      appendTab(tab, session.cwd);
-      setActiveTabId(tab.id);
-      setComposerFocused(true);
+      openProjectDraft({ projectId }, { placement: "tab", focus: true });
     },
-    [appendTab, createSessionHere],
+    [openProjectDraft],
   );
 
   const onSelectHistorySessionRef = useRef<
@@ -750,9 +813,9 @@ export default function App() {
         workspaceStore.getSnapshot(),
       );
       if (landing) void onSelectHistorySessionRef.current?.(landing);
-      else onNewChat(projectId);
+      else openProjectDraft({ projectId }, { placement: "tab" });
     },
-    [activateTab, onNewChat],
+    [activateTab, openProjectDraft],
   );
 
   const onProjectCreated = useCallback(
@@ -894,26 +957,9 @@ export default function App() {
   const onSplit = useCallback(
     (dir: SplitDir) => {
       if (!activeTab) return;
-      const session = createSessionHere();
-      setSessions((prev) => [...prev, session]);
-      setTabs((prev) =>
-        prev.map((t) => {
-          if (t.id !== activeTab.id) return t;
-          return {
-            ...t,
-            layout: splitPane(t.layout, t.focusedId, dir, session.id),
-            focusedId: session.id,
-          };
-        }),
-      );
-      setComposerFocused(true);
+      openProjectDraft({}, { placement: "beside", dir, focus: true });
     },
-    [
-      activeTab,
-      projectCwd,
-      sessionDefaults?.cwd,
-      sessionDefaults?.runtimeMode,
-    ],
+    [activeTab, openProjectDraft],
   );
 
   // Showing the terminal puts the Dev servers pane away: they share the dock.
@@ -1190,25 +1236,20 @@ export default function App() {
               );
               return;
             }
-            const seed = sessionStore.getSnapshot()[0];
-            const ctx = cwdContext(file.cwd || projectCwd);
-            const session = newSession(
-              environmentForContext(ctx),
-              seed?.harness ?? "claude",
-              ctx.cwd,
-              seed?.model,
-              seed?.runtimeMode,
-              seed?.modelSettings,
-              ctx,
-            );
-            setSessions((prev) => [...prev, session]);
+            // The project's own draft takes the tab's place; when another
+            // pane already shows it, that pane comes forward and this tab goes.
+            const draft = openProjectDraft({ cwd: file.cwd || projectCwd }, { placement: "replace" });
+            if (!draft.placed) {
+              onCloseTab(tab.id, file.terminal ? { confirmedTerminalIds: [fileId] } : undefined);
+              return;
+            }
             setTabs((prev) =>
               prev.map((entry) =>
                 entry.id === tab.id
                   ? {
                       ...entry,
-                      layout: leaf(session.id),
-                      focusedId: session.id,
+                      layout: leaf(draft.id),
+                      focusedId: draft.id,
                       editorPanes: [],
                       terminalPanes: [],
                     }
@@ -1264,7 +1305,7 @@ export default function App() {
       }
       finishClose();
     },
-    [activeTabId, dirtyFiles, onCloseTab, projectCwd],
+    [activeTabId, dirtyFiles, onCloseTab, openProjectDraft, projectCwd],
   );
 
   /** Close a thread's tab with `next` brought forward; the thread stays (a live one keeps its chip). */
@@ -2016,21 +2057,11 @@ export default function App() {
         return;
       }
 
-      if (current && isBlankSession(current)) {
-        onCwdChange(current.id, normalized);
-        return;
-      }
-
-      const seed = current ?? sessionStore.getSnapshot()[0];
-      const session = seededSession(cwdContext(normalized), normalized, seed);
-      const tab = newTab(session.id);
+      // Nothing to land on: the workspace's own draft, never a fresh one.
       project.enterWorkspace(normalized);
-      setSessions((prev) => [...prev, session]);
-      appendTab(tab, normalized);
-      setActiveTabId(tab.id);
-      setComposerFocused(true);
+      openProjectDraft({ cwd: normalized }, { placement: "tab" });
     },
-    [activateTab, appendTab, cwdContext, focusOpenSession, onCwdChange, openLanding, seededSession],
+    [activateTab, focusOpenSession, openLanding, openProjectDraft],
   );
 
   /** Rail: the home, the chats outside every workspace. Its open tab stays
@@ -2057,8 +2088,9 @@ export default function App() {
       void openLanding(landing, "~");
       return;
     }
-    onNewChat(null);
-  }, [activateTab, focusOpenSession, onNewChat, openLanding]);
+    project.selectProject(null);
+    openProjectDraft({ projectId: null }, { placement: "tab" });
+  }, [activateTab, focusOpenSession, openLanding, openProjectDraft]);
 
   const newWorkspacePath = useShell((s) => s.newWorkspacePath);
   const newWorkspaceEnvironmentId = useShell((s) => s.newWorkspaceEnvironmentId);
@@ -2422,10 +2454,8 @@ export default function App() {
         : next;
     };
     setSessions((prev) => prev.map((s) => (s.id === sessionId ? patch(s) : s)));
-    const run = sessionStore.metaOf(sessionId)
-      ? serverCommands.retype(sessionId, threadType)
-      : serverCommands.ensureCreated(patch(session));
-    void run.catch(() => undefined);
+    // A draft keeps its type locally: the first send's create carries it.
+    if (sessionStore.metaOf(sessionId)) void serverCommands.retype(sessionId, threadType).catch(() => undefined);
   }, []);
 
   const onSubmit = useCallback(
@@ -2456,6 +2486,10 @@ export default function App() {
         return;
       }
       if (isPreparingHandoff(current)) return;
+      // A project's draft becomes this thread: its record is done with, so
+      // the next New thread starts from the defaults.
+      const draftKey = projectDrafts.keyOfDraft(sessionId);
+      if (draftKey) projectDrafts.clear(draftKey);
       const workCwd = sessionWorkCwd(current);
       const harnessText = composeNoteMessage(noteCard, text);
 
@@ -2856,21 +2890,11 @@ export default function App() {
   const onHeaderNew = useCallback(
     (threadType: ThreadType, threadRules: ThreadRules | null) => {
       shell.closeViews();
-      const session = createSessionHere({
-        projectId: projectStore.getState().selectedProjectId,
-        threadType,
-        threadRules,
-      });
-      const tab = newTab(session.id);
-      setSessions((prev) => [...prev, session]);
-      // Real on the server from the first click: the thread's rules travel
-      // with the create, and a later tune has somewhere to land.
-      void serverCommands.ensureCreated(session).catch(() => undefined);
-      appendTab(tab, session.cwd);
-      setActiveTabId(tab.id);
-      setComposerFocused(true);
+      // The project's one draft, retyped; nothing reaches the host before
+      // the first send, whose create carries the type and the rules.
+      openProjectDraft({}, { placement: "tab", focus: true, threadType, threadRules });
     },
-    [appendTab, createSessionHere],
+    [openProjectDraft],
   );
   const onHeaderSetRules = useCallback((sessionId: string, threadRules: ThreadRules | null) => {
     setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, threadRules } : s)));

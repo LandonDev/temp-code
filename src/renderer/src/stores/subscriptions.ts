@@ -12,6 +12,7 @@ import { historyStore } from "../lib/historyStore";
 import { liveAgentTracker } from "../lib/liveAgentTracker";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
 import { landingPathOfSession, saveLastSession } from "../lib/projectContext";
+import { draftPicks, projectDrafts, projectDraftsStore } from "../lib/projectDrafts";
 import { looksLikeProject } from "../lib/recents";
 import { replaceProjectHistory } from "../lib/sessionHistory";
 import { markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
@@ -487,6 +488,32 @@ function sameSettings(
   return true;
 }
 
+/**
+ * A project's remembered draft follows its Session's picks (the model menu,
+ * the type select, ThreadTune, the draft's host and project), so none of
+ * them has to write the record itself. Only a draft with a record writes;
+ * once sent, its record is cleared and nothing follows it.
+ */
+export function installProjectDraftWriter(): Teardown {
+  const written = new Map<string, string>();
+  const sync = () => {
+    for (const [key, record] of Object.entries(projectDraftsStore.getState().records)) {
+      const session = sessionStore.get(record.id);
+      if (!session || !sessionStore.isDraft(record.id)) continue;
+      const picks = draftPicks(session);
+      const stamp = JSON.stringify(picks);
+      if (written.get(record.id) === stamp) continue;
+      written.set(record.id, stamp);
+      const changed = (Object.keys(picks) as (keyof typeof picks)[]).some(
+        (field) => JSON.stringify(picks[field]) !== JSON.stringify(record[field]),
+      );
+      if (changed) projectDrafts.put(key, picks);
+    }
+  };
+  sync();
+  return teardownAll([sessionStore.subscribe(afterWrites(sync))]);
+}
+
 /** Everything above, once, after the boot fills the stores. */
 export function installSubscriptions(): Teardown {
   return teardownAll([
@@ -499,5 +526,6 @@ export function installSubscriptions(): Teardown {
     installHistoryRefresh(),
     installLayoutSync(),
     installBootTasks(),
+    installProjectDraftWriter(),
   ]);
 }

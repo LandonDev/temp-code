@@ -34,8 +34,10 @@ import {
   installSubscriptions,
   installTerminalIsolation,
   installVisitSettling,
+  installProjectDraftWriter,
   skipForgetSessionIds,
 } from "./subscriptions";
+import { projectDrafts } from "../lib/projectDrafts";
 import { initialTerminalsState, terminals, terminalsStore } from "./terminals";
 import { initialWorkspaceTabsState, workspace, workspaceTabsStore } from "./workspace";
 import { workspaceActions } from "./workspaceActions";
@@ -797,3 +799,54 @@ describe("installLayoutSync", () => {
     expect(focusStore.getState().projectTerminalFocused).toBe(false);
   });
 });
+
+describe("installProjectDraftWriter", () => {
+  it("copies a remembered draft's model, type and host changes into its record", async () => {
+    projectDrafts.reload();
+    const draft = session("d1", { projectId: "p1", workspaceId: "w1", cwd: "/repo" });
+    sessionStore.mutate([draft]);
+    projectDrafts.put("p1", { ...draftPicksOf(draft), segments: [{ text: "keep me" }], attachments: [] });
+    teardown = installProjectDraftWriter();
+
+    sessionStore.mutate((prev) =>
+      prev.map((s) =>
+        s.id === "d1"
+          ? { ...s, harness: "codex", model: "gpt-6.1-sol", threadType: "planning", environmentId: "env_box", projectId: "p-box" }
+          : s,
+      ),
+    );
+    await microtasks();
+    expect(projectDrafts.get("p1")).toMatchObject({
+      harness: "codex",
+      model: "gpt-6.1-sol",
+      threadType: "planning",
+      environmentId: "env_box",
+      projectId: "p-box",
+      segments: [{ text: "keep me" }],
+    });
+  });
+
+  it("leaves a session with no record alone", async () => {
+    projectDrafts.reload();
+    sessionStore.mutate([session("loose-1")]);
+    teardown = installProjectDraftWriter();
+    await microtasks();
+    expect(projectDrafts.keyOfDraft("loose-1")).toBeNull();
+  });
+});
+
+function draftPicksOf(s: Session) {
+  return {
+    id: s.id,
+    environmentId: s.environmentId,
+    projectId: s.projectId ?? null,
+    workspaceId: s.workspaceId ?? null,
+    cwd: s.cwd,
+    harness: s.harness,
+    model: s.model,
+    modelSettings: s.modelSettings,
+    runtimeMode: s.runtimeMode,
+    threadType: s.threadType ?? "chat",
+    threadRules: null,
+  };
+}
