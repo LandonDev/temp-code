@@ -81,7 +81,7 @@ export function appView(block: Block, titleOf: TitleOf, live = isLive(block)): A
     );
     return {
       label: verb,
-      detail: title ?? task,
+      detail: title ?? (task || "a subagent"),
       phrase: `${verb === "Subagent" ? tense("ran", "running") : verb.toLowerCase()} ${title ? `“${trim(title, 24)}”` : "a subagent"}`,
       threadId: title && id ? id : undefined,
     };

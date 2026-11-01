@@ -168,6 +168,11 @@ describe("groupPhrase: agent work and the host's steps", () => {
     );
   });
 
+  it("a thread the store does not know is named by the report in the run", () => {
+    const far = (id: string) => sys(`r:${id}`, "", { agent: { id, title: "Far child", status: "done" } });
+    expect(groupPhrase([spawn("x"), far("x")], CWD, false)).toBe("Spawned “Far child”, heard from “Far child”");
+  });
+
   it("the app's bookkeeping is said once", () => {
     const notes = (id: string) => call("mcp__app__update_notes", { section: "State" }, { id });
     expect(say([notes("1"), notes("2")])).toBe("Updated the notes");

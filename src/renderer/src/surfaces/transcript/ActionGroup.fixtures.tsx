@@ -20,8 +20,42 @@ const run = (prefix: string): Block[] => [
   call(`${prefix}5`, "Bash", "execute", { command: "npm test" }, prefix === "open" ? "completed" : "failed"),
 ];
 
+/** A master's stretch: it spawns a child, waits, hears back, and the gate runs. */
+const orchestration = (prefix: string): Block[] => [
+  {
+    ...call(`${prefix}1`, "mcp__orchestrator__spawn_agent", "other", { task: "Port the view to the new board" }),
+    tool: {
+      callId: `${prefix}1`,
+      name: "mcp__orchestrator__spawn_agent",
+      kind: "other",
+      status: "completed",
+      input: { task: "Port the view to the new board" },
+      spawned: [`${prefix}-child`],
+    },
+  },
+  call(`${prefix}2`, "mcp__orchestrator__wait_for_agent", "other", { agentId: `${prefix}-child` }),
+  { id: `${prefix}3`, role: "system", text: "", agent: { id: `${prefix}-child`, title: "Port the view", status: "done" } },
+  {
+    id: `${prefix}4`,
+    role: "system",
+    text: "",
+    gate: { step: "gate", branch: "port-the-view", ok: false, log: "› typecheck\n✓ typecheck 21s\n› vitest\n✗ vitest 48s\ngate failed: vitest", at: 0 },
+  },
+];
+
+/** A wake: two children reported, a background task finished, then the calls it led to. */
+const wake = (prefix: string): Block[] => [
+  { id: `${prefix}1`, role: "system", text: "", agent: { id: `${prefix}-a`, title: "Port the view", status: "done" } },
+  { id: `${prefix}2`, role: "system", text: "", agent: { id: `${prefix}-b`, title: "Fix the fold", status: "error" } },
+  { id: `${prefix}3`, role: "system", text: "deploy the preview", task: { id: "t1", label: "deploy the preview", status: "completed" } },
+  call(`${prefix}4`, "Bash", "execute", { command: "git log --oneline -5" }),
+  call(`${prefix}5`, "Read", "read", { file_path: `${CWD}/convex/schema.ts` }),
+];
+
 // The harness renders with no session, so the opened state is keyed ":a:<first id>".
 setEditOpen(":a:open1", true);
+setEditOpen(":a:orchOpen1", true);
+setEditOpen(":a:wakeOpen1", true);
 
 export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; live?: boolean } }[] = [
   { name: "Settled run", props: { blocks: run("settled"), cwd: CWD } },
@@ -48,6 +82,10 @@ export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; li
       live: true,
     },
   },
+  { name: "Orchestration run", props: { blocks: orchestration("orch"), cwd: CWD } },
+  { name: "Orchestration run, opened", props: { blocks: orchestration("orchOpen"), cwd: CWD } },
+  { name: "Wake run", props: { blocks: wake("wake"), cwd: CWD } },
+  { name: "Wake run, opened", props: { blocks: wake("wakeOpen"), cwd: CWD } },
   {
     name: "Thought only",
     props: {

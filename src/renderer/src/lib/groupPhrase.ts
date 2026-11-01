@@ -244,6 +244,10 @@ export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean, title
   const all = blocks.filter((b) => b.role === "tool" || b.role === "approval");
   const host = blocks.filter((b) => b.role === "system");
   if (all.length === 0 && host.length === 0) return "";
+  // A thread the store has not listed (archived, on a host not connected) is named by the report that came back from it.
+  const reported = new Map(host.flatMap((b) => (b.agent?.title && !b.agent.batch ? [[b.agent.id, b.agent.title] as const] : [])));
+  const known = titleOf;
+  titleOf = (id) => known(id) ?? reported.get(id);
   const running = live ?? all.some(isLive);
   const phrases: string[] = [];
   const push = (p: string): void => {
