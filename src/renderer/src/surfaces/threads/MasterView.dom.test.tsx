@@ -504,12 +504,12 @@ describe("the master view", () => {
     }
   });
 
-  it("+ Thread on the board opens the add sheet through the batch's add dialog", async () => {
+  it("Add thread on the board opens the add sheet through the batch's add dialog", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     renderView();
     await flush();
     const head = document.querySelector("[data-view-header]") as HTMLElement;
-    fireEvent.click(within(head).getByRole("button", { name: /^Thread$/ }));
+    fireEvent.click(within(head).getByRole("button", { name: "Add thread" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "New thread…" }));
     expect(within(await screen.findByRole("dialog")).getByText("Add a thread to iOS batch 2")).toBeTruthy();
   });
@@ -552,12 +552,12 @@ describe("the master view", () => {
     expect(headers().map((h) => h.textContent)).toEqual(["Needs you", "Working", "Queued", "Done"]);
     expect(header("running").tagName).toBe("H3");
     // Line two: the activity for a running row, the scheduler's note without its lead for a queued one, when a landed one landed.
-    expect(screen.getByText("running ios:test:client")).toBeTruthy();
-    expect(screen.getByText("waiting for Home")).toBeTruthy();
-    expect(screen.getByText("landed 12:08")).toBeTruthy();
-    // The model at the end of line one: the name, then effort and context, no dots between them.
-    expect(screen.getAllByText("Claude Opus 5.5")).toHaveLength(4);
-    expect(screen.getAllByText("high 1M")).toHaveLength(4);
+    expect(screen.getByText("Running ios:test:client")).toBeTruthy();
+    expect(screen.getByText("Waiting for Home")).toBeTruthy();
+    expect(screen.getByText("Landed 12:08")).toBeTruthy();
+    // The model at the end of line one: the provider's mark and the model; effort and context live in its tooltip.
+    expect(screen.getAllByText("Opus 5.5")).toHaveLength(4);
+    expect(screen.queryByText("high 1M")).toBeNull();
     // The type is the glyph's name, never a word beside the title.
     expect(screen.queryByText("Implementation")).toBeNull();
     expect(screen.getAllByRole("img", { name: "Implementation" })).toHaveLength(4);
@@ -565,7 +565,7 @@ describe("the master view", () => {
     expect(screen.queryByText("This Mac")).toBeNull();
   });
 
-  it("every row but a settled one draws the status vocabulary's mark", async () => {
+  it("every row but a settled one hangs the status vocabulary's glyph in the glyph column", async () => {
     seed([
       meta({ id: "c-wait", title: "A", status: "waiting", createdAt: 1 }),
       meta({ id: "c-run", title: "B", status: "running", createdAt: 2 }),
@@ -579,7 +579,7 @@ describe("the master view", () => {
     const states = Object.fromEntries(
       [...document.querySelectorAll<HTMLElement>("[data-status]")].map((row) => [
         row.getAttribute("data-status"),
-        row.querySelector("[data-row-status] [data-slot=status-mark]")?.getAttribute("data-state"),
+        row.querySelector("[data-row-glyph] [data-slot=status-mark]")?.getAttribute("data-state"),
       ]),
     );
     expect(states).toEqual({ waiting: "waiting", running: "working", error: "failed", paused: "paused", queued: "queued", idle: undefined });
@@ -601,11 +601,11 @@ describe("the master view", () => {
     seed([meta({ id: "c-done", title: "Design foundations", status: "idle", createdAt: 2, updatedAt: new Date(2026, 9, 21, 12, 8).getTime() })]);
     renderView();
     await flush();
-    const status = screen.getByRole("button", { name: /Design foundations/ }).querySelector("[data-row-status]")!;
-    expect(status.querySelector("[data-slot=status-mark]")).toBeNull();
-    const detail = status.querySelector("[data-row-detail]")!;
-    expect(detail.textContent).toBe("landed 12:08");
-    expect(detail.getAttribute("aria-label")).toBe("Done, landed 12:08");
+    const row = screen.getByRole("button", { name: /Design foundations/ });
+    expect(row.querySelector("[data-row-glyph]")?.childElementCount).toBe(0);
+    const status = row.querySelector("[data-row-status]")!;
+    expect(status.textContent).toBe("Landed 12:08");
+    expect(status.querySelector("[data-slot=status-mark]")?.getAttribute("aria-label")).toBe("Done: Landed 12:08");
   });
 
   it("the child that blocks the batch says why on its second line; a watching or paused child under Working says its own word", async () => {
@@ -621,14 +621,14 @@ describe("the master view", () => {
     });
     await flush();
     const line = (name: RegExp) => screen.getByRole("button", { name }).querySelector("[data-row-status]")!;
-    expect(line(/C3/).textContent).toBe("ended its turn without completing");
+    expect(line(/C3/).textContent).toBe("Ended its turn without completing");
     const watching = line(/Sleeper/);
     expect(watching.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("watching");
     expect(watching.querySelector("[data-slot=status-word]")?.textContent).toBe("Watching");
-    expect(watching.querySelector("[data-slot=status-detail]")?.textContent).toBe("sleep 180 seconds in the background");
+    expect(watching.querySelector("[data-slot=status-detail]")?.textContent).toBe("Sleep 180 seconds in the background");
     const paused = line(/Held/);
     expect(paused.querySelector("[data-slot=status-word]")?.textContent).toBe("Paused");
-    expect(paused.querySelector("[data-slot=status-detail]")?.textContent).toBe("running bun test");
+    expect(paused.querySelector("[data-slot=status-detail]")?.textContent).toBe("Running bun test");
   });
 
   it("a settled child whose subagents still work sits under Working and says Watching, then moves to Done once they settle", async () => {
@@ -667,15 +667,15 @@ describe("the master view", () => {
     await flush();
     await flush();
     const impl = screen.getByRole("button", { name: /Home screen/ });
-    expect(impl.querySelector("[data-row-status]")?.textContent).toBe("write the view1/3");
+    expect(impl.querySelector("[data-row-status]")?.textContent).toBe("Write the view1/3");
     expect(impl.querySelector("[data-tally]")?.textContent).toBe("1/3");
     // A reader hears the state and its detail, not the state alone.
-    expect(screen.getByRole("button", { name: /Working, write the view/ })).toBe(impl);
+    expect(screen.getByRole("button", { name: /Working: Write the view/ })).toBe(impl);
     expect(within(impl).queryByRole("list")).toBeNull();
     expect(within(impl).queryByRole("progressbar")).toBeNull();
     // A chat keeps its activity; the tally still ends its line.
     const chat = screen.getByRole("button", { name: /A question/ });
-    expect(chat.querySelector("[data-row-status]")?.textContent).toBe("reading1/3");
+    expect(chat.querySelector("[data-row-status]")?.textContent).toBe("Reading1/3");
   });
 
   it("research and orchestration rows say their summary once settled and their activity while working, from the one answer", async () => {
@@ -688,9 +688,9 @@ describe("the master view", () => {
     renderView();
     await flush();
     await flush();
-    expect(screen.getByRole("button", { name: /Pricing survey/ }).querySelector("[data-row-status]")?.textContent).toBe("three sources read, two to go");
+    expect(screen.getByRole("button", { name: /Pricing survey/ }).querySelector("[data-row-status]")?.textContent).toBe("Three sources read, two to go");
     const fleet = screen.getByRole("button", { name: /The fleet/ });
-    expect(fleet.querySelector("[data-row-status]")?.textContent).toBe("running bun");
+    expect(fleet.querySelector("[data-row-status]")?.textContent).toBe("Running bun");
     expect(within(fleet).queryByText("Spawned three implementers.")).toBeNull();
     // One batch.board, and nothing per row: no transcript, context or notes.
     expect(link.calls.filter((c) => c.method === "batch.board")).toHaveLength(1);
@@ -707,13 +707,18 @@ describe("the master view", () => {
     link.digests.set("c-err", { failure: "Rate limited until 14:00" });
     renderView();
     await flush();
-    const ask = screen.getByRole("button", { name: /Live Activity/ }).querySelector("[data-row-status]")!;
-    expect(ask.textContent).toBe("which build, ad hoc or debug?");
-    expect(ask.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("waiting");
-    const err = screen.getByRole("button", { name: /Inbox/ }).querySelector("[data-row-status]")!;
-    expect(err.textContent).toBe("rate limited until 14:00");
-    expect(err.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("failed");
-    expect(screen.getByRole("button", { name: /Tabs/ }).querySelector("[data-row-status]")?.textContent).toBe("approve Bash");
+    // Under Needs you a waiting row says its detail alone, in amber; a failed one says its word first.
+    const askRow = screen.getByRole("button", { name: /Live Activity/ });
+    const ask = askRow.querySelector("[data-row-status]")!;
+    expect(ask.textContent).toBe("Which build, ad hoc or debug?");
+    expect(askRow.querySelector("[data-row-glyph] [data-slot=status-mark]")?.getAttribute("data-state")).toBe("waiting");
+    expect(ask.querySelector("[data-slot=status-mark]")?.className).toContain("text-warning");
+    const errRow = screen.getByRole("button", { name: /Inbox/ });
+    const err = errRow.querySelector("[data-row-status]")!;
+    expect(err.textContent).toBe("FailedRate limited until 14:00");
+    expect(err.querySelector("[data-slot=status-word]")?.className).toContain("font-medium");
+    expect(errRow.querySelector("[data-row-glyph] [data-slot=status-mark]")?.getAttribute("data-state")).toBe("failed");
+    expect(screen.getByRole("button", { name: /Tabs/ }).querySelector("[data-row-status]")?.textContent).toBe("Approve Bash");
   });
 
   it("hover shows Message, the state's one verb and ⋯, and ⋯ opens the row's menu", async () => {
@@ -764,8 +769,49 @@ describe("the master view", () => {
     renderView();
     await flush();
     const board = document.querySelector("[data-board-scroller]")!.textContent ?? "";
-    expect(board).toContain("and 1 more, 1 done");
+    expect(board).toContain("1 more, 1 done");
     expect(board).not.toMatch(/[·•—]/);
+  });
+
+  it("a working row has one moving mark, its glyph on line two; its subagents' lines are still and say Working; settled and queued rows never move", async () => {
+    seed([
+      meta({ id: "c-run", title: "Home", status: "running", activity: "Running ios:test", createdAt: 1 }),
+      meta({ id: "a1", title: "Rail rows", status: "running", parentId: "c-run", masterId: null as unknown as string, activity: "Editing Rail.tsx", createdAt: 2 }),
+      meta({ id: "c-q", title: "Queued one", status: "queued", statusDetail: "Waiting for Home", activity: "Queued  waiting for Home", createdAt: 3 }),
+      meta({ id: "c-done", title: "Done one", status: "idle", createdAt: 4 }),
+    ]);
+    renderView();
+    await flush();
+    const spinning = (el: Element) => [...el.querySelectorAll("[data-slot=spinner]")].filter((svg) => svg.classList.contains("animate-spinner"));
+    const run = document.querySelector("[data-status][data-menu-id='c-run']")!;
+    expect(spinning(run)).toHaveLength(1);
+    expect(spinning(run)[0]!.closest("[data-row-glyph]")).toBeTruthy();
+    const line = run.querySelector("[data-agent='a1']")!;
+    expect(spinning(line)).toHaveLength(0);
+    expect(line.querySelector("[data-slot=spinner]")).toBeTruthy();
+    expect(line.querySelector("[data-slot=status-word]")?.textContent).toBe("Working");
+    expect(line.querySelector("[data-slot=status-detail]")?.textContent).toBe("Editing Rail.tsx");
+    for (const name of [/Queued one/, /Done one/]) expect(spinning(screen.getByRole("button", { name }))).toHaveLength(0);
+    // The queued row says the host's detail as written.
+    expect(screen.getByRole("button", { name: /Queued one/ }).querySelector("[data-row-status]")?.textContent).toBe("Waiting for Home");
+  });
+
+  it("no text on the board holds two spaces in a row, and every detail starts with its capital", async () => {
+    seed([
+      meta({ id: "c-run", title: "Home", status: "running", activity: "Running ios:test", createdAt: 1 }),
+      meta({ id: "c-wait", title: "Tabs", status: "waiting", activity: "Bash", createdAt: 2 }),
+      meta({ id: "c-q", title: "Queued one", status: "queued", activity: "Queued  waiting for Home", createdAt: 3 }),
+      meta({ id: "c-w", title: "Sleeper", status: "watching", activity: "Waiting on sleep 45 seconds", statusDetail: "Sleep 45 seconds", createdAt: 4 }),
+      meta({ id: "c-done", title: "Landed one", status: "idle", createdAt: 5 }),
+    ]);
+    renderView();
+    await flush();
+    const board = document.querySelector("[data-board]")!;
+    const walker = document.createTreeWalker(board, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) expect(node.textContent ?? "").not.toMatch(/\S {2,}\S/);
+    const details = [...board.querySelectorAll("[data-row-status] [data-slot=status-detail]")].map((d) => d.textContent ?? "");
+    expect(details.length).toBeGreaterThan(3);
+    for (const d of details) expect(d[0], d).toBe(d[0]!.toUpperCase());
   });
 
   it("a child the answer names before the store has it is a row, and leaves when its host removes it", async () => {
@@ -792,7 +838,7 @@ describe("the master view", () => {
     const digest: BoardDigest = { todos: [{ content: "Write the view", status: "completed" }, { content: "Tests", status: "in_progress" }] };
     act(() => link.push({ push: "board", masterId: "m", sessionId: "c-impl", digest } as ServerPush));
     expect(within(impl()).getByText("1/2")).toBeTruthy();
-    expect(within(impl()).getByText("tests")).toBeTruthy();
+    expect(within(impl()).getByText("Tests")).toBeTruthy();
     // Only that row rendered again; another master's push changes nothing.
     expect(new Set(rowReads.filter(Boolean))).toEqual(new Set(["c-impl"]));
     act(() => link.push({ push: "board", masterId: "other", sessionId: "c-impl", digest: {} } as ServerPush));
@@ -888,7 +934,7 @@ describe("the master view", () => {
     sessionStore.attach(link);
     renderView();
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: /^Thread$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add thread" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Add existing thread…" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getAllByRole("checkbox").map((c) => c.closest("label")?.textContent)).toEqual(["A stray chatChat", "AnotherImplementation"]);
@@ -989,14 +1035,14 @@ describe("the master view", () => {
     expect(rows.map((li) => li.querySelector("[data-slot=status-mark]")?.getAttribute("data-state"))).toEqual(["done", "working", "queued"]);
     expect(rows[0]!.querySelector("[data-step-time]")?.textContent).toBe("2m");
     // The running step says its progress on its row, its console under it, no bar.
-    expect(rows[1]!.querySelector("[data-step-detail]")?.textContent).toBe("3 of 7vitest");
+    expect(rows[1]!.querySelector("[data-step-detail]")?.textContent).toBe("3 of 7, vitest");
     expect(rows[1]!.querySelector("[data-console='gate']")?.textContent).toBe("✓ typecheck 12s\nvitest: 3 of 7 files");
     expect(foot.querySelector("[role='progressbar']")).toBeNull();
     expect(foot.querySelectorAll("[data-console]")).toHaveLength(1);
     expect(foot.querySelector("[data-then]")?.textContent).toBe("Then notify you");
   });
 
-  it("the foot is a skeleton until batch.board answers", async () => {
+  it("the rows paint from the store at once; only the foot is a still skeleton until batch.board answers", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     let answer: (v: unknown) => void = () => {};
     const request = link.request.bind(link);
@@ -1007,9 +1053,16 @@ describe("the master view", () => {
       await flush();
       expect(document.querySelector("[data-batch-foot]")?.getAttribute("data-foot-mode")).toBe("loading");
       expect(document.querySelectorAll("[data-batch-foot] [data-slot=skeleton]").length).toBeGreaterThan(1);
+      // One busy region, the foot; the row it knows from the store is already drawn, and nothing turns.
+      expect(document.querySelectorAll("[aria-busy=true]")).toHaveLength(1);
+      expect(document.querySelector("[aria-busy=true]")?.hasAttribute("data-batch-foot")).toBe(true);
+      expect(screen.getByRole("button", { name: /Home/ })).toBeTruthy();
+      expect(document.querySelector("[data-batch-foot] .animate-spinner")).toBeNull();
       await act(async () => answer({ children: [], digests: {}, state: batch }));
       await flush();
       expect(document.querySelector("[data-batch-foot]")?.getAttribute("data-foot-mode")).toBe("console");
+      expect(document.querySelector("[aria-busy=true]")).toBeNull();
+      expect(document.querySelector("[data-batch-foot] [data-slot=skeleton]")).toBeNull();
     } finally {
       spy.mockRestore();
     }
@@ -1025,9 +1078,9 @@ describe("the master view", () => {
       });
     const detail = () => document.querySelector("[data-step='land'] [data-step-detail]")?.textContent;
     push("as-they-finish", [{ id: "land", status: "pending", detail: "", at: null, log: [] }]);
-    expect(detail()).toBe("as they finish");
+    expect(detail()).toBe("As they finish");
     push("all-at-once", [{ id: "land", status: "pending", detail: "", at: null, log: [] }]);
-    expect(detail()).toBe("all at once");
+    expect(detail()).toBe("All at once");
     push("as-they-finish", [{ id: "land", status: "running", detail: "", at: 1, startedAt: 1, log: [] }]);
     expect(detail()).toBe("1 of 4 landed");
   });
@@ -1207,8 +1260,8 @@ describe("the master view", () => {
     expect(gate.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("failed");
     expect(gate.querySelector("[data-step-detail]")?.className).toContain("text-destructive");
     expect(gate.querySelector("[data-step-time]")?.textContent).toBe("30s");
-    // The row says it, lower-case with no stop; the console shows the log alone, without the repeat.
-    expect(gate.querySelector("[data-step-detail]")?.textContent).toBe("gate failed at vitest");
+    // The row says it as the host wrote it, with no stop; the console shows the log alone, without the repeat.
+    expect(gate.querySelector("[data-step-detail]")?.textContent).toBe("Gate failed at vitest");
     expect(gate.querySelector("[data-log] .text-destructive")).toBeNull();
     // Said only on its row, so it wraps rather than being cut.
     expect(gate.querySelector("[data-step-detail]")?.className).toContain("break-words");
@@ -1216,7 +1269,7 @@ describe("the master view", () => {
     expect(gate.querySelector("[data-log]")?.textContent).toBe("✓ typecheck 12s\n✗ vitest: 2 failed");
     expect((foot.textContent ?? "").toLowerCase().split("gate failed at vitest")).toHaveLength(2);
     expect(within(foot as HTMLElement).queryByRole("button", { name: "Stop" })).toBeNull();
-    expect(foot.querySelector("[data-step='release']")?.textContent).toBe("Releaseskipped");
+    expect(foot.querySelector("[data-step='release']")?.textContent).toBe("ReleaseSkipped");
     fireEvent.click(within(gate).getByRole("button", { name: /Hide/ }));
     expect(foot.getAttribute("data-foot-mode")).toBe("idle");
     expect(gate.getAttribute("data-step-status")).toBe("failed");
@@ -1322,7 +1375,7 @@ describe("the master view", () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     renderView();
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: /^Thread$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add thread" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("Add a thread to iOS batch 2")).toBeTruthy();
@@ -1379,8 +1432,16 @@ describe("the master view", () => {
     expect(link.calls.find((c) => c.method === "session.batch")?.params).toMatchObject({ action: "stop", ids: ["c-new"] });
   });
 
-  it("the header carries the master's title, its summary and the two actions", async () => {
-    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+  it("the header carries the master's title, the batch's done tally and three equal controls; the summary is not on the board", async () => {
+    seed([
+      meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 }),
+      meta({ id: "c-a", title: "A", status: "idle", createdAt: 2 }),
+      meta({ id: "c-b", title: "B", status: "done", createdAt: 3 }),
+      meta({ id: "c-q", title: "Q", status: "queued", createdAt: 4 }),
+      meta({ id: "c-s", title: "S", status: "stopped", createdAt: 5 }),
+      meta({ id: "c-w", title: "W", status: "waiting", createdAt: 6 }),
+      meta({ id: "c-e", title: "E", status: "error", createdAt: 7 }),
+    ]);
     renderView();
     await flush();
     act(() => {
@@ -1388,11 +1449,16 @@ describe("the master view", () => {
     });
     const head = document.querySelector("[data-view-header]") as HTMLElement;
     expect(head.querySelector("[data-view-title]")?.textContent).toBe("iOS batch 2");
-    expect(head.querySelector("[data-view-detail]")?.textContent).toBe("Gate, release, publish");
-    expect(within(head).getByRole("button", { name: "Batch actions" })).toBeTruthy();
-    expect(within(head).getByRole("button", { name: /^Thread$/ })).toBeTruthy();
-    // The foot no longer repeats the summary.
-    expect(document.querySelector("[data-batch-foot]")?.textContent).not.toContain("Gate, release, publish");
+    expect(head.querySelector("[data-view-detail]")?.textContent).toBe("2/7");
+    // The shell is mocked here (SplitShell.dom.test.tsx holds the toggle's size): the view's two are 28px squares.
+    const controls = [...head.querySelectorAll<HTMLElement>("button")];
+    expect(controls.map((b) => b.getAttribute("aria-label"))).toEqual(["Batch actions", "Add thread", "Conversation"]);
+    expect(controls.slice(0, 2).every((b) => b.className.includes("size-7"))).toBe(true);
+    fireEvent.click(within(head).getByRole("button", { name: "Add thread" }));
+    const menu = await screen.findByRole("menu", { name: "Add thread" });
+    expect(within(menu).getByRole("menuitem", { name: "New thread…" })).toBeTruthy();
+    // The summary lives in the rules dialog and the master's chat, never on the board.
+    expect(document.querySelector("[data-board]")?.textContent).not.toContain("Gate, release, publish");
   });
 });
 
@@ -1440,7 +1506,7 @@ describe("a fleet of 300", () => {
     expect(header("running").textContent).toBe("Working");
     // The list is as tall as every row, though most are not in the DOM.
     const sized = document.querySelector("[data-board-scroller] > div") as HTMLElement;
-    expect(parseInt(sized.style.height, 10)).toBeGreaterThan(300 * 50);
+    expect(parseInt(sized.style.height, 10)).toBeGreaterThanOrEqual(300 * 48);
     expect(link.calls.filter((c) => PER_ROW_READS.includes(c.method))).toEqual([]);
     expect(link.calls.filter((c) => c.method === "batch.board")).toHaveLength(1);
   });
@@ -1454,7 +1520,7 @@ describe("a fleet of 300", () => {
     act(() => link.push({ push: "session", session: wire } as unknown as ServerPush));
     // The store tells meta listeners once per frame.
     await act(() => new Promise((r) => setTimeout(r, 50)));
-    expect(screen.getByText("running lint")).toBeTruthy();
+    expect(screen.getByText("Running lint")).toBeTruthy();
     expect(rowReads.filter((id) => id && id !== "f2")).toEqual([]);
     expect(rowReads.filter((id) => id === "f2").length).toBeGreaterThan(0);
   });
@@ -1481,9 +1547,9 @@ describe("a row's subagents", () => {
     renderView();
     await flush();
     expect(linesOf(/Home screen/)).toEqual([
-      "waiting Testsapprove Bash",
-      "failed Lintusage cap",
-      "working Rail rowsediting Rail.tsx",
+      "waiting TestsNeeds youApprove Bash",
+      "failed LintFailedUsage cap",
+      "working Rail rowsWorkingEditing Rail.tsx",
     ]);
     const waiting = rowOf(/Home screen/).querySelector("[data-agent='a11'] [data-agent-what]")!;
     expect(waiting.className).toContain("text-warning");
@@ -1494,7 +1560,7 @@ describe("a row's subagents", () => {
     expect(document.querySelectorAll("[data-status]")).toHaveLength(2);
   });
 
-  it("a row's type glyph is its type's tint; a subagent's role glyph stays plain, a typed line without a role is tinted", async () => {
+  it("a row's type glyph is its type's tint; a subagent line leads with its still status glyph and no role or type glyph", async () => {
     seed([
       meta({ id: "c-impl", title: "Home screen", status: "running" }),
       agent("a1", "c-impl", "running", { title: "Rail rows" }),
@@ -1504,10 +1570,12 @@ describe("a row's subagents", () => {
     await flush();
     const row = rowOf(/Home screen/);
     expect(row.querySelector("[role=img] svg[data-type-glyph]")?.getAttribute("class")).toContain("text-type-implementation");
-    const role = row.querySelector("[data-agent='a1'] svg:not([data-slot=status-mark] svg)")!;
-    expect(role.hasAttribute("data-type-glyph")).toBe(false);
-    expect(role.getAttribute("class")).toContain("text-muted-foreground");
-    expect(row.querySelector("[data-agent='a2'] svg[data-type-glyph]")?.getAttribute("class")).toContain("text-type-research");
+    for (const id of ["a1", "a2"]) {
+      const line = row.querySelector(`[data-agent='${id}']`)!;
+      const glyphs = [...line.querySelectorAll("svg")];
+      expect(glyphs).toHaveLength(1);
+      expect(glyphs[0]!.closest("[data-slot=status-mark]")).toBeTruthy();
+    }
   });
 
   it("caps the lines at three and counts the rest", async () => {
@@ -1518,7 +1586,7 @@ describe("a row's subagents", () => {
     renderView();
     await flush();
     expect(linesOf(/Home screen/)).toHaveLength(3);
-    expect(tailOf(/Home screen/)).toBe("and 2 more");
+    expect(tailOf(/Home screen/)).toBe("2 more");
   });
 
   it("a line opens its agent in the board's place, never the row", async () => {
@@ -1542,12 +1610,12 @@ describe("a row's subagents", () => {
     ]);
     renderView();
     await flush();
-    expect(linesOf(/Home screen/)).toEqual(["working Railreading a.ts"]);
+    expect(linesOf(/Home screen/)).toEqual(["working RailWorkingReading a.ts"]);
     rowReads.length = 0;
     const { environmentId: _e, ...wire } = agent("a1", "c-impl", "running", { title: "Rail", activity: "Editing a.ts" });
     act(() => link.push({ push: "session", session: wire } as unknown as ServerPush));
     await act(() => new Promise((r) => setTimeout(r, 50)));
-    expect(linesOf(/Home screen/)).toEqual(["working Railediting a.ts"]);
+    expect(linesOf(/Home screen/)).toEqual(["working RailWorkingEditing a.ts"]);
     expect(rowReads.filter((id) => id === "c-other")).toEqual([]);
     const { environmentId: _g, ...settled } = agent("a1", "c-impl", "idle", { title: "Rail" });
     act(() => link.push({ push: "session", session: settled } as unknown as ServerPush));
@@ -1556,7 +1624,7 @@ describe("a row's subagents", () => {
     const { environmentId: _f, ...spawned } = agent("a2", "c-other", "starting", { createdAt: 9 });
     act(() => link.push({ push: "session", session: spawned } as unknown as ServerPush));
     await act(() => new Promise((r) => setTimeout(r, 50)));
-    expect(linesOf(/Search/)).toEqual(["working Subagent"]);
+    expect(linesOf(/Search/)).toEqual(["working SubagentWorking"]);
   });
 });
 
@@ -1622,7 +1690,7 @@ describe("the batch across hosts", () => {
     await flush();
     const box = screen.getByRole("button", { name: /Inbox/ });
     expect(within(box).getByText("0/2")).toBeTruthy();
-    expect(box.querySelector("[data-row-status]")?.textContent).toBe("swipe0/2");
+    expect(box.querySelector("[data-row-status]")?.textContent).toBe("Swipe0/2");
     expect(boxLink.calls.filter((c) => c.method === "batch.board").map((c) => c.params)).toEqual([{ masterId: "m" }]);
     // Its board push moves the row; nothing is read per row on either host.
     act(() => boxLink.push({ push: "board", masterId: "m", sessionId: "c-box", digest: { todos: [{ content: "Swipe", status: "completed" }] } } as ServerPush));
@@ -1660,7 +1728,7 @@ describe("the batch across hosts", () => {
     seedBox([], true);
     renderView();
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: /^Thread$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add thread" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
     const dialog = screen.getByRole("dialog");
     const hostRow = within(dialog).getByRole("group", { name: "Host" });
@@ -1680,7 +1748,7 @@ describe("the batch across hosts", () => {
     seedBox([]);
     renderView();
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: /^Thread$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add thread" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
     expect(within(screen.getByRole("dialog")).queryByRole("group", { name: "Host" })).toBeNull();
   });
@@ -1692,7 +1760,7 @@ describe("the batch across hosts", () => {
     seedBox([boxMeta({ id: "free-box", title: "Box stray", masterId: null as unknown as string, createdAt: 10 })], true);
     renderView();
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: /^Thread$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add thread" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Add existing thread…" }));
     const dialog = screen.getByRole("dialog");
     const labels = within(dialog).getAllByRole("checkbox").map((c) => c.closest("label")!);
