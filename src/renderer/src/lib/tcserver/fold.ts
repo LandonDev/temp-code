@@ -1,5 +1,5 @@
 import type { Attachment, Block, CompactionMeta, QuestionMeta } from "../session";
-import { COMPACTING_WORDS } from "@shared/statusWords";
+import { BACKGROUND_CHECK_WORDS, COMPACTING_WORDS } from "@shared/statusWords";
 import { mergeContextUsage, type ContextUsage } from "../contextUsage";
 import {
   asRecord,
@@ -18,7 +18,6 @@ import {
 } from "../harness/toolBlock";
 import type { EventRow, ServerAttachment } from "./types";
 import { isOmittedBody } from "@server/shared/wire";
-import { BACKGROUND_CHECK_WORDS } from "@server/shared/statusWords";
 import { shortName } from "../toolPhrase";
 import type { ToolPreview } from "../session";
 import {
