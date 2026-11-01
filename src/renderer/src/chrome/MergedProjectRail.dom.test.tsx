@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { registry, type Environment, type EnvironmentStatus, type Link } from "../lib/connection";
 import type { ServerPush, SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { sessionStore } from "../lib/tcserver/store";
-import { loadLastSeen, seenFloor } from "../lib/sessionSeen";
+import { loadLastSeen, markAllSeen, pruneLastSeen, seenFloor } from "../lib/sessionSeen";
 import { workspaceStore } from "../lib/tcserver/workspaces";
 import { groupWorkspaceSessions } from "../lib/workspaceSessions";
 import { mountProbe } from "../test/renderProbe";
@@ -243,13 +243,50 @@ describe("the rail", () => {
     expect(marks.map((c) => c.getAttribute("aria-label"))).toEqual(["Needs you, 2 threads"]);
   });
 
-  it("gives the name the room: in a rail under 15rem the word goes and the glyph stays", async () => {
+  it("a workspace row is a container: the group fill, its name alone with no logo or mascot, no line under it", async () => {
+    const root = await mountRail([LOCAL, BOX], {}, undefined, { cwd: MAC_PATH });
+    const [selected, other] = workspaceRows(root) as HTMLElement[];
+    expect(other.getAttribute("data-surface")).toBe("group");
+    expect(other.className).toMatch(/(^| )bg-sidebar-group( |$)/);
+    expect(other.querySelector("button")!.getAttribute("aria-current")).toBeNull();
+    expect(selected.className).toMatch(/(^| )bg-sidebar-group-selected( |$)/);
+    expect(selected.querySelector("button")!.getAttribute("aria-current")).toBe("true");
+    for (const row of [selected, other]) {
+      // The row's own button holds no glyph slot: no logo, mascot or colour.
+      expect(row.querySelector("button")!.querySelector("svg, img")).toBeNull();
+      expect(row.className).toContain("@container/railrow");
+    }
+    expect(root.querySelector("[data-workspace-line]")).toBeNull();
+    // The rows sit 4px apart, so their fills never touch.
+    expect(selected.parentElement!.className).toContain("gap-1");
+  });
+
+  it("an unread workspace's name is medium, a read one regular", async () => {
+    // Every thread settled after the floor is unseen (an earlier test read them all).
+    pruneLastSeen(new Set());
+    markAllSeen([], 1);
     const root = await mountRail([LOCAL, BOX]);
+    const [linked, quiet] = workspaceRows(root);
+    expect(linked.querySelector("button")!.className).toContain("font-medium");
+    expect(quiet.querySelector("button")!.className).not.toContain("font-medium");
+  });
+
+  it("the state is a glyph button, never a word: it opens the threads popover and does not select the row", async () => {
+    const onSelect = vi.fn();
+    const root = await mountRail([LOCAL, BOX], {}, onSelect);
     const row = workspaceRows(root)[0] as HTMLElement;
-    expect(row.className).toContain("@container/railrow");
-    const word = row.querySelector('[aria-label^="Needs you, "] [data-slot="status-word"]')!;
-    expect(word.className).toContain("@max-[15rem]/railrow:hidden");
-    expect(word.previousElementSibling?.querySelector("svg")).toBeTruthy();
+    const mark = row.querySelector<HTMLButtonElement>('[aria-label="Needs you, 2 threads"]')!;
+    expect(mark.textContent).toBe("");
+    expect(mark.querySelector('[data-slot="status-mark"]')!.getAttribute("data-state")).toBe("waiting");
+    expect(mark.querySelector('[data-slot="status-word"]')).toBeNull();
+    expect(row.querySelector("button")!.contains(mark)).toBe(false);
+    await probe!.act(async () => {
+      fireEvent.pointerDown(mark, { button: 0 });
+      fireEvent.click(mark);
+      await flush();
+    });
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(mark.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("dims a row whose only host is down, not the linked one", async () => {
@@ -288,13 +325,20 @@ describe("the rail", () => {
     expect(root.textContent).not.toContain("No workspaces yet");
   });
 
-  it("only the selected row asks git for its diff, and shows it before its word", async () => {
+  it("only the selected row asks git for its diff, and shows it muted before its glyph", async () => {
     git.asked = [];
     const root = await mountRail([LOCAL, BOX], {}, undefined, { cwd: MAC_PATH });
     const enabled = [...new Set(git.asked.filter(([, on]) => on).map(([cwd]) => cwd))];
     expect(enabled).toEqual([MAC_PATH]);
     const [selected, other] = workspaceRows(root);
-    expect(selected.querySelector("[data-workspace-diff]")?.textContent).toBe("+12 −4");
+    const diff = selected.querySelector("[data-workspace-diff]")!;
+    expect(diff.textContent).toBe("+12 −4");
+    // Green and red stay in the Changes section; here it is the trailing muted.
+    expect(diff.outerHTML).not.toMatch(/text-success|text-destructive/);
+    expect(diff.hasAttribute("data-rail-yield")).toBe(true);
+    expect(diff.className).toContain("@max-[15rem]/railrow:hidden");
+    expect(diff.className).toContain("group-hover/row:hidden");
+    expect(diff.compareDocumentPosition(selected.querySelector('[aria-label^="Needs you, "]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(selected.querySelector("button")?.getAttribute("aria-label")).toContain("3 files changed, +12, -4");
     expect(other.querySelector("[data-workspace-diff]")).toBeNull();
   });
@@ -305,12 +349,18 @@ describe("the rail", () => {
     expect([...new Set(git.asked.filter(([, on]) => on).map(([cwd]) => cwd))]).toEqual([BOX_PATH]);
   });
 
-  it("pins a workspace from the button in its glyph's place, without selecting it", async () => {
+  it("shows Pin then ⋯ at the row's end on hover, and Pin pins without selecting", async () => {
     const onSelect = vi.fn();
     const root = await mountRail([LOCAL, BOX], {}, onSelect);
     const [, other] = workspaceRows(root);
-    fireEvent.click(other.querySelector('[aria-label="Pin workspace"]')!);
+    const pin = other.querySelector<HTMLButtonElement>('[aria-label="Pin workspace"]')!;
+    const options = other.querySelector<HTMLButtonElement>('[aria-label="Workspace options"]')!;
+    expect(pin.compareDocumentPosition(options) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const action of [pin, options]) expect(action.className).toContain("group-hover/row:inline-flex");
+    fireEvent.click(pin);
     expect(onSelect).not.toHaveBeenCalled();
     expect(headers(root)).toContain("Pinned");
+    const pinnedRow = workspaceRows(root).find((r) => r.querySelector('[aria-label="Unpin workspace"]'));
+    expect(pinnedRow?.querySelector("button")?.textContent).toBe("only-box");
   });
 });

@@ -4,11 +4,10 @@
 import type { SessionMeta } from "../lib/tcserver/types";
 import { groupMark, type GroupMark } from "../lib/sidebarRows";
 import { threadRow, type ThreadRow } from "../lib/workspaceSessions";
-import { ProjectMascot } from "./ProjectMascot";
 import { RailHeading, RailRow } from "./RailRow";
 import { MoreHorizontal } from "./icons";
 import { ProjectRowView, ThreadRowView } from "./WorkspaceSessions";
-import { WorkspaceLineView, WorkspaceMarkView } from "./WorkspaceRowMarks";
+import { WorkspaceMarkView } from "./WorkspaceRowMarks";
 
 const noop = () => {};
 
@@ -36,20 +35,17 @@ const row = (id: string, title: string, extra: Partial<SessionMeta> = {}, seen: 
 
 const markOf = (rows: ThreadRow[]): GroupMark<ThreadRow> => groupMark(rows)!;
 
-function Workspace({ name, color, mark, unread = false, selected = false }: { name: string; color: string; mark?: GroupMark<ThreadRow>; unread?: boolean; selected?: boolean }) {
+function Workspace({ name, mark, unread = false, selected = false }: { name: string; mark?: GroupMark<ThreadRow>; unread?: boolean; selected?: boolean }) {
   return (
-    <>
-      <RailRow
-        glyph={<ProjectMascot project={name} color={color} />}
-        label={name}
-        selected={selected}
-        emphasis={unread}
-        trailingInteractive
-        trailing={mark ? <WorkspaceMarkView mark={mark} /> : null}
-        hoverActions={[{ label: "Workspace options", icon: MoreHorizontal, menu: true, onClick: noop }]}
-      />
-      {mark ? <WorkspaceLineView mark={mark} /> : null}
-    </>
+    <RailRow
+      surface="group"
+      label={name}
+      selected={selected}
+      emphasis={unread}
+      trailingInteractive
+      trailing={mark ? <WorkspaceMarkView mark={mark} /> : null}
+      hoverActions={[{ label: "Workspace options", icon: MoreHorizontal, menu: true, onClick: noop }]}
+    />
   );
 }
 
@@ -78,12 +74,12 @@ export function RailMarksSketch() {
   return (
     <div className="flex gap-6 bg-background p-4">
       <nav aria-label="Workspaces" className="flex w-[260px] flex-col bg-sidebar py-2">
-        <div className="px-2">
+        <div className="flex flex-col gap-1 px-2">
           <RailHeading>Workspaces</RailHeading>
-          <Workspace name="temp-code" color="var(--chart-1)" selected mark={markOf([row("t1", "Fix the login flow", { status: "running", updatedAt: 90 }), row("t2", "Typecheck", { status: "running" }), row("t3", "Bundle check", { status: "starting" })])} />
-          <Workspace name="cosmic-prisons-with-a-long-name" color="var(--chart-2)" mark={markOf([row("c1", "Approve Bash on deploy", { status: "waiting" })])} />
-          <Workspace name="aliax" color="var(--chart-3)" unread />
-          <Workspace name="landing-site" color="var(--chart-4)" />
+          <Workspace name="temp-code" selected mark={markOf([row("t1", "Fix the login flow", { status: "running", updatedAt: 90 }), row("t2", "Typecheck", { status: "running" }), row("t3", "Bundle check", { status: "starting" })])} />
+          <Workspace name="cosmic-prisons-with-a-long-name" mark={markOf([row("c1", "Approve Bash on deploy", { status: "waiting" })])} />
+          <Workspace name="aliax" unread />
+          <Workspace name="landing-site" />
         </div>
       </nav>
       <div className="flex w-[300px] flex-col bg-sidebar px-2 py-2">

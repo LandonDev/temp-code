@@ -77,13 +77,12 @@ import { useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { subscribeProjectRailActions } from "../lib/projectRailActions";
 import {
-  useWorkspaceIcon,
   useWorkspaces,
   workspaceByPath,
   workspaceLabelKey,
 } from "../lib/tcserver/workspaces";
-import { RailHeading, RailRow } from "./RailRow";
-import { useWorkspaceMarks, WorkspaceGlyph, WorkspaceLineView, WorkspaceMarkTrigger } from "./WorkspaceRowMarks";
+import { RAIL_YIELD, RailHeading, RailRow } from "./RailRow";
+import { diffWords, useWorkspaceMarks, WorkspaceMarkTrigger } from "./WorkspaceRowMarks";
 import type { WorkspaceMark } from "../lib/sidebarRows";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
 import { DevModeSlot, TabVisitNav } from "./TitleBar";
@@ -91,7 +90,7 @@ import { UpdateRow, useUpdateRowState } from "./UpdateRow";
 import { SignInRow, useSignInTarget } from "./SignInRow";
 import { UsageMeter } from "./UsageMeter";
 import { RailWorking } from "./RailWorking";
-import { Counts } from "./rail/changeRows";
+import { cn } from "../lib/cn";
 import { useGitDiffStats } from "../lib/gitIndexStore";
 import type { GitDiffStats } from "../lib/fs";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
@@ -590,10 +589,6 @@ export function ProjectRail({
                 onTogglePin={onTogglePin}
                 menuPath={menuPath}
                 groupLabels={groupLabels}
-                groupColors={groupColors}
-                groupCustomColors={groupCustomColors}
-                groupLogos={groupLogos}
-                groupMascots={groupMascots}
               />
             ) : null}
 
@@ -619,10 +614,6 @@ export function ProjectRail({
               onTogglePin={onTogglePin}
               menuPath={menuPath}
               groupLabels={groupLabels}
-              groupColors={groupColors}
-              groupCustomColors={groupCustomColors}
-              groupLogos={groupLogos}
-              groupMascots={groupMascots}
             />
             </div>
             </RowsContextMenu>
@@ -698,10 +689,6 @@ function ProjectSection({
   onTogglePin,
   menuPath,
   groupLabels,
-  groupColors,
-  groupCustomColors,
-  groupLogos,
-  groupMascots,
 }: {
   label: string;
   items: RailItem[];
@@ -728,17 +715,13 @@ function ProjectSection({
   /** The folder whose menu is open: its ⋯ stays shown. */
   menuPath: string | null;
   groupLabels: Record<string, string>;
-  groupColors: Record<string, number>;
-  groupCustomColors: Record<string, string>;
-  groupLogos: ReturnType<typeof useTabGroupLogos>;
-  groupMascots: Record<string, string>;
 }) {
   return (
     <div className="shrink-0 px-2 pt-4">
       <RailHeading action={onAdd ? { label: "Add workspace", icon: Plus, onClick: onAdd } : undefined}>
         {label}
       </RailHeading>
-      <div className="flex flex-col">
+      <div className="flex flex-col gap-1">
         {emptyRow}
         {items.map((item, index) => (
           <WorkspaceRow
@@ -758,10 +741,6 @@ function ProjectSection({
             onTogglePin={onTogglePin}
             menuOpen={menuPath !== null && item.paths.some((p) => sameProjectPath(p, menuPath))}
             groupLabels={groupLabels}
-            groupColors={groupColors}
-            groupCustomColors={groupCustomColors}
-            groupLogos={groupLogos}
-            groupMascots={groupMascots}
           />
         ))}
       </div>
@@ -770,11 +749,11 @@ function ProjectSection({
 }
 
 /**
- * One workspace: its glyph (Pin or Unpin in its place on hover and focus),
- * its alias-resolved name, the selected row's uncommitted +/− and the
- * status chip as its trailing marks, and ⋯ (the same menu as a right-click)
- * as its hover action; drag reorders it. A busy one has its working line
- * under it.
+ * One workspace, a container on the sidebar-group fill: its alias-resolved
+ * name alone (no logo, mascot or colour in the rail; medium while a thread
+ * in it is unread), the selected row's uncommitted lines muted and the
+ * state's one glyph as its trailing marks, and Pin or Unpin then ⋯ (the
+ * same menu as a right-click) as its hover actions; drag reorders it.
  */
 function WorkspaceRow({
   item,
@@ -792,10 +771,6 @@ function WorkspaceRow({
   onTogglePin,
   menuOpen,
   groupLabels,
-  groupColors,
-  groupCustomColors,
-  groupLogos,
-  groupMascots,
 }: {
   item: RailItem;
   /** The copy of this row's workspace on screen, when the row is selected:
@@ -814,10 +789,6 @@ function WorkspaceRow({
   onTogglePin: (path: string) => void;
   menuOpen: boolean;
   groupLabels: Record<string, string>;
-  groupColors: Record<string, number>;
-  groupCustomColors: Record<string, string>;
-  groupLogos: ReturnType<typeof useTabGroupLogos>;
-  groupMascots: Record<string, string>;
 }) {
   const workspaces = useWorkspaces();
   const workspaceId = workspaceByPath(workspaces, item.path)?.id ?? null;
@@ -825,12 +796,6 @@ function WorkspaceRow({
   // Labels, colours and mascots key by the link's leader (lib/linkedRail.ts).
   const projectKey = workspaceLabelKey(workspaces, item.path, projectName(item.path));
   const name = resolveTabGroupLabel(projectKey, groupLabels, basename(item.path));
-  const logoPath = resolveTabGroupLogo(projectKey, groupLogos);
-  // No logo set: the server's repo icon or host mark stands in, unless the
-  // user picked a mascot on purpose.
-  const serverIcon = useWorkspaceIcon(workspaceId);
-  const showLogo = !!logoPath || (!groupMascots[projectKey] && !!(serverIcon?.dataUrl || serverIcon?.host));
-  const color = resolveTabGroupColor(projectKey, groupColors, groupCustomColors, projectKey);
   const dragging = sortable.draggingId === item.path;
   const dropping = sortable.draggingId && sortable.toIndex === index && sortable.fromIndex !== null;
   const showStart = dropping && sortable.toIndex! < sortable.fromIndex!;
@@ -841,22 +806,12 @@ function WorkspaceRow({
   const changed = !!stats && (stats.additions > 0 || stats.deletions > 0);
 
   return (
-    <>
       <RailRow
         rowRef={(el) => sortable.setItemRef(item.path, el)}
         data-host-offline={offline || undefined}
         data-rail-path={item.path}
         className={`@container/railrow touch-none ${dragging ? "opacity-40" : offline ? "opacity-50" : ""}`}
-        glyph={
-          <WorkspaceGlyph
-            showLogo={showLogo}
-            logoPath={logoPath}
-            workspaceId={workspaceId}
-            projectKey={projectKey}
-            color={color}
-            mascotName={resolveTabGroupMascot(projectKey, groupMascots)}
-          />
-        }
+        surface="group"
         label={name}
         ariaLabel={workspaceRowAriaLabel(name, busy, needsYou, stats)}
         selected={selected}
@@ -866,9 +821,15 @@ function WorkspaceRow({
           changed || (railStatus?.mark && workspaceId) ? (
             <>
               {changed ? (
-                // Like the word, it yields to the name in a rail under 15rem; the button's name still says it.
-                <span data-workspace-diff className="pointer-events-none @max-[15rem]/railrow:hidden">
-                  <Counts status="modified" additions={stats.additions} deletions={stats.deletions} />
+                // Muted: the colours belong to the Changes section. It yields to
+                // the hover actions, and to the name in a rail under 15rem; the
+                // button's name still says it.
+                <span
+                  data-workspace-diff
+                  data-rail-yield={RAIL_YIELD["data-rail-yield"]}
+                  className={cn("pointer-events-none pr-1 whitespace-nowrap @max-[15rem]/railrow:hidden", RAIL_YIELD.className)}
+                >
+                  {diffWords(stats.additions, stats.deletions)}
                 </span>
               ) : null}
               {railStatus?.mark && workspaceId ? (
@@ -917,8 +878,6 @@ function WorkspaceRow({
           <div className="pointer-events-none absolute inset-x-2 bottom-0 z-20 h-0.5 rounded-full bg-accent" />
         ) : null}
       </RailRow>
-      {railStatus?.mark ? <WorkspaceLineView mark={railStatus.mark} onSelect={onSelectAgent} /> : null}
-    </>
   );
 }
 
