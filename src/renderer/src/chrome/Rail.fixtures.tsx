@@ -1,21 +1,27 @@
-// The rail's look, for `bun run ui:preview src/renderer/src/chrome/Rail.fixtures.tsx#RailSketch`.
-// Presentational rows only (RailRow, the headings, the foot's shapes) fed plain props: no stores.
+// The rail's look, for `bun run ui:preview src/renderer/src/chrome/Rail.fixtures.tsx#RailRealistic`
+// (and #RailSketch, #RailWithWorking, #FirstRunRail, #SignedInRail; each takes `width`).
+// Presentational rows only (RailRow, the headings, the foot's shapes) fed plain props: no stores,
+// except RailRealistic, which names two hosts to the registry so the host glyphs draw.
 import type { ReactNode } from "react";
+import type { UsageMeter } from "@server/shared/usageMeter";
 import { StatusMark } from "../components/ui/status";
-import { ChartBar, FolderPlus, Inbox, ListChecks, MessageSquare, MoreHorizontal, Plus, Search, Server, Settings, StickyNote, Users } from "./icons";
+import { registry, type Environment } from "../lib/connection";
+import { cn } from "../lib/cn";
+import type { WorkingRow } from "../lib/railWorking";
+import type { GroupMark } from "../lib/sidebarRows";
+import type { SessionMeta, ThreadType } from "../lib/tcserver/types";
+import type { ThreadRow } from "../lib/workspaceSessions";
+import { ChartBar, FolderPlus, Inbox, ListChecks, MessageSquare, MoreHorizontal, Pin, PinOff, Plus, Search, Server, Settings, StickyNote, Users } from "./icons";
 import { RAIL_YIELD, RailHeading, RailRow } from "./RailRow";
+import { RailWorkingView } from "./RailWorking";
 import { SignInRowView } from "./SignInRow";
 import { UpdateRow } from "./UpdateRow";
-import type { GroupMark } from "../lib/sidebarRows";
-import type { ThreadRow } from "../lib/workspaceSessions";
+import { MeterRowView } from "./UsageMeter";
 import { diffWords, WorkspaceMarkView } from "./WorkspaceRowMarks";
-import { cn } from "../lib/cn";
-import { RailWorkingView } from "./RailWorking";
-import { Pin, PinOff } from "./icons";
-import type { WorkingRow } from "../lib/railWorking";
-import type { SessionMeta } from "../lib/tcserver/types";
 
 const noop = () => {};
+/** The rail's height in a 900px window. */
+const HEIGHT = 900;
 
 const markOf = (state: GroupMark<ThreadRow>["state"], title: string, more = 0): GroupMark<ThreadRow> => ({
   state,
@@ -72,116 +78,242 @@ function Workspace({
   );
 }
 
-/** The navigation group, first in the list (`railTopRows`). */
-function Navigation({ inboxUnseen = false, chats, chatsSelected = false }: { inboxUnseen?: boolean; chats?: ReactNode; chatsSelected?: boolean }) {
+/** The navigation group, first in the list (`railTopRows`): no heading,
+ *  Accounts and Stats in it on the desktop (`aliax`). */
+function Navigation({
+  inboxUnseen = false,
+  chats,
+  chatsSelected = false,
+  aliax = true,
+  page,
+}: {
+  inboxUnseen?: boolean;
+  chats?: ReactNode;
+  chatsSelected?: boolean;
+  aliax?: boolean;
+  page?: "accounts" | "stats";
+}) {
   return (
-    <div className="px-2">
+    <div className="shrink-0 px-2">
       <RailRow icon={Search} label="Search" />
       <RailRow icon={Inbox} label="Inbox" emphasis={inboxUnseen} />
       <RailRow icon={ListChecks} label="Mark all read" />
       <RailRow icon={StickyNote} label="Notes" />
       <RailRow icon={MessageSquare} label="Chats" selected={chatsSelected} trailing={chats} />
+      {aliax ? (
+        <>
+          <RailRow icon={Users} label="Accounts" selected={page === "accounts"} />
+          <RailRow icon={ChartBar} label="Stats" selected={page === "stats"} />
+        </>
+      ) : null}
     </div>
   );
 }
 
-/** The Accounts group (`railAccountRows`), desktop only. */
-function AccountsGroup({ selected }: { selected?: "accounts" | "stats" }) {
+/** A heading and its workspace rows, 4px apart (ProjectSection). */
+function Section({ label, add = false, children }: { label: string; add?: boolean; children: ReactNode }) {
   return (
-    <div className="px-2 pt-4">
-      <RailHeading>Accounts</RailHeading>
-      <RailRow icon={Users} label="Accounts" selected={selected === "accounts"} />
-      <RailRow icon={ChartBar} label="Stats" selected={selected === "stats"} />
+    <div className="shrink-0 px-2 pt-4">
+      <RailHeading action={add ? { label: "Add workspace", icon: Plus, onClick: noop } : undefined}>{label}</RailHeading>
+      <div className="flex flex-col gap-1">{children}</div>
     </div>
   );
 }
 
-/** `width` is the rail's: 200 by default in the app, 180 to 360 by drag.
- *  `working` stands the Working section between the list and the foot. */
-export function RailSketch({ width = 260, working = false }: { width?: number; working?: boolean }) {
+/** The hosts row's dots, as `toneOf` colours them. */
+function HostsRow({ tones }: { tones: string[] }) {
   return (
-    <nav aria-label="Workspaces" className="flex h-[720px] flex-col border-r border-border bg-sidebar" style={{ width }}>
+    <RailRow
+      icon={Server}
+      label="Hosts"
+      trailing={
+        <span className="flex items-center gap-1">
+          {tones.map((tone, i) => (
+            <span key={i} className={cn("size-1.5 rounded-full", tone)} />
+          ))}
+        </span>
+      }
+    />
+  );
+}
+
+const NOW = 1_800_000_000_000;
+const MIN = 60_000;
+
+const pooled: UsageMeter = { share: 0.62, resetsAt: NOW + 130 * MIN, limited: null, withRoom: 3, windows: [] };
+const limited: UsageMeter = { share: 0.34, resetsAt: NOW + 50 * MIN, limited: { until: NOW + 3 * MIN }, withRoom: 0, windows: [] };
+
+/** The foot under its one hairline: Working (when it has rows), the rows
+ *  16px under it, then the meters. */
+function Foot({ working, rows, meters = true }: { working?: readonly WorkingRow[]; rows: ReactNode; meters?: boolean }) {
+  return (
+    <div className="flex shrink-0 flex-col border-t border-border">
+      {working ? <RailWorkingView rows={working} now={NOW} activeSessionId="w2" projectOf={() => "temp-code"} /> : null}
+      <div className="flex flex-col p-2">{rows}</div>
+      {meters ? (
+        <div aria-label="Usage" className="flex shrink-0 flex-col gap-px px-2 pb-2">
+          <MeterRowView provider="claude" meter={pooled} now={NOW} />
+          <MeterRowView provider="codex" meter={limited} now={NOW} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Rail({ width, children, foot }: { width: number; children: ReactNode; foot: ReactNode }) {
+  return (
+    <nav aria-label="Workspaces" className="flex flex-col border-r border-border bg-sidebar" style={{ width, height: HEIGHT }}>
       <div className="h-10 shrink-0" />
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">
-        <Navigation inboxUnseen chats={<StatusMark state="working" word={false} />} />
-        <AccountsGroup selected="stats" />
-        <div className="px-2 pt-4">
-          <RailHeading>Pinned</RailHeading>
-          <Workspace name="temp-code" selected pinned diff={[12, 4]} mark={markOf("working", "Restore the cards")} />
-        </div>
-        <div className="px-2 pt-4">
-          <RailHeading action={{ label: "Add workspace", icon: Plus, onClick: noop }}>Workspaces</RailHeading>
-          <Workspace name="cosmic-prisons" mark={markOf("working", "Typecheck the rail", 2)} />
-          <Workspace name="aliax" mark={markOf("waiting", "Approve Bash on deploy")} />
-          <Workspace name="landing-site" unread />
-        </div>
-      </div>
-      {working ? <RailWorkingView rows={WORKING} now={NOW} projectOf={() => "temp-code"} /> : null}
-      <div className="flex shrink-0 flex-col border-t border-border">
-        <div className="flex flex-col p-2">
-          <UpdateRow state={{ kind: "ready" }} onInstall={noop} onDismiss={noop} />
-          <RailRow
-            icon={Server}
-            label="Hosts"
-            trailing={
-              <span className="flex items-center gap-1">
-                <span className="size-1.5 rounded-full bg-success" />
-                <span className="size-1.5 rounded-full bg-warning" />
-              </span>
-            }
-          />
-          <RailRow icon={Settings} label="Settings" />
-        </div>
-      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">{children}</div>
+      {foot}
     </nav>
   );
 }
 
-const NOW = Date.now();
-
-const working = (id: string, title: string, state: WorkingRow["state"], minutes = 0): WorkingRow => ({
-  id,
-  state,
-  meta: { id, title, environmentId: "local", status: state === "working" ? "running" : state === "waiting" ? "waiting" : "idle", busySince: minutes ? NOW - minutes * 60_000 : null } as SessionMeta,
-});
+const working = (
+  id: string,
+  title: string,
+  state: WorkingRow["state"],
+  extra: Partial<SessionMeta> & { minutes?: number; type?: ThreadType } = {},
+): WorkingRow => {
+  const { minutes = 0, type = "chat", ...meta } = extra;
+  return {
+    id,
+    state,
+    meta: {
+      id,
+      title,
+      environmentId: "local",
+      threadType: type,
+      status: state === "working" ? "running" : state === "waiting" ? "waiting" : "idle",
+      busySince: minutes ? NOW - minutes * MIN : null,
+      ...meta,
+    } as SessionMeta,
+  };
+};
 
 const WORKING: WorkingRow[] = [
-  working("w1", "Approve Bash on deploy", "waiting"),
-  working("w2", "Restore the cards", "working", 2.2),
-  working("w3", "Probe the gateway", "working", 14),
+  working("w1", "Approve Bash on deploy", "waiting", { type: "implementation" }),
+  working("w2", "Restore the cards", "working", { minutes: 2.2 }),
+  working("w3", "Probe the gateway", "working", { minutes: 14, type: "research" }),
   working("w4", "Docs pass", "done"),
-  working("w5", "Typecheck the rail", "working", 31),
-  working("w6", "Fix login", "done"),
+  working("w5", "Typecheck the rail", "working", { minutes: 31, type: "implementation" }),
+  working("w6", "Fix login", "done", { type: "planning" }),
 ];
+
+/** `width` is the rail's: 200 by default in the app, 180 to 360 by drag.
+ *  `working` puts the Working section in the foot. */
+export function RailSketch({ width = 260, working = false }: { width?: number; working?: boolean }) {
+  return (
+    <Rail
+      width={width}
+      foot={
+        <Foot
+          working={working ? WORKING : undefined}
+          rows={
+            <>
+              <UpdateRow state={{ kind: "ready" }} onInstall={noop} onDismiss={noop} />
+              <HostsRow tones={["bg-muted-foreground", "bg-warning"]} />
+              <RailRow icon={Settings} label="Settings" />
+            </>
+          }
+        />
+      }
+    >
+      <Navigation inboxUnseen chats={<StatusMark state="working" word={false} />} page="stats" />
+      <Section label="Pinned">
+        <Workspace name="temp-code" selected pinned diff={[12, 4]} mark={markOf("working", "Restore the cards")} />
+      </Section>
+      <Section label="Workspaces" add>
+        <Workspace name="cosmic-prisons" mark={markOf("working", "Typecheck the rail", 2)} />
+        <Workspace name="aliax" mark={markOf("waiting", "Approve Bash on deploy")} />
+        <Workspace name="landing-site" unread />
+      </Section>
+    </Rail>
+  );
+}
 
 /** The rail with the Working section: four rows and "2 more". */
 export function RailWithWorking({ width = 260 }: { width?: number }) {
   return <RailSketch width={width} working />;
 }
 
-/** A new install: the navigation and Accounts groups, the empty Workspaces
- *  list, and the foot led by the sign-in row until an account arrives
- *  (`signedIn`), with no meter yet. */
+const HOSTS: Environment[] = [
+  { id: "local", name: "This Mac", routes: [], credentialRef: null },
+  { id: "env_box", name: "box", routes: [], credentialRef: null },
+];
+
+/** A realistic day: two hosts with the box offline; a pinned workspace,
+ *  selected, that needs you, with a diff; a linked workspace (one row); a
+ *  paused, unread one; a working one on the offline box; a quiet one; Working
+ *  with a master watching its batch, a waiting build, two working threads
+ *  (one on the box) and two finished unseen; both meters, one limited. */
+export function RailRealistic({ width = 200 }: { width?: number }) {
+  // Two hosts, so the host glyphs draw on the Working rows (fixture only).
+  registry.environmentsSnapshot = () => HOSTS;
+  const rows: WorkingRow[] = [
+    working("r1", "Approve Bash on deploy", "waiting", { type: "implementation" }),
+    working("r2", "iOS batch 2", "working", { minutes: 48, type: "orchestration", status: "watching", isMaster: true }),
+    working("r3", "Restore the cards", "working", { minutes: 2.2, type: "implementation" }),
+    working("r4", "Probe the gateway", "working", { minutes: 14, type: "research", environmentId: "env_box" }),
+    working("r5", "Docs pass", "done"),
+    working("r6", "Plan the Duo shell", "done", { type: "planning" }),
+  ];
+  return (
+    <Rail
+      width={width}
+      foot={
+        <Foot
+          working={rows}
+          rows={
+            <>
+              <UpdateRow state={{ kind: "check", version: "v1.0.308" }} onCheck={noop} />
+              <HostsRow tones={["bg-muted-foreground", "bg-muted-foreground/30"]} />
+              <RailRow icon={Settings} label="Settings" />
+            </>
+          }
+        />
+      }
+    >
+      <Navigation inboxUnseen chats={<StatusMark state="working" word={false} />} />
+      <Section label="Pinned">
+        <Workspace name="temp-code" selected pinned diff={[212, 48]} mark={markOf("waiting", "Approve Bash on deploy", 3)} />
+      </Section>
+      <Section label="Workspaces" add>
+        <Workspace name="aliax" mark={markOf("working", "iOS batch 2")} />
+        <Workspace name="cosmic-prisons" unread mark={markOf("paused", "Retry the deploy")} />
+        <Workspace name="landing-site" offline mark={markOf("working", "Probe the gateway")} />
+        <Workspace name="notes-site" />
+      </Section>
+    </Rail>
+  );
+}
+
+/** A new install: the navigation group, the empty Workspaces list, and the
+ *  foot led by the sign-in row until an account arrives (`signedIn`), with
+ *  no meter yet. */
 function FirstRun({ signedIn, pending = false, width = 260 }: { signedIn: boolean; pending?: boolean; width?: number }) {
   return (
-    <nav aria-label="Workspaces" className="flex h-[720px] flex-col border-r border-border bg-sidebar" style={{ width }}>
-      <div className="h-10 shrink-0" />
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">
-        <Navigation chatsSelected />
-        <AccountsGroup />
-        <div className="px-2 pt-4">
-          <RailHeading>Workspaces</RailHeading>
-          <RailRow icon={FolderPlus} label="Add workspace…" onClick={noop} />
-        </div>
-      </div>
-      <div className="flex shrink-0 flex-col border-t border-border">
-        <div className="flex flex-col p-2">
-          {signedIn ? null : <SignInRowView provider="claude" pending={pending} onClick={noop} />}
-          <UpdateRow state={{ kind: "check", version: "v1.0.307" }} onCheck={noop} />
-          <RailRow icon={Settings} label="Settings" />
-        </div>
-      </div>
-    </nav>
+    <Rail
+      width={width}
+      foot={
+        <Foot
+          meters={false}
+          rows={
+            <>
+              {signedIn ? null : <SignInRowView provider="claude" pending={pending} onClick={noop} />}
+              <UpdateRow state={{ kind: "check", version: "v1.0.307" }} onCheck={noop} />
+              <RailRow icon={Settings} label="Settings" />
+            </>
+          }
+        />
+      }
+    >
+      <Navigation chatsSelected />
+      <Section label="Workspaces">
+        <RailRow icon={FolderPlus} label="Add workspace…" onClick={noop} />
+      </Section>
+    </Rail>
   );
 }
 
