@@ -405,8 +405,10 @@ Between paragraphs, the actions since the last paragraph are one muted line
 convex dev…  ▸", "Read  types.ts ▸"), verb muted, object in foreground,
 counts green and red, a caret per row. A lone command opens a card headed by
 its tool name with the command in mono and its output under it. File changes
-keep their counts on the line and their diff behind the caret. No background-
-task lines: live work is the right panel's Activity section. No timestamps
+keep their counts on the line and their diff behind the caret. Live
+background work is the right panel's Activity section; a task that settled
+is one step of the run it woke ("Task finished  deploy the preview"),
+never a row of its own. No timestamps
 in the flow; the closing line says what the turn took and nothing else. A
 live turn's time is the slot above the composer's: the transcript draws
 the closing line once the turn is over, and a paused turn is not over (only
@@ -425,7 +427,12 @@ pass, a batch, a second opinion asked of another harness) is one muted
 line with a glyph, a lead and its details; only a held review and a failure
 are cards. A compaction is one line that counts from its start, takes
 its outcome in place and reads "Compaction stopped" when its turn ended
-without one. A handoff keeps its bubble: its text is the person's brief. The
+without one. The host's steps of the agent's work fold into the run they sit
+in, as calls do: a subagent spawned (on its call's row) or heard from, a
+finished task, the check on idle tasks, a gate or release outcome, a review
+that merged, the turn pass, the plan's build hand-off, a merge the batch
+made. A held review, a failure, Stopped, compaction, "Batch done" and
+account-gone stay lines of their own. A handoff keeps its bubble: its text is the person's brief. The
 left side, where the column leaves room, lists the person's own messages,
 one line and a clock time each, the one being read in foreground
 (`TranscriptOutline` on `JumpList`; docs/LAYOUT.md "Chat"). A

@@ -20,8 +20,8 @@ IconAction and markdown.css (A9).
 ## Action rows
 
 One action (an edit, a command, a read, a search, a fetch, a skill, a call
-into the app, a connector call, a subagent spawn, an approval) is one
-32 px line, `[glyph]  Verb  object  +46 −3  extras  ▸`
+into the app, a connector call, a subagent spawn, an approval, a todo
+update) is one 32 px line, `[glyph]  Verb  object  +46 −3  extras  ▸`
 (`transcript/ActionLine.tsx`). What each row says and opens is decided once
 in `transcript/actionModel.ts` (`actionOf`, unit-tested) from the words of
 `lib/toolPhrase.ts` (`toolPhraseParts`: the verb muted, the object in
@@ -46,8 +46,14 @@ foreground, the same words the group line uses); the components only draw it.
   its counts tick instead. Anything else opens its details
   (`ToolDetails.tsx`: the invocation, key and value rows for JSON, the
   output; the raw view behind a ghost icon button on hover). An app call
-  that names a thread links its title to that thread; a spawn row opens the
-  agent. The body opens in place under the line through `Collapsible`.
+  that names a thread links its title to that thread. A spawn is one row:
+  fold.ts stamps each `agent-spawned` child on the `spawn_agent` call that
+  asked for it (`tool.spawned`), so the call's row links to the agent from
+  the moment it exists and carries the one child's host glyph and state
+  (`SpawnedAgentMarks`); only an older log with no such call keeps a
+  "Spawned" row of its own. A todo update says how far the list is
+  ("Updated todos  3/7") and opens the list. The body opens in place under
+  the line through `Collapsible`.
 - **Approvals.** A call waiting on the person draws its line in the live
   tense with the waiting mark and no caret, its own body open under it (the
   command card, the details, an edit's diff per file) so what it asks is
@@ -91,6 +97,27 @@ foreground, the same words the group line uses); the components only draw it.
   its outcome replaces that row in place (the fold's `compactionId`), even
   after a message came in, and a turn that ended without one closes it as
   "Compaction stopped" with its span.
+- **The host's steps fold into the run** (`isFoldedStep` in
+  `surfaces/transcriptActivity.ts`): a subagent's report ("Heard from  A",
+  its state marked; the batch's own report "Heard from  the batch", linking
+  nowhere), a spawn row from an older log, a background task that settled
+  (`Block.task`, drawn by `TaskStepRow`: "Task finished  deploy the
+  preview"), the check on idle tasks ("Checked background tasks",
+  `Block.backgroundCheck`), a gate or release outcome, a review that merged,
+  the turn pass, the plan's build hand-off and a merge the batch made. Each
+  is a step of the run it sits in and draws inside the list with the line
+  it draws on its own (`ActivityRow`); a gate's log and a review's findings
+  open in place there. What stays a row of its own: the person's text, the
+  prose, the plan, a question, an approval still undecided, a held review,
+  a failure, Stopped, compaction, "Batch done", account-gone, the restart
+  line, the handoff divider and an html_render page. The group line counts
+  steps, not calls (one report alone is its own row; a red gate, a review
+  that failed to run, a failed report or task add to its red figure) and
+  speaks agent work through `appView` (`lib/groupPhrase.ts`): "Spawned
+  “Port the view”, waited for “Port the view”, heard from “Port the
+  view”", like steps folding into a count ("heard from 3 agents", "merged
+  2 branches"); a run of mostly agent work leads with the Bot glyph (the
+  `agents` work kind).
 - **A question** from the model is the one question card
   (`components/ui/question-card.tsx`, keys taken only inside the card)
   through `surfaces/QuestionCard.tsx`: an Other field unless the question
@@ -105,9 +132,9 @@ foreground, the same words the group line uses); the components only draw it.
 
 - **Rows are the unit.** The thread is a flat list of rows
   (`surfaces/transcriptRows.ts`): one per turn item (a block, or a group:
-  every action between two paragraphs, thinking included, one muted line
-  closed by default, live or settled, that opens into one list; a group of
-  one call is that call's own row), one closing row per turn (its
+  every step between two paragraphs, thinking, todo updates and the host's
+  folded steps included, one muted line closed by default, live or settled,
+  that opens into one list; a group of one step is that step's own row), one closing row per turn (its
   duration line, the live timer, the thinking tail), and a `more` row at
   the top for the remote profile's "Load earlier messages". A row is keyed
   by the id of its first block, so it keeps its identity as the window

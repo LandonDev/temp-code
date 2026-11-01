@@ -1438,9 +1438,12 @@ names the far child).
   src/main/server/taskLog.ts: the task's output file (portSweep's
   `fileOfCall`, else `fileOfTask`), tailed by portLog.ts `readTail`, else
   the call's output in the transcript, else `none`. Neither is in the
-  phone's subset. The desktop transcript prints no background-task rows
-  (fold.ts); the `background-task` settle event is still emitted for the
-  digest and the phone.
+  phone's subset. The desktop transcript folds a `background-task` settle
+  into the run it woke as one step (`Block.task` in fold.ts, "Task finished
+  <label>" through `TaskStepRow`), never a row of its own, beside the
+  subagent reports, spawns and host notices that fold the same way
+  (`isFoldedStep`, docs/TRANSCRIPT.md "Thinking, closing lines and
+  notices"); the event also feeds the digest and the phone.
 - A root idle or done whose `background.agents` is non-empty reads
   Watching "a subagent" / "N subagents" wherever `threadStatus` or the
   rail's `rowState` decides (`settledWithAgents`, lib/threadStripModel.ts),
