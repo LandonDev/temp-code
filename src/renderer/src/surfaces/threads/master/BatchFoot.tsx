@@ -21,9 +21,11 @@ import { blockedLine, type Rules } from "./useMasterModel";
  * command) as for a publish, newest line at the bottom and following
  * until the person scrolls up, Stop on the row; a failed step's console
  * stays open with its last lines until Hide. The console folds through
- * `Collapsible`. Until `batch.board` answers the foot is a skeleton of the
- * same shape. Read from the `batch` push; Edit writes `batch.setRules`,
- * Stop `batch.stopStep` with the step's id.
+ * `Collapsible`. Its text sits on the board's 12px inset. Until
+ * `batch.board` answers the foot alone is a still skeleton of the same
+ * shape (the rows above it paint from the store at once). Read from the
+ * `batch` push; Edit writes `batch.setRules`, Stop `batch.stopStep` with
+ * the step's id.
  */
 
 const LOG_LINES = 200;
@@ -72,7 +74,7 @@ export function BatchFoot({
   return (
     <div
       ref={toastAnchor ? registerToastAnchor : undefined}
-      className="flex shrink-0 flex-col border-t border-border bg-background px-5 py-3"
+      className="flex shrink-0 flex-col border-t border-border bg-background px-3 py-2"
       data-batch-foot
       data-foot-mode={active ? "console" : "idle"}
     >
@@ -102,7 +104,7 @@ export function BatchFoot({
         ))}
       </ol>
 
-      <p className="mt-2 text-xs text-muted-foreground" data-then>
+      <p className="mt-1 text-xs text-muted-foreground" data-then>
         {rules.then === "archive-children" ? "Then archive the threads" : "Then notify you"}
       </p>
 
@@ -111,12 +113,12 @@ export function BatchFoot({
   );
 }
 
-/** The foot's shape before the answer: the heading and three step rows. */
+/** The foot's shape before the answer: the heading and two step rows, still. */
 function FootSkeleton({ toastAnchor }: { toastAnchor: boolean }) {
   return (
     <div
       ref={toastAnchor ? registerToastAnchor : undefined}
-      className="flex shrink-0 flex-col border-t border-border bg-background px-5 py-3"
+      className="flex shrink-0 flex-col border-t border-border bg-background px-3 py-2"
       data-batch-foot
       data-foot-mode="loading"
       aria-busy="true"
@@ -125,7 +127,7 @@ function FootSkeleton({ toastAnchor }: { toastAnchor: boolean }) {
         <Skeleton className="h-3 w-16" />
       </div>
       <div className="mt-1 flex flex-col">
-        {[0, 1, 2].map((i) => (
+        {[0, 1].map((i) => (
           <div key={i} className="flex h-7 items-center gap-2">
             <Skeleton className="size-3.5 rounded-full" />
             <Skeleton className="h-3 w-24" />
@@ -176,11 +178,10 @@ function StepRow({
         <span className={cn("shrink-0 text-[13px]", quiet ? "text-muted-foreground" : "text-foreground")}>{step.name}</span>
         {/* A failure is said only here, so it wraps rather than being cut. */}
         <span className={cn("min-w-0 flex-1 text-xs", failed ? "py-1.5 break-words text-destructive" : "truncate text-muted-foreground")} data-step-detail>
-          {detail.text ? <span className="tabular-nums">{detail.text}</span> : null}
-          {detail.label ? <span className="ml-2">{detail.label}</span> : null}
+          {detail.text || detail.label ? <span className="tabular-nums">{[detail.text, detail.label].filter(Boolean).join(", ")}</span> : null}
         </span>
         {time ? (
-          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground" data-step-time>
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground" data-step-time>
             {time}
           </span>
         ) : null}
