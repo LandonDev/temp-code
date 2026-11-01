@@ -387,6 +387,9 @@ public struct ThreadFold: Sendable, Hashable {
                 items[index].item = .approval(approval)
             }
         case .compaction(let event):
+            // The CLI repeats its start every 30 s while it compacts: one
+            // line per compaction, counted from the first start.
+            if event.phase == .start && openCompaction != nil { break }
             if event.phase == .start || openCompaction == nil {
                 append(.compaction(CompactionItem(seq: row.seq, ts: row.ts, phase: event.phase, trigger: event.trigger, preTokens: event.preTokens, postTokens: event.postTokens, durationMs: event.durationMs, error: event.error)))
                 openCompaction = event.phase == .start ? items.count - 1 : nil

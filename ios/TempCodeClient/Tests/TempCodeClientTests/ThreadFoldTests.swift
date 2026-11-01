@@ -146,6 +146,27 @@ import TempCodeContract
         #expect(turn.completedTs == 1_300)
     }
 
+    @Test func `repeated compaction starts fold to one line from the first start, and done closes it`() {
+        let fold = ThreadFold.fold(rows([
+            user("go"),
+            .compaction(CompactionEvent(phase: .start, trigger: .auto)),
+            user("also this"),
+            .compaction(CompactionEvent(phase: .start, trigger: .auto)),
+            .compaction(CompactionEvent(phase: .start, trigger: .auto)),
+            .compaction(CompactionEvent(phase: .done, preTokens: 414_000, postTokens: 3_600, durationMs: 134_717))
+        ]))
+        let compactions = fold.items.compactMap { entry -> CompactionItem? in
+            if case .compaction(let c) = entry.item { return c }
+            return nil
+        }
+        #expect(compactions.count == 1)
+        #expect(compactions.first?.seq == 2)
+        #expect(compactions.first?.ts == 1_100)
+        #expect(compactions.first?.phase == .done)
+        #expect(compactions.first?.postTokens == 3_600)
+        #expect(!fold.board.compacting)
+    }
+
     @Test func `folding one row at a time matches folding the whole`() {
         let all = rows([
             user("one"),
