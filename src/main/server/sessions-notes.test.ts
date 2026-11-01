@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent } from '@shared/events'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
-import { NOTES_MECHANICS, isCommitCall, isNotesCall } from './notesPrompts'
-import { implementerSpawnPrompt, orchestratorPrompt } from './orchestration'
+import { NOTES_MECHANICS, STEER_MECHANICS, isCommitCall, isNotesCall, wrapSteer } from './notesPrompts'
+import { MASTER_MECHANICS, implementerSpawnPrompt, orchestratorPrompt } from './orchestration'
 import { threadPreamble } from './threads'
 import { setAppBridge } from './apptools'
 import { cancelMirrors, threadDigest, writeThreadDigest } from './mirror'
@@ -224,6 +224,25 @@ describe('the mechanics text', () => {
     } finally {
       setAppBridge(null)
     }
+  })
+
+  it('the steer rule rides beside the notes in every prompt, and the wrapper holds the text and the one-line answer', async () => {
+    const impl = await registry.create({ projectId: 'p1', threadType: 'implementation', provider: 'claude' })
+    expect(implementerSpawnPrompt(impl)).toContain(STEER_MECHANICS)
+    const orch = await registry.create({ projectId: 'p1', threadType: 'orchestration', provider: 'claude' })
+    expect(orchestratorPrompt(orch)).toContain(STEER_MECHANICS)
+    expect(threadPreamble(impl)).not.toContain(STEER_MECHANICS)
+    setAppBridge({ port: 1, scriptPath: '/x', command: 'node', env: {} })
+    try {
+      const codex = await registry.create({ projectId: 'p1', threadType: 'chat', provider: 'codex' })
+      expect(threadPreamble(codex)).toContain(STEER_MECHANICS)
+    } finally {
+      setAppBridge(null)
+    }
+    expect(MASTER_MECHANICS).toMatch(/Answer a steer first in one short line/)
+    const wrapped = wrapSteer('use the other table')
+    expect(wrapped.startsWith('<user-steer>\nuse the other table\n</user-steer>\n')).toBe(true)
+    expect(wrapped).toMatch(/answer it in one short line of your own words/)
   })
 
   it('tells a commit from any shell tool and the notes tool from any surface', () => {

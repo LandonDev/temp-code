@@ -19,6 +19,19 @@ This thread has a notes file the app keeps beside its attachments (notes.md) and
 - ${NOTE_SECTIONS[4]} — what is unresolved, and for whom.
 When: once the task list exists (Goal, Pointers), after every decision, whenever State changes, before context runs low (the app reminds you once per window), and after a commit or merge (the app reminds you if you did not). Notes are a brief, not a transcript: short lines, concrete names, no narration. The person may edit the file between your calls and ${UPDATE_NOTES_TOOL_NAME} reads it first, so never rewrite the whole thing from memory — update the section that changed.`
 
+/** The rule every harness gets about a person's message into its turn,
+ *  beside the notes mechanics (orchestration.ts for claude's system
+ *  prompt, threads.ts for the others' first message). */
+export const STEER_MECHANICS = `## A message during your turn
+The person may write into your running turn; it arrives inside <user-steer>. Answer it first in one short line of your own words (what you took from it and what you will do), then carry on with the work it changes.`
+
+/** A person's steer as the harness reads it (sessions.ts steerLive): the
+ *  text in its tag, then the one-line rule, so a harness that missed
+ *  STEER_MECHANICS still answers it before carrying on. */
+export function wrapSteer(text: string): string {
+  return `<user-steer>\n${text}\n</user-steer>\nThe person wrote this into your running turn. Before anything else, answer it in one short line of your own words (what you took from it, what you will do), then carry on.`
+}
+
 export const NOTES_REMINDER_CONTEXT = `<notes-reminder reason="context">
 This window is close to compaction. Before anything else, bring the notes current with ${UPDATE_NOTES_TOOL_NAME}: State (done, in flight, blocked), Decisions since the last update, Pointers, Open questions. Then continue the work.
 </notes-reminder>`

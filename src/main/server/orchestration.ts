@@ -1,6 +1,6 @@
 import { execFileBudgeted as execFileP } from './spawnBudget'
 import { leadDetail } from '@shared/statusWords'
-import { NOTES_MECHANICS } from './notesPrompts'
+import { NOTES_MECHANICS, STEER_MECHANICS } from './notesPrompts'
 import { nanoid } from 'nanoid'
 import { anglePathFor, SHOWING_VISUALS } from './threads'
 import { mkdirSync } from 'node:fs'
@@ -1238,7 +1238,9 @@ when its warm context genuinely helps (same files, same subsystem);
 otherwise spawn fresh agents scoped to the new request. Never leave
 follow-up work implicit or bolt it onto a finished agent's stale task.
 
-${NOTES_MECHANICS}`.trim()
+${NOTES_MECHANICS}
+
+${STEER_MECHANICS}`.trim()
 
 const DELEGATION_LINES: Record<OrchestrationRules['conduct']['delegation'], string> = {
   strict:
@@ -1327,7 +1329,9 @@ when a step failed, and when everything is done.
 Prefer ending your turn to blocking in wait_for_agent: the batch's settles
 and reports wake you, and you stay live (watching) until the batch is
 done. A person's message reaches you at once, into a live turn as a
-<user-steer> or as a wake; a wait_for_agent in flight returns on it.`
+<user-steer> or as a wake; a wait_for_agent in flight returns on it.
+Answer a steer first in one short line (what you took from it, what you
+will do), then act on it.`
 
 /** What a thread hears when it is pinned as a master, or unpinned, while
  *  its harness is up: the harness's prompt was built at its spawn

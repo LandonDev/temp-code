@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs'
-import { NOTES_MECHANICS } from './notesPrompts'
+import { NOTES_MECHANICS, STEER_MECHANICS } from './notesPrompts'
 import { join } from 'node:path'
 import type { SessionMeta } from '@shared/events'
 import type { ProjectMeta } from '@shared/domain'
@@ -106,7 +106,7 @@ function appToolsNote(session: SessionMeta): string {
   // claude's system prompt already carries the notes mechanics
   // (orchestration.ts, so a compaction never drops them); every other
   // harness learns them here, in its first message.
-  const notes = session.provider === 'claude' ? '' : `\n${NOTES_MECHANICS}`
+  const notes = session.provider === 'claude' ? '' : `\n${NOTES_MECHANICS}\n\n${STEER_MECHANICS}`
   const planning =
     session.threadType === 'planning'
       ? ' plan_complete marks this thread\'s plan as finished (planning threads only).'
