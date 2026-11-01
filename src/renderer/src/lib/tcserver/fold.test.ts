@@ -1094,3 +1094,51 @@ describe("merge review rows", () => {
     expect(last.notice).toEqual({ kind: "batch" });
   });
 });
+
+describe("a steer's stamp", () => {
+  const steered = (...stamps: AgentEvent[]) =>
+    foldAll(
+      rows([
+        { type: "user-text", text: "go" },
+        { type: "assistant-text", text: "working", delta: false, msgId: "m1", blockIndex: 0 },
+        { type: "user-text", text: "use the other table", steerId: "s1" },
+        ...stamps,
+      ]),
+      CWD,
+    );
+  const steerBlock = (s: ReturnType<typeof foldAll>) => s.blocks.find((b) => b.steerId === "s1");
+
+  it("each state lands on the steered block with the row's time", () => {
+    for (const [event, stamp] of [
+      [{ type: "steer", steerId: "s1", state: "sent" }, { state: "sent" }],
+      [{ type: "steer", steerId: "s1", state: "received", how: "in-turn" }, { state: "received", how: "in-turn" }],
+      [{ type: "steer", steerId: "s1", state: "received", how: "next-turn" }, { state: "received", how: "next-turn" }],
+      [{ type: "steer", steerId: "s1", state: "queued" }, { state: "queued" }],
+      [{ type: "steer", steerId: "s1", state: "failed", reason: "the harness did not start" }, { state: "failed", reason: "the harness did not start" }],
+    ] as const) {
+      const s = steered(event as AgentEvent);
+      expect(steerBlock(s)?.steer).toEqual({ ...stamp, ts: 1_300 });
+    }
+  });
+
+  it("the last row wins", () => {
+    const s = steered({ type: "steer", steerId: "s1", state: "sent" }, { type: "steer", steerId: "s1", state: "received", how: "in-turn" });
+    expect(steerBlock(s)?.steer).toEqual({ state: "received", how: "in-turn", ts: 1_400 });
+  });
+
+  it("a row for an unknown steer changes nothing, and old rows carry no stamp", () => {
+    const base = foldAll(rows([{ type: "user-text", text: "go" }]), CWD);
+    const s = step(base, { type: "steer", steerId: "nobody", state: "sent" });
+    expect(s.blocks).toBe(base.blocks);
+    expect(base.blocks[0].steerId).toBeUndefined();
+    expect(base.blocks[0].steer).toBeUndefined();
+  });
+
+  it("an optimistic steer's echo claims the block with its id", () => {
+    let s = foldOptimisticUser(emptyFold(), "use the other table");
+    s = foldEvent(s, rows([{ type: "user-text", text: "use the other table", steerId: "s1" }])[0], CWD);
+    s = step(s, { type: "steer", steerId: "s1", state: "sent" });
+    expect(s.blocks).toHaveLength(1);
+    expect(s.blocks[0]).toMatchObject({ steerId: "s1", steer: { state: "sent" } });
+  });
+});

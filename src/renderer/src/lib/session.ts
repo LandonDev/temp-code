@@ -124,6 +124,14 @@ export type Attachment = {
   blob?: Blob;
 };
 
+/** Where a steer stands under its bubble (UserMessage's SteerLine). */
+export interface SteerStamp {
+  state: "sent" | "received" | "queued" | "failed";
+  how?: "in-turn" | "next-turn";
+  reason?: string;
+  ts: number;
+}
+
 export type Block = {
   id: string;
   role: BlockRole;
@@ -196,6 +204,10 @@ export type Block = {
   /** The project rules this first message opened with (the server's
    *  user-text `preamble` stamp): shown folded to one line above the text. */
   preamble?: { text: string; words: number };
+  /** A person's steer into a running turn: the id its `steer` rows name. */
+  steerId?: string;
+  /** Where that steer stands, from its last `steer` row (ts: when). */
+  steer?: SteerStamp;
   /** Optimistic user turn the server has not echoed yet. */
   pending?: boolean;
   /** When this window sent it (ms): the bubble plays its entrance from

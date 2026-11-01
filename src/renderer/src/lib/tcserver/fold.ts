@@ -301,6 +301,7 @@ export function foldEvent(
         preamble?: { text: string; words: number };
       };
       const preamble = stamp.preamble ? { preamble: stamp.preamble } : {};
+      const steer = e.steerId ? { steerId: e.steerId } : {};
       const turn =
         stamp.model || stamp.reasoning || stamp.context1m !== undefined
           ? {
@@ -328,6 +329,7 @@ export function foldEvent(
           ...(persisted ? { seq: row.seq } : {}),
           ...turn,
           ...preamble,
+          ...steer,
           ...(prev.attachments?.length
             ? { attachments: prev.attachments }
             : attachments
@@ -346,6 +348,7 @@ export function foldEvent(
             ...(persisted ? { seq: row.seq } : {}),
             ...turn,
             ...preamble,
+            ...steer,
             ...(attachments ? { attachments } : {}),
           },
         ];
@@ -511,6 +514,23 @@ export function foldEvent(
       blocks[idx] = {
         ...blocks[idx],
         approval: { requestId: e.requestId, decided, ...(auto ? { auto } : {}) },
+      };
+      break;
+    }
+    case "steer": {
+      // The last row per steer wins; a row for a steer the window never
+      // saw (its user row outside the loaded page) changes nothing.
+      const idx = findLastIndex(blocks, (b) => b.steerId === e.steerId);
+      if (idx < 0) break;
+      blocks = blocks.slice();
+      blocks[idx] = {
+        ...blocks[idx],
+        steer: {
+          state: e.state,
+          ts: row.ts,
+          ...(e.how ? { how: e.how } : {}),
+          ...(e.reason ? { reason: e.reason } : {}),
+        },
       };
       break;
     }
