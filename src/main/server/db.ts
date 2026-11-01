@@ -1068,6 +1068,20 @@ export class Store {
     return r ? toMeta(r) : null
   }
 
+  /** Visible, unarchived root threads created before `before` with no row
+   *  in either event file: the boot's empty-thread sweep reads these. */
+  emptyRootThreads(before: number): SessionMeta[] {
+    this.flushEvents()
+    const rows = this
+      .stmt(
+        `SELECT * FROM sessions s WHERE s.parent_id IS NULL AND s.archived = 0 AND s.created_at < ? AND ${VISIBLE}
+           AND NOT EXISTS (SELECT 1 FROM events e WHERE e.session_id = s.id)
+           AND NOT EXISTS (SELECT 1 FROM cold.events c WHERE c.session_id = s.id)`
+      )
+      .all(before) as unknown as SessionRowRaw[]
+    return rows.map(toMeta)
+  }
+
   childrenOf(parentId: string): SessionMeta[] {
     const rows = this
       .stmt(`SELECT * FROM sessions WHERE parent_id = ? AND ${VISIBLE} ORDER BY created_at DESC`)

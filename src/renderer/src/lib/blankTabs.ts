@@ -1,25 +1,6 @@
 import { leafIds, type WorkspaceTab } from "./layout";
-import { HARNESS_LABEL, type Session } from "./session";
-
-/**
- * Titles a thread carries until its first message: the server's per-type
- * placeholders, its `provider · agentType` fallback, and the renderer's
- * draft label. The first send replaces the title with a slice of the
- * message, so a placeholder title on an unloaded thread means no message
- * ever went in.
- */
-const PLACEHOLDER_TITLES = new Set([
-  "New chat",
-  "New plan",
-  "New task",
-  "New orchestration",
-  "New research",
-  ...Object.values(HARNESS_LABEL),
-]);
-
-export function isPlaceholderTitle(title: string): boolean {
-  return PLACEHOLDER_TITLES.has(title) || /^[a-z]+ · [a-z_-]+$/i.test(title);
-}
+import { isPlaceholderTitle } from "@server/shared/placeholderTitles";
+import type { Session } from "./session";
 
 /**
  * Whether a restored session has nothing to show. A loaded transcript

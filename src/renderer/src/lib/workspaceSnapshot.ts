@@ -1,5 +1,6 @@
 import { LOCAL_ENVIRONMENT_ID } from "./connection";
-import { collapseBlankTabs, isBlankSession, isPlaceholderTitle } from "./blankTabs";
+import { isPlaceholderTitle } from "@server/shared/placeholderTitles";
+import { collapseBlankTabs, isBlankSession } from "./blankTabs";
 import { draftPicks, projectDrafts, sessionFromDraft } from "./projectDrafts";
 import { markTurnInterrupted, type ResumedWorkspace } from "./inFlight";
 import {

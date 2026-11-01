@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { collapseBlankTabs, isBlankSession, isPlaceholderTitle } from "./blankTabs";
+import { isPlaceholderTitle } from "@server/shared/placeholderTitles";
+import { collapseBlankTabs, isBlankSession } from "./blankTabs";
 import { leaf, newFileTab, newTab, type WorkspaceTab } from "./layout";
 import { newSession } from "./session";
 

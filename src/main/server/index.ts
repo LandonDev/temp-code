@@ -130,7 +130,8 @@ import {
   startStallMonitor,
   timed,
   trackRequest,
-  untrackRequest
+  untrackRequest,
+  yieldUntilIdle
 } from './stalls'
 import { configureHostProfiler, profileHost } from './doctorProfile'
 import type { DoctorGetResult } from '@shared/contract'
@@ -2881,6 +2882,11 @@ export async function startServer(
   registry.scheduler.holdUntil(bootResume)
   // A batch's deploy that restarted this process: closed from the trigger's files, then `then` (batch.ts).
   void bootResume.then(() => batchRuns.resumeAfterBoot()).catch((err) => console.log(`[batch] resume: ${err instanceof Error ? err.message : String(err)}`))
+  // Empty placeholder threads an older New thread… made at the click are archived once, on a quiet loop.
+  void bootResume
+    .then(() => yieldUntilIdle())
+    .then(() => registry.archiveEmptyThreads())
+    .catch((err) => console.log(`[sessions] empty-thread sweep: ${err instanceof Error ? err.message : String(err)}`))
 
   // Codex reaches the app tools through the stdio bridge (M10). The app's
   // own location covers dev (repo root) and packaged

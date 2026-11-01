@@ -168,14 +168,7 @@ import {
   type ProjectSettingsBundle
 } from '@shared/projectLinks'
 
-const THREAD_TITLES = {
-  chat: 'New chat',
-  planning: 'New plan',
-  'project-plan': 'Project plan',
-  implementation: 'New task',
-  orchestration: 'New orchestration',
-  research: 'New research'
-} as const
+import { THREAD_TITLES, isPlaceholderTitle as isPlaceholderTitleText } from '@shared/placeholderTitles'
 
 type SessionListener = (row: EventRow) => void
 /** `producer` is notifyMeta's tag: which code pushed (the stall log's `pushes=` breakdown). */
@@ -478,6 +471,9 @@ const DISK_TOOLS = new Set([
 ])
 /** A write can flush moments after its tool result lands. */
 const DISK_TOOL_GRACE_MS = 2_500
+
+/** The boot's empty-thread sweep leaves anything younger than this. */
+const EMPTY_THREAD_AGE_MS = 24 * 60 * 60 * 1000
 
 /** Unanswered approvals deny themselves after this long. */
 const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000
@@ -3607,6 +3603,30 @@ export class SessionRegistry {
     } catch {
       return null
     }
+  }
+
+  /**
+   * Once per boot: archive the root threads nobody ever wrote to, which a
+   * New thread… once created on the host at the click (CLAUDE.md "Stability
+   * 2"). Narrow on purpose: a placeholder title, no row in either event
+   * file, nothing queued, idle, not pinned, not a master or a batch child,
+   * a day old at least. Archive is reversible; the log line names the count.
+   */
+  async archiveEmptyThreads(now = Date.now()): Promise<number> {
+    const swept = this.store.emptyRootThreads(now - EMPTY_THREAD_AGE_MS).filter(
+      (meta) =>
+        isPlaceholderTitleText(meta.title) &&
+        meta.status === 'idle' &&
+        !meta.pinned &&
+        !meta.isMaster &&
+        !meta.masterId &&
+        !this.starting.has(meta.id) &&
+        !this.handles.has(meta.id) &&
+        (this.queues.get(meta.id)?.length ?? 0) === 0
+    )
+    for (const meta of swept) await this.setArchived(meta.id, true)
+    if (swept.length > 0) console.log(`[sessions] archived ${swept.length} empty placeholder thread${swept.length === 1 ? '' : 's'}`)
+    return swept.length
   }
 
   async setArchived(sessionId: string, archived: boolean): Promise<void> {
