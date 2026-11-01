@@ -23,6 +23,16 @@ const props = (state: BatchState) => ({ batch: state, titleOf: () => undefined, 
 
 export default [
   {
+    // The rows paint from the store; the foot alone waits for batch.board, still.
+    name: "loading",
+    props: { ...props(batch({ status: "running" })), loaded: false },
+  },
+  {
+    // A running step's count and its label are one detail with a comma.
+    name: "gate running",
+    props: props(batch({ status: "running", endedAt: undefined, progress: { done: 3, total: 7, label: "vitest" }, log: ["✓ typecheck 12s", "vitest: 3 of 7 files"] })),
+  },
+  {
     // A script that never ran: its one line is the row's, with no console under it.
     name: "gate script missing",
     props: props(batch({ status: "failed", detail: missing, endedAt: t, log: [missing] })),

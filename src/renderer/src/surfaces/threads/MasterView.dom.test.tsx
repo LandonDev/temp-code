@@ -1463,13 +1463,22 @@ describe("the master view", () => {
 });
 
 describe("the board's static preview", () => {
-  it("draws the fixture's five rows in the four sections and the shell step's console, all in the vocabulary", () => {
+  it("draws the fixture's eight rows in the four sections and the shell step's console, all in the vocabulary", () => {
     render(<BoardPreview />);
     expect(headers().map((h) => h.textContent)).toEqual(["Needs you", "Working", "Queued", "Done"]);
-    const states = [...document.querySelectorAll("[data-row-status] > [data-slot=status-mark]")].map((m) => m.getAttribute("data-state"));
-    // The done row says its detail alone.
-    expect(states).toEqual(["waiting", "working", "paused", "queued"]);
-    expect(document.querySelectorAll("[data-row-status] > [data-row-detail]")).toHaveLength(1);
+    const glyphs = [...document.querySelectorAll("[data-row-glyph]")].map((g) => g.querySelector("[data-slot=status-mark]")?.getAttribute("data-state") ?? null);
+    // The done row hangs no glyph and says its detail alone.
+    expect(glyphs).toEqual(["waiting", "failed", "working", "watching", "paused", "queued", null]);
+    const lines = [...document.querySelectorAll("[data-row-status]")].map((l) => l.textContent);
+    expect(lines).toEqual([
+      "Approve WebFetch",
+      "FailedUsage cap until 14:00",
+      "Wire the rows to the store2/7",
+      "Watchingsleep 45 seconds",
+      "PausedRunning bun test",
+      "Waiting for Home screen",
+      "Landed 12:084/4",
+    ]);
     expect(document.querySelector("[data-agents-tail]")?.textContent).toBe("1 done");
     expect(document.querySelector("[data-step='smoke'] [data-console='smoke']")?.textContent?.split("\n")).toHaveLength(8);
     expect(document.body.textContent).not.toMatch(/[·•—]/);

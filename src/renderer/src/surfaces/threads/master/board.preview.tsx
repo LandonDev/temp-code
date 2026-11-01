@@ -1,8 +1,9 @@
-import { ChevronDown, MoreHorizontal, Plus } from "../../../chrome/icons";
+import { HostGlyph } from "../../../chrome/HostGlyph";
+import { MoreHorizontal, Plus } from "../../../chrome/icons";
 import { Button } from "../../../components/ui/button";
 import { SplitShell } from "../SplitShell";
 import { BatchFoot } from "./BatchFoot";
-import { FIXTURE_BATCH, fixtureGroups } from "./boardFixture";
+import { FIXTURE_BATCH, FIXTURE_ROWS, fixtureGroups } from "./boardFixture";
 import { MasterRowView } from "./MasterRow";
 
 /**
@@ -12,15 +13,17 @@ import { MasterRowView } from "./MasterRow";
  */
 
 const noop = () => {};
-const noHost = () => null;
+/** The far row's host glyph (drawn once the window knows two hosts). */
+const hostGlyph = (environmentId: string) => (environmentId === "local" ? null : <HostGlyph environmentId={environmentId} className="shrink-0" />);
+const tally = `${FIXTURE_ROWS.filter((r) => r.meta.status === "idle").length}/${FIXTURE_ROWS.length}`;
 
 export function BoardPreview() {
   return (
     <div className="flex flex-col bg-background">
-      <div className="px-2 pt-1 pb-3">
-        {fixtureGroups().map((group) => (
+      <div className="px-1 pt-1 pb-2">
+        {fixtureGroups().map((group, i) => (
           <div key={group.id} data-group={group.id}>
-            <h3 className="px-3 pt-4 pb-1 text-xs font-medium text-muted-foreground" data-group-header={group.id}>
+            <h3 className={`flex ${i === 0 ? "h-6" : "h-8"} items-end px-2 pb-1 text-xs leading-4 font-medium text-muted-foreground`} data-group-header={group.id}>
               {group.label}
             </h3>
             {group.rows.map((row) => (
@@ -31,7 +34,7 @@ export function BoardPreview() {
                 agents={row.agents}
                 landed={row.landed}
                 host={null}
-                hostGlyph={noHost}
+                hostGlyph={hostGlyph}
                 onOpen={noop}
                 menu={{ rowsFor: () => [], onPick: noop, onOpenChange: noop }}
               />
@@ -59,16 +62,14 @@ export function MasterPreview({ empty = false }: { empty?: boolean }) {
       <Button variant="ghost" size="icon-sm" aria-label="Batch actions">
         <MoreHorizontal />
       </Button>
-      <Button variant="ghost" size="sm">
+      <Button variant="ghost" size="icon-sm" aria-label="Add thread">
         <Plus />
-        Thread
-        <ChevronDown className="text-muted-foreground" />
       </Button>
     </>
   );
   return (
     <div className="flex bg-background" style={{ width: 1100, height: 560 }}>
-      <SplitShell board={<BoardPreview />} chat={chat} hasBoard={!empty} collapsed={false} onToggleChat={noop} title="iOS batch 2" actions={actions} />
+      <SplitShell board={<BoardPreview />} chat={chat} hasBoard={!empty} collapsed={false} onToggleChat={noop} title="iOS batch 2" detail={tally} actions={actions} />
     </div>
   );
 }

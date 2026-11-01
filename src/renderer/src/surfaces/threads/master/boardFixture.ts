@@ -6,9 +6,10 @@ import { groupOf, GROUP_LABEL, GROUP_ORDER, type MasterGroupId } from "./useMast
 
 /**
  * One batch as plain objects, for the board's static preview
- * (board.preview.tsx) and the dom test that keeps it honest: five rows in
- * the four sections, subagents under the first, and a foot whose shell
- * step is running. No store, no link.
+ * (board.preview.tsx) and the dom test that keeps it honest: eight rows in
+ * the four sections (a failed one under Needs you, a watching and a paused
+ * one under Working, one of them on another host), subagents under the
+ * first, and a foot whose shell step is running. No store, no link.
  */
 
 const at = new Date(2026, 9, 27, 12, 8).getTime();
@@ -63,9 +64,21 @@ export const FIXTURE_ROWS: FixtureRow[] = [
     agents: null,
     landed: false,
   },
-  { meta: base({ id: "tabs", title: "Tabs or spaces", status: "paused", threadType: "chat", reasoning: "medium", context1m: false, createdAt: 3 }), digest: {}, agents: null, landed: false },
   {
-    meta: base({ id: "search", title: "Search plan", status: "queued", threadType: "planning", activity: "Queued · waiting for Home screen", createdAt: 4 }),
+    meta: base({ id: "inbox", title: "Inbox swipe", status: "error", failure: { kind: "quota", account: null, summary: "Usage cap until 14:00", cause: "" }, createdAt: 5 }),
+    digest: {},
+    agents: null,
+    landed: false,
+  },
+  {
+    meta: base({ id: "sleeper", title: "Release notes", status: "watching", threadType: "chat", environmentId: "box", activity: "Waiting on sleep 45 seconds", statusDetail: "sleep 45 seconds", createdAt: 6 }),
+    digest: {},
+    agents: null,
+    landed: false,
+  },
+  { meta: base({ id: "tabs", title: "Tabs or spaces", status: "paused", threadType: "chat", reasoning: "medium", context1m: false, activity: "Running bun test", createdAt: 3 }), digest: {}, agents: null, landed: false },
+  {
+    meta: base({ id: "search", title: "Search plan", status: "queued", threadType: "planning", activity: "Queued  waiting for Home screen", statusDetail: "Waiting for Home screen", createdAt: 4 }),
     digest: {},
     agents: null,
     landed: false,
@@ -119,7 +132,7 @@ export const FIXTURE_BATCH: BatchState = {
     { id: "gate", status: "pending", detail: "", at: null, log: [] } as unknown as BatchState["steps"][number],
   ],
   landed: ["foundations"],
-  pending: ["home", "pricing", "tabs", "search"],
+  pending: ["home", "pricing", "inbox", "sleeper", "tabs", "search"],
   held: [],
   blocked: null,
   finishedAt: null,
