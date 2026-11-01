@@ -42,14 +42,15 @@ describe('the warm codex app-server', () => {
     conn.kill()
   })
 
-  it('another cwd or env is another shape: it boots cold and re-shapes the pool', async () => {
+  it('another cwd or env is another shape: it boots cold and is kept warm beside the first', async () => {
     codexWarm.noteStart(spec())
     await codexWarm.settled()
     const first = codexWarm.status().warm[0]?.id
     expect(codexWarm.adopt(spec({ cwd: tmpdir() }))).toBeNull()
-    expect(codexWarm.status().warm).toEqual([])
+    expect(codexWarm.status().misses).toEqual({ cwd: 1 })
+    expect(codexWarm.status().warm.map((w) => w.id)).toEqual([first])
     await codexWarm.settled()
-    expect(codexWarm.status().warm[0]?.id).not.toBe(first)
-    expect(codexWarm.status().warm[0]?.cwd).toBe(tmpdir())
+    expect(codexWarm.status().warm.map((w) => w.cwd)).toEqual([tmpdir(), spec().cwd])
+    expect(codexWarm.status().warm[1]?.id).toBe(first)
   })
 })

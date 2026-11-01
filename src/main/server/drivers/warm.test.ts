@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { WarmPool, closeWarmPools, warmKey, warmStatuses, type WarmSpec } from './warm'
+import { WARM_SHAPES, WarmPool, closeWarmPools, missField, setWarmMemoryFloor, shapeDiff, warmKey, warmStatuses, type WarmSpec } from './warm'
 
 interface Fake {
   id: string
@@ -84,17 +84,140 @@ describe('WarmPool', () => {
     expect(pool.status().warm[0]?.id).toBe(spawned[1].id)
   })
 
-  it('a thread of another shape boots cold; the pool retires the old warm process and re-shapes', async () => {
+  it('a thread of another shape boots cold and is kept warm beside the first', async () => {
     pool.noteStart(spec())
     await vi.advanceTimersByTimeAsync(3_100)
     const old = spawned[0]
     const other = spec({ args: ['--model', 'claude-opus-5-5'] })
     expect(pool.adopt(other)).toBeNull()
-    expect(old.killed).toBe(true)
-    expect(pool.status().warm).toEqual([])
+    expect(old.killed).toBe(false)
     await vi.advanceTimersByTimeAsync(3_100)
     expect(spawned).toHaveLength(2)
+    expect(pool.status().warm.map((w) => w.id)).toEqual([spawned[1].id, old.id])
     expect(pool.adopt(other)?.proc).toBe(spawned[1])
+    expect(pool.adopt(spec())?.proc).toBe(old)
+  })
+
+  it('holds three shapes at once; a fourth retires the shape that started longest ago', async () => {
+    expect(WARM_SHAPES).toBe(3)
+    const shapes = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1'].map((m) => spec({ args: ['--model', m] }))
+    for (const s of shapes.slice(0, 3)) {
+      pool.noteStart(s)
+      await vi.advanceTimersByTimeAsync(3_100)
+    }
+    expect(pool.status().warm).toHaveLength(3)
+    // A start of the first shape makes it the newest again: the second is now the oldest.
+    expect(pool.adopt(shapes[0])?.proc).toBe(spawned[0])
+    await vi.advanceTimersByTimeAsync(3_100)
+    pool.noteStart(shapes[3])
+    expect(spawned[1].killed).toBe(true)
+    expect(spawned[2].killed).toBe(false)
+    await vi.advanceTimersByTimeAsync(3_100)
+    expect(pool.status().warm).toHaveLength(3)
+    expect(spawned.filter((f) => !f.killed && f !== spawned[0])).toHaveLength(3)
+  })
+
+  it('a burst refills at once: a shape started twice inside a minute', async () => {
+    pool.noteStart(spec())
+    await vi.advanceTimersByTimeAsync(3_100)
+    // Three starts of one shape a second apart: each adopts.
+    for (let i = 0; i < 3; i++) {
+      expect(pool.adopt(spec())).not.toBeNull()
+      await vi.advanceTimersByTimeAsync(1_000)
+    }
+    expect(pool.status().adopted).toBe(3)
+    expect(spawned).toHaveLength(4)
+    // Past the window, a lone start waits for the replace delay again.
+    await vi.advanceTimersByTimeAsync(61_000)
+    expect(pool.adopt(spec())).not.toBeNull()
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(spawned).toHaveLength(4)
+    await vi.advanceTimersByTimeAsync(2_100)
+    expect(spawned).toHaveLength(5)
+  })
+
+  it('each shape retires on its own, ten minutes after its last start', async () => {
+    const a = spec()
+    const b = spec({ cwd: '/work/b' })
+    pool.noteStart(a)
+    await vi.advanceTimersByTimeAsync(3_100)
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
+    pool.noteStart(b)
+    await vi.advanceTimersByTimeAsync(3_100)
+    // a started at 0, b at 303.1 s; now 306.2 s. a is alive at 590 s, gone past 600 s.
+    await vi.advanceTimersByTimeAsync(283_800)
+    expect(spawned[0].killed).toBe(false)
+    await vi.advanceTimersByTimeAsync(10_100)
+    expect(spawned[0].killed).toBe(true)
+    expect(spawned[1].killed).toBe(false)
+    expect(pool.status().warm.map((w) => w.cwd)).toEqual(['/work/b'])
+    // b retires at 903.1 s.
+    await vi.advanceTimersByTimeAsync(303_100)
+    expect(spawned[1].killed).toBe(true)
+    expect(pool.status().warm).toEqual([])
+  })
+
+  it('nothing warms while memory is under the floor', async () => {
+    let low = true
+    const lines: string[] = []
+    pool.close()
+    pool = make({ log: (l) => lines.push(l) })
+    setWarmMemoryFloor(() => low)
+    try {
+      pool.noteStart(spec())
+      await vi.advanceTimersByTimeAsync(3_100)
+      expect(spawned).toHaveLength(0)
+      expect(pool.adopt(spec())).toBeNull()
+      expect(pool.status().misses).toEqual({ memory: 1 })
+      expect(lines.filter((l) => l.includes('memory is under the floor'))).toHaveLength(1)
+      low = false
+      pool.noteStart(spec())
+      await vi.advanceTimersByTimeAsync(3_100)
+      expect(spawned).toHaveLength(1)
+    } finally {
+      setWarmMemoryFloor(() => false)
+    }
+  })
+
+  it('a miss names the first field it differs on from the nearest warm process', () => {
+    const base = spec({ args: ['--model', 'm', '--effort', 'low', '--permission-mode', 'default', '--allowedTools', 'Read', '--settings', '{}'] })
+    const flag = (name: string, value: string): WarmSpec => {
+      const args = [...base.args]
+      args[args.indexOf(name) + 1] = value
+      return { ...base, args }
+    }
+    expect(missField(base, [])).toBe('empty')
+    expect(missField(flag('--model', 'n'), [base])).toBe('model')
+    expect(missField(flag('--effort', 'high'), [base])).toBe('effort')
+    expect(missField(flag('--allowedTools', 'Read,Bash'), [base])).toBe('tools')
+    expect(missField({ ...base, args: [...base.args, '--disallowedTools', 'Edit'] }, [base])).toBe('tools')
+    expect(missField(flag('--permission-mode', 'bypassPermissions'), [base])).toBe('permission')
+    expect(missField(flag('--settings', '{"fastMode":true}'), [base])).toBe('settings')
+    expect(missField({ ...base, cwd: '/elsewhere' }, [base])).toBe('cwd')
+    expect(missField({ ...base, args: [...base.args, '--resume', 'abc'] }, [base])).toBe('resume')
+    // The nearest warm process decides: one field off beats three.
+    const far = flag('--model', 'x')
+    far.cwd = '/x'
+    expect(missField(flag('--effort', 'max'), [far, base])).toBe('effort')
+    expect(shapeDiff({ ...base, cwd: '/x' }, flag('--model', 'z'))).toEqual(['model', 'cwd'])
+  })
+
+  it('status lists every warm process and counts misses by field', async () => {
+    const lines: string[] = []
+    pool.close()
+    pool = make({ log: (l) => lines.push(l) })
+    expect(pool.adopt(spec())).toBeNull()
+    pool.noteStart(spec({ cwd: '/work/b' }))
+    await vi.advanceTimersByTimeAsync(3_100)
+    expect(pool.adopt(spec({ args: ['--model', 'other'] }))).toBeNull()
+    expect(pool.adopt(spec({ args: ['--model', 'other'] }))).toBeNull()
+    await vi.advanceTimersByTimeAsync(3_100)
+    const status = pool.status()
+    expect(status.warm.map((w) => w.cwd)).toEqual(['/work/a', '/work/b', '/work/a'].slice(0, status.warm.length))
+    expect(status.warm.every((w) => w.retiresInMs !== null && w.retiresInMs > 0)).toBe(true)
+    expect(status.misses).toEqual({ empty: 1, model: 1, refilling: 1 })
+    expect(lines).toContain('[warm] claude: miss (empty) 0 warm')
+    expect(lines.some((l) => /miss \(model\) \d warm/.test(l))).toBe(true)
   })
 
   it('retires after ten minutes without a thread start; a start pushes it out', async () => {

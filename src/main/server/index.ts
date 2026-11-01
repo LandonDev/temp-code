@@ -12,7 +12,7 @@ import { isRoutedProvider, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
 import { gateway as runningGateway, startGateway, type Gateway, type SpawnGatewayChild } from './gateway'
 import { BootResumer } from './resumeAfterBoot'
 import { Admission } from './admission'
-import { closeWarmPools, retireWarmPools, warmStatuses } from './drivers/warm'
+import { closeWarmPools, retireWarmPools, setWarmMemoryFloor, warmStatuses } from './drivers/warm'
 import { observeHooks } from './gatewayObserve'
 import { HeadroomStore } from './headroom'
 import { WebSocketServer, type WebSocket } from 'ws'
@@ -1210,6 +1210,8 @@ export async function startServer(
     onChange: () => registry.scheduler.schedule()
   })
   registry.admission = admission
+  // Warm processes count against memory, never the cap: none spawn under the floor.
+  setWarmMemoryFloor(() => admission.memoryLow())
   admission.start()
   // Threads the last shutdown cut mid-turn come back once everything
   // listens (run() below); the renderer hears the count once per boot.

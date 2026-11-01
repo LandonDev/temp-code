@@ -127,7 +127,9 @@ export function spawnOrAdoptClaude(spec: WarmSpec, signal: AbortSignal | undefin
       console.log(`[claude] ${choice.thread}: adopted the warm process ${warm.id}`)
       return { proc: holdStdin(warm.proc, rebound), warmId: warm.id }
     }
-    claudeWarm.noteStart(spec)
+    // adopt() logged the miss and made this the shape to keep warm.
+  } else {
+    claudeWarm.miss(spec)
   }
   return { proc: spawnClaude(spec, signal, choice.thread), warmId: null }
 }

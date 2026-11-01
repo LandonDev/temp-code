@@ -231,6 +231,50 @@ describe('codex app-server boot', () => {
     log.mockRestore()
   })
 
+  it('the first send says Initializing while the MCP gate holds, and notes the gate on delivered; the handle is cold', async () => {
+    vi.useFakeTimers()
+    vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
+    scripts.push(healthy)
+    const marks: { phase: string; note?: string }[] = []
+    const handle = await codexDriver.start({ ...ctx(), mark: (phase, note) => marks.push({ phase, note }) })
+    expect(marks).toEqual([{ phase: 'handle', note: 'cold' }])
+    const notify = (method: string, params: Record<string, unknown>): void => {
+      spawned[0].stdout.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n')
+    }
+    notify('mcpServer/startupStatus/updated', { name: 'linear', status: 'starting' })
+    await vi.advanceTimersByTimeAsync(0)
+    const sent = handle.send('hello')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(events.filter((e) => e.type === 'phase')).toEqual([{ type: 'phase', phase: 'initializing' }])
+    await vi.advanceTimersByTimeAsync(1_400)
+    notify('mcpServer/startupStatus/updated', { name: 'linear', status: 'ready' })
+    await vi.advanceTimersByTimeAsync(500)
+    await sent
+    expect(events.filter((e) => e.type === 'phase')).toEqual([
+      { type: 'phase', phase: 'initializing' },
+      { type: 'phase', phase: null }
+    ])
+    const delivered = marks.find((m) => m.phase === 'delivered')
+    expect(delivered?.note).toMatch(/^mcp=19\d\d$/)
+    // The gate is the first send's alone.
+    await handle.send('again')
+    expect(marks.filter((m) => m.phase === 'delivered')).toHaveLength(1)
+    await handle.dispose()
+  })
+
+  it('an adopted warm app-server marks the handle warm', async () => {
+    scripts.push(healthy, healthy)
+    const spec = { command: '/fake/codex', args: ['app-server'], cwd: '/repo', env: { TEMP_CODE_THREAD: 'other' } }
+    codexWarm.noteStart(spec)
+    await codexWarm.settled()
+    expect(codexWarm.status().warm).toHaveLength(1)
+    const marks: { phase: string; note?: string }[] = []
+    const handle = await codexDriver.start({ ...ctx(), mark: (phase, note) => marks.push({ phase, note }) })
+    expect(marks).toEqual([{ phase: 'handle', note: 'warm' }])
+    expect(spawned).toHaveLength(1)
+    await handle.dispose()
+  })
+
   it('an exit after the thread is up is a crash, not a retry', async () => {
     scripts.push(healthy)
     await codexDriver.start(ctx())

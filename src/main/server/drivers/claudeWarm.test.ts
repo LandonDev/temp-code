@@ -56,11 +56,14 @@ describe('the warm Claude process', () => {
     expect(claudeWarm.status().warm).toEqual([])
     expect(gw.warmIds()).toEqual([{ id: warmId, thread: 'T2' }])
 
-    // Its exit releases the id at the gateway.
+    // Its exit releases the id at the gateway; the shape started twice in a
+    // minute, so its refill is already warm under a new id.
     adopted.proc.kill('SIGTERM')
     await exited(adopted.proc)
+    await claudeWarm.settled()
     await new Promise((ok) => setTimeout(ok, 20))
-    expect(gw.warmIds()).toEqual([])
+    expect(gw.warmIds().map((w) => w.id)).not.toContain(warmId)
+    expect(gw.warmIds()).toEqual([{ id: claudeWarm.status().warm[0].id, thread: null }])
   })
 
   it('a thread the shim routes elsewhere, or a resumed one, spawns cold and warms nothing', async () => {
@@ -72,7 +75,7 @@ describe('the warm Claude process', () => {
     await exited(cold.proc)
   })
 
-  it('another shape boots cold and the warm process is replaced', async () => {
+  it('another shape boots cold and is kept warm beside the first', async () => {
     spawnOrAdoptClaude(spec(), undefined, { thread: 'T4', scope: null, warmable: true }).proc.kill('SIGTERM')
     await claudeWarm.settled()
     const first = claudeWarm.status().warm[0]?.id
@@ -82,11 +85,13 @@ describe('the warm Claude process', () => {
     other.proc.kill('SIGTERM')
     await exited(other.proc)
     await claudeWarm.settled()
-    const second = claudeWarm.status().warm[0]?.id
+    // Newest shape first; the first shape's process stays.
+    const [second, kept] = claudeWarm.status().warm.map((w) => w.id)
     expect(second).toBeDefined()
     expect(second).not.toBe(first)
+    expect(kept).toBe(first)
     await new Promise((ok) => setTimeout(ok, 20))
-    expect(gw.warmIds().map((w) => w.id)).toEqual([second])
+    expect(gw.warmIds().map((w) => w.id).sort()).toEqual([first, second].sort())
   })
 
   it('the abort signal of an adopting thread kills the adopted process', async () => {

@@ -855,6 +855,8 @@ export const codexDriver: HarnessDriver = {
         if (warm) warm.proc.kill()
         conn = new AppServerConn(binPath, env, session.cwd, onNotify, onRequest, onExit)
       }
+      // The send's span says whether the app-server was adopted warm or spawned cold.
+      ctx.mark?.('handle', warm?.proc.alive ? 'warm' : 'cold')
       try {
         if (!warm?.proc.alive) {
           await conn.request('initialize', { clientInfo: CODEX_CLIENT_INFO })
@@ -980,9 +982,16 @@ export const codexDriver: HarnessDriver = {
         // handle and boots a fresh one on this word.
         if (disposed || conn.exited) throw new Error('harness gone: the codex app-server has exited')
         setStatus('running')
+        // The first send waits for the MCP servers: said as the CLI's
+        // initializing, and its time noted on the span's `delivered`.
+        let gateMs: number | null = null
         if (firstTurnGate) {
+          const gateFrom = Date.now()
+          emit({ type: 'phase', phase: 'initializing' })
           await firstTurnGate
           firstTurnGate = null
+          gateMs = Date.now() - gateFrom
+          emit({ type: 'phase', phase: null })
         }
         // Images are native input items (localImage); other files ride as
         // path references in the text.
@@ -1014,6 +1023,7 @@ export const codexDriver: HarnessDriver = {
               setStatus('idle')
             })
         }
+        if (gateMs !== null) ctx.mark?.('delivered', `mcp=${gateMs}`)
         // A person's steer into the running turn: turn/steer appends it to
         // exactly that turn, and refuses when it has ended ("no active turn
         // to steer") or the binary lacks the method; it then starts the next
