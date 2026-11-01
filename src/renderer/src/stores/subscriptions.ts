@@ -11,7 +11,8 @@ import {
 import { historyStore } from "../lib/historyStore";
 import { liveAgentTracker } from "../lib/liveAgentTracker";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
-import { landingPathOfSession, saveLastSession } from "../lib/projectContext";
+import { DRAFT_LANDING, landingPathOfSession, saveLastSession } from "../lib/projectContext";
+import { copiesOf } from "../lib/projectHostChoice";
 import { draftPicks, projectDrafts, projectDraftsStore } from "../lib/projectDrafts";
 import { looksLikeProject } from "../lib/recents";
 import { replaceProjectHistory } from "../lib/sessionHistory";
@@ -218,14 +219,24 @@ export function installActiveSessionSync(): Teardown {
   // time they are picked. A draft has no meta until its first send, so this
   // follows the meta, not the pane; a subagent lands nowhere; and the
   // workspace key waits for the catalog, else it would name the worktree.
+  // A project's remembered draft on screen is a landing too (DRAFT_LANDING),
+  // under every linked copy and the workspace, so coming back opens it.
   let landingKey: string | undefined;
   const syncLanding = () => {
     const active = currentActiveSession();
     const meta = active ? sessionStore.metaOf(active.id) : null;
+    const draft = active && !meta && projectDrafts.keyOfDraft(active.id) ? active : null;
     const catalog = workspaceStore.getSnapshot();
-    const key = [meta?.id, meta?.projectId, meta?.archived, catalog.loaded].join("\n");
+    const key = [meta?.id, meta?.projectId, meta?.archived, draft?.id, draft?.projectId, catalog.loaded].join("\n");
     if (key === landingKey) return;
     landingKey = key;
+    if (draft && catalog.loaded) {
+      const project = draft.projectId ? catalog.projects.find((p) => p.id === draft.projectId) : undefined;
+      const ids = new Set([...(draft.projectId ? [draft.projectId] : []), ...copiesOf(catalog.projects, project?.linkId).map((p) => p.id)]);
+      for (const projectId of ids) saveLastSession({ projectId }, DRAFT_LANDING);
+      saveLastSession({ workspacePath: landingPathOfSession(draft, catalog) }, DRAFT_LANDING);
+      return;
+    }
     if (!meta || meta.archived || meta.parentId || !catalog.loaded) return;
     if (meta.projectId) saveLastSession({ projectId: meta.projectId }, meta.id);
     saveLastSession({ workspacePath: landingPathOfSession(meta, catalog) }, meta.id);

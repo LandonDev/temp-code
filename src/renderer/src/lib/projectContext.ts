@@ -179,6 +179,10 @@ export function saveSelectedProject(
 
 // ── the last thread per project / workspace ────────────────────────────
 
+/** The landing of a scope left while its draft was on screen
+ *  (lib/projectDrafts.ts): coming back opens the draft, not a thread. */
+export const DRAFT_LANDING = "draft:";
+
 /** Where a landing is remembered: a project, or a workspace folder. */
 export type LandingScope = { projectId: string } | { workspacePath: string };
 
@@ -221,7 +225,8 @@ export function landingPathOfSession(
 
 /** The thread a scope lands on: the remembered one while it still exists,
  *  is not archived and still belongs to the scope (a moved workspace or a
- *  thread moved out of its project forgets). Null means seed a blank one. */
+ *  thread moved out of its project forgets), or `DRAFT_LANDING` when it was
+ *  left on its draft. Null means open the scope's draft. */
 export function resolveLanding(
   scope: LandingScope,
   metas: readonly SessionMeta[],
@@ -232,6 +237,7 @@ export function resolveLanding(
     "projectId" in scope ? scope : { workspacePath: aliasKeys(catalog.workspaces).path(scope.workspacePath) };
   const id = loadLastSession(keyed);
   if (!id) return null;
+  if (id === DRAFT_LANDING) return DRAFT_LANDING;
   const meta = metas.find((m) => m.id === id);
   // A subagent renders on its parent's board and is never a landing.
   if (!meta || meta.archived || meta.parentId) return null;

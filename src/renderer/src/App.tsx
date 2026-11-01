@@ -156,6 +156,7 @@ import {
   contextOfSession,
   forgetLastSession,
   rebaseToWorkspace,
+  DRAFT_LANDING,
   resolveLanding,
   resolveSessionContext,
   type ResolvedContext,
@@ -800,18 +801,19 @@ export default function App() {
         projectId,
       );
       if (target.action === "stay") return;
+      // Left on its draft: the draft comes back, even with a thread tab open.
+      const landing = resolveLanding({ projectId }, sessionStore.metas(), workspaceStore.getSnapshot());
+      if (landing === DRAFT_LANDING) {
+        openProjectDraft({ projectId }, { placement: "tab" });
+        return;
+      }
       if (target.action === "activate") {
         activateTab(target.tabId);
         return;
       }
       // No pane of that project is open: land on the thread it was last on,
-      // else start one, so the body never keeps showing another project's
+      // else its draft, so the body never keeps showing another project's
       // thread under this project's header.
-      const landing = resolveLanding(
-        { projectId },
-        sessionStore.metas(),
-        workspaceStore.getSnapshot(),
-      );
       if (landing) void onSelectHistorySessionRef.current?.(landing);
       else openProjectDraft({ projectId }, { placement: "tab" });
     },
@@ -2039,6 +2041,11 @@ export default function App() {
         sessionStore.metas(),
         workspaceStore.getSnapshot(),
       );
+      if (landing === DRAFT_LANDING) {
+        project.enterWorkspace(normalized);
+        openProjectDraft({ cwd: normalized }, { placement: "tab" });
+        return;
+      }
       const match = workspaceTabTarget(
         workspaceTabsStore.getState(),
         rebaseToWorkspace(sessionStore.getSnapshot(), workspaceStore.getSnapshot()),
@@ -2072,6 +2079,11 @@ export default function App() {
     const state = workspaceTabsStore.getState();
     const catalog = workspaceStore.getSnapshot();
     const landing = resolveLanding({ workspacePath: "~" }, sessionStore.metas(), catalog);
+    if (landing === DRAFT_LANDING) {
+      project.selectProject(null);
+      openProjectDraft({ projectId: null }, { placement: "tab" });
+      return;
+    }
     if (landing && focusOpenSession(landing)) return;
     const open = filterTabsForWorkspace(state.tabs, sessionStore.getSnapshot(), catalog, null);
     if (open.some((tab) => tab.id === state.activeTabId)) return;

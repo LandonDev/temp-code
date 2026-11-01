@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  DRAFT_LANDING,
   contextForCwd,
   contextOfSession,
   folderKey,
@@ -190,6 +191,18 @@ describe("last thread per project / workspace", () => {
     expect(resolveLanding({ projectId: "p1" }, [meta("s1", { projectId: "p2" })], catalog)).toBeNull();
     expect(resolveLanding({ projectId: "p2" }, [meta("s1")], catalog)).toBeNull();
     expect(resolveLanding({ projectId: "p1" }, [meta("s1", { parentId: "root" })], catalog)).toBeNull();
+  });
+
+  it("a scope left on its draft lands on the draft, even with its old thread still live", () => {
+    saveLastSession({ projectId: "p1" }, "s1");
+    saveLastSession({ projectId: "p1" }, DRAFT_LANDING);
+    saveLastSession({ workspacePath: "/home/me/repo" }, DRAFT_LANDING);
+    const metas = [meta("s1")];
+    expect(resolveLanding({ projectId: "p1" }, metas, catalog)).toBe(DRAFT_LANDING);
+    expect(resolveLanding({ workspacePath: "/home/me/repo/" }, metas, catalog)).toBe(DRAFT_LANDING);
+    // Leaving it on a thread later lands on the thread again.
+    saveLastSession({ projectId: "p1" }, "s1");
+    expect(resolveLanding({ projectId: "p1" }, metas, catalog)).toBe("s1");
   });
 
   it("the newest thread wins a scope, and forgetting one leaves the others", () => {
