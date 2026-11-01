@@ -22,6 +22,12 @@
   --popover: oklch(0.24 0.004 270);
   --muted: oklch(0.275 0.004 270);
   --secondary: oklch(0.29 0.004 270);
+  /* A group in the chrome (a project card in the workspace column): its own
+     resting fill over the sidebar, a hovered step and a selected one. Items
+     (thread rows) never take these; they stay bare (lib/sidebarGroup.test.ts). */
+  --sidebar-group: oklch(0.213 0.003 270);
+  --sidebar-group-hover: oklch(0.244 0.004 270);
+  --sidebar-group-selected: var(--muted);
   --input: rgb(255 255 255 / 0.12);
   --border: rgb(255 255 255 / 0.09);
   /* The hairline on an inline image or screenshot: pure white or black at
@@ -106,6 +112,10 @@ html.theme-light {
   --popover: oklch(1 0 0);
   --muted: oklch(0.955 0.002 80);
   --secondary: oklch(0.94 0.003 80);
+  /* Light's selected step stops at L 0.940: amber text falls under 4.5:1 below it. */
+  --sidebar-group: oklch(0.961 0.002 80);
+  --sidebar-group-hover: oklch(0.95 0.002 80);
+  --sidebar-group-selected: oklch(0.94 0.002 80);
   --input: rgb(0 0 0 / 0.12);
   --border: rgb(0 0 0 / 0.08);
   --image-outline: rgb(0 0 0 / 0.1);
@@ -128,6 +138,9 @@ html.theme-light {
 
 @theme inline {
   --color-sidebar: var(--sidebar);
+  --color-sidebar-group: var(--sidebar-group);
+  --color-sidebar-group-hover: var(--sidebar-group-hover);
+  --color-sidebar-group-selected: var(--sidebar-group-selected);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

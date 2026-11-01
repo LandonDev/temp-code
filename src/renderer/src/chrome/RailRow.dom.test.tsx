@@ -7,11 +7,12 @@ import { RailHeading, RailRow } from "./RailRow";
 afterEach(cleanup);
 
 describe("RailRow", () => {
-  it("is one 36px row with a 13px label, muted until selected", () => {
+  it("is one 28px row with a 13px label, muted until selected", () => {
     const onClick = vi.fn();
     render(<RailRow icon={Inbox} label="Inbox" onClick={onClick} />);
     const row = screen.getByRole("button", { name: "Inbox" });
-    expect(row.className).toContain("h-9");
+    expect(row.className).toContain("h-7");
+    expect(row.className).not.toContain("h-9");
     expect(row.className).toContain("text-[13px]");
     expect(row.closest("[data-rail-row]")!.className).toContain("text-muted-foreground");
     expect(row.getAttribute("aria-current")).toBeNull();
@@ -28,6 +29,38 @@ describe("RailRow", () => {
     expect(wrapper.className).not.toMatch(/border-l|before:/);
   });
 
+  it("draws the glyph slot only for a row with an icon or a glyph", () => {
+    render(<RailRow label="alpha" />);
+    const bare = screen.getByRole("button", { name: "alpha" });
+    expect(bare.querySelector("span[aria-hidden]")).toBeNull();
+    cleanup();
+    render(<RailRow icon={Inbox} label="Inbox" />);
+    expect(screen.getByRole("button", { name: "Inbox" }).querySelector("span[aria-hidden]")).not.toBeNull();
+  });
+
+  it("keeps the label at least 48px wide, so trailing marks never take the whole row", () => {
+    render(<RailRow label="alpha" trailing={<span>+212 −48</span>} />);
+    expect(screen.getByText("alpha").className).toContain("min-w-12");
+  });
+
+  it("a group row sits on the sidebar-group fills, its label foreground, with no transition", () => {
+    render(<RailRow surface="group" label="alpha" />);
+    const wrapper = screen.getByRole("button", { name: "alpha" }).closest("[data-rail-row]")!;
+    expect(wrapper.getAttribute("data-surface")).toBe("group");
+    expect(wrapper.className).toContain("bg-sidebar-group");
+    expect(wrapper.className).toContain("hover:bg-sidebar-group-hover");
+    expect(wrapper.className).toContain("has-[[aria-expanded=true]]:bg-sidebar-group-selected");
+    expect(wrapper.className).toContain("text-foreground");
+    expect(wrapper.className).not.toContain("text-muted-foreground");
+    expect(wrapper.className).not.toMatch(/\btransition/);
+    expect(wrapper.className).not.toMatch(/(^| )bg-muted( |$)/);
+    cleanup();
+    render(<RailRow surface="group" label="alpha" selected />);
+    const selected = screen.getByRole("button", { name: "alpha" });
+    expect(selected.getAttribute("aria-current")).toBe("true");
+    expect(selected.closest("[data-rail-row]")!.className).toMatch(/(^| )bg-sidebar-group-selected( |$)/);
+  });
+
   it("holds one trailing node and no title attribute", () => {
     const { container } = render(<RailRow icon={Inbox} label="Inbox" trailing={<span>42%</span>} tooltip="Inbox" />);
     expect(container.querySelectorAll("[data-rail-trailing]")).toHaveLength(1);
@@ -35,10 +68,11 @@ describe("RailRow", () => {
     expect(container.querySelector("[title]")).toBeNull();
   });
 
-  it("puts the hover action in the trailing slot's place, and its press never reaches the row", () => {
+  it("shows two hover actions in order over the trailing slot, and their presses never reach the row", () => {
     const onRowDown = vi.fn();
     const onRowClick = vi.fn();
-    const onAction = vi.fn();
+    const onPin = vi.fn();
+    const onMenu = vi.fn();
     const { container } = render(
       <RailRow
         icon={Inbox}
@@ -46,50 +80,46 @@ describe("RailRow", () => {
         trailing={<span>mark</span>}
         onClick={onRowClick}
         onPointerDown={onRowDown}
-        hoverAction={{ label: "Workspace options", icon: MoreHorizontal, onClick: onAction, menu: true }}
+        hoverActions={[
+          { label: "Pin workspace", icon: Pin, onClick: onPin },
+          { label: "Workspace options", icon: MoreHorizontal, onClick: onMenu, menu: true },
+        ]}
       />,
     );
     const trailing = container.querySelector("[data-rail-trailing]")!;
     expect(trailing.className).toContain("group-hover/row:opacity-0");
-    const action = screen.getByRole("button", { name: "Workspace options" });
-    expect(action.getAttribute("aria-haspopup")).toBe("menu");
-    expect(action.hasAttribute("data-no-drag")).toBe(true);
-    expect(action.className).toContain("group-hover/row:opacity-100");
-    fireEvent.pointerDown(action, { button: 0 });
-    fireEvent.click(action);
-    expect(onAction).toHaveBeenCalledOnce();
-    expect(onRowDown).not.toHaveBeenCalled();
-    expect(onRowClick).not.toHaveBeenCalled();
-  });
-
-  it("a glyph action takes the glyph's place on hover and focus, and its press never selects the row", () => {
-    const onRowDown = vi.fn();
-    const onRowClick = vi.fn();
-    const onPin = vi.fn();
-    const { container } = render(
-      <RailRow
-        icon={Inbox}
-        label="alpha"
-        onClick={onRowClick}
-        onPointerDown={onRowDown}
-        glyphAction={{ label: "Pin workspace", icon: Pin, onClick: onPin }}
-      />,
-    );
-    const glyph = screen.getByRole("button", { name: "alpha" }).querySelector("span[aria-hidden]")!;
-    expect(glyph.className).toContain("group-hover/row:opacity-0");
-    expect(glyph.className).toContain("group-focus-within/row:opacity-0");
-    expect(glyph.className).toContain("motion-reduce:transition-none");
+    expect(trailing.className).toContain("min-w-11");
     const pin = screen.getByRole("button", { name: "Pin workspace" });
-    expect(pin.className).toContain("left-2");
-    expect(pin.className).toContain("group-hover/row:opacity-100");
-    expect(pin.className).toContain("group-focus-within/row:opacity-100");
-    expect(pin.hasAttribute("data-no-drag")).toBe(true);
-    fireEvent.pointerDown(pin, { button: 0 });
-    fireEvent.click(pin);
+    const menu = screen.getByRole("button", { name: "Workspace options" });
+    expect(pin.compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(menu.getAttribute("aria-haspopup")).toBe("menu");
+    for (const action of [pin, menu]) {
+      expect(action.hasAttribute("data-no-drag")).toBe(true);
+      expect(action.className).toContain("group-hover/row:opacity-100");
+      expect(action.className).toContain("group-focus-within/row:opacity-100");
+      expect(action.className).toContain("size-6");
+      fireEvent.pointerDown(action, { button: 0 });
+      fireEvent.click(action);
+    }
     expect(onPin).toHaveBeenCalledOnce();
+    expect(onMenu).toHaveBeenCalledOnce();
     expect(onRowDown).not.toHaveBeenCalled();
     expect(onRowClick).not.toHaveBeenCalled();
     expect(container.querySelector("[title]")).toBeNull();
+  });
+
+  it("draws at most two hover actions", () => {
+    render(
+      <RailRow
+        label="alpha"
+        hoverActions={[
+          { label: "One", icon: Pin, onClick: () => {} },
+          { label: "Two", icon: Pin, onClick: () => {} },
+          { label: "Three", icon: Pin, onClick: () => {} },
+        ]}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Three" })).toBeNull();
   });
 
   it("an interactive trailing control stays shown, with the hover action after it, never over it", () => {
@@ -99,14 +129,15 @@ describe("RailRow", () => {
         label="alpha"
         trailingInteractive
         trailing={<button type="button">chip</button>}
-        hoverAction={{ label: "Workspace options", icon: MoreHorizontal, onClick: () => {} }}
+        hoverActions={[{ label: "Workspace options", icon: MoreHorizontal, onClick: () => {} }]}
       />,
     );
     const slot = container.querySelector("[data-rail-trailing]")!;
     expect(slot.className).not.toContain("group-hover/row:opacity-0");
     const action = screen.getByRole("button", { name: "Workspace options" });
     expect(slot.contains(action)).toBe(true);
-    expect(action.className).not.toContain("absolute");
+    expect(action.className).toContain("hidden");
+    expect(action.className).toContain("group-hover/row:inline-flex");
     expect(screen.getByRole("button", { name: "chip" }).compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

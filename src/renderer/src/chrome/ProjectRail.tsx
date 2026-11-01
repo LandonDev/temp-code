@@ -883,18 +883,20 @@ function WorkspaceRow({
             </>
           ) : null
         }
-        glyphAction={{
-          label: pinned ? "Unpin workspace" : "Pin workspace",
-          icon: pinned ? PinOff : Pin,
-          onClick: () => onTogglePin(item.path),
-        }}
-        hoverAction={{
-          label: "Workspace options",
-          icon: MoreHorizontal,
-          menu: true,
-          expanded: menuOpen,
-          onClick: (event) => onOpenMenu(item.path, event.clientX, event.clientY),
-        }}
+        hoverActions={[
+          {
+            label: pinned ? "Unpin workspace" : "Pin workspace",
+            icon: pinned ? PinOff : Pin,
+            onClick: () => onTogglePin(item.path),
+          },
+          {
+            label: "Workspace options",
+            icon: MoreHorizontal,
+            menu: true,
+            expanded: menuOpen,
+            onClick: (event) => onOpenMenu(item.path, event.clientX, event.clientY),
+          },
+        ]}
         onPointerDown={(event) => {
           if (event.button !== 0) return;
           if ((event.target as HTMLElement | null)?.closest("[data-no-drag]")) return;

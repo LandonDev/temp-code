@@ -64,8 +64,10 @@ function Workspace({
             </>
           ) : null
         }
-        glyphAction={{ label: pinned ? "Unpin workspace" : "Pin workspace", icon: pinned ? PinOff : Pin, onClick: noop }}
-        hoverAction={{ label: "Workspace options", icon: MoreHorizontal, menu: true, onClick: noop }}
+        hoverActions={[
+          { label: pinned ? "Unpin workspace" : "Pin workspace", icon: pinned ? PinOff : Pin, onClick: noop },
+          { label: "Workspace options", icon: MoreHorizontal, menu: true, onClick: noop },
+        ]}
       />
       {mark ? <WorkspaceLineView mark={mark} /> : null}
     </>

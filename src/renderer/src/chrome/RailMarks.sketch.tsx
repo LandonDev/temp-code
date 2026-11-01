@@ -46,7 +46,7 @@ function Workspace({ name, color, mark, unread = false, selected = false }: { na
         emphasis={unread}
         trailingInteractive
         trailing={mark ? <WorkspaceMarkView mark={mark} /> : null}
-        hoverAction={{ label: "Workspace options", icon: MoreHorizontal, menu: true, onClick: noop }}
+        hoverActions={[{ label: "Workspace options", icon: MoreHorizontal, menu: true, onClick: noop }]}
       />
       {mark ? <WorkspaceLineView mark={mark} /> : null}
     </>

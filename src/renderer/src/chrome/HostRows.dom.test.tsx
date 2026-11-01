@@ -98,11 +98,11 @@ describe("HostsRow", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("is one 36px row ending in a dot per host, its label naming every host and its state", () => {
+  it("is one 28px row ending in a dot per host, its label naming every host and its state", () => {
     hosts([LOCAL, BOX], { local: status("open", "darwin"), env_box: status("offline", "linux") });
     render(<HostsRow onAddWorkspace={() => {}} />);
     const row = screen.getByRole("button", { name: "Hosts: This Mac connected, box offline" });
-    expect(row.className).toContain("h-9");
+    expect(row.className).toContain("h-7");
     const dots = [...row.querySelectorAll("[data-host-status]")];
     expect(dots.map((d) => d.getAttribute("data-host-status"))).toEqual(["open", "offline"]);
     expect(dots[1].className).toContain("bg-muted-foreground/40");

@@ -103,7 +103,7 @@ export function UpdateRow({
           label={label(`Updated to ${state.version}`)}
           ariaLabel={`Updated to ${state.version}, what's new`}
           onClick={() => onOpenWhatsNew?.(state.version)}
-          hoverAction={{ label: "Dismiss", icon: X, onClick: onDismiss }}
+          hoverActions={[{ label: "Dismiss", icon: X, onClick: onDismiss }]}
         />
       );
     case "available":
@@ -114,9 +114,9 @@ export function UpdateRow({
           label={label(state.retry ? "Retry update" : `Update to ${state.version}`)}
           tooltip={state.error}
           onClick={onInstall}
-          hoverAction={
+          hoverActions={
             state.notes && onOpenWhatsNew
-              ? { label: "What's new", icon: FileText, onClick: () => onOpenWhatsNew(state.version, state.notes) }
+              ? [{ label: "What's new", icon: FileText, onClick: () => onOpenWhatsNew(state.version, state.notes) }]
               : undefined
           }
         />
