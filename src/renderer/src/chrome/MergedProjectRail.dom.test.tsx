@@ -194,15 +194,17 @@ describe("the rail", () => {
     expect(workspaceRows(root)[0].getAttribute("data-rail-path")).toBe(MAC_PATH);
   });
 
-  it("opens with the navigation group, then the Accounts group, before Pinned and Workspaces", async () => {
+  it("opens with one navigation group, Accounts and Stats in it, before Pinned and Workspaces", async () => {
     const root = await mountRail([LOCAL, BOX]);
     const list = root.querySelector('nav[aria-label="Workspaces"] .overflow-y-auto')!;
     const labels = [...list.querySelectorAll("[data-rail-row] > button")].map((b) => b.textContent);
     expect(labels.slice(0, 7)).toEqual(["Search", "Inbox", "Mark all read", "Notes", "Chats", "Accounts", "Stats"]);
-    // Two threads wait on the person, so the Working section stands under the list.
-    expect(headers(root)).toEqual(["Accounts", "Workspaces", "Working"]);
-    const accounts = [...list.querySelectorAll("[data-rail-heading]")].find((h) => h.textContent?.trim() === "Accounts")!.closest(".pt-4")!;
-    expect([...accounts.querySelectorAll("[data-rail-row] > button")].map((b) => b.textContent)).toEqual(["Accounts", "Stats"]);
+    // No heading names the navigation or an Accounts group; two threads wait
+    // on the person, so the Working section stands under the list.
+    expect(headers(root)).toEqual(["Workspaces", "Working"]);
+    const search = [...list.querySelectorAll("[data-rail-row] > button")].find((b) => b.textContent === "Search")!;
+    const stats = [...list.querySelectorAll("[data-rail-row] > button")].find((b) => b.textContent === "Stats")!;
+    expect(search.closest("[data-rail-row]")!.parentElement).toBe(stats.closest("[data-rail-row]")!.parentElement);
     // The rows themselves carry no title= (the word at the end is the status mark).
     expect(list.querySelector("[data-rail-row] > button[title]")).toBeNull();
   });

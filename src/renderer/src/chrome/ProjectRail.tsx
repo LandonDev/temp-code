@@ -156,7 +156,7 @@ type Props = {
   onSearch?: () => void;
   onOpenInbox?: () => void;
   onOpenNotes?: () => void;
-  /** The Accounts group's rows: the embedded Aliax pages. */
+  /** The Accounts and Stats rows: the embedded Aliax pages. */
   onOpenAccountsPage?: (page: AliaxPageId) => void;
   /** The home: the chats outside every workspace. */
   onOpenChats?: () => void;
@@ -454,8 +454,11 @@ export function ProjectRail({
     onActivate: onSelectProject,
   });
   const inboxUnseen = useInboxUnseen();
-  const topIds = railTopRows({ chats: onOpenChats !== undefined, notes: onOpenNotes !== undefined });
-  const accountIds = railAccountRows({ aliax: onOpenAccountsPage !== undefined });
+  const topIds = railTopRows({
+    chats: onOpenChats !== undefined,
+    notes: onOpenNotes !== undefined,
+    aliax: onOpenAccountsPage !== undefined,
+  });
   const topRow = (id: RailTopRowId) => {
     switch (id) {
       case "search":
@@ -505,18 +508,20 @@ export function ProjectRail({
             }
           />
         );
+      case "accounts":
+      case "stats":
+        return (
+          <RailRow
+            key={id}
+            icon={id === "accounts" ? Users : ChartBar}
+            label={id === "accounts" ? "Accounts" : "Stats"}
+            selected={accountsPage === id}
+            onClick={() => onOpenAccountsPage?.(id)}
+            intent={aliaxChunk.intent}
+          />
+        );
     }
   };
-  const accountRow = (id: RailAccountRowId) => (
-    <RailRow
-      key={id}
-      icon={id === "accounts" ? Users : ChartBar}
-      label={id === "accounts" ? "Accounts" : "Stats"}
-      selected={accountsPage === id}
-      onClick={() => onOpenAccountsPage?.(id)}
-      intent={aliaxChunk.intent}
-    />
-  );
   return (
     <nav
       ref={resize.setPaneRef}
@@ -566,12 +571,6 @@ export function ProjectRail({
             >
             <div className="contents">
             <div className="shrink-0 px-2">{topIds.map(topRow)}</div>
-            {accountIds.length > 0 ? (
-              <div className="shrink-0 px-2 pt-4">
-                <RailHeading>Accounts</RailHeading>
-                {accountIds.map(accountRow)}
-              </div>
-            ) : null}
             {rows.pinned.length > 0 ? (
               <ProjectSection
                 label="Pinned"
@@ -954,22 +953,18 @@ export function workspaceRowAriaLabel(
   return parts.join(", ");
 }
 
-export type RailTopRowId = "search" | "inbox" | "read" | "notes" | "chats";
+export type RailTopRowId = "search" | "inbox" | "read" | "notes" | "chats" | "accounts" | "stats";
 
-/** The rail's navigation group, first in its list: Search, Inbox, Mark all
- *  read, Notes (where the view can open) and Chats (where the home is). */
-export function railTopRows(facts: { chats: boolean; notes: boolean }): RailTopRowId[] {
+/** The rail's one navigation group, first in its list and with no heading:
+ *  Search, Inbox, Mark all read, Notes (where the view can open), Chats
+ *  (where the home is), then Accounts and Stats (where their pages open,
+ *  never at /ui). */
+export function railTopRows(facts: { chats: boolean; notes: boolean; aliax: boolean }): RailTopRowId[] {
   const rows: RailTopRowId[] = ["search", "inbox", "read"];
   if (facts.notes) rows.push("notes");
   if (facts.chats) rows.push("chats");
+  if (facts.aliax) rows.push("accounts", "stats");
   return rows;
-}
-
-export type RailAccountRowId = "accounts" | "stats";
-
-/** The Accounts group's rows, only where their pages open (never at /ui). */
-export function railAccountRows(facts: { aliax: boolean }): RailAccountRowId[] {
-  return facts.aliax ? ["accounts", "stats"] : [];
 }
 
 export type RailFootRowId = "signIn" | "update" | "hosts" | "settings";
