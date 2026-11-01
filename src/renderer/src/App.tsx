@@ -694,24 +694,16 @@ export default function App() {
   }, []);
 
   /**
-   * The one way to a project's draft (lib/projectDrafts.ts): focus it where
-   * a pane shows it, else rebuild it from its record, else seed one. `scope`
-   * is a project (undefined: the selected one) or a folder. `tab` opens it
-   * in a tab of its own, `beside` splits the focused pane, and `replace`
-   * only puts the session in the store for the caller to lay out (`placed`
-   * is false when it was focused elsewhere instead).
+   * A project's draft (lib/projectDrafts.ts), decided by `planProjectDraft`:
+   * `focus` when a pane shows it, else its session rebuilt from the record
+   * or seeded and remembered, retyped when a type is asked for. `scope` is a
+   * project (undefined: the selected one) or a folder. Nothing is placed.
    */
-  const openProjectDraft = useCallback(
+  const resolveProjectDraft = useCallback(
     (
       scope: { projectId?: string | null } | { cwd: string },
-      opts: {
-        placement: "tab" | "beside" | "replace";
-        focus?: boolean;
-        dir?: SplitDir;
-        threadType?: ThreadType;
-        threadRules?: ThreadRules | null;
-      },
-    ): { id: string; placed: boolean } => {
+      opts: { threadType?: ThreadType; threadRules?: ThreadRules | null } = {},
+    ): { kind: "focus"; id: string } | { kind: "session"; session: Session } => {
       const base = "cwd" in scope ? cwdContext(scope.cwd) : sessionContext(scope.projectId);
       const ctx = newThreadContext(base, workspaceStore.projects, currentActivePane().active);
       const catalog = workspaceStore.getSnapshot();
@@ -733,10 +725,7 @@ export default function App() {
       if (plan.kind === "focus") {
         const { retype } = plan;
         if (retype) setSessions((prev) => prev.map((s) => (s.id === plan.id ? retypedDraft(s, retype) : s)));
-        const tabId = workspaceActions.focusSession(plan.id);
-        if (tabId) activateTab(tabId);
-        if (opts.focus) setComposerFocused(true);
-        return { id: plan.id, placed: false };
+        return { kind: "focus", id: plan.id };
       }
       let session =
         plan.kind === "rebuild"
@@ -747,6 +736,37 @@ export default function App() {
         key,
         plan.kind === "seed" ? { ...draftPicks(session), segments: [], attachments: [] } : draftPicks(session),
       );
+      return { kind: "session", session };
+    },
+    [cwdContext, seededSession, sessionContext],
+  );
+
+  /**
+   * The one way to open a project's draft: focus it where a pane shows it,
+   * else place its session. `tab` opens it in a tab of its own, `beside`
+   * splits the focused pane, and `replace` only puts the session in the
+   * store for the caller to lay out (`placed` is false when it was focused
+   * elsewhere instead).
+   */
+  const openProjectDraft = useCallback(
+    (
+      scope: { projectId?: string | null } | { cwd: string },
+      opts: {
+        placement: "tab" | "beside" | "replace";
+        focus?: boolean;
+        dir?: SplitDir;
+        threadType?: ThreadType;
+        threadRules?: ThreadRules | null;
+      },
+    ): { id: string; placed: boolean } => {
+      const draft = resolveProjectDraft(scope, opts);
+      if (draft.kind === "focus") {
+        const tabId = workspaceActions.focusSession(draft.id);
+        if (tabId) activateTab(tabId);
+        if (opts.focus) setComposerFocused(true);
+        return { id: draft.id, placed: false };
+      }
+      const { session } = draft;
       setSessions((prev) => [...prev.filter((s) => s.id !== session.id), session]);
       const tab = currentActiveTab();
       if (opts.placement === "beside" && tab) {
@@ -765,7 +785,7 @@ export default function App() {
       if (opts.focus) setComposerFocused(true);
       return { id: session.id, placed: true };
     },
-    [activateTab, appendTab, cwdContext, seededSession, sessionContext],
+    [activateTab, appendTab, resolveProjectDraft],
   );
 
   const onNew = useCallback(() => {
@@ -1825,7 +1845,6 @@ export default function App() {
       const open = sessionStore.getSnapshot().find(
         (session) => session.id === sessionId,
       );
-      const environmentId = sessionStore.environmentOf(sessionId);
       const summary =
         historyStore.get().find((entry) => entry.id === sessionId) ?? open ?? null;
       const label = summary
@@ -1879,19 +1898,13 @@ export default function App() {
         sessionId,
         projectKey,
         neighbourId: onScreen && leafIds(onScreen.layout).includes(sessionId) ? neighbourId : null,
+        // The tab becomes the project's own remembered draft, text kept.
         createReplacement: (seed) => {
           const context = seed
             ? contextOfSession(seed, workspaceStore.getSnapshot())
             : cwdContext(summary?.cwd ?? sidebarCwd);
-          return newSession(
-            seed?.environmentId ?? environmentId ?? environmentForContext(cwdContext(summary?.cwd ?? sidebarCwd)),
-            seed?.harness ?? harness,
-            seed?.cwd ?? summary?.cwd ?? sidebarCwd,
-            seed?.model ?? summary?.model,
-            seed?.runtimeMode ?? summary?.runtimeMode,
-            seed?.modelSettings,
-            { ...context, projectId: context.projectId ?? projectKey },
-          );
+          const draft = resolveProjectDraft({ projectId: context.projectId ?? projectKey });
+          return draft.kind === "session" ? draft.session : sessionStore.get(draft.id)!;
         },
       });
 
@@ -1910,7 +1923,7 @@ export default function App() {
       }
       void refreshHistory(sidebarCwd);
     },
-    [activateTab, onSelectHistorySession, sidebarCwd],
+    [activateTab, onSelectHistorySession, resolveProjectDraft, sidebarCwd],
   );
 
   const onFocusDir = useCallback(
