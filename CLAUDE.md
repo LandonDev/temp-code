@@ -618,8 +618,9 @@ routed to (aliax-core's `forward`). Two listeners:
   cap, 0.10 × the cross-host rate against 30/min, plus 0.15 for Opus on a
   Fable-spent account; the best wins a first spawn, and a sticky thread moves
   only when the best leads its own account by more than 0.10 plus 0.25 ×
-  cache warmth (1 right after its last answer, 0 after the 5-minute prompt
-  cache TTL; a `fresh` pick keeps only the cache term). A pinned account is
+  cache warmth (1 right after its last answer, 0 after the prompt cache's
+  TTL, an hour: the CLI writes the 1-hour cache, `STICKY.cacheTtlMs`; a
+  `fresh` pick keeps only the cache term). A pinned account is
   the route regardless. Picks read the store live; the rows' snapshot
   (`headroom` per provider, the bars on the account chip's menu and the
   Accounts page's Rate bars, reset in their popover) follows at most
@@ -661,26 +662,42 @@ routed to (aliax-core's `forward`). Two listeners:
   the wire's `request` event); `chooseAccount` and `pickNext` share one
   `eligible()` rule, and a model's cooldown leaves the account's other
   models available.
-- What a turn says while it waits (S3): a `phase` event is activity, never
-  a row. The claude driver emits `cli-starting` on a cold spawn,
-  `initializing` from a send until `system/init` (the boot's word is said
-  again right after the send's `running`, `phaseAfterSend`; the registry
-  keeps each session's live phase and a `starting` or `running` leaves its
-  words as the activity, so a cold eager handle reads "Starting the CLI"
-  through the handshake, not Thinking; a phase that lands on an idle row
-  is kept and surfaces at the send), `retrying` on the CLI's
-  own `api_retry` (attempt, delay, status) and clears it at the first text,
-  thinking or tool call; the codex driver emits `retrying` on
-  `willRetry`/`Reconnecting`; sessions.ts words them ("Starting the CLI",
-  "Initializing", "Rate limited, retry 3 in 32 s"; the vocabulary is
+- What a turn says while it waits (S3, Stability 3): a `phase` event is
+  activity, never a row. The claude driver's spawn hook emits
+  `cli-starting` for a cold spawn and `initializing` for an adopted warm
+  process, until `system/init` (the boot's word is said again right after
+  the send's `running`, `phaseAfterSend`, and nothing before the spawn, so
+  a cold start never reads Initializing first; the registry keeps each
+  session's live phase and a `starting` or `running` leaves its words as
+  the activity; a phase that lands on an idle row is kept and surfaces at
+  the send), then `waiting-provider` from init (or from the send on a live
+  CLI) until the top lane's `message_start`, `retrying` on the CLI's own
+  `api_retry` (attempt, delay, status); a thinking or text delta or a tool
+  call clears any phase. Every claude spawn carries `--thinking-display
+  summarized` (`claudeExtraArgs`): the SDK process otherwise asks the API to
+  omit thinking text, and Fable and Opus thought for seconds over an empty
+  row. The codex driver emits `retrying` on `willRetry`/`Reconnecting` and
+  `initializing` while its first send waits on the MCP servers
+  (`firstTurnGate`); sessions.ts words them ("Starting the CLI",
+  "Initializing", "Waiting for the provider", "Rate limited, retry 3 in 32 s"; the vocabulary is
   src/shared/statusWords.ts: a comma before a phase's detail; a state word
   and its detail are two spans, or "Word: Detail" as one string
   (`plainStatus`); the host sends the detail as `SessionMeta.statusDetail`
   and keeps `activity` in its legacy two-space shape for old readers
   (`legacyActivity`), which `legacyDetail` reads with a capital) and folds them onto the
   meta like `context` (`phaseLine`). A provider request open past 15 s with
-  nothing finer known reads "Waiting for the provider, 25 s", re-pushed
-  every 5 s (`providerRequest`, `PROVIDER_WAIT_MS`). A compaction is
+  nothing finer known (Thinking or the driver's own provider word) reads
+  "Waiting for the provider, 25 s", re-pushed every 5 s (`providerRequest`,
+  `PROVIDER_WAIT_MS`). The place these words show is the transcript's
+  working line (`ThinkingTail`, `tailWord` in surfaces/transcript/thinking.ts):
+  Sending while the person's row is still `pending` (not yet echoed), the
+  meta's activity while the turn has nothing of its own, Thinking after;
+  a word stays at least 300 ms once painted and one that came and went
+  inside the hold is skipped (lib/heldWord.ts), the swap the text alone.
+  The timer above the composer counts from the click: `appendOptimisticUser`
+  stamps `sentAt` when no turn is open, `turnStartOf` prefers it over the
+  host's later `busySince`, the settle clears it, and the slot shows at once
+  for a send over a failed or stopped row. A compaction is
   activity "Compacting context" (`COMPACTING_WORDS`) from its start to its
   outcome or the turn's end, never replaced by the provider-wait line or a
   mid-compaction `running`; the CLI re-sends its compacting status every
@@ -698,8 +715,14 @@ routed to (aliax-core's `forward`). Two listeners:
   next message, replaying it as the turn's own only when nothing follows.
   Every `session.send` writes one span line to
   stalls.log (sendSpans.ts: `send session=<id> accepted=0 prepared=12
-  handle=340(warm) delivered=… init=… first-message=… first-content=2100`,
-  flushed at the first content or 15 s in, a phase never reached `-`), and
+  handle=340(warm) delivered=… init=… first-message=… model=1900(miss 88k)
+  first-content=2100`, flushed at the first content or 15 s in, a phase
+  never reached `-`; `model` is the top lane's `message_start` with the
+  cache's word; the first send after an eager or focus boot reports how the
+  handle came up (`warm`, `cold`, `live boot=focus`), a later one `live`;
+  codex notes its MCP gate on `delivered`, `mcp=1400`; `bun
+  scripts/stalls-summary.ts --sends` tables the gaps per handle kind, the
+  warm share and the cache miss rate), and
   a meta push names its producer in the loop line
   (`meta:4038/781ids(accounts:3900,status:138)`).
 - Pre-connect (src/main/server/preconnect.ts): when a turn starts on an
@@ -708,12 +731,24 @@ routed to (aliax-core's `forward`). Two listeners:
   half minute), the socket the thread's account will ride is opened or its
   free one refreshed with a `GET /` (404 in one round trip), never more than
   once per account per minute (`Upstream.preconnect`). The codex origin gets
-  Chromium's `ses.preconnect` under the same throttle.
+  Chromium's `ses.preconnect` under the same throttle. Boot on focus: the
+  person's own pointer or keystroke in the composer (`Composer` `onGesture`,
+  `askOnGesture` in lib/preconnect.ts; never a programmatic focus, so a tab
+  switch boots nothing) asks with `boot`, and the host boots the harness of
+  an idle or done thread with none up or booting, not archived or moving,
+  once per thread per 30 s (`FOCUS_BOOT_EVERY_MS`, on the host), only while
+  `ThreadScheduler.hasRoom` (under the cap, nothing queued, memory clear;
+  never the focused send's exemption); nothing reaches the transcript and
+  `reclaimIdle` may put it down (`SessionRegistry.focusBoot`). An unsent
+  draft asks with `draft` (provider, model, project): the router's socket
+  for a fresh thread of that project, and the warm shapes in its folder
+  kept another retire period (`touchWarm`); no session is created.
 - Warm harness (src/main/server/drivers/warm.ts; claudeWarm.ts and codexWarm
-  in codex.ts): one pre-spawned CLI per driver per host, spawned from the
-  exact spec (command, argv, cwd, env) of the last thread that started, no
-  session and no account. A new thread adopts it when the SDK computes the
-  same spec (model, cwd, tools, permission mode, settings and MCP server
+  in codex.ts): a pool by shape, one pre-spawned CLI for each of the last
+  `WARM_SHAPES` (3) shapes started, per driver per host, each spawned from
+  the exact spec (command, argv, cwd, env) of a thread that started, no
+  session and no account. A new thread adopts the one of its shape when the
+  SDK computes the same spec (model, cwd, tools, permission mode, settings and MCP server
   names are all in the argv; a resumed thread never matches); the Agent SDK
   sends the system prompt, hooks and in-process MCP servers at `initialize`
   over stdin, so the adopted CLI is initialized as if just spawned
@@ -723,17 +758,30 @@ routed to (aliax-core's `forward`). Two listeners:
   or no shim) adopts or warms. Codex: the warm `app-server` is spawned and
   initialized, everything per thread arrives with `thread/start`, so it
   saves process start and the handshake only (MCP servers attach at
-  thread/start). A replacement spawns 3 s after an adoption or a cold start
-  of another shape; 10 min without a thread start retires it; a warm process
-  is never a session (not listed, counted, capped or load-guarded).
-  `harness.warm` (admin) lists the pools and `{retire: true}` empties them;
-  `TEMP_CODE_WARM_HARNESS=0` turns warming off. Measured on the box
+  thread/start). A shape's replacement spawns 3 s after its adoption or
+  cold start, at once when the shape started twice inside `WARM_BURST_MS`
+  (60 s, a burst); a fourth shape retires the one that started longest ago;
+  each shape retires 10 min after its own last start
+  (`TEMP_CODE_WARM_RETIRE_MS` for a proof); nothing warms while memory is
+  under the admission floor (`setWarmMemoryFloor`, index.ts; the proof seam
+  `TEMP_CODE_E2E_MEMORY_LOW=1` on an isolated instance); a start that finds
+  nothing logs the first field it differs on (`[warm] claude: miss
+  (tools) 2 warm`: model, effort, tools, permission, settings, cwd,
+  resume, empty, refilling, memory). A warm process is never a session
+  (not listed, counted, capped or load-guarded). `harness.warm` (admin)
+  lists the pools with each process's retirement and the `misses` by
+  field, and `{retire: true}` empties them; `TEMP_CODE_WARM_HARNESS=0`
+  turns warming off. Measured on the box
   (`bun run script:e2e-warm-start`, chat threads, one turn each, two runs):
   Send → first token 2.9 s and 2.1 s cold (medians of 4; 1.5–3.3 s) versus
   0.30 s and 0.17 s adopted (medians of 3; 0.15–0.47 s) against the fake
   provider; one real claude-haiku-5-5 thread, cold, 3.06 s over a
   pre-connected HTTP/2 socket (every request after the first reused it).
-  docs/box.md "Warm start" has the table.
+  Stability 3 (2026-11-01): every pool, focus and memory case passes; one
+  shape adopted 67–68 ms to the first thought, alternating shapes and a
+  burst all adopted (69–91 ms), cold 0.21 s with Starting the CLI at 35 ms,
+  and a real low-effort Opus thread streamed its thought (model at 2.7 s,
+  the summary at 5.2 s). docs/box.md "Warm start" has the tables.
 
 ## Remote access: the fixed port behind the tunnel
 - A second listener (src/main/server/remote/listener.ts) binds

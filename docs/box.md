@@ -2675,19 +2675,33 @@ the rules, this is what runs on the box and what it measured).
   whether the socket had carried one before. `TEMP_CODE_GATEWAY_TRACE=1`
   lines read `[gateway] POST /claude/~t=…/v1/messages → 200 reused=true h2`.
   chatgpt.com stays on Electron's net.fetch (Chromium's pool), `reused=n/a`.
-- **Pre-connect.** A turn starting on an idle thread, or the composer of an
-  idle thread gaining focus, opens (or refreshes) that account's socket
-  with a `GET /`; one per account per minute, so a focus that flickers
-  costs nothing. `[gateway] preconnect claude <account>: opened|refreshed`
-  under the trace flag.
-- **The warm harness process.** One pre-spawned Claude CLI (and one codex
-  app-server where codex is installed) per host, started from the exact
-  argv/cwd/env of the last thread that started, with its MCP servers
-  attached and no session. The next thread of the same shape adopts it and
-  the SDK initializes it with that thread's prompt; its gateway URL is the
-  `~w=<id>` scope the gateway re-points at adoption. Three seconds after an
-  adoption (or a cold start of another shape) a replacement spawns; ten
-  minutes without a thread start retires it. It is never a session:
+- **Pre-connect, and boot on focus.** A turn starting on an idle thread, or
+  the composer of an idle thread gaining focus, opens (or refreshes) that
+  account's socket with a `GET /`; one per account per minute, so a focus
+  that flickers costs nothing. `[gateway] preconnect claude <account>:
+  opened|refreshed` under the trace flag. The person's own pointer or
+  keystroke in the composer (never a tab switch) also boots a thread whose
+  harness is down: idle or done, not archived or moving, once per thread
+  per 30 s, only under the running cap with nothing queued; the booted
+  handle is an ordinary idle one `reclaimIdle` may put down, and the next
+  send's span reads `handle=…(live boot=focus)`. An unsent draft asks for
+  the socket a fresh thread of its project would ride and keeps the warm
+  processes in its folder another ten minutes; it creates nothing.
+- **The warm pool by shape.** One pre-spawned Claude CLI (and codex
+  app-server where codex is installed) for each of the last three shapes
+  started, per host, each from the exact argv/cwd/env of a thread that
+  started, with its MCP servers attached and no session. A thread of a held
+  shape adopts it and the SDK initializes it with that thread's prompt; its
+  gateway URL is the `~w=<id>` scope the gateway re-points at adoption. A
+  root, a subagent and a master differ in their tool lists, and with one
+  slot they evicted each other (132 of 380 new Claude threads adopted).
+  Three seconds after an adoption the shape's replacement spawns, at once
+  when the shape started twice inside a minute (a burst); a fourth shape
+  retires the one that started longest ago; each shape retires ten minutes
+  after its own last start; nothing warms while available memory is under
+  the admission floor. A start that finds nothing logs the first field it
+  differs on from the nearest warm process (`[warm] claude: miss (tools) 2
+  warm`; `harness.warm`'s `misses` counts them). It is never a session:
   `session.list`, running counts, spawn caps and the Mac load guard never
   see it. `tc-local harness.warm` shows the pools (`'{"retire":true}'`
   empties them); `TEMP_CODE_WARM_HARNESS=0` in /etc/temp-code.env turns
@@ -2720,6 +2734,42 @@ Codex: the box has no codex binary, so its warm app-server is unit-tested
 only (a fake app-server answers initialize and thread/start). Adoption
 there saves process start and the initialize handshake; MCP servers attach
 at thread/start, after adoption.
+
+Stability 3, 2026-11-01 (the same proof, extended: the fake answers with a
+summarized thought before its text, and each sample reads its send span
+from the instance's stalls.log; `TC_WARM_THREADS=3 TC_WARM_REAL=1`). Times
+from `session.send`; "first" is the first thought or text push. The CLI's
+requests carried `thinking: {"type":"adaptive","display":"summarized"}`.
+
+| case | first phase word | first content | span |
+| --- | --- | --- | --- |
+| warming off, 3 threads | Starting the CLI at 34–36 ms | 204, 207, 284 ms (median 0.21 s) | `cold`, init → model 25–29 ms |
+| one shape, adopted (2 threads) | Initializing | 67, 68 ms | `warm` |
+| a live handle's second turn | none (the fake answered in 10 ms; under 300 ms nothing paints) | 33 ms | `live` |
+| three shapes alternating, after each one's first start (6) | Initializing | 69–74 ms, all adopted | `warm` |
+| a burst of three starts of one shape, 1 s apart | Initializing | 70, 82, 91 ms, all adopted | `warm` |
+| a fourth shape, then the retired oldest | Starting the CLI | 220, 236 ms | `cold`; the pool held 3 at most |
+| boot on focus, then a send | Starting the CLI (the CLI's init waits for its first message) | 89 ms | `live boot=focus` |
+| ten focus asks at a pinned cap | | | nothing booted |
+| under the memory floor | Starting the CLI | | nothing warmed; `misses: {memory: 2}` |
+| real claude-opus-5-5, low effort, cold | Starting the CLI at 42 ms | thought at 5157 ms | `cold`, model at 2745 ms (`hit`): the model thought 2.4 s and its summary streamed |
+
+Every shape retired 60 s after its last start under
+`TEMP_CODE_WARM_RETIRE_MS=60000`, and warm processes never appeared in
+`admission.get`'s running count (16 running for 16 threads, 2 warm). The
+fake's cold start is fast now (init at 250 ms against 2 s on 2026-10-21):
+the agents user's MCP servers have changed since, so compare runs only
+within one day.
+
+After a deploy, `bun scripts/stalls-summary.ts --sends
+/srv/agents/temp-code-data/logs/stalls.log` reads a day of real sends: the
+warm share of new Claude threads (35% before, from 663 spans of 2026-10-28
+to 11-01) and the prompt cache's miss rate after a 5 to 60 minute gap (18%
+before) are the two numbers to compare. Before this change a new thread
+whose eager boot finished before its send read `live` (only a send that
+found the boot still in flight read `warm` or `cold`), so older spans
+count some new threads as live; the first send after a boot now reports
+how its handle came up.
 
 ### Knowing the box is behind: the deploy-drift mark
 

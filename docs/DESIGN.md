@@ -275,9 +275,16 @@ thread's state is the transcript's closing line (Watching then its age,
 amber past 30 minutes, opening the Activity section); nothing above the composer
 repeats the working line, and no banner repeats the slot. A person's Stop
 idles the thread, the slot empties and the transcript's Stopped line says
-so once. A slow first response is said in the transcript's working line
-("Starting the CLI", "Waiting for the provider, 25 s"), never above the
-composer.
+so once. A first response is said in the transcript's working line, never
+above the composer: Sending from the click until the host echoes the
+message, then the host's word for the wait (Starting the CLI, Initializing,
+Waiting for the provider, a retry, "Waiting for the provider, 25 s"), then
+Thinking with the summary's newest sentence once the thought streams. A
+word stays at least 300 ms once it paints and one that came and went inside
+that hold never shows; the swap is the text inside the same shimmer,
+instant, at the row's 32px, so nothing below it moves. The timer above the
+composer counts from the click and never steps back when the host's own
+start arrives.
 
 A detail is sentence-cased when it is a sentence ("Waiting for memory",
 "Approve Bash", "Landed 12:08", "The harness is gone") and written as it
