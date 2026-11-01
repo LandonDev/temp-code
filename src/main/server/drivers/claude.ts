@@ -1821,6 +1821,8 @@ export const claudeDriver: HarnessDriver = {
       confirmsSteers: true,
       async send(text: string, attachments?: Attachment[], opts?: SendOpts): Promise<void> {
         if (dead) throw new Error('harness gone')
+        // A steer into a CLI with no turn open runs as a turn of its own.
+        const midTurn = state.working
         state.working = true
         noteSend(state)
         emit({ type: 'status', status: 'running' })
@@ -1834,7 +1836,7 @@ export const claudeDriver: HarnessDriver = {
         // The harness only runs a LEADING /command natively; mid-message
         // and additional skill references get expanded server-side.
         const expanded = await expandSlashRefs('claude', session.cwd, text)
-        if (opts?.steerId) state.steers.set(opts.steerId, { afterResult: false })
+        if (opts?.steerId) state.steers.set(opts.steerId, { afterResult: !midTurn })
         input.push(expanded, attachments, opts?.steerId)
         state.sentAt = Date.now()
       },

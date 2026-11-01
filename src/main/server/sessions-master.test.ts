@@ -9,7 +9,8 @@ import { cancelMirrors } from './mirror'
 import { orchCheckAgent, orchListAgents, orchSendToAgent, orchWaitForAgent, setOrchestrationRegistry, isMasterSession } from './orchestration'
 import { appStartThread } from './apptools'
 import { writeFileSync } from 'node:fs'
-import type { DriverCtx, DriverHandle } from './drivers/types'
+import type { DriverCtx, DriverHandle, SendOpts } from './drivers/types'
+import { wrapSteer } from './notesPrompts'
 import type { SessionMeta, AgentEvent } from '../../shared/events'
 
 /**
@@ -26,6 +27,15 @@ const interrupts: string[] = []
 /** The session each spawn was handed: the harness boots eagerly at create, before the pin. */
 const spawnedWith = new Map<string, SessionMeta>()
 const spawns = new Map<string, number>()
+/** What each send carried besides its text, and the knobs a steer test turns. */
+const sendOpts = new Map<string, (SendOpts | undefined)[]>()
+const marks = new Map<string, NonNullable<DriverCtx['mark']>>()
+const knobs: { confirms: boolean; sendError: string | null; dead: Set<string>; bootGate: Promise<void> | null } = {
+  confirms: true,
+  sendError: null,
+  dead: new Set(),
+  bootGate: null
+}
 
 vi.mock('./drivers', () => ({
   BUILT_IN_DRIVERS: {
@@ -36,13 +46,19 @@ vi.mock('./drivers', () => ({
         spawnedWith.set(id, ctx.session)
         spawns.set(id, (spawns.get(id) ?? 0) + 1)
         emits.set(id, ctx.emit)
+        if (ctx.mark) marks.set(id, ctx.mark)
+        if (knobs.bootGate && (spawns.get(id) ?? 0) > 1) await knobs.bootGate
+        knobs.dead.delete(id)
         return {
-          send: async (text: string) => {
+          confirmsSteers: knobs.confirms,
+          send: async (text: string, _attachments?: unknown, opts?: SendOpts) => {
+            if (knobs.sendError) throw new Error(knobs.sendError)
             sends.set(id, [...(sends.get(id) ?? []), text])
+            sendOpts.set(id, [...(sendOpts.get(id) ?? []), opts])
             ctx.emit({ type: 'status', status: 'running' })
           },
           interrupt: () => void interrupts.push(id),
-          alive: () => true,
+          alive: () => !knobs.dead.has(id),
           dispose: async () => {}
         }
       }
@@ -67,6 +83,9 @@ beforeEach(async () => {
   emits.clear()
   sends.clear()
   spawns.clear()
+  sendOpts.clear()
+  marks.clear()
+  Object.assign(knobs, { confirms: true, sendError: null, dead: new Set(), bootGate: null })
   interrupts.length = 0
 })
 afterEach(async () => {
@@ -189,7 +208,7 @@ describe('the steer into a live master', () => {
     const added = registry.queueAdd(master, 'stop and report')
     expect(added.kind).toBe('steered')
     expect(registry.queueList(master)).toEqual([])
-    expect(sends.get(master)?.at(-1)).toBe('<user-steer>\nstop and report\n</user-steer>')
+    expect(sends.get(master)?.at(-1)).toBe(wrapSteer('stop and report'))
     const rows = registry.eventsAfter(master, 0).filter((r) => r.event.type === 'user-text')
     expect((rows.at(-1)!.event as { text: string }).text).toBe('stop and report')
     const report = JSON.parse(await waiting) as { status: string; message: string }
@@ -224,7 +243,7 @@ describe('the steer into a live master', () => {
     const added = registry.queueAdd(parent.id, 'look at this first', { steer: true })
     expect(added.kind).toBe('steered')
     expect(registry.queueList(parent.id)).toEqual([])
-    expect(sends.get(parent.id)?.at(-1)).toBe('<user-steer>\nlook at this first\n</user-steer>')
+    expect(sends.get(parent.id)?.at(-1)).toBe(wrapSteer('look at this first'))
     const rows = registry.eventsAfter(parent.id, 0).filter((r) => r.event.type === 'user-text')
     expect((rows.at(-1)!.event as { text: string }).text).toBe('look at this first')
     expect(JSON.parse(await waiting)).toMatchObject({ status: 'steered', message: 'look at this first' })
@@ -247,6 +266,128 @@ describe('the steer into a live master', () => {
     await settle()
     finish(kid.id)
     expect(JSON.parse(await again)).toMatchObject({ agentId: kid.id, status: 'idle' })
+  })
+})
+
+describe('a steer says where it stands', () => {
+  const steerRows = (id: string) =>
+    registry.eventsAfter(id, 0).flatMap((r) => (r.event.type === 'steer' ? [{ state: r.event.state, how: r.event.how, reason: r.event.reason }] : []))
+  const lastUser = (id: string) => registry.eventsAfter(id, 0).filter((r) => r.event.type === 'user-text').at(-1)!.event as Extract<AgentEvent, { type: 'user-text' }>
+  async function running(title = 'T'): Promise<string> {
+    const s = await registry.create({ cwd: root, provider: 'claude', title })
+    await registry.send(s.id, 'go')
+    await settle()
+    return s.id
+  }
+
+  it('the row carries the id, the harness reads the wrapped text with it, sent then received from the driver, once', async () => {
+    const id = await running()
+    expect(registry.queueAdd(id, 'use the other table', { steer: true }).kind).toBe('steered')
+    await settle()
+    const steerId = lastUser(id).steerId!
+    expect(steerId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(sends.get(id)?.at(-1)).toBe(wrapSteer('use the other table'))
+    expect(sendOpts.get(id)?.at(-1)).toEqual({ steerId })
+    expect(steerRows(id)).toEqual([{ state: 'sent', how: undefined, reason: undefined }])
+    emit(id, { type: 'steer', steerId, state: 'received', how: 'in-turn' })
+    emit(id, { type: 'steer', steerId, state: 'received', how: 'in-turn' })
+    expect(steerRows(id)).toEqual([
+      { state: 'sent', how: undefined, reason: undefined },
+      { state: 'received', how: 'in-turn', reason: undefined }
+    ])
+  })
+
+  it("a master's steer carries its id too", async () => {
+    const { master } = await pinnedMaster()
+    registry.queueAdd(master, 'stop and report')
+    await settle()
+    expect(lastUser(master).steerId).toBeTruthy()
+    expect(steerRows(master).map((r) => r.state)).toEqual(['sent'])
+  })
+
+  it('a harness gone mid-turn: a fresh harness takes the plain text with the same id, and its reply stamps next-turn', async () => {
+    const id = await running()
+    knobs.dead.add(id)
+    registry.queueAdd(id, 'and this', { steer: true })
+    await settle(60)
+    const steerId = lastUser(id).steerId!
+    expect(spawns.get(id)).toBe(2)
+    expect(sends.get(id)?.at(-1)).toBe('and this')
+    expect(sendOpts.get(id)?.at(-1)).toEqual({ steerId })
+    expect(registry.eventsAfter(id, 0).filter((r) => r.event.type === 'user-text')).toHaveLength(2)
+    emit(id, { type: 'steer', steerId, state: 'received', how: 'next-turn' })
+    expect(steerRows(id).map((r) => `${r.state}${r.how ? ` ${r.how}` : ''}`)).toEqual(['sent', 'received next-turn'])
+  })
+
+  it('a harness that cannot take it mid-turn: queued with its id, then sent next turn and received at its first output', async () => {
+    const id = await running()
+    knobs.confirms = false
+    knobs.sendError = 'cursor session is still running a turn'
+    // The handle in place confirms; the refusal comes from its send.
+    registry.queueAdd(id, 'later please', { steer: true })
+    await settle()
+    const steerId = lastUser(id).steerId!
+    expect(steerRows(id).map((r) => r.state)).toEqual(['queued'])
+    expect(registry.queueList(id)).toMatchObject([{ text: 'later please', steerId, stored: true }])
+    knobs.sendError = null
+    // The handle that takes the next turn does not confirm steers.
+    await registry.disposeAll()
+    finish(id)
+    await settle(60)
+    expect(sendOpts.get(id)?.at(-1)).toEqual({ steerId })
+    expect(steerRows(id).map((r) => r.state)).toEqual(['queued', 'sent'])
+    marks.get(id)!('first-content')
+    expect(steerRows(id).map((r) => `${r.state}${r.how ? ` ${r.how}` : ''}`)).toEqual(['queued', 'sent', 'received next-turn'])
+  })
+
+  it('a steer still at sent when its turn settles is received at the next turn\'s first output', async () => {
+    const id = await running()
+    registry.queueAdd(id, 'note this', { steer: true })
+    await settle()
+    marks.get(id)!('first-content')
+    expect(steerRows(id).map((r) => r.state)).toEqual(['sent'])
+    finish(id)
+    await registry.send(id, 'next')
+    await settle()
+    marks.get(id)!('first-content')
+    expect(steerRows(id).map((r) => `${r.state}${r.how ? ` ${r.how}` : ''}`)).toEqual(['sent', 'received next-turn'])
+  })
+
+  it('a fresh harness stopped while it boots: not delivered, with the reason', async () => {
+    const id = await running()
+    let release!: () => void
+    knobs.bootGate = new Promise((r) => (release = r))
+    knobs.dead.add(id)
+    registry.queueAdd(id, 'and this', { steer: true })
+    await settle()
+    await registry.interrupt(id)
+    release()
+    await settle(60)
+    expect(steerRows(id).at(-1)).toMatchObject({ state: 'failed', reason: 'the thread was stopped before its harness started' })
+  })
+
+  it('Send now on a queued item with an attachment steers it: the row carries the id and the file, the harness reads it wrapped', async () => {
+    const id = await running()
+    const added = registry.queueAdd(id, 'see this', { attachments: [{ path: '/x.png', name: 'x.png', kind: 'image' }] })
+    expect(added.kind).toBe('queued')
+    if (added.kind !== 'queued') return
+    await registry.queueSteer(id, added.item.id)
+    await settle()
+    const row = lastUser(id)
+    expect(row).toMatchObject({ text: 'see this', attachments: [{ path: '/x.png' }] })
+    expect(row.steerId).toBeTruthy()
+    expect(sends.get(id)?.at(-1)).toBe(wrapSteer('see this'))
+    expect(sendOpts.get(id)?.at(-1)).toEqual({ steerId: row.steerId })
+    expect(steerRows(id).map((r) => r.state)).toEqual(['sent'])
+  })
+
+  it('a plain send carries no id and stamps nothing', async () => {
+    const s = await registry.create({ cwd: root, provider: 'claude', title: 'Idle' })
+    await registry.send(s.id, 'hello')
+    await settle()
+    expect(lastUser(s.id).steerId).toBeUndefined()
+    expect(sendOpts.get(s.id)?.at(-1)).toBeUndefined()
+    expect(steerRows(s.id)).toEqual([])
   })
 })
 

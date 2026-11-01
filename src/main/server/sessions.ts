@@ -10,8 +10,10 @@ import {
   NOTES_REMINDER_COMMIT,
   NOTES_REMINDER_CONTEXT,
   NOTES_REMINDER_FRACTION,
-  NOTES_REMINDER_RESET_FRACTION
+  NOTES_REMINDER_RESET_FRACTION,
+  wrapSteer
 } from './notesPrompts'
+import { randomUUID } from 'node:crypto'
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename } from 'node:path'
@@ -30,7 +32,8 @@ import type {
   EventRow,
   Failure,
   SessionMeta,
-  SessionStatus
+  SessionStatus,
+  SteerState
 } from '@shared/events'
 import { watchSubject } from '@shared/watch'
 import { blockedWords } from '@shared/batchWords'
@@ -593,6 +596,10 @@ export class SessionRegistry {
   private queuedLines = new Map<string, string>()
   /** wait_for_agent calls waiting for the person's next steer into the thread's turn (nextSteer). */
   private steerWaiters = new Map<string, Set<(text: string) => void>>()
+  /** Each thread's steers by id: the last state stamped, and whether the
+   *  next turn's first output may stamp it received (a driver that does not
+   *  confirm steers, or a steer still at sent when its turn settled). */
+  private readonly steers = new Map<string, Map<string, { state: SteerState; fallback: boolean }>>()
   /** Masters the person stopped while they watched: idle for real (no slot) until the next turn starts. */
   private readonly stopWatching = new Set<string>()
   /** The user row (its seq) the first-output watchdog re-queued once; a second silence on it fails the turn. */
@@ -2650,6 +2657,10 @@ export class SessionRegistry {
       echoed?: QueuedSendOpts['echoed']
       /** `false`: the spawner opted this thread out of the project preamble */
       preamble?: boolean
+      /** A person's steer: the user row carries the id, the driver is told it */
+      steerId?: string
+      /** Into the live turn (Send now on a queued item): wrapped as a steer */
+      steer?: boolean
     }
   ): Promise<void> {
     let meta = this.store.getSession(sessionId)
@@ -2750,7 +2761,8 @@ export class SessionRegistry {
         context1m: meta.context1m,
         fast: meta.fast,
         ultrafast: meta.ultrafast,
-        newPass: opts?.newPass === true
+        newPass: opts?.newPass === true,
+        ...(opts?.steerId ? { steerId: opts.steerId } : {})
       })
       // Cursor-style: an untitled thread takes its name from the first
       // message right away; a generated title replaces the raw slice once
@@ -2778,6 +2790,7 @@ export class SessionRegistry {
       this.queueOptIn.delete(sessionId)
       this.append(sessionId, { type: 'status', status: 'queued' })
       this.queueAdd(sessionId, text, { ...opts, echoed: { first } }, true)
+      if (opts?.steerId) this.stampSteer(sessionId, opts.steerId, 'queued')
       this.scheduler.schedule()
       return
     }
@@ -2795,13 +2808,18 @@ export class SessionRegistry {
     const retry: QueuedSendOpts = { ...opts, echoed: { first } }
     let handle: DriverHandle
     const hadHandle = this.handles.has(sessionId)
+    const steerId = opts?.steerId
     try {
       handle = await this.handleFor(sessionId)
     } catch (err) {
       this.spans.drop(sessionId)
       // The person stopped the thread while it booted: the rows are written
       // and the message stays on the transcript, undelivered.
-      if (err instanceof BootStopped) return
+      if (err instanceof BootStopped) {
+        if (steerId) this.stampSteer(sessionId, steerId, 'failed', { reason: 'the thread was stopped before its harness started' })
+        return
+      }
+      if (steerId) this.stampSteer(sessionId, steerId, 'failed', { reason: `the harness did not start: ${err instanceof Error ? err.message : String(err)}` })
       // The harness never started — a missing binary, a logged-out CLI.
       // handleFor has already put the reason on the transcript; hold the
       // message at the front of the queue instead of dropping it, so once
@@ -2826,7 +2844,7 @@ export class SessionRegistry {
         // Goal support is optional; the kickoff still proceeds.
       }
     }
-    let out = stamp ? composePreambled(stamp, text) : text
+    let out = stamp ? composePreambled(stamp, text) : opts?.steer ? wrapSteer(text) : text
     // A retyped thread re-instructs on its next message: the new type's
     // preamble rides along once, prefaced so the model knows it replaces
     // the instructions the thread opened with.
@@ -2961,9 +2979,11 @@ export class SessionRegistry {
           ? [shot, { path: a.textPath, name: `${a.name} (window text)`, kind: 'file' as const }]
           : [shot]
       })
+    const steer = steerId ? { steerId } : undefined
     try {
-      await handle.send(out, sendAttachments)
+      await handle.send(out, sendAttachments, steer)
       this.spans.mark(sessionId, 'delivered')
+      if (steerId) this.stampSteer(sessionId, steerId, 'sent', { fallback: !handle.confirmsSteers })
       // A message into a live turn is a steer: a wait_for_agent in flight
       // there returns on it (orchestration.ts), whoever sent it.
       if (status === 'running' || status === 'starting' || status === 'waiting') this.resolveSteerWaiters(sessionId, text)
@@ -2973,6 +2993,7 @@ export class SessionRegistry {
       if (err instanceof Error && err.message.includes('still running')) {
         this.spans.drop(sessionId)
         this.queueAdd(sessionId, text, retry, true)
+        if (steerId) this.stampSteer(sessionId, steerId, 'queued')
         return
       }
       // The handle's harness is gone (watchdog recovery, stream death) —
@@ -2985,10 +3006,12 @@ export class SessionRegistry {
         })
         if (!fresh) {
           this.spans.drop(sessionId)
+          if (steerId) this.stampSteer(sessionId, steerId, 'failed', { reason: 'the thread was stopped before its harness started' })
           return
         }
-        await fresh.send(out, sendAttachments)
+        await fresh.send(out, sendAttachments, steer)
         this.spans.mark(sessionId, 'delivered')
+        if (steerId) this.stampSteer(sessionId, steerId, 'sent', { fallback: !fresh.confirmsSteers })
         return
       }
       this.spans.drop(sessionId)
@@ -3993,10 +4016,16 @@ export class SessionRegistry {
           // Drivers seed goal state from here (resume dedup, watcher init).
           session: { ...meta, goal: this.goalOf(sessionId) },
           route,
-          emit: (event) => this.append(sessionId, event),
+          emit: (event) =>
+            event.type === 'steer'
+              ? this.stampSteer(sessionId, event.steerId, event.state, { how: event.how, reason: event.reason })
+              : this.append(sessionId, event),
           requestApproval: (req) => this.requestApproval(sessionId, req),
           awaitBaseline: () => this.awaitBaseline(sessionId),
-          mark: (phase, note) => this.spans.mark(sessionId, phase, note),
+          mark: (phase, note) => {
+            this.spans.mark(sessionId, phase, note)
+            if (phase === 'first-content') this.steerFallback(sessionId)
+          },
           toolResultTail: (callId, output) => this.toolResultTail?.(sessionId, callId, output) ?? Promise.resolve(null),
           setNativeId: (nativeId) => {
             const next = this.store.updateSession(sessionId, { nativeId })
@@ -4206,6 +4235,7 @@ export class SessionRegistry {
     // A finished first turn upgrades the sliced-first-message title to a
     // generated one (fire-and-forget; the slice stays if the call fails).
     if (event.type === 'turn-complete') this.maybeRetitle(sessionId)
+    if (event.type === 'turn-complete' || (event.type === 'status' && (event.status === 'idle' || event.status === 'error'))) this.steersSettled(sessionId)
     // Track "where it's at" for the tabs; a change on a non-status event
     // pushes its own meta update (status events notify below regardless).
     // A send's `running` (and the `starting` before it) keeps the turn's
@@ -4642,24 +4672,29 @@ export class SessionRegistry {
   }
 
   /** A person's message into a live turn (running or starting, not
-   *  paused): the user row, the text whispered as a steer, the waiters told
-   *  (a wait_for_agent in flight returns on it). False when the thread is
-   *  not mid-turn, so the caller queues as usual. A handle whose harness is
-   *  gone is dropped and a fresh one takes the text as a plain message (the
-   *  user row is already there); a provider that cannot take mid-turn input
-   *  front-queues it, so it sends next. */
+   *  paused): the user row with a fresh steerId, the text whispered as a
+   *  steer (wrapSteer: the model answers it in a line first), the waiters
+   *  told (a wait_for_agent in flight returns on it), and the steer stamped
+   *  where it stands (CLAUDE.md "A message to a live thread goes straight
+   *  in"): sent once the harness has it, received when the driver says the
+   *  model read it. False when the thread is not mid-turn, so the caller
+   *  queues as usual. A handle whose harness is gone is dropped and a fresh
+   *  one takes the text as a turn of its own (the user row is already
+   *  there); a harness that refuses it mid-turn, or any other failure to
+   *  hand it over, front-queues it, so it sends next. */
   private steerLive(sessionId: string, text: string): boolean {
     const status = this.store.getSession(sessionId)?.status
     if (status !== 'running' && status !== 'starting') return false
     const handle = this.handles.get(sessionId)
     if (!handle || this.isTreePaused(sessionId)) return false
-    this.append(sessionId, { type: 'user-text', text })
-    const wrapped = `<user-steer>\n${text}\n</user-steer>`
-    const again: QueuedSendOpts = { echoed: { first: false } }
+    const steerId = randomUUID()
+    this.append(sessionId, { type: 'user-text', text, steerId })
+    const again: QueuedSendOpts = { echoed: { first: false }, steerId }
     const deliver = async (): Promise<void> => {
       if (handle.alive?.() === false) throw new Error('harness gone')
       this.lastActivity.set(sessionId, Date.now())
-      await handle.send(wrapped)
+      await handle.send(wrapSteer(text), undefined, { steerId })
+      this.stampSteer(sessionId, steerId, 'sent', { fallback: !handle.confirmsSteers })
     }
     void deliver()
       .catch(async (err: unknown) => {
@@ -4669,15 +4704,52 @@ export class SessionRegistry {
           // message as a turn of its own (resume keeps the conversation).
           await this.dropHandle(sessionId)
           await this.send(sessionId, text, again)
-        } else if (message.includes('still running')) {
-          this.queueAdd(sessionId, text, again, true)
         } else {
-          this.holdNotice(sessionId, wrapped)
+          this.queueAdd(sessionId, text, again, true)
+          this.stampSteer(sessionId, steerId, 'queued')
         }
       })
-      .catch(() => {})
+      .catch((err: unknown) => this.stampSteer(sessionId, steerId, 'failed', { reason: err instanceof Error ? err.message : String(err) }))
     this.resolveSteerWaiters(sessionId, text)
     return true
+  }
+
+  /** A steer's `steer` row, once per change: received is final (a driver's
+   *  stamp and the fallback never both land, nor a sent after it). */
+  private stampSteer(
+    sessionId: string,
+    steerId: string,
+    state: SteerState,
+    opts: { how?: 'in-turn' | 'next-turn'; reason?: string; fallback?: boolean } = {}
+  ): void {
+    let byId = this.steers.get(sessionId)
+    if (!byId) this.steers.set(sessionId, (byId = new Map()))
+    const prev = byId.get(steerId)
+    if (prev?.state === 'received') return
+    if (prev?.state === state && state !== 'failed') return
+    byId.set(steerId, { state, fallback: opts.fallback ?? false })
+    this.append(sessionId, {
+      type: 'steer',
+      steerId,
+      state,
+      ...(opts.how ? { how: opts.how } : {}),
+      ...(opts.reason ? { reason: opts.reason } : {})
+    })
+  }
+
+  /** The first output of a turn: a steer whose driver does not confirm,
+   *  or one still at sent when the turn it went into settled, was read. */
+  private steerFallback(sessionId: string): void {
+    const byId = this.steers.get(sessionId)
+    if (!byId) return
+    for (const [steerId, s] of byId) {
+      if (s.state === 'sent' && s.fallback) this.stampSteer(sessionId, steerId, 'received', { how: 'next-turn' })
+    }
+  }
+
+  /** A turn settled: any steer it still holds at sent waits for the next turn's first output. */
+  private steersSettled(sessionId: string): void {
+    for (const s of this.steers.get(sessionId)?.values() ?? []) if (s.state === 'sent') s.fallback = true
   }
 
   /** The first-output watchdog settled the turn with nothing back: the
@@ -4977,10 +5049,17 @@ export class SessionRegistry {
       q.filter((m) => m.id !== messageId)
     )
     this.notifyQueue(sessionId)
+    // Into a live turn it is a steer: the user row carries an id and the
+    // harness reads the text wrapped like the composer's steer.
+    const status = this.store.getSession(sessionId)?.status
+    const live = (status === 'running' || status === 'starting') && this.handles.has(sessionId)
+    const steerId = item.steerId ?? (live ? randomUUID() : undefined)
+    const opts = { ...item, ...(steerId ? { steerId } : {}), ...(live ? { steer: true } : {}) }
     try {
-      await this.send(sessionId, item.text, item)
+      await this.send(sessionId, item.text, opts)
     } catch {
-      this.queueAdd(sessionId, item.text, item, true)
+      this.queueAdd(sessionId, item.text, { ...item, ...(steerId ? { steerId } : {}) }, true)
+      if (steerId) this.stampSteer(sessionId, steerId, 'queued')
     }
   }
 
