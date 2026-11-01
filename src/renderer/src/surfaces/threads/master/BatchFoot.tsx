@@ -227,7 +227,7 @@ function Console({ step }: { step: LiveStep }) {
       }}
       data-console={step.id}
       data-log
-      className="mb-1 ml-[22px] max-h-44 min-h-15 overflow-y-auto rounded-lg bg-card px-3 py-2 font-mono text-xs leading-[1.5] whitespace-pre-wrap text-muted-foreground"
+      className="mb-1 ml-[22px] max-h-44 min-h-15 overflow-y-auto rounded-lg [--scrollbar-inset:var(--radius-lg)] bg-card px-3 py-2 font-mono text-xs leading-[1.5] whitespace-pre-wrap text-muted-foreground"
     >
       {lines.length > 0 ? lines.join("\n") : "Starting…"}
     </pre>

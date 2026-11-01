@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { ItemButton, ItemActions, ItemContent } from "@renderer/components/ui/item";
-import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { StatusMark } from "@renderer/components/ui/status";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
@@ -88,22 +87,20 @@ export function DebugView({
   const consoleBox = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const viewport = consoleBox.current?.querySelector<HTMLElement>("[data-slot=scroll-area-viewport]");
+    const viewport = consoleBox.current;
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }, [output]);
 
   const consoleGroup = (heading: string | null) => (
     <Group heading={heading} fill>
-      <div ref={consoleBox} className="flex min-h-0 flex-1 flex-col">
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="px-3 py-1 font-mono text-xs leading-relaxed text-muted-foreground" data-slot="debug-console">
-            {output.map((line, i) => (
-              <div key={i} className="break-all whitespace-pre-wrap">
-                {line}
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
+      <div ref={consoleBox} tabIndex={0} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+        <div className="px-3 py-1 font-mono text-xs leading-relaxed text-muted-foreground" data-slot="debug-console">
+          {output.map((line, i) => (
+            <div key={i} className="break-all whitespace-pre-wrap">
+              {line}
+            </div>
+          ))}
+        </div>
       </div>
     </Group>
   );
@@ -136,7 +133,7 @@ export function DebugView({
         {error ? <ErrorLine text={error} /> : null}
         {frames.length > 0 ? (
           <Group heading="Call stack">
-            <ScrollArea className="max-h-40 [&>[data-slot=scroll-area-viewport]]:max-h-40">
+            <div className="max-h-40 overflow-x-hidden overflow-y-auto">
               <div className="flex flex-col px-1">
                 {frames.map((f) => (
                   <ItemButton
@@ -155,18 +152,18 @@ export function DebugView({
                   </ItemButton>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </Group>
         ) : null}
         {variables.length > 0 ? (
           <Group heading="Variables">
-            <ScrollArea className="max-h-48 [&>[data-slot=scroll-area-viewport]]:max-h-48">
+            <div className="max-h-48 overflow-x-hidden overflow-y-auto">
               <div className="flex flex-col px-1 font-mono text-xs">
                 {variables.map((v, i) => (
                   <VariableRow key={`${v.name}:${i}`} variable={v} onExpand={onExpand} />
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </Group>
         ) : null}
         {consoleGroup(stacked ? "Console" : null)}

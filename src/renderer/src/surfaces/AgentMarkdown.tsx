@@ -416,7 +416,7 @@ function MermaidBlock({
 
   return (
     <div
-      className="mermaid-block my-4 overflow-x-auto rounded-lg border border-border bg-card p-3"
+      className="mermaid-block my-4 overflow-x-auto rounded-lg [--scrollbar-inset:var(--radius-lg)] border border-border bg-card p-3"
       data-streamdown="mermaid-block"
       dangerouslySetInnerHTML={{ __html: svg }}
     />

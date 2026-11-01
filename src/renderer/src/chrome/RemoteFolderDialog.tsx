@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { ItemButton, ItemContent, ItemMedia, ItemTitle } from "@renderer/components/ui/item";
-import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { DialogFooter, ErrorLine, errorText } from "./ConfirmDialog";
@@ -156,7 +155,7 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
 
   return (
     <>
-      <div className="flex flex-col gap-3 px-5 py-4">
+      <div className="flex min-h-0 flex-col gap-3 px-5 py-4">
         {workRoot || loading ? (
           <>
             <nav aria-label="Folder" className="-mx-2 flex min-h-6 min-w-0 flex-wrap items-center gap-0.5">
@@ -181,7 +180,7 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
                 </span>
               ))}
             </nav>
-            <div className="rounded-lg border border-border" data-remote-folders>
+            <div className="flex min-h-0 flex-col rounded-lg border border-border" data-remote-folders>
               {loading || entries === null ? (
                 <div className="p-1">
                   <FolderSkeleton />
@@ -189,7 +188,7 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
               ) : entries.length === 0 ? (
                 <p className="px-3 py-3 text-xs text-muted-foreground">No folders</p>
               ) : (
-                <ScrollArea className="max-h-64 [&>[data-slot=scroll-area-viewport]]:max-h-64">
+                <div className="max-h-64 min-h-0 overflow-x-hidden overflow-y-auto [--scrollbar-inset:var(--radius-lg)]">
                   <div className="flex flex-col p-1">
                     {entries.map((entry) => (
                       <ItemButton
@@ -210,7 +209,7 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
                       </ItemButton>
                     ))}
                   </div>
-                </ScrollArea>
+                </div>
               )}
             </div>
             {newFolder === null ? (

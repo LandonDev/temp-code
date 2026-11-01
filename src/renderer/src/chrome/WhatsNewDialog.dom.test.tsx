@@ -18,7 +18,7 @@ describe("WhatsNewDialog", () => {
     const classes = dialog.className.split(/\s+/);
     expect(classes).toContain("max-h-[min(72vh,640px)]");
     expect(classes.some((c) => /^h-\[/.test(c))).toBe(false);
-    expect(dialog.querySelector("[data-slot=scroll-area]")).toBeNull();
+    expect(dialog.querySelectorAll(".overflow-y-auto")).toHaveLength(1);
     expect(dialog.textContent).toContain("One line");
   });
 });

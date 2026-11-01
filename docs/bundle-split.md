@@ -41,7 +41,7 @@ on intent so the skeleton is rarely seen.
 | media | MediaGate and MediaReview (images, media, review) | FilePane.tsx | hovering the file tree |
 | lightbox | the Lightbox component (its store is `chrome/lightboxStore.ts`, in the main chunk) | Composer.tsx | hovering an attachment thumbnail |
 | releaseNotes | ReleaseNotesSurface and the changelog parser (`lib/releaseNotesParse.ts`, the 34 kB `CHANGELOG.md?raw`) | FilePane.tsx; App.tsx's What's new asks `releaseNotesChunk.load()` | the What's new button in Settings |
-| dialogs | the dialogs an action opens (`chrome/dialogs.ts`): new project and workspace, project settings and teardown, the remote folder picker, thread defaults, the preamble, What's new, the fleet switches' confirm; with them Base UI's sheet, select and scroll-area | App.tsx, Sidebar.tsx, WorkspaceSessions.tsx, each mounted only while open | the workspace menu's trigger; the first thread on screen, after idle |
+| dialogs | the dialogs an action opens (`chrome/dialogs.ts`): new project and workspace, project settings and teardown, the remote folder picker, thread defaults, the preamble, What's new, the fleet switches' confirm; with them Base UI's sheet and select | App.tsx, Sidebar.tsx, WorkspaceSessions.tsx, each mounted only while open | the workspace menu's trigger; the first thread on screen, after idle |
 | virtual | `@tanstack/react-virtual` and the rail's virtual rows (`chrome/railVirtualRows.tsx`); until it lands the rail lists its cards plainly (`chrome/railRows.tsx`) | WorkspaceSessions.tsx | an idle slot, or at once past 200 rows |
 
 Two things had to move for the boundaries to hold: the rail's

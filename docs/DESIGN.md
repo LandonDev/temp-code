@@ -170,6 +170,14 @@ concentric: the inner radius is the outer minus the padding.
 Docked chrome and cards have no shadow; their depth is the gray step and
 the hairline.
 
+### Scrollbar
+
+`--scrollbar-thumb` (foreground at 20%), `--scrollbar-thumb-hover` (32%)
+and `--scrollbar-thumb-active` (40%) colour the pill; `--scrollbar-size`
+(10px) is the strip; `--scrollbar-inset` (0) is the track's end margin, set
+to its radius by a rounded scroller. They follow `--foreground` into the
+light theme. "Scrolling" has the rule.
+
 ### Motion tokens
 
 CSS `--dur-fast` 120ms (press, hover, every exit, every reduced-motion
@@ -331,6 +339,33 @@ answer still lands. A row with a second action gives it its own row or
 opens a dialog: Linear's key field sits behind Connect…, and the release
 notes are a row under Release, whose one button is the updater's. Switching pages does not animate.
 
+## Scrolling
+
+Every scroller is a native element with `overflow-*-auto`, and one rule in
+`index.css` draws its bar on every platform: an invisible track and a 6px
+pill on `--scrollbar-thumb` in a 10px strip. The pill hides at rest and
+shows while the pointer is over the scroller or while it scrolls
+(`lib/scrollActivity.ts` marks a scrolling element `data-scrolling` and
+clears it `SCROLL_IDLE_MS` after the last scroll); Chromium cannot fade a
+scrollbar, so it shows and hides at once. There is no scroll-area component.
+
+A rounded scroller sets `--scrollbar-inset` to its radius
+(`[--scrollbar-inset:var(--radius-xl)]` on a menu), so the pill never runs
+into a clipped corner. One region has one scroller: a dialog scrolls its
+body or its list, never both (the Modal body is a flex column, so a list
+marked `min-h-0` shrinks under its cap first); the only nested scroller is
+a bounded log or code console. A vertical list says `overflow-x-hidden`
+beside `overflow-y-auto`, so a 1px overhang never raises a sideways bar; a
+horizontal bar appears only where content overflows. A pure text region
+(notes, a log, the preamble preview) takes `tabIndex={0}` and the focus
+ring, so the keyboard reaches it. Where a first overflow must not shift
+the content (the transcript, the pages) the scroller reserves its strip
+with `scrollbar-gutter: stable`. Nothing sets `scrollbar-color` or
+`scrollbar-width` but `.scrollbar-none` (tab strips scrolled by wheel):
+either one makes Chromium drop the rule. Monaco and xterm draw their own
+bars and take the same tokens through their themes, the same sizes through
+their options and `index.css`.
+
 ## Iconography
 
 `@renderer/chrome/icons` (Hugeicons under lucide names), 16px in rows and
@@ -383,6 +418,7 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | Spinner | the one arc turning | — | still |
 | Appshot | fade + scale 0.95→1 centred, `--dur-slow`; holds; glides into its chip, `--dur-drawer` `--ease-drawer` | — | fade in and out in place, `--dur-fast` |
 | Released drag | settles on `SPRING_GLIDE` | — | none |
+| Scrollbar | shows at once on hover or scroll | hides at once, `SCROLL_IDLE_MS` (900ms) after the last scroll or when the pointer leaves | same |
 | List rows (rail, tabs, fleet, attachments, the transcript's message list) | none | none | none |
 | Transcript rows | one `--dur-fast` fade on first appearance, never replayed | — | none |
 | Streaming text | the prose: the jitter buffer (surfaces/smoothText) and the paint-only veil (surfaces/streamVeil); a live short line (the thinking row's newest sentence): its words fade `--dur-base` in `StreamingText` | — | none |

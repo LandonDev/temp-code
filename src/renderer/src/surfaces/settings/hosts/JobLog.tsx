@@ -77,7 +77,7 @@ export function JobLog({ environmentId, job, hostName }: { environmentId: string
             const el = e.currentTarget;
             follow.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
           }}
-          className="mt-1 mb-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/40 px-3 py-2 font-mono text-[11px] leading-4 text-muted-foreground"
+          className="mt-1 mb-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg [--scrollbar-inset:var(--radius-lg)] bg-muted/40 px-3 py-2 font-mono text-[11px] leading-4 text-muted-foreground"
         >
           {card.lines.length ? card.lines.join("\n") : running ? "Waiting for output…" : ""}
         </pre>

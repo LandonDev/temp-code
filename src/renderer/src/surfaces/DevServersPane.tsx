@@ -6,7 +6,6 @@ import { DockFrame } from "../chrome/DockFrame";
 import { DevStarter, useDevStarter } from "./DevStarter";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { ItemGroup } from "../components/ui/item";
-import { ScrollArea } from "../components/ui/scroll-area";
 import { devPane, useDevPane } from "../lib/devPane";
 import { serverGroups, shownServer, useDevTab, useDockProject, useLiveDevServers } from "../lib/devServers";
 import { findProjectTerminal, selectDockTerminal, withDockOpen, withDockSize } from "../lib/projectTerminal";
@@ -90,7 +89,7 @@ export function DevServersPane({
         <div className="flex w-72 shrink-0 flex-col border-r border-border">
           <DevStarter starter={starter} />
           {servers.length > 0 ? (
-            <ScrollArea className="min-h-0 flex-1">
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
               <div className="flex flex-col gap-2 p-1.5">
                 {serverGroups(servers).map((group) => (
                   <ItemGroup key={group.key} aria-label={group.owner} data-dev-group={group.key} className="gap-0.5">
@@ -101,7 +100,7 @@ export function DevServersPane({
                   </ItemGroup>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           ) : null}
         </div>
         <div className="relative flex min-h-0 min-w-0 flex-1">

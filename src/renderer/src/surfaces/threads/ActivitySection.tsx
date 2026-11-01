@@ -3,7 +3,6 @@ import { loadToast } from "../../components/ui/toaster";
 import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
 import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
-import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
@@ -97,7 +96,7 @@ export const ActivityRows = memo(function ActivityRows({
 
   return (
     <TooltipProvider>
-      <ScrollArea className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div className="flex flex-col px-1 py-3" data-slot="activity-section">
           {rows.map((row) => (
             <Row
@@ -112,7 +111,7 @@ export const ActivityRows = memo(function ActivityRows({
             />
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </TooltipProvider>
   );
 });
@@ -218,7 +217,7 @@ function TaskLogFold({ threadId, taskId, command, live }: { threadId: string; ta
   const [text, setText] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const next = useRef<number | undefined>(undefined);
-  const box = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const ready = !!text;
 
@@ -250,7 +249,7 @@ function TaskLogFold({ threadId, taskId, command, live }: { threadId: string; ta
   }, [live, taskId, threadId]);
 
   useEffect(() => {
-    const viewport = box.current?.querySelector<HTMLElement>("[data-slot=scroll-area-viewport]");
+    const viewport = scroller.current;
     if (!viewport) return;
     const onScroll = (): void => {
       pinned.current = viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 4;
@@ -260,7 +259,7 @@ function TaskLogFold({ threadId, taskId, command, live }: { threadId: string; ta
   }, [ready]);
 
   useEffect(() => {
-    const viewport = box.current?.querySelector<HTMLElement>("[data-slot=scroll-area-viewport]");
+    const viewport = scroller.current;
     if (viewport && pinned.current) viewport.scrollTop = viewport.scrollHeight;
   }, [text]);
 
@@ -282,15 +281,15 @@ function TaskLogFold({ threadId, taskId, command, live }: { threadId: string; ta
   } else {
     body = (
       <>
-        <ScrollArea className="max-h-60 [&>[data-slot=scroll-area-viewport]]:max-h-60">
+        <div ref={scroller} tabIndex={0} data-slot="task-log" className="max-h-60 overflow-x-hidden overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <pre className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">{text}</pre>
-        </ScrollArea>
+        </div>
         {failed ? <p className="pt-1 text-xs text-muted-foreground">Couldn't read the output</p> : null}
       </>
     );
   }
   return (
-    <div ref={box} className="px-2 pt-0.5 pb-2">
+    <div className="px-2 pt-0.5 pb-2">
       {head}
       {body}
     </div>

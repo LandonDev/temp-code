@@ -5,7 +5,6 @@ import { Button } from "@renderer/components/ui/button";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { Item, ItemActions, ItemContent } from "@renderer/components/ui/item";
 import { Progress } from "@renderer/components/ui/progress";
-import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { StatusMark, type ThreadState } from "@renderer/components/ui/status";
@@ -361,10 +360,8 @@ function OriginLine({
 function Log({ lines, runId }: { lines: string[]; runId: string | null }) {
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
-  const viewport = (): HTMLElement | null => box.current?.querySelector<HTMLElement>("[data-slot=scroll-area-viewport]") ?? null;
-
   useEffect(() => {
-    const el = viewport();
+    const el = box.current;
     if (!el) return;
     const onScroll = (): void => {
       stick.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 12;
@@ -374,21 +371,24 @@ function Log({ lines, runId }: { lines: string[]; runId: string | null }) {
   }, []);
 
   useEffect(() => {
-    const el = viewport();
+    const el = box.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [lines.length, runId]);
 
   return (
-    <div ref={box} className="flex min-h-0 flex-1 flex-col" data-slot="build-log">
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="px-3 py-2 font-mono text-xs leading-relaxed text-muted-foreground">
-          {lines.map((line, i) => (
-            <div key={i} className="break-words whitespace-pre-wrap">
-              {line}
-            </div>
-          ))}
-        </div>
-      </ScrollArea>
+    <div
+      ref={box}
+      tabIndex={0}
+      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      data-slot="build-log"
+    >
+      <div className="px-3 py-2 font-mono text-xs leading-relaxed text-muted-foreground">
+        {lines.map((line, i) => (
+          <div key={i} className="break-words whitespace-pre-wrap">
+            {line}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -402,13 +402,13 @@ function Outputs({ outputs, onReveal }: { outputs: BuildRun["outputs"]; onReveal
       <h3 className="flex h-6 shrink-0 items-center px-3 text-xs font-medium text-muted-foreground">
         Outputs
       </h3>
-      <ScrollArea className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div className="flex flex-col px-1">
           {outputs.map((o) => (
             <OutputRow key={o.abs} output={o} onReveal={onReveal} />
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }

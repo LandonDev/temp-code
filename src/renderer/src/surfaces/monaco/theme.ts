@@ -60,6 +60,20 @@ export function cssToHex(css: string): string | undefined {
   return `#${hex(r)}${hex(g)}${hex(b)}${a < 255 ? hex(a) : ""}`;
 }
 
+/** Monaco's slider colours are the app's scrollbar tokens (docs/DESIGN.md
+ *  "Scrolling"), read with their alpha: the slider is ink over the code. */
+export const SCROLLBAR_SLIDER_TOKENS = {
+  "scrollbarSlider.background": "--scrollbar-thumb",
+  "scrollbarSlider.hoverBackground": "--scrollbar-thumb-hover",
+  "scrollbarSlider.activeBackground": "--scrollbar-thumb-active",
+} as const;
+
+/** The three slider colours, each token through `read` (a hex with alpha),
+ *  else `fallback` where the colour cannot be resolved (no canvas). */
+export function scrollbarSliderColors(read: (token: string) => string | undefined, fallback: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(SCROLLBAR_SLIDER_TOKENS).map(([key, token]) => [key, read(token) ?? fallback]));
+}
+
 /** Read one scheme's palette. Toggles `theme-light` on <html> synchronously
  *  while reading; no frame renders in between, so nothing flashes. */
 export function readPalette(dark: boolean): Record<string, string> {
@@ -126,9 +140,7 @@ export function readPalette(dark: boolean): Record<string, string> {
     "list.hoverBackground": mix(6),
     "list.activeSelectionBackground": mix(10),
     "list.activeSelectionForeground": content,
-    "scrollbarSlider.background": withAlpha(content, 0.08),
-    "scrollbarSlider.hoverBackground": withAlpha(content, 0.16),
-    "scrollbarSlider.activeBackground": withAlpha(content, 0.2),
+    ...scrollbarSliderColors((token) => cssToHex(v(token)), withAlpha(content, 0.2)),
     "editorError.foreground": danger,
     "editorWarning.foreground": warning,
     "editorInfo.foreground": info,

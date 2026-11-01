@@ -51,9 +51,6 @@ const field = () => screen.getByLabelText("Project rules") as HTMLTextAreaElemen
 const save = () => screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
 const preview = () => document.querySelector("[data-preamble-preview]") as HTMLElement;
 
-// jsdom has no Web Animations; Base UI's ScrollArea asks for them.
-if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
-
 beforeEach(() => {
   h.setProject.mockReset().mockResolvedValue(undefined);
   h.setWorkspace.mockReset().mockResolvedValue(undefined);

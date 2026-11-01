@@ -553,8 +553,7 @@ export function ChangesView({
             {error}
           </p>
         ) : null}
-        {/* A native scroller, as the rail's and the board's virtual lists have: the
-            ScrollArea's thumb measuring read and wrote layout on every mount and resize. */}
+        {/* A native scroller, as the rail's and the board's virtual lists have. */}
         <div ref={setScroller} className="min-h-0 flex-1 overflow-y-auto" data-slot="changes-scroller">
           <RowsContextMenu label="File actions" lazyMount rowsFor={rowsFor} onPick={pick}>
             <div className="px-1 pb-3">

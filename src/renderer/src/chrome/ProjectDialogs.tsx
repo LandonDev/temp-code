@@ -18,7 +18,6 @@ import {
   Dialog,
 } from "@renderer/components/ui/dialog";
 import { Spinner } from "@renderer/components/ui/spinner";
-import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { PageRowsSkeleton } from "@renderer/components/page";
@@ -620,7 +619,7 @@ function ProjectSettingsBody({
               <span className="min-w-0 truncate">{prettyCwd(project.cwd)}</span>
             </SheetDescription>
           </SheetHeader>
-          <ScrollArea className="min-h-0 flex-1">
+          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
             <div className="flex flex-col gap-6 px-5 pb-6">
               <div className="flex flex-col gap-4">
                 <Field label="Name">
@@ -685,7 +684,7 @@ function ProjectSettingsBody({
                 {buildOverride ? linkButton("Use workspace setting", () => setBuildOverride(null)) : null}
               </Section>
             </div>
-          </ScrollArea>
+          </div>
           {/* Under the scroller, beside the foot: a failed save is never scrolled out of sight. */}
           {error ? (
             <div className="border-t border-border px-5 pt-3">

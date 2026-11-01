@@ -2,6 +2,7 @@ import React, { Profiler, Suspense, lazy, useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { getVersion, listen } from "./lib/native";
 import { installEditorKeys } from "./lib/editorKeys";
+import { installScrollActivity } from "./lib/scrollActivity";
 import App from "./App";
 import { ConfirmHost } from "./chrome/ConfirmDialog";
 /* The toast stack rides its own chunk: sonner is not part of the first paint. */
@@ -31,6 +32,7 @@ import "./index.css";
 
 // Before App mounts its own window listener: the editor claims its chords first.
 installEditorKeys();
+installScrollActivity();
 initAppearance();
 initSounds();
 // The stores follow the registry: one link per environment, attached as

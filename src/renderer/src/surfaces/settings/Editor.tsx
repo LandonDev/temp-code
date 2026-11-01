@@ -329,7 +329,7 @@ export function EditorPage() {
             {eula ? <DialogDescription>intellij-server {eula.build}</DialogDescription> : null}
           </DialogHeader>
           {eula ? (
-            <pre className="max-h-80 overflow-y-auto rounded-lg bg-muted/50 p-3 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+            <pre className="max-h-80 overflow-y-auto rounded-lg [--scrollbar-inset:var(--radius-lg)] bg-muted/50 p-3 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
               {eula.text}
             </pre>
           ) : note ? (

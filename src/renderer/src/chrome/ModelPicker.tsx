@@ -12,7 +12,6 @@ import { Button } from "../components/ui/button";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { Kbd } from "../components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
-import { ScrollArea } from "../components/ui/scroll-area";
 import { Separator } from "../components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
@@ -509,7 +508,7 @@ function ModelList({
   }
 
   return (
-    <ScrollArea className="min-h-0 [&>[data-slot=scroll-area-viewport]]:max-h-[340px]">
+    <div className="max-h-[340px] min-h-0 overflow-x-hidden overflow-y-auto">
       <div role="listbox" aria-label="Models">
         {models.map((item, index) => {
           const selected = item.id === currentId;
@@ -568,6 +567,6 @@ function ModelList({
           );
         })}
       </div>
-    </ScrollArea>
+    </div>
   );
 }

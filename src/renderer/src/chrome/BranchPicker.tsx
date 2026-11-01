@@ -22,7 +22,6 @@ import { useProjectBranchesState } from "../hooks/useProjectBranches";
 import { TruncateTip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { GroupInput, InputGroup } from "../components/ui/input";
-import { ScrollArea } from "../components/ui/scroll-area";
 import { cn } from "../lib/cn";
 import { LazyPopover } from "./menuRows";
 import { SwitchBranchDialog } from "./SwitchBranchDialog";
@@ -400,7 +399,7 @@ function BranchList({
   }
 
   return (
-    <ScrollArea className="min-h-0 flex-1">
+    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
       <div role="listbox" aria-label="Branches">
         {rows.map((row, index) => {
           const highlighted = index === active;
@@ -445,6 +444,6 @@ function BranchList({
           );
         })}
       </div>
-    </ScrollArea>
+    </div>
   );
 }

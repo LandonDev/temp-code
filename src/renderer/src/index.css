@@ -39,6 +39,15 @@
   --card-foreground: var(--foreground);
   --popover-foreground: var(--foreground);
   --secondary-foreground: var(--foreground);
+  /* Scrollbars (docs/DESIGN.md "Scrolling"): a 6px pill on foreground ink
+     in a 10px strip, hidden at rest. A rounded scroller sets the inset to
+     its radius so the thumb never meets a clipped corner. One declaration
+     each: they follow --foreground into the light theme. */
+  --scrollbar-thumb: color-mix(in srgb, var(--foreground) 20%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--foreground) 32%, transparent);
+  --scrollbar-thumb-active: color-mix(in srgb, var(--foreground) 40%, transparent);
+  --scrollbar-size: 10px;
+  --scrollbar-inset: 0px;
   /* The quiet primary: near-white on dark, near-black on light. */
   --primary: oklch(0.96 0 0);
   --primary-foreground: oklch(0.2 0 0);
@@ -286,8 +295,7 @@ body,
   user-select: none;
 }
 
-/* Linux/Windows: explicit sans + thin scrollbars. macOS keeps native overlay
-   scrollbars and default text rendering. */
+/* Linux/Windows: explicit sans. macOS keeps its default text rendering. */
 html:not(.is-mac),
 html:not(.is-mac) body,
 html:not(.is-mac) #root {
@@ -297,26 +305,52 @@ html:not(.is-mac) #root {
   text-rendering: optimizeLegibility;
 }
 
-html:not(.is-mac) ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-html:not(.is-mac) ::-webkit-scrollbar-track {
+/* One rule draws every native scroller on every platform (docs/DESIGN.md
+   "Scrolling"): an invisible track, a 6px pill shown while the pointer is
+   over the scroller or while it scrolls (lib/scrollActivity.ts sets
+   data-scrolling), hidden otherwise. Chromium does not transition scrollbar
+   pseudo-elements, so it shows and hides at once. Never set the standard
+   scrollbar-color or scrollbar-width outside .scrollbar-none: either makes
+   Chromium ignore this rule on that element. */
+::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
   background: transparent;
 }
 
-html:not(.is-mac) ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--foreground) 16%, transparent);
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-track:vertical {
+  margin-block: var(--scrollbar-inset);
+}
+
+::-webkit-scrollbar-track:horizontal {
+  margin-inline: var(--scrollbar-inset);
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border: 2px solid transparent;
+  background-clip: padding-box;
   border-radius: 9999px;
+  min-height: 32px;
+  min-width: 32px;
 }
 
-html:not(.is-mac) ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--foreground) 32%, transparent);
+:hover::-webkit-scrollbar-thumb,
+[data-scrolling]::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
 }
 
-html:not(.is-mac) ::-webkit-scrollbar-corner {
-  background: transparent;
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
 }
 
 /* A theme flip changes nearly every colour at once; lib/appearance.ts sets
@@ -584,6 +618,25 @@ header[data-tauri-drag-region] button {
 
 .monocode-terminal--alt-screen .xterm .xterm-scrollable-element > .scrollbar {
   display: none !important;
+}
+
+/* Monaco and xterm draw their own bars (VS Code's scrollable element); they
+   take the app's look (docs/DESIGN.md "Scrolling"): a pill, and in xterm,
+   whose bar is 14px with a full-width slider, the 10px strip with the
+   slider 2px in from each side. Colours come through their themes. Their
+   inline sizes need the !important. */
+.monaco-scrollable-element > .scrollbar > .slider,
+.xterm-scrollable-element > .scrollbar > .slider {
+  border-radius: 9999px;
+}
+
+.xterm .xterm-scrollable-element > .scrollbar.vertical {
+  width: var(--scrollbar-size) !important;
+}
+
+.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  left: 2px !important;
+  width: calc(var(--scrollbar-size) - 4px) !important;
 }
 
 .monocode-terminal .xterm {

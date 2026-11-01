@@ -36,6 +36,10 @@ export const SPRING_LAYOUT = {
  */
 export const DUR = { fast: 0.12, base: 0.18, slow: 0.24, drawer: 0.3 } as const;
 
+/** How long a scroller's bar stays shown after its last scroll, in ms
+ *  (lib/scrollActivity.ts; docs/DESIGN.md "Scrolling"). */
+export const SCROLL_IDLE_MS = 900;
+
 /** A released drag settling: a sash let go, a reordered row dropping home. */
 export const SPRING_GLIDE = {
   type: "spring",

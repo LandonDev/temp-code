@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { emptyNotes, notesAsBrief, notesEmpty } from "@shared/notes";
 import { Button } from "@renderer/components/ui/button";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
-import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
@@ -212,11 +211,11 @@ export function NotesView({
           </div>
         ) : editing ? (
           <>
-            <ScrollArea className="min-h-0 flex-1">
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
               <div className="px-3 py-2">
                 <NotesSource value={draft} onChange={onChange} onDone={onDone} />
               </div>
-            </ScrollArea>
+            </div>
             {remoteChanged ? (
               <div className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
                 <span className="min-w-0 flex-1 truncate">The thread updated the notes</span>
@@ -227,11 +226,11 @@ export function NotesView({
             ) : null}
           </>
         ) : (
-          <ScrollArea className="min-h-0 flex-1">
+          <div tabIndex={0} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
             <div className="px-3 py-2 select-text">
               <AgentMarkdown text={text} cwd={cwd} size="compact" />
             </div>
-          </ScrollArea>
+          </div>
         )}
       </div>
     </TooltipProvider>

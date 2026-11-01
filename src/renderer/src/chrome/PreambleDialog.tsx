@@ -4,7 +4,6 @@ import { DialogFooter as Footer, ErrorLine, errorText } from "./ConfirmDialog";
 import { Field, FieldRow } from "./DialogField";
 import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
-import { ScrollArea } from "../components/ui/scroll-area";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
 import { setProjectPreamble, setWorkspacePreamble } from "../lib/tcserver/projects";
@@ -163,7 +162,7 @@ function PreambleForm({
           </Field>
           <section aria-label="Preview" className="flex min-w-0 flex-col gap-1">
             <h3 className="text-xs font-medium text-muted-foreground">Preview</h3>
-            <ScrollArea className="h-64 rounded-lg border border-border bg-card">
+            <div tabIndex={0} className="h-64 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-card outline-none [--scrollbar-inset:var(--radius-lg)] focus-visible:ring-2 focus-visible:ring-ring">
               <div className="px-3 py-2 text-[13px] [&_h1]:text-[13px] [&_h2]:text-[13px] [&_h3]:text-xs [&_h4]:text-xs" data-preamble-preview>
                 {normalized ? (
                   <Suspense fallback={<pre className="whitespace-pre-wrap font-sans text-xs leading-5">{normalized}</pre>}>
@@ -176,7 +175,7 @@ function PreambleForm({
                   </p>
                 ) : null}
               </div>
-            </ScrollArea>
+            </div>
           </section>
         </div>
         <div className="flex flex-col">

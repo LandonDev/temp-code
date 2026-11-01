@@ -13,7 +13,7 @@ export { MENU_ROW };
  * from the 14px glyph to the label; the highlighted row is a muted fill,
  * never a left colour bar. The context menu (context-menu.tsx) shares the row.
  */
-const PANEL = "min-w-44 rounded-xl p-1.5";
+const PANEL = "min-w-44 rounded-xl p-1.5 [--scrollbar-inset:var(--radius-xl)]";
 const SIZE = {
   row: `${MENU_ROW} rounded-lg`,
   check: `${MENU_ROW} rounded-lg pe-8`,

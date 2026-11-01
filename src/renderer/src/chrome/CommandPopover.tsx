@@ -80,7 +80,7 @@ export function CommandPopover({
         ref={listRef}
         role="listbox"
         aria-label={matches.mode === "command" ? "Skills and commands" : "Files and threads"}
-        className="max-h-72 overflow-y-auto overscroll-none rounded-xl p-1"
+        className="max-h-72 overflow-y-auto overscroll-none rounded-xl p-1 [--scrollbar-inset:var(--radius-xl)]"
       >
         {matches.mode === "command"
           ? matches.rows.map((c, n) => (

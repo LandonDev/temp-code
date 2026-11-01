@@ -189,7 +189,7 @@ export function WorkspaceThreadsPopover({
       aria-label="This workspace's threads"
       className="max-h-90 w-75 gap-0 overflow-hidden p-1"
     >
-      <div ref={lockList} className="overflow-y-auto overscroll-none">
+      <div ref={lockList} className="overflow-y-auto overscroll-none [--scrollbar-inset:var(--radius-lg)]">
         <WorkspaceThreadsList groups={groups} activeSessionId={activeSessionId} onSelectThread={onSelectThread} />
       </div>
     </PopoverContent>

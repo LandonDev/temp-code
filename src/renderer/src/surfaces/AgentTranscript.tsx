@@ -950,7 +950,7 @@ export function AgentTranscript({
     <div className="relative h-full">
     <div
       ref={setScroller}
-      className="agent-transcript h-full overflow-y-auto overscroll-none [overflow-anchor:none] font-mono text-[13px] leading-5"
+      className="agent-transcript h-full overflow-y-auto overscroll-none [overflow-anchor:none] [scrollbar-gutter:stable] font-mono text-[13px] leading-5"
     >
       {placement !== "hidden" ? (
         // Inside the scroller, so a wheel over the list scrolls the

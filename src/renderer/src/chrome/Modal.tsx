@@ -86,7 +86,11 @@ export function ModalPanel({ busy = false, title, description, size = "md", clas
           <X />
         </DialogClose>
       </header>
-      <div ref={lockOverscroll} className="min-h-0 flex-1 overflow-y-auto overscroll-none">
+      {/* One scroller per region (docs/DESIGN.md "Scrolling"): a flex column, so
+          a list that marks itself min-h-0 shrinks under its cap before the
+          body itself has to scroll. The inset keeps the thumb off the
+          dialog's rounded corner. */}
+      <div ref={lockOverscroll} className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none [--scrollbar-inset:var(--radius-2xl)]">
         {children}
       </div>
     </DialogContent>

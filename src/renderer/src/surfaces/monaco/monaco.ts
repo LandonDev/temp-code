@@ -178,9 +178,13 @@ export const EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions 
     showStatusBar: true,
   },
   suggestLineHeight: 26,
+  // The app's scrollbar (docs/DESIGN.md "Scrolling"): a 6px slider centred
+  // in a 10px strip, coloured from the --scrollbar-thumb tokens (theme.ts).
   scrollbar: {
     verticalScrollbarSize: 10,
     horizontalScrollbarSize: 10,
+    verticalSliderSize: 6,
+    horizontalSliderSize: 6,
     useShadows: false,
   },
   lightbulb: { enabled: "onCode" as never },

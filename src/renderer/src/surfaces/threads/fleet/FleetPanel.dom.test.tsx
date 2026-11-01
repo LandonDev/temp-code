@@ -30,14 +30,14 @@ describe("FleetList", () => {
     expect(screen.getByText("No subagents")).toBeTruthy();
   });
 
-  it("lists the rows in a scroll area and opens the detail of the one picked", () => {
+  it("lists the rows in a native scroller and opens the detail of the one picked", () => {
     model.agents = [
       { id: "a1", title: "Explore the store" },
       { id: "a2", title: "Write the tests" },
     ];
     model.detailId = "a2";
     const { container } = render(<FleetList sessionId="s1" parentCwd="/p" />);
-    expect(container.querySelector('[data-slot="agents-section"]')?.closest('[data-slot="scroll-area"]')).toBeTruthy();
+    expect(container.querySelector('[data-slot="agents-section"]')?.parentElement?.className).toContain("overflow-y-auto");
     expect(screen.getByRole("button", { name: "Write the tests" }).getAttribute("aria-current")).toBe("true");
     expect(screen.getByTestId("detail").textContent).toBe("a2");
     fireEvent.click(screen.getByRole("button", { name: "Explore the store" }));

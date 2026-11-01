@@ -30,6 +30,23 @@ describe('the terminal chrome reads the tokens', () => {
     expect(osc.bg).toBe(light ? '#ffffff' : '#141516')
   })
 
+  it('takes its three scrollbar slider colours from the scrollbar tokens', () => {
+    const real = window.getComputedStyle
+    const computed: Record<string, string> = {
+      'var(--scrollbar-thumb)': 'rgba(237, 237, 237, 0.2)',
+      'var(--scrollbar-thumb-hover)': 'rgba(237, 237, 237, 0.32)',
+      'var(--scrollbar-thumb-active)': 'rgba(237, 237, 237, 0.4)'
+    }
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element) => {
+      const asked = (el as HTMLElement).style.getPropertyValue('color')
+      return { ...real(el), color: computed[asked] ?? '' } as CSSStyleDeclaration
+    })
+    const theme = terminalTheme(false)
+    expect(theme.scrollbarSliderBackground).toBe(computed['var(--scrollbar-thumb)'])
+    expect(theme.scrollbarSliderHoverBackground).toBe(computed['var(--scrollbar-thumb-hover)'])
+    expect(theme.scrollbarSliderActiveBackground).toBe(computed['var(--scrollbar-thumb-active)'])
+  })
+
   it('turns rgb and hex into #rrggbb, and anything unreadable into the fallback', () => {
     expect(hexOf('rgb(10, 119, 235)', '#000000')).toBe('#0a77eb')
     expect(hexOf('#ABCDEF', '#000000')).toBe('#abcdef')

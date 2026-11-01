@@ -73,7 +73,7 @@ export function AccountsPopover({
       side="top"
       align="start"
       label={`${provider} accounts`}
-      className="max-h-(--available-height) w-auto gap-0 overflow-y-auto p-1.5"
+      className="max-h-(--available-height) w-auto gap-0 overflow-y-auto p-1.5 [--scrollbar-inset:var(--radius-xl)]"
     >
       <div role="listbox" aria-label={`${provider} accounts`} aria-readonly data-account-picker style={{ width: `${width / REM}rem` }}>
         {scope ? (

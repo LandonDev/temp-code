@@ -430,3 +430,53 @@ describe("AgentTranscript message list", () => {
     expect(topOf(again) - el.scrollTop).toBeCloseTo(onScreen, 0);
   });
 });
+
+describe("AgentTranscript scrollbar drag", () => {
+  /** A press at `offsetX` on the scroller, whose content box is 790px wide:
+   *  past it is the scrollbar's strip, which now takes width on every platform. */
+  const press = (el: HTMLElement, offsetX: number) => {
+    Object.defineProperty(el, "clientWidth", { configurable: true, value: 790 });
+    const event = new MouseEvent("pointerdown", { bubbles: true });
+    Object.defineProperty(event, "offsetX", { value: offsetX });
+    act(() => {
+      el.dispatchEvent(event);
+    });
+  };
+  const scrollWithoutWheel = (el: HTMLElement, top: number) =>
+    act(() => {
+      el.scrollTop = top;
+      fireEvent.scroll(el);
+    });
+
+  it("keeps a stable gutter, so a thread's first overflow never shifts the column", () => {
+    const { container } = render(<AgentTranscript sessionId="d0" blocks={chat(5)} busy={false} visible />);
+    expect(scrollerOf(container).className).toContain("[scrollbar-gutter:stable]");
+  });
+
+  it("a press on the scrollbar's strip marks a drag, and its scroll releases follow", () => {
+    const { container } = render(<AgentTranscript sessionId="d1" blocks={chat(200)} busy visible />);
+    const el = scrollerOf(container);
+    const total = parseFloat(boxOf(container).style.height);
+    press(el, 795);
+    scrollWithoutWheel(el, total / 2);
+    expect(el.dataset.scrollMode).toBe("free");
+  });
+
+  it("a press inside the content is no drag: a scroll there leaves follow alone", () => {
+    const { container } = render(<AgentTranscript sessionId="d2" blocks={chat(200)} busy visible />);
+    const el = scrollerOf(container);
+    const total = parseFloat(boxOf(container).style.height);
+    press(el, 400);
+    scrollWithoutWheel(el, total / 2);
+    expect(el.dataset.scrollMode).not.toBe("free");
+  });
+
+  it("a wheel releases follow as before", () => {
+    const { container } = render(<AgentTranscript sessionId="d3" blocks={chat(200)} busy visible />);
+    const el = scrollerOf(container);
+    act(() => {
+      fireEvent.wheel(el, { deltaY: -120 });
+    });
+    expect(el.dataset.scrollMode).toBe("free");
+  });
+});

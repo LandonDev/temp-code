@@ -91,6 +91,18 @@ const FALLBACK = {
   light: { foreground: "#151618", background: "#ffffff", accent: "#0a77eb" },
 };
 
+/** xterm's three slider colours, each the scrollbar token of that state. */
+export const TERMINAL_SCROLLBAR_TOKENS = {
+  scrollbarSliderBackground: "--scrollbar-thumb",
+  scrollbarSliderHoverBackground: "--scrollbar-thumb-hover",
+  scrollbarSliderActiveBackground: "--scrollbar-thumb-active",
+} as const;
+
+function terminalScrollbar(): Record<keyof typeof TERMINAL_SCROLLBAR_TOKENS, string> {
+  const entries = Object.entries(TERMINAL_SCROLLBAR_TOKENS).map(([key, token]) => [key, cssColor(`var(${token})`, "transparent")]);
+  return Object.fromEntries(entries) as Record<keyof typeof TERMINAL_SCROLLBAR_TOKENS, string>;
+}
+
 export function terminalTheme(light: boolean) {
   const fallback = light ? FALLBACK.light : FALLBACK.dark;
   return {
@@ -104,6 +116,8 @@ export function terminalTheme(light: boolean) {
     selectionInactiveBackground: light
       ? "rgba(0,0,0,0.08)"
       : "rgba(255,255,255,0.08)",
+    // The app's scrollbar tokens (docs/DESIGN.md "Scrolling"); index.css sizes the bar.
+    ...terminalScrollbar(),
     ...(light ? ANSI_LIGHT : ANSI_DARK),
   };
 }

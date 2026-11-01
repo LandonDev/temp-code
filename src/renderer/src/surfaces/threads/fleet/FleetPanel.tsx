@@ -1,6 +1,5 @@
 import { AnimatePresence } from "motion/react";
 import { Empty, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
-import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import type { OpenFileFn } from "../../../lib/search";
 import { AgentDetail } from "./AgentDetail";
 import { AgentRow } from "./AgentRow";
@@ -38,13 +37,13 @@ export function FleetList({
           </EmptyHeader>
         </Empty>
       ) : (
-        <ScrollArea className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
           <div className="flex flex-col gap-0.5 px-1 py-3" data-slot="agents-section">
             {agents.map((agent) => (
               <AgentRow key={agent.id} agent={agent} selected={detailId === agent.id} onOpen={() => fleet.setDetailId(agent.id)} />
             ))}
           </div>
-        </ScrollArea>
+        </div>
       )}
       <AnimatePresence>
         {detailId ? (

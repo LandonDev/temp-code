@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Checkbox } from "@renderer/components/ui/checkbox";
 import { Item, ItemContent, ItemGroup, ItemMedia, ItemTitle } from "@renderer/components/ui/item";
-import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
 import { Modal, useModalClose } from "../../../chrome/Modal";
 import type { SessionMeta } from "../../../lib/tcserver/types";
@@ -91,13 +90,14 @@ function AdoptBody({
   const close = useModalClose();
   return (
     <form
+      className="flex min-h-0 flex-col"
       onSubmit={(e) => {
         e.preventDefault();
         void onAdd(close);
       }}
     >
-      <div className="flex flex-col gap-2 px-5 py-4">
-        <ScrollArea className="-mx-2 max-h-80 [&>[data-slot=scroll-area-viewport]]:max-h-80">
+      <div className="flex min-h-0 flex-col gap-2 px-5 py-4">
+        <div className="-mx-2 max-h-80 min-h-0 overflow-x-hidden overflow-y-auto">
           <ItemGroup aria-label="Threads in no batch">
             {candidates.map((c) => {
               return (
@@ -121,7 +121,7 @@ function AdoptBody({
               );
             })}
           </ItemGroup>
-        </ScrollArea>
+        </div>
         <ErrorLine error={error} />
       </div>
       <DialogFooter onCancel={onClose} confirmLabel={picked.size > 1 ? `Add ${picked.size}` : "Add"} pending={pending} disabled={picked.size === 0} />

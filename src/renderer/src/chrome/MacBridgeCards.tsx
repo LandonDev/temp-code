@@ -114,7 +114,7 @@ function MacBridgeCard({
           </span>
         ) : null}
       </div>
-      <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted/40 px-2.5 py-1.5 font-mono text-xs text-foreground">
+      <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg [--scrollbar-inset:var(--radius-lg)] bg-muted/40 px-2.5 py-1.5 font-mono text-xs text-foreground">
         {requestCode(request)}
       </pre>
       {facts.length ? <Facts parts={facts} className="text-xs text-muted-foreground" /> : null}
