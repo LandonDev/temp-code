@@ -1382,7 +1382,7 @@ package's `Rendering/Batch.swift` (`MasterBoard`, `BatchSteps`, `RulesEdit`,
   agent status mark, the role's glyph (`MetaGlyph`), the title in
   secondary, what it is doing in tertiary (waiting in warning, failed in
   destructive) and the host's glyph; the person's first, at most three,
-  then one tertiary line "and 2 more, 3 done" (warning when one past the
+  then one tertiary line "2 more, 3 done" (warning when one past the
   cap waits). Each line pushes the agent's thread screen (on its host for a
   far child). A far child's agents come from its own host's sessions; a
   thread whose agents all settled has no lines. The client package's

@@ -13,7 +13,9 @@ import { describe, expect, it } from "vitest";
  * Tests, fixtures, previews and sketches are not renderer source.
  */
 const ROOT = resolve(__dirname, "..");
-const ALLOWED: Record<string, { reason: string; count: number }> = {};
+const ALLOWED: Record<string, { reason: string; count: number }> = {
+  "surfaces/threads/master/boardFixture.ts": { reason: "The queued row's legacy activity, as an older host writes it beside statusDetail.", count: 1 },
+};
 
 const RUN = /\S {2,}\S/;
 type Hit = { file: string; line: number; text: string };
