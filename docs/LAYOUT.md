@@ -393,6 +393,12 @@ ends the live row and is never saved into the order (`outsideId`,
 is project-only. ⌘1–9 walk the live row; ⌃Tab walks the live row, then the
 shelf. Archiving the active chip selects its neighbour on its own row, else
 the other row's first, as a click on it would (`archiveNeighbour`).
+Deleting it does the same and the window stays on the project
+(lib/threadDelete.ts): a neighbour with a tab brings that tab forward, one
+without takes the deleted tab's place, and with no neighbour another tab of
+the project comes forward, else the tab becomes the project's empty
+new-thread screen; a thread deleted in a split loses only its pane, and one
+not on screen leaves without moving anything.
 
 - **Order.** Stable, like a browser's tabs: a live chip keeps its place, a
   new one joins at the end (oldest first when several arrive together), and

@@ -369,16 +369,24 @@ export function useThreadBridge(sessionId: string | null | undefined): MacBridge
  * so the first spawn already carries the tools; never fails the create.
  */
 export async function bridgeNewThread(environmentId: string, sessionId: string): Promise<void> {
-  if (!bridgeableEnvironment(environmentId)) return
+  if (!(await bridgesNewThreads(environmentId))) return
+  try {
+    await setThreadBridge(environmentId, sessionId, true)
+  } catch {
+    // An older host: the thread runs without the bridge.
+  }
+}
+
+/** Whether a thread made on this host gets this Mac's bridge (its policy is not off). */
+export async function bridgesNewThreads(environmentId: string): Promise<boolean> {
+  if (!bridgeableEnvironment(environmentId)) return false
   try {
     const hosts = store.getState().hosts.length
       ? store.getState().hosts
       : await refreshMacBridgeHosts()
-    const policy = hosts.find((h) => h.environmentId === environmentId)?.policy ?? 'off'
-    if (policy === 'off') return
-    await setThreadBridge(environmentId, sessionId, true)
+    return (hosts.find((h) => h.environmentId === environmentId)?.policy ?? 'off') !== 'off'
   } catch {
-    // An older host: the thread runs without the bridge.
+    return false
   }
 }
 

@@ -202,7 +202,6 @@ import {
   sameProjectPath,
 } from "./lib/recents";
 import {
-  applyDeletedSessionToWorkspace,
   filterTabsForProject,
   filterTabsForWorkspace,
   planCloseFocused,
@@ -241,6 +240,7 @@ import {
 } from "./lib/tcserver/store";
 import { rightPanel } from "./lib/rightPanel";
 import { archiveNeighbour, slotTarget } from "./lib/threadHeaderModel";
+import { deleteNeighbour, planThreadDelete } from "./lib/threadDelete";
 import type { ThreadRules } from "@server/shared/rules";
 import * as serverCommands from "./lib/tcserver/commands";
 import { requestTranscriptJump } from "./lib/transcriptJump";
@@ -1791,6 +1791,16 @@ export default function App() {
 
       if (!options?.confirmed && !(await confirmAction({ title: `Delete “${label}”?`, action: "Delete", danger: true }))) return;
       forgetLastSession(sessionId);
+      // Everything the next screen depends on, read before the delete: the
+      // host's session-removed push lands ahead of its answer, after which
+      // the deleted thread's project could no longer be known.
+      const before = {
+        tabs: workspaceTabsStore.getState().tabs,
+        sessions: sessionStore.getSnapshot(),
+        activeTabId: workspaceTabsStore.getState().activeTabId,
+      };
+      const projectKey = open?.projectId ?? projectStore.getState().selectedProjectId ?? null;
+      const neighbourId = deleteNeighbour(headerStore.getState().model, sessionId);
 
       if (open?.busy) {
         turnGen.current.set(
@@ -1812,9 +1822,7 @@ export default function App() {
       }
       await deleteSession(sessionId).catch(() => undefined);
 
-      if (
-        !workspaceTabsStore.getState().tabs.some((tab) => leafIds(tab.layout).includes(sessionId))
-      ) {
+      if (!before.tabs.some((tab) => leafIds(tab.layout).includes(sessionId))) {
         setSessions((prev) =>
           prev.filter((session) => session.id !== sessionId),
         );
@@ -1822,44 +1830,44 @@ export default function App() {
         return;
       }
 
-      const {
-        tabs: nextTabs,
-        sessions: nextSessions,
-        activeTabId: nextActiveTabId,
-      } = applyDeletedSessionToWorkspace({
-        tabs: workspaceTabsStore.getState().tabs,
-        sessions: sessionStore.getSnapshot(),
+      const onScreen = before.tabs.find((tab) => tab.id === before.activeTabId);
+      const plan = planThreadDelete({
+        ...before,
         sessionId,
-        activeTabId: workspaceTabsStore.getState().activeTabId,
-        scope: "project",
-        createReplacement: (seed) =>
-          newSession(
+        projectKey,
+        neighbourId: onScreen && leafIds(onScreen.layout).includes(sessionId) ? neighbourId : null,
+        createReplacement: (seed) => {
+          const context = seed
+            ? contextOfSession(seed, workspaceStore.getSnapshot())
+            : cwdContext(summary?.cwd ?? sidebarCwd);
+          return newSession(
             seed?.environmentId ?? environmentId ?? environmentForContext(cwdContext(summary?.cwd ?? sidebarCwd)),
             seed?.harness ?? harness,
             seed?.cwd ?? summary?.cwd ?? sidebarCwd,
             seed?.model ?? summary?.model,
             seed?.runtimeMode ?? summary?.runtimeMode,
             seed?.modelSettings,
-            seed
-              ? contextOfSession(seed, workspaceStore.getSnapshot())
-              : cwdContext(summary?.cwd ?? sidebarCwd),
-          ),
+            { ...context, projectId: context.projectId ?? projectKey },
+          );
+        },
       });
 
-      setSessions(nextSessions);
-      setTabs(nextTabs);
-      if (nextActiveTabId !== workspaceTabsStore.getState().activeTabId) {
-        activateTab(nextActiveTabId);
+      // The open sessions now, less the deleted one, plus a replacement the
+      // plan made: a push that landed meanwhile keeps its view.
+      const added = plan.sessions.filter((session) => !before.sessions.some((prev) => prev.id === session.id));
+      setSessions((prev) => [...prev.filter((session) => session.id !== sessionId), ...added]);
+      setTabs(plan.tabs);
+      if (plan.activeTabId !== workspaceTabsStore.getState().activeTabId) {
+        activateTab(plan.activeTabId);
       }
-      setComposerFocused(
-        nextSessions.some((session) => {
-          const tab = nextTabs.find((entry) => entry.id === nextActiveTabId);
-          return !!tab && session.id === tab.focusedId;
-        }),
-      );
+      if (plan.select) void onSelectHistorySession(plan.select);
+      else {
+        const tab = plan.tabs.find((entry) => entry.id === plan.activeTabId);
+        setComposerFocused(!!tab && plan.sessions.some((session) => session.id === tab.focusedId));
+      }
       void refreshHistory(sidebarCwd);
     },
-    [activateTab, sidebarCwd],
+    [activateTab, onSelectHistorySession, sidebarCwd],
   );
 
   const onFocusDir = useCallback(

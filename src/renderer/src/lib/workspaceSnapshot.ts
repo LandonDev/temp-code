@@ -42,6 +42,9 @@ export type WorkspaceSessionStub = {
   worktreeCwd?: string;
   projectId?: string | null;
   workspaceId?: string | null;
+  /** The thread existed on its host when the layout was saved (not an
+   *  unsent draft). Absent in layouts saved before the flag. */
+  persisted?: boolean;
 };
 
 export type WorkspaceSnapshot = {
@@ -58,10 +61,15 @@ export function collectWorkspaceSnapshot(
   activeTabId: string,
   projectCwd: string,
   projectTerminals: ProjectTerminalDock[] = [],
+  /** Whether a thread exists on its host (the store has its meta, or it is
+   *  a provisional entry), as opposed to an unsent draft. */
+  persisted: (id: string) => boolean = () => false,
 ): WorkspaceSnapshot {
   return {
     tabs: tabs.map(sanitizeTab).filter((tab): tab is WorkspaceTab => tab != null),
-    sessions: sessions.map(sessionStub).filter((stub): stub is WorkspaceSessionStub => stub != null),
+    sessions: sessions
+      .map((session) => sessionStub(session, persisted(session.id)))
+      .filter((stub): stub is WorkspaceSessionStub => stub != null),
     activeTabId,
     projectCwd: projectCwd.trim() || "~",
     projectTerminals: projectTerminals
@@ -205,10 +213,21 @@ export function hydrateWorkspaceSnapshot(
   };
 }
 
-function sessionStub(session: SessionShell): WorkspaceSessionStub | null {
+/**
+ * A saved stub for a thread that exists on its host: one stamped so, or a
+ * layout saved before the stamp whose stub has a title (an unsent draft
+ * there had none worth keeping). Restored as a provisional entry when no
+ * host answers for it at launch, never as a draft (appLifecycle.ts).
+ */
+export function isPersistedStub(stub: WorkspaceSessionStub): boolean {
+  return stub.persisted ?? stub.title.trim() !== "";
+}
+
+function sessionStub(session: SessionShell, persisted: boolean): WorkspaceSessionStub | null {
   if (!session.id) return null;
   return {
     id: session.id,
+    persisted,
     environmentId: session.environmentId,
     cwd: session.cwd || "~",
     harness: session.harness,
@@ -294,6 +313,7 @@ function sanitizeStub(raw: unknown): WorkspaceSessionStub | null {
     ...(typeof value.workspaceId === "string" && value.workspaceId
       ? { workspaceId: value.workspaceId }
       : {}),
+    ...(typeof value.persisted === "boolean" ? { persisted: value.persisted } : {}),
   };
 }
 

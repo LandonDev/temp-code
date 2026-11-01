@@ -12,6 +12,7 @@ import { newSession, type Session } from "./session";
 import {
   collectWorkspaceSnapshot,
   hydrateWorkspaceSnapshot,
+  isPersistedStub,
   parseWorkspaceSnapshot,
 } from "./workspaceSnapshot";
 
@@ -354,5 +355,34 @@ describe("the host of a saved pane", () => {
     delete raw.sessions[0]!.environmentId;
     const parsed = parseWorkspaceSnapshot(raw);
     expect(hydrateWorkspaceSnapshot(parsed!, new Map())?.sessions[0]?.environmentId).toBe("local");
+  });
+});
+
+describe("a saved thread versus an unsent draft", () => {
+  it("stamps persisted from the store's word and keeps it through a save and a parse", () => {
+    const thread = { ...chat("t", "/repo"), title: "Ship it" };
+    const draft = { ...newSession("local", "claude", "/repo"), id: "d" };
+    const snapshot = collectWorkspaceSnapshot(
+      [{ ...newTab("t"), id: "t1" }, { ...newTab("d"), id: "t2" }],
+      [thread, draft],
+      "t1",
+      "/repo",
+      [],
+      (id) => id === "t",
+    );
+    const parsed = parseWorkspaceSnapshot(JSON.parse(JSON.stringify(snapshot)))!;
+    const byId = new Map(parsed.sessions.map((s) => [s.id, s]));
+    expect(byId.get("t")?.persisted).toBe(true);
+    expect(byId.get("d")?.persisted).toBe(false);
+    expect(isPersistedStub(byId.get("t")!)).toBe(true);
+    expect(isPersistedStub(byId.get("d")!)).toBe(false);
+  });
+
+  it("a stub saved before the stamp is a thread when it has a title, a draft when it has none", () => {
+    const base = { cwd: "/repo", harness: "claude" as const, model: "", modelSettings: {}, runtimeMode: "supervised" as const };
+    expect(isPersistedStub({ ...base, id: "a", title: "Old build" })).toBe(true);
+    expect(isPersistedStub({ ...base, id: "b", title: "  " })).toBe(false);
+    // The stamp wins over the title either way.
+    expect(isPersistedStub({ ...base, id: "c", title: "Named draft", persisted: false })).toBe(false);
   });
 });

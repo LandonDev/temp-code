@@ -236,6 +236,12 @@ export const BOOT_SETTLE_MS = 2_000;
 const loadingState = (since = Date.now()): LoadState => ({ phase: "loading", since, attempt: 0 });
 
 /** The error as the pane's line shows it: short, no method names. */
+/** The host's refusal of an id it shows no row for (`session.events`):
+ *  the thread is gone from that host, never a thread with no rows. */
+function isUnknownSession(e: unknown): boolean {
+  return /\bunknown session\b/.test(e instanceof Error ? e.message : String(e));
+}
+
 function shortError(e: unknown): string {
   if (e instanceof TimeoutError) return "timed out";
   const message = e instanceof Error ? e.message : String(e);
@@ -855,14 +861,19 @@ class SessionStore {
    * stays put), and is never a draft to create. The meta, when it lands,
    * fills it whole; `markGone` when no host knows the id.
    */
-  provisional(id: string, environmentId: string, here?: Pick<Session, "cwd" | "projectId" | "workspaceId">): Session {
+  provisional(
+    id: string,
+    environmentId: string,
+    here?: Pick<Session, "cwd" | "projectId" | "workspaceId"> & { title?: string },
+  ): Session {
     const existing = this.entries.get(id);
     if (existing) return existing.session;
     const load = loadingState();
     const session: Session = {
       ...newSession(environmentId, "claude", here?.cwd ?? "~"),
       id,
-      title: "",
+      // A saved tab's title, so its chip keeps its name until the meta lands.
+      title: here?.title ?? "",
       projectId: here?.projectId ?? null,
       workspaceId: here?.workspaceId ?? null,
       loaded: false,
@@ -901,6 +912,34 @@ class SessionStore {
   /** Whether `id` is a provisional entry still waiting on its meta. */
   isProvisional(id: string): boolean {
     return !!this.entries.get(id)?.provisional;
+  }
+
+  /** A provisional entry deleted on its host leaves here too, whatever the host knew. */
+  forgetProvisional(id: string): void {
+    if (!this.entries.get(id)?.provisional) return;
+    this.drop(id);
+    this.bump();
+  }
+
+  /**
+   * A provisional entry resolves on its host's word, never as a draft: the
+   * archived sets are asked (the owner first, then the other connected
+   * hosts), a meta found fills the entry and its transcript loads, and with
+   * none it reads `gone` only once the owner has listed and answered its
+   * archived set. While the owner is down the entry keeps loading (the pane
+   * says slow); its first list asks again (`settleDrafts`).
+   */
+  async resolveProvisional(id: string): Promise<void> {
+    const entry = this.entries.get(id);
+    if (!entry) return;
+    // Filled already (a push, a list, an earlier ask): it only has to load.
+    const owner = this.attachedEnvironmentFor(entry.session.environmentId) ?? entry.session.environmentId;
+    const meta = entry.provisional ? await this.ensureMeta(id, owner) : entry.meta;
+    if (meta) {
+      void this.ensureLoaded(id, "load").catch(() => undefined);
+      return;
+    }
+    if (this.listedOk.has(owner) && this.archivedScopes.has(`${owner}|*`)) this.markGone(id);
   }
 
   /** No host knew a provisional entry's id: its pane says so. */
@@ -1354,6 +1393,19 @@ class SessionStore {
    *  host's own refusal waits for Retry now. */
   private failLoad(entry: Entry, e: unknown): void {
     this.stopTimers(entry);
+    if (isUnknownSession(e)) {
+      // Its host no longer shows it (deleted, moved, a mirror row or a tab
+      // left over): the meta leaves the lists, so its rail row goes, and the
+      // entry stays to say so, as one no host answered for does. A meta that
+      // comes back fills it again.
+      entry.meta = null;
+      entry.provisional = true;
+      entry.wanted = false;
+      this.metasSnapshot = null;
+      this.setLoad(entry, { phase: "gone", since: entry.load.since, attempt: 0 });
+      this.bumpMeta();
+      return;
+    }
     const attempt = entry.load.attempt + 1;
     const failed: LoadState = { phase: "failed", since: entry.load.since, attempt, error: shortError(e) };
     if (!isConnectionFailure(e) && e !== UNANSWERED) {
@@ -1405,11 +1457,17 @@ class SessionStore {
     }
   }
 
-  /** The host listed: drafts it did not claim are new threads, nothing is on its way. */
+  /** The host listed: drafts it did not claim are new threads, nothing is on
+   *  its way. A provisional entry it did not claim is a thread that exists
+   *  somewhere (archived, moved, deleted), never a draft: it is asked after. */
   private settleDrafts(environmentId: string): void {
     this.listedOk.add(environmentId);
     let changed = false;
-    for (const entry of this.entries.values()) {
+    for (const [id, entry] of this.entries) {
+      if (entry.provisional) {
+        if (entry.session.environmentId === environmentId && entry.load.phase !== "gone") void this.resolveProvisional(id);
+        continue;
+      }
       if (entry.meta || entry.session.environmentId !== environmentId || entry.load.phase === "loaded") continue;
       this.stopTimers(entry);
       entry.load = { phase: "loaded", since: entry.load.since, attempt: 0 };
@@ -2134,23 +2192,26 @@ class SessionStore {
     this.bump();
   };
 
-  /** A draft just got created on the server: adopt its meta. A session the
-   *  UI created whole (a plan handoff) counts as added, once, whether the
-   *  create response or the server's push lands first. */
-  adopt(meta: SessionMeta): void {
+  /** A thread just made on the server: adopt its meta. A session the UI
+   *  created whole (a plan handoff, a started thread) counts as added, once,
+   *  whether the create response or the server's push lands first.
+   *  `created`: this window made it empty (a draft's first send, an empty
+   *  chat), so its rows arrive as pushes from the start. Any other thread
+   *  may hold rows already (the host stored its brief before answering):
+   *  it loads as any thread does, and those rows fold in. */
+  adopt(meta: SessionMeta, options: { created?: boolean } = {}): void {
     const fresh = !this.entries.has(meta.id);
     this.mergeMeta(meta);
     const entry = this.entries.get(meta.id);
-    if (entry) {
-      // Created here: its rows arrive as pushes from the start.
+    if (entry && options.created) {
       if (entry.load.phase !== "loaded" || !entry.loaded) this.finishLoad(entry);
       const subs = this.subsOf(entry);
       if (subs && !subs.isLive(meta.id)) {
         subs.add(meta.id, this.handlersFor(entry));
         void subs.subscribe(meta.id).catch(() => undefined);
       }
-    } else {
-      this.mergeMeta(meta);
+    } else if (entry) {
+      void this.ensureLoaded(meta.id, "adopt").catch(() => undefined);
     }
     this.bump();
     this.bumpMeta();

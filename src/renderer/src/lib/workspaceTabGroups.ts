@@ -142,11 +142,16 @@ export function planWorkspaceTabClose({
   sessions,
   closingTabId,
   scope,
+  fallbackKey,
 }: {
   tabs: WorkspaceTab[];
   sessions: Session[];
   closingTabId: string;
   scope: WorkspaceTabCloseScope;
+  /** The project a tab whose sessions name none belongs to (the window's).
+   *  Given, project scope never falls to another project's tab: with no
+   *  key at all it keeps the tab, and the caller replaces it. */
+  fallbackKey?: string | null;
 }): WorkspaceTabClosePlan {
   const closingIndex = tabs.findIndex((tab) => tab.id === closingTabId);
   if (closingIndex < 0) return { action: "keep" };
@@ -159,8 +164,9 @@ export function planWorkspaceTabClose({
     return { action: "close", nextActiveTabId: globalTarget?.id };
   }
 
-  const closingKey = tabProjectKey(tabs[closingIndex], sessions);
+  const closingKey = tabProjectKey(tabs[closingIndex], sessions) ?? fallbackKey;
   if (!closingKey) {
+    if (fallbackKey !== undefined) return { action: "keep" };
     return { action: "close", nextActiveTabId: globalTarget?.id };
   }
 
@@ -179,81 +185,6 @@ export function planWorkspaceTabClose({
   // Deck mode is one project at a time. Closing the last tab there must not
   // jump to another project's tab; the caller replaces it with a fresh draft.
   return { action: "keep" };
-}
-
-/**
- * Remove a deleted conversation from open tabs. Deck / project scope stays on
- * this project: a same-project sibling is activated, otherwise the emptied tab
- * is replaced instead of jumping to another project's tab.
- */
-export function applyDeletedSessionToWorkspace({
-  tabs,
-  sessions,
-  sessionId,
-  activeTabId,
-  scope,
-  createReplacement,
-}: {
-  tabs: WorkspaceTab[];
-  sessions: Session[];
-  sessionId: string;
-  activeTabId: string;
-  scope: WorkspaceTabCloseScope;
-  createReplacement: (seed: Session | undefined) => Session;
-}): {
-  tabs: WorkspaceTab[];
-  sessions: Session[];
-  activeTabId: string;
-} {
-  const seed = sessions.find((session) => session.id === sessionId);
-  let nextTabs = [...tabs];
-  let nextSessions = sessions.filter((session) => session.id !== sessionId);
-  let nextActiveTabId = activeTabId;
-
-  const affectedTabs = tabs.filter((tab) =>
-    leafIds(tab.layout).includes(sessionId),
-  );
-
-  for (const tab of affectedTabs) {
-    const tabIndex = nextTabs.findIndex((entry) => entry.id === tab.id);
-    if (tabIndex < 0) continue;
-
-    const nextTab = closeLeaf(tab, sessionId);
-    if (nextTab) {
-      nextTabs[tabIndex] = nextTab;
-      continue;
-    }
-
-    const closePlan = planWorkspaceTabClose({
-      tabs: nextTabs,
-      sessions,
-      closingTabId: tab.id,
-      scope,
-    });
-    if (closePlan.action === "close") {
-      nextTabs = nextTabs.filter((entry) => entry.id !== tab.id);
-      if (tab.id === nextActiveTabId && closePlan.nextActiveTabId) {
-        nextActiveTabId = closePlan.nextActiveTabId;
-      }
-      continue;
-    }
-
-    const replacement = createReplacement(seed);
-    nextSessions = [...nextSessions, replacement];
-    nextTabs[tabIndex] = {
-      ...tab,
-      layout: leaf(replacement.id),
-      focusedId: replacement.id,
-      editorPanes: [],
-      terminalPanes: [],
-    };
-  }
-
-  return {
-    tabs: nextTabs,
-    sessions: nextSessions,
-    activeTabId: nextActiveTabId,
-  };
 }
 
 /**

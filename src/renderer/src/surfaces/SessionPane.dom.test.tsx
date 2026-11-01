@@ -3,11 +3,16 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoadState, Session } from "../lib/session";
 
-const { retryLoad, block } = vi.hoisted(() => ({
+const { retryLoad, block, store } = vi.hoisted(() => ({
   retryLoad: vi.fn(),
   block: { degraded: null as unknown, name: "box", text: null as string | null },
+  /** What the store says of the thread: a draft (no meta), or one its host holds. */
+  store: { draft: true },
 }));
-vi.mock("../lib/tcserver/store", () => ({ sessionStore: { retryLoad, isDraft: () => false }, useQueue: () => [] }));
+vi.mock("../lib/tcserver/store", () => ({
+  sessionStore: { retryLoad, isDraft: () => store.draft, isProvisional: () => false },
+  useQueue: () => [],
+}));
 vi.mock("../chrome/ConnectionLine", () => ({ useEnvironmentBlock: () => block, ConnectionLine: () => null }));
 vi.mock("../chrome/Composer", () => ({ Composer: () => <div data-testid="composer" /> }));
 vi.mock("../chrome/MacBridgeCards", () => ({ MacBridgeThreadCards: () => null }));
@@ -95,6 +100,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
   block.degraded = null;
+  store.draft = true;
 });
 afterEach(() => {
   cleanup();
@@ -127,6 +133,22 @@ describe("the pane while a transcript loads", () => {
   it("loaded and the host says it has no rows: the empty state", () => {
     pane(session({ phase: "loaded", since: NOW, attempt: 0, empty: true }));
     expect(screen.getByTestId("empty-session")).toBeTruthy();
+  });
+
+  it("a titled thread its host holds, loaded with no rows, is never the new-chat screen: one line and the composer", () => {
+    store.draft = false;
+    pane(session({ phase: "loaded", since: NOW, attempt: 0, empty: true }));
+    expect(screen.queryByTestId("empty-session")).toBeNull();
+    expect(document.querySelector("[data-no-rows]")?.textContent).toBe("No messages yet");
+    expect(screen.getByTestId("composer")).toBeTruthy();
+    expect(skeleton()).toBeNull();
+  });
+
+  it("with the host's failure on the meta, the line is its summary", () => {
+    store.draft = false;
+    const failed = { ...session({ phase: "loaded", since: NOW, attempt: 0, empty: true }), failure: { kind: "network", summary: "The provider did not answer", cause: "", account: null } } as Session;
+    pane(failed);
+    expect(document.querySelector("[data-no-rows]")?.textContent).toBe("The provider did not answer");
   });
 
   it("an empty thread pinned as master opens its own view (the board), loaded or not", () => {

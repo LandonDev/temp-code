@@ -173,7 +173,7 @@ async function createChat(): Promise<string | null> {
   // The push opens the thread behind the user's work; the drop is an
   // explicit ask, so it comes forward too.
   const meta = { ...wire, environmentId: registry.primary().environmentId }
-  sessionStore.adopt(meta)
+  sessionStore.adopt(meta, { created: true })
   sessionStore.requestOpen(meta.id)
   return meta.id
 }

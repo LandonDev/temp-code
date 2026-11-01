@@ -264,7 +264,16 @@ event rows in 13–17 ms (box CPU).
   first load that ends with no page for its transcript fails into a retry
   ("no answer yet"), and the pane shows EmptySession only when the host
   answered with no rows (`load.empty`, set at `finishLoad` from the
-  cursor); rows that fold to no blocks open the thread's own view.
+  cursor); rows that fold to no blocks open the thread's own view. Even
+  then only a draft gets EmptySession: a thread its host holds with no
+  rows shows the composer under one muted line (`NoRowsLine`), an id the
+  host does not show is refused (`unknown session`) and reads `gone`, and
+  a provisional entry (a tab opened or restored before its meta came) is
+  settled by its host's archived sets, never as a draft. A thread adopted
+  after a start (`startThread`, plan.implement) loads like any open, so
+  the brief its host stored before answering is in its first page; only a
+  thread this window created empty (`adopt(meta, { created: true })`)
+  waits on pushes alone.
 - **Hover warms.** A tab or rail row hovered for 150 ms fetches its
   transcript (lib/hoverPrefetch.ts), which with a round trip of 200 ms is
   usually most of the way there by the click.

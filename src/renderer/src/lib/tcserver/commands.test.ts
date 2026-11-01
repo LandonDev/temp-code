@@ -20,6 +20,7 @@ import {
   queueUpdate,
   readFile,
   reasoningOf,
+  remove,
   resumeAllPaused,
   retype,
   send,
@@ -28,6 +29,16 @@ import {
   toServerAttachments,
 } from "./commands";
 import { sessionStore, type Link } from "./store";
+
+/** Whether this Mac bridges threads made on the host (lib/macBridge.ts). */
+const bridge = vi.hoisted(() => ({ on: false, set: [] as string[] }));
+vi.mock("../macBridge", async (original) => ({
+  ...(await original<typeof import("../macBridge")>()),
+  bridgesNewThreads: async () => bridge.on,
+  bridgeNewThread: async (_environmentId: string, sessionId: string) => {
+    if (bridge.on) bridge.set.push(sessionId);
+  },
+}));
 import type { ServerPush, SessionMeta } from "./types";
 
 function meta(over: Partial<SessionMeta>): SessionMeta {
@@ -97,6 +108,8 @@ class FakeLink implements Link {
 
 let link: FakeLink;
 beforeEach(async () => {
+  bridge.on = false;
+  bridge.set = [];
   link = new FakeLink();
   vi.spyOn(registry, "linkOf").mockImplementation((environmentId) => {
     expect(environmentId).toBe("local");
@@ -195,18 +208,56 @@ describe("thread commands", () => {
     expect(await readFile("local", "/etc/passwd")).toBeNull();
   });
 
-  it("startThread creates, adopts, sends the brief, and announces the session once", async () => {
+  it("startThread creates the thread with its brief in one call, adopts it, and announces the session once", async () => {
     const added: string[] = [];
     sessionStore.onSessionAdded((m) => added.push(m.id));
     const meta = await startThread(
       { environmentId: "local", threadType: "implementation", provider: "claude", model: "claude-sonnet-5-5", planPath: "/repo/.temp-code/plan.md", title: "Build it", projectId: "p1" },
       "Implement the plan.",
     );
-    expect(link.of("session.create")[0]).toMatchObject({ threadType: "implementation", agentType: "implementer", planPath: "/repo/.temp-code/plan.md", title: "Build it" });
-    expect(link.of("session.send")[0]).toMatchObject({ sessionId: meta.id, text: "Implement the plan." });
+    expect(link.of("session.create")[0]).toMatchObject({ threadType: "implementation", agentType: "implementer", planPath: "/repo/.temp-code/plan.md", title: "Build it", firstMessage: "Implement the plan." });
+    expect(link.of("session.send")).toEqual([]);
     link.push({ push: "session", session: wireMeta({ ...meta, status: "running" }) });
     expect(added).toEqual([meta.id]);
     expect(sessionStore.isDraft(meta.id)).toBe(false);
+  });
+});
+
+describe("startThread on a host this Mac bridges", () => {
+  it("creates, bridges, then sends, so the first turn boots with the Mac tools", async () => {
+    bridge.on = true;
+    const meta = await startThread({ environmentId: "local", threadType: "chat", provider: "claude", title: "On the box" }, "hello");
+    expect(link.of("session.create")[0]).not.toHaveProperty("firstMessage");
+    expect(bridge.set).toEqual([meta.id]);
+    expect(link.of("session.send")[0]).toMatchObject({ sessionId: meta.id, text: "hello" });
+  });
+
+  it("a brief that does not land removes the thread and the error is the caller's", async () => {
+    bridge.on = true;
+    const request = link.request.bind(link);
+    link.request = (<T,>(method: string, params?: unknown) =>
+      method === "session.send" ? Promise.reject(new Error("refused: paused")) : request<T>(method, params)) as typeof link.request;
+    await expect(startThread({ environmentId: "local", threadType: "chat", provider: "claude", title: "Doomed" }, "hello")).rejects.toThrow("refused: paused");
+    expect(link.of("session.delete")).toEqual([{ sessionId: "minted" }]);
+  });
+});
+
+describe("remove", () => {
+  it("a draft leaves locally; a provisional entry is deleted on its host and leaves", async () => {
+    const draft = newSession("local", "claude", "/repo");
+    sessionStore.mutate([draft]);
+    await remove(draft.id);
+    expect(link.of("session.delete")).toEqual([]);
+    sessionStore.provisional("elsewhere", "local");
+    await remove("elsewhere");
+    expect(link.of("session.delete")).toEqual([{ sessionId: "elsewhere" }]);
+    expect(sessionStore.get("elsewhere")).toBeUndefined();
+  });
+
+  it("a listed thread is deleted on its host", async () => {
+    link.push({ push: "session", session: wireMeta({ id: "s1" }) });
+    await remove("s1");
+    expect(link.of("session.delete")).toEqual([{ sessionId: "s1" }]);
   });
 });
 

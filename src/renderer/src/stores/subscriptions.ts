@@ -16,6 +16,7 @@ import { looksLikeProject } from "../lib/recents";
 import { replaceProjectHistory } from "../lib/sessionHistory";
 import { markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
 import {
+  isPersistedThread,
   listSessionsByProject,
   saveWorkspaceSnapshot,
   subscribeSessionHistory,
@@ -333,6 +334,7 @@ export function installAutosave(): Teardown {
         workspaceTabsStore.getState().activeTabId,
         projectStore.getState().projectCwd,
         terminalsStore.getState().docks,
+        isPersistedThread,
       ),
     key: workspaceSnapshotKey,
     // A window on its way out has persisted already; a late auto-save

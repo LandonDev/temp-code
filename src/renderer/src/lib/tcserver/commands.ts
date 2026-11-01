@@ -1,5 +1,5 @@
 import { nativeModelId } from "../models";
-import { bridgeNewThread } from "../macBridge";
+import { bridgeNewThread, bridgesNewThreads } from "../macBridge";
 import type { Attachment, Block, RuntimeMode, Session } from "../session";
 import { policyForMode } from "./access";
 import { needsUpload, uploadAttachment } from "../attachmentUpload";
@@ -140,7 +140,7 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
         : (workspaceByPath(workspaceStore.workspaces, session.cwd)?.id ?? null)),
   });
   const meta: SessionMeta = { ...wire, environmentId: link.environmentId };
-  sessionStore.adopt(meta);
+  sessionStore.adopt(meta, { created: true });
   // A thread made on another host gets this Mac's bridge when this Mac's policy for that host allows it (lib/macBridge.ts).
   await bridgeNewThread(link.environmentId, session.id);
   if (session.modelSettings.ultrafast === "true") {
@@ -594,20 +594,29 @@ export type StartThreadParams = {
   queue?: boolean;
 };
 
-/** Create a whole thread server-side and send its kickoff brief. The
- *  `session` push (or the adopt here, whichever lands first) raises
- *  `onSessionAdded`, and the UI gives it a tab behind the user's work. */
+/** Create a whole thread server-side with its kickoff brief as its first
+ *  row, in one step (`firstMessage`): the thread and its brief, or neither.
+ *  A thread this Mac bridges takes the bridge before its brief, so its first
+ *  turn boots with the Mac tools: created, bridged, then sent, and removed
+ *  when the brief does not land. The `session` push (or the adopt here,
+ *  whichever lands first) raises `onSessionAdded`, and the UI gives it a tab
+ *  behind the user's work. */
 export async function startThread(params: StartThreadParams, brief: string): Promise<SessionMeta> {
   const { environmentId, ...create } = params;
   const link = registry.linkOf(environmentId);
-  const wire = await link.request<WireSessionMeta>("session.create", {
-    ...create,
-    agentType: agentTypeFor(params.threadType),
-  });
+  const spec = { ...create, agentType: agentTypeFor(params.threadType) };
+  const bridged = await bridgesNewThreads(environmentId);
+  const wire = await link.request<WireSessionMeta>("session.create", bridged ? spec : { ...spec, firstMessage: brief });
   const meta: SessionMeta = { ...wire, environmentId };
   sessionStore.adopt(meta);
+  if (!bridged) return meta;
   await bridgeNewThread(environmentId, meta.id);
-  await link.request("session.send", { sessionId: meta.id, text: brief }, UI);
+  try {
+    await link.request("session.send", { sessionId: meta.id, text: brief }, UI);
+  } catch (error) {
+    await link.request("session.delete", { sessionId: meta.id }).catch(() => undefined);
+    throw error;
+  }
   return meta;
 }
 
@@ -672,6 +681,13 @@ export async function pin(sessionId: string, pinned: boolean): Promise<void> {
 
 export async function remove(sessionId: string): Promise<void> {
   const link = linkFor(sessionId);
+  // A provisional entry is a thread that exists on its host, never a draft:
+  // the delete goes there, and the entry leaves here whatever the host knew.
+  if (sessionStore.isProvisional(sessionId)) {
+    await link.request("session.delete", { sessionId });
+    sessionStore.forgetProvisional(sessionId);
+    return;
+  }
   if (sessionStore.isDraft(sessionId)) {
     sessionStore.mutate((prev) => prev.filter((s) => s.id !== sessionId));
     return;

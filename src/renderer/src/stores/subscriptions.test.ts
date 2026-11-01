@@ -43,6 +43,7 @@ import { rebaseToWorkspace } from "../lib/projectContext";
 import { copiesOf } from "../lib/projectHostChoice";
 import { filterTabsForProjectId, workspaceTabCwd } from "../lib/workspaceTabGroups";
 import { looksLikeProject, normalizeProjectPath } from "../lib/recents";
+import { planThreadDelete } from "../lib/threadDelete";
 
 vi.mock("../lib/harness", () => ({
   forgetHarnessSession: vi.fn(() => Promise.resolve()),
@@ -550,6 +551,41 @@ describe("installActiveSessionSync", () => {
     } finally {
       vi.mocked(saveSelectedProject).mockImplementation(() => {});
     }
+  });
+
+  it("the activation a Delete makes keeps the window's folder and project, even after the removal landed first", async () => {
+    // Another project's tab sits right before the deleted thread's.
+    const before = {
+      tabs: [tab("b"), tab("a1"), tab("a2")],
+      sessions: [
+        session("s-b", { projectId: "p2", cwd: "/other" }),
+        session("s-a1", { projectId: "p1", cwd: "/repo" }),
+        session("s-a2", { projectId: "p1", cwd: "/repo" }),
+      ],
+      activeTabId: "a1",
+    };
+    setTabs(before.tabs, "a1");
+    sessionStore.mutate(before.sessions);
+    projectStore.setState(initialProjectState({ projectCwd: "/repo", selectedProjectId: "p1" }), true);
+    teardown = installActiveSessionSync();
+    // The host's session-removed push lands before the delete's answer.
+    sessionStore.mutate((prev) => prev.filter((s) => s.id !== "s-a1"));
+    const plan = planThreadDelete({
+      ...before,
+      sessionId: "s-a1",
+      projectKey: "p1",
+      neighbourId: "s-a2",
+      createReplacement: () => session("fresh", { projectId: "p1" }),
+    });
+    workspace.setTabs(plan.tabs);
+    workspaceActions.activateTab(plan.activeTabId);
+    const t = workspaceTabsStore.getState().tabs.find((entry) => entry.id === plan.activeTabId)!;
+    const cwd = workspaceTabCwd(t, sessionStore.getSnapshot());
+    if (cwd && looksLikeProject(cwd)) project.followWorkspace(normalizeProjectPath(cwd));
+    await microtasks();
+    expect(plan.activeTabId).toBe("a2");
+    expect(projectStore.getState().projectCwd).toBe("/repo");
+    expect(projectStore.getState().selectedProjectId).toBe("p1");
   });
 
   it("drops a selection whose project was archived", async () => {

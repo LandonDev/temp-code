@@ -15,8 +15,10 @@ import type { Session } from "./session";
 import { restoreSessionCheckout } from "./fs";
 import {
   getSession,
+  isPersistedThread,
   loadSession,
   peekSession,
+  restoreProvisional,
   listSessionsByProject,
   loadWorkspaceSnapshot,
   saveWorkspaceSnapshot,
@@ -25,6 +27,7 @@ import {
 import {
   collectWorkspaceSnapshot,
   hydrateWorkspaceSnapshot,
+  isPersistedStub,
   parseWorkspaceSnapshot,
 } from "./workspaceSnapshot";
 import { loadWindowTransfer } from "./windowTransferBootstrap";
@@ -231,6 +234,13 @@ async function loadResumedWorkspaceOnce(): Promise<ResumedWorkspace | null> {
       if (record) loaded.set(id, record);
     }),
   );
+  // A tab whose thread existed when it was saved and that no host answered
+  // for yet is that thread, provisional, never a new chat under its title.
+  for (const stub of snapshot.sessions) {
+    if (loaded.has(stub.id) || !isPersistedStub(stub)) continue;
+    const shown = restoreProvisional(stub);
+    if (shown) loaded.set(stub.id, shown);
+  }
 
   let workspace = hydrateWorkspaceSnapshot(snapshot, loaded);
   if (workspace) {
@@ -283,6 +293,7 @@ export async function persistQuitState(
       activeTabId,
       projectCwd,
       projectTerminals,
+      isPersistedThread,
     ),
   ).catch(() => undefined);
 }

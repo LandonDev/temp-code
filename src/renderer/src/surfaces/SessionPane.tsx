@@ -23,6 +23,7 @@ import { tooltipChunk } from "../components/ui/tooltip";
 import { preloadWhenIdle } from "../lib/lazyChunk";
 import { Button } from "../components/ui/button";
 import { EmptySession } from "./EmptySession";
+import { NoRowsLine } from "./NoRowsLine";
 import { PaneHeader } from "./paneChrome";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
 import { ThreadView } from "./threads/ThreadView";
@@ -93,9 +94,14 @@ export const SessionPane = memo(function SessionPane({
   // only by reports) still open the thread's own view.
   // A master always opens on its board: the board is its own answer, and the
   // chat beside it fills in when its rows land.
+  // Only a draft is a new chat: a thread its host holds with no rows (a
+  // start whose brief never landed) keeps its own pane and says so.
   const loadPhase = session.load?.phase ?? "loaded";
   const master = isMasterThread(session);
-  const isEmpty = !master && session.blocks.length === 0 && loadPhase === "loaded" && session.load?.empty !== false;
+  const draft = sessionStore.isDraft(session.id) && !sessionStore.isProvisional(session.id);
+  const noRows = !master && session.blocks.length === 0 && loadPhase === "loaded" && session.load?.empty !== false;
+  const isEmpty = noRows && draft;
+  const hostEmpty = noRows && !draft;
   const waiting = !master && session.blocks.length === 0 && loadPhase !== "loaded";
   // First rows later than half a second after the pane opened: one stall
   // line. A draft is not timed: its rows arrive when the person sends.
@@ -195,6 +201,13 @@ export const SessionPane = memo(function SessionPane({
           {dockComposer ? (
             <div className="mx-auto w-full max-w-4xl shrink-0">{composerOf()}</div>
           ) : null}
+        </>
+      ) : hostEmpty ? (
+        <>
+          <div className="relative flex min-h-0 flex-1 flex-col" data-transcript-empty>
+            <NoRowsLine summary={session.failure?.summary} />
+          </div>
+          <div className="mx-auto w-full max-w-4xl shrink-0">{composerOf()}</div>
         </>
       ) : waiting ? (
         <>

@@ -1,10 +1,11 @@
 import { invokeOn, windowSlot } from "./native";
-import { registry } from "./connection";
+import { LOCAL_ENVIRONMENT_ID, registry } from "./connection";
 import type { HarnessId, RuntimeMode, Session } from "./session";
 import { normalizeProjectPath, sameProjectPath } from "./recents";
 import * as commands from "./tcserver/commands";
 import { sessionFromMeta, sessionStore } from "./tcserver/store";
 import type { SessionMeta, ThreadType } from "./tcserver/types";
+import type { WorkspaceSessionStub } from "./workspaceSnapshot";
 
 /**
  * Session history over the server's session list. The server owns every
@@ -204,6 +205,30 @@ export async function searchSessions(options: {
 
 /** The session as the server's meta describes it, transcript not fetched
  *  (blocks empty until `sessionStore.ensureLoaded`). Drafts come back whole. */
+/** A thread that exists on its host (a meta, or a provisional entry still
+ *  asking): what a saved layout stamps `persisted`, never an unsent draft. */
+export function isPersistedThread(sessionId: string): boolean {
+  return !sessionStore.isDraft(sessionId) || sessionStore.isProvisional(sessionId);
+}
+
+/**
+ * A saved tab for a thread that existed when the layout was saved and that
+ * no host answered for at launch (archived, moved, deleted, or its host not
+ * connected yet): a provisional entry with the stub's title and place, so
+ * the chip keeps its name and the window its project, resolved on its
+ * host's word (`resolveProvisional`): it loads, or reads gone. Never a draft.
+ */
+export function restoreProvisional(stub: WorkspaceSessionStub): Session | null {
+  sessionStore.provisional(stub.id, stub.environmentId ?? LOCAL_ENVIRONMENT_ID, {
+    cwd: stub.cwd,
+    projectId: stub.projectId ?? null,
+    workspaceId: stub.workspaceId ?? null,
+    title: stub.title,
+  });
+  void sessionStore.resolveProvisional(stub.id);
+  return sessionStore.get(stub.id) ?? null;
+}
+
 export async function peekSession(sessionId: string): Promise<Session | null> {
   await sessionStore.ready();
   if (!sessionStore.get(sessionId)) await sessionStore.ensureMeta(sessionId);
@@ -255,12 +280,11 @@ export async function openableSession(
       const named = options.hostId ? sessionStore.attachedEnvironmentFor(options.hostId) : undefined;
       const environmentId = named ?? sessionStore.environmentOf(sessionId) ?? sessionStore.environmentIds()[0] ?? "local";
       sessionStore.provisional(sessionId, environmentId, options.here);
+      // The host's word settles it: a meta loads, none reads gone once the
+      // owner has answered; a host still down keeps it loading.
       void asked.then(
-        (meta) => {
-          if (meta) void sessionStore.ensureLoaded(sessionId, "load").catch(() => undefined);
-          else sessionStore.markGone(sessionId);
-        },
-        () => sessionStore.markGone(sessionId),
+        () => sessionStore.resolveProvisional(sessionId),
+        () => sessionStore.resolveProvisional(sessionId),
       );
       return sessionStore.get(sessionId) ?? null;
     }

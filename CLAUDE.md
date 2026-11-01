@@ -1673,6 +1673,26 @@ proof and the sizing rules; the pieces, by name:
   a pane whose thread is gone shows "No longer on <host>" with Close tab
   and Open archived (`SessionGone`); the board under Search, Inbox, Notes,
   Accounts or Settings is parked (`.board-parked`), never display:none.
+  A provisional entry resolves on its host's word, never as a draft
+  (`resolveProvisional`: the archived sets, owner first; `gone` only once
+  the owner listed and answered; `settleDrafts` skips it), and a saved tab
+  whose thread existed (`persisted` on its layout stub, or a titled stub
+  saved before the stamp, `isPersistedStub`) that no host answered for at
+  launch restores as one (`restoreProvisional` in lib/sessionStore.ts)
+  carrying its title and place. The host refuses `session.events` for an
+  id it shows no row for (`unknown session: <id>`, wire.ts
+  `sessionEvents`), which the store reads as `gone` with the meta out of
+  the lists. The new-chat screen (`EmptySession`) is a draft's alone; a
+  thread its host holds with no rows shows the composer under one muted
+  line (`NoRowsLine`: the failure summary, else "No messages yet"). An
+  `adopt` loads like any open unless this window created the thread empty
+  (`{ created: true }`: a draft's first send, an appshot chat). Delete
+  keeps the window on its project (lib/threadDelete.ts `planThreadDelete`,
+  decided from the layout before the delete, since `session-removed`
+  lands ahead of the answer): the neighbour chip takes the thread on
+  screen's place (`deleteNeighbour`, Archive's rule without the outside
+  chip), else another tab of the project, else the project's empty
+  screen; a split loses only the pane.
 - `batch.board { masterId }` (read): the master board's one answer;
   "Master threads" above.
 - The gateway's byte path runs in a utility process ("Provider traffic"
@@ -2249,6 +2269,16 @@ threadBatch.test.ts), one `session.batch` per host.
   the title from the plan's `#` heading; `implementationId` on the plan and
   `planThreadId` on the build link them, a `plan-handoff` row lands on the
   plan, and `plans.archiveAfterStart` (default on) archives the plan thread.
+  The build, like every thread started with a first message (app_start_thread,
+  spawn_agent, a cross-host `thread.start`/`thread.spawn`, `session.create`
+  with `firstMessage`, which the renderer's `startThread` sends unless this
+  Mac bridges that host), starts through `SessionRegistry.startWith`: the
+  message is the thread's first row, flushed with the meta, or the thread
+  is removed (`session-removed`) and the error is the caller's; the link,
+  the handoff row and the archive wait for that row, and a failed
+  auto-start lands a `plan-build` notice on the plan ("The build did not
+  start: …"). A first message into a paused tree is stored as its row
+  before it waits. Proof `bun run script:e2e-titled-threads`.
   The thread that started the plan (`startedBy`, set by app_start_thread,
   else `parentId`) is woken with a `<subagent-report>` through
   `deliverAgentReport`; a person-started plan whose build waits for them is

@@ -199,7 +199,7 @@ describe("sessionFromMeta / applyMeta", () => {
     const draft = newSession("local", "claude", "/repo", undefined, undefined, undefined, { threadType: "planning" });
     sessionStore.mutate([draft]);
     expect(sessionStore.get(draft.id)?.threadType).toBe("planning");
-    sessionStore.adopt(meta({ id: draft.id, threadType: "planning", planPath: "/repo/.temp-code/plan-x.md" }));
+    sessionStore.adopt(meta({ id: draft.id, threadType: "planning", planPath: "/repo/.temp-code/plan-x.md" }), { created: true });
     expect(sessionStore.get(draft.id)?.planPath).toBe("/repo/.temp-code/plan-x.md");
   });
 
@@ -325,12 +325,25 @@ describe("sessionStore", () => {
     sessionStore.appendOptimisticUser(draft.id, "first");
     expect(sessionStore.get(draft.id)!.blocks[0].pending).toBe(true);
     expect(sessionStore.get(draft.id)!.busy).toBe(true);
-    sessionStore.adopt(meta({ id: draft.id, status: "running" }));
+    sessionStore.adopt(meta({ id: draft.id, status: "running" }), { created: true });
     expect(sessionStore.isDraft(draft.id)).toBe(false);
     expect(link.method("session.subscribe")).toBe(1);
+    expect(link.method("session.events")).toBe(0);
     link.push({ push: "event", row: row(draft.id, 1, { type: "user-text", text: "first" }) });
     expect(sessionStore.get(draft.id)!.blocks).toHaveLength(1);
     expect(sessionStore.get(draft.id)!.blocks[0].pending).toBeUndefined();
+  });
+
+  it("an adopted thread whose host stored its brief before answering loads, and the brief folds in", async () => {
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    // plan.implement stored the build's first row before it answered.
+    link.events.set("build", [row("build", 1, { type: "user-text", text: "Implement the plan." })]);
+    sessionStore.adopt(meta({ id: "build", title: "Ship it", status: "queued" }));
+    await vi.waitFor(() => expect(sessionStore.get("build")?.load.phase).toBe("loaded"));
+    expect(link.method("session.events")).toBe(1);
+    expect(sessionStore.get("build")!.blocks.map((b) => b.text)).toEqual(["Implement the plan."]);
+    expect(sessionStore.get("build")!.load.empty).toBe(false);
   });
 
   it("waitIdle resolves when the turn settles", async () => {
@@ -845,6 +858,73 @@ describe("a thread the live lists lack", () => {
     expect(down.calls).toHaveLength(0);
   });
 
+  it("a provisional entry its host lists without is asked after, never settled as a draft: the archived meta fills it and it loads", async () => {
+    const emptyLoads: number[] = [];
+    // A tab restored before the host listed: an archived plan kept open.
+    sessionStore.provisional("old", "local", { cwd: "/repo", projectId: "p1", workspaceId: null });
+    sessionStore.subscribe(() => {
+      const shown = sessionStore.get("old");
+      if (shown?.load?.phase === "loaded" && shown.blocks.length === 0) emptyLoads.push(Date.now());
+    });
+    link.archivedMetas = [wireMeta({ id: "old", title: "Plan: ship", archived: true })];
+    link.events.set("old", [row("old", 1, { type: "user-text", text: "plan it" })]);
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await vi.waitFor(() => expect(sessionStore.get("old")?.load?.phase).toBe("loaded"));
+    expect(sessionStore.get("old")?.title).toBe("Plan: ship");
+    expect(sessionStore.get("old")?.blocks.map((b) => b.text)).toEqual(["plan it"]);
+    expect(sessionStore.get("old")?.load?.empty).toBe(false);
+    // It was never a loaded thread with no rows on the way: no new-chat screen.
+    expect(emptyLoads).toEqual([]);
+    expect(sessionStore.isDraft("old")).toBe(false);
+  });
+
+  it("a provisional entry no host knows reads gone once its host listed and answered its archived set", async () => {
+    sessionStore.provisional("ghost", "local");
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await vi.waitFor(() => expect(sessionStore.get("ghost")?.load?.phase).toBe("gone"));
+    expect(archivedAsks(link)).toHaveLength(1);
+  });
+
+  it("a provisional entry that moved fills from the host that has it now", async () => {
+    const box = new FakeLink();
+    box.environmentId = "box";
+    box.archivedMetas = [wireMeta({ id: "moved", title: "Moved", archived: true })];
+    sessionStore.provisional("moved", "local");
+    sessionStore.attach(link);
+    sessionStore.attach(box);
+    await sessionStore.ready();
+    await vi.waitFor(() => expect(sessionStore.metaOf("moved")?.environmentId).toBe("box"));
+    expect(sessionStore.get("moved")?.title).toBe("Moved");
+  });
+
+  it("a provisional entry whose host is down keeps loading, reads slow, and resolves when the host lists", async () => {
+    vi.useFakeTimers();
+    try {
+      const box = new FakeLink();
+      box.environmentId = "box";
+      box.connected = false;
+      sessionStore.provisional("far", "box");
+      sessionStore.attach(link);
+      sessionStore.attach(box);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(sessionStore.get("far")?.load?.phase).toBe("loading");
+      await vi.advanceTimersByTimeAsync(8_000);
+      expect(sessionStore.get("far")?.load?.phase).toBe("slow");
+      expect(sessionStore.isProvisional("far")).toBe(true);
+      box.connected = true;
+      box.archivedMetas = [wireMeta({ id: "far", title: "Far", archived: true })];
+      box.events.set("far", [row("far", 1, { type: "user-text", text: "go" })]);
+      box.reopen();
+      await vi.advanceTimersByTimeAsync(50);
+      expect(sessionStore.get("far")?.load?.phase).toBe("loaded");
+      expect(sessionStore.get("far")?.blocks.map((b) => b.text)).toEqual(["go"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a provisional entry fills on the meta and reads gone when nobody knows it", async () => {
     sessionStore.attach(link);
     await sessionStore.ready();
@@ -1186,6 +1266,25 @@ describe("the load phase", () => {
     expect(phase()).toBe("loaded");
   });
 
+  it("the host's unknown session refusal reads gone: the meta leaves the lists, the entry stays, nothing retries", async () => {
+    vi.useFakeTimers();
+    link.metas = [wireMeta({ id: "s1", title: "Left over" })];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    link.eventErrors = [new Error("unknown session: s1")];
+    await sessionStore.ensureLoaded("s1").catch(() => undefined);
+    expect(sessionStore.get("s1")?.load?.phase).toBe("gone");
+    expect(sessionStore.get("s1")?.title).toBe("Left over");
+    expect(sessionStore.metaOf("s1")).toBeNull();
+    expect(sessionStore.metas().map((m) => m.id)).not.toContain("s1");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(link.method("session.events")).toBe(1);
+    // A meta that comes back (the thread moved home again) fills it.
+    link.push({ push: "session", session: wireMeta({ id: "s1", title: "Back" }) });
+    expect(sessionStore.metaOf("s1")?.title).toBe("Back");
+    expect(sessionStore.get("s1")?.load?.phase).toBe("loading");
+  });
+
   it("a failed first load says why and retries by itself after 1, 2, 4 s, on the same socket", async () => {
     vi.useFakeTimers();
     link.metas = [wireMeta()];
@@ -1247,9 +1346,9 @@ describe("the load phase", () => {
     link.metas = [wireMeta()];
     sessionStore.attach(link);
     await sessionStore.ready();
-    link.eventErrors = [new Error("unknown session")];
+    link.eventErrors = [new Error("forbidden: read only")];
     await sessionStore.ensureLoaded("s1").catch(() => undefined);
-    expect(sessionStore.get("s1")?.load).toMatchObject({ phase: "failed", attempt: 1, error: "unknown session" });
+    expect(sessionStore.get("s1")?.load).toMatchObject({ phase: "failed", attempt: 1, error: "forbidden: read only" });
     expect(sessionStore.get("s1")?.load?.retryAt).toBeUndefined();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(link.method("session.events")).toBe(1);

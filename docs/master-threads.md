@@ -115,7 +115,11 @@ counts it, docs/box.md "A master's batch across hosts"), and in
 `SessionRegistry.create` whenever `startedBy` names a thread and the
 caller gave no `masterId`, which is what `session.create` from a thread
 and the plan flow's auto-started build go through (planFlow.ts also
-passes the plan's `masterId`, `after` and `startedBy` explicitly). From
+passes the plan's `masterId`, `after` and `startedBy` explicitly). Every
+one of these starts with its first message in the same step
+(`SessionRegistry.startWith`, which calls `create`): the brief is the
+thread's first row, or the thread is removed and the caller hears why, so
+the board never holds a titled child with no rows. From
 the board, "+ Thread" opens the add sheet (type, every one with Chat
 first, model, effort, context, host, after, brief) and passes `masterId` and `startedBy` = the master
 itself, on whichever linked host was picked. Why the starter and not
