@@ -14,7 +14,9 @@ import { SecondOpinionCard } from "../../chrome/SecondOpinionCard";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { NoteMiniCard } from "../../chrome/NoteMiniCard";
 import { sendOffset, sendOrigin } from "../../lib/sendOrigin";
-import { HARNESS_TITLE, type Block, type SecondOpinionMeta } from "../../lib/session";
+import { HARNESS_TITLE, type Block, type SecondOpinionMeta, type SteerStamp } from "../../lib/session";
+import { steerTip, steerWord } from "../../lib/steerWords";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { CommandChip } from "../ToolChips";
 import { commandParts, useKnownCommands, type CommandPart } from "../toolMarks";
 import { SelectSessionContext } from "../AgentMarkdown";
@@ -168,6 +170,37 @@ export function UserMessageBlock({
           </Button>
         ) : null}
       </div>
+      {block.steer ? <SteerLine stamp={block.steer} /> : null}
+    </div>
+  );
+}
+
+/**
+ * Where a steer stands, one 12px word under its bubble at the bubble's
+ * right edge, the time in its tooltip. The line keeps one height through
+ * every word; a word that changes while it is on screen fades in, and one
+ * it mounts with does not (a reload never replays it).
+ */
+export function SteerLine({ stamp }: { stamp: SteerStamp }) {
+  const word = steerWord(stamp);
+  const mounted = useRef<string | null>(null);
+  const changed = mounted.current !== null && mounted.current !== word;
+  mounted.current = word;
+  return (
+    <div data-steer={stamp.state} className="mt-1 flex h-4 justify-end">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span
+              key={word}
+              className={`text-xs leading-4 ${stamp.state === "failed" ? "text-destructive" : "text-muted-foreground"} ${changed ? "z-fade-quick" : ""}`}
+            />
+          }
+        >
+          {word}
+        </TooltipTrigger>
+        <TooltipContent>{steerTip(stamp)}</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
