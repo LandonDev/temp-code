@@ -405,7 +405,9 @@ buttons showing on hover or keyboard focus; a turn the person stopped
 closes on "Stopped" instead, with the same buttons. Every notice (a gate, a review, a compaction, a
 pass, a batch, a second opinion asked of another harness) is one muted
 line with a glyph, a lead and its details; only a held review and a failure
-are cards. A handoff keeps its bubble: its text is the person's brief. A
+are cards. A compaction is one line that counts from its start, takes
+its outcome in place and reads "Compaction stopped" when its turn ended
+without one. A handoff keeps its bubble: its text is the person's brief. A
 question card sets the sans face; mono is for code inside it. Every action
 row ends in a caret: it turns on a row that opens a body and stays still on
 one that opens its file.

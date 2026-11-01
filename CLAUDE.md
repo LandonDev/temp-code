@@ -673,7 +673,12 @@ routed to (aliax-core's `forward`). Two listeners:
   after a state word, `leadDetail` reading both and the old dot) and folds them onto the
   meta like `context` (`phaseLine`). A provider request open past 15 s with
   nothing finer known reads "Waiting for the provider, 25 s", re-pushed
-  every 5 s (`providerRequest`, `PROVIDER_WAIT_MS`). A first-output
+  every 5 s (`providerRequest`, `PROVIDER_WAIT_MS`). A compaction is
+  activity "Compacting context" (`COMPACTING_WORDS`) from its start to its
+  outcome or the turn's end, never replaced by the provider-wait line or a
+  mid-compaction `running`; the CLI re-sends its compacting status every
+  30 s and the claude driver emits one start (the stream state's
+  `compacting` flag). A first-output
   watchdog (`FIRST_OUTPUT_MS`, 60 s after a send with nothing back at all)
   settles the turn with the silence error and puts the process down; the
   registry re-queues the message once at the front, and a second silence

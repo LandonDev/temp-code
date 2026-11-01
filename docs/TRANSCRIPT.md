@@ -86,6 +86,11 @@ foreground, the same words the group line uses); the components only draw it.
   system text are lines; a held review (`ReviewCard.tsx`) and a failure
   (`FailureCard.tsx`) are the only cards. A plain notice keeps its kind on
   the block (`Block.notice`, from fold.ts), so `NoticeRow` draws it typed.
+- **A compaction** is one row (`surfaces/CompactionCard.tsx`): "Compacting
+  context" with its time counted from the compaction's start, never reset;
+  its outcome replaces that row in place (the fold's `compactionId`), even
+  after a message came in, and a turn that ended without one closes it as
+  "Compaction stopped" with its span.
 - **A question** from the model is the one question card
   (`components/ui/question-card.tsx`, keys taken only inside the card)
   through `surfaces/QuestionCard.tsx`: an Other field unless the question
