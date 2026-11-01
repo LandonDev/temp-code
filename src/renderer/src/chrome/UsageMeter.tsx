@@ -79,7 +79,7 @@ export function MeterRowView({ provider, meter, now, ...trigger }: MeterProps & 
   return (
     <Button
       variant="ghost"
-      className="h-9 w-full justify-start gap-2 rounded-md px-2.5 font-normal"
+      className="@container/railrow h-7 w-full justify-start gap-2 rounded-md px-3 font-normal"
       aria-label={rowLabel({ provider, meter, now })}
       data-provider={provider}
       {...trigger}
@@ -89,15 +89,15 @@ export function MeterRowView({ provider, meter, now, ...trigger }: MeterProps & 
         value={meter.share === null ? null : percent(meter.share)}
         fill={fillOf(meter.share)}
         aria-label={`${PROVIDER_NAME[provider]} usage left`}
-        className="w-20 shrink-0"
+        className="w-20 shrink-0 @max-[15rem]/railrow:w-14"
       />
       {meter.limited ? (
-        <span className="flex min-w-0 gap-2 text-[12px] text-warning tabular-nums">
+        <span data-meter-limited className="flex min-w-0 gap-2 text-[12px] whitespace-nowrap text-warning tabular-nums">
           <span>Limited</span>
           {future(meter.limited.until, now) ? <span>{untilShort(meter.limited.until, now)}</span> : null}
         </span>
       ) : future(meter.resetsAt, now) ? (
-        <span className="min-w-0 truncate text-[12px] text-muted-foreground tabular-nums">
+        <span className="min-w-0 truncate text-[12px] whitespace-nowrap text-muted-foreground tabular-nums">
           in {untilShort(meter.resetsAt, now)}
         </span>
       ) : null}

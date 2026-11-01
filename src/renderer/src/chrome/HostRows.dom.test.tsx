@@ -8,7 +8,7 @@ import type { SessionMeta } from "../lib/tcserver/types";
 import { resetThreadBatchForTests, useBatchPending } from "../lib/threadBatch";
 import { shell } from "../stores/shell";
 import { subscribeEnvironmentSwitch } from "../lib/environmentSwitch";
-import { HostsRow, useBootResumeToasts } from "./HostRows";
+import { HostsRow, useBootResumeToasts, toneOf } from "./HostRows";
 
 const toastMock = vi.hoisted(() => vi.fn());
 vi.mock("sonner", () => ({ toast: toastMock }));
@@ -105,8 +105,29 @@ describe("HostsRow", () => {
     expect(row.className).toContain("h-7");
     const dots = [...row.querySelectorAll("[data-host-status]")];
     expect(dots.map((d) => d.getAttribute("data-host-status"))).toEqual(["open", "offline"]);
-    expect(dots[1].className).toContain("bg-muted-foreground/40");
+    expect(dots[1].className).toContain("bg-muted-foreground/30");
     expect(screen.queryByRole("listitem")).toBeNull();
+  });
+
+  it("keeps a well host's dot quiet: muted, never green; only trouble is coloured", () => {
+    hosts([LOCAL, BOX], { local: status("open", "darwin"), env_box: status("unauthorized", "linux") });
+    render(<HostsRow onAddWorkspace={() => {}} />);
+    const row = screen.getByRole("button", { name: /^Hosts:/ });
+    const [open, refused] = [...row.querySelectorAll("[data-host-status]")];
+    expect(open.className).toMatch(/(^| )bg-muted-foreground( |$)/);
+    expect(row.innerHTML).not.toContain("bg-success");
+    expect(refused.className).toContain("bg-destructive");
+    expect(row.innerHTML).not.toContain("bg-danger");
+  });
+
+  it("toneOf: quiet when well, amber while it tries or is slow, red refused", () => {
+    expect(toneOf(status("open"), false)).toBe("bg-muted-foreground");
+    expect(toneOf({ ...status("open"), fresh: false }, false)).toBe("bg-muted-foreground/50");
+    expect(toneOf(status("open"), false, true)).toBe("bg-warning");
+    expect(toneOf(status("connecting"), true)).toBe("bg-warning");
+    expect(toneOf(status("reconnecting"), true)).toBe("bg-warning");
+    expect(toneOf(status("unauthorized"), true)).toBe("bg-destructive");
+    expect(toneOf(status("offline"), true)).toBe("bg-muted-foreground/30");
   });
 
   it("spins an amber spinner in the dot's place while a host reconnects, never a pulse", () => {

@@ -34,18 +34,19 @@ import { loadToast } from "./toastSync";
 import { Server } from "./icons";
 import { RailRow } from "./RailRow";
 
-/** A host's connection dot: green open, amber while it tries, red refused. */
+/** A host's connection dot: quiet while open, amber while it tries or is slow, red refused. */
 export function toneOf(status: EnvironmentStatus, degraded: boolean, slow = false): string {
-  if (status.transport === "open") return slow ? "bg-warning" : status.fresh ? "bg-success" : "bg-success/50";
-  if (!degraded) return "bg-success";
+  // A host that is well needs no colour: the dot is quiet, and only trouble tints it.
+  if (status.transport === "open") return slow ? "bg-warning" : status.fresh ? "bg-muted-foreground" : "bg-muted-foreground/50";
+  if (!degraded) return "bg-muted-foreground";
   switch (status.transport) {
     case "connecting":
     case "reconnecting":
       return "bg-warning";
     case "unauthorized":
-      return "bg-danger";
+      return "bg-destructive";
     default:
-      return "bg-muted-foreground/40";
+      return "bg-muted-foreground/30";
   }
 }
 
@@ -87,7 +88,7 @@ export function HostsRow({ onAddWorkspace }: { onAddWorkspace: (environmentId: s
                   key={environment.id}
                   data-host-status={status?.transport ?? "none"}
                   className={`size-1.5 rounded-full ${
-                    status ? toneOf(status, status.transport !== "open", slow.has(environment.id)) : "bg-muted-foreground/40"
+                    status ? toneOf(status, status.transport !== "open", slow.has(environment.id)) : "bg-muted-foreground/30"
                   }`}
                 />
               );

@@ -163,6 +163,18 @@ describe('UsageMeter', () => {
     expect(root.textContent).not.toMatch(/@x\.com|Main|Max 20x/)
   })
 
+  it('is a 28px railrow container whose bar narrows under 15rem, its text on one line', async () => {
+    const { root } = await mount()
+    const claude = row(root, 'claude')
+    expect(claude.className).toContain('h-7')
+    expect(claude.className).not.toContain('h-9')
+    expect(claude.className).toContain('@container/railrow')
+    const progress = claude.querySelector('[data-slot="progress"]')!
+    expect(progress.getAttribute('class')).toContain('w-20')
+    expect(progress.getAttribute('class')).toContain('@max-[15rem]/railrow:w-14')
+    expect((claude.querySelector('[data-slot="progress"] ~ span') as HTMLElement).className).toContain('whitespace-nowrap')
+  })
+
   it('renders nothing before any provider has accounts', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(now)
     probe = mountProbe(<UsageMeter />)
@@ -205,6 +217,9 @@ describe('UsageMeter', () => {
     })
     const limited = row(root, 'codex').querySelector('.text-warning') as HTMLElement
     expect(limited.textContent).toBe('Limited3m')
+    // One line at 200px: "Limited" and its time never wrap.
+    expect(limited.hasAttribute('data-meter-limited')).toBe(true)
+    expect(limited.className).toContain('whitespace-nowrap')
     expect(row(root, 'codex').getAttribute('aria-label')).toMatch(/limited for 3m$/)
     expect(bar(row(root, 'codex')).getAttribute('aria-valuenow')).not.toBeNull()
   })
