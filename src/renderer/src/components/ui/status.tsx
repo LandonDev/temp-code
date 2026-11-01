@@ -159,6 +159,10 @@ function Glyph({ state, still, className }: { state: ThreadState; still?: boolea
   }
 }
 
+/** A StatusMark inside a tooltip, which is inverted (background on
+ *  foreground): the word in the tooltip's ink, the detail its muted step. */
+export const STATUS_ON_TIP = "text-background **:data-[slot=status-detail]:text-background/70";
+
 /** A live state's glyph breathes once over `--dur-slow` when the state changes (the key remounts it); nothing loops. */
 const LIVE: ReadonlySet<ThreadState> = new Set(["working", "waiting", "watching"]);
 

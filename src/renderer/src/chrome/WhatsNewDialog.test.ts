@@ -40,8 +40,10 @@ describe("WhatsNewBody with feed notes", () => {
 });
 
 describe("whatsNewLine", () => {
-  it("sets the date two spaces after the release, never a dot", () => {
-    expect(whatsNewLine("1.0.305", "Oct 27")).toBe("Release 1.0.305  Oct 27");
-    expect(whatsNewLine("1.0.305", null)).toBe("Release 1.0.305");
+  it("draws the release and its date as two spans, never a run of spaces or a dot", () => {
+    const line = renderToStaticMarkup(createElement("div", null, whatsNewLine("1.0.305", "Oct 27")));
+    expect(line).toContain('<span class="font-medium text-foreground">Release 1.0.305</span><span data-release-date="true">Oct 27</span>');
+    expect(line).not.toMatch(/\S {2,}\S/);
+    expect(renderToStaticMarkup(createElement("div", null, whatsNewLine("1.0.305", null)))).not.toContain("data-release-date");
   });
 });

@@ -102,8 +102,8 @@ describe("the rail's Working section", () => {
   });
 
   it("a row's tooltip line is the word, what it is about and the elapsed time while it works", () => {
-    expect(workingTipLine(row("b", "working"), NOW)).toBe("Working  2m 5s");
-    expect(workingTipLine(row("b", "working", { activity: "Running bun test" }), NOW)).toMatch(/^Working  .+  2m 5s$/);
+    expect(workingTipLine(row("b", "working"), NOW)).toBe("Working: 2m 5s");
+    expect(workingTipLine(row("b", "working", { activity: "Running bun test" }), NOW)).toBe("Working: Running bun test, 2m 5s");
     expect(workingTipLine(row("a", "waiting"), NOW)).toMatch(/^Needs you/);
     expect(workingTipLine(row("a", "waiting"), NOW)).not.toMatch(/\d+s/);
     expect(workingTipLine(row("b", "working"), 0)).toBe("Working");

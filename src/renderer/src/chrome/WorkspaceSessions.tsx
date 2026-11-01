@@ -35,7 +35,8 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { agentSummaryParts, modelLabel, type AgentSummary } from "../lib/threads/agents";
 import { AGENT_GLYPHS, THREAD_MENU_ICONS } from "../surfaces/threads/threadTypes";
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
-import { STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/status";
+import { STATUS_ON_TIP, STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/status";
+import { plainStatus } from "@shared/statusWords";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
@@ -272,7 +273,7 @@ type Fold = { count: number; open: boolean; noun: "subagent" | "thread"; onToggl
 /** The rail's planning threads whose plan awaits its build (usePlanReady), by id. */
 export const PlanReadyContext = createContext<Readonly<Record<string, boolean>>>({});
 
-export function rowMark(row: ThreadRow, planReady = false): { state: ThreadState; label: string } {
+export function rowMark(row: ThreadRow, planReady = false): { state: ThreadState; detail: string | null; label: string } {
   const state = rowState(row, planReady);
   const status = threadStatus({
     planReady,
@@ -286,10 +287,8 @@ export function rowMark(row: ThreadRow, planReady = false): { state: ThreadState
     background: row.background,
   });
   const same = status.state === state;
-  return {
-    state,
-    label: [STATUS_WORD[state], same ? status.detail : null, same ? status.tally : null].filter(Boolean).join("  "),
-  };
+  const detail = same ? [status.detail, status.tally].filter(Boolean).join(", ") || null : null;
+  return { state, detail, label: plainStatus(STATUS_WORD[state], detail) };
 }
 
 /** The mark at a row's end: the glyph alone, its word and detail as its
@@ -361,7 +360,10 @@ export function ThreadRowView({
   const shownTitle = row.title || (child && !row.masterId ? "Subagent" : "Untitled");
   // Hover and focus put More over the glyph, so the row itself says the
   // word and its detail: the pointer anywhere on it, or the keyboard on it.
-  const state = !word && !editing && marksAtRest(mark.state) ? mark.label : null;
+  const state =
+    !word && !editing && marksAtRest(mark.state) ? (
+      <StatusMark state={mark.state} glyph={false} detail={mark.detail} className={STATUS_ON_TIP} />
+    ) : null;
   // A subagent's model is said on hover, never at the row's end: a row ends in its glyph.
   const model = child && !editing && row.provider && row.model ? modelLabel(row.provider, row.model) : null;
   const detail =

@@ -190,7 +190,8 @@ export function useAgainst(projectId: string | null, onOpenDiff: (path: string) 
         const sha = r.sha.slice(0, 7);
         const words =
           kind === "rebase" ? `Rebased onto ${target}` : kind === "land" ? `${r.fastForward ? "Fast-forwarded" : "Merged into"} ${target}` : `${r.fastForward ? "Fast-forwarded to" : "Merged"} ${target}`;
-        void loadToast().then((toast) => toast.success(`${words}  ${sha}`, r.where ? { description: `In ${r.where.replace(/^\/(Users|home)\/[^/]+/, "~")}` } : undefined));
+        const where = r.where ? ` in ${r.where.replace(/^\/(Users|home)\/[^/]+/, "~")}` : "";
+        void loadToast().then((toast) => toast.success(words, { description: `${sha}${where}` }));
       } else if (stillHere()) {
         setConflicts(r.conflicts);
       }

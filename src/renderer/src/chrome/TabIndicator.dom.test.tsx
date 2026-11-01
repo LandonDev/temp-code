@@ -66,7 +66,7 @@ describe('ThreadStatusMark', () => {
     const { container } = render(
       <ThreadStatusMark status={threadStatus({ status: 'running', activity: 'Running bun', tasks: { done: 3, total: 7 } })} />,
     )
-    expect(container.textContent).toBe('Workingrunning bun3/7')
+    expect(container.textContent).toBe('WorkingRunning bun3/7')
     expect(container.textContent).not.toMatch(/[·|•]/)
     expect(container.querySelector('[data-slot="status-detail"] span')?.className).toBe('ms-2')
   })

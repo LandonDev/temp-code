@@ -302,7 +302,7 @@ describe("ThreadHeaderStrip chip", () => {
       status: "running",
       thread: { ...thread("w", "Build"), status: "running", activity: "Typecheck", tasks: { done: 3, total: 7 } },
     };
-    expect(chipStatus(working, {})).toEqual({ state: "working", detail: "typecheck", tally: "3/7" });
+    expect(chipStatus(working, {})).toEqual({ state: "working", detail: "Typecheck", tally: "3/7" });
     const paused: StripChip = { ...working, thread: { ...working.thread, treeHasPaused: true } };
     expect(chipStatus(paused, {}).state).toBe("paused");
     expect(chipStatus(chip("i", "Idle"), { i: true }).state).toBe("plan-ready");
@@ -317,7 +317,7 @@ describe("ThreadHeaderStrip chip", () => {
     const { container } = render(<ChipHoverLabel title="Alpha" status={chipStatus(working, {})} />);
     const line = container.querySelector('[data-slot="status-mark"]')!;
     expect(line.getAttribute("data-state")).toBe("working");
-    expect(container.textContent).toBe("AlphaWorkingrunning bun3/7");
+    expect(container.textContent).toBe("AlphaWorkingRunning bun3/7");
   });
 });
 

@@ -137,9 +137,9 @@ function emptyLine(targets: DevTarget[] | null | undefined, target: DevTarget | 
   return <EmptyDescription className="font-mono text-xs">{commandLine(target)}</EmptyDescription>;
 }
 
-/** A target's command as one line: an Xcode target's `xcodebuild  <script>`, else the command itself. */
+/** A target's command as one line: an Xcode target's `xcodebuild <script>`, else the command itself. */
 export function commandLine(target: Pick<DevTarget, "command" | "script">): string {
-  return target.command.split("\n").some((line) => line.startsWith("xcodebuild")) ? `xcodebuild  ${target.script}` : target.command;
+  return target.command.split("\n").some((line) => line.startsWith("xcodebuild")) ? `xcodebuild ${target.script}` : target.command;
 }
 
 const noop = () => {};

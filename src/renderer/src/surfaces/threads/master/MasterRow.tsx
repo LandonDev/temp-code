@@ -14,6 +14,7 @@ import type { BoardDigest } from "@server/shared/contract-batch";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
 import { marksAtRest } from "../../../lib/threadStripModel";
+import { plainStatus } from "@shared/statusWords";
 import { modelLabel } from "../../../lib/threads/agents";
 import { AGENT_GLYPHS } from "../threadTypes";
 import { TypeGlyph } from "../TypeGlyph";
@@ -130,7 +131,7 @@ export function MasterRowView({
   const title = planTitle || meta.title;
   const { state, detail } = rowStatus(meta, digest, landed, blocked);
   // The word the glyph stands for and the detail, as one name for readers.
-  const statusLabel = detail ? `${STATUS_WORD[state]}, ${detail}` : STATUS_WORD[state];
+  const statusLabel = plainStatus(STATUS_WORD[state], detail);
   const tally = taskTally(taskList(digest));
   const group = groupOf(meta);
   // The section heading says the word; a state it does not name says its own.

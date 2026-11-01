@@ -125,15 +125,15 @@ describe("ChangesAgainst", () => {
     move("Update from master");
     await flush();
     expect(h.merge).toHaveBeenLastCalledWith("p1", "master", "merge");
-    expect(h.toast).toHaveBeenLastCalledWith("Merged master  abc1234", undefined);
+    expect(h.toast).toHaveBeenLastCalledWith("Merged master", { description: "abc1234" });
     move("Rebase onto master");
     await flush();
     expect(h.merge).toHaveBeenLastCalledWith("p1", "master", "rebase");
-    expect(h.toast).toHaveBeenLastCalledWith("Rebased onto master  abc1234", undefined);
+    expect(h.toast).toHaveBeenLastCalledWith("Rebased onto master", { description: "abc1234" });
     move("Merge feat into master");
     await flush();
     expect(h.land).toHaveBeenCalledWith("p1", "master");
-    expect(h.toast).toHaveBeenLastCalledWith("Fast-forwarded master  fff0000", undefined);
+    expect(h.toast).toHaveBeenLastCalledWith("Fast-forwarded master", { description: "fff0000" });
   });
 
   it("a remote target offers no merge into it", async () => {

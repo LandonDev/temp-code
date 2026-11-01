@@ -14,7 +14,7 @@ type Props = {
   /** Work in flight: Escape, the backdrop, and the close button all wait. */
   busy?: boolean;
   title: string;
-  description?: string;
+  description?: ReactNode;
   size?: ModalSize;
   /** Extra classes on the panel (fixed height, etc). */
   className?: string;

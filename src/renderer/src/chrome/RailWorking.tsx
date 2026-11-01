@@ -1,6 +1,7 @@
 import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Button } from "../components/ui/button";
-import { STATUS_WORD, StatusMark } from "../components/ui/status";
+import { STATUS_ON_TIP, STATUS_WORD, StatusMark } from "../components/ui/status";
+import { plainStatus } from "@shared/statusWords";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { cn } from "../lib/cn";
 import { duration } from "../lib/duration";
@@ -14,9 +15,9 @@ import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 import { HostGlyph } from "./HostGlyph";
 import { RailHeading, RailRow } from "./RailRow";
 
-/** A row's hover line: the state's word, what it is about and the elapsed
- *  time while it works ("Working  2m 12s"), two spaces between facts. */
-export function workingTipLine(row: WorkingRow, now: number): string {
+/** A row's hover line: the state, what it is about and the elapsed time
+ *  while it works. */
+export function workingTip(row: WorkingRow, now: number): { detail: string | null; elapsed: string | null } {
   const m = row.meta;
   const status = threadStatus({
     status: m.status,
@@ -31,14 +32,34 @@ export function workingTipLine(row: WorkingRow, now: number): string {
   const detail = status.state === row.state ? status.detail : null;
   const since = m.busySince;
   const elapsed = row.state === "working" && now > 0 && since ? duration(Math.max(0, now - since)) : null;
-  return [STATUS_WORD[row.state], detail, elapsed].filter(Boolean).join("  ");
+  return { detail, elapsed };
 }
 
-/** The tooltip: that line, the project under it. */
+/** The hover line as one string, for a reader: "Working: Running bun test, 2m 5s". */
+export function workingTipLine(row: WorkingRow, now: number): string {
+  const { detail, elapsed } = workingTip(row, now);
+  return plainStatus(STATUS_WORD[row.state], [detail, elapsed].filter(Boolean).join(", "));
+}
+
+/** The tooltip: the word, its detail and the elapsed time 8px after it as
+ *  spans (StatusMark), the project under them. */
 function tipOf(row: WorkingRow, project: string | null, now: number): ReactNode {
+  const { detail, elapsed } = workingTip(row, now);
   return (
-    <span data-working-tip className="flex flex-col text-left">
-      <span className="whitespace-pre">{workingTipLine(row, now)}</span>
+    <span data-working-tip aria-label={workingTipLine(row, now)} className="flex flex-col text-left">
+      <StatusMark
+        state={row.state}
+        glyph={false}
+        className={STATUS_ON_TIP}
+        detail={
+          detail || elapsed ? (
+            <>
+              {detail}
+              {elapsed ? <span className={detail ? "ms-2" : undefined}>{elapsed}</span> : null}
+            </>
+          ) : null
+        }
+      />
       {project ? <span className="font-normal text-background/60">{project}</span> : null}
     </span>
   );

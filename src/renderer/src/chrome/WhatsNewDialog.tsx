@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { formatReleaseDate, releaseNotesTitle } from "../lib/releaseNotes";
 import { presentReleaseNotes, type ReleaseNotesPresentation } from "../lib/releaseNotesParse";
 import { AgentMarkdown } from "../surfaces/AgentMarkdown";
@@ -56,9 +57,15 @@ export function WhatsNewBody({
   );
 }
 
-/** The frame's one line: the release and its date two spaces apart, no dot. */
-export function whatsNewLine(version: string, date: string | null): string {
-  return date ? `Release ${version}  ${date}` : `Release ${version}`;
+/** The frame's one line: the release in medium weight, then its date
+ *  regular and muted 6px after it (docs/DESIGN.md "Typography"). */
+export function whatsNewLine(version: string, date: string | null): ReactNode {
+  return (
+    <span className="flex min-w-0 gap-1.5">
+      <span className="font-medium text-foreground">Release {version}</span>
+      {date ? <span data-release-date>{date}</span> : null}
+    </span>
+  );
 }
 
 export function WhatsNewDialog({ version, markdown, onClose }: Props) {

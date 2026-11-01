@@ -464,7 +464,7 @@ describe('a thread row ends in its mark', () => {
   it('the glyph alone, its state on data-state, the word and what it is about as its label', () => {
     const { probe, mark } = one({ status: 'running', busySince: 5, activity: 'Running bun' })
     expect(mark?.getAttribute('data-state')).toBe('working')
-    expect(mark?.getAttribute('aria-label')).toBe('Working  running bun')
+    expect(mark?.getAttribute('aria-label')).toBe('Working: Running bun')
     expect(mark?.querySelector('[data-slot="status-word"]')).toBeNull()
     probe.unmount()
     const waiting = one({ status: 'waiting' })
@@ -472,7 +472,7 @@ describe('a thread row ends in its mark', () => {
     expect(waiting.mark?.getAttribute('aria-label')).toBe('Needs you')
     waiting.probe.unmount()
     const failed = one({ status: 'error', failure: { kind: 'usage-cap', summary: 'Usage cap reached.' } as SessionMeta['failure'] })
-    expect(failed.mark?.getAttribute('aria-label')).toBe('Failed  usage cap reached')
+    expect(failed.mark?.getAttribute('aria-label')).toBe('Failed: Usage cap reached')
     failed.probe.unmount()
   })
 

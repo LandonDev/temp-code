@@ -143,7 +143,7 @@ describe('DevServersPane', () => {
   })
 
   it('shortens an Xcode target to xcodebuild and its scheme', () => {
-    expect(commandLine({ command: 'cd ios\nxcodebuild -scheme App', script: 'App' })).toBe('xcodebuild  App')
+    expect(commandLine({ command: 'cd ios\nxcodebuild -scheme App', script: 'App' })).toBe('xcodebuild App')
     expect(commandLine({ command: 'bun run dev', script: 'dev' })).toBe('bun run dev')
   })
 
