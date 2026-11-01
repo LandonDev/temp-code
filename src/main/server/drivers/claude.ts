@@ -296,14 +296,18 @@ export function noteSend(state: StreamState): void {
   state.contentSinceSend = false
 }
 
-/** The boot's word a send says again right after its `running`, while the
- *  CLI's init has not come: `cli-starting` for a process spawned cold (its
- *  phase already, from the eager boot), `initializing` for a warm or live
- *  one. Without it the registry's `running` read Thinking through the
- *  two-second handshake (measured on a Mac, 2026-10-27: handle 2 ms live,
- *  init at 2,030 ms). Null once initialized. */
-export function phaseAfterSend(state: Pick<StreamState, 'initialized' | 'phase'>): 'cli-starting' | 'initializing' | null {
-  if (state.initialized) return null
+/** The word a send says right after its `running`: `waiting-provider` once
+ *  the CLI's init has come (the request goes straight out); before it, the
+ *  boot's word again: `cli-starting` for a process spawned cold,
+ *  `initializing` for one adopted warm (both set by the spawn hook, from the
+ *  eager boot or a moment after the send). Without it the registry's
+ *  `running` read Thinking through the two-second handshake (measured on a
+ *  Mac, 2026-10-27: handle 2 ms live, init at 2,030 ms). Null while the
+ *  process is still to spawn: its hook says which word, so a cold start
+ *  never reads Initializing first. */
+export function phaseAfterSend(state: Pick<StreamState, 'initialized' | 'phase'>): 'cli-starting' | 'initializing' | 'waiting-provider' | null {
+  if (state.initialized) return 'waiting-provider'
+  if (!state.phase) return null
   return state.phase === 'cli-starting' ? 'cli-starting' : 'initializing'
 }
 
@@ -1712,7 +1716,7 @@ export const claudeDriver: HarnessDriver = {
       cli = spawned.proc
       // The send's phase line says whether the process was adopted warm or spawned cold.
       ctx.mark?.('handle', spawned.warmId ? 'warm' : 'cold')
-      if (!spawned.warmId) setPhase(ctx, state, 'cli-starting')
+      setPhase(ctx, state, spawned.warmId ? 'initializing' : 'cli-starting')
       return cli as unknown as SpawnedProcess
     }
     const q = query({ prompt: input, options })
@@ -1868,9 +1872,12 @@ export const claudeDriver: HarnessDriver = {
         emit({ type: 'status', status: 'running' })
         // Until the CLI's init has come once, the wait is its boot; on a live
         // CLI it is the provider's. Said again after the running, before
-        // anything is awaited.
-        state.phase = null
-        setPhase(ctx, state, phaseAfterSend(state) ?? 'waiting-provider')
+        // anything is awaited (nothing yet when the spawn is still to come).
+        const word = phaseAfterSend(state)
+        if (word) {
+          state.phase = null
+          setPhase(ctx, state, word)
+        }
         // The harness only runs a LEADING /command natively; mid-message
         // and additional skill references get expanded server-side.
         const expanded = await expandSlashRefs('claude', session.cwd, text)

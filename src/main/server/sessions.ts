@@ -744,6 +744,8 @@ export class SessionRegistry {
   /** When each thread last booted on focus (focusBoot), and the threads whose handle came from one, for the send's span. */
   private readonly focusBoots = new Map<string, number>()
   private readonly focusBooted = new Set<string>()
+  /** How each handle came up (`warm`, `cold`), until the first send after its boot reports it. */
+  private readonly bootedAs = new Map<string, string>()
   /** Opens the upstream socket a thread's next request will ride (preconnect.ts). Set by the server; null does nothing. */
   preconnect: ((provider: string, account: string | null) => void) | null = null
   /** Sessions whose turn a usage limit cut off, until they continue: the
@@ -2906,9 +2908,14 @@ export class SessionRegistry {
       this.queueAdd(sessionId, text, retry, true)
       return
     }
-    // A handle that was up is `live` (a focus boot's says so); a fresh one said `warm` or `cold` itself.
+    // A handle booted for this send said `warm` or `cold` itself. One already
+    // up is `live`, except on the first send after its boot: an eager create
+    // or a focus boot spawned it ahead of the send, and how it came up
+    // (`warm`, `cold`, `live boot=focus`) is what the span reports.
     const focusBooted = this.focusBooted.delete(sessionId)
-    this.spans.mark(sessionId, 'handle', hadHandle ? (focusBooted ? 'live boot=focus' : 'live') : undefined)
+    const booted = this.bootedAs.get(sessionId)
+    this.bootedAs.delete(sessionId)
+    this.spans.mark(sessionId, 'handle', hadHandle ? (focusBooted ? 'live boot=focus' : (booted ?? 'live')) : undefined)
     this.lastActivity.set(sessionId, Date.now())
     // A goal passed to session.create lands here, ahead of the kickoff:
     // claude queues its /goal turn first, codex sets the RPC before
@@ -4184,6 +4191,8 @@ export class SessionRegistry {
           requestApproval: (req) => this.requestApproval(sessionId, req),
           awaitBaseline: () => this.awaitBaseline(sessionId),
           mark: (phase, note) => {
+            // A boot ahead of any send (an eager create) has no span yet: its word waits for the first send.
+            if (phase === 'handle' && note) this.bootedAs.set(sessionId, note)
             this.spans.mark(sessionId, phase, note)
             if (phase === 'first-content') this.steerFallback(sessionId)
           },

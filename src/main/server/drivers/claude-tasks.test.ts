@@ -68,14 +68,16 @@ const sendTurn = (): void => {
 }
 const turnCompletes = (): number => events.filter((e) => e.type === 'turn-complete').length
 
-it("phaseAfterSend: the boot's word a send says again after its running, until the CLI's init", () => {
-  expect(phaseAfterSend(newStreamState())).toBe('initializing')
+it("phaseAfterSend: the boot's word a send says again after its running, until the CLI's init, then the provider's", () => {
+  // The process is still to spawn: its hook says the word.
+  expect(phaseAfterSend(newStreamState())).toBeNull()
   expect(phaseAfterSend({ initialized: false, phase: 'cli-starting' })).toBe('cli-starting')
+  expect(phaseAfterSend({ initialized: false, phase: 'initializing' })).toBe('initializing')
   expect(phaseAfterSend({ initialized: false, phase: 'retrying' })).toBe('initializing')
-  expect(phaseAfterSend({ initialized: true, phase: null })).toBeNull()
+  expect(phaseAfterSend({ initialized: true, phase: null })).toBe('waiting-provider')
   sendTurn()
   handleMessage(ctx, state, msg({ type: 'system', subtype: 'init', session_id: 'n1' }))
-  expect(phaseAfterSend(state)).toBeNull()
+  expect(phaseAfterSend(state)).toBe('waiting-provider')
 })
 
 it("a dead task's notice answered ahead of the pending message: the notice turn's result settles nothing, the message's own does", () => {

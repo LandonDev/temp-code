@@ -20,6 +20,8 @@ vi.mock('./drivers', () => ({
       id: 'claude',
       start: async (ctx: DriverCtx) => {
         starts.push(ctx.session.id)
+        // The claude driver says how its process came up (warm or cold) at spawn.
+        ctx.mark?.('handle', 'cold')
         return {
           send: async () => ctx.emit({ type: 'status', status: 'running' }),
           interrupt: () => {},
@@ -84,6 +86,22 @@ it('a focus with boot brings an idle thread with no harness up, and its next sen
   ;(registry as unknown as { spans: { flush: (id: string) => void } }).spans.flush(id)
   expect(lines.join('\n')).toMatch(/handle=\d+\(live boot=focus\)/)
   expect(starts).toEqual([id])
+})
+
+it("the first send after an eager create's boot reports how the handle came up; a later send reads live", async () => {
+  const lines: string[] = []
+  const spans = (registry as unknown as { spans: { options: { write: (l: string) => void }; flush: (id: string) => void } }).spans
+  spans.options.write = (l) => lines.push(l)
+  const s = await registry.create({ cwd: root, provider: 'claude' })
+  await settle()
+  await registry.send(s.id, 'one')
+  await settle()
+  spans.flush(s.id)
+  registry.append(s.id, { type: 'status', status: 'idle' })
+  await registry.send(s.id, 'two')
+  await settle()
+  spans.flush(s.id)
+  expect(lines.map((l) => l.match(/handle=\d+\(([^)]*)\)/)?.[1])).toEqual(['cold', 'live'])
 })
 
 it('a focus without boot opens the socket and boots nothing', async () => {

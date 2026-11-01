@@ -1211,7 +1211,9 @@ export async function startServer(
   })
   registry.admission = admission
   // Warm processes count against memory, never the cap: none spawn under the floor.
-  setWarmMemoryFloor(() => admission.memoryLow())
+  // TEMP_CODE_E2E_MEMORY_LOW=1 on an isolated instance holds the floor for the warm-start proof.
+  const lowSeam = process.env.TEMP_CODE_E2E_MEMORY_LOW === '1' && !!process.env.TEMP_CODE_USER_DATA
+  setWarmMemoryFloor(() => lowSeam || admission.memoryLow())
   admission.start()
   // Threads the last shutdown cut mid-turn come back once everything
   // listens (run() below); the renderer hears the count once per boot.
