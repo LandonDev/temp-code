@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Block } from "../lib/session";
 import { CompactionCard } from "./CompactionCard";
 
 const block = (compaction: Block["compaction"]): Block => ({ id: "c", role: "system", text: "", compaction });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("CompactionCard", () => {
   it("running: a spinner and Compacting context, no bar", () => {
@@ -32,5 +35,27 @@ describe("CompactionCard", () => {
     const { container } = render(<CompactionCard block={block({ phase: "failed", error: "window too small" })} />);
     expect(container.querySelector('[data-state="failed"]')).not.toBeNull();
     expect(container.textContent).toBe("Compaction failedwindow too small");
+  });
+
+  it("running: the time counts from the start and keeps counting across a re-render with the same start", async () => {
+    vi.useFakeTimers();
+    const t0 = new Date("2026-11-01T12:00:00Z").getTime();
+    vi.setSystemTime(t0 + 42_000);
+    const meta = { phase: "start" as const, startedAt: t0 };
+    const { container, rerender } = render(<CompactionCard block={block(meta)} />);
+    expect(container.textContent).toBe("Compacting context42s");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    rerender(<CompactionCard block={block({ ...meta })} />);
+    expect(container.textContent).toBe("Compacting context1m 12s");
+  });
+
+  it("stopped: the stopped glyph and the span, no spinner and no live status", () => {
+    const { container } = render(<CompactionCard block={block({ phase: "stopped", startedAt: 1_000, endedAt: 90_000 })} />);
+    expect(container.querySelector('[data-state="stopped"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="spinner"]')).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(container.textContent).toBe("Compaction stopped1m 29s");
   });
 });

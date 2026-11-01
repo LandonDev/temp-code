@@ -218,7 +218,8 @@ export type Block = {
 };
 
 export type CompactionMeta = {
-  phase: "start" | "done" | "failed";
+  /** `stopped`: the turn ended with no outcome (renderer only, never on the wire). */
+  phase: "start" | "done" | "failed" | "stopped";
   trigger?: "auto" | "manual";
   preTokens?: number;
   postTokens?: number;
@@ -226,6 +227,8 @@ export type CompactionMeta = {
   error?: string;
   /** Event time compaction began; the card's clock runs from it. */
   startedAt?: number;
+  /** A stopped compaction: when its turn ended. */
+  endedAt?: number;
 };
 
 export type ThreadTasks = { done: number; total: number; current?: string | null };

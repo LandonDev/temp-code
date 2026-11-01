@@ -1,4 +1,5 @@
-import type { Attachment, Block, QuestionMeta } from "../session";
+import type { Attachment, Block, CompactionMeta, QuestionMeta } from "../session";
+import { COMPACTING_WORDS } from "@shared/statusWords";
 import { mergeContextUsage, type ContextUsage } from "../contextUsage";
 import {
   asRecord,
@@ -148,12 +149,20 @@ export function foldOptimisticUser(
 }
 
 const OPEN_STATUSES = new Set(["starting", "running", "waiting"]);
-const COMPACTING = "Compacting context";
+const COMPACTION_STOPPED = "Compaction stopped";
 
-function withCompaction(blocks: Block[], idx: number, compaction: Block["compaction"]): Block[] {
-  if (idx < 0 || blocks[idx]?.role !== "system") return blocks;
+/** The open compaction's row, by the id the start stamped; -1 when none is open. */
+function openCompactionIndex(blocks: Block[], thread: ThreadState): number {
+  if (!thread.compactionId) return -1;
+  for (let i = blocks.length - 1; i >= 0; i--) if (blocks[i].id === thread.compactionId) return i;
+  return -1;
+}
+
+/** The open compaction's row takes its outcome in place, wherever it sits. */
+function closeCompaction(blocks: Block[], idx: number, text: string, meta: Partial<CompactionMeta>): Block[] {
   const next = blocks.slice();
-  next[idx] = { ...next[idx], compaction };
+  const row = next[idx];
+  next[idx] = { ...row, text, compaction: { ...row.compaction, ...meta } as CompactionMeta };
   return next;
 }
 
@@ -525,6 +534,14 @@ export function foldEvent(
     }
     case "status": {
       busy = OPEN_STATUSES.has(e.status);
+      // A turn that ends or pauses with a compaction open: it stopped there.
+      if (!busy && (thread.compacting || thread.compactionId)) {
+        const open = openCompactionIndex(blocks, thread);
+        if (open >= 0) blocks = closeCompaction(blocks, open, COMPACTION_STOPPED, { phase: "stopped", endedAt: row.ts });
+        const t = th();
+        t.compacting = false;
+        t.compactionId = null;
+      }
       if (e.status === "paused") {
         // The turn clock freezes with the work; resuming restarts it.
         blocks = stopStreamingBlocks(blocks, row.ts);
@@ -623,31 +640,34 @@ export function foldEvent(
     }
     case "compaction": {
       const { type: _type, ...meta } = e;
+      // One row per compaction: the CLI repeats its start every 30 s while
+      // it compacts (rows on disk keep the repeats), and a message can land
+      // between the start and the outcome.
+      const open = openCompactionIndex(blocks, thread);
       if (e.phase === "start") {
-        blocks = appendStatusBlock(blocks, COMPACTING, fresh("s"));
-        blocks = withCompaction(blocks, blocks.length - 1, { ...meta, startedAt: row.ts });
-        th().compacting = true;
+        if (open >= 0) break;
+        const id = fresh("s");
+        blocks = [...sealLastStream(blocks), { id, role: "system", text: COMPACTING_WORDS, compaction: { ...meta, startedAt: row.ts } }];
+        const t = th();
+        t.compacting = true;
+        t.compactionId = id;
       } else {
         const note =
           e.phase === "done"
             ? "Context compacted"
             : `Compaction failed${e.error ? `: ${e.error}` : ""}`;
-        // The start note becomes the outcome when nothing came between.
-        const last = blocks[blocks.length - 1];
-        if (last?.role === "system" && last.text === COMPACTING) {
-          blocks = blocks.slice();
-          blocks[blocks.length - 1] = { ...last, text: note };
-          blocks = withCompaction(blocks, blocks.length - 1, { ...last.compaction, ...meta });
-        } else {
-          blocks = appendStatusBlock(blocks, note, fresh("s"));
-          blocks = withCompaction(blocks, blocks.length - 1, meta);
-        }
+        if (open >= 0) blocks = closeCompaction(blocks, open, note, meta);
+        else blocks = [...sealLastStream(blocks), { id: fresh("s"), role: "system", text: note, compaction: meta }];
         // The meter drops with the transcript: the next turn's reading
         // confirms, but the user should not wait for it.
         if (e.phase === "done" && e.postTokens !== undefined) {
           context = mergeContextUsage(context, { used: e.postTokens });
         }
-        if (thread.compacting) th().compacting = false;
+        if (thread.compacting || thread.compactionId) {
+          const t = th();
+          t.compacting = false;
+          t.compactionId = null;
+        }
       }
       break;
     }

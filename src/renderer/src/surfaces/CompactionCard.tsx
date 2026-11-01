@@ -1,3 +1,4 @@
+import { COMPACTING_WORDS } from "@shared/statusWords";
 import { FoldVertical } from "../chrome/icons";
 import { Spinner } from "../components/ui/spinner";
 import { StatusMark } from "../components/ui/status";
@@ -10,14 +11,26 @@ import { NoticeLine } from "./transcript/NoticeLine";
 
 /**
  * A compaction on one notice line: "Compacting context" shimmering with the
- * time so far while the harness squeezes the window, "Context compacted"
- * with the before and after once it lands, "Compaction failed" with the
- * error when it does not.
+ * time since its start while the harness squeezes the window, "Context
+ * compacted" with the before and after once it lands, "Compaction failed"
+ * with the error when it does not, and "Compaction stopped" with its span
+ * when its turn ended with neither.
  */
 export function CompactionCard({ block }: { block: Block }) {
   const meta = block.compaction;
   if (!meta) return null;
   if (meta.phase === "start") return <ActiveCompaction startedAt={meta.startedAt} />;
+  if (meta.phase === "stopped") {
+    const span = meta.startedAt !== undefined && meta.endedAt !== undefined ? spanWords(meta.endedAt - meta.startedAt) : undefined;
+    return (
+      <NoticeLine
+        data-state="stopped"
+        glyph={<StatusMark state="stopped" word={false} />}
+        lead="Compaction stopped"
+        details={[span ? <span className="tabular-nums">{span}</span> : undefined]}
+      />
+    );
+  }
   if (meta.phase === "failed") {
     return (
       <NoticeLine
@@ -51,9 +64,9 @@ function ActiveCompaction({ startedAt }: { startedAt?: number }) {
   return (
     <NoticeLine
       role="status"
-      aria-label="Compacting context"
+      aria-label={COMPACTING_WORDS}
       glyph={<Spinner />}
-      lead={<TextShimmer>Compacting context</TextShimmer>}
+      lead={<TextShimmer>{COMPACTING_WORDS}</TextShimmer>}
       details={[elapsed !== undefined ? <span className="tabular-nums">{spanWords(elapsed)}</span> : undefined]}
     />
   );

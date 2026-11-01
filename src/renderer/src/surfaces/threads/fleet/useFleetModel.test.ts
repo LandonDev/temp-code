@@ -49,9 +49,9 @@ describe("agentNumbers", () => {
     ]);
   });
 
-  it("says Compacting over the context while compaction runs", () => {
+  it("says Compacting context over the context while compaction runs", () => {
     expect(agentNumbers({ ...base, ctxPct: 90, compacting: true }, undefined)).toEqual([
-      { key: "context", text: "Compacting" },
+      { key: "context", text: "Compacting context" },
     ]);
   });
 });

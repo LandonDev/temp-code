@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { COMPACTING_WORDS } from "@shared/statusWords";
 import type { Session } from "../../../lib/session";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import {
@@ -59,7 +60,7 @@ export function agentNumbers(s: FleetStats, cost: number | undefined): NumberPar
   const parts: NumberPart[] = [];
   if (s.adds > 0 || s.dels > 0) parts.push({ key: "diff", adds: s.adds, dels: s.dels });
   if (s.tasksTotal > 0) parts.push({ key: "tasks", text: `${s.tasksDone}/${s.tasksTotal} tasks` });
-  if (s.compacting) parts.push({ key: "context", text: "Compacting" });
+  if (s.compacting) parts.push({ key: "context", text: COMPACTING_WORDS });
   else if (s.ctxPct !== null) parts.push({ key: "context", text: `${s.ctxPct}% context` });
   if (cost !== undefined && cost > 0) parts.push({ key: "cost", text: `$${cost.toFixed(2)}` });
   return parts;

@@ -2,7 +2,7 @@
 /**
  * The composer's context meter: nothing without a window; the ring and the
  * percent, muted then amber from 85% (never red); the tokens on hover, or
- * Compacting with a spinner; the breakdown popover with its categories, its
+ * Compacting context with a spinner; the breakdown popover with its categories, its
  * two lists cut at six, a skeleton before the first reading and one line
  * mid-turn; Compact only when the thread can, which runs the handler.
  */
@@ -76,7 +76,7 @@ describe("ContextMeter", () => {
     expect(meter().dataset.tone).toBe("muted");
   });
 
-  it("says the tokens on hover, and Compacting with a spinner while the harness compacts", async () => {
+  it("says the tokens on hover, and Compacting context with a spinner while the harness compacts", async () => {
     // Warm, as after the first hover: a cold trigger swaps for the menu chunk's.
     await tooltipChunk.load();
     warmTooltips();
@@ -102,8 +102,8 @@ describe("ContextMeter", () => {
       </TooltipProvider>,
     );
     expect(meter().querySelector("[data-context-ring]")).toBeNull();
-    expect(within(meter()).getByRole("status", { name: "Compacting" })).toBeTruthy();
-    await hover("Compacting");
+    expect(within(meter()).getByRole("status", { name: "Compacting context" })).toBeTruthy();
+    await hover("Compacting context");
   });
 
   it("opens the breakdown on click and polls only while it is open and the turn has settled", async () => {
@@ -185,10 +185,10 @@ describe("ContextBreakdown", () => {
     expect(document.querySelector("[data-context-loading]")).toBeNull();
   });
 
-  it("says Compacting while the harness compacts, and draws Compact only with a handler", () => {
+  it("says Compacting context while the harness compacts, and draws Compact only with a handler", () => {
     const onCompact = vi.fn();
     const { rerender } = render(<ContextBreakdown reading={READING} compacting />);
-    expect(screen.getByText("Compacting")).toBeTruthy();
+    expect(screen.getByText("Compacting context")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Compact" })).toBeNull();
     rerender(<ContextBreakdown reading={READING} onCompact={onCompact} />);
     fireEvent.click(screen.getByRole("button", { name: "Compact" }));

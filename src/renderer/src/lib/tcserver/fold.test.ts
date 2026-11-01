@@ -765,6 +765,90 @@ describe("M6c: compaction, agent and nested-step metadata", () => {
     expect(s.context).toEqual({ used: 5, window: 10 });
   });
 
+  const compactionRows = (s: ReturnType<typeof foldAll>) => s.blocks.filter((b) => b.compaction);
+
+  it("the box's sequence (start, a message, running, three repeats, done) is one row from the first start", () => {
+    const s = foldAll(
+      rows([
+        { type: "user-text", text: "go" },
+        { type: "status", status: "running" },
+        { type: "compaction", phase: "start" },
+        { type: "user-text", text: "also this" },
+        { type: "status", status: "running" },
+        { type: "compaction", phase: "start" },
+        { type: "compaction", phase: "start" },
+        { type: "compaction", phase: "start" },
+        { type: "status", status: "running" },
+        { type: "compaction", phase: "done", preTokens: 414_000, postTokens: 3_600, durationMs: 134_717 },
+      ]),
+      CWD,
+    );
+    const [row] = compactionRows(s);
+    expect(compactionRows(s)).toHaveLength(1);
+    expect(row.text).toBe("Context compacted");
+    expect(row.compaction).toMatchObject({ phase: "done", startedAt: 1_200, preTokens: 414_000, postTokens: 3_600, durationMs: 134_717 });
+    // The row stays where the compaction started, ahead of the message.
+    expect(s.blocks.findIndex((b) => b.compaction)).toBeLessThan(s.blocks.findIndex((b) => b.text === "also this"));
+    expect(s.thread.compacting).toBe(false);
+    expect(s.thread.compactionId).toBeNull();
+  });
+
+  it("repeated starts with nothing between keep the first start's time", () => {
+    let s = foldAll(rows([{ type: "user-text", text: "x" }, { type: "compaction", phase: "start" }]), CWD);
+    const before = s.blocks;
+    s = step(s, { type: "compaction", phase: "start" }, 31_200);
+    s = step(s, { type: "compaction", phase: "start" }, 61_200);
+    expect(s.blocks).toBe(before);
+    expect(compactionRows(s)).toHaveLength(1);
+    expect(compactionRows(s)[0].compaction?.startedAt).toBe(1_100);
+  });
+
+  it("a turn that ends with a compaction open closes it as stopped, and the next compaction is its own row", () => {
+    let s = foldAll(
+      rows([
+        { type: "user-text", text: "x" },
+        { type: "status", status: "running" },
+        { type: "compaction", phase: "start" },
+      ]),
+      CWD,
+    );
+    s = step(s, { type: "status", status: "idle" }, 9_000);
+    expect(compactionRows(s)).toHaveLength(1);
+    expect(compactionRows(s)[0]).toMatchObject({ text: "Compaction stopped", compaction: { phase: "stopped", startedAt: 1_200, endedAt: 9_000 } });
+    expect(s.thread.compacting).toBe(false);
+    s = step(s, { type: "user-text", text: "y" });
+    s = step(s, { type: "compaction", phase: "start" });
+    expect(compactionRows(s).map((b) => b.compaction?.phase)).toEqual(["stopped", "start"]);
+  });
+
+  it("a pause with a compaction open closes it as stopped; a done after it appends its own row", () => {
+    let s = foldAll(rows([{ type: "user-text", text: "x" }, { type: "compaction", phase: "start" }]), CWD);
+    s = step(s, { type: "status", status: "paused" }, 5_000);
+    s = step(s, { type: "status", status: "running" });
+    s = step(s, { type: "compaction", phase: "done", postTokens: 3_000 });
+    expect(compactionRows(s).map((b) => [b.text, b.compaction?.phase])).toEqual([
+      ["Compaction stopped", "stopped"],
+      ["Context compacted", "done"],
+    ]);
+  });
+
+  it("an old transcript's orphan start (no outcome, then idle) ticks nowhere", () => {
+    const s = foldAll(
+      rows([
+        { type: "user-text", text: "x" },
+        { type: "compaction", phase: "start" },
+        { type: "compaction", phase: "start" },
+        { type: "status", status: "idle" },
+        { type: "user-text", text: "later" },
+        { type: "status", status: "running" },
+        { type: "turn-complete" },
+      ]),
+      CWD,
+    );
+    expect(compactionRows(s).map((b) => b.compaction?.phase)).toEqual(["stopped"]);
+    expect(s.blocks.some((b) => b.compaction?.phase === "start")).toBe(false);
+  });
+
   it("stamps the child on spawned and report rows", () => {
     const s = foldAll(
       rows([

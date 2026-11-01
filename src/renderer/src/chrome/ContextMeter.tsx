@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { COMPACTING_WORDS } from "@shared/statusWords";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { Spinner } from "../components/ui/spinner";
@@ -63,7 +64,7 @@ export function ContextMeter({
         !warn && "hover:text-foreground aria-expanded:text-foreground",
       )}
     >
-      {compacting ? <Spinner className="size-3.5" aria-label="Compacting" /> : <ContextRing ratio={ratio} />}
+      {compacting ? <Spinner className="size-3.5" aria-label={COMPACTING_WORDS} /> : <ContextRing ratio={ratio} />}
       <span className="text-[12px] tabular-nums @max-[26rem]/composer-bar:hidden">{percent}%</span>
     </Button>
   );
@@ -79,7 +80,7 @@ export function ContextMeter({
       trigger={trigger}
       open={open}
       onOpenChange={setOpen}
-      tip={{ label: compacting ? "Compacting" : `${formatTokens(usage.used)} of ${formatTokens(usage.window)} tokens` }}
+      tip={{ label: compacting ? COMPACTING_WORDS : `${formatTokens(usage.used)} of ${formatTokens(usage.window)} tokens` }}
       side="top"
       align="end"
       label="Context"
@@ -160,7 +161,7 @@ export function ContextBreakdown({
       {compacting ? (
         <div className="-mt-2 flex items-center gap-2 text-[13px] text-muted-foreground">
           <Spinner className="size-3.5" aria-hidden />
-          Compacting
+          {COMPACTING_WORDS}
         </div>
       ) : null}
       {!reading ? (

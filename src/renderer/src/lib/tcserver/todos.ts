@@ -46,6 +46,8 @@ export type ThreadState = {
   stopped: boolean;
   /** The harness is squeezing the conversation right now. */
   compacting: boolean;
+  /** The open compaction's row: a repeated start keeps it, the outcome replaces it in place. */
+  compactionId: string | null;
   /** research-source rows, whole, for the research board. */
   sources: ResearchSource[];
   /** Child session ids this thread spawned. */
@@ -72,6 +74,7 @@ export function emptyThread(): ThreadState {
     usage: [],
     stopped: false,
     compacting: false,
+    compactionId: null,
     sources: [],
     agents: [],
     turnOpen: false,
