@@ -16,7 +16,7 @@ import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
-import { providerWaitWords, retryWords } from '@shared/statusWords'
+import { COMPACTING_WORDS, providerWaitWords, retryWords } from '@shared/statusWords'
 import type { SessionBatchResult } from '@shared/contract'
 import { batchChildIds, runSessionBatch, type SessionBatchAction } from './sessionBatch'
 import { ThreadScheduler } from './scheduler'
@@ -330,6 +330,9 @@ export function phaseLine(event: Extract<AgentEvent, { type: 'phase' }>): string
       return null
   }
 }
+
+const THINKING_ACTIVITY: Activity = { text: 'Thinking', kind: 'think' }
+const COMPACTING_ACTIVITY: Activity = { text: COMPACTING_WORDS, kind: 'think' }
 
 function activityOf(event: AgentEvent): Activity | null | undefined {
   if (event.type === 'status') {
@@ -657,6 +660,10 @@ export class SessionRegistry {
    *  that landed on an idle row (the eager boot's cold spawn) surfaces at
    *  the send. */
   private phases = new Map<string, Extract<AgentEvent, { type: 'phase' }>>()
+  /** Threads with a compaction open: its start came and no outcome or
+   *  settle since. The activity reads COMPACTING_WORDS meanwhile, through
+   *  a mid-compaction `running` and past the provider-wait threshold. */
+  private compacting = new Set<string>()
   /** What a watching thread waits on (background task and cron
    *  descriptions from the driver's background-tasks event) — transient
    *  like activities; decorate() turns it into the "Waiting on …" line. */
@@ -3578,6 +3585,7 @@ export class SessionRegistry {
       this.lastActivity.delete(id)
       this.activities.delete(id)
       this.phases.delete(id)
+      this.compacting.delete(id)
       this.todoFolds.delete(id)
       this.warming.delete(id)
       this.folds.delete(id)
@@ -3642,6 +3650,7 @@ export class SessionRegistry {
       this.lastActivity.delete(id)
       this.activities.delete(id)
       this.phases.delete(id)
+      this.compacting.delete(id)
       this.todoFolds.delete(id)
       this.warming.delete(id)
       this.folds.delete(id)
@@ -4083,7 +4092,8 @@ export class SessionRegistry {
       // On a row not yet in a turn (the eager boot's cold spawn) the phase
       // is kept for the send and shows nothing now.
       if (event.phase !== null && !(meta && PHASE_STATUSES.has(meta.status))) return
-      const act = activityOf(event)
+      // A phase cleared mid-compaction is back to compacting, not thinking.
+      const act = event.phase === null && this.compacting.has(sessionId) ? COMPACTING_ACTIVITY : activityOf(event)
       if (act === null) this.activities.delete(sessionId)
       else if (act) this.activities.set(sessionId, act)
       if (meta) this.notifyMeta(meta)
@@ -4198,8 +4208,28 @@ export class SessionRegistry {
     // pushes its own meta update (status events notify below regardless).
     // A send's `running` (and the `starting` before it) keeps the turn's
     // live phase: the strip reads "Starting the CLI" through the boot.
+    // A compaction is the activity from its start to its outcome or the
+    // turn's end; a `running` meanwhile (a message sent mid-compaction)
+    // keeps it, and an outcome with none open (a done after a pause)
+    // changes nothing.
+    let compactionClosed = false
+    if (event.type === 'compaction') {
+      if (event.phase === 'start') this.compacting.add(sessionId)
+      else compactionClosed = this.compacting.delete(sessionId)
+    } else if (event.type === 'status' && !PHASE_STATUSES.has(event.status)) this.compacting.delete(sessionId)
     const kept = event.type === 'status' && (event.status === 'running' || event.status === 'starting') ? this.phases.get(sessionId) : undefined
-    const act = kept ? activityOf(kept) : activityOf(event)
+    const act =
+      event.type === 'compaction'
+        ? event.phase === 'start'
+          ? COMPACTING_ACTIVITY
+          : compactionClosed
+            ? THINKING_ACTIVITY
+            : undefined
+        : event.type === 'status' && this.compacting.has(sessionId)
+          ? COMPACTING_ACTIVITY
+          : kept
+            ? activityOf(kept)
+            : activityOf(event)
     const actMoved = act !== undefined && act?.text !== this.activities.get(sessionId)?.text
     if (actMoved) {
       if (act === null) this.activities.delete(sessionId)

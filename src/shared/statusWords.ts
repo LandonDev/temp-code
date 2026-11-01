@@ -55,3 +55,7 @@ export function retryWords(r: { why: RetryWhy; attempt: number; delayMs?: number
 export function providerWaitWords(seconds: number): string {
   return `Waiting for the provider, ${seconds} s`
 }
+
+/** A compaction in progress, from its start to its outcome: the activity,
+ *  the context meter and the transcript's row all say it. */
+export const COMPACTING_WORDS = 'Compacting context'

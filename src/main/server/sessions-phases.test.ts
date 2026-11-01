@@ -156,6 +156,45 @@ it('a request out at the provider past the threshold reads Waiting for the provi
   expect(registry.get(id)?.activity).toBe('Reading b.ts')
 })
 
+it('a compaction reads Compacting context from its start to its outcome, through a running status and a long provider request', async () => {
+  const id = await live()
+  vi.useFakeTimers()
+  const t0 = Date.now()
+  emit(id, { type: 'compaction', phase: 'start' })
+  expect(registry.get(id)?.activity).toBe('Compacting context')
+  // A message sent mid-compaction emits running: the compaction holds.
+  emit(id, { type: 'status', status: 'running' })
+  expect(registry.get(id)?.activity).toBe('Compacting context')
+  // The compaction is one long request: never the provider-wait line.
+  registry.providerRequest(id, 3, t0)
+  vi.setSystemTime(t0 + PROVIDER_WAIT_MS + 70_000)
+  expect(registry.get(id)?.activity).toBe('Compacting context')
+  // A phase cleared mid-compaction is back to compacting.
+  emit(id, { type: 'phase', phase: 'retrying', retry: { attempt: 1, delayMs: 1_000, reason: 'HTTP 529' } })
+  emit(id, { type: 'phase', phase: null })
+  expect(registry.get(id)?.activity).toBe('Compacting context')
+  registry.providerRequest(id, 3, null)
+  emit(id, { type: 'compaction', phase: 'done', preTokens: 414_000, postTokens: 3_600, durationMs: 89_000 })
+  expect(registry.get(id)?.activity).toBe('Thinking')
+  emit(id, { type: 'status', status: 'running' })
+  expect(registry.get(id)?.activity).toBe('Thinking')
+})
+
+it('a compaction with no outcome is cleared by the turn settling', async () => {
+  const id = await live()
+  emit(id, { type: 'compaction', phase: 'start' })
+  expect(registry.get(id)?.activity).toBe('Compacting context')
+  emit(id, { type: 'status', status: 'idle' })
+  expect(registry.get(id)?.activity).toBeNull()
+  await registry.send(id, 'again')
+  await settle()
+  expect(registry.get(id)?.activity).toBe('Thinking')
+  // A done with none open (after a pause) leaves the activity alone.
+  emit(id, { type: 'status', status: 'idle' })
+  emit(id, { type: 'compaction', phase: 'done', preTokens: 1, postTokens: 1 })
+  expect(registry.get(id)?.activity).toBeNull()
+})
+
 it('a first-output silence re-queues the message once into a fresh harness; a second silence on it leaves the row errored', async () => {
   const id = await live()
   expect(sends.get(id)).toEqual(['go'])

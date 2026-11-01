@@ -174,6 +174,10 @@ interface StreamState {
   contextTokens: number
   /** one recovery compact per overflow; a compact that lands re-arms */
   compactRecoveryTried: boolean
+  /** a compaction's start was emitted and its outcome has not come: the
+   *  CLI re-sends status 'compacting' every 30 s while it compacts, and
+   *  only the first is a start */
+  compacting: boolean
   /** live non-ambient background tasks, id → what is known of it: the
    *  last background_tasks_changed level (replace semantics) */
   tasks: Map<string, TaskInfo>
@@ -236,6 +240,7 @@ export function newStreamState(): StreamState {
     nudged: false,
     overflowed: false,
     compactRecoveryTried: false,
+    compacting: false,
     contextTokens: 0,
     tasks: new Map(),
     known: new Map(),
@@ -712,17 +717,23 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
           retry: { attempt: r.attempt, delayMs: r.retry_delay_ms, reason: r.error_status != null ? `HTTP ${r.error_status}` : 'no response' }
         })
       }
-      // Compaction lifecycle: status 'compacting' opens the distinct UI,
-      // the boundary closes it with the numbers, a failed result closes
-      // it with the error.
+      // Compaction lifecycle: status 'compacting' opens the distinct UI
+      // (once: the CLI repeats it every 30 s while it compacts), the
+      // boundary closes it with the numbers, a failed result closes it
+      // with the error, and the turn's result closes one that got neither.
       else if (msg.subtype === 'status') {
         if (msg.status === 'compacting') {
-          emit({ type: 'compaction', phase: 'start' })
+          if (!state.compacting) {
+            state.compacting = true
+            emit({ type: 'compaction', phase: 'start' })
+          }
         } else if (msg.compact_result === 'failed') {
+          state.compacting = false
           emit({ type: 'compaction', phase: 'failed', error: msg.compact_error })
         }
       } else if (msg.subtype === 'compact_boundary') {
         state.compactRecoveryTried = false
+        state.compacting = false
         emit({
           type: 'compaction',
           phase: 'done',
@@ -994,6 +1005,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
     }
     case 'result':
       state.toolInput.clear()
+      state.compacting = false
       // The notice turn's result: the pending send's turn is still to come,
       // so the row stays running and the clock untouched; held in case
       // nothing follows.
