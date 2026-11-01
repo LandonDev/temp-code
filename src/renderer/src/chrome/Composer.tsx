@@ -130,6 +130,8 @@ type Props = {
   paused?: boolean
   hotkeys?: boolean
   onFocus: () => void
+  /** The person's own pointer or keystroke in the composer (never a programmatic focus): a turn is coming. */
+  onGesture?: () => void
   onCwdChange: (cwd: string) => void
   /** "Choose folder…" in the draft's project picker. */
   onChooseFolder?: () => void
@@ -184,6 +186,7 @@ export function Composer({
   busy = false,
   paused = false,
   onFocus,
+  onGesture,
   onCwdChange,
   onChooseFolder,
   onBranchChange,
@@ -813,6 +816,7 @@ export function Composer({
       // Without the draft row under it the box keeps the panel's 12px inset from the bottom.
       className={`relative shrink-0 ${shell ? '' : draft ? 'p-1.5 pt-0' : 'px-1.5 pb-3'}`}
       onMouseDown={onFocus}
+      onPointerDown={onGesture}
     >
       {children}
       <Lightbox />
@@ -917,7 +921,10 @@ export function Composer({
             onPaste={onPaste}
             attachLargePastes={attachmentsSupported ? attachLargePaste : undefined}
             onState={(text, caret, chips) => {
-              if (text !== draftRef.current) setDismissed((prev) => (prev ? null : prev))
+              if (text !== draftRef.current) {
+                setDismissed((prev) => (prev ? null : prev))
+                onGesture?.()
+              }
               onInputState(text, caret, chips)
             }}
           />

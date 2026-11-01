@@ -399,9 +399,15 @@ export const focusSignal = new FocusSignal((environmentId) => registry.link(envi
 
 // ── batch recovery ───────────────────────────────────────────────────
 
-/** The composer of an idle thread gained focus: the host opens the socket its next turn will ride (one per account per minute). */
-export function preconnect(sessionId: string): Promise<boolean> {
-  return linkFor(sessionId).request<boolean>("session.preconnect", { sessionId });
+/** The composer of an idle thread gained focus: the host opens the socket its next turn will ride (one per account per minute).
+ *  With `boot` (the person's own gesture in it) a thread whose harness is down boots it, within the host's bounds. */
+export function preconnect(sessionId: string, opts: { boot?: boolean } = {}): Promise<boolean> {
+  return linkFor(sessionId).request<boolean>("session.preconnect", { sessionId, ...(opts.boot ? { boot: true } : {}) });
+}
+
+/** An unsent draft's composer: the host opens the socket a fresh thread of that project and model would ride. */
+export function preconnectDraft(environmentId: string, draft: { provider: string; model: string; projectId: string }): Promise<boolean> {
+  return registry.linkOf(environmentId).request<boolean>("session.preconnect", { draft });
 }
 
 export function resumeAllPaused(environmentId: string): Promise<SessionBatchResult> {

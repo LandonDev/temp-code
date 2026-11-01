@@ -45,6 +45,7 @@ import { ChatColumn, type ChatOpts, type ChatSlots } from "./threads/chatSlots";
 import { WorkingStrip } from "./threads/WorkingStrip";
 import { rightPanel } from "../lib/rightPanel";
 import { desktopOnly } from "../lib/nativeWeb";
+import { askOnGesture } from "../lib/preconnect";
 
 /**
  * A thread's chat column, wherever it is drawn: the pane (SessionPane), a
@@ -189,6 +190,7 @@ export function ThreadComposer({
       handoffCard={session.handoffCard}
       onQuoteRequestConsumed={onQuoteRequestConsumed}
       onFocus={onFocus}
+      onGesture={() => askOnGesture(session)}
       {...bound}
       threadType={session.parentId ? null : (session.threadType ?? "chat")}
       onSubmit={submit}
