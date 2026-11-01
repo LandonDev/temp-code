@@ -6,6 +6,7 @@ import { recordSendOrigin } from '../lib/sendOrigin'
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -78,6 +79,7 @@ import {
   type ComposerToken
 } from './ComposerInput'
 import { saveComposerDraft, takeComposerDraft } from '../lib/composerDrafts'
+import { projectDrafts } from '../lib/projectDrafts'
 import { lightboxChunk } from '../surfaces/chunks'
 
 // The image viewer rides its own chunk (surfaces/chunks.ts); a thumbnail's hover warms it.
@@ -152,6 +154,9 @@ type Props = {
   onThreadTypeChange?: (type: ThreadType) => void
   children?: ReactNode
 }
+
+/** Quiet time after the last keystroke before a remembered draft is written. */
+const DRAFT_SAVE_DELAY_MS = 300
 
 export function Composer({
   enabled = true,
@@ -369,13 +374,32 @@ export function Composer({
     }).catch(() => undefined)
   }, [model, modelSettings, sessionId, harness, threadProvider])
 
+  // A project's remembered draft (lib/projectDrafts.ts) keeps its text and
+  // attachments as they are typed, so a quit or a switch loses nothing.
+  const draftSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveProjectDraft = useCallback(() => {
+    const key = sessionId ? projectDrafts.keyOfDraft(sessionId) : null
+    const el = inputRef.current
+    if (!key || !el) return false
+    projectDrafts.put(key, { segments: el.snapshot(), attachments: attachmentsRef.current })
+    return true
+  }, [sessionId])
+  const scheduleDraftSave = useCallback(() => {
+    if (draftSaveRef.current) clearTimeout(draftSaveRef.current)
+    draftSaveRef.current = setTimeout(() => {
+      draftSaveRef.current = null
+      saveProjectDraft()
+    }, DRAFT_SAVE_DELAY_MS)
+  }, [saveProjectDraft])
+
   const syncHasValue = useCallback(
     (text: string, files: Attachment[]) => {
       setHasValue(
         text.trim().length > 0 || files.length > 0 || !!inboxCard || !!noteCard || !!handoffCard
       )
+      scheduleDraftSave()
     },
-    [inboxCard, noteCard, handoffCard]
+    [inboxCard, noteCard, handoffCard, scheduleDraftSave]
   )
 
   useEffect(() => {
@@ -499,12 +523,16 @@ export function Composer({
   )
 
   // A thread's composer keeps what it held across pane changes; a fresh one
-  // starts from the seed the shell hands it.
-  useEffect(() => {
+  // starts from the seed the shell hands it. A layout effect: the text is in
+  // the first frame, and the cleanup reads the field before React detaches
+  // its ref (a passive cleanup would save an empty field).
+  useLayoutEffect(() => {
     const el = inputRef.current
     if (!el) return
-    const saved = sessionId ? takeComposerDraft(sessionId) : undefined
-    if (saved) {
+    const draftKey = sessionId ? projectDrafts.keyOfDraft(sessionId) : null
+    const remembered = draftKey ? projectDrafts.get(draftKey) : undefined
+    const saved = remembered ?? (sessionId ? takeComposerDraft(sessionId) : undefined)
+    if (saved && (saved.attachments.length > 0 || saved.segments.some((seg) => !('text' in seg) || seg.text))) {
       el.restore(saved.segments)
       if (saved.attachments.length) addAttachments(saved.attachments)
     } else if (initialDraft) {
@@ -513,6 +541,9 @@ export function Composer({
     return () => {
       // Attachments in a saved draft keep their preview URLs for the next
       // mount; anything else goes.
+      if (draftSaveRef.current) clearTimeout(draftSaveRef.current)
+      draftSaveRef.current = null
+      if (saveProjectDraft()) return
       if (sessionId) {
         saveComposerDraft(sessionId, {
           segments: el.snapshot(),
