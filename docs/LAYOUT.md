@@ -44,8 +44,8 @@ component builds each surface, and how**. Nothing here is built yet.
 ### First run
 
 A new install opens the ordinary window, with no welcome screen or wizard:
-a blank chat at the home, set to Claude, with the empty thread and its
-composer. It starts empty wherever the app was launched from: no folder is
+the home's draft, set to Claude: the composer alone, never a chip in the
+strip. It starts empty wherever the app was launched from: no folder is
 adopted as a workspace, in a dev, preview or packaged build alike. The rail
 has its usual shape (the navigation group on top, Accounts and Stats in
 it, then the Workspaces list; Check for updates and Settings in the foot) and adds two
@@ -159,7 +159,10 @@ is never set like a container. A Working row ends in its state's glyph.
 
 **The project's home.** A project card's click selects the project
 (`onSelectProjectCard` in App.tsx): any full-window view closes, its open
-tab comes forward, else the thread it was last on, else a new chat. The
+tab comes forward, else the thread it was last on, else the project's draft.
+A project left while its draft was on screen comes back on the draft with
+its text, even when one of its thread tabs is still open (`DRAFT_LANDING`,
+lib/projectContext.ts; saved for every linked copy and the workspace). The
 project's threads are then the title bar's strip ("Thread strip" below) and
 the ⋯ menu's Recent threads…, which lists every one that has settled. There
 is no project page in the pane.
@@ -395,9 +398,12 @@ the other row's first, as a click on it would (`archiveNeighbour`).
 Deleting it does the same and the window stays on the project
 (lib/threadDelete.ts): a neighbour with a tab brings that tab forward, one
 without takes the deleted tab's place, and with no neighbour another tab of
-the project comes forward, else the tab becomes the project's empty
-new-thread screen; a thread deleted in a split loses only its pane, and one
+the project comes forward, else the tab becomes the project's draft; a thread deleted in a split loses only its pane, and one
 not on screen leaves without moving anything.
+An unsent draft is never a chip: with the project's draft on screen no chip
+is marked and nothing stands in for it, since the centred composer says
+where the person is; a sent thread's chip appears with its first row,
+before the host's meta lands (`chipThreadsOf` in chrome/ShellTitleBar.tsx).
 
 - **Order.** Stable, like a browser's tabs: a live chip keeps its place, a
   new one joins at the end (oldest first when several arrive together), and
@@ -523,6 +529,20 @@ permission mode's label under 336px, so its icon is left (its accessible
 name and tooltip still say "Permission mode: <mode>"). Add and Send never
 shrink; every control fits a 220px box: Add, the model icon, the ring, the
 mode icon and Send.
+
+Each project has one draft (lib/projectDrafts.ts), kept under the strip
+order's key, so a linked project's copies share it: its text, @ chips,
+attachments by path, model, effort, permission mode, type, rules and host
+are remembered in localStorage (`monocode.projectDrafts`, 64 projects, 30
+days) and come back when the person returns; pasted bytes live for the run
+only. ⌘N, the strip's +, the rail's New chat, New thread… of any type and
+Split all go to that one draft and focus its box, retyping it when a type
+is asked for, text kept; a project switch with nothing to land on opens it
+too, and nothing reaches the host before the first send, which clears it.
+A tab holding only the draft closes when the person leaves it; a draft
+beside a thread in a split stays. At boot the host archives a day-old root
+thread with a placeholder title and no rows, which an older New thread…
+made at the click (`archiveEmptyThreads`).
 
 Under the box, one quiet row (`DraftRow`) holds project, host, branch and
 type on the shell's new-thread screen and until a thread's first message;

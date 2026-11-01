@@ -389,9 +389,11 @@ line and offers Clear filters as its action. A
 section of a settings page with nothing in it shows one muted line in a
 row's place (`PageEmpty`), never `Empty`: the section's heading is already
 the title. A
-new thread (a draft) shows the composer and nothing else; a thread its host
-holds with no rows shows the composer under one muted line (the host's
-failure summary, else "No messages yet"), never the new-thread screen. Inside a picker
+new thread (a draft) shows the composer and nothing else, and so does a
+project with no thread on screen: its draft, the composer alone, with no
+chip, badge or heading for it; a thread its host holds with no rows shows
+the composer under one muted line (the host's failure summary, else "No
+messages yet"), never the new-thread screen. Inside a picker
 or menu, no match is one muted row, never `Empty`. A lazy surface falls back
 to a `SurfaceSkeleton` kind, and a small section's wait is `LoadingLine`
 (both in surfaces/SurfaceSkeleton.tsx, beside `EmptyState`). Text that is

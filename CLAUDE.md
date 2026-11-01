@@ -1672,7 +1672,11 @@ proof and the sizing rules; the pieces, by name:
   connected hosts, once each with retry off; past a 300 ms window a tab
   opens a provisional entry the meta fills whole or that reads `gone`, and
   a pane whose thread is gone shows "No longer on <host>" with Close tab
-  and Open archived (`SessionGone`); the board under Search, Inbox, Notes,
+  and Open archived (`SessionGone`); the new-chat screen is a project's one
+  remembered draft (lib/projectDrafts.ts, keyed like the strip order, never
+  a chip, opened by every New thread path through App's `openProjectDraft`),
+  and the host archives empty placeholder threads a day old at boot
+  (`archiveEmptyThreads`); the board under Search, Inbox, Notes,
   Accounts or Settings is parked (`.board-parked`), never display:none.
   A provisional entry resolves on its host's word, never as a draft
   (`resolveProvisional`: the archived sets, owner first; `gone` only once
