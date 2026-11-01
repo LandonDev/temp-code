@@ -618,9 +618,10 @@ export function ProjectRail({
             </div>
             </RowsContextMenu>
           </div>
-          <RailWorking activeSessionId={activeSessionId} onSelect={onSelectAgent} />
           <RailFoot
             activeSessionId={activeSessionId}
+            working
+            onSelectThread={onSelectAgent}
             onOpenWhatsNew={onOpenWhatsNew}
             onAddWorkspace={(environmentId) => onOpenProject(environmentId, ADD_WORKSPACE)}
           />
@@ -941,15 +942,22 @@ export function railFootRows(facts: { signIn: boolean; update: boolean; hosts: n
 }
 
 /**
- * The rail's foot under a hairline: its rows, then the usage meter. The
- * same foot sits under the workspace column while the rail is collapsed.
+ * The rail's foot under one hairline: the Working section (the rail's own),
+ * its rows 16px under it, then the usage meter. The same foot, without
+ * Working, sits under the workspace column while the rail is collapsed:
+ * that column already lists the threads.
  */
 export function RailFoot({
   activeSessionId,
+  working = false,
+  onSelectThread,
   onOpenWhatsNew,
   onAddWorkspace,
 }: {
   activeSessionId?: string;
+  /** Draw the Working section above the rows. */
+  working?: boolean;
+  onSelectThread?: (sessionId: string) => void;
   onOpenWhatsNew?: (version: string, markdown?: string) => void;
   onAddWorkspace: (environmentId: string) => void;
 }) {
@@ -984,6 +992,7 @@ export function RailFoot({
   };
   return (
     <div className="flex shrink-0 flex-col border-t border-border">
+      {working ? <RailWorking activeSessionId={activeSessionId} onSelect={onSelectThread} /> : null}
       <div className="flex flex-col p-2">{ids.map(row)}</div>
       <UsageMeter sessionId={activeSessionId} />
     </div>

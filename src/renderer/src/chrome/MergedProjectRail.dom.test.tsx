@@ -209,6 +209,16 @@ describe("the rail", () => {
     expect(list.querySelector("[data-rail-row] > button[title]")).toBeNull();
   });
 
+  it("Working sits in the foot, under its one hairline, above Settings", async () => {
+    const root = await mountRail([LOCAL, BOX]);
+    const working = root.querySelector("[data-rail-working]")!;
+    const foot = working.parentElement!;
+    expect(foot.className).toContain("border-t");
+    expect(working.className).not.toContain("border-t");
+    expect(foot.textContent).toContain("Settings");
+    expect(root.querySelector('nav[aria-label="Workspaces"] .overflow-y-auto [data-rail-working]')).toBeNull();
+  });
+
   it("Mark all read marks every thread on every host seen", async () => {
     const root = await mountRail([LOCAL, BOX]);
     const read = [...root.querySelectorAll("nav [data-rail-row] > button")].find((b) => b.textContent === "Mark all read")!;

@@ -2,9 +2,9 @@ import { rowState } from "./sidebarRows";
 import type { SessionMeta } from "./tcserver/types";
 import { housedIds } from "./workspaceSessions";
 
-/** The rail's Working section shows only with this many rows: with one, the
- *  workspace row's line under it already names the thread. */
-export const WORKING_MIN = 2;
+/** The rail's Working section shows from one row: nothing else in the rail
+ *  names a thread. */
+export const WORKING_MIN = 1;
 /** Rows shown before "N more". */
 export const WORKING_CAP = 4;
 

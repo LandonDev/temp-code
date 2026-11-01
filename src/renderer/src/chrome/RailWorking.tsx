@@ -10,11 +10,13 @@ import { useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { threadStatus } from "../lib/threadStripModel";
 import { useClock } from "../lib/turnClock";
+import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 import { HostGlyph } from "./HostGlyph";
 import { RailHeading, RailRow } from "./RailRow";
 
-/** A row's hover line: the state's word and what it is about, the project under it. */
-function tipOf(row: WorkingRow, project: string | null): ReactNode {
+/** A row's hover line: the state's word, what it is about and the elapsed
+ *  time while it works ("Working  2m 12s"), two spaces between facts. */
+export function workingTipLine(row: WorkingRow, now: number): string {
   const m = row.meta;
   const status = threadStatus({
     status: m.status,
@@ -25,11 +27,17 @@ function tipOf(row: WorkingRow, project: string | null): ReactNode {
     failure: m.failure?.summary ?? null,
     background: m.background,
   });
-  const word = STATUS_WORD[row.state];
   const detail = status.state === row.state ? status.detail : null;
+  const since = m.busySince;
+  const elapsed = row.state === "working" && now > 0 && since ? duration(Math.max(0, now - since)) : null;
+  return [STATUS_WORD[row.state], detail, elapsed].filter(Boolean).join("  ");
+}
+
+/** The tooltip: that line, the project under it. */
+function tipOf(row: WorkingRow, project: string | null, now: number): ReactNode {
   return (
-    <span className="flex flex-col text-left">
-      <span>{detail ? `${word}  ${detail}` : word}</span>
+    <span data-working-tip className="flex flex-col text-left">
+      <span className="whitespace-pre">{workingTipLine(row, now)}</span>
       {project ? <span className="font-normal text-background/60">{project}</span> : null}
     </span>
   );
@@ -39,9 +47,11 @@ function tipOf(row: WorkingRow, project: string | null): ReactNode {
  * The rail's Working section, presentational: a heading, then one RailRow
  * per thread that needs the person, works, or finished unseen, four at most
  * and "N more" for the rest (a scroller while open, "Show less" to close).
- * Each row is the state's glyph, the title, the host glyph with two or more
- * hosts and the elapsed time while it works; a click opens the thread.
- * Nothing with fewer than two rows: the workspace row's line names one.
+ * Each row is an item: the thread's type glyph, the title, the host glyph
+ * with two or more hosts and the state's glyph at its end; the elapsed time
+ * is in its tooltip, and a click opens the thread. It shows from one row:
+ * nothing else in the rail names a thread. It sits in the rail's foot,
+ * which draws the hairline above it.
  */
 export function RailWorkingView({
   rows,
@@ -51,7 +61,7 @@ export function RailWorkingView({
   onSelect,
 }: {
   rows: readonly WorkingRow[];
-  /** The second hand; 0 hides the elapsed times. */
+  /** The second hand; 0 leaves the elapsed time out of the tooltips. */
   now: number;
   activeSessionId?: string;
   projectOf: (row: WorkingRow) => string | null;
@@ -63,29 +73,27 @@ export function RailWorkingView({
   const extra = rows.length - WORKING_CAP;
   const shown = open || extra <= 0 ? rows : rows.slice(0, WORKING_CAP);
   return (
-    <section aria-label="Working" className="flex shrink-0 flex-col border-t border-border px-2 pt-2 pb-2" data-rail-working>
+    <section aria-label="Working" className="flex shrink-0 flex-col px-2 pt-2 pb-2" data-rail-working>
       <RailHeading>Working</RailHeading>
       <div ref={open ? lockList : undefined} className={cn("flex flex-col", open && "max-h-[45vh] overflow-y-auto overscroll-none")}>
-        {shown.map((row) => {
-          const since = row.meta.busySince;
-          return (
-            <RailRow
-              key={row.id}
-              glyph={<StatusMark state={row.state} word={false} />}
-              label={row.meta.title.trim() || "Untitled"}
-              selected={row.id === activeSessionId}
-              tooltip={tipOf(row, projectOf(row))}
-              onClick={() => onSelect?.(row.id)}
-              trailing={
-                <>
-                  <HostGlyph environmentId={row.meta.environmentId} />
-                  {row.state === "working" && now > 0 && since ? <span>{duration(Math.max(0, now - since))}</span> : null}
-                </>
-              }
-              data-working-row={row.id}
-            />
-          );
-        })}
+        {shown.map((row) => (
+          <RailRow
+            key={row.id}
+            glyph={<TypeGlyph type={row.meta.threadType} className="size-3" />}
+            label={row.meta.title.trim() || "Untitled"}
+            ariaLabel={`${row.meta.title.trim() || "Untitled"}, ${STATUS_WORD[row.state]}`}
+            selected={row.id === activeSessionId}
+            tooltip={tipOf(row, projectOf(row), now)}
+            onClick={() => onSelect?.(row.id)}
+            trailing={
+              <>
+                <HostGlyph environmentId={row.meta.environmentId} />
+                <StatusMark state={row.state} word={false} />
+              </>
+            }
+            data-working-row={row.id}
+          />
+        ))}
       </div>
       {extra > 0 ? (
         <Button
@@ -93,7 +101,7 @@ export function RailWorkingView({
           size="sm"
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
-          className="h-9 w-full justify-start px-3 text-[13px] font-normal text-muted-foreground tabular-nums hover:text-foreground"
+          className="h-7 w-full justify-start px-3 text-[13px] font-normal text-muted-foreground tabular-nums hover:text-foreground"
         >
           <span aria-hidden className="size-4 shrink-0" />
           {open ? "Show less" : `${extra} more`}

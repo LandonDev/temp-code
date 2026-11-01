@@ -65,7 +65,8 @@ describe("workingRows", () => {
     ]);
   });
 
-  it("is under the section's minimum with one row", () => {
-    expect(workingRows([meta("one", { status: "running", busySince: 1 })], NONE).length).toBeLessThan(WORKING_MIN);
+  it("shows the section with one live thread: nothing else in the rail names it", () => {
+    expect(WORKING_MIN).toBe(1);
+    expect(workingRows([meta("one", { status: "running", busySince: 1 })], NONE).length).toBeGreaterThanOrEqual(WORKING_MIN);
   });
 });
