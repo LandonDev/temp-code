@@ -192,7 +192,7 @@ describe('WorkingStrip: the held rows', () => {
     const onResume = vi.fn(() => Promise.resolve())
     const onStop = vi.fn()
     const probe = mount(session({ status: 'stopped', frozenActiveElapsed: 95_000 }), { onStop, onResume })
-    expect(rowText(probe)).toBe('Stoppedthe harness is gone1m 35sResume')
+    expect(rowText(probe)).toBe('StoppedThe harness is gone1m 35sResume')
     expect(probe.container.querySelector('[aria-live="polite"]')!.textContent).toBe('Stopped')
     await probe.act(async () => buttons(probe)[0]!.click())
     expect(onResume).toHaveBeenCalledTimes(1)

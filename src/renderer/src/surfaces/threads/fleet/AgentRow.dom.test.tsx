@@ -53,13 +53,13 @@ describe("AgentRowView", () => {
     const mark = container.querySelector('[data-slot="status-mark"]')!;
     expect(mark.getAttribute("data-state")).toBe("waiting");
     expect(mark.querySelector('[data-slot="status-word"]')?.textContent).toBe("Needs you");
-    expect(mark.querySelector('[data-slot="status-detail"]')?.textContent).toBe("approve rm -rf ios/TempCodeClient/.build");
+    expect(mark.querySelector('[data-slot="status-detail"]')?.textContent).toBe("Approve rm -rf ios/TempCodeClient/.build");
   });
 
   it("a failed row says the host's failure summary", () => {
     const { meta, status } = row("Port module 10");
     const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    expect(container.querySelector('[data-slot="status-mark"]')?.textContent).toBe("Failedusage cap reached on work");
+    expect(container.querySelector('[data-slot="status-mark"]')?.textContent).toBe("FailedUsage cap reached on work");
   });
 
   it("at rest a row draws no mark and no word: done and idle are the title alone", () => {
