@@ -200,6 +200,10 @@ export type Failure = z.infer<typeof FailureSchema>
 export const NoticeKindSchema = z.enum(['review', 'gate', 'batch', 'account-gone'])
 export type NoticeKind = z.infer<typeof NoticeKindSchema>
 
+/** Where a person's steer stands (the `steer` row). */
+export const SteerStateSchema = z.enum(['sent', 'received', 'queued', 'failed'])
+export type SteerState = z.infer<typeof SteerStateSchema>
+
 export const AgentEventSchema = z.discriminatedUnion('type', [
   // A message the user (or the orchestrator, for subagents) sent in.
   z.object({
@@ -218,7 +222,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     /** the user pressed the pass button for this send (true) or typed under
      *  the banner (false) — absent on logs from before the stamp, where the
      *  fold falls back to inferring pass boundaries */
-    newPass: z.boolean().optional()
+    newPass: z.boolean().optional(),
+    /** a person's message into a running turn: the id its `steer` rows name */
+    steerId: z.string().optional()
   }),
 
   // Assistant output. delta=true → streaming chunk to append;
@@ -349,6 +355,19 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     requestId: z.string(),
     allow: z.boolean(),
     auto: z.boolean().optional()
+  }),
+
+  // Where a steer (the `user-text` row with this steerId) stands: sent (the
+  // harness has it), received (the model read it: in the running turn, or
+  // as the next turn), queued (it waits for the next turn) or failed (it
+  // never reached a model; `reason` says why). The last row per id wins;
+  // the row's ts is when. Never content: no reply, digest or search hit.
+  z.object({
+    type: z.literal('steer'),
+    steerId: z.string(),
+    state: SteerStateSchema,
+    how: z.enum(['in-turn', 'next-turn']).optional(),
+    reason: z.string().optional()
   }),
 
   // The model stopped to ask the user structured questions (claude's

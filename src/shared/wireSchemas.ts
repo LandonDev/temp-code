@@ -511,7 +511,9 @@ export const QueuedMessageSchema = z.object({
   reasoning: z.string().optional(),
   attachments: z.array(AttachmentSchema).optional(),
   /** the held-back boot's first message: already on the transcript as the user row, so the composer's queue skips it */
-  stored: z.boolean().optional()
+  stored: z.boolean().optional(),
+  /** a steer waiting for the next turn: the id its `steer` rows name */
+  steerId: z.string().optional()
 })
 
 /** queue.add's answer: the message waits in the list, or went into the live turn. */

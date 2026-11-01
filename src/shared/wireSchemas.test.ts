@@ -263,3 +263,21 @@ describe('queue.add answers typed', () => {
     expect(QueueAddResultSchema.safeParse({ id: 'm1', text: 'later', ts: 1 }).success).toBe(false)
   })
 })
+
+describe('a steer and its stamp', () => {
+  it('parse: the user row with its steerId, each state, a queued item keeping the id', () => {
+    const user: AgentEvent = { type: 'user-text', text: 'use the other table', steerId: 's-1' }
+    expect(W.WireAgentEventSchema.parse(user)).toEqual(user)
+    const rows: AgentEvent[] = [
+      { type: 'steer', steerId: 's-1', state: 'sent' },
+      { type: 'steer', steerId: 's-1', state: 'received', how: 'in-turn' },
+      { type: 'steer', steerId: 's-1', state: 'received', how: 'next-turn' },
+      { type: 'steer', steerId: 's-1', state: 'queued' },
+      { type: 'steer', steerId: 's-1', state: 'failed', reason: 'the harness did not start' }
+    ]
+    for (const row of rows) expect(W.WireAgentEventSchema.parse(row)).toEqual(row)
+    expect(() => W.WireAgentEventSchema.parse({ type: 'steer', steerId: 's-1', state: 'read' })).toThrow()
+    const item = { id: 'q1', text: 'use the other table', ts: 1, steerId: 's-1' }
+    expect(W.QueuedMessageSchema.parse(item)).toEqual(item)
+  })
+})

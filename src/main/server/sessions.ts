@@ -227,6 +227,8 @@ interface QueuedSendOpts {
   /** Into the live turn now (the composer's Steer), whatever the thread;
    *  a master steers without it. Never stored on the queued item. */
   steer?: boolean
+  /** A person's steer: the id its `steer` rows name (the user row carries it). */
+  steerId?: string
 }
 
 /** What queueAdd did with the message: queued it, or steered it into the live turn. */

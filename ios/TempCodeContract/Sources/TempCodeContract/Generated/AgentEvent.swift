@@ -13,8 +13,9 @@ public struct UserTextEvent: Codable, Hashable, Sendable {
     public let fast: Bool?
     public let ultrafast: Bool?
     public let newPass: Bool?
+    public let steerId: String?
 
-    public init(text: String, attachments: [Attachment]? = nil, preamble: PreambleStamp? = nil, model: String? = nil, reasoning: String? = nil, context1m: Bool? = nil, fast: Bool? = nil, ultrafast: Bool? = nil, newPass: Bool? = nil) {
+    public init(text: String, attachments: [Attachment]? = nil, preamble: PreambleStamp? = nil, model: String? = nil, reasoning: String? = nil, context1m: Bool? = nil, fast: Bool? = nil, ultrafast: Bool? = nil, newPass: Bool? = nil, steerId: String? = nil) {
         self.text = text
         self.attachments = attachments
         self.preamble = preamble
@@ -24,6 +25,7 @@ public struct UserTextEvent: Codable, Hashable, Sendable {
         self.fast = fast
         self.ultrafast = ultrafast
         self.newPass = newPass
+        self.steerId = steerId
     }
 }
 
@@ -311,6 +313,71 @@ public struct ApprovalResolvedEvent: Codable, Hashable, Sendable {
         self.requestId = requestId
         self.allow = allow
         self.auto = auto
+    }
+}
+
+public struct SteerEvent: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case sent
+        case received
+        case queued
+        case failed
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "sent": self = .sent
+            case "received": self = .received
+            case "queued": self = .queued
+            case "failed": self = .failed
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .sent: "sent"
+            case .received: "received"
+            case .queued: "queued"
+            case .failed: "failed"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum How: RawRepresentable, Codable, Hashable, Sendable {
+        case inTurn
+        case nextTurn
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "in-turn": self = .inTurn
+            case "next-turn": self = .nextTurn
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .inTurn: "in-turn"
+            case .nextTurn: "next-turn"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let steerId: String
+    public let state: State
+    public let how: How?
+    public let reason: String?
+
+    public init(steerId: String, state: State, how: How? = nil, reason: String? = nil) {
+        self.steerId = steerId
+        self.state = state
+        self.how = how
+        self.reason = reason
     }
 }
 
@@ -671,6 +738,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
     case turnComplete(TurnCompleteEvent)
     case approvalRequest(ApprovalRequestEvent)
     case approvalResolved(ApprovalResolvedEvent)
+    case steer(SteerEvent)
     case questionRequest(QuestionRequestEvent)
     case questionResolved(QuestionResolvedEvent)
     case compaction(CompactionEvent)
@@ -708,6 +776,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
         case "turn-complete": self = .turnComplete(try TurnCompleteEvent(from: decoder))
         case "approval-request": self = .approvalRequest(try ApprovalRequestEvent(from: decoder))
         case "approval-resolved": self = .approvalResolved(try ApprovalResolvedEvent(from: decoder))
+        case "steer": self = .steer(try SteerEvent(from: decoder))
         case "question-request": self = .questionRequest(try QuestionRequestEvent(from: decoder))
         case "question-resolved": self = .questionResolved(try QuestionResolvedEvent(from: decoder))
         case "compaction": self = .compaction(try CompactionEvent(from: decoder))
@@ -741,6 +810,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
         case .turnComplete(let value): try Self.encode(tag: "turn-complete", value, to: encoder)
         case .approvalRequest(let value): try Self.encode(tag: "approval-request", value, to: encoder)
         case .approvalResolved(let value): try Self.encode(tag: "approval-resolved", value, to: encoder)
+        case .steer(let value): try Self.encode(tag: "steer", value, to: encoder)
         case .questionRequest(let value): try Self.encode(tag: "question-request", value, to: encoder)
         case .questionResolved(let value): try Self.encode(tag: "question-resolved", value, to: encoder)
         case .compaction(let value): try Self.encode(tag: "compaction", value, to: encoder)

@@ -387,6 +387,35 @@ gateway's own proofs run on the box against fake upstreams:
 in the checkout as agents. The hidden preview window is proven with
 `tc-local app.htmlPreview` against a live session (see the log entry).
 
+### A steer says it was received
+
+A message the person sends into a running turn carries a `steerId`, and a
+`steer` row under it says where it stands: Sent, Received, Queued for the
+next turn, or Not delivered (CLAUDE.md "A message to a live thread goes
+straight in"). What each harness tells the host, as probed on the box on
+2026-11-01:
+
+- **Claude** (CLI 2.1.303): the SDK message carries the steer id as its
+  `uuid`; the CLI folds it into the turn at the next tool boundary and
+  stamps `user_message_uuid` with it on the first assistant message after
+  the fold, or on the first of the turn it starts when the turn ended
+  first. That stamp is Received.
+- **Codex** (0.163.0, a scratch `codex app-server` thread): `turn/steer
+  { threadId, expectedTurnId, input, clientUserMessageId }` answers
+  `{ turnId }` and the `userMessage` item carrying that `clientId` arrives
+  (`item/started`, then `item/completed`) the moment it resolves; the
+  probe's turn sat in codex's reconnect loop at the time, so with a live
+  model the item may come at the next sampling step instead. After the
+  turn ended `turn/steer` answers `-32600 "no active turn to steer"`, and a
+  method the binary lacks `unknown variant`; the driver then sends the
+  steer with `turn/start` and the same `clientUserMessageId`, whose
+  `userMessage` item carries it too. The echo is Received. The box had no
+  live codex sign-in that day (`token_expired`), so no codex model read a
+  steer in the probe.
+- **cursor, grok, fx, pi, opencode, omp** refuse input mid-turn: the steer
+  is Queued and becomes Received at the first output of the turn that
+  carries it.
+
 ### Surviving a restart: threads mid-turn come back
 
 `box-update` (and any `systemctl stop`) ends the service with SIGTERM to the

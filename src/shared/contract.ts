@@ -1286,6 +1286,9 @@ export interface QueuedMessage {
   /** The held-back boot's first message (a queued thread's): already on the
    *  transcript as the user row, so the composer's queue skips it. */
   stored?: boolean
+  /** A steer that waits for the next turn (the harness could not take it
+   *  mid-turn): the id its `steer` rows name, kept until it is sent. */
+  steerId?: string
 }
 
 /** queue.add's answer: the message waits in the list, or was steered into the live turn. */
