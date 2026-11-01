@@ -68,10 +68,21 @@ export interface DriverCtx {
   mark?: (phase: SendPhase, note?: string) => void
 }
 
+/** What a send carries besides its text. */
+export interface SendOpts {
+  /** A person's steer: the id its `steer` rows name (events.ts). */
+  steerId?: string
+}
+
 export interface DriverHandle {
   /** Images should reach the model as native content where the harness
    *  supports it; other attachments ride along as path references. */
-  send: (text: string, attachments?: Attachment[]) => Promise<void>
+  send: (text: string, attachments?: Attachment[], opts?: SendOpts) => Promise<void>
+  /** The driver emits `steer received` itself when the model reads a send
+   *  that carried a `steerId` (claude's user_message_uuid, codex's
+   *  userMessage clientId); without it the registry stamps received at the
+   *  first output of the turn that carries the steer. */
+  confirmsSteers?: boolean
   interrupt: () => void
   /** Stop one background task by the CLI's id (claude's query.stopTask);
    *  its settle arrives as the usual task notification. */

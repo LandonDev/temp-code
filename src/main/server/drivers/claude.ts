@@ -19,7 +19,7 @@ import type { Attachment, BackgroundTask, BackgroundTaskKind, PermissionPolicy }
 import { BACKGROUND_CHECK_WORDS } from '@shared/statusWords'
 import { limitField } from '../limitText'
 import { currentLag } from '../stalls'
-import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
+import type { DriverCtx, DriverHandle, HarnessDriver, SendOpts } from './types'
 import { FIRST_OUTPUT_SILENCE } from './silence'
 import { parsePartialJson } from './partial-json'
 import { toolDisplay } from './display'
@@ -80,7 +80,9 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
   private waiters: ((v: IteratorResult<SDKUserMessage>) => void)[] = []
   private closed = false
 
-  push(text: string, attachments: Attachment[] = []): void {
+  /** `uuid` (a steer's id) rides as the message's client uuid; the CLI
+   *  names it in `user_message_uuids` once the model has it (readSteers). */
+  push(text: string, attachments: Attachment[] = [], uuid?: string): void {
     // Images become native content blocks; other files ride along as path
     // references the harness reads itself.
     type Content = SDKUserMessage['message']['content']
@@ -127,7 +129,8 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
       type: 'user',
       message: { role: 'user', content },
       parent_tool_use_id: null,
-      session_id: ''
+      session_id: '',
+      ...(uuid ? { uuid: uuid as SDKUserMessage['uuid'] } : {})
     }
     const waiter = this.waiters.shift()
     if (waiter) waiter({ value: msg, done: false })
@@ -230,6 +233,9 @@ interface StreamState {
   settleTimer: NodeJS.Timeout | null
   /** the last status this driver emitted was 'watching' */
   watching: boolean
+  /** steers pushed and not yet read by the model, id → whether a result
+   *  came since the push (it then runs as a turn of its own) */
+  steers: Map<string, { afterResult: boolean }>
 }
 
 export function newStreamState(): StreamState {
@@ -260,7 +266,27 @@ export function newStreamState(): StreamState {
     pendingSend: false,
     contentSinceSend: false,
     noticeTurn: false,
-    noticeResult: null
+    noticeResult: null,
+    steers: new Map()
+  }
+}
+
+/** A pushed steer the model has read: the CLI lists the client uuids a
+ *  turn has consumed (`user_message_uuids`, else `user_message_uuid`) on
+ *  top-lane frames: the frame after a mid-turn fold carries the steer's
+ *  id, and so do the first frames of a turn it starts once the turn it
+ *  was meant for ended first (probed on CLI 2.1.303, docs/box.md). Each
+ *  id is stamped received once. */
+export function readSteers(ctx: DriverCtx, state: StreamState, msg: SDKMessage): void {
+  if (state.steers.size === 0) return
+  const frame = msg as { parent_tool_use_id?: string | null; user_message_uuid?: string; user_message_uuids?: string[] }
+  if (frame.parent_tool_use_id) return
+  const ids = frame.user_message_uuids ?? (frame.user_message_uuid ? [frame.user_message_uuid] : [])
+  for (const id of ids) {
+    const steer = state.steers.get(id)
+    if (!steer) continue
+    state.steers.delete(id)
+    ctx.emit({ type: 'steer', steerId: id, state: 'received', how: steer.afterResult ? 'next-turn' : 'in-turn' })
   }
 }
 
@@ -701,6 +727,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
   clearNoticeResult(state)
   if ((msg.type === 'assistant' || msg.type === 'stream_event') && !state.noticeTurn) state.contentSinceSend = true
   ctx.mark?.('first-message')
+  readSteers(ctx, state, msg)
   switch (msg.type) {
     case 'system':
       // The CLI boots lazily on the first send, so init arrives mid-turn —
@@ -1007,6 +1034,8 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
     case 'result':
       state.toolInput.clear()
       state.compacting = false
+      // A steer the turn ended without reading runs as the next turn.
+      for (const steer of state.steers.values()) steer.afterResult = true
       // The notice turn's result: the pending send's turn is still to come,
       // so the row stays running and the clock untouched; held in case
       // nothing follows.
@@ -1789,7 +1818,8 @@ export const claudeDriver: HarnessDriver = {
     })()
 
     return {
-      async send(text: string, attachments?: Attachment[]): Promise<void> {
+      confirmsSteers: true,
+      async send(text: string, attachments?: Attachment[], opts?: SendOpts): Promise<void> {
         if (dead) throw new Error('harness gone')
         state.working = true
         noteSend(state)
@@ -1803,7 +1833,9 @@ export const claudeDriver: HarnessDriver = {
         }
         // The harness only runs a LEADING /command natively; mid-message
         // and additional skill references get expanded server-side.
-        input.push(await expandSlashRefs('claude', session.cwd, text), attachments)
+        const expanded = await expandSlashRefs('claude', session.cwd, text)
+        if (opts?.steerId) state.steers.set(opts.steerId, { afterResult: false })
+        input.push(expanded, attachments, opts?.steerId)
         state.sentAt = Date.now()
       },
       interrupt(): void {
@@ -1875,6 +1907,7 @@ export const claudeDriver: HarnessDriver = {
         disposed = true
         clearSettle(state)
         clearNoticeResult(state)
+        state.steers.clear()
         for (const finish of [...pendingApprovals.values()]) finish(false, true)
         for (const finish of [...pendingQuestions.values()]) finish(null)
         input.close()
