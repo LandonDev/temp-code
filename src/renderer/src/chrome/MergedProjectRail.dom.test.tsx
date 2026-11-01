@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registry, type Environment, type EnvironmentStatus, type Link } from "../lib/connection";
 import type { ServerPush, SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
@@ -9,7 +9,10 @@ import { workspaceStore } from "../lib/tcserver/workspaces";
 import { groupWorkspaceSessions } from "../lib/workspaceSessions";
 import { mountProbe } from "../test/renderProbe";
 import { ProjectRail } from "./ProjectRail";
-import { ThreadList } from "./WorkspaceSessions";
+import { ProjectCard, ThreadList } from "./WorkspaceSessions";
+import { resetMenus } from "./menuRows";
+import { newSession } from "../lib/session";
+import type { ProjectMeta } from "../lib/tcserver/types";
 
 /** git's answer for the selected row; any other row must not ask. */
 const git = vi.hoisted(() => ({ asked: [] as [string | null | undefined, boolean][] }));
@@ -372,5 +375,49 @@ describe("the rail", () => {
     expect(headers(root)).toContain("Pinned");
     const pinnedRow = workspaceRows(root).find((r) => r.querySelector('[aria-label="Unpin workspace"]'));
     expect(pinnedRow?.querySelector("button")?.textContent).toBe("only-box");
+  });
+});
+
+describe("New chat on a project card", () => {
+  it("opens the project's draft and adds no row anywhere in the rail", async () => {
+    pairHosts([LOCAL]);
+    sessionStore.attach(new FakeLink("local"));
+    await flush();
+    const before = groupWorkspaceSessions(sessionStore.metas(), [], WORKSPACES, ["w-mac"], {}).chats.map((t) => t.id);
+    const project = { environmentId: "local", id: "p1", workspaceId: "w-mac", name: "Alpha", mode: "local", branch: "main", cwd: MAC_PATH, archived: false, createdAt: 1 } as ProjectMeta;
+    // App's onNewChat: the project's draft, a session with no meta.
+    const onNewChat = vi.fn((projectId: string) =>
+      sessionStore.mutate((prev) => [...prev, { ...newSession("local", "claude", MAC_PATH, undefined, undefined, undefined, { projectId, workspaceId: "w-mac" }), id: "draft-1" }]),
+    );
+    resetMenus();
+    probe = mountProbe(
+      <ProjectCard
+        group={{ project, threads: [], latest: 1, archivedCount: 0 }}
+        selected
+        hosts="local"
+        lastSeen={{}}
+        seenFloor={0}
+        rows={{ ...actions, menu: { rowsFor: () => [], onPick: () => {}, onOpenChange: () => {} }, renamingId: null, onStartRename: () => {}, focusedTree: new Set<string>() }}
+        requested={50}
+        onMore={() => {}}
+        onSelect={() => {}}
+        onNewChat={onNewChat}
+        onRename={() => {}}
+        onSettings={() => {}}
+        onPreamble={() => {}}
+        onArchive={() => {}}
+        onDelete={() => {}}
+      />,
+    );
+    act(() => {
+      fireEvent.click(probe!.container.querySelector<HTMLButtonElement>('button[aria-label="More"]')!);
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "New chat" }));
+    expect(onNewChat).toHaveBeenCalledWith("p1");
+    expect(sessionStore.get("draft-1")).toBeDefined();
+    expect(sessionStore.metas().some((m) => m.id === "draft-1")).toBe(false);
+    const after = groupWorkspaceSessions(sessionStore.metas(), [project], WORKSPACES, ["w-mac"], {});
+    expect(after.chats.map((t) => t.id)).toEqual(before);
+    expect(probe.container.querySelector("[data-card-counts]")?.textContent).toBe("No threads");
   });
 });
