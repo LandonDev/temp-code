@@ -17,7 +17,7 @@ import {
   outlineEntries,
   outlinePlacement,
   type OutlineEntry,
-} from "./transcriptOutline";
+} from "./transcriptOutlineModel";
 
 const user = (id: string, text = "prompt", extra: Partial<Block> = {}): Block => ({ id, role: "user", text, ...extra });
 const reply = (id: string): Block => ({ id, role: "assistant", text: "answer" });

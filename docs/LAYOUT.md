@@ -668,10 +668,10 @@ one-liner, "Thought for 2s" weight/dim pattern), *Tool Chips*
 (call/result pairs), *Code Block* (shiki stays), *Approval Card*, *Loading
 State* (shimmer + elapsed while waiting). User messages render as
 Cursor-style bordered rounded fields, not colored bubbles. Column
-max-w-4xl (896px) centered (`COLUMN_MAX_CLASS` in surfaces/transcriptOutline.ts).
+max-w-4xl (896px) centered (`COLUMN_MAX_CLASS` in surfaces/transcriptOutlineModel.ts).
 
 The transcript's left side lists the person's own messages
-(surfaces/TranscriptOutline.tsx, rules in surfaces/transcriptOutline.ts):
+(surfaces/TranscriptOutline.tsx, rules in surfaces/transcriptOutlineModel.ts):
 one 28px row per user or handoff message (a steer and an optimistic send
 included; reports, nudges and notices never), its first line in 13px muted
 text and its clock time at the end in 12px `tabular-nums`; a thread that

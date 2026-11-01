@@ -18,7 +18,7 @@ import {
   outlineEntries,
   outlinePlacement,
   type OutlinePlacement,
-} from "./transcriptOutline";
+} from "./transcriptOutlineModel";
 import type { JumpHow } from "../chrome/JumpList";
 import {
   RowLayout,

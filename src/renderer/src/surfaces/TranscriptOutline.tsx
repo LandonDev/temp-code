@@ -11,14 +11,14 @@ import {
   entryTime,
   outlineEntries,
   type ReaderStore,
-} from "./transcriptOutline";
+} from "./transcriptOutlineModel";
 
 const NO_STORE = (): (() => void) => () => {};
 
 /**
  * The transcript's left side: the person's own messages, one line each with
  * its clock time, the one being read marked, a click or Enter landing on it
- * (transcriptOutline.ts has the rules; AgentTranscript places it).
+ * (transcriptOutlineModel.ts has the rules; AgentTranscript places it).
  */
 export const TranscriptOutline = memo(function TranscriptOutline({
   turns,

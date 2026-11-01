@@ -11,7 +11,7 @@ vi.mock("../lib/tcserver/store", () => ({
 }));
 
 import { TranscriptOutline } from "./TranscriptOutline";
-import { createReaderStore } from "./transcriptOutline";
+import { createReaderStore } from "./transcriptOutlineModel";
 
 afterEach(cleanup);
 
