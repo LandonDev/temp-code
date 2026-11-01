@@ -84,6 +84,11 @@ export function threadMentionsToTitles(text: string, titleOf: TitleOf): string {
   });
 }
 
+/** Every token, known or not, becomes the name `nameOf` gives it, with no `@`. */
+export function threadMentionsToNames(text: string, nameOf: (id: string) => string): string {
+  return text.replace(THREAD_TOKEN, (_token, ref: string) => nameOf(parseRef(ref).sessionId));
+}
+
 /** The thread id an href points at, when it is one of ours. */
 export function threadIdFromHref(href: string | undefined): string | undefined {
   return href?.startsWith(THREAD_HREF) ? href.slice(THREAD_HREF.length) : undefined;

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Play } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
+import { JumpList, type JumpHow } from "../../chrome/JumpList";
 import { StatusMark, threadStateOf } from "../../components/ui/status";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { sessionStore } from "../../lib/tcserver/store";
@@ -186,8 +187,9 @@ export function PlanView(props: ThreadViewProps) {
           <Outline
             entries={rendered}
             active={activeSection}
-            onJump={(i) =>
-              sectionRefs.current[i]?.scrollIntoView({ behavior: "smooth" })
+            onJump={(i, how) =>
+              // A key lands at once; a click glides.
+              sectionRefs.current[i]?.scrollIntoView({ behavior: how === "key" ? "auto" : "smooth" })
             }
           />
         ) : null}
@@ -274,29 +276,28 @@ function Outline({
    *  project plan's milestones are one entry, its live list. */
   entries: readonly { s: Section; i: number }[];
   active: number;
-  onJump: (i: number) => void;
+  onJump: (i: number, how: JumpHow) => void;
 }) {
+  const items = entries.flatMap(({ s, i }) =>
+    s.heading === null
+      ? []
+      : [
+          {
+            key: String(i),
+            label: s.heading,
+            className: s.level >= 3 ? "pl-6" : s.level === 2 ? "pl-4" : undefined,
+          },
+        ],
+  );
   return (
-    <nav aria-label="Outline" className="absolute top-6 bottom-4 left-4 hidden w-44 overflow-y-auto @min-[69rem]:block">
-      <div className="flex flex-col">
-        {entries.map(({ s, i }) =>
-          s.heading === null ? null : (
-            <Button
-              key={i}
-              variant="ghost"
-              size="xs"
-              onClick={() => onJump(i)}
-              aria-current={i === active ? "location" : undefined}
-              className={`justify-start truncate font-normal ${
-                s.level >= 3 ? "pl-6" : s.level === 2 ? "pl-4" : ""
-              } ${i === active ? "text-foreground" : "text-muted-foreground"}`}
-            >
-              <span className="truncate">{s.heading}</span>
-            </Button>
-          ),
-        )}
-      </div>
-    </nav>
+    <JumpList
+      label="Outline"
+      size="xs"
+      className="absolute top-6 bottom-4 left-4 hidden w-44 @min-[69rem]:block"
+      groups={[{ label: null, items }]}
+      active={String(active)}
+      onJump={(key, how) => onJump(Number(key), how)}
+    />
   );
 }
 

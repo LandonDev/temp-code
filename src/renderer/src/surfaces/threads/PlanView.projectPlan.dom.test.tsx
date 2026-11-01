@@ -147,6 +147,32 @@ describe("PlanView for a project plan", () => {
     expect(nav.parentElement?.className).toContain("@container");
   });
 
+  it("the outline is one tab stop that arrows walk, Enter landing at once and a click gliding", () => {
+    doc = "# Plan\n\n## Context\nc\n\n### Detail\nd\n\n## Tasks\n- [ ] a\n";
+    const plan = (status: string) => <PlanView {...props(session({ threadType: "planning", status, planPath: "/repo/.temp-code/plan-x.md" } as Partial<Session>))} />;
+    const view = render(plan("running"));
+    view.rerender(plan("idle"));
+    const nav = screen.getByRole("navigation", { name: "Outline" });
+    const rows = [...nav.querySelectorAll("button")];
+    expect(rows.map((b) => b.tabIndex)).toEqual([0, -1, -1, -1]);
+    expect(rows[0].getAttribute("aria-current")).toBe("location");
+    // Its look is unchanged: 24px rows, the heading level as an indent.
+    expect(rows[2].className).toContain("h-6");
+    expect(rows[2].className).toContain("pl-6");
+    const scrolls: ScrollIntoViewOptions[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element, o?: boolean | ScrollIntoViewOptions) {
+      scrolls.push(o as ScrollIntoViewOptions);
+    };
+    rows[0].focus();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[1]);
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+    fireEvent.click(rows[3]);
+    Element.prototype.scrollIntoView = original;
+    expect(scrolls).toEqual([{ behavior: "auto" }, { behavior: "smooth" }]);
+  });
+
   it("a plan still being written shows its count alone", () => {
     doc = "# Plan\n\n## Tasks\n- [ ] a\n";
     render(<PlanView {...props(session({ threadType: "planning", status: "running", planPath: "/repo/.temp-code/plan-x.md" }))} />);
