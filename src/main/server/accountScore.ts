@@ -31,17 +31,20 @@ import type { AccountHeadroom } from '@shared/accounts'
  * leads by more than a tolerance. The tolerance is STICKY.base (a plain
  * preference for not moving, since a move drops the harness process) plus
  * STICKY.cache × warmth, where warmth is 1 right after the thread's last
- * answer and falls to 0 over the provider's prompt-cache TTL (5 minutes):
- * a warm cache is worth up to a quarter of the whole scale, so a thread
- * mid-conversation only moves for an account with far more room, and a
- * thread idle for ten minutes moves for a little. A `fresh` pick (the
+ * answer and falls to 0 over the prompt cache's TTL. That is an hour: the
+ * CLI writes the 1-hour cache (every answer reports
+ * `ephemeral_1h_input_tokens`), and with a 5-minute warmth 66 of 362 sends
+ * after a 5 to 60 minute gap moved account and paid a full prefill (5 s at
+ * 150k tokens, 10 s past 400k). A warm cache is worth up to a quarter of
+ * the whole scale, so a thread mid-conversation only moves for an account
+ * with far more room, and a thread idle most of an hour moves for a little. A `fresh` pick (the
  * thread has no process and its model or sticky account changed) drops the
  * base and keeps only the cache term.
  */
 export const WEIGHTS = { window: 0.45, limit: 0.3, load: 0.15, rate: 0.1 } as const
 export const RATE_FULL_PER_MIN = 30
 export const SPEND_FIRST_BONUS = 0.15
-export const STICKY = { base: 0.1, cache: 0.25, cacheTtlMs: 5 * 60_000 } as const
+export const STICKY = { base: 0.1, cache: 0.25, cacheTtlMs: 60 * 60_000 } as const
 
 export interface ScoreInput {
   serviceId: ServiceId

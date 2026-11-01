@@ -74,6 +74,19 @@ describe('stickiness', () => {
     expect(cacheWarmth(NOW - STICKY.cacheTtlMs, NOW)).toBe(0)
     expect(cacheWarmth(null, NOW)).toBe(0)
   })
+  it("the TTL is the CLI's 1-hour cache: warm at 10 and 50 minutes", () => {
+    expect(STICKY.cacheTtlMs).toBe(60 * 60_000)
+    expect(cacheWarmth(NOW - 10 * 60_000, NOW)).toBeCloseTo(50 / 60)
+    expect(cacheWarmth(NOW - 50 * 60_000, NOW)).toBeCloseTo(10 / 60)
+  })
+  it('a thread idle 20 minutes keeps its account against a 0.2 lead', () => {
+    const tolerance = stickyTolerance(cacheWarmth(NOW - 20 * 60_000, NOW), false)
+    const ranked = [
+      { name: 'best', threads: 0, total: 0.9, window: 1, limit: 1, load: 1, rate: 1, spendFirst: false },
+      { name: 'own', threads: 0, total: 0.7, window: 1, limit: 1, load: 1, rate: 1, spendFirst: false }
+    ]
+    expect(keepOrMove('own', ranked, tolerance)).toBe('own')
+  })
   it('the tolerance is the base plus the cache term; a fresh pick keeps only the cache term', () => {
     expect(stickyTolerance(0, false)).toBeCloseTo(STICKY.base)
     expect(stickyTolerance(1, false)).toBeCloseTo(STICKY.base + STICKY.cache)
