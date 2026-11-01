@@ -147,6 +147,23 @@ export default [
     },
   },
   {
+    // An unsent draft is never a chip: with the project's draft on screen
+    // the strip draws its threads and marks none (chipThreadsOf).
+    name: "The project's draft on screen: its threads, no chip marked",
+    props: {
+      ...common,
+      model: {
+        activeId: null,
+        dormant: [],
+        live: [
+          chip("a", "Header strip"),
+          chip("w", "Typecheck the renderer", { status: "running" }, { threadType: "implementation", activity: "typecheck" }),
+        ],
+      },
+      trailing: <NewThreadChooser workspaceId={null} empty={false} onStart={() => {}} />,
+    },
+  },
+  {
     name: "An empty project",
     props: {
       ...common,
