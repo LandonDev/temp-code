@@ -144,9 +144,9 @@ up, none below. Numbers in tables and tallies are `tabular-nums`.
 ### Spacing
 
 The 4px grid. Inside a row: 8px between glyph and label, 12px horizontal
-padding, rows 28px tall in menus and dense lists (search results among
-them: one line each), 36px for `RailRow` (the
-rail and the settings list), 32px for the thread rows of the workspace
+padding, rows 28px tall in menus, dense lists (search results among
+them: one line each) and `RailRow` (the rail, whose workspace rows sit
+4px apart on `sidebar-group`, and the settings list), 32px for the thread rows of the workspace
 column's Chats and Archived folds and 28px for the rows nested under them.
 A project card in that column sits on `sidebar-group`: a 20px name line, a
 16px branch line 2px under it, 24px read-only thread lines, and cards sit 4px

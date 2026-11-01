@@ -65,11 +65,12 @@ strip, the editor (CodeMirror), the terminal (xterm), the charts
 (`aliax/charts`: the grid, axes, marks, legend and tooltip every Stats
 chart shares, on recharts and the `--chart-1..4` tokens). Each is built
 from the components above wherever it has a button, a menu, a field or a state word. The rail's one row is `RailRow`
-(chrome/RailRow.tsx, with `RailHeading`): a ghost `Button`, a 16px glyph, a
-13px label, one trailing mark, one hover action and one `glyphAction` (an
-icon `Button` with its Tooltip that takes the glyph's place on hover and
-focus, as a workspace's Pin does), used by the rail, its foot and the
-settings list.
+(chrome/RailRow.tsx, with `RailHeading`): a 28px ghost `Button`, a 16px
+glyph only when it has one, a 13px label, one trailing mark and at most two
+`hoverActions` (24px icon `Button`s with their Tooltips at the row's end on
+hover and focus, as a workspace's Pin and ⋯), with `surface="group"` for a
+container on the `sidebar-group` fills (a workspace), used by the rail, its
+foot and the settings list.
 
 ## Icons
 

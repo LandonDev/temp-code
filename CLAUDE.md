@@ -1331,7 +1331,8 @@ names the far child).
   recency, unread sums, Mark all read and the fleet switches over every
   copy, a down host's rows under the offline tint. Host status is one Hosts
   row at the rail's foot (`HostsRow` in chrome/HostRows.tsx, two or more
-  hosts only): a connection dot per host, and a menu with a submenu per
+  hosts only): a connection dot per host, coloured only in trouble, and a
+  menu with a submenu per
   host (its state, the deploy drift, Switch to, Add workspace here, Mark
   all read, the fleet switches), then Host settings; a boot resume is a
   toast.
