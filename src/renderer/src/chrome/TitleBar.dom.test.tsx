@@ -10,6 +10,8 @@ import { buildHeaderModel, orderModel } from "../lib/threadHeaderModel";
 import type { ThreadHeaderProps } from "./ThreadHeader";
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 import { TabVisitNav, TitleBar } from "./TitleBar";
+import { chipThreadsOf } from "./ShellTitleBar";
+import { newSession } from "../lib/session";
 
 vi.mock("./WindowControls", () => ({ WindowControls: () => null }));
 vi.mock("./ProjectPlanChip", () => ({ ProjectPlanChip: () => <button type="button">Plan</button> }));
@@ -195,5 +197,50 @@ describe("TitleBar with no project selected", () => {
     expect(shelf.querySelector('[aria-selected="true"]')?.textContent).toContain("A loose chat");
     fireEvent.click(screen.getByRole("button", { name: "Thread menu" }));
     for (const name of ["Rename", "Type", /^Archive/]) expect(await screen.findByRole("menuitem", { name })).toBeTruthy();
+  });
+});
+
+describe("TitleBar and an unsent draft", () => {
+  const catalog = { workspaces: [{ id: "w1", path: "/w1" }], projects: [] } as unknown as Catalog;
+  const draft = { ...newSession("env_local", "claude", "/w1", undefined, undefined, undefined, { workspaceId: "w1" }), id: "draft-1" };
+  const modelFor = (sessions: ReturnType<typeof newSession>[], activeIds: string[]) =>
+    orderModel(
+      buildHeaderModel({
+        threads: chipThreadsOf([chat], sessions),
+        tabs: [{ id: "tab", sessionIds: activeIds }],
+        scope: { loose: new Set(["w1"]), catalog },
+        activeTabId: "tab",
+        lastSeen: { [chat.id]: 1 },
+        planReady: {},
+      }),
+      [],
+    );
+
+  it("draws no chip for an unsent draft on screen and marks none", () => {
+    Element.prototype.scrollIntoView = () => {};
+    const model = modelFor([draft], [draft.id]);
+    expect(model.activeId).toBeNull();
+    bar({ header: { ...header, model } });
+    expect(screen.queryByText("claude")).toBeNull();
+    expect(document.querySelector('[role="tab"][aria-selected="true"]')).toBeNull();
+    expect(screen.getByText("A loose chat")).toBeTruthy();
+  });
+
+  it("draws a sent draft's chip with its first row, before the meta lands", () => {
+    Element.prototype.scrollIntoView = () => {};
+    const sent = { ...draft, title: "Fix the login flow", blocks: [{ id: "u1", role: "user" as const, text: "Fix the login flow" }] };
+    const model = modelFor([sent], [sent.id]);
+    expect(model.activeId).toBe(sent.id);
+    bar({ header: { ...header, model } });
+    expect(screen.getByText("Fix the login flow")).toBeTruthy();
+  });
+
+  it("a project switch that seeds a draft draws no New chat chip", () => {
+    Element.prototype.scrollIntoView = () => {};
+    const seeded = { ...draft, id: "seeded", title: "New chat" };
+    const model = modelFor([draft, seeded], [chat.id]);
+    bar({ header: { ...header, model } });
+    expect(screen.queryByText("New chat")).toBeNull();
+    expect([...model.live, ...model.dormant].map((c) => c.id)).toEqual([chat.id]);
   });
 });

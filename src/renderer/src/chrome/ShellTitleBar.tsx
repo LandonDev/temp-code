@@ -144,32 +144,8 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   const sessions = useTitleSessions(sessionMetas);
   const lastSeen = useLastSeen();
   const seenFloor = useSeenFloor();
-  // The strip is the scope's root threads, open in a tab or not; a local
-  // draft joins until the server knows it.
-  const chipThreads = useMemo<ChipThread[]>(() => {
-    const known = new Set(sessionMetas.map((meta) => meta.id));
-    const drafts = sessions
-      .filter((session) => !known.has(session.id))
-      .map(
-        (session): ChipThread => ({
-          id: session.id,
-          environmentId: session.environmentId,
-          title: session.title,
-          threadType: session.threadType ?? null,
-          provider: session.harness,
-          projectId: session.projectId ?? null,
-          workspaceId: session.workspaceId ?? null,
-          cwd: session.cwd,
-          parentId: session.parentId ?? null,
-          archived: false,
-          status: "idle",
-          updatedAt: session.createdAt ?? 0,
-          draft: true,
-          threadRules: session.threadRules ?? null,
-        }),
-      );
-    return drafts.length > 0 ? [...sessionMetas, ...drafts] : sessionMetas;
-  }, [sessionMetas, sessions]);
+  // The strip is the scope's root threads, open in a tab or not.
+  const chipThreads = useMemo(() => chipThreadsOf(sessionMetas, sessions), [sessionMetas, sessions]);
   // The selected project's threads, else the scope's loose chats (every
   // linked copy's).
   const stripScope = useMemo<StripScope>(
@@ -515,3 +491,37 @@ function toTitleTab(
   };
 }
 
+
+/**
+ * The threads the strip may draw: every meta, plus a sent local thread whose
+ * create is still in flight (it joins with its first row and the meta takes
+ * over when it lands). An unsent draft is never a chip: the centred composer
+ * says where the person is.
+ */
+export function chipThreadsOf(
+  sessionMetas: readonly ChipThread[],
+  sessions: readonly Session[],
+): readonly ChipThread[] {
+  const known = new Set(sessionMetas.map((meta) => meta.id));
+  const drafts = sessions
+    .filter((session) => !known.has(session.id) && session.blocks.length > 0)
+    .map(
+      (session): ChipThread => ({
+        id: session.id,
+        environmentId: session.environmentId,
+        title: session.title,
+        threadType: session.threadType ?? null,
+        provider: session.harness,
+        projectId: session.projectId ?? null,
+        workspaceId: session.workspaceId ?? null,
+        cwd: session.cwd,
+        parentId: session.parentId ?? null,
+        archived: false,
+        status: "idle",
+        updatedAt: session.createdAt ?? 0,
+        draft: true,
+        threadRules: session.threadRules ?? null,
+      }),
+    );
+  return drafts.length > 0 ? [...sessionMetas, ...drafts] : sessionMetas;
+}

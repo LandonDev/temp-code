@@ -90,7 +90,7 @@ describe("isLiveThread", () => {
     expect(isLiveThread(thread("x", { status: "done" }), seen, {})).toBe(false);
   });
 
-  it("treats a never-seen root as unread and a draft as always live", () => {
+  it("treats a never-seen root as unread and a sent draft (no meta yet) as always live", () => {
     expect(isLiveThread(thread("y", { updatedAt: 1 }), {}, {})).toBe(true);
     expect(isLiveThread(thread("d", { draft: true }), { d: 100 }, {})).toBe(true);
   });

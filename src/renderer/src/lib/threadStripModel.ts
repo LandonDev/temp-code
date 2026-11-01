@@ -28,7 +28,7 @@ export type StripThread = Pick<
       "treeHasLiveWork" | "treeHasPaused" | "treeCanContinue" | "masterId" | "workspaceId" | "cwd"
     >
   > & {
-    /** Minted locally, not on the server yet; always live. */
+    /** Sent, its create still in flight (an unsent draft is never a chip); always live. */
     draft?: boolean;
   };
 
@@ -114,7 +114,9 @@ export function isUnread(
 }
 
 /** temp-code's live rule: anything not settled-and-seen. `done` settles
- *  like `idle` (the server's terminal status for a finished run). */
+ *  like `idle` (the server's terminal status for a finished run). `draft`
+ *  is a sent thread whose create is still in flight (an unsent draft is
+ *  never a chip): live until its meta lands. */
 /** What the live rule reads; every StripThread and ThreadRow has it. */
 export type LiveInput = Pick<StripThread, "id" | "status" | "updatedAt"> &
   Partial<Pick<StripThread, "treeHasLiveWork" | "treeHasPaused" | "treeCanContinue" | "draft">>;
