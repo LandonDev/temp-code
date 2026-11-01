@@ -3,6 +3,7 @@ import type { Block } from "../../lib/session";
 import type { LiveEditState } from "../../lib/tcserver/store";
 import type { TodoItem } from "../../lib/tcserver/todos";
 import { activeMs, editPath, groupByTodo, todoKey } from "../../lib/threads/rounds";
+import { awaitsUser, isActivityBlock, isTodoBlock } from "../transcriptActivity";
 
 /**
  * The implementation board's folds, pure: the thread's blocks cut into
@@ -112,6 +113,26 @@ export function tasksOf(todos: TodoItem[], round: number, running: boolean, bloc
     return task;
   });
 }
+
+/** The running task's last `max` steps, oldest first: what the transcript
+ *  would fold into a working line (a call, a thought), never the todo
+ *  calls, never an approval or question (the board's Needs you line says
+ *  those). Walks back from the end and stops at the first block of another
+ *  task, so it reads only the task's own tail. */
+export function liveSteps(blocks: readonly Block[], todoCount: number, active: number, max = 3): Block[] {
+  if (active < 0) return [];
+  const kept: Block[] = [];
+  for (let i = blocks.length - 1; i >= 0 && kept.length < max; i--) {
+    const b = blocks[i];
+    if (todoKey(b, todoCount) !== active) break;
+    if (isActivityBlock(b) && !isTodoBlock(b) && !awaitsUser(b)) kept.push(b);
+  }
+  return kept.reverse();
+}
+
+/** The same blocks, object for object: a stream into another row keeps the steps' array. */
+export const sameBlocks = (a: readonly Block[], b: readonly Block[]): boolean =>
+  a.length === b.length && a.every((block, i) => block === b[i]);
 
 export type ChangeRow = {
   path: string;

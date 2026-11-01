@@ -158,6 +158,52 @@
   }
 }
 
+/* A fold that opens and shuts on its own (the running task's steps): height
+   and opacity together. It opens on the layout spring, set inline by its
+   owner while open, and shuts over --dur-slow. */
+.collapsible-auto {
+  transition-property: height, opacity;
+  transition-duration: var(--dur-slow);
+  transition-timing-function: var(--ease-out);
+}
+
+.collapsible-auto[data-starting-style],
+.collapsible-auto[data-ending-style] {
+  opacity: 0;
+}
+
+.collapsible-auto[data-ending-style] {
+  transition-duration: var(--dur-slow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collapsible-auto {
+    transition-property: opacity;
+    transition-duration: var(--dur-fast) !important;
+    transition-timing-function: var(--ease-out) !important;
+  }
+}
+
+/* A step landing in an open fold: it fades in and rises 4px. */
+.step-land {
+  transition-property: opacity, translate;
+  transition-duration: var(--dur-base);
+  transition-timing-function: var(--ease-out);
+}
+
+@starting-style {
+  .step-land {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-land {
+    transition: none;
+  }
+}
+
 /* StatusMark: a live glyph breathes once when its state changes; nothing loops. */
 @keyframes status-breathe {
   50% {

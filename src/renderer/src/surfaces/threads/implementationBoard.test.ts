@@ -7,11 +7,13 @@ import {
   changesByTask,
   foldRounds,
   isHiddenPass,
+  liveSteps,
   lastFailure,
   needsYou,
   passCost,
   passNumbers,
   passRecord,
+  sameBlocks,
   taskTimes,
   tasksOf,
 } from "./implementationBoard";
@@ -204,5 +206,64 @@ describe("passRecord", () => {
     expect(rec).toMatchObject({ endedAt: 65_000, model: "claude-opus-5-5", effort: "High", context: "1M", speed: "Fast", cost: 1.5 });
     expect(rec.workedMs).toBeGreaterThan(1000);
     expect(passCost([0.5, undefined, 2], 2)).toBe(1.5);
+  });
+});
+
+describe("liveSteps", () => {
+  const run = (id: string, todo: number, command: string, extra: Partial<Block> = {}): Block =>
+    ({
+      id,
+      role: "tool",
+      text: command,
+      round: 0,
+      todo,
+      tool: { kind: "execute", name: "Bash", title: command, status: "completed", callId: id },
+      ...extra,
+    }) as unknown as Block;
+  const thought = (id: string, todo: number): Block => ({ id, role: "reasoning", text: "Checking the column", round: 0, todo }) as Block;
+  const todoCall = (id: string, todo: number): Block =>
+    ({ id, role: "tool", text: "", round: 0, todo, tool: { kind: "other", name: "TodoWrite", status: "completed", callId: id } }) as unknown as Block;
+  const prose = (id: string, todo: number): Block => ({ id, role: "assistant", text: "Next, the column.", round: 0, todo }) as Block;
+  const ids = (blocks: Block[]) => blocks.map((b) => b.id);
+
+  it("keeps the last three steps of the running task, oldest first", () => {
+    const blocks = [run("a", 0, "ls"), run("b", 1, "git status"), thought("c", 1), run("d", 1, "bun test"), edit("e", "src/a.ts", 1, 2, 1)];
+    expect(ids(liveSteps(blocks, 3, 1))).toEqual(["c", "d", "e"]);
+  });
+
+  it("skips todo calls, waiting approvals and questions, prose and the person's rows", () => {
+    const approval = run("w", 1, "rm -rf dist", { approval: { requestId: "r" } } as Partial<Block>);
+    const question = run("q", 1, "ask", {
+      question: { questions: [{ question: "Tabs?" }] },
+      tool: { kind: "other", name: "AskUserQuestion", status: "running", callId: "q" },
+    } as unknown as Partial<Block>);
+    const blocks = [run("a", 1, "ls"), todoCall("t", 1), prose("p", 1), user("u", 0, "go on", { todo: 1 }), approval, question];
+    expect(ids(liveSteps(blocks, 3, 1))).toEqual(["a"]);
+  });
+
+  it("stops at the earlier task, and has nothing without a running task", () => {
+    const blocks = [run("a", 0, "ls"), run("b", 0, "pwd"), run("c", 1, "bun test")];
+    expect(ids(liveSteps(blocks, 3, 1))).toEqual(["c"]);
+    expect(liveSteps(blocks, 3, -1)).toEqual([]);
+  });
+
+  it("reads only the tail of a long pass", () => {
+    const blocks = Array.from({ length: 10_000 }, (_, i) => run(`b${String(i)}`, i < 9_990 ? 0 : 1, `step ${String(i)}`));
+    let reads = 0;
+    const counted = new Proxy(blocks, {
+      get(target, key, receiver) {
+        if (typeof key === "string" && /^\d+$/.test(key)) reads++;
+        return Reflect.get(target, key, receiver) as unknown;
+      },
+    });
+    expect(ids(liveSteps(counted, 3, 1))).toEqual(["b9997", "b9998", "b9999"]);
+    expect(reads).toBeLessThan(20);
+  });
+
+  it("compares steps object for object", () => {
+    const a = run("a", 1, "ls");
+    expect(sameBlocks([a], [a])).toBe(true);
+    expect(sameBlocks([a], [{ ...a }])).toBe(false);
+    expect(sameBlocks([a], [])).toBe(false);
   });
 });

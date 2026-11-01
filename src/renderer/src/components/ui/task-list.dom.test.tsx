@@ -141,6 +141,76 @@ describe("a task's time", () => {
   });
 });
 
+describe("a task's detail", () => {
+  const steps = <p>Edited SplitShell.tsx</p>;
+  const withDetail = (detail: Partial<Task>): Task[] => TASKS.map((t) => (t.state === "active" ? { ...t, ...detail } : t));
+
+  it("opens under its own row, indented to the label, inside a disclosure", () => {
+    const { container } = render(<TaskList tasks={withDetail({ detail: steps })} />);
+    const panel = container.querySelector<HTMLElement>("[data-task-detail]")!;
+    expect(panel.textContent).toBe("Edited SplitShell.tsx");
+    expect(panel.className).toContain("collapsible-auto");
+    expect(panel.closest("li")?.textContent).toContain(LONG);
+    expect(panel.firstElementChild?.className).toContain("ps-6");
+    expect(container.querySelectorAll("[data-task-detail]")).toHaveLength(1);
+  });
+
+  it("makes only the row with a detail a trigger", () => {
+    const { container } = render(<TaskList tasks={withDetail({ detail: steps })} />);
+    const triggers = [...container.querySelectorAll("li [data-slot='collapsible-trigger']")];
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0].textContent).toContain(LONG);
+    cleanup();
+    const plain = render(<TaskList tasks={TASKS} />);
+    expect(plain.container.querySelectorAll("li [data-slot='collapsible-trigger']")).toHaveLength(0);
+  });
+
+  it("stays shut when the person closed it, and says so through its callback", () => {
+    const onDetailOpenChange = vi.fn();
+    const { container, rerender } = render(<TaskList tasks={withDetail({ detail: steps, onDetailOpenChange })} />);
+    fireEvent.click(container.querySelector("li [data-slot='collapsible-trigger']")!);
+    expect(onDetailOpenChange).toHaveBeenCalledWith(false);
+    rerender(<TaskList tasks={withDetail({ detail: steps, detailOpen: false, onDetailOpenChange })} />);
+    expect(container.querySelector("[data-task-detail]")?.hasAttribute("data-open") ?? false).toBe(false);
+  });
+
+  it("folds when the detail goes, holding its last content while it shuts", () => {
+    const { container, rerender } = render(<TaskList tasks={withDetail({ detail: steps })} />);
+    rerender(<TaskList tasks={TASKS.map((t) => (t.state === "active" ? { ...t, state: "done" as const } : t))} />);
+    const panel = container.querySelector("[data-task-detail]");
+    // Either still shutting with the held steps, or gone: never open.
+    expect(panel === null || !panel.hasAttribute("data-open")).toBe(true);
+    if (panel) expect(panel.textContent).toBe("Edited SplitShell.tsx");
+    expect(container.querySelectorAll("li [data-slot='collapsible-trigger']")).toHaveLength(0);
+  });
+});
+
+describe("its fitted width", () => {
+  const measure = (text: string) => text.length * 6;
+
+  it("reports the card's width from the injected measurer, and again only when the labels change", () => {
+    const onFitWidth = vi.fn();
+    const tasks: Task[] = [
+      { id: "1", label: "Docs", state: "done", time: { ms: 3000 } },
+      { id: "2", label: "Measure the labels", state: "active", time: { ms: 1000, from: 0 } },
+    ];
+    const { rerender } = render(<TaskList tasks={tasks} onFitWidth={onFitWidth} measureText={measure} />);
+    expect(onFitWidth).toHaveBeenCalledTimes(1);
+    // The widest row (border, inset, mark, gap, label, gap, the widest time) beats the header.
+    expect(onFitWidth).toHaveBeenLastCalledWith(2 * 13 + 24 + 18 * 6 + 10 + 7 * 6);
+    rerender(<TaskList tasks={tasks.map((t) => ({ ...t, state: "done" as const }))} onFitWidth={onFitWidth} measureText={measure} />);
+    expect(onFitWidth).toHaveBeenCalledTimes(1);
+    rerender(<TaskList tasks={[...tasks, { id: "3", label: "A much longer task label than before", state: "pending" }]} onFitWidth={onFitWidth} measureText={measure} />);
+    expect(onFitWidth).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports nothing without a canvas or a measurer", () => {
+    const onFitWidth = vi.fn();
+    render(<TaskList tasks={TASKS} onFitWidth={onFitWidth} />);
+    expect(onFitWidth).not.toHaveBeenCalled();
+  });
+});
+
 describe("the folded list's header", () => {
   it("names the active task on one cut line inside the card", () => {
     render(<TaskList defaultOpen={false} tasks={TASKS} />);

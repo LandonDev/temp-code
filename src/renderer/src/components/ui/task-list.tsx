@@ -1,8 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronDown } from "@renderer/chrome/icons";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronRight } from "@renderer/chrome/icons";
 import { TruncateTip } from "@renderer/components/tip";
 import { cn } from "@renderer/lib/cn";
 import { duration, useNow } from "@renderer/lib/duration";
+import { SPRING_LAYOUT_CSS } from "@renderer/lib/ease";
+import { canvasMeasure, cssFont, fitCard, type Measure } from "@renderer/lib/taskListWidth";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./collapsible";
 
 /**
@@ -11,13 +13,33 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./collapsib
  * check as they finish, and a cursor that slides to the active row. Each
  * task is one line cut at the column's edge, its whole text on hover; the
  * active task alone shows its whole label. A started task's time ends its
- * row, the active one's ticking.
+ * row, the active one's ticking. A task with a `detail` (the running one's
+ * steps) opens it under its label, and folds it once the detail goes.
  */
 export type TaskState = "pending" | "active" | "done";
 /** `time` is how long a started task worked; with `from`, it is still
  *  running and its live time is `ms + (now − from)`. */
 export type TaskTime = { ms: number; from?: number };
-export type Task = { id: string; label: string; state: TaskState; progress?: number; time?: TaskTime };
+export type Task = {
+  id: string;
+  label: string;
+  state: TaskState;
+  progress?: number;
+  time?: TaskTime;
+  /** Shown under the label, the label its trigger; open unless `detailOpen` is false. */
+  detail?: ReactNode;
+  detailOpen?: boolean;
+  onDetailOpenChange?: (open: boolean) => void;
+};
+
+/** The px each class below stands for, read by the width arithmetic
+ *  (lib/taskListWidth.ts); a test holds them to the classes. */
+export const TASK_INSET_PX = 12; // px-3
+export const TASK_GAP_PX = 10; // gap-2.5
+export const TASK_MARK_PX = 14; // size-3.5
+export const TASK_BORDER_PX = 1; // border
+export const TASK_TALLY_GAP_PX = 4; // gap-1
+export const TASK_CHEVRON_PX = 14; // size-3.5
 
 const CHECK = "M4.8 8.4 7.04 10.8 11.52 6.0";
 const ARROW = "M5.5 8h5M8.6 6.1 10.5 8 8.6 9.9";
@@ -82,8 +104,103 @@ function TaskCursor({ at }: { at: Spot }) {
 
 const shareText = (value: number) => `${String(Math.round(Math.min(1, Math.max(0, value)) * 100))}%`;
 
-export function TaskList({ tasks, title = "Tasks", defaultOpen = true, className }: { tasks: readonly Task[]; title?: string; defaultOpen?: boolean; className?: string }) {
+/** The detail opens on the layout spring; it shuts on `.collapsible-auto`'s own curve. */
+const DETAIL_OPENING = { transitionDuration: `${String(SPRING_LAYOUT_CSS.ms)}ms`, transitionTimingFunction: SPRING_LAYOUT_CSS.easing };
+
+/** One task. Every row is a disclosure, so a detail that arrives opens with
+ *  motion and one that goes folds with its last content held. */
+function TaskRow({ task }: { task: Task }) {
+  const [held, setHeld] = useState<ReactNode>(null);
+  if (task.detail !== undefined && task.detail !== held) setHeld(task.detail);
+  const has = task.detail !== undefined;
+  const open = has && task.detailOpen !== false;
+  const label = (
+    <TruncateTip text={task.label}>
+      {/* One element in every state, so the strike draws when the active row finishes. */}
+      <span data-state={task.state} className={cn("task-label relative min-w-0 text-[13px] leading-5", task.state === "active" ? "break-words text-foreground" : task.state === "done" ? "truncate text-(--task-done)" : "truncate text-muted-foreground")}>
+        {task.label}
+        <span aria-hidden className="task-strike" />
+      </span>
+    </TruncateTip>
+  );
+  return (
+    <Collapsible open={open} onOpenChange={(next) => task.onDetailOpenChange?.(next)} render={<li />} className="flex min-h-7 flex-col py-1">
+      <div className="flex items-start gap-2.5">
+        <TaskMark state={task.state} className="mt-[3px]" />
+        {has ? (
+          <CollapsibleTrigger className="group/steps -mx-1 flex min-w-0 items-start gap-1 rounded-md px-1 text-start outline-none transition-[background-color] duration-(--dur-fast) hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none">
+            {label}
+            <ChevronRight
+              aria-hidden
+              className={cn(
+                "mt-1 size-3 shrink-0 text-muted-foreground transition-[rotate,opacity] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
+                open && "rotate-90 opacity-0 group-hover/steps:opacity-100 group-focus-visible/steps:opacity-100",
+              )}
+            />
+          </CollapsibleTrigger>
+        ) : (
+          label
+        )}
+        {task.time ? <TaskTimeText time={task.time} state={task.state} /> : null}
+        {task.state === "active" && task.progress !== undefined ? <span className="sr-only">{shareText(task.progress)} complete</span> : null}
+      </div>
+      <CollapsibleContent data-task-detail className="collapsible-auto" style={open ? DETAIL_OPENING : undefined}>
+        <div className="min-w-0 ps-6">{held}</div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/** The fonts the list sets its labels and times in, from the rendered list. */
+function listMeasure(root: HTMLElement): Measure | null {
+  const label = root.querySelector(".task-label") ?? root.querySelector("[data-slot='collapsible-trigger'] span");
+  if (!label) return null;
+  const time = root.querySelector("li .tabular-nums") ?? label;
+  return canvasMeasure({ label: cssFont(label), time: cssFont(time) });
+}
+
+export function TaskList({
+  tasks,
+  title = "Tasks",
+  defaultOpen = true,
+  onFitWidth,
+  measureText,
+  className,
+}: {
+  tasks: readonly Task[];
+  title?: string;
+  defaultOpen?: boolean;
+  /** Told the card's wanted width in px (lib/taskListWidth.ts) when the labels change and once the fonts load. */
+  onFitWidth?: (px: number) => void;
+  /** Measures text in place of the canvas (tests). */
+  measureText?: Measure;
+  className?: string;
+}) {
   const [open, setOpen] = useState(defaultOpen);
+  const card = useRef<HTMLDivElement>(null);
+  const labels = tasks.map((task) => task.label).join("\n");
+  const hasTimes = tasks.some((task) => task.time !== undefined);
+
+  // Before paint, so the first frame already has the column's width.
+  useLayoutEffect(() => {
+    const root = card.current;
+    if (!onFitWidth || !root) return;
+    const input = { labels: labels.split("\n"), hasTimes, header: { title, tally: `${String(tasks.length)}/${String(tasks.length)}` } };
+    const report = (): void => {
+      const measure = measureText ?? listMeasure(root);
+      if (measure) onFitWidth(fitCard(input, measure));
+    };
+    report();
+    let live = true;
+    if (!measureText) {
+      void document.fonts?.ready.then(() => {
+        if (live) report();
+      });
+    }
+    return () => {
+      live = false;
+    };
+  }, [labels, hasTimes, title, tasks.length, onFitWidth, measureText]);
 
   const done = tasks.filter((task) => task.state === "done").length;
   const activeAt = tasks.findIndex((task) => task.state === "active");
@@ -97,7 +214,7 @@ export function TaskList({ tasks, title = "Tasks", defaultOpen = true, className
 
   useLayoutEffect(() => {
     const list = rows.current;
-    const mark = list?.children[activeAt]?.firstElementChild;
+    const mark = list?.children[activeAt]?.querySelector(".task-mark");
     if (!list || !mark) {
       setCursor((was) => (was === null ? null : { ...was, gone: true }));
       return;
@@ -124,7 +241,7 @@ export function TaskList({ tasks, title = "Tasks", defaultOpen = true, className
   }, [complete]);
 
   return (
-    <Collapsible data-slot="task-list" open={open} onOpenChange={setOpen} className={cn("w-full rounded-xl border border-border bg-card text-card-foreground", className)}>
+    <Collapsible ref={card} data-slot="task-list" open={open} onOpenChange={setOpen} className={cn("w-full rounded-xl border border-border bg-card text-card-foreground", className)}>
       <CollapsibleTrigger className="group/task-header flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-start outline-none transition-[background-color] duration-(--dur-fast) focus-visible:ring-2 focus-visible:ring-ring">
         <span className="relative mt-[3px] block size-3.5 shrink-0">
           {complete ? <TaskMark state="done" /> : <TaskDonut done={done} total={tasks.length} />}
@@ -143,18 +260,7 @@ export function TaskList({ tasks, title = "Tasks", defaultOpen = true, className
       <CollapsibleContent>
         <ul ref={rows} className={cn("relative -mt-1 px-3 pb-2", activeShare !== undefined && "pe-14")}>
           {tasks.map((task) => (
-            <li key={task.id} className="flex min-h-7 items-start gap-2.5 py-1">
-              <TaskMark state={task.state} className="mt-[3px]" />
-              {/* One element in every state, so the strike draws when the active row finishes. */}
-              <TruncateTip text={task.label}>
-                <span data-state={task.state} className={cn("task-label relative min-w-0 text-[13px] leading-5", task.state === "active" ? "break-words text-foreground" : task.state === "done" ? "truncate text-(--task-done)" : "truncate text-muted-foreground")}>
-                  {task.label}
-                  <span aria-hidden className="task-strike" />
-                </span>
-              </TruncateTip>
-              {task.time ? <TaskTimeText time={task.time} state={task.state} /> : null}
-              {task.state === "active" && task.progress !== undefined ? <span className="sr-only">{shareText(task.progress)} complete</span> : null}
-            </li>
+            <TaskRow key={task.id} task={task} />
           ))}
           {cursor === null ? null : <TaskCursor at={cursor} />}
           {cursor === null || activeShare === undefined ? null : (

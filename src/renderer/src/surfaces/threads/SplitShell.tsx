@@ -8,7 +8,9 @@ import { MessageSquare } from "../../chrome/icons";
  * The board | sash | chat recipe every thread view with a board shares.
  * The board sits left at `split%` (30–70, double-click resets to 50) under
  * one 36px header: the view's title, one muted state line, its actions and
- * the conversation toggle. Folding is a toggle, never a tween: the board
+ * the conversation toggle. A board that asks for a `fit` (px) gets that
+ * width, never over half the pane, until the person drags the sash;
+ * double-click then goes back to the fit. Folding is a toggle, never a tween: the board
  * takes the full width at once and the chat stays mounted (`inert`,
  * `invisible`, parked at its last width) so the transcript keeps its
  * measurements; unfolding returns it to its slot, its content fading in.
@@ -23,11 +25,15 @@ import { MessageSquare } from "../../chrome/icons";
 export function useSplit(initial = 50): {
   split: number;
   setSplit: (n: number) => void;
+  /** The person dragged the sash: their split wins over a fitted width. */
+  manual: boolean;
+  setManual: (manual: boolean) => void;
   dragging: boolean;
   rootRef: React.RefObject<HTMLDivElement | null>;
   startDrag: (e: React.PointerEvent) => void;
 } {
   const [split, setSplit] = useState(initial);
+  const [manual, setManual] = useState(false);
   const [dragging, setDragging] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const startDrag = useCallback((e: React.PointerEvent) => {
@@ -38,6 +44,7 @@ export function useSplit(initial = 50): {
     setDragging(true);
     const rect = root.getBoundingClientRect();
     const onMove = (ev: PointerEvent): void => {
+      setManual(true);
       setSplit(Math.min(70, Math.max(30, ((ev.clientX - rect.left) / rect.width) * 100)));
     };
     const onUp = (): void => {
@@ -50,7 +57,7 @@ export function useSplit(initial = 50): {
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   }, []);
-  return { split, setSplit, dragging, rootRef, startDrag };
+  return { split, setSplit, manual, setManual, dragging, rootRef, startDrag };
 }
 
 /** True once the board has painted: a board there at mount (or within
@@ -142,6 +149,7 @@ export function SplitShell({
   detail,
   actions,
   held,
+  fit,
   className = "",
 }: {
   /** The board's body; the header is drawn from `title`. */
@@ -162,9 +170,17 @@ export function SplitShell({
    *  chat is folded, so a pause is never out of sight; with the chat
    *  shown its own strip says it, and this is not drawn. */
   held?: ReactNode;
+  /** The board's wanted width in px while the chat shows, capped at half
+   *  the pane; a drag replaces it, a double-click on the sash restores it. */
+  fit?: number;
   className?: string;
 }) {
-  const { split, setSplit, dragging, rootRef, startDrag } = useSplit(50);
+  const { split, setSplit, manual, setManual, dragging, rootRef, startDrag } = useSplit(50);
+  const basis = fit !== undefined && !manual ? `min(${String(fit)}px, 50%)` : `${String(split)}%`;
+  const resetSplit = (): void => {
+    if (fit !== undefined) setManual(false);
+    else setSplit(50);
+  };
   const entered = useLiveEntry(hasBoard);
   const folded = hasBoard && collapsed;
   const chatRef = useRef<HTMLDivElement | null>(null);
@@ -191,7 +207,7 @@ export function SplitShell({
           className={`flex min-h-0 min-w-0 flex-col overflow-hidden transition-opacity duration-(--dur-base) ease-(--ease-out) [contain:layout_style] motion-reduce:transition-none ${
             entered ? "opacity-100" : "opacity-0"
           }`}
-          style={{ flexBasis: folded ? "100%" : `${split}%`, flexGrow: 0, flexShrink: 1 }}
+          style={{ flexBasis: folded ? "100%" : basis, flexGrow: 0, flexShrink: 1 }}
         >
           {title !== undefined ? (
             <ViewHeader
@@ -223,7 +239,7 @@ export function SplitShell({
           aria-orientation="vertical"
           aria-label="Resize"
           onPointerDown={startDrag}
-          onDoubleClick={() => setSplit(50)}
+          onDoubleClick={resetSplit}
           className={`relative w-px shrink-0 cursor-col-resize transition-colors duration-(--dur-fast) hover:bg-foreground/12 motion-reduce:transition-none ${
             dragging ? "bg-foreground/12" : "bg-border"
           }`}

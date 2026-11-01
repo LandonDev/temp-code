@@ -76,6 +76,45 @@ describe("SplitShell", () => {
     expect(screen.queryByRole("button", { name: /show conversation/i })).toBeNull();
   });
 
+  describe("a fitted board", () => {
+    const basis = () => (document.querySelector("[data-board]") as HTMLElement).style.flexBasis;
+    const sash = () => screen.getByRole("separator", { name: "Resize" });
+    const drag = (toX: number) => {
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000, top: 0, height: 600, right: 1000, bottom: 600, x: 0, y: 0, toJSON: () => ({}) });
+      fireEvent.pointerDown(sash(), { button: 0, clientX: 500 });
+      fireEvent.pointerMove(window, { clientX: toX });
+      fireEvent.pointerUp(window);
+    };
+    afterEach(() => vi.restoreAllMocks());
+
+    it("takes its fit, capped at half the pane", () => {
+      render(shell({ fit: 420 }));
+      expect(basis()).toBe("min(420px, 50%)");
+    });
+
+    it("a drag replaces the fit with the dragged share, and a double-click goes back to the fit", () => {
+      render(shell({ fit: 420 }));
+      drag(620);
+      expect(basis()).toBe("62%");
+      fireEvent.doubleClick(sash());
+      expect(basis()).toBe("min(420px, 50%)");
+    });
+
+    it("folded, the board takes the whole pane", () => {
+      render(shell({ fit: 420, collapsed: true }));
+      expect(basis()).toBe("100%");
+    });
+
+    it("without a fit the board keeps half, and a double-click resets a drag to half", () => {
+      render(shell());
+      expect(basis()).toBe("50%");
+      drag(300);
+      expect(basis()).toBe("30%");
+      fireEvent.doubleClick(sash());
+      expect(basis()).toBe("50%");
+    });
+  });
+
   it("the board never tweens its width", () => {
     render(shell());
     const board = document.querySelector("[data-board]") as HTMLElement;

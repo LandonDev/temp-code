@@ -1,20 +1,36 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Block, Session } from "../../lib/session";
 import type { TodoItem } from "../../lib/tcserver/todos";
 
 vi.mock("../../hooks/usePlanFile", () => ({ usePlanFile: () => null }));
 let liveEdits: Record<string, unknown> = {};
-vi.mock("../../lib/tcserver/store", () => ({ useLiveEdits: () => liveEdits }));
+vi.mock("../../lib/tcserver/store", async (original) => ({
+  ...(await original<typeof import("../../lib/tcserver/store")>()),
+  useLiveEdits: () => liveEdits,
+}));
+vi.mock("../../lib/taskListWidth", async (original) => ({
+  ...(await original<typeof import("../../lib/taskListWidth")>()),
+  canvasMeasure: () => (text: string) => text.length * 6,
+}));
 let metaById: Record<string, unknown> = {};
 vi.mock("../../lib/threads/agents", () => ({ useMetaById: (id: string | null) => (id ? (metaById[id] ?? null) : null) }));
+// FileRefMenu asks the native bridge which editor opens a file; jsdom has none.
+vi.mock("../../lib/editorConfig", () => ({ useEditorConfig: () => null }));
+vi.mock("../../lib/threadMentions", async (original) => ({
+  ...(await original<typeof import("../../lib/threadMentions")>()),
+  useTitlesOf: () => (id: string) => (id === "agent-7" ? "Fit worker" : undefined),
+}));
 vi.mock("../../lib/models", () => ({ resolveModel: (_h: string, m: string) => ({ name: m }) }));
-vi.mock("../AgentMarkdown", () => ({ AgentMarkdown: ({ text }: { text: string }) => <div data-md>{text}</div> }));
+vi.mock("../AgentMarkdown", async () => ({
+  AgentMarkdown: ({ text }: { text: string }) => <div data-md>{text}</div>,
+  SelectSessionContext: (await import("react")).createContext<((id: string) => void) | undefined>(undefined),
+}));
 vi.mock("../../chrome/FilePreview", () => ({
   FilePreview: ({ preview }: { preview: { path: string } }) => <div data-file-preview={preview.path} />,
 }));
-vi.mock("./fleet/AgentDetail", () => ({ AgentDetail: () => null }));
+vi.mock("./fleet/AgentDetail", () => ({ AgentDetail: ({ agentId }: { agentId: string }) => <div data-agent-detail={agentId} /> }));
 vi.mock("./SplitShell", () => ({
   SplitShell: (p: {
     board: React.ReactNode;
@@ -24,8 +40,9 @@ vi.mock("./SplitShell", () => ({
     hasBoard: boolean;
     collapsed: boolean;
     onToggleChat: (open: boolean) => void;
+    fit?: number;
   }) => (
-    <div data-collapsed={String(p.collapsed)}>
+    <div data-collapsed={String(p.collapsed)} data-fit={p.fit ?? ""}>
       <header data-view-header>
         {p.title}
         {p.actions}
@@ -252,5 +269,121 @@ describe("the implementation board", () => {
     await act(async () => {});
     expect(document.querySelector('[data-change-row="gen/out.ts"]')).toBeTruthy();
     liveEdits = {};
+  });
+});
+
+describe("the fitted column and the running task's steps", () => {
+  const run = (id: string, todoIx: number, command: string): Block =>
+    ({
+      id,
+      role: "tool",
+      text: "Bash",
+      round: 0,
+      todo: todoIx,
+      tool: { kind: "execute", name: "Bash", title: "Bash", status: "completed", callId: id, input: { command } },
+    }) as unknown as Block;
+  const read = (id: string, todoIx: number, path: string): Block =>
+    ({
+      id,
+      role: "tool",
+      text: "Read",
+      round: 0,
+      todo: todoIx,
+      tool: { kind: "read", name: "Read", title: "Read", status: "completed", callId: id, input: { file_path: path } },
+    }) as unknown as Block;
+  const two = (a: TodoItem["status"], b: TodoItem["status"]) => [todo("Fit the column", a), todo("Docs", b)];
+  const props = () => ({
+    renderChat: () => <div data-chat />,
+    onOpenFile: vi.fn(),
+    onOpenDiff: vi.fn(),
+    onArmNewPass: vi.fn(),
+    composing: false,
+  });
+  // Each test its own thread: a step list closed by hand is remembered per thread.
+  let thread = 0;
+  const mount = (first: Session) => {
+    const id = `impl-steps-${String(++thread)}`;
+    const p = props();
+    const el = (s: Session) => <ImplementationView {...({ ...p, session: { ...s, id } } as unknown as Parameters<typeof ImplementationView>[0])} />;
+    const r = render(el(first));
+    const again = (next: Session) => r.rerender(el(next));
+    return { p, again };
+  };
+  const rowOf = (label: string) => [...document.querySelectorAll("li")].find((li) => li.textContent?.includes(label))!;
+  const stepsUnder = (label: string) => rowOf(label).querySelector("[data-task-detail][data-open] [data-task-steps]");
+
+  it("passes the task list's reported width to the shell as the fitted column", () => {
+    mount(session({ status: "running", blocks: [first], todos: two("in_progress", "pending") }));
+    const fit = Number(document.querySelector("[data-fit]")!.getAttribute("data-fit"));
+    expect(fit).toBeGreaterThanOrEqual(320);
+  });
+
+  it("shows the running task's last three steps as the transcript's rows, a fourth dropping the oldest", () => {
+    const blocks = [first, run("a", 0, "ls alpha"), run("b", 0, "ls beta"), run("c", 0, "ls gamma")];
+    const { again } = mount(session({ status: "running", blocks, todos: two("in_progress", "pending") }));
+    const steps = stepsUnder("Fit the column")!;
+    expect(steps.children).toHaveLength(3);
+    expect(steps.textContent).toContain("alpha");
+    again(session({ status: "running", blocks: [...blocks, run("d", 0, "ls delta")], todos: two("in_progress", "pending") }));
+    const now = stepsUnder("Fit the column")!;
+    expect(now.textContent).not.toContain("alpha");
+    expect(now.textContent).toContain("delta");
+    expect(rowOf("Docs").querySelector("[data-task-steps]")).toBeNull();
+  });
+
+  it("folds the finished task's steps and opens the next task's", () => {
+    const blocks = [first, run("a", 0, "ls alpha")];
+    const { again } = mount(session({ status: "running", blocks, todos: two("in_progress", "pending") }));
+    again(session({ status: "running", blocks: [...blocks, run("b", 1, "ls omega")], todos: two("completed", "in_progress") }));
+    expect(stepsUnder("Fit the column")).toBeNull();
+    expect(stepsUnder("Docs")?.textContent).toContain("omega");
+  });
+
+  it("stays shut when closed by hand while the task runs, and the next task opens on its own", () => {
+    const blocks = [first, run("a", 0, "ls alpha")];
+    const { again } = mount(session({ status: "running", blocks, todos: two("in_progress", "pending") }));
+    fireEvent.click(rowOf("Fit the column").querySelector("[data-slot='collapsible-trigger']")!);
+    again(session({ status: "running", blocks: [...blocks, run("b", 0, "ls")], todos: two("in_progress", "pending") }));
+    expect(stepsUnder("Fit the column")).toBeNull();
+    again(session({ status: "running", blocks: [...blocks, run("b", 0, "ls"), run("c", 1, "ls omega")], todos: two("completed", "in_progress") }));
+    expect(stepsUnder("Docs")?.textContent).toContain("omega");
+  });
+
+  it("opens a step's file as the chat does", () => {
+    const { p } = mount(session({ status: "running", blocks: [first, read("r", 0, "/repo/src/a.ts")], todos: two("in_progress", "pending") }));
+    const steps = stepsUnder("Fit the column")!;
+    const target = [...steps.querySelectorAll<HTMLElement>("button, a")].find((el) => el.textContent?.includes("a.ts"));
+    fireEvent.click(target ?? steps.querySelector<HTMLElement>("button")!);
+    expect(p.onOpenFile).toHaveBeenCalled();
+  });
+
+  it("opens a subagent's detail from its step, as the chat does", () => {
+    const check = {
+      id: "k",
+      role: "tool",
+      text: "check_agent",
+      round: 0,
+      todo: 0,
+      tool: { kind: "other", name: "mcp__orchestrator__check_agent", title: "check_agent", status: "completed", callId: "k", input: { agentId: "agent-7" } },
+    } as unknown as Block;
+    mount(session({ status: "running", blocks: [first, check], todos: two("in_progress", "pending") }));
+    const steps = stepsUnder("Fit the column")!;
+    fireEvent.click(within(steps as HTMLElement).getByText("Fit worker"));
+    expect(document.querySelector("[data-agent-detail]")?.getAttribute("data-agent-detail")).toBe("agent-7");
+  });
+
+  it("leaves a waiting approval to the Needs you line alone", () => {
+    const ask = { ...run("w", 0, "rm -rf dist"), approval: { requestId: "r1" } } as Block;
+    mount(session({ status: "waiting", blocks: [first, run("a", 0, "ls alpha"), ask], todos: two("in_progress", "pending") }));
+    expect(stepsUnder("Fit the column")?.textContent).not.toContain("rm -rf");
+    expect(document.querySelectorAll("[data-task-steps]")).toHaveLength(1);
+  });
+
+  it("keeps the steps through a pause, and a settled pass has none", () => {
+    const blocks = [first, run("a", 0, "ls alpha")];
+    const { again } = mount(session({ status: "paused", blocks, todos: two("in_progress", "pending") }));
+    expect(stepsUnder("Fit the column")?.textContent).toContain("alpha");
+    again(session({ status: "idle", blocks, todos: two("in_progress", "pending") }));
+    expect(stepsUnder("Fit the column")).toBeNull();
   });
 });

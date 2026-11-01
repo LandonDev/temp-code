@@ -27,6 +27,8 @@ import {
   foldRounds,
   isHiddenPass,
   lastFailure,
+  liveSteps,
+  sameBlocks,
   needsYou,
   passCost,
   passNumbers,
@@ -37,6 +39,8 @@ import {
 } from "./implementationBoard";
 import { heldRowOf } from "./chatSlots";
 import { SplitShell } from "./SplitShell";
+import { TaskSteps, taskStepsKey, useTaskStepsOpen } from "./TaskSteps";
+import { fitColumn } from "../../lib/taskListWidth";
 import type { ThreadViewProps } from "./ThreadView";
 import { useChatFold } from "../../lib/chatFold";
 
@@ -59,6 +63,11 @@ const WHEN_FMT = new Intl.DateTimeFormat(undefined, {
 });
 
 const PLAN_CADENCE = { running: 4000, idle: 15000 };
+
+/** The board's side inset (its `px-6`), which the fitted column adds to
+ *  the card, and its content's widest (`max-w-2xl`), past which it is margin. */
+const BOARD_INSET_PX = 24;
+const BOARD_MAX_PX = 672;
 
 export function ImplementationView(props: ThreadViewProps) {
   const { session, composing } = props;
@@ -227,12 +236,48 @@ export function ImplementationView(props: ThreadViewProps) {
   const tasks = useMemo(() => tasksOf(cur.todos, curRound, running, cur.blocks), [cur, curRound, running]);
   const pastPasses = rounds.slice(0, curRound);
 
+  // The task in progress shows its last steps while the thread is live: a
+  // pause or an approval keeps them, the task finishing or the pass
+  // settling folds them.
+  const live = running || waiting || session.status === "paused";
+  const activeTask = live ? cur.todos.findIndex((t) => t.status === "in_progress") : -1;
+  const freshSteps = useMemo(() => liveSteps(cur.blocks, cur.todos.length, activeTask), [cur, activeTask]);
+  const [steps, setSteps] = useState(freshSteps);
+  if (!sameBlocks(steps, freshSteps)) setSteps(freshSteps);
+  const [stepsOpen, setStepsOpen] = useTaskStepsOpen(taskStepsKey(session.id, curRound, activeTask));
+  const boardTasks =
+    steps.length === 0
+      ? tasks
+      : tasks.map((task, i) =>
+          i === activeTask
+            ? {
+                ...task,
+                detail: (
+                  <TaskSteps
+                    sessionId={session.id}
+                    steps={steps}
+                    cwd={session.cwd}
+                    onOpenFile={props.onOpenFile}
+                    onOpenDiff={props.onOpenDiff}
+                    onSelectSession={props.onOpenSession}
+                  />
+                ),
+                detailOpen: stepsOpen,
+                onDetailOpenChange: setStepsOpen,
+              }
+            : task,
+        );
+  // The column fits the current pass's task list; the card reports its width.
+  const [cardWidth, setCardWidth] = useState<number>();
+  const fit = cur.todos.length > 0 && cardWidth !== undefined ? fitColumn(cardWidth, BOARD_INSET_PX, BOARD_MAX_PX) : undefined;
+
   const board = (
     <div
       ref={scrollRef}
       onPointerDown={() => (interactingUntil.current = Date.now() + 1500)}
       className="flex-1 overflow-y-auto select-text"
     >
+      {/* px-6 is BOARD_INSET_PX, which the fitted column counts. */}
       <div className="mx-auto w-full max-w-2xl px-6 pt-6 pb-12">
         {pastPasses.some((r) => !isHiddenPass(r)) ? (
           <div className="-mx-2 mb-6 flex flex-col gap-1">
@@ -258,7 +303,7 @@ export function ImplementationView(props: ThreadViewProps) {
           <p className="mb-2 text-sm font-medium text-foreground">{firstLine(cur.header)}</p>
         ) : null}
         {cur.todos.length > 0 ? (
-          <TaskList key={curRound} title="Tasks" tasks={tasks} />
+          <TaskList key={curRound} title="Tasks" tasks={boardTasks} onFitWidth={setCardWidth} />
         ) : running && cur.work.length === 0 ? (
           <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
             <Spinner />
@@ -322,6 +367,7 @@ export function ImplementationView(props: ThreadViewProps) {
           title={title}
           actions={actions}
           held={heldRowOf(props, session)}
+          fit={fit}
         />
       </OpenAgentDetailContext.Provider>
       <AnimatePresence>

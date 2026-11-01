@@ -1,3 +1,6 @@
+import { TaskSteps } from "../../surfaces/threads/TaskSteps";
+import { STEPS } from "../../surfaces/threads/TaskSteps.fixtures";
+
 /** The board's task list for `bun run ui:preview`: agents' real label
  *  lengths, so a cut row, the whole running row and the times all show. */
 const running = [
@@ -10,6 +13,14 @@ const running = [
 
 export default [
   { name: "a running pass", props: { tasks: running } },
+  {
+    name: "the running task's steps",
+    props: { tasks: running.map((task) => (task.state === "active" ? { ...task, detail: <TaskSteps sessionId="fixture" steps={STEPS} cwd="/srv/agents/work/temp-code" /> } : task)) },
+  },
+  {
+    name: "steps closed by hand",
+    props: { tasks: running.map((task) => (task.state === "active" ? { ...task, detail: <TaskSteps sessionId="fixture" steps={STEPS} />, detailOpen: false } : task)) },
+  },
   { name: "folded, a long running label", props: { tasks: running, defaultOpen: false } },
   {
     name: "a finished pass",
