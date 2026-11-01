@@ -603,23 +603,20 @@ header[data-tauri-drag-region] button {
   user-select: text;
 }
 
-/* z-fade-quick: the transcript's row fade (.z-fade-in, AgentTranscript.tsx)
-   and the minimap's hover card (.z-fade-quick, TranscriptMinimap.tsx), one
-   150ms fade on first appearance, opacity only (A7). */
+/* z-fade-quick: the transcript's row fade (.z-fade-in, AgentTranscript.tsx),
+   one fade on first appearance, opacity only (A7). */
 @keyframes z-fade-quick {
   from {
     opacity: 0;
   }
 }
 
-.z-fade-in,
-.z-fade-quick {
+.z-fade-in {
   animation: z-fade-quick var(--dur-fast) var(--ease-out);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .z-fade-in,
-  .z-fade-quick {
+  .z-fade-in {
     animation: none;
   }
 }
