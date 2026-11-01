@@ -79,8 +79,11 @@ export function pausable(children: readonly SessionMeta[]): SessionMeta[] {
 
 type BoardItem = { kind: "header"; key: string; group: BoardGroup } | { kind: "row"; key: string; row: BoardRowRef };
 
-const HEADER_PX = 36;
-const ROW_PX = 54;
+/** A section heading is 32px, its words on the last 16px with 4px under
+ *  them; the first one 24px. A row is 48px (MasterRow); rows sit flush. */
+const HEADER_PX = 32;
+const FIRST_HEADER_PX = 24;
+const ROW_PX = 48;
 
 /** Row sizes come from the ResizeObserver (WorkspaceSessions' rule): a row
  *  mounting while the list scrolls keeps its cached or estimated size
@@ -187,7 +190,7 @@ export function MasterView(props: ThreadViewProps) {
       ]),
     [layout],
   );
-  const estimateSize = useCallback((i: number) => (items[i]?.kind === "header" ? HEADER_PX : ROW_PX), [items]);
+  const estimateSize = useCallback((i: number) => (items[i]?.kind === "header" ? (i === 0 ? FIRST_HEADER_PX : HEADER_PX) : ROW_PX), [items]);
   const getItemKey = useCallback((i: number) => items[i]?.key ?? i, [items]);
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -195,7 +198,7 @@ export function MasterView(props: ThreadViewProps) {
     estimateSize,
     getItemKey,
     overscan: 6,
-    gap: 1,
+    gap: 0,
     initialOffset: () => savedScroll.current,
     measureElement: measureRow,
   });
@@ -303,7 +306,7 @@ export function MasterView(props: ThreadViewProps) {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <BoardDigestContext.Provider value={digests}>
         <AgentSummaryContext.Provider value={summaries}>
-          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3" data-board-scroller>
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-1 pt-1 pb-2" data-board-scroller>
             <RowsContextMenu
               label="Thread actions"
               rowsFor={(id) => (id ? rowMenu.rowsFor(id) : null)}
@@ -324,7 +327,10 @@ export function MasterView(props: ThreadViewProps) {
                     style={{ transform: `translateY(${v.start}px)` }}
                   >
                     {item.kind === "header" ? (
-                      <h3 className="px-3 pt-4 pb-1 text-xs font-medium text-muted-foreground" data-group-header={item.group.id}>
+                      <h3
+                        className={`flex ${v.index === 0 ? "h-6" : "h-8"} items-end px-2 pb-1 text-xs leading-4 font-medium text-muted-foreground`}
+                        data-group-header={item.group.id}
+                      >
                         {item.group.label}
                       </h3>
                     ) : (

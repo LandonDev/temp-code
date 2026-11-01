@@ -36,7 +36,7 @@ export type RowAgents = {
   done: number;
 };
 
-/** The most a row lists; the rest are "and N more". */
+/** The most a row lists; the rest are "N more". */
 export const AGENT_LINES = 3;
 
 const LINE_RANK: Partial<Record<SessionStatus, number>> = {
@@ -98,10 +98,10 @@ export function rowAgents(agents: readonly SessionMeta[], cap = AGENT_LINES): Ro
   };
 }
 
-/** The quiet line after the agents: "and 2 more, 3 done"; null when
+/** The quiet line after the agents: "2 more, 3 done"; null when
  *  every agent has a line. */
 export function agentTail(r: RowAgents): { text: string; waiting: boolean } | null {
-  const parts = [r.more > 0 ? `and ${r.more} more` : null, r.done > 0 ? `${r.done} done` : null].filter(Boolean);
+  const parts = [r.more > 0 ? `${r.more} more` : null, r.done > 0 ? `${r.done} done` : null].filter(Boolean);
   return parts.length ? { text: parts.join(", "), waiting: r.moreWaiting > 0 } : null;
 }
 

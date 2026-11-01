@@ -61,7 +61,7 @@ describe("rowAgents", () => {
     const r = rowAgents(agents)!;
     expect(r.lines.map((l) => l.id)).toEqual(["w1", "w2", "w3"]);
     expect(r.lines[0]).toMatchObject({ state: "waiting", detail: "" });
-    expect(agentTail(r)).toEqual({ text: "and 3 more, 1 done", waiting: true });
+    expect(agentTail(r)).toEqual({ text: "3 more, 1 done", waiting: true });
     expect(agentTail(rowAgents(agents.slice(0, 3))!)).toBeNull();
   });
 

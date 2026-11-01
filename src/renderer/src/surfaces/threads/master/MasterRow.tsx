@@ -1,7 +1,7 @@
 import { memo, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Button } from "../../../components/ui/button";
 import { Item } from "../../../components/ui/item";
-import { STATUS_WORD, StatusMark, statusNeedsYou, statusToneClass } from "../../../components/ui/status";
+import { STATUS_WORD, StatusMark, statusToneClass } from "../../../components/ui/status";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { MessageSquare, MoreHorizontal, Pause, Play } from "../../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../../chrome/menuRows";
@@ -16,21 +16,24 @@ import { hasRunningTurn } from "../../../lib/threadBatch";
 import { marksAtRest } from "../../../lib/threadStripModel";
 import { plainStatus } from "@shared/statusWords";
 import { modelLabel } from "../../../lib/threads/agents";
-import { AGENT_GLYPHS } from "../threadTypes";
 import { TypeGlyph } from "../TypeGlyph";
 import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
 import { rowStatus, taskList, taskTally } from "./rowBody";
 import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
 
 /**
- * One row of the batch (docs/LAYOUT.md "Master"). Line one: the type's
- * glyph (its word on hover), the title, the host's glyph, and at the end
- * the provider's mark, the model, its effort and context. Line two: the
- * status glyph with what the state is about (the section heading says
- * the word; a state its section does not name, a watching or paused
- * thread under Working, says its own), and the task tally at the end. The
- * child that blocks the batch's end says why (`blocked`). Under them the thread's live
- * subagents, one line each (AgentLines). A row of a host out of reach is
+ * One 48px row of the batch (docs/LAYOUT.md "Master"), its glyph column
+ * 12px from the pane. Line one (20px): the type's glyph (its word on
+ * hover), the title in 13px medium, the host's glyph, and at the end the
+ * provider's mark and the model (its effort and context in the mark's
+ * tooltip). Line two (16px): the status glyph hanging in the glyph column
+ * under the type's (drawn for every state but done and idle; working's
+ * spinner is the row's one moving mark), then in the title's column the
+ * word when the section heading does not say it (watching or paused under
+ * Working, failed under Needs you, stopped under Done) and what the state
+ * is about, 12px, and the task tally at the end. The child that blocks the
+ * batch's end says why (`blocked`). Under them the thread's live
+ * subagents, one still line each (AgentLines). A row of a host out of reach is
  * under the offline tint. A click opens the thread's full view in the
  * board's place; on hover the model mark gives way to Message, the one
  * verb the state calls for (Pause, Resume, Start now) and ⋯, the thread's
@@ -137,6 +140,8 @@ export function MasterRowView({
   // The section heading says the word; a state it does not name says its own.
   const ownWord = STATUS_WORD[state] !== GROUP_LABEL[group];
   const quiet = group === "done" || group === "queued";
+  // Amber and red say their detail in the state's tone; every other detail is muted.
+  const toned = state === "waiting" || state === "failed";
   const type = typeWord(meta);
 
   // React bubbles a portal's events through the tree: a pick in the ⋯
@@ -170,7 +175,7 @@ export function MasterRowView({
       onKeyDown={onKey}
       data-menu-id={meta.id}
       className={cn(
-        "group relative grid cursor-default grid-cols-[16px_1fr] items-start gap-x-2 gap-y-0 rounded-md px-3 py-2 hover:bg-foreground/5",
+        "group relative grid cursor-default grid-cols-[16px_1fr] items-start gap-x-2 gap-y-0 rounded-md px-2 py-1.5 hover:bg-foreground/5",
         host?.offline && "opacity-50",
       )}
       data-status={meta.status}
@@ -199,22 +204,25 @@ export function MasterRowView({
         <ModelMark meta={meta} />
       </span>
 
-      {/* Line two: the status glyph with its detail; the tally at the end. */}
-      <span />
-      <span className="mt-0.5 flex h-4 min-w-0 items-center gap-2" data-row-status>
-        {/* Amber and red say their detail in the state's tone; a settled row
-            draws no glyph, its detail alone ("Landed 12:08"); every other
-            state's detail is the muted line under the title. */}
-        {statusNeedsYou(state) ? (
-          <StatusMark state={state} word={detail || false} aria-label={statusLabel} className="min-w-0" />
-        ) : !marksAtRest(state) ? (
-          <span aria-label={statusLabel} className="min-w-0 truncate text-xs text-muted-foreground tabular-nums" data-row-detail>
-            {detail}
+      {/* Line two: the status glyph hangs under the type's, so the detail
+          starts under the title; a settled row draws none ("Landed 12:08"). */}
+      <span className="flex h-4 items-center justify-center" data-row-glyph>
+        {marksAtRest(state) ? <StatusMark state={state} word={false} aria-hidden /> : null}
+      </span>
+      <span className="flex h-4 min-w-0 items-center gap-2" data-row-status>
+        <StatusMark
+          state={state}
+          glyph={false}
+          word={ownWord}
+          detail={detail || undefined}
+          aria-label={statusLabel}
+          className={cn("min-w-0", toned && "**:data-[slot=status-detail]:text-current")}
+        />
+        {tally ? (
+          <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums" data-tally>
+            {tally}
           </span>
-        ) : (
-          <StatusMark state={state} word={ownWord} detail={detail || undefined} aria-label={statusLabel} className="min-w-0" />
-        )}
-        {tally ? <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground" data-tally>{tally}</span> : null}
+        ) : null}
       </span>
 
       {agents ? (
@@ -227,7 +235,7 @@ export function MasterRowView({
       <span
         data-actions
         onKeyDown={stop}
-        className="pointer-events-none absolute top-1.5 right-2 flex gap-0.5 opacity-0 transition-opacity duration-(--dur-fast) group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+        className="pointer-events-none absolute top-1 right-2 flex gap-0.5 opacity-0 transition-opacity duration-(--dur-fast) group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
       >
         <RowAction label="Message" onClick={() => onOpen(meta.id, true)}>
           <MessageSquare />
@@ -288,16 +296,17 @@ function RowAction({
   );
 }
 
-/** The thread's live subagents under its two lines (agentSummary.ts): per
- *  agent its status glyph, its role's glyph, its title and what its state
- *  is about (amber when it needs the person, red when it failed), then the
- *  host's glyph; one quiet line for the ones past the cap and the settled
- *  ones. A line opens its agent in the board's place, where its approval
- *  or question is answered; its click never reaches the row. */
+/** The thread's live subagents under its two lines (agentSummary.ts), in
+ *  the title's column: per agent a still status glyph (the row's own
+ *  spinner is its one moving mark), its title, the state's word in its
+ *  tone and what it is about, muted, then the host's glyph; one quiet line
+ *  for the ones past the cap and the settled ones ("2 more, 3 done"). A
+ *  line opens its agent in the board's place, where its approval or
+ *  question is answered; its click never reaches the row. */
 function AgentLines({ agents, hostGlyph, onOpen }: { agents: RowAgents; hostGlyph: HostGlyphOf; onOpen: (id: string) => void }) {
   const tail = agentTail(agents);
   return (
-    <ul className="flex flex-col pt-1" data-agents>
+    <ul className="flex flex-col pt-0.5 pb-0.5" data-agents>
       {agents.lines.map((line) => (
         <AgentLineRow key={line.id} line={line} hostGlyph={hostGlyph} onOpen={onOpen} />
       ))}
@@ -311,7 +320,6 @@ function AgentLines({ agents, hostGlyph, onOpen }: { agents: RowAgents; hostGlyp
 }
 
 function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph: HostGlyphOf; onOpen: (id: string) => void }) {
-  const RoleGlyph = line.agentType ? AGENT_GLYPHS[line.agentType] : null;
   return (
     <li>
       <Button
@@ -322,40 +330,52 @@ function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph:
         }}
         onKeyDown={stop}
         data-menu-id={line.id}
-        className="-mx-1 flex h-5 w-[calc(100%+8px)] min-w-0 justify-start gap-2 rounded-sm px-1 text-left text-xs font-normal hover:bg-foreground/5"
+        className="-mx-1 flex h-5 w-[calc(100%+8px)] min-w-0 justify-start gap-1.5 rounded-sm px-1 text-left text-xs font-normal hover:bg-foreground/5"
         data-agent={line.id}
       >
-        <StatusMark state={line.state} word={false} />
-        {RoleGlyph ? (
-          <RoleGlyph className="size-3 shrink-0 text-muted-foreground" strokeWidth={1.5} />
-        ) : line.threadType ? (
-          <TypeGlyph type={line.threadType} className="size-3" />
-        ) : null}
-        <span className="max-w-[45%] min-w-0 truncate text-muted-foreground">{line.title || "Subagent"}</span>
-        <span className={cn("min-w-0 flex-1 truncate", statusNeedsYou(line.state) ? statusToneClass(line.state) : "text-muted-foreground")} data-agent-what>
-          {line.detail}
-        </span>
+        <StatusMark state={line.state} word={false} still aria-hidden />
+        <span className="max-w-[45%] min-w-0 shrink-0 truncate text-foreground">{line.title || "Subagent"}</span>
+        <StatusMark state={line.state} glyph={false} detail={line.detail || undefined} className="min-w-0 flex-1 ps-0.5" data-agent-what />
         {hostGlyph(line.environmentId)}
       </Button>
     </li>
   );
 }
 
-/** The provider's mark, the model, then its effort and context; it gives
- *  way to the row's actions on hover and focus. */
-/** The model at the line's end: secondary, so in a narrow board it gives
- *  its width up before the title does (it shrinks a thousand times faster
- *  and clips), and the title keeps the lead. */
+/** How the model mark names effort and context in its tooltip. */
+const EFFORT_WORD: Record<string, string> = { low: "low", medium: "medium", high: "high", xhigh: "extra high", max: "max", ultra: "ultra" };
+
+/** The model's name beside its provider's mark: the mark already says Claude. */
+export function modelMarkName(provider: string, model: string): string {
+  const name = modelLabel(provider, model);
+  return asHarness(provider) === "claude" ? name.replace(/^Claude\s+/, "") : name;
+}
+
+/** The mark's tooltip: "Claude Opus 5.5, high effort, 1M context". */
+export function modelMarkTip(meta: Pick<SessionMeta, "provider" | "model" | "reasoning" | "context1m">): string {
+  const effort = meta.reasoning ? `${EFFORT_WORD[meta.reasoning] ?? meta.reasoning} effort` : null;
+  return [modelLabel(meta.provider, meta.model), effort, meta.context1m ? "1M context" : null].filter(Boolean).join(", ");
+}
+
+/** The provider's mark and the model at line one's end, its effort and
+ *  context in its tooltip. Secondary, so in a narrow board it gives its
+ *  width up before the title does (it shrinks a thousand times faster and
+ *  clips), and it gives way to the row's actions on hover and focus. */
 function ModelMark({ meta }: { meta: SessionMeta }) {
-  const rest = [meta.reasoning, meta.context1m ? "1M" : null].filter(Boolean).join(" ");
   return (
-    <span
-      className="flex min-w-0 shrink-[1000] items-center gap-1.5 overflow-hidden text-xs whitespace-nowrap text-muted-foreground transition-opacity duration-(--dur-fast) group-focus-within:opacity-0 group-hover:opacity-0"
-      data-model
-    >
-      <HarnessIcon harness={asHarness(meta.provider)} className="size-3 shrink-0" />
-      <span className="min-w-0 truncate">{modelLabel(meta.provider, meta.model)}</span>
-      {rest ? <span className="ml-0.5 shrink-0">{rest}</span> : null}
-    </span>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className="flex min-w-0 shrink-[1000] items-center gap-1.5 overflow-hidden text-xs whitespace-nowrap text-muted-foreground transition-opacity duration-(--dur-fast) group-focus-within:opacity-0 group-hover:opacity-0 motion-reduce:transition-none"
+            data-model
+          />
+        }
+      >
+        <HarnessIcon harness={asHarness(meta.provider)} className="size-3 shrink-0" />
+        <span className="min-w-0 truncate">{modelMarkName(meta.provider, meta.model)}</span>
+      </TooltipTrigger>
+      <TooltipContent>{modelMarkTip(meta)}</TooltipContent>
+    </Tooltip>
   );
 }
