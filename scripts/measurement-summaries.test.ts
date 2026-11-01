@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { profileSummary, type CpuProfile } from './profile-summary'
-import { stallsSummary } from './stalls-summary'
+import { sendsSummary, stallsSummary } from './stalls-summary'
 
 describe('profile summary', () => {
   it('weights samples by their deltas, merges matching frames, and sums descendants', () => {
@@ -62,5 +62,28 @@ describe('stalls summary', () => {
     const output = stallsSummary('')
     expect(output).toMatch(/0\s+0.00\s+0/)
     expect(output).not.toMatch(/NaN|Infinity/)
+  })
+})
+
+describe('send spans summary (--sends)', () => {
+  it('gaps per handle kind, the warm share, and the cache miss rate after a 5 to 60 minute gap', () => {
+    const output = sendsSummary([
+      '2026-11-01T10:00:00.000Z send session=a accepted=0 prepared=5 handle=20(cold) delivered=25 init=1400 first-message=1400 model=3000(miss 88k) first-content=4000 inflight=- running=3',
+      '2026-11-01T10:00:30.000Z send session=b accepted=0 prepared=5 handle=10(warm) delivered=40 init=100 first-message=100 model=900(hit) first-content=1600',
+      '2026-11-01T10:20:00.000Z send session=a accepted=0 prepared=2 handle=3(live) delivered=4 init=- first-message=300 model=500(hit) first-content=800',
+      '2026-11-01T10:50:00.000Z send session=b accepted=0 prepared=2 handle=3(live) delivered=4 init=- first-message=300 model=2000(miss 120k) first-content=2600',
+      '2026-11-01T10:51:00.000Z send session=c accepted=0 prepared=2 handle=- delivered=- init=- first-message=- model=- first-content=-',
+      'unrelated line'
+    ].join('\n'))
+    const lines = output.split('\n')
+    // Kinds in order live, warm, cold, then the rest.
+    expect(lines.findIndex((l) => l.startsWith('live'))).toBeLessThan(lines.findIndex((l) => l.startsWith('warm')))
+    expect(lines.find((l) => l.startsWith('cold'))).toMatch(/^cold\s+1\s+20\s+20\s+5\s+5\s+1375\s+1375\s+1600\s+1600\s+1000\s+1000\s+4000\s+4000$/)
+    // A live send has no init: the model gap runs from delivered.
+    expect(lines.find((l) => l.startsWith('live'))).toMatch(/^live\s+2\s+3\s+3\s+1\s+1\s+-\s+-\s+496\s+1996/)
+    expect(lines.find((l) => l.startsWith('none'))).toMatch(/^none\s+1(\s+-)+$/)
+    expect(output).toMatch(/warm\s+cold\s+warm share\n1\s+1\s+50%/)
+    // Four model notes, two misses; two sends after a 5-60 minute gap, one a miss.
+    expect(output).toMatch(/4\s+50%\s+2\s+50%/)
   })
 })
