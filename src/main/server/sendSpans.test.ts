@@ -45,7 +45,7 @@ describe('SendSpans', () => {
     spans.mark('s1', 'first-message')
     advance(900)
     spans.mark('s1', 'first-content')
-    expect(lines).toEqual(['send session=s1 accepted=0 prepared=12 handle=340(warm) delivered=355 init=900 first-message=1200 first-content=2100'])
+    expect(lines).toEqual(['send session=s1 accepted=0 prepared=12 handle=340(warm) delivered=355 init=900 first-message=1200 model=- first-content=2100'])
     expect(spans.open()).toEqual([])
     // Marks after the flush say nothing.
     spans.mark('s1', 'first-content')
@@ -61,7 +61,7 @@ describe('SendSpans', () => {
     advance(SEND_SPAN_DEADLINE_MS - 41)
     expect(lines).toEqual([])
     advance(1)
-    expect(lines).toEqual(['send session=s1 accepted=0 prepared=40 handle=40(cold) delivered=- init=- first-message=- first-content=-'])
+    expect(lines).toEqual(['send session=s1 accepted=0 prepared=40 handle=40(cold) delivered=- init=- first-message=- model=- first-content=-'])
   })
 
   it('two sends on one session never share a span: the second begin flushes the first', () => {
@@ -70,11 +70,11 @@ describe('SendSpans', () => {
     advance(100)
     spans.mark('s1', 'delivered')
     spans.begin('s1')
-    expect(lines).toEqual(['send session=s1 accepted=0 prepared=- handle=- delivered=100 init=- first-message=- first-content=-'])
+    expect(lines).toEqual(['send session=s1 accepted=0 prepared=- handle=- delivered=100 init=- first-message=- model=- first-content=-'])
     expect(timers[0].cleared).toBe(true)
     advance(50)
     spans.mark('s1', 'first-content')
-    expect(lines[1]).toBe('send session=s1 accepted=0 prepared=- handle=- delivered=- init=- first-message=- first-content=50')
+    expect(lines[1]).toBe('send session=s1 accepted=0 prepared=- handle=- delivered=- init=- first-message=- model=- first-content=50')
   })
 
   it('a dropped span writes nothing and clears its timer; a mark with no span is ignored', () => {
@@ -98,7 +98,23 @@ describe('SendSpans', () => {
     expect(lines[0]).toContain('handle=10(live)')
   })
 
+  it('the model phase sits between first-message and first-content with its cache note', () => {
+    const { spans, lines, advance } = rig()
+    spans.begin('s1')
+    advance(20)
+    spans.mark('s1', 'handle', 'live')
+    advance(10)
+    spans.mark('s1', 'delivered')
+    advance(400)
+    spans.mark('s1', 'first-message')
+    advance(1_700)
+    spans.mark('s1', 'model', 'miss 88k')
+    advance(500)
+    spans.mark('s1', 'first-content')
+    expect(lines).toEqual(['send session=s1 accepted=0 prepared=- handle=20(live) delivered=30 init=- first-message=430 model=2130(miss 88k) first-content=2630'])
+  })
+
   it('formatSpan rounds and tags', () => {
-    expect(formatSpan('x', { accepted: 0, prepared: 1.6 }, { prepared: 'n' })).toBe('send session=x accepted=0 prepared=2(n) handle=- delivered=- init=- first-message=- first-content=-')
+    expect(formatSpan('x', { accepted: 0, prepared: 1.6 }, { prepared: 'n' })).toBe('send session=x accepted=0 prepared=2(n) handle=- delivered=- init=- first-message=- model=- first-content=-')
   })
 })

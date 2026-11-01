@@ -336,6 +336,60 @@ function holdNoticeResult(ctx: DriverCtx, state: StreamState, msg: SDKMessage): 
   }
 }
 
+/** `--thinking-display` for every claude thread: the thought streams as a summary. */
+export const THINKING_DISPLAY = 'summarized'
+
+/** The phase after the CLI's init: waiting for the provider while the sent
+ *  message has had nothing back yet, else nothing (an eager boot's init). */
+export function phaseAfterInit(state: Pick<StreamState, 'pendingSend' | 'contentSinceSend'>): 'waiting-provider' | null {
+  return state.pendingSend && !state.contentSinceSend ? 'waiting-provider' : null
+}
+
+/** The `model` span note from the top lane's `message_start` usage: `hit`
+ *  when the cache read covers most of the prompt, else `miss 88k` with the
+ *  uncached tokens (input plus cache creation). */
+export function cacheNote(usage: { input_tokens?: number | null; cache_creation_input_tokens?: number | null; cache_read_input_tokens?: number | null } | undefined): string | undefined {
+  if (!usage) return undefined
+  const uncached = (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+  const read = usage.cache_read_input_tokens ?? 0
+  if (uncached + read === 0) return undefined
+  return read >= uncached ? 'hit' : `miss ${Math.round(uncached / 1000)}k`
+}
+
+/**
+ * The CLI flags the SDK has no option for. `--thinking-display summarized`:
+ * the CLI asks the API to omit thinking text in an SDK process, so Fable and
+ * Opus thought for seconds over an empty "Thinking" row (2,654 of 2,774
+ * thinking blocks were empty); the thinking type per model stays the CLI's
+ * own, and one value for every thread never splits the warm key.
+ *
+ * Claude settings keys (not Options) ride a per-session `--settings`
+ * override: fast mode, and the context mode — Standard keeps the thread
+ * under 200k via the CLI's own auto-compact (also dodging the 2x
+ * long-context pricing above 200k input); 1M turns auto-compact off and
+ * rides the full native window.
+ *
+ * The compact window is 190k, NOT 200k: the CLI arms compaction at window −
+ * 33k, and without the 1M beta the API hard-rejects a request at 200k −
+ * max_tokens (≈168k) with "Prompt is too long". A 200k setting put the
+ * compact trigger (167k) a hair under the rejection wall — one long turn
+ * sailed past both and bricked the thread. 190k arms compaction at ~157k,
+ * 11k under the wall: a turn that grows past that gets one visible overflow
+ * error and the driver's own /compact recovery, not a bricked thread. It was
+ * 180k (trigger 147k); the extra 10k is ~7% fewer compactions, each one a
+ * ~150k summarization pass plus a full cache rewrite.
+ */
+export function claudeExtraArgs(session: { model: string; context1m?: boolean; fast?: boolean }): Record<string, string> {
+  return {
+    'thinking-display': THINKING_DISPLAY,
+    settings: JSON.stringify({
+      ...(claudeFastFor(session, session.model) ? { fastMode: true } : {}),
+      autoCompactEnabled: !session.context1m,
+      ...(session.context1m ? {} : { autoCompactWindow: AUTO_COMPACT_WINDOW })
+    })
+  }
+}
+
 /** The phase a turn is in before its first content (events.ts `phase`): emitted only when it changes. */
 export function setPhase(ctx: DriverCtx, state: StreamState, phase: StreamState['phase'], extra: { detail?: string; retry?: { attempt: number; delayMs: number; reason?: string } } = {}): void {
   if (state.phase === phase && !extra.retry) return
@@ -736,7 +790,8 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
         ctx.setNativeId(msg.session_id)
         ctx.mark?.('init')
         state.initialized = true
-        if (state.phase === 'cli-starting' || state.phase === 'initializing') setPhase(ctx, state, null)
+        // The CLI is up; the request is out at the provider until message_start.
+        if (state.phase !== 'retrying') setPhase(ctx, state, phaseAfterInit(state))
       } else if ((msg as { subtype: string }).subtype === 'api_retry') {
         // The CLI retries a refused request itself (a 429, a 5xx, a
         // timeout): the strip says so instead of "Thinking" for a minute.
@@ -840,7 +895,13 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
       const parentCallId = msg.parent_tool_use_id ?? undefined
       if (ev.type === 'message_start') {
         state.currentMsgId.set(lane, ev.message.id)
-        if (!lane) liveContext(ev.message.usage)
+        if (!lane) {
+          liveContext(ev.message.usage)
+          // The model took the request: the provider's wait is over, the
+          // model's own time starts (the span's `model`, with the cache).
+          ctx.mark?.('model', cacheNote(ev.message.usage))
+          if (state.phase === 'waiting-provider') setPhase(ctx, state, null)
+        }
       } else if (ev.type === 'content_block_start') {
         if (ev.content_block.type === 'tool_use') {
           ctx.mark?.('first-content')
@@ -899,6 +960,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
           })
         } else if (ev.delta.type === 'thinking_delta') {
           ctx.mark?.('first-content')
+          if (state.phase) setPhase(ctx, state, null)
           emit({
             type: 'thinking',
             text: ev.delta.thinking,
@@ -1553,29 +1615,7 @@ export const claudeDriver: HarnessDriver = {
         // Session crons only surface here (see stopHookFor).
         Stop: [{ hooks: [stopHookFor(watchedCtx, state)] }]
       },
-      // Claude settings keys (not Options) ride a per-session --settings
-      // override: fast mode, and the context mode — Standard keeps the
-      // thread under 200k via the CLI's own auto-compact (also dodging the
-      // 2x long-context pricing above 200k input); 1M turns auto-compact
-      // off and rides the full native window.
-      //
-      // The compact window is 190k, NOT 200k: the CLI arms compaction at
-      // window − 33k, and without the 1M beta the API hard-rejects a
-      // request at 200k − max_tokens (≈168k) with "Prompt is too long".
-      // A 200k setting put the compact trigger (167k) a hair under the
-      // rejection wall — one long turn sailed past both and bricked the
-      // thread. 190k arms compaction at ~157k, 11k under the wall: a turn
-      // that grows past that gets one visible overflow error and the
-      // driver's own /compact recovery, not a bricked thread. It was 180k
-      // (trigger 147k); the extra 10k is ~7% fewer compactions, each one
-      // a ~150k summarization pass plus a full cache rewrite.
-      extraArgs: {
-        settings: JSON.stringify({
-          ...(claudeFastFor(session, session.model) ? { fastMode: true } : {}),
-          autoCompactEnabled: !session.context1m,
-          ...(session.context1m ? {} : { autoCompactWindow: AUTO_COMPACT_WINDOW })
-        })
-      },
+      extraArgs: claudeExtraArgs(session),
       ...(session.nativeId ? { resume: session.nativeId } : {}),
       // App tools (docs/PLAN-2.md M10): every claude session can list/read
       // sibling threads and start new ones. Orchestrators additionally get
@@ -1826,13 +1866,11 @@ export const claudeDriver: HarnessDriver = {
         state.working = true
         noteSend(state)
         emit({ type: 'status', status: 'running' })
-        // Until the CLI's init has come once, the wait is its boot: said
-        // again after the running, before anything is awaited.
-        const boot = phaseAfterSend(state)
-        if (boot) {
-          state.phase = null
-          setPhase(ctx, state, boot)
-        }
+        // Until the CLI's init has come once, the wait is its boot; on a live
+        // CLI it is the provider's. Said again after the running, before
+        // anything is awaited.
+        state.phase = null
+        setPhase(ctx, state, phaseAfterSend(state) ?? 'waiting-provider')
         // The harness only runs a LEADING /command natively; mid-message
         // and additional skill references get expanded server-side.
         const expanded = await expandSlashRefs('claude', session.cwd, text)

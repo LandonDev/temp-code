@@ -11,7 +11,11 @@
  *   init           the harness's own init (claude's system/init, codex's
  *                  turn/started)
  *   first-message  any message back from the harness
- *   first-content  an assistant text delta or a tool call
+ *   model          the model took the request (claude's top-lane
+ *                  message_start), noted `hit` or `miss 88k` from its cache
+ *                  usage: init → model is the CLI plus the provider's
+ *                  prefill, model → first-content the model's own time
+ *   first-content  an assistant text, thinking delta or a tool call
  *
  * The line is written once per span: when `first-content` lands, or
  * SEND_SPAN_DEADLINE_MS after `accepted`, whichever first; a phase never
@@ -19,9 +23,9 @@
  * was open (two sends never share one), and a send the scheduler queued is
  * dropped without a line.
  */
-export type SendPhase = 'accepted' | 'prepared' | 'handle' | 'delivered' | 'init' | 'first-message' | 'first-content'
+export type SendPhase = 'accepted' | 'prepared' | 'handle' | 'delivered' | 'init' | 'first-message' | 'model' | 'first-content'
 
-export const SEND_PHASES: readonly SendPhase[] = ['accepted', 'prepared', 'handle', 'delivered', 'init', 'first-message', 'first-content']
+export const SEND_PHASES: readonly SendPhase[] = ['accepted', 'prepared', 'handle', 'delivered', 'init', 'first-message', 'model', 'first-content']
 
 export const SEND_SPAN_DEADLINE_MS = 15_000
 

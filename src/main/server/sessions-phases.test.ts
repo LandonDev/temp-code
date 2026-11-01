@@ -149,7 +149,12 @@ it('a request out at the provider past the threshold reads Waiting for the provi
   vi.setSystemTime(t0 + PROVIDER_WAIT_MS + 20_000)
   await vi.advanceTimersByTimeAsync(5_000)
   expect(pushed.at(-1)).toBe('Waiting for the provider, 40 s')
+  // The driver's own provider phase gives way to the seconds too.
+  emit(id, { type: 'phase', phase: 'waiting-provider' })
+  expect(registry.get(id)?.activity).toBe('Waiting for the provider, 40 s')
   registry.providerRequest(id, 7, null)
+  expect(registry.get(id)?.activity).toBe('Waiting for the provider')
+  emit(id, { type: 'phase', phase: null })
   expect(registry.get(id)?.activity).toBe('Thinking')
   // A tool call's own activity is never replaced by the wait.
   registry.providerRequest(id, 8, t0)

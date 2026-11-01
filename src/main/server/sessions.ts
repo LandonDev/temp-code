@@ -315,6 +315,9 @@ export function watchLine(bg: BackgroundWork | null | undefined): string {
   return line.length > WATCH_LINE_MAX ? `${line.slice(0, WATCH_LINE_MAX - 1)}…` : line
 }
 
+/** The provider phase's words; past PROVIDER_WAIT_MS the seconds line takes over. */
+const WAITING_PROVIDER_LINE = 'Waiting for the provider'
+
 /** The words of a turn's phase before its first content (events.ts `phase`). */
 export function phaseLine(event: Extract<AgentEvent, { type: 'phase' }>): string | null {
   switch (event.phase) {
@@ -323,7 +326,7 @@ export function phaseLine(event: Extract<AgentEvent, { type: 'phase' }>): string
     case 'initializing':
       return 'Initializing'
     case 'waiting-provider':
-      return 'Waiting for the provider'
+      return WAITING_PROVIDER_LINE
     case 'retrying': {
       const r = event.retry
       if (!r) return 'Retrying'
@@ -5486,9 +5489,10 @@ export class SessionRegistry {
       const line = this.queuedLines.get(session.id)
       return { activity: line?.line ?? 'Queued', statusDetail: line?.detail ?? null }
     }
-    // A request out at the provider past the threshold, with nothing finer known: say so.
+    // A request out at the provider past the threshold, with nothing finer known
+    // (Thinking, or the driver's own provider word): say so with its seconds.
     const live = session.status === 'running' || session.status === 'starting'
-    const text = live && (!act || act === 'Thinking') ? (this.providerWaitLine(session.id) ?? act) : act
+    const text = live && (!act || act === 'Thinking' || act === WAITING_PROVIDER_LINE) ? (this.providerWaitLine(session.id) ?? act) : act
     return { activity: text, statusDetail: live ? text : null }
   }
 
