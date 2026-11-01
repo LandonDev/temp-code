@@ -120,7 +120,7 @@ one of these starts with its first message in the same step
 (`SessionRegistry.startWith`, which calls `create`): the brief is the
 thread's first row, or the thread is removed and the caller hears why, so
 the board never holds a titled child with no rows. From
-the board, "+ Thread" opens the add sheet (type, every one with Chat
+the board, + (Add thread) opens the add sheet (type, every one with Chat
 first, model, effort, context, host, after, brief) and passes `masterId` and `startedBy` = the master
 itself, on whichever linked host was picked. Why the starter and not
 the project: the case that broke was a planner the master had started

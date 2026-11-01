@@ -129,8 +129,8 @@ a surface above `/10`.
 
 | Size | Where |
 | --- | --- |
-| 11px | a key cap, a group label in a menu, a count |
-| 12px | secondary lines in the chrome, descriptions under a title, status words |
+| 11px | a key cap, a group label in a menu |
+| 12px | secondary lines in the chrome, descriptions under a title, status words, a count in a row's status line |
 | 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings |
 | 14px | dialog and panel body text, an Item's title |
 | 15px | the transcript's prose, the composer's field (line height 1.6) |
@@ -216,8 +216,14 @@ between them. A secondary line sits 4px below the detail in the same muted
 tone, or at the end of the row in `tabular-nums` when it is a count or a
 time. Groups are 16px apart; a group that needs a name gets a short
 `font-medium` heading in 12px `muted-foreground`, never a label with a
-colon. Two facts on one line are separated by two spaces of margin, never a
-middle dot, a pipe or a bullet.
+colon. Two facts on one line differ in weight and colour, never only in
+the space between them: a state's word in medium weight and its tone, then
+its detail in regular weight and `muted-foreground`, 6px after it (two
+spans, `StatusMark`). Where one plain string is unavoidable (a tooltip, an
+accessible name, a toast, a notification) it is "Word: Detail"
+(`plainStatus`, src/shared/statusWords.ts). No visible text separates two
+facts with a run of spaces, a middle dot, a pipe or a bullet;
+`lib/spaceGuard.test.ts` fails on a run of spaces in any renderer literal.
 
 Other rules: nothing is said twice (a count in the title is not repeated in
 the body); nothing is explained that the layout already shows; labels are
@@ -243,16 +249,20 @@ rows say exactly this:
 | done | a check | Done | muted |
 | idle | a faint ring | Idle | muted |
 
-The word may be followed by what the state is about, muted after it:
-"Working  typecheck", "Needs you  approve Bash", "Watching  3 subagents",
-"Failed  usage cap". A watching thread always says what it watches; a row
-that cannot say is a bug. A thread idle or done whose subagents still work
-is watching them ("Watching  a subagent") in the transcript's closing line,
+The word may be followed by what the state is about, drawn as a second
+span in regular weight and muted, 6px after the word: Working then
+"Editing Rail.tsx", Needs you then "Approve Bash", Watching then "3
+subagents", Failed then "Usage cap". The host sends the detail on its own
+(`SessionMeta.statusDetail`); `activity` keeps a legacy two-space string
+for old readers and is read only when the detail is absent. A watching
+thread always says what it watches; a row that cannot say is a bug. A
+thread idle or done whose subagents still work is watching them (Watching
+then "a subagent") in the transcript's closing line,
 the tab, the chip and the rail alike, and the fleet header counts watching on its own. `threadStatus` (lib/threadStripModel.ts) is the one
 place that decides a thread's state and its detail, the tree's overrides
 included, and `ThreadStatusMark` (chrome/TabIndicator.tsx) draws it with the
 round's tally 8px after the detail. A watching thread on one task names it
-in the model's words ("Watching  sleep 45 seconds"); more than one is
+in the model's words (Watching then "sleep 45 seconds"); more than one is
 counted (`watchPhrase`, src/shared/watch.ts).
 
 The slot above the composer (surfaces/threads/WorkingStrip.tsx, reserved
@@ -261,24 +271,32 @@ elapsed time and Stop, nothing else, and the held states with their
 actions: Paused with Stop and Continue, Stopped with Resume (the harness is
 gone), Queued with Start now. What the thread does is the transcript's
 working line, a pending approval or question is its card, and a watching
-thread's state is the transcript's closing line ("Watching  4m", amber past
-30 minutes, opening the Activity section); nothing above the composer
+thread's state is the transcript's closing line (Watching then its age,
+amber past 30 minutes, opening the Activity section); nothing above the composer
 repeats the working line, and no banner repeats the slot. A person's Stop
 idles the thread, the slot empties and the transcript's Stopped line says
 so once. A slow first response is said in the transcript's working line
-("Starting the CLI", "Waiting for the provider  25 s"), never above the
+("Starting the CLI", "Waiting for the provider, 25 s"), never above the
 composer.
 
-A detail starts lower-case, never ends in a full stop and never repeats the
-word. Two facts on one line are separated by margin, never by a middle dot,
-a pipe or a bullet.
+A detail is sentence-cased when it is a sentence ("Waiting for memory",
+"Approve Bash", "Landed 12:08", "The harness is gone") and written as it
+is when it is a name or a count ("3 subagents", "sleep 45 seconds",
+"Rail.tsx"); it never ends in a full stop and never repeats the word. A
+phase keeps its comma inside the detail ("Rate limited, retry 3 in 32
+s"): prose punctuation within one fact, not a joiner between two. The
+renderer never changes a detail's case; only a detail read from an old
+host's legacy `activity` takes a capital (`legacyDetail`).
 
 At rest a row draws no mark for idle and done (`marksAtRest`): a mark that
 would only say "nothing is happening" is noise. A tab is the glyph alone;
 its hover line and the transcript's working line say the word and the rest.
 
 Nothing loops. Every status glyph is still except working's spinner, a
-rotation and the one moving glyph. When a mounted mark's state changes into
+rotation and the one moving glyph. A row has one moving mark at most: a
+line that depends on a row's own mark (a subagent's under its board row)
+draws working's arc still (`StatusMark still`), and a settled row never
+moves. When a mounted mark's state changes into
 working, waiting or watching its glyph breathes once (opacity over
 `--dur-slow`); under reduced motion it does not. Every other change is
 instant.

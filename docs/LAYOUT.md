@@ -911,30 +911,32 @@ batch is never a tab: it lives on the board, and a click puts its full view
 in the whole pane, with Back.
 
 ```
-┌ iOS batch 2  Land all seven, gate once, release      ⋯  [+ Thread ▾]  ✉ ┐
+┌ iOS batch 2  1/7                                          ⋯   +   ✉ ┐
 │ Needs you                                                              │
-│  ☷  Live Activity strip                   ✺ Claude Fable 5.1  high 1M │
-│     ◉ Ad Hoc or Debug?               (hover: ✉ Message  ⏸ Pause  ⋯)   │
+│  ☷  Live Activity strip                             ✺ Fable 5.1      │
+│  ◉  Ad Hoc or Debug?                  (hover: ✉ Message  ⏸ Pause  ⋯) │
+│  ☷  Inbox swipe actions                             ✺ Fable 5.1      │
+│  ⓘ  Failed  Usage cap until 14:00                                     │
 │ Working                                                                │
-│  ☷  Home: Needs you, Working, Workspaces  ✺ Claude Fable 5.1  high 1M │
-│     ⠿ Workspaces list with the project headers                    3/7 │
-│        ◉ ⚒ Run the tests  approve Bash                                 │
-│        ⠿ ⚒ Rail rows  Editing Rail.tsx                                 │
-│       1 done                                                           │
-│  ⌕  Pricing survey                         ◉ gpt-6.1-sol  xhigh       │
-│     ⠿ Reading the third source                                         │
-│  ▢  Tabs or spaces                         ✺ Claude Fable 5.1  medium │
-│     ⏸                                                                  │
+│  ☷  Home: Needs you, Working, Workspaces            ✺ Fable 5.1      │
+│  ⠿  Workspaces list with the project headers                     3/7 │
+│     ◉ Run the tests  Needs you  Approve Bash                           │
+│     ◜ Rail rows  Working  Editing Rail.tsx                             │
+│     1 done                                                             │
+│  ⌕  Pricing survey                                  ◉ GPT-6.1 Sol    │
+│  ⠿  Reading the third source                                          │
+│  ▢  Tabs or spaces                                  ✺ Fable 5.1      │
+│  ⏸  Paused  Running bun test                                          │
 │ Queued                                                                 │
-│  ☷  Inbox swipe actions                   ✺ Claude Fable 5.1  high 1M │
-│     ◌ waiting for Home                                                 │
+│  ☷  Design tokens                                   ✺ Fable 5.1      │
+│  ◌  Waiting for Home                                                  │
 │ Done                                                                   │
-│  ☷  Design foundations                    ✺ Claude Fable 5.1  high 1M │
-│     landed 12:08                                                  4/4 │
+│  ☷  Design foundations                              ✺ Fable 5.1      │
+│     Landed 12:08                                                 4/4 │
 ├────────────────────────────────────────────────────────────────────────┤
 │ When done                                                         Edit │
 │ ✓ Land        2 of 7 landed                                     1m 30s │
-│ ⠿ Gate        3 of 7  vitest                           1m 12s   ■ Stop │
+│ ⠿ Gate        3 of 7, vitest                           1m 12s   ■ Stop │
 │     ✓ typecheck 12s                                                    │
 │     vitest  src/main/server/batch.test.ts (14 tests) 120ms             │
 │ ◌ Release                                                              │
@@ -943,11 +945,21 @@ in the whole pane, with Back.
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
+- **Insets**: every left text edge of the board (the header, the section
+  headings, a row's glyph column, the foot) sits 12px from the pane, and
+  every right edge (the last header control, the model mark, the tally, a
+  row's hover actions, a step's time) ends 12px in; the scroller is
+  `px-1 pt-1 pb-2` and a row `px-2`, so a hover fill keeps a 4px gutter.
+  One type scale: 12, 13 and 14px.
 - **Header**: SplitShell's 36px view header (`title`, `detail`,
-  `actions`): the batch name (the master's title), the master's summary
-  line (`rules.summary`) as its muted detail when it wrote one, then ⋯
-  (a ghost icon button, "Batch actions") and + Thread ▾ (a ghost button)
-  before the conversation toggle. The ⋯ menu is the batch's fleet switches
+  `actions`): the batch name (the master's title) in 14px semibold, then
+  8px after it the batch's done tally (`doneTally`: the settled rows over
+  all of them, "3/7", 12px muted and `tabular-nums`, the same count the
+  rail card's master line ends in), then three equal 28px icon buttons
+  2px apart, the last on the 12px right edge: ⋯ ("Batch actions"), +
+  ("Add thread") and the conversation toggle. The master's summary
+  (`rules.summary`) is not on the board: the rules dialog shows it and
+  the master says it in its chat. The ⋯ menu is the batch's fleet switches
   (`master/boardActions.ts`), counting the rows of every host: Pause all
   (the running-turn rule, confirmed with the live count and one line,
   "Each turn holds where it is.") and Resume all go
@@ -961,7 +973,7 @@ in the whole pane, with Back.
   rows of another host its answer did not cover, that host's own
   `session.batch` (`remoteArchivePlan`: under all the live ones stopped
   first); the rows leave from the push. A row with nothing to act on is
-  disabled. + Thread is a menu: New thread… (the add sheet) and Add
+  disabled. + is a menu: New thread… (the add sheet) and Add
   existing thread… (`master/AdoptThreadDialog.tsx`: the project's
   unarchived root threads in no batch and no master themselves, on this
   host and on the project's paired copies elsewhere (`pairedProjectIds`,
@@ -972,7 +984,8 @@ in the whole pane, with Back.
   refusals read back by title in the sheet). No counts anywhere: the rows
   say them.
 - **Sections**, each a 12px medium muted heading in the status
-  vocabulary's words and no count, in this order: Needs you (waiting,
+  vocabulary's words and no count, a 32px row with its words on the last
+  16px and 4px under them (the first heading 24px), in this order: Needs you (waiting,
   error), Working (starting, running, watching, paused, and an idle child
   whose subagents still work, which the host's done rule leaves out too;
   `groupOf`), Queued (waiting for a sibling or the running cap), Done
@@ -990,44 +1003,53 @@ in the whole pane, with Back.
 - **A row** (`master/MasterRow.tsx`: `MasterRowView` draws from props
   alone, `MasterRow` wires it to the store; the rule is `rowStatus` in
   `master/rowBody.ts`) is an `Item` (a `div role="button"`, `rounded-md`,
-  hover `foreground/5`, no border) with two lines on a 16px glyph column,
-  and nothing on it is separated by a dot. Line one: the type's glyph
-  (`TypeGlyph`, its type's tint; its word in a tooltip and as its accessible
-  name, never printed beside the title), the 13px medium title (muted
-  while the row sits in Done or Queued), the host's glyph, and at the end
-  the provider's mark, the model's name, then its effort and context. Line
-  two: `StatusMark`'s glyph for the thread's state (`threadStateOf`, an
-  idle row being done) with what the state is about (a done row draws no
-  glyph, its detail alone in the text column, the state word kept in its
-  accessible name), and the task tally
-  (`3/7`, `tabular-nums`, no bar) at the end once the thread has a list.
-  The detail: working, an implementation's task in hand (its `in_progress`
-  todo), else the activity; waiting, the open question, else "approve"
-  and what it was doing; failed, the failure; watching, what it watches
-  (an idle child with live subagents is watching them, `threadStatus`'s rule)
-  and queued, the activity without the lead the word says ("Waiting on ",
-  "Queued  "); paused, what it was doing; done, "landed 12:08" once the
+  hover `foreground/5`, no border), 48px (`py-1.5`, a 20px line and a 16px
+  line, rows flush), on a 16px glyph column, and nothing on it is
+  separated by a dot or a run of spaces. Line one: the type's glyph
+  (`TypeGlyph`, its type's tint; its word in a tooltip and as its
+  accessible name, never printed beside the title), the 13px medium title
+  (muted while the row sits in Done or Queued), the host's glyph, and at
+  the end the model mark: the provider's mark (12px) and the model's name
+  (12px muted, "Fable 5.1": the mark already says Claude), its effort and
+  context in its tooltip ("Claude Fable 5.1, high effort, 1M context",
+  `modelMarkTip`). Line two: `StatusMark`'s glyph hangs in the glyph
+  column under the type's (`threadStateOf`, an idle row being done; drawn
+  for every state but done and idle), so the detail starts exactly under
+  the title; working's spinner is the row's one moving mark. In the text
+  column comes the state's word when the section does not say it (watching
+  or paused under Working, failed under Needs you, stopped under Done),
+  12px medium in its tone, then what the state is about, 12px regular:
+  amber for waiting, red for failed, else muted; the task tally (`3/7`,
+  12px, `tabular-nums`, no bar) ends the line once the thread has a list.
+  The row's accessible name carries the colon form ("Working: Write the
+  view", `plainStatus`). The detail: working, an implementation's task in
+  hand (its `in_progress` todo), else the host's `statusDetail` or its
+  activity; waiting, the open question, else "Approve" and what it was
+  doing; failed, the failure; watching, what it watches (the host's
+  `statusDetail`; an idle child with live subagents is watching them,
+  `threadStatus`'s rule) and queued, why it waits ("Waiting for Home",
+  `statusDetail`, else an old host's activity past its lead with a
+  capital); paused, what it was doing; done, "Landed 12:08" once the
   batch lists it, else a research or orchestration thread's summary (the
   notes' State line, else its last words). The child the batch's
-  `blocked` names says why ("ended its turn without completing", "errored",
-  `blockedReason` in src/shared/batchWords.ts). A state its section does
-  not name (watching or paused under Working) says its word before the
-  detail. Every detail starts lower-case and ends without a full stop. Amber and
-  red details take the state's tone; every other detail is the mark's
-  muted detail. No task list, third line or progress bar: the child pane
-  has the list, one click away. A row of a host whose link is not open
-  sits under the offline tint (`opacity-50`, `data-host-offline`): its row
-  is the launch mirror's and lifts when the host is back.
+  `blocked` names says why ("Ended its turn without completing",
+  `blockedReason` in src/shared/batchWords.ts, given its capital). A
+  detail is written as the host says it (a sentence with its capital, a
+  name or a count as it is) and ends without a full stop. No task list,
+  third line or progress bar: the child pane has the list, one click
+  away. A row of a host whose link is not open sits under the offline
+  tint (`opacity-50`, `data-host-offline`): its row is the launch
+  mirror's and lifts when the host is back.
   Under the lines, the thread's live subagents, one 20px line each in the
-  text column: `StatusMark`'s glyph, the role's glyph (`AGENT_GLYPHS`,
-  muted; a line with no role, a batch thread, takes its type's tinted
-  glyph), the title, what its state is about in the board row's own words
-  (`rowStatus` from the meta: the activity, "approve Bash" in amber, the
-  failure in red) and the host's glyph. Its whole tree by the parentId
+  text column: `StatusMark`'s glyph drawn still (`still`: no line under a
+  row ever spins), the title in 12px regular foreground, the state's word
+  in 12px medium in its tone, what its state is about in 12px muted (the
+  board row's own words, `rowStatus` from the meta) and the host's glyph;
+  no role glyph (the title says the role). Its whole tree by the parentId
   chain (archived ones left out, a far child's from that host's rows in
   the store), the person's first (waiting, failed, working, then paused or
   queued, oldest first within each), at most three (`AGENT_LINES`), then
-  one quiet line, "and 2 more, 3 done", amber when one past the cap
+  one quiet line, "2 more, 3 done", amber when one past the cap
   waits; a thread whose agents all settled shows nothing. A line opens
   the agent in the board's place as a row opens its thread, and its click
   never reaches the row (`master/agentSummary.ts`). The board builds one
@@ -1054,8 +1076,9 @@ in the whole pane, with Back.
   plan's to the implementation's; the plan, archived after the start or not, is never a
   second row.
 - **Hover** (and focus inside the row) fades the model mark out and the
-  row's actions in where it sat, ghost icon buttons with tooltips and no
-  box around them: Message (opens the thread's full view with the
+  row's actions in where it sat, three 24px ghost icon buttons 2px apart,
+  centred on line one with the last 12px in, with tooltips and no box
+  around them: Message (opens the thread's full view with the
   composer focused), the one verb the state calls for (Pause while a turn
   runs anywhere in its tree, Resume when paused or stopped, Start now when
   queued, which is `session.start` past `after`; nothing otherwise), and ⋯,
@@ -1096,8 +1119,8 @@ in the whole pane, with Back.
   A popover or the composer's `@`/`/` list open inside a Modal takes
   Escape first: each stops the key before the dialog hears it.
 - **The foot** (`master/BatchFoot.tsx`, the step rules in `master/steps.ts`)
-  stays put under the scrolling list, always rows, at the rows' 20px
-  inset: a "When done" heading (12px medium muted) with Edit, the blocked
+  stays put under the scrolling list, always rows, on the board's 12px
+  inset (`px-3 py-2`): a "When done" heading (12px medium muted) with Edit, the blocked
   line in red when a child blocks the batch's end, then one 28px row per
   step: the master's list (`rules.steps`, a `BatchStepSpec` each: id,
   name, kind, a shell step's command and cwd) joined by id with the host's
@@ -1107,11 +1130,12 @@ in the whole pane, with Back.
   (`stepState`: pending queued, running working, passed done, failed
   failed, skipped idle), the name (muted while pending or skipped), what
   it is about (`stepDetail`: the land step "as they finish" or "all at
-  once" until it runs, then "2 of 5 landed"; a running step "12 of 31"
-  and the host's label apart by margin; "skipped" or the host's reason; a
+  once" until it runs, then "2 of 5 landed"; a running step its count and
+  the host's label as one detail with a comma ("12 of 31, vitest");
+  "Skipped" or the host's reason (a plain first word takes its capital); a
   failed step's detail in red; a settled step's detail without the time
   its time column says, and nothing for a bare "passed", which the glyph
-  says), its time (`tabular-nums`, ticking every
+  says), its time (12px `tabular-nums`, ticking every
   second from `startedAt` while it runs), and Stop on the running step
   (`batch.stopStep` with the step's id), Hide and Show on a failed one
   whose log says more than its row.
@@ -1122,13 +1146,16 @@ in the whole pane, with Back.
   bottom, it follows again), "Starting…" before the first line; a shell
   step's command shows once, as its console's first line (`$ <run>`, the
   host writes it). A failed step's console stays open with its last lines
-  until Hide; the failure is said once, red on its row, lower-case without
-  a stop (`stepDetail`), and the console drops a last line that only
+  until Hide; the failure is said once, red on its row, without a stop
+  (`stepDetail`), and the console drops a last line that only
   repeats it (`consoleLines`); a log that is only that line opens no
   console (`hasConsole`). No progress bar: the row's detail
   says the count. The last line says what happens then: "Then notify you"
-  or "Then archive the threads". Until `batch.board` answers the foot is
-  a `Skeleton` of the heading and three rows. Read from the `batch.board`
+  or "Then archive the threads", 4px under the last step. The rows above
+  paint from the session store the moment the board opens (the answer then
+  overrides a row's host and status, `mergeBatchChildren`); only the foot
+  waits on `batch.board`, as one `aria-busy` still `Skeleton` of the
+  heading and two step rows. Nothing on the board spins while it loads. Read from the `batch.board`
   answer and the `batch` push (each step's log as the lines since the last
   push, `foldBatchPush`; a push past what is held asks `batch.get` for the
   whole state).

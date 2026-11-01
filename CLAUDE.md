@@ -268,7 +268,11 @@ app replaces itself from the feed, and only from the feed.
   the one component under `src/renderer/src/components/ui` that renders it
   (Kobra on Base UI, adapted flat to the tokens at the top of
   `src/renderer/src/index.css`, to `chrome/icons` and to the motion tokens;
-  `StatusMark` is the one status vocabulary, `threadStateOf` turns a wire
+  `StatusMark` is the one status vocabulary, drawn as two spans (the word
+  medium in its tone, the detail regular and muted; `still` for a line
+  under a row that already spins, so a row has one moving mark), a plain
+  string only as "Word: Detail" (`plainStatus`), never a run of spaces
+  (`lib/spaceGuard.test.ts`), `threadStateOf` turns a wire
   status into its state; `TypeGlyph` (surfaces/threads/TypeGlyph.tsx) is
   the one coloured type glyph, each type's tint a `--type-*` token on the
   glyph alone, `THREAD_MENU_ICONS` its menu-row form, a test in
@@ -669,8 +673,11 @@ routed to (aliax-core's `forward`). Two listeners:
   thinking or tool call; the codex driver emits `retrying` on
   `willRetry`/`Reconnecting`; sessions.ts words them ("Starting the CLI",
   "Initializing", "Rate limited, retry 3 in 32 s"; the vocabulary is
-  src/shared/statusWords.ts: a comma before a phase's detail, two spaces
-  after a state word, `leadDetail` reading both and the old dot) and folds them onto the
+  src/shared/statusWords.ts: a comma before a phase's detail; a state word
+  and its detail are two spans, or "Word: Detail" as one string
+  (`plainStatus`); the host sends the detail as `SessionMeta.statusDetail`
+  and keeps `activity` in its legacy two-space shape for old readers
+  (`legacyActivity`), which `legacyDetail` reads with a capital) and folds them onto the
   meta like `context` (`phaseLine`). A provider request open past 15 s with
   nothing finer known reads "Waiting for the provider, 25 s", re-pushed
   every 5 s (`providerRequest`, `PROVIDER_WAIT_MS`). A compaction is
@@ -2469,9 +2476,11 @@ this is the short one.
   queued messages or reports due), which is how a settle frees a slot. The
   BootResumer resumes up to the cap and leaves the rest `queued` with their
   nudge stored (`queueResume`; their ledger rows stay). A queued row's
-  `activity` reads "Queued  waiting for <sibling>" ("(errored)" /
-  "(stopped)" / "(paused)" appended), "Queued  120 of 120 running" or
-  "Queued  waiting for memory" (two spaces after the state word), pushed only when it changes. RPCs
+  `statusDetail` reads "Waiting for <sibling>" ("(errored)" /
+  "(stopped)" / "(paused)" appended), "120 of 120 running" or "Waiting
+  for memory" (scheduler.ts `QueuedLine`), and its `activity` the legacy
+  "Queued  waiting for memory" for old readers, pushed only when it
+  changes; `list_agents` says "queued: 120 of 120 running". RPCs
   `admission.get` (read: cap, pinned, default, running, queued, memory) and
   `admission.set { cap | null }` (admin); a Running threads row in each
   connected host's section of Settings → Hosts shows it
@@ -2665,7 +2674,7 @@ this is the short one.
   master's chat while the batch has a row or a step runs (`boardShown`);
   with nothing in its batch the master is its transcript alone and its
   thread menu holds New batch thread… and Add existing thread…
-  (`BatchAddDialog`, the same dialogs as the board's + Thread); a board
+  (`BatchAddDialog`, the same dialogs as the board's + menu); a board
   that arrives live opens the chat and fades in, one that empties leaves
   at once. The board, its rows, the foot, the dialogs and the add
   sheet are surfaces/threads/master/**. The rows are the children on
@@ -2674,32 +2683,36 @@ this is the short one.
   sends one, overrides a row's host and status, `mergeBatchChildren`); a
   row on another host than the master's carries that host's glyph after
   its title, its name on hover (`rowHost`), and sits under the
-  offline tint while that host's link is not open. A row is two lines on
-  `Item` (master/MasterRow.tsx, the rule `rowStatus` in master/rowBody.ts):
+  offline tint while that host's link is not open. A row is 48px, two
+  lines on `Item` with every left edge of the board 12px in
+  (master/MasterRow.tsx, the rule `rowStatus` in master/rowBody.ts):
   the type glyph (its word in a tooltip), the title, the host glyph and the
-  model mark; then `StatusMark`'s glyph with what the state is about (the
-  task in hand, the question or "approve Bash" in amber, the failure in
-  red; a done row draws no glyph, only its detail, "landed 12:08" or a
-  settled research thread's summary; the child the batch's `blocked`
-  names says why, "ended its turn without completing"; a watching or
-  paused child under Working says its own word) and the task tally `3/7` at the end; the sections read Needs you, Working, Queued,
+  model mark (provider mark and model, effort and context in its tooltip);
+  then `StatusMark`'s glyph hanging under the type's (working's spinner the
+  row's one moving mark; none for done or idle) and in the title's column
+  the word where the section does not say it, then what the state is
+  about (the task in hand, the question or "Approve Bash" in amber, the
+  failure in red; "Landed 12:08" or a settled research thread's summary;
+  the child the batch's `blocked` names says why, "Ended its turn without
+  completing"; a watching or paused child under Working, a failed one
+  under Needs you, says its own word) and the task tally `3/7` at the end; the sections read Needs you, Working, Queued,
   Done with no counts, and the board holds no task list or progress bar.
   On hover the model mark gives way to Message, the state's one verb
   (Pause, Resume, Start now) and ⋯, the row's menu, where Stop, Archive
   and a queued thread's Remove from queue live. A row whose thread has
   live subagents lists them under its two lines, one line each: the status
-  glyph, the role's glyph, the title, what its state is about in the board
-  row's own words (`rowStatus`: the activity, "approve Bash" in amber, the
-  failure in red) and the host's glyph; the
+  glyph drawn still, the title, the state's word in its tone and what it
+  is about, muted, in the board row's own words (`rowStatus`), and the
+  host's glyph, no role glyph; the
   whole tree by the parentId chain, archived ones out, a far child's from
   its host's rows, the person's first (waiting, failed, working, then
-  paused or queued), at most three, then one quiet "and 2 more, 3 done";
+  paused or queued), at most three, then one quiet "2 more, 3 done";
   agents that all settled show nothing. A line opens the agent in the
   board's place like a row (`underRow` keeps it open)
   (`master/agentSummary.ts`: one parent index per meta change, a row
   re-rendered only when its own lines changed; the phone's
   `MasterBoard.rowAgentLines` the same, each line a link to the agent's
-  thread screen, the tail "and 2 more, 3 done"). A row's click puts the
+  thread screen, the tail "2 more, 3 done"). A row's click puts the
   child's full view in the whole pane with one Back control
   (`master/ChildPane.tsx`, given the row's host; Escape and ⌘↩ outside
   the composer go back; the board keeps its scroll; the header is Back and
@@ -2722,20 +2735,23 @@ this is the short one.
   children as `<env>:<id>`; an older host's answer falls back to done or
   idle less the blocked child) and the resources checkbox: `batch.archive` on the master's
   host, then each other host's `session.batch` for the rows its answer
-  left, `remoteArchivePlan` in `master/boardActions.ts`), + Thread a menu
+  left, `remoteArchivePlan` in `master/boardActions.ts`), + (Add thread) a menu
   with New thread… (the add sheet: every type, Chat first; Host over the master's host and every
   linked one, `linkedHosts`; `session.create` on that host with
   `masterId` and `startedBy` = the master) and Add existing thread…
   (the project's roots in no batch on this host and its paired copies,
   `pairedProjectIds`; one `batch.adopt` on the master's host, a remote
   thread as `<envId>:<id>`, refusals read back in the sheet). The board's
-  header is SplitShell's: the master's title, its summary line, ⋯ and
-  + Thread. The foot is rows: "When done" with Edit, one row per step
+  header is SplitShell's: the master's title (14px semibold), the batch's
+  done tally (`doneTally`, "3/7", the rail card's count), then ⋯, + and
+  the conversation toggle as equal 28px icon buttons; the master's
+  summary stays in the rules dialog. The foot is rows: "When done" with Edit, one row per step
   (`StatusMark` through `stepState`, the name, `stepDetail`, the time,
   Stop on the running one), the running step's console opening under its
   own row (`Collapsible`; a shell step's command shows once, as the
   console's first line), and "Then notify you" or "Then archive the
-  threads"; a `Skeleton` until `batch.board` answers. The foot and the
+  threads"; the rows paint from the store at once and only the foot is a
+  still `Skeleton` until `batch.board` answers. The foot and the
   rules dialog read the steps as the master's
   list: `master/steps.ts` joins `rules.steps` with `state.steps` by id (a
   step the rules name that the host has not seen is pending at the end),

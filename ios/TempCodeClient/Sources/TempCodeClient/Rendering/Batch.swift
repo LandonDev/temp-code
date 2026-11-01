@@ -220,9 +220,9 @@ public enum MasterBoard {
             self.done = done
         }
 
-        /// "and 2 more, 3 done"; nil when every agent has a line.
+        /// "2 more, 3 done"; nil when every agent has a line.
         public var tail: String? {
-            let parts = [more > 0 ? "and \(more) more" : nil, done > 0 ? "\(done) done" : nil].compactMap { $0 }
+            let parts = [more > 0 ? "\(more) more" : nil, done > 0 ? "\(done) done" : nil].compactMap { $0 }
             return parts.isEmpty ? nil : parts.joined(separator: ", ")
         }
     }

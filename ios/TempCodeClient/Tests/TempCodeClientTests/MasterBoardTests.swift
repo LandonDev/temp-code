@@ -232,7 +232,7 @@ private var utc: Calendar {
         #expect(agents?.lines.map(\.id) == ["w5", "w1", "w2"])
         #expect(agents?.more == 2)
         #expect(agents?.moreWaiting == 0)
-        #expect(agents?.tail == "and 2 more, 1 done")
+        #expect(agents?.tail == "2 more, 1 done")
         #expect(MasterBoard.rowAgents([meta("p", status: .paused)])?.lines.first?.what == MasterBoard.WhatLine(text: "Paused", tone: .muted))
         #expect(MasterBoard.rowAgents([meta("p", status: .running)])?.tail == nil)
     }
