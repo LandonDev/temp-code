@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
 import { newSession, type Block, type Session } from '../../lib/session'
+import { emptyThread } from '../../lib/tcserver/todos'
 import { mountProbe, Probe } from '../../test/renderProbe'
 import { WorkingStrip } from './WorkingStrip'
 
@@ -47,6 +48,27 @@ describe('WorkingStrip: the timer while a turn is open', () => {
     expect(rowText(probe)).toMatch(/^1m 3\dsStop$/)
     expect(row(probe).querySelector('svg')).toBeNull()
     expect(probe.container.querySelector('.opacity-100')).not.toBeNull()
+    probe.unmount()
+  })
+
+  it('an open compaction leaves the turn timer as is: the time from the turn start, no compaction words', () => {
+    const compaction = {
+      id: 'c',
+      role: 'system',
+      text: 'Compacting context',
+      compaction: { phase: 'start', startedAt: Date.now() - 20_000 },
+    } as Block
+    const probe = mount(
+      session({
+        status: 'running',
+        activity: 'Compacting context',
+        busySince: Date.now() - 92_000,
+        blocks: [compaction],
+        thread: { ...emptyThread(), compacting: true, compactionId: 'c' },
+      }),
+    )
+    expect(rowText(probe)).toMatch(/^1m 3\dsStop$/)
+    expect(probe.container.textContent).not.toMatch(/compact/i)
     probe.unmount()
   })
 
