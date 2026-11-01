@@ -2,19 +2,23 @@
 import { useCallback, useState } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionMeta } from "../lib/tcserver/types";
+import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { sessionStore } from "../lib/tcserver/store";
 import { menuChunk, virtualChunk } from "../surfaces/chunks";
 import { resetMenus, warmMenus } from "./menuRows";
 
-const h = vi.hoisted(() => ({ metas: [] as SessionMeta[], renamed: [] as [string, string][] }));
+const h = vi.hoisted(() => ({
+  metas: [] as SessionMeta[],
+  renamed: [] as [string, string][],
+  catalog: { projects: [], workspaces: [] } as { projects: ProjectMeta[]; workspaces: WorkspaceMeta[] },
+}));
 vi.mock("../lib/tcserver/store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/tcserver/store")>()),
   useSessionMetas: () => h.metas,
 }));
 vi.mock("../lib/tcserver/workspaces", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/tcserver/workspaces")>()),
-  useWorkspaceCatalog: () => ({ projects: [], workspaces: [] }),
+  useWorkspaceCatalog: () => h.catalog,
 }));
 
 import WorkspaceSessions, { forgetColumnMemory } from "./WorkspaceSessions";
@@ -90,6 +94,7 @@ beforeEach(() => {
   vi.spyOn(sessionStore, "metaOf").mockImplementation((id) => h.metas.find((m) => m.id === id) ?? null);
   h.metas = Array.from({ length: 40 }, (_, i) => chat(i));
   h.renamed = [];
+  h.catalog = { projects: [], workspaces: [] };
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
   const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
@@ -309,5 +314,40 @@ describe("an inline rename of a rail thread ended from the keyboard", () => {
     expect(h.renamed).toEqual([["c3", "Chat three"]]);
     // The store has not heard the new title: the row still reads the old one.
     expect(document.activeElement).toBe(row().querySelector('[aria-label="More"]'));
+  });
+});
+
+describe("the Chats fold", () => {
+  const chatsFold = (root: HTMLElement) => screen.getByText("Chats").closest<HTMLElement>("[data-fold-spaced], [data-index]") ?? root;
+
+  it("starts 16px below the project cards, a new group", () => {
+    h.catalog = {
+      workspaces: [{ environmentId: "local", id: "w1", name: "Work", path: "/w1", createdAt: 1 } as WorkspaceMeta],
+      projects: [
+        { environmentId: "local", id: "p1", workspaceId: "w1", name: "Alpha", mode: "local", branch: "main", cwd: "/w1", archived: false, createdAt: 1 } as ProjectMeta,
+      ],
+    };
+    h.metas = Array.from({ length: 3 }, (_, i) => ({ ...chat(i), workspaceId: "w1" }));
+    const view = render(<Column shown scope="w1" />);
+    expect(view.container.querySelector("[data-project-card]")).not.toBeNull();
+    const fold = chatsFold(view.container);
+    expect(fold.getAttribute("data-fold-spaced")).toBe("true");
+    expect(fold.className).toContain("pt-3");
+  });
+
+  it("its heading has no fill, open or folded: only a card sits on one", () => {
+    const view = render(<Column shown />);
+    const heading = screen.getByRole("button", { name: /^Chats/ });
+    expect(heading.getAttribute("aria-expanded")).toBe("true");
+    expect(heading.className).toContain("aria-expanded:bg-transparent");
+    expect(heading.className).not.toMatch(/(^|\s)aria-expanded:bg-foreground/);
+    expect(view.container.querySelector('[class*="sidebar-group"]')).toBeNull();
+  });
+
+  it("starts at the top of the home, where no card comes before it", () => {
+    const view = render(<Column shown />);
+    expect(view.container.querySelector("[data-project-card]")).toBeNull();
+    expect(view.container.querySelector("[data-fold-spaced]")).toBeNull();
+    expect(view.container.querySelector(".pt-3")).toBeNull();
   });
 });

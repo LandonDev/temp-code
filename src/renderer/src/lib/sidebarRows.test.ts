@@ -92,6 +92,21 @@ describe("sidebarItems", () => {
     expect(sidebarItems(groups()).map((i) => i.kind)).toEqual(["empty"]);
   });
 
+  it("spaces the folds that follow the cards, and only those", () => {
+    const spaced = (items: ReturnType<typeof sidebarItems>) =>
+      items.map((i) => (i.kind === "chats" || i.kind === "archived" ? `${i.kind}:${i.spaced}` : i.kind));
+    expect(spaced(sidebarItems(groups({ projects: [group("a")], chats: rows(1) })))).toEqual(["project", "chats:true"]);
+    expect(spaced(sidebarItems(groups({ projects: [group("a")], chats: rows(1), archived: [group("z", [], true)] })))).toEqual([
+      "project",
+      "chats:true",
+      "archived:true",
+    ]);
+    expect(spaced(sidebarItems(groups({ projects: [group("a")], archived: [group("z", [], true)] })))).toEqual(["project", "archived:true"]);
+    // The home, and a workspace with no projects, start at the top.
+    expect(spaced(sidebarItems(groups({ chats: rows(1) }), true))).toEqual(["chats:false"]);
+    expect(spaced(sidebarItems(groups({ chats: rows(1), archived: [group("z", [], true)] })))).toEqual(["chats:false", "archived:false"]);
+  });
+
   it("leaves out empty sections and shows the empty hint when there is nothing", () => {
     expect(sidebarItems(groups({ projects: [group("a")] })).map((i) => i.kind)).toEqual([
       "project",

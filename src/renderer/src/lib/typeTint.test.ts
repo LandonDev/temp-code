@@ -12,7 +12,7 @@ import { contrast, hueDistance, resolve, themes } from "./colourMath";
 const { dark, light } = themes(readFileSync(join(__dirname, "../index.css"), "utf8"));
 
 const TYPES = ["chat", "planning", "project-plan", "implementation", "orchestration", "research"].map((t) => `--type-${t}`);
-const SURFACES = ["--background", "--sidebar", "--muted", "--card"];
+const SURFACES = ["--background", "--sidebar", "--muted", "--card", "--sidebar-group", "--sidebar-group-hover", "--sidebar-group-selected"];
 const STATUSES = ["--thread-warning", "--thread-danger"];
 
 // v1.0.303's THREAD_TINTS values; orchestration alone moved off amber.

@@ -63,6 +63,9 @@ or glass setting any more.
 | `card` | a bounded region inside content (a card, a transcript action list) | oklch 0.225 | oklch 0.985 |
 | `popover` | every floating layer: menu, popover, dialog, sheet, tooltip (light) | oklch 0.24 | white |
 | `muted` | a hovered or highlighted row, a track, a key cap | oklch 0.275 | oklch 0.955 |
+| `sidebar-group` | a group's resting fill in the chrome (a project card in the workspace column) | oklch 0.213 | oklch 0.961 warm |
+| `sidebar-group-hover` | that group hovered | oklch 0.244 | oklch 0.95 warm |
+| `sidebar-group-selected` | that group selected | `muted` | oklch 0.94 warm |
 | `secondary` | the secondary button | oklch 0.29 | oklch 0.94 |
 | `border` | every hairline | white 9% | black 8% |
 | `input` | a field's border, a switch's off track | white 12% | black 12% |
@@ -79,6 +82,17 @@ The status colours (`success`, `warning`, `destructive`, `info`) are text
 as often as fills, so each reaches 4.5:1 as small text on `background`,
 `sidebar`, `card` and a selected (`muted`) row in both themes; the light
 theme's are the darker steps for that (`lib/statusContrast.test.ts`).
+
+The `sidebar-group` steps are a container's surface, never an item's: a
+thread row stays bare in every list. They are opaque steps away from
+`sidebar`, each at least 0.01 of OKLab L past the one before and the
+selected step the farthest, with both inks at 4.5:1 on each
+(`lib/sidebarGroup.test.ts`). Light's ladder is narrow: its selected step
+stops at L 0.94, where amber text still reaches 4.5:1; under it amber falls
+short. The amber, red and green text a card carries reaches 4.5:1 on all
+three; the info blue never sets text in the workspace column and is held to
+the 3:1 glyph bar there, since its 4.5:1 would need L 0.953 and leave no room
+for three steps under the sidebar.
 
 ### Type tints
 
@@ -134,8 +148,10 @@ padding, rows 28px tall in menus and dense lists (search results among
 them: one line each), 36px for `RailRow` (the
 rail and the settings list), 32px for the thread rows of the workspace
 column's Chats and Archived folds and 28px for the rows nested under them.
-A project card in that column is a 20px name line, a 16px branch line 2px
-under it, 24px read-only thread lines, and cards sit 4px apart. Every menu, context menu and
+A project card in that column sits on `sidebar-group`: a 20px name line, a
+16px branch line 2px under it, 24px read-only thread lines, and cards sit 4px
+apart. The Chats and Archived folds under the cards start 16px below them, a
+new group. Every menu, context menu and
 select row takes its box from `MENU_ROW` (components/ui/menu-row.ts,
 exported by dropdown-menu.tsx). Between groups in a panel or page: 16px; between sections: 24px.
 A panel's inset is 12px; a dialog's 20px. Never a value off the grid.

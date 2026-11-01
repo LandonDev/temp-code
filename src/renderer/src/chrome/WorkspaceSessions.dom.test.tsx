@@ -193,21 +193,39 @@ describe('a project card', () => {
     probe.unmount()
   })
 
-  it('selected, it is aria-current with the muted fill', () => {
-    const probe = mountProbe(projectCard([], { selected: true }))
-    expect(cardOf(probe.container).getAttribute('aria-current')).toBe('true')
-    expect(cardOf(probe.container).className).toContain('bg-muted')
+  it('sits on its own fill at rest, a step further on hover, the name medium foreground', () => {
+    const probe = mountProbe(projectCard([]))
+    const card = cardOf(probe.container)
+    expect(card.className).toContain('bg-sidebar-group')
+    expect(card.className).toContain('hover:bg-sidebar-group-hover')
+    expect(card.className).not.toContain('bg-sidebar-group-selected')
+    expect(card.getAttribute('aria-current')).toBeNull()
+    const name = Array.from(card.querySelectorAll('span')).find((s) => s.textContent === 'Project p1')!
+    expect(name.className).toContain('font-medium')
+    expect(name.className).toContain('text-foreground')
+    expect(name.className).not.toContain('text-muted-foreground')
     probe.unmount()
   })
 
-  it('an unread thread makes the name heavier and its line weight, with no dot', () => {
+  it('selected, it is aria-current on the selected step, never the row fill', () => {
+    const probe = mountProbe(projectCard([], { selected: true }))
+    const card = cardOf(probe.container)
+    expect(card.getAttribute('aria-current')).toBe('true')
+    expect(card.className).toContain('bg-sidebar-group-selected')
+    expect(card.className).not.toContain('bg-muted')
+    expect(card.className).not.toContain('hover:bg-sidebar-group-hover')
+    probe.unmount()
+  })
+
+  it('an unread thread weights its own line and the accessible name says so; the name is set as always, with no dot', () => {
     const probe = mountProbe(projectCard([threadRow(meta('d', { title: 'Fix login', status: 'done', updatedAt: 200 }), { d: 100 })]))
     const name = Array.from(cardOf(probe.container).querySelectorAll('span')).find((s) => s.textContent === 'Project p1')!
-    expect(name.className).toContain('font-medium')
+    expect(name.className).toBe('min-w-0 flex-1 truncate text-[13px] font-medium text-foreground')
     const line = lineOf(probe.container, 'Fix login')
     expect(line.getAttribute('data-card-line')).toBe('unread')
     expect(line.querySelector('.font-medium')?.textContent).toBe('Fix login')
     expect(line.querySelector('.rounded-full')).toBeNull()
+    expect(cardOf(probe.container).getAttribute('aria-label')).toMatch(/unread/)
     probe.unmount()
   })
 
@@ -509,6 +527,15 @@ describe('a thread row ends in its mark', () => {
     expect(title.className).toContain('font-medium')
     expect(row.querySelector('.rounded-full')).toBeNull()
     probe.unmount()
+  })
+
+  it('is an item: bare, never on a group fill', () => {
+    for (const extra of [{ status: 'idle' }, { status: 'done', updatedAt: 200 }, { status: 'running', busySince: 5 }] as Partial<SessionMeta>[]) {
+      const { probe, row } = one(extra, { t: 100 })
+      expect(row.className).not.toContain('sidebar-group')
+      expect(row.querySelector('[class*="sidebar-group"]')).toBeNull()
+      probe.unmount()
+    }
   })
 
   it('a paused row has its mark and no fill of its own', () => {

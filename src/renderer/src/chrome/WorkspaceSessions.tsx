@@ -55,7 +55,6 @@ import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import {
   cardCounts,
   cardLines,
-  groupUnread,
   nextPage,
   projectCardAriaLabel,
   rowState,
@@ -877,7 +876,6 @@ export type ProjectCardViewProps = {
   counts: readonly CardCount[];
   ariaLabel: string;
   selected?: boolean;
-  unread?: boolean;
   offline?: boolean;
   /** In place of the name: the rename field. */
   title?: ReactNode;
@@ -907,7 +905,6 @@ export function ProjectCardView({
   counts,
   ariaLabel,
   selected = false,
-  unread = false,
   offline = false,
   title,
   onSelect,
@@ -924,15 +921,7 @@ export function ProjectCardView({
           title
         ) : (
           <>
-            <span
-              className={cn(
-                "min-w-0 flex-1 truncate text-[13px]",
-                unread && "font-medium",
-                selected || unread ? "text-foreground" : "text-muted-foreground group-hover/row:text-foreground",
-              )}
-            >
-              {name}
-            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{name}</span>
             {ago ? <span className={cn("shrink-0 tabular-nums text-muted-foreground", menu && YIELDS)}>{ago}</span> : null}
           </>
         )}
@@ -960,7 +949,9 @@ export function ProjectCardView({
   );
   const box = cn(
     "flex w-full min-w-0 cursor-default flex-col rounded-lg px-3 py-2 text-left text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-accent",
-    selected ? "bg-muted" : "hover:bg-foreground/5",
+    // The card is the column's one container: always on its own fill, a step
+    // further on hover, the farthest step while selected. No transition (list rows never animate).
+    selected ? "bg-sidebar-group-selected" : "bg-sidebar-group hover:bg-sidebar-group-hover",
   );
   const card = (
     <div data-project-row data-host-offline={offline || undefined} className={cn("group/row relative", offline && "opacity-50")}>
@@ -1054,7 +1045,6 @@ export const ProjectCard = memo(function ProjectCard({
   const { project, threads, latest, archivedCount } = group;
   const [renaming, setRenaming] = useState(false);
   const offline = useHostsOffline(hosts.split("\n"));
-  const unread = useMemo(() => groupUnread(threads), [threads]);
   const status = projectCardStatus(cardThreads(threads), rows.activeSessionId ?? null, lastSeen, seenFloor);
   const all = cardLines(threads, status);
   const { shown, hidden } = windowRows(all, requested, null);
@@ -1126,7 +1116,6 @@ export const ProjectCard = memo(function ProjectCard({
       counts={cardCounts(status, archivedCount)}
       ariaLabel={projectCardAriaLabel(project.name, status)}
       selected={selected}
-      unread={unread}
       offline={offline}
       onSelect={() => selectProject(project.id)}
       onRename={() => setRenaming(true)}
@@ -1136,7 +1125,7 @@ export const ProjectCard = memo(function ProjectCard({
         renaming ? (
           <InlineRename
             value={project.name}
-            className="text-[13px]"
+            className="text-[13px] font-medium"
             onCommit={(n) => {
               setRenaming(false);
               renameTo(project.id, n);
@@ -1151,7 +1140,7 @@ export const ProjectCard = memo(function ProjectCard({
 
 /** A section's heading over its rows: 28px, 12px medium muted, sentence
  *  case; the heading flips the fold, `trailing` sits at its end. */
-function SectionHeading({
+export function SectionHeading({
   label,
   open,
   onToggle,
@@ -1169,7 +1158,7 @@ function SectionHeading({
         size="xs"
         aria-expanded={open}
         onClick={onToggle}
-        className="h-7 min-w-0 flex-1 justify-start gap-1 px-3 text-[12px] font-medium text-muted-foreground hover:bg-transparent hover:text-foreground"
+        className="h-7 min-w-0 flex-1 justify-start gap-1 px-3 text-[12px] font-medium text-muted-foreground hover:bg-transparent hover:text-foreground aria-expanded:bg-transparent"
       >
         <span className="truncate">{label}</span>
         <FoldChevron open={open} className="size-3" />
@@ -1298,6 +1287,17 @@ const ChatsSection = memo(function ChatsSection({
 
 const ROW_PX = 32;
 const HEADING_PX = 28;
+/** A fold under the cards starts a new group: 12px on top of the list's 4px gap. */
+const FOLD_GAP_PX = 12;
+
+/** A Chats or Archived fold; `spaced` when cards come before it. */
+function SectionGroup({ spaced, children }: { spaced: boolean; children: ReactNode }) {
+  return (
+    <div data-fold-spaced={spaced || undefined} className={cn(spaced && "pt-3")}>
+      {children}
+    </div>
+  );
+}
 
 /** Heights for the virtualizer's first pass; every item is then measured.
  *  A card counts its lines and the chats section its first page. */
@@ -1306,9 +1306,9 @@ const estimateItem = (item: SidebarItem): number => {
     case "project":
       return estimateCard(item.group);
     case "chats":
-      return HEADING_PX + ROW_PX * Math.min(item.threads.length, SESSION_LIST_PAGE);
+      return (item.spaced ? FOLD_GAP_PX : 0) + HEADING_PX + ROW_PX * Math.min(item.threads.length, SESSION_LIST_PAGE);
     case "archived":
-      return HEADING_PX;
+      return (item.spaced ? FOLD_GAP_PX : 0) + HEADING_PX;
     case "empty":
       return ROW_PX;
   }
@@ -1577,28 +1577,32 @@ export default function WorkspaceSessions({
         );
       case "chats":
         return (
-          <ChatsSection
-            threads={item.threads}
-            rows={rows}
-            open={chatsOpen}
-            requested={pageOf(pages, "chats")}
-            onMore={moreChats}
-            onToggle={toggleChats}
-            onNewChat={newChat}
-          />
+          <SectionGroup spaced={item.spaced}>
+            <ChatsSection
+              threads={item.threads}
+              rows={rows}
+              open={chatsOpen}
+              requested={pageOf(pages, "chats")}
+              onMore={moreChats}
+              onToggle={toggleChats}
+              onNewChat={newChat}
+            />
+          </SectionGroup>
         );
       case "archived":
         return (
-          <ArchivedProjects
-            groups={item.groups}
-            rows={rows}
-            state={archived}
-            setState={setArchived}
-            pages={pages}
-            onMore={morePages}
-            onRestore={restore}
-            onDelete={remove}
-          />
+          <SectionGroup spaced={item.spaced}>
+            <ArchivedProjects
+              groups={item.groups}
+              rows={rows}
+              state={archived}
+              setState={setArchived}
+              pages={pages}
+              onMore={morePages}
+              onRestore={restore}
+              onDelete={remove}
+            />
+          </SectionGroup>
         );
       case "empty":
         return (
