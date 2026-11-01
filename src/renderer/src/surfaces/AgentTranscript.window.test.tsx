@@ -10,9 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/highlight", () => ({ highlightCode: () => Promise.resolve(null) }));
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
+let reducedMotion = true;
 vi.mock("motion/react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("motion/react")>()),
-  useReducedMotion: () => true,
+  useReducedMotion: () => reducedMotion,
 }));
 
 type Callback = (entries: ResizeObserverEntry[]) => void;
@@ -61,6 +62,14 @@ function measureRows(heightOf: (key: string) => number | null): void {
 }
 
 const VIEWPORT = 600;
+/** The pane's width; 0 (the message list hidden) unless a test sets it. */
+let paneWidth = 0;
+Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+  configurable: true,
+  get(this: HTMLElement) {
+    return this.classList.contains("agent-transcript") ? paneWidth : 0;
+  },
+});
 Object.defineProperty(HTMLElement.prototype, "clientHeight", {
   configurable: true,
   get(this: HTMLElement) {
@@ -71,7 +80,8 @@ Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
   configurable: true,
   get(this: HTMLElement) {
     if (!this.classList.contains("agent-transcript")) return 0;
-    const box = this.firstElementChild?.firstElementChild as HTMLElement | null;
+    // The rows' container alone: the message list's wrapper has no height.
+    const box = this.querySelector<HTMLElement>(":scope > div:not([data-transcript-outline]) > div");
     return box ? parseFloat(box.style.height) || 0 : 0;
   },
 });
@@ -99,7 +109,8 @@ function chat(turns: number, from = 0): Block[] {
 }
 
 const scrollerOf = (container: HTMLElement) => container.querySelector(".agent-transcript") as HTMLDivElement;
-const boxOf = (container: HTMLElement) => scrollerOf(container).firstElementChild!.firstElementChild as HTMLDivElement;
+const boxOf = (container: HTMLElement) =>
+  scrollerOf(container).querySelector(":scope > div:not([data-transcript-outline]) > div") as HTMLDivElement;
 const rowKeys = (container: HTMLElement) =>
   [...container.querySelectorAll<HTMLElement>("[data-row]")].map((el) => el.dataset.row!);
 const blockIds = (container: HTMLElement) =>
@@ -123,7 +134,11 @@ const scrollTo = (el: HTMLElement, top: number) =>
     fireEvent.scroll(el);
   });
 
-beforeEach(() => observers.clear());
+beforeEach(() => {
+  observers.clear();
+  paneWidth = 0;
+  reducedMotion = true;
+});
 afterEach(cleanup);
 
 describe("shouldRestoreScroll", () => {
@@ -265,5 +280,153 @@ describe("AgentTranscript viewport window", () => {
     // Five prompts, five tool calls, five answers.
     expect(blockIds(container).length).toBe(15);
     expect(queryByText("Load earlier messages")).toBeNull();
+  });
+});
+
+describe("AgentTranscript message list", () => {
+  const listOf = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('nav[aria-label="Your messages"]');
+  const entries = (container: HTMLElement) => [...listOf(container)!.querySelectorAll<HTMLButtonElement>("button")];
+  const entry = (container: HTMLElement, text: string) => entries(container).find((b) => b.textContent === text)!;
+  const current = (container: HTMLElement) =>
+    entries(container).find((b) => b.getAttribute("aria-current") === "location")?.textContent;
+  /** The pane resized: the scroller's observer runs. */
+  const resizePane = (container: HTMLElement, width: number) => {
+    paneWidth = width;
+    const el = scrollerOf(container);
+    for (const { callback, targets } of observers) {
+      if (targets.has(el)) act(() => callback([]));
+    }
+  };
+
+  it("hides with one message, and under 864px", () => {
+    paneWidth = 1400;
+    const one = render(<AgentTranscript sessionId="m1" blocks={chat(1)} busy={false} visible />);
+    expect(listOf(one.container)).toBeNull();
+    one.unmount();
+    paneWidth = 800;
+    const { container } = render(<AgentTranscript sessionId="m2" blocks={chat(2)} busy={false} visible />);
+    expect(listOf(container)).toBeNull();
+    expect(boxOf(container).className).toContain("mx-auto");
+  });
+
+  it("sits in the gutter at 1400px with the column centred", () => {
+    paneWidth = 1400;
+    const { container } = render(<AgentTranscript sessionId="m3" blocks={chat(2)} busy={false} visible />);
+    expect(entries(container).map((b) => b.textContent)).toEqual(["Turn 1", "Turn 2"]);
+    expect(boxOf(container).className).toContain("mx-auto");
+    expect(boxOf(container).className).toContain("max-w-4xl");
+    expect((boxOf(container).parentElement as HTMLElement).style.paddingLeft).toBe("");
+  });
+
+  it("moves the column beside it at 1000px, and back as the pane widens", () => {
+    paneWidth = 1000;
+    const { container } = render(<AgentTranscript sessionId="m4" blocks={chat(2)} busy={false} visible />);
+    expect(listOf(container)).not.toBeNull();
+    expect(boxOf(container).className).toContain("mr-auto");
+    expect(boxOf(container).className).not.toContain("mx-auto");
+    expect((boxOf(container).parentElement as HTMLElement).style.paddingLeft).toBe("248px");
+    resizePane(container, 1500);
+    expect(boxOf(container).className).toContain("mx-auto");
+    resizePane(container, 700);
+    expect(listOf(container)).toBeNull();
+  });
+
+  it("is the scroller's zero-height child, so a wheel over it reaches the scroller", () => {
+    paneWidth = 1400;
+    const { container } = render(<AgentTranscript sessionId="m5" blocks={chat(30)} busy={false} visible />);
+    const el = scrollerOf(container);
+    const wrapper = listOf(container)!.parentElement!;
+    expect(wrapper.parentElement).toBe(el);
+    expect(wrapper.className).toContain("sticky");
+    expect(wrapper.className).toContain("h-0");
+    expect(el.scrollHeight).toBe(parseFloat(boxOf(container).style.height));
+    expect(el.dataset.scrollMode).toBe("follow");
+    act(() => {
+      fireEvent.wheel(entry(container, "Turn 3"), { deltaY: -120 });
+    });
+    expect(el.dataset.scrollMode).toBe("free");
+  });
+
+  it("counts a steer whispered into the running turn as a message", () => {
+    paneWidth = 1400;
+    const blocks: Block[] = [
+      ...chat(2),
+      { id: "u2", role: "user", text: "Turn 3" },
+      { id: "a2", role: "assistant", text: "Working on it" },
+      { id: "steer", role: "user", text: "also check the rail" },
+    ];
+    const { container } = render(<AgentTranscript sessionId="m6" blocks={blocks} busy visible />);
+    expect(entries(container).map((b) => b.textContent)).toEqual(["Turn 1", "Turn 2", "Turn 3", "also check the rail"]);
+  });
+
+  it("marks the message being read as the reader scrolls", () => {
+    paneWidth = 1400;
+    const { container } = render(<AgentTranscript sessionId="m7" blocks={chat(200)} busy={false} visible />);
+    const el = scrollerOf(container);
+    expect(current(container)).toBe("Turn 200");
+    scrollTo(el, 0);
+    expect(current(container)).toBe("Turn 1");
+    // Mid-thread: the turn of the row a third of the way down the viewport.
+    scrollTo(el, parseFloat(boxOf(container).style.height) / 2);
+    // The last row starting at or above that line (a zero-height closing row
+    // gives way to the turn that starts where it does).
+    const y = el.scrollTop + VIEWPORT / 3;
+    const reading = [...container.querySelectorAll<HTMLElement>("[data-row]")]
+      .filter((row) => topOf(row) <= y)
+      .at(-1)!.dataset.turn!;
+    expect(current(container)).toBe(`Turn ${Number(reading.slice(1)) + 1}`);
+  });
+
+  it("a click on a message far off lands on its row once measured", () => {
+    paneWidth = 1400;
+    const { container } = render(<AgentTranscript sessionId="m8" blocks={chat(500)} busy={false} visible />);
+    const el = scrollerOf(container);
+    act(() => {
+      fireEvent.click(entry(container, "Turn 1"));
+    });
+    expect(blockIds(container)).toContain("u0");
+    measureRows(() => 48);
+    const u0 = container.querySelector<HTMLElement>('[data-row="u0"]')!;
+    expect(el.scrollTop).toBe(Math.max(0, topOf(u0) - 12));
+    act(() => {
+      fireEvent.click(entry(container, "Turn 5"));
+    });
+    measureRows(() => 48);
+    const u4 = container.querySelector<HTMLElement>('[data-row="u4"]')!;
+    expect(el.scrollTop).toBe(topOf(u4) - 12);
+  });
+
+  it("Enter lands at once where a click glides", () => {
+    reducedMotion = false;
+    paneWidth = 1400;
+    const { container } = render(<AgentTranscript sessionId="m9" blocks={chat(500)} busy={false} visible />);
+    const el = scrollerOf(container);
+    // A click with motion on: the glide starts 2.5 screens short and moves on later frames.
+    act(() => {
+      fireEvent.click(entry(container, "Turn 1"));
+    });
+    expect(el.scrollTop).toBe(2.5 * VIEWPORT);
+    // Enter: the offset is written now, and the row lands exactly once measured.
+    act(() => {
+      fireEvent.keyDown(entry(container, "Turn 3"), { key: "Enter" });
+    });
+    const u2 = container.querySelector<HTMLElement>('[data-row="u2"]')!;
+    expect(el.scrollTop).toBe(topOf(u2) - 12);
+    measureRows(() => 48);
+    expect(el.scrollTop).toBe(topOf(u2) - 12);
+  });
+
+  it("keeps the reader's row in place when the column moves beside the list", () => {
+    paneWidth = 1400;
+    const { container } = render(<AgentTranscript sessionId="m10" blocks={chat(200)} busy={false} visible />);
+    const el = scrollerOf(container);
+    scrollTo(el, parseFloat(boxOf(container).style.height) / 2);
+    const anchor = anchorKeyOf(container, el.scrollTop);
+    const onScreen = topOf(container.querySelector<HTMLElement>(`[data-row="${anchor}"]`)!) - el.scrollTop;
+    resizePane(container, 1000);
+    expect(boxOf(container).className).toContain("mr-auto");
+    const again = container.querySelector<HTMLElement>(`[data-row="${anchor}"]`)!;
+    expect(topOf(again) - el.scrollTop).toBeCloseTo(onScreen, 0);
   });
 });

@@ -128,7 +128,7 @@ export function dayGroups(entries: readonly OutlineEntry[], now: number, locale?
   let key: string | null = null;
   for (const entry of entries) {
     const time = entryTime(entry.block);
-    const next = time === undefined ? key : dayKey(time);
+    const next: string | null = time === undefined ? key : dayKey(time);
     const last = groups[groups.length - 1];
     if (!last || (next !== null && next !== key)) {
       groups.push({ label: time === undefined ? null : dayLabel(time, now, locale), entries: [entry] });

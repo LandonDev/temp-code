@@ -10,7 +10,16 @@ import {
 } from "react";
 import { perfMark } from "../lib/perfMarks";
 import { harnessForTurn } from "../lib/secondOpinion";
-import { TranscriptMinimap } from "./TranscriptMinimap";
+import { TranscriptOutline } from "./TranscriptOutline";
+import {
+  COLUMN_MAX_CLASS,
+  LIST_SPACE,
+  createReaderStore,
+  outlineEntries,
+  outlinePlacement,
+  type OutlinePlacement,
+} from "./transcriptOutline";
+import type { JumpHow } from "../chrome/JumpList";
 import {
   RowLayout,
   anchorShift,
@@ -148,6 +157,9 @@ export function AgentTranscript({
   const scroller = useRef<HTMLDivElement>(null);
   const spacer = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
+  // The rows' wrapper: the scroller's content, after the message list's
+  // zero-height wrapper.
+  const inner = useRef<HTMLDivElement>(null);
   const showJumpRef = useRef(false);
   const wasVisible = useRef(false);
   const everVisible = useRef(false);
@@ -181,6 +193,11 @@ export function AgentTranscript({
   const rowObserver = useRef<ResizeObserver | null>(null);
   const anchorRef = useRef<RowAnchor | null>(null);
   const landing = useRef<string | null>(null);
+  // The message list: the reader's turn (written only on a change, so a
+  // scroll renders the list alone) and where the list sits.
+  const reader = useRef(createReaderStore()).current;
+  const paneWidth = useRef(0);
+  const [placement, setPlacement] = useState<OutlinePlacement>("hidden");
   const { selection, dismissSelection } = useTranscriptSelection(
     scrollerEl,
     onAddToChat !== undefined,
@@ -279,14 +296,35 @@ export function AgentTranscript({
   const fromBottomOf = (el: HTMLElement, ext: Extent = el) =>
     ext.scrollHeight - el.scrollTop - ext.clientHeight;
 
+  /** The reader's turn for the message list: the row a third of the way
+   *  down the viewport; the first turn at the top of the thread and the last
+   *  at its end. */
+  const syncReader = useCallback(
+    (el: HTMLElement, ext?: Extent) => {
+      const turnCount = turnsRef.current.length;
+      if (turnCount === 0) return;
+      if (fromBottomOf(el, ext) - spacerH.current <= STICK_THRESHOLD) {
+        reader.set(turnCount - 1);
+        return;
+      }
+      const clientHeight = ext?.clientHeight ?? el.clientHeight;
+      const y = el.scrollTop < 1 ? 0 : el.scrollTop + clientHeight / 3;
+      const row = rowsRef.current[rowLayout.indexAt(y)];
+      reader.set(row && row.kind !== "more" ? row.turn.index : 0);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [reader, rowLayout],
+  );
+
   const syncPill = useCallback(
     (el: HTMLElement, ext?: Extent) => {
       setShowJump(
         mode.current !== "follow" &&
           fromBottomOf(el, ext) - spacerH.current > PILL_AT,
       );
+      syncReader(el, ext);
     },
-    [setShowJump],
+    [setShowJump, syncReader],
   );
 
   const tickRef = useRef<(now: number) => void>(() => {});
@@ -354,11 +392,11 @@ export function AgentTranscript({
   const layoutRunway = useCallback(() => {
     const el = scroller.current;
     const turn = parkedTurn.current;
-    const inner = el?.firstElementChild as HTMLElement | null;
-    if (!el || !turn || !inner) return;
+    const content = inner.current;
+    if (!el || !turn || !content) return;
     const base = el.getBoundingClientRect().top - el.scrollTop;
     const turnTop = turn.getBoundingClientRect().top - base;
-    const below = inner.getBoundingClientRect().bottom - base - turnTop;
+    const below = content.getBoundingClientRect().bottom - base - turnTop;
     setSpacer(Math.max(0, el.clientHeight - TOP_INSET - below));
     scrollTo(el, turnTop - TOP_INSET);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -443,13 +481,23 @@ export function AgentTranscript({
    * at its box; one outside the window aims at its estimated offset and
    * lands exactly once it is mounted and measured (`land`). Either way the
    * glide teleports to within 2.5 screens first, so the rows it passes are
-   * the ones that mount.
+   * the ones that mount. `instant` (a keyboard jump) writes the offset at
+   * once and lands the same way: a key is never animated.
    */
   const scrollToRow = useCallback(
-    (index: number) => {
+    (index: number, options: { instant?: boolean } = {}) => {
       const el = scroller.current;
       const key = rowLayout.keyAt(index);
       if (!el || key === undefined) return;
+      if (options.instant) {
+        release();
+        landing.current = key;
+        const max = Math.max(0, el.scrollHeight - el.clientHeight);
+        scrollTo(el, Math.min(max, Math.max(0, rowLayout.offsetOf(index) - TOP_INSET)));
+        land(el);
+        syncPill(el);
+        return;
+      }
       const target = rowEls.current.get(key);
       if (target) {
         glideTo(target);
@@ -459,7 +507,8 @@ export function AgentTranscript({
       landing.current = key;
       startGlide(rowLayout.offsetOf(index) - TOP_INSET);
     },
-    [rowLayout, glideTo, release, startGlide],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rowLayout, glideTo, release, startGlide, syncPill],
   );
 
   const setScroller = useCallback(
@@ -509,6 +558,8 @@ export function AgentTranscript({
       window.addEventListener("pointerup", onPointerUp);
     };
     const onKey = (e: KeyboardEvent) => {
+      // The message list's keys walk the list, not the transcript.
+      if ((e.target as Element | null)?.closest?.("[data-transcript-outline]")) return;
       if (e.key === "PageUp" || e.key === "Home" || e.key === "ArrowUp") release();
       else if (e.key === "PageDown" || e.key === "End" || e.key === "ArrowDown") {
         release();
@@ -547,6 +598,14 @@ export function AgentTranscript({
     () => flattenTurns(turns, !!busy, { loadEarlier: moreHistory, paused }),
     [turns, busy, moreHistory, paused],
   );
+  // The scroll engine reads both from its frames without a render.
+  const turnsRef = useRef(turns);
+  turnsRef.current = turns;
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const entryCount = useMemo(() => outlineEntries(turns).length, [turns]);
+  const entryCountRef = useRef(entryCount);
+  entryCountRef.current = entryCount;
   const rowOf = useCallback((blockId: string) => rowOfBlock().get(blockId), [rowOfBlock]);
   // The layout takes the rows before they render, so each mounted row's
   // offset below is read from the list it belongs to.
@@ -644,7 +703,14 @@ export function AgentTranscript({
       }
     }
     reconcileWindow(el);
-  }, [rows, rowLayout, reconcileWindow]);
+    syncReader(el);
+  }, [rows, rowLayout, reconcileWindow, syncReader]);
+
+  // The list's place follows the pane's width and the message count; set
+  // only when it changes (React keeps an equal state).
+  useLayoutEffect(() => {
+    setPlacement(outlinePlacement(paneWidth.current, entryCount));
+  }, [entryCount]);
 
   /** The element of the last turn's first row, when it is mounted. */
   const lastTurnEl = (): HTMLElement | null => {
@@ -790,9 +856,15 @@ export function AgentTranscript({
 
   useLayoutEffect(() => {
     const el = scrollerEl;
-    const inner = el?.firstElementChild;
-    if (!el || !inner) return;
+    const content = inner.current;
+    if (!el || !content) return;
     const onResize = () => {
+      if (el.clientWidth !== paneWidth.current) {
+        paneWidth.current = el.clientWidth;
+        setPlacement(outlinePlacement(el.clientWidth, entryCountRef.current));
+      }
+      // The message list's height cap, without a render.
+      el.style.setProperty("--transcript-viewport", `${el.clientHeight}px`);
       if (mode.current === "parked") layoutRunway();
       else if (mode.current === "follow" && (pinBottom.current || !visibleRef.current)) {
         scrollTo(el, el.scrollHeight);
@@ -801,7 +873,7 @@ export function AgentTranscript({
       syncPill(el);
     };
     const observer = new ResizeObserver(onResize);
-    observer.observe(inner);
+    observer.observe(content);
     observer.observe(el);
     onResize();
     return () => observer.disconnect();
@@ -834,18 +906,18 @@ export function AgentTranscript({
     [harness],
   );
 
-  /** A block's row, for the minimap and search hits. */
+  /** A block's row, for the message list: a click glides, a key lands at once. */
   const scrollToBlock = useCallback(
-    (blockId: string) => {
+    (blockId: string, how: JumpHow) => {
       const index = rowOf(blockId);
-      if (index !== undefined) scrollToRow(index);
+      if (index !== undefined) scrollToRow(index, { instant: how === "key" });
     },
     [rowOf, scrollToRow],
   );
 
   // Scroll-to-row entry point (session search): the request waits in
   // lib/transcriptJump until this session's history holds the row, then the
-  // same glide the minimap uses lands on it, through the window. No second
+  // same glide a click in the message list takes lands on it, through the window. No second
   // engine — glideTo owns the motion and the mode. Only the shown pane takes
   // the request: a hidden one may be about to remount as the view switches,
   // which would lose the jump with its state.
@@ -880,10 +952,28 @@ export function AgentTranscript({
       ref={setScroller}
       className="agent-transcript h-full overflow-y-auto overscroll-none [overflow-anchor:none] font-mono text-[13px] leading-5"
     >
-      <div className="px-4">
+      {placement !== "hidden" ? (
+        // Inside the scroller, so a wheel over the list scrolls the
+        // transcript; zero height, so no offset or scroll height moves.
+        <div data-transcript-outline className="sticky top-0 z-10 h-0">
+          <TranscriptOutline
+            className="absolute top-6 left-4 w-52 max-h-[calc(var(--transcript-viewport)-40px)] font-sans"
+            turns={turns}
+            reader={reader}
+            onJump={scrollToBlock}
+            hasOlder={moreHistory}
+            onLoadEarlier={loadEarlier}
+          />
+        </div>
+      ) : null}
+      <div
+        ref={inner}
+        className="px-4"
+        style={placement === "beside" ? { paddingLeft: LIST_SPACE } : undefined}
+      >
         <div
           ref={container}
-          className="relative mx-auto w-full min-w-0 max-w-4xl"
+          className={`relative ${placement === "beside" ? "mr-auto" : "mx-auto"} w-full min-w-0 ${COLUMN_MAX_CLASS}`}
           style={{ height: rowLayout.total() }}
         >
           {shown.map((row, i) => (
@@ -922,12 +1012,6 @@ export function AgentTranscript({
         />
       ) : null}
     </div>
-    <TranscriptMinimap
-      scroller={scrollerEl}
-      turns={turns}
-      visible={visible}
-      onJump={scrollToBlock}
-    />
     </div>
     </TurnStateContext.Provider>
     </TranscriptSessionContext.Provider>
