@@ -6,6 +6,7 @@ import {
   Globe,
   Laptop,
   Layers,
+  ListPlus,
   Lock,
   Maximize2,
   MessageSquarePlus,
@@ -167,6 +168,13 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
       // The host pins only a thread it knows: a draft becomes one on its first message.
       ...(facts.draft ? { disabled: true, reason: "Send a message first" } : {}),
     });
+  // A master fills its batch from here too, so one with no board yet (an
+  // empty batch is its transcript alone) can start the first child.
+  if (facts.projectId && !facts.parentId && facts.master && !facts.draft)
+    rows.push(
+      { kind: "item", id: "batch-new", label: "New batch thread…", icon: MessageSquarePlus },
+      { kind: "item", id: "batch-adopt", label: "Add existing thread…", icon: ListPlus },
+    );
   rows.push({ kind: "sep" }, ...facts.moves, { kind: "sep" });
 
   // A queued thread leaves by leaving the queue (the fleet's Stop on a queued root).

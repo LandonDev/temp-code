@@ -736,11 +736,20 @@ export function underRow(id: string, rows: readonly Pick<BoardRowRef, "id">[]): 
   return false;
 }
 
+/** The board shows while the batch has a row, or a step still runs (a batch
+ *  archived by `then` keeps its board until its last step ends); otherwise
+ *  the master is its transcript alone. */
+export function boardShown(layout: Pick<BoardLayout, "rows">, batch: Pick<BatchState, "steps">): boolean {
+  return layout.rows.length > 0 || batch.steps.some((s) => s.status === "running");
+}
+
 // ── the model ───────────────────────────────────────────────────────────
 
 export type MasterModel = {
   layout: BoardLayout;
   batch: BatchState;
+  /** `boardShown` for this layout and batch. */
+  showBoard: boolean;
   digests: BoardDigests;
   /** Each row's subagents, from one index of the store per meta change. */
   summaries: AgentSummaries;
@@ -772,5 +781,5 @@ export function useMasterModel(master: Pick<SessionMeta, "id" | "environmentId">
   useEffect(() => {
     if (openId && !underRow(openId, layout.rows)) setOpenId(null);
   }, [layout, openId]);
-  return { layout, batch: board.state, digests: board.digests, summaries, loaded: board.loaded, landed, openId, setOpenId };
+  return { layout, batch: board.state, showBoard: boardShown(layout, board.state), digests: board.digests, summaries, loaded: board.loaded, landed, openId, setOpenId };
 }

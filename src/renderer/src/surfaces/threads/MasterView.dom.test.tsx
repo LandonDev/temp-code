@@ -183,20 +183,44 @@ vi.mock("./ThreadView", () => ({
     </div>
   ),
 }));
+// SplitShell's contract as the view sees it: the board (and its header and
+// fold toggle) only with `hasBoard`, the fold as data-folded; the real
+// shell's fade and widths are SplitShell.dom.test.tsx's.
 vi.mock("./SplitShell", () => ({
   ChatToggle: () => null,
-  SplitShell: ({ board, chat, title, detail, actions }: { board: React.ReactNode; chat: React.ReactNode; title?: React.ReactNode; detail?: React.ReactNode; actions?: React.ReactNode }) => (
+  SplitShell: ({
+    board,
+    chat,
+    hasBoard,
+    collapsed,
+    onToggleChat,
+    title,
+    detail,
+    actions,
+  }: {
+    board: React.ReactNode;
+    chat: React.ReactNode;
+    hasBoard: boolean;
+    collapsed: boolean;
+    onToggleChat: (open: boolean) => void;
+    title?: React.ReactNode;
+    detail?: React.ReactNode;
+    actions?: React.ReactNode;
+  }) => (
     <div>
-      <div data-board>
-        {title !== undefined ? (
-          <div data-view-header>
-            <span data-view-title>{title}</span>
-            {detail ? <span data-view-detail>{detail}</span> : null}
-            {actions}
-          </div>
-        ) : null}
-        {board}
-      </div>
+      {hasBoard ? (
+        <div data-board data-folded={collapsed ? "" : undefined}>
+          {title !== undefined ? (
+            <div data-view-header>
+              <span data-view-title>{title}</span>
+              {detail ? <span data-view-detail>{detail}</span> : null}
+              {actions}
+              <button type="button" aria-label="Conversation" aria-pressed={!collapsed} onClick={() => onToggleChat(collapsed)} />
+            </div>
+          ) : null}
+          {board}
+        </div>
+      ) : null}
       <div data-chat>{chat}</div>
     </div>
   ),
@@ -205,6 +229,7 @@ vi.mock("./SplitShell", () => ({
 import * as commands from "../../lib/tcserver/commands";
 import { sessionStore } from "../../lib/tcserver/store";
 import { resetNotesStore } from "../../lib/threadNotes";
+import { resetChatFolds } from "../../lib/chatFold";
 import { SessionActionsContext, type SessionActions } from "../threadChat";
 import { MasterView } from "./MasterView";
 import { BoardPreview } from "./master/board.preview";
@@ -346,6 +371,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   sessionStore.reset();
+  batch.steps = RUNNING_STEPS;
+  resetChatFolds();
 });
 
 /** The store lists the fixture through the link; every row's transcript
@@ -381,28 +408,85 @@ function seedBox(children: SessionMeta[], linked = false): void {
 
 const boxMeta = (over: Partial<SessionMeta>): SessionMeta => meta({ environmentId: "box", projectId: "p1-box", cwd: "/srv/repo/.claude/worktrees/x", ...over });
 
+/** The fixture's steps (the gate running), and the same with every step
+ *  settled: with no running step an empty batch draws no board. */
+const RUNNING_STEPS = batch.steps;
+const SETTLED_STEPS = RUNNING_STEPS.map((s) => (s.status === "running" ? { ...s, status: "passed", endedAt: 1_200_000 } : s)) as BatchState["steps"];
+const settleSteps = (): void => {
+  batch.steps = SETTLED_STEPS;
+};
+
 describe("the master view", () => {
-  it("a master with no child yet has its board: the header, + Thread opening the add sheet, the foot's steps, and no rows or prose", async () => {
+  it("a master with no child and no running step is its transcript alone: no board, header, sash or foot", async () => {
+    settleSteps();
     seed([]);
     renderView();
     await flush();
     expect(screen.getByTestId("chat")).toBeTruthy();
-    const head = document.querySelector("[data-view-header]") as HTMLElement;
-    expect(head.querySelector("[data-view-title]")?.textContent).toBe("iOS batch 2");
-    expect(within(head).getByRole("button", { name: "Batch actions" })).toBeTruthy();
-    expect(headers()).toHaveLength(0);
-    expect(document.querySelector("[data-board-scroller]")?.textContent).toBe("");
-    const foot = document.querySelector("[data-batch-foot]") as HTMLElement;
-    expect(within(foot).getByRole("heading", { name: "When done" })).toBeTruthy();
-    expect([...foot.querySelectorAll("[data-step]")].map((li) => li.getAttribute("data-step"))).toEqual(["land", "gate", "release"]);
-    expect(foot.querySelector("[data-then]")?.textContent).toBe("Then notify you");
-    fireEvent.click(within(head).getByRole("button", { name: /^Thread$/ }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "New thread…" }));
-    expect(within(await screen.findByRole("dialog")).getByText("Add a thread to iOS batch 2")).toBeTruthy();
+    expect(document.querySelector("[data-board]")).toBeNull();
+    expect(document.querySelector("[data-view-header]")).toBeNull();
+    expect(document.querySelector("[data-batch-foot]")).toBeNull();
   });
 
-  it("a reloaded master with no child keeps the foot's skeleton until batch.board answers, then draws the empty board", async () => {
+  it("the first child arriving by push brings the board with the chat open, even when the fold was left closed", async () => {
+    settleSteps();
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    renderView();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Conversation" }));
+    expect(document.querySelector("[data-board]")?.hasAttribute("data-folded")).toBe(true);
+    act(() => link.push({ push: "session-removed", sessionIds: ["c-run"] } as ServerPush));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(document.querySelector("[data-board]")).toBeNull();
+    const { environmentId: _e, ...wire } = meta({ id: "c-next", title: "Settings screen", status: "starting", createdAt: 3 });
+    act(() => link.push({ push: "session", session: wire } as unknown as ServerPush));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.getByRole("button", { name: /Settings screen/ })).toBeTruthy();
+    expect(document.querySelector("[data-board]")?.hasAttribute("data-folded")).toBe(false);
+  });
+
+  it("a master restored with children and a closed fold opens folded", async () => {
+    settleSteps();
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    const first = renderView();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Conversation" }));
+    first.unmount();
+    renderView();
+    await flush();
+    expect(document.querySelector("[data-board]")?.hasAttribute("data-folded")).toBe(true);
+    expect(screen.getByRole("button", { name: /Home/ })).toBeTruthy();
+  });
+
+  it("the batch emptying takes the board away at once, unless a step still runs; the step ending then takes it", async () => {
+    settleSteps();
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    renderView();
+    await flush();
+    expect(document.querySelector("[data-board]")).toBeTruthy();
+    act(() => link.push({ push: "session-removed", sessionIds: ["c-run"] } as ServerPush));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(document.querySelector("[data-board]")).toBeNull();
+    cleanup();
+    sessionStore.reset();
+
+    batch.steps = RUNNING_STEPS;
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    renderView();
+    await flush();
+    act(() => link.push({ push: "session-removed", sessionIds: ["c-run"] } as ServerPush));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(document.querySelector("[data-board]")).toBeTruthy();
+    expect(headers()).toHaveLength(0);
+    act(() => link.push({ push: "batch", state: { ...batch, steps: SETTLED_STEPS } } as unknown as ServerPush));
+    await flush();
+    expect(document.querySelector("[data-board]")).toBeNull();
+  });
+
+  it("a child known only from the batch.board answer brings the board when the answer lands", async () => {
+    settleSteps();
     seed([]);
+    const { environmentId: _e, ...wire } = meta({ id: "c-far", title: "Far child", status: "running" });
     let answer: (v: unknown) => void = () => {};
     const request = link.request.bind(link);
     const spy = vi.spyOn(link, "request").mockImplementation(((method: string, params?: unknown) =>
@@ -410,16 +494,24 @@ describe("the master view", () => {
     try {
       renderView();
       await flush();
-      expect(document.querySelector("[data-view-header]")).toBeTruthy();
-      expect(document.querySelector("[data-batch-foot]")?.getAttribute("data-foot-mode")).toBe("loading");
-      await act(async () => answer({ children: [], digests: {}, state: batch }));
+      expect(document.querySelector("[data-board]")).toBeNull();
+      await act(async () => answer({ children: [wire], digests: {}, state: batch }));
       await flush();
-      expect(document.querySelector("[data-batch-foot]")?.getAttribute("data-foot-mode")).toBe("console");
-      expect(document.querySelectorAll("[data-batch-foot] [data-step]")).toHaveLength(3);
-      expect(headers()).toHaveLength(0);
+      expect(document.querySelector("[data-board]")).toBeTruthy();
+      expect(screen.getByRole("button", { name: /Far child/ })).toBeTruthy();
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it("+ Thread on the board opens the add sheet through the batch's add dialog", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    renderView();
+    await flush();
+    const head = document.querySelector("[data-view-header]") as HTMLElement;
+    fireEvent.click(within(head).getByRole("button", { name: /^Thread$/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "New thread…" }));
+    expect(within(await screen.findByRole("dialog")).getByText("Add a thread to iOS batch 2")).toBeTruthy();
   });
 
   it("a master woken only by its batch's reports (no user-text in its log) loads as a thread with rows and draws its board", async () => {

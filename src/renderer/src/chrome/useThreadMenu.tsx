@@ -17,6 +17,7 @@ import { headerStore } from "../stores/header";
 import { planCloseFocused } from "../lib/workspaceTabGroups";
 import { workspaceActions } from "../stores/workspaceActions";
 import { SessionActionsContext } from "../surfaces/threadChat";
+import { dialogsChunk } from "../surfaces/chunks";
 import { RenameThreadDialog } from "../surfaces/threads/master/RenameThreadDialog";
 import { THREAD_LABELS } from "../surfaces/threads/threadTypes";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -64,7 +65,10 @@ export type ThreadMenuApi = {
 /** The harnesses that keep a goal (claude /goal, codex thread/goal/set). */
 const GOAL_HARNESSES: ReadonlySet<string> = new Set(["claude", "codex"]);
 
-type Dialog = { kind: "tune" | "delete" | "bridge" | "resources" | "archive" | "rename"; id: string };
+type Dialog = { kind: "tune" | "delete" | "bridge" | "resources" | "archive" | "rename" | "batch-new" | "batch-adopt"; id: string };
+
+// A master's add dialogs, through the dialogs chunk: mounted only while open.
+const BatchAddDialog = dialogsChunk.surface("BatchAddDialog");
 
 /** The focused pane of the tab on screen, when it is not this thread's own. */
 function sidePane(id: string): string | null {
@@ -188,6 +192,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     else if (pick === "stop") quiet(commands.interrupt(id));
     else if (pick === "start-now") quiet(commands.startNow(id));
     else if (pick === "master") quiet(commands.setMaster(id, !masterIds.has(id)));
+    else if (pick === "batch-new" || pick === "batch-adopt") setDialog({ kind: pick, id });
     else if (pick === "mac-bridge") {
       const env = sessionStore.get(id)?.environmentId ?? sessionStore.metaOf(id)?.environmentId;
       if (env) quiet(setThreadBridge(env, id, !bridgeState?.macPeer));
@@ -237,6 +242,8 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     dialogs = (
       <ArchiveThreadDialog sessionId={dialog.id} title={titleOf(dialog.id)} resources={liveResources(dialog.id)} onCancel={close} onArchived={close} />
     );
+  } else if (dialog?.kind === "batch-new" || dialog?.kind === "batch-adopt") {
+    dialogs = <BatchAddDialog masterId={dialog.id} kind={dialog.kind === "batch-new" ? "new" : "adopt"} onClose={close} />;
   } else if (dialog?.kind === "delete") {
     const id = dialog.id;
     dialogs = (

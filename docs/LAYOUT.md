@@ -113,7 +113,10 @@ Then the active thread's own rows, the same list its chip's right-click
 shows (lib/threadMenu.ts, the thread's one list on every surface), with
 "Move to <host>…" rows before Archive (`useThreadHost` in
 chrome/ThreadHostChip.tsx; a disabled one carries its reason as a second
-line). Then the project: Pause all with the running count (only when
+line). A master's rows carry, right after Remove as master, New batch
+thread… and Add existing thread…: the batch's add sheet and adopt dialog
+(`BatchAddDialog`), so a master whose batch is empty, and so has no board,
+can start its first child. Then the project: Pause all with the running count (only when
 something runs; a failure is a toast), Dev server checked while the Dev
 servers pane is open (only when a host can serve the project), Terminal
 with ⌘\`, Recent threads… and Archived threads…: each a `Popover` from
@@ -807,11 +810,11 @@ favicon, the title, the host, the claim; the address in a tooltip).
 A thread whose `isMaster` flag is on routes to `MasterView` whatever its
 type (CLAUDE.md "Master threads", docs/master-threads.md for the why); a
 project may have any number of masters, each with its own batch, and the
-tab's or the rail row's menu makes one ("Make master thread" / "Not a
-master", `session.setMaster`; disabled on an unsent draft with "Send a
+tab's or the rail row's menu makes one ("Make master thread" / "Remove
+as master", `session.setMaster`; disabled on an unsent draft with "Send a
 message first" as its tooltip, since the host pins only a thread it knows). The board | sash | chat recipe (SplitShell):
 the batch on the left, the master's own chat on the right, folding from
-the toggle at the end of the view header. A pinned master has its board from the first message: with no child yet the header (+ Thread, the batch actions) and the foot stand over an empty list that says nothing of its own. A child of the
+the toggle at the end of the view header. The board comes with the batch: it shows while the batch has a row or a step runs. Until then the master is its transcript alone, full width, with no header, sash or fold, as any thread; its thread menu's New batch thread… and Add existing thread… start the first child. A board that arrives live comes with the chat open (a fold left closed by an earlier batch is reset) and fades in over `--dur-base`, opacity only, with no width tween; one there at mount follows the remembered fold. When the batch empties (Archive all, `then: archive-children`) the board leaves in the same frame the chat takes the width, unless a step still runs, in which case it leaves when the step ends. A child of the
 batch is never a tab: it lives on the board, and a click puts its full view
 in the whole pane, with Back.
 

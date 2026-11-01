@@ -600,9 +600,14 @@ rows, the foot and the add sheet are the UI thread's
   board's row; the transcript's skeleton holds the body until the host has
   answered for the thread's rows (the store's `loaded`, or a `loaded` load
   phase), never a blank body for a child the board knows only by its meta.
-- **The board is there from the first message.** A pinned master with no
-  child yet has the header (+ Thread, the batch actions) and the foot (its
-  steps, then notify) over an empty list that says nothing of its own.
+- **The board comes with the batch.** It shows while the batch has a row
+  or a step runs (`boardShown` in master/useMasterModel.ts). A master with
+  nothing in its batch is its transcript alone, as any thread, and its
+  thread menu holds New batch thread… and Add existing thread…; its steps
+  are written with `batch_rules` and stated in its chat, the foot's Edit
+  coming with the board. The first child brings the board with the chat
+  open, fading in; the batch emptying takes it away at once, or when its
+  last running step ends.
 - **Left out on purpose.** No cost column, no per-row progress bars or task
   lists (the child pane has the list; the row says the task in hand and
   `3/7`), no counts, no badges on the title. The type is the row's glyph,

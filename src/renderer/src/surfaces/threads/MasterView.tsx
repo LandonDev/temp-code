@@ -14,9 +14,8 @@ import { useProjects, useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useMetaById } from "../../lib/threads/agents";
 import { useSessionMetasWhen } from "../../lib/tcserver/store";
 import { chatOf, heldRowOf } from "./chatSlots";
-import { AddThreadDialog } from "./master/AddThreadDialog";
-import { AdoptThreadDialog } from "./master/AdoptThreadDialog";
 import { ArchiveBatchDialog } from "./master/ArchiveBatchDialog";
+import { BatchAddDialog } from "./master/BatchAddDialogs";
 import { BatchFoot } from "./master/BatchFoot";
 import { addMenuItems, adoptCandidates, boardMenuItems, doneRows, pairedProjectIds, pausableRows, pausedRows, type ArchiveWhich } from "./master/boardActions";
 import { ChildPane } from "./master/ChildPane";
@@ -24,7 +23,6 @@ import { MasterRow, type RowMenu } from "./master/MasterRow";
 import { NewPassDialog } from "./master/NewPassDialog";
 import { AgentSummaryContext } from "./master/agentSummary";
 import {
-  adoptThreads,
   archiveBatch,
   BoardDigestContext,
   rowHost,
@@ -54,9 +52,11 @@ import { blockedReason } from "@shared/batchWords";
  * under it, opens that thread's menu (lib/threadMenu.ts): New pass… first,
  * a dialog with the thread's own composer (NewPassDialog), then Open and
  * the thread's rows as every surface has them (chrome/useThreadMenu.tsx).
- * A pinned master has its board from the first message: with no child yet
- * the header (+ Thread, the batch actions) and the foot (the steps, then
- * notify) stand over an empty list, which says nothing of its own.
+ * The board comes with the batch (`boardShown`): while the batch has a row
+ * or a step runs. Until then, and again once the batch empties, the master
+ * is its transcript alone, as any thread; its thread menu holds New batch
+ * thread… and Add existing thread… meanwhile. A board that arrives live
+ * opens the chat and fades in (SplitShell); one that leaves goes at once.
  *
  * The board paints from one `batch.board` answer (useMasterModel) and
  * mounts only the rows on screen: the list is virtualized with the
@@ -106,7 +106,7 @@ export function MasterView(props: ThreadViewProps) {
   const { session } = props;
   const meta = useMetaById(session.id);
   const model = useMasterModel(session);
-  const { layout, batch, digests, summaries, loaded, landed, openId, setOpenId } = model;
+  const { layout, batch, showBoard, digests, summaries, loaded, landed, openId, setOpenId } = model;
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const openMeta = useMetaById(openId);
@@ -123,10 +123,18 @@ export function MasterView(props: ThreadViewProps) {
     };
   }, [environments, statuses, masterHost]);
   const [chatOpen, setChatOpen] = useChatFold(session.id, true, session.status === "waiting");
+  // A board that arrives live (the first child, or a step starting after
+  // the batch emptied) comes with the chat open: a fold remembered from an
+  // earlier batch never pulls the person off the transcript they read. A
+  // board already there at the first render keeps its remembered fold.
+  const [sawBoard, setSawBoard] = useState(showBoard);
+  if (showBoard !== sawBoard) {
+    setSawBoard(showBoard);
+    if (showBoard && !chatOpen) setChatOpen(true);
+  }
   // The open title-bar menu: the rows' metas are read only while one is.
   const [menu, setMenu] = useState<"board" | "add" | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [adopting, setAdopting] = useState(false);
+  const [adding, setAdding] = useState<"new" | "adopt" | null>(null);
   const [archiving, setArchiving] = useState<ArchiveWhich | null>(null);
   const [pausing, setPausing] = useState(false);
   const [focusComposer, setFocusComposer] = useState(false);
@@ -148,13 +156,12 @@ export function MasterView(props: ThreadViewProps) {
     }),
     [],
   );
-  const hasBoard = layout.rows.length > 0;
-  // The rows' metas (and the adopt candidates) are read, and followed, only
-  // while a menu or a dialog needs them; never per frame of the board.
-  const reading = menu !== null || adding || archiving !== null || pausing;
-  const metas = useSessionMetasWhen(reading || adopting);
+  // The rows' metas (and the adopt candidates' count) are read, and
+  // followed, only while a menu or a dialog needs them; never per frame of
+  // the board. The add dialogs read their own (BatchAddDialog).
+  const reading = menu !== null || archiving !== null || pausing;
+  const metas = useSessionMetasWhen(reading);
   const rows = useMemo(() => (reading ? rowModels(layout) : []), [reading, layout, metas]);
-  const children = useMemo(() => rows.map((r) => r.meta), [rows]);
   const toPause = pausableRows(rows);
   const paused = pausedRows(rows);
   // The host's own rule, so the count and what leaves agree.
@@ -162,7 +169,7 @@ export function MasterView(props: ThreadViewProps) {
   const workspaces = useWorkspaces();
   const projects = useProjects();
   const paired = useMemo(() => (meta ? pairedProjectIds(meta, workspaces, projects) : new Set<string>()), [meta, workspaces, projects]);
-  const candidates = useMemo(() => (meta ? adoptCandidates(metas, meta, paired) : []), [metas, meta, paired]);
+  const candidates = useMemo(() => (meta && menu === "add" ? adoptCandidates(metas, meta, paired) : []), [metas, meta, paired, menu]);
 
   // The board's scroll offset survives a trip into a child's full view.
   const scroller = useRef<HTMLDivElement>(null);
@@ -197,11 +204,11 @@ export function MasterView(props: ThreadViewProps) {
   const painted = useRef(false);
   const paintFrame = useRef<number | null>(null);
   useEffect(() => {
-    if (painted.current || !loaded || openId || !hasBoard) return;
+    if (painted.current || !loaded || openId || !showBoard) return;
     painted.current = true;
     const n = layout.rows.length;
     paintFrame.current = requestAnimationFrame(() => reportBoardPaint(session.id, n, performance.now() - openedAt.current));
-  }, [loaded, openId, hasBoard, layout, session.id]);
+  }, [loaded, openId, showBoard, layout, session.id]);
   // A board that leaves before its frame paints reports nothing: the line is
   // about a paint the person saw.
   useEffect(
@@ -239,8 +246,7 @@ export function MasterView(props: ThreadViewProps) {
     else if (id === "resume") void byHost(paused, "resume");
     else if (id === "archive-done") setArchiving("done");
     else if (id === "archive-all") setArchiving("all");
-    else if (id === "new") setAdding(true);
-    else if (id === "adopt") setAdopting(true);
+    else if (id === "new" || id === "adopt") setAdding(id);
   };
 
   // A row, or a subagent opened from a row's agent lines (it lives on its own host).
@@ -351,7 +357,7 @@ export function MasterView(props: ThreadViewProps) {
       <SplitShell
         board={board}
         chat={chat}
-        hasBoard
+        hasBoard={showBoard}
         collapsed={!chatOpen}
         onToggleChat={setChatOpen}
         title={title}
@@ -359,15 +365,7 @@ export function MasterView(props: ThreadViewProps) {
         actions={actions}
         held={heldRowOf(props, session)}
       />
-      {adding && meta ? <AddThreadDialog master={meta} siblings={children} onClose={() => setAdding(false)} /> : null}
-      {adopting ? (
-        <AdoptThreadDialog
-          candidates={candidates}
-          hostName={(id) => hostNames.get(id) ?? id}
-          onClose={() => setAdopting(false)}
-          onAdopt={(threads) => adoptThreads(session, threads)}
-        />
-      ) : null}
+      {adding ? <BatchAddDialog masterId={session.id} kind={adding} onClose={() => setAdding(null)} /> : null}
       {archiving ? (
         <ArchiveBatchDialog
           which={archiving}

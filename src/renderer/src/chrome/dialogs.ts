@@ -12,3 +12,4 @@ export { NewProjectDialog, NewWorkspaceDialog, ProjectSettingsDialog, ProjectTea
 export { RemoteFolderDialog } from "./RemoteFolderDialog";
 export { ThreadDefaultsDialog } from "./ThreadDefaultsDialog";
 export { PreambleDialog } from "./PreambleDialog";
+export { BatchAddDialog } from "../surfaces/threads/master/BatchAddDialogs";

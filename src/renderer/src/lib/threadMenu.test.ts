@@ -110,6 +110,23 @@ describe("threadMenuRows: the master pin", () => {
     });
     expect(row(threadMenuRows(facts()), "master")).not.toHaveProperty("disabled");
   });
+
+  it("a master root offers its batch's add rows right after the pin", () => {
+    const got = ids(threadMenuRows(facts({ master: true })));
+    const at = got.indexOf("master");
+    expect(got.slice(at, at + 3)).toEqual(["master", "batch-new", "batch-adopt"]);
+    expect(row(threadMenuRows(facts({ master: true })), "batch-new")).toMatchObject({ label: "New batch thread…" });
+    expect(row(threadMenuRows(facts({ master: true })), "batch-adopt")).toMatchObject({ label: "Add existing thread…" });
+    expect(row(threadMenuRows(facts({ master: true })), "batch-adopt")).not.toHaveProperty("disabled");
+  });
+
+  it("no add rows on a plain thread, a subagent or a draft", () => {
+    for (const over of [{}, { master: true, parentId: "root" }, { master: true, draft: true }, { master: true, projectId: null }]) {
+      const got = ids(threadMenuRows(facts(over)));
+      expect(got).not.toContain("batch-new");
+      expect(got).not.toContain("batch-adopt");
+    }
+  });
 });
 
 describe("threadMenuRows: resources, the bridge and the host moves", () => {

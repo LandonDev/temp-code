@@ -1,3 +1,6 @@
+import { ChevronDown, MoreHorizontal, Plus } from "../../../chrome/icons";
+import { Button } from "../../../components/ui/button";
+import { SplitShell } from "../SplitShell";
 import { BatchFoot } from "./BatchFoot";
 import { FIXTURE_BATCH, fixtureGroups } from "./boardFixture";
 import { MasterRowView } from "./MasterRow";
@@ -37,6 +40,35 @@ export function BoardPreview() {
         ))}
       </div>
       <BatchFoot batch={FIXTURE_BATCH} titleOf={() => undefined} onSave={async () => {}} onStop={async () => {}} />
+    </div>
+  );
+}
+
+/** The master view's two states for `ui:preview`: an empty batch is the
+ *  transcript alone; with children the board stands beside it. The chat is
+ *  a stand-in for the transcript and composer. */
+export function MasterPreview({ empty = false }: { empty?: boolean }) {
+  const chat = (
+    <div className="flex flex-1 flex-col justify-end gap-3 p-6 text-sm text-foreground">
+      <p className="max-w-[65ch]">The batch writes the gate, release and publish steps once its first thread lands.</p>
+      <div className="h-24 rounded-lg border border-border bg-card" />
+    </div>
+  );
+  const actions = (
+    <>
+      <Button variant="ghost" size="icon-sm" aria-label="Batch actions">
+        <MoreHorizontal />
+      </Button>
+      <Button variant="ghost" size="sm">
+        <Plus />
+        Thread
+        <ChevronDown className="text-muted-foreground" />
+      </Button>
+    </>
+  );
+  return (
+    <div className="flex bg-background" style={{ width: 1100, height: 560 }}>
+      <SplitShell board={<BoardPreview />} chat={chat} hasBoard={!empty} collapsed={false} onToggleChat={noop} title="iOS batch 2" actions={actions} />
     </div>
   );
 }

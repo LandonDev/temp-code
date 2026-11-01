@@ -12,8 +12,11 @@ import { MessageSquare } from "../../chrome/icons";
  * takes the full width at once and the chat stays mounted (`inert`,
  * `invisible`, parked at its last width) so the transcript keeps its
  * measurements; unfolding returns it to its slot, its content fading in.
- * The board fades in on its first live appearance, not when it was already
- * there at mount. Beside the board the chat never goes under 360px: the
+ * The board fades in when it arrives live (opacity only, `--dur-base`), not
+ * when it was already there at mount; without one (`hasBoard` false: a
+ * master with an empty batch, a plan with no document yet) the chat fills
+ * the pane with no header, sash or fold, and a board that leaves goes in
+ * the same frame the chat takes the width. Beside the board the chat never goes under 360px: the
  * board yields first (DESIGN "Panels").
  */
 
@@ -50,11 +53,14 @@ export function useSplit(initial = 50): {
   return { split, setSplit, dragging, rootRef, startDrag };
 }
 
-/** True from the first render on — false for that first render only when
- *  `has` was already true at mount, so a restored board skips the fade. */
+/** True once the board has painted: a board there at mount (or within
+ *  800ms of it) is true at once and skips the fade; one arriving later is
+ *  false for its first frame so it fades in. A board that leaves resets
+ *  it, so its next arrival fades again. */
 function useLiveEntry(has: boolean): boolean {
   const mountedAt = useRef(performance.now());
   const [entered, setEntered] = useState(false);
+  if (!has && entered) setEntered(false);
   useEffect(() => {
     if (!has) return;
     const live = performance.now() - mountedAt.current > 800;

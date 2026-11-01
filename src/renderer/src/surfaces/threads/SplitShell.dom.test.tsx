@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SplitShell } from "./SplitShell";
 
@@ -81,5 +81,32 @@ describe("SplitShell", () => {
     const board = document.querySelector("[data-board]") as HTMLElement;
     expect(board.style.transition).toBe("");
     expect(board.className).not.toMatch(/flex-basis|transition-all/);
+  });
+
+  it("a board there at mount paints without the fade; one arriving live fades in, and again after it left", async () => {
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      const board = () => document.querySelector("[data-board]") as HTMLElement | null;
+      const restored = render(shell());
+      await waitFor(() => expect(board()?.className).toContain("opacity-100"));
+      restored.unmount();
+
+      const view = render(shell({ hasBoard: false }));
+      expect(board()).toBeNull();
+      now = 2_000;
+      view.rerender(shell());
+      expect(board()?.className).toContain("opacity-0");
+      expect(board()?.className).toContain("transition-opacity");
+      expect(board()?.className).toContain("motion-reduce:transition-none");
+      await waitFor(() => expect(board()?.className).toContain("opacity-100"));
+      view.rerender(shell({ hasBoard: false }));
+      expect(board()).toBeNull();
+      view.rerender(shell());
+      expect(board()?.className).toContain("opacity-0");
+      await waitFor(() => expect(board()?.className).toContain("opacity-100"));
+    } finally {
+      clock.mockRestore();
+    }
   });
 });

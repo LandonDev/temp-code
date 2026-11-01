@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { sessions, commands, dropThread, goalOpen, tabs, dev } = vi.hoisted(() => ({
+const { sessions, commands, dropThread, goalOpen, tabs, dev, masters } = vi.hoisted(() => ({
+  masters: new Set<string>(),
   dev: { servable: false, open: false, toggle: vi.fn() },
   sessions: new Map<string, Record<string, unknown>>(),
   commands: { pause: vi.fn(() => Promise.resolve()), resume: vi.fn(() => Promise.resolve()), interrupt: vi.fn(() => Promise.resolve()) },
@@ -25,7 +26,7 @@ vi.mock("../lib/macBridge", () => ({
   setThreadBridge: vi.fn(),
   useThreadBridge: () => null,
 }));
-vi.mock("../lib/masterThread", () => ({ useMasterIds: () => new Set<string>(), masterMenuLabel: (m: boolean) => (m ? "Remove as master" : "Make master thread") }));
+vi.mock("../lib/masterThread", () => ({ useMasterIds: () => masters, masterMenuLabel: (m: boolean) => (m ? "Remove as master" : "Make master thread") }));
 vi.mock("../lib/threadResources", () => ({
   archiveThread: vi.fn(() => Promise.resolve()),
   isRemovable: (row: { kind: string }) => row.kind !== "port",
@@ -38,6 +39,11 @@ vi.mock("./ThreadHostChip", () => ({ useThreadHost: () => ({ host: null, movingT
 vi.mock("./GoalDialog", () => ({ goalDialog: { open: goalOpen, close: vi.fn() } }));
 vi.mock("../stores/workspace", () => ({ workspaceTabsStore: { getState: () => tabs.state } }));
 vi.mock("../stores/workspaceActions", () => ({ workspaceActions: { dropThread } }));
+vi.mock("../surfaces/chunks", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../surfaces/chunks")>()),
+  // The add dialogs' stand-in: which master and which dialog it was opened for.
+  dialogsChunk: { surface: () => (p: { masterId: string; kind: string }) => <div data-batch-add={p.kind} data-master={p.masterId} /> },
+}));
 
 import { SessionActionsContext, type SessionActions } from "../surfaces/threadChat";
 import { headerStore } from "../stores/header";
@@ -47,6 +53,7 @@ import { useThreadMenu } from "./useThreadMenu";
 afterEach(() => {
   cleanup();
   sessions.clear();
+  masters.clear();
   dev.servable = false;
   dev.open = false;
   vi.clearAllMocks();
@@ -182,6 +189,18 @@ describe("one thread menu on every surface", () => {
       tabs.state = prev;
       headerStore.setState({ stripTabs: [] });
     }
+  });
+
+  it("a master's New batch thread… and Add existing thread… mount the batch's add dialogs for that master", async () => {
+    thread("t1");
+    masters.add("t1");
+    render(<Surfaces />);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Chip" })).getByRole("menuitem", { name: "New batch thread…" }));
+    await waitFor(() => expect(document.querySelector('[data-batch-add="new"][data-master="t1"]')).not.toBeNull());
+    fireEvent.contextMenu(screen.getByText("Row t1"));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Rail" })).getByRole("menuitem", { name: "Add existing thread…" }));
+    await waitFor(() => expect(document.querySelector('[data-batch-add="adopt"][data-master="t1"]')).not.toBeNull());
   });
 
   it("Delete… confirms before it deletes", async () => {
