@@ -74,9 +74,17 @@ export function entryTime(block: Block): number | undefined {
   return block.startedAt ?? block.ts ?? block.born;
 }
 
+const clocks = new Map<string, Intl.DateTimeFormat>();
+
 /** "2:32 PM" or "14:32", by the locale. */
 export function entryClock(time: number, locale?: string): string {
-  return new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(time);
+  const key = locale ?? "";
+  let clock = clocks.get(key);
+  if (!clock) {
+    clock = new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" });
+    clocks.set(key, clock);
+  }
+  return clock.format(time);
 }
 
 export type DayGroup = {
