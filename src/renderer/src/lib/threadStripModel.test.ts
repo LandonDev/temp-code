@@ -2,6 +2,7 @@ import type { BackgroundWork } from "@shared/events";
 import { describe, expect, it } from "vitest";
 import {
   archivedRootThreads,
+  composerSlotOf,
   hasPendingQuestion,
   lowerFirst,
   marksAtRest,
@@ -344,4 +345,17 @@ it("the strip's queued detail parses the host's two spaces as it parses the old 
   expect(threadStatus({ status: "queued", activity: "Queued  waiting for Plan A19" }).detail).toBe("waiting for Plan A19");
   expect(threadStatus({ status: "queued", activity: "Queued · waiting for Plan A19" }).detail).toBe("waiting for Plan A19");
   expect(threadStatus({ status: "queued", activity: "Queued" }).detail).toBeNull();
+});
+
+describe("composerSlotOf", () => {
+  it("holds the timer while a turn is open: working", () => expect(composerSlotOf("working")).toBe("timer"));
+  it("holds the timer while a turn is open: waiting on the person", () => expect(composerSlotOf("waiting")).toBe("timer"));
+  it("holds a paused row", () => expect(composerSlotOf("paused")).toBe("held"));
+  it("holds a stopped row", () => expect(composerSlotOf("stopped")).toBe("held"));
+  it("holds a queued row", () => expect(composerSlotOf("queued")).toBe("held"));
+  it("leaves watching to the transcript's closing line", () => expect(composerSlotOf("watching")).toBeNull());
+  it("is empty when failed", () => expect(composerSlotOf("failed")).toBeNull());
+  it("is empty when plan-ready", () => expect(composerSlotOf("plan-ready")).toBeNull());
+  it("is empty when done", () => expect(composerSlotOf("done")).toBeNull());
+  it("is empty when idle", () => expect(composerSlotOf("idle")).toBeNull());
 });

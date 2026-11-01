@@ -1184,8 +1184,8 @@ routed to (aliax-core's `forward`). Two listeners:
   says once per boot as a sonner toast, "N threads resumed after restart"
   (`useBootResumeToasts`, chrome/HostRows.tsx). A running row
   with no live harness for 20 s flips to the `stopped` status (liveness sweep
-  `sweepLiveness`, `DriverHandle.alive`); the strip says "Stopped · the
-  harness is gone" with Resume, and `session.resume` on it calls
+  `sweepLiveness`, `DriverHandle.alive`); the held row above the composer says
+  "Stopped  the harness is gone" with Resume, and `session.resume` on it calls
   `registry.resumeStopped`, the one resume path for a dead harness. A
   harness that dies with no turn open is settled at once by the driver's
   word (`DriverCtx.harnessGone` → `registry.settleGoneHarness`, the one
@@ -1452,14 +1452,20 @@ names the far child).
   `session.taskLog` output (a monitor writes no file
   the host can read, so it opens nothing; a failed read says so), the
   subagents row opening the Agents section, a dev server row the dev
-  servers pane. The working strip's watching case says "Watching
-  <watchSubject>" with the stretch's age and opens the section; its working
-  case ends with Stop, and the thread on screen is left out of the paused
-  banner (every thread has the strip, an orchestration parent's too, and no
-  transcript draws the live state under it) and out of the
+  servers pane. The slot above the composer (`WorkingStrip`, its rule
+  `composerSlotOf` in lib/threadStripModel.ts) holds only the open turn's
+  elapsed time and Stop while it works or waits, and the held rows (paused
+  with Stop and Continue, stopped with Resume, queued with Start now); a
+  watching thread leaves it empty and the transcript's closing line under
+  the last settled turn says "Watching" with the stretch's age, amber past
+  `STALE_WATCH_MS`, and opens the section (`WatchingLine` in
+  surfaces/transcript/TurnEnd.tsx, `onOpenActivity` through AgentTranscript).
+  The thread on screen is left out of the paused banner (every thread has
+  the slot, an orchestration parent's too, and no transcript draws the live
+  turn under it) and out of the
   recovery banner for its own failure (its FailureCard has Continue; a
   failed descendant keeps the line). A watch is
-  stale (`isStaleWatch`: amber, Stop all, the banner) only past
+  stale (`isStaleWatch`: the amber age, the banner) only past
   `STALE_WATCH_MS` on the thread's own tasks alone: live subagents and a
   master's batch have their own liveness, and Stop all
   (`session.killBackground`) ends only the thread's own background work;

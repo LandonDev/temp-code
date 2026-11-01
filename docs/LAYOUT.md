@@ -674,10 +674,10 @@ path) instead of widening it; a code block scrolls inside its own box. The board
 `tabular-nums` (facts set apart by margin, never a middle dot), the view's
 actions, and last the conversation `Toggle` (`ChatToggle`, pressed while
 the chat shows). While the chat is folded and the thread is paused, the
-board draws the strip's paused row under its header (`held`, `heldRowOf`
-in chatSlots.tsx: Stop, Continue, a master's "and 3 batch threads with
-it"), so a pause never goes out of sight; with the chat shown the chat's
-own strip says it and the board draws nothing. Folding is a toggle, not a tween: the board takes the full
+board draws the paused row of the slot above the composer under its header
+(`held`, `heldRowOf` in chatSlots.tsx: Stop, Continue, a master's "and 3
+batch threads with it"), so a pause never goes out of sight; with the chat
+shown the chat's own slot says it and the board draws nothing. Folding is a toggle, not a tween: the board takes the full
 width at once, the chat stays mounted (`inert`, parked at its last width)
 and fades back in over `--dur-fast` when shown again. The fold is
 remembered per thread for the app's run (`useChatFold`, lib/chatFold.ts),
@@ -780,10 +780,10 @@ favicon, the title, the host, the claim; the address in a tooltip).
   failed in red.
   Nothing before the first agent. There is no board, no edge tab and no
   "Orchestrator log".
-  Under the transcript sit the working strip and the composer, as on any
-  thread: Working with Stop mid-turn, "Watching  a subagent" while it
-  waits on its agents, Paused with Stop and Continue; the transcript draws
-  no live row of its own.
+  Under the transcript sit the timer slot and the composer, as on any
+  thread: the elapsed time and Stop mid-turn, Paused with Stop and
+  Continue; while it waits on its agents the slot is empty and the
+  transcript's closing line says "Watching" with the wait's age.
 - **The agents are rows in the right panel's Agents section** (`FleetList`,
   fleet/AgentRow.tsx), on every thread that has subagents. A row is one
   36px line: the role glyph, the title (at most half the row), the host
@@ -909,7 +909,7 @@ in the whole pane, with Back.
   The detail: working, an implementation's task in hand (its `in_progress`
   todo), else the activity; waiting, the open question, else "approve"
   and what it was doing; failed, the failure; watching, what it watches
-  (an idle child with live subagents is watching them, the strip's rule)
+  (an idle child with live subagents is watching them, `threadStatus`'s rule)
   and queued, the activity without the lead the word says ("Waiting on ",
   "Queued  "); paused, what it was doing; done, "landed 12:08" once the
   batch lists it, else a research or orchestration thread's summary (the
@@ -973,7 +973,8 @@ in the whole pane, with Back.
   header at once, titled from the row, and the transcript's skeleton until
   the thread's rows load), the one
   its type gets as a tab (the implementation board, the plan document, the
-  fleet), over its transcript, working strip and the composer a tab has
+  fleet), over its transcript, the timer slot and its held rows, and the
+  composer a tab has
   (`surfaces/threadChat.tsx`, shared with SessionPane: model and reasoning,
   Fast and 1M, permission, the account chip, attachments and paste, `@`
   references, `/` skills, the queue, steer while it runs, the draft kept

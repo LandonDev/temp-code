@@ -423,8 +423,8 @@ each one by hand. Now:
   and the Swift package): a crash or SIGKILL mid-turn, a boot resume that
   failed to produce a handle, or a harness process that died without the
   driver settling the status (`DriverHandle.alive`, the liveness sweep every
-  5 s in `sweepLiveness`). The working strip says "Stopped · the harness is
-  gone" with Resume, the rail row shows a small still square instead of the
+  5 s in `sweepLiveness`). The held row above the composer says "Stopped  the
+  harness is gone" with Resume, the rail row shows a small still square instead of the
   spinner, the tab says Stopped, and the header menu offers Resume;
   `session.resume` on a stopped thread calls `resumeStopped`. The boot no
   longer flips running rows to idle; only waiting and watching rows are

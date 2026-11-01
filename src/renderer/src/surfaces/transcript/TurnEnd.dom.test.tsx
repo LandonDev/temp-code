@@ -163,7 +163,7 @@ describe("TurnEnd's live state", () => {
     expect(live().container.querySelector('[data-state="working"]')).not.toBeNull();
   });
 
-  it("draws nothing under a strip, which says it once", () => {
+  it("draws nothing where liveState is off: the timer above the composer runs instead", () => {
     expect(live(false).container.textContent).toBe("");
   });
 });
@@ -172,10 +172,10 @@ describe("TurnEnd of a watching thread", () => {
   const user = { id: "u", role: "user" as const, text: "go" };
   const reply = { id: "a", role: "assistant" as const, text: "started it" };
   const settledTurn = { id: "t", index: 0, isLast: true, settled: true, blocks: [user, reply], userBlock: user, durationMs: 2_000, startedAt: 10 };
-  const end = (state: TurnSession, liveState?: boolean) =>
+  const end = (state: TurnSession, liveState?: boolean, onOpenActivity?: () => void) =>
     render(
       <TurnStateContext.Provider value={state}>
-        <TurnEnd turn={settledTurn} harnessOf={() => undefined} turnState={state} liveState={liveState} />
+        <TurnEnd turn={settledTurn} harnessOf={() => undefined} turnState={state} liveState={liveState} onOpenActivity={onOpenActivity} />
       </TurnStateContext.Provider>,
     );
   const watching = {
@@ -206,8 +206,34 @@ describe("TurnEnd of a watching thread", () => {
     expect(row.textContent).toBe("Watching");
   });
 
-  it("draws no watching line under a strip", () => {
-    expect(end(watching, false).container.querySelector('[role="status"]')).toBeNull();
+  it("draws the watching line on a pane too, whose timer slot above the composer stays empty", () => {
+    const row = end(watching, false).container.querySelector('[role="status"]')!;
+    expect(row.textContent).toBe("Watching5m");
+    expect(row.querySelector("button")).toBeNull();
+  });
+
+  it("with onOpenActivity the line is a button that opens the Activity section", () => {
+    const open = vi.fn();
+    const row = end(watching, false, open).container.querySelector('[role="status"]')!;
+    const button = row.querySelector("button")!;
+    expect(button.textContent).toBe("Watching5m");
+    fireEvent.click(button);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("turns the age amber past STALE_WATCH_MS, its own tasks alone", () => {
+    const since = Date.now() - 45 * 60_000;
+    const stale = { ...watching, background: { ...watching.background!, watchingSince: since } } as TurnSession;
+    const age = end(stale, false).container.querySelector(".text-warning");
+    expect(age?.textContent).toBe("45m");
+    const fresh = end(watching, false).container.querySelectorAll(".text-warning");
+    expect(fresh).toHaveLength(0);
+  });
+
+  it("keeps an old wait on live subagents quiet", () => {
+    const since = Date.now() - 45 * 60_000;
+    const withAgents = { ...watching, background: { ...watching.background!, agents: ["c1"], watchingSince: since } } as TurnSession;
+    expect(end(withAgents, false).container.querySelector(".text-warning")).toBeNull();
   });
 
   it("draws none for an idle settled turn", () => {

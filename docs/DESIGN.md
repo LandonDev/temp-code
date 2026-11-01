@@ -223,19 +223,27 @@ The word may be followed by what the state is about, muted after it:
 "Working  typecheck", "Needs you  approve Bash", "Watching  3 subagents",
 "Failed  usage cap". A watching thread always says what it watches; a row
 that cannot say is a bug. A thread idle or done whose subagents still work
-is watching them ("Watching  a subagent") on the strip, the tab, the chip
-and the rail alike, and the fleet header counts watching on its own. `threadStatus` (lib/threadStripModel.ts) is the one
+is watching them ("Watching  a subagent") in the transcript's closing line,
+the tab, the chip and the rail alike, and the fleet header counts watching on its own. `threadStatus` (lib/threadStripModel.ts) is the one
 place that decides a thread's state and its detail, the tree's overrides
 included, and `ThreadStatusMark` (chrome/TabIndicator.tsx) draws it with the
 round's tally 8px after the detail. A watching thread on one task names it
 in the model's words ("Watching  sleep 45 seconds"); more than one is
 counted (`watchPhrase`, src/shared/watch.ts).
 
-The strip above the composer (surfaces/threads/WorkingStrip.tsx) is the
-one place a live thread on screen says its state: no banner and no
-transcript row repeat it. A working strip ends with Stop; a person's Stop
-idles the thread, the strip empties and the transcript's Stopped line says
-so once. Stopped with Resume means the harness is gone.
+The slot above the composer (surfaces/threads/WorkingStrip.tsx, reserved
+at 28px so nothing moves when a turn starts or ends) holds the open turn's
+elapsed time and Stop, nothing else, and the held states with their
+actions: Paused with Stop and Continue, Stopped with Resume (the harness is
+gone), Queued with Start now. What the thread does is the transcript's
+working line, a pending approval or question is its card, and a watching
+thread's state is the transcript's closing line ("Watching  4m", amber past
+30 minutes, opening the Activity section); nothing above the composer
+repeats the working line, and no banner repeats the slot. A person's Stop
+idles the thread, the slot empties and the transcript's Stopped line says
+so once. A slow first response is said in the transcript's working line
+("Starting the CLI", "Waiting for the provider  25 s"), never above the
+composer.
 
 A detail starts lower-case, never ends in a full stop and never repeats the
 word. Two facts on one line are separated by margin, never by a middle dot,
@@ -243,7 +251,7 @@ a pipe or a bullet.
 
 At rest a row draws no mark for idle and done (`marksAtRest`): a mark that
 would only say "nothing is happening" is noise. A tab is the glyph alone;
-its hover line and the strip above the composer say the word and the rest.
+its hover line and the transcript's working line say the word and the rest.
 
 Nothing loops. Every status glyph is still except working's spinner, a
 rotation and the one moving glyph. When a mounted mark's state changes into
@@ -382,11 +390,12 @@ its tool name with the command in mono and its output under it. File changes
 keep their counts on the line and their diff behind the caret. No background-
 task lines: live work is the right panel's Activity section. No timestamps
 in the flow; the closing line says what the turn took and nothing else. A
-live turn's state is the strip's: the transcript draws the closing line
-once the turn is over, and a paused turn is not over (only a surface with
-no strip, the fleet's agent detail, draws the live state as its last row,
-and a watching agent's sheet ends in "Watching" with the watch's age under
-its last closing line).
+live turn's time is the slot above the composer's: the transcript draws
+the closing line once the turn is over, and a paused turn is not over (only
+a surface with no slot, the fleet's agent detail, draws the live state as
+its last row). A thread still watching ends in "Watching" with the watch's
+age under its last closing line, on every surface; in a pane it opens the
+Activity section.
 An approval card carries the amber glyph and its two buttons, not the
 word. A thought is one row
 of that list: "Thinking" shimmering with its newest sentence while it

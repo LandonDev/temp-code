@@ -336,6 +336,7 @@ export function useThreadChat({
     [rootRef],
   );
   const resume = useCallback(() => serverCommands.resume(sessionId).catch(() => undefined), [sessionId]);
+  const openActivity = useCallback(() => rightPanel.open(sessionId, "activity"), [sessionId]);
 
   const composerOf = (opts?: ChatOpts) => (
     <>
@@ -382,6 +383,7 @@ export function useThreadChat({
             onSelectSession={onOpenSession}
             onSecondOpinion={onTurnSecondOpinion}
             onHandoff={onTurnHandoff}
+            onOpenActivity={openActivity}
             onJumpToBottomChange={setShowJumpToBottom}
             onJumpToBottomReady={onJumpToBottomReady}
           />
@@ -412,16 +414,15 @@ export function useThreadChat({
         </AnimatePresence>
       </div>
     ),
-    // Every thread's live state is its strip's, an orchestration parent's
-    // included; the transcript only closes settled turns.
+    // The slot above the composer holds every thread's timer and held rows,
+    // an orchestration parent's included; the transcript closes settled
+    // turns and says Watching.
     strip: (
       <WorkingStrip
         session={session}
         onStop={() => onStop(sessionId)}
         onResume={resume}
         onStart={() => serverCommands.startNow(sessionId).catch(() => undefined)}
-        onApproval={approve}
-        onOpenActivity={() => rightPanel.open(sessionId, "activity")}
       />
     ),
     composer: composerOf(opts),

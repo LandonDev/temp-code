@@ -59,7 +59,7 @@ import {
 } from "../lib/threadStripModel";
 import { copiesOf } from "../lib/projectHostChoice";
 import { usePlanReady } from "../hooks/usePlanReady";
-import { turnStartOf } from "../surfaces/threads/WorkingStrip";
+import { turnStartOf } from "../lib/turnClock";
 import type { TabThread } from "./TabIndicator";
 import type { ThreadHeaderProps } from "./ThreadHeader";
 import type { ArchivedThread, ChipThread } from "./ThreadHeaderStrip";

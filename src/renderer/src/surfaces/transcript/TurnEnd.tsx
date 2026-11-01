@@ -9,6 +9,8 @@ import { copyText } from "../../lib/clipboard";
 import { playCue } from "../../lib/sounds";
 import { type TurnInfo } from "../transcriptRows";
 import { type Block, type HarnessId } from "../../lib/session";
+import { isStaleWatch } from "@server/shared/watch";
+import { Button } from "../../components/ui/button";
 import { isTurnHeld, isTurnPaused, turnElapsed, useClock, useSlowClock } from "../../lib/turnClock";
 import { duration } from "../../lib/duration";
 import { threadStatus } from "../../lib/threadStripModel";
@@ -24,14 +26,17 @@ import { ThinkingTail } from "./ThinkingRow";
 
 /** A turn's closing row: the thinking tail while it starts, its duration
  *  line once it is over ("Stopped" when the person stopped it: the stopped
- *  error row then draws nothing), the live state while it runs or waits, and a
- *  watching line under the last settled turn while the thread watches
- *  (unless `liveState` is off: a strip above the composer says it). */
+ *  error row then draws nothing), the live state while it runs or waits
+ *  (unless `liveState` is off: the timer above the composer runs instead),
+ *  and a watching line under the last settled turn while the thread watches,
+ *  on every surface; `onOpenActivity` makes that line open the Activity
+ *  section. */
 export function TurnEnd({
   turn,
   harnessOf,
   turnState,
   liveState = true,
+  onOpenActivity,
   onSaveNote,
   onSecondOpinion,
   onHandoff,
@@ -40,6 +45,7 @@ export function TurnEnd({
   harnessOf: (turn: Block[]) => HarnessId | undefined;
   turnState: TurnSession | null;
   liveState?: boolean;
+  onOpenActivity?: () => void;
   onSaveNote?: (text: string) => void;
   onSecondOpinion?: SecondOpinionHandler;
   onHandoff?: HandoffHandler;
@@ -84,8 +90,8 @@ export function TurnEnd({
       {liveState && isLast && !settled ? (
         <LiveTurnDuration turn={turn.blocks} />
       ) : null}
-      {liveState && isLast && settled && turnState && isWatching(turnState) ? (
-        <WatchingLine since={turnState.background?.watchingSince ?? null} />
+      {isLast && settled && turnState && isWatching(turnState) ? (
+        <WatchingTail session={turnState} onOpen={onOpenActivity} />
       ) : null}
     </>
   );
@@ -114,17 +120,55 @@ function isWatching(session: TurnSession): boolean {
   return threadStatus({ status: session.status, background: session.background, activity: session.activity }).state === "watching";
 }
 
+/** The watching line for a thread, amber once its own watch passes `STALE_WATCH_MS`. */
+function WatchingTail({ session, onOpen }: { session: TurnSession; onOpen?: () => void }) {
+  const since = session.background?.watchingSince ?? null;
+  const now = useSlowClock(since != null && usePaneVisible());
+  const stale = now > 0 && isStaleWatch({ status: session.status ?? "idle", background: session.background }, now);
+  return <WatchingLine since={since} stale={stale} onOpen={onOpen} />;
+}
+
 /**
  * A settled turn's thread still watching its background work or its
- * subagents: the word and the stretch's age on the half-minute clock. What
- * it watches is the surface's header, as the working row's phrase is.
+ * subagents: the word and the stretch's age on the half-minute clock, the age
+ * amber when `stale`. What it watches is the Activity section, which the line
+ * opens when given `onOpen`.
  */
-export function WatchingLine({ since }: { since: number | null }) {
+export function WatchingLine({
+  since,
+  stale = false,
+  onOpen,
+}: {
+  since: number | null;
+  stale?: boolean;
+  onOpen?: () => void;
+}) {
   const now = useSlowClock(since != null && usePaneVisible());
+  const body = (
+    <>
+      <StatusMark state="watching" />
+      {since != null && now > 0 ? (
+        <span aria-hidden className={cn(stale && "text-warning")}>
+          {duration(Math.max(0, now - since))}
+        </span>
+      ) : null}
+    </>
+  );
   return (
     <div role="status" aria-label={STATUS_WORD.watching} className={LINE}>
-      <StatusMark state="watching" />
-      {since != null && now > 0 ? <span aria-hidden>{duration(Math.max(0, now - since))}</span> : null}
+      {onOpen ? (
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={onOpen}
+          aria-label={`${STATUS_WORD.watching}, open Activity`}
+          className="-ml-2 gap-2 text-[13px] font-normal text-muted-foreground hover:text-foreground"
+        >
+          {body}
+        </Button>
+      ) : (
+        body
+      )}
     </div>
   );
 }

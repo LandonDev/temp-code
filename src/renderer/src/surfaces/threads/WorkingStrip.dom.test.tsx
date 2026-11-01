@@ -1,8 +1,5 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
-
-const { killBackground } = vi.hoisted(() => ({ killBackground: vi.fn(() => Promise.resolve()) }))
-vi.mock('../../lib/tcserver/commands', () => ({ killBackground }))
 import { newSession, type Block, type Session } from '../../lib/session'
 import { mountProbe, Probe } from '../../test/renderProbe'
 import { WorkingStrip } from './WorkingStrip'
@@ -12,263 +9,77 @@ const session = (over: Partial<Session>): Session => ({
   ...over,
 })
 
-describe('WorkingStrip: a stopped run', () => {
-  it('says the harness is gone, keeps the frozen time, and Resume calls back', async () => {
-    const onResume = vi.fn(() => Promise.resolve())
-    const onStop = vi.fn()
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip
-          session={session({ status: 'stopped', frozenActiveElapsed: 95_000 })}
-          onStop={onStop}
-          onResume={onResume}
-        />
-      </Probe>,
+type Mounted = ReturnType<typeof mountProbe>
+
+/** The visible row, without the screen reader's word. */
+const row = (probe: Mounted): HTMLElement => probe.container.querySelector<HTMLElement>('.h-full')!
+const rowText = (probe: Mounted): string => row(probe).textContent ?? ''
+const buttons = (probe: Mounted): HTMLButtonElement[] => [...probe.container.querySelectorAll('button')]
+
+const mount = (s: Session, props: Partial<Parameters<typeof WorkingStrip>[0]> = {}): Mounted =>
+  mountProbe(
+    <Probe id="strip">
+      <WorkingStrip session={s} onStop={() => {}} onResume={() => {}} {...props} />
+    </Probe>,
+  )
+
+const approvalBlock = (requestId: string, decided = false): Block =>
+  ({
+    id: `b-${requestId}`,
+    role: 'tool',
+    kind: 'tool',
+    tool: { name: 'Bash', kind: 'execute', title: 'Bash', input: { command: 'bun test' } },
+    title: 'Bash',
+    text: '',
+    approval: { requestId, decided },
+  }) as unknown as Block
+
+describe('WorkingStrip: the timer while a turn is open', () => {
+  it('a working thread shows only the time and Stop: no mark, activity or tally', () => {
+    const probe = mount(
+      session({
+        status: 'running',
+        activity: 'Running bun',
+        tasks: { done: 3, total: 7 } as Session['tasks'],
+        busySince: Date.now() - 92_000,
+      }),
     )
-    const text = probe.container.textContent ?? ''
-    expect(text).toContain('Stopped')
-    expect(text).toContain('the harness is gone')
-    expect(text).toContain('1m 35s')
-    // Shown, not faded out like the idle slot.
+    expect(rowText(probe)).toMatch(/^1m 3\dsStop$/)
+    expect(row(probe).querySelector('svg')).toBeNull()
     expect(probe.container.querySelector('.opacity-100')).not.toBeNull()
-    const buttons = [...probe.container.querySelectorAll('button')]
-    expect(buttons.map((b) => b.textContent)).toEqual(['Resume'])
-    await probe.act(async () => {
-      buttons[0]!.click()
-    })
-    expect(onResume).toHaveBeenCalledTimes(1)
-    expect(onStop).not.toHaveBeenCalled()
     probe.unmount()
   })
 
-  it('an idle run shows nothing and offers no Resume', () => {
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip session={session({ status: 'idle' })} onStop={() => {}} onResume={() => {}} />
-      </Probe>,
-    )
-    expect(probe.container.querySelector('.opacity-0')).not.toBeNull()
-    expect(probe.container.querySelectorAll('button')).toHaveLength(0)
-    expect(probe.container.textContent).not.toContain('Stopped')
-    probe.unmount()
-  })
-})
-
-describe('WorkingStrip: a queued thread', () => {
-  it('says Queued with no clock, and no button without a starter', () => {
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip session={session({ status: 'queued' })} onStop={() => {}} onResume={() => {}} />
-      </Probe>,
-    )
-    expect(probe.container.textContent).toBe('Queued')
-    expect(probe.container.querySelector('.opacity-100')).not.toBeNull()
-    expect(probe.container.querySelectorAll('button')).toHaveLength(0)
-    probe.unmount()
-  })
-  it("reads the host's line and Start now calls back", async () => {
-    const onStart = vi.fn(() => Promise.resolve())
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip
-          session={session({ status: 'queued', activity: 'Queued · 3rd in line' })}
-          onStop={() => {}}
-          onResume={() => {}}
-          onStart={onStart}
-        />
-      </Probe>,
-    )
-    expect(probe.container.textContent).toBe('Queued3rd in lineStart now')
-    const buttons = probe.container.querySelectorAll('button')
-    expect(buttons).toHaveLength(1)
-    expect(buttons[0].textContent).toBe('Start now')
-    buttons[0].click()
-    expect(onStart).toHaveBeenCalledTimes(1)
-    probe.unmount()
-  })
-})
-
-describe('WorkingStrip: a watching thread', () => {
-  const watching = (since: number, agents = ['c1', 'c2', 'c3']) =>
-    session({
-      status: 'watching',
-      background: {
-        tasks: [{ id: 'm1', label: 'tail the log', kind: 'monitor', startedAt: since }],
-        agents,
-        batch: null,
-        watchingSince: since,
-      },
-    })
-
-  it('says what it watches with its age, and offers no Stop all while fresh', async () => {
-    const onOpenActivity = vi.fn()
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip session={watching(Date.now() - 5 * 60_000)} onStop={() => {}} onResume={() => {}} onOpenActivity={onOpenActivity} />
-      </Probe>,
-    )
-    const text = probe.container.textContent ?? ''
-    expect(text).toContain('Watching')
-    expect(text).toContain('3 subagents, a monitor')
-    expect(text).toContain('5m')
-    expect(probe.container.querySelector('.text-warning')).toBeNull()
-    const buttons = [...probe.container.querySelectorAll('button')]
-    expect(buttons.map((b) => b.textContent)).toEqual(['Watching3 subagents, a monitor'])
-    await probe.act(async () => {
-      buttons[0]!.click()
-    })
-    expect(onOpenActivity).toHaveBeenCalledTimes(1)
-    probe.unmount()
-  })
-
-  it('turns the age amber past 30 minutes and Stop all stops the background work', async () => {
-    // Its own tasks alone: a wait on live subagents is never stale.
-    const stale = watching(Date.now() - 45 * 60_000, [])
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip session={stale} onStop={() => {}} onResume={() => {}} />
-      </Probe>,
-    )
-    const age = probe.container.querySelector('.text-warning')
-    expect(age?.textContent).toBe('45m')
-    const stop = [...probe.container.querySelectorAll('button')].find((b) => b.textContent === 'Stop all')
-    expect(stop).toBeDefined()
-    await probe.act(async () => {
-      stop!.click()
-    })
-    expect(killBackground).toHaveBeenCalledWith(stale.id)
-    probe.unmount()
-  })
-
-  it('stays quiet while live subagents carry an old wait', () => {
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip session={watching(Date.now() - 45 * 60_000)} onStop={() => {}} onResume={() => {}} />
-      </Probe>,
-    )
-    expect(probe.container.querySelector('.text-warning')).toBeNull()
-    expect([...probe.container.querySelectorAll('button')].some((b) => b.textContent === 'Stop all')).toBe(false)
-    probe.unmount()
-  })
-
-  it('reads an idle parent with a live subagent as watching it, with no age', () => {
-    const parent = session({ status: 'idle', background: { tasks: [], agents: ['c1'], watchingSince: null } })
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip session={parent} onStop={() => {}} onResume={() => {}} />
-      </Probe>,
-    )
-    expect(probe.container.textContent).toContain('Watching')
-    expect(probe.container.textContent).toContain('a subagent')
-    expect(probe.container.textContent).not.toMatch(/NaN|\d+s/)
-    probe.unmount()
-  })
-
-  it("names a master's batch steps once every batch thread is done", () => {
-    const master = session({
-      status: 'watching',
-      // The host's line for it (sessions.ts watchLine over watchSubject).
-      activity: "Waiting on the batch's steps",
-      background: { tasks: [], agents: [], batch: { out: 0, total: 3 }, watchingSince: Date.now() },
-    })
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip session={master} onStop={() => {}} onResume={() => {}} />
-      </Probe>,
-    )
-    expect(probe.container.textContent).toContain("the batch's steps")
-    probe.unmount()
-  })
-})
-
-describe('WorkingStrip: a working thread', () => {
-  it('says what it does, the tally and the elapsed time, with no flavour word', () => {
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip
-          session={session({
-            status: 'running',
-            activity: 'Running bun',
-            tasks: { done: 3, total: 7 } as Session['tasks'],
-            busySince: Date.now() - 92_000,
-          })}
-          onStop={() => {}}
-          onResume={() => {}}
-        />
-      </Probe>,
-    )
-    const text = probe.container.textContent ?? ''
-    expect(text).toMatch(/^Workingrunning bun3\/71m 3\dsStop$/)
-    expect(text).not.toMatch(/Thinking|Percolating|·/)
-    probe.unmount()
-  })
-
-  it('ends with Stop, which calls back once and says Stopping while it lands', async () => {
+  it('Stop calls back once and holds Stopping… while it lands', async () => {
     const onStop = vi.fn()
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip session={session({ status: 'running', activity: 'Running bun' })} onStop={onStop} onResume={() => {}} />
-      </Probe>,
-    )
-    const buttons = [...probe.container.querySelectorAll('button')]
-    expect(buttons.map((b) => b.textContent)).toEqual(['Stop'])
-    await probe.act(async () => buttons[0]!.click())
-    await probe.act(async () => buttons[0]!.click())
+    const probe = mount(session({ status: 'running', busySince: Date.now() - 5_000 }), { onStop })
+    const [stop] = buttons(probe)
+    expect(buttons(probe).map((b) => b.textContent)).toEqual(['Stop'])
+    await probe.act(async () => stop!.click())
+    await probe.act(async () => stop!.click())
     expect(onStop).toHaveBeenCalledTimes(1)
-    expect(buttons[0]!.textContent).toBe('Stopping…')
-    expect(buttons[0]!.disabled).toBe(true)
+    expect(stop!.textContent).toBe('Stopping…')
+    expect(stop!.disabled).toBe(true)
     probe.unmount()
   })
 
-  it('says starting before the host names an activity', () => {
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip session={session({ status: 'starting' })} onStop={() => {}} onResume={() => {}} />
-      </Probe>,
+  it('a starting thread with no elapsed time shows Stop alone', () => {
+    const probe = mount(session({ status: 'starting', busySince: Date.now() }))
+    expect(rowText(probe)).toBe('Stop')
+    probe.unmount()
+  })
+
+  it('a thread waiting on an approval shows the time and Stop, with no Allow, Deny or Needs you', () => {
+    const probe = mount(
+      session({ status: 'waiting', busySince: Date.now() - 12_000, blocks: [approvalBlock('r1', true), approvalBlock('r2')] }),
     )
-    expect(probe.container.textContent).toBe('WorkingstartingStop')
-    probe.unmount()
-  })
-})
-
-describe('WorkingStrip: a thread that needs you', () => {
-  const approvalBlock = (requestId: string, decided = false): Block =>
-    ({
-      id: `b-${requestId}`,
-      role: 'tool',
-      kind: 'tool',
-      tool: { name: 'Bash', kind: 'execute', title: 'Bash', input: { command: 'bun test' } },
-      title: 'Bash',
-      text: '',
-      approval: { requestId, decided },
-    }) as unknown as Block
-
-  it('names the approval, and Deny and Allow decide the pending one', async () => {
-    const onApproval = vi.fn()
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip
-          session={session({ status: 'waiting', blocks: [approvalBlock('r1', true), approvalBlock('r2')] })}
-          onStop={() => {}}
-          onResume={() => {}}
-          onApproval={onApproval}
-        />
-      </Probe>,
-    )
-    // The tool's name, as DESIGN's "Needs you  approve Bash": the card above says the rest.
-    expect(probe.container.textContent).toMatch(/^Needs youapprove BashDeny/)
-    const buttons = [...probe.container.querySelectorAll('button')]
-    expect(buttons.map((b) => b.textContent)).toEqual(['Deny', 'Allow'])
-    await probe.act(async () => buttons[0]!.click())
-    await probe.act(async () => buttons[1]!.click())
-    expect(onApproval.mock.calls).toEqual([
-      ['r2', 'deny'],
-      ['r2', 'allow'],
-    ])
+    expect(rowText(probe)).toMatch(/^1\dsStop$/)
+    expect(rowText(probe)).not.toContain('Needs you')
+    expect(buttons(probe).map((b) => b.textContent)).toEqual(['Stop'])
     probe.unmount()
   })
 
-  it('says a question waits, and leaves the choice to its card', () => {
+  it('a thread waiting on a question shows the same', () => {
     const question = {
       id: 'q',
       role: 'assistant',
@@ -276,63 +87,110 @@ describe('WorkingStrip: a thread that needs you', () => {
       text: '',
       question: { sessionId: 's', requestId: 'q1', questions: [] },
     } as unknown as Block
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip session={session({ status: 'waiting', blocks: [question] })} onStop={() => {}} onResume={() => {}} onApproval={() => {}} />
-      </Probe>,
+    const probe = mount(session({ status: 'waiting', busySince: Date.now() - 12_000, blocks: [question] }))
+    expect(rowText(probe)).toMatch(/^1\dsStop$/)
+    probe.unmount()
+  })
+
+  it('a waiting subagent under a paused tree keeps its own timer', () => {
+    const probe = mount(
+      session({ status: 'waiting', parentId: 'root', treeHasPaused: true, busySince: Date.now() - 3_000, blocks: [approvalBlock('r')] }),
     )
-    expect(probe.container.textContent).toBe('Needs youanswer a question')
-    expect(probe.container.querySelectorAll('button')).toHaveLength(0)
+    expect(rowText(probe)).toMatch(/^\dsStop$/)
+    probe.unmount()
+  })
+
+  it('the polite live region holds the word, and the time is a timer outside it', () => {
+    const probe = mount(session({ status: 'running', busySince: Date.now() - 5_000 }))
+    const live = probe.container.querySelector('[aria-live="polite"]')!
+    expect(live.textContent).toBe('Working')
+    expect(live.className).toContain('sr-only')
+    const timer = probe.container.querySelector('[role="timer"]')!
+    expect(timer.textContent).toMatch(/^\ds$/)
+    expect(live.contains(timer)).toBe(false)
+    expect(row(probe).getAttribute('aria-live')).toBeNull()
     probe.unmount()
   })
 })
 
-describe('WorkingStrip: a paused run', () => {
-  it('keeps the frozen time, offers Stop and Continue, and sits in no box', async () => {
+describe('WorkingStrip: the slot is empty', () => {
+  it('for an idle thread', () => {
+    const probe = mount(session({ status: 'idle' }))
+    expect(probe.container.querySelector('.opacity-0')).not.toBeNull()
+    expect(buttons(probe)).toHaveLength(0)
+    expect(probe.container.textContent).toBe('')
+    probe.unmount()
+  })
+
+  it('for a watching thread: the transcript says Watching', () => {
+    const since = Date.now() - 45 * 60_000
+    const probe = mount(
+      session({
+        status: 'watching',
+        background: { tasks: [{ id: 'm1', label: 'tail the log', kind: 'monitor', startedAt: since }], agents: [], batch: null, watchingSince: since },
+      }),
+    )
+    expect(probe.container.querySelector('.opacity-0')).not.toBeNull()
+    expect(probe.container.textContent).toBe('')
+    expect(buttons(probe)).toHaveLength(0)
+    probe.unmount()
+  })
+
+  it('for an idle parent with a live subagent', () => {
+    const probe = mount(session({ status: 'idle', background: { tasks: [], agents: ['c1'], watchingSince: null } }))
+    expect(probe.container.textContent).toBe('')
+    probe.unmount()
+  })
+})
+
+describe('WorkingStrip: the held rows', () => {
+  it('a paused run keeps its frozen time, Stop and Continue, in no box', async () => {
     const onStop = vi.fn()
     const onResume = vi.fn(() => Promise.resolve())
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip session={session({ status: 'paused', frozenActiveElapsed: 250_000 })} onStop={onStop} onResume={onResume} />
-      </Probe>,
-    )
-    expect(probe.container.textContent).toBe('Paused4m 10sStopContinue')
+    const probe = mount(session({ status: 'paused', frozenActiveElapsed: 250_000 }), { onStop, onResume })
+    expect(rowText(probe)).toBe('Paused4m 10sStopContinue')
     expect(probe.container.innerHTML).not.toMatch(/bg-warning|border-warning|rounded-lg/)
-    const [stop, cont] = [...probe.container.querySelectorAll('button')]
+    const [stop, cont] = buttons(probe)
     await probe.act(async () => stop!.click())
     await probe.act(async () => cont!.click())
     expect(onStop).toHaveBeenCalledTimes(1)
     expect(onResume).toHaveBeenCalledTimes(1)
     probe.unmount()
   })
-})
 
-describe('WorkingStrip: a root whose tree holds a paused thread', () => {
-  it('reads Paused with Stop and Continue, idle or running, and no time of its own', () => {
+  it('a root whose tree holds a paused thread reads Paused, idle or running, with no time of its own', () => {
     for (const status of ['idle', 'running'] as const) {
-      const probe = mountProbe(
-        <Probe id="strip">
-          <WorkingStrip session={session({ status, treeHasPaused: true, activity: 'Running bun' })} onStop={() => {}} onResume={() => {}} />
-        </Probe>,
-      )
-      expect(probe.container.textContent).toBe('PausedStopContinue')
+      const probe = mount(session({ status, treeHasPaused: true, activity: 'Running bun' }))
+      expect(rowText(probe)).toBe('PausedStopContinue')
       probe.unmount()
     }
   })
 
-  it('leaves a subagent its own row: a waiting child keeps Allow and Deny', () => {
-    const block = { id: 'b', role: 'tool', kind: 'tool', text: '', approval: { requestId: 'r', decided: false } } as unknown as Block
-    const probe = mountProbe(
-      <Probe id="strip">
-        <WorkingStrip
-          session={session({ status: 'waiting', parentId: 'root', treeHasPaused: true, blocks: [block] })}
-          onStop={() => {}}
-          onResume={() => {}}
-          onApproval={() => {}}
-        />
-      </Probe>,
-    )
-    expect([...probe.container.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Deny', 'Allow'])
+  it('a stopped run says the harness is gone, keeps the frozen time, and Resume calls back', async () => {
+    const onResume = vi.fn(() => Promise.resolve())
+    const onStop = vi.fn()
+    const probe = mount(session({ status: 'stopped', frozenActiveElapsed: 95_000 }), { onStop, onResume })
+    expect(rowText(probe)).toBe('Stoppedthe harness is gone1m 35sResume')
+    expect(probe.container.querySelector('[aria-live="polite"]')!.textContent).toBe('Stopped')
+    await probe.act(async () => buttons(probe)[0]!.click())
+    expect(onResume).toHaveBeenCalledTimes(1)
+    expect(onStop).not.toHaveBeenCalled()
+    probe.unmount()
+  })
+
+  it('a queued thread says Queued with no clock, and no button without a starter', () => {
+    const probe = mount(session({ status: 'queued' }))
+    expect(rowText(probe)).toBe('Queued')
+    expect(buttons(probe)).toHaveLength(0)
+    probe.unmount()
+  })
+
+  it("a queued thread reads the host's line and Start now calls back", async () => {
+    const onStart = vi.fn(() => Promise.resolve())
+    const probe = mount(session({ status: 'queued', activity: 'Queued  3rd in line' }), { onStart })
+    expect(rowText(probe)).toBe('Queued3rd in lineStart now')
+    await probe.act(async () => buttons(probe)[0]!.click())
+    expect(onStart).toHaveBeenCalledTimes(1)
     probe.unmount()
   })
 })

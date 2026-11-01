@@ -1,13 +1,29 @@
 // @vitest-environment jsdom
 /**
- * Every thread's chat carries the working strip, an orchestration parent's
- * included, and no transcript draws the live state under it.
+ * Every thread's chat carries the timer slot above the composer, an
+ * orchestration parent's included; no transcript draws the live turn under
+ * it, and the transcript's watching line opens the Activity section.
  */
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRef } from "react";
 
-const h = vi.hoisted(() => ({ liveState: [] as unknown[] }));
+const h = vi.hoisted(() => ({
+  liveState: [] as unknown[],
+  openActivity: [] as unknown[],
+  stripProps: [] as Record<string, unknown>[],
+  panelOpen: [] as unknown[][],
+}));
+vi.mock("../lib/rightPanel", () => ({ rightPanel: { open: (...args: unknown[]) => h.panelOpen.push(args) } }));
+vi.mock("./threads/WorkingStrip", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./threads/WorkingStrip")>();
+  return {
+    WorkingStrip: (props: Parameters<typeof real.WorkingStrip>[0]) => {
+      h.stripProps.push(props as unknown as Record<string, unknown>);
+      return <real.WorkingStrip {...props} />;
+    },
+  };
+});
 vi.mock("../lib/tcserver/store", () => ({ sessionStore: { isDraft: () => false }, useQueue: () => [], useSessionMetasWhen: () => [] }));
 vi.mock("../chrome/ConnectionLine", () => ({ useEnvironmentBlock: () => ({ degraded: null, name: "local", text: null }), ConnectionLine: () => null }));
 vi.mock("../chrome/Composer", () => ({ Composer: () => <div data-testid="composer" /> }));
@@ -18,8 +34,9 @@ vi.mock("../chrome/MessageQueue", () => ({ MessageQueue: () => null, visibleQueu
 vi.mock("../chrome/SessionReview", () => ({ SessionReview: () => null }));
 vi.mock("./DeferredMount", () => ({ DeferredMount: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("./AgentTranscript", () => ({
-  AgentTranscript: ({ liveState }: { liveState?: boolean }) => {
+  AgentTranscript: ({ liveState, onOpenActivity }: { liveState?: boolean; onOpenActivity?: () => void }) => {
     h.liveState.push(liveState);
+    h.openActivity.push(onOpenActivity);
     return <div data-testid="transcript" />;
   },
 }));
@@ -59,25 +76,42 @@ const thread = (over: Partial<Session>): Session => ({ ...newSession("local"), i
 afterEach(() => {
   cleanup();
   h.liveState = [];
+  h.openActivity = [];
+  h.stripProps = [];
+  h.panelOpen = [];
 });
 
 describe("useThreadChat", () => {
-  it("an idle orchestration parent with a live subagent says Watching on its strip", () => {
+  it("an idle orchestration parent with a live subagent leaves the slot empty: the transcript says Watching", () => {
     const { getByTestId } = render(
       <Chat session={thread({ threadType: "orchestration", status: "idle", background: { tasks: [], agents: ["c1"], watchingSince: null } })} />,
     );
-    const strip = getByTestId("strip");
-    expect(strip.querySelector("[aria-live]")?.textContent).toContain("Watching");
-    expect(strip.textContent).toContain("a subagent");
+    expect(getByTestId("strip").textContent).toBe("");
     expect(h.liveState.every((v) => v === false)).toBe(true);
   });
 
-  it("a running orchestration thread says Working with Stop on its strip, and its transcript draws no live row", () => {
+  it("hands the transcript one stable onOpenActivity that opens the Activity section, and the strip no approval or activity handler", () => {
+    const session = thread({ threadType: "chat", status: "running", busy: true, busySince: Date.now() });
+    const { rerender } = render(<Chat session={session} />);
+    rerender(<Chat session={{ ...session, activity: "Running bun" }} />);
+    const opens = h.openActivity.filter(Boolean) as (() => void)[];
+    expect(opens.length).toBeGreaterThan(1);
+    expect(new Set(opens).size).toBe(1);
+    opens[0]!();
+    expect(h.panelOpen).toEqual([["t1", "activity"]]);
+    expect(h.stripProps.length).toBeGreaterThan(0);
+    for (const props of h.stripProps) {
+      expect(props).not.toHaveProperty("onApproval");
+      expect(props).not.toHaveProperty("onOpenActivity");
+    }
+  });
+
+  it("a running orchestration thread holds the timer and Stop in its slot, and its transcript draws no live row", () => {
     const { getByTestId } = render(
       <Chat session={thread({ threadType: "orchestration", status: "running", busy: true, busySince: Date.now() })} />,
     );
     const strip = getByTestId("strip");
-    expect(strip.textContent).toContain("Working");
+    expect(strip.querySelector("[aria-live]")?.textContent).toBe("Working");
     expect([...strip.querySelectorAll("button")].some((b) => b.textContent === "Stop")).toBe(true);
     expect(h.liveState.length).toBeGreaterThan(0);
     expect(h.liveState.every((v) => v === false)).toBe(true);

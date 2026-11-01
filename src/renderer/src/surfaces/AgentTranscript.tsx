@@ -113,9 +113,12 @@ type Props = {
   onJumpToBottomReady?: (jump: () => void) => void;
   /** False while another tab is in front. Hidden tabs stay laid out. */
   visible?: boolean;
-  /** The live turn's state line (Working, Needs you, Paused). Off where a
-   *  strip above the composer already says it. */
+  /** The live turn's state line (Working, Needs you, Paused). Off where the
+   *  slot above the composer holds the timer; the watching line under the last
+   *  settled turn shows either way. */
   liveState?: boolean;
+  /** The watching line's click: the right panel's Activity section. Stable, or every row re-renders. */
+  onOpenActivity?: () => void;
 };
 
 export function AgentTranscript({
@@ -137,6 +140,7 @@ export function AgentTranscript({
   onJumpToBottomReady,
   visible: visibleProp = true,
   liveState = true,
+  onOpenActivity,
 }: Props) {
   // A parked pane keeps its transcript mounted; the context turns it off.
   const visible = visibleProp && usePaneVisible();
@@ -896,6 +900,7 @@ export function AgentTranscript({
               harnessOf={harnessOf}
               turnState={row.kind !== "more" && row.turn.isLast ? (turnState ?? null) : null}
               liveState={liveState}
+              onOpenActivity={onOpenActivity}
               register={registerRow}
               onLoadEarlier={loadEarlier}
               onApproval={onApproval}
@@ -957,6 +962,7 @@ type RowViewProps = {
   /** The session, for the live turn's rows only; older rows never see it change. */
   turnState: TurnSession | null;
   liveState: boolean;
+  onOpenActivity?: () => void;
   register: (key: string, el: HTMLElement | null) => void;
   onLoadEarlier: () => void;
   onApproval?: Props["onApproval"];
@@ -981,6 +987,7 @@ const RowView = memo(function RowView({
   harnessOf,
   turnState,
   liveState,
+  onOpenActivity,
   register,
   onLoadEarlier,
   onApproval,
@@ -1020,6 +1027,7 @@ const RowView = memo(function RowView({
           harnessOf={harnessOf}
           turnState={turnState}
           liveState={liveState}
+          onOpenActivity={onOpenActivity}
           onSaveNote={onSaveNote}
           onSecondOpinion={onSecondOpinion}
           onHandoff={onHandoff}

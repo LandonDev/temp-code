@@ -333,6 +333,18 @@ export function marksAtRest(state: ThreadState): boolean {
   return state !== "idle" && state !== "done";
 }
 
+/**
+ * What the slot above the composer holds for a state: the open turn's timer
+ * (working, waiting on the person), a held row with its actions (paused,
+ * stopped, queued), else nothing. Watching says itself in the transcript's
+ * closing line, and what a thread does is the transcript's working line.
+ */
+export function composerSlotOf(state: ThreadState): "timer" | "held" | null {
+  if (state === "working" || state === "waiting") return "timer";
+  if (state === "paused" || state === "stopped" || state === "queued") return "held";
+  return null;
+}
+
 /** An undecided question in a transcript (the question card's pending case). */
 export function hasPendingQuestion(blocks: readonly { question?: { answers?: unknown } | null }[]): boolean {
   return blocks.some((b) => b.question != null && b.question.answers === undefined);
