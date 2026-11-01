@@ -50,6 +50,7 @@ export function NoticeRow({
   if (block.notice?.kind === "account-gone") {
     return <NoticeLine glyph={<Users />} lead={block.text} wrap />;
   }
+  if (block.notice?.kind === "plan-build") return <PlanBuildNotice text={block.text} />;
   if (isErrorBlock(block)) return <ErrorRowView block={block} />;
   const actions = passActionsOf(block);
   if (actions) return <PassRow actions={actions} />;
@@ -69,6 +70,14 @@ export function ErrorRowView({ block }: { block: Block }) {
   if (!sessionId || stopClosesTurn(outcome, block)) return null;
   const row = errorRowOf(outcome, block);
   return <ErrorChip sessionId={sessionId} row={row} busy={session?.busy} />;
+}
+
+/** A plan's automatic build that could not start, with the host's reason. */
+function PlanBuildNotice({ text }: { text: string }) {
+  const why = /^The build did not start: (.*)$/s.exec(text);
+  const glyph = <StatusMark state="failed" word={false} />;
+  if (!why) return <NoticeLine glyph={glyph} lead={text} wrap />;
+  return <NoticeLine glyph={glyph} lead="The build did not start" details={[why[1]]} wrap />;
 }
 
 /** A batch's line on the master or a child: a merge it made, or its end. */

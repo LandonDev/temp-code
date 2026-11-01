@@ -79,6 +79,13 @@ describe("NoticeRow", () => {
     expect(container.textContent).toBe(text);
     expect(container.querySelectorAll('[data-slot="notice-line"]').length).toBe(1);
   });
+  it("a plan's build that did not start is one line: the failed mark, the words and the host's reason", () => {
+    const text = "The build did not start: refused: the project is moving";
+    const { container } = render(<NoticeRow block={system({ text, notice: { kind: "plan-build" } })} />);
+    expect(container.querySelectorAll('[data-slot="notice-line"]').length).toBe(1);
+    expect(container.textContent).toContain("The build did not start");
+    expect(container.textContent).toContain("refused: the project is moving");
+  });
 });
 
 describe("SystemRow", () => {

@@ -62,15 +62,28 @@ const caller = {
 const fakeRegistry = {
   get: (id: string) => (id === caller.id ? caller : null),
   getProject: () => null,
-  create: async (params: Record<string, unknown>) => {
-    created.push(params)
+  startWith: async (params: Record<string, unknown>, text: string) => {
+    if (refuse) throw new Error(refuse)
+    created.push({ ...params, firstMessage: text })
     return { id: 'thread-1', title: 'a thread' }
-  },
-  send: async () => {}
+  }
 } as unknown as SessionRegistry
+/** startWith refuses the first message with this. */
+let refuse: string | null = null
 
 beforeEach(() => {
   created.length = 0
+  refuse = null
+})
+
+it('app_start_thread starts the thread with its first message in one step; a refusal is the tool error', async () => {
+  await appStartThread(fakeRegistry, caller, { threadType: 'chat', provider: 'claude', title: 'T', firstMessage: 'the brief' })
+  expect(created[0]).toMatchObject({ title: 'T', firstMessage: 'the brief' })
+  refuse = 'refused: the project is moving'
+  await expect(
+    appStartThread(fakeRegistry, caller, { threadType: 'chat', provider: 'claude', title: 'T2', firstMessage: 'x' })
+  ).rejects.toThrow('refused: the project is moving')
+  expect(created).toHaveLength(1)
 })
 
 it('app_start_thread passes context1m through on a claude model', async () => {

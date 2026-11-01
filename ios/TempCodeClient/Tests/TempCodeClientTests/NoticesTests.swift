@@ -104,6 +104,7 @@ private func review(_ outcome: ReviewOutcome, blocking: Int = 0, minor: Int = 0,
         #expect(NoticeKind(rawValue: "gate") == .gate)
         #expect(NoticeKind(rawValue: "batch") == .batch)
         #expect(NoticeKind(rawValue: "account-gone") == .accountGone)
+        #expect(NoticeKind(rawValue: "plan-build") == .planBuild)
         #expect(NoticeKind(rawValue: "restart") == .unknown("restart"))
         #expect(NoticeEvent(kind: .accountGone, message: "gone").noticeKind == .accountGone)
     }

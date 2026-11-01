@@ -50,8 +50,8 @@ export interface PlanFlowRegistry {
   listSessions(): SessionMeta[]
   getSetting(key: string): string | null
   setSetting(key: string, value: string | null): void
-  create(input: CreateSessionInput): Promise<SessionMeta>
-  send(sessionId: string, text: string, opts?: { attachments?: Attachment[] }): Promise<void>
+  /** The thread and its first message as one step (SessionRegistry.startWith). */
+  startWith(input: CreateSessionInput, text: string, opts?: { attachments?: Attachment[] }): Promise<SessionMeta>
   patch(
     sessionId: string,
     patch: Partial<Pick<SessionMeta, 'planCompletedAt' | 'implementationId' | 'planThreadId'>>
@@ -235,7 +235,10 @@ export async function settlePlan(reg: PlanFlowRegistry, meta: SessionMeta): Prom
       try {
         impl = await implementPlan(reg, meta.id, {}, 'auto')
       } catch (err) {
-        reg.log?.(`[plans] auto-start of plan ${meta.id} failed: ${err instanceof Error ? err.message : String(err)}`)
+        const why = err instanceof Error ? err.message : String(err)
+        reg.log?.(`[plans] auto-start of plan ${meta.id} failed: ${why}`)
+        // The plan says so itself, where the person reads it.
+        reg.append(meta.id, { type: 'notice', kind: 'plan-build', message: `The build did not start: ${why}` })
       }
     }
     notifyStarter(reg, reg.get(meta.id) ?? meta, impl, settings)
@@ -309,32 +312,33 @@ export async function implementPlan(
   const title = buildTitleFor(plan.title, planHeadingOf(doc))
   if (how === 'auto') autoStarts.add(plan.id)
   try {
-    const created = await reg.create({
-      provider: routed.provider,
-      model: routed.model,
-      reasoning,
-      ...(context1m ? { context1m: true } : {}),
-      permission: opts.permission ?? plan.permission,
-      projectId: plan.projectId,
-      workspaceId: plan.workspaceId,
-      ...(plan.projectId ? {} : { cwd: plan.cwd }),
-      threadType,
-      planPath: plan.planPath,
-      title,
-      goal: opts.goal ?? goalFor(doc),
-      ...(threadType === 'orchestration' && opts.threadRules ? { threadRules: opts.threadRules } : {}),
-      // A plan child's build stays in the batch (CLAUDE.md "Master threads"):
-      // the master's id and the sibling it waited for travel, and the master
-      // that started the plan hears the build's settles as it heard the plan's.
-      ...(plan.masterId ? { masterId: plan.masterId } : {}),
-      ...(plan.after ? { after: plan.after } : {}),
-      ...(plan.startedBy ? { startedBy: plan.startedBy } : {}),
-      parentId: null
-    })
-    await reg.send(created.id, threadType === 'orchestration' ? ORCHESTRATE_BRIEF : IMPLEMENT_BRIEF(title), {
-      attachments: [{ path: `thread:${plan.id}`, name: plan.title, kind: 'thread', sessionId: plan.id }]
-    })
-    return reg.get(created.id) ?? created
+    const built = await reg.startWith(
+      {
+        provider: routed.provider,
+        model: routed.model,
+        reasoning,
+        ...(context1m ? { context1m: true } : {}),
+        permission: opts.permission ?? plan.permission,
+        projectId: plan.projectId,
+        workspaceId: plan.workspaceId,
+        ...(plan.projectId ? {} : { cwd: plan.cwd }),
+        threadType,
+        planPath: plan.planPath,
+        title,
+        goal: opts.goal ?? goalFor(doc),
+        ...(threadType === 'orchestration' && opts.threadRules ? { threadRules: opts.threadRules } : {}),
+        // A plan child's build stays in the batch (CLAUDE.md "Master threads"):
+        // the master's id and the sibling it waited for travel, and the master
+        // that started the plan hears the build's settles as it heard the plan's.
+        ...(plan.masterId ? { masterId: plan.masterId } : {}),
+        ...(plan.after ? { after: plan.after } : {}),
+        ...(plan.startedBy ? { startedBy: plan.startedBy } : {}),
+        parentId: null
+      },
+      threadType === 'orchestration' ? ORCHESTRATE_BRIEF : IMPLEMENT_BRIEF(title),
+      { attachments: [{ path: `thread:${plan.id}`, name: plan.title, kind: 'thread', sessionId: plan.id }] }
+    )
+    return reg.get(built.id) ?? built
   } finally {
     autoStarts.delete(plan.id)
   }
@@ -344,8 +348,9 @@ export async function implementPlan(
  *  owns the file (and back), leaves a handoff row on it, and archives it
  *  when the settings say so — unless the planner is still mid-turn, in
  *  which case the plan stays until it settles (nothing stops a harness
- *  while it speaks). Runs inside create(), so the phone's sheet and
- *  app_start_thread link exactly as the auto path does. */
+ *  while it speaks). Runs inside create(), or in startWith once the build's
+ *  first row is stored (a build that never got its brief is removed and
+ *  leaves the plan as it was), so every start path links alike. */
 export function linkPlanHandoff(reg: PlanFlowRegistry, created: SessionMeta): void {
   if (!created.planPath || (created.threadType !== 'implementation' && created.threadType !== 'orchestration')) return
   const plan = reg

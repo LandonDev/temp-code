@@ -79,10 +79,19 @@ const stub = {
   },
   send: async (_id: string, text: string) => {
     sent.push(text)
+  },
+  startWith: async (params: Record<string, unknown>, text: string) => {
+    if (refuseStart) throw new Error(refuseStart)
+    const child = await stub.create(params)
+    await stub.send(child.id, text)
+    return child
   }
 }
+/** startWith refuses the first message with this. */
+let refuseStart: string | null = null
 
 beforeEach(() => {
+  refuseStart = null
   created.length = 0
   sent.length = 0
   reports.length = 0
@@ -149,6 +158,13 @@ it('spawn_agent with context1m on a claude model reaches create with the flag', 
   expect(created[0].context1m).toBe(true)
   expect(created[0].model).toBe('claude-opus-5')
   expect(sent).toEqual(['do the thing'])
+})
+
+it('spawn_agent whose first message is refused starts no child and is the tool error', async () => {
+  refuseStart = 'refused: the project is moving'
+  await expect(orchSpawnAgent(parent, { model: 'claude-opus-5', task: 'do the thing' })).rejects.toThrow('the project is moving')
+  expect(created).toEqual([])
+  expect(sent).toEqual([])
 })
 
 it('spawn_agent without context1m defaults a claude model to 1M', async () => {

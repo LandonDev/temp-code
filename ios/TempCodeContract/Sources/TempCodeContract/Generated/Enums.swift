@@ -523,6 +523,7 @@ public enum NoticeKind: RawRepresentable, Codable, Hashable, Sendable {
     case gate
     case batch
     case accountGone
+    case planBuild
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -532,6 +533,7 @@ public enum NoticeKind: RawRepresentable, Codable, Hashable, Sendable {
         case "gate": self = .gate
         case "batch": self = .batch
         case "account-gone": self = .accountGone
+        case "plan-build": self = .planBuild
         default: self = .unknown(rawValue)
         }
     }
@@ -542,6 +544,7 @@ public enum NoticeKind: RawRepresentable, Codable, Hashable, Sendable {
         case .gate: "gate"
         case .batch: "batch"
         case .accountGone: "account-gone"
+        case .planBuild: "plan-build"
         case .unknown(let value): value
         }
     }

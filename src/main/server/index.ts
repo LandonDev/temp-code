@@ -226,7 +226,7 @@ import {
   resolveBuildDir
 } from './build'
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
-import { eventsPage, eventsWindowMs, frameJson, profileFor, PushCoalescer, SocketBudget, remoteDeflateOptions, sessionPage } from './wire'
+import { eventsWindowMs, frameJson, profileFor, PushCoalescer, SocketBudget, remoteDeflateOptions, sessionEvents, sessionPage } from './wire'
 import { FocusSet } from './focus'
 import { bulkKey, LaneGate, laneOf } from './lane'
 import { ListChangeLog } from './listChanges'
@@ -2315,7 +2315,7 @@ export async function startServer(
             })
             break
           case 'session.create': {
-            const session = await registry.create(req.params)
+            const session = await registry.createSession(req.params)
             sendFrame({ id: req.id, ok: true, result: session })
             break
           }
@@ -2363,14 +2363,10 @@ export async function startServer(
             break
           }
           case 'session.events': {
-            // The listener goes on before the read: a row appended after it
-            // is pushed, one before it is in the page (the client drops a
-            // seq it already folded).
-            if (req.params.subscribe) subscribeSocket(req.params.sessionId)
-            if (profile === 'remote') {
-              const page = eventsPage(registry, req.params)
-              sendFrame({ id: req.id, ok: true, result: req.params.subscribe ? { ...page, subscribed: true } : page })
-            } else sendFrame({ id: req.id, ok: true, result: await registry.eventsAsync(req.params.sessionId, req.params) })
+            // The listener goes on before the read (the client drops a seq
+            // it already folded); an id this host does not show is refused.
+            const result = await sessionEvents(registry, req.params, profile, () => subscribeSocket(req.params.sessionId))
+            sendFrame({ id: req.id, ok: true, result })
             break
           }
           case 'session.rowBody': {

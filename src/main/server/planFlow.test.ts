@@ -30,6 +30,8 @@ class Fake implements PlanFlowRegistry {
   archived: string[] = []
   created: CreateSessionInput[] = []
   logs: string[] = []
+  /** startWith refuses the first send with this, as the registry would. */
+  refuse: string | null = null
   private n = 0
 
   add(id: string, patch: Partial<SessionMeta> = {}): SessionMeta {
@@ -81,7 +83,7 @@ class Fake implements PlanFlowRegistry {
     if (value === null) this.settings.delete(key)
     else this.settings.set(key, value)
   }
-  async create(input: CreateSessionInput): Promise<SessionMeta> {
+  private make(input: CreateSessionInput): SessionMeta {
     this.created.push(input)
     const id = `b${++this.n}`
     const meta = this.add(id, {
@@ -97,12 +99,27 @@ class Fake implements PlanFlowRegistry {
       status: 'idle',
       cwd: input.cwd ?? '/tmp/x'
     })
+    return meta
+  }
+  async create(input: CreateSessionInput): Promise<SessionMeta> {
+    const meta = this.make(input)
+    const id = meta.id
     // What the real create() does for every build born with a plan.
     linkPlanHandoff(this, meta)
     return this.get(id) ?? meta
   }
-  async send(id: string, text: string, opts?: { attachments?: Attachment[] }): Promise<void> {
+  /** The registry's startWith: the thread, then its first row, then the
+   *  handoff; a refused send removes the thread before any of it. */
+  async startWith(input: CreateSessionInput, text: string, opts?: { attachments?: Attachment[] }): Promise<SessionMeta> {
+    const meta = this.make(input)
+    const id = meta.id
+    if (this.refuse) {
+      this.sessions.delete(id)
+      throw new Error(this.refuse)
+    }
     this.sends.push({ id, text, attachments: opts?.attachments })
+    linkPlanHandoff(this, meta)
+    return this.get(id) ?? meta
   }
   patch(id: string, patch: Partial<Pick<SessionMeta, 'planCompletedAt' | 'implementationId' | 'planThreadId'>>): SessionMeta | null {
     const cur = this.sessions.get(id)
@@ -347,5 +364,19 @@ describe('settlePlan (the auto path and the notifications)', () => {
     expect(await settlePlan(reg, p)).toBeNull()
     expect(reg.logs[0]).toMatch(/auto-start of plan p failed/)
     expect(reg.reports[0].text).toContain('could not be started')
+    expect(reg.rows).toEqual([
+      { id: 'p', event: { type: 'notice', kind: 'plan-build', message: expect.stringMatching(/^The build did not start: .*missing or empty/) } }
+    ])
+  })
+  it('a build whose first message is refused leaves the plan unlinked and unarchived, with the notice', async () => {
+    reg.refuse = 'refused: the project is moving'
+    const p = reg.add('p', { planPath: planFile(), planCompletedAt: 5, status: 'idle' })
+    expect(await settlePlan(reg, p)).toBeNull()
+    expect(reg.get('p')).toMatchObject({ implementationId: null, archived: false })
+    expect(reg.archived).toEqual([])
+    expect(reg.sessions.has('b1')).toBe(false)
+    expect(reg.rows).toEqual([
+      { id: 'p', event: { type: 'notice', kind: 'plan-build', message: 'The build did not start: refused: the project is moving' } }
+    ])
   })
 })

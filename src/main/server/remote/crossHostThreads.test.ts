@@ -96,6 +96,14 @@ function fakeRegistry() {
       sent.push({ id, text })
       registry.setStatus(id, 'running')
     },
+    /** The registry's one step: the thread and its first message, or neither. */
+    refuse: null as string | null,
+    async startWith(raw: Record<string, unknown>, text: string): Promise<SessionMeta> {
+      if (registry.refuse) throw new Error(registry.refuse)
+      const meta = await registry.create(raw)
+      await registry.send(meta.id, text)
+      return sessions.get(meta.id) ?? meta
+    },
     get: (id: string) => sessions.get(id) ?? null,
     list: () => [...sessions.values()].filter((m) => !m.archived),
     eventsRange: (id: string, after: number, limit: number) => (events.get(id) ?? []).filter((r) => r.seq > after).slice(0, limit),
@@ -222,6 +230,20 @@ describe('CrossHostThreads', () => {
     expect(meta.agentType).toBe('implementer')
     expect(r.cwd).toBe('/Users/landon/IdeaProjects/temp-code/.wt')
     expect(registry.sent[0].text).toBe('build it')
+  })
+  it('a start or a spawn whose first message is refused leaves no thread here and is the tool error', async () => {
+    const { svc, registry } = service()
+    registry.refuse = 'refused: the project is moving'
+    await expect(svc.handle('thread.start', { caller, args: startArgs }, ctx)).rejects.toThrow('the project is moving')
+    await expect(
+      svc.handle(
+        'thread.spawn',
+        { caller, args: { provider: 'claude' as const, model: 'claude-sonnet-5-5', reasoning: 'medium' as const, context1m: false, agentType: 'explorer' as const, task: 'look', title: 'look', useWorktree: false, cwd: '/srv/agents/work/temp-code' } },
+        ctx
+      )
+    ).rejects.toThrow('the project is moving')
+    expect(registry.list()).toEqual([])
+    expect(svc.liveThreadsOf(BOX)).toBe(0)
   })
   it("the Mac bridge's thread cap is asked before a start or a spawn, with the host's id; a refusal is the tool's error", async () => {
     const asked: string[] = []

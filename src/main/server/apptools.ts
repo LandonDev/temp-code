@@ -336,36 +336,41 @@ export async function appStartThread(
   // inherits — it can never grant itself more than the user granted.
   const callerNow = reg.get(caller.id) ?? caller
   const membership = batchMembershipOf(callerNow)
-  const thread = await reg.create({
-    provider,
-    model,
-    reasoning,
-    permission: callerNow.permission,
-    ...(args.context1m ? { context1m: true } : {}),
-    projectId,
-    threadType: args.threadType,
-    planPath,
-    title: args.title,
-    parentId: null,
-    // The caller hears when a plan it started completes (planFlow.ts).
-    startedBy: caller.id,
-    // The batch follows the starter (orchestration.ts batchMembershipOf): a
-    // master's thread carries the master's id, a batch thread's thread (a
-    // plan's build) inherits it; `after` names the sibling it waits for.
-    ...membership,
-    ...('masterId' in membership && args.after ? { after: args.after } : {}),
-    ...(projectId ? {} : { cwd: caller.cwd })
-  })
-  await reg.send(thread.id, args.firstMessage, {
-    attachments: seeds.length
-      ? seeds.map((s) => ({
-          path: `thread:${s!.id}`,
-          name: s!.title,
-          kind: 'thread' as const,
-          sessionId: s!.id
-        }))
-      : undefined
-  })
+  // The thread and its first message are one step (startWith): a refused
+  // message leaves no titled thread without its brief.
+  const thread = await reg.startWith(
+    {
+      provider,
+      model,
+      reasoning,
+      permission: callerNow.permission,
+      ...(args.context1m ? { context1m: true } : {}),
+      projectId,
+      threadType: args.threadType,
+      planPath,
+      title: args.title,
+      parentId: null,
+      // The caller hears when a plan it started completes (planFlow.ts).
+      startedBy: caller.id,
+      // The batch follows the starter (orchestration.ts batchMembershipOf): a
+      // master's thread carries the master's id, a batch thread's thread (a
+      // plan's build) inherits it; `after` names the sibling it waits for.
+      ...membership,
+      ...('masterId' in membership && args.after ? { after: args.after } : {}),
+      ...(projectId ? {} : { cwd: caller.cwd })
+    },
+    args.firstMessage,
+    {
+      attachments: seeds.length
+        ? seeds.map((s) => ({
+            path: `thread:${s!.id}`,
+            name: s!.title,
+            kind: 'thread' as const,
+            sessionId: s!.id
+          }))
+        : undefined
+    }
+  )
   const created = reg.get(thread.id) ?? thread
   // Held by `after` or the host's running cap (scheduler.ts): say why, in the words list_agents uses.
   const queued = created.status === 'queued' ? (reg.queuedLine(thread.id) ?? 'Queued').replace(/^Queued/, 'queued') : null

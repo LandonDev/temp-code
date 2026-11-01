@@ -281,6 +281,32 @@ export interface EventsParams {
  *   - `afterSeq` alone (resume): the gap, or a fresh tail with `reset`
  *     when the gap passes RESUME_ROWS or RESUME_BYTES;
  *   - otherwise (a forward walk): from `afterSeq` up, cut at the page budget. */
+/** What `session.events` reads: the page source, whether this host shows
+ *  the id at all, and the local profile's reader-worker read. */
+export interface EventsHost extends EventSource {
+  knows(sessionId: string): boolean
+  eventsAsync(sessionId: string, opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number }): Promise<EventRow[]>
+}
+
+/** `session.events` for either profile. An id this host shows no row for
+ *  (never here, deleted, a tombstone of a move, a landing still hidden) is
+ *  refused, never answered as an empty log: a client that read "no rows"
+ *  drew a thread that exists elsewhere as a new chat. `subscribe` runs
+ *  after the check and before the read, so a row appended after it is
+ *  pushed and one before it is in the page. */
+export async function sessionEvents(
+  host: EventsHost,
+  params: EventsParams & { subscribe?: boolean },
+  profile: WireProfile,
+  subscribe: () => void
+): Promise<EventRow[] | EventsPage> {
+  if (!host.knows(params.sessionId)) throw new Error(`unknown session: ${params.sessionId}`)
+  if (params.subscribe) subscribe()
+  if (profile === 'local') return host.eventsAsync(params.sessionId, params)
+  const page = eventsPage(host, params)
+  return params.subscribe ? { ...page, subscribed: true } : page
+}
+
 export function eventsPage(source: EventSource, params: EventsParams): EventsPage {
   const { sessionId } = params
   const afterSeq = params.afterSeq ?? 0

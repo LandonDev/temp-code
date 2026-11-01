@@ -49,7 +49,7 @@ import {
 } from '@shared/session-lifecycle'
 import { isRoutedProvider, type AccountPins, type AccountProvider, type AccountRoute } from '@shared/accounts'
 import { resolvePin, type ResolvedPin, type RouteOptions } from './accountRouting'
-import type { LimitWindow } from '@shared/events'
+import type { LimitWindow, PreambleStamp } from '@shared/events'
 import { foldEvent, foldLog, newFoldState, reviveTodo, serializeTodo, toFoldRow } from './folds'
 import { FOLD_VERSION, type FoldRow, type ResumeAfterBootRow } from './db'
 
@@ -274,7 +274,14 @@ export type RunSettings = {
   reasoning?: SessionMeta['reasoning']
 }
 
-// ── thread references (send) ─────────────────────────────────────────
+/** What a thread's first message carries into `startWith`. */
+export type StartWithOpts = RunSettings & {
+  attachments?: Attachment[]
+  /** `false`: the spawner opted this thread out of the project preamble */
+  preamble?: boolean
+}
+
+// ── thread references (send)─────────────────────────────────────────
 
 /** Every form of a reference's token becomes the mention; with none in the text, the mention is appended. */
 export function replaceTokens(text: string, tokens: string[], mention: string): string {
@@ -1399,6 +1406,12 @@ export class SessionRegistry {
     return meta ? this.decorate(meta, index) : null
   }
 
+  /** Whether this host shows the id: a row of the index, so not a move's
+   *  tombstone or a landing still hidden (what `session.list` lists). */
+  knows(sessionId: string): boolean {
+    return this.indexOf().byId.has(sessionId)
+  }
+
   /** A parent's direct children, decorated. */
   childrenOf(parentId: string): SessionMeta[] {
     const index = this.indexOf()
@@ -2340,8 +2353,7 @@ export class SessionRegistry {
       listSessions: () => this.store.listSessions(),
       getSetting: (key) => this.store.getSetting(key),
       setSetting: (key, value) => this.store.setSetting(key, value),
-      create: (input) => this.create(input),
-      send: (id, text, opts) => this.send(id, text, opts),
+      startWith: (input, text, opts) => this.startWith(input, text, opts),
       patch: (id, patch) => {
         const next = this.store.updateSession(id, patch)
         if (next) this.notifyMeta(next)
@@ -2457,7 +2469,39 @@ export class SessionRegistry {
     )
   }
 
-  async create(raw: CreateSessionInput): Promise<SessionMeta> {
+  /** A thread and its first message as one step: the message is the
+   *  thread's first row, on disk with the meta, or the thread is removed
+   *  (`session-removed`) and the error is the caller's. Every start path
+   *  that has a first message comes here, never create-then-send, so no
+   *  host lists a titled thread with no rows. After the row is stored the
+   *  send behaves as any first send: a boot failure leaves the row, an
+   *  error row and the message at the front of the queue. A build's plan
+   *  handoff (link, handoff row, archive) waits for that row too. */
+  async startWith(raw: CreateSessionInput, text: string, opts: StartWithOpts = {}): Promise<SessionMeta> {
+    const created = await this.create(raw, { handoff: false })
+    let stored = false
+    try {
+      await this.send(created.id, text, {
+        ...opts,
+        onStored: () => {
+          stored = true
+          linkPlanHandoff(this.planFlow(), this.store.getSession(created.id) ?? created)
+        }
+      })
+    } catch (err) {
+      if (!stored && this.store.getSession(created.id)) await this.delete(created.id).catch(() => {})
+      throw err
+    }
+    return this.get(created.id) ?? created
+  }
+
+  /** `session.create`: with a first message, the one-step start. */
+  async createSession(raw: CreateSessionInput): Promise<SessionMeta> {
+    const { firstMessage, ...spec } = raw
+    return firstMessage ? this.startWith(spec, firstMessage) : this.create(spec)
+  }
+
+  async create(raw: CreateSessionInput, internal: { handoff?: boolean } = {}): Promise<SessionMeta> {
     const params = CreateSessionParams.parse(raw)
     const now = Date.now()
     if (params.id && this.store.getSession(params.id)) throw new Error(`session id already taken: ${params.id}`)
@@ -2564,7 +2608,8 @@ export class SessionRegistry {
     // says so (planFlow.ts): the conversation is over, the plan file carries
     // the context. Archiving touches nothing the models use — mirrors and
     // the plan doc stay, and any send into the thread revives it.
-    linkPlanHandoff(this.planFlow(), created)
+    // startWith runs it once the build's first row is stored instead.
+    if (internal.handoff !== false) linkPlanHandoff(this.planFlow(), created)
     // A plan written for one milestone of the project plan hands that
     // milestone to the build: landing the build ticks it (projectPlan.ts).
     if (created.planPath && (created.threadType === 'implementation' || created.threadType === 'orchestration')) {
@@ -2661,8 +2706,13 @@ export class SessionRegistry {
       steerId?: string
       /** Into the live turn (Send now on a queued item): wrapped as a steer */
       steer?: boolean
+      /** startWith's hook: the first message's user row is on disk */
+      onStored?: () => void
     }
   ): Promise<void> {
+    // The hook is startWith's alone: never on a queued item or a retry.
+    const { onStored, ...rest } = opts ?? {}
+    opts = rest
     let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
     this.assertNotMoving(sessionId)
@@ -2678,7 +2728,13 @@ export class SessionRegistry {
     // same queue and releases only after the resumed turn settles.
     if (this.isTreePaused(sessionId)) {
       this.spans.drop(sessionId)
-      this.queueAdd(sessionId, text, opts)
+      // A first message is stored as its row now, as a queued first send
+      // stores it: a thread started under a paused parent lists with its
+      // brief, and a restart before the resume keeps it.
+      if (!opts?.echoed && !this.store.hasUserText(sessionId)) {
+        this.storeUserRow(sessionId, meta, text, this.firstStamp(meta, text, opts), opts, onStored)
+        this.queueAdd(sessionId, text, { ...opts, echoed: { first: true } })
+      } else this.queueAdd(sessionId, text, opts)
       return
     }
     // A real message starts a fresh turn — the error taint belongs to the
@@ -2730,52 +2786,13 @@ export class SessionRegistry {
     // every thread started in a project, on every start path — all of them
     // end here. A retry of an echoed send reads the stamp its row already
     // carries, so the harness gets the same text the transcript shows.
-    const stamp = !first
-      ? null
-      : opts?.echoed
-        ? this.store.firstUserPreamble(sessionId)
-        : decidePreamble({
-            store: this.store,
-            // An untitled thread is about to take its title from the first line.
-            session: isPlaceholderTitle(meta) ? { ...meta, title: '' } : meta,
-            text,
-            optOut: opts?.preamble === false
-          })
+    const stamp = !first ? null : opts?.echoed ? this.store.firstUserPreamble(sessionId) : this.firstStamp(meta, text, opts)
     // What the user sees moves NOW: the user row and a 'starting' status
     // land before the harness boots and before the undo baseline is taken,
     // so busySince anchors to the send and the header chip goes live at
     // once. A message that waited minutes here once sat behind a slow
     // checkpoint status on the store's per-session chain.
-    if (!opts?.echoed) {
-      // Stamp the run settings that will execute this message — the board's
-      // pass history reads them off the round's opening event — and whether
-      // this send opens a NEW pass (the pass button) or continues the
-      // current one (typed under the banner).
-      this.append(sessionId, {
-        type: 'user-text',
-        text,
-        attachments,
-        ...(stamp ? { preamble: stamp } : {}),
-        model: meta.model,
-        reasoning: meta.reasoning,
-        context1m: meta.context1m,
-        fast: meta.fast,
-        ultrafast: meta.ultrafast,
-        newPass: opts?.newPass === true,
-        ...(opts?.steerId ? { steerId: opts.steerId } : {})
-      })
-      // Cursor-style: an untitled thread takes its name from the first
-      // message right away; a generated title replaces the raw slice once
-      // the first turn completes (maybeRetitle).
-      if (first && isPlaceholderTitle(meta)) {
-        const title = text.trim().split('\n')[0].slice(0, 60)
-        if (title) {
-          const next = this.store.updateSession(sessionId, { title })
-          if (next) this.notifyMeta(next)
-          this.pendingTitles.set(sessionId, { placeholder: title, text })
-        }
-      }
-    }
+    if (!opts?.echoed) this.storeUserRow(sessionId, meta, text, first ? stamp : undefined, opts, onStored)
     // The queue (scheduler.ts) holds a send here for two reasons: a first
     // message on a thread that opted in (`queue: true`, or a master's
     // child) whose `after` sibling has not settled, and the running cap
@@ -3016,6 +3033,64 @@ export class SessionRegistry {
       }
       this.spans.drop(sessionId)
       throw err
+    }
+  }
+
+  /** The project preamble a thread's first message carries (projectPreamble.ts). */
+  private firstStamp(meta: SessionMeta, text: string, opts?: { preamble?: boolean }): PreambleStamp | null {
+    return decidePreamble({
+      store: this.store,
+      // An untitled thread is about to take its title from the first line.
+      session: isPlaceholderTitle(meta) ? { ...meta, title: '' } : meta,
+      text,
+      optOut: opts?.preamble === false
+    })
+  }
+
+  /** The person's message as its user row. `stamp` is undefined for a
+   *  later message; for the first (null when no preamble applies) the row
+   *  is on disk at once, not on the next batch flush, so a host that dies
+   *  right after a start never comes back with a titled thread and no
+   *  rows (one write per thread, never per append), and an untitled
+   *  thread takes its name from it. */
+  private storeUserRow(
+    sessionId: string,
+    meta: SessionMeta,
+    text: string,
+    stamp: PreambleStamp | null | undefined,
+    opts: { attachments?: Attachment[]; newPass?: boolean; steerId?: string } | undefined,
+    onStored?: () => void
+  ): void {
+    // Stamp the run settings that will execute this message (the board's
+    // pass history reads them off the round's opening event) and whether
+    // this send opens a NEW pass (the pass button) or continues the
+    // current one (typed under the banner).
+    this.append(sessionId, {
+      type: 'user-text',
+      text,
+      attachments: opts?.attachments?.length ? opts.attachments : undefined,
+      ...(stamp ? { preamble: stamp } : {}),
+      model: meta.model,
+      reasoning: meta.reasoning,
+      context1m: meta.context1m,
+      fast: meta.fast,
+      ultrafast: meta.ultrafast,
+      newPass: opts?.newPass === true,
+      ...(opts?.steerId ? { steerId: opts.steerId } : {})
+    })
+    if (stamp === undefined) return
+    this.store.flushEvents()
+    onStored?.()
+    // Cursor-style: an untitled thread takes its name from the first
+    // message right away; a generated title replaces the raw slice once
+    // the first turn completes (maybeRetitle).
+    if (isPlaceholderTitle(meta)) {
+      const title = text.trim().split('\n')[0].slice(0, 60)
+      if (title) {
+        const next = this.store.updateSession(sessionId, { title })
+        if (next) this.notifyMeta(next)
+        this.pendingTitles.set(sessionId, { placeholder: title, text })
+      }
     }
   }
 

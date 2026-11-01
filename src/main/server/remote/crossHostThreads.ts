@@ -107,6 +107,7 @@ export interface CrossHostThreadsDeps {
   registry: Pick<
     SessionRegistry,
     | 'create'
+    | 'startWith'
     | 'send'
     | 'get'
     | 'eventsAfter'
@@ -610,26 +611,30 @@ export class CrossHostThreads {
       args.planPath && (args.threadType === 'implementation' || args.threadType === 'orchestration')
         ? (this.mapPath(args.planPath, args.workRoot) ?? undefined)
         : undefined
-    const thread = await this.deps.registry.create({
-      provider: args.provider,
-      model: args.model,
-      reasoning: args.reasoning,
-      permission: caller.permission,
-      ...(args.context1m ? { context1m: true } : {}),
-      projectId: placed.projectId,
-      threadType: args.threadType,
-      ...(planPath && existsSync(planPath) ? { planPath } : {}),
-      title: args.title,
-      parentId: null,
-      // The box thread started it, and its batch comes along (the ids are
-      // the box's; this host reports to neither, the box supervises).
-      startedBy: caller.sessionId,
-      ...(args.masterId ? { masterId: args.masterId } : {}),
-      cwd: placed.cwd
-    })
+    // The thread and its first message are one step: a refused message
+    // leaves no thread here, and the caller's tool hears why.
+    const thread = await this.deps.registry.startWith(
+      {
+        provider: args.provider,
+        model: args.model,
+        reasoning: args.reasoning,
+        permission: caller.permission,
+        ...(args.context1m ? { context1m: true } : {}),
+        projectId: placed.projectId,
+        threadType: args.threadType,
+        ...(planPath && existsSync(planPath) ? { planPath } : {}),
+        title: args.title,
+        parentId: null,
+        // The box thread started it, and its batch comes along (the ids are
+        // the box's; this host reports to neither, the box supervises).
+        startedBy: caller.sessionId,
+        ...(args.masterId ? { masterId: args.masterId } : {}),
+        cwd: placed.cwd
+      },
+      args.firstMessage
+    )
     this.remember(caller, thread.id)
     this.lastStatus.set(thread.id, thread.status)
-    await this.deps.registry.send(thread.id, args.firstMessage)
     const created = this.deps.registry.get(thread.id) ?? thread
     return { sessionId: thread.id, title: created.title, cwd: placed.cwd, projectId: placed.projectId, ...(placed.cwdNote ? { cwdNote: placed.cwdNote } : {}) }
   }
@@ -642,24 +647,27 @@ export class CrossHostThreads {
       (writer && args.useWorktree
         ? await (this.deps.worktree ?? worktreeFor)(placed.cwd, `${caller.sessionId}-${Date.now() % 100000}`)
         : null) ?? placed.cwd
-    const child = await this.deps.registry.create({
-      provider: args.provider,
-      model: args.model,
-      reasoning: args.reasoning,
-      agentType: args.agentType,
-      ...(args.context1m ? { context1m: true } : {}),
-      permission: caller.permission,
-      projectId: placed.projectId,
-      cwd,
-      title: args.title,
-      // The box thread is the parent: this Mac lists that thread over its
-      // link, so its fleet view shows the child under it (the parent's own
-      // log lives on the box, which records the spawn there).
-      parentId: caller.sessionId
-    })
+    const child = await this.deps.registry.startWith(
+      {
+        provider: args.provider,
+        model: args.model,
+        reasoning: args.reasoning,
+        agentType: args.agentType,
+        ...(args.context1m ? { context1m: true } : {}),
+        permission: caller.permission,
+        projectId: placed.projectId,
+        cwd,
+        title: args.title,
+        // The box thread is the parent: this Mac lists that thread over its
+        // link, so its fleet view shows the child under it (the parent's own
+        // log lives on the box, which records the spawn there).
+        parentId: caller.sessionId
+      },
+      args.task,
+      { preamble: args.preamble !== false }
+    )
     this.remember(caller, child.id)
     this.lastStatus.set(child.id, child.status)
-    await this.deps.registry.send(child.id, args.task, { preamble: args.preamble !== false })
     return { sessionId: child.id, title: child.title, cwd, projectId: placed.projectId, ...(placed.cwdNote ? { cwdNote: placed.cwdNote } : {}) }
   }
 

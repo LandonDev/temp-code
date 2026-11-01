@@ -91,7 +91,10 @@ export const CreateSessionParams = z.object({
   after: z.string().optional(),
   /** Queue instead of booting when the host is over its running cap or
    *  `after` is unmet (scheduler.ts); a master's children always queue. */
-  queue: z.boolean().optional()
+  queue: z.boolean().optional(),
+  /** The thread's first message, stored as its first row in the same step
+   *  (SessionRegistry.startWith): the thread and its brief, or neither. */
+  firstMessage: z.string().min(1).optional()
 })
 export type CreateSessionParams = z.infer<typeof CreateSessionParams>
 /** Pre-parse shape (defaults still optional) — what callers construct. */

@@ -28,6 +28,8 @@ struct NoticeRow: View {
                 BatchLine(message: notice.message)
             case .accountGone:
                 AccountGoneLine(message: notice.message)
+            case .planBuild:
+                QuietLine(symbol: "exclamationmark.circle", text: notice.message)
             case .unknown:
                 QuietLine(symbol: "info.circle", text: notice.message)
             }

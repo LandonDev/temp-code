@@ -78,8 +78,9 @@ struct DecoderRulesTests {
         """)
         let batch = try roundTrip(AgentEvent.self, #"{"type":"notice","kind":"batch","message":"Merged by the batch: ios/x → master at 1a2b3c4d5e, pushed"}"#)
         let gone = try roundTrip(AgentEvent.self, #"{"type":"notice","kind":"account-gone","message":"Account ws@example.com is gone","account":"ws@example.com"}"#)
+        let build = try roundTrip(AgentEvent.self, #"{"type":"notice","kind":"plan-build","message":"The build did not start: refused"}"#)
         var seen: [NoticeKind] = []
-        for event in [review, gate, batch, gone] {
+        for event in [review, gate, batch, gone, build] {
             guard case .notice(let notice) = event else {
                 Issue.record("expected a notice")
                 continue
@@ -98,11 +99,13 @@ struct DecoderRulesTests {
                 #expect(notice.message.hasPrefix("Merged by the batch"))
             case .accountGone:
                 #expect(notice.account == "ws@example.com")
+            case .planBuild:
+                #expect(notice.message.hasPrefix("The build did not start"))
             case .unknown:
                 Issue.record("every seeded kind is known")
             }
         }
-        #expect(seen == [.review, .gate, .batch, .accountGone])
+        #expect(seen == [.review, .gate, .batch, .accountGone, .planBuild])
     }
 
     @Test func failureKindLiteralUnknown() throws {

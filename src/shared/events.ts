@@ -197,7 +197,7 @@ export type Failure = z.infer<typeof FailureSchema>
  * (`review`, `gate`, `account`), so a reader switches on `kind` and `message`
  * always reads; the phone's decoder keeps an unknown kind as `unknown(String)`.
  */
-export const NoticeKindSchema = z.enum(['review', 'gate', 'batch', 'account-gone'])
+export const NoticeKindSchema = z.enum(['review', 'gate', 'batch', 'account-gone', 'plan-build'])
 export type NoticeKind = z.infer<typeof NoticeKindSchema>
 
 /** Where a person's steer stands (the `steer` row). */
@@ -497,7 +497,8 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   // A plain system row from the server, never a failure: nothing stops, no
   // Continue. `kind` names what happened for a card that wants to say more
   // (`account-gone`: the thread's pinned or sticky account left this host and
-  // the thread routes automatically from here; `account` names it).
+  // the thread routes automatically from here; `account` names it;
+  // `plan-build`: a plan's automatic build could not start, and why).
   z.object({
     type: z.literal('notice'),
     kind: NoticeKindSchema,

@@ -750,25 +750,26 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
       : undefined
     // Children follow the parent's permission policy — the user granted it
     // once, and the fleet works under that grant.
-    const child = await registry.create({
-      ...(childId ? { id: childId } : {}),
-      ...(anglePath ? { planPath: anglePath } : {}),
-      projectId: parent.projectId,
-      provider: r.provider,
-      model: r.model,
-      reasoning: r.reasoning,
-      agentType: r.agentType,
-      ...(r.context1m ? { context1m: true } : {}),
-      permission: parentNow.permission,
-      cwd,
-      // The task IS the identity — boards, tabs and the sidebar all
-      // lead with it. Provider/type stay visible as metadata.
-      title,
-      parentId: parent.id
-    })
-    await registry.send(child.id, anglePath ? `${r.task}\n\n${findingsContract(anglePath)}` : r.task, {
-      preamble: r.preamble
-    })
+    const child = await registry.startWith(
+      {
+        ...(childId ? { id: childId } : {}),
+        ...(anglePath ? { planPath: anglePath } : {}),
+        projectId: parent.projectId,
+        provider: r.provider,
+        model: r.model,
+        reasoning: r.reasoning,
+        agentType: r.agentType,
+        ...(r.context1m ? { context1m: true } : {}),
+        permission: parentNow.permission,
+        cwd,
+        // The task IS the identity — boards, tabs and the sidebar all
+        // lead with it. Provider/type stay visible as metadata.
+        title,
+        parentId: parent.id
+      },
+      anglePath ? `${r.task}\n\n${findingsContract(anglePath)}` : r.task,
+      { preamble: r.preamble }
+    )
     const queued = registry.get(child.id)?.status === 'queued' ? statusOf({ id: child.id, status: 'queued' }) : null
     started.push({
       agentId: child.id,
