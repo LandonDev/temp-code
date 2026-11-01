@@ -358,6 +358,8 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
 | Press | scale 0.985, `--dur-fast` | release | colour only |
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
+| Fold that opens on its own (`.collapsible-auto`: the running task's steps) | height + opacity on `SPRING_LAYOUT_CSS` | height + opacity, `--dur-slow` `--ease-out` | opacity, `--dur-fast` |
+| A step landing in it (`.step-land`) | fade + rise 4px, `--dur-base` `--ease-out`; never at mount | none | none |
 | Disclosure chevron | rotates with its fold, `--dur-base` `--ease-out` | same | none |
 | Icon swap (`SwapIcon`) | opacity + scale 0.25→1 on `SPRING_LAYOUT` | fade + scale →0.25, `--dur-fast` | opacity, `--dur-fast` |
 | Count | ticks from the shown value, `--dur-slow` `--ease-out` | — | none |

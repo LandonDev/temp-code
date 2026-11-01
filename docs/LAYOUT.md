@@ -671,7 +671,11 @@ absent. It is the one control for the host's checkpoint.
 Plan, research, project plan, implementation and master share
 `SplitShell` (surfaces/threads/SplitShell.tsx): the board on the left at a
 dragged split (30 to 70 %, double-click resets to 50), the chat on the
-right, never under 360px beside the board (the board yields first). The
+right, never under 360px beside the board (the board yields first). A
+board may ask for a fitted width (`fit`, in px): it gets `min(<fit>px,
+50%)` while the chat shows, until the person drags the sash, and a
+double-click then goes back to the fit instead of 50; only
+implementation asks today. The
 transcript's prose breaks a token longer than its column (a bare URL, a
 path) instead of widening it; a code block scrolls inside its own box. The board has one 36px header: a short title, one muted state line in
 `tabular-nums` (facts set apart by margin, never a middle dot), the view's
@@ -713,33 +717,68 @@ never a section. A task list draws its checkboxes with no bullet.
 ### Implementation — the tasks and the changes
 
 ```
-┌ plan heading (or the request) ───── [plan] [planned in] [chat] ┐
-│ Pass 1  Move the notes            1/1 +40 −12  ›                │
-│ Dec 31  Opus 5.5  High  200k  $1.20                             │
-│                                                                 │
-│ Now make the gate run beside the build                          │
-│ ┌ ◔ Tasks                                 2/3 ┐                 │
-│ │ ✓ Read the brief, the board's view a…   12s │                 │
-│ │ ◉ Make every task one line that fits    41s │                 │
-│ │   the column, with the whole text           │                 │
-│ │ ○ Run the publish gate beside the ele…      │                 │
-│ └─────────────────────────────────────────────┘                 │
-│ ◉ Needs you  Bash: bun run gate                                 │
-│                                                                 │
-│ Changes                                                         │
-│ Gate in parallel                                                │
-│ gate.ts                                       +18 −4  ›         │
-│                                                                 │
-│ closing report (15px)                                           │
-│ [Start pass 3]                                                  │
-└─────────────────────────────────────────────────────────────────┘
+┌ plan heading ── [plan] [planned in] [chat] ┐┃┌ chat ─────────────────────
+│ Pass 1  Move the notes   1/1 +40 −12  ›     │┃│ …
+│ Dec 31  Opus 5.5  High  200k  $1.20         │┃│
+│                                             │┃│
+│ Now make the gate run beside the build      │┃│
+│ ┌ ◔ Tasks                         2/4 ⌃ ┐   │┃│
+│ │ ✓ Read the brief and the board   12s │   │┃│
+│ │ ✓ Measure the labels             41s │   │┃│
+│ │ ◉ Fit the board column to the  1m 3s │   │┃│
+│ │   widest task                        │   │┃│
+│ │     ✎ Edited SplitShell.tsx  +18 −4  │   │┃│
+│ │     ▸ Ran bun run typecheck          │   │┃│
+│ │     ◎ Reading task-list.tsx          │   │┃│
+│ │ ○ Docs                               │   │┃│
+│ └──────────────────────────────────────┘   │┃│
+│ ◉ Needs you  Bash: bun run gate             │┃│
+│                                             │┃│
+│ Changes                                     │┃│
+│ Measure the labels                          │┃│
+│ taskListWidth.ts               +62 −0  ›    │┃│
+│                                             │┃│
+│ closing report (15px)                       │┃│
+│ [Start pass 3]                              │┃│
+└─────────────────────────────────────────────┘┃└──────────────────────────
+  the widest task, 320px to half the pane        the chat takes the rest
 ```
 
+**The column fits the list.** While the chat shows, the board is as wide
+as its widest task needs on one line (the card's border and inset, the
+mark, the label and the widest time a row shows under an hour, "59m 59s",
+so a ticking time never widens it; the header's own need is a floor),
+never under 320px, never past the content's 672px and never over half the
+pane; the chat takes the rest. `TaskList` measures its labels on one
+offscreen canvas (lib/taskListWidth.ts) and reports before paint and again
+once the fonts load; the width follows the labels only, so a task
+starting, finishing or ticking never moves it, and a rewrite that changes
+the widest label changes it once, without motion. Changes, past passes
+and the report cut or wrap inside it. A drag on the sash sets the
+person's own split (30 to 70 %) for the view's mount; a double-click goes
+back to the fit. Folded, the board is the centred 672px document as
+before.
+
 The board is the pass's `TaskList`: every task one 28px line cut at the
-column's edge (more of it shows as the board widens), its whole text in a
+column's edge, its whole text in a
 tooltip on hover while it is cut, and the running task alone whole, in
 full foreground, so when the next task starts the last one collapses to
-its line and the new one opens. Each started task ends its row in the time
+its line and the new one opens. **The running task shows its work:** its
+last three steps (`liveSteps` in implementationBoard.ts: the calls and
+thoughts the transcript folds into a working line, never the todo calls
+and never a waiting approval or question, which stay the Needs you line)
+sit under its label, indented to it, as the transcript's own rows
+(`TaskSteps` through `ActivityRow`), on the card's surface with no box of
+their own; a file, a diff or an agent opens from them as in the chat.
+Older steps leave the top as new ones land; the chat keeps the full
+history. They open on their own when the task starts (on the layout
+spring, height and opacity) and fold when it is done or the pass settles
+(`--dur-slow`, `--ease-out`), the next task's opening as they fold; a
+pause or a waiting approval keeps them. While they show, the running
+label is their trigger, its chevron on hover, on focus and while closed;
+a person's close or reopen holds for that task (the transcript's open
+store). A step that lands fades in and rises 4px; nothing moves at mount;
+under reduced motion the open and close are a `--dur-fast` fade. Each started task ends its row in the time
 its blocks worked (12px, muted, the running one ticking on the shared
 clock, a done one in the done tone, nothing under 1.5 s); folded, the
 header names the running task on one cut line. Then one line per approval or question
