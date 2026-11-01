@@ -27,6 +27,49 @@ public struct UserTurn: Sendable, Hashable {
     public var costUsd: Double?
     /// The project rules this first message opened with (the desktop's PreambleRow).
     public var preamble: PreambleStamp? = nil
+    /// A person's steer into a running turn: the id its `steer` rows name.
+    public var steerId: String? = nil
+    /// Where that steer stands, from its last `steer` row.
+    public var steer: SteerStamp? = nil
+}
+
+/// Where a steer stands under its bubble: the desktop's steerWords.ts.
+public struct SteerStamp: Sendable, Hashable {
+    public var state: SteerEvent.State
+    public var how: SteerEvent.How?
+    public var reason: String?
+    /// When (ms): the row's ts.
+    public var ts: Int
+
+    public init(state: SteerEvent.State, how: SteerEvent.How? = nil, reason: String? = nil, ts: Int) {
+        self.state = state
+        self.how = how
+        self.reason = reason
+        self.ts = ts
+    }
+
+    /// The one word under the bubble; nil for a state this build does not know.
+    public var word: String? {
+        switch state {
+        case .sent: "Sent"
+        case .received: "Received"
+        case .queued: "Queued for the next turn"
+        case .failed: "Not delivered"
+        case .unknown: nil
+        }
+    }
+
+    /// What the desktop's tooltip says: when, and how it went in.
+    public func detail(timeZone: TimeZone = .current) -> String? {
+        guard let word else { return nil }
+        if state == .failed, let reason { return "Not delivered: \(reason)" }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let at = calendar.dateComponents([.hour, .minute], from: Date(timeIntervalSince1970: Double(ts) / 1000))
+        let clock = String(format: "%02d:%02d", at.hour ?? 0, at.minute ?? 0)
+        let lead = state == .queued ? "Queued" : word
+        return "\(lead) at \(clock)\(state == .received && how == .nextTurn ? ", as its own turn" : "")"
+    }
 }
 
 public struct TextBlock: Sendable, Hashable {

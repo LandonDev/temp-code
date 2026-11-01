@@ -299,6 +299,7 @@ public struct ThreadFold: Sendable, Hashable {
         case .toolResult(let event): index = toolIndex[event.callId]
         case .questionResolved(let event): index = questionIndex[event.requestId]
         case .approvalResolved(let event): index = approvalIndex[event.requestId]
+        case .steer(let event): index = steerIndex(event.steerId)
         default: index = nil
         }
         if let index, items.indices.contains(index) { return items[index].id }
@@ -309,7 +310,13 @@ public struct ThreadFold: Sendable, Hashable {
         switch row.event {
         case .userText(let event):
             board.beginTurn(ts: row.ts, lastTs: items.last?.ts, newPass: event.newPass)
-            append(.user(UserTurn(seq: row.seq, ts: row.ts, text: event.text, attachments: event.attachments ?? [], model: event.model, reasoning: event.reasoning, completedTs: nil, costUsd: nil, preamble: event.preamble)))
+            append(.user(UserTurn(seq: row.seq, ts: row.ts, text: event.text, attachments: event.attachments ?? [], model: event.model, reasoning: event.reasoning, completedTs: nil, costUsd: nil, preamble: event.preamble, steerId: event.steerId)))
+        case .steer(let event):
+            // The last row per steer wins; one whose user row is not loaded changes nothing.
+            if let index = steerIndex(event.steerId), case .user(var turn) = items[index].item {
+                turn.steer = SteerStamp(state: event.state, how: event.how, reason: event.reason, ts: row.ts)
+                items[index].item = .user(turn)
+            }
         case .assistantText(let event):
             mergeText(row: row, kind: "a", text: event.text, delta: event.delta, msgId: event.msgId, blockIndex: event.blockIndex, parentCallId: event.parentCallId) { .assistant($0) }
         case .thinking(let event):
@@ -564,6 +571,14 @@ public struct ThreadFold: Sendable, Hashable {
             return liveEdits[path]
         }
         return nil
+    }
+
+    /// The user turn a steer row names, newest first (steers are few and recent).
+    private func steerIndex(_ steerId: String) -> Int? {
+        items.lastIndex { entry in
+            if case .user(let turn) = entry.item { return turn.steerId == steerId }
+            return false
+        }
     }
 
     private mutating func rebuildIndexes() {

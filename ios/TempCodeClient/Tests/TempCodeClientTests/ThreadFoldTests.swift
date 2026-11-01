@@ -351,4 +351,39 @@ import TempCodeContract
         #expect(handoff.kind == .planHandoff && handoff.agentId == "child-1" && handoff.text == "Build it")
         #expect(plain.failure == nil && plain.notice == nil && plain.stopped)
     }
+
+    @Test func `a steer's rows land on its turn, the last one winning, an unknown id changing nothing`() {
+        let steer = { (state: SteerEvent.State, how: SteerEvent.How?) in AgentEvent.steer(SteerEvent(steerId: "s1", state: state, how: how)) }
+        let fold = ThreadFold.fold(rows([
+            user("go"),
+            answer("working"),
+            .userText(UserTextEvent(text: "use the other table", steerId: "s1")),
+            steer(.sent, nil),
+            .steer(SteerEvent(steerId: "stranger", state: .failed)),
+            steer(.received, .nextTurn)
+        ]))
+        guard case .user(let first) = fold.items[0].item, case .user(let steered) = fold.items[2].item else {
+            Issue.record("shape \(fold.items)")
+            return
+        }
+        #expect(first.steerId == nil && first.steer == nil)
+        #expect(steered.steerId == "s1")
+        #expect(steered.steer == SteerStamp(state: .received, how: .nextTurn, ts: 1_500))
+        #expect(fold.items.count == 3)
+        #expect(fold.entryID(for: rows([steer(.sent, nil)])[0]) == fold.items[2].id)
+    }
+
+    @Test func `a steer's word and its detail say what the desktop says`() {
+        let utc = TimeZone(identifier: "UTC")!
+        let at = 1_793_574_120_000 // 23:02 UTC
+        #expect(SteerStamp(state: .sent, ts: at).word == "Sent")
+        #expect(SteerStamp(state: .sent, ts: at).detail(timeZone: utc) == "Sent at 23:02")
+        #expect(SteerStamp(state: .received, how: .inTurn, ts: at).detail(timeZone: utc) == "Received at 23:02")
+        #expect(SteerStamp(state: .received, how: .nextTurn, ts: at).detail(timeZone: utc) == "Received at 23:02, as its own turn")
+        #expect(SteerStamp(state: .queued, ts: at).word == "Queued for the next turn")
+        #expect(SteerStamp(state: .queued, ts: at).detail(timeZone: utc) == "Queued at 23:02")
+        #expect(SteerStamp(state: .failed, reason: "the harness did not start", ts: at).word == "Not delivered")
+        #expect(SteerStamp(state: .failed, reason: "the harness did not start", ts: at).detail(timeZone: utc) == "Not delivered: the harness did not start")
+        #expect(SteerStamp(state: .unknown("read"), ts: at).word == nil)
+    }
 }

@@ -117,6 +117,7 @@ struct UserTurnRow: View {
     let turn: UserTurn
     let client: EnvironmentClient
     @State private var expanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let foldLines = 6
 
@@ -158,6 +159,18 @@ struct UserTurnRow: View {
                 if !turn.text.isEmpty {
                     Button("Copy Message", systemImage: "doc.on.doc") { UIPasteboard.general.string = turn.text }
                 }
+            }
+            if let stamp = turn.steer, let word = stamp.word {
+                // Where a steer stands, one quiet word under its field at the
+                // trailing edge; the time is the desktop's tooltip, here the
+                // accessibility value.
+                Text(word)
+                    .font(.caption)
+                    .foregroundStyle(stamp.state == .failed ? AnyShapeStyle(Tint.destructive) : AnyShapeStyle(.secondary))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .contentTransition(.opacity)
+                    .animation(reduceMotion ? nil : Motion.crossFade, value: word)
+                    .accessibilityValue(stamp.detail() ?? "")
             }
         }
         .padding(.top, 6)
