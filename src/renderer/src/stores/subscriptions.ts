@@ -38,7 +38,7 @@ import { currentDockCwd, currentSidebarCwd, project, projectStore } from "./proj
 import { installStallRecorder } from "../lib/stallRecorder";
 import { currentDock, terminalsStore } from "./terminals";
 import { activeSessionOf, workspace, workspaceTabsStore } from "./workspace";
-import { openSessionIds, workspaceActions } from "./workspaceActions";
+import { dropLeftDrafts, openSessionIds, workspaceActions } from "./workspaceActions";
 
 /** How often the active thread's streaming updates re-mark it seen. */
 const MARK_SEEN_MS = 1000;
@@ -525,6 +525,26 @@ export function installProjectDraftWriter(): Teardown {
   return teardownAll([sessionStore.subscribe(afterWrites(sync))]);
 }
 
+/** An unsent remembered draft: the only pane that leaves with its tab. */
+export function isUnsentDraft(sessionId: string): boolean {
+  if (!projectDrafts.keyOfDraft(sessionId) || !sessionStore.isDraft(sessionId)) return false;
+  const session = sessionStore.get(sessionId);
+  return !!session && session.blocks.length === 0 && !session.handoffCard;
+}
+
+/** A tab holding only a project's draft closes once another tab is active. */
+export function installDraftTabSweep(): Teardown {
+  let shown = workspaceTabsStore.getState().activeTabId;
+  const sync = () => {
+    const { activeTabId } = workspaceTabsStore.getState();
+    if (activeTabId === shown) return;
+    const leaving = shown;
+    shown = activeTabId;
+    workspaceTabsStore.setState((state) => dropLeftDrafts(state, leaving, isUnsentDraft));
+  };
+  return workspaceTabsStore.subscribe(afterWrites(sync));
+}
+
 /** Everything above, once, after the boot fills the stores. */
 export function installSubscriptions(): Teardown {
   return teardownAll([
@@ -538,5 +558,6 @@ export function installSubscriptions(): Teardown {
     installLayoutSync(),
     installBootTasks(),
     installProjectDraftWriter(),
+    installDraftTabSweep(),
   ]);
 }

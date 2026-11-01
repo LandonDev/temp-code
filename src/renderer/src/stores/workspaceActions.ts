@@ -57,6 +57,24 @@ export function closeTab(state: WorkspaceTabsState, id: string): WorkspaceTabsSt
   );
 }
 
+/**
+ * A project's draft lives only on screen (lib/projectDrafts.ts): the tab
+ * that was just left closes when every pane in it is an unsent remembered
+ * draft. Its composer saved the text on the way out; a draft beside a
+ * thread in a split stays where it is.
+ */
+export function dropLeftDrafts(
+  state: WorkspaceTabsState,
+  leavingTabId: string,
+  isUnsentDraft: (sessionId: string) => boolean,
+): WorkspaceTabsState {
+  if (leavingTabId === state.activeTabId) return state;
+  const tab = state.tabs.find((entry) => entry.id === leavingTabId);
+  if (!tab || tab.editorPanes.length > 0 || (tab.terminalPanes?.length ?? 0) > 0) return state;
+  const ids = leafIds(tab.layout);
+  return ids.length > 0 && ids.every(isUnsentDraft) ? closeTab(state, leavingTabId) : state;
+}
+
 /** Bring the tab holding `sessionId` forward with that pane focused. Null when it has no pane. */
 export function focusSession(
   state: WorkspaceTabsState,

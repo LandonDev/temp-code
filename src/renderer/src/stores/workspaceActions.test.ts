@@ -19,6 +19,7 @@ import {
   activateTab,
   appendTab,
   closeTab,
+  dropLeftDrafts,
   dropThreadInto,
   focusPane,
   focusSession,
@@ -328,5 +329,31 @@ describe("dropThreadInto: a thread dragged onto a pane's edge", () => {
     const next = dropThreadInto(s, "fresh", "s-a", "top");
     expect(next.activeTabId).toBe("a");
     expect(next.tabs[0].focusedId).toBe("fresh");
+  });
+});
+
+describe("dropLeftDrafts: a draft lives only on screen", () => {
+  const drafts = new Set(["d1", "d2"]);
+  const isDraft = (id: string) => drafts.has(id);
+
+  it("closes the tab just left when it holds only the draft", () => {
+    const next = dropLeftDrafts(state([tab("a", { layout: leaf("d1"), focusedId: "d1" }), tab("b")], "b"), "a", isDraft);
+    expect(next.tabs.map((t) => t.id)).toEqual(["b"]);
+  });
+
+  it("keeps a draft beside a thread in a split, and a tab with a file pane", () => {
+    const split = tab("a", { layout: row("s-a", "d1"), focusedId: "d1" });
+    const kept = state([split, tab("b")], "b");
+    expect(dropLeftDrafts(kept, "a", isDraft)).toBe(kept);
+    const withFile = tab("f", { layout: leaf("d2"), focusedId: "d2", editorPanes: [{ id: "e", files: [], activeFileId: null }] as never });
+    const files = state([withFile, tab("b")], "b");
+    expect(dropLeftDrafts(files, "f", isDraft)).toBe(files);
+  });
+
+  it("keeps a handoff draft, which is no remembered draft, and the tab still on screen", () => {
+    const handoff = state([tab("h", { layout: leaf("handoff"), focusedId: "handoff" }), tab("b")], "b");
+    expect(dropLeftDrafts(handoff, "h", isDraft)).toBe(handoff);
+    const shown = state([tab("a", { layout: leaf("d1"), focusedId: "d1" })], "a");
+    expect(dropLeftDrafts(shown, "a", isDraft)).toBe(shown);
   });
 });

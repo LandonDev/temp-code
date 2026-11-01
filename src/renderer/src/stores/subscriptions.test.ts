@@ -35,6 +35,8 @@ import {
   installTerminalIsolation,
   installVisitSettling,
   installProjectDraftWriter,
+  installDraftTabSweep,
+  installIdleSweep as installSweep,
   skipForgetSessionIds,
 } from "./subscriptions";
 import { projectDrafts } from "../lib/projectDrafts";
@@ -877,3 +879,49 @@ function draftPicksOf(s: Session) {
     threadRules: null,
   };
 }
+
+describe("installDraftTabSweep", () => {
+  it("switching projects twice and back leaves no extra tab and no extra session", async () => {
+    projectDrafts.reload();
+    const thread = session("s-b", { projectId: "p2" });
+    const draft = session("d1", { projectId: "p1" });
+    sessionStore.mutate([draft, thread]);
+    sessionStore.adopt(meta({ id: "s-b", projectId: "p2" }));
+    projectDrafts.put("p1", { ...draftPicksOf(draft), segments: [{ text: "half typed" }], attachments: [] });
+    setTabs([tab("a", { layout: leaf("d1"), focusedId: "d1" }), tab("b", { layout: leaf("s-b"), focusedId: "s-b" })], "a");
+    teardown = (() => {
+      const offs = [installDraftTabSweep(), installSweep()];
+      return () => offs.forEach((off) => off());
+    })();
+
+    workspace.setActiveTabId("b");
+    await microtasks();
+    await flush();
+    expect(workspaceTabsStore.getState().tabs.map((t) => t.id)).toEqual(["b"]);
+    expect(sessionStore.getSnapshot().map((s) => s.id)).toEqual(["s-b"]);
+    expect(projectDrafts.get("p1")!.segments).toEqual([{ text: "half typed" }]);
+
+    // Back to p1: its draft comes back in one tab, the same id; away again, gone again.
+    sessionStore.mutate((prev) => [...prev, draft]);
+    workspaceTabsStore.setState((s) => ({ ...s, tabs: [...s.tabs, tab("a2", { layout: leaf("d1"), focusedId: "d1" })] }));
+    workspace.setActiveTabId("a2");
+    await microtasks();
+    workspace.setActiveTabId("b");
+    await microtasks();
+    await flush();
+    expect(workspaceTabsStore.getState().tabs.map((t) => t.id)).toEqual(["b"]);
+    expect(sessionStore.getSnapshot().map((s) => s.id)).toEqual(["s-b"]);
+  });
+
+  it("leaves a sent draft's tab alone", async () => {
+    projectDrafts.reload();
+    const draft = session("d1", { projectId: "p1", blocks: [{ id: "u", role: "user", text: "hi" }] as Session["blocks"] });
+    sessionStore.mutate([draft]);
+    projectDrafts.put("p1", { ...draftPicksOf(draft), segments: [], attachments: [] });
+    setTabs([tab("a", { layout: leaf("d1"), focusedId: "d1" }), tab("b")], "a");
+    teardown = installDraftTabSweep();
+    workspace.setActiveTabId("b");
+    await microtasks();
+    expect(workspaceTabsStore.getState().tabs.map((t) => t.id)).toEqual(["a", "b"]);
+  });
+});
