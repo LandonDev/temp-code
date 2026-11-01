@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it } from "vitest";
+import { projectDrafts } from "./projectDrafts";
 import { INTERRUPT_MESSAGE } from "./inFlight";
 import {
   leaf,
+  splitPane,
   newFileTab,
   newReleaseNotesWorkspaceTab,
   newTab,
@@ -378,11 +381,91 @@ describe("a saved thread versus an unsent draft", () => {
     expect(isPersistedStub(byId.get("d")!)).toBe(false);
   });
 
-  it("a stub saved before the stamp is a thread when it has a title, a draft when it has none", () => {
+  it("a stub saved before the stamp is a thread when it has a title of its own, a draft when it has none or a placeholder", () => {
     const base = { cwd: "/repo", harness: "claude" as const, model: "", modelSettings: {}, runtimeMode: "supervised" as const };
     expect(isPersistedStub({ ...base, id: "a", title: "Old build" })).toBe(true);
     expect(isPersistedStub({ ...base, id: "b", title: "  " })).toBe(false);
+    // A placeholder title means no message ever went in: an unsent draft.
+    expect(isPersistedStub({ ...base, id: "p", title: "claude" })).toBe(false);
+    expect(isPersistedStub({ ...base, id: "n", title: "New chat" })).toBe(false);
     // The stamp wins over the title either way.
     expect(isPersistedStub({ ...base, id: "c", title: "Named draft", persisted: false })).toBe(false);
+  });
+});
+
+describe("restoring unsent drafts", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    projectDrafts.reload();
+  });
+
+  const draft = (id: string, projectId: string, over: Partial<Session> = {}): Session => ({
+    ...newSession("local", "claude", `/repo/${projectId}`, undefined, undefined, undefined, { projectId }),
+    id,
+    ...over,
+  });
+  const drafts = { keyOf: (s: Session) => s.projectId ?? "loose:" };
+
+  it("keeps none of three draft tabs in two projects and a draft in a split, but the active one, and files their picks", () => {
+    const thread = chat("t1", "/repo/p1");
+    const d1 = draft("d1", "p1");
+    const d2 = draft("d2", "p1");
+    const d3 = draft("d3", "p2", { harness: "codex", model: "gpt-6.1-sol" });
+    const dSplit = draft("d4", "p1");
+    const split = {
+      ...newTab("t1"),
+      id: "tab-split",
+      layout: splitPane(leaf("t1"), "t1", "right", "d4"),
+      focusedId: "d4",
+    };
+    const tabs = [
+      { ...newTab("d1"), id: "tab-d1" },
+      { ...newTab("d2"), id: "tab-d2" },
+      { ...newTab("d3"), id: "tab-d3" },
+      split,
+    ];
+    const snapshot = collectWorkspaceSnapshot(tabs, [thread, d1, d2, d3, dSplit], "tab-d2", "/repo/p1");
+    const workspace = hydrateWorkspaceSnapshot(snapshot, new Map([["t1", thread]]), undefined, drafts)!;
+
+    expect(workspace.tabs.map((t) => t.id)).toEqual(["tab-d2", "tab-split"]);
+    expect(workspace.tabs[1]!.layout).toEqual(leaf("t1"));
+    expect(workspace.tabs[1]!.focusedId).toBe("t1");
+    expect(workspace.sessions.map((s) => s.id).sort()).toEqual(["d2", "t1"]);
+    // The first draft of each project files its picks; the active one is p1's draft.
+    expect(projectDrafts.get("p2")).toMatchObject({ id: "d3", harness: "codex" });
+    expect(projectDrafts.get("p1")?.id).toBe("d2");
+    expect(workspace.activeTabId).toBe("tab-d2");
+  });
+
+  it("opens the active tab on the project's remembered draft, with its text", () => {
+    projectDrafts.put("p1", {
+      ...draft("remembered", "p1"),
+      threadType: "chat",
+      threadRules: null,
+      segments: [{ text: "half a thought" }],
+      attachments: [],
+    });
+    const stale = draft("stale", "p1");
+    const snapshot = collectWorkspaceSnapshot([{ ...newTab("stale"), id: "tab" }], [stale], "tab", "/repo/p1");
+    const workspace = hydrateWorkspaceSnapshot(snapshot, new Map(), undefined, drafts)!;
+    expect(workspace.tabs[0]!.focusedId).toBe("remembered");
+    expect(workspace.sessions.map((s) => s.id)).toEqual(["remembered"]);
+    expect(projectDrafts.get("p1")!.segments).toEqual([{ text: "half a thought" }]);
+  });
+
+  it("leaves a persisted stub (a thread the host knew) and a titled one alone", () => {
+    const known = draft("known", "p1", { title: "New chat" });
+    const titled = draft("titled", "p2", { title: "Fix the login flow" });
+    const snapshot = collectWorkspaceSnapshot(
+      [{ ...newTab("known"), id: "a" }, { ...newTab("titled"), id: "b" }],
+      [known, titled],
+      "b",
+      "/repo/p1",
+    );
+    snapshot.sessions[0] = { ...snapshot.sessions[0]!, persisted: true };
+    const parsed = parseWorkspaceSnapshot(JSON.parse(JSON.stringify(snapshot)))!;
+    expect(parsed.sessions[0]!.persisted).toBe(true);
+    const workspace = hydrateWorkspaceSnapshot(parsed, new Map(), undefined, drafts)!;
+    expect(workspace.tabs.map((t) => t.id)).toEqual(["a", "b"]);
   });
 });

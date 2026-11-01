@@ -33,6 +33,9 @@ import {
 import { loadWindowTransfer } from "./windowTransferBootstrap";
 import type { WindowTransferPayload } from "./windowTransfer";
 import { lastProjectPath, normalizeProjectPath, sameProjectPath } from "./recents";
+import { draftKeyOf, projectDrafts } from "./projectDrafts";
+import { sessionStore } from "./tcserver/store";
+import { workspaceStore } from "./tcserver/workspaces";
 
 export type { ResumedWorkspace };
 export { hasInFlightSessions };
@@ -242,7 +245,10 @@ async function loadResumedWorkspaceOnce(): Promise<ResumedWorkspace | null> {
     if (shown) loaded.set(stub.id, shown);
   }
 
-  let workspace = hydrateWorkspaceSnapshot(snapshot, loaded);
+  let workspace = hydrateWorkspaceSnapshot(snapshot, loaded, undefined, {
+    keyOf: (session) => draftKeyOf(session, workspaceStore.getSnapshot()),
+    known: (id) => loaded.has(id) || !!sessionStore.metaOf(id),
+  });
   if (workspace) {
     workspace = {
       ...workspace,
@@ -286,6 +292,8 @@ export async function persistQuitState(
   projectCwd: string,
   projectTerminals: ProjectTerminalDock[] = [],
 ): Promise<void> {
+  // Electron's quit may skip pagehide: the drafts' last keystrokes go now.
+  projectDrafts.flush();
   await saveWorkspaceSnapshot(
     collectWorkspaceSnapshot(
       tabs,

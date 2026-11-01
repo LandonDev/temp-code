@@ -43,8 +43,10 @@ export function isBlankTab(tab: WorkspaceTab, blankIds: ReadonlySet<string>): bo
  * The restore rule: at most one blank tab per project. The active tab
  * wins when it is blank; otherwise the newest (last in tab order) stays.
  * Every other blank tab leaves the restored set — the thread itself stays
- * in the database and the sidebar. Returns the same array when nothing
- * drops.
+ * in the database and the sidebar. Unsent drafts never reach it (the
+ * restore drops them first, lib/workspaceSnapshot.ts): what it collapses
+ * are threads the host knows with no message yet, and stubs it did not
+ * answer for. Returns the same array when nothing drops.
  */
 export function collapseBlankTabs(
   tabs: readonly WorkspaceTab[],

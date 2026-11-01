@@ -8,6 +8,7 @@ import { bootstrapWorkspace, newBootSeed, planBoot } from "./bootstrap";
 import { projectStore } from "./project";
 import { workspaceTabsStore } from "./workspace";
 import { shellStore } from "./shell";
+import { projectDrafts } from "../lib/projectDrafts";
 
 const seed = newBootSeed("/seed");
 
@@ -155,5 +156,18 @@ describe("bootstrapWorkspace", () => {
     expect(boot.tabs).toHaveLength(1);
     expect(boot.tabs[0]!.focusedId).toBe(sessions[0]!.id);
     expect(boot.activeTabId).toBe(boot.tabs[0]!.id);
+  });
+});
+
+describe("newBootSeed and the project's remembered draft", () => {
+  it("opens the remembered draft of the window's folder, else seeds and remembers one", () => {
+    projectDrafts.reload();
+    const first = newBootSeed("/seed");
+    const key = projectDrafts.keyOfDraft(first.session.id)!;
+    expect(key).toBeTruthy();
+    projectDrafts.put(key, { segments: [{ text: "where I was" }] });
+    const again = newBootSeed("/seed");
+    expect(again.session.id).toBe(first.session.id);
+    expect(projectDrafts.get(key)!.segments).toEqual([{ text: "where I was" }]);
   });
 });

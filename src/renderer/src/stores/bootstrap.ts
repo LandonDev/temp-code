@@ -16,7 +16,8 @@ import { sessionStore } from "../lib/tcserver/store";
 import { workspaceStore } from "../lib/tcserver/workspaces";
 import type { InstalledUpdate } from "../lib/updateNotice";
 import type { WindowTransferPayload } from "../lib/windowTransfer";
-import { loadSelectedProject } from "../lib/projectContext";
+import { contextForCwd, loadSelectedProject } from "../lib/projectContext";
+import { draftKeyOf, draftPicks, projectDrafts, sessionFromDraft } from "../lib/projectDrafts";
 import { editorsStore, initialEditorsState } from "./editors";
 import { focusStore, initialFocusState } from "./focus";
 import { projectStore } from "./project";
@@ -49,8 +50,18 @@ export type BootWorkspace = {
 export type BootSeed = { session: Session; tab: WorkspaceTab };
 
 export function newBootSeed(cwd: string = lastProjectPath() ?? "~"): BootSeed {
-  // The window's own seed chat is on this machine.
-  const session = newDefaultSession(registry.primary().environmentId, cwd);
+  // The window opens on its project's remembered draft (lib/projectDrafts.ts),
+  // else a new one on this machine, which becomes that draft.
+  const catalog = workspaceStore.getSnapshot();
+  const ctx = contextForCwd({ ...catalog, cwd, preferProjectId: loadSelectedProject(cwd, catalog) });
+  const environmentId = registry.primary().environmentId;
+  const key = draftKeyOf({ ...ctx, environmentId }, catalog);
+  const record = projectDrafts.get(key);
+  const session =
+    record && !sessionStore.metaOf(record.id)
+      ? sessionFromDraft(record, null)
+      : newDefaultSession(environmentId, cwd, undefined, ctx.projectId ? ctx : { workspaceId: ctx.workspaceId });
+  if (session.id !== record?.id) projectDrafts.put(key, { ...draftPicks(session), segments: [], attachments: [] });
   return { session, tab: newTab(session.id) };
 }
 

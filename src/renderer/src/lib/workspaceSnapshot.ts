@@ -1,9 +1,12 @@
 import { LOCAL_ENVIRONMENT_ID } from "./connection";
-import { collapseBlankTabs, isBlankSession } from "./blankTabs";
+import { collapseBlankTabs, isBlankSession, isPlaceholderTitle } from "./blankTabs";
+import { draftPicks, projectDrafts, sessionFromDraft } from "./projectDrafts";
 import { markTurnInterrupted, type ResumedWorkspace } from "./inFlight";
 import {
+  closeLeaf,
   isTerminalTab,
   leafIds,
+  replaceLeafId,
   newTab,
   type EditorPane,
   type FilePaneTab,
@@ -122,10 +125,19 @@ export function workspaceSnapshotKey(snapshot: WorkspaceSnapshot): string {
  * Reopen the saved tabs/panes. Transcripts come from `loaded` when the
  * session was persisted; blank tabs fall back to the stub.
  */
+/** Where a restored unsent draft's picks go: its project's remembered
+ *  draft (lib/projectDrafts.ts), under the key `keyOf` gives it. */
+export type DraftRestore = {
+  keyOf: (session: Session) => string;
+  /** Whether session `id` is a thread the host knows (a record naming it is spent). */
+  known?: (id: string) => boolean;
+};
+
 export function hydrateWorkspaceSnapshot(
   snapshot: WorkspaceSnapshot,
   loaded: Map<string, Session>,
   interruptedIds: ReadonlySet<string> = new Set(),
+  drafts?: DraftRestore,
 ): ResumedWorkspace | null {
   const parsed = parseWorkspaceSnapshot(snapshot);
   if (!parsed) return null;
@@ -176,6 +188,11 @@ export function hydrateWorkspaceSnapshot(
     tabs.push(tab);
   }
 
+  // An unsent draft is no tab of its own: its project's remembered draft
+  // opens on demand. Its picks seed that record when there is none yet (its
+  // text was never kept); the active tab's draft stays, as the project's.
+  if (drafts) dropUnsentDrafts(tabs, sessions, stubs, serverKnown, parsed.activeTabId, drafts);
+
   // One blank tab per project: a workspace that grew a fresh tab per visit
   // restores dozens of empty panes otherwise. The threads stay on the server.
   const blankIds = new Set(
@@ -215,12 +232,76 @@ export function hydrateWorkspaceSnapshot(
 
 /**
  * A saved stub for a thread that exists on its host: one stamped so, or a
- * layout saved before the stamp whose stub has a title (an unsent draft
- * there had none worth keeping). Restored as a provisional entry when no
- * host answers for it at launch, never as a draft (appLifecycle.ts).
+ * layout saved before the stamp whose stub has a title of its own (an
+ * unsent draft there carried none, or a placeholder: no message ever went
+ * in). Restored as a provisional entry when no host answers for it at
+ * launch, never as a draft (appLifecycle.ts).
  */
 export function isPersistedStub(stub: WorkspaceSessionStub): boolean {
-  return stub.persisted ?? stub.title.trim() !== "";
+  const title = stub.title.trim();
+  return stub.persisted ?? (title !== "" && !isPlaceholderTitle(title));
+}
+
+/** A restored session no host knows, with no rows and no title of its own. */
+function isUnsentStub(
+  id: string,
+  sessions: ReadonlyMap<string, Session>,
+  stubs: ReadonlyMap<string, WorkspaceSessionStub>,
+  serverKnown: ReadonlySet<string>,
+): boolean {
+  const session = sessions.get(id);
+  if (!session || serverKnown.has(id) || session.blocks.length > 0) return false;
+  const stub = stubs.get(id);
+  if (stub && isPersistedStub(stub)) return false;
+  return !session.title || isPlaceholderTitle(session.title);
+}
+
+function dropUnsentDrafts(
+  tabs: WorkspaceTab[],
+  sessions: Map<string, Session>,
+  stubs: ReadonlyMap<string, WorkspaceSessionStub>,
+  serverKnown: ReadonlySet<string>,
+  activeTabId: string,
+  drafts: DraftRestore,
+): void {
+  const unsent = new Set([...sessions.keys()].filter((id) => isUnsentStub(id, sessions, stubs, serverKnown)));
+  if (unsent.size === 0) return;
+  const active = tabs.find((tab) => tab.id === activeTabId);
+  const keepId = active && unsent.has(active.focusedId) ? active.focusedId : null;
+  const kept = keepId ? sessions.get(keepId)! : null;
+  let shownId: string | null = null;
+  // The draft on screen claims its project's record first when it has none.
+  const order = kept ? [kept.id, ...[...unsent].filter((id) => id !== kept.id)] : [...unsent];
+  for (const id of order) {
+    const session = sessions.get(id)!;
+    const key = drafts.keyOf(session);
+    const record = projectDrafts.get(key);
+    if (!record || drafts.known?.(record.id)) {
+      projectDrafts.put(key, { ...draftPicks(session), segments: [], attachments: [] });
+    }
+    sessions.delete(id);
+  }
+  // The window opens on the project's draft: the record's own when it has
+  // one (its text comes back), else the stub on screen, now its record.
+  if (kept && active) {
+    const record = projectDrafts.get(drafts.keyOf(kept))!;
+    const draft = record.id === kept.id ? kept : sessionFromDraft(record, null);
+    sessions.set(draft.id, draft);
+    shownId = draft.id;
+    if (draft.id !== kept.id) {
+      tabs[tabs.indexOf(active)] = { ...active, layout: replaceLeafId(active.layout, kept.id, draft.id), focusedId: draft.id };
+    }
+  }
+  for (let i = tabs.length - 1; i >= 0; i--) {
+    let tab: WorkspaceTab | null = tabs[i]!;
+    for (const id of leafIds(tab.layout)) {
+      if (!unsent.has(id) || (tab.id === activeTabId && id === shownId)) continue;
+      tab = closeLeaf(tab, id);
+      if (!tab) break;
+    }
+    if (tab) tabs[i] = tab;
+    else tabs.splice(i, 1);
+  }
 }
 
 function sessionStub(session: SessionShell, persisted: boolean): WorkspaceSessionStub | null {

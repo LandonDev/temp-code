@@ -67,6 +67,15 @@ describe("collapseBlankTabs", () => {
     expect(out.map((t) => t.id)).toEqual(["t-a1", "t-a3", "t-b2"]);
   });
 
+  it("collapses threads the host knows with placeholder titles, one per project", () => {
+    const tabs = [
+      { ...newTab("n1"), id: "a" },
+      { ...newTab("n2"), id: "b" },
+    ];
+    const kept = collapseBlankTabs(tabs, new Set(["n1", "n2"]), () => "p1", "zzz");
+    expect(kept.map((t) => t.id)).toEqual(["b"]);
+  });
+
   it("returns the same array when nothing drops", () => {
     const tabs = [tab("a1"), tab("b1"), tab("x1")];
     expect(collapseBlankTabs(tabs, blank, project, "t-a1")).toBe(tabs);
