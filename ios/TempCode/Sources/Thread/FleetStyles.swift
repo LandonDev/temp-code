@@ -240,7 +240,9 @@ struct AgentMetaLine: View {
 /// cross-fade with 2 pt of blur) over a hidden one-line sizer, so the row
 /// keeps one height whatever the text. Empty while live reads "starting
 /// up"; empty and settled takes the same room. `override` (a remote host's
-/// transport line) wins over the agent's own line.
+/// transport line) wins over the agent's own line. A line with a detail is
+/// the state's word, medium in its tone, then the detail, regular and
+/// secondary: two texts that swap together.
 struct ActivityLine: View {
     let line: Fleet.Line
     let live: Bool
@@ -268,24 +270,39 @@ struct ActivityLine: View {
         }
     }
 
+    /// The detail after the word; never under an override or "starting up".
+    private var detail: String? { overridden == nil && !starting ? line.detail : nil }
+
     var body: some View {
         let shown = text
+        let detail = detail
+        let key = detail.map { "\(shown)\n\($0)" } ?? shown
         ZStack(alignment: .leading) {
             // The sizer: one line of the step, never shown, so the height is fixed.
             Text(" ")
                 .font(TextStep.meta.font)
                 .hidden()
             if !shown.isEmpty {
-                Text(shown)
-                    .italic(starting)
-                    .font(TextStep.meta.font)
-                    .foregroundStyle(tone)
-                    .id(shown)
-                    .transition(Motion.swap(reduced: reduceMotion))
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(shown)
+                        .italic(starting)
+                        .font(TextStep.meta.font.weight(detail == nil ? .regular : .medium))
+                        .foregroundStyle(tone)
+                        .layoutPriority(1)
+                    if let detail {
+                        Text(detail)
+                            .font(TextStep.meta.font)
+                            .foregroundStyle(Color(.secondaryLabel))
+                    }
+                }
+                .id(key)
+                .transition(Motion.swap(reduced: reduceMotion))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(detail.map { StatusDetail.plain(word: shown, detail: $0) } ?? shown)
             }
         }
         .lineLimit(1)
-        .animation(Motion.crossFade, value: shown)
+        .animation(Motion.crossFade, value: key)
         .accessibilityHidden(shown.isEmpty)
     }
 }
@@ -375,7 +392,7 @@ struct AgentRow: View {
         let items = child?.fold.items ?? []
         let live = Fleet.isLive(meta.status)
         let emphasized = live || meta.status == .waiting || meta.status == .error || meta.status == .stopped
-        let line = Fleet.line(status: meta.status, items: items, compacting: child?.fold.board.compacting ?? false, activity: meta.activity)
+        let line = Fleet.line(status: meta.status, items: items, compacting: child?.fold.board.compacting ?? false, activity: meta.activity, statusDetail: meta.statusDetail)
         let stats = Fleet.stats(items: items, tasks: meta.tasks, board: child?.fold.board, context: meta.context)
         let waiting = meta.status == .waiting
         let away = hostLine != nil

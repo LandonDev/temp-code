@@ -14,9 +14,13 @@ public struct ThreadRowModel: Hashable, Sendable {
     /// What the second line opens with; a sibling may compose it
     /// ("Sonnet 5.5", then "work"). The row never parses it.
     public var model: String
-    /// `done/total current`, else the last activity (the host writes
-    /// "Queued · waiting for X" there).
+    /// `done/total current`, else what the status is about
+    /// (`StatusDetail`: "Waiting for X" for a queued row, whose dot says
+    /// queued; "3 subagents" for a watching one, after `word`).
     public var detail: String?
+    /// The state's word where the row's mark alone does not say it:
+    /// "Watching", drawn medium before the detail. Nil otherwise.
+    public var word: String?
     /// The host's verdict on a failed turn; shown in place of the detail, in destructive.
     public var failure: String?
     /// One muted word after the title. "Master" for a pinned master; nothing else sets it today.
@@ -70,6 +74,7 @@ public struct ThreadRowModel: Hashable, Sendable {
         self.unseen = unseen
         model = ModelName.short(session.model)
         detail = Self.detail(of: session)
+        word = Self.word(of: session, detail: detail)
         failure = session.failureSummary
         tag = session.isMaster == true ? "Master" : PlanFlowState.rowTag(session)
         updatedAt = session.updatedAt
@@ -87,8 +92,15 @@ public struct ThreadRowModel: Hashable, Sendable {
             return count
         }
         // The row's queued dot already says queued: the host's reason alone.
-        if let activity = session.activity, !activity.isEmpty { return StripWords.reason(fromActivity: activity) }
-        return nil
+        return StatusDetail.of(session)
+    }
+
+    /// "Watching" before a watching row's detail ("3 subagents"); a row
+    /// with tasks says where the work is instead, and no other state needs
+    /// its word spelled out beside its mark.
+    static func word(of session: SessionMeta, detail: String?) -> String? {
+        guard session.status == .watching, detail != nil, (session.tasks?.total ?? 0) == 0 else { return nil }
+        return "Watching"
     }
 
     /// What the second line shows after the model.
@@ -97,11 +109,15 @@ public struct ThreadRowModel: Hashable, Sendable {
         case failure(String)
         /// The tasks or activity; `nil` leaves the line's second half empty.
         case detail(String?)
+        /// A state's word, medium, then its detail, regular and quieter.
+        case status(word: String, detail: String?)
     }
 
     /// A failure wins over the detail: the row must say what happened.
     public var secondLine: SecondLine {
-        failure.map { .failure($0) } ?? .detail(detail)
+        if let failure { return .failure(failure) }
+        if let word { return .status(word: word, detail: detail) }
+        return .detail(detail)
     }
 
     /// Indent steps: the depth, and at least one for a subagent.

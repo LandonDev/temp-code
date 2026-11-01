@@ -113,9 +113,9 @@ private var utc: Calendar {
     }
 
     @Test("the what line follows the status") func whatLine() {
-        let question = Fleet.Line("has a question — scope?", tone: .warning)
+        let question = Fleet.Line("Has a question", tone: .warning, detail: "scope?")
         let blank = Fleet.Line("", tone: .muted)
-        #expect(MasterBoard.whatLine(status: .waiting, activity: nil, updatedAt: 0, line: question, landed: false) == MasterBoard.WhatLine(text: "has a question — scope?", tone: .warning))
+        #expect(MasterBoard.whatLine(status: .waiting, activity: nil, updatedAt: 0, line: question, landed: false) == MasterBoard.WhatLine(text: "Has a question", tone: .warning, detail: "scope?"))
         #expect(MasterBoard.whatLine(status: .waiting, activity: nil, updatedAt: 0, line: blank, landed: false) == nil)
         #expect(MasterBoard.whatLine(status: .paused, activity: "x", updatedAt: 0, line: blank, landed: false)?.text == "Paused")
         #expect(MasterBoard.whatLine(status: .queued, activity: " Queued · waiting for Live strip ", updatedAt: 0, line: blank, landed: false)?.text == "Waiting for Live strip")
@@ -123,6 +123,17 @@ private var utc: Calendar {
         #expect(MasterBoard.whatLine(status: .stopped, activity: nil, updatedAt: 0, line: blank, landed: false)?.text == "Stopped")
         #expect(MasterBoard.whatLine(status: .idle, activity: nil, updatedAt: 1_792_652_700_000, line: blank, landed: true, calendar: utc)?.text == "Landed 07:05")
         #expect(MasterBoard.whatLine(status: .idle, activity: nil, updatedAt: 0, line: blank, landed: false) == nil)
+    }
+
+    @Test("the what line takes the host's statusDetail first, an older host's activity past its lead after") func whatLineStatusDetail() {
+        let blank = Fleet.Line("", tone: .muted)
+        #expect(MasterBoard.whatLine(status: .queued, activity: "Queued  waiting for memory", statusDetail: "Waiting for memory", updatedAt: 0, line: blank, landed: false) == MasterBoard.WhatLine(text: "Waiting for memory", tone: .muted))
+        #expect(MasterBoard.whatLine(status: .queued, activity: "Queued  waiting for memory", updatedAt: 0, line: blank, landed: false)?.text == "Waiting for memory")
+        #expect(MasterBoard.whatLine(status: .queued, activity: "Queued: 3rd in line", updatedAt: 0, line: blank, landed: false)?.text == "3rd in line")
+        #expect(MasterBoard.whatLine(status: .watching, activity: "Blocked: A errored", statusDetail: "Blocked, A errored", updatedAt: 0, line: blank, landed: false) == MasterBoard.WhatLine(text: "Watching", tone: .muted, detail: "Blocked, A errored"))
+        #expect(MasterBoard.whatLine(status: .watching, activity: "Waiting on 3 subagents", updatedAt: 0, line: blank, landed: false) == MasterBoard.WhatLine(text: "Watching", tone: .muted, detail: "3 subagents"))
+        #expect(MasterBoard.whatLine(status: .running, activity: "Thinking", statusDetail: "Editing Rail.tsx", updatedAt: 0, line: blank, landed: false)?.text == "Editing Rail.tsx")
+        #expect(MasterBoard.WhatLine(text: "Watching", tone: .muted, detail: "3 subagents").line == Fleet.Line("Watching", tone: .muted, detail: "3 subagents"))
     }
 
     @Test("a far row whose host is away reads out of reach") func remoteLine() {
@@ -204,8 +215,8 @@ private var utc: Calendar {
         // The person's first: waiting, failed, working.
         #expect(agents?.lines.map(\.id) == ["a11", "a111", "a1"])
         #expect(agents?.lines.map(\.what) == [
-            MasterBoard.WhatLine(text: "waiting for approval — Bash", tone: .warning),
-            MasterBoard.WhatLine(text: "failed", tone: .danger),
+            MasterBoard.WhatLine(text: "Waiting for approval", tone: .warning, detail: "Bash"),
+            MasterBoard.WhatLine(text: "Failed", tone: .danger),
             MasterBoard.WhatLine(text: "Editing Rail.tsx", tone: .muted)
         ])
         #expect(agents?.lines.first?.agentType == .reviewer)

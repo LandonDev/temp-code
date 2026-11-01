@@ -309,28 +309,39 @@ public enum Fleet {
 
     public enum Tone: Sendable, Hashable { case warning, danger, muted }
 
+    /// A row's status line. `text` leads in its tone; with a `detail` it is
+    /// the state's word, drawn medium, and the detail follows as its own
+    /// text in regular weight and secondary colour ("Waiting for approval"
+    /// "rm -rf build"). Never one string joined with a dash or a dot.
     public struct Line: Sendable, Hashable {
         public var text: String
         public var tone: Tone
+        public var detail: String?
 
-        public init(_ text: String, tone: Tone) {
+        public init(_ text: String, tone: Tone, detail: String? = nil) {
             self.text = text
             self.tone = tone
+            self.detail = StatusDetail.text(detail)
         }
+
+        /// The line as one string, for an accessibility label: "Word: Detail".
+        public var plain: String { detail == nil ? text : StatusDetail.plain(word: text, detail: detail) }
     }
 
     /// The row's one-line status and its colour; compaction shows while live.
-    /// `activity` is the host's own line for the row (`SessionMeta.activity`,
-    /// "Queued  waiting for <sibling>"), read for a queued agent, whose row
-    /// shows the reason alone ("Waiting for <sibling>"): its dot says queued.
-    public static func line(status: SessionStatus?, items: [ThreadEntry], compacting: Bool = false, activity: String? = nil) -> Line {
-        if isLive(status), compacting { return Line("compacting the context…", tone: .muted) }
+    /// `statusDetail` (else an older host's `activity`, `StatusDetail`) is
+    /// what the host says the row's state is about: a queued agent's reason
+    /// alone ("Waiting for <sibling>": its mark says queued), a watching
+    /// agent's subject after "Watching", and a working agent's line while
+    /// its transcript is not loaded.
+    public static func line(status: SessionStatus?, items: [ThreadEntry], compacting: Bool = false, activity: String? = nil, statusDetail: String? = nil) -> Line {
+        if isLive(status), compacting { return Line("Compacting the context…", tone: .muted) }
+        let said = StatusDetail.of(status: status, statusDetail: statusDetail, activity: activity)
         switch status {
         case .queued?:
-            let own = activity?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return Line(own.isEmpty ? "Queued" : StripWords.reason(fromActivity: own), tone: .muted)
-        case .stopped?: return Line("the harness is gone", tone: .muted)
-        case .paused?: return Line("paused", tone: .muted)
+            return Line(said ?? "Queued", tone: .muted)
+        case .stopped?: return Line("The harness is gone", tone: .muted)
+        case .paused?: return Line("Paused", tone: .muted)
         default: break
         }
         if status == .waiting {
@@ -338,22 +349,25 @@ public enum Fleet {
                 switch entry.item {
                 case .question(let question) where !question.resolved:
                     let q = question.request.questions.first?.question ?? ""
-                    return Line(q.isEmpty ? "has a question" : "has a question — \(firstLine(q))", tone: .warning)
+                    return Line("Has a question", tone: .warning, detail: q.isEmpty ? nil : firstLine(q))
                 case .approval(let approval) where approval.allowed == nil:
                     let title = approval.request.title ?? approval.request.toolName
-                    return Line(title.isEmpty ? "waiting for approval" : "waiting for approval — \(title)", tone: .warning)
+                    return Line("Waiting for approval", tone: .warning, detail: title)
                 default:
                     continue
                 }
             }
-            return Line("waiting for approval", tone: .warning)
+            return Line("Waiting for approval", tone: .warning)
         }
         if status == .error {
             let last = lastErrorLine(items)
-            return Line(last.isEmpty ? "failed" : last, tone: .danger)
+            return Line(last.isEmpty ? "Failed" : last, tone: .danger)
         }
-        if status == .watching { return Line("waiting on background work", tone: .muted) }
-        if isLive(status) { return Line(activityLine(items), tone: .muted) }
+        if status == .watching { return Line("Watching", tone: .muted, detail: said) }
+        if isLive(status) {
+            let own = activityLine(items)
+            return Line(own.isEmpty ? (said ?? "") : own, tone: .muted)
+        }
         return Line(lastAssistantLine(items), tone: .muted)
     }
 

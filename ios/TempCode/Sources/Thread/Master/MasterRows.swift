@@ -31,9 +31,9 @@ struct MasterRowView: View {
         let child = client?.threads[row.sessionId]
         let items = child?.fold.items ?? []
         let live = Fleet.isLive(row.status)
-        let line = Fleet.line(status: row.status, items: items, compacting: child?.fold.board.compacting ?? false, activity: meta?.activity)
+        let line = Fleet.line(status: row.status, items: items, compacting: child?.fold.board.compacting ?? false, activity: meta?.activity, statusDetail: meta?.statusDetail)
         let what = MasterBoard.remoteLine(row, hostName: hostName)
-            ?? MasterBoard.whatLine(status: row.status, activity: meta?.activity, updatedAt: meta?.updatedAt ?? 0, line: line, landed: landed)
+            ?? MasterBoard.whatLine(status: row.status, activity: meta?.activity, statusDetail: meta?.statusDetail, updatedAt: meta?.updatedAt ?? 0, line: line, landed: landed)
         let todos = child?.fold.board.todos ?? []
         let extra = MasterBoard.body(row.threadType, todos: todos, items: items, what: what?.text)
         let foldable: Bool = { if case .tasks? = extra { return true } else { return false } }()
@@ -116,11 +116,11 @@ private struct MasterRowLabel: View {
                 titleLine
                 if typeSize.isAccessibilitySize {
                     // Stacked at accessibility sizes: side by side, the mark squeezed the activity to a word.
-                    ActivityLine(line: Fleet.Line(what?.text ?? "", tone: what?.tone ?? .muted), live: live)
+                    ActivityLine(line: what?.line ?? Fleet.Line("", tone: .muted), live: live)
                     ModelMark(provider: row.provider, model: row.model, reasoning: reasoning, context1m: context1m, hostName: hostName)
                 } else {
                     HStack(spacing: 8) {
-                        ActivityLine(line: Fleet.Line(what?.text ?? "", tone: what?.tone ?? .muted), live: live)
+                        ActivityLine(line: what?.line ?? Fleet.Line("", tone: .muted), live: live)
                         Spacer(minLength: 8)
                         ModelMark(provider: row.provider, model: row.model, reasoning: reasoning, context1m: context1m, hostName: hostName)
                     }
@@ -252,10 +252,17 @@ private struct AgentLineLabel: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             if let what = line.what, !what.text.isEmpty {
+                // The state's word medium in its tone, its detail regular after it.
                 Text(what.text)
-                    .textStep(.meta)
+                    .textStep(.meta, weight: what.detail == nil ? .regular : .medium)
                     .foregroundStyle(tone(what.tone))
                     .lineLimit(1)
+                if let detail = what.detail {
+                    Text(detail)
+                        .textStep(.meta)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
             if let host { HostGlyph(environmentId: host) }

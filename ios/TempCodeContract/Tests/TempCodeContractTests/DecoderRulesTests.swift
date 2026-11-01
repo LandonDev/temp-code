@@ -59,6 +59,17 @@ struct DecoderRulesTests {
         #expect(meta.startedBy == "m")
     }
 
+    @Test func statusDetailBesideTheLegacyActivity() throws {
+        let current = try roundTrip(SessionMeta.self, sessionJSON(status: "queued", extra: #","activity":"Queued  waiting for memory","statusDetail":"Waiting for memory""#))
+        #expect(current.statusDetail == "Waiting for memory")
+        #expect(current.activity == "Queued  waiting for memory")
+        let older = try roundTrip(SessionMeta.self, sessionJSON(status: "queued", extra: #","activity":"Queued · waiting for memory""#))
+        #expect(older.statusDetail == nil, "an older host sends no statusDetail")
+        #expect(older.activity == "Queued · waiting for memory")
+        let cleared = try JSONDecoder().decode(SessionMeta.self, from: Data(sessionJSON(status: "idle", extra: #","statusDetail":null"#).utf8))
+        #expect(cleared.statusDetail == nil)
+    }
+
     @Test func noticeOfUnknownKindKeepsMessage() throws {
         let event = try roundTrip(AgentEvent.self, #"{"type":"notice","kind":"weather","message":"Rain"}"#)
         guard case .notice(let notice) = event else {

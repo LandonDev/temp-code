@@ -65,18 +65,18 @@ import TempCodeContract
     }
 
     @Test func `the line follows the status`() {
-        #expect(Fleet.line(status: .watching, items: []) == Fleet.Line("waiting on background work", tone: .muted))
+        #expect(Fleet.line(status: .watching, items: []) == Fleet.Line("Watching", tone: .muted))
         let question = item(.question(QuestionItem(seq: 1, ts: 0, request: QuestionRequestEvent(requestId: "r", questions: [.init(question: "Which db?\nmore", options: [])]), answers: nil, resolved: false)))
-        #expect(Fleet.line(status: .waiting, items: [question]) == Fleet.Line("has a question — Which db?", tone: .warning))
+        #expect(Fleet.line(status: .waiting, items: [question]) == Fleet.Line("Has a question", tone: .warning, detail: "Which db?"))
         let approval = item(.approval(ApprovalItem(seq: 1, ts: 0, request: ApprovalRequestEvent(requestId: "1", toolName: "Bash", title: "rm -rf build"), allowed: nil, auto: false)))
-        #expect(Fleet.line(status: .waiting, items: [approval]) == Fleet.Line("waiting for approval — rm -rf build", tone: .warning))
-        #expect(Fleet.line(status: .waiting, items: []) == Fleet.Line("waiting for approval", tone: .warning))
+        #expect(Fleet.line(status: .waiting, items: [approval]) == Fleet.Line("Waiting for approval", tone: .warning, detail: "rm -rf build"))
+        #expect(Fleet.line(status: .waiting, items: []) == Fleet.Line("Waiting for approval", tone: .warning))
         #expect(Fleet.line(status: .error, items: [item(errorItem(1, "Rate limited"))]) == Fleet.Line("Rate limited", tone: .danger))
-        #expect(Fleet.line(status: .error, items: []) == Fleet.Line("failed", tone: .danger))
+        #expect(Fleet.line(status: .error, items: []) == Fleet.Line("Failed", tone: .danger))
         let tool = item(toolItem(2, name: "Grep", input: ["pattern": .string("foo")]))
         #expect(Fleet.line(status: .running, items: [item(textItem(1, "hi")), tool]) == Fleet.Line("Grep: foo", tone: .muted))
         #expect(Fleet.line(status: .idle, items: [item(textItem(1, "Done.")), tool]) == Fleet.Line("Done.", tone: .muted))
-        #expect(Fleet.line(status: .running, items: [tool], compacting: true) == Fleet.Line("compacting the context…", tone: .muted))
+        #expect(Fleet.line(status: .running, items: [tool], compacting: true) == Fleet.Line("Compacting the context…", tone: .muted))
     }
 
     @Test func `stats sum edit previews and read tasks, context and cost`() {
@@ -163,11 +163,40 @@ import TempCodeContract
         #expect(Fleet.line(status: .queued, items: [tool], activity: "Queued · waiting for Port module 3") == Fleet.Line("Waiting for Port module 3", tone: .muted), "the queued dot says queued: the reason alone")
         #expect(Fleet.line(status: .queued, items: [tool]) == Fleet.Line("Queued", tone: .muted))
         #expect(Fleet.line(status: .queued, items: [], activity: "  ") == Fleet.Line("Queued", tone: .muted))
-        #expect(Fleet.line(status: .stopped, items: [tool], activity: "ignored") == Fleet.Line("the harness is gone", tone: .muted))
-        #expect(Fleet.line(status: .paused, items: [tool]) == Fleet.Line("paused", tone: .muted))
+        #expect(Fleet.line(status: .stopped, items: [tool], activity: "ignored") == Fleet.Line("The harness is gone", tone: .muted))
+        #expect(Fleet.line(status: .paused, items: [tool]) == Fleet.Line("Paused", tone: .muted))
         // The activity argument changes nothing for the other states.
         #expect(Fleet.line(status: .running, items: [tool], activity: "x") == Fleet.Line("Grep: foo", tone: .muted))
         #expect(Fleet.line(status: .idle, items: [item(textItem(1, "Done."))], activity: "x") == Fleet.Line("Done.", tone: .muted))
+    }
+
+    @Test func `the line prefers the host's statusDetail and reads an older host's activity past its lead`() {
+        #expect(Fleet.line(status: .queued, items: [], activity: "Queued  waiting for memory", statusDetail: "Waiting for memory") == Fleet.Line("Waiting for memory", tone: .muted))
+        #expect(Fleet.line(status: .queued, items: [], activity: "Queued  waiting for memory") == Fleet.Line("Waiting for memory", tone: .muted), "two spaces, the first letter raised")
+        #expect(Fleet.line(status: .queued, items: [], activity: "Queued: waiting for memory") == Fleet.Line("Waiting for memory", tone: .muted))
+        #expect(Fleet.line(status: .watching, items: [], activity: "Waiting on 3 subagents", statusDetail: "3 subagents") == Fleet.Line("Watching", tone: .muted, detail: "3 subagents"))
+        #expect(Fleet.line(status: .watching, items: [], activity: "Waiting on 3 subagents") == Fleet.Line("Watching", tone: .muted, detail: "3 subagents"))
+        #expect(Fleet.line(status: .watching, items: [], activity: "Blocked: A errored") == Fleet.Line("Watching", tone: .muted, detail: "Blocked, A errored"))
+        #expect(Fleet.line(status: .running, items: [], activity: "Editing Rail.tsx", statusDetail: "Editing Rail.tsx") == Fleet.Line("Editing Rail.tsx", tone: .muted), "an unloaded transcript reads the host's line")
+        #expect(Fleet.Line("Watching", tone: .muted, detail: "3 subagents").plain == "Watching: 3 subagents")
+        #expect(Fleet.Line("Paused", tone: .muted).plain == "Paused")
+    }
+
+    @Test func `no line joins two facts with a dash, a dot or two spaces`() {
+        let question = item(.question(QuestionItem(seq: 1, ts: 0, request: QuestionRequestEvent(requestId: "r", questions: [.init(question: "Which db?", options: [])]), answers: nil, resolved: false)))
+        let approval = item(.approval(ApprovalItem(seq: 1, ts: 0, request: ApprovalRequestEvent(requestId: "1", toolName: "Bash", title: "rm -rf build"), allowed: nil, auto: false)))
+        let lines = [
+            Fleet.line(status: .waiting, items: [question]),
+            Fleet.line(status: .waiting, items: [approval]),
+            Fleet.line(status: .queued, items: [], activity: "Queued · waiting for X"),
+            Fleet.line(status: .queued, items: [], activity: "Queued  waiting for X"),
+            Fleet.line(status: .watching, items: [], activity: "Waiting on 2 subagents")
+        ]
+        for line in lines {
+            for text in [line.text, line.detail ?? ""] {
+                #expect(!text.contains("—") && !text.contains("  ") && !text.contains(" · "), "\(text)")
+            }
+        }
     }
 
     @Test func `elapsed is nothing while queued and the frozen time once paused or stopped`() {

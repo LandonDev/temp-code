@@ -247,12 +247,11 @@ public enum MasterBoard {
     static func metaLine(_ m: SessionMeta) -> Fleet.Line {
         switch m.status {
         case .error:
-            return Fleet.Line(m.failure?.summary ?? "failed", tone: .danger)
+            return Fleet.Line(StatusDetail.text(m.failure?.summary) ?? "Failed", tone: .danger)
         case .waiting:
-            guard let activity = m.activity, !activity.isEmpty else { return Fleet.Line("waiting for approval", tone: .warning) }
-            return Fleet.Line("waiting for approval — \(activity)", tone: .warning)
+            return Fleet.Line("Waiting for approval", tone: .warning, detail: StatusDetail.of(m))
         default:
-            return Fleet.line(status: m.status, items: [], activity: m.activity)
+            return Fleet.line(status: m.status, items: [], activity: m.activity, statusDetail: m.statusDetail)
         }
     }
 
@@ -269,7 +268,7 @@ public enum MasterBoard {
         let rest: ArraySlice<SessionMeta> = live.dropFirst(cap)
         let moreWaiting = rest.filter { (m: SessionMeta) -> Bool in m.status == .waiting }.count
         let lines: [AgentLine] = live.prefix(cap).map { (m: SessionMeta) -> AgentLine in
-            let what = whatLine(status: m.status, activity: m.activity, updatedAt: m.updatedAt, line: metaLine(m), landed: false)
+            let what = whatLine(status: m.status, activity: m.activity, statusDetail: m.statusDetail, updatedAt: m.updatedAt, line: metaLine(m), landed: false)
             return AgentLine(id: m.id, environmentId: environmentId, title: m.title, status: m.status, agentType: m.agentType, what: what)
         }
         return RowAgents(lines: lines, more: rest.count, moreWaiting: moreWaiting, done: agents.count - live.count)
@@ -329,28 +328,39 @@ public enum MasterBoard {
         return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
     }
 
+    /// A row's status: `text` in its tone, and with a `detail` the state's
+    /// word (medium) before it (regular, secondary), two texts as
+    /// `Fleet.Line` draws them.
     public struct WhatLine: Hashable, Sendable {
         public let text: String
         public let tone: Fleet.Tone
+        public let detail: String?
 
-        public init(text: String, tone: Fleet.Tone) {
+        public init(text: String, tone: Fleet.Tone, detail: String? = nil) {
             self.text = text
             self.tone = tone
+            self.detail = StatusDetail.text(detail)
         }
+
+        public var line: Fleet.Line { Fleet.Line(text, tone: tone, detail: detail) }
     }
 
     /// rowBody.ts whatLine: waiting/error → `line` when it has text; paused →
-    /// "Paused"; queued/starting/running/watching → activity (trimmed) else
-    /// line.text, muted; stopped → "Stopped"; else "Landed hh:mm" when landed, else nil.
-    public static func whatLine(status: SessionStatus, activity: String?, updatedAt: Int, line: Fleet.Line, landed: Bool, calendar: Calendar = .current) -> WhatLine? {
+    /// "Paused"; queued/starting/running → what the host says the state is
+    /// about (`statusDetail`, else an older host's activity past its lead)
+    /// else line.text, muted; watching → "Watching" and that detail; stopped
+    /// → "Stopped"; else "Landed hh:mm" when landed, else nil.
+    public static func whatLine(status: SessionStatus, activity: String?, statusDetail: String? = nil, updatedAt: Int, line: Fleet.Line, landed: Bool, calendar: Calendar = .current) -> WhatLine? {
         switch status {
         case .waiting, .error:
-            return line.text.isEmpty ? nil : WhatLine(text: line.text, tone: line.tone)
+            return line.text.isEmpty ? nil : WhatLine(text: line.text, tone: line.tone, detail: line.detail)
         case .paused:
             return WhatLine(text: "Paused", tone: .muted)
-        case .queued, .starting, .running, .watching:
-            let own = activity?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return WhatLine(text: own.isEmpty ? line.text : StripWords.reason(fromActivity: own), tone: .muted)
+        case .watching:
+            return WhatLine(text: "Watching", tone: .muted, detail: StatusDetail.of(status: status, statusDetail: statusDetail, activity: activity) ?? line.detail)
+        case .queued, .starting, .running:
+            let own = StatusDetail.of(status: status, statusDetail: statusDetail, activity: activity)
+            return WhatLine(text: own ?? line.text, tone: .muted, detail: own == nil ? line.detail : nil)
         case .stopped:
             return WhatLine(text: "Stopped", tone: .muted)
         default:

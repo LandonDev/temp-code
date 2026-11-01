@@ -1884,7 +1884,19 @@ client package's word builders return parts for this (`StripWords`,
 `GateText.tail`, `BatchToast.headline` and `failureLine`, `DeviceState`'s
 `status` and `platform`), and a view never splits a string on a dot. Where a
 status mark already says the state (a queued dot, a stopped square), the
-text says only the reason. The one dotted form left is the milestone thread
+text says only the reason; where it does not (a watching row's dot), the
+word leads in medium weight and its tone and the detail follows in regular
+weight and a quieter colour ("Watching" "3 subagents", "Waiting for
+approval" "Bash"). The detail is the host's `SessionMeta.statusDetail`,
+taken as written (trimmed, a trailing full stop dropped, its case kept);
+only for an older host that sends none is the legacy `activity` line read
+past its lead ("Queued  waiting for memory", "Waiting on 3 subagents",
+"Blocked: A errored" → "Blocked, A errored") and sentence-cased: the client
+package's `StatusDetail.of`, which every row, strip and board reads. Where
+one plain string is unavoidable (an accessibility label, a line built on
+the phone) it is `StatusDetail.plain`: "Queued: Waiting for memory", or the
+word alone. The Live Activity and the push paths keep reading the legacy
+line on purpose. The one dotted form left is the milestone thread
 title "M2 · Billing export", the desktop's `milestoneThreadTitle`, which the
 host stores and every host shows; the phone's milestone list draws "M2" as a
 quiet stamp beside the title instead. Empty screens use the system's

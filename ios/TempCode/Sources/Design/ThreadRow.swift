@@ -79,7 +79,8 @@ extension ThreadRow where Accessory == EmptyView {
     }
 }
 
-/// The model in the quiet step, then the tasks or activity in secondary, or
+/// The model in the quiet step, then the tasks or activity in secondary (a
+/// watching row's word medium before its detail), or
 /// the host's verdict on a failed turn in destructive: two texts told apart
 /// by their color and an 8 pt gap, never joined with a dot. The variable
 /// half cross-fades when it changes (2 pt of blur) and the line never
@@ -99,6 +100,15 @@ struct ThreadRowSecondLine: View {
                 SwapText(summary, step: .meta, tint: Tint.destructive)
             case .detail(let detail):
                 SwapText(detail, step: .meta)
+            case .status(let word, let detail):
+                // The word medium, its detail regular beside it: two texts, never one joined string.
+                HStack(spacing: 6) {
+                    SwapText(word, step: .meta, weight: .medium)
+                        .layoutPriority(1)
+                    SwapText(detail, step: .meta)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(StatusDetail.plain(word: word, detail: detail))
             }
         }
     }

@@ -214,7 +214,7 @@ public struct ThreadHeaderLine: Equatable, Sendable {
             // A wait before the turn's first content (the CLI starting, the
             // provider slow or refusing) says itself last, so the shortest
             // form keeps it.
-            if let phase = StripWords.phase(activity: session.activity) {
+            if let phase = StripWords.phase(activity: session.statusDetail ?? session.activity) {
                 parts.append(.words(phase.title, detail: phase.detail))
             }
             live = true
@@ -234,7 +234,7 @@ public struct ThreadHeaderLine: Equatable, Sendable {
             if let frozen = session.frozenActiveElapsed { parts.append(.frozen(ms: frozen)) }
         case .queued:
             mark = .dot(.tertiary)
-            let queued = StripWords.queued(activity: session.activity)
+            let queued = StatusWords.queuedLine(session)
             parts.append(.words(queued.title, detail: queued.detail))
         case .stopped:
             mark = .stopped

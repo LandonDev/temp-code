@@ -120,7 +120,7 @@ private struct AgentIdentity: View {
     var body: some View {
         let live = Fleet.isLive(agent.status)
         let emphasized = live || agent.status == .waiting || agent.status == .error || agent.status == .stopped
-        let line = Fleet.line(status: agent.status, items: thread.fold.items, compacting: thread.fold.board.compacting, activity: agent.activity)
+        let line = Fleet.line(status: agent.status, items: thread.fold.items, compacting: thread.fold.board.compacting, activity: agent.activity, statusDetail: agent.statusDetail)
         let stats = Fleet.stats(items: thread.fold.items, tasks: agent.tasks, board: thread.fold.board, context: agent.context)
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: Layout.rowGap) {

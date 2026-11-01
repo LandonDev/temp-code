@@ -153,7 +153,7 @@ struct WorkingStripView: View {
     /// cap, memory) after the word; Start now runs it ahead.
     private var queuedRow: some View {
         row {
-            words(.queued(activity: session?.activity), symbol: "clock", tint: Color.secondary)
+            words(session.map(StatusWords.queuedLine) ?? StripWords(title: "Queued"), symbol: "clock", tint: Color.secondary)
         } actions: {
             StripButton(acting == .start ? "Starting…" : "Start now", systemImage: "play.fill") {
                 run(.start) { try await client.start(sessionId) }

@@ -89,6 +89,16 @@ private func session(_ id: String, status: SessionStatus, parentId: String? = ni
         #expect(StripWords.queued(activity: "Reading files") == StripWords(title: "Queued"), "an activity that is not the host's queued line says nothing more")
     }
 
+    @Test func `the queued line reads the host's current shape, two spaces and a lower-case reason`() {
+        #expect(StripWords.queued(activity: "Queued  waiting for memory") == StripWords(title: "Queued", detail: "Waiting for memory"))
+        #expect(StripWords.queued(activity: "Queued  120 of 120 running") == StripWords(title: "Queued", detail: "120 of 120 running"))
+        #expect(StripWords.queued(activity: "Queued: waiting for memory") == StripWords(title: "Queued", detail: "Waiting for memory"))
+        for line in ["Queued  waiting for memory", "Queued · waiting for memory"] {
+            let detail = StripWords.queued(activity: line).detail ?? ""
+            #expect(!detail.contains("  ") && !detail.contains("·") && !detail.contains("—"))
+        }
+    }
+
     @Test func `a turn's phase is the host's phase line, its first words the title and the rest the detail`() {
         #expect(StripWords.phase(activity: "Starting the CLI") == StripWords(title: "Starting the CLI"))
         #expect(StripWords.phase(activity: "Initializing") == StripWords(title: "Initializing"))

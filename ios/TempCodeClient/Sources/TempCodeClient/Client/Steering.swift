@@ -54,16 +54,13 @@ public struct StripWords: Hashable, Sendable {
         StripWords(title: "Paused", detail: batch > 0 ? "\(batch) batch \(batch == 1 ? "thread" : "threads") with it" : nil)
     }
 
-    /// A queued thread. The host writes its reason into the activity line as
-    /// "Queued  waiting for <sibling>", "Queued  120 of 120 running" or
-    /// "Queued  waiting for memory" (two spaces after the word; older rows
-    /// carry " · "); the title is "Queued" and the reason, with its first
-    /// letter raised, is the detail.
+    /// A queued thread from an older host's activity line alone ("Queued
+    /// waiting for <sibling>", two spaces after the word; older rows carry
+    /// " · "): the title is "Queued" and the reason, with its first letter
+    /// raised, is the detail. A current host's row goes through
+    /// `StatusWords.queuedLine`, which prefers its `statusDetail`.
     public static func queued(activity: String?) -> StripWords {
-        guard let activity, activity.hasPrefix("Queued") else { return StripWords(title: "Queued") }
-        let rest = activity.dropFirst("Queued".count).drop { $0 == " " || $0 == "·" }
-        guard let first = rest.first else { return StripWords(title: "Queued") }
-        return StripWords(title: "Queued", detail: first.uppercased() + rest.dropFirst())
+        StripWords(title: "Queued", detail: StatusDetail.of(status: .queued, statusDetail: nil, activity: activity))
     }
 
     /// A turn's phase before its first content, as the host words it onto
@@ -89,14 +86,6 @@ public struct StripWords: Hashable, Sendable {
         "Starting the CLI", "Initializing", "Waiting for the provider",
         "Rate limited", "Provider overloaded", "Retrying", "Reconnecting"
     ]
-
-    /// The host's activity line where a status mark beside it already says
-    /// queued: the reason alone ("Waiting for Backfill the rollups"), "Queued"
-    /// when the host gave none; any other activity unchanged.
-    public static func reason(fromActivity activity: String) -> String {
-        guard activity.hasPrefix("Queued") else { return activity }
-        return queued(activity: activity).detail ?? "Queued"
-    }
 }
 
 /// What the composer decides from the session: whether its button stops a

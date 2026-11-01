@@ -39,7 +39,7 @@ struct ImplementationBoardView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if session?.status == .queued {
                     GoalHeader(goal: goal(board), progress: nil, plan: plan)
-                    QueuedRow(line: session?.activity ?? "Queued")
+                    QueuedRow(words: session.map(StatusWords.queuedLine) ?? StripWords(title: "Queued"))
                 } else {
                     GoalHeader(goal: goal(board), progress: board.progress, plan: plan)
                     ForEach(board.rounds.indices, id: \.self) { index in
@@ -178,16 +178,24 @@ private struct PlanLine: View {
 /// A queued build: the host's one line ("Queued  waiting for <sibling>")
 /// behind the quiet dot. The thread has not booted, so there is nothing else
 /// to draw and no "No tasks yet" to say.
+/// A queued build's one row: the dot, "Queued" medium, then the host's
+/// reason regular and secondary ("Waiting for memory"), two texts.
 private struct QueuedRow: View {
-    let line: String
+    let words: StripWords
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
             StatusDot(status: .queued)
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-            Text(line)
-                .textStep(.meta)
-                .lineLimit(2)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(words.title)
+                    .textStep(.meta, weight: .medium)
+                if let detail = words.detail {
+                    Text(detail)
+                        .textStep(.meta)
+                        .lineLimit(2)
+                }
+            }
         }
         .padding(.horizontal, Layout.textEdge)
         .frame(maxWidth: .infinity, minHeight: Layout.rowHeight, alignment: .leading)
