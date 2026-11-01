@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline'
 import type { Attachment, PermissionPolicy, SessionStatus } from '@shared/events'
 import { limitField } from '../limitText'
 import type { Reasoning } from '@shared/catalog'
-import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
+import type { DriverCtx, DriverHandle, HarnessDriver, SendOpts } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
 import { WarmPool, type WarmSpec } from './warm'
 import { expandSlashRefs } from '../slash'
@@ -363,6 +363,10 @@ export const codexDriver: HarnessDriver = {
     const env = { ...(await harnessEnv()), [THREAD_MARK]: session.id }
 
     let currentTurnId: string | null = null
+    /** Steers sent and not yet echoed, id → how the model gets it: into the
+     *  running turn (turn/steer) or as a turn of its own (turn/start). The
+     *  `userMessage` item carrying the id as its clientId is the read. */
+    const steers = new Map<string, 'in-turn' | 'next-turn'>()
 
     /** Whether this turn's codex retries were logged already. */
 
@@ -398,6 +402,14 @@ export const codexDriver: HarnessDriver = {
 
     const itemStarted = (item: Item): void => {
       switch (item.type) {
+        case 'userMessage': {
+          const how = typeof item.clientId === 'string' ? steers.get(item.clientId) : undefined
+          if (how) {
+            steers.delete(item.clientId as string)
+            emit({ type: 'steer', steerId: item.clientId as string, state: 'received', how })
+          }
+          break
+        }
         // GPT reasoning often has no visible summary; announcing the item
         // with an empty streaming delta shows a live "Thinking" shimmer that
         // the renderer drops once the item completes still empty.
@@ -961,7 +973,8 @@ export const codexDriver: HarnessDriver = {
     }
 
     return {
-      async send(text: string, attachments: Attachment[] = []): Promise<void> {
+      confirmsSteers: true,
+      async send(text: string, attachments: Attachment[] = [], opts?: SendOpts): Promise<void> {
         // A dead app-server (a turn/start deadline killed it, a crash, a
         // dispose) must not swallow the message: the registry drops the
         // handle and boots a fresh one on this word.
@@ -982,20 +995,39 @@ export const codexDriver: HarnessDriver = {
         for (const a of attachments) {
           if (a.kind === 'image') input.push({ type: 'localImage', path: a.path })
         }
-        conn
-          .request('turn/start', {
-            threadId,
-            input,
-            effort: EFFORT[session.reasoning]
-          })
-          .catch((err) => {
-            if (err instanceof AppServerTimeout) {
-              disposed = true
-              conn.kill()
-            }
-            emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
-            setStatus('idle')
-          })
+        const steerId = opts?.steerId
+        const start = (): void => {
+          if (steerId) steers.set(steerId, 'next-turn')
+          conn
+            .request('turn/start', {
+              threadId,
+              input,
+              effort: EFFORT[session.reasoning],
+              ...(steerId ? { clientUserMessageId: steerId } : {})
+            })
+            .catch((err) => {
+              if (err instanceof AppServerTimeout) {
+                disposed = true
+                conn.kill()
+              }
+              emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
+              setStatus('idle')
+            })
+        }
+        // A person's steer into the running turn: turn/steer appends it to
+        // exactly that turn, and refuses when it has ended ("no active turn
+        // to steer") or the binary lacks the method; it then starts the next
+        // turn. The id is noted first: the echo can beat the answer.
+        if (steerId && currentTurnId) {
+          steers.set(steerId, 'in-turn')
+          conn
+            .request('turn/steer', { threadId, expectedTurnId: currentTurnId, input, clientUserMessageId: steerId })
+            .catch(() => {
+              if (!disposed && !conn.exited) start()
+            })
+          return
+        }
+        start()
       },
       interrupt(): void {
         if (currentTurnId) {

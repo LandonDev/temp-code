@@ -35,6 +35,9 @@ class FakeProc extends EventEmitter {
   reply(id: number, result: unknown): void {
     this.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n')
   }
+  fail(id: number, message: string): void {
+    this.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32600, message } }) + '\n')
+  }
   die(code: number, stderr: string[] = []): void {
     for (const line of stderr) this.stderr.write(line + '\n')
     // stderr lines reach the reader on the next tick; the exit must follow them.
@@ -236,6 +239,73 @@ describe('codex app-server boot', () => {
     expect(events.filter((e) => e.type === 'error').map((e) => (e as { message: string }).message)).toEqual([
       'codex app-server exited unexpectedly (1)'
     ])
+  })
+})
+
+describe('a steer into a codex turn', () => {
+  /** A healthy app-server that records every request and answers turn/steer by `steer`. */
+  const steering = (steer: (proc: FakeProc, frame: Frame) => void, requests: Frame[]): Script => (proc, frame) => {
+    requests.push(frame)
+    if (frame.method === 'turn/steer' && frame.id !== undefined) steer(proc, frame)
+    else healthy(proc, frame)
+  }
+  const boot = async (script: Script) => {
+    vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
+    scripts.push(script)
+    const handle = await codexDriver.start(ctx())
+    const notify = (method: string, params: Record<string, unknown>): void => {
+      spawned[0].stdout.write(JSON.stringify({ jsonrpc: '2.0', method, params: { threadId: 't1', ...params } }) + '\n')
+    }
+    // Release the first-turn MCP gate: no server is starting.
+    notify('mcpServer/startupStatus/updated', { name: 'x', status: 'ready' })
+    await new Promise((r) => setTimeout(r, 550))
+    notify('turn/started', { turn: { id: 'turn-1' } })
+    return { handle, notify }
+  }
+  const echo = (clientId: string) => ({ item: { type: 'userMessage', id: 'u1', clientId, content: [] } })
+  const steerRows = () => events.filter((e) => e.type === 'steer')
+
+  it('goes in with turn/steer on the running turn and is received at its echo, once', async () => {
+    const requests: Frame[] = []
+    const { handle, notify } = await boot(steering((proc, frame) => proc.reply(frame.id!, { turnId: 'turn-1' }), requests))
+    await handle.send('use the other table', [], { steerId: 's1' })
+    await vi.waitFor(() => expect(requests.some((r) => r.method === 'turn/steer')).toBe(true))
+    expect(requests.find((r) => r.method === 'turn/steer')?.params).toMatchObject({ threadId: 't1', expectedTurnId: 'turn-1', clientUserMessageId: 's1' })
+    expect(requests.some((r) => r.method === 'turn/start')).toBe(false)
+    notify('item/started', echo('s1'))
+    notify('item/completed', echo('s1'))
+    await vi.waitFor(() => expect(steerRows()).toHaveLength(1))
+    expect(steerRows()).toEqual([{ type: 'steer', steerId: 's1', state: 'received', how: 'in-turn' }])
+    await handle.dispose()
+  })
+
+  it('a turn that ended first, or a binary without turn/steer, starts the next turn with the id', async () => {
+    for (const refusal of ['no active turn to steer', 'Invalid request: unknown variant `turn/steer`']) {
+      events = []
+      spawned.length = 0
+      const requests: Frame[] = []
+      const { handle, notify } = await boot(steering((proc, frame) => proc.fail(frame.id!, refusal), requests))
+      await handle.send('use the other table', [], { steerId: 's2' })
+      await vi.waitFor(() => expect(requests.some((r) => r.method === 'turn/start')).toBe(true))
+      expect(requests.find((r) => r.method === 'turn/start')?.params).toMatchObject({ clientUserMessageId: 's2' })
+      notify('item/started', echo('s2'))
+      await vi.waitFor(() => expect(steerRows()).toEqual([{ type: 'steer', steerId: 's2', state: 'received', how: 'next-turn' }]))
+      await handle.dispose()
+      spawned[0].emit('exit', 0)
+    }
+  })
+
+  it('a plain send and an unknown clientId never stamp', async () => {
+    const requests: Frame[] = []
+    const { handle, notify } = await boot(steering((proc, frame) => proc.reply(frame.id!, {}), requests))
+    await handle.send('hello')
+    await vi.waitFor(() => expect(requests.some((r) => r.method === 'turn/start')).toBe(true))
+    expect(requests.find((r) => r.method === 'turn/start')?.params).not.toHaveProperty('clientUserMessageId')
+    notify('item/started', echo('stranger'))
+    notify('item/started', { item: { type: 'userMessage', id: 'u2', content: [] } })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(steerRows()).toEqual([])
+    await handle.dispose()
   })
 })
 
