@@ -264,7 +264,7 @@ function ReportPane({
       {!complete ? (
         <>
           {state !== "idle" && state !== "done" ? (
-            <StatusMark className="mt-2" state={state} detail={state === "working" ? "writing" : undefined} />
+            <StatusMark className="mt-2" state={state} detail={state === "working" ? "Writing" : undefined} />
           ) : null}
           {report.summary ? <p className="mt-2 text-[13px] text-muted-foreground">{report.summary}</p> : null}
         </>
@@ -293,15 +293,15 @@ function ReportPane({
 /** What an angle's agent is doing right now, from its latest activity. */
 function angleStatus(blocks: Block[]): string {
   const last = blocks[blocks.length - 1];
-  if (last && (last.role === "assistant" || last.role === "reasoning")) return "synthesizing";
+  if (last && (last.role === "assistant" || last.role === "reasoning")) return "Synthesizing";
   let tool: Block | undefined;
   for (let i = blocks.length - 1; i >= 0 && !tool; i--) {
     if (blocks[i].role === "tool") tool = blocks[i];
   }
   const name = tool?.tool?.name ?? tool?.tool?.title ?? "";
-  if (/fetch/i.test(name)) return "reading";
-  if (/search/i.test(name) || tool?.tool?.preview?.kind === "search" || !tool) return "searching";
-  return "reading";
+  if (/fetch/i.test(name)) return "Reading";
+  if (/search/i.test(name) || tool?.tool?.preview?.kind === "search" || !tool) return "Searching";
+  return "Reading";
 }
 
 /** One research angle: the agent's label with its state while it works,

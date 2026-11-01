@@ -46,6 +46,25 @@ describe("SplitShell", () => {
     expect(screen.getByRole("separator", { name: "Resize" })).toBeTruthy();
   });
 
+  it("the header reads as a header: a 14px semibold title, its fact 12px muted and tabular, then equal 28px controls 2px apart", () => {
+    render(shell({ detail: "3/7", actions: <button type="button">More</button> }));
+    const title = document.querySelector("[data-view-title]") as HTMLElement;
+    expect(title.className).toContain("text-sm");
+    expect(title.className).toContain("font-semibold");
+    const detail = document.querySelector("[data-view-detail]") as HTMLElement;
+    expect(detail.className).toContain("text-xs");
+    expect(detail.className).toContain("text-muted-foreground");
+    expect(detail.className).toContain("tabular-nums");
+    expect(title.parentElement?.className).toContain("gap-2");
+    const actions = document.querySelector("[data-view-actions]") as HTMLElement;
+    expect(actions.className).toContain("gap-0.5");
+    // The view's buttons, then the conversation toggle last, with no extra margin.
+    const kids = [...actions.children] as HTMLElement[];
+    expect(kids.map((k) => k.getAttribute("aria-label") ?? k.textContent)).toEqual(["More", "Conversation"]);
+    expect(kids.some((k) => /\bml-/.test(k.className))).toBe(false);
+    expect(kids[1].className).toContain("h-7");
+  });
+
   it("no title, no header", () => {
     render(shell({ title: undefined }));
     expect(screen.getByText("the board")).toBeTruthy();

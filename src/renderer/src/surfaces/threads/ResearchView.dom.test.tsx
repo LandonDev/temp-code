@@ -109,14 +109,14 @@ describe("the research view", () => {
     docs[REPORT] = "---\ntitle: Build speed\nstatus: draft\nsummary: Three causes so far\n---\nhidden body";
     const view = render(<ResearchView {...props(session({ status: "running" }))} />);
     expect(screen.getByText("Build speed")).toBeTruthy();
-    expect(screen.getByText("writing")).toBeTruthy();
+    expect(screen.getByText("Writing")).toBeTruthy();
     expect(screen.getByText("Three causes so far")).toBeTruthy();
     expect(document.querySelector("[data-md]")).toBeNull();
     view.unmount();
     docs[REPORT] = "---\ntitle: Build speed\nstatus: complete\n---\nthe findings";
     render(<ResearchView {...props(session())} />);
     expect(document.querySelector("[data-md]")?.textContent).toBe("the findings");
-    expect(screen.queryByText("writing")).toBeNull();
+    expect(screen.queryByText("Writing")).toBeNull();
   });
 
   it("a live angle shows Working with what it is doing, and its findings open their file", () => {
@@ -125,7 +125,7 @@ describe("the research view", () => {
     render(<ResearchView {...props(session(), onOpenFile)} />);
     const angle = screen.getByRole("button", { name: /Bundler angle/ });
     expect(angle.textContent).toContain("Working");
-    expect(angle.textContent).toContain("reading");
+    expect(angle.textContent).toContain("Reading");
     fireEvent.click(screen.getByRole("button", { name: "Vite caches deps" }));
     expect(onOpenFile).toHaveBeenCalledWith("/repo/.temp-code/reports/a1.md");
   });
