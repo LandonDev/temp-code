@@ -205,6 +205,29 @@ describe("StatusMark", () => {
     expect(screen.getByText("Working").closest("[data-slot=status-mark]")?.textContent).toBe("Workingtypecheck");
   });
 
+  it("draws the word in medium weight and the detail regular and muted, with the colon form as the label of a glyph alone", () => {
+    const { rerender } = render(<StatusMark state="queued" detail="Waiting for memory" />);
+    expect(document.querySelector("[data-slot=status-word]")?.className).toContain("font-medium");
+    expect(document.querySelector("[data-slot=status-detail]")?.className).toContain("font-normal");
+    rerender(<StatusMark state="queued" word={false} detail="Waiting for memory" />);
+    expect(screen.getByLabelText("Queued: Waiting for memory")).toBeTruthy();
+  });
+
+  it("still draws working's arc without its turn or its breath", () => {
+    const { container, rerender } = render(<StatusMark state="working" still />);
+    const turns = () => (container.querySelector("[data-slot=spinner]") as SVGElement).classList.contains("animate-spinner");
+    expect(turns()).toBe(false);
+    expect(container.querySelector(".status-breathe")).toBeNull();
+    rerender(<StatusMark state="working" />);
+    expect(turns()).toBe(true);
+  });
+
+  it("glyph={false} draws the word alone", () => {
+    const { container } = render(<StatusMark state="failed" glyph={false} detail="Usage cap" />);
+    expect(container.querySelector("svg")).toBeNull();
+    expect(container.textContent).toBe("FailedUsage cap");
+  });
+
   it("a live glyph breathes once on a state change; a settled one is still", () => {
     const { container, rerender } = render(<StatusMark state="watching" />);
     expect(container.querySelector(".status-breathe")).not.toBeNull();

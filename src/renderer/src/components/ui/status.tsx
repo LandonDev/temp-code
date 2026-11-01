@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 import type { SessionStatus } from "@shared/events";
 import { Check, Circle, CircleAlert, CircleDashed, CircleDot, FileText, Pause, Square } from "@renderer/chrome/icons";
 import { cn } from "@renderer/lib/cn";
+import { plainStatus } from "@shared/statusWords";
 import { Spinner } from "./spinner";
 
 /**
@@ -132,11 +133,11 @@ export function statusNeedsYou(state: ThreadState): boolean {
   return state === "waiting" || state === "failed";
 }
 
-function Glyph({ state, className }: { state: ThreadState; className?: string }) {
+function Glyph({ state, still, className }: { state: ThreadState; still?: boolean; className?: string }) {
   const c = cn("size-3.5 shrink-0", className);
   switch (state) {
     case "working":
-      return <Spinner className={cn(c, "size-3")} />;
+      return <Spinner className={cn(c, "size-3", still && "animate-none")} />;
     case "waiting":
       return <CircleDot className={c} />;
     case "paused":
@@ -161,40 +162,58 @@ function Glyph({ state, className }: { state: ThreadState; className?: string })
 /** A live state's glyph breathes once over `--dur-slow` when the state changes (the key remounts it); nothing loops. */
 const LIVE: ReadonlySet<ThreadState> = new Set(["working", "waiting", "watching"]);
 
-/** The glyph alone (`word={false}`) for tight rows, glyph and the state's word, or glyph and a given word (a link's). */
+/**
+ * A state drawn as two spans (docs/DESIGN.md "Status vocabulary"): the
+ * glyph, the word in medium weight and its tone, then what the state is
+ * about in regular weight and muted, 6px after it. The glyph alone
+ * (`word={false}`), glyph and the state's word, or glyph and a given word
+ * (a link's); `glyph={false}` draws the word without its glyph. A line that
+ * depends on a row's own mark (a subagent's under its thread) passes
+ * `still`: working's arc is drawn and does not turn, so a row has one
+ * moving mark at most.
+ */
 export function StatusMark({
   state,
   word = true,
   detail,
+  still,
+  glyph = true,
   wordClassName,
   className,
   ...props
 }: ComponentProps<"span"> & {
   state: ThreadState;
   word?: boolean | string;
-  /** What the state is about, muted after the word: "Working  typecheck", "Needs you  approve Bash", a tally "3/7". */
+  /** What the state is about, regular and muted after the word: "Editing Rail.tsx", "Approve Bash", a tally "3/7". */
   detail?: ReactNode;
+  /** Working's arc without its turn, for a line under a row that already spins. */
+  still?: boolean;
+  /** Draw the glyph (default); false for the word and the detail alone. */
+  glyph?: boolean;
   /** The word's own class: a row that hides it when tight (a container query) keeps the glyph. */
   wordClassName?: string;
 }) {
   const text = word === true ? STATUS_WORD[state] : word === false ? null : word;
+  const hasDetail = detail != null && detail !== "";
   return (
     <span
       data-slot="status-mark"
       data-state={state}
-      aria-label={text === null ? STATUS_WORD[state] : undefined}
-      className={cn("inline-flex min-w-0 items-center gap-1.5 text-xs font-medium", TONE_CLASS[STATUS_TONE[state]], className)}
+      aria-label={text === null ? plainStatus(STATUS_WORD[state], typeof detail === "string" ? detail : null) : undefined}
+      className={cn("inline-flex min-w-0 items-center gap-1.5 text-xs", TONE_CLASS[STATUS_TONE[state]], className)}
       {...props}
     >
-      <span key={state} className={cn("flex", LIVE.has(state) && "status-breathe")}>
-        <Glyph state={state} />
-      </span>
+      {glyph ? (
+        <span key={state} className={cn("flex", LIVE.has(state) && !still && "status-breathe")}>
+          <Glyph state={state} still={still} />
+        </span>
+      ) : null}
       {text !== null ? (
-        <span data-slot="status-word" className={cn(detail != null && detail !== "" ? "shrink-0" : "min-w-0 truncate", wordClassName)}>
+        <span data-slot="status-word" className={cn("font-medium", hasDetail ? "shrink-0" : "min-w-0 truncate", wordClassName)}>
           {text}
         </span>
       ) : null}
-      {detail != null && detail !== "" ? (
+      {hasDetail ? (
         <span data-slot="status-detail" className="min-w-0 truncate font-normal text-muted-foreground tabular-nums">
           {detail}
         </span>
