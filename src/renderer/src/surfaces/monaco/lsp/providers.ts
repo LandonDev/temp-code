@@ -747,7 +747,7 @@ export function registerProviders(): void {
         const [refs, blame] = await Promise.all([refsP, blameP]);
         const n = refs?.length ?? 0;
         const usages = n === 0 ? "no usages" : n === 1 ? "1 usage" : `${n} usages`;
-        const who = blame?.author ? `  ·  ${blame.author}${blame.others > 0 ? ` +${blame.others}` : ""}` : "";
+        const who = blame?.author ? `, ${blame.author}${blame.others > 0 ? ` +${blame.others}` : ""}` : "";
         resolved = { title: `${usages}${who}` };
         lensResolved.set(key, resolved);
         if (lensResolved.size > 500) lensResolved.delete(lensResolved.keys().next().value as string);

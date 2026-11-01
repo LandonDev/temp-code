@@ -119,7 +119,7 @@ export function ruleText(rule: MacBridgeRule): { what: string; detail: string } 
     case 'exact':
       return {
         what: 'Exactly',
-        detail: `${rule.argv ? quoteArgv(rule.argv) : (rule.command ?? '')}  (in ${rule.cwd ?? ''})`
+        detail: `${rule.argv ? quoteArgv(rule.argv) : (rule.command ?? '')} in ${rule.cwd ?? ''}`
       }
   }
 }

@@ -50,7 +50,7 @@ describe('ruleText', () => {
     })
     expect(ruleText(rule({ kind: 'program', program: 'make' })).detail).toBe('make')
     expect(ruleText(rule({ kind: 'exact', argv: ['a', 'b c'], cwd: '/x' })).detail).toBe(
-      "a 'b c'  (in /x)"
+      "a 'b c' in /x"
     )
     expect(ruleText(rule({ kind: 'read-folder', folder: '/r' })).what).toBe('Reads in')
   })
