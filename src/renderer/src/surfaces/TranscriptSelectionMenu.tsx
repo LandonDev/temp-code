@@ -1,8 +1,6 @@
 import { MessageSquarePlus } from "../chrome/icons";
 import { useEffect, useMemo, useRef } from "react";
-import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
-import { TooltipProvider } from "../components/ui/tooltip";
 import { LazyPopover } from "../chrome/menuRows";
 import { type TranscriptSelection } from "../lib/transcriptSelection";
 
@@ -56,28 +54,26 @@ export function TranscriptSelectionMenu({ selection, onAddToChat, onDismiss }: P
       label="Selected text actions"
       initialFocus={false}
       finalFocus={false}
-      className="w-auto flex-row gap-0.5 p-1"
+      className="w-auto flex-row p-1"
     >
       {shown.current ? (
-        <TooltipProvider>
-          <div role="toolbar" aria-label="Selected text actions" className="flex items-center gap-0.5">
-            <Tip label="Add to chat" side="top">
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Add to chat"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  if (shown.current) onAddToChat(shown.current.text);
-                  window.getSelection()?.removeAllRanges();
-                  onDismiss();
-                }}
-              >
-                <MessageSquarePlus />
-              </Button>
-            </Tip>
-          </div>
-        </TooltipProvider>
+        <div role="toolbar" aria-label="Selected text actions" className="flex items-center gap-0.5">
+          {/* The popover's 12px corner less its 4px inset: the button's 8px. */}
+          <Button
+            variant="ghost"
+            size="xs"
+            className="rounded-lg text-[13px]"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              if (shown.current) onAddToChat(shown.current.text);
+              window.getSelection()?.removeAllRanges();
+              onDismiss();
+            }}
+          >
+            <MessageSquarePlus className="size-3.5" strokeWidth={1.5} />
+            Add to chat
+          </Button>
+        </div>
       ) : null}
     </LazyPopover>
   );

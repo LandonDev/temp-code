@@ -21,7 +21,7 @@ IconAction and markdown.css (A9).
 
 One action (an edit, a command, a read, a search, a fetch, a skill, a call
 into the app, a connector call, a subagent spawn, an approval, a todo
-update) is one 32 px line, `[glyph]  Verb  object  +46 −3  extras  ▸`
+update) is one 28 px line at 13 px, `[glyph]  Verb  object  +46 −3  extras  ▸`
 (`transcript/ActionLine.tsx`). What each row says and opens is decided once
 in `transcript/actionModel.ts` (`actionOf`, unit-tested) from the words of
 `lib/toolPhrase.ts` (`toolPhraseParts`: the verb muted, the object in
@@ -31,7 +31,9 @@ foreground, the same words the group line uses); the components only draw it.
   icon from the `GLYPH` record, the connector's mark or the subagent's
   provider in its place, and while the call runs, fails (or was denied) or
   asks for approval the `StatusMark` of working, failed or waiting with no
-  word (nothing else on the line turns red). The words hug their text, so
+  word (nothing else on the line turns red); a change of face (the call
+  settling: spinner to icon) swaps in the box through the keyed `SwapIcon`,
+  and the verb changes tense in place through `SwapText`. The words hug their text, so
   the caret sits right after them, as on the group line. A command whose
   gist would only repeat it ("Ran bun run typecheck") says "Ran a command";
   more than two clauses end "and N more".
@@ -61,15 +63,19 @@ foreground, the same words the group line uses); the components only draw it.
   decided the card is its one verdict line and the row an ordinary row
   again. An edit's bookkeeping row leaves the card to its parent
   (`ActionRow approval={false}`), so one call has one card.
-- **One card, never two.** The border is the group's list around the rows
-  (`ActionGroup`), which also gives each row its side padding, so a lone
-  row lines up with the prose. A lone row's open body is a card of its own
-  (`BODY_FRAME` in ActionRow.tsx: hairline, rounded-lg, p-3), which a
-  `bg-card` ancestor cancels, so inside the list it draws nothing. Hover lifts the verb and the caret to
-  foreground, as the group line does.
+- **One card, never two.** The group draws no box: its rows hang 22 px
+  under the line's words, so a row's glyph sits under them, and a lone row
+  lines up with the prose. A row's open body is a card of its own
+  (`BODY_FRAME` in ActionRow.tsx: hairline, rounded-lg, bg-card, p-3; an
+  edit's diff in the same card with its tints to the edges), which a
+  `bg-card` ancestor (the board's task card) cancels. Opening a body inside
+  a group is a hand on the group (`transcript/groupHand.ts`), which decides
+  it from then on. Hover lifts the verb and the caret to foreground, as the
+  group line does.
 - `transcript/ActionRow.fixtures.tsx` holds one of each row for a static
-  look; `ToolRow.dom.test.tsx` and `EditRow.dom.test.tsx` prove the
-  behaviour.
+  look and `ActionGroup.fixtures.tsx` a working group at 1, 2, 5 and 9
+  rows; `ToolRow.dom.test.tsx`, `EditRow.dom.test.tsx` and
+  `ActionGroup.working.dom.test.tsx` prove the behaviour.
 
 ## Thinking, closing lines and notices
 
@@ -86,7 +92,7 @@ foreground, the same words the group line uses); the components only draw it.
   `StatusMark`'s words. No clock time.
 - **Notices** draw on `transcript/NoticeLine.tsx`: a 14 px glyph slot that
   lines up with the action rows' tool icon, the lead, each detail its own
-  muted span and hover actions, at the action rows' 14 px on 32 px; a line
+  muted span and hover actions, at the action rows' 13 px on 20 px in a 28 px row; a line
   that opens is its own trigger with a bare chevron, as a row is. Gate, compaction, pass,
   handoff, plan hand-off, batch, account-gone, a stopped turn and any plain
   system text are lines; a held review (`ReviewCard.tsx`) and a failure
@@ -124,17 +130,23 @@ foreground, the same words the group line uses); the components only draw it.
   forbids free text, Skip dismisses the set; once answered, one line per
   question says what was picked.
 - **Prose and code** (`AgentMarkdown.tsx`, `CodeBlock.tsx`,
-  `transcript/markdown.css`): 15/1.6 prose (`size="compact"` is 14/24 for
-  panels), one plain inline-code pill, a quiet code block coloured by
-  weight on `lib/transcriptCodeTheme.ts`, whose colours are the ink tokens.
+  `transcript/markdown.css`): 14/22 prose (`size="compact"` is 14/24 for
+  panels) whose blocks set their own rhythm under streamdown's (every gap a
+  margin-top, docs/DESIGN.md "The transcript"), one plain inline-code pill
+  one pixel under its text, a quiet code block coloured by weight on
+  `lib/transcriptCodeTheme.ts`, whose colours are the ink tokens, with its
+  28 px header only when the fence names a file or a language.
 
 ## Rules
 
 - **Rows are the unit.** The thread is a flat list of rows
   (`surfaces/transcriptRows.ts`): one per turn item (a block, or a group:
   every step between two paragraphs, thinking, todo updates and the host's
-  folded steps included, one muted line closed by default, live or settled,
-  that opens into one list; a group of one step is that step's own row), one closing row per turn (its
+  folded steps included, one muted line whose rows hang under its words
+  when it opens; a group of one step is that step's own row, the same tree,
+  so a second call landing remounts nothing; the group the open turn works
+  in, `working`, opens on its own at two calls, shows its newest five rows
+  and folds `FOLD_HOLD_MS` after the work moves on), one closing row per turn (its
   duration line, the live timer, the thinking tail), and a `more` row at
   the top for the remote profile's "Load earlier messages". A row is keyed
   by the id of its first block, so it keeps its identity as the window
@@ -142,6 +154,20 @@ foreground, the same words the group line uses); the components only draw it.
   turns added above. Rows of a settled turn are cached per turn array
   (`stableTurns` keeps those arrays), so a streamed delta rebuilds the live
   turn's rows alone.
+- **The gap belongs to the boundary.** Each row carries the space above it
+  (`ROW_GAP` in transcriptRows.ts: 16px before the first row, 32px between
+  turns, 16px under a bubble, 12px between blocks or a block and a line,
+  4px between two lines, 8px to the closing line and under "Load earlier
+  messages"), applied by `RowView` as `has-[>*]:pt-*`, so a row that draws
+  nothing (an empty closing row, a null notice) stays 0px tall; no row has
+  margins of its own, and the column ends 16px under its last row
+  (`pb-4` outside the measured container).
+- **Estimates follow the metrics.** `estimateRowHeight` is the row's gap
+  plus its body: 28px a line (a closed group, an action, a thought, a
+  notice, the closing line), a working group 28px plus 28px for each of its
+  newest five rows, prose 22px a line at about 100 characters plus 40px a
+  fence, a bubble 16px plus 22px a line, a failure card 88px, a closing row
+  that draws nothing 0.
 - **Only the viewport is mounted.** `lib/transcriptWindow.ts` (`RowLayout`)
   holds every row's height, estimated until measured, with offsets as
   prefix sums. The transcript mounts the rows that meet the viewport plus
@@ -181,7 +207,13 @@ foreground, the same words the group line uses); the components only draw it.
   (`landing`). A keyboard jump from the message list (Enter or Space,
   `scrollToRow(index, { instant: true })`) writes the offset at once and
   lands the same way: a key is never animated. The parked prompt of an own
-  send waits for its row to mount (`pendingPark`).
+  send waits for its row to mount (`pendingPark`), then the runway is laid
+  and the transcript glides there (`DUR.drawer` on `EASE_DRAWER`; in one
+  write under reduced motion): while that glide runs, `layoutRunway` moves
+  its target from the row layout and never writes the offset itself, and a
+  row measured above moves a glide in flight with the content. Jumps and a
+  burst while following glide on `DUR.drawer` `EASE_OUT`, the runway
+  retires on `DUR.base`, all read through `cubicBezier` (lib/ease.ts).
 - **Markdown parses off the main thread.** A settled markdown row asks
   `lib/markdownParse.ts` for its tree; `lib/markdown.worker.ts` runs
   streamdown's own block split and remark → rehype chain (shared through

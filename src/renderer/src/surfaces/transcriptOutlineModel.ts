@@ -139,7 +139,7 @@ export function dayGroups(entries: readonly OutlineEntry[], now: number, locale?
 }
 
 /*
- * Placement, against the transcript column (`COLUMN_MAX_CLASS`, 896px,
+ * Placement, against the transcript column (`COLUMN_MAX_CLASS`, 768px,
  * inside the scroller's 16px padding a side). The list is 208px wide, 16px
  * from the pane's left edge and 24px before the column: 248px of room.
  */
@@ -148,8 +148,8 @@ export const LIST_WIDTH_PX = 208;
 export const LIST_GAP_PX = 24;
 export const LIST_SPACE = LIST_INSET_PX + LIST_WIDTH_PX + LIST_GAP_PX;
 /** The column's class and its width; the thresholds follow both. */
-export const COLUMN_MAX_CLASS = "max-w-4xl";
-export const COLUMN_MAX_PX = 896;
+export const COLUMN_MAX_CLASS = "max-w-3xl";
+export const COLUMN_MAX_PX = 768;
 /** The narrowest the column gets to make room for the list. */
 export const COLUMN_MIN_PX = 600;
 /** The scroller's own padding on the right. */

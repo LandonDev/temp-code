@@ -40,6 +40,23 @@ export const DUR = { fast: 0.12, base: 0.18, slow: 0.24, drawer: 0.3 } as const;
  *  (lib/scrollActivity.ts; docs/DESIGN.md "Scrolling"). */
 export const SCROLL_IDLE_MS = 900;
 
+/** The beat a working group holds open after its work moved on, in ms, so
+ *  its last step's settle shows before it folds (transcript/ActionGroup.tsx). */
+export const FOLD_HOLD_MS = 600;
+
+/**
+ * The streaming veil's clock (surfaces/streamVeil.ts): the cadence's seed,
+ * the longest gap it counts, each chunk's fade bounds, and the text's alpha
+ * at progress p, 1 − (1−p)^1.6, sampled for `linear()`.
+ */
+export const VEIL = {
+  seedMs: 160,
+  maxGapMs: 1000,
+  minFadeMs: 120,
+  maxFadeMs: 400,
+  alpha: "linear(0, 0.155, 0.3, 0.435, 0.558, 0.67, 0.769, 0.854, 0.924, 0.975, 1)",
+} as const;
+
 /** A released drag settling: a sash let go, a reordered row dropping home. */
 export const SPRING_GLIDE = {
   type: "spring",
@@ -69,6 +86,37 @@ export const ENTER = {
 
 /** The one exit: a fade over DUR.fast. */
 export const FADE_OUT = { opacity: 0, transition: { duration: DUR.fast, ease: EASE_OUT } } as const;
+
+/**
+ * A CSS cubic-bezier curve as a function of progress, for code that drives
+ * motion itself (the transcript's scroll glides): `cubicBezier(EASE_OUT)(t)`
+ * is the eased progress at `t` in [0, 1]. Newton's method on x, then
+ * bisection where the slope is too flat to trust.
+ */
+export function cubicBezier([x1, y1, x2, y2]: readonly [number, number, number, number]): (t: number) => number {
+  const at = (a: number, b: number, s: number) => ((1 - 3 * b + 3 * a) * s + (3 * b - 6 * a)) * s * s + 3 * a * s;
+  const slope = (a: number, b: number, s: number) => 3 * (1 - 3 * b + 3 * a) * s * s + 2 * (3 * b - 6 * a) * s + 3 * a;
+  const solve = (x: number) => {
+    let s = x;
+    for (let i = 0; i < 8; i++) {
+      const dx = at(x1, x2, s) - x;
+      if (Math.abs(dx) < 1e-6) return s;
+      const d = slope(x1, x2, s);
+      if (Math.abs(d) < 1e-6) break;
+      s -= dx / d;
+    }
+    let lo = 0;
+    let hi = 1;
+    s = x;
+    while (hi - lo > 1e-6) {
+      if (at(x1, x2, s) < x) lo = s;
+      else hi = s;
+      s = (lo + hi) / 2;
+    }
+    return s;
+  };
+  return (t) => (t <= 0 ? 0 : t >= 1 ? 1 : at(y1, y2, solve(t)));
+}
 
 type Spring = { readonly stiffness: number; readonly damping: number; readonly mass: number };
 

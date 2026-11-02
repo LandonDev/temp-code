@@ -37,7 +37,7 @@ export function CommandCard({ block, failed }: { block: Block; failed: boolean }
   return (
     <div className="flex min-w-0 flex-col">
       <div className="mb-1 text-xs text-muted-foreground">{name}</div>
-      <pre className="min-w-0 font-mono text-[13px] leading-5 whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]">
+      <pre className="min-w-0 font-mono text-xs leading-5 whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]">
         <span className="text-muted-foreground">$ </span>
         {shellTokens(shown).map((token, i) => (
           <span key={i} className={TONE[token.tone]}>

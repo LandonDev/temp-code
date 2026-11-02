@@ -40,6 +40,26 @@ describe("SwapIcon", () => {
     expect(glyphs(view.container)).toEqual(["copy"]);
   });
 
+  it("keyed: swaps whenever the state changes, through any number of glyphs, in one box", () => {
+    const keyed = (state: string) => (
+      <SwapIcon state={state}>
+        <i data-glyph={state} />
+      </SwapIcon>
+    );
+    const view = render(keyed("waiting"));
+    expect(glyphs(view.container)).toEqual(["waiting"]);
+    // The same state again: nothing remounts.
+    const first = view.container.querySelector("[data-swap]");
+    view.rerender(keyed("waiting"));
+    expect(view.container.querySelector("[data-swap]")).toBe(first);
+    view.rerender(keyed("working"));
+    expect(glyphs(view.container)).toEqual(["waiting", "working"]);
+    const entering = view.container.querySelector("[data-glyph=working]")!.parentElement as HTMLElement;
+    // The entrance is one transform (composited), from a quarter size.
+    expect(entering.style.transform).toContain("scale(0.25)");
+    expect(entering.style.opacity).toBe("0");
+  });
+
   it("under reduced motion cross-fades with no scale or blur", () => {
     reduced.value = true;
     const view = render(swap(false));

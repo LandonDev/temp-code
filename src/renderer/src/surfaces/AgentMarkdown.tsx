@@ -173,7 +173,7 @@ function MarkdownCode({
     const code = (
       <code
         {...props}
-        className={`rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.875em] text-foreground box-decoration-clone ${
+        className={`rounded-sm bg-muted px-1 py-px font-mono text-[calc(1em-1px)] text-foreground box-decoration-clone ${
           text.length <= SHORT_TOKEN ? "whitespace-nowrap" : ""
         } ${
           open ? "cursor-pointer decoration-muted-foreground underline-offset-2 hover:underline" : ""
@@ -227,9 +227,9 @@ const MARKDOWN_COMPONENTS = {
   code: MarkdownCode,
 } satisfies Components;
 
-/** Transcript prose is 15/1.6 (24px lines, transcriptRows' PROSE_LINE);
- *  panels and dialogs read it at 14/24. */
-const SIZE_CLASS = { prose: "text-[15px] leading-[1.6]", compact: "text-sm leading-6" } as const;
+/** Transcript prose is 14/22 (transcriptRows' prose line); panels and
+ *  dialogs read it at 14/24. Its block rhythm is transcript/markdown.css. */
+const SIZE_CLASS = { prose: "text-sm leading-[22px]", compact: "text-sm leading-6" } as const;
 
 export const AgentMarkdown = memo(function AgentMarkdown({
   text,
@@ -410,13 +410,13 @@ function MermaidBlock({
 
   if (!svg) {
     return (
-      <Skeleton className="my-4 h-32 w-full rounded-lg" />
+      <Skeleton className="h-32 w-full rounded-lg" />
     );
   }
 
   return (
     <div
-      className="mermaid-block my-4 overflow-x-auto rounded-lg [--scrollbar-inset:var(--radius-lg)] border border-border bg-card p-3"
+      className="mermaid-block overflow-x-auto rounded-lg [--scrollbar-inset:var(--radius-lg)] border border-border bg-card p-3"
       data-streamdown="mermaid-block"
       dangerouslySetInnerHTML={{ __html: svg }}
     />

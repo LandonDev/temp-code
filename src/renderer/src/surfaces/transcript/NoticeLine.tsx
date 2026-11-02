@@ -5,7 +5,7 @@ import { CollapsibleTrigger } from "../../components/ui/collapsible";
 import { cn } from "../../lib/cn";
 
 /**
- * A notice on one line, the action rows' size (14px on 32px): a 14px glyph
+ * A notice on one line, the action rows' size (13px on 20px in a 28px row): a 14px glyph
  * slot (a StatusMark glyph when a state applies, else a chrome icon), the
  * lead, its details 8px apart in the muted ink (each shrinks and truncates
  * before the lead, a `trailing` status or the chevron does), then actions
@@ -49,8 +49,8 @@ export function NoticeLine({
 }) {
   const shown = details.filter((d) => d != null && d !== false && d !== "");
   return (
-    <div data-slot="notice-line" className={cn("group/notice flex min-w-0 flex-col font-sans text-sm", className)} {...rest}>
-      <div className="relative flex min-h-8 min-w-0 items-start gap-2 py-1.5">
+    <div data-slot="notice-line" className={cn("group/notice flex min-w-0 flex-col font-sans text-[13px] leading-5", className)} {...rest}>
+      <div className="relative flex min-h-7 min-w-0 items-start gap-2 py-1">
         {fold ? (
           <CollapsibleTrigger
             aria-label={fold.label}
@@ -87,7 +87,7 @@ export function NoticeLine({
               aria-hidden
               strokeWidth={1.5}
               className={cn(
-                "size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-fast) ease-(--ease-out) group-hover/notice:text-foreground motion-reduce:transition-none",
+                "size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/notice:text-foreground motion-reduce:transition-none",
                 fold.open && "rotate-90",
               )}
             />

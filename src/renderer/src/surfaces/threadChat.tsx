@@ -19,7 +19,7 @@ import { MacBridgeThreadCards } from "../chrome/MacBridgeCards";
 import { MessageQueue, visibleQueue } from "../chrome/MessageQueue";
 import { SessionReview } from "../chrome/SessionReview";
 import type { ComposerIntent } from "../lib/composerAction";
-import { FADE_OUT, SPRING_PRESS } from "../lib/ease";
+import { DUR, EASE_OUT, FADE_OUT } from "../lib/ease";
 import type { ApprovalDecision } from "../lib/harness";
 import { useMacBridgeRequests } from "../lib/macBridge";
 import { createNote, noteTitle } from "../lib/notes";
@@ -46,6 +46,12 @@ import { WorkingStrip } from "./threads/WorkingStrip";
 import { rightPanel } from "../lib/rightPanel";
 import { desktopOnly } from "../lib/nativeWeb";
 import { askOnGesture } from "../lib/preconnect";
+
+/** The jump button enters as a popover does (docs/DESIGN.md "Motion values"):
+ *  fade and scale 0.95 to 1 over --dur-base, as one transform; it leaves on
+ *  FADE_OUT. */
+const JUMP_FROM = { opacity: 0, transform: "scale(0.95)" };
+const JUMP_AT = { opacity: 1, transform: "none", transition: { duration: DUR.base, ease: EASE_OUT } };
 
 /**
  * A thread's chat column, wherever it is drawn: the pane (SessionPane), a
@@ -395,20 +401,21 @@ export function useThreadChat({
             <motion.div
               key="jump"
               className="pointer-events-none absolute inset-x-0 bottom-2 z-30 flex justify-center"
-              initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1, transition: SPRING_PRESS }}
+              initial={reduceMotion ? { opacity: 0 } : JUMP_FROM}
+              animate={JUMP_AT}
               exit={FADE_OUT}
             >
               <Tip label="Jump to latest">
                 <Button
-                  variant="secondary"
-                  size="icon-xs"
+                  variant="ghost"
+                  size="icon"
+                  rounded
                   aria-label="Jump to latest"
                   data-jump-to-bottom
                   onClick={() => jumpToBottomRef.current?.()}
-                  className="pointer-events-auto shadow-overlay ring-1 ring-border"
+                  className="pointer-events-auto border border-border bg-popover text-muted-foreground shadow-overlay hover:bg-popover hover:text-foreground"
                 >
-                  <ChevronDown className="size-3.5" strokeWidth={1.75} />
+                  <ChevronDown className="size-4" strokeWidth={1.5} />
                 </Button>
               </Tip>
             </motion.div>

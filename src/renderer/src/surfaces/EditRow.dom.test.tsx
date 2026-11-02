@@ -8,6 +8,8 @@ vi.mock('./monaco/InlineEditor', () => ({ default: () => <div data-testid="inlin
 
 import { EditRow } from './EditRow'
 import { diffChunk } from './chunks'
+import { BODY_FRAME } from './transcript/ActionRow'
+import { GroupHandContext } from './transcript/groupHand'
 import type { Block } from '../lib/session'
 
 const edit: Block = {
@@ -43,6 +45,70 @@ describe('EditRow', () => {
     expect(getByText('−1').className).toContain('text-destructive')
     expect(getByText('+1').closest('[data-slot="counts"]')).not.toBeNull()
     expect(container.querySelector('.border')).toBeNull()
+  })
+
+  // First in the file: the diff chunk has not loaded yet, so its wait shows.
+  it('while the diff chunk loads, the card holds one 20px skeleton line per row to show', () => {
+    const { container, getByRole } = render(<EditRow block={withTool(edit, {}, 'sk1')} cwd="/repo" />)
+    act(() => {
+      fireEvent.click(getByRole('button', { name: 'Edited a.ts' }))
+    })
+    const skeleton = container.querySelector<HTMLElement>('[data-surface-skeleton]')
+    expect(skeleton?.getAttribute('data-surface-skeleton')).toBe('diff-rows')
+    expect(skeleton?.closest('[data-row-body]')).not.toBeNull()
+    expect(skeleton?.querySelectorAll('[data-skeleton-row]')).toHaveLength(2)
+  })
+
+  it('a lone edit opens its diff in the row body card, the tints running to its edges', async () => {
+    const { container, getByRole } = render(<EditRow block={withTool(edit, {}, 'fr1')} cwd="/repo" />)
+    await act(async () => {
+      fireEvent.click(getByRole('button', { name: 'Edited a.ts' }))
+      await diffChunk.load()
+    })
+    const add = container.querySelector<HTMLElement>('[data-diff-line="add"]')!
+    const frame = add.closest<HTMLElement>('[data-row-body]')!
+    expect(frame).not.toBeNull()
+    for (const c of BODY_FRAME.split(' ')) expect(frame.className.split(' ')).toContain(c)
+    // No side padding on the card; each line pads itself, so its tint meets the hairline.
+    expect(frame.className.split(' ')).toEqual(expect.arrayContaining(['px-0', 'py-1']))
+    expect(add.className.split(' ')).toContain('px-3')
+    // 12px mono on 20px lines, the code ladder of a row's body.
+    const code = add.lastElementChild as HTMLElement
+    expect(code.className.split(' ')).toEqual(expect.arrayContaining(['font-mono', 'text-xs', 'leading-5']))
+  })
+
+  it('opening its diff inside a group tells the group a hand took it; closing does not', async () => {
+    const hand = vi.fn()
+    const { getByRole } = render(
+      <GroupHandContext.Provider value={hand}>
+        <EditRow block={withTool(edit, {}, 'gh1')} cwd="/repo" />
+      </GroupHandContext.Provider>
+    )
+    await act(async () => {
+      fireEvent.click(getByRole('button', { name: 'Edited a.ts' }))
+      await diffChunk.load()
+    })
+    expect(hand).toHaveBeenCalledTimes(1)
+    act(() => {
+      fireEvent.click(getByRole('button', { name: 'Edited a.ts' }))
+    })
+    expect(hand).toHaveBeenCalledTimes(1)
+  })
+
+  it('inside a card the edit draws no second frame', async () => {
+    const { container, getByRole } = render(
+      <div className="bg-card">
+        <EditRow block={withTool(edit, {}, 'fr2')} cwd="/repo" />
+      </div>
+    )
+    await act(async () => {
+      fireEvent.click(getByRole('button', { name: 'Edited a.ts' }))
+      await diffChunk.load()
+    })
+    const frame = container.querySelector<HTMLElement>('[data-row-body]')!
+    for (const c of ['in-[.bg-card]:border-0', 'in-[.bg-card]:bg-transparent', 'in-[.bg-card]:p-0', 'in-[.bg-card]:rounded-none'])
+      expect(frame.className).toContain(c)
+    expect(frame.querySelectorAll('[data-row-body]')).toHaveLength(0)
   })
 
   it('a collapsed row never reads its file; opening the diff does, once', async () => {

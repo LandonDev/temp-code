@@ -13,7 +13,7 @@ import { useEnvironmentBlock } from "../chrome/ConnectionLine";
 import { noteActiveSession } from "../lib/appshots";
 import { useFirstPaintReport } from "../lib/firstPaint";
 import { motion, useReducedMotion } from "motion/react";
-import { ENTER } from "../lib/ease";
+import { DUR, EASE_OUT } from "../lib/ease";
 import { sessionStore } from "../lib/tcserver/store";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
 import { sessionDisplayTitle, type LoadState, type Session } from "../lib/session";
@@ -27,11 +27,15 @@ import { NoRowsLine } from "./NoRowsLine";
 import { PaneHeader } from "./paneChrome";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
 import { ThreadView } from "./threads/ThreadView";
+import { ChatFooter } from "./threads/chatSlots";
 import { isMasterThread } from "../lib/masterThread";
 import { useSessionActions, useThreadChat } from "./threadChat";
 import * as serverCommands from "../lib/tcserver/commands";
 import { askPreconnect, idleForPreconnect } from "../lib/preconnect";
 import { ADD_TO_CHAT_EVENT, type AddToChatRequest } from "../lib/quoteDraft";
+
+/** The pane switch: opacity alone, --dur-fast (DESIGN.md "Pane switch"). */
+export const PANE_FADE = { duration: DUR.fast, ease: EASE_OUT } as const;
 
 type Props = {
   session: Session;
@@ -171,16 +175,16 @@ export const SessionPane = memo(function SessionPane({
     return () => window.removeEventListener(ADD_TO_CHAT_EVENT, onAdd);
   }, [addSelectionToChat, focused]);
 
-  // Keyed remount per session; the brief fade bridges the swap without
-  // delaying it (no exit animation).
+  // Keyed remount per session; a --dur-fast fade bridges the swap without
+  // delaying it: no rise (a switch is navigation) and no exit animation.
   return (
     <motion.div
       key={session.id}
       ref={rootRef}
       data-session-drop={session.id}
-      initial={reduceMotion ? false : ENTER.initial}
-      animate={ENTER.animate}
-      transition={ENTER.transition}
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={PANE_FADE}
       className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
       onMouseDown={focusPane}
     >
@@ -199,7 +203,7 @@ export const SessionPane = memo(function SessionPane({
             <EmptySession composer={dockComposer ? undefined : composerOf()} />
           </div>
           {dockComposer ? (
-            <div className="mx-auto w-full max-w-4xl shrink-0">{composerOf()}</div>
+            <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf() }} />
           ) : null}
         </>
       ) : hostEmpty ? (
@@ -207,7 +211,7 @@ export const SessionPane = memo(function SessionPane({
           <div className="relative flex min-h-0 flex-1 flex-col" data-transcript-empty>
             <NoRowsLine summary={session.failure?.summary} />
           </div>
-          <div className="mx-auto w-full max-w-4xl shrink-0">{composerOf()}</div>
+          <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf() }} />
         </>
       ) : waiting ? (
         <>
@@ -220,7 +224,7 @@ export const SessionPane = memo(function SessionPane({
               <SurfaceSkeleton kind="transcript" label="Loading thread" />
             </div>
           </div>
-          <div className="mx-auto w-full max-w-4xl shrink-0">{composerOf()}</div>
+          <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf() }} />
         </>
       ) : (
         <ThreadView

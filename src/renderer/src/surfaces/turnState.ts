@@ -9,6 +9,11 @@ export type TurnSession = ClockSession & OutcomeSession & Partial<Pick<Session, 
 
 export const TurnStateContext = createContext<TurnSession | null>(null);
 
+/** Whether the transcript is parking a prompt the person just sent (prompt
+ *  to top), asked when a bubble decides its entrance: a parked bubble rides
+ *  with the content and rises; a followed one may fly from the field. */
+export const ParkPendingContext = createContext<() => boolean>(() => false);
+
 export function useTurnState(): TurnSession | null {
   return useContext(TurnStateContext);
 }

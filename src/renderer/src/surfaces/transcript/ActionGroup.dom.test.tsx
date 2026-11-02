@@ -46,7 +46,11 @@ function mount(blocks: Block[], props: { live?: boolean } = {}, session = `s${++
     </TranscriptSessionContext.Provider>,
   );
 }
-const trigger = (c: HTMLElement) => c.querySelector<HTMLButtonElement>('[data-slot="collapsible-trigger"]');
+/** The group's line, when it shows: a lone call folds it away (kept mounted, hidden). */
+const trigger = (c: HTMLElement) => {
+  const line = c.querySelector<HTMLButtonElement>("[data-group-line]");
+  return line && !line.closest("[hidden]") ? line : null;
+};
 
 describe("ActionGroup", () => {
   it("renders a lone call as its own row, no line above it", () => {
@@ -78,7 +82,7 @@ describe("ActionGroup", () => {
       fireEvent.click(trigger(first.container)!);
     });
     expect(trigger(first.container)!.getAttribute("aria-expanded")).toBe("true");
-    expect(first.container.querySelector(".divide-y")?.children.length).toBe(2);
+    expect(first.container.querySelector("[data-group-rows]")?.children.length).toBe(2);
     first.unmount();
     const again = mount(blocks, {}, "keep");
     expect(trigger(again.container)!.getAttribute("aria-expanded")).toBe("true");
@@ -104,10 +108,10 @@ describe("ActionGroup", () => {
     expect(mark.textContent).toBe("1");
   });
 
-  it("draws one call and the thought before it as two rows, no line and no box", () => {
+  it("draws one call and the thought before it as two rows, no line and no hang", () => {
     const { container } = mount([thought("t"), read("a", "src/types.ts")]);
-    expect(container.querySelector("[data-kind]")).toBeNull();
-    expect(container.querySelector(".divide-y")).toBeNull();
+    expect(trigger(container)).toBeNull();
+    expect(container.querySelector("[data-group-rows]")!.className).not.toContain("pl-5.5");
     expect(container.textContent).toContain("types.ts");
     // One row for the read (its glyph), nothing repeating it.
     expect(container.querySelectorAll("[data-glyph]").length).toBe(1);
@@ -116,7 +120,7 @@ describe("ActionGroup", () => {
 
   it("draws a run of thinking alone as the thinking row, never a line saying Thought", () => {
     const { container } = mount([thought("t")]);
-    expect(container.querySelector("[data-kind]")).toBeNull();
+    expect(trigger(container)).toBeNull();
     expect(container.textContent).toContain("Thought for 4s");
   });
 
@@ -126,7 +130,7 @@ describe("ActionGroup", () => {
     act(() => {
       fireEvent.click(trigger(container)!);
     });
-    const rowSvg = container.querySelector(".divide-y [data-glyph] svg")!.innerHTML;
+    const rowSvg = container.querySelector("[data-group-rows] [data-glyph] svg")!.innerHTML;
     expect(lineSvg).toBe(rowSvg);
   });
 
@@ -154,7 +158,7 @@ describe("ActionGroup", () => {
       expect(trigger(container)!.textContent).toContain("Spawned “A”, waited for “A”, heard from “A”");
       expect(container.querySelector("[data-kind]")?.getAttribute("data-kind")).toBe("agents");
       open(container);
-      const list = container.querySelector(".divide-y")!;
+      const list = container.querySelector("[data-group-rows]")!;
       expect(list.children.length).toBe(3);
       expect(list.children[2].textContent).toContain("Heard from");
       expect(list.children[2].querySelector('[data-slot="status-mark"]')?.getAttribute("data-state")).toBe("failed");
@@ -165,11 +169,11 @@ describe("ActionGroup", () => {
       const mark = trigger(container)!.querySelector('[data-slot="status-mark"]')!;
       expect(mark.textContent).toBe("1");
       open(container);
-      const logTrigger = container.querySelector<HTMLButtonElement>('.divide-y [data-slot="collapsible-trigger"]')!;
+      const logTrigger = container.querySelector<HTMLButtonElement>('[data-group-rows] [data-slot="collapsible-trigger"]')!;
       act(() => {
         fireEvent.click(logTrigger);
       });
-      expect(container.querySelector(".divide-y pre")?.textContent).toContain("gate failed: vitest");
+      expect(container.querySelector("[data-group-rows] pre")?.textContent).toContain("gate failed: vitest");
     });
 
     it("a todo update folds as a step, Updated todos 3/7, and opens its list", () => {
@@ -177,7 +181,7 @@ describe("ActionGroup", () => {
       const { container } = mount([bash("b", "ls"), tool("t", "TodoWrite", { todos })]);
       expect(trigger(container)!.textContent).toContain("updated todos");
       open(container);
-      const row = container.querySelector(".divide-y")!.children[1] as HTMLElement;
+      const row = container.querySelector("[data-group-rows]")!.children[1] as HTMLElement;
       expect(row.textContent).toContain("Updated todos");
       expect(row.textContent).toContain("3/7");
       act(() => {

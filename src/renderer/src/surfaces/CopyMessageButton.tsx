@@ -33,7 +33,7 @@ export function CopyMessageButton({
       variant="ghost"
       size="icon-xs"
       aria-label={copied ? "Copied" : "Copy message"}
-      className="absolute -left-8 top-1/2 z-10 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) focus-visible:opacity-100 group-hover/message:opacity-100"
+      className="absolute -left-8 top-1/2 z-10 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) focus-visible:opacity-100 group-hover/message:opacity-100 motion-reduce:transition-none"
       onClick={(event) => {
         event.stopPropagation();
         playCue("copy");
@@ -47,7 +47,7 @@ export function CopyMessageButton({
         );
       }}
     >
-      <SwapIcon swapped={copied} from={<Copy className="size-3.5" strokeWidth={1.75} />} to={<Check className="size-3.5" strokeWidth={1.75} />} />
+      <SwapIcon swapped={copied} from={<Copy className="size-3.5" strokeWidth={1.5} />} to={<Check className="size-3.5" strokeWidth={1.5} />} />
     </Button>
     </Tip>
   );

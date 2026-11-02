@@ -165,17 +165,20 @@ export function DiffLine({
   kind,
   text,
   onClick,
+  inset = false,
 }: {
   number?: number;
   kind: DiffLineKind;
   text: string;
   onClick?: () => void;
+  /** Pads the line 12px a side, for a body whose tints run to its card's edges. */
+  inset?: boolean;
 }) {
   const { mark, tone } = LINE_MARK[kind];
   return (
     <div
       data-diff-line={kind}
-      className={`group/line flex items-baseline ${LINE_TINT[kind]}${onClick ? " cursor-pointer" : ""}`}
+      className={`group/line flex items-baseline ${LINE_TINT[kind]}${inset ? " px-3" : ""}${onClick ? " cursor-pointer" : ""}`}
       onClick={onClick}
     >
       <span
@@ -183,10 +186,10 @@ export function DiffLine({
       >
         {number ?? ""}
       </span>
-      <span className={`w-3 shrink-0 select-none text-center font-mono text-[11px] font-medium ${tone}`}>
+      <span className={`w-3 shrink-0 select-none text-center font-mono text-xs font-medium ${tone}`}>
         {mark}
       </span>
-      <span className="min-w-0 flex-1 whitespace-pre-wrap pr-2 font-mono text-[11px] leading-[18px] [overflow-wrap:anywhere]">
+      <span className="min-w-0 flex-1 whitespace-pre-wrap pr-2 font-mono text-xs leading-5 [overflow-wrap:anywhere]">
         {highlightCode(text, kind === "ctx")}
       </span>
     </div>

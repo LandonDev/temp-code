@@ -27,8 +27,8 @@ export function useEnvironmentBlock(environmentId: string): { degraded: Degraded
   return { degraded, name, text: degraded ? degradedText(name, degraded, now) : null };
 }
 
-/** The line's one action: a ghost button in the line's own 11px muted type. */
-const ACTION = "h-5 px-1.5 text-[11px] font-normal text-muted-foreground hover:text-foreground";
+/** The line's one action: a ghost button in the line's own 12px muted type. */
+const ACTION = "h-5 px-1.5 text-xs font-normal text-muted-foreground hover:text-foreground";
 
 export function ConnectionLine({ environmentId }: { environmentId: string }) {
   const { degraded, text } = useEnvironmentBlock(environmentId);
@@ -38,7 +38,7 @@ export function ConnectionLine({ environmentId }: { environmentId: string }) {
     <div
       role="status"
       data-connection-line={degraded.kind}
-      className="mb-1.5 flex h-6 items-center gap-2 px-1 text-[11px] text-muted-foreground"
+      className="mb-2 flex h-6 items-center gap-2 px-3 text-xs text-muted-foreground"
     >
       {unauthorized || degraded.kind === "offline" ? (
         <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${unauthorized ? "bg-danger" : "bg-foreground/25"}`} />

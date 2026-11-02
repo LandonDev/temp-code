@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../lib/tcserver/commands", () => ({ answer: vi.fn() }));
 
 import type { QuestionMeta, QuestionSpec } from "../lib/session";
-import { QuestionCard, cardQuestions } from "./QuestionCard";
+import { CARD_SHAPE, QuestionCard, cardQuestions } from "./QuestionCard";
 
 const meta = (questions: QuestionSpec[], answers?: string[][] | null): QuestionMeta => ({
   sessionId: "s1",
@@ -109,6 +109,16 @@ describe("QuestionCard", () => {
     for (const cls of ["max-w-none", "rounded-lg", "p-3"]) expect(card.className.split(" ")).toContain(cls);
     for (const cls of ["max-w-lg", "rounded-xl", "p-4"]) expect(card.className.split(" ")).not.toContain(cls);
     expect(card.className).not.toContain("[&_h3]");
+  });
+
+  it("draws its frame from the one exported CARD_SHAPE", () => {
+    expect(CARD_SHAPE).toBe("max-w-none rounded-lg p-3");
+    const view = render(<QuestionCard question={meta([spec("Which?", ["A"], { header: "File" })])} onAnswer={() => {}} />);
+    const card = view.container.querySelector<HTMLElement>('[data-slot="question-card"]')!;
+    for (const cls of CARD_SHAPE.split(" ")) expect(card.className.split(" ")).toContain(cls);
+    // The frame inside is inset as far as the card is padded: 12px.
+    const frame = card.querySelector<HTMLElement>(".overflow-hidden")!;
+    expect(frame.className.split(" ")).toEqual(expect.arrayContaining(["-m-3", "p-3"]));
   });
 
   it("carries the amber Needs you glyph by its title, without the word", () => {

@@ -1,5 +1,4 @@
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
 import { Button } from "../components/ui/button";
 import {
   DropdownMenu,
@@ -10,15 +9,17 @@ import {
 import { Kbd } from "../components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { composerActionHint, composerActionLabel, type ComposerIntent } from "../lib/composerAction";
-import { DUR, EASE_OUT } from "../lib/ease";
 import { MOD } from "../lib/platform";
+import { SwapIcon } from "../motion/IconSwap";
 import { sessionStore } from "../lib/tcserver/store";
 import { harnessSupportsAttachments, type HarnessId, type RuntimeMode } from "../lib/session";
 import { AccessPicker } from "./AccessPicker";
 import { ArrowUp, AtSign, CornerDownRight, ListPlus, Paperclip, Pause, Plus, Slash } from "./icons";
 
 /**
- * The composer's one row under the field, 32px tall and never scrolling:
+ * The composer's one row under the field, 28px tall, 6px in from the box's
+ * sides and bottom (its 12px radius less 6 is the controls' 6px), never
+ * scrolling:
  * the `+` menu and the model button on the left, the context meter (an
  * existing thread with a reading), the permission mode (absent for fx,
  * which has none) and the send button on the right. It is the
@@ -57,7 +58,7 @@ export function ComposerBar({
 }) {
   return (
     <TooltipProvider>
-      <div data-composer-bar className="@container/composer-bar mx-2 mb-2 flex h-8 min-w-0 items-center gap-1">
+      <div data-composer-bar className="@container/composer-bar mx-1.5 mb-1.5 flex h-7 min-w-0 items-center gap-1">
         <AddMenu attachable={harnessSupportsAttachments(harness)} onAttach={onAttach} onInsert={onInsert} fieldOf={fieldOf} />
         {model}
         <div className="ms-auto flex shrink-0 items-center gap-1">
@@ -133,8 +134,9 @@ const GLYPH = { send: ArrowUp, queue: ListPlus, steer: CornerDownRight, pause: P
 
 /**
  * The composer's one primary: its glyph is what Enter would do (send,
- * queue, steer, or pause when the box is empty mid-turn), cross-fading on
- * a change. Its tooltip names the intent and, mid-turn, the other key.
+ * queue, steer, or pause when the box is empty mid-turn), swapping through
+ * `SwapIcon` on a change; disabled and enabled ease their opacity. Its
+ * tooltip names the intent and, mid-turn, the other key.
  */
 export function SendButton({
   intent,
@@ -148,10 +150,14 @@ export function SendButton({
   onSubmit: (invert: boolean) => void;
   onPause: () => void;
 }) {
-  const reduce = useReducedMotion();
+  // SwapIcon swaps two sides; flipping the side on every change of intent
+  // keys each glyph apart, so four intents swap the same way two would.
+  const [side, setSide] = useState({ intent, swapped: false });
+  if (side.intent !== intent) setSide({ intent, swapped: !side.swapped });
   const label = composerActionLabel(intent);
   const hint = composerActionHint(intent, MOD);
   const Glyph = GLYPH[intent];
+  const glyph = <Glyph className="size-4" strokeWidth={intent === "pause" ? 1.75 : 2} />;
   const onClick = (e: MouseEvent<HTMLButtonElement>) => {
     if (intent === "pause") onPause();
     else onSubmit(e.metaKey);
@@ -167,22 +173,11 @@ export function SendButton({
             data-intent={intent}
             disabled={disabled}
             onClick={onClick}
-            className="overflow-hidden"
+            className="overflow-hidden transition-[opacity,background-color,color,border-color,scale]"
           />
         }
       >
-        <AnimatePresence initial={false} mode="popLayout">
-          <motion.span
-            key={intent}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.25, filter: "blur(4px)" }}
-            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.25, filter: "blur(4px)" }}
-            transition={{ duration: DUR.fast, ease: EASE_OUT }}
-            className="grid place-items-center"
-          >
-            <Glyph className="size-4" strokeWidth={intent === "pause" ? 1.75 : 2} />
-          </motion.span>
-        </AnimatePresence>
+        <SwapIcon swapped={side.swapped} from={glyph} to={glyph} />
       </TooltipTrigger>
       <TooltipContent className="flex-col items-start gap-0.5">
         <span>{label}</span>

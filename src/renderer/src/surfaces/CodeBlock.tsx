@@ -8,9 +8,11 @@ import { SwapIcon } from "../motion/IconSwap";
 import { IconAction, useArmOnIntent } from "./transcript/IconAction";
 
 /**
- * A fenced code block, quiet: the fence's file path, else the language
- * when the transcript colours it, at the top left (plain text and an
- * unknown language name nothing), copy on hover at the top right, the code in 13px mono
+ * A fenced code block, quiet: a 28px header with the fence's file path,
+ * else the language when the transcript colours it; plain text and an
+ * unknown language have no header at all, the code padded 12px on every
+ * side under a floating copy button. Copy on hover at the top right, its
+ * 4px corner concentric with the card's 8px. The code in 13px mono
  * coloured by weight on the transcript's neutral theme
  * (lib/transcriptCodeTheme.ts) from the shiki worker, so the main thread
  * never tokenizes. Line numbers only when the fence asks. Highlighting
@@ -83,26 +85,36 @@ export const CodeBlock = memo(function CodeBlock({
     );
   };
 
+  const copyButton = (
+    <IconAction
+      label={copied ? "Copied" : "Copy code"}
+      onClick={copy}
+      armed={armed}
+      className={`rounded-sm opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/code:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none ${
+        heading ? "" : "absolute right-1 top-1 z-10"
+      }`}
+    >
+      <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
+    </IconAction>
+  );
+
   return (
     <div
       data-streamdown="code-block"
-      className={`group/code flex flex-col ${className ?? ""}`}
+      className={`group/code relative flex flex-col ${className ?? ""}`}
       {...intent}
     >
-      <div
-        data-streamdown="code-block-header"
-        className="flex h-8 items-center justify-between gap-2 pl-3 pr-1"
-      >
-        <span className="min-w-0 truncate text-xs text-muted-foreground">{heading}</span>
-        <IconAction
-          label={copied ? "Copied" : "Copy code"}
-          onClick={copy}
-          armed={armed}
-          className="opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/code:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
+      {heading ? (
+        <div
+          data-streamdown="code-block-header"
+          className="flex h-7 items-center justify-between gap-2 pl-3 pr-1"
         >
-          <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
-        </IconAction>
-      </div>
+          <span className="min-w-0 truncate text-xs text-muted-foreground">{heading}</span>
+          {copyButton}
+        </div>
+      ) : (
+        copyButton
+      )}
       <div
         data-streamdown="code-block-body"
         data-line-numbers={lineNumbers ? "" : undefined}

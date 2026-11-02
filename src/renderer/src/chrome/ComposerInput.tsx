@@ -71,7 +71,7 @@ function chipElement(chip: ComposerChip): HTMLElement {
   el.dataset.name = chip.name
   el.contentEditable = 'false'
   el.className =
-    'inline-flex select-none items-center gap-1 rounded-[5px] bg-accent/20 px-1 align-baseline font-medium text-foreground'
+    'inline-flex select-none items-center gap-1 rounded-sm bg-foreground/7 px-1 align-baseline font-medium text-foreground'
   const brand = brandOf(chip.name)
   if (brand && 'img' in brand) {
     el.innerHTML = `<img src="${brand.img}" alt="" draggable="false" width="11" height="11" class="shrink-0 object-contain">`
@@ -117,7 +117,7 @@ function fillFromSegments(root: HTMLElement, segments: readonly ComposerSegment[
  *  registry — the only way to colour ranges of a contenteditable without
  *  putting markup in the user's way. All token edges resolve in one walk. */
 function paintTokens(root: HTMLElement, tokens: readonly ComposerToken[]): void {
-  const registry = CSS.highlights
+  const registry = globalThis.CSS?.highlights
   if (!registry) return
   const edges = tokens
     .flatMap((token, i) => [
@@ -201,7 +201,9 @@ export const ComposerInput = forwardRef<
   const clearing = useRef<Animation | null>(null)
   const paintedTokens = useRef(tokens)
 
-  const report = (): void => {
+  /** `animate`: the change came from no keystroke (a paste, a quote, a
+   *  restore), so a jump of more than a line eases; typing snaps. */
+  const report = (animate = false): void => {
     const root = rootRef.current
     if (!root) return
     // Chromium leaves a lone <br> after the last character goes; the
@@ -212,7 +214,7 @@ export const ComposerInput = forwardRef<
     const { text, caret, chips } = readComposer(root, selectionIn(root))
     if (text !== lastText.current) {
       lastText.current = text
-      morphTextareaHeight(root, maxHeight)
+      morphTextareaHeight(root, maxHeight, animate)
     }
     onState(text, caret, chips)
   }
@@ -246,7 +248,7 @@ export const ComposerInput = forwardRef<
       ...undo.current.slice(1 - UNDO_DEPTH),
       { before, after: serializeComposer(root), caret }
     ]
-    report()
+    report(true)
   }
 
   /** ⌘Z with the box exactly as an insertion left it: take that insertion back. */
@@ -258,7 +260,7 @@ export const ComposerInput = forwardRef<
     const at = positionsFor(root, [top.caret])[0]
     if (at) placeCaret(root, at.node, at.offset)
     else caretToEnd(root)
-    report()
+    report(true)
     return true
   }
 
@@ -294,7 +296,7 @@ export const ComposerInput = forwardRef<
       sel?.removeAllRanges()
       sel?.addRange(after)
       undo.current = []
-      report()
+      report(true)
     },
     insertText,
     clear: (fade = false) => {
@@ -333,7 +335,7 @@ export const ComposerInput = forwardRef<
       rebuild(root, segments)
       if (document.activeElement === root) caretToEnd(root)
       undo.current = []
-      report()
+      report(true)
     }
   }))
 
@@ -345,7 +347,7 @@ export const ComposerInput = forwardRef<
 
   useEffect(() => {
     return () => {
-      for (const name of Object.values(HIGHLIGHT_NAMES)) CSS.highlights?.delete(name)
+      for (const name of Object.values(HIGHLIGHT_NAMES)) globalThis.CSS?.highlights?.delete(name)
     }
   }, [])
 

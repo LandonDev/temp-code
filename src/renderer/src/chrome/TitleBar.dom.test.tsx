@@ -9,9 +9,10 @@ import type { SessionMeta } from "../lib/tcserver/types";
 import { buildHeaderModel, orderModel } from "../lib/threadHeaderModel";
 import type { ThreadHeaderProps } from "./ThreadHeader";
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
-import { TabVisitNav, TitleBar } from "./TitleBar";
+import { TabVisitNav, TitleBar, TrafficLightSpacer } from "./TitleBar";
 import { chipThreadsOf } from "./ShellTitleBar";
 import { newSession } from "../lib/session";
+import { shellStore } from "../stores/shell";
 
 vi.mock("./WindowControls", () => ({ WindowControls: () => null }));
 vi.mock("./ProjectPlanChip", () => ({ ProjectPlanChip: () => <button type="button">Plan</button> }));
@@ -170,6 +171,32 @@ describe("TitleBar", () => {
   it("names the rail's toggle by what it shows, as the panel's and the sidebar's are", () => {
     render(<TabVisitNav onTogglePanel={() => {}} />);
     expect(screen.getByRole("button", { name: "Workspaces" })).toBeTruthy();
+  });
+});
+
+describe("TitleBar's controls", () => {
+  it("draws its icon buttons 28px, beside the 28px chips, at the default stroke", () => {
+    bar();
+    const panel = screen.getByRole("button", { name: "Panel" });
+    expect(panel.className).toContain("size-7");
+    for (const svg of panel.closest("header")!.querySelectorAll("button svg")) expect(svg.getAttribute("stroke-width")).toBe("1.5");
+  });
+
+  it("keeps the traffic lights' 78px only on macOS", () => {
+    const rail = shellStore.getState().projectRailOpen;
+    shellStore.setState({ projectRailOpen: false });
+    try {
+      bar({ cwd: "" });
+      // jsdom is no Mac: the rail toggle leads with no room kept for traffic lights.
+      expect(screen.getByRole("button", { name: "Sidebar" })).toBeTruthy();
+      expect(document.querySelector("[data-traffic-lights]")).toBeNull();
+    } finally {
+      shellStore.setState({ projectRailOpen: rail });
+    }
+    cleanup();
+    const { container } = render(<TrafficLightSpacer mac />);
+    expect(container.querySelector("[data-traffic-lights]")?.className).toContain("w-[78px]");
+    expect(render(<TrafficLightSpacer mac={false} />).container.firstChild).toBeNull();
   });
 });
 

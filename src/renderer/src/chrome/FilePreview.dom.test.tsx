@@ -45,6 +45,18 @@ describe("FilePreview", () => {
     expect(container.querySelector('[data-diff-line="del"]')!.className).toContain("bg-destructive/10");
   });
 
+  it("sets its code at 12px on 20px lines, the numbers 11px tabular", () => {
+    const { container } = render(<FilePreview preview={preview} status="accepted" cwd="/repo" />);
+    for (const line of container.querySelectorAll<HTMLElement>("[data-diff-line]")) {
+      const [number, mark, code] = [...line.children] as HTMLElement[];
+      expect(number.className.split(" ")).toEqual(expect.arrayContaining(["text-[11px]", "tabular-nums"]));
+      expect(mark.className.split(" ")).toContain("text-xs");
+      expect(code.className.split(" ")).toEqual(expect.arrayContaining(["text-xs", "leading-5"]));
+      expect(line.innerHTML).not.toMatch(/leading-\[18px\]/);
+      expect(line.className).not.toContain("px-3");
+    }
+  });
+
   it("says Rejected once refused and nothing while pending", () => {
     const { container, rerender } = render(<FilePreview preview={preview} status="rejected" cwd="/repo" />);
     expect(container.textContent).toContain("Rejected");

@@ -1,16 +1,27 @@
 /**
- * Grow or shrink a textarea to fit its content with a short height tween.
+ * Fit a textarea's height to its content. A keystroke, and the clear after
+ * a send, snap: nothing animates on a keystroke, and a height that eased on
+ * every wrap dragged the transcript above it along. `animate` is the caller
+ * saying the change came from no keystroke (a paste, a restore, a quote);
+ * such a change of more than one line eases over `--dur-base`.
  * FLIP: measure the target at `auto`, put the old height back, force a
  * layout, then let the transition carry it. The box is bottom-anchored so
- * it grows upward. Reduced motion, or no change, snaps.
+ * it grows upward. Reduced motion, a first fit or no change snaps.
  */
-export function morphTextareaHeight(el: HTMLElement, max: number): void {
+export function morphTextareaHeight(el: HTMLElement, max: number, animate = false): void {
   const prev = el.style.height;
   el.style.transition = "none";
   el.style.height = "auto";
   const target = Math.min(el.scrollHeight, max);
   const next = `${target}px`;
-  if (prev === next || prev === "" || prefersReducedMotion()) {
+  const from = parseFloat(prev);
+  if (
+    !animate ||
+    prev === next ||
+    !Number.isFinite(from) ||
+    Math.abs(target - from) <= lineHeight(el) ||
+    prefersReducedMotion()
+  ) {
     el.style.height = next;
     el.style.transition = "";
     return;
@@ -25,6 +36,12 @@ export function morphTextareaHeight(el: HTMLElement, max: number): void {
     el.removeEventListener("transitionend", clear);
   };
   el.addEventListener("transitionend", clear);
+}
+
+/** The field's line, read from its style; the composer's 22px when unset. */
+function lineHeight(el: HTMLElement): number {
+  const line = parseFloat(getComputedStyle(el).lineHeight);
+  return Number.isFinite(line) ? line : 22;
 }
 
 function prefersReducedMotion(): boolean {

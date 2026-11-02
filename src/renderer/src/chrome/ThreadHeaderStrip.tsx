@@ -10,6 +10,7 @@ import type { BackgroundWork } from "@server/shared/events";
 import type { ThreadRules } from "@server/shared/rules";
 import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
+import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { Input } from "../components/ui/input";
 import { StatusMark } from "../components/ui/status";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
@@ -142,10 +143,15 @@ export function ThreadHeaderStrip({
   // live row while the pointer is over the strip (`holdModel`, in the title bar).
   const live = model.live;
   const shelf = model.dormant;
+  // The shelf folds in and out on `.collapsible-auto`; while it folds away
+  // it keeps the chips it last showed.
+  const [keptShelf, setKeptShelf] = useState(shelf);
+  if (shelf.length > 0 && keptShelf !== shelf) setKeptShelf(shelf);
+  const shownShelf = shelf.length > 0 ? shelf : keptShelf;
   useStripHoldRelease();
   const pad = {
-    ["--strip-pad-l" as string]: overflow?.left ? "32px" : undefined,
-    ["--strip-pad-r" as string]: overflow?.right ? "32px" : undefined,
+    ["--strip-pad-l" as string]: overflow?.left ? `${ARROW_ROOM_PX}px` : undefined,
+    ["--strip-pad-r" as string]: overflow?.right ? `${ARROW_ROOM_PX}px` : undefined,
   };
   return (
     <TooltipProvider>
@@ -188,19 +194,21 @@ export function ThreadHeaderStrip({
             <div className="h-full min-w-1.5 flex-1" />
             {end}
           </div>
-          {shelf.length > 0 ? (
-            <div
-              onWheel={wheelToX}
-              role="tablist"
-              aria-label="Settled threads"
-              aria-orientation="horizontal"
-              data-strip="shelf"
-              data-tauri-drag-region="false"
-              className="scrollbar-none flex h-8 min-w-0 items-start gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5 pt-0.5"
-            >
-              <ChipRow chips={shelf} activeId={activeId} onSelect={onSelect} shelf {...events} />
-            </div>
-          ) : null}
+          <Collapsible open={shelf.length > 0}>
+            <CollapsibleContent data-shelf-fold className="collapsible-auto">
+              <div
+                onWheel={wheelToX}
+                role="tablist"
+                aria-label="Settled threads"
+                aria-orientation="horizontal"
+                data-strip="shelf"
+                data-tauri-drag-region="false"
+                className="scrollbar-none flex h-8 min-w-0 items-start gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5 pt-0.5"
+              >
+                <ChipRow chips={shownShelf} activeId={activeId} onSelect={onSelect} shelf {...events} />
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
       </RowsContextMenu>
     </TooltipProvider>
@@ -253,9 +261,11 @@ function ChipRow({
   ));
 }
 
-/** A scroll arrow over an end of the live row, on the title bar's own tone
- *  from the row's edge in (4px + the 24px arrow + 4px); the row pads that end
- *  by as much, so no chip sits under it. */
+/** The room a scroll arrow takes from the live row's edge: 4px, the 28px
+ *  arrow, 4px. The row pads that end by as much, so no chip sits under it. */
+const ARROW_ROOM_PX = 36;
+
+/** A scroll arrow over an end of the live row, on the title bar's own tone. */
 function ScrollArrow({ side, onClick }: { side: "left" | "right"; onClick: () => void }) {
   const label = side === "left" ? "Scroll threads left" : "Scroll threads right";
   const Icon = side === "left" ? ChevronLeft : ChevronRight;
@@ -264,7 +274,7 @@ function ScrollArrow({ side, onClick }: { side: "left" | "right"; onClick: () =>
       <Tip label={label} side="bottom">
         <Button
           variant="ghost"
-          size="icon-xs"
+          size="icon-sm"
           aria-label={label}
           data-scroll-arrow={side}
           data-tauri-drag-region="false"
@@ -272,7 +282,7 @@ function ScrollArrow({ side, onClick }: { side: "left" | "right"; onClick: () =>
           onClick={onClick}
           className="text-muted-foreground hover:text-foreground"
         >
-          <Icon className="size-3.5" strokeWidth={1.75} />
+          <Icon className="size-3.5" strokeWidth={1.5} />
         </Button>
       </Tip>
     </div>
@@ -503,7 +513,7 @@ function Chip({
                 if (event.detail === 0) onSelect(chip.id);
               }}
               onKeyDown={moveFocus}
-              className={`${shelf ? SHELF_CHIP : LIVE_CHIP} min-w-0 justify-start rounded-md font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent aria-selected:bg-muted aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50`}
+              className={`${shelf ? SHELF_CHIP : LIVE_CHIP} min-w-0 justify-start rounded-md font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-muted aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50`}
             />
           }
         >

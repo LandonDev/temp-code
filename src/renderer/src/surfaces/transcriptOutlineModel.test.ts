@@ -126,10 +126,10 @@ describe("dayGroups", () => {
 });
 
 describe("outlinePlacement", () => {
-  it("has its thresholds at 864px and 1392px", () => {
+  it("has its thresholds at 864px and 1264px", () => {
     expect(LIST_SPACE).toBe(248);
     expect(BESIDE_FROM_PX).toBe(864);
-    expect(GUTTER_FROM_PX).toBe(1392);
+    expect(GUTTER_FROM_PX).toBe(1264);
   });
 
   it("hides under 864px and with fewer than two messages", () => {
@@ -141,11 +141,11 @@ describe("outlinePlacement", () => {
 
   it("moves the column beside the list until the gutter fits it", () => {
     expect(outlinePlacement(1000, 2)).toBe("beside");
-    expect(outlinePlacement(1391, 2)).toBe("beside");
-    expect(outlinePlacement(1392, 2)).toBe("gutter");
+    expect(outlinePlacement(1263, 2)).toBe("beside");
+    expect(outlinePlacement(1264, 2)).toBe("gutter");
   });
 
-  it("is continuous at 1392px: the centred column's left edge is the list's room", () => {
+  it("is continuous at 1264px: the centred column's left edge is the list's room", () => {
     const pad = 16;
     const centredLeft = pad + (GUTTER_FROM_PX - 2 * pad - COLUMN_MAX_PX) / 2;
     expect(centredLeft).toBe(LIST_SPACE);
@@ -154,9 +154,9 @@ describe("outlinePlacement", () => {
   });
 
   it("ties the column's width to the class AgentTranscript draws it with", () => {
-    // Tailwind's 4xl container is 56rem.
-    expect(COLUMN_MAX_CLASS).toBe("max-w-4xl");
-    expect(COLUMN_MAX_PX).toBe(56 * 16);
+    // Tailwind's 3xl container is 48rem.
+    expect(COLUMN_MAX_CLASS).toBe("max-w-3xl");
+    expect(COLUMN_MAX_PX).toBe(48 * 16);
     const source = readFileSync(join(__dirname, "AgentTranscript.tsx"), "utf8");
     expect(source.includes("COLUMN_MAX_CLASS")).toBe(true);
     expect(/max-w-\dxl/.test(source)).toBe(false);

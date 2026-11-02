@@ -4,11 +4,11 @@ import { ChevronRight } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
-import { useCountUp } from "../../motion";
+import { SwapText, useCountUp } from "../../motion";
 import { Counts } from "./Counts";
 
 /**
- * `[glyph]  Verb  object  +46 −3  extras  ▸`, 32px tall, the caret right
+ * `[glyph]  Verb  object  +46 −3  extras  ▸`, 28px tall at 13px, the caret right
  * after the words as on the group line. The list around
  * the rows gives them their side padding (ActionGroup), so a lone row lines
  * up with the prose. Hover lifts the verb and the caret to foreground, as
@@ -62,7 +62,7 @@ export function ActionLine({
   return (
     <div
       className={cn(
-        "group/action relative flex h-8 min-w-0 items-center gap-2 font-sans text-sm",
+        "group/action relative flex h-7 min-w-0 items-center gap-2 font-sans text-[13px] leading-5",
       )}
     >
       {action ? (
@@ -78,7 +78,12 @@ export function ActionLine({
       )}
       {glyph}
       <span className="pointer-events-none flex min-w-0 items-center gap-2">
-        {verb ? <span className={cn("shrink-0 text-muted-foreground", action && LIFT)}>{verb}</span> : null}
+        {/* Keyed by the word: a change of tense ("Reading" to "Read") swaps in place. */}
+        {verb ? (
+          <SwapText state={verb} className={cn("shrink-0 text-muted-foreground", action && LIFT)}>
+            {verb}
+          </SwapText>
+        ) : null}
         {objectText}
         {adds || dels ? <TickingCounts adds={adds ?? 0} dels={dels ?? 0} ticking={ticking} /> : null}
       </span>
@@ -92,7 +97,7 @@ export function ActionLine({
         <ChevronRight
           aria-hidden
           className={cn(
-            "pointer-events-none size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-fast) ease-(--ease-out) group-hover/action:text-foreground motion-reduce:transition-none",
+            "pointer-events-none size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/action:text-foreground motion-reduce:transition-none",
             opens && open && "rotate-90",
           )}
           strokeWidth={1.5}
@@ -131,7 +136,7 @@ function ObjectText({
         event.stopPropagation();
         onObject();
       }}
-      className="pointer-events-auto relative h-auto min-w-0 justify-start px-0 text-sm font-normal underline-offset-2 active:not-aria-[haspopup]:scale-100 focus-visible:underline"
+      className="pointer-events-auto relative h-auto min-w-0 justify-start px-0 text-[13px] font-normal underline-offset-2 active:not-aria-[haspopup]:scale-100 focus-visible:underline"
     />
   ) : null;
   const text = <span className={cls}>{object}</span>;

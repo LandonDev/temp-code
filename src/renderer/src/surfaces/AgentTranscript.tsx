@@ -27,11 +27,12 @@ import {
   type RowAnchor,
   type RowRange,
 } from "../lib/transcriptWindow";
-import { estimateRowHeight, flattenTurns, turnUserBlock, type TranscriptRow } from "./transcriptRows";
+import { estimateRowHeight, flattenTurns, turnUserBlock, type RowGap, type TranscriptRow } from "./transcriptRows";
 import { useReducedMotion } from "motion/react";
+import { cubicBezier, DUR, EASE_DRAWER, EASE_OUT } from "../lib/ease";
 import { type Block, type HarnessId } from "../lib/session";
 import { sessionStore } from "../lib/tcserver/store";
-import { TurnStateContext, type TurnSession } from "./turnState";
+import { ParkPendingContext, TurnStateContext, type TurnSession } from "./turnState";
 import { isTurnHeld } from "../lib/turnClock";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { usePaneVisible } from "../hooks/paneVisibility";
@@ -58,10 +59,15 @@ import { TranscriptBlock } from "./transcript/TranscriptBlock";
 const TOP_INSET = 12;
 const STICK_THRESHOLD = 70;
 const PILL_AT = 320;
-const GLIDE_MS = 500;
 const MAX_GLIDE_VIEWPORTS = 2.5;
-const SPACER_MS = 220;
 const FOLLOW_LEAD = 32;
+/** A glide the engine runs itself (docs/DESIGN.md "Motion values"): a jump,
+ *  a burst while following and a jump to a row on `DUR.drawer` `EASE_OUT`;
+ *  the park on send on `DUR.drawer` `EASE_DRAWER`; the runway's retirement
+ *  on `DUR.base` `EASE_OUT`. */
+const GLIDE = { ms: DUR.drawer * 1000, curve: cubicBezier(EASE_OUT) };
+const PARK = { ms: DUR.drawer * 1000, curve: cubicBezier(EASE_DRAWER) };
+const RUNWAY = { ms: DUR.base * 1000, curve: cubicBezier(EASE_OUT) };
 
 /*
  * The viewport window. The thread is a flat list of rows (transcriptRows.ts)
@@ -83,9 +89,10 @@ const MIN_OVERSCAN = 400;
 
 type ScrollMode = "follow" | "parked" | "free";
 
-const easeInOut = (t: number) =>
-  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+type Motion = { readonly ms: number; readonly curve: (t: number) => number };
+/** A glide of the scroll offset: its curve and length, and whether it parks
+ *  a prompt (the runway retargets that one as the answer grows under it). */
+type Glide = { from: number; to: number; start: number; park: boolean } & Motion;
 
 /**
  * Whether a scroll-up left behind by an earlier mount — the reader's own,
@@ -169,7 +176,7 @@ export function AgentTranscript({
   // render, and nothing here changes what React draws.
   const mode = useRef<ScrollMode>("follow");
   const parkedTurn = useRef<HTMLElement | null>(null);
-  const glide = useRef<{ from: number; to: number; start: number } | null>(null);
+  const glide = useRef<Glide | null>(null);
   const velocity = useRef(0);
   const expectedTop = useRef(-1);
   const dragging = useRef(false);
@@ -212,6 +219,9 @@ export function AgentTranscript({
     },
     [onJumpToBottomChange],
   );
+
+  /** For a bubble deciding its entrance: is the engine parking its prompt? */
+  const isParking = useCallback(() => mode.current === "parked", []);
 
   const setMode = (next: ScrollMode) => {
     mode.current = next;
@@ -345,17 +355,17 @@ export function AgentTranscript({
     let again = false;
     const anim = spacerAnim.current;
     if (anim) {
-      const t = Math.min(1, (now - anim.start) / SPACER_MS);
+      const t = Math.min(1, (now - anim.start) / RUNWAY.ms);
       const before = spacerH.current;
-      setSpacer(anim.from * (1 - easeOut(t)));
+      setSpacer(anim.from * (1 - RUNWAY.curve(t)));
       scrollHeight += spacerH.current - before;
       if (t < 1) again = true;
       else spacerAnim.current = null;
     }
     const g = glide.current;
     if (g) {
-      const t = Math.min(1, (now - g.start) / GLIDE_MS);
-      scrollTo(el, g.from + (g.to - g.from) * easeInOut(t));
+      const t = Math.min(1, (now - g.start) / g.ms);
+      scrollTo(el, g.from + (g.to - g.from) * g.curve(t));
       if (t < 1) again = true;
       else {
         glide.current = null;
@@ -368,7 +378,7 @@ export function AgentTranscript({
       if (dist > clientHeight / 2 && !reduceMotion) {
         // A burst (a code block landing whole) is too far for the spring's
         // 32 px lead: glide there instead of snapping.
-        glide.current = { from: el.scrollTop, to: max, start: now };
+        glide.current = { from: el.scrollTop, to: max, start: now, park: false, ...GLIDE };
         again = true;
       } else if (dist > 2) {
         velocity.current = (velocity.current + (dist * 0.05) / 1.25) * 0.7;
@@ -388,8 +398,13 @@ export function AgentTranscript({
   }, [reduceMotion, schedule, syncPill]);
   tickRef.current = tick;
 
-  /** The runway under a parked turn: room for the prompt to sit at the top. */
-  const layoutRunway = useCallback(() => {
+  /**
+   * The runway under a parked turn: room for the prompt to sit at the top.
+   * While the park glide runs, the runway is laid and the glide's target
+   * moves with it; the glide owns the offset. Otherwise the offset is
+   * written here, unless `write` is off (the park glide about to start).
+   */
+  const layoutRunway = useCallback((write = true) => {
     const el = scroller.current;
     const turn = parkedTurn.current;
     const content = inner.current;
@@ -398,9 +413,19 @@ export function AgentTranscript({
     const turnTop = turn.getBoundingClientRect().top - base;
     const below = content.getBoundingClientRect().bottom - base - turnTop;
     setSpacer(Math.max(0, el.clientHeight - TOP_INSET - below));
-    scrollTo(el, turnTop - TOP_INSET);
+    const top = parkTopOf(turn, turnTop);
+    const g = glide.current;
+    if (g?.park) g.to = top;
+    else if (write) scrollTo(el, top);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Where a parked prompt's row sits: its offset in the layout when it is
+   *  a row there (exact without a layout pass), else its measured top. */
+  const parkTopOf = (turn: HTMLElement, measuredTop: number): number => {
+    const index = turn.dataset.row === undefined ? -1 : rowLayout.indexOf(turn.dataset.row);
+    return (index >= 0 ? rowLayout.offsetOf(index) : measuredTop) - TOP_INSET;
+  };
 
   /** Retire the runway: at once if it sits below the fold, else a short tween. */
   const collapseSpacer = useCallback(() => {
@@ -416,12 +441,18 @@ export function AgentTranscript({
     schedule();
   }, [reduceMotion, schedule]);
 
+  /**
+   * Glide the offset to `to` on `motion` (a jump's, by default). A target
+   * past the scroll range is clamped, except a park's: its runway is laid
+   * first and moves its target as it grows. A glide longer than 2.5 screens
+   * starts that far short, so the rows it passes are the ones that mount.
+   */
   const startGlide = useCallback(
-    (to: number) => {
+    (to: number, motion: Motion = GLIDE, park = false) => {
       const el = scroller.current;
       if (!el) return;
       const max = Math.max(0, el.scrollHeight - el.clientHeight);
-      to = Math.min(max, Math.max(0, to));
+      to = Math.max(0, park ? to : Math.min(max, to));
       if (reduceMotion) {
         scrollTo(el, to);
         return;
@@ -432,7 +463,7 @@ export function AgentTranscript({
         from = to + Math.sign(from - to) * cap;
         scrollTo(el, from);
       }
-      glide.current = { from, to, start: performance.now() };
+      glide.current = { from, to, start: performance.now(), park, ...motion };
       velocity.current = 0;
       schedule();
     },
@@ -654,6 +685,13 @@ export function AgentTranscript({
       if (shift !== 0) {
         el.scrollTop += shift;
         expectedTop.current = el.scrollTop;
+        // A glide in flight moves with the content, so a row landing above
+        // it never snaps it.
+        const g = glide.current;
+        if (g) {
+          g.from += shift;
+          g.to += shift;
+        }
       }
       if (!glide.current) land(el);
       reconcileWindow(el);
@@ -731,13 +769,20 @@ export function AgentTranscript({
   const unanswered = blocks.length > 0 && blocks[blocks.length - 1].role === "user";
   const seenUserId = useRef(unanswered ? undefined : lastUserId);
   const pendingPark = useRef(false);
+  /** Park the new prompt once its row is mounted: lay the runway, then
+   *  glide there (at once under reduced motion, where the offset was
+   *  already written at the send). */
   const parkLastTurn = () => {
     if (!pendingPark.current) return;
     const turnEl = lastTurnEl();
     if (!turnEl) return;
     pendingPark.current = false;
     parkedTurn.current = turnEl;
-    layoutRunway();
+    layoutRunway(reduceMotion);
+    const el = scroller.current;
+    if (!el || reduceMotion) return;
+    const top = el.getBoundingClientRect().top - el.scrollTop;
+    startGlide(parkTopOf(turnEl, turnEl.getBoundingClientRect().top - top), PARK, true);
   };
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -751,8 +796,10 @@ export function AgentTranscript({
       setMode("parked");
       parkedTurn.current = null;
       pendingPark.current = true;
+      // Under reduced motion the park lands in one write; otherwise it glides
+      // from where the reader is once the prompt's row is mounted.
       const index = rowOf(lastUserId);
-      if (index !== undefined) scrollTo(el, rowLayout.offsetOf(index) - TOP_INSET);
+      if (index !== undefined && reduceMotion) scrollTo(el, rowLayout.offsetOf(index) - TOP_INSET);
       parkLastTurn();
     } else {
       setMode("follow");
@@ -947,10 +994,11 @@ export function AgentTranscript({
     <SelectSessionContext.Provider value={onSelectSession}>
     <TranscriptSessionContext.Provider value={sessionId}>
     <TurnStateContext.Provider value={turnState ?? null}>
+    <ParkPendingContext.Provider value={isParking}>
     <div className="relative h-full">
     <div
       ref={setScroller}
-      className="agent-transcript h-full overflow-y-auto overscroll-none [overflow-anchor:none] [scrollbar-gutter:stable] font-mono text-[13px] leading-5"
+      className="agent-transcript h-full overflow-y-auto overscroll-none [overflow-anchor:none] [scrollbar-gutter:stable] font-sans text-[13px] leading-5"
     >
       {placement !== "hidden" ? (
         // Inside the scroller, so a wheel over the list scrolls the
@@ -968,7 +1016,7 @@ export function AgentTranscript({
       ) : null}
       <div
         ref={inner}
-        className="px-4"
+        className="px-4 pb-4"
         style={placement === "beside" ? { paddingLeft: LIST_SPACE } : undefined}
       >
         <div
@@ -1013,6 +1061,7 @@ export function AgentTranscript({
       ) : null}
     </div>
     </div>
+    </ParkPendingContext.Provider>
     </TurnStateContext.Provider>
     </TranscriptSessionContext.Provider>
     </SelectSessionContext.Provider>
@@ -1057,6 +1106,16 @@ type RowViewProps = {
   onHandoff?: Props["onHandoff"];
 };
 
+/** The gap above a row (`ROW_GAP`), only while the row draws something,
+ *  so an empty row stays 0px tall. Written out whole for Tailwind. */
+const GAP_CLASS: Record<RowGap, string> = {
+  4: "has-[>*]:pt-1",
+  8: "has-[>*]:pt-2",
+  12: "has-[>*]:pt-3",
+  16: "has-[>*]:pt-4",
+  32: "has-[>*]:pt-8",
+};
+
 /**
  * One row of the window, placed by its offset. Its `row` keeps its identity
  * while its turn's blocks do (see `stableTurns` and transcriptRows.ts), so
@@ -1096,11 +1155,11 @@ const RowView = memo(function RowView({
       ref={ref}
       data-row={key}
       data-turn={row.kind === "more" ? undefined : row.turn.id}
-      className={`absolute inset-x-0 flex min-w-0 flex-col pb-1${fadeIn ? " z-fade-in" : ""}`}
+      className={`absolute inset-x-0 flex min-w-0 flex-col ${GAP_CLASS[row.gap]}${fadeIn ? " z-fade-in" : ""}`}
       style={{ top }}
     >
       {row.kind === "more" ? (
-        <div className="flex justify-center py-3">
+        <div className="flex justify-center">
           <Button variant="secondary" size="sm" onClick={onLoadEarlier}>
             Load earlier messages
           </Button>
@@ -1121,6 +1180,7 @@ const RowView = memo(function RowView({
           blocks={row.item.blocks}
           cwd={cwd}
           live={row.live}
+          working={row.working}
           onApproval={onApproval}
           onOpenFile={onOpenFile}
           onOpenDiff={onOpenDiff}
@@ -1140,7 +1200,6 @@ const RowView = memo(function RowView({
         <TranscriptBlock
           block={row.item.block}
           stickyIndex={row.turn.index + 1}
-          compactTop={row.compactTop}
           onApproval={onApproval}
           onOpenFile={onOpenFile}
           onOpenDiff={onOpenDiff}

@@ -13,7 +13,7 @@ export const TodoListBlock = memo(function TodoListBlock({ block }: { block: Blo
   const items = todoItems(block);
   if (items.length === 0) return null;
   return (
-    <div className="py-1">
+    <div className="min-w-0">
       <TodoList items={items} />
     </div>
   );

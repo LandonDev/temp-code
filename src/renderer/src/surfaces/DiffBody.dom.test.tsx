@@ -25,9 +25,12 @@ describe("DiffBody", () => {
     expect(del.textContent!.startsWith("2")).toBe(true);
   });
 
-  it("marks a gap between hunks", () => {
+  it("marks a gap between hunks on the lines' 20px grid", () => {
     const { container } = render(<DiffBody rows={rows} />);
     expect(container.textContent).toContain("⋯");
+    const gap = container.querySelector<HTMLElement>("[data-diff-gap]")!;
+    expect(gap.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "leading-5"]));
+    expect(gap.className).not.toContain("18px");
     expect(container.querySelectorAll("[data-diff-line]")).toHaveLength(4);
   });
 
@@ -40,6 +43,14 @@ describe("DiffBody", () => {
     fireEvent.click(lines[1]);
     expect(onEditAt).toHaveBeenCalledTimes(1);
     expect(lines[1].className).not.toContain("cursor-pointer");
+  });
+
+  it("inset pads every line 12px a side, so the tints can run to a card's edges", () => {
+    const flush = render(<DiffBody rows={rows} />);
+    for (const line of flush.container.querySelectorAll<HTMLElement>("[data-diff-line]")) expect(line.className).not.toContain("px-3");
+    flush.unmount();
+    const { container } = render(<DiffBody rows={rows} inset />);
+    for (const line of container.querySelectorAll<HTMLElement>("[data-diff-line], [data-diff-gap]")) expect(line.className.split(" ")).toContain("px-3");
   });
 
   it("cuts a long diff and says so", () => {

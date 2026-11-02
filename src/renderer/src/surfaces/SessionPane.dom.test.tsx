@@ -34,7 +34,8 @@ vi.mock("../lib/tcserver/commands", () => ({ focusSignal: { pane: () => {}, left
 vi.mock("../lib/preconnect", () => ({ askPreconnect: () => {}, idleForPreconnect: () => false }));
 vi.mock("../lib/notes", () => ({ createNote: () => {}, noteTitle: () => "" }));
 
-import { SessionPane, loadLineText } from "./SessionPane";
+import { PANE_FADE, SessionPane, loadLineText } from "./SessionPane";
+import { DUR, EASE_OUT } from "../lib/ease";
 import { SessionActionsContext } from "./threadChat";
 
 const NOW = 1_000_000;
@@ -219,6 +220,18 @@ describe("the pane in a split", () => {
     expect(header.querySelector("[title]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Close pane" }));
     expect(onClose).toHaveBeenCalledWith("s1");
+  });
+
+  it("docks a draft's composer in the transcript's footer, the column a first send keeps", () => {
+    pane(session({ phase: "loaded", since: NOW, attempt: 0 }), { inSplit: true });
+    const footer = screen.getByTestId("composer").closest<HTMLElement>("[data-chat-footer]");
+    expect(footer).not.toBeNull();
+    expect(footer!.className).toContain("pe-[calc(1rem+var(--scrollbar-size))]");
+    expect(document.querySelector(".max-w-4xl")).toBeNull();
+  });
+
+  it("switches threads with a fade alone over --dur-fast, no rise", () => {
+    expect(PANE_FADE).toEqual({ duration: DUR.fast, ease: EASE_OUT });
   });
 
   it("has no header alone in its tab", () => {

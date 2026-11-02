@@ -36,17 +36,33 @@ describe("CodeBlock", () => {
     expect(view.container.querySelector('[data-streamdown="code-block-header"]')?.textContent).toContain("src/a.ts");
   });
 
-  it("names nothing for plain text or a language it does not colour, and keeps the header's height", () => {
-    const header = (v: ReturnType<typeof render>) =>
-      v.container.querySelector('[data-streamdown="code-block-header"]') as HTMLElement;
+  it("a plain fence has no header: the copy button floats at the top right on a 4px corner", () => {
     for (const language of ["text", "txt", "plaintext", "", "klingon"]) {
       const view = render(<CodeBlock code="x" language={language} />);
-      expect(header(view).querySelector("span")?.textContent).toBe("");
-      expect(header(view).className).toContain("h-8");
+      const block = view.container.querySelector('[data-streamdown="code-block"]') as HTMLElement;
+      expect(block.querySelector('[data-streamdown="code-block-header"]')).toBeNull();
+      expect(block.className).toContain("relative");
+      const button = block.querySelector("button") as HTMLElement;
+      expect(button.parentElement).toBe(block);
+      expect(button.className).toMatch(/\babsolute\b/);
+      expect(button.className).toMatch(/\bright-1\b/);
+      expect(button.className).toMatch(/\btop-1\b/);
+      expect(button.className).toMatch(/\brounded-sm\b/);
+      expect(button.className).not.toMatch(/\brounded-md\b/);
       view.unmount();
     }
+  });
+
+  it("a labelled fence has the 28px header with the copy button in it, on a 4px corner", () => {
+    const header = (v: ReturnType<typeof render>) =>
+      v.container.querySelector('[data-streamdown="code-block-header"]') as HTMLElement;
     const ts = render(<CodeBlock code="x" language="ts" />);
+    expect(header(ts).className).toMatch(/\bh-7\b/);
+    expect(header(ts).className).not.toMatch(/\bh-8\b/);
     expect(header(ts).querySelector("span")?.textContent).toBe("ts");
+    const button = header(ts).querySelector("button") as HTMLElement;
+    expect(button.className).toMatch(/\brounded-sm\b/);
+    expect(button.className).not.toMatch(/\babsolute\b/);
     ts.rerender(<CodeBlock code="x" language="text" label={<span>notes.txt</span>} />);
     expect(header(ts).textContent).toContain("notes.txt");
   });

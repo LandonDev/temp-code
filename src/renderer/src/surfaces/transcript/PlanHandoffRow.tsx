@@ -45,7 +45,7 @@ export function PlanHandoffRow({ block }: { block: Block }) {
           variant="link"
           size="xs"
           disabled={!onSelectSession}
-          className="h-5 max-w-full px-0 text-[13px] font-normal"
+          className="h-5 max-w-full px-0 text-[13px] leading-5 font-normal"
           onClick={() => onSelectSession?.(handoff.id)}
         >
           <span className="truncate">{title}</span>

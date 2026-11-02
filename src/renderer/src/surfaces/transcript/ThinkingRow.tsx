@@ -12,8 +12,8 @@ import { AgentMarkdown } from "../AgentMarkdown";
 import { latestLine, latestLineKey, thoughtLabel, thoughtMs } from "./thinking";
 
 /** One row of the action list: the 14px glyph slot, then the words. */
-const ROW = "flex min-h-8 min-w-0 items-center gap-2 font-sans text-sm";
-const GLYPH = <Sparkles className="size-3.5 shrink-0 text-muted-foreground" />;
+const ROW = "flex min-h-7 min-w-0 items-center gap-2 font-sans text-[13px] leading-5";
+const GLYPH = <Sparkles className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.5} />;
 
 /**
  * A live turn's tail before its first content: the thinking row's live shape
@@ -103,8 +103,9 @@ export function ActivityThinkingRow({
         {GLYPH}
         <span className="truncate">{label}</span>
         <ChevronRight
+          strokeWidth={1.5}
           className={cn(
-            "size-3 shrink-0 transition-transform duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
+            "size-3 shrink-0 transition-transform duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
             open && "rotate-90",
           )}
         />
@@ -114,7 +115,7 @@ export function ActivityThinkingRow({
           {opened ? (
             <AgentMarkdown
               className="agent-reasoning"
-              size="compact"
+              size="prose"
               text={block.text}
               cwd={cwd}
               onOpenFile={onOpenFile}

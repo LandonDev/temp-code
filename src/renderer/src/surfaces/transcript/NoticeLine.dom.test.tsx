@@ -18,11 +18,12 @@ describe("NoticeLine", () => {
     expect(container.textContent).not.toMatch(/[·|•]/);
   });
 
-  it("is the action rows' size: 14px on a 32px line", () => {
+  it("is the action rows' size: 13px on a 20px line in a 28px row", () => {
     const { container } = render(<NoticeLine lead="Pass" />);
     const line = container.querySelector('[data-slot="notice-line"]')!;
-    expect(line.className).toContain("text-sm");
-    expect(line.firstElementChild!.className).toContain("min-h-8");
+    expect(line.className).toContain("text-[13px]");
+    expect(line.className).toContain("leading-5");
+    expect(line.firstElementChild!.className).toContain("min-h-7");
   });
 
   it("a line that opens is its own trigger, with a bare chevron", () => {

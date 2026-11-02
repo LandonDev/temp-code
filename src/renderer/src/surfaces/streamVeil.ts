@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
+import { VEIL } from "@renderer/lib/ease";
 
 /**
  * Streaming veil — the mugen FadePainter algorithm.
@@ -13,17 +14,18 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
  * - Backed-up stream (3+ chunks fading): each speeds up by 1 + 0.3×(n−2)
  * - A chunk fades exactly once; a non-append rewrite (markdown re-resolving)
  *   re-veils only the changed tail
+ * - The text under a cover reflowing (the host's width changes, or a rewrite
+ *   moves what is already shown) finishes every fade at once, so no cover
+ *   is left over the wrong glyphs; one ResizeObserver, only while a fade runs
+ * - A selection inside the host is never painted over: no new cover, and the
+ *   running ones finish
  * - Re-attaching to a streaming chat seeds the on-screen text as baseline
  */
 
-export const EMA_SEED_MS = 160;
-export const MIN_FADE_MS = 120;
-export const MAX_FADE_MS = 400;
-export const MAX_GAP_MS = 1000;
-
-/** eased progress = 1 − (1−p)^1.6, sampled for CSS linear() */
-const ALPHA_EASING =
-  "linear(0, 0.155, 0.3, 0.435, 0.558, 0.67, 0.769, 0.854, 0.924, 0.975, 1)";
+export const EMA_SEED_MS = VEIL.seedMs;
+export const MIN_FADE_MS = VEIL.minFadeMs;
+export const MAX_FADE_MS = VEIL.maxFadeMs;
+export const MAX_GAP_MS = VEIL.maxGapMs;
 
 /** Next cadence estimate after a chunk landed `gapMs` after the previous one. */
 export function nextCadence(ema: number, gapMs: number): number {
@@ -80,12 +82,25 @@ function speedUp(active: Set<Animation>): void {
   for (const a of active) a.playbackRate = rate;
 }
 
+/** Every fade ends now, and its cover with it. */
+function finishAll(active: Set<Animation>): void {
+  for (const a of [...active]) a.finish();
+}
+
+/** Whether the person holds a selection that reaches into the host. */
+function selectionIn(host: HTMLElement): boolean {
+  const selection = typeof getSelection === "function" ? getSelection() : null;
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+  return selection.getRangeAt(0).intersectsNode(host);
+}
+
 function veilRange(
   host: HTMLElement,
   from: number,
   to: number,
   duration: number,
   active: Set<Animation>,
+  onIdle: () => void,
 ): void {
   const start = pointAt(host, from);
   if (!start) return;
@@ -123,7 +138,7 @@ function veilRange(
       host.appendChild(cover);
       const anim = cover.animate([{ opacity: 1 }, { opacity: 0 }], {
         duration,
-        easing: ALPHA_EASING,
+        easing: VEIL.alpha,
         fill: "forwards",
       });
       active.add(anim);
@@ -131,6 +146,7 @@ function veilRange(
         active.delete(anim);
         cover.remove();
         speedUp(active);
+        if (active.size === 0) onIdle();
       };
       anim.onfinish = done;
       anim.oncancel = done;
@@ -150,9 +166,33 @@ export function useStreamVeil(
   streaming: boolean | undefined,
 ): void {
   const prev = useRef<string | null>(null);
-  const ema = useRef(EMA_SEED_MS);
+  const ema = useRef<number>(EMA_SEED_MS);
   const lastAt = useRef<number | null>(null);
   const active = useRef<Set<Animation>>(new Set());
+  // Watches the host's width while a fade runs: a reflow moves the glyphs
+  // out from under their covers.
+  const watch = useRef<ResizeObserver | null>(null);
+  const unwatch = (): void => {
+    watch.current?.disconnect();
+    watch.current = null;
+  };
+  const watchReflow = (host: HTMLElement): void => {
+    if (watch.current || typeof ResizeObserver === "undefined") return;
+    let width = host.clientWidth;
+    const observer = new ResizeObserver((entries) => {
+      const next = entries[entries.length - 1]?.contentRect.width ?? host.clientWidth;
+      if (next === width) return;
+      width = next;
+      finishAll(active.current);
+    });
+    observer.observe(host);
+    watch.current = observer;
+  };
+
+  useLayoutEffect(() => () => {
+    finishAll(active.current);
+    unwatch();
+  }, []);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -166,14 +206,22 @@ export function useStreamVeil(
     const old = prev.current;
     if (rendered === old) return;
     prev.current = rendered;
+    // A selection in the row is the person's: nothing paints over it.
+    if (selectionIn(el)) {
+      finishAll(active.current);
+      return;
+    }
     // Re-veil only past the common prefix — settled text never re-animates.
     const p = commonPrefix(old, rendered);
+    // A rewrite of text already shown moves what the covers sit on.
+    if (p < old.length) finishAll(active.current);
     if (p >= rendered.length) return;
     const now = performance.now();
     if (lastAt.current !== null) {
       ema.current = nextCadence(ema.current, now - lastAt.current);
     }
     lastAt.current = now;
-    veilRange(el, p, rendered.length, fadeDuration(ema.current), active.current);
+    veilRange(el, p, rendered.length, fadeDuration(ema.current), active.current, unwatch);
+    if (active.current.size > 0) watchReflow(el);
   }, [ref, text, streaming]);
 }

@@ -204,11 +204,12 @@ export function StatusMark({
       data-slot="status-mark"
       data-state={state}
       aria-label={text === null ? plainStatus(STATUS_WORD[state], typeof detail === "string" ? detail : null) : undefined}
-      className={cn("inline-flex min-w-0 items-center gap-1.5 text-xs", TONE_CLASS[STATUS_TONE[state]], className)}
+      className={cn("inline-flex min-w-0 items-center gap-2 text-xs", TONE_CLASS[STATUS_TONE[state]], className)}
       {...props}
     >
+      {/* One 14px box for every state, so a change of state never moves the word. */}
       {glyph ? (
-        <span key={state} className={cn("flex", LIVE.has(state) && !still && "status-breathe")}>
+        <span key={state} data-slot="status-glyph" className={cn("grid size-3.5 shrink-0 place-items-center", LIVE.has(state) && !still && "status-breathe")}>
           <Glyph state={state} still={still} />
         </span>
       ) : null}

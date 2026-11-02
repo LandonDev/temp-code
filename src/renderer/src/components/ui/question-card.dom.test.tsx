@@ -81,6 +81,32 @@ describe("QuestionCard", () => {
     expect(onSubmitAnswers).toHaveBeenCalledWith([["Tabs"]]);
   });
 
+  it("keeps the transcript's geometry: a 12px morph inset, 28px option rows, 20px key caps, the prompt at 14 on 22", () => {
+    const { container } = render(<QuestionCard questions={one} />);
+    const card = container.querySelector<HTMLElement>('[data-slot="question-card"]')!;
+    const frame = card.querySelector<HTMLElement>(".overflow-hidden")!;
+    expect(frame.className.split(" ")).toEqual(expect.arrayContaining(["-m-3", "p-3"]));
+    const prompt = screen.getByText("Which?");
+    expect(prompt.className.split(" ")).toEqual(expect.arrayContaining(["text-sm", "leading-[22px]"]));
+    const list = card.querySelector<HTMLElement>("ul")!;
+    expect(list.className.split(" ")).toEqual(expect.arrayContaining(["-mx-2", "mt-2"]));
+    const rows = [...list.querySelectorAll<HTMLElement>("button[aria-pressed]")];
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      expect(row.className.split(" ")).toEqual(expect.arrayContaining(["min-h-7", "px-2", "gap-2", "rounded-md"]));
+      expect(row.className).not.toMatch(/\b(gap-3|px-2\.5|rounded-lg)\b/);
+      const cap = row.firstElementChild as HTMLElement;
+      expect(cap.textContent).toMatch(/^[ABC]$/);
+      expect(cap.className.split(" ")).toEqual(expect.arrayContaining(["size-5", "rounded-sm"]));
+    }
+  });
+
+  it("draws no border, fill or padding of its own inside a card", () => {
+    const { container } = render(<QuestionCard questions={one} />);
+    const card = container.querySelector<HTMLElement>('[data-slot="question-card"]')!;
+    for (const c of ["in-[.bg-card]:border-0", "in-[.bg-card]:bg-transparent", "in-[.bg-card]:p-0"]) expect(card.className).toContain(c);
+  });
+
   it("is a group named by its title, with the caller's glyph flat beside it", () => {
     render(<QuestionCard title="Indentation" icon={<svg data-testid="glyph" />} questions={one} />);
     const group = screen.getByRole("group", { name: "Indentation" });

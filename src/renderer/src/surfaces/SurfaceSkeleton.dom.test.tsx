@@ -2,11 +2,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PAGE_SCROLLER } from "../components/page";
-import { EmptyState, LoadingLine, SurfaceSkeleton, type SkeletonKind } from "./SurfaceSkeleton";
+import { DIFF_ROWS_SKELETON_CAP, EmptyState, LoadingLine, SurfaceSkeleton, type SkeletonKind } from "./SurfaceSkeleton";
 
 afterEach(cleanup);
 
-const KINDS: SkeletonKind[] = ["page", "column", "accounts", "pane", "diff", "terminal", "frame", "transcript", "rows"];
+const KINDS: SkeletonKind[] = ["page", "column", "accounts", "pane", "diff", "diff-rows", "terminal", "frame", "transcript", "rows"];
 
 describe("SurfaceSkeleton", () => {
   it.each(KINDS)("%s: a labelled status of still skeleton blocks", (kind) => {
@@ -63,6 +63,24 @@ describe("SurfaceSkeleton", () => {
     six.unmount();
     const { container } = render(<SurfaceSkeleton kind="rows" />);
     expect(container.querySelectorAll("[data-skeleton-row]").length).toBe(4);
+  });
+
+  it("diff-rows: one 20px line per row the diff shows, at most 8, with no header or border", () => {
+    const three = render(<SurfaceSkeleton kind="diff-rows" count={3} />);
+    const lines = three.container.querySelectorAll<HTMLElement>("[data-skeleton-row]");
+    expect(lines.length).toBe(3);
+    for (const line of lines) expect(line.className).toContain("h-5");
+    // DiffBody's own 4px above and below the lines.
+    expect(three.container.firstElementChild!.className).toContain("py-1");
+    expect(three.container.innerHTML).not.toMatch(/\bborder/);
+    expect(three.container.innerHTML).not.toMatch(/\bh-9\b/);
+    three.unmount();
+    const many = render(<SurfaceSkeleton kind="diff-rows" count={40} />);
+    expect(DIFF_ROWS_SKELETON_CAP).toBe(8);
+    expect(many.container.querySelectorAll("[data-skeleton-row]").length).toBe(8);
+    many.unmount();
+    const none = render(<SurfaceSkeleton kind="diff-rows" count={0} />);
+    expect(none.container.querySelectorAll("[data-skeleton-row]").length).toBe(1);
   });
 });
 

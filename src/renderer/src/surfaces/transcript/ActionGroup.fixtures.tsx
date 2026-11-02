@@ -57,7 +57,19 @@ setEditOpen(":a:open1", true);
 setEditOpen(":a:orchOpen1", true);
 setEditOpen(":a:wakeOpen1", true);
 
-export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; live?: boolean } }[] = [
+/** A working run of `n` steps, the last still running (a thought counts as a row). */
+const working = (prefix: string, n: number): Block[] =>
+  Array.from({ length: n }, (_, i) =>
+    i % 4 === 2
+      ? ({ id: `${prefix}${i}`, role: "reasoning", text: "Checking the schema next.", ts: 1, doneTs: 2001 } as Block)
+      : call(`${prefix}${i}`, i % 2 ? "Bash" : "Read", i % 2 ? "execute" : "read", i % 2 ? { command: `bun test step-${i}` } : { file_path: `${CWD}/convex/step-${i}.ts` }, i === n - 1 ? "running" : "completed"),
+  );
+
+export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; live?: boolean; working?: boolean } }[] = [
+  { name: "Working, 1 row (lone)", props: { blocks: working("w1-", 1), cwd: CWD, live: true, working: true } },
+  { name: "Working, 2 rows", props: { blocks: working("w2-", 2), cwd: CWD, live: true, working: true } },
+  { name: "Working, 5 rows", props: { blocks: working("w5-", 5), cwd: CWD, live: true, working: true } },
+  { name: "Working, 9 rows (newest 5 shown)", props: { blocks: working("w9-", 9), cwd: CWD, live: true, working: true } },
   { name: "Settled run", props: { blocks: run("settled"), cwd: CWD } },
   { name: "Settled run, opened", props: { blocks: run("open"), cwd: CWD } },
   {

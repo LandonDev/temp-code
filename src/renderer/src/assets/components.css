@@ -158,13 +158,16 @@
   }
 }
 
-/* A fold that opens and shuts on its own (the running task's steps): height
-   and opacity together. It opens on the layout spring, set inline by its
-   owner while open, and shuts over --dur-slow. */
-.collapsible-auto {
+/* A fold that opens and shuts on its own (the transcript's working group, the
+   running task's steps): height on the layout spring and opacity over
+   --dur-base, the same both ways, so the rows are gone before the box closes
+   and everything below glides on one curve. The ending rule repeats the lists:
+   .collapsible-resize[data-ending-style] would otherwise set its own duration. */
+.collapsible-auto,
+.collapsible-auto[data-ending-style] {
   transition-property: height, opacity;
-  transition-duration: var(--dur-slow);
-  transition-timing-function: var(--ease-out);
+  transition-duration: var(--dur-layout), var(--dur-base);
+  transition-timing-function: var(--ease-layout), var(--ease-out);
 }
 
 .collapsible-auto[data-starting-style],
@@ -172,12 +175,9 @@
   opacity: 0;
 }
 
-.collapsible-auto[data-ending-style] {
-  transition-duration: var(--dur-slow);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .collapsible-auto {
+  .collapsible-auto,
+  .collapsible-auto[data-ending-style] {
     transition-property: opacity;
     transition-duration: var(--dur-fast) !important;
     transition-timing-function: var(--ease-out) !important;

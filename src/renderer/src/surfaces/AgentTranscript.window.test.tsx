@@ -281,6 +281,27 @@ describe("AgentTranscript viewport window", () => {
     expect(blockIds(container).length).toBe(15);
     expect(queryByText("Load earlier messages")).toBeNull();
   });
+
+  it("gives each row its boundary's gap, and none to a row that draws nothing", () => {
+    // A handoff with nothing to say draws null; the first turn closes on no duration.
+    const last = chat(1, 1).map((b) => (b.role === "user" ? { ...b, startedAt: 0, durationMs: 4_000 } : b));
+    const blocks: Block[] = [...chat(1), { id: "h0", role: "handoff", text: "" }, ...last];
+    const { container } = render(<AgentTranscript sessionId="s7" blocks={blocks} busy={false} visible />);
+    const row = (key: string) => container.querySelector<HTMLElement>(`[data-row="${key}"]`)!;
+    expect(row("u0").className).toContain("has-[>*]:pt-4");
+    expect(row("t0").className).toContain("has-[>*]:pt-4");
+    expect(row("a0").className).toContain("has-[>*]:pt-3");
+    expect(row("u1").className).toContain("has-[>*]:pt-8");
+    expect(row("u1:end").className).toContain("has-[>*]:pt-2");
+    // The rule applies only to a row with content: these two have none, so they stay 0px tall.
+    for (const key of ["h0", "u0:end"]) {
+      expect(row(key).className).toMatch(/has-\[>\*\]:pt-\d/);
+      expect(row(key).childElementCount).toBe(0);
+    }
+    for (const key of ["u0", "t0", "a0", "u1:end"]) expect(row(key).childElementCount).toBeGreaterThan(0);
+    // No row carries a margin or padding of its own outside the gap.
+    for (const el of container.querySelectorAll<HTMLElement>("[data-row]")) expect(el.className).not.toMatch(/(?:^|\s)p[bt]-\d/);
+  });
 });
 
 describe("AgentTranscript message list", () => {
@@ -315,7 +336,7 @@ describe("AgentTranscript message list", () => {
     const { container } = render(<AgentTranscript sessionId="m3" blocks={chat(2)} busy={false} visible />);
     expect(entries(container).map((b) => b.textContent)).toEqual(["Turn 1", "Turn 2"]);
     expect(boxOf(container).className).toContain("mx-auto");
-    expect(boxOf(container).className).toContain("max-w-4xl");
+    expect(boxOf(container).className).toContain("max-w-3xl");
     expect((boxOf(container).parentElement as HTMLElement).style.paddingLeft).toBe("");
   });
 
@@ -478,5 +499,87 @@ describe("AgentTranscript scrollbar drag", () => {
       fireEvent.wheel(el, { deltaY: -120 });
     });
     expect(el.dataset.scrollMode).toBe("free");
+  });
+});
+
+describe("AgentTranscript park glide on an own send", () => {
+  // A frame clock the test advances: rAF callbacks queue, performance.now reads the clock.
+  let clock = 0;
+  let queue: FrameRequestCallback[] = [];
+  beforeEach(() => {
+    clock = 1_000;
+    queue = [];
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => queue.push(cb));
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+  const frame = (ms = 16) =>
+    act(() => {
+      clock += ms;
+      const due = queue;
+      queue = [];
+      for (const cb of due) cb(clock);
+    });
+  const send = (blocks: Block[]) => [...blocks, { id: "u30", role: "user" as const, text: "Next", seq: 999 }];
+  const parkTop = (container: HTMLElement) => topOf(container.querySelector<HTMLElement>('[data-row="u30"]')!) - 12;
+
+  it("glides the transcript to park the prompt over several frames", () => {
+    reducedMotion = false;
+    const blocks = chat(30);
+    const { container, rerender } = render(<AgentTranscript sessionId="p1" blocks={blocks} busy={false} visible />);
+    const el = scrollerOf(container);
+    // The reader at the end of the thread (jsdom does not clamp the follow's write).
+    const start = parseFloat(boxOf(container).style.height) - VIEWPORT;
+    act(() => {
+      el.scrollTop = start;
+      fireEvent.scroll(el);
+    });
+    rerender(<AgentTranscript sessionId="p1" blocks={send(blocks)} busy visible />);
+    const target = parkTop(container);
+    expect(target).toBeGreaterThan(start);
+    // Nothing teleports at the send: the offset moves on the frames after it.
+    expect(el.scrollTop).toBe(start);
+    const seen: number[] = [];
+    for (let i = 0; i < 24; i++) {
+      frame();
+      seen.push(el.scrollTop);
+    }
+    expect(seen[0]).toBeGreaterThan(start);
+    expect(seen[0]).toBeLessThan(target);
+    for (let i = 1; i < seen.length; i++) expect(seen[i]).toBeGreaterThanOrEqual(seen[i - 1]);
+    expect(seen.at(-1)).toBeCloseTo(target, 0);
+    expect(el.dataset.scrollMode).toBe("parked");
+  });
+
+  it("keeps gliding when the answer lands under the prompt mid-glide", () => {
+    reducedMotion = false;
+    const blocks = send(chat(30));
+    const { container, rerender } = render(<AgentTranscript sessionId="p2" blocks={chat(30)} busy={false} visible />);
+    const el = scrollerOf(container);
+    rerender(<AgentTranscript sessionId="p2" blocks={blocks} busy visible />);
+    frame();
+    frame();
+    const mid = el.scrollTop;
+    rerender(
+      <AgentTranscript sessionId="p2" blocks={[...blocks, { id: "a30", role: "assistant", text: "Working on it", streaming: true }]} busy visible />,
+    );
+    // The block's landing lays the runway and moves the target; it never writes the offset.
+    expect(el.scrollTop).toBe(mid);
+    for (let i = 0; i < 24; i++) frame();
+    expect(el.scrollTop).toBeCloseTo(parkTop(container), 0);
+  });
+
+  it("parks in one write under reduced motion", () => {
+    reducedMotion = true;
+    const blocks = chat(30);
+    const { container, rerender } = render(<AgentTranscript sessionId="p3" blocks={blocks} busy={false} visible />);
+    const el = scrollerOf(container);
+    rerender(<AgentTranscript sessionId="p3" blocks={send(blocks)} busy visible />);
+    expect(el.scrollTop).toBe(parkTop(container));
+    expect(queue.length === 0 || (frame(), el.scrollTop === parkTop(container))).toBe(true);
   });
 });

@@ -12,6 +12,7 @@ vi.mock("../lib/threads/agents", () => ({ modelLabel: () => "GPT-6.1 Sol" }));
 import type { Block } from "../lib/session";
 import { TranscriptSessionContext } from "./transcriptSession";
 import { ReviewCard } from "./ReviewCard";
+import { CARD_SHAPE } from "./QuestionCard";
 
 const finding = (file: string, line: number, summary: string, scenario = ""): ReviewFinding => ({
   file,
@@ -70,6 +71,9 @@ describe("ReviewCard", () => {
     );
     const card = container.querySelector('[data-slot="review-hold"]')!;
     expect(card).not.toBeNull();
+    // The question card's frame, by the one name, and no margin of its own: the row gap spaces it.
+    for (const cls of CARD_SHAPE.split(" ")) expect(card.className.split(" ")).toContain(cls);
+    expect(card.className).not.toMatch(/\bmy-\d/);
     expect(card.textContent).toContain("1 blocking finding");
     expect(card.textContent).toContain("merge held");
     expect(card.textContent).toContain("Drops the error");

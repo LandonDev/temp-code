@@ -50,6 +50,9 @@ describe("ActivityThinkingRow", () => {
     fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(view.container.textContent).toContain("Now I check the tests.");
+    // A 28px line at 13px.
+    expect(trigger.className).toContain("min-h-7");
+    expect(trigger.className).toContain("text-[13px]");
   });
 
   it("reads Thought without an end time, and does not open when not expandable", () => {

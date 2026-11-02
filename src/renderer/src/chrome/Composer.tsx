@@ -68,6 +68,7 @@ import { useTabGroupLogos } from '../hooks/useTabGroupLogos'
 import { loadMidTurnDefault, subscribeMidTurnDefault } from '../lib/settings'
 import { COMPOSER_SURFACE, ComposerBar, SendButton, useDraftRow } from './ComposerBar'
 import { Button } from '../components/ui/button'
+import { Collapsible, CollapsibleContent } from '../components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { X } from './icons'
 import { decideComposerAction, type ComposerIntent } from '../lib/composerAction'
@@ -207,6 +208,8 @@ export function Composer({
 }: Props) {
   const inputRef = useRef<ComposerInputHandle>(null)
   const boxRef = useRef<HTMLDivElement>(null)
+  /** The box with what rides on it (the pass banner, the draft row): what a first send hands over. */
+  const frameRef = useRef<HTMLDivElement>(null)
   const attachmentsRef = useRef<Attachment[]>([])
   /** Where the caret sits in the serialized text, and the spans chips own. */
   const caretRef = useRef(0)
@@ -257,6 +260,25 @@ export function Composer({
   const metas = useSessionMetasWhen(!!live)
   const sessionMeta = useSessionMeta(sessionId)
   const draft = useDraftRow(sessionId, shell)
+  // A draft's first send remounts the composer in the docked footer (the
+  // empty screen and the thread's view are different trees). The new one
+  // starts where the old box stood and with the draft row still open, then
+  // glides into place and folds the row: one move, no jump.
+  const [arrival] = useState(() => (draft ? null : peekComposerHandoff(sessionId)))
+  const [rowFolded, setRowFolded] = useState(false)
+  const arrived = useRef(false)
+  useLayoutEffect(() => {
+    if (!arrival) return
+    if (!arrived.current) {
+      arrived.current = true
+      clearComposerHandoff(arrival)
+      const frame = frameRef.current
+      if (frame && !reduce) flipFrom(frame, arrival)
+    }
+    const fold = requestAnimationFrame(() => setRowFolded(true))
+    return () => cancelAnimationFrame(fold)
+  }, [arrival, reduce])
+  const rowOpen = draft || (!!arrival && !rowFolded)
   const projects = useProjects()
   const environmentId = (sessionId ? sessionStore.environmentOf(sessionId) : undefined) ?? sessionMeta?.environmentId ?? projects.find((p) => p.id === projectId)?.environmentId ?? environmentOfCwd(executionCwd) ?? registry.primary().environmentId
   const commands = useSlashCommands(environmentId, harness, executionCwd, commandOpen)
@@ -728,6 +750,8 @@ export function Composer({
     // the same frame so the text is never in two places at once.
     const field = boxRef.current?.querySelector('.composer-field')
     if (field) recordSendOrigin(field.getBoundingClientRect())
+    // The composer that mounts for the thread next starts from this box.
+    if (draft && frameRef.current) recordComposerHandoff(sessionId, frameRef.current.getBoundingClientRect())
     onSubmit(text, files, intent === 'pause' ? 'send' : intent)
     inputRef.current?.clear()
     setAttachments([])
@@ -813,14 +837,15 @@ export function Composer({
   return (
     <div
       data-composer
-      // Without the draft row under it the box keeps the panel's 12px inset from the bottom.
-      className={`relative shrink-0 ${shell ? '' : draft ? 'p-1.5 pt-0' : 'px-1.5 pb-3'}`}
+      // Flush with the column; 12px under it, the draft row inside that,
+      // so the box keeps its place when the row folds away.
+      className={`relative shrink-0 ${shell ? '' : 'pb-3'}`}
       onMouseDown={onFocus}
       onPointerDown={onGesture}
     >
       {children}
       <Lightbox />
-      <div className="relative overflow-visible">
+      <div ref={frameRef} className="relative overflow-visible">
         <CommandPopover
           matches={matches}
           active={active}
@@ -833,7 +858,7 @@ export function Composer({
         <div
           ref={boxRef}
           data-composer-box
-          className={`relative z-10 rounded-xl ${COMPOSER_SURFACE} has-focus:border-input`}
+          className={`relative z-10 rounded-xl ${COMPOSER_SURFACE} transition-[border-color] duration-(--dur-fast) ease-(--ease-out) has-focus:border-input motion-reduce:transition-none`}
         >
           <AnimatePresence>
             {fileDrag ? (
@@ -911,9 +936,9 @@ export function Composer({
                     ? 'Add context, or send to continue…'
                     : shell
                       ? 'How can I help you today?'
-                      : 'Ask, build, / for skills, @ for references... '
+                      : 'Ask, build, / for skills, @ for references…'
             }
-            className="composer-field relative max-h-40 w-full px-3 pt-3 pb-2 font-sans text-[15px] leading-[1.6] text-foreground outline-none"
+            className="composer-field relative max-h-40 w-full px-3 pt-3 pb-2 font-sans text-sm leading-[22px] text-foreground outline-none"
             maxHeight={160}
             tokens={tokens}
             onFocus={onFocus}
@@ -972,7 +997,7 @@ export function Composer({
           />
         </div>
         <DraftRow
-          draft={draft}
+          draft={rowOpen}
           cwd={cwd}
           recents={recents}
           projectLogoPath={projectLogoPath}
@@ -992,6 +1017,53 @@ export function Composer({
       </div>
     </div>
   )
+}
+
+/**
+ * A draft's first send hands its composer over to the one that mounts for
+ * the thread next (the docked footer replaces the empty screen): where the
+ * box stood, read once within a second.
+ */
+export type ComposerHandoff = { sessionId: string; top: number; left: number; at: number }
+
+const HANDOFF_FRESH_MS = 1000
+let handoff: ComposerHandoff | null = null
+
+export function recordComposerHandoff(sessionId: string | undefined, rect: { top: number; left: number }, now = Date.now()): void {
+  handoff = { sessionId: sessionId ?? '', top: rect.top, left: rect.left, at: now }
+}
+
+/** The handoff for this thread (or one recorded before the thread had an id), when fresh. */
+export function peekComposerHandoff(sessionId: string | undefined, now = Date.now()): ComposerHandoff | null {
+  if (!handoff || now - handoff.at > HANDOFF_FRESH_MS) return null
+  return handoff.sessionId === (sessionId ?? '') || handoff.sessionId === '' ? handoff : null
+}
+
+export function clearComposerHandoff(taken?: ComposerHandoff): void {
+  if (!taken || handoff === taken) handoff = null
+}
+
+/**
+ * Move a box from where it stood into its place: a transform-only FLIP on
+ * the drawer curve over `--dur-slow`. Nothing when it is already there.
+ */
+export function flipFrom(el: HTMLElement, from: { top: number; left: number }): boolean {
+  const rest = el.getBoundingClientRect()
+  const dx = from.left - rest.left
+  const dy = from.top - rest.top
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return false
+  el.style.transition = 'none'
+  el.style.transform = `translate(${dx}px, ${dy}px)`
+  void el.offsetHeight
+  el.style.transition = 'transform var(--dur-slow) var(--ease-drawer)'
+  el.style.transform = ''
+  const done = (event: TransitionEvent): void => {
+    if (event.target !== el || event.propertyName !== 'transform') return
+    el.style.transition = ''
+    el.removeEventListener('transitionend', done)
+  }
+  el.addEventListener('transitionend', done)
+  return true
 }
 
 function hasFiles(data: DataTransfer | null): data is DataTransfer {
@@ -1022,7 +1094,7 @@ export function DraftRow({
   onThreadTypeChange,
   onClose
 }: {
-  /** No message yet: the row shows; after the first one it is gone. */
+  /** No message yet: the row shows; after the first one it folds away. */
   draft: boolean
   cwd: string
   recents: RecentProject[]
@@ -1040,24 +1112,27 @@ export function DraftRow({
   onThreadTypeChange?: (type: ThreadType) => void
   onClose: () => void
 }) {
-  if (!draft) return null
   return (
-    <div data-composer-draft-row className="mt-1 flex h-7 min-w-0 items-center gap-2 px-3 text-xs text-muted-foreground">
-      {hideProjectPicker ? null : (
-        <CwdPicker
-          cwd={cwd}
-          recents={recents}
-          projectLogoPath={projectLogoPath}
-          enabled={enabled}
-          onCwdChange={onCwdChange}
-          onChooseFolder={onChooseFolder}
-          onNewTerminal={onNewTerminal}
-          onClose={onClose}
-        />
-      )}
-      {sessionId && enabled ? <DraftHostPicker sessionId={sessionId} onClose={onClose} /> : null}
-      <BranchPicker cwd={cwd} branch={branch} enabled={enabled && !busy} onChange={onBranchChange} onClose={onClose} />
-      {threadType && onThreadTypeChange ? <ThreadTypeChip value={threadType} onChange={onThreadTypeChange} onClose={onClose} /> : null}
-    </div>
+    <Collapsible open={draft}>
+      <CollapsibleContent>
+        <div data-composer-draft-row className="flex h-8 min-w-0 items-center gap-2 px-3 pt-1 text-xs text-muted-foreground">
+          {hideProjectPicker ? null : (
+            <CwdPicker
+              cwd={cwd}
+              recents={recents}
+              projectLogoPath={projectLogoPath}
+              enabled={enabled}
+              onCwdChange={onCwdChange}
+              onChooseFolder={onChooseFolder}
+              onNewTerminal={onNewTerminal}
+              onClose={onClose}
+            />
+          )}
+          {sessionId && enabled ? <DraftHostPicker sessionId={sessionId} onClose={onClose} /> : null}
+          <BranchPicker cwd={cwd} branch={branch} enabled={enabled && !busy} onChange={onBranchChange} onClose={onClose} />
+          {threadType && onThreadTypeChange ? <ThreadTypeChip value={threadType} onChange={onThreadTypeChange} onClose={onClose} /> : null}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }

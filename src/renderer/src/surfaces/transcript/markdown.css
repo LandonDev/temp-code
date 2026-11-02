@@ -36,25 +36,105 @@
   accent-color: var(--primary);
 }
 
-/* Headings are short bold lines: more room above than below. */
-.agent-markdown [data-streamdown="heading-1"],
-.agent-markdown [data-streamdown="heading-2"],
-.agent-markdown [data-streamdown="heading-3"] {
+/* The rhythm, at 14/22. Streamdown's root is `space-y-4` (16px under every
+   child but the last), which would collapse with any gap set here, and its
+   blocks carry margins of their own (my-4, my-6, mt-6 mb-2). So every block
+   starts at zero, and each gap below is a margin-top on the block after
+   the boundary. Nothing sets a margin-bottom: the last block ends flush. */
+.agent-markdown > *,
+.agent-markdown :where(li, [data-streamdown="blockquote"]) > * {
+  margin-block: 0;
+}
+
+.agent-markdown > * + * {
+  margin-top: 12px;
+}
+
+/* A heading: room above, its text right under it. */
+.agent-markdown > * + [data-streamdown^="heading-"] {
   margin-top: 20px;
-  margin-bottom: 8px;
-  font-size: 15px;
+}
+
+.agent-markdown > [data-streamdown^="heading-"] + * {
+  margin-top: 4px;
+}
+
+/* A rule sits in 20px of air each side. */
+.agent-markdown > * + [data-streamdown="horizontal-rule"],
+.agent-markdown > [data-streamdown="horizontal-rule"] + * {
+  margin-top: 20px;
+}
+
+/* Lists hang: the marker outside, the text 22px in, like a row's words
+   after its glyph; a nested list hangs 22px under its item's text. */
+.agent-markdown [data-streamdown="unordered-list"],
+.agent-markdown [data-streamdown="ordered-list"] {
+  list-style-position: outside;
+  padding-inline-start: 22px;
+}
+
+.agent-markdown li {
+  padding-block: 0;
+}
+
+.agent-markdown li + li {
+  margin-top: 4px;
+}
+
+/* A loose item's paragraphs are blocks (streamdown makes them inline, so
+   two ran together on one line). Two paragraphs in an item or a quote sit
+   8px apart. */
+.agent-markdown li > p {
+  display: block;
+}
+
+.agent-markdown :is(li, [data-streamdown="blockquote"]) > * + * {
+  margin-top: 8px;
+}
+
+/* An item and its nested list: 4px, after a bare line or a paragraph. */
+.agent-markdown li > :is([data-streamdown="unordered-list"], [data-streamdown="ordered-list"]) {
+  margin-top: 4px;
+}
+
+/* A code block, a table, a quote or a diagram inside an item or a quote
+   keeps the 12px it has between blocks. In an item it follows the item's
+   own line, which may be bare text: no element sibling to count from. */
+.agent-markdown li > :is([data-streamdown="code-block"], [data-streamdown="table-wrapper"], [data-streamdown="blockquote"], [data-streamdown="mermaid-block"]),
+.agent-markdown [data-streamdown="blockquote"] > * + :is([data-streamdown="code-block"], [data-streamdown="table-wrapper"], [data-streamdown="blockquote"], [data-streamdown="mermaid-block"]),
+.agent-markdown :is(li, [data-streamdown="blockquote"]) > :is([data-streamdown="code-block"], [data-streamdown="table-wrapper"], [data-streamdown="blockquote"], [data-streamdown="mermaid-block"]) + * {
+  margin-top: 12px;
+}
+
+/* Headings are short bold lines on the prose's scale: h1 16/24, h2 15/22,
+   h3 to h6 the prose's own 14/22. */
+.agent-markdown [data-streamdown^="heading-"] {
+  font-size: 14px;
   font-weight: 600;
-  line-height: 1.6;
+  line-height: 22px;
   color: var(--foreground);
 }
 
 .agent-markdown [data-streamdown="heading-1"] {
   font-size: 16px;
+  line-height: 24px;
   letter-spacing: -0.01em;
 }
 
-.agent-markdown > :first-child[data-streamdown^="heading-"] {
-  margin-top: 0;
+.agent-markdown [data-streamdown="heading-2"] {
+  font-size: 15px;
+}
+
+/* A quote: a 2px hairline, its text 12px in, muted and upright. */
+.agent-markdown [data-streamdown="blockquote"] {
+  border-left: 2px solid var(--border);
+  padding-left: 12px;
+  font-style: normal;
+  color: var(--muted-foreground);
+}
+
+.agent-markdown [data-streamdown="blockquote"] :is(p, li, strong, [data-streamdown="strong"]) {
+  color: var(--muted-foreground);
 }
 
 /* Fenced code and tables: one card frame, a hairline and the lg radius. */
@@ -62,7 +142,6 @@
 .agent-markdown [data-streamdown="table-wrapper"] {
   gap: 0;
   padding: 0;
-  margin-block: 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--card);
@@ -71,8 +150,10 @@
   overflow: hidden;
 }
 
+/* A block with no header pads its code 12px on every side; under a
+   header, the header's 28px is the room above. */
 .agent-markdown [data-streamdown="code-block-body"] {
-  padding: 0 12px 12px 12px;
+  padding: 12px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -86,6 +167,10 @@
   overscroll-behavior-x: contain;
   /* The bar runs along the frame's rounded foot: keep it off the corners. */
   --scrollbar-inset: var(--radius-lg);
+}
+
+.agent-markdown [data-streamdown="code-block-header"] + [data-streamdown="code-block-body"] {
+  padding-top: 0;
 }
 
 .agent-markdown [data-streamdown="code-block-body"] pre {
@@ -129,10 +214,22 @@
   border-color: var(--border);
 }
 
+/* Cells are 13/20 in 8px of air: 36px rows, a rule between them. The
+   header has no fill; its weight and the muted ink set it apart. */
 .agent-markdown [data-streamdown="table-header-cell"],
 .agent-markdown [data-streamdown="table-cell"] {
   padding: 8px 12px;
   font-size: 13px;
+  line-height: 20px;
+}
+
+.agent-markdown [data-streamdown="table-header"] {
+  background: transparent;
+}
+
+.agent-markdown [data-streamdown="table-header-cell"] {
+  font-weight: 500;
+  color: var(--muted-foreground);
 }
 
 .agent-markdown [data-streamdown="horizontal-rule"] {
@@ -147,14 +244,10 @@
   margin-inline: auto;
 }
 
+/* What's New's section names: small muted labels on the prose's rhythm. */
 .whats-new-md.agent-markdown [data-streamdown="heading-3"] {
-  margin-top: 20px;
-  margin-bottom: 4px;
   font-size: 12px;
   font-weight: 500;
+  line-height: 20px;
   color: var(--muted-foreground);
-}
-
-.whats-new-md.agent-markdown [data-streamdown="heading-3"]:first-child {
-  margin-top: 0;
 }

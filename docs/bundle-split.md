@@ -25,9 +25,11 @@ on intent so the skeleton is rarely seen.
   module the import target is a barrel (`diffChunk.ts`, `editorChunk.ts`,
   `threads/threadViews.ts`).
 - `src/renderer/src/surfaces/SurfaceSkeleton.tsx` — the fallbacks, one
-  outline per kind (`page`, `pane`, `diff`, `terminal`, `frame`,
+  outline per kind (`page`, `pane`, `diff`, `diff-rows`, `terminal`, `frame`,
   `transcript`, `rows`), the surface's own shape in still `Skeleton` blocks
-  so the frame around it never jumps.
+  so the frame around it never jumps. An edit's diff waits as `diff-rows`
+  (one 20px line per row it will show, the count through a context) and a
+  transcript page as `HtmlPagePlaceholder` at the height its frame reserves.
 
 | Chunk | Holds | Mount point | Warmed by |
 | --- | --- | --- | --- |

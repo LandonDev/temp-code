@@ -119,6 +119,13 @@ describe("ComposerBar", () => {
     expect(onAttach).toHaveBeenCalledOnce();
   });
 
+  it("sits 6px in from the box's sides and bottom: a 28px row, its controls concentric with the 12px box", () => {
+    const { container } = bar("claude");
+    const row = container.querySelector<HTMLElement>("[data-composer-bar]")!;
+    expect(row.className.split(" ")).toEqual(expect.arrayContaining(["mx-1.5", "mb-1.5", "h-7"]));
+    expect(row.className).not.toMatch(/\b(mx-2|mb-2|h-8)\b/);
+  });
+
   it("Attach files is disabled for fx", async () => {
     bar("fx");
     const menu = await openAdd();
@@ -150,9 +157,25 @@ describe("SendButton", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("disabled while there is nothing to send", () => {
+  it("disabled while there is nothing to send, easing its opacity both ways", () => {
     render(<SendButton intent="send" disabled onSubmit={() => {}} onPause={() => {}} />);
-    expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(true);
+    const button = screen.getByRole("button", { name: "Send" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(button.className).toContain("transition-[opacity,background-color,color,border-color,scale]");
+    expect(button.className).toContain("duration-(--dur-fast)");
+  });
+
+  it("swaps its glyph through SwapIcon on every change of intent, with no blur", () => {
+    const props = { disabled: false, onSubmit: () => {}, onPause: () => {} };
+    const { rerender } = render(<SendButton intent="send" {...props} />);
+    const button = () => screen.getByRole("button");
+    expect(button().querySelectorAll("span.grid")).toHaveLength(1);
+    for (const intent of ["queue", "steer", "pause"] as const) {
+      rerender(<SendButton intent={intent} {...props} />);
+      // The old glyph leaves while the new one comes: two sides at once.
+      expect(button().querySelectorAll("span.grid").length).toBeGreaterThanOrEqual(2);
+    }
+    expect(button().innerHTML).not.toContain("blur");
   });
 });
 

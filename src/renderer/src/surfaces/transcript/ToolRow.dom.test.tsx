@@ -156,6 +156,29 @@ describe("ActionRow", () => {
     expect(words.className).not.toContain("flex-1");
   });
 
+  it("settles in place: the spinner swaps to the icon and the verb changes tense inside one 14px glyph box", () => {
+    const running = call("Read", { file_path: "/r/a.ts" }, { status: "in_progress" });
+    const view = render(<ActionRow block={running} />);
+    const box = view.container.querySelector<HTMLElement>("[data-glyph]")!;
+    expect(box.className).toContain("size-3.5");
+    expect(box.querySelector("[data-swap]")?.getAttribute("data-swap")).toBe("working");
+    expect(view.container.querySelector("[data-swap-text]")?.textContent).toBe("Reading");
+    view.rerender(<ActionRow block={{ ...running, tool: { ...running.tool!, status: "completed" } }} />);
+    // The same box: the old face leaves while the new one enters.
+    expect(view.container.querySelector("[data-glyph]")).toBe(box);
+    expect([...box.querySelectorAll("[data-swap]")].map((el) => el.getAttribute("data-swap"))).toEqual(["working", "icon"]);
+    expect([...view.container.querySelectorAll("[data-swap-text]")].map((el) => el.textContent)).toEqual(["Reading", "Read"]);
+  });
+
+  it("is a 28px line at 13px whose caret turns on --dur-base", () => {
+    const { container } = render(<ActionRow block={call("Bash", { command: "npm test" })} />);
+    const line = container.querySelector(".group\\/action")!;
+    expect(line.className).toContain("h-7");
+    expect(line.className).toContain("text-[13px]");
+    const svgs = line.querySelectorAll("svg");
+    expect(svgs[svgs.length - 1].getAttribute("class")).toContain("duration-(--dur-base)");
+  });
+
   it("a body still on the server says it is loading", async () => {
     const block = call("Bash", { command: "npm test" }, { omitted: { sessionId: "s", seqs: [1], bytes: 12_000, loading: true } });
     const { getByRole, container } = render(<ActionRow block={block} />);

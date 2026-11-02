@@ -3,7 +3,6 @@ import { ChevronDown, ChevronRight } from "@renderer/chrome/icons";
 import { TruncateTip } from "@renderer/components/tip";
 import { cn } from "@renderer/lib/cn";
 import { duration, useNow } from "@renderer/lib/duration";
-import { SPRING_LAYOUT_CSS } from "@renderer/lib/ease";
 import { canvasMeasure, cssFont, fitCard, type Measure } from "@renderer/lib/taskListWidth";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./collapsible";
 
@@ -104,9 +103,6 @@ function TaskCursor({ at }: { at: Spot }) {
 
 const shareText = (value: number) => `${String(Math.round(Math.min(1, Math.max(0, value)) * 100))}%`;
 
-/** The detail opens on the layout spring; it shuts on `.collapsible-auto`'s own curve. */
-const DETAIL_OPENING = { transitionDuration: `${String(SPRING_LAYOUT_CSS.ms)}ms`, transitionTimingFunction: SPRING_LAYOUT_CSS.easing };
-
 /** One task. Every row is a disclosure, so a detail that arrives opens with
  *  motion and one that goes folds with its last content held. */
 function TaskRow({ task }: { task: Task }) {
@@ -144,7 +140,7 @@ function TaskRow({ task }: { task: Task }) {
         {task.time ? <TaskTimeText time={task.time} state={task.state} /> : null}
         {task.state === "active" && task.progress !== undefined ? <span className="sr-only">{shareText(task.progress)} complete</span> : null}
       </div>
-      <CollapsibleContent data-task-detail className="collapsible-auto" style={open ? DETAIL_OPENING : undefined}>
+      <CollapsibleContent data-task-detail className="collapsible-auto">
         <div className="min-w-0 ps-6">{held}</div>
       </CollapsibleContent>
     </Collapsible>

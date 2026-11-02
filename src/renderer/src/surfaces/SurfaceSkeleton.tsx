@@ -21,8 +21,10 @@ export type SkeletonKind =
   | "accounts"
   /** A pane of text lines (the editor, release notes, an issue body). */
   | "pane"
-  /** A diff: a header strip and two hunks (a diff, an edit row's body, a PR diff). */
+  /** A diff: a header strip and two hunks (a diff pane, a PR diff). */
   | "diff"
+  /** An edit row's diff in its card: `count` 20px lines (the rows it will show, at most 8), no header, no border. */
+  | "diff-rows"
   /** A terminal: the dark host with a prompt block (the terminal, the dev servers pane). */
   | "terminal"
   /** A framed document (an HTML render, an image, a file). */
@@ -35,6 +37,8 @@ export type SkeletonKind =
 const PROSE = [72, 48, 88, 36, 64, 56];
 const NAV = [60, 45, 70, 50, 65, 40, 55, 48];
 const HUNK = [64, 40, 76, 52, 30];
+/** The most lines a diff's skeleton draws: past them the fold is already a screen's worth. */
+export const DIFF_ROWS_SKELETON_CAP = 8;
 
 /** Lines of `className` height whose widths cycle through `widths` (percent). */
 function Lines({ widths, count, className, gap }: { widths: number[]; count: number; className: string; gap: string }) {
@@ -145,6 +149,14 @@ function body(kind: SkeletonKind, count: number): ReactNode {
           </div>
         </>
       );
+    case "diff-rows":
+      // DiffBody's geometry: 4px top and bottom, 20px lines, the code 12px
+      // in past the inset, the number column and the mark.
+      return Array.from({ length: Math.min(Math.max(count, 1), DIFF_ROWS_SKELETON_CAP) }, (_, i) => (
+        <div key={i} data-skeleton-row className="flex h-5 items-center ps-13 pe-3">
+          <Skeleton className="h-2.5" style={{ width: `${HUNK[i % HUNK.length]}%` }} />
+        </div>
+      ));
     case "terminal":
       return (
         <div className="min-h-0 flex-1 p-2">
@@ -184,6 +196,7 @@ const FRAME: Record<SkeletonKind, string> = {
   accounts: "flex min-h-0 min-w-0 flex-1 flex-col",
   pane: "h-full min-h-0 w-full overflow-hidden",
   diff: "flex h-full min-h-0 w-full flex-col overflow-hidden",
+  "diff-rows": "w-full py-1",
   terminal: "monocode-terminal flex h-full min-h-0 w-full flex-col",
   frame: "flex h-full min-h-0 w-full p-3",
   transcript: "h-full min-h-0 w-full overflow-hidden px-4 pt-6",

@@ -21,6 +21,7 @@ import { useMetaById } from "../../lib/threads/agents";
 import { agentIdOf } from "../appTool";
 import { ConnectorMark, ProviderMark } from "../ToolChips";
 import { agentProviderOf } from "../toolMarks";
+import { SwapIcon } from "../../motion/IconSwap";
 import type { Action, GlyphKey } from "./actionModel";
 
 /** Each kind's icon; one glyph per row, no file-type icon beside the name. */
@@ -47,14 +48,26 @@ export const GLYPH: Record<GlyphKey, IconComponent> = {
 /**
  * The row's glyph, in order: the waiting, working or failed StatusMark
  * (the one status map), the connector's or the subagent's mark, else the
- * kind's icon. Always one 14px box, so the verbs line up.
+ * kind's icon. Always one 14px box, so the verbs line up; a change between
+ * them (a call settling: the spinner to its icon) swaps in place through
+ * the keyed SwapIcon.
  */
 export function ToolGlyph({ action, block }: { action: Action; block: Block }) {
   return (
     <span className="grid size-3.5 shrink-0 place-items-center text-muted-foreground" data-glyph>
-      <GlyphBody action={action} block={block} />
+      <SwapIcon state={glyphState(action)}>
+        <GlyphBody action={action} block={block} />
+      </SwapIcon>
     </span>
   );
+}
+
+/** Which of the glyph's faces shows: the key its swap turns on. */
+export function glyphState(action: Action): "waiting" | "working" | "failed" | "icon" {
+  if (action.pending) return "waiting";
+  if (action.running) return "working";
+  if (action.failed) return "failed";
+  return "icon";
 }
 
 function GlyphBody({ action, block }: { action: Action; block: Block }) {

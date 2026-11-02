@@ -65,7 +65,7 @@ export function ContextMeter({
       )}
     >
       {compacting ? <Spinner className="size-3.5" aria-label={COMPACTING_WORDS} /> : <ContextRing ratio={ratio} />}
-      <span className="text-[12px] tabular-nums @max-[26rem]/composer-bar:hidden">{percent}%</span>
+      <span className="text-[13px] tabular-nums @max-[26rem]/composer-bar:hidden">{percent}%</span>
     </Button>
   );
   const compact =

@@ -173,7 +173,7 @@ export function WatchingLine({
   );
 }
 
-const LINE = "flex h-7 mt-1 mb-3 items-center gap-2 font-sans text-[13px] tabular-nums text-muted-foreground";
+const LINE = "flex h-7 items-center gap-2 font-sans text-[13px] leading-5 tabular-nums text-muted-foreground";
 
 /**
  * A turn's closing line. Settled: "Worked for 2m 4s", or "Stopped" for a

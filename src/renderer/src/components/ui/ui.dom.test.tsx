@@ -197,6 +197,20 @@ describe("StatusMark", () => {
     expect(screen.getByText("Connected").closest("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("done");
   });
 
+  it("draws every glyph in one 14px box, 8px from the word, so a change of state never moves it", () => {
+    const { rerender } = render(<StatusMark state="working" />);
+    const box = () => document.querySelector("[data-slot=status-glyph]") as HTMLElement;
+    for (const state of ["working", "stopped", "done", "waiting"] as const) {
+      rerender(<StatusMark state={state} />);
+      expect(box().className).toContain("size-3.5");
+      expect(box().className).toContain("place-items-center");
+    }
+    // The spinner and the square stay 12px inside the box.
+    rerender(<StatusMark state="stopped" />);
+    expect(box().querySelector("svg")?.getAttribute("class")).toContain("size-3");
+    expect((document.querySelector("[data-slot=status-mark]") as HTMLElement).className).toContain("gap-2");
+  });
+
   it("carries a detail after the word, muted", () => {
     render(<StatusMark state="working" detail="typecheck" />);
     const detail = document.querySelector("[data-slot=status-detail]") as HTMLElement;

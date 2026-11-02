@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { GitCompare, Pencil } from '../chrome/icons'
 import { Button } from '../components/ui/button'
 import { Collapsible, CollapsibleContent } from '../components/ui/collapsible'
@@ -13,8 +13,16 @@ import { sessionStore, useLiveEdits } from '../lib/tcserver/store'
 import { diffChunk } from './chunks'
 import { SurfaceSkeleton } from './SurfaceSkeleton'
 
+/** How many rows the diff about to show has, so its skeleton is its height. */
+const DiffRowCount = createContext(0)
+
+/** The diff chunk's wait: one 20px bar per row the diff will show, at most 8. */
+function DiffRowsSkeleton() {
+  return <SurfaceSkeleton kind="diff-rows" count={useContext(DiffRowCount)} label="Loading diff" />
+}
+
 // The diff body rides the diff chunk (surfaces/chunks.ts); the first opened edit card pulls it in.
-const DiffBody = diffChunk.surface('DiffBody', <SurfaceSkeleton kind="diff" label="Loading diff" />)
+const DiffBody = diffChunk.surface('DiffBody', <DiffRowsSkeleton />)
 import {
   addRanges,
   editDiff,
@@ -29,10 +37,12 @@ import { RenderCache, cacheKey } from '../lib/renderCache'
 import { editModel } from './editModel'
 import { editOpenKey, usePersistedOpen } from './editOpenState'
 import { OmittedNote } from './ToolDetails'
+import { BODY_FRAME } from './transcript/ActionRow'
 import { useTranscriptSession } from './transcriptSession'
 import { ActionLine } from './transcript/ActionLine'
 import { actionOf } from './transcript/actionModel'
 import { ToolGlyph } from './transcript/ToolGlyph'
+import { useGroupHand } from './transcript/groupHand'
 
 const InlineEditor = lazy(() => import('./monaco/InlineEditor'))
 
@@ -178,6 +188,7 @@ export function EditRow({
   // Opening is the caret's, remembered per session and call; an edit waiting
   // on approval shows its diff, open, above Allow and Deny.
   const [userOpen, setUserOpen] = usePersistedOpen(editOpenKey(sessionId, block))
+  const hand = useGroupHand()
   const open = hasDiff && (action.pending || editMode || !!userOpen)
   useEffect(() => {
     if (open && omitted && !omitted.loading && !omitted.failed) void sessionStore.loadRowBodies(block)
@@ -218,6 +229,8 @@ export function EditRow({
           hasDiff && !action.pending
             ? () => {
                 if (open) setEditMode(false)
+                // Opening a diff inside a group is the person's hand on the group.
+                else hand?.()
                 setUserOpen(!open)
               }
             : undefined
@@ -225,45 +238,57 @@ export function EditRow({
       />
       <Collapsible open={open}>
         <CollapsibleContent>
-          <div className="group/body relative pb-2">
-            {editMode && filePath && cwd ? (
-              <>
-                <CornerButton label="Show diff" onClick={() => setEditMode(false)}>
-                  <GitCompare strokeWidth={1.5} />
-                </CornerButton>
-                <Suspense fallback={<Skeleton className="h-80" />}>
-                  <InlineEditor
-                    path={filePath}
-                    cwd={cwd}
-                    line={editLine}
-                    highlight={addRanges(rows)}
-                    onSave={() => {
-                      setEditMode(false)
-                      setRefresh((n) => n + 1)
-                    }}
-                  />
-                </Suspense>
-              </>
-            ) : (
-              <>
-                {canEdit ? (
-                  <CornerButton label="Edit here" onClick={() => editHere()}>
-                    <Pencil strokeWidth={1.5} />
+          <div className="pb-2">
+            <div data-row-body className={`${BODY_FRAME} ${omitted && !editMode ? 'group/body relative' : EDGE_TO_EDGE}`}>
+              {editMode && filePath && cwd ? (
+                <>
+                  <CornerButton label="Show diff" onClick={() => setEditMode(false)}>
+                    <GitCompare strokeWidth={1.5} />
                   </CornerButton>
-                ) : null}
-                {omitted ? (
-                  <OmittedNote bytes={omitted.bytes} failed={!!omitted.failed} />
-                ) : (
-                  <DiffBody rows={shownRows} onEditAt={canEdit ? editHere : undefined} />
-                )}
-              </>
-            )}
+                  <Suspense fallback={<Skeleton className="h-80" />}>
+                    <InlineEditor
+                      path={filePath}
+                      cwd={cwd}
+                      line={editLine}
+                      highlight={addRanges(rows)}
+                      onSave={() => {
+                        setEditMode(false)
+                        setRefresh((n) => n + 1)
+                      }}
+                    />
+                  </Suspense>
+                </>
+              ) : (
+                <>
+                  {canEdit ? (
+                    <CornerButton label="Edit here" onClick={() => editHere()}>
+                      <Pencil strokeWidth={1.5} />
+                    </CornerButton>
+                  ) : null}
+                  {omitted ? (
+                    <OmittedNote bytes={omitted.bytes} failed={!!omitted.failed} />
+                  ) : (
+                    <DiffRowCount.Provider value={shownRows.length}>
+                      <DiffBody rows={shownRows} inset onEditAt={canEdit ? editHere : undefined} />
+                    </DiffRowCount.Provider>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </CollapsibleContent>
       </Collapsible>
     </div>
   )
 }
+
+/**
+ * The edit's card is the row's body frame with no side padding and 4px top
+ * and bottom, so the add and delete tints run to its edges (DiffBody pads
+ * each line instead). Inside a `.bg-card` parent the frame's own rule takes
+ * every padding away, as it does for any body.
+ */
+const EDGE_TO_EDGE = 'group/body relative overflow-hidden px-0 py-1'
 
 /** A ghost icon button at the body's top right, shown on hover and focus. */
 function CornerButton({
@@ -284,7 +309,7 @@ function CornerButton({
             size="icon-xs"
             aria-label={label}
             onClick={onClick}
-            className="absolute right-0 top-0 z-10 text-muted-foreground opacity-0 transition-[opacity,background-color] duration-(--dur-fast) ease-(--ease-out) group-hover/body:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
+            className="absolute right-1 top-1 z-10 text-muted-foreground opacity-0 transition-[opacity,background-color] duration-(--dur-fast) ease-(--ease-out) group-hover/body:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
           />
         }
       >

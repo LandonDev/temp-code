@@ -23,7 +23,13 @@ describe("TranscriptSelectionMenu", () => {
     vi.spyOn(window, "getSelection").mockReturnValue({ removeAllRanges: clear } as unknown as Selection);
     render(<TranscriptSelectionMenu selection={selection} onAddToChat={onAddToChat} onDismiss={onDismiss} />);
     const toolbar = await screen.findByRole("toolbar", { name: "Selected text actions" });
-    fireEvent.click(toolbar.querySelector("button[aria-label='Add to chat']")!);
+    // A word button with its 14px glyph, concentric with the popover's corner.
+    const button = screen.getByRole("button", { name: "Add to chat" });
+    expect(toolbar.contains(button)).toBe(true);
+    expect(button.textContent).toBe("Add to chat");
+    expect(button.className).toContain("rounded-lg");
+    expect(button.querySelector("svg")?.getAttribute("class")).toContain("size-3.5");
+    fireEvent.click(button);
     expect(onAddToChat).toHaveBeenCalledWith("the chosen words");
     expect(clear).toHaveBeenCalled();
     expect(onDismiss).toHaveBeenCalled();

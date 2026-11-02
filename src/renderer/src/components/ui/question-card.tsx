@@ -31,7 +31,8 @@ const PAGE_REST = {
   after: "absolute inset-x-0 top-0 translate-y-3 opacity-0 blur-[3px]",
 } as const;
 
-const PAGE_INSET = 16;
+/** The frame reaches past the card's 12px inset, so a hovered option or a focus ring is never cut. */
+const PAGE_INSET = 12;
 
 function MorphFrame({ at, children }: { at: number; children: Array<ReactNode> }) {
   const [height, setHeight] = useState<number>();
@@ -45,7 +46,7 @@ function MorphFrame({ at, children }: { at: number; children: Array<ReactNode> }
     return () => observer.disconnect();
   }, [at]);
   return (
-    <div className="-m-4 overflow-hidden p-4 transition-[height] duration-(--dur-slow) ease-(--ease-out) motion-reduce:transition-none" style={{ height: height === undefined ? undefined : height + PAGE_INSET * 2 }}>
+    <div className="-m-3 overflow-hidden p-3 transition-[height] duration-(--dur-slow) ease-(--ease-out) motion-reduce:transition-none" style={{ height: height === undefined ? undefined : height + PAGE_INSET * 2 }}>
       <div className="relative">
         {children.map((page, index) => (
           <div
@@ -226,7 +227,7 @@ export function QuestionCard({
       role="group"
       aria-labelledby={`${id}-title`}
       onKeyDown={onKeyDown}
-      className={cn("w-full max-w-lg rounded-xl border border-border bg-card p-4 font-sans text-card-foreground", className)}
+      className={cn("w-full max-w-lg rounded-xl border border-border bg-card p-4 font-sans text-card-foreground in-[.bg-card]:border-0 in-[.bg-card]:bg-transparent in-[.bg-card]:p-0", className)}
     >
       <div className="flex items-center gap-2">
         {icon ? <span className="flex shrink-0 [&_svg]:size-4">{icon}</span> : null}
@@ -272,7 +273,7 @@ export function QuestionCard({
             return (
               <div key={entry.prompt}>
                 <div aria-live="polite">
-                  <p className="text-[15px] leading-[1.6]">{entry.prompt}</p>
+                  <p className="text-sm leading-[22px]">{entry.prompt}</p>
                   {entry.description ? <p className="mt-0.5 text-sm text-muted-foreground">{entry.description}</p> : null}
                 </div>
                 <ul
@@ -280,7 +281,7 @@ export function QuestionCard({
                     lists.current[qIndex] = node;
                   }}
                   aria-multiselectable={entry.multiSelect || undefined}
-                  className="-mx-2.5 mt-3 space-y-1"
+                  className="-mx-2 mt-2 space-y-1"
                 >
                   {entry.options.map((option, index) => {
                     const active = choices.includes(index);
@@ -297,12 +298,13 @@ export function QuestionCard({
                             if (active && event.target instanceof HTMLInputElement) return;
                             pick(index);
                           }}
+                          // A 28px row: the 1px border and 3px make the 4px above the 20px line.
                           className={cn(
-                            "flex w-full items-start gap-3 rounded-lg border px-2.5 py-2 text-start outline-none transition-[background-color,border-color] duration-(--dur-fast) focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+                            "flex min-h-7 w-full items-start gap-2 rounded-md border px-2 py-[3px] text-start outline-none transition-[background-color,border-color] duration-(--dur-fast) ease-(--ease-out) focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
                             active ? "border-border bg-foreground/5" : "border-transparent hover:bg-foreground/5",
                           )}
                         >
-                          <span aria-hidden className={cn("pointer-events-none flex size-6 shrink-0 items-center justify-center rounded-md text-[11px] font-medium tabular-nums", active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+                          <span aria-hidden className={cn("pointer-events-none flex size-5 shrink-0 items-center justify-center rounded-sm text-[11px] font-medium tabular-nums", active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
                             {key}
                           </span>
                           {option.freeform ? (
@@ -314,15 +316,15 @@ export function QuestionCard({
                               readOnly={!active}
                               placeholder={option.label}
                               onChange={(event) => setTyped((all) => ({ ...all, [qIndex]: event.target.value }))}
-                              className="h-6 w-full cursor-[inherit] bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                              className="h-5 w-full cursor-[inherit] bg-transparent text-sm leading-5 outline-none placeholder:text-muted-foreground"
                             />
                           ) : (
-                            <span className="flex min-w-0 flex-col py-0.5">
-                              <span id={`${optionId}-label`} className="text-sm">
+                            <span className="flex min-w-0 flex-col">
+                              <span id={`${optionId}-label`} className="text-sm leading-5">
                                 {option.label}
                               </span>
                               {option.description ? (
-                                <span id={`${optionId}-description`} className="mt-0.5 text-[13px] text-muted-foreground">
+                                <span id={`${optionId}-description`} className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
                                   {option.description}
                                 </span>
                               ) : null}

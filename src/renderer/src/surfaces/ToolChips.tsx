@@ -15,7 +15,7 @@ import { agentProviderOf } from "./toolMarks";
 export function ConnectorMark({ app, className = "" }: { app: string; className?: string }) {
   return (
     <span className={`grid size-3.5 shrink-0 place-items-center ${className}`} aria-label={addonTitle(app)}>
-      <AddonMark command={{ name: app, source: "mcp" }} size={13} colored={false} className="text-muted-foreground" />
+      <AddonMark command={{ name: app, source: "mcp" }} size={14} colored={false} className="text-muted-foreground" />
     </span>
   );
 }
@@ -76,7 +76,8 @@ export function reauthOf(blocks: Block[]): { app: string; url: string } | undefi
 /** A `/command` in the user's words, as the addon it names; the command itself on hover. */
 export function CommandChip({ command }: { command: Pick<SlashCommand, "name" | "source"> }) {
   const proper = command.source === "mcp" || command.source === "plugin";
-  const chip = "inline-flex items-center gap-1 rounded-md bg-foreground/10 px-1 align-baseline text-[13px] text-foreground";
+  // The inline code pill's shape (markdown.css): one pixel under the text around it.
+  const chip = "inline-flex items-center gap-1 rounded-sm bg-muted px-1 align-baseline text-[calc(1em-1px)] text-foreground";
   const face = (
     <>
       <AddonMark command={command} size={11} colored={false} />

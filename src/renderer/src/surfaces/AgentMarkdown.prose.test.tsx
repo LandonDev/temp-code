@@ -26,15 +26,15 @@ import { AgentMarkdown } from "./AgentMarkdown";
 afterEach(cleanup);
 
 describe("AgentMarkdown prose", () => {
-  it("reads at 15px by default and 14px when compact", () => {
+  it("reads at 14px on 22px lines by default and on 24px when compact", () => {
     const prose = render(<AgentMarkdown text="Hello" />);
-    expect(prose.container.querySelector(".agent-markdown")?.className).toContain("text-[15px]");
-    expect(prose.container.querySelector(".agent-markdown")?.className).toContain("leading-[1.6]");
+    expect(prose.container.querySelector(".agent-markdown")?.className).toContain("text-sm");
+    expect(prose.container.querySelector(".agent-markdown")?.className).toContain("leading-[22px]");
     prose.unmount();
     const compact = render(<AgentMarkdown text="Hello" size="compact" />);
     const cls = compact.container.querySelector(".agent-markdown")?.className ?? "";
     expect(cls).toContain("text-sm");
-    expect(cls).not.toContain("text-[15px]");
+    expect(cls).toContain("leading-6");
   });
 
   it("a token longer than its column breaks instead of widening the transcript (a bare URL, a path)", () => {
@@ -74,6 +74,28 @@ describe("AgentMarkdown prose", () => {
     const wide = long.container.querySelector("code")!;
     expect(wide.className).toContain("box-decoration-clone");
     expect(wide.className).not.toContain("whitespace-nowrap");
+  });
+
+  it("draws inline code one pixel under its text, a 4px pill with 4px sides", () => {
+    const view = render(<AgentMarkdown text="Run `bun test` now." />);
+    const cls = view.container.querySelector("code")!.className;
+    for (const c of ["text-[calc(1em-1px)]", "px-1", "py-px", "rounded-sm", "bg-muted"]) expect(cls.split(/\s+/)).toContain(c);
+    expect(cls).not.toMatch(/\brounded-md\b|\bpx-1\.5\b|text-\[0\.875em\]/);
+  });
+
+  it("carries the hooks the stylesheet sets the rhythm by, and a plain fence has no header", () => {
+    const text = [
+      "# One", "", "Text.", "", "#### Four", "", "> quoted", "", "- a", "  - b", "", "1. c", "", "---", "",
+      "```", "plain", "```", "", "```ts", "const a = 1;", "```", "",
+    ].join("\n");
+    const { container } = render(<AgentMarkdown text={text} />);
+    for (const hook of ["heading-1", "heading-4", "blockquote", "unordered-list", "ordered-list", "list-item", "horizontal-rule"]) {
+      expect(container.querySelector(`[data-streamdown="${hook}"]`), hook).not.toBeNull();
+    }
+    const blocks = [...container.querySelectorAll('[data-streamdown="code-block"]')];
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].querySelector('[data-streamdown="code-block-header"]')).toBeNull();
+    expect(blocks[1].querySelector('[data-streamdown="code-block-header"]')?.textContent).toContain("ts");
   });
 
   it("a task list's items carry the class the stylesheet takes their bullet off by", () => {

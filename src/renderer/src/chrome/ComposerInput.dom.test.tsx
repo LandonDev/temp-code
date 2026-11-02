@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
+
+const morph = vi.hoisted(() => vi.fn())
+vi.mock('../lib/composerHeight', () => ({ morphTextareaHeight: morph }))
 import { createRef } from 'react'
 import { ComposerInput, type ComposerInputHandle } from './ComposerInput'
 import { devRenders } from '../lib/devRenders'
@@ -58,6 +61,21 @@ describe('ComposerInput under jsdom', () => {
     expect(root).toBeTruthy()
     expect(probe.renders('input')).toBe(1)
     expect(devRenders.composerInput).toBe(before + 1)
+  })
+
+  it('a keystroke snaps the height; a paste, a restore and a quote may ease it', () => {
+    const { probe, root, ref } = mount()
+    morph.mockClear()
+    probe.act(() => type(root, 'a'))
+    expect(morph).toHaveBeenLastCalledWith(root, 160, false)
+    probe.act(() => paste(root, 'one\ntwo\nthree'))
+    expect(morph).toHaveBeenLastCalledWith(root, 160, true)
+    probe.act(() => ref.current!.restore([{ text: 'restored' }]))
+    expect(morph).toHaveBeenLastCalledWith(root, 160, true)
+    probe.act(() => ref.current!.insertText(' quoted'))
+    expect(morph).toHaveBeenLastCalledWith(root, 160, true)
+    probe.act(() => ref.current!.clear())
+    expect(morph).toHaveBeenLastCalledWith(root, 160, false)
   })
 
   it('20 keystrokes report 20 states and render the input zero more times', () => {

@@ -144,6 +144,20 @@ describe("ThreadHeaderStrip rows", () => {
     ]);
   });
 
+  it("folds the shelf in and out on .collapsible-auto, never growing the header in one frame", async () => {
+    const view = mount({ model: twoRows });
+    const fold = document.querySelector("[data-shelf-fold]")!;
+    expect(fold.classList.contains("collapsible-auto")).toBe(true);
+    expect(fold.contains(shelfRow())).toBe(true);
+    view.rerender(strip({ model: { ...twoRows, dormant: [], activeId: "a" } }));
+    await waitFor(() => expect(document.querySelector("[data-shelf-fold]")).toBeNull());
+  });
+
+  it("leaves the focus ring to the global outline: no ring classes on a chip", () => {
+    mount({ model: twoRows });
+    for (const chip of screen.getAllByRole("tab")) expect(chip.className).not.toMatch(/(^|\s)(focus-visible:)?ring-/);
+  });
+
   it("draws the settled chips on a shelf under the live row, the active one selected there", () => {
     mount({ model: twoRows });
     const shelf = shelfRow()!;
@@ -206,6 +220,9 @@ describe("ThreadHeaderStrip rows", () => {
     fireEvent.click(right);
     fireEvent.click(screen.getByRole("button", { name: "Scroll threads left" }));
     expect(onScrollBy.mock.calls).toEqual([[1], [-1]]);
+    // 28px arrows beside the 28px chips, and the row pads each end by the arrow's room.
+    expect(right.className).toContain("size-7");
+    expect((box as HTMLElement).style.getPropertyValue("--strip-pad-r")).toBe("36px");
   });
 
   it("shows the host glyph after the title with two hosts, none with one, and tints an offline host's chip", () => {

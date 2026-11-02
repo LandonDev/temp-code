@@ -85,11 +85,17 @@ progress bar.
 
 ### Titlebar
 
-Drag region (`titlebar-drag`), hiddenInset traffic lights. In deck layout
+Drag region (`titlebar-drag`), hiddenInset traffic lights; their 78px of
+room is kept on macOS alone (`TrafficLightSpacer`). In deck layout
 the thread strip (below) fills the bar: its live row is the bar's first
 40px, and its shelf of settled threads, when it has a chip, a 32px row
 under it, so the bar (`min-h-10`) grows by 32px while the scope has a
-settled thread; the rail and the workspace column keep their 40px headers.
+settled thread; the shelf folds in and out on `.collapsible-auto` (height
+on the layout spring with a fade, keeping its last chips while it folds
+away), never growing the bar in one frame. The rail and the workspace
+column keep their 40px headers. The bar's icon buttons are 28px
+(`icon-sm`) beside the 28px chips, their glyphs 14px at a 1.5 stroke; a
+chip's focus ring is the global outline alone.
 The live row's right end is the end group: the project plan's chip when
 the project has one, then exactly two ghost icon buttons, each with a
 `Tooltip`: the ⋯ thread menu, then the panel toggle (`aria-pressed` while
@@ -483,9 +489,24 @@ keeps its 2px accent drop marker.
 
 The box is Claude desktop's: `rounded-xl` on `COMPOSER_SURFACE` (the card
 fill and a hairline that steps to `border-input` while the field has focus;
-the checkpoint strip above it shares it), attachments as `Attachment` chips
-over the 15px field, and one 32px row under it that never scrolls
-(chrome/ComposerBar.tsx). Left: `+` (Attach files, Mention a file or thread,
+the checkpoint strip above it shares it; the hairline's step eases over
+`--dur-fast`), attachments as `Attachment` chips over the 14px / 22px field
+(the bubble's size, so a send moves the same text), and one 28px row under
+it, 6px in from the box's sides and bottom (the box's 12px radius less 6 is
+the controls' 6px), that never scrolls (chrome/ComposerBar.tsx). The field
+snaps to its height on a keystroke and on the clear after a send; a paste,
+a restore or a quote of more than one line eases it over `--dur-base`
+(`morphTextareaHeight`'s `animate`, which ComposerInput sets). The box is
+flush with the transcript's column: `ChatFooter` (surfaces/threads/chatSlots.tsx)
+lays the strip and the composer in the scroller's gutter (16px a side plus,
+on the end, the scrollbar strip the scroller reserves) and the column
+(`COLUMN_MAX_CLASS`, after the message list when it sits beside), and the
+empty thread (surfaces/EmptySession.tsx) uses the same gutter and column.
+A draft's first send remounts the composer in the docked footer: the new
+one starts where the old box stood (a FLIP translate, `--dur-slow`
+`--ease-drawer`; nothing under reduced motion) with the draft row still
+open, then folds the row away (`Collapsible`); a docked draft's box is
+already in place, so only the row folds. Left: `+` (Attach files, Mention a file or thread,
 Skills and commands; the last two type `@` or `/` at the caret) and the
 model button, which reads the model and the effort ("Opus 5.5  High") and
 opens the model menu: providers, search, the list, then the model's
@@ -498,7 +519,7 @@ Enter would do.
 
 The context meter (chrome/ContextMeter.tsx) is the one place the window's
 fill shows: a 28px ghost `Button` holding a 14px ring (a 25% track and the
-filled arc in the current colour) and the percent in 12px `tabular-nums`,
+filled arc in the current colour) and the percent in 13px `tabular-nums`,
 muted below 85% and amber from 85% (`contextTone` in lib/contextUsage.ts;
 never red), the ring a 14px `Spinner` while the harness compacts. It draws
 only for an existing thread once the harness has reported both the level
@@ -691,9 +712,13 @@ The classic transcript, restyled with BUI primitives on the existing
 virtualized list: *Streaming Text* (assistant deltas), *Thinking* (collapsed
 one-liner, "Thought for 2s" weight/dim pattern), *Tool Chips*
 (call/result pairs), *Code Block* (shiki stays), *Approval Card*, *Loading
-State* (shimmer + elapsed while waiting). User messages render as
-Cursor-style bordered rounded fields, not colored bubbles. Column
-max-w-4xl (896px) centered (`COLUMN_MAX_CLASS` in surfaces/transcriptOutlineModel.ts).
+State* (shimmer + elapsed while waiting). The person's message is a soft
+bubble on the right (`card`, 12px corners, 12/8 padding, at most 85% of the
+column, no outline); the model's prose is plain text on the left at 14px on
+22px lines. Column max-w-3xl (768px) centered (`COLUMN_MAX_CLASS` in
+surfaces/transcriptOutlineModel.ts), the footer flush with it in every
+placement (below). docs/DESIGN.md "The transcript" has the row metrics and
+the gaps.
 
 The transcript's left side lists the person's own messages
 (surfaces/TranscriptOutline.tsx, rules in surfaces/transcriptOutlineModel.ts):
@@ -704,7 +729,7 @@ spans days heads each day with an 11px label (Today, Yesterday, Oct 30).
 The message being read (the row a third of the way down the viewport; the
 first at the top, the last at the end) is in foreground with
 `aria-current`, nothing else. It is 208px wide, 16px from the pane's edge
-and 24px before the column: from 1392px it sits in the centred column's
+and 24px before the column: from 1264px it sits in the centred column's
 gutter, from 864px the column moves right to start after it (never under
 600px), and under 864px or with fewer than two messages it hides. It
 mounts inside the scroller as a zero-height sticky child, so a wheel over

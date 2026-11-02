@@ -24,12 +24,22 @@ describe("UserMessageBlock", () => {
     expect(container.textContent).not.toMatch(/\d{1,2}:\d{2}/);
   });
 
+  it("is the prose's 14px on 22px lines, 12/8 inside a 12px corner, at most 85% of the column", () => {
+    const { container } = mount(user());
+    const cls = bubble(container).className;
+    for (const c of ["text-sm", "leading-[22px]", "px-3", "py-2", "rounded-xl", "max-w-[85%]"]) expect(cls).toContain(c);
+    // The row has no margin of its own: the transcript's gap is above it.
+    expect((container.firstElementChild as HTMLElement).className).not.toMatch(/(?:^|\s)(?:p[tbl]|m[tb])-\d/);
+  });
+
   it("folds the project rules above the bubble, not inside it", () => {
     const { container } = mount(user({ preamble: { text: "Work in a worktree.", words: 4 } }));
     const preamble = container.querySelector("[data-preamble-row]")!;
     expect(preamble).not.toBeNull();
     expect(bubble(container).contains(preamble)).toBe(false);
     expect(preamble.compareDocumentPosition(bubble(container)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 4px above the bubble.
+    expect(preamble.className).toContain("mb-1");
   });
 
   it("draws a second opinion as one notice line on the left, not a bubble", () => {

@@ -71,7 +71,7 @@ describe("TurnDuration", () => {
 });
 
 describe("TurnEnd's thinking tail", () => {
-  it("is the thinking row's shape: the glyph slot and a 32px row", () => {
+  it("is the thinking row's shape: the glyph slot and a 28px row at 13px", () => {
     const user = { id: "u", role: "user" as const, text: "go" };
     const { container } = render(
       <TurnEnd
@@ -82,7 +82,8 @@ describe("TurnEnd's thinking tail", () => {
     );
     const tail = container.querySelector('[data-slot="thinking-tail"]')!;
     expect(tail).not.toBeNull();
-    expect(tail.className).toContain("min-h-8");
+    expect(tail.className).toContain("min-h-7");
+    expect(tail.className).toContain("text-[13px]");
     expect(tail.className).not.toMatch(/h-\[/);
     expect(tail.querySelector("svg")).not.toBeNull();
     expect(tail.textContent).toBe("Thinking");

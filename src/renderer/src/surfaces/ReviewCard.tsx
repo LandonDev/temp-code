@@ -12,6 +12,7 @@ import type { OpenFileFn } from "../lib/search";
 import { SelectSessionContext } from "./AgentMarkdown";
 import { useOpenAgentDetail } from "./agentDetailContext";
 import { NoticeLine } from "./transcript/NoticeLine";
+import { CARD_SHAPE } from "./QuestionCard";
 import { useTranscriptSession } from "./transcriptSession";
 
 type Review = NonNullable<Block["review"]>;
@@ -108,7 +109,7 @@ function HeldReview({
   };
 
   return (
-    <div data-slot="review-hold" className="my-2 min-w-0 rounded-lg border border-border bg-card p-3 font-sans text-[13px]">
+    <div data-slot="review-hold" className={`${CARD_SHAPE} min-w-0 border border-border bg-card font-sans text-[13px]`}>
       <div className="flex min-w-0 items-center gap-2 leading-5">
         <StatusMark state="waiting" word={false} />
         <span className="shrink-0 font-medium text-foreground">Reviewed by {label}</span>

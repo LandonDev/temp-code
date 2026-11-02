@@ -118,8 +118,8 @@ export function useRowBodies(block: Block): NonNullable<Block["tool"]>["omitted"
 /** The line in place of a body that is still on the server. */
 export function OmittedNote({ bytes, failed }: { bytes: number; failed: boolean }) {
   return (
-    <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-      {failed ? null : <Spinner className="size-3" />}
+    <div className="mt-2 flex items-center gap-2 text-xs leading-5 text-muted-foreground first:mt-0">
+      {failed ? null : <Spinner className="size-3.5" />}
       <span>
         {failed ? "Could not load" : "Loading"} {omittedSizeLabel(bytes)}
       </span>
@@ -127,12 +127,12 @@ export function OmittedNote({ bytes, failed }: { bytes: number; failed: boolean 
   );
 }
 
-/** What was asked, as text: one gray step below the list, no border. */
+/** What was asked, as text: one gray step below the body's card, no border, 12px mono on 20px like every code in a row's body. */
 export function InvocationBlock({ text, children, className }: { text?: string; children?: ReactNode; className?: string }) {
   return (
     <pre
       className={cn(
-        "min-w-0 rounded-lg bg-background px-3 py-2 font-mono text-[13px] leading-5 whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]",
+        "min-w-0 rounded-lg bg-background px-3 py-2 font-mono text-xs leading-5 whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]",
         className,
       )}
     >
@@ -169,7 +169,7 @@ function KVRows({ obj, titleOf }: { obj: Record<string, unknown>; titleOf: Title
   return (
     <div className="flex flex-col gap-0.5">
       {Object.entries(obj).map(([k, v]) => (
-        <div key={k} className="flex gap-2 leading-5">
+        <div key={k} className="flex items-baseline gap-2 leading-5">
           <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{k}</span>
           <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] text-foreground">
             {kvDisplay(k, v, titleOf)}

@@ -4,9 +4,9 @@ import { QuestionCard as Card, type Question } from "../components/ui/question-c
 import { StatusMark } from "../components/ui/status";
 import { NoticeLine } from "./transcript/NoticeLine";
 
-/** The transcript's one card frame (the failure card's): full width, the lg
- *  radius and a 12px inset. The type is the card's own. */
-const CARD_SHAPE = "my-2 max-w-none rounded-lg p-3";
+/** The transcript's one card frame, the question's and the held review's:
+ *  full width, the lg radius and a 12px inset. The type is the card's own. */
+export const CARD_SHAPE = "max-w-none rounded-lg p-3";
 
 /** The free-text option a question offers unless it says otherwise. */
 const OTHER = "Other";

@@ -19,6 +19,7 @@ import { CommandCard } from "./CommandCard";
 import { useAction, type Action } from "./actionModel";
 import { ApprovalCard } from "./ApprovalCard";
 import { ToolGlyph } from "./ToolGlyph";
+import { useGroupHand } from "./groupHand";
 import type { ApprovalHandler } from "./types";
 
 /**
@@ -45,6 +46,7 @@ export function ActionRow({
 }) {
   const action = useAction(block, cwd, live);
   const [open, setOpen] = useState(false);
+  const hand = useGroupHand();
   const threadHost = useTranscriptHost();
   const openThread = useThreadOpener(action);
   const hasBody = action.opens !== "file" && action.opens !== "none";
@@ -72,7 +74,15 @@ export function ActionRow({
       onObject={openThread}
       trailing={<Extras block={block} />}
       open={shown}
-      onToggle={hasBody && !action.pending ? () => setOpen((value) => !value) : undefined}
+      onToggle={
+        hasBody && !action.pending
+          ? () => {
+              // Opening a body inside a group is the person's hand on the group.
+              if (!open) hand?.();
+              setOpen((value) => !value);
+            }
+          : undefined
+      }
       onActivate={openFile}
     />
   );
@@ -109,9 +119,9 @@ export function ActionRow({
 }
 
 /**
- * A row's open body is a card of its own (hairline, rounded-lg, p-3) when
- * the row stands alone; inside the group's list, which is already that
- * card, it draws nothing, so no card sits within a card.
+ * A row's open body is a card of its own (hairline, rounded-lg, p-3), in a
+ * group's list or alone; on a surface that is already a card (the board's
+ * task card) it draws nothing, so no card sits within a card.
  */
 export const BODY_FRAME =
   "rounded-lg border border-border bg-card p-3 in-[.bg-card]:rounded-none in-[.bg-card]:border-0 in-[.bg-card]:bg-transparent in-[.bg-card]:p-0";

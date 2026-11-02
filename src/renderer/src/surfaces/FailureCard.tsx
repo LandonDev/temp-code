@@ -71,7 +71,7 @@ export function FailureCardView({
     <div
       role="alert"
       data-failure-kind={failure.kind}
-      className="my-2 min-w-0 rounded-lg border border-border bg-card p-3 font-sans"
+      className="min-w-0 rounded-lg border border-border bg-card p-3 font-sans"
     >
       <div className="flex min-w-0 items-start gap-2">
         <span className="flex h-5 shrink-0 items-center">

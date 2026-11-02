@@ -24,14 +24,19 @@ import { threadMentionParts, type ThreadMentionPart, useThreadTitles } from "../
 import { CopyMessageButton } from "../CopyMessageButton";
 import { PreambleRow } from "../PreambleRow";
 import { useTranscriptSession } from "../transcriptSession";
+import { ParkPendingContext } from "../turnState";
 import { NoticeLine } from "./NoticeLine";
 
 /** The send-in entrance's length: transcript.css `bubble-send-flip` and
  *  `bubble-send-in` run `--dur-slow` on the drawer curve. */
 export const SEND_IN_MS = DUR.slow * 1000;
 
+/** The farthest a followed bubble flies from the field; past it, or when
+ *  the transcript parks the prompt, it rises in place instead. */
+export const FLIP_REACH_PX = 240;
+
 /**
- * The person's message: a soft bubble on the right, 15px, no avatar and no
+ * The person's message: a soft bubble on the right, 14px, no avatar and no
  * time. The project rules it opened with fold to one line above it. A
  * second opinion carries no words of the person's, so it is a notice line
  * on the left instead; a handoff keeps its bubble (its text is the brief).
@@ -56,23 +61,21 @@ export function UserMessageBlock({
     return age < SEND_IN_MS ? age : null;
   });
   // The entrance, decided once from the bubble's rest box on the frame
-  // before its first paint — after the scroll engine has parked the turn,
-  // whose layout effects run after this child's: a transform-only slide
-  // from the composer field (`bubble-send-flip`), else the plain 18px
-  // rise. Applied straight to the element so no React render sits between
-  // the measurement and the first frame; the class comes off at
-  // animationend, and `entrance` stays "" so re-renders leave it alone.
+  // before its first paint, after the scroll engine took the send: while
+  // the transcript parks the prompt, the bubble rides with the content and
+  // rises 16px (`bubble-send-in`); followed, it flies from the composer
+  // field (`bubble-send-flip`, transform only) when it lands within
+  // FLIP_REACH_PX of it, else rises. Applied straight to the element so no
+  // React render sits between the measurement and the first frame; the
+  // class comes off at animationend.
   const bubbleRef = useRef<HTMLDivElement>(null);
+  const parking = useContext(ParkPendingContext);
   useLayoutEffect(() => {
     if (entering == null) return;
     const el = bubbleRef.current;
     if (!el) return;
     const frame = requestAnimationFrame(() => {
-      // One screen of travel at most: the turn parks at the top of the
-      // transcript, so the flight from the field is about the window's
-      // height. Both boxes are on screen, so it can never be more.
-      const cap = Math.max(600, window.innerHeight);
-      const offset = sendOffset(sendOrigin(), el.getBoundingClientRect(), cap);
+      const offset = parking() ? null : sendOffset(sendOrigin(), el.getBoundingClientRect(), FLIP_REACH_PX);
       if (offset) {
         el.style.setProperty("--send-dx", `${offset.dx}px`);
         el.style.setProperty("--send-dy", `${offset.dy}px`);
@@ -108,16 +111,16 @@ export function UserMessageBlock({
   if (card && card.kind !== "handoff") return <SecondOpinionLine card={card} />;
 
   return (
-    <div className="flex min-w-0 flex-col items-end pt-5 pb-2 pl-10">
+    <div className="flex min-w-0 flex-col items-end">
       {block.preamble ? (
-        <div className="flex max-w-[min(36rem,85%)] justify-end">
+        <div className="flex max-w-[85%] justify-end">
           <PreambleRow text={block.preamble.text} words={block.preamble.words} />
         </div>
       ) : null}
       <div
         ref={bubbleRef}
         data-user-bubble=""
-        className="group/message relative w-fit max-w-[min(36rem,85%)] min-w-0 rounded-xl bg-card px-4 py-3 font-sans text-[15px] leading-6 text-foreground"
+        className="group/message relative w-fit max-w-[85%] min-w-0 rounded-xl bg-card px-3 py-2 font-sans text-sm leading-[22px] text-foreground"
         style={
           entering == null
             ? { zIndex: stickyIndex }
@@ -152,7 +155,7 @@ export function UserMessageBlock({
           </div>
         ) : null}
         {card ? (
-          <div className={text ? "mb-1.5" : undefined}>
+          <div className={text ? "mb-2" : undefined}>
             <SecondOpinionCard card={card} />
           </div>
         ) : null}
@@ -209,7 +212,7 @@ export function SteerLine({ stamp }: { stamp: SteerStamp }) {
 function SecondOpinionLine({ card }: { card: SecondOpinionMeta }) {
   const files = card.files ? `${card.files} ${card.files === 1 ? "file" : "files"}` : null;
   return (
-    <div data-second-opinion="" className="min-w-0 pt-3">
+    <div data-second-opinion="" className="min-w-0">
       <NoticeLine glyph={<HarnessIcon harness={card.to} />} lead="Second opinion" details={[HARNESS_TITLE[card.to], files]} />
     </div>
   );

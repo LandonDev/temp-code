@@ -14,14 +14,15 @@ export function PreambleRow({ text, words }: { text: string; words: number }) {
   const [open, setOpen] = useState(false);
   const stop = (e: MouseEvent) => e.stopPropagation();
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="mb-1.5 flex flex-col" data-preamble-row>
+    <Collapsible open={open} onOpenChange={setOpen} className="mb-1 flex flex-col" data-preamble-row>
       <CollapsibleTrigger
         onClick={stop}
-        className="-ml-2 flex w-fit items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="-ml-2 flex h-6 w-fit items-center gap-2 rounded-md px-2 text-xs text-muted-foreground outline-none transition-colors duration-(--dur-fast) ease-(--ease-out) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
       >
         <ChevronRight
+          strokeWidth={1.5}
           className={cn(
-            "size-3 shrink-0 transition-transform duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
+            "size-3 shrink-0 transition-transform duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
             open && "rotate-90",
           )}
         />

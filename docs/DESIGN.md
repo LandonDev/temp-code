@@ -10,10 +10,10 @@ UI element to the one component that renders it.
 Claude desktop's transcript inside Cursor's chrome. The chrome is quiet and
 dense: 13px type, one gray step between the rail, the content and a floating
 layer, hairline borders, no shadows on anything docked. The transcript is
-generous: 15px prose on a 1.6 line height, the person's words in a soft
-bubble on the right, the model's as plain text on the left, its actions
-clumped into one muted line per paragraph that opens into a single
-thin-bordered list. Colour means something or is absent: amber when the
+tight: 14px prose on 22px lines in a 768px column, the person's words in a
+soft bubble on the right, the model's as plain text on the left, its actions
+clumped into one muted 28px line per paragraph whose rows hang under its
+words when it opens, with no box around them. Colour means something or is absent: amber when the
 person is needed (and on the context meter from 85% full), red when
 something failed, green for lines added, the one
 blue accent for links and focus, and a thread's type on its glyph alone.
@@ -130,11 +130,11 @@ a surface above `/10`.
 | Size | Where |
 | --- | --- |
 | 11px | a key cap, a group label in a menu |
-| 12px | secondary lines in the chrome, descriptions under a title, status words, a count in a row's status line |
-| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings |
-| 14px | dialog and panel body text, an Item's title |
-| 15px | the transcript's prose, the composer's field (line height 1.6) |
-| 16px | a dialog or sheet title (semibold) |
+| 12px | secondary lines in the chrome, descriptions under a title, status words, a count in a row's status line, the transcript's counts (`+46 −3`) |
+| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings; the transcript's action, thinking, notice and closing lines (20px lines in 28px rows) |
+| 14px | dialog and panel body text, an Item's title; the transcript's prose, the person's bubble, a question's prompt and the composer's field (22px lines) |
+| 15px | an h2 in the model's prose |
+| 16px | a dialog or sheet title (semibold); an h1 in the model's prose |
 
 Weight and colour make the hierarchy, not size jumps: a title is `font-medium`
 foreground, its detail `muted-foreground` at the next size down. Code is the
@@ -190,7 +190,12 @@ sheet). Curves: `--ease-out` for entrances and most transitions,
 swaps), `SPRING_PANEL` (a row morphing into a card), `SPRING_GLIDE` (a
 released drag). `springEasing` turns a spring into a CSS `linear()` curve
 and its settle time (`SPRING_LAYOUT_CSS`: 370ms, no overshoot), for a
-transition that glides like the spring without JavaScript.
+transition that glides like the spring without JavaScript; the same curve
+is a token, `--dur-layout` on `--ease-layout` (the folds that open on their
+own), held equal to it by lib/ease.test.ts. Code that drives motion itself
+(the transcript's scroll glides) reads a curve through `cubicBezier`, and
+the streaming veil's clock is `VEIL`. `FOLD_HOLD_MS` (600ms) is the beat a
+working group stays open after its work moved on.
 `lib/motionGuard.test.ts` fails on any literal duration or curve outside
 `lib/ease.ts` and this layer; its script allow-list is empty. The only
 kept CSS rule defines Tailwind’s named spinner token. The shimmer token
@@ -438,10 +443,17 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
 | Press | scale 0.985, `--dur-fast` | release | colour only |
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
-| Fold that opens on its own (`.collapsible-auto`: the running task's steps) | height + opacity on `SPRING_LAYOUT_CSS` | height + opacity, `--dur-slow` `--ease-out` | opacity, `--dur-fast` |
-| A step landing in it (`.step-land`) | fade + rise 4px, `--dur-base` `--ease-out`; never at mount | none | none |
-| Disclosure chevron | rotates with its fold, `--dur-base` `--ease-out` | same | none |
-| Icon swap (`SwapIcon`) | opacity + scale 0.25→1 on `SPRING_LAYOUT` | fade + scale →0.25, `--dur-fast` | opacity, `--dur-fast` |
+| Fold that opens on its own (`.collapsible-auto`: the transcript's working group, the running task's steps, the title bar's shelf) | height on the layout spring (`--dur-layout` `--ease-layout`) + opacity `--dur-base` `--ease-out` | the same, so the rows are gone before the box closes | opacity, `--dur-fast` |
+| A step landing in it (`.step-land`) | fade + rise 4px, `--dur-base` `--ease-out`; only a step that lands while the fold is open, never at mount, on a hand open or when a panel unhides | none | none |
+| The working group's rows, opening on their own | glide 22px from the prose edge into their hang (translate), on the layout spring | — | none |
+| The working group's window (its newest five rows) | the oldest row leaves the top as the list glides up by its measured height, `--dur-base` `--ease-out` | — | none |
+| The working group's fold | waits `FOLD_HOLD_MS` once the work moved on, so the last row's settle shows, then folds on `.collapsible-auto` | — | the same wait, then the fade |
+| Disclosure chevron | rotates with its fold, `--dur-base` `--ease-out`, everywhere | same | none |
+| Icon swap (`SwapIcon`; keyed for more than two states, as a tool row's waiting, working, failed and icon) | opacity + scale 0.25→1 on `SPRING_LAYOUT` | fade + scale →0.25, `--dur-fast` | opacity, `--dur-fast` |
+| Label swap (`SwapText`: a row's verb or a group's phrase changing tense) | the new words rise from 3px below, `--dur-base` `--ease-out`; the width changes at once; never on mount or per streamed word | the old words lift 3px and fade, `--dur-fast` | cross-fade, `--dur-fast` |
+| Scroll glide (jump to latest, a burst while following, a jump to a row) | `DUR.drawer` on `EASE_OUT` | — | instant |
+| Park on send (prompt to top) | the transcript glides to park the prompt, `DUR.drawer` on `EASE_DRAWER` | the parked runway retires over `DUR.base` on `EASE_OUT` | instant |
+| Jump to latest button | fade + scale 0.95→1, `--dur-base` `--ease-out` | `FADE_OUT` | fade |
 | Count | ticks from the shown value, `--dur-slow` `--ease-out` | — | none |
 | Shimmer (`TextShimmer`) | one highlight sweeps the muted text, 2s | — | still muted text |
 | Spinner | the one arc turning | — | still |
@@ -450,8 +462,11 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | Scrollbar | shows at once on hover or scroll | hides at once, `SCROLL_IDLE_MS` (900ms) after the last scroll or when the pointer leaves | same |
 | List rows (rail, tabs, fleet, attachments, the transcript's message list) | none | none | none |
 | Transcript rows | one `--dur-fast` fade on first appearance, never replayed | — | none |
-| Streaming text | the prose: the jitter buffer (surfaces/smoothText) and the paint-only veil (surfaces/streamVeil); a live short line (the thinking row's newest sentence): its words fade `--dur-base` in `StreamingText` | — | none |
-| Composer send | the bubble glides up 16px, `--dur-slow` `--ease-drawer` | — | fade, `--dur-fast` |
+| Streaming text | the prose: the jitter buffer (surfaces/smoothText) and the paint-only veil (surfaces/streamVeil), which finishes every fade the moment the text under it reflows and never veils a row holding a selection; a live short line (the thinking row's newest sentence): its words fade `--dur-base` in `StreamingText` | — | none |
+| Composer send | the bubble rides with the content as the prompt parks, rising 16px and fading in, `--dur-slow` `--ease-drawer`; in follow mode it flies from the field only when it lands within 240px of it | — | fade, `--dur-fast` |
+| Composer field height | snaps on a keystroke and on the clear after a send; a change of more than one line the person did not type (a paste, a restore, a quote) eases over `--dur-base` | — | snaps |
+| Composer, a new thread's first send | the box keeps its width and moves into its docked place (a FLIP translate, `--dur-slow` `--ease-drawer`) | — | none |
+| Pane switch | opacity, `--dur-fast`; no rise | — | none |
 
 Rules: animate `transform` and `opacity` (and height only through the
 collapsible); every animation is interruptible and starts from the current
@@ -460,22 +475,73 @@ gesture; every animated class carries its `motion-reduce:` guard.
 
 ## The transcript
 
-The target is Claude desktop's transcript with our tool icons and
-humanized names kept (the plan at .temp-code/plan-h5M-bmLmzYd4.md fixes the
-rows). The person's message is a right-aligned bubble (`card`, `rounded-xl`,
-15px) with no avatar or timestamp. A message the person sent into a running
+The target is Claude desktop's Code tab with our tool icons and humanized
+names kept (the plan at .temp-code/plan-h5M-bmLmzYd4.md fixes the rows,
+.temp-code/plan-zY_qkaKjrxzL.md the metrics and the motion). It is tight: a
+768px column (`COLUMN_MAX_PX` in surfaces/transcriptOutlineModel.ts) inside
+the scroller's 16px gutter, the composer flush with it in every placement,
+the root in the sans face at 13px.
+
+| Element | Size / line |
+| --- | --- |
+| The prose, the person's bubble, a question's prompt, the composer's field | 14px / 22px |
+| A line: a group's line, an action, a thought, a notice, an approval, the closing line | 13px / 20px in a 28px row; the glyph in a 14px slot, 8px to the words, so words start at 22px |
+| Counts (`+46 −3`, a failed tally) | 12px `tabular-nums` |
+| Code in a row's body: a command, its output, a diff | 12px / 20px mono |
+| A code block in the prose | 13px / 20px mono |
+| Inline code | one pixel under its text (13px in the prose), `rounded-sm bg-muted` |
+| Headings in the prose | h1 16px / 24 semibold −0.01em; h2 15px / 22 semibold; h3 to h6 14px / 22 semibold |
+| A table's cells | 13px / 20px, 36px rows |
+
+The gap belongs to the boundary between two rows, never to a row:
+`transcriptRows.ts` gives each row its `gap` from the row before it, and a
+row that draws nothing takes none. 16px before the first row; 32px from the
+previous turn to a turn's first row; 16px from a bubble to its first reply
+row; 12px between two blocks (prose, a bubble, a card) or a block and a
+line; 4px between two lines; 8px from the last item to the closing line;
+8px under "Load earlier messages"; 16px under the last row. Inside the
+prose (surfaces/transcript/markdown.css): 12px between blocks, 4px between
+list items and into a nested list, 20px above a heading and 4px under it,
+20px around a rule, 8px between two paragraphs in an item or a quote; a
+list hangs its text at 22px, like a row's words.
+
+The lines that remain: the hairline of one card (a row's opened body, a code
+block, a table, a question, failure or held-review card, the composer), the
+rules between a table's rows and the title bar's bottom border. None between
+turns, none between rows, none inside an open group. A blockquote is a 2px
+`border` line with muted, upright text; a table's header has no fill.
+
+The person's message is a right-aligned bubble (`card`, `rounded-xl`, 12/8
+padding, at most 85% of the column) with no avatar or timestamp, its
+preamble line 4px above it. A message the person sent into a running
 turn (a steer) carries one 12px `muted-foreground` word under the bubble at
 its right edge, Sent, Received or Queued for the next turn, or Not
 delivered in the red tone; its time is in the word's tooltip, never in the
 flow, and a word that changes on screen fades in on `--dur-fast`
-(transcript/UserMessage.tsx `SteerLine`). The model's prose is plain 15px text.
+(transcript/UserMessage.tsx `SteerLine`). The model's prose is plain text.
 Between paragraphs, the actions since the last paragraph are one muted line
-("Created diag.ts, ran a command  +46 ▾") that opens into one thin-bordered
-`card` listing one row per action ("Created  diag.ts  +46 ▸", "Ran  npx
-convex dev…  ▸", "Read  types.ts ▸"), verb muted, object in foreground,
-counts green and red, a caret per row. A lone command opens a card headed by
-its tool name with the command in mono and its output under it. File changes
-keep their counts on the line and their diff behind the caret. Live
+("Created diag.ts, ran a command  +46 ▾") that opens into one row per action
+hung 22px under it, so a row's glyph sits under the line's words, with no box
+and no rules ("Created  diag.ts  +46 ▸", "Ran  npx convex dev…  ▸", "Read
+types.ts ▸"), verb muted, object in foreground, counts green and red, a
+caret per row. A row's opened body is one card (a hairline, `rounded-lg`,
+`bg-card`, 12px inset, from the row's glyph to the column's end); an edit's
+diff takes the same card with its tints running to its edges. A lone command
+opens a card headed by its tool name with the command in mono and its output
+under it. File changes keep their counts on the line and their diff behind
+the caret.
+
+The group the turn is working in opens on its own once it holds two calls:
+the line folds open above the first row and the rows glide into their hang.
+While it works it shows its newest five rows (a thought counts as one), the
+line still naming them all; when the work moves on (the model writes again,
+or the turn ends) it waits `FOLD_HOLD_MS`, its last row settling (the glyph,
+the verb's tense, the shimmer stops), and folds. A person's hand decides for
+that group from then on: toggling its line or opening a row's body inside it
+ends the automatic open, window and fold, and a group opened by hand shows
+every row. A step waiting on the person keeps it open; a paused turn holds it
+as it is; a group that mounts while working shows open with no motion, one
+that mounts settled shows closed. Live
 background work is the right panel's Activity section; a task that settled
 is one step of the run it woke ("Task finished  deploy the preview"),
 never a row of its own. No timestamps
@@ -507,9 +573,11 @@ left side, where the column leaves room, lists the person's own messages,
 one line and a clock time each, the one being read in foreground
 (`TranscriptOutline` on `JumpList`; docs/LAYOUT.md "Chat"). A
 question card sets the sans face; mono is for code inside it. Its question
-is at the prose's 15px, its options at 14px with an option's description
-as a muted 13px line under it, and the amber Needs you glyph sits by its
-title. Every action
+is at the prose's 14px on 22px lines, its options 28px rows at 14px with an
+option's description as a muted 13px line under it, and the amber Needs you
+glyph sits by its title. Its frame is `CARD_SHAPE` (surfaces/QuestionCard.tsx,
+shared with the held review), and inside a `bg-card` body it draws no second
+frame. Every action
 row ends in a caret: it turns on a row that opens a body and stays still on
 one that opens its file.
 
