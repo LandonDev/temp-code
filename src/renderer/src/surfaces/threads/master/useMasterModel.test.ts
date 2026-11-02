@@ -265,6 +265,25 @@ describe("the sections", () => {
 });
 
 describe("the digests", () => {
+  it("prunes departed children and their signatures using whole-board membership", () => {
+    const store = new BoardDigests();
+    store.replace({ a: { last: "Local" }, b: { last: "Far" } });
+    const b = store.get("b");
+    store.replace({ a: { last: "Local again" } });
+    expect(store.get("b")).toBe(b);
+    let told = 0;
+    store.subscribe(() => told++);
+    store.retain(new Set(["b"]));
+    expect(store.get("a")).toEqual({});
+    expect(store.get("b")).toBe(b);
+    expect(told).toBe(1);
+    store.retain(new Set(["b"]));
+    expect(told).toBe(1);
+    store.set("a", { last: "Local again" });
+    expect(store.get("a")).toEqual({ last: "Local again" });
+    expect(told).toBe(2);
+  });
+
   it("keep a digest's object while it reads the same, and tell subscribers only when one changed", () => {
     const store = new BoardDigests();
     let told = 0;

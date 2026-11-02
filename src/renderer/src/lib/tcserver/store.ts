@@ -67,6 +67,12 @@ const NO_EDITS: Record<string, LiveEditState> = {};
 const NO_QUEUE: QueuedMessage[] = [];
 const NO_IDS: readonly string[] = [];
 
+export type MetaChanges = {
+  ids: ReadonlySet<string>;
+  /** Changed ids and their ancestors, before and after each change. */
+  affected: ReadonlySet<string>;
+};
+
 /**
  * The slow-changing part of an open session: what the shell (App, the
  * tab strip, project grouping) needs to lay things out. Excludes the
@@ -421,7 +427,12 @@ class SessionStore {
   private openOrder: string[] = [];
   private queues = new Map<string, QueuedMessage[]>();
   private listeners = new Set<() => void>();
-  private metaListeners = new Set<() => void>();
+  private metaListeners = new Set<(changes: MetaChanges) => void>();
+  private metaChildren = new Map<string, string[]>();
+  private entryOrder = new Map<string, number>();
+  private nextEntryOrder = 0;
+  private changedMetaIds = new Set<string>();
+  private affectedMetaIds = new Set<string>();
   private eventListeners = new Set<(sessionId: string, row: EventRow, session: Session) => void>();
   private addedListeners = new Set<(meta: SessionMeta) => void>();
   private openListeners = new Set<(meta: SessionMeta) => void>();
@@ -607,6 +618,12 @@ class SessionStore {
       this.stopTimers(entry);
     }
     this.entries.clear();
+    this.metaChildren.clear();
+    this.entryOrder.clear();
+    this.nextEntryOrder = 0;
+    this.changedMetaIds.clear();
+    this.affectedMetaIds.clear();
+    this.metasSnapshot = null;
     this.openOrder = [];
     this.queues.clear();
     this.liveEdits.clear();
@@ -655,8 +672,8 @@ class SessionStore {
     return () => this.approvalListeners.delete(listener);
   };
 
-  /** Fires when the server's session set or any meta changes (not per event). */
-  onMetaChange(listener: () => void): () => void {
+  /** Fires once per meta flush, with the changed ids and both ancestor chains (not per event). */
+  onMetaChange(listener: (changes: MetaChanges) => void): () => void {
     this.metaListeners.add(listener);
     return () => {
       this.metaListeners.delete(listener);
@@ -708,6 +725,52 @@ class SessionStore {
 
   metaOf(id: string): SessionMeta | null {
     return this.entries.get(id)?.meta ?? null;
+  }
+
+  /** Direct children in store order, including archived parents and agents. */
+  childrenOf = (id: string): SessionMeta[] => {
+    const out: SessionMeta[] = [];
+    for (const child of this.metaChildren.get(id) ?? NO_IDS) {
+      const meta = this.metaOf(child);
+      if (meta) out.push(meta);
+    }
+    return out;
+  };
+
+  /** The id itself, then its parent chain; a missing parent still names an ancestor. */
+  ancestorsOf(id: string): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (let at: string | null | undefined = id; at && !seen.has(at); at = this.metaOf(at)?.parentId) {
+      seen.add(at);
+      out.push(at);
+    }
+    return out;
+  }
+
+  private indexMeta(id: string, next: SessionMeta | null): void {
+    this.changedMetaIds.add(id);
+    for (const ancestor of this.ancestorsOf(id)) this.affectedMetaIds.add(ancestor);
+    const previous = this.metaOf(id)?.parentId;
+    if (previous !== next?.parentId) {
+      if (previous) {
+        const siblings = this.metaChildren.get(previous)!;
+        const remaining = siblings.filter((child) => child !== id);
+        if (remaining.length) this.metaChildren.set(previous, remaining);
+        else this.metaChildren.delete(previous);
+      }
+      if (next?.parentId) {
+        const siblings = this.metaChildren.get(next.parentId) ?? [];
+        const order = this.entryOrder.get(id)!;
+        const before = siblings.findIndex((child) => this.entryOrder.get(child)! > order);
+        if (before < 0) siblings.push(id);
+        else siblings.splice(before, 0, id);
+        this.metaChildren.set(next.parentId, siblings);
+      }
+    }
+    if (next?.parentId) {
+      for (const ancestor of this.ancestorsOf(next.parentId)) this.affectedMetaIds.add(ancestor);
+    }
   }
 
   /** Cumulative `session` and `event` pushes received; the stall recorder differences them. */
@@ -913,6 +976,7 @@ class SessionStore {
       rows: null,
     };
     this.entries.set(id, entry);
+    this.entryOrder.set(id, this.nextEntryOrder++);
     this.armSlow(entry);
     this.bump();
     return session;
@@ -1413,6 +1477,7 @@ class SessionStore {
       // left over): the meta leaves the lists, so its rail row goes, and the
       // entry stays to say so, as one no host answered for does. A meta that
       // comes back fills it again.
+      this.indexMeta(entry.session.id, null);
       entry.meta = null;
       entry.provisional = true;
       entry.wanted = false;
@@ -2014,6 +2079,8 @@ class SessionStore {
     // The same facts again (a list reconcile, a reconnect's replay): the
     // metas array and the view stay the objects they are.
     if (entry?.meta && !entry.provisional && metaEqual(entry.meta, meta)) return false;
+    if (!entry) this.entryOrder.set(meta.id, this.nextEntryOrder++);
+    this.indexMeta(meta.id, meta);
     this.metasSnapshot = null;
     if (!entry) {
       const load = loadingState();
@@ -2141,7 +2208,11 @@ class SessionStore {
   private repoint(entry: Entry, from: string, to: string): void {
     const id = entry.session.id;
     this.attached.get(from)?.subs.remove(id);
-    if (entry.meta) entry.meta = { ...entry.meta, environmentId: to };
+    if (entry.meta) {
+      const next = { ...entry.meta, environmentId: to };
+      this.indexMeta(id, next);
+      entry.meta = next;
+    }
     entry.session = { ...entry.session, environmentId: to };
     this.metasSnapshot = null;
     const subs = this.attached.get(to)?.subs;
@@ -2156,11 +2227,13 @@ class SessionStore {
   private drop(id: string): void {
     this.metasSnapshot = null;
     const entry = this.entries.get(id);
+    if (entry?.meta) this.indexMeta(id, null);
     if (entry) {
       this.settleHead(entry);
       this.stopTimers(entry);
     }
     this.entries.delete(id);
+    this.entryOrder.delete(id);
     this.queues.delete(id);
     this.liveEdits.delete(id);
     this.openOrder = this.openOrder.filter((x) => x !== id);
@@ -2206,6 +2279,7 @@ class SessionStore {
           rows: null,
         };
         this.entries.set(session.id, draft);
+        this.entryOrder.set(session.id, this.nextEntryOrder++);
         if (load.phase === "loading") this.armSlow(draft);
       } else if (entry.session !== session) {
         // The load phase is the store's: an updater never sets it.
@@ -2276,7 +2350,10 @@ class SessionStore {
 
   private bumpMeta(): void {
     this.metaPending = false;
-    for (const listener of this.metaListeners) listener();
+    const changes: MetaChanges = { ids: this.changedMetaIds, affected: this.affectedMetaIds };
+    this.changedMetaIds = new Set();
+    this.affectedMetaIds = new Set();
+    for (const listener of this.metaListeners) listener(changes);
   }
 
   /** Meta listeners hear with the next flush (or the next sync bump, whichever is first). */

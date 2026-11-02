@@ -377,6 +377,18 @@ export class BoardDigests {
     if (this.put(id, digest)) this.emit();
   }
 
+  /** Membership comes from the whole board, since one host's answer may omit other hosts. */
+  retain(ids: ReadonlySet<string>): void {
+    let changed = false;
+    for (const id of this.map.keys()) {
+      if (ids.has(id)) continue;
+      this.map.delete(id);
+      this.json.delete(id);
+      changed = true;
+    }
+    if (changed) this.emit();
+  }
+
   private put(id: string, digest: BoardDigest): boolean {
     const json = JSON.stringify(digest ?? {});
     if (this.json.get(id) === json) return false;
@@ -722,15 +734,15 @@ export function rowModels(layout: BoardLayout): MasterRowModel[] {
   return out;
 }
 
-/** The rows' subagent summaries: rebuilt from the store's metas on every
- *  meta change and every new layout, waking only the rows whose own changed. */
+/** The rows' subagents: only changed subtrees are rebuilt; a new layout
+ *  adds and prunes rows, keeping summaries for those that stayed. */
 export function useAgentSummaries(masterId: string, layout: BoardLayout): AgentSummaries {
   const summaries = useMemo(() => new AgentSummaries(), [masterId]);
   useLayoutEffect(() => {
     const ids = layout.rows.map((r) => r.id);
-    const run = () => summaries.update(ids, sessionStore.metas());
-    run();
-    return sessionStore.onMetaChange(run);
+    const index = { get: sessionStore.childrenOf };
+    summaries.update(ids, index, new Set());
+    return sessionStore.onMetaChange((changes) => summaries.update(ids, index, changes.affected));
   }, [layout, summaries]);
   return summaries;
 }
@@ -762,7 +774,7 @@ export type MasterModel = {
   /** `boardShown` for this layout and batch. */
   showBoard: boolean;
   digests: BoardDigests;
-  /** Each row's subagents, from one index of the store per meta change. */
+  /** Each row's subagents, refreshed only when its subtree changes. */
   summaries: AgentSummaries;
   /** The first `batch.board` answer is in. */
   loaded: boolean;
@@ -785,6 +797,9 @@ export function useMasterModel(master: Pick<SessionMeta, "id" | "environmentId">
   );
   useFarDigests(master.id, farHosts, board.digests);
   const summaries = useAgentSummaries(master.id, layout);
+  useLayoutEffect(() => {
+    board.digests.retain(new Set(layout.rows.map((r) => r.id)));
+  }, [layout, board.digests]);
   const landed = useMemo(() => new Set(board.state.landed), [board.state.landed]);
   const [openId, setOpenId] = useState<string | null>(null);
   // A child that left the batch (archived, removed) closes its view, and

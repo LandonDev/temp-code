@@ -2779,8 +2779,11 @@ this is the short one.
   paused or queued), at most three, then one quiet "2 more, 3 done";
   agents that all settled show nothing. A line opens the agent in the
   board's place like a row (`underRow` keeps it open)
-  (`master/agentSummary.ts`: one parent index per meta change, a row
-  re-rendered only when its own lines changed; the phone's
+  (`master/agentSummary.ts`: the session store keeps a parent index and
+  reports changed ids with their old and new ancestor chains once per
+  flush; only affected rows rebuild their summaries, and a row
+  re-renders only when its own lines changed. Summaries and digests prune
+  children that leave the board; the phone's
   `MasterBoard.rowAgentLines` the same, each line a link to the agent's
   thread screen, the tail "2 more, 3 done"). A row's click puts the
   child's full view in the whole pane with one Back control

@@ -808,6 +808,62 @@ describe("tail-first load", () => {
 describe("meta push coalescing", () => {
   const flush = () => new Promise((r) => setTimeout(r, 0));
 
+  it("reports changed ids once per flush with old and new ancestors, including removed sessions", async () => {
+    link.metas = [wireMeta({ id: "a", parentId: "c1" }), wireMeta({ id: "nested", parentId: "a" })];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    const changed = vi.fn();
+    const off = sessionStore.onMetaChange(changed);
+    link.push({ push: "session", session: wireMeta({ id: "a", parentId: "c2" }) });
+    link.push({ push: "session", session: wireMeta({ id: "nested", parentId: "a", title: "Fresh" }) });
+    expect(sessionStore.ancestorsOf("nested")).toEqual(["nested", "a", "c2"]);
+    expect(sessionStore.childrenOf("c1")).toEqual([]);
+    expect(sessionStore.childrenOf("c2").map((m) => m.id)).toEqual(["a"]);
+    await flush();
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(changed.mock.calls[0][0].ids).toEqual(new Set(["a", "nested"]));
+    expect(changed.mock.calls[0][0].affected).toEqual(new Set(["a", "c1", "c2", "nested"]));
+    link.push({ push: "session-removed", sessionIds: ["nested", "a"] });
+    await flush();
+    expect(changed.mock.calls[1][0].ids).toEqual(new Set(["nested", "a"]));
+    expect(changed.mock.calls[1][0].affected).toEqual(new Set(["nested", "a", "c2"]));
+    expect(sessionStore.childrenOf("a")).toEqual([]);
+    expect(sessionStore.childrenOf("c2")).toEqual([]);
+    off();
+  });
+
+  it("keeps child order through reparenting and draft adoption, and ignores identical metas", async () => {
+    sessionStore.mutate([{ ...newSession("local", "claude", "/repo"), id: "draft" }]);
+    link.metas = [wireMeta({ id: "first", parentId: "c" }), wireMeta({ id: "second", parentId: "c" })];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    link.push({ push: "session", session: wireMeta({ id: "first", parentId: "elsewhere" }) });
+    link.push({ push: "session", session: wireMeta({ id: "first", parentId: "c" }) });
+    link.push({ push: "session", session: wireMeta({ id: "draft", parentId: "c" }) });
+    expect(sessionStore.childrenOf("c").map((m) => m.id)).toEqual(["draft", "first", "second"]);
+    await flush();
+    const changed = vi.fn();
+    const off = sessionStore.onMetaChange(changed);
+    link.push({ push: "session", session: wireMeta({ id: "first", parentId: "c" }) });
+    await flush();
+    expect(changed.mock.calls[0][0].ids.size).toBe(0);
+    expect(changed.mock.calls[0][0].affected.size).toBe(0);
+    off();
+    sessionStore.reset();
+    expect(sessionStore.childrenOf("c")).toEqual([]);
+  });
+
+  it("stops ancestor walks at a cycle and drops indexed edges when a host detaches", async () => {
+    link.metas = [wireMeta({ id: "a", parentId: "b" }), wireMeta({ id: "b", parentId: "a" })];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    expect(sessionStore.ancestorsOf("a")).toEqual(["a", "b"]);
+    expect(sessionStore.childrenOf("a").map((m) => m.id)).toEqual(["b"]);
+    sessionStore.detach("local");
+    expect(sessionStore.childrenOf("a")).toEqual([]);
+    expect(sessionStore.childrenOf("b")).toEqual([]);
+  });
+
   it("many session pushes in one tick reach meta listeners once, after the flush", async () => {
     link.metas = [wireMeta()];
     sessionStore.attach(link);

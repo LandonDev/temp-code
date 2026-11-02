@@ -591,6 +591,15 @@ frame. Every action
 row ends in a caret: it turns on a row that opens a body and stays still on
 one that opens its file.
 
+## Board updates
+
+A master board keeps each row's subagent summary until that subtree changes.
+The session store keeps the parent index and batches changed ids with their
+old and new ancestor chains. An unrelated thread's update does no summary
+work. A new layout adds summaries for new rows and prunes summaries and
+digests for departed rows. Agent order, the three-line cap and the quiet
+count after the lines stay the same.
+
 ## Restraint
 
 No cards within cards. No glows. No decorative badges or chips. No

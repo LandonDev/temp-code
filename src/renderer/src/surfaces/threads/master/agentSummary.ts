@@ -10,9 +10,9 @@ import { rowStatus } from "./rowBody";
  * spawns there, and its agents carry its bare id). The ones still at work
  * or waiting are lines under the row, the person's first, at most
  * `AGENT_LINES`, the rest counted; settled ones are only a count beside
- * them. The board builds one parent index per meta change and one entry
- * per row from it; a row reads its own, the same object until it says
- * something else.
+ * them. The store keeps the parent index; the board updates only rows
+ * under the changed ancestor chains. A row reads its own, the same object
+ * until it says something else.
  */
 
 /** One subagent under a row: what it is, its state and what that state
@@ -60,7 +60,7 @@ export function parentIndex(metas: readonly SessionMeta[]): Map<string, SessionM
 }
 
 /** Every unarchived session under `rootId`, at any depth. */
-export function subtreeOf(index: ReadonlyMap<string, readonly SessionMeta[]>, rootId: string): SessionMeta[] {
+export function subtreeOf(index: Pick<ReadonlyMap<string, readonly SessionMeta[]>, "get">, rootId: string): SessionMeta[] {
   const out: SessionMeta[] = [];
   const seen = new Set([rootId]);
   const stack = [rootId];
@@ -129,10 +129,17 @@ export class AgentSummaries {
 
   get = (id: string): RowAgents | null => this.map.get(id) ?? null;
 
-  update(rowIds: readonly string[], metas: readonly SessionMeta[]): void {
-    const index = parentIndex(metas);
+  update(rowIds: readonly string[], index: Pick<ReadonlyMap<string, readonly SessionMeta[]>, "get">, affected?: ReadonlySet<string>): void {
     let changed = false;
+    const members = new Set(rowIds);
+    for (const id of this.map.keys()) {
+      if (members.has(id)) continue;
+      this.map.delete(id);
+      this.sigs.delete(id);
+      changed = true;
+    }
     for (const id of rowIds) {
+      if (affected && !affected.has(id) && this.map.has(id)) continue;
       const next = rowAgents(subtreeOf(index, id));
       const s = sig(next);
       if (this.sigs.get(id) === s && this.map.has(id)) continue;
