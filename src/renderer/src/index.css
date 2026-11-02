@@ -212,7 +212,6 @@ html.theme-light {
 }
 
 @theme {
-  --animate-spinner: spin 900ms linear infinite;
   --color-accent: var(--accent);
   --color-skill: #e8c547;
   --color-mention: #38bdf8;

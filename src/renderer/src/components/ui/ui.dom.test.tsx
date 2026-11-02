@@ -229,7 +229,7 @@ describe("StatusMark", () => {
 
   it("still draws working's arc without its turn or its breath", () => {
     const { container, rerender } = render(<StatusMark state="working" still />);
-    const turns = () => (container.querySelector("[data-slot=spinner]") as SVGElement).classList.contains("animate-spinner");
+    const turns = () => (container.querySelector("[data-slot=spinner]") as SVGElement).hasAttribute("data-turning");
     expect(turns()).toBe(false);
     expect(container.querySelector(".status-breathe")).toBeNull();
     rerender(<StatusMark state="working" />);

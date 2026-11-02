@@ -45,6 +45,16 @@ export const SCROLL_IDLE_MS = 900;
 export const FOLD_HOLD_MS = 600;
 
 /**
+ * The spinner's 900ms turn (components/ui/spinner.tsx), run as a Web
+ * Animation: the same turn as a CSS animation made Blink run a main-thread
+ * frame at every display frame while any spinner showed.
+ */
+export const SPINNER_TURN: { keyframes: Keyframe[]; timing: KeyframeAnimationOptions } = {
+  keyframes: [{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }],
+  timing: { duration: 900, iterations: Infinity, easing: "linear" },
+};
+
+/**
  * The streaming veil's clock (surfaces/streamVeil.ts): the cadence's seed,
  * the longest gap it counts, each chunk's fade bounds, and the text's alpha
  * at progress p, 1 − (1−p)^1.6, sampled for `linear()`.

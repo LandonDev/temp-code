@@ -137,7 +137,7 @@ function Glyph({ state, still, className }: { state: ThreadState; still?: boolea
   const c = cn("size-3.5 shrink-0", className);
   switch (state) {
     case "working":
-      return <Spinner className={cn(c, "size-3", still && "animate-none")} />;
+      return <Spinner className={cn(c, "size-3")} still={still} />;
     case "waiting":
       return <CircleDot className={c} />;
     case "paused":

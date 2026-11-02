@@ -782,7 +782,7 @@ describe("the master view", () => {
     ]);
     renderView();
     await flush();
-    const spinning = (el: Element) => [...el.querySelectorAll("[data-slot=spinner]")].filter((svg) => svg.classList.contains("animate-spinner"));
+    const spinning = (el: Element) => [...el.querySelectorAll("[data-slot=spinner][data-turning]")];
     const run = document.querySelector("[data-status][data-menu-id='c-run']")!;
     expect(spinning(run)).toHaveLength(1);
     expect(spinning(run)[0]!.closest("[data-row-glyph]")).toBeTruthy();
@@ -1057,7 +1057,7 @@ describe("the master view", () => {
       expect(document.querySelectorAll("[aria-busy=true]")).toHaveLength(1);
       expect(document.querySelector("[aria-busy=true]")?.hasAttribute("data-batch-foot")).toBe(true);
       expect(screen.getByRole("button", { name: /Home/ })).toBeTruthy();
-      expect(document.querySelector("[data-batch-foot] .animate-spinner")).toBeNull();
+      expect(document.querySelector("[data-batch-foot] [data-turning]")).toBeNull();
       await act(async () => answer({ children: [], digests: {}, state: batch }));
       await flush();
       expect(document.querySelector("[data-batch-foot]")?.getAttribute("data-foot-mode")).toBe("console");
