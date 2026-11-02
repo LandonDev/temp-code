@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AccessPicker } from "./AccessPicker";
+import { selectChunk } from "../surfaces/chunks";
 
 afterEach(cleanup);
+
+// The real select at mount; components/lazy-select.dom.test.tsx proves the cold trigger.
+beforeAll(async () => {
+  await selectChunk.load();
+});
 
 async function openMenu() {
   await act(async () => {

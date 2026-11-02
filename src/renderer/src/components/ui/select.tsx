@@ -3,6 +3,7 @@ import type { ComponentProps } from "react";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { cn } from "@renderer/lib/cn";
 import { MENU_ROW } from "./menu-row";
+import { SELECT_CHEVRON, SELECT_TRIGGER, SELECT_VALUE } from "./select-trigger";
 
 /** The one option picker: a bordered 32px (`default`) or 28px (`sm`)
  *  trigger, the list opens aligned on the chosen item. */
@@ -13,7 +14,7 @@ function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
 }
 
 function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
-  return <SelectPrimitive.Value data-slot="select-value" className={cn("flex flex-1 text-start", className)} {...props} />;
+  return <SelectPrimitive.Value data-slot="select-value" className={cn(SELECT_VALUE, className)} {...props} />;
 }
 
 function SelectTrigger({ className, size = "default", children, ...props }: SelectPrimitive.Trigger.Props & { size?: "sm" | "default" }) {
@@ -21,14 +22,11 @@ function SelectTrigger({ className, size = "default", children, ...props }: Sele
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       data-size={size}
-      className={cn(
-        "focus-field flex w-fit select-none items-center justify-between gap-1.5 whitespace-nowrap rounded-lg border border-input bg-transparent py-1.5 ps-2.5 pe-2 text-[13px] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive data-placeholder:text-muted-foreground data-[size=default]:h-8 data-[size=sm]:h-7 data-[size=sm]:rounded-md *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 hover:bg-muted/60 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
+      className={cn(SELECT_TRIGGER, className)}
       {...props}
     >
       {children}
-      <SelectPrimitive.Icon render={<ChevronDown className="pointer-events-none size-4 text-muted-foreground" />} />
+      <SelectPrimitive.Icon render={<ChevronDown className={SELECT_CHEVRON} />} />
     </SelectPrimitive.Trigger>
   );
 }

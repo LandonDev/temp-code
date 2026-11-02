@@ -31,9 +31,10 @@ import { entryChunk, loadBundleMap, staticClosure } from './bundle-map'
 // 16 KiB of headroom over 5 MiB (2026-10-23): the empty-transcript fix landed at 5120.7 kB; move a surface out of the entry to win it back.
 // 2026-10-27: the UI standard's Base UI primitives stay out of the first paint
 // except the dialog every Modal rides: the tooltip loads its primitive on the
-// first hover or in the idle slot (components/ui/tooltip.tsx), the menus and
-// select ride the search, inbox and notes views' chunks, sonner the toaster's,
-// the right panel its own. Measured 5,643.9 kB with everything in the entry.
+// first hover or in the idle slot (components/ui/tooltip.tsx), the menus ride
+// menuChunk, every select selectChunk (components/lazy-select.tsx), sonner the
+// toaster's, the right panel its own. Measured 5,643.9 kB with everything in the entry.
+// 2026-11-02: UI-13 took the entry to 5,140.8 kB; the select leaving it brought it to 5,062.2 kB.
 export const BUDGET_BYTES = 5 * 1024 * 1024 + 16 * 1024
 
 /** Module ids (suffixes, matched against the end of the id) that must never
@@ -47,6 +48,10 @@ export const NEVER_IN_ENTRY = [
   'node_modules/recharts/es6/index.js',
   'node_modules/qrcode/lib/browser.js',
   'node_modules/@tanstack/virtual-core/dist/esm/index.js',
+  // Every select rides selectChunk (components/select-body.ts); the composer's pickers draw a cold trigger until it lands.
+  'node_modules/@base-ui/react/select/root/SelectRoot.mjs',
+  'src/renderer/src/components/ui/select.tsx',
+  'src/renderer/src/chrome/composerSelects.tsx',
   // surfaces
   'src/renderer/src/surfaces/SettingsView.tsx',
   'src/renderer/src/surfaces/AliaxPagesView.tsx',

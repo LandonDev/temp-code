@@ -5,13 +5,14 @@
  * serving CLI lists (never a claim about the account). How full the
  * context window is lives in the composer's meter, never here.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { resetHarnessModelOverlays, setHarnessModels } from "../lib/models";
 import { agentModelsFor } from "../lib/tcserver/catalog";
 import type { ModelInfo, ProviderInfo } from "../lib/tcserver/types";
 import { ModelPicker } from "./ModelPicker";
 import type { HarnessId } from "../lib/session";
+import { selectChunk } from "../surfaces/chunks";
 
 vi.mock("../lib/harness/availability", () => ({
   harnessUnavailableHint: () => "Not installed",
@@ -49,6 +50,11 @@ beforeEach(() => {
   resetHarnessModelOverlays();
 });
 afterEach(cleanup);
+
+// The real select at mount; components/lazy-select.dom.test.tsx proves the cold trigger.
+beforeAll(async () => {
+  await selectChunk.load();
+});
 
 describe("ModelPicker", () => {
   it("the button reads the model and the effort", () => {

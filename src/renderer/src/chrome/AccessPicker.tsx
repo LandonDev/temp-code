@@ -1,12 +1,11 @@
-import { useRef } from "react";
 import { cn } from "../lib/cn";
 import { ROW_CONTROL } from "./composerRow";
 import { Lock, LockOpen, Pencil } from "./icons";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { ColdSelectTrigger, usePendingOpen, useSelectBody } from "../components/lazy-select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
-import { PICKER_RUNTIME_MODES, RUNTIME_MODE_HINT, RUNTIME_MODE_LABEL, shownRuntimeMode, type RuntimeMode } from "../lib/session";
+import { RUNTIME_MODE_LABEL, shownRuntimeMode, type RuntimeMode } from "../lib/session";
 
-type Props = {
+export type AccessPickerProps = {
   value: RuntimeMode;
   onChange: (mode: RuntimeMode) => void;
   onClose?: () => void;
@@ -14,78 +13,59 @@ type Props = {
   quiet?: boolean;
 };
 
-const ICONS: Record<RuntimeMode, typeof Lock> = {
+export const ACCESS_ICONS: Record<RuntimeMode, typeof Lock> = {
   supervised: Lock,
   "auto-accept-edits": Pencil,
   auto: Pencil,
   "full-access": LockOpen,
 };
 
-const ITEMS = PICKER_RUNTIME_MODES.map((mode) => ({ value: mode, label: RUNTIME_MODE_LABEL[mode] }));
+/** The trigger's classes, cold or real. */
+export function accessTriggerClass(quiet: boolean): string {
+  return cn(
+    "shrink-0 border-transparent text-muted-foreground hover:bg-foreground/7 hover:text-foreground data-popup-open:bg-foreground/7 data-popup-open:text-foreground [&>svg]:size-3",
+    quiet && `${ROW_CONTROL} gap-1 py-0 ps-2 pe-1.5 data-[size=sm]:h-6`,
+  );
+}
+
+/** What the trigger shows: the mode's icon and, while the bar has room, its name. */
+export function AccessValue({ value }: { value: RuntimeMode }) {
+  const Icon = ACCESS_ICONS[value];
+  return (
+    <>
+      <Icon className="size-3.5" />
+      <span className="@max-[20rem]/composer-bar:hidden">{RUNTIME_MODE_LABEL[value]}</span>
+    </>
+  );
+}
 
 /** The permission mode, at the right end of the composer's row: a quiet
  *  select whose rows carry each mode's hint under its name. A pick hands
  *  the focus back to the composer through `onClose`; Escape and an outside
  *  press return it to the trigger. In a narrow bar the label gives way to
- *  the icon; the name and tooltip still say the mode. */
-export function AccessPicker({ value: stored, onChange, onClose, quiet = false }: Props) {
-  const value = shownRuntimeMode(stored);
-  const Icon = ICONS[value];
-  const toField = useRef(false);
+ *  the icon; the name and tooltip still say the mode. The select itself is
+ *  `AccessPickerSelect` in the select chunk (chrome/composerSelects.tsx);
+ *  until it lands this is its trigger alone (components/lazy-select.tsx). */
+export function AccessPicker(props: AccessPickerProps) {
+  const B = useSelectBody();
+  const [pending, open] = usePendingOpen();
+  if (B) return <B.AccessPickerSelect {...props} defaultOpen={pending} />;
+  const value = shownRuntimeMode(props.value);
   return (
-    <Select
-      items={ITEMS}
-      value={value}
-      onValueChange={(next) => {
-        if (next !== null && next !== value) onChange(next as RuntimeMode);
-      }}
-      onOpenChange={(open, details) => {
-        toField.current = !open && details.reason === "item-press" && !!onClose;
-        if (toField.current) onClose?.();
-      }}
-    >
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <SelectTrigger
-              size="sm"
-              aria-label={`Permission mode: ${RUNTIME_MODE_LABEL[value]}`}
-              className={cn(
-                "shrink-0 border-transparent text-muted-foreground hover:bg-foreground/7 hover:text-foreground data-popup-open:bg-foreground/7 data-popup-open:text-foreground [&>svg]:size-3",
-                quiet && `${ROW_CONTROL} gap-1 py-0 ps-2 pe-1.5 data-[size=sm]:h-6`,
-              )}
-            />
-          }
-        >
-          <SelectValue>
-            <Icon className="size-3.5" />
-            <span className="@max-[20rem]/composer-bar:hidden">{RUNTIME_MODE_LABEL[value]}</span>
-          </SelectValue>
-        </TooltipTrigger>
-        <TooltipContent>Permission mode: {RUNTIME_MODE_LABEL[value]}</TooltipContent>
-      </Tooltip>
-      {/* After a pick the composer takes the focus back itself, so the trigger must not. */}
-      <SelectContent
-        side="top"
-        align="end"
-        alignItemWithTrigger={false}
-        data-access-picker
-        finalFocus={() => !toField.current}
-        className="w-72 p-1"
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <ColdSelectTrigger
+            size="sm"
+            aria-label={`Permission mode: ${RUNTIME_MODE_LABEL[value]}`}
+            className={accessTriggerClass(props.quiet ?? false)}
+            onOpen={open}
+          />
+        }
       >
-        {PICKER_RUNTIME_MODES.map((mode) => {
-          const ModeIcon = ICONS[mode];
-          return (
-            <SelectItem key={mode} value={mode} label={RUNTIME_MODE_LABEL[mode]} className="items-start py-1.5">
-              <ModeIcon className="mt-0.5 size-3.5 text-muted-foreground" />
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span>{RUNTIME_MODE_LABEL[mode]}</span>
-                <span className="whitespace-normal text-xs text-muted-foreground">{RUNTIME_MODE_HINT[mode]}</span>
-              </span>
-            </SelectItem>
-          );
-        })}
-      </SelectContent>
-    </Select>
+        <AccessValue value={value} />
+      </TooltipTrigger>
+      <TooltipContent>Permission mode: {RUNTIME_MODE_LABEL[value]}</TooltipContent>
+    </Tooltip>
   );
 }

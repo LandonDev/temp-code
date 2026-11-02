@@ -24,7 +24,7 @@ DESIGN.md wins.
 | Floating content from a trigger | `Popover` (popover.tsx) | Pickers, account lists, previews. Scales from its anchor. |
 | A label on hover | `Tip` / `TruncateTip` (../tip.tsx) over `Tooltip` (tooltip.tsx) | `Tip` names an icon-only control, with its binding's `Kbd`; `TruncateTip` shows cut-off text whole, only while it is cut. |
 | The tooltip itself | `Tooltip` (tooltip.tsx) | Replaces every `title=`. Each carries its delay; a `TooltipProvider` around a toolbar lets neighbours share one. `TOOLTIP_DELAY` and `TOOLTIP_CLOSE_DELAY` are the numbers a hover popover reuses. |
-| An option picker | `Select` (select.tsx) | Bordered trigger, list aligned on the chosen item. |
+| An option picker | `Select` (select.tsx) | Bordered trigger, list aligned on the chosen item. Lives in the select chunk: a picker in the first paint draws `ColdSelectTrigger` (../lazy-select.tsx) and its real select from `selectChunk` (../select-body.ts), never `Select` itself. |
 | An option picker from a list | `ChoiceSelect` (../choice-select.tsx) | The one adapter from `{ value, label }[]` to `Select`; an empty value (Auto) round-trips; an option's `group` lists it under that heading (a provider). Nothing maps `SelectItem`s by hand. |
 | A settings or app page | `Page`, `PageSection`, `PageRow` (../page.tsx) | 672px column, 24px inset, one 16px title; sections 24px apart under a 12px muted heading; rows with a hairline between neighbours. A page never draws its own header or section heading. |
 | A page section with nothing in it | `PageEmpty` (../page.tsx) | One muted 12px line in a row's place ("No clients", "None running"), no trailing period; never `Empty`, since the section's heading is already the title. |

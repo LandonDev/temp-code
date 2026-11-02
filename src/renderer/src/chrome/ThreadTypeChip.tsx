@@ -1,61 +1,39 @@
 import type { ThreadType } from "../lib/tcserver/types";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { THREAD_HINTS, THREAD_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
+import { ColdSelectTrigger, usePendingOpen, useSelectBody } from "../components/lazy-select";
+import { THREAD_LABELS } from "../surfaces/threads/threadTypes";
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 
-type Props = {
+export type ThreadTypeChipProps = {
   value: ThreadType;
   onChange: (type: ThreadType) => void;
   onClose?: () => void;
 };
 
-const ITEMS = THREAD_TYPES.map((type) => ({ value: type, label: THREAD_LABELS[type] }));
+export const THREAD_TYPE_TRIGGER =
+  "shrink-0 border-transparent px-1.5 text-xs text-muted-foreground hover:bg-foreground/7 hover:text-foreground data-popup-open:text-foreground [&>svg]:size-3";
+
+/** The trigger's value: the type's glyph and name. */
+export function ThreadTypeValue({ value }: { value: ThreadType }) {
+  return (
+    <>
+      <TypeGlyph type={value} className="size-3.5" />
+      {THREAD_LABELS[value]}
+    </>
+  );
+}
 
 /** What kind of thread this is, in the composer's top row: a select of
  *  the thread types, each with its hint under its name. Closing hands the
- *  focus back to the composer through `onClose`. */
-export function ThreadTypeChip({ value, onChange, onClose }: Props) {
+ *  focus back to the composer through `onClose`. The select itself is
+ *  `ThreadTypeSelect` in the select chunk (chrome/composerSelects.tsx);
+ *  until it lands this is its trigger alone (components/lazy-select.tsx). */
+export function ThreadTypeChip(props: ThreadTypeChipProps) {
+  const B = useSelectBody();
+  const [pending, open] = usePendingOpen();
+  if (B) return <B.ThreadTypeSelect {...props} defaultOpen={pending} />;
   return (
-    <Select
-      items={ITEMS}
-      value={value}
-      onValueChange={(next) => {
-        if (next !== null && next !== value) onChange(next as ThreadType);
-      }}
-      onOpenChange={(open) => {
-        if (!open) onClose?.();
-      }}
-    >
-      <SelectTrigger
-        size="sm"
-        aria-label="Thread type"
-        data-thread-type-picker
-        className="shrink-0 border-transparent px-1.5 text-xs text-muted-foreground hover:bg-foreground/7 hover:text-foreground data-popup-open:text-foreground [&>svg]:size-3"
-      >
-        <SelectValue>
-          <TypeGlyph type={value} className="size-3.5" />
-          {THREAD_LABELS[value]}
-        </SelectValue>
-      </SelectTrigger>
-      {/* The composer takes the focus back itself, so the trigger must not. */}
-      <SelectContent
-        align="start"
-        data-thread-type-picker
-        finalFocus={onClose ? false : undefined}
-        className="w-72 p-1"
-      >
-        {THREAD_TYPES.map((type) => {
-          return (
-            <SelectItem key={type} value={type} label={THREAD_LABELS[type]} className="items-start py-1.5">
-              <TypeGlyph type={type} className="mt-0.5 size-3.5" />
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span>{THREAD_LABELS[type]}</span>
-                <span className="whitespace-normal text-xs text-muted-foreground">{THREAD_HINTS[type]}</span>
-              </span>
-            </SelectItem>
-          );
-        })}
-      </SelectContent>
-    </Select>
+    <ColdSelectTrigger size="sm" aria-label="Thread type" data-thread-type-picker className={THREAD_TYPE_TRIGGER} onOpen={open}>
+      <ThreadTypeValue value={props.value} />
+    </ColdSelectTrigger>
   );
 }

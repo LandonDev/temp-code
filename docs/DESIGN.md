@@ -639,5 +639,6 @@ render through `html_preview` (render the component with
 or a hand-written HTML sketch of the same tokens). The one electron-vite
 build per branch is for `bun run check:bundle`; the index chunk stays under
 5 MiB + 16 KiB and imports no lazy surface statically; of Base UI only the dialog
-is in the first paint (the tooltip defers its primitive, menus and select ride the
-search, inbox and notes chunks).
+is in the first paint (the tooltip defers its primitive, the menus and popovers
+ride the menu chunk, and every select the select chunk: the composer's pickers draw
+the same trigger until it lands, components/lazy-select.tsx).

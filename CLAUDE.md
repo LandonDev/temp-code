@@ -348,8 +348,9 @@ app replaces itself from the feed, and only from the feed.
   checks literal renderer colours against the token layer and counted
   palette exceptions; the counts only shrink.
 - The renderer is split (docs/bundle-split.md): the index chunk carries
-  only the first paint (rail, transcript, composer, thread header; 5,000.1
-  kB after A26, under the 5,136.0 kB budget) and every other surface is a
+  only the first paint (rail, transcript, composer, thread header; 5,062.2
+  kB since the select left it on 2026-11-02, under the 5,136.0 kB budget)
+  and every other surface is a
   lazy chunk behind
   `defineChunk` (src/renderer/src/lib/lazyChunk.tsx), listed in
   `src/renderer/src/surfaces/chunks.ts`: Settings, the Aliax pages
@@ -382,8 +383,10 @@ app replaces itself from the feed, and only from the feed.
   `scripts/check-bundle-size.ts` (`bun run check:bundle`, in `bun run
   build` and the release gate) fails when the index chunk's static closure
   passes 5 MiB + 16 KiB or holds one of the lazy modules (the Base UI primitives
-  stay out of the entry: the tooltip defers its primitive, menus and select ride
-  the search, inbox and notes chunks; only the dialog is in the first paint). It also fails when a chunk renders a string tag that is no HTML, SVG or custom element: the React Compiler inlines a lowercase component alias into the JSX tag (`jsx("current")`, an empty element), which only the built bundle shows.
+  stay out of the entry: the tooltip defers its primitive, the menus and
+  popovers ride menuChunk, every select rides selectChunk: the composer's
+  permission, thread type and model setting pickers draw a cold trigger of
+  the same classes until it lands, components/lazy-select.tsx; only the dialog is in the first paint). It also fails when a chunk renders a string tag that is no HTML, SVG or custom element: the React Compiler inlines a lowercase component alias into the JSX tag (`jsx("current")`, an empty element), which only the built bundle shows.
   `/ui` serves the chunks
   as immutable module scripts behind the cookie (remote/ui.ts).
 - Proof: `bun run script:e2e-launch-timing` (scripts/e2e-launch-timing.ts)

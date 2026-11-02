@@ -21,7 +21,7 @@ const EXPECTED: Record<keyof typeof allChunks, string[]> = {
   searchChunk: ["SearchView"],
   inboxChunk: ["InboxView", "InboxDetailPane"],
   notesChunk: ["NotesView", "focusNote"],
-  selectChunk: ["ChoiceSelect"],
+  selectChunk: ["ChoiceSelect", "AccessPickerSelect", "ThreadTypeSelect", "SettingSelect"],
   menuChunk: ["DropdownRows", "ContextRows", "PopoverBody", "MenuRows"],
   customizeChunk: ["CustomizeGroupDialog"],
   virtualChunk: ["VirtualRows"],

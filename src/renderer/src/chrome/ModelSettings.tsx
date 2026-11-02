@@ -1,5 +1,5 @@
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { ColdSelectTrigger, usePendingOpen, useSelectBody } from "../components/lazy-select";
 import { Switch } from "../components/ui/switch";
 import { getModelSnapshot, resolveModel, subscribeModels, type ModelSetting } from "../lib/models";
 import type { HarnessId } from "../lib/session";
@@ -93,35 +93,25 @@ function SettingRow({ label, children }: { label: string; children: ReactNode })
   );
 }
 
-function RowSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
+export type RowSelectProps = {
   label: string;
   value: string;
   options: readonly { value: string; label: string }[];
   onChange: (value: string) => void;
-}) {
+};
+
+export const ROW_SELECT_TRIGGER = "border-transparent hover:bg-foreground/7 data-popup-open:bg-foreground/7 [&>svg]:size-3";
+
+/** A setting's select: `SettingSelect` in the select chunk
+ *  (chrome/composerSelects.tsx), its trigger alone until it lands
+ *  (components/lazy-select.tsx). */
+function RowSelect(props: RowSelectProps) {
+  const B = useSelectBody();
+  const [pending, open] = usePendingOpen();
+  if (B) return <B.SettingSelect {...props} defaultOpen={pending} />;
   return (
-    <Select
-      items={options}
-      value={value}
-      onValueChange={(next) => {
-        if (next !== null && next !== value) onChange(next as string);
-      }}
-    >
-      <SelectTrigger size="sm" aria-label={label} className="border-transparent hover:bg-foreground/7 data-popup-open:bg-foreground/7 [&>svg]:size-3">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent align="end" className="min-w-28 p-1">
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <ColdSelectTrigger size="sm" aria-label={props.label} className={ROW_SELECT_TRIGGER} onOpen={open}>
+      {props.options.find((option) => option.value === props.value)?.label ?? props.value}
+    </ColdSelectTrigger>
   );
 }

@@ -36,8 +36,9 @@ export const searchChunk = defineChunk("search", () => import("./SearchView"));
 export const inboxChunk = defineChunk("inbox", () => import("./InboxView"));
 /** The all-notes view (NotesView, focusNote). */
 export const notesChunk = defineChunk("notes", () => import("./NotesView"));
-/** The options select every dialog and settings page uses (ChoiceSelect on the Base UI select). */
-export const selectChunk = defineChunk("select", () => import("../components/choice-select-body"));
+/** Every select on the Base UI select: the dialogs' and settings' ChoiceSelect, and the composer's
+ *  permission, thread type and model setting pickers (components/select-body.ts, components/lazy-select.tsx). */
+export const selectChunk = defineChunk("select", () => import("../components/select-body"));
 
 /** The accounts a failure card's Pick another account lists (chrome/AccountsList.tsx). */
 export const accountsChunk = defineChunk("accounts", () => import("../chrome/AccountsList"));
