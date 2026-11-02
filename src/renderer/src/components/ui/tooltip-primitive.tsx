@@ -1,7 +1,7 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { cn } from "@renderer/lib/cn";
 
-const TOOLTIP_DELAY = 400;
+const TOOLTIP_DELAY = 300;
 const TOOLTIP_CLOSE_DELAY = 120;
 
 /** The Base UI tooltip, loaded by components/ui/tooltip.tsx on the first
@@ -42,7 +42,7 @@ function TooltipContent({
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
           className={cn(
-            "inline-flex max-w-xs origin-(--transform-origin) items-center justify-center gap-1.5 rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background transition-[transform,opacity] duration-(--dur-base) ease-(--ease-out) data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-ending-style:duration-(--dur-fast) data-instant:transition-none data-starting-style:scale-95 data-starting-style:opacity-0 motion-reduce:transition-none **:data-[slot=kbd]:h-[18px] **:data-[slot=kbd]:min-w-[18px] **:data-[slot=kbd]:rounded-sm **:data-[slot=kbd]:text-[11px]",
+            "inline-flex max-w-xs origin-(--transform-origin) items-center justify-center gap-1.5 min-h-6 rounded-md bg-foreground px-2 py-0.5 text-[13px] leading-5 font-normal text-background transition-[transform,opacity] duration-(--dur-fast) ease-(--ease-drawer) data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-ending-style:ease-(--ease-out) data-instant:transition-none data-starting-style:scale-[0.98] data-starting-style:opacity-0 motion-reduce:transition-none **:data-[slot=kbd]:h-[18px] **:data-[slot=kbd]:min-w-[18px] **:data-[slot=kbd]:rounded-sm **:data-[slot=kbd]:text-[11px]",
             className,
           )}
           {...props}

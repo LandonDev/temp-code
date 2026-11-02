@@ -11,7 +11,7 @@ vi.mock("../lib/clipboard", () => ({ copyText: (text: string) => copyText(text) 
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
 
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
-import { CodeBlock } from "./CodeBlock";
+import { CodeBlock, COPIED_MS } from "./CodeBlock";
 
 afterEach(() => {
   cleanup();
@@ -83,5 +83,23 @@ describe("CodeBlock", () => {
     });
     expect(copyText).toHaveBeenCalledWith("const a = 1;");
     expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+  });
+
+  it("holds its check COPIED_MS (1.2 s), shorter than a message's 2 s", async () => {
+    expect(COPIED_MS).toBe(1200);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      render(<CodeBlock code="x" language="ts" />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
+      });
+      expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+      act(() => vi.advanceTimersByTime(COPIED_MS - 1));
+      expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+      act(() => vi.advanceTimersByTime(1));
+      expect(screen.getByRole("button", { name: "Copy code" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

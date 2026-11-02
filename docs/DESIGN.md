@@ -131,7 +131,7 @@ a surface above `/10`.
 | --- | --- |
 | 11px | a key cap, a group label in a menu |
 | 12px | secondary lines in the chrome, descriptions under a title, status words, a count in a row's status line, the transcript's counts (`+46 −3`) |
-| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings; the transcript's action, thinking, notice and closing lines (20px lines in 28px rows) |
+| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings, a tooltip (regular, 20px lines); the transcript's action, thinking, notice and closing lines (20px lines in 28px rows) |
 | 14px | dialog and panel body text, an Item's title; the transcript's prose, the person's bubble, a question's prompt and the composer's field (22px lines) |
 | 15px | an h2 in the model's prose |
 | 16px | a dialog or sheet title (semibold); an h1 in the model's prose |
@@ -180,8 +180,8 @@ light theme. "Scrolling" has the rule.
 
 ### Motion tokens
 
-CSS `--dur-hover` 60ms (a button's or menu row's hover fill), `--dur-fast`
-120ms (press, every exit, every reduced-motion fade), `--dur-base` 180ms (menu, popover, tooltip entrances; folds),
+CSS `--dur-hover` 60ms (a button's hover fill; a menu row highlights at once), `--dur-fast`
+120ms (press, every exit, every reduced-motion fade), `--dur-base` 180ms (menu and popover entrances; folds),
 `--dur-slow` 240ms (dialog and panel entrances), `--dur-drawer` 300ms (a
 sheet). Curves: `--ease-out` for entrances and most transitions,
 `--ease-exit` for a closing overlay, `--ease-drawer` for a sheet,
@@ -444,12 +444,12 @@ being produced pulses (`TextPulse`); nothing else does.
 | Sheet | fade + slide 16px from its edge, `--dur-drawer` `--ease-drawer` | fade + slide 16px back, `--dur-slow` | fade only |
 | Popover, menu, select | fade + scale 0.95→1 from the trigger, `--dur-base` | fade + scale →0.98, `--dur-fast` | fade only |
 | Context menu | fade at the pointer, `--dur-fast` | fade, `--dur-fast` | same |
-| Tooltip | after 300ms, fade + scale 0.98→1, `--dur-fast` `--ease-drawer`; moves between triggers instead of reopening | fade, `--dur-fast` | fade |
+| Tooltip (13px regular on 20px lines, 24px tall) | after 300ms, fade + scale 0.98→1, `--dur-fast` `--ease-drawer`; moves between triggers instead of reopening | fade + scale →0.98, `--dur-fast` | fade |
 | Toast (sonner) | rise and fade, `--dur-base` | fade, `--dur-fast` | fade |
 | Right panel, rail | no width animation; content fades `--dur-fast` | same | same |
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
-| Press | scale 0.985, `--dur-fast` | release | colour only |
-| Hover fill (a button, a menu row) | `--dur-hover` | `--dur-hover` | same |
+| Press | scale 0.985, `--dur-fast` | release, `--dur-hover` | colour only |
+| Hover fill (a button; a menu row and a rail row highlight at once) | `--dur-hover` | `--dur-hover` | same |
 | Hover reveal (a closing line's actions, a message's Copy, a code block's and a tool output's Copy) | waits `--delay-hover`, then fades in `--dur-fast`; keyboard focus shows it at once | fades `--dur-fast`, at once | same |
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
 | Fold that opens on its own (`.collapsible-auto`: the transcript's working group, the running task's steps, the title bar's shelf) | height on the layout spring (`--dur-layout` `--ease-layout`) + opacity `--dur-base` `--ease-out` | the same, so the rows are gone before the box closes | opacity, `--dur-fast` |

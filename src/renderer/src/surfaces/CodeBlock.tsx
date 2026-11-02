@@ -23,6 +23,9 @@ import { IconAction, useArmOnIntent } from "./transcript/IconAction";
  * colour never leaves. Keeps streamdown's `data-streamdown` hooks so
  * transcript/markdown.css frames it like a table: one card, one hairline.
  */
+/** How long a code block's Copy holds its check (a message's holds 2s). */
+export const COPIED_MS = 1200;
+
 /** How often a streaming fence asks the worker to colour it, at most. */
 export const HIGHLIGHT_EVERY_MS = 150;
 
@@ -140,7 +143,7 @@ export const CodeBlock = memo(function CodeBlock({
       () => {
         setCopied(true);
         if (copyTimer.current != null) window.clearTimeout(copyTimer.current);
-        copyTimer.current = window.setTimeout(() => setCopied(false), 2000);
+        copyTimer.current = window.setTimeout(() => setCopied(false), COPIED_MS);
       },
       () => {},
     );

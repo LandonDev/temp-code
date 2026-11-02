@@ -31,6 +31,14 @@ describe("Button", () => {
     expect(button.className).toMatch(/scale-\[0\.985\]/);
   });
 
+  it("fills on hover over --dur-hover and presses over --dur-fast", () => {
+    render(<Button variant="ghost">Go</Button>);
+    const button = screen.getByRole("button", { name: "Go" });
+    expect(button.className).toContain("duration-(--dur-hover)");
+    expect(button.className).toContain("active:not-aria-[haspopup]:duration-(--dur-fast)");
+    expect(button.className).toContain("data-pressed:duration-(--dur-fast)");
+  });
+
   it("icon sizes are square", () => {
     render(<Button size="icon-sm" aria-label="Close" />);
     expect(screen.getByRole("button", { name: "Close" }).className).toMatch(/size-7/);
@@ -371,9 +379,30 @@ describe("Tooltip", () => {
   });
 });
 
+describe("Tooltip popup", () => {
+  it("is 13px regular on 20px lines, 24px tall, and enters from 0.98 on the drawer curve", async () => {
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+    render(
+      <Tooltip open>
+        <TooltipTrigger render={<button type="button" />}>Target</TooltipTrigger>
+        <TooltipContent>Label</TooltipContent>
+      </Tooltip>,
+    );
+    const label = await screen.findByText("Label");
+    const popup = label.closest("[data-slot]") as HTMLElement;
+    for (const name of ["text-[13px]", "leading-5", "font-normal", "min-h-6", "py-0.5", "duration-(--dur-fast)", "ease-(--ease-drawer)", "data-starting-style:scale-[0.98]"]) {
+      expect(popup.className).toContain(name);
+    }
+    expect(popup.className).not.toContain("font-medium");
+  });
+});
+
 describe("Tooltip delays", () => {
   it("are one number each, exported for a hover popover to reuse", () => {
-    expect(TOOLTIP_DELAY).toBe(400);
+    expect(TOOLTIP_DELAY).toBe(300);
     expect(TOOLTIP_CLOSE_DELAY).toBe(120);
   });
 });

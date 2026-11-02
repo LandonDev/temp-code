@@ -6,7 +6,7 @@ import type * as Primitive from "./tooltip-primitive";
 /** The hover delay before a label opens, and the grace after the pointer
  *  leaves during which a neighbour's label moves instead of reopening. A
  *  Popover opened on hover reads these rather than writing a number. */
-export const TOOLTIP_DELAY = 400;
+export const TOOLTIP_DELAY = 300;
 export const TOOLTIP_CLOSE_DELAY = 120;
 
 /**

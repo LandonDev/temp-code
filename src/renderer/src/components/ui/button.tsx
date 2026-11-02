@@ -5,10 +5,12 @@ import { cn } from "@renderer/lib/cn";
 /**
  * The one button. Flat by design: a quiet solid primary, a gray secondary,
  * ghost for icon and row buttons, outline inside forms, destructive red,
- * link for inline text actions. Depth never comes from shadows here.
+ * link for inline text actions. Depth never comes from shadows here. The
+ * hover fill follows the pointer over --dur-hover (60ms); the press scales
+ * to 0.985 over --dur-fast.
  */
 const buttonVariants = cva(
-  "group/button relative isolate inline-flex shrink-0 cursor-default select-none items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium outline-none transition-[background-color,color,border-color,scale] duration-(--dur-fast) ease-(--ease-out) active:not-aria-[haspopup]:scale-[0.985] data-pressed:scale-[0.985] disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100 aria-invalid:ring-2 aria-invalid:ring-destructive/30 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button relative isolate inline-flex shrink-0 cursor-default select-none items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium outline-none transition-[background-color,color,border-color,scale] duration-(--dur-hover) ease-(--ease-out) active:not-aria-[haspopup]:scale-[0.985] active:not-aria-[haspopup]:duration-(--dur-fast) data-pressed:scale-[0.985] data-pressed:duration-(--dur-fast) disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100 aria-invalid:ring-2 aria-invalid:ring-destructive/30 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
