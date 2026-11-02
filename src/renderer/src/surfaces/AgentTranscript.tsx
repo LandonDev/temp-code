@@ -127,6 +127,9 @@ type Props = {
   onHandoff?: HandoffHandler;
   onJumpToBottomChange?: (show: boolean) => void;
   onJumpToBottomReady?: (jump: () => void) => void;
+  /** Where the column sits beside the message list, for a footer that
+   *  lines its own column up with it (chatSlots.tsx). */
+  onPlacementChange?: (placement: OutlinePlacement) => void;
   /** False while another tab is in front. Hidden tabs stay laid out. */
   visible?: boolean;
   /** The live turn's state line (Working, Needs you, Paused). Off where the
@@ -154,6 +157,7 @@ export function AgentTranscript({
   onHandoff,
   onJumpToBottomChange,
   onJumpToBottomReady,
+  onPlacementChange,
   visible: visibleProp = true,
   liveState = true,
   onOpenActivity,
@@ -205,6 +209,9 @@ export function AgentTranscript({
   const reader = useRef(createReaderStore()).current;
   const paneWidth = useRef(0);
   const [placement, setPlacement] = useState<OutlinePlacement>("hidden");
+  useLayoutEffect(() => {
+    onPlacementChange?.(placement);
+  }, [placement, onPlacementChange]);
   const { selection, dismissSelection } = useTranscriptSelection(
     scrollerEl,
     onAddToChat !== undefined,

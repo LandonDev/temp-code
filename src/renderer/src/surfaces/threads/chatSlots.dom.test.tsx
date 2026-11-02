@@ -1,27 +1,14 @@
 // @vitest-environment jsdom
-import { act, cleanup, render } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { EmptySession } from "../EmptySession";
-import { COLUMN_MAX_CLASS, GUTTER_FROM_PX, LIST_SPACE } from "../transcriptOutlineModel";
-import { COLUMN_GUTTER_CLASS, ChatColumn, ChatFooter, placementOfScroller, type ChatSlots } from "./chatSlots";
+import { COLUMN_MAX_CLASS, LIST_SPACE } from "../transcriptOutlineModel";
+import { COLUMN_GUTTER_CLASS, ChatColumn, ChatFooter, type ChatSlots } from "./chatSlots";
 
 afterEach(cleanup);
 
 const slots: ChatSlots = { transcript: null, strip: <div data-testid="strip" />, composer: <div data-testid="composer" /> };
 const footerOf = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-chat-footer]")!;
-
-/** The transcript scroller as AgentTranscript draws it: its list a direct child while shown. */
-function transcript(width: number, list: boolean) {
-  const scroller = document.createElement("div");
-  scroller.className = "agent-transcript";
-  Object.defineProperty(scroller, "clientWidth", { value: width, configurable: true });
-  if (list) {
-    const outline = document.createElement("div");
-    outline.setAttribute("data-transcript-outline", "");
-    scroller.append(outline);
-  }
-  return scroller;
-}
 
 describe("ChatFooter", () => {
   it("is the transcript's gutter outside and its column inside, centred while the list hides", () => {
@@ -54,30 +41,17 @@ describe("ChatFooter", () => {
     expect(column.className).not.toContain("mx-auto");
   });
 
-  it("follows the transcript before it: the list's mount, then the transcript's width rule", async () => {
-    const host = <div data-testid="host" />;
-    const { container, getByTestId } = render(<ChatColumn slots={{ ...slots, transcript: host }} />);
+  it("follows the placement the transcript reports through its slots", () => {
+    const { container, rerender } = render(<ChatColumn slots={slots} />);
     expect(footerOf(container).dataset.chatFooter).toBe("hidden");
-    const hostEl = getByTestId("host");
-    await act(async () => {
-      hostEl.append(transcript(GUTTER_FROM_PX - 1, true));
-    });
+    rerender(<ChatColumn slots={{ ...slots, placement: "beside" }} />);
     expect(footerOf(container).dataset.chatFooter).toBe("beside");
-    await act(async () => {
-      hostEl.replaceChildren(transcript(GUTTER_FROM_PX, true));
-    });
+    expect(footerOf(container).style.paddingLeft).toBe(`${LIST_SPACE}px`);
+    rerender(<ChatColumn slots={{ ...slots, placement: "gutter" }} />);
     expect(footerOf(container).dataset.chatFooter).toBe("gutter");
-    await act(async () => {
-      hostEl.replaceChildren(transcript(GUTTER_FROM_PX, false));
-    });
+    // A placement named outright wins over the slots'.
+    rerender(<ChatFooter slots={{ ...slots, placement: "beside" }} placement="hidden" />);
     expect(footerOf(container).dataset.chatFooter).toBe("hidden");
-  });
-
-  it("reads hidden with no transcript, and only a list that is the scroller's own child", () => {
-    expect(placementOfScroller(null)).toBe("hidden");
-    const nested = transcript(GUTTER_FROM_PX - 1, false);
-    nested.append(transcript(GUTTER_FROM_PX - 1, true));
-    expect(placementOfScroller(nested)).toBe("hidden");
   });
 });
 

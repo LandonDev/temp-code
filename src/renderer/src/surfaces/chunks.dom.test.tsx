@@ -2,7 +2,7 @@ import { act, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { allChunks, releaseNotesChunk } from "./chunks";
 import { defineChunk } from "../lib/lazyChunk";
-import { BUNDLED_RELEASE } from "../lib/releaseNotes";
+import { BUNDLED_RELEASE } from "../lib/bundledRelease";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
 
 /** What each chunk's barrel must expose: the mount points ask for these by name. */

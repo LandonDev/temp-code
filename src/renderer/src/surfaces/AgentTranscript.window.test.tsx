@@ -331,6 +331,13 @@ describe("AgentTranscript message list", () => {
     expect(boxOf(container).className).toContain("mx-auto");
   });
 
+  it("reports where its column sits, for the footer to follow", () => {
+    paneWidth = 1000;
+    const onPlacementChange = vi.fn();
+    render(<AgentTranscript sessionId="m0" blocks={chat(2)} busy={false} visible onPlacementChange={onPlacementChange} />);
+    expect(onPlacementChange).toHaveBeenLastCalledWith("beside");
+  });
+
   it("sits in the gutter at 1400px with the column centred", () => {
     paneWidth = 1400;
     const { container } = render(<AgentTranscript sessionId="m3" blocks={chat(2)} busy={false} visible />);

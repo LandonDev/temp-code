@@ -20,6 +20,7 @@ import { MessageQueue, visibleQueue } from "../chrome/MessageQueue";
 import { SessionReview } from "../chrome/SessionReview";
 import type { ComposerIntent } from "../lib/composerAction";
 import { DUR, EASE_OUT, FADE_OUT } from "../lib/ease";
+import type { OutlinePlacement } from "./transcriptOutlineModel";
 import type { ApprovalDecision } from "../lib/harness";
 import { useMacBridgeRequests } from "../lib/macBridge";
 import { createNote, noteTitle } from "../lib/notes";
@@ -294,6 +295,8 @@ export function useThreadChat({
   const jumpToBottomRef = useRef<(() => void) | null>(null);
   const quoteRequestId = useRef(0);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  // The transcript's column placement, which the footer's column follows.
+  const [placement, setPlacement] = useState<OutlinePlacement>("hidden");
   const [quoteRequest, setQuoteRequest] = useState<QuoteRequest>();
   const onJumpToBottomReady = useCallback((jump: () => void) => {
     jumpToBottomRef.current = jump;
@@ -393,6 +396,7 @@ export function useThreadChat({
             onHandoff={onTurnHandoff}
             onOpenActivity={openActivity}
             onJumpToBottomChange={setShowJumpToBottom}
+            onPlacementChange={setPlacement}
             onJumpToBottomReady={onJumpToBottomReady}
           />
         </DeferredMount>
@@ -436,6 +440,7 @@ export function useThreadChat({
     ),
     composer: composerOf(opts),
     anchor: focused && visible,
+    placement,
   });
   const renderChat = (opts?: ChatOpts) => <ChatColumn slots={renderSlots(opts)} />;
   return { composerOf, renderSlots, renderChat, newPassArmed, armNewPass, addSelectionToChat };

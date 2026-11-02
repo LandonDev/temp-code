@@ -1,6 +1,6 @@
-import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 import { registerToastAnchor } from "../../lib/toastAnchor";
-import { COLUMN_MAX_CLASS, GUTTER_FROM_PX, LIST_SPACE, type OutlinePlacement } from "../transcriptOutlineModel";
+import { COLUMN_MAX_CLASS, LIST_SPACE, type OutlinePlacement } from "../transcriptOutlineModel";
 
 /**
  * The chat column pulled into its three slots so a view can seat them
@@ -23,6 +23,9 @@ export type ChatSlots = {
   composer: ReactNode;
   /** The pane holds the focus: the toast stack sits above this footer. */
   anchor?: boolean;
+  /** Where the transcript's column sits (its message list's placement, which
+   *  AgentTranscript reports), so the footer's column lands on it. */
+  placement?: OutlinePlacement;
 };
 
 export type RenderChat = (opts?: ChatOpts) => ReactNode;
@@ -41,7 +44,7 @@ export function ChatColumn({ slots }: { slots: ChatSlots }) {
   return (
     <>
       {slots.transcript}
-      <ChatFooter slots={slots} follow />
+      <ChatFooter slots={slots} />
     </>
   );
 }
@@ -61,75 +64,25 @@ export function columnClass(placement: OutlinePlacement = "hidden"): string {
 }
 
 /**
- * The transcript's placement read off the transcript beside the footer: its
- * message list mounted, then the transcript's own width rule
- * (`outlinePlacement`, against the scroller's client width).
- */
-export function placementOfScroller(scroller: HTMLElement | null): OutlinePlacement {
-  if (!scroller?.querySelector(":scope > [data-transcript-outline]")) return "hidden";
-  return scroller.clientWidth < GUTTER_FROM_PX ? "beside" : "gutter";
-}
-
-/** Follows the transcript that sits just before the footer (the column's own), so the footer's column lands where the transcript's does. */
-function useFollowedPlacement(follow: boolean): [(el: HTMLDivElement | null) => void, OutlinePlacement] {
-  const [footer, setFooter] = useState<HTMLDivElement | null>(null);
-  const [placement, setPlacement] = useState<OutlinePlacement>("hidden");
-  useLayoutEffect(() => {
-    const host = follow ? footer?.previousElementSibling : null;
-    if (!host) return;
-    let watched: Element | null = null;
-    const sizes = new ResizeObserver(() => read());
-    const read = () => {
-      const scroller = host.querySelector<HTMLElement>(".agent-transcript");
-      if (scroller !== watched) {
-        if (watched) sizes.unobserve(watched);
-        if (scroller) sizes.observe(scroller);
-        watched = scroller;
-      }
-      setPlacement(placementOfScroller(scroller));
-    };
-    // The transcript mounts in a deferred pass and its list comes and goes.
-    const mounts = new MutationObserver(read);
-    mounts.observe(host, { childList: true, subtree: true });
-    read();
-    return () => {
-      mounts.disconnect();
-      sizes.disconnect();
-    };
-  }, [follow, footer]);
-  return [useCallback((el: HTMLDivElement | null) => setFooter(el), []), follow ? placement : "hidden"];
-}
-
-/**
  * The footer alone, for a view that seats the transcript elsewhere: the
  * column's gutter outside, the column inside, so the composer's box edges are
- * the column's edges. `follow` reads the placement off the transcript just
- * before it (`ChatColumn`); `placement` names it outright.
+ * the column's edges, in the placement the slots carry (`placement` names it
+ * outright).
  */
 export function ChatFooter({
   slots,
   className = "",
-  follow = false,
   placement,
 }: {
   slots: ChatSlots;
   className?: string;
-  follow?: boolean;
   placement?: OutlinePlacement;
 }) {
-  const [footerRef, followed] = useFollowedPlacement(follow && !placement);
-  const where = placement ?? followed;
+  const where = placement ?? slots.placement ?? "hidden";
   const anchored = !!slots.anchor;
   const ref = useCallback(
-    (el: HTMLDivElement | null) => {
-      footerRef(el);
-      const release = anchored ? registerToastAnchor(el) : undefined;
-      return () => {
-        release?.();
-        footerRef(null);
-      };
-    },
-    [anchored, footerRef],
+    (el: HTMLDivElement | null) => (anchored ? registerToastAnchor(el) : undefined),
+    [anchored],
   );
   return (
     <div

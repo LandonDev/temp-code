@@ -26,7 +26,7 @@ import {
   saveLinearToken,
   type LinearTeam,
 } from "../../lib/linear";
-import { BUNDLED_RELEASE } from "../../lib/releaseNotes";
+import { BUNDLED_RELEASE } from "../../lib/bundledRelease";
 import {
   loadMidTurnDefault,
   saveMidTurnDefault,

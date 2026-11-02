@@ -1,5 +1,6 @@
 import bundledChangelog from "../../CHANGELOG.md?raw";
-import { BUNDLED_RELEASE, type ReleaseNotesDocument, type ReleaseNotesTabSource } from "./releaseNotes";
+import { BUNDLED_RELEASE } from "./bundledRelease";
+import type { ReleaseNotesDocument, ReleaseNotesTabSource } from "./releaseNotes";
 
 /* The Keep-a-Changelog parser over the bundled changelog (34 kB of text):
    the release notes chunk and the What's new dialog read it, never the
