@@ -197,9 +197,10 @@ own), held equal to it by lib/ease.test.ts. Code that drives motion itself
 the streaming veil's clock is `VEIL`. `FOLD_HOLD_MS` (600ms) is the beat a
 working group stays open after its work moved on.
 `lib/motionGuard.test.ts` fails on any literal duration or curve outside
-`lib/ease.ts` and this layer; its script allow-list is empty. The only
-kept CSS rule defines Tailwind’s named spinner token. The shimmer token
-keeps its 2s sweep, and the spinner token keeps its 900ms turn.
+`lib/ease.ts` and this layer; its script and CSS allow-lists are empty.
+The shimmer token keeps its 2s sweep, and the spinner keeps its 900ms turn
+(`SPINNER_TURN`, a Web Animation on the box around the arc, which the
+compositor runs alone).
 
 ### Layers
 

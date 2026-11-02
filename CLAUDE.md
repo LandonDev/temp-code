@@ -287,7 +287,8 @@ app replaces itself from the feed, and only from the feed.
   src/renderer writes a literal colour, duration or curve, and no bullet
   lists appear in the UI. The motion guard has no application timing
   exceptions: CSS uses the motion tokens, JavaScript uses `lib/ease.ts`,
-  and the named spinner and shimmer tokens own their continuous timing.
+  the shimmer token owns its continuous timing and the spinner's turn is
+  `SPINNER_TURN` in lib/ease.ts.
 - Settings rows and sections use `components/page.tsx` (`PageRow`,
   `PageSection`), which pass native props and data attributes to their roots;
   Hosts exports these as `Row` and `Group` without copying their markup.
@@ -359,7 +360,9 @@ app replaces itself from the feed, and only from the feed.
   chrome/dialogs.ts, each mounted only while open, the thread menu's
   Resources, Archive, Mac bridge and Rename and the branch picker's switch
   confirm among them), the failure card's account list (`accountsChunk`),
-  a workspace's threads beside the rail (`workspaceThreadsChunk`) and the
+  a workspace's threads beside the rail (`workspaceThreadsChunk`), the
+  file and symbol pickers (`pickersChunk`, mounted while open), a box
+  thread's waiting Mac bridge card (`macBridgeChunk`) and the
   rail's virtualizer (`virtualChunk`; the rail lists its cards plainly until it
   lands, chrome/railRows.tsx). A mount
   point calls `chunk.surface(name, <SurfaceSkeleton kind=… />)`, which
@@ -1751,7 +1754,18 @@ names the far child).
   the React Compiler: no ref read or write during render (latest-callback
   refs are written in a layout effect), no prop mutation, no cast in a
   computed key, and a ref callback taken out of its hook's object before it
-  reaches a `ref` prop (`useDragResize` gives `attachPane`).
+  reaches a `ref` prop (`useDragResize` gives `attachPane`). In the
+  transcript a delta re-renders the row it changed and the closing row:
+  `RowView` compares its row by what it draws (`sameRow` in
+  transcriptRows.ts), since every flatten builds new row objects.
+- Nothing that moves asks for a frame it does not paint: every requested
+  frame runs the page's style, prepaint and layerize on the main thread,
+  144 a second on a 144 Hz screen. The spinner turns the HTML box around
+  its arc as a Web Animation (components/ui/spinner.tsx, `SPINNER_TURN`):
+  on macOS a turn on the svg, CSS or Web Animation, ran a main-thread frame
+  at every display frame, and a board's 35 spinners took 37% of a core. The
+  streaming reveal (surfaces/smoothText.ts) paints every 33 ms and waits on
+  a timer between paints instead of looping on `requestAnimationFrame`.
 
 ## The shape that scales: many threads exist, a bounded number run
 docs/box.md "The shape that scales" has the before numbers, each step's

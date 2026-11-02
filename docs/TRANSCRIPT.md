@@ -156,7 +156,11 @@ foreground, the same words the group line uses); the components only draw it.
   moves, as the live turn grows into it, and across a rebuild with older
   turns added above. Rows of a settled turn are cached per turn array
   (`stableTurns` keeps those arrays), so a streamed delta rebuilds the live
-  turn's rows alone.
+  turn's rows alone, and `RowView` compares a row by what it draws
+  (`sameRow`: an item row's blocks by identity, its gap, live and working,
+  its turn's id, index and whether it is the last; the closing row its whole
+  turn), so of those it re-renders the row the delta changed and the
+  closing row.
 - **The gap belongs to the boundary.** Each row carries the space above it
   (`ROW_GAP` in transcriptRows.ts: 16px before the first row, 32px between
   turns, 16px under a bubble, 12px between blocks or a block and a line,
