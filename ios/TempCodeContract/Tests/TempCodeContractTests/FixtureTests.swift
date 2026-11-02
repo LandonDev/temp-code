@@ -228,13 +228,13 @@ struct FixtureTests {
             guard case .notice(let notice) = row.event else { return nil }
             return notice.kind
         }
-        for kind in [NoticeKind.review, .gate, .batch, .accountGone] { #expect(kinds.contains(kind), "\(kind) missing") }
+        for kind in [NoticeKind.review, .gate, .batch, .accountGone, .planBuild] { #expect(kinds.contains(kind), "\(kind) missing") }
         #expect(!kinds.contains { if case .unknown = $0 { true } else { false } })
         let failures = page.rows.compactMap { row -> FailureKind? in
             guard case .error(let error) = row.event else { return nil }
             return error.failure?.kind
         }
-        for kind in [FailureKind.oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota, .modelUnavailable, .network, .harnessCrashed, .unknown] {
+        for kind in [FailureKind.oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota, .modelUnavailable, .network, .harnessCrashed, .turnEnded, .unknown] {
             #expect(failures.contains(kind), "\(kind) missing")
         }
         #expect(!failures.contains { if case .unrecognized = $0 { true } else { false } })

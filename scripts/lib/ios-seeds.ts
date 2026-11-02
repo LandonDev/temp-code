@@ -53,8 +53,8 @@ export function gateLogTail(): string {
 }
 
 /** One notice row per NoticeKind, in the order a thread meets them: a passed
- *  gate, a failed one, a held review, a passed one, the batch's merge, and
- *  the account that left. */
+ *  gate, a failed one, a held review, a passed one, the batch's merge,
+ *  the account that left and a plan build that did not start. */
 export function noticeRows(reviewerId = 'ios-notices-reviewer'): AgentEvent[] {
   const at = 1_760_000_000_000
   return [
@@ -124,7 +124,8 @@ export function noticeRows(reviewerId = 'ios-notices-reviewer'): AgentEvent[] {
       kind: 'account-gone',
       account: 'ws@example.com',
       message: 'Account ws@example.com is gone from this host; routing automatically from here (10:42)'
-    }
+    },
+    { type: 'notice', kind: 'plan-build', message: 'The build did not start: claude-opus-5-5 is not available on this host' }
   ]
 }
 

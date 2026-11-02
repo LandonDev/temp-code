@@ -6,7 +6,7 @@
       {
         "sessionId": "fixture-notices",
         "seq": 1,
-        "ts": 1792706821950,
+        "ts": 1793604325969,
         "event": {
           "type": "user-text",
           "text": "Land the notices thread with every card the phone draws.",
@@ -20,7 +20,7 @@
       {
         "sessionId": "fixture-notices",
         "seq": 2,
-        "ts": 1792706821950,
+        "ts": 1793604325969,
         "event": {
           "type": "status",
           "status": "running"
@@ -29,7 +29,7 @@
       {
         "sessionId": "fixture-notices",
         "seq": 3,
-        "ts": 1792706821952,
+        "ts": 1793604325969,
         "event": {
           "type": "notice",
           "kind": "gate",
@@ -46,7 +46,7 @@
       {
         "sessionId": "fixture-notices",
         "seq": 4,
-        "ts": 1792706821952,
+        "ts": 1793604325969,
         "event": {
           "type": "notice",
           "kind": "gate",
@@ -63,7 +63,7 @@
       {
         "sessionId": "fixture-notices",
         "seq": 5,
-        "ts": 1792706821952,
+        "ts": 1793604325970,
         "event": {
           "type": "notice",
           "kind": "review",
@@ -112,7 +112,7 @@
       {
         "sessionId": "fixture-notices",
         "seq": 6,
-        "ts": 1792706821952,
+        "ts": 1793604325970,
         "event": {
           "type": "notice",
           "kind": "review",
@@ -135,7 +135,7 @@
       {
         "sessionId": "fixture-notices",
         "seq": 7,
-        "ts": 1792706821952,
+        "ts": 1793604325970,
         "event": {
           "type": "notice",
           "kind": "batch",
@@ -145,7 +145,7 @@
       {
         "sessionId": "fixture-notices",
         "seq": 8,
-        "ts": 1792706821952,
+        "ts": 1793604325970,
         "event": {
           "type": "notice",
           "kind": "account-gone",
@@ -156,7 +156,17 @@
       {
         "sessionId": "fixture-notices",
         "seq": 9,
-        "ts": 1792706821952,
+        "ts": 1793604325970,
+        "event": {
+          "type": "notice",
+          "kind": "plan-build",
+          "message": "The build did not start: claude-opus-5-5 is not available on this host"
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 10,
+        "ts": 1793604325970,
         "event": {
           "type": "error",
           "message": "work@example.com needs a sign-in: the OAuth session lapsed and its refresh was refused",
@@ -170,8 +180,8 @@
       },
       {
         "sessionId": "fixture-notices",
-        "seq": 10,
-        "ts": 1792706821952,
+        "seq": 11,
+        "ts": 1793604325970,
         "event": {
           "type": "error",
           "message": "The account spare@example.com is no longer on file: it was removed from this host",
@@ -185,8 +195,8 @@
       },
       {
         "sessionId": "fixture-notices",
-        "seq": 11,
-        "ts": 1792706821952,
+        "seq": 12,
+        "ts": 1793604325970,
         "event": {
           "type": "error",
           "message": "work@example.com answered 401 token_expired: this instance is not the account owner, so nothing refreshed the token",
@@ -200,8 +210,8 @@
       },
       {
         "sessionId": "fixture-notices",
-        "seq": 12,
-        "ts": 1792706821952,
+        "seq": 13,
+        "ts": 1793604325970,
         "event": {
           "type": "error",
           "message": "work@example.com hit the 5h window: the window is spent; it refills in 40 minutes",
@@ -218,8 +228,8 @@
       },
       {
         "sessionId": "fixture-notices",
-        "seq": 13,
-        "ts": 1792706821953,
+        "seq": 14,
+        "ts": 1793604325970,
         "event": {
           "type": "error",
           "message": "work@example.com has nothing left to spend: the plan is out of credits",
@@ -233,8 +243,8 @@
       },
       {
         "sessionId": "fixture-notices",
-        "seq": 14,
-        "ts": 1792706821953,
+        "seq": 15,
+        "ts": 1793604325970,
         "event": {
           "type": "error",
           "message": "claude-fable-5-1 is not available here: the model is orchestrators-only on this host",
@@ -248,8 +258,8 @@
       },
       {
         "sessionId": "fixture-notices",
-        "seq": 15,
-        "ts": 1792706821953,
+        "seq": 16,
+        "ts": 1793604325970,
         "event": {
           "type": "error",
           "message": "api.anthropic.com could not be reached: the socket closed before the first byte",
@@ -263,8 +273,8 @@
       },
       {
         "sessionId": "fixture-notices",
-        "seq": 16,
-        "ts": 1792706821953,
+        "seq": 17,
+        "ts": 1793604325970,
         "event": {
           "type": "error",
           "message": "The harness exited mid-turn: claude exited with code 137",
@@ -278,8 +288,23 @@
       },
       {
         "sessionId": "fixture-notices",
-        "seq": 17,
-        "ts": 1792706821953,
+        "seq": 18,
+        "ts": 1793604325971,
+        "event": {
+          "type": "error",
+          "message": "The turn ended before it finished: the CLI reached its turn limit",
+          "failure": {
+            "kind": "turn_ended",
+            "account": null,
+            "summary": "The turn ended before it finished",
+            "cause": "the CLI reached its turn limit"
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 19,
+        "ts": 1793604325971,
         "event": {
           "type": "error",
           "message": "The turn failed: the harness gave no reason",
@@ -293,16 +318,16 @@
       },
       {
         "sessionId": "fixture-notices",
-        "seq": 18,
-        "ts": 1792706821953,
+        "seq": 20,
+        "ts": 1793604325971,
         "event": {
           "type": "errors-cleared"
         }
       },
       {
         "sessionId": "fixture-notices",
-        "seq": 19,
-        "ts": 1792706821953,
+        "seq": 21,
+        "ts": 1793604325971,
         "event": {
           "type": "plan-handoff",
           "sessionId": "fixture-child-b",
@@ -312,8 +337,8 @@
       },
       {
         "sessionId": "fixture-notices",
-        "seq": 20,
-        "ts": 1792706821953,
+        "seq": 22,
+        "ts": 1793604325971,
         "event": {
           "type": "status",
           "status": "error"
