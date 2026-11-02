@@ -25,7 +25,10 @@ import { usePaneVisible } from "../hooks/paneVisibility";
  *   streaming, τ 90 ms draining at the end, a 25 chars/s floor.
  * - Lag cap 900 chars: a torrent (pasted code) skips ahead rather than
  *   replaying at length.
- * - Paints at most every 33ms so markdown re-parses at ~30fps, not 60.
+ * - Paints at most every 33ms so markdown re-parses at ~30fps, not 60, and
+ *   asks for a frame only when a paint is due: between paints it waits on a
+ *   timer, since every requested frame runs the page's style and paint
+ *   lifecycle (144 a second on a 144 Hz screen, a fifth of a core).
  * - A non-append rewrite (final text differing from the deltas) snaps.
  * - Mount baselines to the full text: history and re-attach show instantly;
  *   only text that arrives while we watch animates.
@@ -203,6 +206,8 @@ interface Reveal {
   target: string;
   live: boolean | undefined;
   raf: number;
+  /** The wait for the next paint's frame. */
+  timer: number;
   lastFrame: number;
   lastPaint: number;
 }
@@ -215,6 +220,7 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
     target: text,
     live: streaming,
     raf: 0,
+    timer: 0,
     lastFrame: 0,
     lastPaint: 0,
   });
@@ -234,6 +240,18 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
     s.prev = text;
     if (p.pos >= text.length) return;
     s.lastFrame = performance.now();
+    // The next frame when a paint is due; until then a timer, not a frame.
+    const next = (now: number): void => {
+      const wait = s.lastPaint + PAINT_EVERY_MS - now;
+      if (wait <= 0) {
+        s.raf = requestAnimationFrame(tick);
+        return;
+      }
+      s.timer = window.setTimeout(() => {
+        s.timer = 0;
+        s.raf = requestAnimationFrame(tick);
+      }, wait);
+    };
     const tick = (now: number): void => {
       s.raf = 0;
       const dt = Math.min(now - s.lastFrame, MAX_FRAME_MS);
@@ -250,13 +268,17 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
         s.lastPaint = now;
         setShown(Math.floor(p.pos));
       }
-      s.raf = requestAnimationFrame(tick);
+      next(now);
     };
-    s.raf = requestAnimationFrame(tick);
+    next(s.lastFrame);
     return () => {
       if (s.raf) {
         cancelAnimationFrame(s.raf);
         s.raf = 0;
+      }
+      if (s.timer) {
+        clearTimeout(s.timer);
+        s.timer = 0;
       }
     };
   }, [text, streaming, paneShown]);
