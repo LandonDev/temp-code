@@ -2,7 +2,7 @@ import { COMPACTING_WORDS } from "@shared/statusWords";
 import { FoldVertical } from "../chrome/icons";
 import { Spinner } from "../components/ui/spinner";
 import { StatusMark } from "../components/ui/status";
-import { TextShimmer } from "../components/ui/text-shimmer";
+import { TextPulse } from "../components/ui/text-pulse";
 import type { Block } from "../lib/session";
 import { formatTokens } from "../lib/contextUsage";
 import { useClock } from "../lib/turnClock";
@@ -10,7 +10,7 @@ import { spanWords } from "./transcript/thinking";
 import { NoticeLine } from "./transcript/NoticeLine";
 
 /**
- * A compaction on one notice line: "Compacting context" shimmering with the
+ * A compaction on one notice line: "Compacting context" pulsing with the
  * time since its start while the harness squeezes the window, "Context
  * compacted" with the before and after once it lands, "Compaction failed"
  * with the error when it does not, and "Compaction stopped" with its span
@@ -66,7 +66,7 @@ function ActiveCompaction({ startedAt }: { startedAt?: number }) {
       role="status"
       aria-label={COMPACTING_WORDS}
       glyph={<Spinner />}
-      lead={<TextShimmer>{COMPACTING_WORDS}</TextShimmer>}
+      lead={<TextPulse>{COMPACTING_WORDS}</TextPulse>}
       details={[elapsed !== undefined ? <span className="tabular-nums">{spanWords(elapsed)}</span> : undefined]}
     />
   );

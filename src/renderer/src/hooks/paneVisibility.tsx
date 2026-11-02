@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useSyncExternalStore } from "react";
 
 /**
  * Whether the pane a subtree belongs to is the one on screen. PaneTree
@@ -23,4 +23,19 @@ export function usePaneVisible(): boolean {
  */
 export function frameLoopAllowed(paneVisible: boolean, documentHidden: boolean): boolean {
   return paneVisible && !documentHidden;
+}
+
+function onVisibilityChange(notify: () => void): () => void {
+  document.addEventListener("visibilitychange", notify);
+  return () => document.removeEventListener("visibilitychange", notify);
+}
+
+/** Whether the document is visible (`visibilitychange`), for a CSS loop that
+ *  should rest while the window is hidden. Outside a browser it is visible. */
+export function useDocumentVisible(): boolean {
+  return useSyncExternalStore(
+    onVisibilityChange,
+    () => !document.hidden,
+    () => true,
+  );
 }

@@ -88,7 +88,7 @@ describe("ActionGroup", () => {
     expect(trigger(again.container)!.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("stays closed while live, with the phrase shimmering in the present tense", () => {
+  it("stays closed while live, with the phrase pulsing in the present tense", () => {
     const { container } = mount([read("a", "a.ts"), bash("b", "npm test", { status: "running" })], { live: true });
     expect(trigger(container)!.getAttribute("aria-expanded")).toBe("false");
     expect(container.textContent).toContain("Reading a.ts, running the tests");

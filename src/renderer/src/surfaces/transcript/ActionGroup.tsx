@@ -4,7 +4,7 @@ import { useReducedMotion } from "motion/react";
 import { Bot, ChevronRight, Sparkles, type IconComponent } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
-import { TextShimmer } from "../../components/ui/text-shimmer";
+import { TextPulse } from "../../components/ui/text-pulse";
 import type { Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { useLiveEdits } from "../../lib/tcserver/store";
@@ -186,7 +186,7 @@ export function ActionGroup({
                 {/* The phrase changes tense in place when the run settles; a count
                     that grows under one tense never animates. */}
                 <SwapText state={live ? "live" : "settled"} className="min-w-0 truncate">
-                  {live ? <TextShimmer>{group.phrase}</TextShimmer> : group.phrase}
+                  {live ? <TextPulse>{group.phrase}</TextPulse> : group.phrase}
                 </SwapText>
                 <Counts added={adds} removed={dels} failed={group.failed} />
                 <ChevronRight

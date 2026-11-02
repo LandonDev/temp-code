@@ -7,6 +7,11 @@ describe("cn", () => {
     expect(cn("shadow-none", "shadow-overlay")).toBe("shadow-overlay");
   });
 
+  it("keeps the pulse beside a text colour: text-pulse is not a colour", () => {
+    expect(cn("text-muted-foreground", "text-pulse")).toBe("text-muted-foreground text-pulse");
+    expect(cn("text-pulse", "text-foreground")).toBe("text-pulse text-foreground");
+  });
+
   it("keeps the last of two conflicting utilities", () => {
     expect(cn("p-5", "p-0")).toBe("p-0");
   });

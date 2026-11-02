@@ -83,7 +83,7 @@ names). Components import from it; never from `lucide-react` or
 
 Colour, radius, shadow and motion names are in `src/renderer/src/index.css`
 (the token layer at the top); the parts utilities cannot express
-(`focus-field`, `shimmer`, the switch and checkbox transitions, the
+(`focus-field`, `text-pulse`, the switch and checkbox transitions, the
 collapsible height, the task list) are in `src/renderer/src/assets/components.css`.
 A component never writes a literal colour, duration or curve;
 `lib/motionGuard.test.ts` fails on a new literal timing and lists, by owning

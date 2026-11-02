@@ -104,6 +104,8 @@ describe("TurnEnd's thinking tail says the turn's true phase", () => {
     );
   };
   const tailOf = (container: HTMLElement) => container.querySelector('[data-slot="thinking-tail"]') as HTMLElement | null;
+  // The newest word: a changed word swaps in while the old one leaves.
+  const wordOf = (container: HTMLElement) => [...(tailOf(container)?.querySelectorAll("[data-swap-text]") ?? [])].at(-1)?.textContent;
   const pending = { id: "pending:1", role: "user" as const, text: "go", pending: true };
   const echoed = { id: "u", role: "user" as const, text: "go" };
 
@@ -111,11 +113,11 @@ describe("TurnEnd's thinking tail says the turn's true phase", () => {
     vi.useFakeTimers();
     try {
       const view = render(live([pending], "Thinking"));
-      expect(tailOf(view.container)?.textContent).toBe("Sending");
+      expect(wordOf(view.container)).toBe("Sending");
       for (const word of ["Starting the CLI", "Initializing", "Waiting for the provider", "Rate limited, retry 2 in 30 s", "Waiting for the provider, 25 s"]) {
         view.rerender(live([echoed], word));
         act(() => vi.advanceTimersByTime(300));
-        expect(tailOf(view.container)?.textContent).toBe(word);
+        expect(wordOf(view.container)).toBe(word);
         expect(tailOf(view.container)?.getAttribute("aria-label")).toBe(word);
       }
     } finally {

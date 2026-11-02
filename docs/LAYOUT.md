@@ -712,7 +712,7 @@ The classic transcript, restyled with BUI primitives on the existing
 virtualized list: *Streaming Text* (assistant deltas), *Thinking* (collapsed
 one-liner, "Thought for 2s" weight/dim pattern), *Tool Chips*
 (call/result pairs), *Code Block* (shiki stays), *Approval Card*, *Loading
-State* (shimmer + elapsed while waiting). The person's message is a soft
+State* (the pulse + elapsed while waiting). The person's message is a soft
 bubble on the right (`card`, 12px corners, 12/8 padding, at most 85% of the
 column, no outline); the model's prose is plain text on the left at 14px on
 22px lines. Column max-w-3xl (768px) centered (`COLUMN_MAX_CLASS` in

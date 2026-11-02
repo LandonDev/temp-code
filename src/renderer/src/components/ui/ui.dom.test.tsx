@@ -263,7 +263,7 @@ describe("Skeleton", () => {
     render(<Skeleton className="h-4 w-24" />);
     const block = document.querySelector("[data-slot=skeleton]") as HTMLElement;
     expect(block.className).toContain("bg-muted");
-    expect(block.className).not.toMatch(/shimmer|animate/);
+    expect(block.className).not.toMatch(/pulse|animate/);
   });
 });
 

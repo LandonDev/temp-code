@@ -84,9 +84,10 @@ foreground, the same words the group line uses); the components only draw it.
 
 - **A thought** is one row of the paragraph's action list
   (`transcript/ThinkingRow.tsx`, words in `transcript/thinking.ts`):
-  "Thinking" in `TextShimmer` with the newest finished sentence while it
-  streams, "Thought for 4s" once it ends, opening the text on a
-  `Collapsible`. The duration runs from the block's `ts` to the `endTs` the
+  "Thinking" in `TextPulse` with the newest finished sentence while it
+  streams, then, in the same row, "Thought for 4s" swapped in through
+  `SwapText` with its chevron while the sentence fades out, opening the
+  text on a `Collapsible` whose trigger lies over the row it names. The duration runs from the block's `ts` to the `endTs` the
   row is given (the next block, or the turn's end).
 - **The closing line** (`transcript/TurnEnd.tsx`): "Worked for 2m 4s" and
   four hover-only icon actions (`transcript/IconAction.tsx`: a ghost

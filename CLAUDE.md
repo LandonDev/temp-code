@@ -287,8 +287,9 @@ app replaces itself from the feed, and only from the feed.
   src/renderer writes a literal colour, duration or curve, and no bullet
   lists appear in the UI. The motion guard has no application timing
   exceptions: CSS uses the motion tokens, JavaScript uses `lib/ease.ts`,
-  the shimmer token owns its continuous timing and the spinner's turn is
-  `SPINNER_TURN` in lib/ease.ts.
+  the working words' pulse (`TextPulse`, the `text-pulse` utility) runs on
+  `--dur-pulse`, `--delay-pulse` and `--ease-breathe` and the spinner's turn
+  is `SPINNER_TURN` in lib/ease.ts.
 - Settings rows and sections use `components/page.tsx` (`PageRow`,
   `PageSection`), which pass native props and data attributes to their roots;
   Hosts exports these as `Row` and `Group` without copying their markup.

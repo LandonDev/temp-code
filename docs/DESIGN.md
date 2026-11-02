@@ -472,7 +472,7 @@ being produced pulses (`TextPulse`); nothing else does.
 | List rows (rail, tabs, fleet, attachments, the transcript's message list) | none | none | none |
 | Transcript rows | one `--dur-fast` fade on first appearance, never replayed | — | none |
 | Streaming text | the prose: the jitter buffer (surfaces/smoothText) steps whole words every 100ms (`REVEAL.stepMs`), holding a bare block marker and a table's header row until they have content; each step is one span fading in over `--dur-reveal` on `--ease-reveal` (lib/streamReveal.ts, `.stream-step`), and the settle waits for the last fade; a live short line (the thinking row's newest sentence) takes the same fade in `StreamingText` | — | whole-word steps, no fade |
-| Thinking settling | "Thinking" becomes "Thought for 3s" in place through `SwapText`; the live sentence fades `--dur-fast` | — | cross-fade, `--dur-fast` |
+| Thinking settling | "Thinking" becomes "Thought for 3s" in place through `SwapText`, its chevron arriving with it; the live sentence fades `--dur-fast` | — | cross-fade, `--dur-fast` |
 | Composer send | the bubble rides with the content as the prompt parks, rising 16px and fading in, `--dur-slow` `--ease-drawer`; in follow mode it flies from the field only when it lands within 240px of it | — | fade, `--dur-fast` |
 | Composer field height | snaps on a keystroke and on the clear after a send; a change of more than one line the person did not type (a paste, a restore, a quote) eases over `--dur-base` | — | snaps |
 | Composer, a new thread's first send | the box keeps its width and moves into its docked place (a FLIP translate, `--dur-slow` `--ease-drawer`) | — | none |

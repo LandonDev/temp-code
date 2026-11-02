@@ -6,7 +6,7 @@ import { cn } from "@renderer/lib/cn";
 import { Button } from "./button";
 
 /** A file on its way into a turn, or shown in one: a media tile, a name,
- *  one line under it, an action at the end. `state` tints and shimmers. */
+ *  one line under it, an action at the end. `state` tints and pulses. */
 const attachmentVariants = cva(
   "group/attachment relative flex w-fit min-w-0 max-w-full shrink-0 flex-wrap rounded-lg border border-border bg-card text-card-foreground transition-[background-color,border-color] duration-(--dur-fast) focus-within:ring-2 focus-within:ring-ring has-[>a,>button]:hover:bg-muted/50 data-[state=error]:border-destructive/40 data-[state=idle]:border-dashed",
   {
@@ -55,7 +55,7 @@ function AttachmentContent({ className, ...props }: ComponentProps<"div">) {
 }
 
 function AttachmentTitle({ className, ...props }: ComponentProps<"span">) {
-  return <span data-slot="attachment-title" className={cn("block min-w-0 max-w-full truncate font-medium text-foreground group-data-[state=processing]/attachment:shimmer group-data-[state=uploading]/attachment:shimmer", className)} {...props} />;
+  return <span data-slot="attachment-title" className={cn("block min-w-0 max-w-full truncate font-medium text-foreground group-data-[state=processing]/attachment:text-muted-foreground group-data-[state=processing]/attachment:text-pulse group-data-[state=uploading]/attachment:text-muted-foreground group-data-[state=uploading]/attachment:text-pulse", className)} {...props} />;
 }
 
 function AttachmentDescription({ className, ...props }: ComponentProps<"span">) {
