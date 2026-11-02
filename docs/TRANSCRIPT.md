@@ -209,7 +209,9 @@ foreground, the same words the group line uses); the components only draw it.
   lands the same way: a key is never animated. The parked prompt of an own
   send waits for its row to mount (`pendingPark`), then the runway is laid
   and the transcript glides there (`DUR.drawer` on `EASE_DRAWER`; in one
-  write under reduced motion): while that glide runs, `layoutRunway` moves
+  write under reduced motion); a prompt whose row is not mounted (the
+  reader far up) glides toward its layout offset at once, within 2.5
+  screens like any jump, so the window mounts the row on the way: while that glide runs, `layoutRunway` moves
   its target from the row layout and never writes the offset itself, and a
   row measured above moves a glide in flight with the content. Jumps and a
   burst while following glide on `DUR.drawer` `EASE_OUT`, the runway

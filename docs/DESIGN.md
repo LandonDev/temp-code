@@ -452,7 +452,7 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | Icon swap (`SwapIcon`; keyed for more than two states, as a tool row's waiting, working, failed and icon) | opacity + scale 0.25→1 on `SPRING_LAYOUT` | fade + scale →0.25, `--dur-fast` | opacity, `--dur-fast` |
 | Label swap (`SwapText`: a row's verb or a group's phrase changing tense) | the new words rise from 3px below, `--dur-base` `--ease-out`; the width changes at once; never on mount or per streamed word | the old words lift 3px and fade, `--dur-fast` | cross-fade, `--dur-fast` |
 | Scroll glide (jump to latest, a burst while following, a jump to a row) | `DUR.drawer` on `EASE_OUT` | — | instant |
-| Park on send (prompt to top) | the transcript glides to park the prompt, `DUR.drawer` on `EASE_DRAWER` | the parked runway retires over `DUR.base` on `EASE_OUT` | instant |
+| Park on send (prompt to top) | the transcript glides to park the prompt, `DUR.drawer` on `EASE_DRAWER`; from more than 2.5 screens away it jumps to within 2.5 screens first, as every long jump does | the parked runway retires over `DUR.base` on `EASE_OUT` | instant |
 | Jump to latest button | fade + scale 0.95→1, `--dur-base` `--ease-out` | `FADE_OUT` | fade |
 | Count | ticks from the shown value, `--dur-slow` `--ease-out` | — | none |
 | Shimmer (`TextShimmer`) | one highlight sweeps the muted text, 2s | — | still muted text |
