@@ -1730,8 +1730,9 @@ names the far child).
   `renderer-soak` runs `--gate` (synthetic, production, split, a 50 s
   window inside 90 s; heap after GC ≤ +6 MB, RSS after GC ≤ +30 MB, no long
   task over 200 ms, ≤ 250 ms of long tasks a second; CPU printed beside its
-  12% without failing, since the streaming veil's covers hold the Mac at
-  32-36%, UI-13's to fix; `--cpu-fails` on the row in scripts/gate.ts makes
+  12% without failing, since the Mac reads 33% (38% before UI-13's phrase
+  fade; 29% with every fade and pulse off: the board's spinners and the
+  stream's render work hold it); `--cpu-fails` on the row in scripts/gate.ts makes
   it fail again): in
   release-publish it waits for `$STAGE/build.done`
   (TEMP_CODE_SOAK_BUILD_DONE), elsewhere it reads out/bundle-map.json's
@@ -1768,8 +1769,16 @@ names the far child).
   its arc as a Web Animation (components/ui/spinner.tsx, `SPINNER_TURN`):
   on macOS a turn on the svg, CSS or Web Animation, ran a main-thread frame
   at every display frame, and a board's 35 spinners took 37% of a core. The
-  streaming reveal (surfaces/smoothText.ts) paints every 33 ms and waits on
-  a timer between paints instead of looping on `requestAnimationFrame`.
+  streaming reveal (surfaces/smoothText.ts) steps whole words every 100 ms
+  (`REVEAL.stepMs`, `revealCut` holding a bare block marker and a table's
+  header row until they have content) and waits on a timer between steps;
+  each step fades in as one span, a CSS opacity animation the compositor
+  runs (`.stream-step`, lib/streamReveal.ts, a rehype plugin per streaming
+  row, named per row because streamdown caches processors by plugin name),
+  and the settle waits for the last fade (docs/TRANSCRIPT.md "The stream
+  reveals a phrase at a time"). The working words pulse (`TextPulse`, still
+  for 3 s, then opacity 1→0.75→1 every 2 s), resting in a hidden pane or
+  document. A streaming code block colours on a 150 ms throttle.
 
 ## The shape that scales: many threads exist, a bounded number run
 docs/box.md "The shape that scales" has the before numbers, each step's

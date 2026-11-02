@@ -6,8 +6,9 @@
  * across a 50 s window, heap after GC grows at most 6 MB, renderer RSS
  * after GC at most 30 MB, no long task passes 200 ms and long tasks take at
  * most 250 ms of any second; the renderer's CPU is read against 12% of one
- * core and reported, without failing the step, until the streaming veil's
- * frames fit it (the Mac read 32-36% at a 144 Hz screen; docs/release-gate.md
+ * core and reported, without failing the step, until the renderer fits it
+ * (the Mac read 33% at a 144 Hz screen after UI-13, the board's spinners
+ * and the stream's render work holding it there; docs/release-gate.md
  * "The renderer soak"); `--cpu-fails` on the step makes it fail again.
  * A hand run's (the targets of the Performance 1 plan): growth read as the
  * slope over the run and stated per 30 minutes, heap within +50 MB and RSS

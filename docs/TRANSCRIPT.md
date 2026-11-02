@@ -236,6 +236,34 @@ foreground, the same words the group line uses); the components only draw it.
   and 3,614 style recalcs a minute on the box, against 929 on an idle
   board). Test: AgentTranscript.window.test.tsx "AgentTranscript follow
   loop".
+- **The stream reveals a phrase at a time and costs nothing per frame.**
+  `useSmoothText` (surfaces/smoothText.ts) is a jitter buffer: it measures
+  the arrival rate and the gaps, and holds a lag of 120 to 500 ms behind the
+  live end. It steps every `REVEAL.stepMs` (100 ms), waiting on a timer
+  between steps, so a step carries what 100 ms of the stream holds (about
+  35 to 45 characters, Claude's group size) and the markdown re-parses ten
+  times a second, not thirty. `revealCut` ends each step at a word boundary
+  (a token over 24 characters with none is cut where the pace reaches),
+  and while live it holds a bare block marker (`#`, `-`, `1.`, `- [ ]`) and
+  a table's header row until they have content, so an empty heading or raw
+  pipes never paint. Each step fades in as one span: `lib/streamReveal.ts`
+  is a rehype plugin on the streaming path, one per row (named per row,
+  since streamdown caches processors by plugin name), keeping a ledger per
+  block of the steps it has seen; every step's text is its own span so it
+  keeps its element, and only a step under 400 ms old carries
+  `.stream-step`, a CSS opacity animation over `--dur-reveal`, linear, that
+  the compositor runs. Nothing reads layout per step and nothing animates
+  per frame in JavaScript. The settle waits for the last step's fade (a
+  Stop's too) before the cached tree replaces the streaming one, and
+  reaches streamdown through `isAnimating`, since its memo ignores the
+  plugin lists. Tests: smoothText.test.ts, smoothText.dom.test.tsx,
+  lib/streamReveal.test.ts, AgentMarkdown.reveal.test.tsx.
+- **A streaming code block is coloured.** CodeBlock asks the shiki worker
+  at once and then at most every 150 ms (`HIGHLIGHT_EVERY_MS`, never put
+  off by a delta), and until the newest answer lands it draws the coloured
+  lines that still read the same and the lines past them plain
+  (`colourPrefix`), so a new line never waits and colour never leaves.
+  Test: CodeBlock.stream.dom.test.tsx.
 - **Markdown parses off the main thread.** A settled markdown row asks
   `lib/markdownParse.ts` for its tree; `lib/markdown.worker.ts` runs
   streamdown's own block split and remark → rehype chain (shared through

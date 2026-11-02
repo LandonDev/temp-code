@@ -2718,13 +2718,54 @@ each measured by two gate runs and a 4 s trace of the split view:
 The board alone, whose 35 spinners turned their svg on the main thread
 whether a CSS animation or a Web Animation ran it, went from 37% to 13%
 with the turn on the HTML box, against 4.5% with every spinner held still.
-What keeps the split view at 32-36% is the streaming veil
-(surfaces/streamVeil.ts): about 20 fade covers a second, each starting,
-speeding up and ending its own animation, about 60 main-thread frames a
-second at 144 Hz, each frame's layerize costing more with every spinner
-layer on the page. The UI-13 thread owns that; until then the gate prints
-the CPU beside its 12% on every publish without failing the step, and
-`--cpu-fails` on the step's row in scripts/gate.ts makes it fail again.
+The streaming veil (surfaces/streamVeil.ts, about 20 fade covers a second)
+looked like what kept the split view at 32-36%. UI-13 replaced it with
+whole-word steps every 100 ms, each one span fading in by CSS
+(lib/streamReveal.ts), and measured on the same Mac, one gate run each
+unless noted:
+
+| Build (UI-13, 2026-11-02) | Gate CPU |
+|---|---|
+| base (3c456c79, the veil) | 38.4% |
+| the phrase fade (08deb055), two runs | 33.0%, 33.5% |
+| the same with `will-change: opacity` on the fade, two runs | 33.2%, 34.0% |
+| the fade off | 29.0% |
+| the working words' pulse off | 33.3% |
+| both off | 29.2% |
+| the fade as `inline-block` (wraps wrongly; a probe) | 34.1% |
+
+The fades ran on the compositor (every `stream-step-in` compositing status
+reported no failure); the fade costs about 4.7 points, the pulse nothing
+measurable (none ran in the soak's window). What holds the rest is not
+the stream's motion: a trace of the window shows about 103 main-thread
+frames a second, 33 spinner rotations running and 2-4 fades. That is the
+next performance thread's: until then the gate prints the CPU beside its
+12% on every publish without failing the step, and `--cpu-fails` on the
+step's row in scripts/gate.ts makes it fail again. The runs, traces and
+the visual proof are in `.temp-code/plan-LyTXVITkZoHM/proof/` (`proof/`
+for the soaks and the stream's checks, `proof2/` for the experiments), the
+summary in `.temp-code/plan-LyTXVITkZoHM/report.md`.
+
+To reproduce on the Mac (an M4 Max, the window on a 144 Hz screen), in a
+clone of its own, one run at a time:
+
+```bash
+# the branch, judged as the gate would with the CPU bound on
+bun scripts/measure-renderer-soak.ts --gate --cpu-fails --label <name>
+# the base, as the gate runs it (CPU reported only)
+bun scripts/measure-renderer-soak.ts --gate --label <name>
+```
+
+Each experiment was one temporary edit of
+src/renderer/src/assets/components.css (`.stream-step { animation: none }`
+for the fade off; `animation: none` in the `text-pulse` utility for the
+pulse off; `display: inline-block` on `.stream-step` for the probe), then
+`npx electron-vite build`, one soak with `--gate --cpu-fails`, and the file
+restored. The trace was 4 s of the window during warm-up (Tracing.start
+with devtools.timeline, disabled-by-default-devtools.timeline, cc,
+blink.animations and disabled-by-default-blink.animations), counting
+`ProxyMain::BeginMainFrame`, and `document.getAnimations()` sampled every
+250 ms for 5 s.
 The runs' reports and traces are in `.temp-code/perf1/` (report.md, `soak/`
 for the box, `mac/gate/` for the Mac).
 

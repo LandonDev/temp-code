@@ -42,11 +42,12 @@ run pass.
 The renderer's CPU is read against 12% of one core and printed beside it in
 the step's log and report (`! renderer CPU, % of one core: 34 (limit 12,
 reported only)`, "over, reported" in the table) on every publish, without
-failing the step. It is off because the Mac reads 32-36% in the split view
-at 144 Hz: the streaming veil's fade covers (surfaces/streamVeil.ts, about
-20 a second, each starting, speeding up and ending its own animation) cost
-about 60 main-thread frames a second there, and that is the UI-13 thread's
-to fix (docs/box.md "The renderer over time" has the measurements). Adding
+failing the step. It is off because the Mac reads 33% in the split view at
+144 Hz. UI-13 replaced the streaming veil with CSS phrase fades (38% → 33%),
+and its experiments put the rest elsewhere: with the fades and the pulse
+both switched off the renderer still reads 29%, about 103 main-thread frames
+a second driven by the board's 33 spinner rotations and the stream's render
+work (docs/box.md "The renderer over time" has the measurements). Adding
 `--cpu-fails` to the `renderer-soak` row's args in scripts/gate.ts makes the
 12% bound fail the step again.
 
