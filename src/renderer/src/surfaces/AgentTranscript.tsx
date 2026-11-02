@@ -27,6 +27,7 @@ import {
   type RowAnchor,
   type RowRange,
 } from "../lib/transcriptWindow";
+import { useKept } from "../lib/keptValue";
 import { estimateRowHeight, flattenTurns, sameRow, turnUserBlock, type RowGap, type TranscriptRow } from "./transcriptRows";
 import { useReducedMotion } from "motion/react";
 import { cubicBezier, DUR, EASE_DRAWER, EASE_OUT } from "../lib/ease";
@@ -1135,10 +1136,11 @@ const GAP_CLASS: Record<RowGap, string> = {
  * live turn's rows as new objects; RowView compares its row by what it draws
  * (`sameRow`, transcriptRows.ts) and its other props by identity, so the
  * delta re-renders the row it changed and the closing row alone; a row whose
- * offset moved re-renders its wrapper and nothing inside it.
+ * offset moved re-renders its wrapper and, keeping the row it drew
+ * (`useKept`), nothing inside it.
  */
 const RowView = memo(function RowView({
-  row,
+  row: next,
   top,
   fresh,
   cwd,
@@ -1155,6 +1157,9 @@ const RowView = memo(function RowView({
   onSecondOpinion,
   onHandoff,
 }: RowViewProps) {
+  // The row as last drawn while it reads the same, so a render for a moved
+  // offset hands the views inside the same blocks and they skip it.
+  const row = useKept(next, sameRow);
   const key = row.key;
   // Decided at mount: a later render never starts or cuts the fade.
   const [fadeIn] = useState(fresh);
