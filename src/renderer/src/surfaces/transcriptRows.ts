@@ -199,6 +199,50 @@ export function flattenTurns(
   return { rows, rowOfBlock };
 }
 
+function sameItem(a: TurnItem, b: TurnItem): boolean {
+  if (a === b) return true;
+  if (a.type === "block") return b.type === "block" && a.block === b.block;
+  if (b.type === "block") return false;
+  return a.blocks.length === b.blocks.length && a.blocks.every((block, i) => block === b.blocks[i]);
+}
+
+function sameTurn(a: TurnInfo, b: TurnInfo): boolean {
+  return (
+    a === b ||
+    (a.id === b.id &&
+      a.index === b.index &&
+      a.isLast === b.isLast &&
+      a.settled === b.settled &&
+      a.blocks === b.blocks &&
+      a.userBlock === b.userBlock &&
+      a.durationMs === b.durationMs &&
+      a.startedAt === b.startedAt)
+  );
+}
+
+/**
+ * Whether a row draws the same as before. Every flatten builds new rows, and
+ * a delta into the live turn regroups it, so its other rows come back as new
+ * objects holding the same blocks; RowView compares with this instead of
+ * identity, so the delta re-renders the row it changed and the closing row.
+ * An item row reads its turn's id, index and whether it is the last; the
+ * closing row reads the whole turn.
+ */
+export function sameRow(a: TranscriptRow, b: TranscriptRow): boolean {
+  if (a === b) return true;
+  if (a.kind !== b.kind || a.key !== b.key || a.gap !== b.gap) return false;
+  if (a.kind === "more" || b.kind === "more") return true;
+  if (a.kind === "end" || b.kind === "end") return sameTurn(a.turn, b.turn);
+  return (
+    a.live === b.live &&
+    a.working === b.working &&
+    a.turn.id === b.turn.id &&
+    a.turn.index === b.turn.index &&
+    a.turn.isLast === b.turn.isLast &&
+    sameItem(a.item, b.item)
+  );
+}
+
 /** Pixels per wrapped line of prose (14px on 22px), and about how many
  *  characters fit one in the 768px column. */
 const PROSE_LINE = 22;

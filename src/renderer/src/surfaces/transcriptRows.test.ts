@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Block } from "../lib/session";
-import { estimateRowHeight, flattenTurns, ROW_GAP } from "./transcriptRows";
+import { estimateRowHeight, flattenTurns, ROW_GAP, sameRow } from "./transcriptRows";
 
 const user = (id: string, text = "prompt", extra: Partial<Block> = {}): Block => ({ id, role: "user", text, ...extra });
 const tool = (id: string): Block => ({
@@ -168,5 +168,31 @@ describe("flattenTurns", () => {
     // An earlier turn with no duration closes on nothing.
     expect(estimateRowHeight(rows.find((r) => r.key === "u0:end")!)).toBe(0);
     expect(estimateRowHeight(rows.find((r) => r.key === "u1:end")!)).toBe(8 + 28);
+  });
+});
+
+describe("sameRow", () => {
+  it("lets a delta into the live turn redraw the row it changed and the closing row alone", () => {
+    const earlier = [user("u0", "p", { startedAt: 10, doneTs: 1510 }), reply("a0")];
+    const live = [user("u1"), tool("t0"), tool("t1"), reply("a1", "Hel")];
+    const before = flattenTurns([earlier, live], true).rows;
+    // The delta: a new text block object, so a new turn array and a regrouped turn.
+    const after = flattenTurns([earlier, [...live.slice(0, 3), reply("a1", "Hello")]], true).rows;
+    const changed = after.filter((row, i) => !sameRow(before[i]!, row)).map((row) => row.key);
+    expect(changed).toEqual(["a1", "u1:end"]);
+    // The group row came back a new object with the same blocks.
+    expect(after[4]!.key).toBe("t0");
+    expect(after[4]).not.toBe(before[4]);
+  });
+
+  it("redraws a row whose block changed, whose run moved on or whose turn stopped being the last", () => {
+    const turn = [user("u0"), tool("t0"), reply("a0")];
+    const [, group] = flattenTurns([turn], true).rows;
+    const done = { ...tool("t0"), tool: { ...tool("t0").tool!, status: "failed" as const } };
+    expect(sameRow(group!, flattenTurns([[turn[0]!, done, turn[2]!]], true).rows[1]!)).toBe(false);
+    const [, , replyRow] = flattenTurns([turn], true).rows;
+    expect(sameRow(replyRow!, flattenTurns([turn, [user("u1")]], true).rows[2]!)).toBe(false);
+    const [, live] = flattenTurns([[user("u0"), tool("t0")]], true).rows;
+    expect(sameRow(live!, flattenTurns([[user("u0"), tool("t0")]], false).rows[1]!)).toBe(false);
   });
 });

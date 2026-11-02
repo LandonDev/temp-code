@@ -27,7 +27,7 @@ import {
   type RowAnchor,
   type RowRange,
 } from "../lib/transcriptWindow";
-import { estimateRowHeight, flattenTurns, turnUserBlock, type RowGap, type TranscriptRow } from "./transcriptRows";
+import { estimateRowHeight, flattenTurns, sameRow, turnUserBlock, type RowGap, type TranscriptRow } from "./transcriptRows";
 import { useReducedMotion } from "motion/react";
 import { cubicBezier, DUR, EASE_DRAWER, EASE_OUT } from "../lib/ease";
 import { type Block, type HarnessId } from "../lib/session";
@@ -1131,9 +1131,10 @@ const GAP_CLASS: Record<RowGap, string> = {
 };
 
 /**
- * One row of the window, placed by its offset. Its `row` keeps its identity
- * while its turn's blocks do (see `stableTurns` and transcriptRows.ts), so
- * a streamed delta re-renders the live turn's rows alone; a row whose
+ * One row of the window, placed by its offset. A streamed delta rebuilds the
+ * live turn's rows as new objects; RowView compares its row by what it draws
+ * (`sameRow`, transcriptRows.ts) and its other props by identity, so the
+ * delta re-renders the row it changed and the closing row alone; a row whose
  * offset moved re-renders its wrapper and nothing inside it.
  */
 const RowView = memo(function RowView({
@@ -1222,7 +1223,15 @@ const RowView = memo(function RowView({
       )}
     </div>
   );
-});
+}, sameRowViewProps);
+
+/** RowView's memo: the row by what it draws, every other prop by identity. */
+function sameRowViewProps(a: RowViewProps, b: RowViewProps): boolean {
+  for (const key of Object.keys(b) as (keyof RowViewProps)[]) {
+    if (key === "row" ? !sameRow(a.row, b.row) : a[key] !== b[key]) return false;
+  }
+  return Object.keys(a).length === Object.keys(b).length;
+}
 
 function lastUserBlockId(blocks: Block[]): string | undefined {
   return turnUserBlock(blocks)?.id;
