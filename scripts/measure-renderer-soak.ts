@@ -290,7 +290,9 @@ const OBSERVERS = `(() => {
       let byProp = s.why.get(n)
       if (!byProp) s.why.set(n, (byProp = new Map()))
       for (const row of props) {
-        const m = /^\+\u00a0(?!\u00a0)(.+)$/.exec(String(row[0]))
+        // React's diff marks a changed prop "+" and a no-break space, nested ones with two more.
+        const label = String(row[0])
+        const m = label.charAt(0) === '+' && label.charCodeAt(1) === 160 && label.charCodeAt(2) !== 160 ? [label, label.slice(2)] : null
         if (m) byProp.set(m[1], (byProp.get(m[1]) || 0) + 1)
       }
     }
