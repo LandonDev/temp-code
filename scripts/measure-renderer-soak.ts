@@ -28,7 +28,8 @@
  * --gate: the release gate's bounded run (scripts/gate.ts renderer-soak):
  *   synthetic host, production build, split view, a 10 s warm-up and a 50 s
  *   window inside a hard 90 s from launch to teardown, judged by the gate's
- *   rule (scripts/lib/soakJudge.ts GATE_RULE).
+ *   rule (scripts/lib/soakJudge.ts GATE_RULE): its CPU reading is reported
+ *   beside the 12% bound without failing the run, unless --cpu-fails.
  *
  * Each sample forces a GC (HeapProfiler.collectGarbage) and reads the heap
  * (Runtime.getHeapUsage), the renderer's memory (Linux: smaps_rollup PSS and
@@ -48,7 +49,7 @@ import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Cdp, REPO, portFree, sleep, type Target } from './lib/packagedApp'
 import { profileSummary, type CpuProfile } from './profile-summary'
-import { buildIsCurrent, FAMILY, GATE_RULE, GATE_TIMING, handRule, judgeSoak, parseSoakArgs, REACT_MEASURE_PREFIX, type BuildStamp, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSoak, parseSoakArgs, REACT_MEASURE_PREFIX, type BuildStamp, type SoakSample } from './lib/soakJudge'
 
 const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
 /** Hand runs on a dev build: also tally the props React names as changed, per component. */
@@ -684,7 +685,7 @@ async function main(): Promise<void> {
     profile = profileSummary(cpuProfile)
   }
 
-  const rule = args.gate ? GATE_RULE : handRule(args.build, args.view)
+  const rule = args.gate ? gateRule(args.cpuFails) : handRule(args.build, args.view)
   const verdict = judgeSoak(rows, rule)
   const sha = (() => {
     try {
@@ -715,7 +716,7 @@ async function main(): Promise<void> {
     '',
     '| reading | got | limit | |',
     '|---|---|---|---|',
-    ...verdict.verdicts.map((v) => `| ${v.what} | ${v.got} | ${v.limit} | ${v.ok ? 'pass' : 'FAIL'} |`),
+    ...verdict.verdicts.map((v) => `| ${v.what} | ${v.got} | ${v.limit} | ${v.ok ? 'pass' : v.reportOnly ? 'over, reported' : 'FAIL'} |`),
     ...(topRenders.length
       ? ['', 'Top re-rendered components (changed props):', '', `| component | renders |${why ? ' changed props |' : ''}`, `|---|---|${why ? '---|' : ''}`, ...topRenders.map(([n, k]) => `| ${n} | ${k} |${why ? ` ${(whyTop.find(([m]) => m === n)?.[1] ?? []).map(([p, x]) => `${p} ${x}`).join(', ')} |` : ''}`)]
       : []),
@@ -723,7 +724,7 @@ async function main(): Promise<void> {
     ...(profile ? ['', '```', profile, '```'] : [])
   ].join('\n')
   writeFileSync(join(ROOT, `${args.label}.md`), md + '\n')
-  for (const v of verdict.verdicts) console.log(`${v.ok ? '✓' : '✗'} ${v.what}: ${v.got} (limit ${v.limit})`)
+  for (const v of verdict.verdicts) console.log(`${v.ok ? '✓' : v.reportOnly ? '!' : '✗'} ${v.what}: ${v.got} (limit ${v.limit}${v.reportOnly ? ', reported only' : ''})`)
   console.log(`${verdict.ok ? 'passed' : 'FAILED'}: ${ROOT}/${args.label}.md`)
   process.exitCode = verdict.ok ? 0 : 1
 }

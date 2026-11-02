@@ -2621,6 +2621,113 @@ The box listed NorthCentralRefs's 8,985 `.temp-code/` files to both runs
 because it still ran its deployed build; the scratch checkout, served by
 the Mac's own host, lists none of its 100.
 
+## The renderer over time
+
+On 2026-11-01 the user's dev build (master, 1.0.308) grew its renderer to
+8 GB at about 190 MB a minute while the box ran sixteen threads, and the
+installed 1.0.303 held 1.5 GB but used 44-58% of a core on an idle window.
+Windowed xvfb instances of each build on the box, paired read-only to it
+with the batch master's board open (`.temp-code/perf1/`; the plan
+`.temp-code/plan-lzMYGoTtIu4d.md`):
+
+| Build | Renderer memory over time | Renderer CPU | Cause |
+|---|---|---|---|
+| master, production | flat: PSS 209 → 206 MB in 10 min; heap after GC +0.07 MB/min | 6-9% on the board | spinners (compositor) and React reconciling pushes |
+| master, production, 3 streaming transcripts open | heap after GC +0.36 MB/min, PSS +1.1 MB/min over 15 min | 16.6% mean | the transcript's follow loop read `clientHeight` every frame while the focused thread ran |
+| v1.0.303, production | flat | 61-71% | 171 endless opacity animations on the 3×3 matrix spinners |
+| master, dev | +66 MB a minute, native memory | 4-21% | react-dom 19.2.8's dev build kept a `performance.measure` with a props diff for every re-render with changed props: 51,000 a minute |
+| v1.0.303, dev | +40 MB a minute | 33% | the same React leak at 7,200 measures a minute |
+
+What changed: react and react-dom 19.3.1 (it clears each measure); a push
+re-renders only what it changed (CLAUDE.md "The renderer over time" lists
+the rules); the follow loop rests once settled; the renderer's caches and
+logs have bounds (docs/RENDERER_RETENTION.md); and, from the gate's first
+runs on the Mac, the spinner turns its HTML box instead of its svg and the
+streaming reveal asks for a frame only when it paints.
+
+### The soak
+
+`scripts/measure-renderer-soak.ts` runs a built tree's window on a fresh
+userData under /tmp/tc-soak (xvfb-run off macOS), inactive and
+unthrottled, against the synthetic host (a real server in a child process:
+a pinned master, sixteen batch children each changing every 2 s, the
+focused child streaming 20 deltas a second with a tool call every 5 s, two
+more streaming at 5 a second, a shell step logging 5 lines a second) or the
+real box (paired read-only, the key revoked at exit). It samples heap after
+a forced GC, renderer PSS, renderer and GPU process CPU, DOM counters, long
+tasks and, on a dev build, React's re-renders with changed props by
+component (`--why` adds the props and the owners), takes a 60 s CPU profile
+at the end, writes `/tmp/tc-soak/<label>.{md,json}` and exits 1 when a
+rule fails (scripts/lib/soakJudge.ts).
+
+```bash
+bun x electron-vite build                     # a production run reads out/
+bun scripts/measure-renderer-soak.ts --host box --view stream --minutes 30 --label box-stream
+bun scripts/measure-renderer-soak.ts --build dev --view board --minutes 10 --why --label dev-why
+bun scripts/measure-renderer-soak.ts --gate   # the release gate's step
+```
+
+### Before and after
+
+The box under xvfb (software paint, 1600×1000 at about 20 frames a
+second), 10 minutes sampled every minute; growth is the slope stated per
+30 minutes, CPU the renderer's mean in % of one core, re-renders a minute
+with the tooltip and button family in brackets. Before is 7d7b60dd (the
+soak alone on master), after is cbce34ed (everything but the Mac's
+spinner, reveal and row fixes).
+
+| Run | Heap after GC | Renderer PSS | Renderer CPU | Re-renders a minute |
+|---|---|---|---|---|
+| production, box, board | +2.9 → +0.8 MB | −28.8 → −30.1 MB | 4.4 → 3.9% (30 min: 3.3%) | |
+| production, box, stream | +7.8 → +19.4 MB (30 min: +4.5) | −22.0 → +2.5 MB | 14.2 → 11.8% (30 min: 11.9%) | |
+| production, synthetic, board | +7.9 → +6.0 MB | −20.1 → −22.6 MB | 11.1 → 8.4% | |
+| production, synthetic, stream | +12.9 → +11.7 MB | −18.0 → −15.4 MB | 17.2 → 15.9% | |
+| dev, box, board | +6.0 → +4.3 MB | +165.5 → −38.3 MB | | 4,991 (2,376) → 1,718 (594); an earlier run 1,113 (431) |
+| dev, box, stream | +14.0 → +13.9 MB | +248.4 → −20.3 MB | | 8,330 (2,475) → 5,774 (1,523) |
+| dev, synthetic, board | +39.2 → +5.0 MB (30 min: +1.5) | +2,490 → −26.3 MB (30 min: +28.9) | | 73,975 (32,576) → 13,408 (2,526) |
+| dev, synthetic, stream | +87.9 → +14.2 MB | +6,237 → −8.9 MB | | 170,357 (56,223) → 179,563 (43,886) |
+
+Against the plan's targets: memory is flat everywhere, dev builds
+included; no run had a long task. The board's CPU on the box is under its
+6% (3.3-3.9%). The streaming view is not under its 8%: 11.8% (12.4% with
+the spinner and row fixes), its main thread 95% idle in the profile, the
+rest the compositor and raster threads painting under xvfb. The dev
+board's re-renders at the box's load are under 5,000 a minute; its
+tooltip and button family read 431 and 594 a minute in two runs against
+500, and the stream view's 5,774 (1,523) before the row fix, whose tally
+(`--why`) named the transcript rows rebuilt with equal blocks on every
+delta. The synthetic host's load is several times the box's: its counts
+are for comparing builds, not for the targets.
+
+### The gate on the Mac
+
+The `renderer-soak` step (docs/release-gate.md) takes 62 s on the box and
+63-65 s on the Mac, inside its 90 s. On the Mac (an M4 Max, the window on
+a 144 Hz 6400×3600 screen) its memory and long-task bounds pass; its CPU
+read 43% of a core against the plan's 12%. A trace showed a main-thread
+frame (style, prepaint, layerize) at every display frame. Three fixes,
+each measured by two gate runs and a 4 s trace of the split view:
+
+| Build | Gate CPU | Main-thread frames in 4 s | Animation-frame callbacks in 4 s |
+|---|---|---|---|
+| before (50ea9760) | 43.0%, 43.3% | 577 | 710 |
+| the spinner turns its HTML box, not its svg (8fbf23b5) | 38.4%, 38.3% | 576 | 710 |
+| the streaming reveal waits on a timer between its 33 ms paints (c7be3ede) | 36.0%, 32.0% | 565 | 229 |
+| every animation held still (an experiment, not a build) | 8-12% | 321 | 183 |
+
+The board alone, whose 35 spinners turned their svg on the main thread
+whether a CSS animation or a Web Animation ran it, went from 37% to 13%
+with the turn on the HTML box, against 4.5% with every spinner held still.
+What keeps the split view at 32-36% is the streaming veil
+(surfaces/streamVeil.ts): about 20 fade covers a second, each starting,
+speeding up and ending its own animation, about 60 main-thread frames a
+second at 144 Hz, each frame's layerize costing more with every spinner
+layer on the page. The UI-13 thread owns that; until then the gate prints
+the CPU beside its 12% on every publish without failing the step, and
+`--cpu-fails` on the step's row in scripts/gate.ts makes it fail again.
+The runs' reports and traces are in `.temp-code/perf1/` (report.md, `soak/`
+for the box, `mac/gate/` for the Mac).
+
 ## Profiling the host
 
 On the box, run `tc-local doctor.profile '{"seconds":15}'` (the local

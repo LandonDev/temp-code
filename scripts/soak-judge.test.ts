@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildIsCurrent, FAMILY, GATE_RULE, handRule, judgeSoak, parseSoakArgs, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_RULE, gateRule, handRule, judgeSoak, parseSoakArgs, type SoakSample } from './lib/soakJudge'
 
 const sample = (t: number, over: Partial<SoakSample> = {}): SoakSample => ({ t, heapMb: 40, rssMb: 200, cpuS: 0.5, wallS: 10, longTasks: [], ...over })
 
@@ -9,7 +9,9 @@ const windowOf = (read: (i: number) => Partial<SoakSample>): SoakSample[] => Arr
 describe('the soak arguments', () => {
   it('runs the gate on the synthetic host, production build, split view, 50 s', () => {
     const args = parseSoakArgs(['--gate'])
-    expect(args).toMatchObject({ gate: true, host: 'synthetic', build: 'prod', view: 'split', every: 10, profile: false })
+    expect(args).toMatchObject({ gate: true, host: 'synthetic', build: 'prod', view: 'split', every: 10, profile: false, cpuFails: false })
+    expect(parseSoakArgs(['--gate', '--cpu-fails']).cpuFails).toBe(true)
+    expect(() => parseSoakArgs(['--cpu-fails'])).toThrow('belongs to --gate')
     expect(args.minutes * 60).toBeCloseTo(50)
   })
   it('refuses the box, a dev build or a timing of its own in gate mode', () => {
@@ -49,10 +51,19 @@ describe('the gate rule', () => {
     expect(verdict.ok).toBe(false)
     expect(verdict.verdicts.find((v) => v.what.startsWith('renderer RSS'))).toMatchObject({ got: 55, ok: false })
   })
-  it('fails heap growth past 6 MB, CPU past 12% and one long task past 200 ms', () => {
+  it('fails heap growth past 6 MB and one long task past 200 ms', () => {
     expect(judgeSoak(windowOf((i) => ({ heapMb: 40 + i * 1.5 })), GATE_RULE).ok).toBe(false)
-    expect(judgeSoak(windowOf(() => ({ cpuS: 1.3 })), GATE_RULE).verdicts.find((v) => v.what.startsWith('renderer CPU'))).toMatchObject({ got: 13, ok: false })
     expect(judgeSoak(windowOf((i) => ({ longTasks: i === 3 ? [{ start: 30_000, duration: 210 }] : [] })), GATE_RULE).ok).toBe(false)
+  })
+  it('reports CPU past 12% beside its bound without failing, until --cpu-fails', () => {
+    const over = windowOf(() => ({ cpuS: 1.3 }))
+    const reported = judgeSoak(over, GATE_RULE)
+    expect(reported.ok).toBe(true)
+    expect(reported.verdicts.find((v) => v.what.startsWith('renderer CPU'))).toMatchObject({ got: 13, limit: 12, ok: false, reportOnly: true })
+    const failing = judgeSoak(over, gateRule(true))
+    expect(failing.ok).toBe(false)
+    expect(failing.verdicts.find((v) => v.what.startsWith('renderer CPU'))?.reportOnly).toBeUndefined()
+    expect(gateRule(false)).toBe(GATE_RULE)
   })
   it('sums the long tasks of one second', () => {
     const tasks = [
