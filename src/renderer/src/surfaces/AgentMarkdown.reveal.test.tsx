@@ -47,7 +47,7 @@ describe("AgentMarkdown's phrase fade", () => {
     const words = "The reveal steps through whole words and each step fades in whole while the reply streams on ";
     stream(view.rerender, "", words);
     act(() => vi.advanceTimersByTime(REVEAL.stepMs * 3));
-    const steps = () => Array.from(view.container.querySelectorAll("[data-step]"));
+    const steps = () => Array.from(view.container.querySelectorAll("[data-reveal-step]"));
     expect(steps().length).toBeGreaterThan(1);
     const first = steps()[0];
     // No partial word on screen while it streams.
@@ -68,15 +68,15 @@ describe("AgentMarkdown's phrase fade", () => {
     expect(view.container.textContent).toContain("ends here.");
     expect(view.container.querySelector(".stream-step")).not.toBeNull();
     act(() => vi.advanceTimersByTime(REVEAL.fadeMs - 50));
-    expect(view.container.querySelector("[data-step]")).not.toBeNull();
+    expect(view.container.querySelector("[data-reveal-step]")).not.toBeNull();
     act(() => vi.advanceTimersByTime(100));
-    expect(view.container.querySelector("[data-step]")).toBeNull();
+    expect(view.container.querySelector("[data-reveal-step]")).toBeNull();
     expect(view.container.textContent).toContain("A short reply that ends here.");
   });
 
   it("mounts history without a span", () => {
     const view = render(<AgentMarkdown text="An old reply from history." />);
     act(() => vi.advanceTimersByTime(1000));
-    expect(view.container.querySelector("[data-step]")).toBeNull();
+    expect(view.container.querySelector("[data-reveal-step]")).toBeNull();
   });
 });

@@ -82,6 +82,19 @@ describe("ActivityThinkingRow", () => {
     expect(view.container.querySelector("[data-slot=text-pulse]")).toBeNull();
   });
 
+  it("a thought watched live that ends its group times itself by its settle", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(10_000);
+      const view = render(<ActivityThinkingRow block={thought({ ts: 10_000, streaming: true })} expandable />);
+      vi.setSystemTime(13_000);
+      view.rerender(<ActivityThinkingRow block={thought({ ts: 10_000 })} expandable />);
+      expect(screen.getByRole("button", { name: "Thought for 3s" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("settled: Thought for 4s, closed until clicked", () => {
     const view = render(<ActivityThinkingRow block={thought()} endTs={14_000} expandable />);
     const trigger = screen.getByRole("button", { name: "Thought for 4s" });

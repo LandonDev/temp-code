@@ -69,8 +69,17 @@ export function ActivityThinkingRow({
   const [opened, setOpened] = useState(false);
 
   const live = !!block.streaming;
+  // A thought that ends its group has no next row to time it by: the row
+  // that watched it end keeps the moment it settled, so it reads "Thought
+  // for 3s" rather than "Thought".
+  const [wasLive, setWasLive] = useState(live);
+  const [settledAt, setSettledAt] = useState<number | undefined>(undefined);
+  if (live !== wasLive) {
+    setWasLive(live);
+    if (!live) setSettledAt(Date.now());
+  }
   const line = live ? latestLine(block.text) : "";
-  const label = live ? "Thinking" : thoughtLabel(thoughtMs(block, endTs));
+  const label = live ? "Thinking" : thoughtLabel(thoughtMs(block, endTs ?? settledAt));
   const opens = !live && expandable;
 
   // One element tree for both states, so the label swaps and the sentence

@@ -29,7 +29,7 @@ function spans(node: Root | Element): Element[] {
   const out: Element[] = [];
   const walk = (n: Root | RootContent) => {
     if (n.type === "element") {
-      if (n.tagName === "span" && n.properties?.dataStep !== undefined) out.push(n);
+      if (n.tagName === "span" && n.properties?.dataRevealStep !== undefined) out.push(n);
       n.children.forEach(walk);
     } else if (n.type === "root") n.children.forEach(walk);
   };
@@ -62,7 +62,7 @@ describe("streamReveal", () => {
     // The first two are older than the fade: plain, but still their own spans,
     // so the young one keeps its element as the block grows.
     expect(spans(tree).map(young)).toEqual([false, false, true]);
-    expect(spans(tree).map((s) => s.properties?.dataStep)).toEqual([0, 1, 2]);
+    expect(spans(tree).map((s) => s.properties?.dataRevealStep)).toEqual([0, 1, 2]);
   });
 
   it("splits a step across inline elements", () => {
@@ -71,7 +71,7 @@ describe("streamReveal", () => {
     advance(REVEAL.stepMs);
     const tree = run("Plain and **bold text** after ");
     expect(spans(tree).map(text)).toEqual(["Plain", " and ", "bold text", " after"]);
-    expect(spans(tree).map((s) => s.properties?.dataStep)).toEqual([0, 1, 1, 1]);
+    expect(spans(tree).map((s) => s.properties?.dataRevealStep)).toEqual([0, 1, 1, 1]);
   });
 
   it("fades a reparsed block whole", () => {

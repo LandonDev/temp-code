@@ -9,7 +9,7 @@
  * It keeps a ledger per streamdown block, keyed by the block's first 32
  * rendered characters (text outside `pre`, `svg` and math): each pass, the
  * block's rendered text past what the ledger holds is a new step. Every
- * step's text is wrapped in a span (`data-step` its index) so the spans keep
+ * step's text is wrapped in a span (`data-reveal-step` its index) so the spans keep
  * their elements, and so their fades, as the block grows; only a step
  * younger than REVEAL.fadeMs carries `.stream-step`, which runs the fade. A
  * block whose text no longer starts with its ledger's (a paragraph turning
@@ -154,7 +154,7 @@ function wrapSteps(tree: Root, steps: Step[], t: number): void {
         next.push({
           type: "element",
           tagName: "span",
-          properties: young ? { className: [STEP_CLASS], dataStep: step } : { dataStep: step },
+          properties: young ? { className: [STEP_CLASS], dataRevealStep: step } : { dataRevealStep: step },
           children: [{ type: "text", value: value.slice(at - start, end - start) }],
         });
         at = end;
