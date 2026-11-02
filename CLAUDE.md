@@ -121,8 +121,9 @@ Two separate steps, on purpose, over one gate.
   everything; `--only a,b` / `--skip a,b` / `--verbose` for a hand run.
   - `commit`: typecheck, vitest, the electron-vite build and, after it in
     the same lane, the bundle-size check (scripts/check-bundle-size.ts).
-    `publish`: e2e-remote-fence, hub:test, ios:test, ios:test:client. A
-    proof that boots an instance belongs in `publish`.
+    `publish`: renderer-soak (the build lane, after the build; Mac only),
+    e2e-remote-fence, hub:test, ios:test, ios:test:client. A proof that
+    boots an instance belongs in `publish`.
   - Steps in one lane run in array order, one at a time; lanes run at
     once (typecheck, vitest and build + bundle-size together), with a combined status
     line on a terminal and `✓ step 12s` lines plus a per-step time table
@@ -319,19 +320,6 @@ app replaces itself from the feed, and only from the feed.
   full suite or a dev instance. The renderer's prettier style differs from
   the root config: never run prettier or `--fix` on src/renderer.
 
-## Approval toast updates
-`HiddenApprovalToasts` reads `sessionStore.getPendingApprovals()` through
-`usePendingApprovals`. The snapshot
-holds only ids, title, tool and label; it keeps its identity across unrelated
-folds. `pendingApprovalIndex` in `session.ts` shares the latest-undecided rule with
-`hasPendingApproval`; text folds carry the cached position forward. Block
-replacement, replay, close, removal and unload refresh the index with the
-store's other projections. Questions alone keep their existing card behavior.
-`chrome/toastSync.ts` signs each item's visible fields and calls Sonner only
-for added, changed or removed ids. Each owner dismisses its records and any
-secondary batch toasts on unmount; stale library loads cannot show them.
-Approval actions capture primitive ids and read the current action callbacks.
-
 ## Launch-time code caches: boot.js, the compile cache, the app scheme
 - `package.json` `main` is `out/main/boot.js` (src/main/boot.ts), a second
   main entry that in a packaged app enables Node's compile cache at
@@ -368,8 +356,11 @@ Approval actions capture primitive ids and read the current action callbacks.
   non-chat thread views (board, plan, research, fleet), the HTML render
   frame, the media viewer, the lightbox, the release notes with the
   changelog parser, the action-opened dialogs (`dialogsChunk` over
-  chrome/dialogs.ts, each mounted only while open) and the rail's
-  virtualizer (`virtualChunk`; the rail lists its cards plainly until it
+  chrome/dialogs.ts, each mounted only while open, the thread menu's
+  Resources, Archive, Mac bridge and Rename and the branch picker's switch
+  confirm among them), the failure card's account list (`accountsChunk`),
+  a workspace's threads beside the rail (`workspaceThreadsChunk`) and the
+  rail's virtualizer (`virtualChunk`; the rail lists its cards plainly until it
   lands, chrome/railRows.tsx). A mount
   point calls `chunk.surface(name, <SurfaceSkeleton kind=… />)`, which
   sits in a `ChunkBoundary` (a failed import or a render throw holds the
@@ -1650,6 +1641,12 @@ names the far child).
   `session.events` reads on the reader worker in 4 MiB pages
   (`registry.eventsAsync`), so the renderer's head walk ends on an empty
   page or at the tail's first row, never on a page shorter than it asked for.
+- The scroll engine's frame loop rests once its glide, runway and follow
+  spring have settled, running thread or not; new rows, the content
+  growing, a resize and the reader's input start it again
+  (docs/TRANSCRIPT.md "The follow loop rests when it has settled"). The
+  editor's navigation past the end of a file waits at most 120 frames
+  (surfaces/navigationRetry.ts).
 - Measure with `bun run script:measure-transcript-seed` once, then
   `TEMP_CODE_PROFILE=1 electron-vite build` and
   `bun scripts/measure-transcript.ts --label <name>` (an isolated instance
@@ -1704,6 +1701,55 @@ names the far child).
 - Proof: `bun run script:e2e-interactive-lane` (200 git.diffStats against a
   scratch repo beside a focused socket reading a 2,000-row thread; on the
   Mac: focused p95 3 ms, 15 git children where 200 runs would spawn 600).
+
+## The renderer over time: React 19.3.1, the soak, a push re-renders only what it changed
+- react and react-dom are 19.3.1: 19.2.8's development build wrote a
+  `performance.measure` with a props diff for every component re-render
+  with changed props and never cleared it, about 1.2 KB of native memory
+  each, 51,000 a minute on the box: the 8 GB a dev window reached. 19.3.1
+  clears each one at once (lib/reactDevMeasures.dom.test.tsx holds it).
+- `bun scripts/measure-renderer-soak.ts` soaks a built tree's window
+  (`--build prod|dev`, `--host synthetic|box`, `--view board|stream|split`,
+  `--minutes`, `--every`, `--label`, `--tree`, `--gate`; `--why` on a dev
+  build tallies the props React's diff names as changed and who rendered
+  them) on a fresh userData under /tmp/tc-soak, windowed (xvfb-run off
+  macOS), and judges it (scripts/lib/soakJudge.ts). The synthetic host is
+  scripts/lib/soakHost.ts (a real server in a child: a pinned master,
+  sixteen batch children, the fixed load of scripts/lib/soakLoad.ts;
+  `bun run script:soak-host-check` proves the load reaches a socket); box
+  mode pairs read-only and revokes at exit. The window opens through
+  `window.__monocode.open(sessionId, { split })` (every build; lib/monocodeOpen.ts)
+  and runs inactive and unthrottled (`TEMP_CODE_SOAK_WINDOW=1`, honoured
+  only with TEMP_CODE_USER_DATA; src/main/soakWindow.ts). The gate row
+  `renderer-soak` runs `--gate` (synthetic, production, split, a 50 s
+  window inside 90 s; heap after GC ≤ +6 MB, RSS after GC ≤ +30 MB, CPU ≤
+  12%, no long task over 200 ms, ≤ 250 ms of long tasks a second): in
+  release-publish it waits for `$STAGE/build.done`
+  (TEMP_CODE_SOAK_BUILD_DONE), elsewhere it reads out/bundle-map.json's
+  `head` stamp and builds when out/ is not HEAD's clean build. docs/box.md
+  "The renderer over time" has the numbers; docs/RENDERER_RETENTION.md the
+  bounds on the renderer's caches and logs.
+- A push re-renders only what it changed, and these keep it so: an equal
+  `session` push schedules no flush (store `mergeMeta` returns whether it
+  changed anything); a thread row keeps its object while it reads the same
+  (workspaceSessions `cachedRow`/`sameRow`), so do the rail's marks
+  (`useWorkspaceMarks` computes outside React and shares mark by mark),
+  the focused tree, the title bar's strip model and shelf
+  (lib/keptValue.ts `useKept` with `sameSet`/`sameData`), a board row's
+  meta while only the live context or an event's stamp changes
+  (`sameShownMeta`), the board's agent summaries per changed child, and
+  the approval toasts (`HiddenApprovalToasts` reads the store's
+  pending-approval index, `usePendingApprovals`, ids, title, tool and label
+  only, its builder installed by lib/approvalToast.ts so the store imports
+  no transcript wording; chrome/toastSync.ts calls sonner only for added,
+  changed or removed ids and dismisses an owner's toasts when it unmounts). A component that only needs the metas when a
+  menu opens or a click lands reads `sessionStore.metas()` then, never
+  `useSessionMetas()`: a hook subscribed to the metas renders its component
+  on every push, whatever it returns. Keep the hot parents compilable by
+  the React Compiler: no ref read or write during render (latest-callback
+  refs are written in a layout effect), no prop mutation, no cast in a
+  computed key, and a ref callback taken out of its hook's object before it
+  reaches a `ref` prop (`useDragResize` gives `attachPane`).
 
 ## The shape that scales: many threads exist, a bounded number run
 docs/box.md "The shape that scales" has the before numbers, each step's

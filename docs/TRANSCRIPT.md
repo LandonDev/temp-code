@@ -220,6 +220,17 @@ foreground, the same words the group line uses); the components only draw it.
   row measured above moves a glide in flight with the content. Jumps and a
   burst while following glide on `DUR.drawer` `EASE_OUT`, the runway
   retires on `DUR.base`, all read through `cubicBezier` (lib/ease.ts).
+- **The follow loop rests when it has settled.** The scroll engine's
+  frame loop (`tick`) runs while a glide, the runway's retreat or the
+  follow spring has somewhere to go, and stops once all three have
+  settled, running thread or not. New rows, the content growing (the
+  content ResizeObserver), a viewport resize and the reader's wheel or keys
+  start it again. Before 2026-11-02 it asked for a frame for as long as the
+  thread ran: one busy transcript on screen read `clientHeight` and
+  `scrollHeight` every frame through a silent tool wait (465 ms a minute
+  and 3,614 style recalcs a minute on the box, against 929 on an idle
+  board). Test: AgentTranscript.window.test.tsx "AgentTranscript follow
+  loop".
 - **Markdown parses off the main thread.** A settled markdown row asks
   `lib/markdownParse.ts` for its tree; `lib/markdown.worker.ts` runs
   streamdown's own block split and remark → rehype chain (shared through

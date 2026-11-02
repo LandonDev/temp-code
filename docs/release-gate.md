@@ -12,7 +12,7 @@ file. A sibling change that needs a new check (the bundle-size check after
 | tier | steps | runs |
 | --- | --- | --- |
 | `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master |
-| `publish` | e2e-remote-fence, hub, ios, ios-client | before signing in `release:publish`; and in the hook when a commit touches a guarded path. hub, ios and ios-client are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
+| `publish` | renderer-soak, e2e-remote-fence, hub, ios, ios-client | before signing in `release:publish`; and in the hook when a commit touches a guarded path. renderer-soak, hub, ios and ios-client are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
 
 Guarded paths (`TIER_PATHS`): `ios/**`, `scripts/gen-swift-contract.ts`,
 `src/shared/wireSchemas.ts`, `src/shared/contract*.ts`,
@@ -22,6 +22,35 @@ Guarded paths (`TIER_PATHS`): `ios/**`, `scripts/gen-swift-contract.ts`,
 path since that ref that hits the map pulls its tier in, so a contract change
 still cannot land stale Swift between publishes. A proof that boots an
 instance belongs in `publish`.
+
+## The renderer soak
+
+`renderer-soak` runs `bun scripts/measure-renderer-soak.ts --gate`: the
+production build's window, inactive and unthrottled, under the synthetic
+host's load (scripts/lib/soakHost.ts: a pinned master, sixteen batch
+children, streaming text and a running shell step) with the board and a
+streaming transcript side by side. Ten seconds to warm up, then a 50 s
+window sampled every 10 s, inside a hard 90 s from launch to teardown.
+It passes when heap after GC grows at most 6 MB and renderer RSS after GC
+at most 30 MB across the window, the renderer averages at most 12% of one
+core, no long task passes 200 ms and long tasks take at most 250 ms of any
+second (scripts/lib/soakJudge.ts `GATE_RULE`). The bounds are sized to
+catch a leak of the 2026-11-01 class (the dev build's +66 MB a minute
+fails the 30 MB rule in under a minute) and a main thread that never
+rests, not small drifts; they are never raised to make a run pass.
+
+It reads `out/`, so it sits in the `build` lane after the build and the
+bundle-size check. In `release:publish` the gate runs beside the build, so
+the script touches `$STAGE/build.done` once its build and size check pass
+and starts the gate with `TEMP_CODE_SOAK_BUILD_DONE` naming that file; the
+soak waits for it (at most 10 minutes) and then runs its 90 s while the
+app signs, adding nothing to the publish. Anywhere else it reads the
+stamp the bundle-map plugin writes into `out/bundle-map.json` (`head`:
+HEAD's commit and whether the tracked tree was clean) and builds first
+when `out/` is not HEAD's clean build. The gate forwards SIGTERM and
+SIGINT to its steps' process groups, so the publish's exit trap after a
+failed build stops the soak, which kills every process carrying its
+instance's TEMP_CODE_USER_DATA.
 
 ## The command
 
