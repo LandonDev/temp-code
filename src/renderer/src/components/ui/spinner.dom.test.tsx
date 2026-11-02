@@ -22,14 +22,17 @@ describe("Spinner", () => {
     vi.clearAllMocks();
   });
 
-  it("turns as a Web Animation, never a CSS one, and stops when it unmounts", () => {
-    const { container, unmount } = render(<Spinner />);
-    const svg = container.querySelector("[data-slot=spinner]")!;
+  it("turns its HTML box as a Web Animation, never the svg or a CSS animation, and stops when it unmounts", () => {
+    const { container, unmount } = render(<Spinner className="size-3" />);
+    const box = container.querySelector("[data-slot=spinner]")!;
+    expect(box.tagName).toBe("SPAN");
+    expect(box.className).toContain("size-3");
+    expect(box.querySelector("svg")?.getAttribute("class")).toBe("size-full");
     expect(animate).toHaveBeenCalledTimes(1);
     expect(animate).toHaveBeenCalledWith(SPINNER_TURN.keyframes, SPINNER_TURN.timing);
-    expect(animate.mock.contexts[0]).toBe(svg);
-    expect(svg.hasAttribute("data-turning")).toBe(true);
-    expect(svg.getAttribute("class")).not.toMatch(/animate-/);
+    expect(animate.mock.contexts[0]).toBe(box);
+    expect(box.hasAttribute("data-turning")).toBe(true);
+    expect(container.innerHTML).not.toMatch(/animate-/);
     unmount();
     expect(cancel).toHaveBeenCalledTimes(1);
   });

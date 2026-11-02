@@ -45,9 +45,9 @@ export const SCROLL_IDLE_MS = 900;
 export const FOLD_HOLD_MS = 600;
 
 /**
- * The spinner's 900ms turn (components/ui/spinner.tsx), run as a Web
- * Animation: the same turn as a CSS animation made Blink run a main-thread
- * frame at every display frame while any spinner showed.
+ * The spinner's 900ms turn (components/ui/spinner.tsx), a Web Animation on
+ * the HTML box around the arc: a turn on the svg made Blink run a
+ * main-thread frame at every display frame while any spinner showed.
  */
 export const SPINNER_TURN: { keyframes: Keyframe[]; timing: KeyframeAnimationOptions } = {
   keyframes: [{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }],
