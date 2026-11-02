@@ -49,6 +49,7 @@ import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Cdp, REPO, portFree, sleep, type Target } from './lib/packagedApp'
 import { profileSummary, type CpuProfile } from './profile-summary'
+import { summarizeTrace, TRACE_CATEGORIES, traceMarkdown, type TraceEvent, type TraceSummary } from './lib/soakTrace'
 import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSoak, parseSoakArgs, REACT_MEASURE_PREFIX, type BuildStamp, type SoakSample } from './lib/soakJudge'
 
 const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
@@ -570,6 +571,25 @@ async function freshBuild(): Promise<void> {
   execFileSync(join(tree, 'node_modules', '.bin', 'electron-vite'), ['build'], { cwd: tree, stdio: ['ignore', 'ignore', 'inherit'] })
 }
 
+/** A trace of the window after the soak's own: every running animation is
+ *  restarted first, so the trace records whether each runs on the compositor. */
+async function traceFrames(c: Cdp, seconds: number): Promise<TraceSummary> {
+  log(`trace, ${seconds} s`)
+  const events: TraceEvent[] = []
+  const done = new Promise<void>((ok) => c.on('Tracing.tracingComplete', () => ok()))
+  c.on('Tracing.dataCollected', (p) => events.push(...((p as { value: TraceEvent[] }).value)))
+  await c.send('Tracing.start', { categories: TRACE_CATEGORIES, transferMode: 'ReportEvents' })
+  await sleep(200)
+  await c.eval(`document.getAnimations().filter((a) => a.playState === 'running').map((a) => (a.cancel(), a.play())).length`)
+  await sleep(seconds * 1000)
+  await c.send('Tracing.end')
+  await done
+  writeFileSync(join(ROOT, `${args.label}.trace.json`), JSON.stringify(events))
+  const summary = summarizeTrace(events)
+  for (const line of traceMarkdown(summary).slice(0, 3)) if (line) log(line)
+  return summary
+}
+
 async function main(): Promise<void> {
   mkdirSync(ROOT, { recursive: true })
   if (args.gate) await freshBuild()
@@ -589,6 +609,7 @@ async function main(): Promise<void> {
   const shown = args.host === 'synthetic' ? await startSynthetic(c) : await pairBox(c)
   await openView(c, shown)
   await c.eval(OBSERVERS)
+  if (args.evalJs) log(`experiment: ${JSON.stringify(await c.eval(args.evalJs))}`)
   if (why) await c.eval('window.__soakWhyOn = true')
   await c.send('HeapProfiler.enable')
 
@@ -673,6 +694,7 @@ async function main(): Promise<void> {
     throw new Error("a dev build showed no React component measures: React renamed or dropped its track, and the render counts are blind")
   }
 
+  const trace = args.traceS ? await traceFrames(c, args.traceS) : null
   let profile: string | null = null
   if (args.profile) {
     log('CPU profile, 60 s')
@@ -700,7 +722,7 @@ async function main(): Promise<void> {
   const owners = why ? await c.eval<[string, number][]>('window.__soakOwners ? window.__soakOwners() : []') : []
   writeFileSync(
     join(ROOT, `${args.label}.json`),
-    JSON.stringify({ label: args.label, args, tree, sha, platform: process.platform, memory: linux ? 'pss' : 'rss', shown, rule, verdict, rows, topRenders, ...(why ? { whyTop, owners } : {}) }, null, 1)
+    JSON.stringify({ label: args.label, args, tree, sha, platform: process.platform, memory: linux ? 'pss' : 'rss', shown, rule, verdict, rows, topRenders, trace, ...(why ? { whyTop, owners } : {}) }, null, 1)
   )
   const md = [
     `# ${args.label}: ${args.host} host, ${args.build} build, ${args.view} view (${sha ?? 'no git'}, ${process.platform})`,
@@ -721,6 +743,7 @@ async function main(): Promise<void> {
       ? ['', 'Top re-rendered components (changed props):', '', `| component | renders |${why ? ' changed props |' : ''}`, `|---|---|${why ? '---|' : ''}`, ...topRenders.map(([n, k]) => `| ${n} | ${k} |${why ? ` ${(whyTop.find(([m]) => m === n)?.[1] ?? []).map(([p, x]) => `${p} ${x}`).join(', ')} |` : ''}`)]
       : []),
     ...(owners.length ? ['', 'Re-renders by owner chain (component < owner < its owner):', '', '| chain | renders |', '|---|---|', ...owners.map(([k, n]) => `| ${k} | ${n} |`)] : []),
+    ...(trace ? ['', ...traceMarkdown(trace)] : []),
     ...(profile ? ['', '```', profile, '```'] : [])
   ].join('\n')
   writeFileSync(join(ROOT, `${args.label}.md`), md + '\n')

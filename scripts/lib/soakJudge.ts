@@ -40,6 +40,10 @@ export interface SoakArgs {
   profile: boolean
   /** --cpu-fails: the gate's CPU bound fails the run again instead of being reported */
   cpuFails: boolean
+  /** --trace <s>: after the window, a trace that long read into who asks for each frame (scripts/lib/soakTrace.ts) */
+  traceS: number
+  /** --eval <js>: an experiment run in the page once the view is open, before the warm-up */
+  evalJs: string | null
 }
 
 /** The gate's run: 20 s to launch, pair and open, 10 s to warm up, a 50 s window, then teardown, inside 90 s. */
@@ -71,6 +75,8 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   if (every > minutes * 60) throw new Error('--every is longer than the run')
   const label = flag('--label') ?? (gate ? 'gate' : `${host}-${build}-${view}`)
   if (!/^[a-z0-9-]+$/i.test(label)) throw new Error('--label takes letters, digits and dashes')
+  const traceS = Number(flag('--trace') ?? '0')
+  if (!(traceS >= 0 && traceS <= 30)) throw new Error('--trace takes seconds, 0 to 30')
   const port = Number(flag('--port') ?? '9251')
   if (!Number.isInteger(port) || port < 1024) throw new Error('--port takes a debug port number')
   return {
@@ -86,7 +92,9 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
     master: flag('--master') ?? null,
     thread: flag('--thread') ?? null,
     profile: !gate && !argv.includes('--no-profile'),
-    cpuFails: argv.includes('--cpu-fails')
+    cpuFails: argv.includes('--cpu-fails'),
+    traceS,
+    evalJs: flag('--eval') ?? null
   }
 }
 
