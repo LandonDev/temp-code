@@ -8,6 +8,7 @@ import { appIndexUrl } from './appScheme'
 import { badgeText, shouldBounce } from './dockBadge'
 import { killPtysForOwner } from './pty'
 import { QuitGate } from './quitGate'
+import { soakWindow } from './soakWindow'
 import { bootMark } from './server/boot'
 
 /**
@@ -212,6 +213,8 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
+      // The soak's window keeps its timers and paint behind other windows (soakWindow.ts).
+      backgroundThrottling: !soakWindow(),
       additionalArguments: [`--tc-window-slot=${slot}`]
     }
   })
@@ -223,7 +226,8 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
 
   win.on('ready-to-show', () => {
     bootMark('ready-to-show', slot)
-    win.show()
+    if (soakWindow()) win.showInactive()
+    else win.show()
   })
   win.on('focus', () => {
     lastFocusedId = id

@@ -13,6 +13,7 @@ import {
 import { smoke } from "./smoke";
 import { focusSignal } from "./commands";
 import { sessionStore } from "./store";
+import { monocodeOpen } from "../monocodeOpen";
 import { environmentStore } from "../../stores/environment";
 import { refreshCatalog } from "./catalog";
 import { dropHarnessModels, setDefaultCatalogEnvironment } from "../models";
@@ -31,6 +32,8 @@ declare global {
       environment: typeof environmentStore;
       loadSavedEnvironments: typeof loadSavedEnvironments;
       smoke: typeof smoke;
+      /** Opens a thread as a click would, beside the focused pane with `split` (lib/monocodeOpen.ts). */
+      open: typeof monocodeOpen;
     };
   }
 }
@@ -47,7 +50,7 @@ const TAG = "[monocode:server]";
  */
 export function initServerLink(): void {
   if (typeof window !== "undefined") {
-    window.__monocode = { registry, sessionStore, environment: environmentStore, loadSavedEnvironments, smoke };
+    window.__monocode = { registry, sessionStore, environment: environmentStore, loadSavedEnvironments, smoke, open: monocodeOpen };
     registry.installWindowHooks();
     installFocusHooks();
     trackLastSeen();

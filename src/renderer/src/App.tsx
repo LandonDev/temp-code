@@ -254,6 +254,7 @@ import type { ThreadRules } from "@server/shared/rules";
 import * as serverCommands from "./lib/tcserver/commands";
 import { requestTranscriptJump } from "./lib/transcriptJump";
 import { installAppFacade } from "./lib/appFacade";
+import { setMonocodeOpen } from "./lib/monocodeOpen";
 import {
   setTabSplitRatio,
 } from "./lib/workspaceFocus";
@@ -3258,6 +3259,17 @@ export default function App() {
       send: (id, text) => onSubmit(id, text),
     });
   }, [execute, onSelectHistorySession, onSubmit]);
+
+  // `window.__monocode.open` (lib/monocodeOpen.ts): every build's way for a
+  // measurement script to open a thread, through the same handlers a click uses.
+  useEffect(() => {
+    setMonocodeOpen({
+      open: (id) => onSelectHistorySession(id),
+      ensure: ensureOpenSession,
+      beside: (sourceId, session) => openSessionBesideRef.current?.(sourceId, session, session.cwd),
+    });
+    return () => setMonocodeOpen(null);
+  }, [ensureOpenSession, onSelectHistorySession]);
 
   useEffect(() => {
     const keyCommand = createKeyResolver();

@@ -6,6 +6,7 @@ import { flushCompileCache, getCompileCacheDir } from 'node:module'
 import { bootMark } from './server/boot'
 import { noteInstallOnQuit, registerUpdates, selfUpdate } from './update'
 import { applyHarness, bakedHarness } from './harness'
+import { SOAK_SWITCHES, soakWindow } from './soakWindow'
 import { configureAliax, upstream } from './aliax'
 import { loadEnvironmentId } from './server/remote/environment'
 import { aliaxCallCounts, registerAliaxPages } from './aliaxPages'
@@ -83,6 +84,8 @@ if (process.env.TEMP_CODE_USER_DATA) {
 if (process.env.TEMP_CODE_DEBUG_PORT) {
   app.commandLine.appendSwitch('remote-debugging-port', process.env.TEMP_CODE_DEBUG_PORT)
 }
+// The renderer soak's window: shown inactive and never throttled (soakWindow.ts).
+if (soakWindow()) for (const name of SOAK_SWITCHES) app.commandLine.appendSwitch(name)
 // An agent host with no desktop (headless.ts): no window, menu, dock or
 // updater, and no GPU worth probing. Without any display server at all,
 // Chromium's headless Ozone backend stands in for one so the hidden
