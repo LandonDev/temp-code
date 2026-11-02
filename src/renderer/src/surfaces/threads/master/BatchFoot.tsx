@@ -158,7 +158,7 @@ type StepRowProps = {
   onFold: (id: string, hide: boolean) => void;
 };
 
-/** A step's own facts, by value: the steps are rebuilt on every batch push. */
+/** A step's own facts, by value: the steps are rebuilt on every batch push. The log is bounded (200 lines), so it is read whole. */
 function sameStep(a: LiveStep, b: LiveStep): boolean {
   return (
     a === b ||
@@ -172,7 +172,7 @@ function sameStep(a: LiveStep, b: LiveStep): boolean {
       a.endedAt === b.endedAt &&
       JSON.stringify(a.progress) === JSON.stringify(b.progress) &&
       a.log.length === b.log.length &&
-      a.log[a.log.length - 1] === b.log[b.log.length - 1])
+      a.log.every((line, i) => line === b.log[i]))
   );
 }
 

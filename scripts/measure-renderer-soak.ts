@@ -9,7 +9,7 @@
  *   bun scripts/measure-renderer-soak.ts --build dev --label dev-board       # needs port 5173 free
  *   bun scripts/measure-renderer-soak.ts --gate                              # the release gate's 90 s run
  *
- * --host synthetic (default) boots scripts/lib/soakHost.ts in a child (a
+ * --host synthetic (default) boots scripts/soak-host.ts in a child (a
  *   pinned master, sixteen batch children, the fixed load of soakLoad.ts)
  *   and pairs with its operate key; box pairs read-only with the real box
  *   (the box's local socket when this runs on the box, else a pairing code
@@ -62,6 +62,7 @@ const CLIENT = 'renderer-soak'
 const BOX_ORIGIN = 'https://tempcode.landonhale.com'
 const BOX_SERVER_JSON = '/srv/agents/temp-code-data/server.json'
 const linux = process.platform === 'linux'
+const mac = process.platform === 'darwin'
 const launchedAt = Date.now()
 const log = (msg: string): void => console.log(`[soak ${((Date.now() - launchedAt) / 1000).toFixed(1).padStart(5)}s] ${msg}`)
 
@@ -372,13 +373,38 @@ const PAGE_STATS = `(() => ({
 // ── the host and the pairing ─────────────────────────────────────────────
 type Shown = { environmentId: string; masterId: string; threadId: string }
 
+/** How the synthetic host runs: bun with the electron stub on Linux (relative
+ *  paths from the checkout, which the host's port sweep knows for a proof);
+ *  on macOS bundled by esbuild under node, since the Mac's bun has no
+ *  node:sqlite (scripts/ios-client-test.ts runs its server the same way). */
+function hostCommand(): [string, string[]] {
+  if (!mac) return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts']]
+  const out = join(REPO, 'scripts', '.out', 'soak-host.mjs')
+  execFileSync(
+    join(REPO, 'node_modules', '.bin', 'esbuild'),
+    [
+      'scripts/soak-host.ts',
+      '--bundle',
+      '--platform=node',
+      '--format=esm',
+      '--packages=external',
+      '--alias:@shared=./src/shared',
+      '--alias:aliax-core=./node_modules/aliax-core/src',
+      '--alias:electron=./scripts/electron-shim.mjs',
+      `--outfile=${out}`,
+      '--log-level=warning'
+    ],
+    { cwd: REPO, stdio: ['ignore', 'ignore', 'inherit'] }
+  )
+  return ['node', [out]]
+}
+
 async function startSynthetic(c: Cdp): Promise<Shown> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith('TEMP_CODE_') && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v
   env.NODE_ENV = 'production'
-  // Relative paths from the checkout: the host's port sweep knows `--preload scripts/lib/electron-stub.ts` for a proof, never a dev server.
   const hostLog = join(ROOT, `${args.label}.host.log`)
-  soakHost = spawn(process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/lib/soakHost.ts'], {
+  soakHost = spawn(...hostCommand(), {
     cwd: REPO,
     env,
     stdio: ['pipe', 'pipe', openSync(hostLog, 'w')],

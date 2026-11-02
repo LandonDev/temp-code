@@ -15,9 +15,8 @@
  * No thread has a harness: the registry's boot, send and liveness sweep are
  * stood in for, so nothing spawns a CLI or flips a seeded row to stopped.
  *
- * Run as a script (`bun --preload scripts/lib/electron-stub.ts
- * scripts/lib/soakHost.ts`) it prints ONE JSON line on stdout with the
- * address, the seeded ids and an operate key, then runs the load until
+ * As a process (scripts/soak-host.ts) it prints ONE JSON line on stdout with
+ * the address, the seeded ids and an operate key, then runs the load until
  * SIGTERM, SIGINT or stdin closes. The key is in that line and nowhere else:
  * the soak (scripts/measure-renderer-soak.ts) moves it into its window and
  * never logs it. scripts/soak-host-check.ts proves a client socket receives
@@ -207,21 +206,4 @@ export async function startSoakHost(): Promise<SoakHost> {
       rmSync(root, { recursive: true, force: true })
     }
   }
-}
-
-if (import.meta.main) {
-  const host = await startSoakHost()
-  host.startLoad()
-  // JSON drops the two functions; the rest is the line the soak reads.
-  process.stdout.write(JSON.stringify({ ready: true, ...host }) + '\n')
-  let closing = false
-  const quit = (): void => {
-    if (closing) return
-    closing = true
-    void host.close().finally(() => process.exit(0))
-  }
-  process.on('SIGTERM', quit)
-  process.on('SIGINT', quit)
-  process.stdin.on('end', quit)
-  process.stdin.resume()
 }
