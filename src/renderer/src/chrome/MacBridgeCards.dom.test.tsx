@@ -37,7 +37,8 @@ const toasts = vi.hoisted(() => {
 })
 vi.mock('sonner', () => ({ toast: toasts.toast }))
 
-const { MacBridgeThreadCards, MacBridgeToasts } = await import('./MacBridgeCards')
+const { MacBridgeToasts } = await import('./MacBridgeCards')
+const { MacBridgeThreadCards } = await import('./MacBridgeThreadCards')
 
 const req = (id: string, over: Partial<MacBridgeRequest> = {}): MacBridgeRequest => ({
   id,

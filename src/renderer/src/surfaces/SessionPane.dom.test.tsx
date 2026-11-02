@@ -25,7 +25,7 @@ vi.mock("../lib/recents", () => ({ looksLikeProject: () => true }));
 vi.mock("./AgentTranscript", () => ({ AgentTranscript: () => null }));
 // Every chunk the pane warms is a stub, whichever ones it names: a new
 // chunk import never leaves this suite red.
-vi.mock("./chunks", () => new Proxy({}, { has: (_target, key) => key !== "then", get: (_target, key) => (key === "then" ? undefined : {}) }));
+vi.mock("./chunks", () => new Proxy({}, { has: (_target, key) => key !== "then", get: (_target, key) => (key === "then" ? undefined : { surface: () => () => null }) }));
 vi.mock("../lib/lazyChunk", async (importOriginal) => ({ ...(await importOriginal<typeof import("../lib/lazyChunk")>()), preloadWhenIdle: () => {} }));
 vi.mock("./EmptySession", () => ({ EmptySession: () => <div data-testid="empty-session" /> }));
 vi.mock("./threads/ThreadView", () => ({ ThreadView: () => <div data-testid="thread-view" /> }));

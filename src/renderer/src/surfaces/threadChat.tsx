@@ -15,7 +15,6 @@ import { AppshotFlyIn } from "../chrome/AppshotFlyIn";
 import { Composer } from "../chrome/Composer";
 import { ConnectionLine, useEnvironmentBlock } from "../chrome/ConnectionLine";
 import { ChevronDown } from "../chrome/icons";
-import { MacBridgeThreadCards } from "../chrome/MacBridgeCards";
 import { MessageQueue, visibleQueue } from "../chrome/MessageQueue";
 import { SessionReview } from "../chrome/SessionReview";
 import type { ComposerIntent } from "../lib/composerAction";
@@ -47,6 +46,10 @@ import { WorkingStrip } from "./threads/WorkingStrip";
 import { rightPanel } from "../lib/rightPanel";
 import { desktopOnly } from "../lib/nativeWeb";
 import { askOnGesture } from "../lib/preconnect";
+import { macBridgeChunk } from "./chunks";
+
+/** A box thread's waiting Mac bridge card, loaded once one waits. */
+const MacBridgeThreadCards = macBridgeChunk.surface("MacBridgeThreadCards");
 
 /** The jump button enters as a popover does (docs/DESIGN.md "Motion values"):
  *  fade and scale 0.95 to 1 over --dur-base, as one transform; it leaves on

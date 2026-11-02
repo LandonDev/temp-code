@@ -35,8 +35,6 @@ import { subscribeEnvironmentSwitch, workspaceToLandOn } from "./lib/environment
 import { markAllSeen } from "./lib/sessionSeen";
 import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
 import { MenuBar } from "./chrome/MenuBar";
-import { FilePicker } from "./chrome/FilePicker";
-import { SymbolPicker } from "./chrome/SymbolPicker";
 import { closeLightbox, isLightboxOpen, stepLightbox } from "./chrome/lightboxStore";
 import {
   closeHtmlRenderOverlay,
@@ -288,7 +286,7 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, dialogsChunk, inboxChunk, notesChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
+import { aliaxChunk, dialogsChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
@@ -300,6 +298,8 @@ const AliaxPagesView = aliaxChunk.surface("AliaxPagesView", <SurfaceSkeleton kin
 const SearchView = searchChunk.surface("SearchView", <SurfaceSkeleton kind="page" label="Loading search" />);
 // The action-opened dialogs, mounted only while open (chrome/dialogs.ts).
 const ThreadBatchDialog = dialogsChunk.surface("ThreadBatchDialog");
+const FilePicker = pickersChunk.surface("FilePicker");
+const SymbolPicker = pickersChunk.surface("SymbolPicker");
 const WhatsNewDialog = dialogsChunk.surface("WhatsNewDialog");
 const NewWorkspaceDialog = dialogsChunk.surface("NewWorkspaceDialog");
 const RemoteFolderDialog = dialogsChunk.surface("RemoteFolderDialog");
