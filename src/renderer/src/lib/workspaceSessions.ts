@@ -116,7 +116,25 @@ const sameList = <T>(a: readonly T[] | undefined, b: readonly T[] | undefined): 
   a === b ||
   (!!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]));
 
-/** `threadRow`, but the cached row when nothing it reads has changed. */
+/** Two rows that read the same: the house lists by identity, anything else
+ *  by value (a meta arrives as fresh JSON on every push, so its arrays and
+ *  objects are new even when nothing in them changed). */
+function sameRow(a: ThreadRow, b: ThreadRow): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof ThreadRow>;
+  for (const key of keys) {
+    const x = a[key];
+    const y = b[key];
+    if (x === y) continue;
+    if (key === "children" || key === "batch") return false;
+    if (typeof x !== "object" || typeof y !== "object" || x === null || y === null) return false;
+    if (JSON.stringify(x) !== JSON.stringify(y)) return false;
+  }
+  return true;
+}
+
+/** `threadRow`, but the cached row when nothing it reads has changed: a meta
+ *  that changed only in what no row shows (the live context, an event's
+ *  stamp) keeps the row it had, so no card under it renders again. */
 function cachedRow(
   cache: RowCache | undefined,
   next: Map<string, CachedRow> | undefined,
@@ -142,7 +160,8 @@ function cachedRow(
     return hit.row;
   }
   const base = threadRow(meta, lastSeen, floor, housed);
-  const row = kids || batch ? { ...base, ...(kids ? { children: kids } : {}), ...(batch ? { batch } : {}) } : base;
+  const built = kids || batch ? { ...base, ...(kids ? { children: kids } : {}), ...(batch ? { batch } : {}) } : base;
+  const row = hit && sameRow(hit.row, built) ? hit.row : built;
   next?.set(meta.id, { meta, seen, floor, housed, kids, batch, row });
   return row;
 }

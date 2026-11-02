@@ -8,6 +8,7 @@ import { RowsMenu, type MenuRow } from "../../../chrome/menuRows";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
 import { HostGlyph } from "../../../chrome/HostGlyph";
 import { cn } from "../../../lib/cn";
+import { useKept } from "../../../lib/keptValue";
 import * as commands from "../../../lib/tcserver/commands";
 import { asHarness, useSessionMeta } from "../../../lib/tcserver/store";
 import type { BoardDigest } from "@server/shared/contract-batch";
@@ -61,6 +62,27 @@ export type HostGlyphOf = (environmentId: string, title?: string) => ReactNode;
 
 const hostGlyph: HostGlyphOf = (environmentId, title) => <HostGlyph environmentId={environmentId} title={title} className="shrink-0" />;
 
+/** What a board row never shows: the live context and each event's stamp. */
+const UNSHOWN = new Set<string>(["context", "lastEventAt"]);
+
+/** True when the two metas differ only in what a row never shows. */
+export function sameShownMeta(a: SessionMeta, b: SessionMeta): boolean {
+  if (a === b) return true;
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (UNSHOWN.has(key)) continue;
+    const x = (a as unknown as Record<string, unknown>)[key];
+    const y = (b as unknown as Record<string, unknown>)[key];
+    if (x === y) continue;
+    if (typeof x !== "object" || typeof y !== "object" || x === null || y === null) return false;
+    if (JSON.stringify(x) !== JSON.stringify(y)) return false;
+  }
+  return true;
+}
+
+/** The meta a row last drew, kept while only what it never shows changes, so
+ *  the row and everything under it render again only for what they show. */
+const sameShown = (kept: SessionMeta | null, next: SessionMeta | null): boolean => kept !== null && next !== null && sameShownMeta(kept, next);
+
 export const MasterRow = memo(function MasterRow({
   rowRef,
   landed,
@@ -81,13 +103,13 @@ export const MasterRow = memo(function MasterRow({
   /** The thread's menu: the ⋯ button's rows (a right-click reads `data-menu-id`). */
   menu: RowMenu;
 }) {
-  const meta = useRowMeta(rowRef);
+  const meta = useKept(useRowMeta(rowRef), sameShown);
   const plan = useSessionMeta(rowRef.planId);
   const digest = useBoardDigest(rowRef.id);
   const agents = useRowAgents(rowRef.id);
   if (!meta) return null;
   return (
-    <MasterRowView
+    <ShownRow
       meta={meta}
       planTitle={plan?.title}
       planId={plan?.id}
@@ -104,6 +126,12 @@ export const MasterRow = memo(function MasterRow({
 });
 
 const stop = (e: { stopPropagation(): void }) => e.stopPropagation();
+
+/** The view, drawn again only when what it is handed changes: the row's own
+ *  subscriptions wake it on every push of its thread, most of which it keeps. */
+const ShownRow = memo(function ShownRow(props: Parameters<typeof MasterRowView>[0]) {
+  return <MasterRowView {...props} />;
+});
 
 export function MasterRowView({
   meta,

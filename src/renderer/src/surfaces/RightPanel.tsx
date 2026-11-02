@@ -120,24 +120,27 @@ export function RightPanel(props: RightPanelProps) {
     initial: state.width,
     onCommit: (next) => rightPanel.setWidth(session.id, next),
   });
+  // Taken apart at once: the pane's ref callback goes to a `ref` prop, which
+  // would make the React Compiler read the whole object as a ref.
+  const { attachPane, dragging, onPointerDown, reset, resizeTo, width } = resize;
   const sashKeys = useSashKeys({
     label: "Resize panel",
     orientation: "vertical",
     // The drawn width: a fitted panel's keys step from what is on screen.
-    value: props.width ?? resize.width,
+    value: props.width ?? width,
     min: PANEL_MIN,
     max: Math.min(PANEL_MAX, props.maxWidth ?? Math.floor(window.innerWidth * 0.5)),
     getSpan: (handle) => handle.parentElement?.parentElement?.getBoundingClientRect().width || window.innerWidth,
     direction: -1,
-    onChange: resize.resizeTo,
-    onReset: resize.reset,
+    onChange: resizeTo,
+    onReset: reset,
   });
 
   if (!state.open || !section) return null;
 
   return (
     <aside
-      ref={resize.setPaneRef}
+      ref={attachPane}
       aria-label="Thread panel"
       className="relative flex shrink-0 flex-col border-l border-border bg-sidebar"
       style={{ width: props.width ?? state.width, contain: "strict" }}
@@ -174,9 +177,9 @@ export function RightPanel(props: RightPanelProps) {
       <div
         {...sashKeys}
         className={`absolute inset-y-0 -left-px z-10 w-1.5 cursor-col-resize touch-none outline-none focus-visible:bg-accent ${
-          resize.dragging ? "bg-foreground/12" : "hover:bg-foreground/7"
+          dragging ? "bg-foreground/12" : "hover:bg-foreground/7"
         }`}
-        onPointerDown={resize.onPointerDown}
+        onPointerDown={onPointerDown}
       />
     </aside>
   );

@@ -71,10 +71,10 @@ import { threadsToMarkRead } from "../lib/markRead";
 import { batchActionOfMenuId, batchCounts, batchMenuRows, type BatchCounts } from "../lib/threadBatchMenu";
 import { requestThreadBatch, type BatchScope } from "../lib/threadBatch";
 import { selectionFor } from "../lib/threadBatchSelection";
-import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
+import { loadLastSeen, seenFloor } from "../lib/sessionSeen";
 import { markAllSeen, markSessionsSeen } from "../lib/sessionSeen";
-import { useSessionMetas } from "../lib/tcserver/store";
-import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import { sessionStore } from "../lib/tcserver/store";
+import { workspaceStore } from "../lib/tcserver/workspaces";
 import { subscribeProjectRailActions } from "../lib/projectRailActions";
 import {
   useWorkspaces,
@@ -206,16 +206,19 @@ export function ProjectRail({
     initial: loadProjectRailWidth(),
     onCommit: saveProjectRailWidth,
   });
+  // Taken apart at once: the pane's ref callback goes to a `ref` prop, which
+  // would make the React Compiler read the whole object as a ref.
+  const { attachPane, dragging, onPointerDown, reset, resizeTo, width } = resize;
   const sashKeys = useSashKeys({
     label: "Resize workspace rail",
     orientation: "vertical",
-    value: resize.width,
+    value: width,
     min: PROJECT_RAIL_WIDTH_MIN,
     max: Math.min(PROJECT_RAIL_WIDTH_MAX, Math.floor(window.innerWidth * 0.35)),
     getSpan: (handle) => handle.closest(".app-shell")?.getBoundingClientRect().width || window.innerWidth,
     direction: 1,
-    onChange: resize.resizeTo,
-    onReset: resize.reset,
+    onChange: resizeTo,
+    onReset: reset,
   });
   const [railOrder, setRailOrder] = useState(loadProjectRailOrder);
   const [pinnedPaths, setPinnedPaths] = useState(loadPinnedProjects);
@@ -271,15 +274,12 @@ export function ProjectRail({
     return set;
   }, [needsYouPaths]);
   const railStatuses = useWorkspaceMarks();
-  const metas = useSessionMetas();
-  const catalog = useWorkspaceCatalog();
-  const lastSeen = useLastSeen();
-  const seenFloor = useSeenFloor();
   // "Mark all read": every thread on one workspace and its copies, or on
   // every host (the latter raises the seen floor too, as the View menu's
-  // item does).
+  // item does). It and the project menu's counts read the stores when they
+  // run: subscribing here re-rendered every rail row on every meta push.
   const markRead = (path: string | null): void => {
-    const { ids, at } = threadsToMarkRead(metas, catalog, path === null ? null : (rowOf(path)?.paths ?? path));
+    const { ids, at } = threadsToMarkRead(sessionStore.metas(), workspaceStore.getSnapshot(), path === null ? null : (rowOf(path)?.paths ?? path));
     if (path === null) markAllSeen(ids, at);
     else markSessionsSeen(ids, at);
   };
@@ -321,7 +321,7 @@ export function ProjectRail({
       extra: projectMenuExtraItems(
         pinnedPaths.some((pinned) => (rowOf(path)?.paths ?? [path]).some((p) => sameProjectPath(pinned, p))),
         Boolean(onRemoveProject),
-        batchCounts(metas, { catalog, lastSeen, floor: seenFloor, scope: projectScope(path, projectKey) }),
+        batchCounts(sessionStore.metas(), { catalog: workspaceStore.getSnapshot(), lastSeen: loadLastSeen(), floor: seenFloor(), scope: projectScope(path, projectKey) }),
       ),
     });
   };
@@ -523,7 +523,7 @@ export function ProjectRail({
   };
   return (
     <nav
-      ref={resize.setPaneRef}
+      ref={attachPane}
       aria-label="Workspaces"
       className="sidebar-glass relative flex shrink-0 flex-col border-r border-border"
     >
@@ -659,9 +659,9 @@ export function ProjectRail({
       <div
         {...sashKeys}
         className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none outline-none focus-visible:bg-accent ${
-          resize.dragging ? "bg-foreground/15" : "hover:bg-foreground/10"
+          dragging ? "bg-foreground/15" : "hover:bg-foreground/10"
         }`}
-        onPointerDown={resize.onPointerDown}
+        onPointerDown={onPointerDown}
       />
     </nav>
   );

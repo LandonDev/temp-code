@@ -15,7 +15,7 @@ const KEY = "monocode.tc.lastSeen";
 const OLD_KEY = "thread-last-seen";
 const FLOOR_KEY = "monocode.tc.seenFloor";
 
-type SeenMap = Record<string, number>;
+export type SeenMap = Record<string, number>;
 
 const listeners = new Set<() => void>();
 let cache: SeenMap | null = null;

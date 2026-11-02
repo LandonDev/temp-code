@@ -73,6 +73,7 @@ import { timeAgo } from "../lib/format";
 import { useClock, useSlowClock } from "../lib/turnClock";
 import { archive as archiveThread, interrupt, pause, resume } from "../lib/tcserver/commands";
 import { dormantByType, dormantThreads, focusedTree, marksAtRest, threadStatus } from "../lib/threadStripModel";
+import { sameSet, useKept } from "../lib/keptValue";
 import { deleteProject } from "../lib/tcserver/projects";
 import { archiveLinked, projectHomeNow, renameLinked } from "../lib/projectHome";
 import { sessionPrefetch } from "../lib/sessionPrefetch";
@@ -1335,6 +1336,16 @@ export function forgetColumnMemory(): void {
   columnMemory.clear();
 }
 
+/** The column's memory and its scroller are written outside the component's
+ *  own body: writing a prop or a value an effect reads, in place, keeps the
+ *  React Compiler from compiling the column. */
+function remember(memory: ColumnMemory, patch: Partial<ColumnMemory>): void {
+  Object.assign(memory, patch);
+}
+function setScrollTop(el: HTMLElement, top: number): void {
+  el.scrollTop = top;
+}
+
 /** A project group is selected when the selection names any of its copies. */
 const groupHolds = (group: ProjectGroup, projectId: string | null): boolean =>
   !!projectId && (group.project.id === projectId || !!group.projectIds?.includes(projectId));
@@ -1386,8 +1397,7 @@ export default function WorkspaceSessions({
   const [archived, setArchived] = useState<ArchivedState>({ open: false, shown: null });
   const [pages, setPages] = useState<Pages>(memory.pages);
   useEffect(() => {
-    memory.chatsOpen = chatsOpen;
-    memory.pages = pages;
+    remember(memory, { chatsOpen, pages });
   }, [chatsOpen, memory, pages]);
   // The offset follows the scroller, and comes back the render it arrives.
   // The list's first layout is its rows' estimates, which can fall short of
@@ -1399,7 +1409,7 @@ export default function WorkspaceSessions({
     let pending = false;
     let applied = 0;
     const restore = () => {
-      scroller.scrollTop = memory.offset;
+      setScrollTop(scroller, memory.offset);
       applied = scroller.scrollTop;
       pending = applied < memory.offset;
       if (!pending) grow?.disconnect();
@@ -1413,7 +1423,7 @@ export default function WorkspaceSessions({
       if (pending && scroller.scrollTop === applied) return;
       pending = false;
       grow?.disconnect();
-      memory.offset = scroller.scrollTop;
+      remember(memory, { offset: scroller.scrollTop });
     };
     scroller.addEventListener("scroll", save, { passive: true });
     return () => {
@@ -1431,8 +1441,13 @@ export default function WorkspaceSessions({
 
   // The parent hands down fresh closures each render; the memoized cards and
   // rows see one stable callback that reads the newest.
+  // Written after each commit, never during render (the React Compiler
+  // compiles nothing that writes a ref while it renders); a click reads it
+  // after the commit that drew the row.
   const latest = useRef({ onSelectProject, onOpenSession, onNewChat, onRenameSession, onDeleteSession, activeSessionId });
-  latest.current = { onSelectProject, onOpenSession, onNewChat, onRenameSession, onDeleteSession, activeSessionId };
+  useLayoutEffect(() => {
+    latest.current = { onSelectProject, onOpenSession, onNewChat, onRenameSession, onDeleteSession, activeSessionId };
+  });
   const selectProject = useCallback((id: string) => latest.current.onSelectProject(id), []);
   const openSession = useCallback((id: string) => latest.current.onOpenSession(id), []);
   const newChat = useCallback(
@@ -1488,7 +1503,8 @@ export default function WorkspaceSessions({
   );
   const moreChats = useCallback(() => morePages("chats"), [morePages]);
 
-  const focused = useMemo(() => focusedTree(metas, activeSessionId), [activeSessionId, metas]);
+  // The same set while the tree's members stay: every card reads it, and a new one per push re-rendered them all.
+  const focused = useKept(useMemo(() => focusedTree(metas, activeSessionId), [activeSessionId, metas]), sameSet);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const threadMenu = useThreadMenu({
     onRename: setRenamingId,
@@ -1496,7 +1512,9 @@ export default function WorkspaceSessions({
   });
   // The rows are memoized: they get one stable menu that reads the newest.
   const menuRef = useRef(threadMenu);
-  menuRef.current = threadMenu;
+  useLayoutEffect(() => {
+    menuRef.current = threadMenu;
+  });
   const railMenu = useMemo<RailThreadMenu>(
     () => ({
       rowsFor: (id) => menuRef.current.rowsFor(id),
@@ -1542,7 +1560,7 @@ export default function WorkspaceSessions({
       (item) => item.kind === "project" && groupHolds(item.group, selectedProjectId),
     );
     if (index < 0) return;
-    memory.revealed = selectedProjectId;
+    remember(memory, { revealed: selectedProjectId });
     setReveal({ index });
   }, [items, memory, selectedProjectId]);
   const revealedSession = useRef(activeSessionId);

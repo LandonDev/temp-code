@@ -17,6 +17,7 @@ vi.mock("../stores/project", () => ({
 vi.mock("../lib/tcserver/workspaces", () => ({
   useWorkspaces: () => [ws],
   useWorkspaceCatalog: () => ({ projects: [], workspaces: [ws] }),
+  workspaceStore: { getSnapshot: () => ({ projects: [], workspaces: [ws] }) },
   workspaceIdOf: () => "w1",
   workspaceLabelKey: (_: unknown, __: string, fallback: string) => fallback,
 }));

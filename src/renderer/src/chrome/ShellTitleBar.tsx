@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, type ComponentProps } from "react";
+import { sameData, useKept } from "../lib/keptValue";
 import { resolveSessionContext } from "../lib/projectContext";
 import type { BackgroundWork } from "@shared/events";
 import { pendingApprovalForSession } from "../lib/approvalToast";
@@ -215,7 +216,9 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
     stripOrder.set(orderKey, saveIds(headerModel));
   }, [headerModel, orderKey]);
   // The saved order above never takes a held chip.
-  const stripModel = useHeldStripModel(headerModel);
+  // The model and the shelf keep their identity while they read the same:
+  // they are rebuilt from every meta push, and the whole title bar re-rendered.
+  const stripModel = useKept(useHeldStripModel(headerModel), sameData);
   const stripTabs = useMemo(() => {
     const chipTabIds = new Set(
       headerOrder(stripModel).flatMap((chip) => (chip.tabId ? [chip.tabId] : [])),
@@ -237,7 +240,7 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       if (inProjectScope(p.id, projectScope)) void sessionStore.ensureArchived(p.environmentId, p.id);
   }, [catalog.projects, projectScope]);
   /** The selected project's archived roots, freshest first, for the shelf. */
-  const archivedThreads = useMemo<ArchivedThread[]>(() => {
+  const archivedNext = useMemo<ArchivedThread[]>(() => {
     if (!projectScope) return [];
     return sessionMetas
       .filter(
@@ -252,6 +255,7 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       }))
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }, [projectScope, sessionMetas]);
+  const archivedThreads = useKept(archivedNext, sameData);
 
   const cost = sessions.find((session) => session.id === activeSessionId)?.thread?.cost ?? null;
   const running = useMemo(

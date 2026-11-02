@@ -3,7 +3,6 @@ import {
   memo,
   useCallback,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import { warmProjectForCwd } from "../lib/monaco/focusBoot";
@@ -15,14 +14,14 @@ import { projectName } from "../lib/paths";
 import { loadTabGroupLabels, resolveTabGroupLabel, TAB_GROUP_LABELS_CHANGED } from "../lib/tabGroups";
 import type { ProjectMeta } from "../lib/tcserver/types";
 import {
-  useWorkspaceCatalog,
   useWorkspaces,
   workspaceIdOf,
   workspaceLabelKey,
+  workspaceStore,
 } from "../lib/tcserver/workspaces";
-import { useSessionMetas } from "../lib/tcserver/store";
+import { sessionStore } from "../lib/tcserver/store";
 import { archive } from "../lib/tcserver/commands";
-import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
+import { loadLastSeen, seenFloor } from "../lib/sessionSeen";
 import { dormantByType, dormantThreads, focusedTree } from "../lib/threadStripModel";
 import { scopeTest } from "../lib/workspaceSessions";
 import { openWorkspaceSettings } from "../lib/settings";
@@ -153,16 +152,19 @@ function SidebarComponent({
       rememberedWidth = next;
     },
   });
+  // Taken apart at once: the pane's ref callback goes to a `ref` prop, which
+  // would make the React Compiler read the whole object as a ref.
+  const { attachPane, dragging, onPointerDown, reset, resizeTo, width } = resize;
   const sashKeys = useSashKeys({
     label: "Resize sidebar",
     orientation: "vertical",
-    value: resize.width,
+    value: width,
     min: MIN_WIDTH,
     max: Math.min(MAX_WIDTH, Math.floor(window.innerWidth * 0.5)),
     getSpan: (handle) => handle.closest(".app-shell")?.getBoundingClientRect().width || window.innerWidth,
     direction: 1,
-    onChange: resize.resizeTo,
-    onReset: resize.reset,
+    onChange: resizeTo,
+    onReset: reset,
   });
   const sessionsLock = useLockOverscroll<HTMLDivElement>();
   // The element that scrolls the column, as state: the list attaches to it
@@ -215,22 +217,16 @@ function SidebarComponent({
   // The workspace menu's "Archive dormant threads": every settled, seen,
   // unpinned root the Sessions list shows for this workspace, project
   // threads and loose chats alike, sparing the focused session's tree.
-  const metas = useSessionMetas();
-  const { projects: catalogProjects, workspaces: catalogWorkspaces } = useWorkspaceCatalog();
-  const lastSeen = useLastSeen();
-  const seenFloor = useSeenFloor();
-  const dormant = useMemo(() => {
+  // Read from the stores when the menu opens or acts, never subscribed: the
+  // list changes with every meta push, and subscribing re-rendered the rail.
+  const dormantNow = () => {
     if (sessionsScope === undefined) return [];
+    const metas = sessionStore.metas();
+    const { projects, workspaces } = workspaceStore.getSnapshot();
     const inScope = scopeTest(workspaceIds && workspaceIds.length > 1 ? workspaceIds : sessionsScope);
-    const roots = metas.filter(
-      (m) =>
-        !m.parentId &&
-        !m.archived &&
-        inScope(workspaceIdOf(m, catalogProjects, catalogWorkspaces)),
-    );
-    return dormantThreads(roots, lastSeen, seenFloor, focusedTree(metas, activeSessionId));
-  }, [activeSessionId, catalogProjects, catalogWorkspaces, lastSeen, metas, seenFloor, sessionsScope, workspaceIds]);
-  const dormantGroups = useMemo(() => dormantByType(dormant), [dormant]);
+    const roots = metas.filter((m) => !m.parentId && !m.archived && inScope(workspaceIdOf(m, projects, workspaces)));
+    return dormantThreads(roots, loadLastSeen(), seenFloor(), focusedTree(metas, activeSessionId));
+  };
   const workspaceSessions =
     sessionsScope !== undefined && onSelectProjectCard && onNewChat ? (
       <WorkspaceSessions
@@ -261,7 +257,7 @@ function SidebarComponent({
   });
   const sidebarContent = (
     <aside
-      ref={resize.setPaneRef}
+      ref={attachPane}
       className="sidebar-glass relative flex h-full min-h-0 shrink-0 flex-col border-r border-border"
     >
       {railVisible ? null : (
@@ -325,11 +321,13 @@ function SidebarComponent({
               canNewProject={!!workspace}
               onNewProject={() => setNewProjectOpen(true)}
               onNewChat={() => onNewChat?.(null)}
-              dormantCount={dormant.length}
-              onArchiveDormant={() => void Promise.allSettled(dormant.map((t) => archive(t.id, true)))}
-              dormantGroups={dormantGroups}
+              dormant={() => {
+                const all = dormantNow();
+                return { count: all.length, groups: dormantByType(all) };
+              }}
+              onArchiveDormant={() => void Promise.allSettled(dormantNow().map((t) => archive(t.id, true)))}
               onArchiveDormantType={(type) =>
-                void Promise.allSettled((dormantGroups.find((g) => g.type === type)?.threads ?? []).map((t) => archive(t.id, true)))
+                void Promise.allSettled((dormantByType(dormantNow()).find((g) => g.type === type)?.threads ?? []).map((t) => archive(t.id, true)))
               }
               onThreadDefaults={workspace ? () => setThreadDefaultsOpen(true) : undefined}
               onOrchestration={workspace ? () => openOrchestrationSettings(workspace.id) : undefined}
@@ -379,9 +377,9 @@ function SidebarComponent({
       <div
         {...sashKeys}
         className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none outline-none focus-visible:bg-accent ${
-          resize.dragging ? "bg-foreground/12" : "hover:bg-foreground/7"
+          dragging ? "bg-foreground/12" : "hover:bg-foreground/7"
         }`}
-        onPointerDown={resize.onPointerDown}
+        onPointerDown={onPointerDown}
       />
     </aside>
   );

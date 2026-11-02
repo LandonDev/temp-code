@@ -351,10 +351,24 @@ describe("groupWorkspaceSessions with a row cache", () => {
     expect(p1(bumped).threads[0]?.running).toBe(true);
     expect(p1(bumped).threads[1]).toBe(rowB);
 
+    // Seen later, b still reads as read: its row and the group stay the objects they were.
     const reseen = build([aRunning, b], cache, { a: 100, b: 200 });
-    expect(reseen.projects).not.toBe(bumped.projects);
-    expect(p1(reseen).threads[0]).toBe(p1(bumped).threads[0]);
-    expect(p1(reseen).threads[1]).not.toBe(rowB);
+    expect(reseen.projects).toBe(bumped.projects);
+    expect(p1(reseen).threads[1]).toBe(rowB);
+  });
+
+  it("rebuilds a row whose seen state changes what it reads, and keeps one whose meta changed only in what no row shows", () => {
+    const cache = rowCache();
+    const a = meta("a", { projectId: "p1", cwd: "/wt/p1", updatedAt: 150 });
+    const first = build([a], cache, { a: 100 });
+    const rowA = p1(first).threads[0]!;
+    expect(rowA.unread).toBe(true);
+    const read = build([a], cache, { a: 200 });
+    expect(p1(read).threads[0]).not.toBe(rowA);
+    expect(p1(read).threads[0]?.unread).toBe(false);
+    const quiet = build([{ ...a, context: { tokens: 9_000, window: 1_000_000 }, lastEventAt: 160 } as SessionMeta], cache, { a: 200 });
+    expect(p1(quiet).threads[0]).toBe(p1(read).threads[0]);
+    expect(quiet.projects).toBe(read.projects);
   });
 
   it("a parent row changes when one of its children does", () => {

@@ -183,6 +183,34 @@ export function groupUnread(roots: readonly (RowStateInput & { unread?: boolean;
 /** A rail row's state: its word with the thread behind it, and whether it reads unread. */
 export type WorkspaceMark = { mark: GroupMark<ThreadRow> | null; unread: boolean };
 
+/** Two marks a row draws the same: the state's glyph, the count and the unread weight. */
+function sameMark(a: WorkspaceMark, b: WorkspaceMark): boolean {
+  if (a.unread !== b.unread) return false;
+  if (a.mark === b.mark) return true;
+  if (!a.mark || !b.mark) return false;
+  return a.mark.state === b.mark.state && a.mark.more === b.mark.more && a.mark.about.id === b.mark.about.id;
+}
+
+/**
+ * `next` with every mark that reads as before replaced by the one before, and
+ * `prev` itself when nothing a row draws changed: the marks are rebuilt on
+ * every meta push, and a new object for every row re-rendered the whole rail.
+ */
+export function shareMarks(prev: Map<string, WorkspaceMark> | null, next: Map<string, WorkspaceMark>): Map<string, WorkspaceMark> {
+  if (!prev) return next;
+  let changed = prev.size !== next.size;
+  const out = new Map<string, WorkspaceMark>();
+  for (const [key, mark] of next) {
+    const was = prev.get(key);
+    if (was && sameMark(was, mark)) out.set(key, was);
+    else {
+      out.set(key, mark);
+      changed = true;
+    }
+  }
+  return changed ? out : prev;
+}
+
 /**
  * One mark per workspace path: the roots of every unarchived project (and the
  * loose chats) folded into `groupMark` and `groupUnread`. A thread inside a

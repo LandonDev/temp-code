@@ -950,10 +950,12 @@ export function AgentTranscript({
     [],
   );
 
-  const loadEarlier = () => {
+  // One function for the thread: every row takes it, and a new one each
+  // render re-rendered every mounted row on every push.
+  const loadEarlier = useCallback(() => {
     release();
     if (sessionId) void sessionStore.loadOlder(sessionId);
-  };
+  }, [release, sessionId]);
 
   // Which harness answered a turn, for its duration line. Read through a
   // ref so a streamed delta (a new `blocks` array) re-renders the live

@@ -216,7 +216,7 @@ export function NotesView({
 
   const list = (
     <div
-      ref={resize.setPaneRef}
+      ref={resize.attachPane}
       className="relative flex h-full min-h-0 shrink-0 flex-col border-r border-border"
     >
       <div className="flex shrink-0 items-center gap-1 border-b border-border p-2">

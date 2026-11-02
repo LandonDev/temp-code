@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { registerToastAnchor } from "../../../lib/toastAnchor";
 import type { BatchState } from "@server/shared/contract-batch";
 import { Button } from "../../../components/ui/button";
@@ -61,15 +61,23 @@ export function BatchFoot({
   if (running && folded.size > 0) setFolded(new Set());
   const now = useNow(running);
   const blocked = blockedLine(batch, titleOf, hostName);
+  // One Stop and one fold for every row, so a row renders again only for
+  // what it shows (a log line on the running step re-renders that row alone).
+  const stopRef = useRef(onStop);
+  useLayoutEffect(() => {
+    stopRef.current = onStop;
+  });
+  const stopStep = useCallback((id: string) => stopRef.current(id), []);
+  const fold = useCallback((id: string, hide: boolean) => {
+    setFolded((prev) => {
+      const next = new Set(prev);
+      if (hide) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
 
   if (!loaded) return <FootSkeleton toastAnchor={toastAnchor} />;
-
-  const fold = (id: string, hide: boolean) => {
-    const next = new Set(folded);
-    if (hide) next.add(id);
-    else next.delete(id);
-    setFolded(next);
-  };
 
   return (
     <div
@@ -95,11 +103,11 @@ export function BatchFoot({
           <StepRow
             key={step.id}
             step={step}
-            rules={rules}
-            now={now}
+            detail={stepDetail(step, rules)}
+            now={step.status === "running" ? now : 0}
             open={active?.id === step.id}
-            onStop={() => onStop(step.id)}
-            onFold={(hide) => fold(step.id, hide)}
+            onStop={stopStep}
+            onFold={fold}
           />
         ))}
       </ol>
@@ -140,23 +148,45 @@ function FootSkeleton({ toastAnchor }: { toastAnchor: boolean }) {
 
 /** One step: its glyph, its name, what it is about, its time, and Stop
  *  while it runs (Hide or Show on a failed one); its console under it. */
-function StepRow({
-  step,
-  rules,
-  now,
-  open,
-  onStop,
-  onFold,
-}: {
+type StepRowProps = {
   step: LiveStep;
-  rules: Rules;
+  detail: ReturnType<typeof stepDetail>;
+  /** The clock, for the running step alone; 0 for the rest. */
   now: number;
   open: boolean;
-  onStop: () => Promise<void>;
-  onFold: (hide: boolean) => void;
-}) {
+  onStop: (id: string) => Promise<void>;
+  onFold: (id: string, hide: boolean) => void;
+};
+
+/** A step's own facts, by value: the steps are rebuilt on every batch push. */
+function sameStep(a: LiveStep, b: LiveStep): boolean {
+  return (
+    a === b ||
+    (a.id === b.id &&
+      a.name === b.name &&
+      a.kind === b.kind &&
+      a.run === b.run &&
+      a.status === b.status &&
+      a.detail === b.detail &&
+      a.startedAt === b.startedAt &&
+      a.endedAt === b.endedAt &&
+      JSON.stringify(a.progress) === JSON.stringify(b.progress) &&
+      a.log.length === b.log.length &&
+      a.log[a.log.length - 1] === b.log[b.log.length - 1])
+  );
+}
+
+const sameRow = (a: StepRowProps, b: StepRowProps): boolean =>
+  a.now === b.now &&
+  a.open === b.open &&
+  a.onStop === b.onStop &&
+  a.onFold === b.onFold &&
+  a.detail.text === b.detail.text &&
+  a.detail.label === b.detail.label &&
+  sameStep(a.step, b.step);
+
+const StepRow = memo(function StepRow({ step, detail, now, open, onStop, onFold }: StepRowProps) {
   const time = stepTime(step, now);
-  const detail = stepDetail(step, rules);
   const quiet = step.status === "pending" || step.status === "skipped";
   const failed = step.status === "failed";
   const [stopping, setStopping] = useState(false);
@@ -165,7 +195,7 @@ function StepRow({
     if (stopping) return;
     setStopping(true);
     try {
-      await onStop();
+      await onStop(step.id);
     } finally {
       setStopping(false);
     }
@@ -191,7 +221,7 @@ function StepRow({
             Stop
           </Button>
         ) : failed && hasConsole(step) ? (
-          <Button variant="ghost" size="xs" onClick={() => onFold(open)} aria-expanded={open}>
+          <Button variant="ghost" size="xs" onClick={() => onFold(step.id, open)} aria-expanded={open}>
             {open ? "Hide" : "Show"}
             <ChevronDown className={cn("size-3 transition-transform duration-(--dur-fast)", open && "rotate-180")} />
           </Button>
@@ -202,7 +232,7 @@ function StepRow({
       </Collapsible>
     </li>
   );
-}
+}, sameRow);
 
 /** A step's console lines, oldest first, following the newest while the
  *  person has not scrolled up. A failed step's failure is its row's detail,

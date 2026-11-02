@@ -253,6 +253,51 @@ export function MasterView(props: ThreadViewProps) {
     else if (id === "new" || id === "adopt") setAdding(id);
   };
 
+  // The title bar's two menus, built once per change in what they offer: the
+  // view renders on every batch and meta push, and fresh menus each time
+  // re-rendered their triggers, tooltips and buttons with it.
+  const pickRef = useRef(onMenuPick);
+  useLayoutEffect(() => {
+    pickRef.current = onMenuPick;
+  });
+  const pick = useCallback((id: string) => pickRef.current(id), []);
+  const pausableCount = toPause.length;
+  const pausedCount = paused.length;
+  const doneCount = done.length;
+  const rowCount = layout.rows.length;
+  const candidateCount = candidates.length;
+  const actions = useMemo(
+    () => (
+      <>
+        <RowsMenu
+          label="Batch actions"
+          tip={{ label: "Batch actions" }}
+          trigger={
+            <Button variant="ghost" size="icon-sm" aria-label="Batch actions">
+              <MoreHorizontal />
+            </Button>
+          }
+          rows={() => boardMenuItems({ pausable: pausableCount, paused: pausedCount, done: doneCount, all: rowCount })}
+          onPick={pick}
+          onOpenChange={(open) => setMenu(open ? "board" : null)}
+        />
+        <RowsMenu
+          label="Add thread"
+          tip={{ label: "Add thread" }}
+          trigger={
+            <Button variant="ghost" size="icon-sm" aria-label="Add thread">
+              <Plus />
+            </Button>
+          }
+          rows={() => addMenuItems(candidateCount)}
+          onPick={pick}
+          onOpenChange={(open) => setMenu(open ? "add" : null)}
+        />
+      </>
+    ),
+    [candidateCount, doneCount, pausableCount, pausedCount, pick, rowCount],
+  );
+
   // A row, or a subagent opened from a row's agent lines (it lives on its own host).
   const openHost = openId ? (layout.rows.find((r) => r.id === openId)?.environmentId ?? openMeta?.environmentId) : undefined;
   if (openId && openHost) {
@@ -274,34 +319,6 @@ export function MasterView(props: ThreadViewProps) {
   }
 
   const title = meta?.title || session.title || "Master";
-  const actions = (
-    <>
-      <RowsMenu
-        label="Batch actions"
-        tip={{ label: "Batch actions" }}
-        trigger={
-          <Button variant="ghost" size="icon-sm" aria-label="Batch actions">
-            <MoreHorizontal />
-          </Button>
-        }
-        rows={() => boardMenuItems({ pausable: toPause.length, paused: paused.length, done: done.length, all: layout.rows.length })}
-        onPick={onMenuPick}
-        onOpenChange={(open) => setMenu(open ? "board" : null)}
-      />
-      <RowsMenu
-        label="Add thread"
-        tip={{ label: "Add thread" }}
-        trigger={
-          <Button variant="ghost" size="icon-sm" aria-label="Add thread">
-            <Plus />
-          </Button>
-        }
-        rows={() => addMenuItems(candidates.length)}
-        onPick={onMenuPick}
-        onOpenChange={(open) => setMenu(open ? "add" : null)}
-      />
-    </>
-  );
   const board = (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <BoardDigestContext.Provider value={digests}>

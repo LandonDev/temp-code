@@ -15,7 +15,7 @@ afterEach(() => {
 function Pane({ onCommit }: { onCommit: (width: number) => void }) {
   const resize = useDragResize({ min: 200, max: () => 500, defaultWidth: 300, initial: 300, onCommit });
   return (
-    <section data-testid="pane" ref={resize.setPaneRef}>
+    <section data-testid="pane" ref={resize.attachPane}>
       <div role="separator" onPointerDown={resize.onPointerDown} />
       <button onClick={() => resize.resizeTo(400)}>Resize</button>
       <button onClick={resize.reset}>Reset</button>
@@ -30,7 +30,7 @@ describe("useDragResize immediate resize", () => {
       min: 200, max: () => max, defaultWidth: 300, initial: 250, onCommit,
     }), { initialProps: { max: 500 } });
     const pane = document.createElement("section");
-    act(() => result.current.setPaneRef(pane));
+    act(() => result.current.attachPane(pane));
     act(() => result.current.resizeTo(900));
     expect(result.current.width).toBe(500);
     expect(pane.style.width).toBe("500px");

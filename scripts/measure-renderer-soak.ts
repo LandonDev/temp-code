@@ -17,8 +17,8 @@
  *   revoked at exit. --master and --thread pick the box's threads, else the
  *   busiest pinned master and its newest running child.
  * --build prod (default) runs `electron-vite preview --skipBuild` (the tree's
- *   out/ must be built); dev runs `electron-vite dev` and refuses while 5173
- *   is taken.
+ *   out/ must be built); dev runs `electron-vite dev` (on 5173, else the next
+ *   free port), which writes its own main build into the tree's out/.
  * --view board | stream | split: the master's board, the focused child's
  *   transcript, or both side by side (window.__monocode.open).
  * --minutes, --every: the run and the sampling interval (default 10, 60 s),
@@ -232,7 +232,8 @@ function launchEnv(): Record<string, string> {
 
 async function launch(): Promise<void> {
   if (args.build === 'prod' && !existsSync(join(tree, 'out', 'renderer', 'index.html'))) throw new Error(`no build under ${tree}/out (bun x electron-vite build there first)`)
-  if (args.build === 'dev' && !(await portFree(5173))) throw new Error('port 5173 is taken: a dev build would load another session\'s renderer')
+  // electron-vite dev takes the next free port when 5173 is busy and points its main process at it.
+  if (args.build === 'dev' && !(await portFree(5173))) log('5173 is taken: the dev server takes the next free port')
   if (!(await portFree(args.port))) throw new Error(`debug port ${args.port} is in use (an earlier soak still up?)`)
   for (const dir of [userData, home]) {
     rmSync(dir, { recursive: true, force: true })
@@ -253,7 +254,7 @@ async function pageOf(): Promise<Target> {
   while (Date.now() < until) {
     try {
       const list = (await (await fetch(`http://127.0.0.1:${args.port}/json`)).json()) as Target[]
-      const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl && (t.url.endsWith('/index.html') || t.url.startsWith('http://localhost:5173')))
+      const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl && (t.url.endsWith('/index.html') || /^http:\/\/localhost:\d+\/$/.test(t.url)))
       if (page) return page
     } catch {
       /* not up yet */
@@ -289,15 +290,69 @@ const OBSERVERS = `(() => {
       if (!Array.isArray(props)) continue
       let byProp = s.why.get(n)
       if (!byProp) s.why.set(n, (byProp = new Map()))
+      // React's diff rows: a mark ("+" added, "-" removed, a figure space for a
+      // nested header), a no-break space, two more per level, the key. A header
+      // for an object or a closure that is new but equal says so in its value.
+      const path = []
+      const note = (k) => byProp.set(k, (byProp.get(k) || 0) + 1)
       for (const row of props) {
-        // React's diff marks a changed prop "+" and a no-break space, nested ones with two more.
         const label = String(row[0])
-        const m = label.charAt(0) === '+' && label.charCodeAt(1) === 160 && label.charCodeAt(2) !== 160 ? [label, label.slice(2)] : null
-        if (m) byProp.set(m[1], (byProp.get(m[1]) || 0) + 1)
+        const value = String(row[1] == null ? '' : row[1])
+        let at = 2
+        let depth = 0
+        while (label.charCodeAt(at) === 160 && label.charCodeAt(at + 1) === 160) { depth++; at += 2 }
+        const key = label.slice(at)
+        path.length = depth
+        const mark = label.charAt(0)
+        if (mark === '+') note([...path, key].join('.'))
+        else if (mark !== '-') {
+          path[depth] = key
+          if (value.indexOf('deeply equal') >= 0) note(path.join('.') + ' (equal object)')
+          else if (value.indexOf('function closure') >= 0) note(path.join('.') + ' (equal closure)')
+        }
       }
     }
   }).observe({ type: 'measure' })
   window.__soakWhy = () => [...s.why].map(([n, byProp]) => [n, [...byProp].sort((a, b) => b[1] - a[1]).slice(0, 6)])
+  // --why in a dev build: who renders them. Each commit, every function
+  // component that rendered with new props is counted under its owner chain
+  // (React's dev-only _debugOwner), three owners deep.
+  s.owners = new Map()
+  const hook = window.__REACT_DEVTOOLS_GLOBAL_HOOK__
+  const nameOf = (f) => { const t = f && f.type; if (!t) return null; if (typeof t === 'function') return t.displayName || t.name || null; return t.displayName || (t.render && (t.render.displayName || t.render.name)) || (t.type && (t.type.displayName || t.type.name)) || null }
+  if (hook && typeof hook.onCommitFiberRoot === 'function' && !hook.__soakWrapped) {
+    const prior = hook.onCommitFiberRoot.bind(hook)
+    hook.__soakWrapped = true
+    // A fiber's actualStartTime (a dev build profiles every root) moves only
+    // when it begins work: past the last commit's latest, it rendered in this one.
+    let lastStart = -1
+    hook.onCommitFiberRoot = (id, root, ...rest) => {
+      try {
+        if (window.__soakWhyOn) {
+          let latest = lastStart
+          const stack = [root.current]
+          while (stack.length) {
+            const f = stack.pop()
+            if (f.child) stack.push(f.child)
+            if (f.sibling) stack.push(f.sibling)
+            const started = f.actualStartTime
+            if (typeof started !== 'number' || started <= lastStart) continue
+            if (started > latest) latest = started
+            const a = f.alternate
+            // Rendered in this commit with a new props object: the condition React's own measure uses.
+            if (!a || a.memoizedProps === f.memoizedProps || (f.tag !== 0 && f.tag !== 11 && f.tag !== 14 && f.tag !== 15)) continue
+            const chain = []
+            for (let o = f._debugOwner; o && chain.length < 3; o = o._debugOwner) { const n = nameOf(o); if (n) chain.push(n) }
+            const key = (nameOf(f) || '?') + ' < ' + chain.join(' < ')
+            s.owners.set(key, (s.owners.get(key) || 0) + 1)
+          }
+          lastStart = latest
+        }
+      } catch {}
+      return prior(id, root, ...rest)
+    }
+  }
+  window.__soakOwners = () => [...s.owners].sort((a, b) => b[1] - a[1]).slice(0, 40)
   window.__soakDrain = () => {
     const out = { tasks: s.tasks, renders: [...s.renders] }
     s.tasks = []
@@ -602,12 +657,13 @@ async function main(): Promise<void> {
       return null
     }
   })()
-  const topRenders = [...renderTotals].sort((a, b) => b[1] - a[1]).slice(0, 25)
+  const topRenders = [...renderTotals].sort((a, b) => b[1] - a[1]).slice(0, why ? 45 : 25)
   const whyRows = why ? await c.eval<[string, [string, number][]][]>('window.__soakWhy()') : []
   const whyTop = topRenders.map(([n]) => [n, whyRows.find(([m]) => m === n)?.[1] ?? []] as const)
+  const owners = why ? await c.eval<[string, number][]>('window.__soakOwners ? window.__soakOwners() : []') : []
   writeFileSync(
     join(ROOT, `${args.label}.json`),
-    JSON.stringify({ label: args.label, args, tree, sha, platform: process.platform, memory: linux ? 'pss' : 'rss', shown, rule, verdict, rows, topRenders, ...(why ? { whyTop } : {}) }, null, 1)
+    JSON.stringify({ label: args.label, args, tree, sha, platform: process.platform, memory: linux ? 'pss' : 'rss', shown, rule, verdict, rows, topRenders, ...(why ? { whyTop, owners } : {}) }, null, 1)
   )
   const md = [
     `# ${args.label}: ${args.host} host, ${args.build} build, ${args.view} view (${sha ?? 'no git'}, ${process.platform})`,
@@ -627,6 +683,7 @@ async function main(): Promise<void> {
     ...(topRenders.length
       ? ['', 'Top re-rendered components (changed props):', '', `| component | renders |${why ? ' changed props |' : ''}`, `|---|---|${why ? '---|' : ''}`, ...topRenders.map(([n, k]) => `| ${n} | ${k} |${why ? ` ${(whyTop.find(([m]) => m === n)?.[1] ?? []).map(([p, x]) => `${p} ${x}`).join(', ')} |` : ''}`)]
       : []),
+    ...(owners.length ? ['', 'Re-renders by owner chain (component < owner < its owner):', '', '| chain | renders |', '|---|---|', ...owners.map(([k, n]) => `| ${k} | ${n} |`)] : []),
     ...(profile ? ['', '```', profile, '```'] : [])
   ].join('\n')
   writeFileSync(join(ROOT, `${args.label}.md`), md + '\n')

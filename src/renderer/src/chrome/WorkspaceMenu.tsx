@@ -9,11 +9,10 @@ type Props = {
   trigger: ReactElement;
   onNewProject: () => void;
   onNewChat: () => void;
-  /** Settled, seen, unpinned roots across the workspace; 0 greys the item. */
-  dormantCount: number;
+  /** Settled, seen, unpinned roots across the workspace (0 greys the item)
+   *  and the per-type rows under the all-types one, read when the menu opens. */
+  dormant: () => { count: number; groups: readonly { type: string; label: string }[] };
   onArchiveDormant: () => void;
-  /** Per-type rows under the all-types one; empty when one type covers them. */
-  dormantGroups?: readonly { type: string; label: string }[];
   onArchiveDormantType?: (type: string) => void;
   /** Absent when the rail that owns the appearance menu is not on screen. */
   onWorkspaceSettings?: () => void;
@@ -30,9 +29,8 @@ export function WorkspaceMenu({
   trigger,
   onNewProject,
   onNewChat,
-  dormantCount,
+  dormant,
   onArchiveDormant,
-  dormantGroups = [],
   onArchiveDormantType,
   onWorkspaceSettings,
   onThreadDefaults,
@@ -41,8 +39,9 @@ export function WorkspaceMenu({
   onRemoveWorkspace,
   canNewProject,
 }: Props) {
-  const rows = (): MenuRow[] =>
-    tidy([
+  const rows = (): MenuRow[] => {
+    const { count: dormantCount, groups: dormantGroups } = dormant();
+    return tidy([
       { kind: "item", id: "new-project", label: "New project", icon: FolderPlus, disabled: !canNewProject },
       { kind: "item", id: "new-chat", label: "New chat", icon: MessageSquarePlus },
       { kind: "sep" },
@@ -67,6 +66,7 @@ export function WorkspaceMenu({
       { kind: "sep" },
       ...(onRemoveWorkspace ? [{ kind: "item", id: "remove", label: "Remove workspace", icon: X, danger: true } as const] : []),
     ]);
+  };
   const pick = (id: string) => {
     if (id === "new-project") onNewProject();
     else if (id === "new-chat") onNewChat();

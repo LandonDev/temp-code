@@ -68,7 +68,7 @@ export function useDragResize({
     if (pane) pane.style.width = `${next}px`;
   };
 
-  const setPaneRef = useCallback((el: HTMLElement | null) => {
+  const attachPane = useCallback((el: HTMLElement | null) => {
     paneRef.current = el;
     if (el) el.style.width = `${widthRef.current}px`;
   }, []);
@@ -154,7 +154,7 @@ export function useDragResize({
   return {
     width,
     dragging,
-    setPaneRef,
+    attachPane,
     onPointerDown,
     resizeTo,
     reset,

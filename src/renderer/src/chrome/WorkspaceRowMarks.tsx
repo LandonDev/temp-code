@@ -1,13 +1,14 @@
-import { useMemo, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { STATUS_WORD, StatusMark } from "../components/ui/status";
 import { Button } from "../components/ui/button";
 import { Popover, PopoverTrigger } from "../components/ui/popover";
 import { cn } from "../lib/cn";
 import { aliasKeys } from "../lib/linkedRail";
-import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
-import { workspaceMarks, type GroupMark, type WorkspaceMark } from "../lib/sidebarRows";
-import { useSessionMetas } from "../lib/tcserver/store";
-import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import { loadLastSeen, seenFloor, subscribeLastSeen, type SeenMap } from "../lib/sessionSeen";
+import { shareMarks, workspaceMarks, type GroupMark, type WorkspaceMark } from "../lib/sidebarRows";
+import { sessionStore } from "../lib/tcserver/store";
+import type { SessionMeta } from "../lib/tcserver/types";
+import { workspaceStore, type WorkspaceCatalog } from "../lib/tcserver/workspaces";
 import type { ThreadRow } from "../lib/workspaceSessions";
 import { workspaceThreadsChunk } from "../surfaces/chunks";
 
@@ -22,17 +23,45 @@ const WorkspaceThreadsPopover = workspaceThreadsChunk.surface("WorkspaceThreadsP
  */
 
 /** The rail's mark per workspace, keyed by the row's lead path (a linked
- *  workspace's copies read as one), recomputed only when the metas,
- *  catalog or seen state change. */
+ *  workspace's copies read as one). Computed outside React, once per meta,
+ *  catalog or seen change, and shared mark by mark (`shareMarks`): the
+ *  component that reads it renders again only when a mark reads differently,
+ *  not on every meta push (a hook subscribed to the metas renders its
+ *  component on each of them, whatever it returns). */
+let marksCache: {
+  metas: SessionMeta[];
+  catalog: WorkspaceCatalog;
+  lastSeen: SeenMap;
+  floor: number;
+  marks: Map<string, WorkspaceMark>;
+} | null = null;
+
+function marksSnapshot(): Map<string, WorkspaceMark> {
+  const metas = sessionStore.metas();
+  const catalog = workspaceStore.getSnapshot();
+  const lastSeen = loadLastSeen();
+  const floor = seenFloor();
+  const cache = marksCache;
+  if (cache && cache.metas === metas && cache.catalog === catalog && cache.lastSeen === lastSeen && cache.floor === floor) return cache.marks;
+  const next = workspaceMarks(metas, catalog, lastSeen, floor, aliasKeys(catalog.workspaces).path);
+  const marks = shareMarks(cache?.marks ?? null, next);
+  marksCache = { metas, catalog, lastSeen, floor, marks };
+  return marks;
+}
+
+function subscribeMarks(listener: () => void): () => void {
+  const offMetas = sessionStore.onMetaChange(() => listener());
+  const offCatalog = workspaceStore.subscribe(listener);
+  const offSeen = subscribeLastSeen(listener);
+  return () => {
+    offMetas();
+    offCatalog();
+    offSeen();
+  };
+}
+
 export function useWorkspaceMarks(): Map<string, WorkspaceMark> {
-  const catalog = useWorkspaceCatalog();
-  const metas = useSessionMetas();
-  const lastSeen = useLastSeen();
-  const floor = useSeenFloor();
-  return useMemo(
-    () => workspaceMarks(metas, catalog, lastSeen, floor, aliasKeys(catalog.workspaces).path),
-    [metas, catalog, lastSeen, floor],
-  );
+  return useSyncExternalStore(subscribeMarks, marksSnapshot, marksSnapshot);
 }
 
 /** The selected workspace's uncommitted lines as the rail says them, plain:

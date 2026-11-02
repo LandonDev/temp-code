@@ -1,6 +1,7 @@
 import {
   useEffect,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -149,10 +150,11 @@ export function ThreadHeaderStrip({
   if (shelf.length > 0 && keptShelf !== shelf) setKeptShelf(shelf);
   const shownShelf = shelf.length > 0 ? shelf : keptShelf;
   useStripHoldRelease();
+  // Plain string keys: a cast inside a computed key stops the React Compiler from compiling the strip.
   const pad = {
-    ["--strip-pad-l" as string]: overflow?.left ? `${ARROW_ROOM_PX}px` : undefined,
-    ["--strip-pad-r" as string]: overflow?.right ? `${ARROW_ROOM_PX}px` : undefined,
-  };
+    "--strip-pad-l": overflow?.left ? `${ARROW_ROOM_PX}px` : undefined,
+    "--strip-pad-r": overflow?.right ? `${ARROW_ROOM_PX}px` : undefined,
+  } as CSSProperties;
   return (
     <TooltipProvider>
       <RowsContextMenu

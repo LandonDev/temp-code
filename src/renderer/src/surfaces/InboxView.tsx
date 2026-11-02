@@ -443,7 +443,7 @@ export function InboxView({
 
   const list = (
     <div
-      ref={sidebar ? undefined : resize.setPaneRef}
+      ref={sidebar ? undefined : resize.attachPane}
       className={
         sidebar
           ? "flex min-h-0 min-w-0 flex-1 flex-col"
