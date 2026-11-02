@@ -100,14 +100,21 @@ export const STEPS: Step[] = [
     name: 'renderer-soak',
     tier: 'publish',
     cmd: 'bun',
-    // The CPU bound is reported, not failed, while the board's spinners and
-    // the stream's render work keep the Mac over it (docs/release-gate.md
-    // "The renderer soak"); add '--cpu-fails' here to make it fail again.
     args: ['scripts/measure-renderer-soak.ts', '--gate'],
     // After the commit tier's build and bundle-size when both tiers run, so
     // it never reads an out/ that is being written.
     lane: 'build',
-    why: "the production renderer under the synthetic host's load for 50 s: heap and RSS after GC and long tasks against fixed bounds, CPU reported beside its 12% (scripts/measure-renderer-soak.ts --gate, boots an instance, 90 s at most)",
+    why: "the production renderer under the synthetic host's load for 50 s, the master's board beside a streaming child: heap and RSS after GC, long tasks and CPU against fixed bounds (scripts/measure-renderer-soak.ts --gate, boots an instance, 90 s at most)",
+    mac: true
+  },
+  {
+    name: 'renderer-soak-chat',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['scripts/measure-renderer-soak.ts', '--gate', '--scene', 'chat'],
+    // The same lane, after the board scene: one instance at a time.
+    lane: 'build',
+    why: "the same 50 s on one plain chat streaming, with its own CPU bound (scripts/measure-renderer-soak.ts --gate --scene chat, 90 s at most)",
     mac: true
   },
   {

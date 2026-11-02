@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildIsCurrent, FAMILY, GATE_RULE, gateRule, handRule, judgeSoak, parseSoakArgs, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_CPU_PCT, GATE_RULE, gateRule, handRule, judgeSoak, parseSoakArgs, type SoakSample } from './lib/soakJudge'
 
 const sample = (t: number, over: Partial<SoakSample> = {}): SoakSample => ({ t, heapMb: 40, rssMb: 200, cpuS: 0.5, wallS: 10, longTasks: [], ...over })
 
@@ -9,10 +9,18 @@ const windowOf = (read: (i: number) => Partial<SoakSample>): SoakSample[] => Arr
 describe('the soak arguments', () => {
   it('runs the gate on the synthetic host, production build, split view, 50 s', () => {
     const args = parseSoakArgs(['--gate'])
-    expect(args).toMatchObject({ gate: true, host: 'synthetic', build: 'prod', view: 'split', every: 10, profile: false, cpuFails: false })
-    expect(parseSoakArgs(['--gate', '--cpu-fails']).cpuFails).toBe(true)
-    expect(() => parseSoakArgs(['--cpu-fails'])).toThrow('belongs to --gate')
+    expect(args).toMatchObject({ gate: true, host: 'synthetic', build: 'prod', scene: 'board', view: 'split', every: 10, profile: false, cpuReportOnly: false, label: 'gate' })
+    expect(parseSoakArgs(['--gate', '--cpu-report-only']).cpuReportOnly).toBe(true)
+    expect(() => parseSoakArgs(['--cpu-report-only'])).toThrow('belongs to --gate')
+    expect(() => parseSoakArgs(['--gate', '--cpu-fails'])).toThrow('fails on CPU by default')
     expect(args.minutes * 60).toBeCloseTo(50)
+  })
+  it('shows the chat scene as a stream of its one thread', () => {
+    expect(parseSoakArgs(['--gate', '--scene', 'chat'])).toMatchObject({ scene: 'chat', view: 'stream', label: 'gate-chat' })
+    expect(parseSoakArgs(['--scene', 'chat'])).toMatchObject({ scene: 'chat', view: 'stream', label: 'synthetic-prod-chat' })
+    expect(() => parseSoakArgs(['--scene', 'chat', '--view', 'split'])).toThrow('its view is stream')
+    expect(() => parseSoakArgs(['--scene', 'chat', '--host', 'box'])).toThrow('synthetic host')
+    expect(() => parseSoakArgs(['--scene', 'tabs'])).toThrow('--scene')
   })
   it('refuses the box, a dev build or a timing of its own in gate mode', () => {
     expect(() => parseSoakArgs(['--gate', '--host', 'box'])).toThrow('synthetic host only')
@@ -31,6 +39,11 @@ describe('the soak arguments', () => {
     expect(() => parseSoakArgs(['--view', 'tabs'])).toThrow('--view')
     expect(() => parseSoakArgs(['--label', 'a b'])).toThrow('--label')
     expect(() => parseSoakArgs(['--minutes'])).toThrow('needs a value')
+  })
+  it('traces and runs an experiment only when asked', () => {
+    expect(parseSoakArgs(['--gate'])).toMatchObject({ traceS: 0, evalJs: null })
+    expect(parseSoakArgs(['--gate', '--trace', '5', '--eval', 'document.getAnimations().length'])).toMatchObject({ traceS: 5, evalJs: 'document.getAnimations().length' })
+    expect(() => parseSoakArgs(['--trace', '60'])).toThrow('0 to 30')
   })
 })
 
@@ -55,15 +68,20 @@ describe('the gate rule', () => {
     expect(judgeSoak(windowOf((i) => ({ heapMb: 40 + i * 1.5 })), GATE_RULE).ok).toBe(false)
     expect(judgeSoak(windowOf((i) => ({ longTasks: i === 3 ? [{ start: 30_000, duration: 210 }] : [] })), GATE_RULE).ok).toBe(false)
   })
-  it('reports CPU past 12% beside its bound without failing, until --cpu-fails', () => {
-    const over = windowOf(() => ({ cpuS: 1.3 }))
-    const reported = judgeSoak(over, GATE_RULE)
-    expect(reported.ok).toBe(true)
-    expect(reported.verdicts.find((v) => v.what.startsWith('renderer CPU'))).toMatchObject({ got: 13, limit: 12, ok: false, reportOnly: true })
-    const failing = judgeSoak(over, gateRule(true))
+  it("fails CPU past its scene's bound, and only reports it with --cpu-report-only", () => {
+    const over = windowOf(() => ({ cpuS: 3.4 }))
+    const failing = judgeSoak(over, gateRule('board'))
     expect(failing.ok).toBe(false)
+    expect(failing.verdicts.find((v) => v.what.startsWith('renderer CPU'))).toMatchObject({ got: 34, limit: GATE_CPU_PCT.board, ok: false })
     expect(failing.verdicts.find((v) => v.what.startsWith('renderer CPU'))?.reportOnly).toBeUndefined()
-    expect(gateRule(false)).toBe(GATE_RULE)
+    const reported = judgeSoak(over, gateRule('board', true))
+    expect(reported.ok).toBe(true)
+    expect(reported.verdicts.find((v) => v.what.startsWith('renderer CPU'))).toMatchObject({ ok: false, reportOnly: true })
+    // The chat scene has its own, tighter bound.
+    const chat = windowOf(() => ({ cpuS: (GATE_CPU_PCT.chat + 1) / 10 }))
+    expect(judgeSoak(chat, gateRule('board')).ok).toBe(true)
+    expect(judgeSoak(chat, gateRule('chat')).ok).toBe(false)
+    expect(GATE_RULE.cpuReportOnly).toBeUndefined()
   })
   it('sums the long tasks of one second', () => {
     const tasks = [

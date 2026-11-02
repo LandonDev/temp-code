@@ -7,10 +7,14 @@
  *   bun scripts/measure-renderer-soak.ts --label before-board                # synthetic host, prod, board, 10 min
  *   bun scripts/measure-renderer-soak.ts --host box --view stream --minutes 30 --label after-box-stream
  *   bun scripts/measure-renderer-soak.ts --build dev --label dev-board       # needs port 5173 free
- *   bun scripts/measure-renderer-soak.ts --gate                              # the release gate's 90 s run
+ *   bun scripts/measure-renderer-soak.ts --gate                              # the release gate's board scene, 90 s
+ *   bun scripts/measure-renderer-soak.ts --gate --scene chat                 # its chat scene
+ *   bun scripts/measure-renderer-soak.ts --gate --cpu-report-only --trace 5  # a hand run: CPU read, not failed, and the frames traced
  *
  * --host synthetic (default) boots scripts/soak-host.ts in a child (a
- *   pinned master, sixteen batch children, the fixed load of soakLoad.ts)
+ *   pinned master, sixteen batch children, the fixed load of soakLoad.ts;
+ *   with --scene chat, one plain chat thread with the focused child's load,
+ *   shown as a stream)
  *   and pairs with its operate key; box pairs read-only with the real box
  *   (the box's local socket when this runs on the box, else a pairing code
  *   over `ssh box tc-local`), the key or code held in this process only and
@@ -25,11 +29,17 @@
  *   after a 30 s warm-up. --tree: the built tree to run (default this
  *   checkout). --port: the window's debug port (default 9251). --no-profile:
  *   skip the 60 s CPU profile at the end.
- * --gate: the release gate's bounded run (scripts/gate.ts renderer-soak):
- *   synthetic host, production build, split view, a 10 s warm-up and a 50 s
+ * --gate: the release gate's bounded run (scripts/gate.ts renderer-soak and
+ *   renderer-soak-chat): synthetic host, production build, the board
+ *   scene's split view or the chat scene's stream, a 10 s warm-up and a 50 s
  *   window inside a hard 90 s from launch to teardown, judged by the gate's
- *   rule (scripts/lib/soakJudge.ts GATE_RULE): its CPU reading is reported
- *   beside the 12% bound without failing the run, unless --cpu-fails.
+ *   rule for the scene (scripts/lib/soakJudge.ts gateRule, GATE_CPU_PCT); its
+ *   CPU bound fails the run unless --cpu-report-only.
+ * --trace <s>: after the window, a trace that long read into who asks for
+ *   each main-thread frame (scripts/lib/soakTrace.ts), written beside the
+ *   report as <label>.trace.json. --eval <js>: an experiment evaluated in the
+ *   page once the view is open, before the warm-up (docs/box.md has the ones
+ *   that sized the bounds).
  *
  * Each sample forces a GC (HeapProfiler.collectGarbage) and reads the heap
  * (Runtime.getHeapUsage), the renderer's memory (Linux: smaps_rollup PSS and
@@ -380,7 +390,7 @@ type Shown = { environmentId: string; masterId: string; threadId: string }
  *  on macOS bundled by esbuild under node, since the Mac's bun has no
  *  node:sqlite (scripts/ios-client-test.ts runs its server the same way). */
 function hostCommand(): [string, string[]] {
-  if (!mac) return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts']]
+  if (!mac) return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts', '--scene', args.scene]]
   const out = join(REPO, 'scripts', '.out', 'soak-host.mjs')
   execFileSync(
     join(REPO, 'node_modules', '.bin', 'esbuild'),
@@ -398,7 +408,7 @@ function hostCommand(): [string, string[]] {
     ],
     { cwd: REPO, stdio: ['ignore', 'ignore', 'inherit'] }
   )
-  return ['node', [out]]
+  return ['node', [out, '--scene', args.scene]]
 }
 
 async function startSynthetic(c: Cdp): Promise<Shown> {
@@ -707,7 +717,7 @@ async function main(): Promise<void> {
     profile = profileSummary(cpuProfile)
   }
 
-  const rule = args.gate ? gateRule(args.cpuFails) : handRule(args.build, args.view)
+  const rule = args.gate ? gateRule(args.scene, args.cpuReportOnly) : handRule(args.build, args.view)
   const verdict = judgeSoak(rows, rule)
   const sha = (() => {
     try {
@@ -725,7 +735,7 @@ async function main(): Promise<void> {
     JSON.stringify({ label: args.label, args, tree, sha, platform: process.platform, memory: linux ? 'pss' : 'rss', shown, rule, verdict, rows, topRenders, trace, ...(why ? { whyTop, owners } : {}) }, null, 1)
   )
   const md = [
-    `# ${args.label}: ${args.host} host, ${args.build} build, ${args.view} view (${sha ?? 'no git'}, ${process.platform})`,
+    `# ${args.label}: ${args.host} host, ${args.scene} scene, ${args.build} build, ${args.view} view (${sha ?? 'no git'}, ${process.platform})`,
     '',
     `| t s | heap after GC MB | renderer ${linux ? 'PSS' : 'RSS'} MB | renderer CPU % | GPU CPU % | DOM nodes | listeners | long tasks (ms) | measures / marks |${args.build === 'dev' ? ' re-renders (family) |' : ''}`,
     `|---|---|---|---|---|---|---|---|---|${args.build === 'dev' ? '---|' : ''}`,

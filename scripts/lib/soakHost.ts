@@ -4,7 +4,9 @@
  * ephemeral port, as scripts/ios-client-test-server.ts boots), seeded with a
  * workspace, a project, a pinned master with sixteen batch children and a
  * running shell step, and driven by the fixed load of scripts/lib/soakLoad.ts
- * through the registry's append path:
+ * through the registry's append path. The chat scene (`startSoakHost('chat')`)
+ * seeds one plain chat thread instead, with no master, batch or shell step,
+ * and drives CHAT_PROFILE (the focused child's load alone):
  *
  *   meta   a child's live context grows (a meta push, no row)
  *   delta  an assistant text delta; a message ends at a tool call or after
@@ -30,9 +32,10 @@ import { configure } from 'aliax-core'
 import { startServer } from '../../src/main/server/index'
 import type { AgentEvent } from '../../src/shared/events'
 import { batchRowMidRun, withShellLog } from './ios-seeds'
-import { SOAK_PROFILE, startLoad, type SoakClock, type SoakDriver, type SoakEmit } from './soakLoad'
+import { profileOf, startLoad, type SoakClock, type SoakDriver, type SoakEmit, type SoakScene } from './soakLoad'
 
 export const SOAK_MASTER = 'soak-master'
+export const SOAK_CHAT = 'soak-chat'
 export const soakChildId = (i: number): string => `soak-child-${String(i).padStart(2, '0')}`
 
 const TITLES = [
@@ -62,6 +65,8 @@ const PROSE =
 export interface SoakHost {
   baseUrl: string
   environmentId: string
+  scene: SoakScene
+  /** the pinned master; empty in the chat scene */
   masterId: string
   children: string[]
   focusedId: string
@@ -75,7 +80,8 @@ export interface SoakHost {
   close(): Promise<void>
 }
 
-export async function startSoakHost(): Promise<SoakHost> {
+export async function startSoakHost(scene: SoakScene = 'board'): Promise<SoakHost> {
+  const profile = profileOf(scene)
   const root = mkdtempSync(join(tmpdir(), 'tc-soak-host-'))
   process.env.TEMP_CODE_WARM_HARNESS = '0'
   configure({
@@ -114,6 +120,20 @@ export async function startSoakHost(): Promise<SoakHost> {
   const project = await registry.createProject(workspace.id, 'soak', 'local')
   const base = { provider: 'claude', model: 'claude-opus-5-5', reasoning: 'high', agentType: 'implementer', permission: 'edits', projectId: project.id } as const
 
+  const seedThread = (id: string): void => {
+    registry.append(id, { type: 'status', status: 'running' })
+    registry.append(id, { type: 'assistant-text', text: PROSE.slice(0, 160), delta: false, msgId: `${id}-seed`, blockIndex: 0 })
+    registry.append(id, { type: 'tool-call', callId: `${id}-seed-read`, name: 'Read', input: { file_path: 'src/index.ts' } })
+    registry.append(id, { type: 'tool-result', callId: `${id}-seed-read`, output: 'export {}\n', isError: false })
+  }
+  let children: string[]
+  let batchRow: ReturnType<typeof batchRowMidRun> | null = null
+  if (scene === 'chat') {
+    await registry.create({ ...base, id: SOAK_CHAT, threadType: 'chat', title: TITLES[0]! })
+    registry.append(SOAK_CHAT, { type: 'user-text', text: `${TITLES[0]}.` })
+    seedThread(SOAK_CHAT)
+    children = [SOAK_CHAT]
+  } else {
   await registry.create({ ...base, id: SOAK_MASTER, threadType: 'chat', title: 'Ship the soak batch' })
   registry.setMaster(SOAK_MASTER, true)
   registry.append(SOAK_MASTER, { type: 'user-text', text: 'Run the sixteen threads of the batch and land them as they finish.' })
@@ -121,17 +141,15 @@ export async function startSoakHost(): Promise<SoakHost> {
   registry.append(SOAK_MASTER, { type: 'turn-complete' })
   registry.append(SOAK_MASTER, { type: 'status', status: 'watching' })
 
-  const children = Array.from({ length: SOAK_PROFILE.children }, (_, i) => soakChildId(i))
+  children = Array.from({ length: profile.children }, (_, i) => soakChildId(i))
   for (const [i, id] of children.entries()) {
     await registry.create({ ...base, id, threadType: 'implementation', title: TITLES[i % TITLES.length]!, masterId: SOAK_MASTER, startedBy: SOAK_MASTER })
     registry.append(id, { type: 'user-text', text: `${TITLES[i % TITLES.length]}.`, newPass: true })
-    registry.append(id, { type: 'status', status: 'running' })
-    registry.append(id, { type: 'assistant-text', text: PROSE.slice(0, 160), delta: false, msgId: `${id}-seed`, blockIndex: 0 })
-    registry.append(id, { type: 'tool-call', callId: `${id}-seed-read`, name: 'Read', input: { file_path: 'src/index.ts' } })
-    registry.append(id, { type: 'tool-result', callId: `${id}-seed-read`, output: 'export {}\n', isError: false })
+    seedThread(id)
   }
-  let batchRow = batchRowMidRun(SOAK_MASTER, { landed: [], pending: children }, Date.now())
+  batchRow = batchRowMidRun(SOAK_MASTER, { landed: [], pending: children }, Date.now())
   server.batches.seedRow(batchRow)
+  }
 
   const created = await server.remoteAuth.createKey({ name: 'renderer-soak', audience: 'client', caps: ['operate'], createdBy: 'local' })
 
@@ -153,6 +171,7 @@ export async function startSoakHost(): Promise<SoakHost> {
   }
   const apply = (emit: SoakEmit): void => {
     if (emit.kind === 'log') {
+      if (!batchRow) return
       batchRow = withShellLog(batchRow, [`soak ${String(emit.n).padStart(5, '0')}: checking the billing page`])
       server.batches.seedRow(batchRow)
       return
@@ -187,17 +206,18 @@ export async function startSoakHost(): Promise<SoakHost> {
   return {
     baseUrl: `http://127.0.0.1:${server.remote.port}`,
     environmentId: server.environmentId,
-    masterId: SOAK_MASTER,
+    scene,
+    masterId: scene === 'chat' ? '' : SOAK_MASTER,
     children,
-    focusedId: children[SOAK_PROFILE.focused]!,
-    streamerIds: SOAK_PROFILE.streamers.map((i) => children[i]!),
+    focusedId: children[profile.focused]!,
+    streamerIds: profile.streamers.map((i) => children[i]!),
     projectId: project.id,
     workspaceId: workspace.id,
     keyId: created.key.id,
     key: created.token,
     startLoad(clock) {
       if (driver) throw new Error('the load already runs')
-      driver = startLoad(apply, clock)
+      driver = startLoad(apply, clock, profile)
       return driver
     },
     async close() {

@@ -2,14 +2,16 @@
  * The pure parts of scripts/measure-renderer-soak.ts: its arguments and the
  * pass rule it judges recorded samples by (scripts/soak-judge.test.ts).
  *
- * Two rules. The gate's (`--gate`, the release gate's renderer-soak step):
- * across a 50 s window, heap after GC grows at most 6 MB, renderer RSS
- * after GC at most 30 MB, no long task passes 200 ms and long tasks take at
- * most 250 ms of any second; the renderer's CPU is read against 12% of one
- * core and reported, without failing the step, until the renderer fits it
- * (the Mac read 33% at a 144 Hz screen after UI-13, the board's spinners
- * and the stream's render work holding it there; docs/release-gate.md
- * "The renderer soak"); `--cpu-fails` on the step makes it fail again.
+ * Two rules. The gate's (`--gate`, the release gate's two renderer-soak
+ * steps, one per scene): across a 50 s window, heap after GC grows at most
+ * 6 MB, renderer RSS after GC at most 30 MB, no long task passes 200 ms,
+ * long tasks take at most 250 ms of any second, and the renderer's CPU stays
+ * under its scene's bound (GATE_CPU_PCT): the master's board beside a
+ * streaming child (`--scene board`) and one plain chat streaming (`--scene
+ * chat`). Each bound is the scene's figure on the Mac at a 144 Hz screen
+ * plus a margin, a guard against regression, not a target (docs/release-gate.md
+ * "The renderer soak"); `--cpu-report-only` reads CPU without failing, for
+ * a hand run.
  * A hand run's (the targets of the Performance 1 plan): growth read as the
  * slope over the run and stated per 30 minutes, heap within +50 MB and RSS
  * within +100 MB (+150 MB on a dev build), CPU within the view's figure on
@@ -21,6 +23,7 @@
 export type SoakHostKind = 'synthetic' | 'box'
 export type SoakBuild = 'prod' | 'dev'
 export type SoakView = 'board' | 'stream' | 'split'
+export type SoakScene = 'board' | 'chat'
 
 export interface SoakArgs {
   host: SoakHostKind
@@ -38,8 +41,10 @@ export interface SoakArgs {
   thread: string | null
   /** a 60 s CPU profile at the end (off in gate mode) */
   profile: boolean
-  /** --cpu-fails: the gate's CPU bound fails the run again instead of being reported */
-  cpuFails: boolean
+  /** the synthetic host's scene: the master's batch, or one plain chat (shown as a stream) */
+  scene: SoakScene
+  /** --cpu-report-only: the gate's CPU bound is read and shown, never failed (a hand run) */
+  cpuReportOnly: boolean
   /** --trace <s>: after the window, a trace that long read into who asks for each frame (scripts/lib/soakTrace.ts) */
   traceS: number
   /** --eval <js>: an experiment run in the page once the view is open, before the warm-up */
@@ -60,20 +65,25 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const gate = argv.includes('--gate')
   const host = (flag('--host') ?? 'synthetic') as SoakHostKind
   const build = (flag('--build') ?? 'prod') as SoakBuild
-  const view = (flag('--view') ?? (gate ? 'split' : 'board')) as SoakView
+  const scene = (flag('--scene') ?? 'board') as SoakScene
+  if (!['board', 'chat'].includes(scene)) throw new Error('--scene is board or chat')
+  if (scene === 'chat' && host !== 'synthetic') throw new Error('--scene chat is a synthetic host')
+  const view = (flag('--view') ?? (scene === 'chat' ? 'stream' : gate ? 'split' : 'board')) as SoakView
+  if (scene === 'chat' && view !== 'stream') throw new Error('--scene chat has one thread: its view is stream')
   if (!['synthetic', 'box'].includes(host)) throw new Error('--host is synthetic or box')
   if (!['prod', 'dev'].includes(build)) throw new Error('--build is prod or dev')
   if (!['board', 'stream', 'split'].includes(view)) throw new Error('--view is board, stream or split')
   if (gate && host !== 'synthetic') throw new Error('--gate runs on the synthetic host only: the box is never in the release gate')
   if (gate && build !== 'prod') throw new Error('--gate measures the production build only')
-  if (!gate && argv.includes('--cpu-fails')) throw new Error('--cpu-fails belongs to --gate: a hand run fails on CPU already')
+  if (argv.includes('--cpu-fails')) throw new Error('--cpu-fails is gone: the gate fails on CPU by default (--cpu-report-only reads it without failing)')
+  if (!gate && argv.includes('--cpu-report-only')) throw new Error('--cpu-report-only belongs to --gate')
   if (gate && (argv.includes('--minutes') || argv.includes('--every'))) throw new Error('--gate has its own timing (a 50 s window); drop --minutes and --every')
   const minutes = gate ? GATE_TIMING.windowMs / 60_000 : Number(flag('--minutes') ?? '10')
   const every = gate ? GATE_TIMING.everyS : Number(flag('--every') ?? '60')
   if (!(minutes > 0)) throw new Error('--minutes takes a positive number')
   if (!(every >= 1)) throw new Error('--every takes seconds, at least 1')
   if (every > minutes * 60) throw new Error('--every is longer than the run')
-  const label = flag('--label') ?? (gate ? 'gate' : `${host}-${build}-${view}`)
+  const label = flag('--label') ?? (gate ? (scene === 'chat' ? 'gate-chat' : 'gate') : `${host}-${build}-${scene === 'chat' ? 'chat' : view}`)
   if (!/^[a-z0-9-]+$/i.test(label)) throw new Error('--label takes letters, digits and dashes')
   const traceS = Number(flag('--trace') ?? '0')
   if (!(traceS >= 0 && traceS <= 30)) throw new Error('--trace takes seconds, 0 to 30')
@@ -92,7 +102,8 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
     master: flag('--master') ?? null,
     thread: flag('--thread') ?? null,
     profile: !gate && !argv.includes('--no-profile'),
-    cpuFails: argv.includes('--cpu-fails'),
+    scene,
+    cpuReportOnly: argv.includes('--cpu-report-only'),
     traceS,
     evalJs: flag('--eval') ?? null
   }
@@ -129,19 +140,27 @@ export interface SoakRule {
   familyPerMin?: number
 }
 
+/**
+ * Each scene's CPU bound, % of one core: its figure on the Mac (M4 Max,
+ * 144 Hz) plus a margin. The board reads 29%: one compositor animation per
+ * streamed phrase asks for about 57 more main-thread frames a second, and
+ * Blink samples every turning spinner on each of them (docs/box.md "The
+ * soak's two scenes"). Never raised to make a run pass.
+ */
+export const GATE_CPU_PCT: Record<SoakScene, number> = { board: 33, chat: 12 }
+
 export const GATE_RULE: SoakRule = {
   name: 'gate',
   heapGrowthMb: 6,
   rssGrowthMb: 30,
-  cpuPct: 12,
-  cpuReportOnly: true,
+  cpuPct: GATE_CPU_PCT.board,
   longTaskMaxMs: 200,
   longTaskPerSecondMs: 250
 }
 
-/** The gate's rule; `cpuFails` (the step's `--cpu-fails`) makes the CPU bound fail the run again. */
-export function gateRule(cpuFails: boolean): SoakRule {
-  return cpuFails ? { ...GATE_RULE, cpuReportOnly: false } : GATE_RULE
+/** The gate's rule for a scene; `reportOnly` (`--cpu-report-only`) shows the CPU bound without failing on it. */
+export function gateRule(scene: SoakScene, reportOnly = false): SoakRule {
+  return { ...GATE_RULE, name: `gate ${scene}`, cpuPct: GATE_CPU_PCT[scene], ...(reportOnly ? { cpuReportOnly: true } : {}) }
 }
 
 /** The figures the plan set for a production build on the box, by view (xvfb, software paint). */

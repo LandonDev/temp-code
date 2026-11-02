@@ -8,7 +8,8 @@
  */
 import { startSoakHost } from './lib/soakHost'
 
-const host = await startSoakHost()
+// `--scene chat`: one plain chat thread instead of the master's batch.
+const host = await startSoakHost(process.argv[process.argv.indexOf('--scene') + 1] === 'chat' ? 'chat' : 'board')
 host.startLoad()
 // JSON drops the two functions; the rest is the line the soak reads.
 process.stdout.write(JSON.stringify({ ready: true, ...host }) + '\n')

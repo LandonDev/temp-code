@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { declaredRates, SOAK_PROFILE, SOAK_TICK_MS, startLoad, type SoakClock, type SoakEmit } from './lib/soakLoad'
+import { CHAT_PROFILE, declaredRates, profileOf, SOAK_PROFILE, SOAK_TICK_MS, startLoad, type SoakClock, type SoakEmit } from './lib/soakLoad'
 
 function fakeClock(): SoakClock & { advance(ms: number, step?: number): void } {
   let now = 1_000_000
@@ -63,5 +63,12 @@ describe('soak load', () => {
     driver.stop()
     const children = new Set(seen.filter((e) => e.kind === 'meta').map((e) => e.child))
     expect(children.size).toBe(16)
+  })
+
+  it("gives the chat scene the focused child's load alone", () => {
+    expect(declaredRates(CHAT_PROFILE)).toEqual({ meta: 0.5, delta: 20, tool: 0.2, log: 0 })
+    expect(CHAT_PROFILE.streams.every((s) => s.child === 0)).toBe(true)
+    expect(profileOf('chat')).toBe(CHAT_PROFILE)
+    expect(profileOf('board')).toBe(SOAK_PROFILE)
   })
 })

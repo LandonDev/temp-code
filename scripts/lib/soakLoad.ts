@@ -11,6 +11,11 @@
  *   tool   the focused child makes a tool call every 5 s
  *   log    the master's running shell step prints 5 lines a second
  *
+ * The chat scene (`--scene chat`, CHAT_PROFILE) is one plain thread with
+ * the focused child's own load and nothing around it: its meta every 2 s,
+ * 20 deltas a second and a tool call every 5 s; no batch, no other stream,
+ * no shell step.
+ *
  * The driver owes each stream floor((t + phase) × rate) emissions at time
  * t and pays them on every tick, so a slow tick catches up instead of
  * drifting, and the meta stream's phases spread the sixteen children over
@@ -56,6 +61,20 @@ function profile(): SoakProfile {
 }
 
 export const SOAK_PROFILE: SoakProfile = profile()
+
+/** The scenes the soak measures: the master's board beside a streaming child, or one plain chat. */
+export type SoakScene = 'board' | 'chat'
+
+export const CHAT_PROFILE: SoakProfile = {
+  children: 1,
+  focused: 0,
+  streamers: [],
+  streams: SOAK_PROFILE.streams.filter((s) => s.child === SOAK_FOCUSED).map((s) => ({ ...s }))
+}
+
+export function profileOf(scene: SoakScene): SoakProfile {
+  return scene === 'chat' ? CHAT_PROFILE : SOAK_PROFILE
+}
 
 /** What the profile declares a second, by kind. */
 export function declaredRates(p: SoakProfile = SOAK_PROFILE): Record<SoakKind, number> {
