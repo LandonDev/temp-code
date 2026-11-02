@@ -4,6 +4,8 @@ import { newSession } from "../session";
 import { KEEP_RECENT, RECENT_ROW_BUDGET, applyMeta, metaEqual, sessionFromMeta, sessionStore, type Link } from "./store";
 import { ConnectionLostError, TimeoutError } from "../connection";
 import type { EventRow, ServerPush, SessionMeta } from "./types";
+// The pending-approval index reads approvals through lib/approvalToast.ts, which installs itself on load.
+import "../approvalToast";
 
 function meta(over: Partial<SessionMeta> = {}): SessionMeta {
   return {
@@ -846,8 +848,8 @@ describe("meta push coalescing", () => {
     const off = sessionStore.onMetaChange(changed);
     link.push({ push: "session", session: wireMeta({ id: "first", parentId: "c" }) });
     await flush();
-    expect(changed.mock.calls[0][0].ids.size).toBe(0);
-    expect(changed.mock.calls[0][0].affected.size).toBe(0);
+    // An identical meta changes nothing, so no flush tells anyone.
+    expect(changed).not.toHaveBeenCalled();
     off();
     sessionStore.reset();
     expect(sessionStore.childrenOf("c")).toEqual([]);

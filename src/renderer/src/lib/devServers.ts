@@ -57,7 +57,12 @@ function logsAfterRuns(logs: State['logs'], before: readonly DevRun[], after: re
   return next
 }
 
+/** Bumped when a host leaves, so an answer it sent before going lands nowhere. */
+const hostGeneration = new Map<string, number>()
+const generationOf = (environmentId: string): number => hostGeneration.get(environmentId) ?? 0
+
 function removeHost(environmentId: string): void {
+  hostGeneration.set(environmentId, generationOf(environmentId) + 1)
   store.setState((s) => {
     const targets = { ...s.targets }
     const runs = { ...s.runs }
@@ -144,9 +149,9 @@ export async function loadDevTargets(environmentId: string, projectId: string): 
   startDevServers()
   const key = keyOf(environmentId, projectId)
   try {
-    const link = registry.linkOf(environmentId)
-    const { targets, runs } = await link.request<{ targets: DevTarget[]; runs: DevRun[] }>('devServer.targets', { projectId })
-    if (registry.link(environmentId) !== link) return
+    const generation = generationOf(environmentId)
+    const { targets, runs } = await registry.linkOf(environmentId).request<{ targets: DevTarget[]; runs: DevRun[] }>('devServer.targets', { projectId })
+    if (generationOf(environmentId) !== generation) return
     store.setState((s) => ({
       targets: { ...s.targets, [key]: targets },
       runs: { ...s.runs, [key]: runs },
@@ -159,9 +164,9 @@ export async function loadDevTargets(environmentId: string, projectId: string): 
 
 /** The console's replay: the host's buffered log for a run this window joined late. */
 export async function loadDevLog(environmentId: string, runId: string): Promise<void> {
-  const link = registry.linkOf(environmentId)
-  const { run, lines } = await link.request<{ run: DevRun; lines: string[] }>('devServer.log', { runId })
-  if (registry.link(environmentId) !== link) return
+  const generation = generationOf(environmentId)
+  const { run, lines } = await registry.linkOf(environmentId).request<{ run: DevRun; lines: string[] }>('devServer.log', { runId })
+  if (generationOf(environmentId) !== generation) return
   store.setState((s) => ({ logs: { ...s.logs, [runId]: lines } }))
   applyDevRunPush(environmentId, { push: 'dev-run', projectId: run.projectId, run, lines: [] })
 }

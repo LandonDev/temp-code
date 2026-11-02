@@ -2,6 +2,7 @@ import { leafIds, type WorkspaceTab } from "./layout";
 import { pendingApprovalIndex, sessionDisplayTitle, type Block, type Session } from "./session";
 import { toolCallLabel } from "../surfaces/transcriptActivity";
 import { humanName } from "./toolPhrase";
+import { sessionStore } from "./tcserver/store";
 
 export type PendingApprovalNotice = {
   sessionId: string;
@@ -91,3 +92,6 @@ export function hiddenApprovalNotices(
   }
   return notices;
 }
+
+// The store's pending-approval index reads approvals through this module.
+sessionStore.setApprovalNoticeBuilder(approvalToastNotice);

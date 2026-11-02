@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { approvalToastNotice, type ApprovalToastNotice } from "../approvalToast";
+import type { ApprovalToastNotice } from "../approvalToast";
 import { noteBootResume } from "../bootResume";
 import type { Attachment, Block, HarnessId, LoadState, Session } from "../session";
 import { HARNESSES, newSession } from "../session";
@@ -2410,7 +2410,19 @@ class SessionStore {
     this.refreshPendingApprovals(sessions);
   }
 
+  /** How a session's pending approval reads as a toast, from lib/approvalToast.ts, which installs it
+   *  when it loads: the store keeps no transcript wording of its own, and importing it here closed an
+   *  import cycle through the transcript's tool labels. */
+  private approvalNoticeOf: ((session: Session, previous?: ApprovalToastNotice) => ApprovalToastNotice | null) | null = null;
+
+  setApprovalNoticeBuilder(build: (session: Session, previous?: ApprovalToastNotice) => ApprovalToastNotice | null): void {
+    this.approvalNoticeOf = build;
+    this.refreshPendingApprovals(this.currentSnapshot());
+  }
+
   private refreshPendingApprovals(sessions: Session[]): void {
+    const approvalToastNotice = this.approvalNoticeOf;
+    if (!approvalToastNotice) return;
     let next: Map<string, ApprovalToastNotice> | null = null;
     const update = (): Map<string, ApprovalToastNotice> => next ??= new Map(this.pendingApprovals);
     const removed = this.pendingApprovals.size ? new Set(this.pendingApprovals.keys()) : null;

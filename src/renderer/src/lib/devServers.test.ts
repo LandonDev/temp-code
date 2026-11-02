@@ -54,10 +54,13 @@ describe('devServers', () => {
     expect(devServerStore.getState().logs.a).toBeUndefined()
   })
 
-  it('drops a removed host’s runs and logs and ignores its late refresh', async () => {
+  it('drops a removed host’s runs and logs and ignores its late refresh and log replay', async () => {
     let notify: (link: EnvLink, event: 'added' | 'removed') => void = () => {}
     let resolveRuns: (value: { runs: DevRun[] }) => void = () => {}
     const pending = new Promise<{ runs: DevRun[] }>((resolve) => { resolveRuns = resolve })
+    let resolveLog: (value: { run: DevRun; lines: string[] }) => void = () => {}
+    const pendingLog = new Promise<{ run: DevRun; lines: string[] }>((resolve) => { resolveLog = resolve })
+    vi.spyOn(registry, 'linkOf').mockReturnValue({ request: vi.fn(() => pendingLog) } as unknown as EnvLink)
     const offPush = vi.fn()
     const offOpen = vi.fn()
     const link = {
@@ -75,8 +78,11 @@ describe('devServers', () => {
       applyDevRunPush('env_mac', { push: 'dev-run', projectId: 'p1', run: run({ id: 'mac' }), lines: ['mac'] })
       devServerStore.setState({ targets: { 'env_box/p1': [], 'env_mac/p1': [] } })
       startDevServers()
+      const replay = loadDevLog('env_box', 'a')
       notify(link, 'removed')
       resolveRuns({ runs: [run()] })
+      resolveLog({ run: run(), lines: ['stale'] })
+      await replay
       await Promise.resolve()
       expect(devServerStore.getState()).toMatchObject({
         runs: { 'env_mac/p1': [run({ id: 'mac' })] },
@@ -99,23 +105,6 @@ describe('devServers', () => {
       applyDevRunPush('env_box', { push: 'dev-run', projectId: 'p1', run: run({ status: 'stopped' }), lines: ['old'] })
       await loadDevTargets('env_box', 'p1')
       expect(devServerStore.getState().logs.a).toBeUndefined()
-    } finally {
-      vi.restoreAllMocks()
-    }
-  })
-
-  it('ignores a log replay that arrives after its host was removed', async () => {
-    let resolveLog: (value: { run: DevRun; lines: string[] }) => void = () => {}
-    const pending = new Promise<{ run: DevRun; lines: string[] }>((resolve) => { resolveLog = resolve })
-    const link = { request: vi.fn(() => pending) } as unknown as EnvLink
-    vi.spyOn(registry, 'linkOf').mockReturnValue(link)
-    vi.spyOn(registry, 'link').mockReturnValue(undefined)
-    try {
-      const loading = loadDevLog('env_box', 'a')
-      resolveLog({ run: run(), lines: ['stale'] })
-      await loading
-      expect(devServerStore.getState().logs.a).toBeUndefined()
-      expect(devServerStore.getState().runs['env_box/p1']).toBeUndefined()
     } finally {
       vi.restoreAllMocks()
     }
