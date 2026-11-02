@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { usePaneVisible } from "../hooks/paneVisibility";
+import { REVEAL } from "../lib/ease";
 
 /**
  * Smooth streaming reveal. Text arrives in chunks whose size and spacing
@@ -25,20 +26,24 @@ import { usePaneVisible } from "../hooks/paneVisibility";
  *   streaming, τ 90 ms draining at the end, a 25 chars/s floor.
  * - Lag cap 900 chars: a torrent (pasted code) skips ahead rather than
  *   replaying at length.
- * - Paints at most every 33ms so markdown re-parses at ~30fps, not 60, and
- *   asks for a frame only when a paint is due: between paints it waits on a
- *   timer, since every requested frame runs the page's style and paint
- *   lifecycle (144 a second on a 144 Hz screen, a fifth of a core).
+ * - Steps every REVEAL.stepMs (100 ms), as Claude's reveal does, so each step
+ *   carries what 100 ms of the stream holds (a phrase), and asks for a frame
+ *   only when a step is due: between steps it waits on a timer, since every
+ *   requested frame runs the page's style and paint lifecycle (144 a second
+ *   on a 144 Hz screen, a fifth of a core).
+ * - Shows whole words (`revealCut`): a step ends at a word boundary, and a
+ *   bare block marker or a table's header row waits for its content. Each
+ *   step fades in whole (lib/streamReveal.ts).
  * - A non-append rewrite (final text differing from the deltas) snaps.
  * - Mount baselines to the full text: history and re-attach show instantly;
- *   only text that arrives while we watch animates.
+ *   only text that arrives while we watch animates. Once the stream ends the
+ *   whole text shows, as the last step.
  */
 
 export const TAU_STREAM_MS = 320;
 export const TAU_DRAIN_MS = 90;
 export const FLOOR_CPS = 25;
 export const MAX_LAG = 900;
-export const PAINT_EVERY_MS = 33;
 /** Frame deltas clamp here so a background tab does not dump everything at once. */
 export const MAX_FRAME_MS = 100;
 
@@ -84,6 +89,71 @@ export function advanceReveal(
   );
   const next = Math.min(end, pos + step);
   return end - next > MAX_LAG ? end - MAX_LAG : next;
+}
+
+const SPACE = /\s/;
+/** A trailing line that is only a block marker: a heading's hashes, a list
+ *  bullet or number, a task box, under any quote prefixes. */
+const BARE_MARKER = /^(?:[ \t]*>)*[ \t]*(?:#{1,6}|[-*+](?:[ \t]+\[[ xX]?\]?)?|\d{1,9}[.)])?[ \t]*$/;
+/** A table's delimiter row: `| --- | :-: |`. */
+const TABLE_DELIMITER = /^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
+const FENCE = /^[ \t]{0,3}(?:```|~~~)/;
+
+/**
+ * Where the shown text ends when the pace has reached `pos`: the last word
+ * boundary at or before it (just past a whitespace run), or `pos` itself in
+ * a token longer than REVEAL.longTokenChars with no boundary (a URL, a path,
+ * a hash), never inside a surrogate pair. While live, a trailing line that
+ * is only a block marker (`#`, `-`, `1.`, `- [ ]`, under any `>`) is held to
+ * its line start until it has content, and a trailing table (lines that
+ * start with `|`) is held to its first line until its delimiter row is
+ * whole; neither inside an open code fence. Once the stream ends the cut is
+ * the whole text.
+ */
+export function revealCut(text: string, pos: number, live: boolean): number {
+  if (!live) return text.length;
+  let cut = Math.max(0, Math.min(pos, text.length));
+  if (cut === 0) return 0;
+  let boundary = cut;
+  while (boundary > 0 && !SPACE.test(text[boundary - 1])) boundary--;
+  if (cut - boundary <= REVEAL.longTokenChars) cut = boundary;
+  else if (isHighSurrogate(text.charCodeAt(cut - 1))) cut--;
+  return holdBlockStart(text, cut);
+}
+
+function isHighSurrogate(code: number): boolean {
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+const TABLE_LINE = /^[ \t]*\|/;
+
+/** The cut pulled back to the start of a trailing bare marker or an
+ *  unfinished table. */
+function holdBlockStart(text: string, cut: number): number {
+  const lines = text.slice(0, cut).split("\n");
+  const starts: number[] = [];
+  let at = 0;
+  for (const line of lines) {
+    starts.push(at);
+    at += line.length + 1;
+  }
+  // Inside an open fence a `-` or a `|` is code.
+  let fenced = false;
+  for (let i = 0; i < lines.length - 1; i++) if (FENCE.test(lines[i])) fenced = !fenced;
+  const lastIndex = lines.length - 1;
+  const last = lines[lastIndex];
+  if (fenced || FENCE.test(last)) return cut;
+  if (last !== "" && BARE_MARKER.test(last)) return starts[lastIndex];
+  // The trailing run of lines that start with `|` (the last one possibly
+  // unfinished, or a newline just past it); it stands once its second line
+  // is a whole delimiter row.
+  const end = last === "" ? lastIndex - 1 : lastIndex;
+  if (end < 0 || !TABLE_LINE.test(lines[end])) return cut;
+  let first = end;
+  while (first > 0 && TABLE_LINE.test(lines[first - 1])) first--;
+  // A line is whole once a newline follows it.
+  const delimiterWhole = first + 1 < lastIndex && TABLE_DELIMITER.test(lines[first + 1]);
+  return delimiterWhole ? cut : starts[first];
 }
 
 /** True when the already-revealed prefix changed under us (a rewrite, not an append). */
@@ -234,7 +304,7 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
     const p = s.pacer;
     s.live = streaming;
     s.target = text;
-    if (!paneShown || isRewrite(s.prev, text, p.pos)) {
+    if (!paneShown || !streaming || isRewrite(s.prev, text, p.pos)) {
       snapPacer(p, text.length);
       setShown(text.length);
     } else {
@@ -252,7 +322,7 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
     s.running = true;
     // The next frame when a paint is due; until then a timer, not a frame.
     const next = (now: number): void => {
-      const wait = s.lastPaint + PAINT_EVERY_MS - now;
+      const wait = s.lastPaint + REVEAL.stepMs - now;
       if (wait <= 0) {
         s.raf = requestAnimationFrame(tick);
         return;
@@ -278,7 +348,7 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
         setShown(end);
         return;
       }
-      if (now - s.lastPaint >= PAINT_EVERY_MS) {
+      if (now - s.lastPaint >= REVEAL.stepMs) {
         s.lastPaint = now;
         setShown(Math.floor(p.pos));
       }
@@ -297,5 +367,6 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
     };
   }, [text, streaming, paneShown]);
 
-  return shown >= text.length ? text : text.slice(0, shown);
+  const cut = revealCut(text, shown, !!streaming);
+  return cut >= text.length ? text : text.slice(0, cut);
 }

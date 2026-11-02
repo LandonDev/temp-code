@@ -12,9 +12,11 @@ import {
   isRewrite,
   newPacer,
   noteArrival,
+  revealCut,
   stepPacer,
   targetLagMs,
 } from "./smoothText";
+import { REVEAL } from "../lib/ease";
 
 describe("advanceReveal", () => {
   it("reveals remaining × (1 − e^(−dt/τ)) while streaming", () => {
@@ -298,5 +300,74 @@ describe("pacer", () => {
     p.pos = 629.99;
     expect(stepPacer(p, 100, 2100, true)).toBe(630);
     expect(stepPacer(p, 16, 2116, true)).toBe(630);
+  });
+});
+
+describe("revealCut", () => {
+  const shown = (text: string, pos: number, live = true) => text.slice(0, revealCut(text, pos, live));
+
+  it("ends at a word boundary, never inside a word", () => {
+    expect(shown("the transcript reads", 8)).toBe("the ");
+    expect(shown("the transcript reads", 15)).toBe("the transcript ");
+    expect(shown("the transcript reads", 4)).toBe("the ");
+    expect(shown("the transcript reads", 3)).toBe("");
+    expect(shown("one\ntwo three", 6)).toBe("one\n");
+  });
+
+  it("holds the live end's unfinished word", () => {
+    expect(shown("the transcri", 12)).toBe("the ");
+  });
+
+  it("cuts a token longer than REVEAL.longTokenChars at the position", () => {
+    const url = "see https://example.com/a/very/long/path/to/a/file.ts";
+    const pos = 4 + REVEAL.longTokenChars + 6;
+    expect(shown(url, pos)).toBe(url.slice(0, pos));
+    expect(shown("see " + "x".repeat(REVEAL.longTokenChars), 4 + REVEAL.longTokenChars)).toBe("see ");
+  });
+
+  it("never splits a surrogate pair", () => {
+    const text = "a".repeat(REVEAL.longTokenChars + 2) + "😀😀";
+    const pos = REVEAL.longTokenChars + 3; // inside the first emoji
+    const cut = revealCut(text, pos, true);
+    expect(cut).toBe(pos - 1);
+    expect(text.charCodeAt(cut - 1)).toBeLessThan(0xd800);
+  });
+
+  it.each([
+    ["# ", "# Title "],
+    ["### ", "### Title "],
+    ["- ", "- item "],
+    ["* ", "* item "],
+    ["+ ", "+ item "],
+    ["1. ", "1. item "],
+    ["2) ", "2) item "],
+    ["- [ ] ", "- [ ] task "],
+    ["- [x] ", "- [x] done "],
+    ["> - ", "> - quoted "],
+    ["> ", "> quoted "],
+  ])("holds a bare %j until its line has content", (marker, full) => {
+    const before = "Intro line\n";
+    expect(shown(before + full, (before + marker).length)).toBe(before);
+    expect(shown(before + full, (before + full).length)).toBe(before + full);
+  });
+
+  it("holds a table's header row until its delimiter row is whole", () => {
+    const table = "Text\n| a | b |\n|---|---|\n| 1 | 2 |\n";
+    const header = "Text\n| a | b |\n";
+    expect(shown(table, header.length)).toBe("Text\n");
+    expect(shown(table, header.length + 5)).toBe("Text\n");
+    expect(shown(table, header.length + "|---|---|\n".length)).toBe(header + "|---|---|\n");
+    expect(shown(table, table.length)).toBe(table);
+  });
+
+  it("holds nothing inside an open code fence", () => {
+    const code = "```sh\nls\n| grep x\n- \n";
+    expect(shown(code, code.length)).toBe(code);
+  });
+
+  it("shows everything once the stream ends", () => {
+    for (const text of ["the transcri", "Intro\n- ", "| a | b |\n|--", "x".repeat(40)]) {
+      expect(revealCut(text, 3, false)).toBe(text.length);
+    }
   });
 });
