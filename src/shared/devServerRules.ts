@@ -25,7 +25,7 @@ export const NOT_DEV_COMMAND =
  *  the electron-stub preload): their workers, fake providers
  *  and in-process servers listen on throwaway ports while they run. */
 export const NOT_DEV_RUNNER =
-  /\bscripts\/gate\.ts\b|\bscripts\/(?:e2e|measure|soak)-[\w-]+\.(?:ts|mjs|js)\b|\bscripts\/\.out\/[\w-]+\.mjs\b|--preload[\s=]+(?:\.\/)?scripts\/lib\/electron-stub\.ts\b|\/node_modules\/(?:\.bin\/)?(?:vitest|jest|mocha|@playwright\/test)\b|(?:^|[\s;&|(])(?:bunx\s+|npx\s+|pnpm\s+(?:exec\s+)?|yarn\s+)?(?:vitest|jest|mocha|tsc)(?=\s|$)|\bplaywright\s+test\b|\bbun\s+test\b|\b(?:bun|npm|pnpm|yarn)\s+(?:run\s+)?(?:test|typecheck|gate)(?=[\s:]|$)/
+  /\bscripts\/gate\.ts\b|\bscripts\/(?:e2e|measure|soak)-[\w-]+\.(?:ts|mjs|js)\b|\bscripts\/\.out\/[\w-]+\.mjs\b|--preload[\s=]+\S*scripts\/lib\/electron-stub\.ts\b|\/node_modules\/(?:\.bin\/)?(?:vitest|jest|mocha|@playwright\/test)\b|(?:^|[\s;&|(])(?:bunx\s+|npx\s+|pnpm\s+(?:exec\s+)?|yarn\s+)?(?:vitest|jest|mocha|tsc)(?=\s|$)|\bplaywright\s+test\b|\bbun\s+test\b|\b(?:bun|npm|pnpm|yarn)\s+(?:run\s+)?(?:test|typecheck|gate)(?=[\s:]|$)/
 
 /** A listener under a test run, a typecheck or the gate, by ANY process
  *  above it: a vitest worker's own command names tinypool, not the gate

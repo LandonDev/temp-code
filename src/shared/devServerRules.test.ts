@@ -9,6 +9,7 @@ describe("the repository's own proofs are never dev servers", () => {
       '/srv/agents/home/.bun/bin/bun scripts/e2e-cross-host-threads.ts --fast',
       'bun --preload scripts/lib/electron-stub.ts scripts/capture-swift-fixtures.ts',
       'bun --preload ./scripts/lib/electron-stub.ts scripts/lib/soakHost.ts',
+      '/srv/agents/home/.bun/bin/bun --preload /srv/agents/work/temp-code/scripts/lib/electron-stub.ts /srv/agents/work/temp-code/scripts/lib/soakHost.ts',
       'bun scripts/measure-renderer-soak.ts --gate',
       'bun scripts/soak-host-check.ts'
     ]) {
