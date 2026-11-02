@@ -1868,7 +1868,8 @@ class SessionStore {
         this.pushed.session += 1;
         const fresh = !this.entries.has(push.session.id);
         const meta: SessionMeta = { ...push.session, environmentId };
-        this.mergeMeta(meta);
+        // The same facts again tell nobody anything: no flush is scheduled.
+        if (!this.mergeMeta(meta)) break;
         // The view is current at once; listeners hear once per frame, so a
         // fleet pushing many times a second costs one reconcile per frame
         // and never interrupts a render in progress.
@@ -1881,13 +1882,15 @@ class SessionStore {
         // A list push (a reconcile, a fleet switch) merges every row, then
         // schedules once: one snapshot, one notify, whatever the batch's size.
         const fresh: SessionMeta[] = [];
+        let changed = false;
         for (const session of push.sessions) {
           this.pushed.session += 1;
           const meta: SessionMeta = { ...session, environmentId };
           const isFresh = !this.entries.has(meta.id);
-          this.mergeMeta(meta);
+          if (this.mergeMeta(meta)) changed = true;
           if (isFresh) fresh.push(meta);
         }
+        if (!changed) break;
         this.bumpSoon();
         this.bumpMetaSoon();
         for (const meta of fresh) this.noteAdded(meta);
@@ -1984,11 +1987,12 @@ class SessionStore {
     return true;
   }
 
-  private mergeMeta(meta: SessionMeta): void {
+  /** Folds a meta in; false when it changed nothing, so the caller notifies nobody. */
+  private mergeMeta(meta: SessionMeta): boolean {
     const entry = this.entries.get(meta.id);
     // The same facts again (a list reconcile, a reconnect's replay): the
     // metas array and the view stay the objects they are.
-    if (entry?.meta && !entry.provisional && metaEqual(entry.meta, meta)) return;
+    if (entry?.meta && !entry.provisional && metaEqual(entry.meta, meta)) return false;
     this.metasSnapshot = null;
     if (!entry) {
       const load = loadingState();
@@ -2009,7 +2013,7 @@ class SessionStore {
         head: null,
         rows: null,
       });
-      return;
+      return true;
     }
     if (entry.provisional) {
       // A tab opened on the id alone: the meta is the whole of what it knew.
@@ -2018,7 +2022,7 @@ class SessionStore {
       entry.meta = meta;
       entry.session = { ...sessionFromMeta(meta), loaded: false, load: entry.load };
       if (entry.load.phase === "loading" && !entry.slowTimer) this.armSlow(entry);
-      return;
+      return true;
     }
     if (!entry.meta) {
       // Draft adoption: the server echoes what the UI sent, so the local
@@ -2062,6 +2066,7 @@ class SessionStore {
       }
     }
     entry.meta = meta;
+    return true;
   }
 
   /** A server-minted top-level session, first seen after boot. Children

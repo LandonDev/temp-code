@@ -315,6 +315,31 @@ describe("sessionStore", () => {
     expect(s.composerSeed).toBe("draft text");
   });
 
+  it("an equal session push schedules no flush: 100 identical pushes notify no listener", async () => {
+    link.metas = [wireMeta({ status: "running", title: "Streaming" })];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await new Promise((r) => setTimeout(r, 30));
+    const onMeta = vi.fn();
+    const onAny = vi.fn();
+    const offMeta = sessionStore.onMetaChange(onMeta);
+    const offAny = sessionStore.subscribe(onAny);
+    const before = sessionStore.metas();
+    for (let i = 0; i < 100; i++) link.push({ push: "session", session: wireMeta({ status: "running", title: "Streaming" }) });
+    link.push({ push: "sessions", sessions: [wireMeta({ status: "running", title: "Streaming" })] } as ServerPush);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onMeta).not.toHaveBeenCalled();
+    expect(onAny).not.toHaveBeenCalled();
+    expect(sessionStore.metas()).toBe(before);
+    // A changed field still lands, once per frame.
+    link.push({ push: "session", session: wireMeta({ status: "running", title: "Renamed" }) });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onMeta).toHaveBeenCalledTimes(1);
+    expect(sessionStore.metaOf("s1")?.title).toBe("Renamed");
+    offMeta();
+    offAny();
+  });
+
   it("drafts open through mutate and adopt their server meta on create", async () => {
     sessionStore.attach(link);
     await sessionStore.ready();
