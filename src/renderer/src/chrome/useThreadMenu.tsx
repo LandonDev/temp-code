@@ -18,14 +18,11 @@ import { planCloseFocused } from "../lib/workspaceTabGroups";
 import { workspaceActions } from "../stores/workspaceActions";
 import { SessionActionsContext } from "../surfaces/threadChat";
 import { dialogsChunk } from "../surfaces/chunks";
-import { RenameThreadDialog } from "../surfaces/threads/master/RenameThreadDialog";
 import { THREAD_LABELS } from "../surfaces/threads/threadTypes";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { goalDialog } from "./GoalDialog";
-import { MacBridgeRulesDialog } from "./MacBridgeRulesDialog";
 import type { MenuRow } from "./menuRows";
 import { useThreadHost } from "./ThreadHostChip";
-import { ArchiveThreadDialog, ThreadResourcesDialog } from "./ThreadResourcesDialog";
 import { TuneDialog } from "./ThreadTune";
 
 /**
@@ -67,8 +64,12 @@ const GOAL_HARNESSES: ReadonlySet<string> = new Set(["claude", "codex"]);
 
 type Dialog = { kind: "tune" | "delete" | "bridge" | "resources" | "archive" | "rename" | "batch-new" | "batch-adopt"; id: string };
 
-// A master's add dialogs, through the dialogs chunk: mounted only while open.
+// The dialogs a pick opens, through the dialogs chunk: mounted only while open.
 const BatchAddDialog = dialogsChunk.surface("BatchAddDialog");
+const ThreadResourcesDialog = dialogsChunk.surface("ThreadResourcesDialog");
+const ArchiveThreadDialog = dialogsChunk.surface("ArchiveThreadDialog");
+const MacBridgeRulesDialog = dialogsChunk.surface("MacBridgeRulesDialog");
+const RenameThreadDialog = dialogsChunk.surface("RenameThreadDialog");
 
 /** The focused pane of the tab on screen, when it is not this thread's own. */
 function sidePane(id: string): string | null {

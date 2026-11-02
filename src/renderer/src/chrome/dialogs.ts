@@ -13,3 +13,7 @@ export { RemoteFolderDialog } from "./RemoteFolderDialog";
 export { ThreadDefaultsDialog } from "./ThreadDefaultsDialog";
 export { PreambleDialog } from "./PreambleDialog";
 export { BatchAddDialog } from "../surfaces/threads/master/BatchAddDialogs";
+// A thread menu's dialogs (chrome/useThreadMenu.tsx).
+export { ArchiveThreadDialog, ThreadResourcesDialog } from "./ThreadResourcesDialog";
+export { MacBridgeRulesDialog } from "./MacBridgeRulesDialog";
+export { RenameThreadDialog } from "../surfaces/threads/master/RenameThreadDialog";

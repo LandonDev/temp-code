@@ -39,6 +39,9 @@ export const notesChunk = defineChunk("notes", () => import("./NotesView"));
 /** The options select every dialog and settings page uses (ChoiceSelect on the Base UI select). */
 export const selectChunk = defineChunk("select", () => import("../components/choice-select-body"));
 
+/** The accounts a failure card's Pick another account lists (chrome/AccountsList.tsx). */
+export const accountsChunk = defineChunk("accounts", () => import("../chrome/AccountsList"));
+
 /** Every menu, context menu and popover's body (chrome/menuBody.tsx); chrome/menuRows.tsx swaps them in. */
 export const menuChunk = defineChunk("menus", () => import("../chrome/menuBody"));
 
@@ -70,6 +73,7 @@ export const allChunks = {
   inboxChunk,
   notesChunk,
   selectChunk,
+  accountsChunk,
   menuChunk,
   customizeChunk,
   dialogsChunk,
