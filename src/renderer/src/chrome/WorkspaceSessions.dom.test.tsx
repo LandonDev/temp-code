@@ -252,6 +252,21 @@ describe('a project card', () => {
     expect(block.textContent).toContain('1 queued')
     // A housed thread prints only in its master's block.
     expect(probe.container.querySelectorAll('[data-card-line]')).toHaveLength(1)
+    // Its working arc is drawn still: the block has one moving mark at most.
+    const arcs = block.querySelectorAll('[data-slot="spinner"]')
+    expect(arcs).toHaveLength(1)
+    expect(arcs[0]!.hasAttribute('data-turning')).toBe(false)
+    probe.unmount()
+  })
+
+  it("turns the master's own arc while the master works", () => {
+    const master: ThreadRow = {
+      ...threadRow(meta('m', { title: 'Release train', status: 'running', busySince: 5, isMaster: true }), {}),
+      batch: [threadRow(meta('b1', { title: 'Card view', masterId: 'm', status: 'running', busySince: 5 }), {}, 0, true)]
+    }
+    const probe = mountProbe(projectCard([master]))
+    const turning = lineOf(probe.container, 'Release train').querySelectorAll('[data-slot="spinner"][data-turning]')
+    expect(turning).toHaveLength(1)
     probe.unmount()
   })
 

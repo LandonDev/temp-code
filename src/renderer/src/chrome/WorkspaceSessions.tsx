@@ -725,10 +725,10 @@ type CardMenu = { rows: () => readonly MenuRow[]; onPick: (id: string) => void }
 
 /** A card line's 12px lead: the state's glyph, so titles one level down
  *  share one column whatever the mark; empty for an unread line. */
-function LineMark({ state }: { state: ThreadState | null }) {
+function LineMark({ state, still }: { state: ThreadState | null; still?: boolean }) {
   return (
     <span aria-hidden className="grid size-3 shrink-0 place-items-center">
-      {state && marksAtRest(state) ? <StatusMark state={state} word={false} className="[&_svg]:size-3" /> : null}
+      {state && marksAtRest(state) ? <StatusMark state={state} word={false} still={still} className="[&_svg]:size-3" /> : null}
     </span>
   );
 }
@@ -797,7 +797,9 @@ function ThreadLine({ kind, thread, now }: { kind: "working" | "paused" | "unrea
 
 /** A master and its batch: its line with the batch's done tally, its own
  *  working subagents, each batch thread with something to say one step
- *  in, and the queued ones as one count. Settled batch threads are the tally. */
+ *  in, and the queued ones as one count. Settled batch threads are the tally.
+ *  The block has one moving mark: a batch thread's working arc is still
+ *  under the master's line, as a subagent's is under its board row. */
 function MasterLines({ block, now }: { block: MasterBlock; now: number }) {
   const { master, unread, done, total } = block;
   return (
@@ -820,7 +822,7 @@ function MasterLines({ block, now }: { block: MasterBlock; now: number }) {
         return (
           <span key={thread.id} className="flex min-w-0 flex-col pl-4">
             <span className={LINE}>
-              <LineMark state={state} />
+              <LineMark state={state} still />
               <LineGlyph thread={thread} />
               <span className="min-w-0 flex-1 truncate text-muted-foreground">{thread.title || "Untitled"}</span>
               <HostGlyph environmentId={thread.environmentId} />

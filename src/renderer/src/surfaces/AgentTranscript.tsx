@@ -1051,7 +1051,7 @@ export function AgentTranscript({
               }
               cwd={cwd}
               harnessOf={harnessOf}
-              turnState={row.kind !== "more" && row.turn.isLast ? (turnState ?? null) : null}
+              turnState={rowTurnState(row, turnState)}
               liveState={liveState}
               onOpenActivity={onOpenActivity}
               register={registerRow}
@@ -1099,6 +1099,13 @@ function stableTurns(next: Block[][], previous: Block[][]): Block[][] {
   return changed ? out : previous;
 }
 
+/** The session a row is handed: the live turn's closing row alone draws it.
+ *  It is a new object on every delta, so an item row given it would re-render
+ *  with each one; an item that reads it (a notice) takes it from context. */
+export function rowTurnState(row: TranscriptRow, turnState: TurnSession | null | undefined): TurnSession | null {
+  return row.kind === "end" && row.turn.isLast ? (turnState ?? null) : null;
+}
+
 type RowViewProps = {
   row: TranscriptRow;
   /** Offset in the container, from the layout at render time. */
@@ -1107,7 +1114,7 @@ type RowViewProps = {
   fresh: boolean;
   cwd?: string;
   harnessOf: (turn: Block[]) => HarnessId | undefined;
-  /** The session, for the live turn's rows only; older rows never see it change. */
+  /** The session, for the live turn's closing row only (`rowTurnState`). */
   turnState: TurnSession | null;
   liveState: boolean;
   onOpenActivity?: () => void;

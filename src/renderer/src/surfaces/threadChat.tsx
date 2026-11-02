@@ -3,6 +3,7 @@ import { Button } from "../components/ui/button";
 import { Tip } from "../components/tip";
 import {
   createContext,
+  memo,
   useCallback,
   useContext,
   useMemo,
@@ -27,6 +28,7 @@ import { acknowledgeQuoteRequest, type QuoteRequest } from "../lib/quoteDraft";
 import type { RecentProject } from "../lib/recents";
 import type { OpenFileFn } from "../lib/search";
 import {
+  sameSessionChrome,
   sessionDisplayTitle,
   sessionWorkCwd,
   UNTITLED_THREAD,
@@ -46,6 +48,7 @@ import { WorkingStrip } from "./threads/WorkingStrip";
 import { rightPanel } from "../lib/rightPanel";
 import { desktopOnly } from "../lib/nativeWeb";
 import { askOnGesture } from "../lib/preconnect";
+import { useKept } from "../lib/keptValue";
 import { macBridgeChunk } from "./chunks";
 
 /** A box thread's waiting Mac bridge card, loaded once one waits. */
@@ -131,8 +134,9 @@ type ThreadComposerProps = {
 
 /** The composer of one thread with everything that rides on it: the Mac
  *  bridge's cards, the message queue, the host's connection line and the
- *  review strip. */
-export function ThreadComposer({
+ *  review strip. Memoized: handed the session as `useThreadChat` keeps it
+ *  (`sameSessionChrome`), it skips every streamed delta. */
+export const ThreadComposer = memo(function ThreadComposer({
   session,
   actions,
   visible,
@@ -220,7 +224,7 @@ export function ThreadComposer({
       <SessionReview sessionId={id} cwd={workCwd} enabled={visible} busy={!!session.busy} onOpenDiff={onOpenDiff} />
     </Composer>
   );
-}
+});
 
 /** App's handlers bound to one thread, under the composer's own names. */
 function boundTo(actions: SessionActions, id: string) {
@@ -350,13 +354,19 @@ export function useThreadChat({
     [rootRef],
   );
   const resume = useCallback(() => serverCommands.resume(sessionId).catch(() => undefined), [sessionId]);
+  const start = useCallback(() => serverCommands.startNow(sessionId).catch(() => undefined), [sessionId]);
+  const stop = useCallback(() => onStop(sessionId), [onStop, sessionId]);
+  const disarmNewPass = useCallback(() => setNewPassArmed(false), []);
   const openActivity = useCallback(() => rightPanel.open(sessionId, "activity"), [sessionId]);
+  // The composer and the strip read no streamed text: they keep the session
+  // they drew until something else in it changes.
+  const chrome = useKept(session, sameSessionChrome);
 
   const composerOf = (opts?: ChatOpts) => (
     <>
       <AppshotFlyIn sessionId={sessionId} active={focused && visible} />
       <ThreadComposer
-        session={session}
+        session={chrome}
         actions={actions}
         visible={visible}
         focused={focused && composerFocused}
@@ -370,7 +380,7 @@ export function useThreadChat({
         newPass={newPassArmed}
         onFocus={onFocusPane}
         onOpenDiff={onOpenDiff}
-        onSent={() => setNewPassArmed(false)}
+        onSent={disarmNewPass}
       />
     </>
   );
@@ -434,12 +444,7 @@ export function useThreadChat({
     // an orchestration parent's included; the transcript closes settled
     // turns and says Watching.
     strip: (
-      <WorkingStrip
-        session={session}
-        onStop={() => onStop(sessionId)}
-        onResume={resume}
-        onStart={() => serverCommands.startNow(sessionId).catch(() => undefined)}
-      />
+      <WorkingStrip session={chrome} onStop={stop} onResume={resume} onStart={start} />
     ),
     composer: composerOf(opts),
     anchor: focused && visible,

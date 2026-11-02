@@ -12,7 +12,7 @@ import { ChevronDown } from "./icons";
 import { HostGlyph } from "./HostGlyph";
 import { useEnvironmentStatuses, useEnvironments } from "../lib/connection/status";
 import { copiesOf, ensureLinkedArgs, ensureLinkedOn, probeOf, rememberLinkHost, type CopyProbe } from "../lib/projectHostChoice";
-import { sessionStore, useSession, useSessionMeta } from "../lib/tcserver/store";
+import { sessionStore, useSessionChrome, useSessionMeta } from "../lib/tcserver/store";
 import type { ProjectMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 
@@ -27,7 +27,7 @@ import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
  * header's host chip instead.
  */
 export function DraftHostPicker({ sessionId, onClose }: { sessionId: string; onClose?: () => void }) {
-  const session = useSession(sessionId);
+  const session = useSessionChrome(sessionId);
   const meta = useSessionMeta(sessionId);
   const { projects, workspaces } = useWorkspaceCatalog();
   const environments = useEnvironments();

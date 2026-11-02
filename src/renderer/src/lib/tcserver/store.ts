@@ -1,8 +1,8 @@
-import { useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
 import type { ApprovalToastNotice } from "../approvalToast";
 import { noteBootResume } from "../bootResume";
 import type { Attachment, Block, HarnessId, LoadState, Session } from "../session";
-import { HARNESSES, newSession } from "../session";
+import { HARNESSES, newSession, sameSessionChrome } from "../session";
 import { resolveModel } from "../models";
 import { isTurnActive } from "../turnClock";
 import {
@@ -2523,6 +2523,18 @@ export function useSession(id: string | null | undefined): Session | undefined {
   return useSyncExternalStore(sessionStore.subscribe, () =>
     id ? sessionStore.get(id) : undefined,
   );
+}
+
+/** One session as `useSession` gives it, kept while only streamed text
+ *  changed (`sameSessionChrome`): chrome that reads its host, status or
+ *  model never re-renders for a delta of the thread on screen. */
+export function useSessionChrome(id: string | null | undefined): Session | undefined {
+  const kept = useRef<Session | undefined>(undefined);
+  return useSyncExternalStore(sessionStore.subscribe, () => {
+    const next = id ? sessionStore.get(id) : undefined;
+    if (!next || !kept.current || !sameSessionChrome(kept.current, next)) kept.current = next;
+    return kept.current;
+  });
 }
 
 /** One session's server status ("idle" for a draft); re-renders on that value alone. */

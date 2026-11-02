@@ -27,7 +27,7 @@ vi.mock("../lib/connection/status", () => ({
   useEnvironmentStatuses: () => h.statuses,
 }));
 vi.mock("../lib/tcserver/store", () => ({
-  useSession: (id: string) => h.sessions.find((s) => s.id === id),
+  useSessionChrome: (id: string) => h.sessions.find((s) => s.id === id),
   useSessionMeta: () => h.meta,
   sessionStore: {
     mutate: (fn: (prev: Draft[]) => Draft[]) => {

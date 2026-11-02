@@ -99,4 +99,18 @@ describe("AgentTranscript rows under a stream", () => {
     expect(handed.length).toBe(calls + 1);
     expect(handed.at(-1)).toBe(drawn);
   });
+
+  it("re-renders no group when the session object is new with each delta", () => {
+    // The pane hands the transcript the whole session as `turn`: a new object
+    // per delta. Only the closing row draws it; the groups never see it.
+    const session = (blocks: Block[]) => ({ id: "s", status: "running" as const, busy: true, blocks });
+    const { rerender } = render(<AgentTranscript sessionId="s" turn={session(turn("Hel"))} blocks={turn("Hel")} busy visible />);
+    const calls = handed.length;
+    expect(calls).toBeGreaterThan(0);
+    for (const text of ["Hell", "Hello", "Hello there"]) {
+      const blocks = turn(text);
+      rerender(<AgentTranscript sessionId="s" turn={session(blocks)} blocks={blocks} busy visible />);
+    }
+    expect(handed.length).toBe(calls);
+  });
 });

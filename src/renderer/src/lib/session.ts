@@ -575,6 +575,26 @@ export function sessionDisplayTitle(title: string, harness: HarnessId): string {
   return title;
 }
 
+/**
+ * Two snapshots of one session that differ at most in streamed text: every
+ * field but `blocks` the same, and the same last message from the person
+ * (the turn clock's start when the host stamped none). The composer and the
+ * working strip read nothing else of the blocks, so on this they keep the
+ * session they drew and a delta re-renders neither.
+ */
+export function sameSessionChrome(a: Session, b: Session): boolean {
+  if (a === b) return true;
+  const keys = Object.keys(b) as (keyof Session)[];
+  if (keys.length !== Object.keys(a).length) return false;
+  for (const key of keys) if (key !== "blocks" && a[key] !== b[key]) return false;
+  return lastUserBlock(a.blocks) === lastUserBlock(b.blocks);
+}
+
+function lastUserBlock(blocks: readonly Block[]): Block | undefined {
+  for (let i = blocks.length - 1; i >= 0; i--) if (blocks[i]!.role === "user") return blocks[i];
+  return undefined;
+}
+
 /** Working copy the agent and session git UIs should use. */
 export function sessionWorkCwd(session: {
   cwd: string;

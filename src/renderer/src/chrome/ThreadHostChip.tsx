@@ -2,7 +2,7 @@ import { useEffect, useState, type JSX } from "react";
 import type { SessionMovePreview } from "@server/shared/contract-session-move";
 import { registry, useEnvironments, useEnvironmentStatuses } from "../lib/connection";
 import { copiesOf, ensureLinkedArgs, ensureLinkedOn, rememberLinkHost } from "../lib/projectHostChoice";
-import { sessionStore, useQueue, useSession, useSessionMeta } from "../lib/tcserver/store";
+import { sessionStore, useQueue, useSessionChrome, useSessionMeta } from "../lib/tcserver/store";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import {
@@ -39,7 +39,8 @@ export function useThreadHost(sessionId: string | null): {
   pick: (id: string) => boolean;
   dialog: JSX.Element | null;
 } {
-  const session = useSession(sessionId ?? "");
+  // Its host, status and first message only: a streamed delta re-renders nothing here.
+  const session = useSessionChrome(sessionId ?? "");
   const meta = useSessionMeta(sessionId ?? "");
   const environments = useEnvironments();
   const statuses = useEnvironmentStatuses();
