@@ -591,15 +591,6 @@ frame. Every action
 row ends in a caret: it turns on a row that opens a body and stays still on
 one that opens its file.
 
-## Board updates
-
-A master board keeps each row's subagent summary until that subtree changes.
-The session store keeps the parent index and batches changed ids with their
-old and new ancestor chains. An unrelated thread's update does no summary
-work. A new layout adds summaries for new rows and prunes summaries and
-digests for departed rows. Agent order, the three-line cap and the quiet
-count after the lines stay the same.
-
 ## Restraint
 
 No cards within cards. No glows. No decorative badges or chips. No
@@ -615,12 +606,6 @@ board's foot (BatchFoot registers while the chat is folded, and a folded,
 inert column seats nothing); and 16px from the window's corner where no
 thread is focused. Confirmation dialogs only for destructive,
 irreversible actions. Every spacing and timing value is a token we can name.
-
-Hidden approval toasts read the session store's pending-approval index. A
-text stream leaves that snapshot and existing toasts alone. Only a changed
-title or approval line updates a toast; deciding, closing or unloading the
-thread removes it. Toast owners dismiss their own records when they unmount,
-and a late Sonner load cannot show a toast after its owner leaves.
 
 ## Verifying without a dev instance
 

@@ -377,12 +377,20 @@ async function startSynthetic(c: Cdp): Promise<Shown> {
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith('TEMP_CODE_') && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v
   env.NODE_ENV = 'production'
   // Relative paths from the checkout: the host's port sweep knows `--preload scripts/lib/electron-stub.ts` for a proof, never a dev server.
+  const hostLog = join(ROOT, `${args.label}.host.log`)
   soakHost = spawn(process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/lib/soakHost.ts'], {
     cwd: REPO,
     env,
-    stdio: ['pipe', 'pipe', 'ignore'],
+    stdio: ['pipe', 'pipe', openSync(hostLog, 'w')],
     detached: true
   })
+  const tail = (): string => {
+    try {
+      return readFileSync(hostLog, 'utf8').trim().split('\n').slice(-12).join('\n')
+    } catch {
+      return ''
+    }
+  }
   const line = await new Promise<string>((ok, fail) => {
     const timer = setTimeout(() => fail(new Error('the synthetic host did not start within 30 s')), 30_000)
     const lines = createInterface({ input: soakHost!.stdout! })
@@ -392,7 +400,7 @@ async function startSynthetic(c: Cdp): Promise<Shown> {
       lines.close()
       ok(l)
     })
-    soakHost!.on('exit', (code) => fail(new Error(`the synthetic host exited (${code})`)))
+    soakHost!.on('exit', (code) => fail(new Error(`the synthetic host exited (${code}); its log (${hostLog}) ends:\n${tail()}`)))
   })
   const host = JSON.parse(line) as { baseUrl: string; environmentId: string; masterId: string; focusedId: string; key: string }
   await c.eval(
