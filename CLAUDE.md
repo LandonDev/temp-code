@@ -121,8 +121,8 @@ Two separate steps, on purpose, over one gate.
   everything; `--only a,b` / `--skip a,b` / `--verbose` for a hand run.
   - `commit`: typecheck, vitest, the electron-vite build and, after it in
     the same lane, the bundle-size check (scripts/check-bundle-size.ts).
-    `publish`: renderer-soak (the build lane, after the build; Mac only),
-    e2e-remote-fence, hub:test, ios:test, ios:test:client. A proof that
+    `publish`: renderer-soak and renderer-soak-chat (the build lane, after
+    the build, one after the other; Mac only), e2e-remote-fence, hub:test, ios:test, ios:test:client. A proof that
     boots an instance belongs in `publish`.
   - Steps in one lane run in array order, one at a time; lanes run at
     once (typecheck, vitest and build + bundle-size together), with a combined status
@@ -1714,26 +1714,35 @@ names the far child).
   clears each one at once (lib/reactDevMeasures.dom.test.tsx holds it).
 - `bun scripts/measure-renderer-soak.ts` soaks a built tree's window
   (`--build prod|dev`, `--host synthetic|box`, `--view board|stream|split`,
-  `--minutes`, `--every`, `--label`, `--tree`, `--gate`; `--why` on a dev
+  `--minutes`, `--every`, `--label`, `--tree`, `--gate`, `--scene
+  board|chat`, `--trace <s>` (scripts/lib/soakTrace.ts: main-thread frames
+  by what they held, animation-frame and timer callbacks by function, busy
+  time per renderer thread, each animation's compositing verdict),
+  `--eval <js>` (an experiment run in the page); `--why` on a dev
   build tallies the props React's diff names as changed and who rendered
   them) on a fresh userData under /tmp/tc-soak, windowed (xvfb-run off
   macOS), and judges it (scripts/lib/soakJudge.ts). The synthetic host is
   scripts/soak-host.ts over scripts/lib/soakHost.ts (a real server in a
   child: bun with the electron stub on Linux, an esbuild bundle under node
   on macOS, whose bun has no node:sqlite; a pinned master,
-  sixteen batch children, the fixed load of scripts/lib/soakLoad.ts;
+  sixteen batch children, the fixed load of scripts/lib/soakLoad.ts; with
+  `--scene chat` one plain chat thread with the focused child's load,
+  CHAT_PROFILE, shown as a stream;
   `bun run script:soak-host-check` proves the load reaches a socket); box
   mode pairs read-only and revokes at exit. The window opens through
   `window.__monocode.open(sessionId, { split })` (every build; lib/monocodeOpen.ts)
   and runs inactive and unthrottled (`TEMP_CODE_SOAK_WINDOW=1`, honoured
-  only with TEMP_CODE_USER_DATA; src/main/soakWindow.ts). The gate row
-  `renderer-soak` runs `--gate` (synthetic, production, split, a 50 s
-  window inside 90 s; heap after GC ≤ +6 MB, RSS after GC ≤ +30 MB, no long
-  task over 200 ms, ≤ 250 ms of long tasks a second; CPU printed beside its
-  12% without failing, since the Mac reads 33% (38% before UI-13's phrase
-  fade; 29% with every fade and pulse off: the board's spinners and the
-  stream's render work hold it); `--cpu-fails` on the row in scripts/gate.ts makes
-  it fail again): in
+  only with TEMP_CODE_USER_DATA; src/main/soakWindow.ts). The gate rows
+  `renderer-soak` (`--gate`: the board scene, split) and
+  `renderer-soak-chat` (`--gate --scene chat`) each run a 50 s window
+  inside 90 s (heap after GC ≤ +6 MB, RSS after GC ≤ +30 MB, no long task
+  over 200 ms, ≤ 250 ms of long tasks a second, and CPU under the scene's
+  bound, `GATE_CPU_PCT`: the scene's highest Mac figure plus a margin, board
+  33% where it reads 29% on a quiet Mac and 20-22% on a busy one, chat 22%
+  where it reads 15% busy; each fails the publish;
+  `--cpu-report-only` reads CPU without failing for a hand run; docs/box.md
+  "The soak's two scenes" has why the board cannot reach 12% while the
+  phrase fade and the spinners stay as designed): in
   release-publish it waits for `$STAGE/build.done`
   (TEMP_CODE_SOAK_BUILD_DONE), elsewhere it reads out/bundle-map.json's
   `head` stamp and builds when out/ is not HEAD's clean build. docs/box.md
@@ -1762,7 +1771,14 @@ names the far child).
   reaches a `ref` prop (`useDragResize` gives `attachPane`). In the
   transcript a delta re-renders the row it changed and the closing row:
   `RowView` compares its row by what it draws (`sameRow` in
-  transcriptRows.ts), since every flatten builds new row objects.
+  transcriptRows.ts), since every flatten builds new row objects, and only
+  the live turn's closing row is handed the session (`rowTurnState`; a
+  notice reads it from context). Chrome that reads a thread's status, host
+  or model never subscribes to its streamed text: the composer and the
+  working strip get the session `useThreadChat` keeps while only streamed
+  text changed (`sameSessionChrome` in lib/session.ts, `ThreadComposer`
+  memoized, its callbacks stable), and a hook outside the pane reads it
+  through `useSessionChrome` (the store), never `useSession`.
 - Nothing that moves asks for a frame it does not paint: every requested
   frame runs the page's style, prepaint and layerize on the main thread,
   144 a second on a 144 Hz screen. The spinner turns the HTML box around
@@ -2927,7 +2943,8 @@ this is the short one.
   is archived or unpinned shows as plain roots. In the workspace column a
   project's card draws a master's batch as one block under the master's
   line, which ends in the batch's done tally (`3/7`; `cardLines` in
-  lib/sidebarRows.ts, `MasterLines` in chrome/WorkspaceSessions.tsx); the
+  lib/sidebarRows.ts, `MasterLines` in chrome/WorkspaceSessions.tsx; the
+  batch lines draw working's arc still, one moving mark per block); the
   workspace popover (a rail row's word)
   keeps a master as one block (`masterBlock` in lib/sidebarRows.ts,
   `MasterRows` in chrome/WorkspaceThreadsPopover.tsx): the master's row

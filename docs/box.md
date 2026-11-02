@@ -2658,13 +2658,19 @@ a forced GC, renderer PSS, renderer and GPU process CPU, DOM counters, long
 tasks and, on a dev build, React's re-renders with changed props by
 component (`--why` adds the props and the owners), takes a 60 s CPU profile
 at the end, writes `/tmp/tc-soak/<label>.{md,json}` and exits 1 when a
-rule fails (scripts/lib/soakJudge.ts).
+rule fails (scripts/lib/soakJudge.ts). `--scene chat` swaps the batch for
+one plain chat thread with the focused child's load alone, shown as a
+stream; `--trace 5` reads a trace of the window into who asks for each
+main-thread frame (scripts/lib/soakTrace.ts); `--eval <js>` runs an
+experiment in the page before the warm-up.
 
 ```bash
 bun x electron-vite build                     # a production run reads out/
 bun scripts/measure-renderer-soak.ts --host box --view stream --minutes 30 --label box-stream
 bun scripts/measure-renderer-soak.ts --build dev --view board --minutes 10 --why --label dev-why
-bun scripts/measure-renderer-soak.ts --gate   # the release gate's step
+bun scripts/measure-renderer-soak.ts --gate   # the release gate's board step
+bun scripts/measure-renderer-soak.ts --gate --scene chat   # its chat step
+bun scripts/measure-renderer-soak.ts --gate --cpu-report-only --trace 5 --label <name>   # by hand
 ```
 
 ### Before and after
@@ -2736,38 +2742,97 @@ unless noted:
 
 The fades ran on the compositor (every `stream-step-in` compositing status
 reported no failure); the fade costs about 4.7 points, the pulse nothing
-measurable (none ran in the soak's window). What holds the rest is not
-the stream's motion: a trace of the window shows about 103 main-thread
-frames a second, 33 spinner rotations running and 2-4 fades. That is the
-next performance thread's: until then the gate prints the CPU beside its
-12% on every publish without failing the step, and `--cpu-fails` on the
-step's row in scripts/gate.ts makes it fail again. The runs, traces and
-the visual proof are in `.temp-code/plan-LyTXVITkZoHM/proof/` (`proof/`
-for the soaks and the stream's checks, `proof2/` for the experiments), the
-summary in `.temp-code/plan-LyTXVITkZoHM/report.md`.
+measurable (none ran in the soak's window). A trace of the window showed
+about 103 main-thread frames a second, 33 spinner rotations running and 2-4
+fades; the next section follows that up. UI-13's runs, traces and visual
+proof are in `.temp-code/plan-LyTXVITkZoHM/proof/` (`proof/` for the soaks
+and the stream's checks, `proof2/` for the experiments), the summary in
+`.temp-code/plan-LyTXVITkZoHM/report.md`. Each of its experiments was one
+temporary edit of src/renderer/src/assets/components.css
+(`.stream-step { animation: none }` for the fade off; `animation: none` in
+the `text-pulse` utility for the pulse off; `display: inline-block` on
+`.stream-step` for the probe), then `npx electron-vite build` and one gate
+soak. Performance 1's reports and traces are in `.temp-code/perf1/`
+(report.md, `soak/` for the box, `mac/gate/` for the Mac).
 
-To reproduce on the Mac (an M4 Max, the window on a 144 Hz screen), in a
-clone of its own, one run at a time:
+### The soak's two scenes
+
+Performance 2 (2026-11-02) attributed every main-thread frame of the gate's
+scene with `--trace 5` and `--eval` experiments, on the box and on the Mac
+(a subagent there, a throwaway clone under /tmp, one run at a time). On the
+Mac at the base (a3bf7355) the window ran about 103 main-thread frames a
+second, each with a style update, and two things paid on every one of them:
+
+- React work after each store flush. The composer and the chat footer
+  re-rendered on every flush (their slots and callbacks were new with each
+  delta), every group of the live turn re-rendered because the transcript
+  handed each row the session, and the title bar's thread header re-rendered
+  through a hook that read the whole session on screen. In a dev build's
+  tally (`--why`, one minute) buttons went from 17,595 re-renders to 862,
+  collapsibles from 9,471 to fewer than 1,500 and transcript rows from 5,684 to
+  1,546. The fixes: `rowTurnState` (only the live turn's closing row gets
+  the session), `sameSessionChrome` with `useKept` in `useThreadChat` and
+  `useSessionChrome` in the store (the composer, the strip and the host hook
+  keep the session they drew while only streamed text changed), and a
+  project card's batch lines drawing working's arc still (16 of the 33
+  turning spinners), as DESIGN.md asks of a line under a row that spins.
+- Animations. Each streamed phrase starts and ends one compositor animation
+  (UI-13's phrase fade), which asks the main thread for about 57 more frames
+  a second; Blink re-samples every turning spinner on each frame (on the
+  box about 16 µs of style and 12 µs of prepaint per board spinner per
+  frame), and the compositor thread draws at 144 Hz while any spinner turns.
+
+The experiments, renderer CPU in % of one core on the Mac (the board scene,
+the morning's quieter Mac), on b5ae2651 (the React fixes) unless noted:
+
+| Run | Renderer CPU | Main-thread frames a second |
+|---|---|---|
+| base a3bf7355, two runs | 33.7, 32.9 | 103 |
+| b5ae2651, three runs | 29.3, 29.2, 29.6 | 103-107 |
+| the phrase fade off | 23.6 | 48 |
+| every spinner held still | 23.4 | 106 |
+| both | 16.0 | 59 |
+| the store's notify on a 100 ms grid | 27.6 | 97 |
+| the fade as a Web Animation, its start time given or left pending | 29.9, 29.4 | 107, 100 |
+| the fade 100 ms instead of 400 ms | 28.1 | 98 |
+| spinners as an animated PNG mask (impl-side image animation) | 22.4, GPU process 10.0 → 22.6% | 107 |
+
+The fade's frames come from starting and ending an animation per phrase,
+not from how long each runs (a 100 ms fade costs nearly the same), and
+neither the start time nor CSS against a Web Animation changes that. An
+animated PNG takes the spinners off the main thread entirely but moves the
+cost into the GPU process's raster, so it was dropped. With the fade off
+and every spinner held still the board scene still reads 16%, so 12% is out
+of reach while the design stays as UI-13 landed it; the user chose that
+design knowing the cost. The gate now runs two scenes, each with a CPU
+bound that fails the publish at its highest figure plus a margin
+(docs/release-gate.md "The renderer soak"). The same code read 29% on the
+Mac early in the day and 20-22% later, at the same 104 main-thread frames a
+second; the later rounds ran while other apps held the load at 8-9 (one at
+160% of a core), on AC power with Low Power Mode off. A quiet Mac reads
+higher, so each bound covers the quiet figure. The chat scene was only
+measured busy (15%); by the board's ratio its quiet figure is about 21%,
+under its 22%, and it cannot meet 12% either.
+
+| Scene | Before (a3bf7355) | After | Bound |
+|---|---|---|---|
+| board: the master's board beside a streaming child | 33.7, 32.9 on a quiet Mac; 27.1 on a busy one | 29.2, 29.3, 29.6 quiet; 20.1, 20.3, 21.6 busy | 33% |
+| chat: one plain chat streaming | 17.7 busy | 14.6, 14.7, 15.0 busy | 22% |
+
+On the box under xvfb the board scene went from 26.5% to 21.0%. To
+reproduce on the Mac, in a clone of its own, one run at a time:
 
 ```bash
-# the branch, judged as the gate would with the CPU bound on
-bun scripts/measure-renderer-soak.ts --gate --cpu-fails --label <name>
-# the base, as the gate runs it (CPU reported only)
-bun scripts/measure-renderer-soak.ts --gate --label <name>
+bun scripts/measure-renderer-soak.ts --gate --cpu-report-only --trace 5 --label <name>
+bun scripts/measure-renderer-soak.ts --gate --scene chat --cpu-report-only --trace 5 --label <name>
+# an experiment: the fade off
+bun scripts/measure-renderer-soak.ts --gate --cpu-report-only --trace 5 --label <name> \
+  --eval '(() => { const s = document.createElement("style"); s.textContent = ".stream-step { animation: none !important }"; document.head.append(s); return "fades off" })()'
 ```
 
-Each experiment was one temporary edit of
-src/renderer/src/assets/components.css (`.stream-step { animation: none }`
-for the fade off; `animation: none` in the `text-pulse` utility for the
-pulse off; `display: inline-block` on `.stream-step` for the probe), then
-`npx electron-vite build`, one soak with `--gate --cpu-fails`, and the file
-restored. The trace was 4 s of the window during warm-up (Tracing.start
-with devtools.timeline, disabled-by-default-devtools.timeline, cc,
-blink.animations and disabled-by-default-blink.animations), counting
-`ProxyMain::BeginMainFrame`, and `document.getAnimations()` sampled every
-250 ms for 5 s.
-The runs' reports and traces are in `.temp-code/perf1/` (report.md, `soak/`
-for the box, `mac/gate/` for the Mac).
+The runs are in `.temp-code/perf2/` (`mac/` and `box/` reports, one Mac
+trace, `tools/` with the trace readers, the experiment scripts and the
+animated PNG generator).
 
 ## Profiling the host
 

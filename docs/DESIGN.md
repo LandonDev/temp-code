@@ -311,8 +311,9 @@ its hover line and the transcript's working line say the word and the rest.
 
 Nothing loops. Every status glyph is still except working's spinner, a
 rotation and the one moving glyph. A row has one moving mark at most: a
-line that depends on a row's own mark (a subagent's under its board row)
-draws working's arc still (`StatusMark still`), and a settled row never
+line that depends on a row's own mark (a subagent's under its board row, a
+batch thread's under its master in a project card) draws working's arc
+still (`StatusMark still`), and a settled row never
 moves. When a mounted mark's state changes into
 working, waiting or watching its glyph breathes once (opacity over
 `--dur-slow`); under reduced motion it does not. Every other change is

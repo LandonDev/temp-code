@@ -12,7 +12,7 @@ file. A sibling change that needs a new check (the bundle-size check after
 | tier | steps | runs |
 | --- | --- | --- |
 | `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master |
-| `publish` | renderer-soak, e2e-remote-fence, hub, ios, ios-client | before signing in `release:publish`; and in the hook when a commit touches a guarded path. renderer-soak, hub, ios and ios-client are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
+| `publish` | renderer-soak, renderer-soak-chat, e2e-remote-fence, hub, ios, ios-client | before signing in `release:publish`; and in the hook when a commit touches a guarded path. The two soaks, hub, ios and ios-client are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
 
 Guarded paths (`TIER_PATHS`): `ios/**`, `scripts/gen-swift-contract.ts`,
 `src/shared/wireSchemas.ts`, `src/shared/contract*.ts`,
@@ -25,38 +25,62 @@ instance belongs in `publish`.
 
 ## The renderer soak
 
-`renderer-soak` runs `bun scripts/measure-renderer-soak.ts --gate`: the
-production build's window, inactive and unthrottled, under the synthetic
-host's load (scripts/lib/soakHost.ts: a pinned master, sixteen batch
-children, streaming text and a running shell step) with the board and a
-streaming transcript side by side. Ten seconds to warm up, then a 50 s
-window sampled every 10 s, inside a hard 90 s from launch to teardown.
-It passes when heap after GC grows at most 6 MB and renderer RSS after GC
-at most 30 MB across the window, no long task passes 200 ms and long tasks
-take at most 250 ms of any second (scripts/lib/soakJudge.ts `GATE_RULE`).
-The bounds are sized to catch a leak of the 2026-11-01 class (the dev
-build's +66 MB a minute fails the 30 MB rule in under a minute) and a main
-thread that never rests, not small drifts; they are never raised to make a
-run pass.
+Two steps, one scene each, with the same window and bounds and a CPU bound
+of their own. `renderer-soak` runs `bun scripts/measure-renderer-soak.ts
+--gate`: the production build's window, inactive and unthrottled, under the
+synthetic host's load (scripts/lib/soakHost.ts: a pinned master, sixteen
+batch children, streaming text and a running shell step) with the board and
+a streaming transcript side by side. `renderer-soak-chat` runs the same with
+`--scene chat`: one plain chat thread with the focused child's load alone
+(20 text deltas a second, a tool call every 5 s, no board, no batch, no
+spinner but the thread's own), shown as a stream. Each takes ten seconds to
+warm up, then a 50 s window sampled every 10 s, inside a hard 90 s from
+launch to teardown. A step passes when heap after GC grows at most 6 MB and
+renderer RSS after GC at most 30 MB across the window, no long task passes
+200 ms, long tasks take at most 250 ms of any second, and the renderer's CPU
+stays under its scene's bound (scripts/lib/soakJudge.ts `GATE_RULE`,
+`GATE_CPU_PCT`). The memory bounds are sized to catch a leak of the
+2026-11-01 class (the dev build's +66 MB a minute fails the 30 MB rule in
+under a minute) and a main thread that never rests, not small drifts. No
+bound is ever raised to make a run pass.
 
-The renderer's CPU is read against 12% of one core and printed beside it in
-the step's log and report (`! renderer CPU, % of one core: 34 (limit 12,
-reported only)`, "over, reported" in the table) on every publish, without
-failing the step. It is off because the Mac reads 33% in the split view at
-144 Hz. UI-13 replaced the streaming veil with CSS phrase fades (38% → 33%),
-and its experiments put the rest elsewhere: with the fades and the pulse
-both switched off the renderer still reads 29%, about 103 main-thread frames
-a second driven by the board's 33 spinner rotations and the stream's render
-work (docs/box.md "The renderer over time" has the measurements). Adding
-`--cpu-fails` to the `renderer-soak` row's args in scripts/gate.ts makes the
-12% bound fail the step again.
+The CPU bounds are regression guards, each the scene's highest figure on
+the Mac (M4 Max, the window on a 144 Hz screen) plus a margin. The same code
+reads up to 1.4 times higher on a quiet Mac than on one busy with other
+apps (load 8-9), at the same 104 main-thread frames a second, so a bound
+covers the quiet figure:
 
-It reads `out/`, so it sits in the `build` lane after the build and the
-bundle-size check. In `release:publish` the gate runs beside the build, so
-the script touches `$STAGE/build.done` once its build and size check pass
-and starts the gate with `TEMP_CODE_SOAK_BUILD_DONE` naming that file; the
-soak waits for it (at most 10 minutes) and then runs its 90 s while the
-app signs, adding nothing to the publish. Anywhere else it reads the
+| scene | before (a3bf7355) | after | bound |
+|---|---|---|---|
+| board: the master's board beside a streaming child | 33.7, 32.9 on a quiet Mac; 27.1 on a busy one | 29.2, 29.3, 29.6 quiet; 20.1, 20.3, 21.6 busy | 33% |
+| chat: one plain chat streaming | 17.7 busy | 14.6, 14.7, 15.0 busy | 22% |
+
+The chat scene reads 15% on a busy Mac, so it cannot meet 12% either; its
+quiet figure was not caught, and by the board's ratio it is about 21%,
+which its 22% covers. The board scene cannot come down to the 12% the soak
+first asked for
+without changing the design UI-13 landed, which the user chose knowing the
+cost. The trace (`--trace 5`, scripts/lib/soakTrace.ts) names where it goes:
+each streamed phrase starts and ends one compositor animation (the phrase
+fade), and that asks the main thread for about 57 more frames a second
+(about 105 a second against 48 with the fade off); Blink then re-samples
+every turning spinner on each of those frames (about 16 µs of style and
+12 µs of prepaint per spinner per frame on the box). With the fade off and
+every spinner held still the board still reads 16%, and either alone takes
+about 6 points. docs/box.md "The soak's two scenes" has the experiments.
+
+A hand run reads CPU without failing on it with `--cpu-report-only`
+(`! renderer CPU, % of one core: 34 (limit 33, reported only)`, "over,
+reported" in the table), and `--trace 5` adds the frame attribution to the
+report.
+
+Both read `out/`, so they sit in the `build` lane after the build and the
+bundle-size check, the board scene first, one instance at a time. In
+`release:publish` the gate runs beside the build, so the script touches
+`$STAGE/build.done` once its build and size check pass and starts the gate
+with `TEMP_CODE_SOAK_BUILD_DONE` naming that file; each soak waits for it
+(at most 10 minutes) and then runs its 90 s at most while the app signs.
+Anywhere else each reads the
 stamp the bundle-map plugin writes into `out/bundle-map.json` (`head`:
 HEAD's commit and whether the tracked tree was clean) and builds first
 when `out/` is not HEAD's clean build. The gate forwards SIGTERM and
@@ -144,6 +168,7 @@ these ran, so its numbers moved by up to 40 % between runs.
 | ios | 12 s (earlier note in release.ts) | 2 s (same note) | n/a | SwiftPM, Mac only |
 | ios-client | not measured (link dropped) | | n/a | SwiftPM plus a live test server, Mac only |
 | renderer-soak | 64.1 s, 64.6 s (2026-11-01, a fresh clone) | 62.6 s, 63.1 s | 62 s by hand | Mac only; a 50 s window inside its 90 s |
+| renderer-soak-chat | about 63 s (2026-11-02, by hand) | | 62 s by hand | Mac only; the same window, after the board scene |
 
 With the three commit lanes at once on the box, vitest finished at 42 s
 and typecheck at 43 s while the build was still running, so the commit
