@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { cubicBezier, DUR, EASE_DRAWER, EASE_EXIT, EASE_IN_OUT, EASE_OUT, SPRING_LAYOUT, SPRING_LAYOUT_CSS, springEasing } from "./ease";
+import { cubicBezier, DUR, EASE_DRAWER, EASE_EXIT, EASE_IN_OUT, EASE_OUT, REVEAL, SPRING_LAYOUT, SPRING_LAYOUT_CSS, springEasing } from "./ease";
 import * as ease from "./ease";
 
 const css = readFileSync(resolve(__dirname, "../index.css"), "utf8");
@@ -15,6 +15,16 @@ describe("the motion tokens", () => {
     expect(token("dur-base")).toBe(`${DUR.base * 1000}ms`);
     expect(token("dur-slow")).toBe(`${DUR.slow * 1000}ms`);
     expect(token("dur-drawer")).toBe(`${DUR.drawer * 1000}ms`);
+  });
+
+  it("hold the reveal's fade to --dur-reveal", () => {
+    expect(token("dur-reveal")).toBe(`${REVEAL.fadeMs}ms`);
+    expect(token("ease-reveal")).toBe("linear");
+  });
+
+  it("drop the shimmer and the veil", () => {
+    expect(token("motion-shimmer")).toBeUndefined();
+    expect(Object.keys(ease)).not.toContain("VEIL");
   });
 
   it("match the CSS curves", () => {

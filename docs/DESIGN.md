@@ -180,8 +180,8 @@ light theme. "Scrolling" has the rule.
 
 ### Motion tokens
 
-CSS `--dur-fast` 120ms (press, hover, every exit, every reduced-motion
-fade), `--dur-base` 180ms (menu, popover, tooltip entrances; folds),
+CSS `--dur-hover` 60ms (a button's or menu row's hover fill), `--dur-fast`
+120ms (press, every exit, every reduced-motion fade), `--dur-base` 180ms (menu, popover, tooltip entrances; folds),
 `--dur-slow` 240ms (dialog and panel entrances), `--dur-drawer` 300ms (a
 sheet). Curves: `--ease-out` for entrances and most transitions,
 `--ease-exit` for a closing overlay, `--ease-drawer` for a sheet,
@@ -193,14 +193,17 @@ and its settle time (`SPRING_LAYOUT_CSS`: 370ms, no overshoot), for a
 transition that glides like the spring without JavaScript; the same curve
 is a token, `--dur-layout` on `--ease-layout` (the folds that open on their
 own), held equal to it by lib/ease.test.ts. Code that drives motion itself
-(the transcript's scroll glides) reads a curve through `cubicBezier`, and
-the streaming veil's clock is `VEIL`. `FOLD_HOLD_MS` (600ms) is the beat a
+(the transcript's scroll glides) reads a curve through `cubicBezier`. The
+stream's reveal is `REVEAL` (a step of whole words every 100ms, each fading
+in over `--dur-reveal` 400ms on `--ease-reveal`, linear). A hover-revealed
+control waits `--delay-hover` 100ms before it shows. `FOLD_HOLD_MS` (600ms) is the beat a
 working group stays open after its work moved on.
 `lib/motionGuard.test.ts` fails on any literal duration or curve outside
 `lib/ease.ts` and this layer; its script and CSS allow-lists are empty.
-The shimmer token keeps its 2s sweep, and the spinner keeps its 900ms turn
-(`SPINNER_TURN`, a Web Animation on the box around the arc, which the
-compositor runs alone).
+Two things loop: the spinner's 900ms turn (`SPINNER_TURN`, a Web Animation
+on the box around the arc, which the compositor runs alone) and the working
+words' pulse (`TextPulse`: still for `--delay-pulse` 3s, then opacity
+1→0.75→1 every `--dur-pulse` 2s on `--ease-breathe`).
 
 ### Layers
 
@@ -287,8 +290,9 @@ message, then the host's word for the wait (Starting the CLI, Initializing,
 Waiting for the provider, a retry, "Waiting for the provider, 25 s"), then
 Thinking with the summary's newest sentence once the thought streams. A
 word stays at least 300 ms once it paints and one that came and went inside
-that hold never shows; the swap is the text inside the same shimmer,
-instant, at the row's 32px, so nothing below it moves. The timer above the
+that hold never shows; the words pulse, and a change swaps them inside the
+pulse (the old words lift 3px and fade, the new ones rise from 3px below),
+at the row's 32px, so nothing below it moves. The timer above the
 composer counts from the click and never steps back when the host's own
 start arrives.
 
@@ -430,7 +434,7 @@ messages yet"), never the new-thread screen. Inside a picker
 or menu, no match is one muted row, never `Empty`. A lazy surface falls back
 to a `SurfaceSkeleton` kind, and a small section's wait is `LoadingLine`
 (both in surfaces/SurfaceSkeleton.tsx, beside `EmptyState`). Text that is
-being produced shimmers (`TextShimmer`); nothing else does.
+being produced pulses (`TextPulse`); nothing else does.
 
 ## Motion values
 
@@ -440,11 +444,13 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | Sheet | fade + slide 16px from its edge, `--dur-drawer` `--ease-drawer` | fade + slide 16px back, `--dur-slow` | fade only |
 | Popover, menu, select | fade + scale 0.95→1 from the trigger, `--dur-base` | fade + scale →0.98, `--dur-fast` | fade only |
 | Context menu | fade at the pointer, `--dur-fast` | fade, `--dur-fast` | same |
-| Tooltip | fade + scale 0.95→1, `--dur-base`; moves between triggers instead of reopening | fade, `--dur-fast` | fade |
+| Tooltip | after 300ms, fade + scale 0.98→1, `--dur-fast` `--ease-drawer`; moves between triggers instead of reopening | fade, `--dur-fast` | fade |
 | Toast (sonner) | rise and fade, `--dur-base` | fade, `--dur-fast` | fade |
 | Right panel, rail | no width animation; content fades `--dur-fast` | same | same |
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
 | Press | scale 0.985, `--dur-fast` | release | colour only |
+| Hover fill (a button, a menu row) | `--dur-hover` | `--dur-hover` | same |
+| Hover reveal (a closing line's actions, a message's Copy, a code block's and a tool output's Copy) | waits `--delay-hover`, then fades in `--dur-fast`; keyboard focus shows it at once | fades `--dur-fast`, at once | same |
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
 | Fold that opens on its own (`.collapsible-auto`: the transcript's working group, the running task's steps, the title bar's shelf) | height on the layout spring (`--dur-layout` `--ease-layout`) + opacity `--dur-base` `--ease-out` | the same, so the rows are gone before the box closes | opacity, `--dur-fast` |
 | A step landing in it (`.step-land`) | fade + rise 4px, `--dur-base` `--ease-out`; only a step that lands while the fold is open, never at mount, on a hand open or when a panel unhides | none | none |
@@ -453,19 +459,20 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | The working group's fold | waits `FOLD_HOLD_MS` once the work moved on, so the last row's settle shows, then folds on `.collapsible-auto` | — | the same wait, then the fade |
 | Disclosure chevron | rotates with its fold, `--dur-base` `--ease-out`, everywhere | same | none |
 | Icon swap (`SwapIcon`; keyed for more than two states, as a tool row's waiting, working, failed and icon) | opacity + scale 0.25→1 on `SPRING_LAYOUT` | fade + scale →0.25, `--dur-fast` | opacity, `--dur-fast` |
-| Label swap (`SwapText`: a row's verb or a group's phrase changing tense) | the new words rise from 3px below, `--dur-base` `--ease-out`; the width changes at once; never on mount or per streamed word | the old words lift 3px and fade, `--dur-fast` | cross-fade, `--dur-fast` |
+| Label swap (`SwapText`: a row's verb or a group's phrase changing tense, the working line's phase words, Thinking becoming "Thought for 3s") | the new words rise from 3px below, `--dur-base` `--ease-out`; the width changes at once; never on mount or per streamed word | the old words lift 3px and fade, `--dur-fast` | cross-fade, `--dur-fast` |
 | Scroll glide (jump to latest, a burst while following, a jump to a row) | `DUR.drawer` on `EASE_OUT` | — | instant |
 | Park on send (prompt to top) | the transcript glides to park the prompt, `DUR.drawer` on `EASE_DRAWER`; from more than 2.5 screens away it jumps to within 2.5 screens first, as every long jump does | the parked runway retires over `DUR.base` on `EASE_OUT` | instant |
 | Jump to latest button | fade + scale 0.95→1, `--dur-base` `--ease-out` | `FADE_OUT` | fade |
 | Count | ticks from the shown value, `--dur-slow` `--ease-out` | — | none |
-| Shimmer (`TextShimmer`) | one highlight sweeps the muted text, 2s | — | still muted text |
+| Pulse (`TextPulse`) | still for `--delay-pulse` (3s), then opacity 1→0.75→1 every `--dur-pulse` (2s) on `--ease-breathe`; still in a hidden pane or document | — | still muted text |
 | Spinner | the one arc turning | — | still |
 | Appshot | fade + scale 0.95→1 centred, `--dur-slow`; holds; glides into its chip, `--dur-drawer` `--ease-drawer` | — | fade in and out in place, `--dur-fast` |
 | Released drag | settles on `SPRING_GLIDE` | — | none |
 | Scrollbar | shows at once on hover or scroll | hides at once, `SCROLL_IDLE_MS` (900ms) after the last scroll or when the pointer leaves | same |
 | List rows (rail, tabs, fleet, attachments, the transcript's message list) | none | none | none |
 | Transcript rows | one `--dur-fast` fade on first appearance, never replayed | — | none |
-| Streaming text | the prose: the jitter buffer (surfaces/smoothText) and the paint-only veil (surfaces/streamVeil), which finishes every fade the moment the text under it reflows and never veils a row holding a selection; a live short line (the thinking row's newest sentence): its words fade `--dur-base` in `StreamingText` | — | none |
+| Streaming text | the prose: the jitter buffer (surfaces/smoothText) steps whole words every 100ms (`REVEAL.stepMs`), holding a bare block marker and a table's header row until they have content; each step is one span fading in over `--dur-reveal` on `--ease-reveal` (lib/streamReveal.ts, `.stream-step`), and the settle waits for the last fade; a live short line (the thinking row's newest sentence) takes the same fade in `StreamingText` | — | whole-word steps, no fade |
+| Thinking settling | "Thinking" becomes "Thought for 3s" in place through `SwapText`; the live sentence fades `--dur-fast` | — | cross-fade, `--dur-fast` |
 | Composer send | the bubble rides with the content as the prompt parks, rising 16px and fading in, `--dur-slow` `--ease-drawer`; in follow mode it flies from the field only when it lands within 240px of it | — | fade, `--dur-fast` |
 | Composer field height | snaps on a keystroke and on the clear after a send; a change of more than one line the person did not type (a paste, a restore, a quote) eases over `--dur-base` | — | snaps |
 | Composer, a new thread's first send | the box keeps its width and moves into its docked place (a FLIP translate, `--dur-slow` `--ease-drawer`) | — | none |
@@ -487,6 +494,18 @@ the root in the sans face at 13px. Whatever sits on the column (the working
 strip, the load line, the no-rows line, an orchestration's fleet header, the
 transcript skeleton) takes `COLUMN_MAX_CLASS`, never a width of its own; a
 test refuses the old 896px anywhere in the renderer.
+
+The composer is one row in its box, as Claude's: the `+` menu (28px) at the
+left, the field, Send (a 28px circle) at the right, 6px from the sides and
+8px from the top and bottom, so the empty box is 46px with its hairline. The
+field's first line is centred on the controls' 28px line; each further line
+grows the box upward by 22px while its bottom stays, and the controls stay
+on the bottom line. Under the box, 4px below it, a 24px row holds the model
+at the left and the context meter and the permission mode at the right,
+ghost controls in 12px muted text; it is always there, so nothing moves on
+focus, and at a narrow width it gives way in order (the meter's percent,
+then the model's effort and name, then the mode's label). The empty
+thread's composer and the docked one are one class chain.
 
 | Element | Size / line |
 | --- | --- |
@@ -547,7 +566,7 @@ the line folds open above the first row and the rows glide into their hang.
 While it works it shows its newest five rows (a thought counts as one), the
 line still naming them all; when the work moves on (the model writes again,
 or the turn ends) it waits `FOLD_HOLD_MS`, its last row settling (the glyph,
-the verb's tense, the shimmer stops), and folds. A person's hand decides for
+the verb's tense, the pulse stops), and folds. A person's hand decides for
 that group from then on: toggling its line or opening a row's body inside it
 ends the automatic open, window and fold, and a group opened by hand shows
 every row. A step waiting on the person keeps it open; a paused turn holds it
@@ -565,8 +584,8 @@ age under its last closing line, on every surface; in a pane it opens the
 Activity section.
 An approval card carries the amber glyph and its two buttons, not the
 word. A thought is one row
-of that list: "Thinking" shimmering with its newest sentence while it
-streams, then "Thought for 4s ▸", which opens the text. The closing line
+of that list: "Thinking" pulsing with its newest sentence while it
+streams, then, in the same row, "Thought for 4s ▸", which opens the text. The closing line
 reads "Worked for 2m 4s", its copy, note, hand-off and second-opinion
 buttons showing on hover or keyboard focus; a turn the person stopped
 closes on "Stopped" instead, with the same buttons. Every notice (a gate, a review, a compaction, a

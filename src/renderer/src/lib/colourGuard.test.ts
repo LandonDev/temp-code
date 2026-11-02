@@ -17,7 +17,6 @@ const ALLOWED: Record<string, { reason: string; count: number }> = {
   "surfaces/editorChrome.ts": { reason: "The highlight tables are CodeMirror's syntax palettes.", count: 18 },
   "surfaces/monaco/theme.ts": { reason: "Monaco requires hex palettes, including syntax and fallback colours.", count: 32 },
   "surfaces/settings/hosts/dialogs/PairDialog.tsx": { reason: "The QR encoder requires black and white for its image.", count: 2 },
-  "surfaces/streamVeil.ts": { reason: "backdropOf compares the browser's computed transparent rgba value.", count: 1 },
 };
 
 // Match complete hex colours, never part of a word or an id (#ABCDE-12345).

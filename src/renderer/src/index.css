@@ -94,9 +94,20 @@
   --editor-symbol-keyword: #787878;
   /* Motion: four durations and four curves, plus the layout spring as CSS
      (the layout duration and curve are SPRING_LAYOUT_CSS, critically damped,
-     held equal by lib/ease.test.ts). Springs are in lib/ease.ts. */
-  --motion-shimmer: text-shimmer 2s linear infinite;
+     held equal by lib/ease.test.ts). Springs are in lib/ease.ts.
+     The stream's phrase fade (--dur-reveal on --ease-reveal, REVEAL in
+     lib/ease.ts), the working words' pulse (still for --delay-pulse, then
+     --dur-pulse on --ease-breathe), the wait before a hover-revealed control
+     shows (--delay-hover) and a button's or menu row's hover fill
+     (--dur-hover). */
   --dur-instant: 0ms;
+  --dur-hover: 60ms;
+  --delay-hover: 100ms;
+  --dur-reveal: 400ms;
+  --ease-reveal: linear;
+  --dur-pulse: 2s;
+  --delay-pulse: 3s;
+  --ease-breathe: cubic-bezier(0.37, 0, 0.63, 1);
   --dur-fast: 120ms;
   --dur-base: 180ms;
   --dur-slow: 240ms;

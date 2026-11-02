@@ -55,17 +55,12 @@ export const SPINNER_TURN: { keyframes: Keyframe[]; timing: KeyframeAnimationOpt
 };
 
 /**
- * The streaming veil's clock (surfaces/streamVeil.ts): the cadence's seed,
- * the longest gap it counts, each chunk's fade bounds, and the text's alpha
- * at progress p, 1 − (1−p)^1.6, sampled for `linear()`.
+ * The stream's reveal (surfaces/smoothText.ts, lib/streamReveal.ts): a step
+ * of whole words about every `stepMs`, each step fading in over `fadeMs`
+ * (CSS `--dur-reveal`, held equal by ease.test.ts), and a token longer than
+ * `longTokenChars` with no word boundary in it cut where the pace reaches.
  */
-export const VEIL = {
-  seedMs: 160,
-  maxGapMs: 1000,
-  minFadeMs: 120,
-  maxFadeMs: 400,
-  alpha: "linear(0, 0.155, 0.3, 0.435, 0.558, 0.67, 0.769, 0.854, 0.924, 0.975, 1)",
-} as const;
+export const REVEAL = { stepMs: 100, fadeMs: 400, longTokenChars: 24 } as const;
 
 /** A released drag settling: a sash let go, a reordered row dropping home. */
 export const SPRING_GLIDE = {

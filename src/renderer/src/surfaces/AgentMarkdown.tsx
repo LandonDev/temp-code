@@ -37,7 +37,6 @@ import { isAtxHeadingLine } from "../lib/markdownSource";
 import { useColorScheme } from "../hooks/useColorScheme";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useSmoothText } from "./smoothText";
-import { useStreamVeil } from "./streamVeil";
 import { useTranscriptHost } from "./transcriptSession";
 
 const MERMAID_BASE_CONFIG = {
@@ -250,11 +249,9 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   // A mentioned thread reads as its title, linking back to the thread.
   const titleOf = useThreadTitles(text);
   const source = hasThreadMention(text) ? threadMentionsToLinks(text, titleOf) : text;
-  // Coarse chunks glide out through a reveal buffer, and each small step
-  // dissolves in under the paint-only veil. History mounts at full text.
+  // Coarse chunks glide out through a reveal buffer in whole-word steps.
+  // History mounts at full text.
   const shown = useSmoothText(source, streaming);
-  const veilRef = useRef<HTMLDivElement>(null);
-  useStreamVeil(veilRef, shown, streaming);
   const settled = !streaming && shown === source;
   // A row that mounts settled (history, a row scrolled into view) mounts
   // its tree once the worker has parsed it; until then the text holds the
@@ -266,10 +263,9 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   const ready = useMarkdownReady(shown, settled && !streamedHere.current);
   return (
     <FileOpenContext.Provider value={fileOpen}>
-      {/* Relative: the veil paints absolutely-positioned covers over new glyphs.
-          A token longer than the column (a bare URL, a path, an id) breaks
+      {/* A token longer than the column (a bare URL, a path, an id) breaks
           rather than widening the transcript; code blocks scroll in their own box. */}
-      <div ref={veilRef} className="relative min-w-0">
+      <div className="min-w-0">
         {!ready ? (
           <pre
             aria-hidden
