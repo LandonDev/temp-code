@@ -18,5 +18,8 @@ describe("CopyMessageButton", () => {
     expect(button.className).toContain("group-hover/message:delay-(--delay-hover)");
     expect(button.className).toContain("focus-visible:opacity-100");
     expect(button.className).toContain("focus-visible:delay-(--dur-instant)");
+    // Mounted under the pointer (the lazy tooltip swaps the element on the
+    // first hover), it still starts hidden and waits.
+    expect(button.className).toContain("starting:opacity-0");
   });
 });

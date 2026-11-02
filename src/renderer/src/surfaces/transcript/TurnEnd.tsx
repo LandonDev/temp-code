@@ -216,7 +216,7 @@ export function TurnDuration({
     return (
       <div className={cn(LINE, "group/turnend")} {...intent}>
         {stopped ? <StatusMark state="stopped" className="text-[13px] font-normal" /> : <span>{formatWorkingDuration(elapsedMs, true)}</span>}
-        <span className="flex items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/turnend:opacity-100 group-hover/turnend:delay-(--delay-hover) focus-within:opacity-100 focus-within:delay-(--dur-instant) motion-reduce:transition-none">
+        <span className="flex items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/turnend:opacity-100 group-hover/turnend:delay-(--delay-hover) starting:opacity-0 focus-within:opacity-100 focus-within:delay-(--dur-instant) motion-reduce:transition-none">
           {output ? <CopyTurnButton text={output} armed={armed} /> : null}
           {output && onSaveNote ? <SaveNoteButton text={output} onSave={onSaveNote} armed={armed} /> : null}
           {fromHarness && onHandoff ? <HandoffButton from={fromHarness} onPick={onHandoff} armed={armed} /> : null}

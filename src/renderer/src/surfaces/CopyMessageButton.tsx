@@ -33,7 +33,7 @@ export function CopyMessageButton({
       variant="ghost"
       size="icon-xs"
       aria-label={copied ? "Copied" : "Copy message"}
-      className="absolute -left-8 top-1/2 z-10 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/message:opacity-100 group-hover/message:delay-(--delay-hover) focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
+      className="absolute -left-8 top-1/2 z-10 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/message:opacity-100 group-hover/message:delay-(--delay-hover) starting:opacity-0 focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
       onClick={(event) => {
         event.stopPropagation();
         playCue("copy");

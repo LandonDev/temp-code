@@ -94,7 +94,7 @@ export function NoticeLine({
           {actions ? (
             <span
               data-slot="notice-actions"
-              className="pointer-events-auto relative flex shrink-0 items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/notice:opacity-100 group-hover/notice:delay-(--delay-hover) focus-within:opacity-100 focus-within:delay-(--dur-instant) motion-reduce:transition-none"
+              className="pointer-events-auto relative flex shrink-0 items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/notice:opacity-100 group-hover/notice:delay-(--delay-hover) starting:opacity-0 focus-within:opacity-100 focus-within:delay-(--dur-instant) motion-reduce:transition-none"
             >
               {actions}
             </span>

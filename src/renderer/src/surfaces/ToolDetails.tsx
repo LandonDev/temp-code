@@ -78,7 +78,7 @@ export const ToolDetails = memo(function ToolDetails({
               aria-label={raw ? "Show formatted" : "Show raw"}
               aria-pressed={raw}
               onClick={() => setRaw(!raw)}
-              className="absolute right-0 top-0 z-10 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/details:opacity-100 group-hover/details:delay-(--delay-hover) focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
+              className="absolute right-0 top-0 z-10 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/details:opacity-100 group-hover/details:delay-(--delay-hover) starting:opacity-0 focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
             />
           }
         >
@@ -201,7 +201,7 @@ function CopyOutput({ text, armed }: { text: string; armed: boolean }) {
       label={copied ? "Copied" : "Copy output"}
       onClick={copy}
       armed={armed}
-      className="absolute right-0 top-0 opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/output:opacity-100 group-hover/output:delay-(--delay-hover) focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
+      className="absolute right-0 top-0 opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/output:opacity-100 group-hover/output:delay-(--delay-hover) starting:opacity-0 focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
     >
       <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
     </IconAction>
