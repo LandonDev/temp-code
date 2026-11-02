@@ -97,6 +97,17 @@ export const STEPS: Step[] = [
     why: "the renderer's index chunk against its budget, after the build (scripts/check-bundle-size.ts)"
   },
   {
+    name: 'renderer-soak',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['scripts/measure-renderer-soak.ts', '--gate'],
+    // After the commit tier's build and bundle-size when both tiers run, so
+    // it never reads an out/ that is being written.
+    lane: 'build',
+    why: "the production renderer under the synthetic host's load for 50 s: heap and RSS after GC, CPU and long tasks against fixed bounds (scripts/measure-renderer-soak.ts --gate, boots an instance, 90 s at most)",
+    mac: true
+  },
+  {
     name: 'e2e-remote-fence',
     tier: 'publish',
     cmd: 'bun',
@@ -463,6 +474,10 @@ export function judgeReport(
   return { exitCode, tail }
 }
 
+/** Every step's process group still running, so a signal to the gate reaches
+ *  what it started (release-publish's exit trap after a failed build). */
+const liveGroups = new Set<number>()
+
 /** Spawns one step, streams its output to a log file (and stdout when verbose), keeps the tail. */
 export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean; tailLines?: number }): RunOne {
   const tailLines = opts.tailLines ?? 60
@@ -481,6 +496,7 @@ export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: process.platform !== 'win32'
       })
+      if (child.pid && process.platform !== 'win32') liveGroups.add(child.pid)
       const kill = (sig: NodeJS.Signals): void => {
         try {
           if (child.pid && process.platform !== 'win32') process.kill(-child.pid, sig)
@@ -516,6 +532,7 @@ export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean
         resolvePromise({ exitCode: null, tail: `${err.message}\n(log: ${logFile})` })
       })
       child.on('close', (code, sig) => {
+        if (child.pid) liveGroups.delete(child.pid)
         signal.removeEventListener('abort', onAbort)
         if (partial) lines.push(partial)
         const tailText = lines.slice(-tailLines).join('\n')
@@ -666,6 +683,18 @@ if (import.meta.main) {
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err))
     process.exit(2)
+  }
+  for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+    process.on(sig, () => {
+      for (const pid of liveGroups) {
+        try {
+          process.kill(-pid, sig)
+        } catch {
+          /* already gone */
+        }
+      }
+      process.exit(sig === 'SIGINT' ? 130 : 143)
+    })
   }
   gate({ repo, ...opts }).then(
     (report) => process.exit(report.ok ? 0 : 1),

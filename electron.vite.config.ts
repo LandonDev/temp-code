@@ -48,6 +48,19 @@ function appshotHelper(): Plugin {
   }
 }
 
+/** The commit a build was made from, and whether its tracked files matched
+ *  it: the renderer soak (scripts/measure-renderer-soak.ts --gate) runs out/
+ *  only when this is HEAD with a clean tree, and builds first otherwise. */
+function buildHead(): { sha: string | null; clean: boolean } {
+  try {
+    const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+    const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { encoding: 'utf8' }).trim()
+    return { sha, clean: dirty === '' }
+  } catch {
+    return { sha: null, clean: false }
+  }
+}
+
 /** Writes out/bundle-map.json after the renderer build: every chunk with its
  *  size, what it imports statically and dynamically, and the rendered size of
  *  every module in it. scripts/bundle-map.ts reads it (the report), and
@@ -76,7 +89,7 @@ function bundleMap(): Plugin {
         }
       }
       mkdirSync(resolve('out'), { recursive: true })
-      writeFileSync(resolve('out/bundle-map.json'), JSON.stringify({ chunks }, null, 1))
+      writeFileSync(resolve('out/bundle-map.json'), JSON.stringify({ chunks, head: buildHead() }, null, 1))
     }
   }
 }

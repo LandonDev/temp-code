@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FAMILY, GATE_RULE, handRule, judgeSoak, parseSoakArgs, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_RULE, handRule, judgeSoak, parseSoakArgs, type SoakSample } from './lib/soakJudge'
 
 const sample = (t: number, over: Partial<SoakSample> = {}): SoakSample => ({ t, heapMb: 40, rssMb: 200, cpuS: 0.5, wallS: 10, longTasks: [], ...over })
 
@@ -89,5 +89,15 @@ describe('a hand run', () => {
   it('counts the tooltip and button family by component name', () => {
     for (const name of ['Tooltip', 'TooltipTrigger', 'TooltipRoot', 'Tip', 'Button', 'HoverAction']) expect(FAMILY.test(name), name).toBe(true)
     for (const name of ['RailRow', 'WorkspaceRow', 'Chip', 'ButtonGroup']) expect(FAMILY.test(name), name).toBe(false)
+  })
+})
+
+describe("the gate's out/", () => {
+  it('is HEAD only when stamped with HEAD from a clean tree that is still clean', () => {
+    expect(buildIsCurrent({ sha: 'abc', clean: true }, 'abc', true)).toBe(true)
+    expect(buildIsCurrent({ sha: 'abc', clean: true }, 'def', true)).toBe(false)
+    expect(buildIsCurrent({ sha: 'abc', clean: false }, 'abc', true)).toBe(false)
+    expect(buildIsCurrent({ sha: 'abc', clean: true }, 'abc', false)).toBe(false)
+    expect(buildIsCurrent(null, 'abc', true)).toBe(false)
   })
 })

@@ -203,3 +203,11 @@ export function judgeSoak(samples: SoakSample[], rule: SoakRule): { ok: boolean;
 export const REACT_MEASURE_PREFIX = '​'
 /** The family the plan bounds at 500 a minute: Base UI's tooltip tree and the buttons under it. */
 export const FAMILY = /^(?:Tooltip\w*|Tip|Button|HoverAction)$/
+
+/** What out/bundle-map.json says it was built from (electron.vite.config.ts buildHead). */
+export type BuildStamp = { sha: string | null; clean: boolean } | null
+
+/** True when out/ is HEAD's own build: stamped with HEAD's commit from a clean tree, and the tree still clean. */
+export function buildIsCurrent(stamp: BuildStamp, head: string, treeClean: boolean): boolean {
+  return !!stamp && stamp.clean && stamp.sha === head && treeClean
+}

@@ -174,14 +174,17 @@ else
 fi
 
 # ── gate, beside the build ──────────────────────────────────────────────
-# The publish tier of the gate (scripts/gate.ts): the remote fence proof, the
-# hub tests and the iOS packages. The commit tier already ran in the train;
-# this is what it leaves to publish. It shares nothing with the build, so it
-# runs beside it; its verdict is read before anything reaches the feed.
+# The publish tier of the gate (scripts/gate.ts): the renderer soak, the
+# remote fence proof, the hub tests and the iOS packages. The commit tier
+# already ran in the train; this is what it leaves to publish. It runs beside
+# the build; its verdict is read before anything reaches the feed. The
+# renderer soak is the one step that reads out/: it waits for build.done
+# (touched below once the build and its size check pass), then runs its 90 s
+# while the app signs.
 if [ -n "$GATE_SKIP" ]; then
   echo "phase – gate skipped"
 else
-  bg_phase gate "$STAGE/gate.log" bun run gate --tier publish &
+  bg_phase gate "$STAGE/gate.log" env TEMP_CODE_SOAK_BUILD_DONE="$STAGE/build.done" bun run gate --tier publish &
   GATE_PID=$!
 fi
 
@@ -191,6 +194,7 @@ fi
 begin build
 bunx electron-vite build >"$STAGE/build.log" 2>&1 || { tail -40 "$STAGE/build.log" >&2; exit 1; }
 bun scripts/check-bundle-size.ts >>"$STAGE/build.log" 2>&1 || { tail -40 "$STAGE/build.log" >&2; exit 1; }
+touch "$STAGE/build.done"
 end
 
 # The same out/ for the box: temp-code-out-1.0.N.tar.gz and its sha256,

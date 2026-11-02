@@ -48,9 +48,11 @@ import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Cdp, REPO, portFree, sleep, type Target } from './lib/packagedApp'
 import { profileSummary, type CpuProfile } from './profile-summary'
-import { FAMILY, GATE_RULE, GATE_TIMING, handRule, judgeSoak, parseSoakArgs, REACT_MEASURE_PREFIX, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_RULE, GATE_TIMING, handRule, judgeSoak, parseSoakArgs, REACT_MEASURE_PREFIX, type BuildStamp, type SoakSample } from './lib/soakJudge'
 
-const args = parseSoakArgs(process.argv.slice(2))
+const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
+/** Hand runs on a dev build: also tally the props React names as changed, per component. */
+const why = process.argv.includes('--why')
 const ROOT = '/tmp/tc-soak'
 const tree = resolve(args.tree ?? REPO)
 const userData = join(ROOT, `${args.label}.userData`)
@@ -275,9 +277,25 @@ const OBSERVERS = `(() => {
   if (window.__soak) return true
   const s = (window.__soak = { tasks: [], renders: new Map() })
   new PerformanceObserver((list) => { for (const e of list.getEntries()) s.tasks.push({ start: e.startTime, duration: e.duration }) }).observe({ type: 'longtask' })
+  // --why: the props React's diff names as changed, per component (its detail's "+ key" rows at the top level).
+  s.why = new Map()
   new PerformanceObserver((list) => {
-    for (const e of list.getEntries()) if (e.name.charCodeAt(0) === ${REACT_MEASURE_PREFIX.charCodeAt(0)}) { const n = e.name.slice(1); s.renders.set(n, (s.renders.get(n) || 0) + 1) }
+    for (const e of list.getEntries()) {
+      if (e.name.charCodeAt(0) !== ${REACT_MEASURE_PREFIX.charCodeAt(0)}) continue
+      const n = e.name.slice(1)
+      s.renders.set(n, (s.renders.get(n) || 0) + 1)
+      if (!window.__soakWhyOn) continue
+      const props = e.detail && e.detail.devtools && e.detail.devtools.properties
+      if (!Array.isArray(props)) continue
+      let byProp = s.why.get(n)
+      if (!byProp) s.why.set(n, (byProp = new Map()))
+      for (const row of props) {
+        const m = /^\+\u00a0(?!\u00a0)(.+)$/.exec(String(row[0]))
+        if (m) byProp.set(m[1], (byProp.get(m[1]) || 0) + 1)
+      }
+    }
   }).observe({ type: 'measure' })
+  window.__soakWhy = () => [...s.why].map(([n, byProp]) => [n, [...byProp].sort((a, b) => b[1] - a[1]).slice(0, 6)])
   window.__soakDrain = () => {
     const out = { tasks: s.tasks, renders: [...s.renders] }
     s.tasks = []
@@ -429,8 +447,38 @@ function memoryMb(pid: number): { mb: number; detail: Record<string, number> } {
 
 type Row = SoakSample & { gpuPct: number; cpuPct: number; memory: Record<string, number>; dom: Record<string, number>; measures: number; marks: number; animations: number; entries: number | null }
 
+/** The gate's out/ must be HEAD's: release-publish says so with build.done
+ *  (TEMP_CODE_SOAK_BUILD_DONE, waited for up to 10 minutes while its build
+ *  runs beside the gate); anywhere else the bundle map's stamp decides, and a
+ *  stale or dirty build is rebuilt first. */
+async function freshBuild(): Promise<void> {
+  const done = process.env.TEMP_CODE_SOAK_BUILD_DONE
+  if (done) {
+    const until = Date.now() + 10 * 60_000
+    while (!existsSync(done)) {
+      if (Date.now() > until) throw new Error('the build never finished: no build.done within 10 minutes')
+      await sleep(1_000)
+    }
+    log("the publish build finished: soaking its out/")
+    return
+  }
+  const git = (...a: string[]): string => execFileSync('git', ['-C', tree, ...a], { encoding: 'utf8' }).trim()
+  const head = git('rev-parse', 'HEAD')
+  const clean = git('status', '--porcelain', '--untracked-files=no') === ''
+  let stamp: BuildStamp = null
+  try {
+    stamp = (JSON.parse(readFileSync(join(tree, 'out', 'bundle-map.json'), 'utf8')) as { head?: BuildStamp }).head ?? null
+  } catch {
+    /* no build yet */
+  }
+  if (buildIsCurrent(stamp, head, clean)) return
+  log(`out/ is not HEAD's build (${stamp?.sha ? `${stamp.sha.slice(0, 8)}${stamp.clean ? '' : ', dirty'}` : 'none'}, HEAD ${head.slice(0, 8)}${clean ? '' : ' dirty'}): building first`)
+  execFileSync(join(tree, 'node_modules', '.bin', 'electron-vite'), ['build'], { cwd: tree, stdio: ['ignore', 'ignore', 'inherit'] })
+}
+
 async function main(): Promise<void> {
   mkdirSync(ROOT, { recursive: true })
+  if (args.gate) await freshBuild()
   if (args.gate) {
     // The step's own clock: past 90 s the run is a failure, whatever it measured.
     setTimeout(() => {
@@ -447,6 +495,7 @@ async function main(): Promise<void> {
   const shown = args.host === 'synthetic' ? await startSynthetic(c) : await pairBox(c)
   await openView(c, shown)
   await c.eval(OBSERVERS)
+  if (why) await c.eval('window.__soakWhyOn = true')
   await c.send('HeapProfiler.enable')
 
   const procs = processes()
@@ -552,9 +601,11 @@ async function main(): Promise<void> {
     }
   })()
   const topRenders = [...renderTotals].sort((a, b) => b[1] - a[1]).slice(0, 25)
+  const whyRows = why ? await c.eval<[string, [string, number][]][]>('window.__soakWhy()') : []
+  const whyTop = topRenders.map(([n]) => [n, whyRows.find(([m]) => m === n)?.[1] ?? []] as const)
   writeFileSync(
     join(ROOT, `${args.label}.json`),
-    JSON.stringify({ label: args.label, args, tree, sha, platform: process.platform, memory: linux ? 'pss' : 'rss', shown, rule, verdict, rows, topRenders }, null, 1)
+    JSON.stringify({ label: args.label, args, tree, sha, platform: process.platform, memory: linux ? 'pss' : 'rss', shown, rule, verdict, rows, topRenders, ...(why ? { whyTop } : {}) }, null, 1)
   )
   const md = [
     `# ${args.label}: ${args.host} host, ${args.build} build, ${args.view} view (${sha ?? 'no git'}, ${process.platform})`,
@@ -571,7 +622,9 @@ async function main(): Promise<void> {
     '| reading | got | limit | |',
     '|---|---|---|---|',
     ...verdict.verdicts.map((v) => `| ${v.what} | ${v.got} | ${v.limit} | ${v.ok ? 'pass' : 'FAIL'} |`),
-    ...(topRenders.length ? ['', 'Top re-rendered components (changed props):', '', '| component | renders |', '|---|---|', ...topRenders.map(([n, k]) => `| ${n} | ${k} |`)] : []),
+    ...(topRenders.length
+      ? ['', 'Top re-rendered components (changed props):', '', `| component | renders |${why ? ' changed props |' : ''}`, `|---|---|${why ? '---|' : ''}`, ...topRenders.map(([n, k]) => `| ${n} | ${k} |${why ? ` ${(whyTop.find(([m]) => m === n)?.[1] ?? []).map(([p, x]) => `${p} ${x}`).join(', ')} |` : ''}`)]
+      : []),
     ...(profile ? ['', '```', profile, '```'] : [])
   ].join('\n')
   writeFileSync(join(ROOT, `${args.label}.md`), md + '\n')
