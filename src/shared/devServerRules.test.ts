@@ -7,7 +7,10 @@ describe("the repository's own proofs are never dev servers", () => {
       'bun --preload scripts/lib/electron-stub.ts scripts/e2e-queue.ts',
       'node scripts/.out/e2e-quota-routing.mjs',
       '/srv/agents/home/.bun/bin/bun scripts/e2e-cross-host-threads.ts --fast',
-      'bun --preload scripts/lib/electron-stub.ts scripts/capture-swift-fixtures.ts'
+      'bun --preload scripts/lib/electron-stub.ts scripts/capture-swift-fixtures.ts',
+      'bun --preload ./scripts/lib/electron-stub.ts scripts/lib/soakHost.ts',
+      'bun scripts/measure-renderer-soak.ts --gate',
+      'bun scripts/soak-host-check.ts'
     ]) {
       expect(NOT_DEV_RUNNER.test(line), line).toBe(true)
       expect(notDevServer(41234, 'node', line), line).toBe('a test run or the gate')
