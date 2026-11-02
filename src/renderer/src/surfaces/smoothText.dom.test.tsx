@@ -34,4 +34,19 @@ describe("useSmoothText", () => {
     act(() => vi.advanceTimersByTime(2_000));
     expect(container.textContent).toBe(text);
   });
+
+  it("keeps pace with deltas that come faster than it paints", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    const { container, rerender } = render(<Shown text="" streaming />);
+    let text = "";
+    // Five seconds of 2 characters every 10 ms: each arrival restarts the
+    // loop while it waits for its next paint, and must not reset its clock.
+    for (let i = 0; i < 500; i++) {
+      text += "ab";
+      act(() => rerender(<Shown text={text} streaming />));
+      act(() => vi.advanceTimersByTime(10));
+    }
+    // Behind the live end by the pacer's lag alone (at most 500 ms of text).
+    expect(container.textContent!.length).toBeGreaterThan(900);
+  });
 });

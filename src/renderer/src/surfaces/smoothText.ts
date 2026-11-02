@@ -208,6 +208,8 @@ interface Reveal {
   raf: number;
   /** The wait for the next paint's frame. */
   timer: number;
+  /** A reveal is under way: an arrival keeps its clock instead of restarting it. */
+  running: boolean;
   lastFrame: number;
   lastPaint: number;
 }
@@ -221,6 +223,7 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
     live: streaming,
     raf: 0,
     timer: 0,
+    running: false,
     lastFrame: 0,
     lastPaint: 0,
   });
@@ -238,8 +241,15 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
       noteArrival(p, text.length, performance.now());
     }
     s.prev = text;
-    if (p.pos >= text.length) return;
-    s.lastFrame = performance.now();
+    if (p.pos >= text.length) {
+      s.running = false;
+      return;
+    }
+    // A reveal under way keeps its clock: its next step counts the time since
+    // the last one, the wait for the paint included, however many arrivals
+    // restarted the loop meanwhile.
+    if (!s.running) s.lastFrame = performance.now();
+    s.running = true;
     // The next frame when a paint is due; until then a timer, not a frame.
     const next = (now: number): void => {
       const wait = s.lastPaint + PAINT_EVERY_MS - now;
@@ -257,9 +267,13 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
       const dt = Math.min(now - s.lastFrame, MAX_FRAME_MS);
       s.lastFrame = now;
       const end = p.end;
-      if (end - p.pos <= 0) return;
+      if (end - p.pos <= 0) {
+        s.running = false;
+        return;
+      }
       stepPacer(p, dt, now, !!s.live);
       if (p.pos >= end) {
+        s.running = false;
         s.lastPaint = now;
         setShown(end);
         return;
@@ -270,7 +284,7 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
       }
       next(now);
     };
-    next(s.lastFrame);
+    next(performance.now());
     return () => {
       if (s.raf) {
         cancelAnimationFrame(s.raf);
