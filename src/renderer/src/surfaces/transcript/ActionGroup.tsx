@@ -9,7 +9,7 @@ import type { Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { useLiveEdits } from "../../lib/tcserver/store";
 import { useTitlesOf } from "../../lib/threadMentions";
-import { DUR, FOLD_HOLD_MS } from "../../lib/ease";
+import { DUR, FOLD_HOLD_MS, SPRING_LAYOUT_CSS } from "../../lib/ease";
 import { SwapText } from "../../motion/SwapText";
 import { useCountUp } from "../../motion/useCountUp";
 import { usePersistedOpen } from "../editOpenState";
@@ -234,7 +234,12 @@ function useWindowGlide(
   useLayoutEffect(() => {
     const list = listRef.current;
     const blocks = blocksRef.current;
-    if (from <= shown) return;
+    // The leaving rows unmounted in this commit: the pull-up goes with them,
+    // before the frame paints, so the group never shows them twice.
+    if (from <= shown) {
+      if (list) list.style.marginTop = "";
+      return;
+    }
     if (!list || reduce) {
       setShown(from);
       return;
@@ -254,17 +259,23 @@ function useWindowGlide(
     void list.offsetHeight;
     list.style.transition = "transform var(--dur-base) var(--ease-out)";
     list.style.transform = "";
+    let done = false;
     const end = () => {
+      if (done) return;
+      done = true;
       list.style.transition = "";
-      list.style.marginTop = "";
       setShown(from);
     };
-    list.addEventListener("transitionend", end, { once: true });
+    // Only the list's own glide: a landing row's .step-land ends inside it and bubbles.
+    const onEnd = (event: TransitionEvent) => {
+      if (event.target === list && event.propertyName === "transform") end();
+    };
+    list.addEventListener("transitionend", onEnd);
     // A list that never paints a transition (a hidden pane) ends on time.
     const timer = setTimeout(end, DUR.base * 1000 + 50);
     return () => {
       clearTimeout(timer);
-      list.removeEventListener("transitionend", end);
+      list.removeEventListener("transitionend", onEnd);
     };
   }, [listRef, from, shown, reduce]);
   return Math.min(shown, from);
@@ -294,7 +305,14 @@ function useHangGlide(listRef: RefObject<HTMLDivElement | null>, lone: boolean, 
       list.style.transition = "";
       setGlide(false);
     };
-    list.addEventListener("transitionend", end, { once: true });
-    return () => list.removeEventListener("transitionend", end);
+    const onEnd = (event: TransitionEvent) => {
+      if (event.target === list && event.propertyName === "transform") end();
+    };
+    list.addEventListener("transitionend", onEnd);
+    const timer = setTimeout(end, SPRING_LAYOUT_CSS.ms + 50);
+    return () => {
+      clearTimeout(timer);
+      list.removeEventListener("transitionend", onEnd);
+    };
   }, [listRef, glide]);
 }

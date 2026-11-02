@@ -580,6 +580,35 @@ describe("AgentTranscript park glide on an own send", () => {
     expect(el.scrollTop).toBeCloseTo(parkTop(container), 0);
   });
 
+  it("glides to park a prompt sent from far up, its row mounting on the way", () => {
+    reducedMotion = false;
+    const blocks = chat(200);
+    const { container, rerender } = render(<AgentTranscript sessionId="p4" blocks={blocks} busy={false} visible />);
+    const el = scrollerOf(container);
+    // The reader went to the top of a long thread.
+    act(() => {
+      fireEvent.wheel(el, { deltaY: -120 });
+      el.scrollTop = 0;
+      fireEvent.scroll(el);
+    });
+    const sent = send(blocks);
+    rerender(<AgentTranscript sessionId="p4" blocks={sent} busy visible />);
+    // It does not wait for the far row: the first frame is already on its way.
+    frame();
+    const first = el.scrollTop;
+    expect(first).toBeGreaterThan(0);
+    for (let i = 0; i < 30; i++) {
+      frame();
+      measureRows(() => 48);
+    }
+    expect(container.querySelector<HTMLElement>('[data-row="u30"]')).not.toBeNull();
+    expect(el.scrollTop).toBeGreaterThan(first);
+    // The answer starting lays the runway on the measured rows: the prompt sits at the top.
+    rerender(<AgentTranscript sessionId="p4" blocks={[...sent, { id: "a30", role: "assistant", text: "On it", streaming: true }]} busy visible />);
+    expect(el.scrollTop).toBeCloseTo(parkTop(container), 0);
+    expect(el.dataset.scrollMode).toBe("parked");
+  });
+
   it("parks in one write under reduced motion", () => {
     reducedMotion = true;
     const blocks = chat(30);

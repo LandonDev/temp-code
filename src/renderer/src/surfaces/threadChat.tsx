@@ -52,7 +52,7 @@ import { askOnGesture } from "../lib/preconnect";
  *  fade and scale 0.95 to 1 over --dur-base, as one transform; it leaves on
  *  FADE_OUT. */
 const JUMP_FROM = { opacity: 0, transform: "scale(0.95)" };
-const JUMP_AT = { opacity: 1, transform: "none", transition: { duration: DUR.base, ease: EASE_OUT } };
+const JUMP_AT = { opacity: 1, transform: "scale(1)", transition: { duration: DUR.base, ease: EASE_OUT } };
 
 /**
  * A thread's chat column, wherever it is drawn: the pane (SessionPane), a

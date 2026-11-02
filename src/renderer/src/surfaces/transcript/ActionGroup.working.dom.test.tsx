@@ -81,6 +81,30 @@ describe("the working group", () => {
     expect(steps(container).map((el) => el.dataset.step)).toEqual(["c1", "c2", "c3", "c4", "c5"]);
   });
 
+  it("glides the window on its own transition only, and drops the pull-up with the leaving row", () => {
+    const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(28);
+    const { container, update } = mount(calls(5), true);
+    update([...calls(5).map((b) => ({ ...b, tool: { ...b.tool!, status: "completed" } })), call("c5", "running")], true);
+    const list = container.querySelector<HTMLElement>("[data-group-rows]")!;
+    // The leaving row stays, clipped above, while the list glides up by its height.
+    expect(steps(container)).toHaveLength(6);
+    expect(list.style.marginTop).toBe("-28px");
+    const ended = (target: Element, propertyName: string) =>
+      act(() => {
+        const event = new Event("transitionend", { bubbles: true });
+        Object.defineProperty(event, "propertyName", { value: propertyName });
+        target.dispatchEvent(event);
+      });
+    // A landing row's own transition bubbles up: the glide goes on.
+    ended(container.querySelector("[data-step=c5]")!, "translate");
+    expect(steps(container)).toHaveLength(6);
+    // The list's glide ends: the row leaves and the pull-up with it, in one commit.
+    ended(list, "transform");
+    expect(steps(container).map((el) => el.dataset.step)).toEqual(["c1", "c2", "c3", "c4", "c5"]);
+    expect(list.style.marginTop).toBe("");
+    height.mockRestore();
+  });
+
   it("lands a new row with .step-land, never a row there at mount", () => {
     const { container, update } = mount(calls(2), true);
     update([...calls(2), call("c2", "running")], true);

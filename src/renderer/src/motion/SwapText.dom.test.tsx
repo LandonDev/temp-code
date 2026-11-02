@@ -24,7 +24,7 @@ describe("SwapText", () => {
     expect(words(view.container)).toEqual(["Reading"]);
     const span = view.container.firstElementChild as HTMLElement;
     expect(span.style.opacity).not.toBe("0");
-    expect(span.style.transform).not.toContain("translate");
+    expect(span.style.transform).not.toContain("3px");
   });
 
   it("changes the words in place under one state: a count or a streamed word never animates", () => {

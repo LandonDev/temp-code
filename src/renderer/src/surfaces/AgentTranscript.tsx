@@ -785,9 +785,12 @@ export function AgentTranscript({
     if (!turnEl) return;
     pendingPark.current = false;
     parkedTurn.current = turnEl;
+    // A park glide already under way (the prompt was far off) only moves its
+    // target with the runway; otherwise the glide starts here.
+    const gliding = !!glide.current?.park;
     layoutRunway(reduceMotion);
     const el = scroller.current;
-    if (!el || reduceMotion) return;
+    if (!el || reduceMotion || gliding) return;
     const top = el.getBoundingClientRect().top - el.scrollTop;
     startGlide(parkTopOf(turnEl, turnEl.getBoundingClientRect().top - top), PARK, true);
   };
@@ -803,10 +806,13 @@ export function AgentTranscript({
       setMode("parked");
       parkedTurn.current = null;
       pendingPark.current = true;
-      // Under reduced motion the park lands in one write; otherwise it glides
-      // from where the reader is once the prompt's row is mounted.
+      // Under reduced motion the park lands in one write. Otherwise it glides
+      // from where the reader is: at once toward the prompt's offset when its
+      // row is not mounted (the reader is far up; the glide brings the window
+      // there, and the runway takes over its target), else once the row is.
       const index = rowOf(lastUserId);
       if (index !== undefined && reduceMotion) scrollTo(el, rowLayout.offsetOf(index) - TOP_INSET);
+      else if (index !== undefined && !lastTurnEl()) startGlide(rowLayout.offsetOf(index) - TOP_INSET, PARK, true);
       parkLastTurn();
     } else {
       setMode("follow");

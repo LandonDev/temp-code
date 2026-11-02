@@ -24,7 +24,7 @@ export function SwapIcon(props: SwapIconProps) {
         data-swap={keyed ? key : undefined}
         className="grid place-items-center"
         initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "scale(0.25)" }}
-        animate={reduce ? { opacity: 1, transition: FADE_OUT.transition } : { opacity: 1, transform: "none", transition: SPRING_LAYOUT }}
+        animate={reduce ? { opacity: 1, transition: FADE_OUT.transition } : { opacity: 1, transform: "scale(1)", transition: SPRING_LAYOUT }}
         exit={reduce ? FADE_OUT : { opacity: 0, transform: "scale(0.25)", transition: FADE_OUT.transition }}
       >
         {keyed ? props.children : props.swapped ? props.to : props.from}

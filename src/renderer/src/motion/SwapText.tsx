@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
 import { DUR, EASE_OUT, FADE_OUT } from "../lib/ease";
 
-const ENTER = { opacity: 1, transform: "none", transition: { duration: DUR.base, ease: EASE_OUT } };
+// Explicit end values: Motion interpolates between matching transforms, never to "none".
+const ENTER = { opacity: 1, transform: "translateY(0px)", transition: { duration: DUR.base, ease: EASE_OUT } };
 const LEAVE = { opacity: 0, transform: "translateY(-3px)", transition: FADE_OUT.transition };
 
 /**

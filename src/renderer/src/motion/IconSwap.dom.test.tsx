@@ -60,6 +60,22 @@ describe("SwapIcon", () => {
     expect(entering.style.opacity).toBe("0");
   });
 
+  it("lands the new glyph at full size, never at a zero scale", async () => {
+    MotionGlobalConfig.skipAnimations = true;
+    const keyed = (state: string) => (
+      <SwapIcon state={state}>
+        <i data-glyph={state} />
+      </SwapIcon>
+    );
+    const view = render(keyed("working"));
+    view.rerender(keyed("icon"));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    MotionGlobalConfig.skipAnimations = false;
+    const landed = view.container.querySelector("[data-glyph=icon]")!.parentElement as HTMLElement;
+    expect(landed.style.transform).not.toMatch(/scale\(0(\.\d+)?\)/);
+    expect(landed.style.opacity).toBe("1");
+  });
+
   it("under reduced motion cross-fades with no scale or blur", () => {
     reduced.value = true;
     const view = render(swap(false));
