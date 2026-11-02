@@ -24,7 +24,7 @@ describe('the step list', () => {
     expect(publish).toEqual(expect.arrayContaining(['renderer-soak', 'e2e-remote-fence', 'hub', 'ios', 'ios-client']))
     // The soak reads out/ too: in the build lane after the build and its size check, so it never races them.
     const soak = STEPS.find((s) => s.name === 'renderer-soak')!
-    expect(soak).toMatchObject({ tier: 'publish', lane: build.lane, mac: true, cmd: 'bun', args: ['scripts/measure-renderer-soak.ts', '--gate'] })
+    expect(soak).toMatchObject({ tier: 'publish', lane: build.lane, mac: true, cmd: 'bun', args: ['scripts/measure-renderer-soak.ts', '--gate', '--cpu-fails'] })
     expect(STEPS.indexOf(soak)).toBeGreaterThan(STEPS.indexOf(size))
     expect(STEPS.filter((s) => s.hashSkip).map((s) => s.name)).toEqual(['typecheck'])
   })
