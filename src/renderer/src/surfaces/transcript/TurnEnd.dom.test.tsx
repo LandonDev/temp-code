@@ -332,6 +332,9 @@ describe("TurnEnd of a stopped turn", () => {
     const { container } = view();
     const group = container.querySelector(".group-hover\\/turnend\\:opacity-100") as HTMLElement;
     expect(group.className).toContain("focus-within:opacity-100");
+    // A pointer crossing the row does not flash them: hover waits, focus does not.
+    expect(group.className).toContain("group-hover/turnend:delay-(--delay-hover)");
+    expect(group.className).toContain("focus-within:delay-(--dur-instant)");
     for (const name of ["Copy response", "Save as note", "Hand off", "Second opinion"]) {
       const button = screen.getByRole("button", { name });
       expect(group.contains(button)).toBe(true);

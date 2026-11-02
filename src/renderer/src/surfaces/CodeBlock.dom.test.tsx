@@ -49,6 +49,8 @@ describe("CodeBlock", () => {
       expect(button.className).toMatch(/\btop-1\b/);
       expect(button.className).toMatch(/\brounded-sm\b/);
       expect(button.className).not.toMatch(/\brounded-md\b/);
+      expect(button.className).toContain("group-hover/code:delay-(--delay-hover)");
+      expect(button.className).toContain("focus-visible:delay-(--dur-instant)");
       view.unmount();
     }
   });

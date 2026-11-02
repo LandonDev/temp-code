@@ -53,6 +53,8 @@ describe("NoticeLine", () => {
     const actions = document.querySelector('[data-slot="notice-actions"]')!;
     expect(actions.className).toContain("group-hover/notice:opacity-100");
     expect(actions.className).toContain("opacity-0");
+    expect(actions.className).toContain("group-hover/notice:delay-(--delay-hover)");
+    expect(actions.className).toContain("focus-within:delay-(--dur-instant)");
     expect(actions.contains(screen.getByRole("button", { name: "Review thread" }))).toBe(true);
   });
 });

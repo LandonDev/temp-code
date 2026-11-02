@@ -151,7 +151,7 @@ export const CodeBlock = memo(function CodeBlock({
       label={copied ? "Copied" : "Copy code"}
       onClick={copy}
       armed={armed}
-      className={`rounded-sm opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/code:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none ${
+      className={`rounded-sm opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/code:opacity-100 group-hover/code:delay-(--delay-hover) focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none ${
         heading ? "" : "absolute right-1 top-1 z-10"
       }`}
     >
