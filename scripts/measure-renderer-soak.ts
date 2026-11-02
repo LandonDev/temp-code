@@ -301,7 +301,8 @@ async function startSynthetic(c: Cdp): Promise<Shown> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith('TEMP_CODE_') && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v
   env.NODE_ENV = 'production'
-  soakHost = spawn(process.execPath, ['--preload', join(REPO, 'scripts/lib/electron-stub.ts'), join(REPO, 'scripts/lib/soakHost.ts')], {
+  // Relative paths from the checkout: the host's port sweep knows `--preload scripts/lib/electron-stub.ts` for a proof, never a dev server.
+  soakHost = spawn(process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/lib/soakHost.ts'], {
     cwd: REPO,
     env,
     stdio: ['pipe', 'pipe', 'ignore'],
