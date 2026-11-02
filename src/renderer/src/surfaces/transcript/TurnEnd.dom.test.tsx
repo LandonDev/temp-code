@@ -134,9 +134,9 @@ describe("TurnEnd's thinking tail says the turn's true phase", () => {
     expect(tailOf(render(live(blocks, "Reading b.ts")).container)?.textContent).toBe("Thinking");
   });
 
-  it("gives way to the streaming summary row, which keeps the tail's 32px shape", () => {
+  it("gives way to the streaming summary row, which keeps the tail's 28px shape", () => {
     const view = render(live([echoed], "Waiting for the provider"));
-    expect(tailOf(view.container)?.className).toContain("min-h-8");
+    expect(tailOf(view.container)?.className).toContain("min-h-7");
     view.rerender(live([echoed, { id: "r", role: "reasoning", text: "Reading the plan first.", streaming: true }], "Thinking"));
     expect(tailOf(view.container)).toBeNull();
   });
