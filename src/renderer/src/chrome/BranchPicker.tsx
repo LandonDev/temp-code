@@ -24,7 +24,10 @@ import { Button } from "../components/ui/button";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { cn } from "../lib/cn";
 import { LazyPopover } from "./menuRows";
-import { SwitchBranchDialog } from "./SwitchBranchDialog";
+import { dialogsChunk } from "../surfaces/chunks";
+
+// Mounted only while a switch is blocked, through the dialogs chunk.
+const SwitchBranchDialog = dialogsChunk.surface("SwitchBranchDialog");
 
 type Props = {
   cwd: string;

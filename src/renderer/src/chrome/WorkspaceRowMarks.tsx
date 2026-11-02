@@ -9,7 +9,10 @@ import { workspaceMarks, type GroupMark, type WorkspaceMark } from "../lib/sideb
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import type { ThreadRow } from "../lib/workspaceSessions";
-import { WorkspaceThreadsPopover } from "./WorkspaceThreadsPopover";
+import { workspaceThreadsChunk } from "../surfaces/chunks";
+
+// The threads list beside the rail rides its own chunk, warmed on hover.
+const WorkspaceThreadsPopover = workspaceThreadsChunk.surface("WorkspaceThreadsPopover");
 
 /**
  * A workspace row's mark, owned by the status area (A2): the state's glyph
@@ -78,6 +81,7 @@ export function WorkspaceMarkTrigger({
         render={
           <WorkspaceMarkView
             mark={mark}
+            {...workspaceThreadsChunk.intent}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           />

@@ -42,6 +42,9 @@ export const selectChunk = defineChunk("select", () => import("../components/cho
 /** The accounts a failure card's Pick another account lists (chrome/AccountsList.tsx). */
 export const accountsChunk = defineChunk("accounts", () => import("../chrome/AccountsList"));
 
+/** A workspace's threads beside the rail, opened from its row's mark (chrome/WorkspaceThreadsPopover.tsx). */
+export const workspaceThreadsChunk = defineChunk("workspaceThreads", () => import("../chrome/WorkspaceThreadsPopover"));
+
 /** Every menu, context menu and popover's body (chrome/menuBody.tsx); chrome/menuRows.tsx swaps them in. */
 export const menuChunk = defineChunk("menus", () => import("../chrome/menuBody"));
 
@@ -74,6 +77,7 @@ export const allChunks = {
   notesChunk,
   selectChunk,
   accountsChunk,
+  workspaceThreadsChunk,
   menuChunk,
   customizeChunk,
   dialogsChunk,
