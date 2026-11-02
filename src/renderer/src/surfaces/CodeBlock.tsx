@@ -16,10 +16,43 @@ import { IconAction, useArmOnIntent } from "./transcript/IconAction";
  * coloured by weight on the transcript's neutral theme
  * (lib/transcriptCodeTheme.ts) from the shiki worker, so the main thread
  * never tokenizes. Line numbers only when the fence asks. Highlighting
- * runs while the fence still streams too, debounced so the worker is not
- * hammered on every delta. Keeps streamdown's `data-streamdown` hooks so
+ * runs while the fence still streams too, throttled (the first run at once,
+ * then at most one every HIGHLIGHT_EVERY_MS, never put off by a delta), and
+ * until the answer for the newest text lands the block shows the coloured
+ * lines it has and the lines past them plain, so a new line never waits and
+ * colour never leaves. Keeps streamdown's `data-streamdown` hooks so
  * transcript/markdown.css frames it like a table: one card, one hairline.
  */
+/** How often a streaming fence asks the worker to colour it, at most. */
+export const HIGHLIGHT_EVERY_MS = 150;
+
+type Colour = { code: string; html: string };
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * The colouring of an earlier text applied to the current one: the coloured
+ * lines that still read the same, then the rest as plain lines in the same
+ * `<pre><code>`. Null when no line survives or the markup is not shiki's.
+ */
+export function colourPrefix(colour: Colour, code: string): string | null {
+  const open = colour.html.indexOf("<code>");
+  const close = colour.html.lastIndexOf("</code>");
+  if (open < 0 || close < open) return null;
+  const inner = colour.html.slice(open + "<code>".length, close);
+  const coloured = inner.split(/(?=<span class="line")/);
+  const was = colour.code.split("\n");
+  if (coloured.length !== was.length) return null;
+  const now = code.split("\n");
+  let same = 0;
+  while (same < was.length && same < now.length && was[same] === now[same]) same++;
+  if (same === 0) return null;
+  const plain = now.slice(same).map((line) => `<span class="line">${escapeHtml(line)}</span>`);
+  return colour.html.slice(0, open + "<code>".length) + coloured.slice(0, same).join("") + plain.join("") + colour.html.slice(close);
+}
+
 export const CodeBlock = memo(function CodeBlock({
   code,
   language,
@@ -42,36 +75,64 @@ export const CodeBlock = memo(function CodeBlock({
   const lang = language.trim().toLowerCase();
   const heading = label ?? (grammarFor(lang) ? lang : null);
   // A remount of a block the worker already coloured paints coloured.
-  const [html, setHtml] = useState<string | null>(() => highlightCached(clean, lang) ?? null);
+  const [colour, setColour] = useState<Colour | null>(() => {
+    const known = highlightCached(clean, lang);
+    return known ? { code: clean, html: known } : null;
+  });
+  const throttle = useRef({ last: -Infinity, timer: 0, code: clean, lang, alive: true });
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<number | null>(null);
   const [armed, intent] = useArmOnIntent();
 
   useEffect(() => {
-    let alive = true;
+    const t = throttle.current;
+    t.code = clean;
+    t.lang = lang;
     const run = () => {
-      const known = highlightCached(clean, lang);
+      t.last = performance.now();
+      const code = t.code;
+      const language = t.lang;
+      const keep = (html: string) =>
+        setColour((cur) => (cur && cur.code === code && cur.html === html ? cur : { code, html }));
+      const known = highlightCached(code, language);
       if (known !== undefined) {
-        setHtml((cur) => (cur === known ? cur : known));
+        keep(known);
         return;
       }
-      void highlight(clean, lang).then((h) => {
-        if (alive && h) setHtml(h);
+      void highlight(code, language).then((h) => {
+        if (t.alive && h) keep(h);
       });
     };
-    const timer = incomplete ? window.setTimeout(run, 150) : (run(), 0);
-    return () => {
-      alive = false;
-      if (timer) window.clearTimeout(timer);
-    };
+    if (!incomplete) {
+      if (t.timer) window.clearTimeout(t.timer);
+      t.timer = 0;
+      run();
+      return;
+    }
+    // Leading and trailing: at once when the last run is old enough, else
+    // once the interval is up, for whatever the text is by then.
+    if (t.timer) return;
+    const wait = t.last + HIGHLIGHT_EVERY_MS - performance.now();
+    if (wait <= 0) run();
+    else
+      t.timer = window.setTimeout(() => {
+        t.timer = 0;
+        run();
+      }, wait);
   }, [clean, lang, incomplete]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const t = throttle.current;
+    t.alive = true;
+    return () => {
+      t.alive = false;
+      if (t.timer) window.clearTimeout(t.timer);
+      t.timer = 0;
       if (copyTimer.current != null) window.clearTimeout(copyTimer.current);
-    },
-    [],
-  );
+    };
+  }, []);
+
+  const html = !colour ? null : colour.code === clean ? colour.html : colourPrefix(colour, clean);
 
   const copy = () => {
     playCue("copy");
