@@ -22,6 +22,7 @@ vi.mock("../lib/highlight", () => ({
 import { hastCache, parseStats } from "../lib/markdownCache";
 import { parseMarkdownBlocks } from "../lib/markdownPipeline";
 import { parseWorkerStats, prepareMarkdown, resetMarkdownParse } from "../lib/markdownParse";
+import { REVEAL } from "../lib/ease";
 import { AgentMarkdown } from "./AgentMarkdown";
 
 /** The parse worker, stood in by a timer: parses on the shared pipeline. */
@@ -137,12 +138,18 @@ describe("markdown render cache", () => {
     view.unmount();
   });
 
-  it("a streaming block bypasses the cache; settling stores it once", () => {
+  it("a streaming block bypasses the cache; settling stores it once", async () => {
     const text = blockText(1);
     const view = render(<AgentMarkdown text={text} streaming />);
     expect(hastCache.size).toBe(0);
     act(() => {
       view.rerender(<AgentMarkdown text={text} />);
+    });
+    // The stream's last step (the fence's closing word, held while live)
+    // finishes its fade before the row settles into the cache.
+    expect(hastCache.size).toBe(0);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, REVEAL.fadeMs + 50));
     });
     expect(hastCache.size).toBeGreaterThan(0);
     const parses = parseStats.parses;

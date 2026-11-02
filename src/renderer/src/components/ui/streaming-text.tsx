@@ -1,27 +1,26 @@
-import { useMemo } from "react";
+import { useState } from "react";
 
-const WHITESPACE = /(\s+)/;
-
-/** A short live line arriving a word at a time: each new word fades in over
- *  `--dur-base` (`.streaming-word` in components.css). Words are keyed by
- *  position, so appended words fade and settled ones never replay; key the
- *  component to fade a replacement line in whole. For short live lines (the
- *  thinking row's newest sentence); the transcript's prose keeps its jitter
- *  buffer and veil. Never inside `TextShimmer`: its gradient paints through
- *  every descendant's glyphs, so a word's fade cannot show. */
+/** A short live line arriving a phrase at a time, faded the way the
+ *  transcript's prose is (lib/streamReveal.ts): each update's new text is one
+ *  `.stream-step` span fading in over `--dur-reveal`. A growing line keeps
+ *  its earlier spans, so their fades never replay; a line that is not the
+ *  last one grown starts over as one span. Key the component to fade a
+ *  replacement line in whole. For short live lines (the thinking row's
+ *  newest sentence). */
 export function StreamingText({ children, className }: { children: string; className?: string }) {
-  const parts = useMemo(() => children.split(WHITESPACE), [children]);
+  const [parts, setParts] = useState<string[]>(() => (children ? [children] : []));
+  const [prev, setPrev] = useState(children);
+  if (children !== prev) {
+    setPrev(children);
+    setParts(children.startsWith(prev) && prev !== "" ? [...parts, children.slice(prev.length)] : children ? [children] : []);
+  }
   return (
     <span className={className}>
-      {parts.map((part, index) =>
-        part === "" || WHITESPACE.test(part) ? (
-          part
-        ) : (
-          <span key={index} className="streaming-word">
-            {part}
-          </span>
-        ),
-      )}
+      {parts.map((part, index) => (
+        <span key={index} className="stream-step">
+          {part}
+        </span>
+      ))}
     </span>
   );
 }

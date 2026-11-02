@@ -25,6 +25,8 @@ import { createLazyMermaidPlugin } from "./mermaidPlugin";
 import { cachedParse, restoreHast } from "../lib/markdownCache";
 import { useMarkdownReady } from "../lib/markdownParse";
 import { MARKDOWN_REHYPE_PLUGINS, MARKDOWN_REMARK_PLUGINS } from "../lib/markdownPipeline";
+import { REVEAL } from "../lib/ease";
+import { createStreamReveal } from "../lib/streamReveal";
 import { parseFileHref } from "../lib/paths";
 import type { OpenFileFn } from "../lib/search";
 import {
@@ -249,10 +251,35 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   // A mentioned thread reads as its title, linking back to the thread.
   const titleOf = useThreadTitles(text);
   const source = hasThreadMention(text) ? threadMentionsToLinks(text, titleOf) : text;
-  // Coarse chunks glide out through a reveal buffer in whole-word steps.
-  // History mounts at full text.
+  // Coarse chunks glide out through a reveal buffer in whole-word steps,
+  // each step fading in whole (lib/streamReveal.ts). History mounts at full
+  // text. The reveal and its plugin list are the row's own: streamdown keys
+  // its processor and Block memo on plugin identity.
   const shown = useSmoothText(source, streaming);
-  const settled = !streaming && shown === source;
+  const [reveal] = useState(createStreamReveal);
+  const [streamingRehype] = useState<PluggableList>(() => [...MARKDOWN_REHYPE_PLUGINS, reveal.plugin]);
+  useEffect(() => reveal.arm(), [reveal]);
+  // The settle waits for the last step's fade, so a reply's last words (and
+  // a Stop's) finish fading before the cached tree takes their place.
+  const done = !streaming && shown === source;
+  // `fading` turns on in the render the stream ends in (state from the
+  // previous render), so the cached tree never mounts for a frame first:
+  // when that render shows new text (its step is timed once it commits) or
+  // an earlier step is still fading.
+  const [fading, setFading] = useState(false);
+  const [last, setLast] = useState({ done, shown: shown.length });
+  if (done !== last.done || shown.length !== last.shown) {
+    setLast({ done, shown: shown.length });
+    if (done !== last.done) {
+      setFading(done && (shown.length > last.shown || reveal.lastStepAt() + REVEAL.fadeMs > performance.now()));
+    }
+  }
+  useEffect(() => {
+    if (!fading) return;
+    const timer = window.setTimeout(() => setFading(false), Math.max(0, reveal.lastStepAt() + REVEAL.fadeMs - performance.now()));
+    return () => clearTimeout(timer);
+  }, [fading, reveal]);
+  const settled = done && !fading;
   // A row that mounts settled (history, a row scrolled into view) mounts
   // its tree once the worker has parsed it; until then the text holds the
   // row's place, unseen, in the same measure. A row that streamed here is
@@ -278,10 +305,12 @@ export const AgentMarkdown = memo(function AgentMarkdown({
           className={`agent-markdown min-w-0 wrap-break-word font-sans ${SIZE_CLASS[size]} ${className ?? ""}`}
           components={MARKDOWN_COMPONENTS}
           controls={false}
-          isAnimating={!!streaming || shown.length < source.length}
+          // streamdown's memo ignores the plugin lists: the settle reaches it
+          // through this flag, which stays on through the last fade.
+          isAnimating={!settled}
           plugins={MARKDOWN_PLUGINS}
           remarkPlugins={settled ? CACHED_REMARK_PLUGINS : MARKDOWN_REMARK_PLUGINS}
-          rehypePlugins={settled ? CACHED_REHYPE_PLUGINS : MARKDOWN_REHYPE_PLUGINS}
+          rehypePlugins={settled ? CACHED_REHYPE_PLUGINS : streamingRehype}
         >
           {shown}
         </Streamdown>

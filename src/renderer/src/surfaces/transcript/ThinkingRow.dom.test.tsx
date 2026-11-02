@@ -24,20 +24,20 @@ describe("ActivityThinkingRow", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("live: the sentence's words fade in, a growing sentence keeps its first words, a new one remounts", () => {
+  it("live: the sentence fades in by steps, a growing sentence keeps its first step, a new one remounts", () => {
     const view = render(<ActivityThinkingRow block={thought({ text: "Looking at the", streaming: true })} />);
-    const words = () => Array.from(view.container.querySelectorAll(".streaming-word"));
-    expect(words().map((word) => word.textContent)).toEqual(["Looking", "at", "the"]);
-    expect(words()[0]?.parentElement?.className).toContain("truncate");
-    const first = words()[0];
+    const steps = () => Array.from(view.container.querySelectorAll(".stream-step"));
+    expect(steps().map((step) => step.textContent)).toEqual(["Looking at the"]);
+    expect(steps()[0]?.parentElement?.className).toContain("truncate");
+    const first = steps()[0];
 
     view.rerender(<ActivityThinkingRow block={thought({ text: "Looking at the file.", streaming: true })} />);
-    expect(words().map((word) => word.textContent)).toEqual(["Looking", "at", "the", "file."]);
-    expect(words()[0]).toBe(first);
+    expect(steps().map((step) => step.textContent)).toEqual(["Looking at the", " file."]);
+    expect(steps()[0]).toBe(first);
 
     view.rerender(<ActivityThinkingRow block={thought({ text: "Looking at the file. Then the tests.", streaming: true })} />);
-    expect(words().map((word) => word.textContent)).toEqual(["Then", "the", "tests."]);
-    expect(words()[0]).not.toBe(first);
+    expect(steps().map((step) => step.textContent)).toEqual(["Then the tests."]);
+    expect(steps()[0]).not.toBe(first);
   });
 
   it("settled: Thought for 4s, closed until clicked", () => {

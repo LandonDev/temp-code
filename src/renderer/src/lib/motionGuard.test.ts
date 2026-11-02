@@ -23,7 +23,7 @@ const CSS_ALLOWED: Record<string, string> = {};
 /** Every @keyframes in a stylesheet under src/renderer/src, and what it serves. */
 const KEYFRAMES: Record<string, string> = {
   "text-shimmer": "components/ui/text-shimmer.tsx",
-  "streaming-word-fade": "components/ui/streaming-text.tsx",
+  "stream-step-in": "lib/streamReveal.ts",
   "status-breathe": "components/ui/status.tsx",
   "z-fade-quick": "surfaces/AgentTranscript.tsx",
   "reveal-flash": "surfaces/monaco/MonacoPane.tsx",

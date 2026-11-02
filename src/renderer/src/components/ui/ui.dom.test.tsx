@@ -435,19 +435,24 @@ describe("Table", () => {
 });
 
 describe("StreamingText", () => {
-  it("draws one fading span per word and keeps the whitespace as text", () => {
-    const view = render(<StreamingText className="truncate">{"Reading  the\nfile."}</StreamingText>);
+  it("draws the line as one fading span, and each update's new text as one more", () => {
+    const view = render(<StreamingText className="truncate">{"Reading  the"}</StreamingText>);
     const line = view.container.firstElementChild as HTMLElement;
     expect(line.className).toBe("truncate");
-    expect(Array.from(line.querySelectorAll(".streaming-word")).map((word) => word.textContent)).toEqual(["Reading", "the", "file."]);
+    const steps = () => Array.from(line.querySelectorAll(".stream-step"));
+    expect(steps().map((step) => step.textContent)).toEqual(["Reading  the"]);
+    const first = steps()[0];
+    view.rerender(<StreamingText className="truncate">{"Reading  the\nfile."}</StreamingText>);
+    expect(steps().map((step) => step.textContent)).toEqual(["Reading  the", "\nfile."]);
+    expect(steps()[0]).toBe(first);
     expect(line.textContent).toBe("Reading  the\nfile.");
-    const texts = Array.from(line.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent);
-    expect(texts).toEqual(["  ", "\n"]);
+    view.rerender(<StreamingText className="truncate">{"Something else"}</StreamingText>);
+    expect(steps().map((step) => step.textContent)).toEqual(["Something else"]);
   });
 
-  it("fades on the motion tokens and stops under reduced motion", () => {
+  it("fades on the reveal tokens and stops under reduced motion", () => {
     const css = readFileSync(resolve(__dirname, "../../assets/components.css"), "utf8");
-    expect(css).toMatch(/\.streaming-word\s*\{\s*animation:\s*streaming-word-fade var\(--dur-base\) var\(--ease-out\)/);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.streaming-word\s*\{\s*animation:\s*none;/);
+    expect(css).toMatch(/\.stream-step\s*\{\s*animation:\s*stream-step-in var\(--dur-reveal\) var\(--ease-reveal\) both;/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.stream-step\s*\{\s*animation:\s*none;/);
   });
 });

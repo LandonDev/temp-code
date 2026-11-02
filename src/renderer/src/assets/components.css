@@ -49,19 +49,20 @@
   }
 }
 
-/* StreamingText: each word fades in. */
-@keyframes streaming-word-fade {
+/* The phrase fade (lib/streamReveal.ts, StreamingText): each step of a
+   stream is one span fading in, linear, with no stagger inside it. */
+@keyframes stream-step-in {
   from {
     opacity: 0;
   }
 }
 
-.streaming-word {
-  animation: streaming-word-fade var(--dur-base) var(--ease-out) both;
+.stream-step {
+  animation: stream-step-in var(--dur-reveal) var(--ease-reveal) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .streaming-word {
+  .stream-step {
     animation: none;
   }
 }

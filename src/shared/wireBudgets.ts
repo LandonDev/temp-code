@@ -94,10 +94,10 @@ export const PUSH_COALESCE_MS = 100
 /** Event rows (the transcript) get their own, shorter window with the same
  *  leading edge. At 100 ms a token stream left as ten bursts a second and
  *  the first row of a quiet period waited the whole window; over a tunnel
- *  with uneven delivery the reader saw 100 ms-sized jerks. 33 ms is one
- *  paint at the renderer's reveal cadence (smoothText's PAINT_EVERY_MS),
- *  so a stream arrives about as often as it can be shown, and the link
- *  still sees thirty frames a second at most per session. */
+ *  with uneven delivery the reader saw 100 ms-sized jerks. At 33 ms three
+ *  arrivals fill each of the renderer's 100 ms reveal steps (smoothText,
+ *  REVEAL.stepMs), so the jitter buffer always has the next phrase, and
+ *  the link still sees thirty frames a second at most per session. */
 export const PUSH_EVENTS_COALESCE_MS = 33
 
 /** permessage-deflate on remote connections skips frames under this many
