@@ -90,7 +90,7 @@ function markedPids(): number[] {
     // macOS prints the environment after the command for the user's own processes.
     for (const line of execFileSync('ps', ['-axeww', '-o', 'pid=,command='], { encoding: 'utf8', maxBuffer: 64 << 20 }).split('\n')) {
       const m = /^\s*(\d+)\s(.*)$/.exec(line)
-      if (m && Number(m[1]) !== process.pid && m[2]!.includes(` ${MARKER} `)) out.push(Number(m[1]))
+      if (m && Number(m[1]) !== process.pid && ` ${m[2]!} `.includes(` ${MARKER} `)) out.push(Number(m[1]))
     }
   } catch {
     /* ps failed: the group kill below still runs */
@@ -508,8 +508,10 @@ function processes(): Proc[] {
     const m = /^\s*(\d+)\s+(\d+)\s(.*)$/.exec(line)
     return m ? [{ pid: Number(m[1]), parent: Number(m[2]), type: /--type=(\S+)/.exec(m[3]!)?.[1] ?? 'browser' }] : []
   })
-  // Helpers carry the main process's environment on macOS too; walk down from the marked ones to be sure.
+  // macOS may show no environment for a hardened process, so walk down from
+  // the process this run spawned as well as from the marked ones.
   const ours = new Set(marked)
+  if (app?.pid) ours.add(app.pid)
   for (let grew = true; grew; ) {
     grew = false
     for (const p of all) if (!ours.has(p.pid) && ours.has(p.parent)) (ours.add(p.pid), (grew = true))

@@ -1714,7 +1714,9 @@ names the far child).
   build tallies the props React's diff names as changed and who rendered
   them) on a fresh userData under /tmp/tc-soak, windowed (xvfb-run off
   macOS), and judges it (scripts/lib/soakJudge.ts). The synthetic host is
-  scripts/lib/soakHost.ts (a real server in a child: a pinned master,
+  scripts/soak-host.ts over scripts/lib/soakHost.ts (a real server in a
+  child: bun with the electron stub on Linux, an esbuild bundle under node
+  on macOS, whose bun has no node:sqlite; a pinned master,
   sixteen batch children, the fixed load of scripts/lib/soakLoad.ts;
   `bun run script:soak-host-check` proves the load reaches a socket); box
   mode pairs read-only and revokes at exit. The window opens through
