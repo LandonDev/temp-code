@@ -190,7 +190,6 @@ export function AgentTranscript({
   // Glue to the bottom until the reader shows intent: history loading in
   // pages must not drift a fresh transcript off its end.
   const pinBottom = useRef(true);
-  const runningRef = useRef(!!busy);
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
   // The window: the layout of every row, the mounted range, the mounted
@@ -397,7 +396,8 @@ export function AgentTranscript({
         if (dist > 0) scrollTo(el, max);
         velocity.current = 0;
       }
-      if (runningRef.current) again = true;
+      // Settled, the loop rests, running thread or not: new rows, the
+      // content growing, a resize and the reader's input start it again.
     }
     syncPill(el, { scrollHeight, clientHeight });
     if (again) schedule();
@@ -831,7 +831,6 @@ export function AgentTranscript({
   // Turn end: a parked reader keeps their place while the runway retires, so
   // a settled transcript never keeps blank space below its last row.
   useLayoutEffect(() => {
-    runningRef.current = !!busy;
     if (busy) {
       schedule();
       return;

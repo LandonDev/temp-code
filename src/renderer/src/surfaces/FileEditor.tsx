@@ -78,6 +78,7 @@ import {
 } from "./editorGit";
 import { editorLint } from "./editorLint";
 import { editorSearch } from "./editorSearch";
+import { revealWhenLoaded } from "./navigationRetry";
 
 type EditorNavigationRequest = EditorNavigation & { token: number };
 
@@ -991,21 +992,8 @@ function CodeMirrorEditor({
     const view = viewRef.current;
     if (!view) return;
 
-    let cancelled = false;
-    const run = () => {
-      if (cancelled) return;
-      if (view.state.doc.lines < navigation.line) {
-        requestAnimationFrame(run);
-        return;
-      }
-      if (cancelled) return;
-      revealNavigation(view, navigation);
-    };
-    requestAnimationFrame(() => requestAnimationFrame(run));
-
-    return () => {
-      cancelled = true;
-    };
+    // A line past the end (a stale link) lands on the last line after a bound, never a frame loop.
+    return revealWhenLoaded(() => view.state.doc.lines, navigation.line, () => revealNavigation(view, navigation));
   }, [navigation]);
 
   useEffect(() => {

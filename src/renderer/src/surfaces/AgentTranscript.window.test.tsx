@@ -619,3 +619,56 @@ describe("AgentTranscript park glide on an own send", () => {
     expect(queue.length === 0 || (frame(), el.scrollTop === parkTop(container))).toBe(true);
   });
 });
+
+describe("AgentTranscript follow loop", () => {
+  // The same frame clock: rAF callbacks queue, performance.now reads the clock.
+  let clock = 0;
+  let queue: FrameRequestCallback[] = [];
+  beforeEach(() => {
+    clock = 1_000;
+    queue = [];
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => queue.push(cb));
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+  const frame = (ms = 16) =>
+    act(() => {
+      clock += ms;
+      const due = queue;
+      queue = [];
+      for (const cb of due) cb(clock);
+    });
+  const settle = () => {
+    for (let i = 0; i < 90 && queue.length > 0; i++) frame();
+  };
+
+  it("rests once settled while the thread runs, and a new row wakes it", () => {
+    reducedMotion = false;
+    const blocks = chat(30);
+    const { container, rerender } = render(<AgentTranscript sessionId="f1" blocks={blocks} busy visible />);
+    const el = scrollerOf(container);
+    const max = () => parseFloat(boxOf(container).style.height) - VIEWPORT;
+    // The reader scrolled up and back down: following by the spring, no longer pinned.
+    scrollTo(el, max() - 200);
+    act(() => {
+      el.scrollTop = max();
+      fireEvent.scroll(el);
+    });
+    expect(el.dataset.scrollMode).toBe("follow");
+    settle();
+    // A running thread with nothing new asks for no frame.
+    expect(queue).toHaveLength(0);
+    for (let i = 0; i < 5; i++) frame();
+    expect(queue).toHaveLength(0);
+    // A new row starts the loop; it rests again once the offset reaches it.
+    rerender(<AgentTranscript sessionId="f1" blocks={[...blocks, { id: "a30", role: "assistant", text: "More", streaming: true }]} busy visible />);
+    expect(queue.length).toBeGreaterThan(0);
+    settle();
+    expect(queue).toHaveLength(0);
+    expect(el.dataset.scrollMode).toBe("follow");
+  });
+});
