@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
- * The composer's bar: one row of `+`, the model button, the context meter
- * (an existing thread with a reading), the permission mode and send (no
- * mode for fx; no account or goal control for anyone); the `+` menu's
- * three rows; the send button speaking the intent Enter would carry out.
+ * The row under the composer's box: the model button, the context meter (an
+ * existing thread with a reading) and the permission mode (none for fx; no
+ * account or goal control for anyone); the box's `+` menu with its three
+ * rows; the send button speaking the intent Enter would carry out.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
@@ -22,27 +22,19 @@ vi.mock("../lib/tcserver/store", () => ({
 
 vi.mock("../lib/contextCache", () => ({ useContextReading: () => null }));
 
-import { ComposerBar, SendButton, useDraftRow } from "./ComposerBar";
+import { AddMenu, ComposerBar, SendButton, useDraftRow } from "./ComposerBar";
 import { ContextMeter } from "./ContextMeter";
 import type { HarnessId } from "../lib/session";
 
-function bar(
-  harness: HarnessId,
-  handlers: { onAttach?: () => void; onInsert?: (mark: "@" | "/") => void } = {},
-  context?: ReactNode,
-) {
+function bar(harness: HarnessId, context?: ReactNode) {
   return render(
     <ComposerBar
       harness={harness}
       model={<button type="button">Opus 5.5</button>}
       runtimeMode="supervised"
       onRuntimeModeChange={() => {}}
-      onAttach={handlers.onAttach ?? (() => {})}
-      onInsert={handlers.onInsert ?? (() => {})}
-      fieldOf={() => null}
       onClose={() => {}}
       context={context}
-      send={<SendButton intent="send" disabled onSubmit={() => {}} onPause={() => {}} />}
     />,
   );
 }
@@ -54,6 +46,17 @@ function rowNames(container: HTMLElement): string[] {
   );
 }
 
+function add(handlers: { onAttach?: () => void; onInsert?: (mark: "@" | "/") => void; attachable?: boolean } = {}) {
+  return render(
+    <AddMenu
+      attachable={handlers.attachable ?? true}
+      onAttach={handlers.onAttach ?? (() => {})}
+      onInsert={handlers.onInsert ?? (() => {})}
+      fieldOf={() => null}
+    />,
+  );
+}
+
 async function openAdd() {
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
@@ -61,48 +64,68 @@ async function openAdd() {
   return screen.getByRole("menu", { name: "Add" });
 }
 
-describe("ComposerBar", () => {
-  it("holds exactly +, the model button, the mode and send for Claude and Codex", () => {
+describe("ComposerBar, the row under the box", () => {
+  it("holds the model button and the mode for Claude and Codex; Add and Send live in the box", () => {
     for (const harness of ["claude", "codex"] as const) {
       const { container, unmount } = bar(harness);
-      expect(rowNames(container)).toEqual(["Add", "Opus 5.5", "Permission mode: Supervised", "Send"]);
+      expect(rowNames(container)).toEqual(["Opus 5.5", "Permission mode: Supervised"]);
       unmount();
     }
   });
 
-  it("is a size container whose mode label gives way to its icon, and Add and Send never shrink", () => {
+  it("is a 24px size container 4px under the box, with the box's edges, and the mode is a quiet 24px control", () => {
     const { container } = bar("claude");
     const row = container.querySelector<HTMLElement>("[data-composer-bar]")!;
     expect(row.className).toContain("@container/composer-bar");
+    expect(row.className.split(" ")).toEqual(expect.arrayContaining(["mt-1", "h-6", "items-center"]));
+    expect(row.className).not.toMatch(/\b(mx|px|ms|me)-/);
     const mode = screen.getByRole("combobox", { name: "Permission mode: Supervised" });
-    expect(within(mode).getByText("Supervised").className).toContain("@max-[21rem]/composer-bar:hidden");
-    for (const name of ["Add", "Send"]) expect(screen.getByRole("button", { name }).className).toContain("shrink-0");
+    expect(mode.className.split(" ")).toEqual(
+      expect.arrayContaining(["data-[size=sm]:h-6", "text-xs", "text-muted-foreground", "hover:bg-foreground/5"]),
+    );
+    expect(within(mode).getByText("Supervised").className).toContain("@max-[20rem]/composer-bar:hidden");
   });
 
   it("fx has no permission mode; nobody has an account or goal control", () => {
     const { container } = bar("fx");
-    expect(rowNames(container)).toEqual(["Add", "Opus 5.5", "Send"]);
+    expect(rowNames(container)).toEqual(["Opus 5.5"]);
     for (const name of [/account/i, /goal/i, /context/i]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
   });
 
-  it("the context meter stands between the model and the mode, and its percent gives way first", () => {
+  it("the context meter stands between the model and the mode, quiet, and its percent gives way first", () => {
     const meter = <ContextMeter sessionId="s" usage={{ used: 84_000, window: 200_000 }} />;
-    const { container, unmount } = bar("claude", {}, meter);
-    expect(rowNames(container)).toEqual(["Add", "Opus 5.5", "Context 42% full", "Permission mode: Supervised", "Send"]);
-    const percent = within(screen.getByRole("button", { name: "Context 42% full" })).getByText("42%");
-    // Under 26rem the percent goes, before the model's effort word (24rem).
-    expect(percent.className).toContain("@max-[26rem]/composer-bar:hidden");
+    const { container, unmount } = bar("claude", meter);
+    expect(rowNames(container)).toEqual(["Opus 5.5", "Context 42% full", "Permission mode: Supervised"]);
+    const button = screen.getByRole("button", { name: "Context 42% full" });
+    expect(button.className.split(" ")).toEqual(expect.arrayContaining(["h-6", "text-xs", "hover:bg-foreground/5"]));
+    // Under 25rem the percent goes, before the model's effort word (23rem).
+    expect(within(button).getByText("42%").className).toContain("@max-[25rem]/composer-bar:hidden");
     unmount();
-    const fx = bar("fx", {}, meter);
-    expect(rowNames(fx.container)).toEqual(["Add", "Opus 5.5", "Context 42% full", "Send"]);
+    const fx = bar("fx", meter);
+    expect(rowNames(fx.container)).toEqual(["Opus 5.5", "Context 42% full"]);
   });
 
-  it("the + menu: attach, mention and skills", async () => {
+  it("an amber meter stays amber on hover", () => {
+    bar("claude", <ContextMeter sessionId="s" usage={{ used: 176_000, window: 200_000 }} />);
+    const button = screen.getByRole("button", { name: "Context 88% full" });
+    expect(button.className).toContain("hover:text-warning");
+    expect(button.className).not.toContain("hover:text-foreground");
+  });
+});
+
+describe("AddMenu", () => {
+  it("is the box's 28px `+`, never shrinking", () => {
+    add();
+    const button = screen.getByRole("button", { name: "Add" });
+    expect(button.className.split(" ")).toEqual(expect.arrayContaining(["size-7", "shrink-0"]));
+  });
+
+  it("attach, mention and skills", async () => {
     const onAttach = vi.fn();
     const onInsert = vi.fn();
-    bar("claude", { onAttach, onInsert });
+    add({ onAttach, onInsert });
     let menu = await openAdd();
     expect(within(menu).getAllByRole("menuitem").map((el) => el.textContent)).toEqual([
       "Attach files",
@@ -119,15 +142,8 @@ describe("ComposerBar", () => {
     expect(onAttach).toHaveBeenCalledOnce();
   });
 
-  it("sits 6px in from the box's sides and bottom: a 28px row, its controls concentric with the 12px box", () => {
-    const { container } = bar("claude");
-    const row = container.querySelector<HTMLElement>("[data-composer-bar]")!;
-    expect(row.className.split(" ")).toEqual(expect.arrayContaining(["mx-1.5", "mb-1.5", "h-7"]));
-    expect(row.className).not.toMatch(/\b(mx-2|mb-2|h-8)\b/);
-  });
-
-  it("Attach files is disabled for fx", async () => {
-    bar("fx");
+  it("Attach files is disabled where the harness takes no attachments", async () => {
+    add({ attachable: false });
     const menu = await openAdd();
     expect(within(menu).getByRole("menuitem", { name: "Attach files" }).getAttribute("aria-disabled")).toBe("true");
   });

@@ -13,6 +13,7 @@ import {
   useSyncExternalStore,
   type ClipboardEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode
 } from 'react'
 import {
@@ -66,10 +67,10 @@ import { projectName } from '../lib/paths'
 import { consumeQuoteRequest, type QuoteRequest } from '../lib/quoteDraft'
 import { useTabGroupLogos } from '../hooks/useTabGroupLogos'
 import { loadMidTurnDefault, subscribeMidTurnDefault } from '../lib/settings'
-import { COMPOSER_SURFACE, ComposerBar, SendButton, useDraftRow } from './ComposerBar'
+import { AddMenu, COMPOSER_SURFACE, ComposerBar, SendButton, useDraftRow } from './ComposerBar'
 import { Button } from '../components/ui/button'
 import { Collapsible, CollapsibleContent } from '../components/ui/collapsible'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip'
 import { X } from './icons'
 import { decideComposerAction, type ComposerIntent } from '../lib/composerAction'
 import {
@@ -827,6 +828,13 @@ export function Composer({
     sessionId ? isCompacting(sessionStore.get(sessionId)) : false
   )
 
+  /** A press on the row's own padding (not a control, not the field) puts the caret in the field. */
+  const focusFromRow = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return
+    e.preventDefault()
+    inputRef.current?.focus()
+  }
+
   /** The `+` menu's Mention and Skills rows: type the mark at the caret so the list opens there. */
   const insertTrigger = (mark: '@' | '/') => {
     const input = inputRef.current
@@ -837,133 +845,144 @@ export function Composer({
   return (
     <div
       data-composer
-      // Flush with the column; 12px under it, the draft row inside that,
-      // so the box keeps its place when the row folds away.
+      // Flush with the column; the row under the box, then the draft row
+      // until the first message, then 12px.
       className={`relative shrink-0 ${shell ? '' : 'pb-3'}`}
       onMouseDown={onFocus}
       onPointerDown={onGesture}
     >
       {children}
       <Lightbox />
-      <div ref={frameRef} className="relative overflow-visible">
-        <CommandPopover
-          matches={matches}
-          active={active}
-          projectId={projectId}
-          projects={projects}
-          onActive={setActive}
-          onAccept={accept}
-        />
-        {topSlot}
-        <div
-          ref={boxRef}
-          data-composer-box
-          className={`relative z-10 rounded-xl ${COMPOSER_SURFACE} transition-[border-color] duration-(--dur-fast) ease-(--ease-out) has-focus:border-input motion-reduce:transition-none`}
-        >
-          <AnimatePresence>
-            {fileDrag ? (
-              <motion.div
-                initial={reduce ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={reduce ? undefined : { opacity: 0 }}
-                transition={{ duration: DUR.fast, ease: EASE_OUT }}
-                className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-xl bg-accent/8 text-xs text-muted-foreground"
-              >
-                Drop files to attach
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-
-          {attachments.length > 0 ? (
-            <div className="flex flex-wrap gap-2 px-3 pt-3">
-              {attachments.map((file) => (
-                <AttachmentChip
-                  key={file.id}
-                  environmentId={file.environmentId ?? environmentId}
-                  attachment={file}
-                  progress={uploads[file.id]}
-                  onRemove={uploading ? undefined : () => removeAttachment(file.id)}
-                  onOpen={
-                    file.kind === 'image'
-                      ? () => openAttachmentImages(environmentId, attachments, file)
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
-          ) : null}
-
-          {attachNote ? (
-            <div role="alert" data-attach-note className="flex items-start gap-1 px-3 pt-1.5 text-xs text-destructive">
-              <span className="min-w-0 flex-1 py-1">{attachNote}</span>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="Dismiss"
-                      onClick={() => setAttachNote(null)}
-                      className="text-destructive/80 hover:text-destructive"
-                    />
-                  }
-                >
-                  <X />
-                </TooltipTrigger>
-                <TooltipContent>Dismiss</TooltipContent>
-              </Tooltip>
-            </div>
-          ) : null}
-
-          {inboxCard ? <InboxMiniCard card={inboxCard} onDismiss={onInboxCardDismiss} /> : null}
-
-          {noteCard ? <NoteMiniCard card={noteCard} onDismiss={onNoteCardDismiss} /> : null}
-
-          {handoffCard ? (
-            <HandoffMiniCard card={handoffCard} onDismiss={onHandoffCardDismiss} />
-          ) : null}
-
-          <ComposerInput
-            ref={inputRef}
-            placeholder={
-              blocked
-                ? blocked
-                : inboxCard
-                ? 'Add a note, or send to start…'
-                : noteCard
-                  ? 'Add a message, or send…'
-                  : handoffCard
-                    ? 'Add context, or send to continue…'
-                    : shell
-                      ? 'How can I help you today?'
-                      : 'Ask, build, / for skills, @ for references…'
-            }
-            className="composer-field relative max-h-40 w-full px-3 pt-3 pb-2 font-sans text-sm leading-[22px] text-foreground outline-none"
-            maxHeight={160}
-            tokens={tokens}
-            onFocus={onFocus}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            attachLargePastes={attachmentsSupported ? attachLargePaste : undefined}
-            onState={(text, caret, chips) => {
-              if (text !== draftRef.current) {
-                setDismissed((prev) => (prev ? null : prev))
-                onGesture?.()
-              }
-              onInputState(text, caret, chips)
-            }}
+      <TooltipProvider>
+        <div ref={frameRef} className="relative overflow-visible">
+          <CommandPopover
+            matches={matches}
+            active={active}
+            projectId={projectId}
+            projects={projects}
+            onActive={setActive}
+            onAccept={accept}
           />
+          {topSlot}
+          <div
+            ref={boxRef}
+            data-composer-box
+            className={`relative z-10 rounded-xl ${COMPOSER_SURFACE} transition-[border-color] duration-(--dur-fast) ease-(--ease-out) has-focus:border-input motion-reduce:transition-none`}
+          >
+            <AnimatePresence>
+              {fileDrag ? (
+                <motion.div
+                  initial={reduce ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={reduce ? undefined : { opacity: 0 }}
+                  transition={{ duration: DUR.fast, ease: EASE_OUT }}
+                  className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-xl bg-accent/8 text-xs text-muted-foreground"
+                >
+                  Drop files to attach
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
 
+            {attachments.length > 0 ? (
+              <div className="flex flex-wrap gap-2 px-3 pt-3">
+                {attachments.map((file) => (
+                  <AttachmentChip
+                    key={file.id}
+                    environmentId={file.environmentId ?? environmentId}
+                    attachment={file}
+                    progress={uploads[file.id]}
+                    onRemove={uploading ? undefined : () => removeAttachment(file.id)}
+                    onOpen={
+                      file.kind === 'image'
+                        ? () => openAttachmentImages(environmentId, attachments, file)
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            ) : null}
+
+            {attachNote ? (
+              <div role="alert" data-attach-note className="flex items-start gap-1 px-3 pt-1.5 text-xs text-destructive">
+                <span className="min-w-0 flex-1 py-1">{attachNote}</span>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label="Dismiss"
+                        onClick={() => setAttachNote(null)}
+                        className="text-destructive/80 hover:text-destructive"
+                      />
+                    }
+                  >
+                    <X />
+                  </TooltipTrigger>
+                  <TooltipContent>Dismiss</TooltipContent>
+                </Tooltip>
+              </div>
+            ) : null}
+
+            {inboxCard ? <InboxMiniCard card={inboxCard} onDismiss={onInboxCardDismiss} /> : null}
+
+            {noteCard ? <NoteMiniCard card={noteCard} onDismiss={onNoteCardDismiss} /> : null}
+
+            {handoffCard ? (
+              <HandoffMiniCard card={handoffCard} onDismiss={onHandoffCardDismiss} />
+            ) : null}
+
+            {/* One row: `+`, the field, Send, 6px from the sides and 8px from the
+                top and bottom; the controls hold the bottom line as the field
+                grows upward (its 22px line centred on their 28px with 3px each side). */}
+            <div data-composer-row className="flex items-end gap-1 px-1.5 py-2" onMouseDown={focusFromRow}>
+              <AddMenu attachable={attachmentsSupported} onAttach={attachFromPicker} onInsert={insertTrigger} fieldOf={fieldOf} />
+              <ComposerInput
+                ref={inputRef}
+                placeholder={
+                  blocked
+                    ? blocked
+                    : inboxCard
+                    ? 'Add a note, or send to start…'
+                    : noteCard
+                      ? 'Add a message, or send…'
+                      : handoffCard
+                        ? 'Add context, or send to continue…'
+                        : shell
+                          ? 'How can I help you today?'
+                          : 'Ask, build, / for skills, @ for references…'
+                }
+                className="composer-field relative max-h-40 min-w-0 flex-1 px-1 py-[3px] font-sans text-sm leading-[22px] text-foreground outline-none"
+                maxHeight={160}
+                tokens={tokens}
+                onFocus={onFocus}
+                onKeyDown={onKeyDown}
+                onPaste={onPaste}
+                attachLargePastes={attachmentsSupported ? attachLargePaste : undefined}
+                onState={(text, caret, chips) => {
+                  if (text !== draftRef.current) {
+                    setDismissed((prev) => (prev ? null : prev))
+                    onGesture?.()
+                  }
+                  onInputState(text, caret, chips)
+                }}
+              />
+              <SendButton
+                intent={intent}
+                disabled={!!blocked || (intent !== 'pause' && !hasValue)}
+                onSubmit={(invert) => submit(inputRef.current?.value() ?? '', invert)}
+                onPause={() => onPause?.()}
+              />
+            </div>
+          </div>
           <ComposerBar
             harness={harness}
             runtimeMode={runtimeMode}
             onRuntimeModeChange={onRuntimeModeChange}
-            onAttach={attachFromPicker}
-            onInsert={insertTrigger}
-            fieldOf={fieldOf}
             onClose={() => inputRef.current?.focus()}
             model={
               <ModelPicker
+                quiet
                 harness={harness}
                 model={model}
                 environmentId={environmentId}
@@ -986,35 +1005,27 @@ export function Composer({
                 />
               ) : null
             }
-            send={
-              <SendButton
-                intent={intent}
-                disabled={!!blocked || (intent !== 'pause' && !hasValue)}
-                onSubmit={(invert) => submit(inputRef.current?.value() ?? '', invert)}
-                onPause={() => onPause?.()}
-              />
-            }
+          />
+          <DraftRow
+            draft={rowOpen}
+            cwd={cwd}
+            recents={recents}
+            projectLogoPath={projectLogoPath}
+            enabled={enabled}
+            busy={busy}
+            branch={branch}
+            sessionId={sessionId}
+            hideProjectPicker={hideProjectPicker}
+            threadType={threadType}
+            onCwdChange={onCwdChange}
+            onChooseFolder={onChooseFolder}
+            onNewTerminal={onNewTerminal}
+            onBranchChange={onBranchChange}
+            onThreadTypeChange={onThreadTypeChange}
+            onClose={() => inputRef.current?.focus()}
           />
         </div>
-        <DraftRow
-          draft={rowOpen}
-          cwd={cwd}
-          recents={recents}
-          projectLogoPath={projectLogoPath}
-          enabled={enabled}
-          busy={busy}
-          branch={branch}
-          sessionId={sessionId}
-          hideProjectPicker={hideProjectPicker}
-          threadType={threadType}
-          onCwdChange={onCwdChange}
-          onChooseFolder={onChooseFolder}
-          onNewTerminal={onNewTerminal}
-          onBranchChange={onBranchChange}
-          onThreadTypeChange={onThreadTypeChange}
-          onClose={() => inputRef.current?.focus()}
-        />
-      </div>
+      </TooltipProvider>
     </div>
   )
 }
@@ -1072,8 +1083,9 @@ function hasFiles(data: DataTransfer | null): data is DataTransfer {
 }
 
 /**
- * Under the box until a thread's first message: its project, host, branch and
- * type. After it the row is gone: the branch is changed in the Changes
+ * Under the composer's row until a thread's first message, 4px below it with
+ * the same edges, its pickers' glyphs on the model's: its project, host,
+ * branch and type. After it the row is gone: the branch is changed in the Changes
  * section's head, the type in the thread menu.
  */
 export function DraftRow({
@@ -1115,7 +1127,7 @@ export function DraftRow({
   return (
     <Collapsible open={draft}>
       <CollapsibleContent>
-        <div data-composer-draft-row className="flex h-8 min-w-0 items-center gap-2 px-3 pt-1 text-xs text-muted-foreground">
+        <div data-composer-draft-row className="flex h-7 min-w-0 items-center gap-1 pt-1 text-xs text-muted-foreground">
           {hideProjectPicker ? null : (
             <CwdPicker
               cwd={cwd}

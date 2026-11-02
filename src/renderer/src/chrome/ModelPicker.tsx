@@ -16,6 +16,7 @@ import { Separator } from "../components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
+import { ROW_CONTROL } from "./composerRow";
 import {
   allModels,
   coerceModelPickerTab,
@@ -70,6 +71,8 @@ type Props = {
     values: Record<string, string>;
     onChange: (settings: Record<string, string>) => void;
   };
+  /** The composer's row under the box: 24px, 12px muted (`ROW_CONTROL`). */
+  quiet?: boolean;
 };
 
 /** Search ladder across every provider: name prefix, name substring, then
@@ -91,6 +94,7 @@ export function ModelPicker({
   onChange,
   onClose,
   settings,
+  quiet = false,
 }: Props) {
   const catalogVersion = useSyncExternalStore(
     subscribeModels,
@@ -369,19 +373,19 @@ export function ModelPicker({
               render={
                 <Button
                   variant="ghost"
-                  size="sm"
                   aria-label={`${HARNESS_TITLE[current.harness]} ${current.name}${effort ? ` ${effort}` : ""}`}
                   aria-keyshortcuts={`${MOD}.`}
-                  className="min-w-0 shrink gap-1.5 px-2 font-normal"
+                  size={quiet ? "xs" : "sm"}
+                  className={cn("min-w-0 shrink gap-1.5 px-2 font-normal", quiet && `${ROW_CONTROL} gap-1`)}
                 />
               }
             />
           }
         >
           <HarnessIcon harness={current.harness} className="size-3.5 shrink-0" />
-          {/* In the composer's bar the words give way to the icon as the box narrows (ComposerBar). */}
-          <span className="min-w-0 truncate text-foreground @max-[13rem]/composer-bar:hidden">{current.name}</span>
-          {effort ? <span className="ms-1 shrink-0 text-muted-foreground @max-[24rem]/composer-bar:hidden">{effort}</span> : null}
+          {/* In the composer's row the words give way to the icon as the box narrows (ComposerBar). */}
+          <span className={cn("min-w-0 truncate @max-[9rem]/composer-bar:hidden", !quiet && "text-foreground")}>{current.name}</span>
+          {effort ? <span className={cn("shrink-0 @max-[23rem]/composer-bar:hidden", quiet ? "ms-0.5" : "ms-1 text-muted-foreground")}>{effort}</span> : null}
           <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
         </TooltipTrigger>
         <TooltipContent>

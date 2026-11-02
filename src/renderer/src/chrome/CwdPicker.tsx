@@ -104,7 +104,7 @@ export function CwdPicker({
       className={
         buttonClassName
           ? cn("justify-start rounded-none", buttonClassName)
-          : "min-w-0 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground"
+          : "min-w-0 shrink font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground"
       }
     >
       {children ?? (

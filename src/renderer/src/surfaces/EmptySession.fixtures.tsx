@@ -1,17 +1,25 @@
-// A stand-in box where the composer sits, so the static render shows its place.
+// The empty thread with the real composer in its place: the same box and row
+// the docked footer draws, so the first send moves it without resizing it.
+import { Composer } from "../chrome/Composer";
+import { composerFixtureBase } from "../chrome/Composer.fixtures";
+
 export default [
   {
     name: "Draft",
-    props: { composer: <div className="h-28 rounded-xl border border-border bg-card" /> },
+    props: { composer: <Composer {...composerFixtureBase} sessionId={undefined} shell hideProjectPicker /> },
   },
   {
     // The project's remembered draft, back with its text in the first frame.
     name: "Restored draft",
     props: {
       composer: (
-        <div className="h-28 rounded-xl border border-border bg-card p-3 text-sm text-foreground">
-          Rework the login flow so a lapsed token asks once
-        </div>
+        <Composer
+          {...composerFixtureBase}
+          sessionId={undefined}
+          shell
+          hideProjectPicker
+          initialDraft="Rework the login flow so a lapsed token asks once"
+        />
       ),
     },
   },

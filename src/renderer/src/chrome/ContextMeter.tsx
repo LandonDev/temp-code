@@ -6,6 +6,7 @@ import { Spinner } from "../components/ui/spinner";
 import { cn } from "../lib/cn";
 import { useContextReading, type ContextReading } from "../lib/contextCache";
 import { contextPercent, contextRatio, contextTone, formatTokens, type ContextUsage } from "../lib/contextUsage";
+import { ROW_CONTROL } from "./composerRow";
 import { LazyPopover, type FocusTarget } from "./menuRows";
 
 const SIZE = 14;
@@ -54,18 +55,19 @@ export function ContextMeter({
   const trigger = (
     <Button
       variant="ghost"
-      size="sm"
+      size="xs"
       aria-label={`Context ${percent}% full`}
       data-context-meter
       data-tone={warn ? "warning" : "muted"}
       className={cn(
-        "shrink-0 gap-1.5 px-2 font-normal",
+        ROW_CONTROL,
+        "shrink-0 gap-1",
         tone,
-        !warn && "hover:text-foreground aria-expanded:text-foreground",
+        warn && "hover:text-warning aria-expanded:text-warning",
       )}
     >
       {compacting ? <Spinner className="size-3.5" aria-label={COMPACTING_WORDS} /> : <ContextRing ratio={ratio} />}
-      <span className="text-[13px] tabular-nums @max-[26rem]/composer-bar:hidden">{percent}%</span>
+      <span className="tabular-nums @max-[25rem]/composer-bar:hidden">{percent}%</span>
     </Button>
   );
   const compact =

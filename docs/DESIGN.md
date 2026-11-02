@@ -504,8 +504,9 @@ on the bottom line. Under the box, 4px below it, a 24px row holds the model
 at the left and the context meter and the permission mode at the right,
 ghost controls in 12px muted text; it is always there, so nothing moves on
 focus, and at a narrow width it gives way in order (the meter's percent,
-then the model's effort and name, then the mode's label). The empty
-thread's composer and the docked one are one class chain.
+then the model's effort, then the mode's label, then the model's name,
+leaving their glyphs). The empty thread's composer and the docked one are
+one class chain.
 
 | Element | Size / line |
 | --- | --- |

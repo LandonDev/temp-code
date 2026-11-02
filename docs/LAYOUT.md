@@ -488,40 +488,59 @@ keeps its 2px accent drop marker.
 ### Composer (all thread types)
 
 The box is Claude desktop's: `rounded-xl` on `COMPOSER_SURFACE` (the card
-fill and a hairline that steps to `border-input` while the field has focus;
+fill and a hairline that steps to `border-input` while the box has focus;
 the checkpoint strip above it shares it; the hairline's step eases over
-`--dur-fast`), attachments as `Attachment` chips over the 14px / 22px field
-(the bubble's size, so a send moves the same text), and one 28px row under
-it, 6px in from the box's sides and bottom (the box's 12px radius less 6 is
-the controls' 6px), that never scrolls (chrome/ComposerBar.tsx). The field
-snaps to its height on a keystroke and on the clear after a send; a paste,
-a restore or a quote of more than one line eases it over `--dur-base`
-(`morphTextareaHeight`'s `animate`, which ComposerInput sets). The box is
-flush with the transcript's column: `ChatFooter` (surfaces/threads/chatSlots.tsx)
-lays the strip and the composer in the scroller's gutter (16px a side plus,
-on the end, the scrollbar strip the scroller reserves) and the column
-(`COLUMN_MAX_CLASS`, after the message list when it sits beside), and the
-empty thread (surfaces/EmptySession.tsx) uses the same gutter and column.
+`--dur-fast`), attachments as `Attachment` chips at its top, then one row:
+`+` (28px) at the left, the field, Send (a 28px circle) at the right, 6px
+from the box's sides and 8px from its top and bottom (the box's 12px radius
+less 6 is the controls' 6px), so the empty box is 46px with its hairline.
+The field is 14px / 22px (the bubble's size, so a send moves the same text)
+with 3px above and below, so its first line is centred on the controls'
+28px line; each further line grows the box upward by 22px while its bottom
+stays, and `+` and Send stay on the bottom line (`items-end`). A press on
+the row's own padding puts the caret in the field. The field snaps to its
+height on a keystroke and on the clear after a send; a paste, a restore or
+a quote of more than one line eases it over `--dur-base`
+(`morphTextareaHeight`'s `animate`, which ComposerInput sets), up to 160px,
+then it scrolls. The box is flush with the transcript's column: `ChatFooter`
+(surfaces/threads/chatSlots.tsx) lays the strip and the composer in the
+scroller's gutter (16px a side plus, on the end, the scrollbar strip the
+scroller reserves) and the column (`COLUMN_MAX_CLASS`, after the message
+list when it sits beside), and the empty thread (surfaces/EmptySession.tsx)
+uses the same gutter and column and the same class chain. The footer is the
+toast anchor (lib/toastAnchor.ts), so the stack sits above the box and the
+row under it alike.
+
+`+` (chrome/ComposerBar.tsx `AddMenu`) holds Attach files, Mention a file or
+thread and Skills and commands; the last two type `@` or `/` at the caret.
+Send's glyph is what Enter would do: send, queue or steer, and Pause while
+the box is empty mid-turn (`SendButton`).
+
+Under the box, 4px below it, one 24px row (chrome/ComposerBar.tsx), always
+there so nothing moves on focus, its edges the box's: at the left the model
+button, which reads the model and the effort ("Opus 5.5  High") and opens
+the model menu: providers, search, the list, then the model's settings as
+rows (Effort, Context, Speed only for the tiers the serving CLI lists, any
+other setting); at the right the context meter and the permission mode as a
+quiet select (none for fx). They are ghost controls in 12px
+`muted-foreground` with 14px glyphs, their hover fill `foreground/5`
+(`ROW_CONTROL`, chrome/composerRow.ts; ModelPicker and AccessPicker draw it
+with `quiet`). A pick hands the focus back to the field; Escape or a click
+outside returns it to the model button, and the permission select follows
+the same rule.
+
 A draft's first send remounts the composer in the docked footer: the new
-one starts where the old box stood (a FLIP translate, `--dur-slow`
-`--ease-drawer`; nothing under reduced motion) with the draft row still
-open, then folds the row away (`Collapsible`); a docked draft's box is
-already in place, so only the row folds. Left: `+` (Attach files, Mention a file or thread,
-Skills and commands; the last two type `@` or `/` at the caret) and the
-model button, which reads the model and the effort ("Opus 5.5  High") and
-opens the model menu: providers, search, the list, then the model's
-settings as rows (Effort, Context, Speed only for the tiers the serving CLI
-lists, any other setting). A pick hands the focus back to the field; Escape
-or a click outside returns it to the model button, and the permission
-select follows the same rule. Right: the context meter, the permission mode
-as a quiet select (none for fx) and the send button, whose glyph is what
-Enter would do.
+one starts where the old box stood (a FLIP translate of the box, the row
+under it and the draft row together, `--dur-slow` `--ease-drawer`; nothing
+under reduced motion) with the draft row still open, then folds the row
+away (`Collapsible`); a docked draft's box is already in place, so only the
+row folds.
 
 The context meter (chrome/ContextMeter.tsx) is the one place the window's
-fill shows: a 28px ghost `Button` holding a 14px ring (a 25% track and the
-filled arc in the current colour) and the percent in 13px `tabular-nums`,
-muted below 85% and amber from 85% (`contextTone` in lib/contextUsage.ts;
-never red), the ring a 14px `Spinner` while the harness compacts. It draws
+fill shows: a 24px ghost `Button` in the row under the box holding a 14px
+ring (a 25% track and the filled arc in the current colour) and the percent
+in 12px `tabular-nums`, muted below 85% and amber from 85%, amber on hover
+too (`contextTone` in lib/contextUsage.ts; never red), the ring a 14px `Spinner` while the harness compacts. It draws
 only for an existing thread once the harness has reported both the level
 and the window (`SessionMeta.context`); Cursor reports none, so it has no
 meter. Its hover says "124K of 200K tokens", or "Compacting". A click opens
@@ -536,20 +555,19 @@ can (`canCompact` in lib/threadMenu.ts, the thread menu's rule). The
 breakdown is `session.context` through lib/contextCache.ts, polled only
 while the popover is open and the turn has settled; mid-turn the host
 answers null and the last reading stays under the live total. The popover
-gives the focus back to the field when it closes. Until the thread's first message the box's top row
-holds the type select (chrome/ThreadTypeChip.tsx): the type's tinted glyph
-and its name, each item the same glyph over its hint. No mascot runs along
-the composer.
+gives the focus back to the field when it closes. No mascot runs along the
+composer.
 
-The row is the `composer-bar` size container, so a narrow box gives way in
-one order, by container variants and never by script: the free space
-first, then the context meter's percent (under 416px of row; the ring
-stays), then the model button's effort word (under 384px) and its name,
-truncating and then gone under 208px so the harness icon is left, then the
-permission mode's label under 336px, so its icon is left (its accessible
-name and tooltip still say "Permission mode: <mode>"). Add and Send never
-shrink; every control fits a 220px box: Add, the model icon, the ring, the
-mode icon and Send.
+The row under the box is the `composer-bar` size container, so a narrow box
+gives way in one order, by container variants and never by script: the
+free space first, then the context meter's percent (under 400px; the ring
+stays), then the model button's effort word (under 368px), then the
+permission mode's label (under 320px, so its icon is left; its accessible
+name and tooltip still say "Permission mode: <mode>"), then the model's
+name, truncating and then gone under 144px so the harness icon is left.
+The row never wraps. In the box, `+` and Send never shrink and the field
+takes what is left; at a 220px box the row holds the model's icon and name,
+the ring and the mode's icon.
 
 Each project has one draft (lib/projectDrafts.ts), kept under the strip
 order's key, so a linked project's copies share it: its text, @ chips,
@@ -565,8 +583,11 @@ beside a thread in a split stays. At boot the host archives a day-old root
 thread with a placeholder title and no rows, which an older New thread…
 made at the click (`archiveEmptyThreads`).
 
-Under the box, one quiet row (`DraftRow`) holds project, host, branch and
-type on the shell's new-thread screen and until a thread's first message;
+Under the row under the box, 4px below it with the same edges (its
+pickers' glyphs on the model's), one more quiet row (`DraftRow`) holds
+project, host, branch and type (chrome/ThreadTypeChip.tsx: the type's tinted
+glyph and its name, each item the same glyph over its hint) on the shell's
+new-thread screen and until a thread's first message;
 the project picker ends in "Choose folder…", the folder dialog whose pick
 becomes the draft's project. After the first message the row is gone: the
 branch is changed in the Changes section's head and the type is the thread

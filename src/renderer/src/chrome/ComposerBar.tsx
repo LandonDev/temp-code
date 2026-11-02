@@ -7,72 +7,60 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { Kbd } from "../components/ui/kbd";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { composerActionHint, composerActionLabel, type ComposerIntent } from "../lib/composerAction";
 import { MOD } from "../lib/platform";
 import { SwapIcon } from "../motion/IconSwap";
 import { sessionStore } from "../lib/tcserver/store";
-import { harnessSupportsAttachments, type HarnessId, type RuntimeMode } from "../lib/session";
+import type { HarnessId, RuntimeMode } from "../lib/session";
 import { AccessPicker } from "./AccessPicker";
 import { ArrowUp, AtSign, CornerDownRight, ListPlus, Paperclip, Pause, Plus, Slash } from "./icons";
 
 /**
- * The composer's one row under the field, 28px tall, 6px in from the box's
- * sides and bottom (its 12px radius less 6 is the controls' 6px), never
- * scrolling:
- * the `+` menu and the model button on the left, the context meter (an
- * existing thread with a reading), the permission mode (absent for fx,
- * which has none) and the send button on the right. It is the
- * `composer-bar` size container, so a narrow box gives way in order: the
- * free space, then the meter's percent (down to its ring), then the model's
- * effort word and name (down to its harness icon), then the mode's label
- * (down to its icon). Add and Send never shrink; every control fits a 220px
- * box.
+ * The quiet row under the composer's box, 4px below it and 24px tall
+ * (docs/DESIGN.md "The transcript"): the model button on the left, the
+ * context meter (an existing thread with a reading) and the permission mode
+ * (absent for fx, which has none) on the right, ghost controls in 12px muted
+ * text. It is always there, so nothing moves on focus; its edges are the
+ * box's. It is the `composer-bar` size container, so a narrow box gives way
+ * in order: the free space, then the meter's percent (under 25rem, down to
+ * its ring), then the model's effort word (under 23rem), then the mode's
+ * label (under 20rem, down to its icon), then the model's name (under 9rem,
+ * down to its harness icon). Every control fits a 220px box. The `+` menu
+ * and Send sit in the box, on the field's bottom line. The Composer's one
+ * TooltipProvider spans the box and this row.
  */
 export function ComposerBar({
   harness,
   model,
   runtimeMode,
   onRuntimeModeChange,
-  onAttach,
-  onInsert,
-  fieldOf,
   onClose,
   context,
-  send,
 }: {
   harness: HarnessId;
   /** The model button and its menu. */
   model: ReactNode;
   runtimeMode: RuntimeMode;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
-  onAttach: () => void;
-  /** Types `@` or `/` at the caret, which opens that list. */
-  onInsert: (mark: "@" | "/") => void;
-  /** The field, where a closing menu returns the focus. */
-  fieldOf: () => HTMLElement | null;
   onClose: () => void;
   /** The context meter, before the permission mode. */
   context?: ReactNode;
-  send: ReactNode;
 }) {
   return (
-    <TooltipProvider>
-      <div data-composer-bar className="@container/composer-bar mx-1.5 mb-1.5 flex h-7 min-w-0 items-center gap-1">
-        <AddMenu attachable={harnessSupportsAttachments(harness)} onAttach={onAttach} onInsert={onInsert} fieldOf={fieldOf} />
-        {model}
-        <div className="ms-auto flex shrink-0 items-center gap-1">
-          {context}
-          {harness !== "fx" ? <AccessPicker value={runtimeMode} onChange={onRuntimeModeChange} onClose={onClose} /> : null}
-          {send}
-        </div>
+    <div data-composer-bar className="@container/composer-bar mt-1 flex h-6 min-w-0 items-center gap-1">
+      {model}
+      <div className="ms-auto flex shrink-0 items-center gap-1">
+        {context}
+        {harness !== "fx" ? <AccessPicker quiet value={runtimeMode} onChange={onRuntimeModeChange} onClose={onClose} /> : null}
       </div>
-    </TooltipProvider>
+    </div>
   );
 }
 
-/** Attach, mention and the skills list: the three ways to add to a message. */
-function AddMenu({
+/** The box's `+` (28px, at the field's bottom-left): attach, mention and the
+ *  skills list, the three ways to add to a message. */
+export function AddMenu({
   attachable,
   onAttach,
   onInsert,

@@ -1,4 +1,6 @@
 import { useRef } from "react";
+import { cn } from "../lib/cn";
+import { ROW_CONTROL } from "./composerRow";
 import { Lock, LockOpen, Pencil } from "./icons";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
@@ -8,6 +10,8 @@ type Props = {
   value: RuntimeMode;
   onChange: (mode: RuntimeMode) => void;
   onClose?: () => void;
+  /** The composer's row under the box: 24px, 12px muted (`ROW_CONTROL`). */
+  quiet?: boolean;
 };
 
 const ICONS: Record<RuntimeMode, typeof Lock> = {
@@ -19,12 +23,12 @@ const ICONS: Record<RuntimeMode, typeof Lock> = {
 
 const ITEMS = PICKER_RUNTIME_MODES.map((mode) => ({ value: mode, label: RUNTIME_MODE_LABEL[mode] }));
 
-/** The permission mode, at the right end of the composer's bar: a quiet
+/** The permission mode, at the right end of the composer's row: a quiet
  *  select whose rows carry each mode's hint under its name. A pick hands
  *  the focus back to the composer through `onClose`; Escape and an outside
  *  press return it to the trigger. In a narrow bar the label gives way to
  *  the icon; the name and tooltip still say the mode. */
-export function AccessPicker({ value: stored, onChange, onClose }: Props) {
+export function AccessPicker({ value: stored, onChange, onClose, quiet = false }: Props) {
   const value = shownRuntimeMode(stored);
   const Icon = ICONS[value];
   const toField = useRef(false);
@@ -46,13 +50,16 @@ export function AccessPicker({ value: stored, onChange, onClose }: Props) {
             <SelectTrigger
               size="sm"
               aria-label={`Permission mode: ${RUNTIME_MODE_LABEL[value]}`}
-              className="shrink-0 border-transparent text-muted-foreground hover:bg-foreground/7 hover:text-foreground data-popup-open:bg-foreground/7 data-popup-open:text-foreground [&>svg]:size-3"
+              className={cn(
+                "shrink-0 border-transparent text-muted-foreground hover:bg-foreground/7 hover:text-foreground data-popup-open:bg-foreground/7 data-popup-open:text-foreground [&>svg]:size-3",
+                quiet && `${ROW_CONTROL} gap-1 py-0 ps-2 pe-1.5 data-[size=sm]:h-6`,
+              )}
             />
           }
         >
           <SelectValue>
             <Icon className="size-3.5" />
-            <span className="@max-[21rem]/composer-bar:hidden">{RUNTIME_MODE_LABEL[value]}</span>
+            <span className="@max-[20rem]/composer-bar:hidden">{RUNTIME_MODE_LABEL[value]}</span>
           </SelectValue>
         </TooltipTrigger>
         <TooltipContent>Permission mode: {RUNTIME_MODE_LABEL[value]}</TooltipContent>
