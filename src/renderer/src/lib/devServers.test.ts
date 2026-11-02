@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DevRun } from '@server/shared/contract-devservers'
 import type { ThreadResource } from '@server/shared/contract-resources'
 import { commandWords, listenerWords } from '@server/shared/devServerWords'
-import { applyDevRunPush, applyHostRuns, devHosts, devTabOf, runChoice, serverGroups, threadRoot, devServerStore, liveServers, shownServer, targetLabel, type LiveServerSources } from './devServers'
+import { startDevServers, loadDevTargets, loadDevLog, applyDevRunPush, applyHostRuns, devHosts, devTabOf, runChoice, serverGroups, threadRoot, devServerStore, liveServers, shownServer, targetLabel, type LiveServerSources } from './devServers'
 import { devPane, devPaneStore, resetDevPane } from './devPane'
+import { registry } from './connection/registry'
+import type { EnvLink } from './connection/link'
 import { pairWorkspaces } from './projectPairs'
 
 const run = (over: Partial<DevRun> = {}): DevRun => ({
@@ -33,8 +35,90 @@ describe('devServers', () => {
     applyDevRunPush('env_box', { push: 'dev-run', projectId: 'p1', run: run({ status: 'stopped' }), lines: [] })
     applyDevRunPush('env_box', { push: 'dev-run', projectId: 'p1', run: run({ id: 'b', startedAt: 2 }), lines: [] })
     const s = devServerStore.getState()
-    expect(s.logs.a).toEqual(['one', 'two'])
+    expect(s.logs.a).toBeUndefined()
+    expect(s.logs.b).toEqual([])
     expect(s.runs['env_box/p1'].map((r) => r.id)).toEqual(['b'])
+  })
+
+  it('drops logs for a run absent from a host refresh, keeping other runs', () => {
+    applyDevRunPush('env_box', { push: 'dev-run', projectId: 'p1', run: run(), lines: ['gone'] })
+    applyDevRunPush('env_box', { push: 'dev-run', projectId: 'p1', run: run({ id: 'kept', targetId: 'other' }), lines: ['kept'] })
+    applyDevRunPush('env_mac', { push: 'dev-run', projectId: 'p1', run: run({ id: 'mac' }), lines: ['mac'] })
+    applyHostRuns('env_box', [run({ id: 'kept', targetId: 'other' })])
+    expect(devServerStore.getState().logs).toEqual({ kept: ['kept'], mac: ['mac'] })
+  })
+
+  it('drops logs for finished runs replaced by a refreshed target', () => {
+    applyDevRunPush('env_box', { push: 'dev-run', projectId: 'p1', run: run({ status: 'stopped' }), lines: ['old'] })
+    applyHostRuns('env_box', [run({ id: 'new' })])
+    expect(devServerStore.getState().logs.a).toBeUndefined()
+  })
+
+  it('drops a removed host’s runs and logs and ignores its late refresh', async () => {
+    let notify: (link: EnvLink, event: 'added' | 'removed') => void = () => {}
+    let resolveRuns: (value: { runs: DevRun[] }) => void = () => {}
+    const pending = new Promise<{ runs: DevRun[] }>((resolve) => { resolveRuns = resolve })
+    const offPush = vi.fn()
+    const offOpen = vi.fn()
+    const link = {
+      environmentId: 'env_box', connected: true,
+      onPush: vi.fn(() => offPush), onOpen: vi.fn(() => offOpen),
+      request: vi.fn(() => pending)
+    } as unknown as EnvLink
+    vi.spyOn(registry, 'onLink').mockImplementation((listener) => {
+      notify = listener
+      listener(link, 'added')
+      return () => {}
+    })
+    try {
+      applyDevRunPush('env_box', { push: 'dev-run', projectId: 'p1', run: run(), lines: ['gone'] })
+      applyDevRunPush('env_mac', { push: 'dev-run', projectId: 'p1', run: run({ id: 'mac' }), lines: ['mac'] })
+      devServerStore.setState({ targets: { 'env_box/p1': [], 'env_mac/p1': [] } })
+      startDevServers()
+      notify(link, 'removed')
+      resolveRuns({ runs: [run()] })
+      await Promise.resolve()
+      expect(devServerStore.getState()).toMatchObject({
+        runs: { 'env_mac/p1': [run({ id: 'mac' })] },
+        logs: { mac: ['mac'] }, targets: { 'env_mac/p1': [] }
+      })
+      expect(devServerStore.getState().runs['env_box/p1']).toBeUndefined()
+      expect(devServerStore.getState().targets['env_box/p1']).toBeUndefined()
+      expect(offPush).toHaveBeenCalledTimes(1)
+      expect(offOpen).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('drops logs when a project’s target refresh removes its old runs', async () => {
+    const link = { request: vi.fn(async () => ({ targets: [], runs: [] })) } as unknown as EnvLink
+    vi.spyOn(registry, 'linkOf').mockReturnValue(link)
+    vi.spyOn(registry, 'link').mockReturnValue(link)
+    try {
+      applyDevRunPush('env_box', { push: 'dev-run', projectId: 'p1', run: run({ status: 'stopped' }), lines: ['old'] })
+      await loadDevTargets('env_box', 'p1')
+      expect(devServerStore.getState().logs.a).toBeUndefined()
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('ignores a log replay that arrives after its host was removed', async () => {
+    let resolveLog: (value: { run: DevRun; lines: string[] }) => void = () => {}
+    const pending = new Promise<{ run: DevRun; lines: string[] }>((resolve) => { resolveLog = resolve })
+    const link = { request: vi.fn(() => pending) } as unknown as EnvLink
+    vi.spyOn(registry, 'linkOf').mockReturnValue(link)
+    vi.spyOn(registry, 'link').mockReturnValue(undefined)
+    try {
+      const loading = loadDevLog('env_box', 'a')
+      resolveLog({ run: run(), lines: ['stale'] })
+      await loading
+      expect(devServerStore.getState().logs.a).toBeUndefined()
+      expect(devServerStore.getState().runs['env_box/p1']).toBeUndefined()
+    } finally {
+      vi.restoreAllMocks()
+    }
   })
 
   it('offers the project’s own host first, then each open host with a copy', () => {

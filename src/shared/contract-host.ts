@@ -19,6 +19,9 @@ import { z } from 'zod'
 // the new build (dropping the link), the renderer calls it again and gets
 // the log from the start.
 
+/** Log tail in UTF-16 code units, shared by the host and renderer. */
+export const HOST_LOG_CAP = 512 * 1024
+
 export const HOST_JOBS = ['deploy', 'publish'] as const
 export type HostJob = (typeof HOST_JOBS)[number]
 export const HostJobSchema = z.enum(HOST_JOBS)

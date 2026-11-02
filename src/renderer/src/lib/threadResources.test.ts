@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { registry } from './connection/registry'
+import type { EnvLink } from './connection/link'
 import type { ThreadResource } from '@server/shared/contract-resources'
-import { KIND_LABEL, countHeldBy, removalClause, rowState, threadResourcesStore } from './threadResources'
+import { startThreadResources, KIND_LABEL, countHeldBy, removalClause, rowState, threadResourcesStore } from './threadResources'
 
 const row = (over: Partial<ThreadResource>): ThreadResource => ({
   id: 'r1',
@@ -56,5 +58,34 @@ describe('countHeldBy', () => {
     expect(countHeldBy(['s1'])).toBe(2)
     expect(countHeldBy(['s1', 's2', 's3', 'unknown'])).toBe(3)
     expect(countHeldBy([])).toBe(0)
+  })
+})
+
+describe('existing links', () => {
+  it('attaches each of two open links once when installed', async () => {
+    const links = ['env_box', 'env_other'].map((environmentId) => ({
+      environmentId,
+      connected: true,
+      onPush: vi.fn(() => () => {}),
+      onOpen: vi.fn(() => () => {}),
+      request: vi.fn(async () => ({ resources: [] }))
+    }))
+    vi.spyOn(registry, 'links').mockReturnValue(links as unknown as EnvLink[])
+    vi.spyOn(registry, 'onLink').mockImplementation((listener) => {
+      for (const link of links) listener(link as unknown as EnvLink, 'added')
+      return () => {}
+    })
+    try {
+      startThreadResources()
+      startThreadResources()
+      await Promise.resolve()
+      for (const link of links) {
+        expect(link.onPush).toHaveBeenCalledTimes(1)
+        expect(link.onOpen).toHaveBeenCalledTimes(1)
+        expect(link.request).toHaveBeenCalledExactlyOnceWith('resources.listAll', {})
+      }
+    } finally {
+      vi.restoreAllMocks()
+    }
   })
 })

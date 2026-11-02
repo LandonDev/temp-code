@@ -78,7 +78,6 @@ export function startMacBridgeRules(): void {
         if (known.has(id)) void forgetMacBridgeRules(id).catch(() => undefined)
     })
   }
-  for (const link of registry.links()) watch(link)
   registry.onLink((link, event) => {
     if (event === 'added') watch(link)
   })

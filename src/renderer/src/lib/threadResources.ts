@@ -104,7 +104,6 @@ export function startThreadResources(): void {
     link.onOpen(() => void loadAll(link))
     if (link.connected) void loadAll(link)
   }
-  for (const link of registry.links()) attach(link)
   registry.onLink((link, event) => {
     if (event === 'added') attach(link)
   })

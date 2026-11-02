@@ -11,16 +11,34 @@ import { readAttachment } from '../lib/tcserver/commands'
  *  previews) or an attachment path fetched on demand (transcript thumbs). */
 export type LightboxItem = { environmentId: string; name: string; src?: string; path?: string }
 
-/** Image bytes fetched once per attachment path for the app's lifetime,
- *  shared with the transcript thumbs so the lightbox opens from cache. */
-const imageCache = new Map<string, Promise<string | null>>()
+/** Shared with transcript thumbs; count two bytes per data URL character. */
+export const IMAGE_CACHE_BYTES = 64 * 1024 * 1024
+const imageCache = new Map<string, string>()
+const imageLoads = new Map<string, Promise<string | null>>()
+let imageBytes = 0
 export function imageDataFor(environmentId: string, path: string): Promise<string | null> {
   const key = JSON.stringify([environmentId, path])
-  let pending = imageCache.get(key)
-  if (!pending) {
-    pending = readAttachment(environmentId, path).catch(() => null)
-    imageCache.set(key, pending)
+  const cached = imageCache.get(key)
+  if (cached !== undefined) {
+    imageCache.delete(key)
+    imageCache.set(key, cached)
+    return Promise.resolve(cached)
   }
+  const loading = imageLoads.get(key)
+  if (loading) return loading
+  const pending = readAttachment(environmentId, path).catch(() => null).then((data) => {
+    if (data !== null && data.length * 2 <= IMAGE_CACHE_BYTES) {
+      imageCache.set(key, data)
+      imageBytes += data.length * 2
+      while (imageBytes > IMAGE_CACHE_BYTES) {
+        const oldest = imageCache.keys().next().value!
+        imageBytes -= imageCache.get(oldest)!.length * 2
+        imageCache.delete(oldest)
+      }
+    }
+    return data
+  }).finally(() => imageLoads.delete(key))
+  imageLoads.set(key, pending)
   return pending
 }
 

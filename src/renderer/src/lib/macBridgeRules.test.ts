@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { registry } from './connection/registry'
+import type { EnvLink } from './connection/link'
 import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
 import type { MacBridgeRule } from '@server/shared/contract-macbridge-rules'
-import { ruleText, runRememberOptions } from './macBridgeRules'
+import { startMacBridgeRules, ruleText, runRememberOptions } from './macBridgeRules'
 
 const run = (extra: Partial<MacBridgeRequest> = {}): MacBridgeRequest => ({
   id: 'mb_1',
@@ -53,5 +55,32 @@ describe('ruleText', () => {
       "a 'b c' in /x"
     )
     expect(ruleText(rule({ kind: 'read-folder', folder: '/r' })).what).toBe('Reads in')
+  })
+})
+
+describe('existing links', () => {
+  it('attaches each of two open links once when installed', async () => {
+    const links = ['env_box', 'env_other'].map((environmentId) => ({
+      environmentId,
+      connected: true,
+      onPush: vi.fn(() => () => {}),
+      onOpen: vi.fn(() => () => {}),
+      request: vi.fn(async () => ({ resources: [] }))
+    }))
+    vi.spyOn(registry, 'links').mockReturnValue(links as unknown as EnvLink[])
+    vi.spyOn(registry, 'onLink').mockImplementation((listener) => {
+      for (const link of links) listener(link as unknown as EnvLink, 'added')
+      return () => {}
+    })
+    try {
+      startMacBridgeRules()
+      startMacBridgeRules()
+      await Promise.resolve()
+      for (const link of links) {
+        expect(link.onPush).toHaveBeenCalledTimes(1)
+      }
+    } finally {
+      vi.restoreAllMocks()
+    }
   })
 })

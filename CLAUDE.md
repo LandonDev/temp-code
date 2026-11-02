@@ -1587,6 +1587,15 @@ names the far child).
   is not reviewed again when its gate held it.
 
 ## The desktop transcript: a viewport window, markdown in a worker
+- Renderer retention rules live in docs/RENDERER_RETENTION.md. An unfinished
+  history head keeps every persisted row and only the newest partial input
+  per tool call, in that call's first replay slot. The shared attachment
+  cache is a 64 MiB LRU (two bytes per data URL character); failed reads
+  retry. Host-job text keeps the last 512 Ki code units plus one truncation
+  line, using the host's shared cap. Dev-run logs leave with their runs or
+  host. Resource and Mac approval installers attach each existing link
+  once through `onLink`'s replay. `perfMark` keeps at most 200 `tc:` marks,
+  clearing the oldest name as a group; listeners still hear every mark.
 - `src/renderer/src/surfaces/AgentTranscript.tsx` mounts only the rows that
   meet the viewport plus a screen of overscan each way. The thread is a flat
   list of rows (`transcriptRows.ts`: one per turn item, one closing row per

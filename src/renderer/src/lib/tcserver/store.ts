@@ -186,6 +186,8 @@ type Entry = {
 type Head = {
   beforeSeq: number;
   since: EventRow[];
+  /** A preview replaces its first slot so interleaved calls keep their order. */
+  previews: Map<string, number>;
   fetching: boolean;
   waiters: (() => void)[];
   /** Remote profile: the older page on its way, if one is. */
@@ -1539,7 +1541,7 @@ class SessionStore {
         if (this.isRemote(entry) && !entry.rows) entry.rows = [];
         // Seqs are contiguous from 1, so a tail that starts later has a head.
         if ((coldOpen || page.reset) && page.moreBefore && page.rows.length > 0) {
-          entry.head = { beforeSeq: page.rows[0].seq, since: [], fetching: false, waiters: [], page: null };
+          entry.head = { beforeSeq: page.rows[0].seq, since: [], previews: new Map(), fetching: false, waiters: [], page: null };
         }
         for (const row of page.rows) this.foldRow(entry, row);
       },
@@ -1970,7 +1972,16 @@ class SessionStore {
   }
 
   private foldRow(entry: Entry, row: EventRow): boolean {
-    entry.head?.since.push(row);
+    const head = entry.head;
+    if (head) {
+      if (row.ephemeral && row.event.type === "tool-call" && row.event.partial) {
+        const slot = head.previews.get(row.event.callId);
+        if (slot === undefined) {
+          head.previews.set(row.event.callId, head.since.length);
+          head.since.push(row);
+        } else head.since[slot] = row;
+      } else head.since.push(row);
+    }
     const before = foldStateOf(entry);
     const after = foldEvent(before, row, entry.session.cwd);
     if (after === before) return false;

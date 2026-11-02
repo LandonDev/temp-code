@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { emptyFold, foldEvent } from "./fold";
 import { newSession } from "../session";
 import { KEEP_RECENT, RECENT_ROW_BUDGET, applyMeta, metaEqual, sessionFromMeta, sessionStore, type Link } from "./store";
 import { ConnectionLostError, TimeoutError } from "../connection";
@@ -752,6 +753,43 @@ describe("tail-first load", () => {
     link.reopen();
     await tick();
     expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toEqual({ sessionId: "s1", afterSeq: 601 });
+  });
+
+  it.each([false, true])("keeps one of 200 partial previews per call and every persisted row while a head is open (completed: %s)", async (completed) => {
+    const history = log(200);
+    link.metas = [wireMeta()];
+    link.events.set("s1", history);
+    let release: () => void = () => {};
+    link.holdHead = new Promise((r) => (release = r));
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("s1");
+    const arrived: EventRow[] = [];
+    const push = (r: EventRow) => {
+      arrived.push(r);
+      link.push({ push: "event", row: r });
+    };
+    for (let i = 0; i < 200; i++) {
+      push({ ...row("s1", -1, { type: "tool-call", callId: "call1", name: "Bash", input: { command: `echo ${i}` }, partial: true }), ephemeral: true });
+      if (i === 50) push(row("s1", 601, { type: "tool-call", callId: "call2", name: "Read", input: { file_path: "/repo/a.ts" } }));
+      if (i === 100) push(row("s1", 602, { type: "assistant-text", text: "between previews", delta: false }));
+    }
+    // The history buffer is private; inspect its retained rows without adding a production API.
+    const entry = (sessionStore as unknown as { entries: Map<string, { head: { since: EventRow[] } | null }> }).entries.get("s1")!;
+    const since = entry.head!.since;
+    expect(since.filter((r) => r.ephemeral)).toEqual([arrived.at(-1)]);
+    expect(since.filter((r) => !r.ephemeral)).toEqual([...history.slice(150), ...arrived.filter((r) => !r.ephemeral)]);
+    if (completed) {
+      push(row("s1", 603, { type: "tool-call", callId: "call1", name: "Bash", input: { command: "echo done" } }));
+      push(row("s1", 604, { type: "tool-result", callId: "call1", output: "done" }));
+      expect(since.filter((r) => !r.ephemeral)).toEqual([...history.slice(150), ...arrived.filter((r) => !r.ephemeral)]);
+    }
+    release();
+    await sessionStore.ensureComplete("s1");
+    const expected = [...history, ...arrived].reduce((state, r) => foldEvent(state, r, "/repo"), emptyFold());
+    expect(sessionStore.get("s1")!.blocks).toEqual(expected.blocks);
+    expect(sessionStore.get("s1")!.thread).toEqual(expected.thread);
+    expect(entry.head).toBeNull();
   });
 
   it("a short log arrives whole in one request", async () => {

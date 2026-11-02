@@ -1,5 +1,6 @@
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
+import { HOST_LOG_CAP } from "@server/shared/contract-host";
 import type { DeployStatus, HostJob, HostJobStatus, HostLogPush, PublishStatus } from "@server/shared/contract-host";
 import type { ServerPush } from "@server/shared/contract";
 import { LOCAL_ENVIRONMENT_ID, registry } from "./connection/registry";
@@ -71,12 +72,21 @@ function setEntry(environmentId: string, job: HostJob, patch: Partial<JobEntry>)
   });
 }
 
+export const HOST_LOG_TRUNCATED = "Earlier log output was removed.\n";
+function capLog(text: string): string {
+  const truncated = text.startsWith(HOST_LOG_TRUNCATED);
+  const body = truncated ? text.slice(HOST_LOG_TRUNCATED.length) : text;
+  return body.length > HOST_LOG_CAP || truncated
+    ? HOST_LOG_TRUNCATED + body.slice(-HOST_LOG_CAP)
+    : body;
+}
+
 async function load(environmentId: string, job: HostJob): Promise<void> {
   const link = registry.link(environmentId);
   if (!link?.connected) return;
   try {
     const snapshot = await link.request<{ text: string; status: HostJobStatus }>("host.log", { job });
-    setEntry(environmentId, job, { text: snapshot.text, status: snapshot.status });
+    setEntry(environmentId, job, { text: capLog(snapshot.text), status: snapshot.status });
   } catch {
     // an older host, or the link closed under the request: the next link-up asks again
   }
@@ -93,7 +103,7 @@ export function watchJob(environmentId: string, job: HostJob): void {
     const p = push as HostLogPush;
     const prev = store.getState().jobs[key];
     const text = (p.reset ? "" : (prev?.text ?? "")) + (p.append ?? "");
-    setEntry(environmentId, job, { text, status: p.status });
+    setEntry(environmentId, job, { text: capLog(text), status: p.status });
     if (job === "deploy" && p.status.phase === "done") void refreshDeployStatus(environmentId);
     if (job === "publish" && p.status.phase === "done") void refreshPublishStatus();
   };

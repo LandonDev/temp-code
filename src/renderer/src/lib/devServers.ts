@@ -46,15 +46,44 @@ function upsert(runs: readonly DevRun[], run: DevRun): DevRun[] {
   return [run, ...rest].sort((a, b) => b.startedAt - a.startedAt)
 }
 
+function logsAfterRuns(logs: State['logs'], before: readonly DevRun[], after: readonly DevRun[]): State['logs'] {
+  const kept = new Set(after.map((r) => r.id))
+  let next = logs
+  for (const run of before) {
+    if (kept.has(run.id) || !(run.id in next)) continue
+    if (next === logs) next = { ...logs }
+    delete next[run.id]
+  }
+  return next
+}
+
+function removeHost(environmentId: string): void {
+  store.setState((s) => {
+    const targets = { ...s.targets }
+    const runs = { ...s.runs }
+    const removed: DevRun[] = []
+    for (const key of Object.keys(targets)) if (key.startsWith(`${environmentId}/`)) delete targets[key]
+    for (const [key, list] of Object.entries(runs)) {
+      if (!key.startsWith(`${environmentId}/`)) continue
+      removed.push(...list)
+      delete runs[key]
+    }
+    return { targets, runs, logs: logsAfterRuns(s.logs, removed, []) }
+  })
+}
+
 /** A `dev-run` push: the run replaces its row (a target's finished runs give way to its new one), its lines append. */
 export function applyDevRunPush(environmentId: string, push: DevRunPush): void {
   const key = keyOf(environmentId, push.projectId)
   store.setState((s) => {
     const prior = s.logs[push.run.id] ?? []
     const lines = push.lines.length ? [...prior, ...push.lines].slice(-LOG_CAP) : prior
+    const before = s.runs[key] ?? []
+    const after = upsert(before, push.run)
+    const logs = logsAfterRuns(s.logs, before, after)
     return {
-      runs: { ...s.runs, [key]: upsert(s.runs[key] ?? [], push.run) },
-      logs: push.lines.length || !(push.run.id in s.logs) ? { ...s.logs, [push.run.id]: lines } : s.logs
+      runs: { ...s.runs, [key]: after },
+      logs: push.lines.length || !(push.run.id in logs) ? { ...logs, [push.run.id]: lines } : logs
     }
   })
 }
@@ -69,27 +98,30 @@ export function applyHostRuns(environmentId: string, live: readonly DevRun[]): v
       const key = keyOf(environmentId, run.projectId)
       runs[key] = upsert(runs[key] ?? [], run)
     }
-    return { runs }
+    return { runs, logs: logsAfterRuns(s.logs, Object.values(s.runs).flat(), Object.values(runs).flat()) }
   })
 }
 
 async function loadHostRuns(link: EnvLink): Promise<void> {
   try {
     const { runs } = await link.request<{ runs: DevRun[] }>('devServer.runs', {})
-    applyHostRuns(link.environmentId, runs)
+    if (attached.has(link)) applyHostRuns(link.environmentId, runs)
   } catch {
     /* an older host without the method: its runs arrive as pushes and per-project reads */
   }
 }
 
-const attached = new WeakSet<EnvLink>()
+const attached = new WeakMap<EnvLink, () => void>()
 function attach(link: EnvLink): void {
   if (attached.has(link)) return
-  attached.add(link)
-  link.onPush((push) => {
+  const offPush = link.onPush((push) => {
     if (push.push === 'dev-run') applyDevRunPush(link.environmentId, push)
   })
-  link.onOpen(() => void loadHostRuns(link))
+  const offOpen = link.onOpen(() => void loadHostRuns(link))
+  attached.set(link, () => {
+    offPush()
+    offOpen()
+  })
   if (link.connected) void loadHostRuns(link)
 }
 
@@ -98,9 +130,13 @@ let started = false
 export function startDevServers(): void {
   if (started) return
   started = true
-  for (const link of registry.links()) attach(link)
   registry.onLink((link, event) => {
     if (event === 'added') attach(link)
+    else {
+      attached.get(link)?.()
+      attached.delete(link)
+      removeHost(link.environmentId)
+    }
   })
 }
 
@@ -108,8 +144,14 @@ export async function loadDevTargets(environmentId: string, projectId: string): 
   startDevServers()
   const key = keyOf(environmentId, projectId)
   try {
-    const { targets, runs } = await registry.linkOf(environmentId).request<{ targets: DevTarget[]; runs: DevRun[] }>('devServer.targets', { projectId })
-    store.setState((s) => ({ targets: { ...s.targets, [key]: targets }, runs: { ...s.runs, [key]: runs } }))
+    const link = registry.linkOf(environmentId)
+    const { targets, runs } = await link.request<{ targets: DevTarget[]; runs: DevRun[] }>('devServer.targets', { projectId })
+    if (registry.link(environmentId) !== link) return
+    store.setState((s) => ({
+      targets: { ...s.targets, [key]: targets },
+      runs: { ...s.runs, [key]: runs },
+      logs: logsAfterRuns(s.logs, s.runs[key] ?? [], runs)
+    }))
   } catch {
     store.setState((s) => ({ targets: { ...s.targets, [key]: null } }))
   }
@@ -117,7 +159,9 @@ export async function loadDevTargets(environmentId: string, projectId: string): 
 
 /** The console's replay: the host's buffered log for a run this window joined late. */
 export async function loadDevLog(environmentId: string, runId: string): Promise<void> {
-  const { run, lines } = await registry.linkOf(environmentId).request<{ run: DevRun; lines: string[] }>('devServer.log', { runId })
+  const link = registry.linkOf(environmentId)
+  const { run, lines } = await link.request<{ run: DevRun; lines: string[] }>('devServer.log', { runId })
+  if (registry.link(environmentId) !== link) return
   store.setState((s) => ({ logs: { ...s.logs, [runId]: lines } }))
   applyDevRunPush(environmentId, { push: 'dev-run', projectId: run.projectId, run, lines: [] })
 }

@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
 import {
   DEPLOY_REF,
+  HOST_LOG_CAP,
   type DeployStatus,
   type HostJob,
   type HostJobStatus,
@@ -73,7 +74,6 @@ export const DEPLOY_NOT_INSTALLED = `Deploy from the app is not installed on thi
 /** A request still unread after this long: the path unit is not watching. */
 export const PICKUP_MS = 15_000
 const POLL_MS = 400
-const LOG_CAP = 512 * 1024
 const KILL_GRACE_MS = 5_000
 const RELEASE_REPO_FEED = 'https://github.com/LandonDev/temp-code/releases/latest/download/latest-mac.yml'
 
@@ -102,9 +102,9 @@ export class HostLog {
   append(chunk: string): void {
     if (!chunk) return
     this.text += chunk
-    if (this.text.length > LOG_CAP) {
-      const cut = this.text.indexOf('\n', this.text.length - LOG_CAP)
-      this.text = this.text.slice(cut === -1 ? this.text.length - LOG_CAP : cut + 1)
+    if (this.text.length > HOST_LOG_CAP) {
+      const cut = this.text.indexOf('\n', this.text.length - HOST_LOG_CAP)
+      this.text = this.text.slice(cut === -1 ? this.text.length - HOST_LOG_CAP : cut + 1)
     }
     this.emit({ push: 'host-log', job: this.job, append: chunk, status: this.status })
   }
