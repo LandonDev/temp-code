@@ -1,4 +1,4 @@
-import type { Attachment, Block, CompactionMeta, QuestionMeta } from "../session";
+import { carryPendingApprovalIndex, type Attachment, type Block, type CompactionMeta, type QuestionMeta } from "../session";
 import { BACKGROUND_CHECK_WORDS, COMPACTING_WORDS } from "@shared/statusWords";
 import { mergeContextUsage, type ContextUsage } from "../contextUsage";
 import {
@@ -816,6 +816,10 @@ export function foldEvent(
   }
 
   if (blocks !== state.blocks) blocks = stampTail(blocks, thread, persisted ? row.ts : undefined);
+
+  if (blocks !== state.blocks && (e.type === "assistant-text" || e.type === "thinking")) {
+    carryPendingApprovalIndex(state.blocks, blocks);
+  }
 
   if (
     blocks === state.blocks &&

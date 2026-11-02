@@ -536,15 +536,29 @@ export function canReplaceSessionTitle(
   );
 }
 
-// Cached per blocks array: this runs for every session on every render, and
-// an idle session's array keeps its identity, so only the streaming one rescans.
-const pendingApprovalCache = new WeakMap<Block[], boolean>();
-export function hasPendingApproval(blocks: Block[]): boolean {
+// Text folds carry this index forward; other block changes compute it once.
+const pendingApprovalCache = new WeakMap<Block[], number>();
+export function pendingApprovalIndex(blocks: Block[]): number {
   const cached = pendingApprovalCache.get(blocks);
   if (cached !== undefined) return cached;
-  const pending = blocks.some((block) => block.approval && !block.approval.decided);
-  pendingApprovalCache.set(blocks, pending);
-  return pending;
+  let index = -1;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i].approval && !blocks[i].approval?.decided) {
+      index = i;
+      break;
+    }
+  }
+  pendingApprovalCache.set(blocks, index);
+  return index;
+}
+
+/** A text fold neither moves nor changes an approval block. */
+export function carryPendingApprovalIndex(before: Block[], after: Block[]): void {
+  pendingApprovalCache.set(after, pendingApprovalIndex(before));
+}
+
+export function hasPendingApproval(blocks: Block[]): boolean {
+  return pendingApprovalIndex(blocks) >= 0;
 }
 
 /** What an untitled thread is called, wherever its title would be. */

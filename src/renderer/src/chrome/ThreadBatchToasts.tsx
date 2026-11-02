@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { dismissBatchNotice, useBatchNotices, type BatchNotice } from "../lib/threadBatch";
 import { useToastSync } from "./toastSync";
 
@@ -18,6 +19,8 @@ const VERB: Record<BatchNotice["action"], string> = { pause: "Paused", resume: "
 const dismissedRest = new Set<string>();
 
 export function ThreadBatchToasts({ onOpen }: Props): null {
+  const open = useRef(onOpen);
+  open.current = onOpen;
   useToastSync(
     useBatchNotices(),
     (notice) => `batch:${notice.key}`,
@@ -42,7 +45,7 @@ export function ThreadBatchToasts({ onOpen }: Props): null {
           for (const restId of restIds) toast.dismiss(restId);
           done();
         },
-        action: { label: "Open", onClick: () => onOpen(first.sessionId, first.environmentId) },
+        action: { label: "Open", onClick: () => open.current(first.sessionId, first.environmentId) },
       });
       rest.forEach((f, index) => {
         const restId = restIds[index];
@@ -52,10 +55,17 @@ export function ThreadBatchToasts({ onOpen }: Props): null {
           description: f.error,
           duration: Infinity,
           onDismiss: () => dismissedRest.add(restId),
-          action: { label: "Open", onClick: () => onOpen(f.sessionId, f.environmentId) },
+          action: { label: "Open", onClick: () => open.current(f.sessionId, f.environmentId) },
         });
       });
+      return () => {
+        for (const restId of restIds) {
+          toast.dismiss(restId);
+          dismissedRest.delete(restId);
+        }
+      };
     },
+    (notice) => JSON.stringify([notice.action, notice.succeeded, notice.failed]),
   );
   return null;
 }

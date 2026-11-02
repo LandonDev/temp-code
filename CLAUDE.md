@@ -319,6 +319,19 @@ app replaces itself from the feed, and only from the feed.
   full suite or a dev instance. The renderer's prettier style differs from
   the root config: never run prettier or `--fix` on src/renderer.
 
+## Approval toast updates
+`HiddenApprovalToasts` reads `sessionStore.getPendingApprovals()` through
+`usePendingApprovals`. The snapshot
+holds only ids, title, tool and label; it keeps its identity across unrelated
+folds. `pendingApprovalIndex` in `session.ts` shares the latest-undecided rule with
+`hasPendingApproval`; text folds carry the cached position forward. Block
+replacement, replay, close, removal and unload refresh the index with the
+store's other projections. Questions alone keep their existing card behavior.
+`chrome/toastSync.ts` signs each item's visible fields and calls Sonner only
+for added, changed or removed ids. Each owner dismisses its records and any
+secondary batch toasts on unmount; stale library loads cannot show them.
+Approval actions capture primitive ids and read the current action callbacks.
+
 ## Launch-time code caches: boot.js, the compile cache, the app scheme
 - `package.json` `main` is `out/main/boot.js` (src/main/boot.ts), a second
   main entry that in a packaged app enables Node's compile cache at

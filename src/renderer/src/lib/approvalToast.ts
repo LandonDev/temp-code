@@ -1,5 +1,5 @@
 import { leafIds, type WorkspaceTab } from "./layout";
-import { hasPendingApproval, type Block, type Session } from "./session";
+import { pendingApprovalIndex, sessionDisplayTitle, type Block, type Session } from "./session";
 import { toolCallLabel } from "../surfaces/transcriptActivity";
 import { humanName } from "./toolPhrase";
 
@@ -13,22 +13,44 @@ export type PendingApprovalNotice = {
   block: Block;
 };
 
+/** Toast data never retains a block or a Session. */
+export type ApprovalToastNotice = Pick<PendingApprovalNotice, "sessionId" | "requestId" | "label" | "tool"> & {
+  title: string;
+};
+
+const approvalLabels = new WeakMap<Block, { cwd: string; label: string; tool: string }>();
+
+function labelsForApproval(block: Block, cwd: string): { label: string; tool: string } {
+  let facts = approvalLabels.get(block);
+  if (!facts || facts.cwd !== cwd) {
+    facts = {
+      cwd,
+      label: toolCallLabel(block, cwd),
+      tool: block.tool?.name ? humanName(block.tool.name) : "a tool",
+    };
+    approvalLabels.set(block, facts);
+  }
+  return facts;
+}
+
+export function approvalToastNotice(session: Session, previous?: ApprovalToastNotice): ApprovalToastNotice | null {
+  const block = session.blocks[pendingApprovalIndex(session.blocks)];
+  if (!block?.approval) return null;
+  const { label, tool } = labelsForApproval(block, session.cwd);
+  const requestId = block.approval.requestId;
+  const title = sessionDisplayTitle(session.title, session.harness);
+  if (previous && previous.sessionId === session.id && previous.requestId === requestId && previous.label === label && previous.tool === tool && previous.title === title) return previous;
+  return { sessionId: session.id, requestId, label, tool, title };
+}
+
 /** Latest undecided approval in a session, if any. */
 export function pendingApprovalForSession(
   session: Session,
 ): PendingApprovalNotice | null {
-  for (let i = session.blocks.length - 1; i >= 0; i--) {
-    const block = session.blocks[i];
-    if (!block.approval || block.approval.decided) continue;
-    return {
-      sessionId: session.id,
-      requestId: block.approval.requestId,
-      label: toolCallLabel(block, session.cwd),
-      tool: block.tool?.name ? humanName(block.tool.name) : "a tool",
-      block,
-    };
-  }
-  return null;
+  const block = session.blocks[pendingApprovalIndex(session.blocks)];
+  if (!block?.approval) return null;
+  const { label, tool } = labelsForApproval(block, session.cwd);
+  return { sessionId: session.id, requestId: block.approval.requestId, label, tool, block };
 }
 
 /** True when the conversation pane for this session is focused and active. */
@@ -53,7 +75,6 @@ export function hiddenApprovalNotices(
 ): Array<PendingApprovalNotice & { session: Session }> {
   const notices: Array<PendingApprovalNotice & { session: Session }> = [];
   for (const session of sessions) {
-    if (!hasPendingApproval(session.blocks)) continue;
     const pending = pendingApprovalForSession(session);
     if (!pending) continue;
     if (

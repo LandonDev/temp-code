@@ -607,6 +607,12 @@ inert column seats nothing); and 16px from the window's corner where no
 thread is focused. Confirmation dialogs only for destructive,
 irreversible actions. Every spacing and timing value is a token we can name.
 
+Hidden approval toasts read the session store's pending-approval index. A
+text stream leaves that snapshot and existing toasts alone. Only a changed
+title or approval line updates a toast; deciding, closing or unloading the
+thread removes it. Toast owners dismiss their own records when they unmount,
+and a late Sonner load cannot show a toast after its owner leaves.
+
 ## Verifying without a dev instance
 
 A renderer change proves itself with a jsdom DOM test beside the component

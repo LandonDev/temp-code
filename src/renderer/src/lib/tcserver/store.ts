@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { approvalToastNotice, type ApprovalToastNotice } from "../approvalToast";
 import { noteBootResume } from "../bootResume";
 import type { Attachment, Block, HarnessId, LoadState, Session } from "../session";
 import { HARNESSES, newSession } from "../session";
@@ -432,6 +433,8 @@ class SessionStore {
   private snapshot: Session[] = [];
   private ids: readonly string[] = NO_IDS;
   private shells: SessionShell[] = [];
+  private pendingApprovals: ReadonlyMap<string, ApprovalToastNotice> = new Map();
+  private approvalListeners = new Set<() => void>();
   private version = 0;
   private pushed = { session: 0, event: 0 };
   /** `metas()` as of the last meta change; the metas hooks' stable snapshot. */
@@ -644,6 +647,13 @@ class SessionStore {
 
   /** Open sessions' shells in order. Same array until a shell field changes. */
   getShells = (): SessionShell[] => this.shells;
+
+  getPendingApprovals = (): ReadonlyMap<string, ApprovalToastNotice> => this.pendingApprovals;
+
+  subscribePendingApprovals = (listener: () => void): (() => void) => {
+    this.approvalListeners.add(listener);
+    return () => this.approvalListeners.delete(listener);
+  };
 
   /** Fires when the server's session set or any meta changes (not per event). */
   onMetaChange(listener: () => void): () => void {
@@ -2320,6 +2330,27 @@ class SessionStore {
       if (next) next.push(shell);
     }
     if (next) this.shells = next;
+    this.refreshPendingApprovals(sessions);
+  }
+
+  private refreshPendingApprovals(sessions: Session[]): void {
+    let next: Map<string, ApprovalToastNotice> | null = null;
+    const update = (): Map<string, ApprovalToastNotice> => next ??= new Map(this.pendingApprovals);
+    const removed = this.pendingApprovals.size ? new Set(this.pendingApprovals.keys()) : null;
+    for (const session of sessions) {
+      removed?.delete(session.id);
+      const previous = this.pendingApprovals.get(session.id);
+      const notice = approvalToastNotice(session, previous);
+      if (!notice) {
+        if (previous) update().delete(session.id);
+      } else if (notice !== previous) {
+        update().set(session.id, notice);
+      }
+    }
+    for (const id of removed ?? []) update().delete(id);
+    if (!next) return;
+    this.pendingApprovals = next;
+    for (const listener of this.approvalListeners) listener();
   }
 
   private buildSnapshot(): Session[] {
@@ -2454,4 +2485,9 @@ const subscribeQueues = (l: () => void): (() => void) => sessionStore.onQueueCha
 /** A session's queued messages as React state; `[]` until the server lists them. */
 export function useQueue(sessionId: string): QueuedMessage[] {
   return useSyncExternalStore(subscribeQueues, () => sessionStore.queueOf(sessionId));
+}
+
+/** Only approval facts change this snapshot; ordinary transcript deltas do not. */
+export function usePendingApprovals(): ReadonlyMap<string, ApprovalToastNotice> {
+  return useSyncExternalStore(sessionStore.subscribePendingApprovals, sessionStore.getPendingApprovals);
 }

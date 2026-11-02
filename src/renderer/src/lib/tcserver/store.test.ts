@@ -1532,3 +1532,75 @@ describe("the load phase", () => {
     expect(sessionStore.get("s1")?.blocks.map((b) => b.text)).toEqual(["hi"]);
   });
 });
+
+describe("pending approval index", () => {
+  it("keeps its snapshot across unrelated folds and changes only approval facts", async () => {
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    sessionStore.mutate([{ ...newSession("local"), id: "approval" }, { ...newSession("local"), id: "stream" }]);
+    const changed = vi.fn();
+    const off = sessionStore.subscribePendingApprovals(changed);
+    const flush = () => sessionStore.mutate((sessions) => [...sessions]);
+    const empty = sessionStore.getPendingApprovals();
+    link.push({ push: "event", row: row("stream", 1, { type: "assistant-text", text: "a", delta: true }) });
+    flush();
+    expect(sessionStore.getPendingApprovals()).toBe(empty);
+    expect(changed).not.toHaveBeenCalled();
+    link.push({ push: "event", row: row("approval", 1, { type: "approval-request", requestId: 7, toolName: "Bash", input: { command: "pwd" } }) });
+    flush();
+    const pending = sessionStore.getPendingApprovals();
+    expect(pending).not.toBe(empty);
+    expect(pending.get("approval")).toMatchObject({ sessionId: "approval", requestId: 7, tool: "Bash" });
+    expect(Object.keys(pending.get("approval")!).sort()).toEqual(["label", "requestId", "sessionId", "title", "tool"]);
+    for (let i = 2; i <= 101; i++) {
+      link.push({ push: "event", row: row("stream", i, { type: "assistant-text", text: "a", delta: true }) });
+      flush();
+      expect(sessionStore.getPendingApprovals()).toBe(pending);
+    }
+    // Streaming in the approval's own thread leaves its toast facts alone too.
+    link.push({ push: "event", row: row("approval", 2, { type: "assistant-text", text: "a", delta: true }) });
+    flush();
+    expect(sessionStore.getPendingApprovals()).toBe(pending);
+    expect(changed).toHaveBeenCalledTimes(1);
+    link.push({ push: "event", row: row("approval", 3, { type: "approval-resolved", requestId: 7, allow: true }) });
+    flush();
+    expect(sessionStore.getPendingApprovals()).not.toBe(pending);
+    expect(sessionStore.getPendingApprovals().size).toBe(0);
+    expect(changed).toHaveBeenCalledTimes(2);
+    off();
+  });
+
+  it("falls back to an earlier pending approval, updates titles, and removes closed sessions", () => {
+    const session = { ...newSession("local"), id: "s", title: "First", blocks: [
+      { id: "a", role: "tool" as const, text: "First", approval: { requestId: 1 } },
+      { id: "b", role: "tool" as const, text: "Second", approval: { requestId: 2 } },
+    ] };
+    sessionStore.mutate([session]);
+    expect(sessionStore.getPendingApprovals().get("s")?.requestId).toBe(2);
+    const snapshot = sessionStore.getPendingApprovals();
+    sessionStore.mutate([{ ...session, title: "Renamed" }]);
+    expect(sessionStore.getPendingApprovals()).not.toBe(snapshot);
+    expect(sessionStore.getPendingApprovals().get("s")?.title).toBe("Renamed");
+    sessionStore.mutate([{ ...session, blocks: [session.blocks[0]] }]);
+    expect(sessionStore.getPendingApprovals().get("s")?.requestId).toBe(1);
+    sessionStore.mutate([]);
+    expect(sessionStore.getPendingApprovals().size).toBe(0);
+  });
+
+  it("drops approvals when an idle transcript unloads or the server removes it", async () => {
+    link.metas = [wireMeta()];
+    link.events.set("s1", [row("s1", 1, { type: "approval-request", requestId: 7, toolName: "Bash", input: {} }), row("s1", 2, { type: "turn-complete" })]);
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("s1");
+    sessionStore.mutate([sessionStore.get("s1")!]);
+    expect(sessionStore.getPendingApprovals().size).toBe(1);
+    sessionStore.setMounted([]);
+    await vi.waitFor(() => expect(sessionStore.getPendingApprovals().size).toBe(0), { timeout: 4000 });
+    await sessionStore.ensureLoaded("s1");
+    expect(sessionStore.getPendingApprovals().size).toBe(1);
+    link.push({ push: "session-removed", sessionIds: ["s1"] });
+    sessionStore.mutate((sessions) => [...sessions]);
+    expect(sessionStore.getPendingApprovals().size).toBe(0);
+  });
+});

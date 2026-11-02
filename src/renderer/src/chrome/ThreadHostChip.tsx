@@ -184,6 +184,7 @@ export function MoveToasts(): null {
       const show = n.error ? toast.error : toast;
       show(title, { id, description: description ?? undefined, duration: description ? Infinity : NOTICE_MS, closeButton: !!description, onDismiss: done, onAutoClose: done });
     },
+    (n) => JSON.stringify([n.title, n.toName, !!n.error, n.error ? n.error.split("\n")[0] : moveNoticeException(n)]),
   );
   return null;
 }

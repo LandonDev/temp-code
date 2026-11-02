@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { toolCallLabel } from "../../surfaces/transcriptActivity";
+import { pendingApprovalIndex } from "../session";
 import { turnEndsStopped } from "../turnOutcome";
 import { emptyFold, foldAll, foldEvent, foldOptimisticUser } from "./fold";
 import type { AgentEvent, EventRow } from "./types";
@@ -1140,5 +1141,22 @@ describe("a steer's stamp", () => {
     s = step(s, { type: "steer", steerId: "s1", state: "sent" });
     expect(s.blocks).toHaveLength(1);
     expect(s.blocks[0]).toMatchObject({ steerId: "s1", steer: { state: "sent" } });
+  });
+});
+
+
+describe("pending approval positions", () => {
+  it("carries the cached position through text folds without scanning blocks", () => {
+    const approval = vi.fn(() => undefined);
+    const state = emptyFold();
+    state.blocks = Array.from({ length: 200 }, (_, i) => ({
+      id: `a:${i}`, role: "assistant", text: "Old text", round: 0,
+      get approval() { return approval(); },
+    }));
+    expect(pendingApprovalIndex(state.blocks)).toBe(-1);
+    approval.mockClear();
+    const next = step(state, { type: "assistant-text", text: "delta", delta: true, msgId: "new", blockIndex: 0 });
+    expect(pendingApprovalIndex(next.blocks)).toBe(-1);
+    expect(approval).not.toHaveBeenCalled();
   });
 });

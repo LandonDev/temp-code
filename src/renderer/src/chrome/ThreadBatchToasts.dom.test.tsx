@@ -102,4 +102,26 @@ describe("ThreadBatchToasts", () => {
     });
     expect(toast.dismiss).toHaveBeenCalledWith(opts.id);
   });
+
+  it("leaves earlier batches alone, keeps Open current, and dismisses every owned failure on unmount", async () => {
+    vi.mocked(commands.sessionBatch).mockResolvedValue({ attempted: ["a", "c"], succeeded: [], failed: [{ sessionId: "a", error: "x" }, { sessionId: "c", error: "y" }] });
+    const firstOpen = vi.fn();
+    const currentOpen = vi.fn();
+    const view = render(<ThreadBatchToasts onOpen={firstOpen} />);
+    await act(() => runThreadBatch("stop", sel));
+    const lead = options(vi.mocked(toast.error).mock.calls[0]);
+    const secondary = options(vi.mocked(toast.error).mock.calls[1]);
+    view.rerender(<ThreadBatchToasts onOpen={currentOpen} />);
+    lead.action!.onClick();
+    secondary.action!.onClick();
+    expect(firstOpen).not.toHaveBeenCalled();
+    expect(currentOpen.mock.calls).toEqual([["a", "local"], ["c", "local"]]);
+    vi.mocked(commands.sessionBatch).mockResolvedValue({ attempted: ["a"], succeeded: ["a"], failed: [] });
+    await act(() => runThreadBatch("pause", sel));
+    expect(toast.error).toHaveBeenCalledTimes(2);
+    view.unmount();
+    expect(toast.dismiss).toHaveBeenCalledWith(lead.id);
+    expect(toast.dismiss).toHaveBeenCalledWith(secondary.id);
+  });
+
 });

@@ -1,14 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { Button } from "@renderer/components/ui/button";
 import type { ApprovalDecision } from "../lib/harness";
-import { hiddenApprovalNotices, type PendingApprovalNotice } from "../lib/approvalToast";
-import { useServerSessions } from "../lib/tcserver/store";
+import { isSessionConversationFocused, type ApprovalToastNotice } from "../lib/approvalToast";
+import { usePendingApprovals } from "../lib/tcserver/store";
 import { useFocus } from "../stores/focus";
 import { useWorkspaceTabs } from "../stores/workspace";
-import { sessionDisplayTitle, type Session } from "../lib/session";
 import { useToastSync } from "./toastSync";
 
-type Notice = PendingApprovalNotice & { session: Session };
+type Notice = ApprovalToastNotice;
 
 type Props = {
   notices: Notice[];
@@ -26,10 +25,10 @@ export function HiddenApprovalToasts(rest: Omit<Props, "notices">) {
   const tabs = useWorkspaceTabs((s) => s.tabs);
   const activeTabId = useWorkspaceTabs((s) => s.activeTabId);
   const composerFocused = useFocus((s) => s.composerFocused);
-  const sessions = useServerSessions();
+  const pending = usePendingApprovals();
   const notices = useMemo(
-    () => hiddenApprovalNotices(sessions, activeTabId, tabs, composerFocused),
-    [sessions, activeTabId, tabs, composerFocused],
+    () => [...pending.values()].filter((notice) => !isSessionConversationFocused(notice.sessionId, activeTabId, tabs, composerFocused)),
+    [pending, activeTabId, tabs, composerFocused],
   );
   return <ApprovalToasts notices={notices} {...rest} />;
 }
@@ -37,22 +36,26 @@ export function HiddenApprovalToasts(rest: Omit<Props, "notices">) {
 /** One sonner toast per pending approval, held until it is answered: the
  *  thread's title opens it, Allow and Deny answer it. */
 export function ApprovalToasts({ notices, onFocusSession, onApproval }: Props) {
+  const actions = useRef({ onFocusSession, onApproval });
+  actions.current = { onFocusSession, onApproval };
   useToastSync(
     notices,
     (notice) => `approval:${notice.sessionId}:${notice.requestId}`,
-    (toast, { session, label, requestId }, id) =>
+    (toast, { sessionId, title, label, requestId }, id) => {
       toast.warning(
-        <Button variant="link" className="h-auto p-0 font-medium" onClick={() => onFocusSession(session.id)}>
-          {sessionDisplayTitle(session.title, session.harness)}
+        <Button variant="link" className="h-auto p-0 font-medium" onClick={() => actions.current.onFocusSession(sessionId)}>
+          {title}
         </Button>,
         {
           id,
           description: label,
           duration: Infinity,
-          action: { label: "Allow", onClick: () => onApproval(session.id, requestId, "allow") },
-          cancel: { label: "Deny", onClick: () => onApproval(session.id, requestId, "deny") },
+          action: { label: "Allow", onClick: () => actions.current.onApproval(sessionId, requestId, "allow") },
+          cancel: { label: "Deny", onClick: () => actions.current.onApproval(sessionId, requestId, "deny") },
         },
-      ),
+      );
+    },
+    (notice) => JSON.stringify([notice.title, notice.label]),
   );
   return null;
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { newTab, splitPane } from "./layout";
 import {
+  approvalToastNotice,
   hiddenApprovalNotices,
   isSessionConversationFocused,
   pendingApprovalForSession,
@@ -103,5 +104,32 @@ describe("hiddenApprovalNotices", () => {
         (notice) => notice.sessionId,
       ),
     ).toEqual([left.id]);
+  });
+});
+
+
+describe("approvalToastNotice", () => {
+  it("keeps only toast facts and reuses them until the title or label changes", () => {
+    const session = newSession("local");
+    session.title = "Review";
+    session.cwd = "/repo";
+    session.blocks = [{ id: "a", role: "tool", text: "", approval: { requestId: 4 }, tool: { name: "Read", title: "Read", kind: "read", input: { file_path: "/repo/file.txt" } } }];
+    const notice = approvalToastNotice(session)!;
+    expect(approvalToastNotice({ ...session }, notice)).toBe(notice);
+    expect(Object.keys(notice).sort()).toEqual(["label", "requestId", "sessionId", "title", "tool"]);
+    const renamed = approvalToastNotice({ ...session, title: "Renamed" }, notice)!;
+    expect(renamed).not.toBe(notice);
+    expect(renamed.title).toBe("Renamed");
+    const moved = approvalToastNotice({ ...session, cwd: "/elsewhere" }, notice)!;
+    expect(moved).toBe(notice);
+    const changed = approvalToastNotice({ ...session, blocks: [{ ...session.blocks[0], tool: { ...session.blocks[0].tool!, input: { file_path: "/repo/other.txt" } } }] }, notice)!;
+    expect(changed.label).toBe("Reading other.txt");
+    expect(changed).not.toBe(notice);
+  });
+
+  it("keeps question-only blocks out of approval toasts", () => {
+    const session = newSession("local");
+    session.blocks = [{ id: "q", role: "tool", text: "Question", question: { requestId: 1, questions: [] } }];
+    expect(approvalToastNotice(session)).toBeNull();
   });
 });
