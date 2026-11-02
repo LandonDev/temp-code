@@ -4,6 +4,7 @@ import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { Skeleton } from "../components/ui/skeleton";
 import { Spinner } from "../components/ui/spinner";
+import { COLUMN_MAX_CLASS } from "./transcriptOutlineModel";
 
 /**
  * The state kit (docs/DESIGN.md "Loading and empty states"): the fallback a
@@ -167,7 +168,7 @@ function body(kind: SkeletonKind, count: number): ReactNode {
       return <Skeleton className="h-full min-h-24 w-full rounded-xl" />;
     case "transcript":
       return (
-        <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-8">
+        <div className={`mx-auto flex w-full min-w-0 ${COLUMN_MAX_CLASS} flex-col gap-8`}>
           {[3, 4, 5].map((lines, i) => (
             <div key={i} className="flex flex-col gap-4">
               <Skeleton className="h-9 w-2/5 self-end rounded-xl" />

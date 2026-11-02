@@ -20,7 +20,6 @@ export function PreambleRow({ text, words }: { text: string; words: number }) {
         className="-ml-2 flex h-6 w-fit items-center gap-2 rounded-md px-2 text-xs text-muted-foreground outline-none transition-colors duration-(--dur-fast) ease-(--ease-out) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
       >
         <ChevronRight
-          strokeWidth={1.5}
           className={cn(
             "size-3 shrink-0 transition-transform duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
             open && "rotate-90",

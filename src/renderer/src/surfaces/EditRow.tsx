@@ -243,7 +243,7 @@ export function EditRow({
               {editMode && filePath && cwd ? (
                 <>
                   <CornerButton label="Show diff" onClick={() => setEditMode(false)}>
-                    <GitCompare strokeWidth={1.5} />
+                    <GitCompare />
                   </CornerButton>
                   <Suspense fallback={<Skeleton className="h-80" />}>
                     <InlineEditor
@@ -262,7 +262,7 @@ export function EditRow({
                 <>
                   {canEdit ? (
                     <CornerButton label="Edit here" onClick={() => editHere()}>
-                      <Pencil strokeWidth={1.5} />
+                      <Pencil />
                     </CornerButton>
                   ) : null}
                   {omitted ? (

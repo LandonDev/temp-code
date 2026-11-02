@@ -117,9 +117,11 @@ describe("ActionRow", () => {
     // Ink only: a status colour never tints a command.
     expect(getByText("npm").className).toContain("text-foreground");
     expect(pre.innerHTML).not.toMatch(/text-(success|info|destructive|warning)/);
-    expect(container.textContent).toContain("line 24");
-    expect(container.textContent).not.toContain("line 25");
-    expect(getByText("6 more lines")).toBeTruthy();
+    // The whole output, in its own scroller; no "N more lines" tail.
+    const box = container.querySelector('[data-slot="tool-output"]')!;
+    expect(box.textContent).toContain("line 30");
+    expect(box.className).toContain("max-h-80");
+    expect(container.textContent).not.toMatch(/more lines?/);
   });
 
   it("a failed run's output reads in red", async () => {

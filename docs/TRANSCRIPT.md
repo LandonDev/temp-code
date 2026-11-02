@@ -43,7 +43,10 @@ foreground, the same words the group line uses); the components only draw it.
   (`transcript/CommandCard.tsx`: the tool's name, `$ ` in line with it and
   the command in mono, tinted by ink alone through `lib/shellTokens.ts`
   (no status colours), twelve lines then Show all, what it printed under
-  it, nothing when it printed nothing). An edit opens its diff (`EditRow.tsx`,
+  it, nothing when it printed nothing). What it printed shows whole in a
+  box capped at 320px that scrolls inside itself, Copy on hover taking all
+  of it (`ToolOutputLines` in ToolDetails.tsx; one text node, so 10,000
+  lines cost one render). An edit opens its diff (`EditRow.tsx`,
   `DiffBody.tsx`), on the caret only, never on its own while it streams;
   its counts tick instead. Anything else opens its details
   (`ToolDetails.tsx`: the invocation, key and value rows for JSON, the
@@ -190,7 +193,8 @@ foreground, the same words the group line uses); the components only draw it.
   transform per row is a compositing node per row, and Chromium's layerize
   step then costs about 2 ms on every token. Never put
   `content-visibility` or size containment on a row: the window measures
-  natural heights.
+  natural heights. A tool output's box caps itself with `max-height` only,
+  so an open row's height is that cap and the window reads it as measured.
 - **Anchoring.** The scroll engine's modes are unchanged (`follow` rides
   the bottom on a spring, `parked` holds the prompt at the top over the
   runway, `free` leaves the reader alone; only the wheel, a scrollbar drag

@@ -169,13 +169,15 @@ export function stripAnsi(text: string): string {
   return text.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "");
 }
 
-export const OUTPUT_LINE_CAP = 24;
+/** Lines of output the box shows before it scrolls inside itself: its 320px cap on 20px lines. */
+export const OUTPUT_VISIBLE_LINES = 16;
 
-/** The first lines of an output, and how many it left out. */
-export function outputLines(text: string): { shown: string[]; more: number } {
-  const all = stripAnsi(text).replace(/\n+$/, "").split("\n");
-  const shown = all.slice(0, OUTPUT_LINE_CAP);
-  return { shown, more: all.length - shown.length };
+/** An output as the box shows it, whole: ANSI gone, trailing newlines trimmed, with its line count. */
+export function outputText(text: string): { text: string; lines: number } {
+  const clean = stripAnsi(text).replace(/\n+$/, "");
+  let lines = 1;
+  for (let i = clean.indexOf("\n"); i !== -1; i = clean.indexOf("\n", i + 1)) lines++;
+  return { text: clean, lines };
 }
 
 export type TodoItem = { text: string; status: string };

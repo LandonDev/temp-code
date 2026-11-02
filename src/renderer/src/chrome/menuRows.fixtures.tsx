@@ -7,7 +7,7 @@ import type { MenuRow } from "./menuRows";
 
 /** A working thread's rows (lib/threadMenu.ts), open under its ⋯ trigger. */
 const WORKING: MenuRow[] = [
-  { kind: "note", id: "line", content: <><Laptop className="size-3" strokeWidth={1.5} /><span>This Mac</span><span className="ms-auto tabular-nums">$1.42</span></> },
+  { kind: "note", id: "line", content: <><Laptop className="size-3" /><span>This Mac</span><span className="ms-auto tabular-nums">$1.42</span></> },
   { kind: "sep" },
   ...threadMenuRows({
     status: "running",

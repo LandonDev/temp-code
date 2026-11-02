@@ -4,7 +4,7 @@ import {
   invocationBody,
   isSettled,
   kvDisplay,
-  outputLines,
+  outputText,
   parseJson,
   rawInput,
   stripAnsi,
@@ -99,14 +99,15 @@ describe("toolOutput", () => {
   });
 });
 
-describe("outputLines", () => {
-  it("strips ANSI, trims trailing newlines and caps at 24 lines", () => {
+describe("outputText", () => {
+  it("strips ANSI, trims trailing newlines and keeps every line", () => {
     expect(stripAnsi("\u001b[31mred\u001b[0m")).toBe("red");
     const text = Array.from({ length: 30 }, (_, n) => `l${n}`).join("\n") + "\n\n";
-    const { shown, more } = outputLines(text);
-    expect(shown).toHaveLength(24);
-    expect(shown[0]).toBe("l0");
-    expect(more).toBe(6);
+    const out = outputText(text);
+    expect(out.lines).toBe(30);
+    expect(out.text.startsWith("l0\n")).toBe(true);
+    expect(out.text.endsWith("l29")).toBe(true);
+    expect(outputText("one").lines).toBe(1);
   });
 });
 

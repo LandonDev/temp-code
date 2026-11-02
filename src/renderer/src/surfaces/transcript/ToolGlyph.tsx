@@ -77,7 +77,7 @@ function GlyphBody({ action, block }: { action: Action; block: Block }) {
   if (action.connector) return <ConnectorMark app={action.connector} />;
   if (action.agent) return <AgentGlyph block={block} />;
   const Icon = GLYPH[action.glyph];
-  return <Icon className="size-3.5" strokeWidth={1.5} />;
+  return <Icon className="size-3.5" />;
 }
 
 /** The provider a subagent runs on; the app's glyph until the fold knows it. */
@@ -85,5 +85,5 @@ function AgentGlyph({ block }: { block: Block }) {
   const meta = useMetaById(agentIdOf(block));
   const provider = agentProviderOf(block, meta?.provider ?? null);
   if (provider) return <ProviderMark harness={provider} />;
-  return <Bot className="size-3.5" strokeWidth={1.5} />;
+  return <Bot className="size-3.5" />;
 }

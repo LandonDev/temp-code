@@ -49,7 +49,7 @@ export function AgentSpawnRow({ block }: { block: Block }) {
     <ActionLine
       glyph={
         <span className="grid size-3.5 shrink-0 place-items-center text-muted-foreground">
-          {meta && !agent.batch ? <ProviderMark harness={meta.provider} /> : <Bot className="size-3.5" strokeWidth={1.5} />}
+          {meta && !agent.batch ? <ProviderMark harness={meta.provider} /> : <Bot className="size-3.5" />}
         </span>
       }
       verb={verb}

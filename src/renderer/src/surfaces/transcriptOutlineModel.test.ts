@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Block } from "../lib/session";
@@ -160,6 +160,21 @@ describe("outlinePlacement", () => {
     const source = readFileSync(join(__dirname, "AgentTranscript.tsx"), "utf8");
     expect(source.includes("COLUMN_MAX_CLASS")).toBe(true);
     expect(/max-w-\dxl/.test(source)).toBe(false);
+  });
+
+  it("no renderer file names the old 896px column", () => {
+    const root = join(__dirname, "..");
+    const files = (readdirSync(root, { recursive: true }) as string[]).filter(
+      (f) => /\.(ts|tsx|css)$/.test(f) && !/\.test\.tsx?$/.test(f),
+    );
+    // 56rem is Tailwind's 4xl container, 896px.
+    const old = /max-w-4xl|max-w-\[(?:896px|56rem)\]|\b896px\b/;
+    const named = files.filter((f) => old.test(readFileSync(join(root, f), "utf8")));
+    expect(named).toEqual([]);
+    // The places that sat on it share the column's class instead.
+    for (const f of ["NoRowsLine.tsx", "SessionPane.tsx", "SurfaceSkeleton.tsx", "threads/OrchestrationView.tsx", "threads/WorkingStrip.tsx"]) {
+      expect(readFileSync(join(__dirname, f), "utf8"), f).toContain("COLUMN_MAX_CLASS");
+    }
   });
 });
 

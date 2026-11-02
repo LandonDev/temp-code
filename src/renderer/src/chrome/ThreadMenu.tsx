@@ -111,7 +111,7 @@ export function ThreadMenu({
             aria-label="Thread menu"
             className="text-muted-foreground hover:text-foreground"
           >
-            <MoreHorizontal strokeWidth={1.5} />
+            <MoreHorizontal />
           </Button>
         }
         rows={tidy(all)}
@@ -134,7 +134,7 @@ export function ThreadMenu({
           onClick={panel.room === false ? undefined : panel.onToggle}
           className="text-muted-foreground hover:text-foreground aria-pressed:bg-foreground/7 aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground"
         >
-          <PanelRight strokeWidth={1.5} />
+          <PanelRight />
         </Button>
       </Tip>
       <LazyPopover
@@ -230,7 +230,7 @@ export function ThreadListPopover({
             </ItemContent>
             {restore ? (
               <ItemActions className="gap-1 text-[12px] text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) group-hover/item:opacity-100 group-focus-visible/item:opacity-100">
-                <ArchiveRestore className="size-3.5" strokeWidth={1.5} />
+                <ArchiveRestore className="size-3.5" />
                 Restore
               </ItemActions>
             ) : null}

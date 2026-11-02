@@ -169,7 +169,7 @@ function CustomizeForm({
                 {color === CUSTOM ? (
                   <span className="size-3.5 rounded-full" style={{ background: custom }} />
                 ) : (
-                  <Pipette strokeWidth={1.5} />
+                  <Pipette />
                 )}
               </ToggleGroupItem>
             </ToggleGroup>

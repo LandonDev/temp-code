@@ -141,7 +141,7 @@ export function RailRow({
     <>
       {hasGlyph ? (
         <span aria-hidden className={cn("grid size-4 shrink-0 place-items-center", glyphClassName)}>
-          {glyph ?? (Icon ? <Icon className="size-4" strokeWidth={1.5} /> : null)}
+          {glyph ?? (Icon ? <Icon className="size-4" /> : null)}
         </span>
       ) : null}
       <span ref={text ? labelRef : undefined} className="min-w-12 flex-1 truncate text-left">
@@ -231,7 +231,7 @@ function HoverAction({ action, inline = false }: { action: RailRowAction; inline
           />
         }
       >
-        <Icon className="size-3.5" strokeWidth={1.5} />
+        <Icon className="size-3.5" />
       </TooltipTrigger>
       <TooltipContent side="right">{action.label}</TooltipContent>
     </Tooltip>
@@ -271,7 +271,7 @@ export function RailHeading({
               />
             }
           >
-            <Icon className="size-3.5" strokeWidth={1.5} />
+            <Icon className="size-3.5" />
           </TooltipTrigger>
           <TooltipContent side="right">{action.label}</TooltipContent>
         </Tooltip>

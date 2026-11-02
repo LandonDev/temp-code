@@ -400,7 +400,9 @@ their options and `index.css`.
 
 `@renderer/chrome/icons` (Hugeicons under lucide names), 16px in rows and
 buttons, 14px in dense chrome, 12px as a mark beside text, 1.5px stroke,
-`currentColor`. An icon never carries meaning alone where a word fits; a
+`currentColor`. The stroke is the icons' default (`ICON_STROKE`, held to
+this line by chrome/icons.test.ts), so no call site writes 1.5; a glyph that
+reads too thin takes the next size up, never a heavier stroke. An icon never carries meaning alone where a word fits; a
 tool row in the transcript keeps its tool icon beside its humanized verb.
 Two glyphs carry colour: `StatusMark`'s, for a state, and the type glyph
 (`TypeGlyph`), in its type's tint ("Type tints"). Every other glyph is
@@ -480,7 +482,10 @@ names kept (the plan at .temp-code/plan-h5M-bmLmzYd4.md fixes the rows,
 .temp-code/plan-zY_qkaKjrxzL.md the metrics and the motion). It is tight: a
 768px column (`COLUMN_MAX_PX` in surfaces/transcriptOutlineModel.ts) inside
 the scroller's 16px gutter, the composer flush with it in every placement,
-the root in the sans face at 13px.
+the root in the sans face at 13px. Whatever sits on the column (the working
+strip, the load line, the no-rows line, an orchestration's fleet header, the
+transcript skeleton) takes `COLUMN_MAX_CLASS`, never a width of its own; a
+test refuses the old 896px anywhere in the renderer.
 
 | Element | Size / line |
 | --- | --- |
@@ -528,7 +533,12 @@ caret per row. A row's opened body is one card (a hairline, `rounded-lg`,
 `bg-card`, 12px inset, from the row's glyph to the column's end); an edit's
 diff takes the same card with its tints running to its edges. A lone command
 opens a card headed by its tool name with the command in mono and its output
-under it. File changes keep their counts on the line and their diff behind
+under it. An output shows whole, never cut: past 320px (`max-h-80`, sixteen
+20px lines) it scrolls inside its own box, the one nested scroller "Scrolling"
+allows, with no fill of its own (it sits in the card) and no "N more lines";
+its Copy shows at the box's top right on hover and takes the whole output.
+The box's cap is its row's height once open: the window measures it like
+any row, with no containment. File changes keep their counts on the line and their diff behind
 the caret.
 
 The group the turn is working in opens on its own once it holds two calls:

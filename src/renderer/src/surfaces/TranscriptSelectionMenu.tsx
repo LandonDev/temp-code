@@ -70,7 +70,7 @@ export function TranscriptSelectionMenu({ selection, onAddToChat, onDismiss }: P
               onDismiss();
             }}
           >
-            <MessageSquarePlus className="size-3.5" strokeWidth={1.5} />
+            <MessageSquarePlus className="size-3.5" />
             Add to chat
           </Button>
         </div>

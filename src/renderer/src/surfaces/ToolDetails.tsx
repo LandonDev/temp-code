@@ -1,9 +1,13 @@
-import { memo, useEffect, useState, type ReactNode } from "react";
-import { FileCode } from "../chrome/icons";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
+import { Check, Copy, FileCode } from "../chrome/icons";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
+import { copyText } from "../lib/clipboard";
+import { playCue } from "../lib/sounds";
+import { SwapIcon } from "../motion/IconSwap";
+import { IconAction, useArmOnIntent } from "./transcript/IconAction";
 import { sessionStore } from "../lib/tcserver/store";
 import { omittedSizeLabel } from "../lib/wireBodies";
 import type { Block } from "../lib/session";
@@ -14,7 +18,8 @@ import {
   getRawView,
   invocationBody,
   kvDisplay,
-  outputLines,
+  OUTPUT_VISIBLE_LINES,
+  outputText,
   parseJson,
   prettyInputKind,
   rawInput,
@@ -77,7 +82,7 @@ export const ToolDetails = memo(function ToolDetails({
             />
           }
         >
-          <FileCode strokeWidth={1.5} />
+          <FileCode />
         </TooltipTrigger>
         <TooltipContent>{raw ? "Show formatted" : "Show raw"}</TooltipContent>
       </Tooltip>
@@ -141,27 +146,65 @@ export function InvocationBlock({ text, children, className }: { text?: string; 
   );
 }
 
-/** What came back: muted mono under the block, red when the call failed; nothing when empty. */
+/**
+ * What came back, whole: muted mono under the block, red when the call
+ * failed; nothing when empty. A long output scrolls inside its own box,
+ * capped at 320px (`OUTPUT_VISIBLE_LINES` lines), so the row's height is
+ * that cap once open; the transcript window measures it like any row. Copy
+ * at the top right on hover takes the whole output.
+ */
 export function ToolOutputLines({ text, error }: { text: string; error: boolean }) {
-  const { shown, more } = outputLines(text);
+  const out = outputText(text);
+  const [armed, intent] = useArmOnIntent();
   // An empty output is no output: nothing, not a word saying so.
-  if (!shown.join("").trim()) return null;
+  if (!out.text.trim()) return null;
+  const scrolls = out.lines > OUTPUT_VISIBLE_LINES;
   return (
-    <div className="mt-2 min-w-0">
+    <div className="group/output relative mt-2 min-w-0 pr-8" {...intent}>
       <pre
+        data-slot="tool-output"
+        tabIndex={scrolls ? 0 : undefined}
         className={cn(
-          "font-mono text-xs leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]",
+          "max-h-80 overflow-x-hidden overflow-y-auto font-mono text-xs leading-5 whitespace-pre-wrap [overflow-wrap:anywhere] outline-none focus-visible:ring-2 focus-visible:ring-ring",
           error ? "text-destructive" : "text-muted-foreground",
         )}
       >
-        {shown.join("\n")}
+        {out.text}
       </pre>
-      {more > 0 ? (
-        <div className="text-[11px] leading-5 tabular-nums text-muted-foreground">
-          {more} more {more === 1 ? "line" : "lines"}
-        </div>
-      ) : null}
+      <CopyOutput text={out.text} armed={armed} />
     </div>
+  );
+}
+
+function CopyOutput({ text, armed }: { text: string; armed: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+  const copy = () => {
+    playCue("copy");
+    void copyText(text).then(
+      () => {
+        setCopied(true);
+        if (timer.current != null) window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => setCopied(false), 2000);
+      },
+      () => {},
+    );
+  };
+  return (
+    <IconAction
+      label={copied ? "Copied" : "Copy output"}
+      onClick={copy}
+      armed={armed}
+      className="absolute right-0 top-0 opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/output:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
+    >
+      <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
+    </IconAction>
   );
 }
 

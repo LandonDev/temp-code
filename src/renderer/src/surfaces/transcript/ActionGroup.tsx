@@ -181,7 +181,7 @@ export function ActionGroup({
                 className="group/line h-7 w-fit min-w-0 justify-start gap-2 rounded-md px-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent active:not-aria-[haspopup]:scale-100 aria-expanded:bg-transparent focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
               >
                 <span data-kind={group.kind} className="flex shrink-0">
-                  <Glyph className="size-3.5" strokeWidth={1.5} aria-hidden />
+                  <Glyph className="size-3.5" aria-hidden />
                 </span>
                 {/* The phrase changes tense in place when the run settles; a count
                     that grows under one tense never animates. */}
@@ -192,7 +192,6 @@ export function ActionGroup({
                 <ChevronRight
                   aria-hidden
                   className={`size-3 shrink-0 transition-transform duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
-                  strokeWidth={1.5}
                 />
               </Button>
               {reauth ? <ReconnectChip reauth={reauth} /> : null}

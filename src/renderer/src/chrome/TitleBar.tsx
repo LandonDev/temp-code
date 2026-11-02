@@ -201,7 +201,7 @@ export function TabVisitNav({
         disabled={!canGoBack}
         onClick={onGoBack}
       >
-        <ChevronLeft className="size-3.5" strokeWidth={1.5} />
+        <ChevronLeft className="size-3.5" />
       </IconButton>
       <IconButton
         label="Forward"
@@ -209,7 +209,7 @@ export function TabVisitNav({
         disabled={!canGoForward}
         onClick={onGoForward}
       >
-        <ChevronRight className="size-3.5" strokeWidth={1.5} />
+        <ChevronRight className="size-3.5" />
       </IconButton>
       {onTogglePanel ? (
         <IconButton
@@ -217,7 +217,7 @@ export function TabVisitNav({
           active={panelActive}
           onClick={onTogglePanel}
         >
-          <PanelLeft className="size-3.5" strokeWidth={1.5} />
+          <PanelLeft className="size-3.5" />
         </IconButton>
       ) : null}
     </div>
@@ -237,7 +237,7 @@ export function OverlayNav({
     <div className="flex shrink-0 items-center px-2">
       {onBack ? (
         <IconButton label="Back" shortcut={shortcutFor("Tabs", "Back")} onClick={onBack}>
-          <ChevronLeft className="size-3.5" strokeWidth={1.5} />
+          <ChevronLeft className="size-3.5" />
         </IconButton>
       ) : null}
       {onToggleSidebar ? (
@@ -246,7 +246,7 @@ export function OverlayNav({
             shortcut={shortcutFor("App", "Sidebar")}
           onClick={onToggleSidebar}
         >
-          <PanelLeft className="size-3.5" strokeWidth={1.5} />
+          <PanelLeft className="size-3.5" />
         </IconButton>
       ) : null}
     </div>
@@ -361,27 +361,27 @@ function TitleBarComponent({
       <div className="flex items-center gap-0.5 px-2">
         {projectless && railClosed && onOpenInbox ? (
           <IconButton label="Inbox" onClick={onOpenInbox}>
-            <Inbox className="size-3.5" strokeWidth={1.5} />
+            <Inbox className="size-3.5" />
           </IconButton>
         ) : null}
         {projectless && railClosed && onOpenNotes ? (
           <IconButton label="Notes" onClick={onOpenNotes}>
-            <StickyNote className="size-3.5" strokeWidth={1.5} />
+            <StickyNote className="size-3.5" />
           </IconButton>
         ) : null}
         {railClosed && !projectless ? (
           <>
             <IconButton label="Go to file" shortcut={shortcutFor("App", "Go to File")} onClick={onGoToFile}>
-              <Search className="size-3.5" strokeWidth={1.5} />
+              <Search className="size-3.5" />
             </IconButton>
             <IconButton label="New thread" shortcut={shortcutFor("Tabs", "New Thread")} onClick={onNew}>
-              <Plus className="size-3.5" strokeWidth={1.5} />
+              <Plus className="size-3.5" />
             </IconButton>
           </>
         ) : null}
         {!projectRailOpen && !showCurrentProject && onOpenSettings ? (
           <IconButton label="Settings" shortcut={shortcutFor("App", "Settings")} onClick={onOpenSettings} intent={settingsChunk.intent}>
-            <Settings className="size-3.5" strokeWidth={1.5} />
+            <Settings className="size-3.5" />
           </IconButton>
         ) : null}
       </div>
@@ -408,7 +408,7 @@ function TitleBarComponent({
               shortcut={shortcutFor("App", "Sidebar")}
               onClick={onToggleSidebar}
             >
-              <PanelLeft className="size-3.5" strokeWidth={1.5} />
+              <PanelLeft className="size-3.5" />
             </IconButton>
           </div>
         </>

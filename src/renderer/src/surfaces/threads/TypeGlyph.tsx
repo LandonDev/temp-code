@@ -8,5 +8,5 @@ import { THREAD_GLYPHS, typeTint } from "./threadTypes";
 export function TypeGlyph({ type, className }: { type: ThreadType | null | undefined; className?: string }) {
   const t = type && Object.hasOwn(THREAD_GLYPHS, type) ? type : "chat";
   const Glyph = THREAD_GLYPHS[t];
-  return <Glyph aria-hidden data-type-glyph={t} className={cn("shrink-0", typeTint(t), className)} strokeWidth={1.5} />;
+  return <Glyph aria-hidden data-type-glyph={t} className={cn("shrink-0", typeTint(t), className)} />;
 }

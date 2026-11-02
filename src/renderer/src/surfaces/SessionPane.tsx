@@ -33,6 +33,7 @@ import { useSessionActions, useThreadChat } from "./threadChat";
 import * as serverCommands from "../lib/tcserver/commands";
 import { askPreconnect, idleForPreconnect } from "../lib/preconnect";
 import { ADD_TO_CHAT_EVENT, type AddToChatRequest } from "../lib/quoteDraft";
+import { COLUMN_MAX_CLASS } from "./transcriptOutlineModel";
 
 /** The pane switch: opacity alone, --dur-fast (DESIGN.md "Pane switch"). */
 export const PANE_FADE = { duration: DUR.fast, ease: EASE_OUT } as const;
@@ -271,7 +272,7 @@ export function LoadLine({ name, load, onRetry }: { name: string; load: LoadStat
     <div
       role="status"
       data-load-line={load.phase}
-      className="mx-auto mt-2 flex h-6 w-full max-w-4xl shrink-0 items-center gap-2 px-4 text-[12px] text-muted-foreground"
+      className={`mx-auto mt-2 flex h-6 w-full ${COLUMN_MAX_CLASS} shrink-0 items-center gap-2 px-4 text-[12px] text-muted-foreground`}
     >
       <span className="flex min-w-0 flex-1 items-center gap-2">
         {parts.map((part, i) => (

@@ -427,12 +427,12 @@ function BranchList({
             >
               {row.kind === "create" ? (
                 <>
-                  <Plus className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+                  <Plus className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 truncate">Create and checkout {row.name}</span>
                 </>
               ) : (
                 <>
-                  <GitBranch className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+                  <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{row.branch.name}</span>
                   {row.branch.remote ? (
                     <span className="shrink-0 text-xs text-muted-foreground">{row.branch.remote}</span>

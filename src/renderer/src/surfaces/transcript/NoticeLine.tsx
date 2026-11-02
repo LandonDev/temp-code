@@ -85,7 +85,6 @@ export function NoticeLine({
           {fold ? (
             <ChevronRight
               aria-hidden
-              strokeWidth={1.5}
               className={cn(
                 "size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/notice:text-foreground motion-reduce:transition-none",
                 fold.open && "rotate-90",

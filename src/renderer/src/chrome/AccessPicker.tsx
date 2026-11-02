@@ -51,7 +51,7 @@ export function AccessPicker({ value: stored, onChange, onClose }: Props) {
           }
         >
           <SelectValue>
-            <Icon className="size-3.5" strokeWidth={1.5} />
+            <Icon className="size-3.5" />
             <span className="@max-[21rem]/composer-bar:hidden">{RUNTIME_MODE_LABEL[value]}</span>
           </SelectValue>
         </TooltipTrigger>
@@ -70,7 +70,7 @@ export function AccessPicker({ value: stored, onChange, onClose }: Props) {
           const ModeIcon = ICONS[mode];
           return (
             <SelectItem key={mode} value={mode} label={RUNTIME_MODE_LABEL[mode]} className="items-start py-1.5">
-              <ModeIcon className="mt-0.5 size-3.5 text-muted-foreground" strokeWidth={1.5} />
+              <ModeIcon className="mt-0.5 size-3.5 text-muted-foreground" />
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span>{RUNTIME_MODE_LABEL[mode]}</span>
                 <span className="whitespace-normal text-xs text-muted-foreground">{RUNTIME_MODE_HINT[mode]}</span>

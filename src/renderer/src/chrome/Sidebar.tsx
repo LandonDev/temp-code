@@ -302,7 +302,7 @@ function SidebarComponent({
                   />
                 }
               >
-                <Plus className="size-4" strokeWidth={1.5} />
+                <Plus className="size-4" />
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 New thread <Kbd>{`${MOD}N`}</Kbd>
@@ -319,7 +319,7 @@ function SidebarComponent({
                   {...dialogsChunk.intent}
                   className="text-muted-foreground hover:text-foreground"
                 >
-                  <MoreHorizontal className="size-4" strokeWidth={1.5} />
+                  <MoreHorizontal className="size-4" />
                 </Button>
               }
               canNewProject={!!workspace}

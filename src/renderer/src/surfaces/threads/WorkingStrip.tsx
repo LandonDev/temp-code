@@ -10,6 +10,7 @@ import { turnElapsed, useClock } from "../../lib/turnClock";
 import { isMasterThread } from "../../lib/masterThread";
 import { useSessionMetasWhen } from "../../lib/tcserver/store";
 import { duration } from "../../lib/duration";
+import { COLUMN_MAX_CLASS } from "../transcriptOutlineModel";
 
 /**
  * The slot above the composer, permanently reserved at 28px so neither the
@@ -167,7 +168,7 @@ export const WorkingStrip = memo(function WorkingStrip({
   })();
 
   return (
-    <div className="mx-auto h-7 w-full max-w-4xl shrink-0">
+    <div className={cn("mx-auto h-7 w-full shrink-0", COLUMN_MAX_CLASS)}>
       {/* A screen reader hears the state change, never the second hand. */}
       <span className="sr-only" aria-live="polite">
         {visible ? STATUS_WORD[state] : ""}

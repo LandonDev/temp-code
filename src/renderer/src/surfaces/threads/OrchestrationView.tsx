@@ -6,6 +6,7 @@ import { ChatFooter, chatOf } from "./chatSlots";
 import { AgentDetail } from "./fleet/AgentDetail";
 import { FleetHeader } from "./fleet/FleetHeader";
 import type { ThreadViewProps } from "./ThreadView";
+import { COLUMN_MAX_CLASS } from "../transcriptOutlineModel";
 
 /**
  * Orchestration thread: the chat, under a header with the goal and one
@@ -25,7 +26,7 @@ export function OrchestrationView(props: ThreadViewProps) {
   const header =
     agents.length > 0 ? (
       <div className="shrink-0 px-4 pt-5 pb-3">
-        <div className="mx-auto w-full max-w-4xl">
+        <div className={`mx-auto w-full ${COLUMN_MAX_CLASS}`}>
           <FleetHeader goal={goal} agents={agents} />
         </div>
       </div>

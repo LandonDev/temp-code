@@ -74,7 +74,7 @@ export function PanelSections({
               <TooltipTrigger
                 render={<TabsTrigger value={s} aria-label={SECTION_LABEL[s]} className={`size-7 flex-none p-0 ${TABS_PILL_TRIGGER}`} />}
               >
-                <Icon className="size-3.5" strokeWidth={1.5} />
+                <Icon className="size-3.5" />
               </TooltipTrigger>
               <TooltipContent side="bottom">{SECTION_LABEL[s]}</TooltipContent>
             </Tooltip>

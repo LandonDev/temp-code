@@ -47,7 +47,7 @@ export function CopyMessageButton({
         );
       }}
     >
-      <SwapIcon swapped={copied} from={<Copy className="size-3.5" strokeWidth={1.5} />} to={<Check className="size-3.5" strokeWidth={1.5} />} />
+      <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
     </Button>
     </Tip>
   );

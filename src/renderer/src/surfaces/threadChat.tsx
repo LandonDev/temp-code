@@ -419,7 +419,7 @@ export function useThreadChat({
                   onClick={() => jumpToBottomRef.current?.()}
                   className="pointer-events-auto border border-border bg-popover text-muted-foreground shadow-overlay hover:bg-popover hover:text-foreground"
                 >
-                  <ChevronDown className="size-4" strokeWidth={1.5} />
+                  <ChevronDown className="size-4" />
                 </Button>
               </Tip>
             </motion.div>

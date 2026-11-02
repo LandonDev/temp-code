@@ -54,7 +54,7 @@ export function ProjectPlanChip() {
             />
           }
         >
-          <Milestone className="size-3.5 text-muted-foreground" strokeWidth={1.5} />
+          <Milestone className="size-3.5 text-muted-foreground" />
           <span>{label}</span>
           {tally ? <span className="tabular-nums text-muted-foreground">{tally}</span> : null}
         </TooltipTrigger>

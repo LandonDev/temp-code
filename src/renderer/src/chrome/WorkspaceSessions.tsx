@@ -159,7 +159,7 @@ function moreTrigger(className?: string) {
         className,
       )}
     >
-      <MoreHorizontal className="size-4" strokeWidth={1.5} />
+      <MoreHorizontal className="size-4" />
     </Button>
   );
 }
@@ -412,7 +412,7 @@ export function ThreadRowView({
       </span>
       {RoleGlyph ? (
         <span aria-hidden className="grid size-4 shrink-0 place-items-center text-muted-foreground">
-          <RoleGlyph className="size-3" strokeWidth={1.5} />
+          <RoleGlyph className="size-3" />
         </span>
       ) : child && row.threadType ? (
         <span aria-hidden className="grid size-4 shrink-0 place-items-center">
@@ -460,7 +460,6 @@ export function ThreadRowView({
                   "size-3 transition-transform duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
                   fold.open && "rotate-90",
                 )}
-                strokeWidth={1.5}
               />
               {fold.count}
             </Button>
@@ -644,7 +643,6 @@ function FoldChevron({ open, className }: { open: boolean; className?: string })
         open && "rotate-90",
         className,
       )}
-      strokeWidth={1.5}
     />
   );
 }
@@ -931,7 +929,7 @@ export function ProjectCardView({
       </span>
       <span className="mt-0.5 flex h-4 min-w-0 items-center gap-2 text-muted-foreground">
         <span className="flex min-w-0 items-center gap-1">
-          <GitBranch aria-hidden className="size-3 shrink-0" strokeWidth={1.5} />
+          <GitBranch aria-hidden className="size-3 shrink-0" />
           <span className="min-w-0 truncate">{branch ?? "local checkout"}</span>
         </span>
         <span className="shrink-0">{mode === "worktree" ? "worktree" : "local"}</span>
@@ -1275,7 +1273,7 @@ const ChatsSection = memo(function ChatsSection({
                 />
               }
             >
-              <Plus className="size-3.5" strokeWidth={1.5} />
+              <Plus className="size-3.5" />
             </TooltipTrigger>
             <TooltipContent side="right">New chat</TooltipContent>
           </Tooltip>
@@ -1615,7 +1613,7 @@ export default function WorkspaceSessions({
             onClick={onNewProject}
             className="h-8 w-full justify-start gap-2 px-3 font-normal text-muted-foreground hover:text-foreground"
           >
-            <Plus className="size-4" strokeWidth={1.5} />
+            <Plus className="size-4" />
             New project
           </Button>
         );

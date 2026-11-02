@@ -142,7 +142,7 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
     return (
       <Sub>
         <SubTrigger disabled={item.disabled} data-menu-row={item.id}>
-          {Icon ? <Icon strokeWidth={1.5} /> : null}
+          {Icon ? <Icon /> : null}
           {item.label}
         </SubTrigger>
         <SubContent>
@@ -154,7 +154,7 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
   const Icon = item.icon;
   const body = (
     <>
-      {Icon ? <Icon strokeWidth={1.5} /> : null}
+      {Icon ? <Icon /> : null}
       {item.description ? (
         <span className="flex min-w-0 flex-col gap-0.5">
           <span>{item.label}</span>

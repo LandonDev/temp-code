@@ -122,9 +122,12 @@ export type IconProps = Omit<HugeiconsIconProps, "icon">;
 
 export type IconComponent = ReturnType<typeof wrap>;
 
+/** Every chrome icon's stroke, docs/DESIGN.md "Iconography": a size fixes a glyph that reads thin, never a heavier stroke. */
+export const ICON_STROKE = 1.5;
+
 function wrap(icon: IconSvgElement, name: string) {
   const Component = forwardRef(function Icon(
-    { strokeWidth = 1.75, ...props }: IconProps,
+    { strokeWidth = ICON_STROKE, ...props }: IconProps,
     ref: Ref<SVGSVGElement>,
   ) {
     return (

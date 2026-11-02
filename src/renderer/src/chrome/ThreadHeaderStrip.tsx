@@ -282,7 +282,7 @@ function ScrollArrow({ side, onClick }: { side: "left" | "right"; onClick: () =>
           onClick={onClick}
           className="text-muted-foreground hover:text-foreground"
         >
-          <Icon className="size-3.5" strokeWidth={1.5} />
+          <Icon className="size-3.5" />
         </Button>
       </Tip>
     </div>

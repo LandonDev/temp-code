@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { FilePlus, FoldVertical, UnfoldVertical } from "./icons";
+import { ChevronRight, FilePlus, FoldVertical, ICON_STROKE, UnfoldVertical } from "./icons";
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 const CATALOG = "chrome/icons.tsx";
@@ -49,5 +49,25 @@ describe("hugeicons imports", () => {
       expect(html, Icon.displayName).not.toMatch(/fill="currentColor"/);
       expect(html, Icon.displayName).toMatch(/stroke="currentColor"/);
     }
+  });
+});
+
+describe("icon stroke", () => {
+  it("defaults to the stroke docs/DESIGN.md names, and nothing restates it", () => {
+    const design = readFileSync(join(SRC, "../../../docs/DESIGN.md"), "utf8");
+    const section = design.slice(design.indexOf("## Iconography"));
+    const named = /(\d+(?:\.\d+)?)px stroke/.exec(section)?.[1];
+    expect(Number(named)).toBe(ICON_STROKE);
+    expect(renderToStaticMarkup(createElement(ChevronRight))).toContain(`stroke-width="${ICON_STROKE}"`);
+
+    // An explicit stroke equal to the default is noise that hides a real override.
+    const restated: string[] = [];
+    for (const file of sourceFiles(SRC)) {
+      if (!file.endsWith(".tsx")) continue;
+      const rel = relative(SRC, file).replaceAll("\\", "/");
+      if (rel.startsWith("aliax/")) continue; // recharts' lines, not icons
+      if (/strokeWidth=\{1\.5\}/.test(readFileSync(file, "utf8"))) restated.push(rel);
+    }
+    expect(restated).toEqual([]);
   });
 });

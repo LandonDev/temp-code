@@ -68,7 +68,7 @@ export function NewThreadChooser({
   );
   const face = (
     <>
-      <Plus strokeWidth={1.5} />
+      <Plus />
       {empty ? "New thread" : null}
     </>
   );
@@ -110,7 +110,7 @@ export function NewThreadChooser({
                     />
                   }
                 >
-                  <ChevronLeft strokeWidth={1.5} />
+                  <ChevronLeft />
                 </TooltipTrigger>
                 <TooltipContent>Back</TooltipContent>
               </Tooltip>
@@ -155,7 +155,7 @@ export function NewThreadChooser({
                         />
                       }
                     >
-                      <SlidersHorizontal strokeWidth={1.5} />
+                      <SlidersHorizontal />
                     </TooltipTrigger>
                     <TooltipContent>{THREAD_LABELS[type]} options</TooltipContent>
                   </Tooltip>

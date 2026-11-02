@@ -25,7 +25,7 @@ describe("typeTint", () => {
 describe("THREAD_MENU_ICONS", () => {
   it("renders each type's glyph with its tint at the menu's stroke", () => {
     for (const type of THREAD_TYPES) {
-      const html = renderToStaticMarkup(createElement(THREAD_MENU_ICONS[type], { strokeWidth: 1.5 }));
+      const html = renderToStaticMarkup(createElement(THREAD_MENU_ICONS[type]));
       expect(html, type).toContain(`data-type-glyph="${type}"`);
       expect(html, type).toContain(`class="text-type-${type}"`);
       expect(html, type).toContain('stroke-width="1.5"');

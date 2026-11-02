@@ -100,7 +100,6 @@ export function ActionLine({
             "pointer-events-none size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/action:text-foreground motion-reduce:transition-none",
             opens && open && "rotate-90",
           )}
-          strokeWidth={1.5}
         />
       ) : null}
     </div>
