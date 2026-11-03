@@ -11,7 +11,8 @@
     "/Users/landon/Desktop/Websites/SeeTheReaction": "/srv/agents/work/SeeTheReaction",
     "/Users/landon/Desktop/Websites/SchedUni": "/srv/agents/work/SchedUni",
     "/Users/landon/Desktop/Websites/UnifyLeagues-v2": "/srv/agents/work/UnifyLeagues-v2",
-    "/Users/landon/IdeaProjects/CosmicClient": "/srv/agents/work/CosmicClient"
+    "/Users/landon/IdeaProjects/CosmicClient": "/srv/agents/work/CosmicClient",
+    "/Users/landon/IdeaProjects/lifeos": "/srv/agents/work/lifeos"
   },
   "prefixes": {
     "/Users/landon/.temp-code/worktrees": "/srv/agents/home/.temp-code/worktrees",
