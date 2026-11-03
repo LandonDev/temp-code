@@ -10,3 +10,7 @@
     service: http://127.0.0.1:3210
   - hostname: convex-template-dash.landonhale.com
     service: http://127.0.0.1:6791
+  - hostname: lifeos.landonhale.com
+    service: http://127.0.0.1:3220
+  - hostname: lifeos-dash.landonhale.com
+    service: http://127.0.0.1:6792
