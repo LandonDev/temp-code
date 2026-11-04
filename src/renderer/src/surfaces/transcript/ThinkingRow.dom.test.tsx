@@ -21,7 +21,8 @@ describe("ActivityThinkingRow", () => {
     const trigger = screen.getByRole("button", { name: "Thought" });
     expect(view.container.textContent).toBe("Thought");
     expect(view.container.textContent).not.toMatch(/for \d/);
-    expect(trigger.className).toContain("focus-visible:ring-ring");
+    // A button: index.css draws its one ring; nothing draws a second.
+    expect(trigger.className).not.toMatch(/focus-visible:ring/);
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
