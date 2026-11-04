@@ -986,6 +986,17 @@ again"); the stamp beside the name is the tightest window's reset ("in 2h
 14m"), tabular. The sheet reads `accounts.list` once on open and the
 `accounts` push after; stamps tick every 30 s.
 
+A thread on one of Meta's models (a catalog row with `vendor: meta`, under
+the claude or the codex harness) spends Meta Model API keys, so its chip and
+rows are the host's Meta keys, never the harness's accounts
+(`RoutedProvider(provider:model:catalog:)`; until the catalog lands a row
+reads as its harness). The chip names the key. A key is pay as you go: its
+row has no bar while it has room, only the stamp "pay as you go"; the bar
+comes back, destructive at zero, while the key is rate limited or once Meta
+refused it ("key revoked"). Pins at Project and Workspace carry `meta` beside
+the harnesses' own. A snapshot from a host that predates Meta reads as no
+keys.
+
 ### Implementation: the board is the hero
 
 Segments: **Board** (default) and **Chat**.

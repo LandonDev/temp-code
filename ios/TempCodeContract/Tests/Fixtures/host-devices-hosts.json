@@ -1,5 +1,11 @@
 {
   "id": "34",
   "ok": true,
-  "result": []
+  "result": [
+    {
+      "environmentId": "env_H9XDYsQrTHd6P-C_WjFJ2Q",
+      "name": "This Mac",
+      "local": true
+    }
+  ]
 }

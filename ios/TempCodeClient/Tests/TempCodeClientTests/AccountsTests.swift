@@ -55,13 +55,13 @@ private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: I
 
 @Suite struct AccountScopeTests {
     @Test func `a provider the gateway does not route has no scope`() {
-        #expect(AccountScope.of(session(provider: .cursor), projects: [project()], workspaces: [workspace()]) == nil)
-        #expect(RoutedProvider(.grok) == nil)
-        #expect(RoutedProvider(.codex) == .codex)
+        #expect(AccountScope.of(session(provider: .cursor), projects: [project()], workspaces: [workspace()], catalog: nil) == nil)
+        #expect(RoutedProvider(provider: .grok, model: "grok-4", catalog: nil) == nil)
+        #expect(RoutedProvider(provider: .codex, model: "gpt-6.1-sol", catalog: nil) == .codex)
     }
 
     @Test func `with no pins the route is the thread's own account and the line says auto`() throws {
-        let scope = try #require(AccountScope.of(session(account: work), projects: [project()], workspaces: [workspace()]))
+        let scope = try #require(AccountScope.of(session(account: work), projects: [project()], workspaces: [workspace()], catalog: nil))
         #expect(scope.provider == .claude)
         #expect(scope.inherited == nil)
         #expect(scope.current == work)
@@ -70,25 +70,25 @@ private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: I
     }
 
     @Test func `a project pin wins over the workspace's and names the project`() throws {
-        let scope = try #require(AccountScope.of(session(), projects: [project(pins: ["claude": work])], workspaces: [workspace(pins: ["claude": spare])]))
+        let scope = try #require(AccountScope.of(session(), projects: [project(pins: ["claude": work])], workspaces: [workspace(pins: ["claude": spare])], catalog: nil))
         #expect(scope.inherited == AccountScope.Inherited(name: work, level: .project, from: "billing-page"))
         #expect(scope.sourceLine == "From project billing-page")
         #expect(scope.shown == work)
     }
 
     @Test func `the workspace is found through the project, and its pin applies when the project has none`() throws {
-        let scope = try #require(AccountScope.of(session(workspaceId: nil), projects: [project(workspaceId: "w2")], workspaces: [workspace("w1"), workspace("w2", name: "other", pins: ["claude": spare])]))
+        let scope = try #require(AccountScope.of(session(workspaceId: nil), projects: [project(workspaceId: "w2")], workspaces: [workspace("w1"), workspace("w2", name: "other", pins: ["claude": spare])], catalog: nil))
         #expect(scope.inherited == AccountScope.Inherited(name: spare, level: .workspace, from: "other"))
         #expect(scope.sourceLine == "From workspace other")
     }
 
     @Test func `a pin for the other provider is not this thread's`() throws {
-        let scope = try #require(AccountScope.of(session(), projects: [project(pins: ["codex": "x@example.com"])], workspaces: [workspace()]))
+        let scope = try #require(AccountScope.of(session(), projects: [project(pins: ["codex": "x@example.com"])], workspaces: [workspace()], catalog: nil))
         #expect(scope.inherited == nil)
     }
 
     @Test func `shown prefers the live route over the pin that will apply`() throws {
-        let scope = try #require(AccountScope.of(session(account: spare), projects: [project(pins: ["claude": work])], workspaces: []))
+        let scope = try #require(AccountScope.of(session(account: spare), projects: [project(pins: ["claude": work])], workspaces: [], catalog: nil))
         #expect(scope.shown == spare)
         #expect(scope.inherited?.name == work)
     }
@@ -208,7 +208,7 @@ private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: I
     private let accounts = claude(reports: [report(work, [window("5h", used: 12, resetsAt: now + hour)]), report(spare, [window("5h", used: 91, resetsAt: now + hour)])])
 
     private func rows(_ kind: AccountScopeKind, session meta: SessionMeta = session(), project: ProjectMeta? = project(), workspace: WorkspaceMeta? = workspace(), accounts: ProviderAccounts? = nil) -> [AccountRowModel] {
-        let scope = AccountScope.of(meta, projects: project.map { [$0] } ?? [], workspaces: workspace.map { [$0] } ?? [])!
+        let scope = AccountScope.of(meta, projects: project.map { [$0] } ?? [], workspaces: workspace.map { [$0] } ?? [], catalog: nil)!
         return AccountMenuModel.rows(scope: scope, kind: kind, session: meta, project: project, workspace: workspace, accounts: accounts ?? self.accounts, now: now)
     }
 
@@ -266,12 +266,12 @@ private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: I
         let gone = rows(.thread, session: session(account: work), accounts: empty)
         #expect(gone.map(\.id) == ["auto", work])
         #expect(gone.last?.kind == .gone(name: work))
-        let scope = AccountScope.of(session(account: work), projects: [], workspaces: [])!
+        let scope = AccountScope.of(session(account: work), projects: [], workspaces: [], catalog: nil)!
         let loading = AccountMenuModel.rows(scope: scope, kind: .thread, session: session(account: work), project: nil, workspace: nil, accounts: nil, now: now)
         #expect(loading.map(\.id) == ["auto", work])
         #expect(loading.last?.kind == .account(name: work, shortName: "work", color: nil, look: HeadroomLook(fraction: 0, tone: .none, stamp: nil, accessibility: "work")))
         #expect(loading.last?.checked == true)
-        #expect(AccountMenuModel.rows(scope: AccountScope.of(session(), projects: [], workspaces: [])!, kind: .thread, session: session(), project: nil, workspace: nil, accounts: nil, now: now).map(\.id) == ["auto"])
+        #expect(AccountMenuModel.rows(scope: AccountScope.of(session(), projects: [], workspaces: [], catalog: nil)!, kind: .thread, session: session(), project: nil, workspace: nil, accounts: nil, now: now).map(\.id) == ["auto"])
     }
 
     @Test func `the scopes a thread has`() {
@@ -520,5 +520,129 @@ private final class AccountsRig {
         #expect(session(status: .error, failure: verdict).failureSummary == "work is rate limited for 39 minutes")
         #expect(session(status: .idle, failure: verdict).failureSummary == nil)
         #expect(session(status: .error).failureSummary == nil)
+    }
+}
+
+// MARK: - Meta: a vendor row under either harness spends Meta's keys
+
+private let wonder = "muse-wonder-1.0"
+private let metaKey = "build-key"
+
+private func model(_ id: String, vendor: ModelInfo.Vendor? = nil) -> ModelInfo {
+    ModelInfo(id: id, label: id, reasoning: [.low, .high], vendor: vendor)
+}
+
+/// Meta's rows under both harnesses beside each harness's own.
+private let metaCatalog: Catalog = [
+    "claude": ProviderInfo(id: .claude, label: "Claude", models: [model("claude-fable-5-1"), model(wonder, vendor: .meta), model("muse-spark-1.3", vendor: .meta)], defaultModel: "claude-fable-5-1"),
+    "codex": ProviderInfo(id: .codex, label: "Codex", models: [model("gpt-6.1-sol"), model(wonder, vendor: .meta)], defaultModel: "gpt-6.1-sol"),
+]
+
+private func metaAccounts(expired: Bool? = nil, headroom: [String: AccountHeadroom]? = nil) -> ProviderAccounts {
+    ProviderAccounts(
+        pinned: nil,
+        profiles: [AccountProfile(name: metaKey, color: "#0866ff", active: false, static: true, kind: .key)],
+        reports: [UsageReport(profileName: metaKey, windows: [], note: expired == true ? "key revoked" : "pay as you go", expired: expired)],
+        headroom: headroom
+    )
+}
+
+@Suite struct MetaRoutingTests {
+    @Test(arguments: [ProviderId.claude, .codex])
+    func `a Meta row routes to Meta's keys under either harness`(harness: ProviderId) {
+        #expect(RoutedProvider(provider: harness, model: wonder, catalog: metaCatalog) == .meta)
+    }
+
+    @Test func `a harness's own row routes to the harness`() {
+        #expect(RoutedProvider(provider: .claude, model: "claude-fable-5-1", catalog: metaCatalog) == .claude)
+        #expect(RoutedProvider(provider: .codex, model: "gpt-6.1-sol", catalog: metaCatalog) == .codex)
+        // A row one harness lists as Meta's says nothing of another harness's catalog.
+        #expect(RoutedProvider(provider: .codex, model: "muse-spark-1.3", catalog: metaCatalog) == .codex)
+    }
+
+    @Test func `before the catalog lands a row reads as its harness, and an unrouted harness has none`() {
+        #expect(RoutedProvider(provider: .claude, model: wonder, catalog: nil) == .claude)
+        #expect(RoutedProvider(provider: .cursor, model: "auto", catalog: metaCatalog) == nil)
+        #expect(RoutedProvider.routes(.claude))
+        #expect(!RoutedProvider.routes(.grok))
+    }
+
+    @Test func `a Meta thread's scope reads the meta pins, never the harness's`() throws {
+        let meta = session(model: wonder, account: metaKey)
+        let scope = try #require(AccountScope.of(meta, projects: [project(pins: ["claude": work, "meta": metaKey])], workspaces: [workspace()], catalog: metaCatalog))
+        #expect(scope.provider == .meta)
+        #expect(scope.inherited == AccountScope.Inherited(name: metaKey, level: .project, from: "billing-page"))
+        #expect(AccountName.chipLabel(scope: scope, accounts: metaAccounts()) == metaKey)
+    }
+
+    @Test func `Meta spends no usage windows`() {
+        #expect(HeadroomLook.tiers(provider: .meta, model: wonder).isEmpty)
+        #expect(HeadroomLook.tiers(provider: .codex, model: "gpt-6.1-sol") == ["5h", "week"])
+    }
+
+    @Test func `a key with room draws no bar and says pay as you go`() {
+        let look = HeadroomLook.of(profile: metaKey, model: wonder, provider: .meta, accounts: metaAccounts(), now: now)
+        #expect(!look.bar)
+        #expect(look.stamp == "pay as you go")
+        #expect(look.accessibility == "\(metaKey): pay as you go")
+    }
+
+    @Test func `a throttled key keeps its bar, and a revoked one says so`() {
+        let throttled = HeadroomLook.of(profile: metaKey, model: wonder, provider: .meta, accounts: metaAccounts(headroom: [metaKey: AccountHeadroom(room: nil, throttledUntil: now + 32_000, ratePerMin: 0, seenAt: now)]), now: now)
+        #expect(throttled.bar)
+        #expect(throttled.tone == .destructive)
+        #expect(throttled.stamp == "rate limited for under a minute")
+        let revoked = HeadroomLook.of(profile: metaKey, model: wonder, provider: .meta, accounts: metaAccounts(expired: true), now: now)
+        #expect(revoked.bar)
+        #expect(revoked.tone == .destructive)
+        #expect(revoked.stamp == "key revoked")
+    }
+
+    @Test func `the menu lists the keys at This thread with the route checked`() {
+        let meta = session(model: wonder, account: metaKey)
+        let scope = AccountScope(provider: .meta, inherited: nil, current: metaKey)
+        let rows = AccountMenuModel.rows(scope: scope, kind: .thread, session: meta, project: project(), workspace: workspace(), accounts: metaAccounts(), now: now)
+        #expect(rows.map(\.id) == ["auto", metaKey])
+        #expect(rows.last?.checked == true)
+        #expect(AccountMenuModel.pins(after: ["claude": work], provider: .meta, name: metaKey) == ["claude": work, "meta": metaKey])
+    }
+}
+
+@MainActor @Suite struct MetaSnapshotTests {
+    private let provider = #"{"pinned":null,"profiles":[],"reports":[]}"#
+
+    private func decode(_ providers: String) throws -> AccountsSnapshot {
+        try JSONDecoder().decode(AccountsSnapshot.self, from: Data(#"{"updatedAt":1,"providers":{\#(providers)}}"#.utf8))
+    }
+
+    @Test func `an older host's snapshot without meta decodes and reads as no keys`() throws {
+        let snapshot = try decode(#""claude":\#(provider),"codex":\#(provider),"cursor":\#(provider)"#)
+        let accounts = HostAccounts()
+        accounts.apply(snapshot, now: now)
+        let held = try #require(accounts.snapshot)
+        #expect(held.providers.meta == nil)
+        #expect(RoutedProvider.meta.accounts(in: held).profiles.isEmpty)
+    }
+
+    @Test func `a snapshot with meta carries the key, its kind and its report`() throws {
+        let meta = #"{"pinned":null,"profiles":[{"name":"build-key","active":false,"static":true,"kind":"key"}],"reports":[{"profileName":"build-key","windows":[],"note":"pay as you go"}]}"#
+        let snapshot = try decode(#""claude":\#(provider),"codex":\#(provider),"cursor":\#(provider),"meta":\#(meta)"#)
+        let accounts = RoutedProvider.meta.accounts(in: snapshot)
+        #expect(accounts.profiles.map(\.name) == [metaKey])
+        #expect(accounts.profiles.first?.kind == .key)
+        #expect(accounts.reports.first?.note == "pay as you go")
+        #expect(RoutedProvider.claude.accounts(in: snapshot).profiles.isEmpty)
+    }
+
+    @Test func `a Meta pin goes out beside the harness's`() async throws {
+        let rig = try AccountsRig()
+        rig.projects = [project(pins: ["claude": work])]
+        let fake = try await rig.open()
+        let pinning = Task { try await rig.client.setProjectAccount("p1", provider: .meta, name: metaKey) }
+        let request = try #require(await rig.request(fake, "project.setAccounts"))
+        #expect(request.params == .object(["projectId": .string("p1"), "pins": .object(["claude": .string(work), "meta": .string(metaKey)])]))
+        fake.answer(id: request.id, result: "null")
+        try await pinning.value
+        await rig.client.stop()
     }
 }

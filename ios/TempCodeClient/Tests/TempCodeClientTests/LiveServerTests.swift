@@ -574,8 +574,29 @@ struct AccountsLiveTests {
         #expect(failed.status == .error)
         #expect(failed.failure?.kind == .rateLimited)
         #expect(failed.failureSummary?.isEmpty == false)
-        let scope = try #require(AccountScope.of(client.session("ios-question")!, projects: client.projects, workspaces: client.workspaces))
+        let scope = try #require(AccountScope.of(client.session("ios-question")!, projects: client.projects, workspaces: client.workspaces, catalog: await client.loadCatalog()))
         #expect(scope.sourceLine == "From project billing-page")
+        await client.stop()
+    }
+
+    @Test func `a Meta thread routes through the catalog to the seeded key, which has no usage windows`() async throws {
+        let client = try await LiveServer.actingClient()
+        #expect(await LiveServer.until { client.session("ios-meta") != nil })
+        await client.loadAccounts(force: true)
+        let catalog = await client.loadCatalog()
+        let meta = try #require(client.session("ios-meta"))
+        #expect(meta.provider == .claude)
+        #expect(meta.account == "build-key")
+        let scope = try #require(AccountScope.of(meta, projects: client.projects, workspaces: client.workspaces, catalog: catalog))
+        #expect(scope.provider == .meta)
+        let snapshot = try #require(client.accounts.snapshot)
+        let keys = scope.provider.accounts(in: snapshot)
+        #expect(keys.profiles.map(\.name) == ["build-key"])
+        #expect(keys.profiles.first?.kind == .key)
+        #expect(AccountName.chipLabel(scope: scope, accounts: keys) == "build-key")
+        let look = HeadroomLook.of(profile: "build-key", model: meta.model, provider: .meta, accounts: keys, now: Int(Date().timeIntervalSince1970 * 1000))
+        #expect(!look.bar)
+        #expect(look.stamp == "pay as you go")
         await client.stop()
     }
 

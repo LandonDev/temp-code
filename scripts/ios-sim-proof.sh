@@ -656,6 +656,7 @@ features_set() {
     shot "streaming-$mode" thread "Streaming on the phone"
     shot "notes-$mode" thread "Thread notes on the phone"
     shot "account-$mode" thread "On the work account" "" account
+    shot "account-meta-$mode" thread "On Muse Wonder" "" account
     TC_SHEET=resources shot "resources-$mode" thread "Build the share sheet"
     shot "queued-$mode" thread "Backfill the rollups"
     shot "stopped-$mode" thread "Rename the config keys again"

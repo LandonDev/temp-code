@@ -1,11 +1,11 @@
 {
-  "key": "tc_5EC4PKAH1G.FGiGZOM9SQimWAORFkIoLLEz-XgzZq3vk8wKAZ1FLsU",
-  "keyId": "5EC4PKAH1G",
+  "key": "tc_N4NFKQTKK5.Wb0eZB2LK9fCgOYMBUtM7TZNARlbvrDwPAnVjHtiGdA",
+  "keyId": "N4NFKQTKK5",
   "name": "iphone",
   "caps": [
     "operate",
     "read"
   ],
   "audience": "client",
-  "environmentId": "env_I4lT5U1sD8uq3BskgW_MMw"
+  "environmentId": "env_H9XDYsQrTHd6P-C_WjFJ2Q"
 }

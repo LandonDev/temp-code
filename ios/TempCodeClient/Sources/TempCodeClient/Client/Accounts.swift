@@ -11,8 +11,18 @@ import TempCodeContract
 public enum RoutedProvider: String, Sendable, Hashable, CaseIterable {
     case claude
     case codex
+    /// Meta Model API keys: a catalog row whose vendor is Meta, under either harness.
+    case meta
 
-    public init?(_ provider: ProviderId) {
+    /// The provider a thread's accounts come from (shared/accounts.ts
+    /// `routedProviderOf`): `meta` for a row the catalog marks as Meta's,
+    /// whatever the harness; else the harness when the gateway routes it.
+    /// Until the host's catalog has landed a row reads as its harness.
+    public init?(provider: ProviderId, model: String?, catalog: Catalog?) {
+        if let model, catalog?[provider.rawValue]?.models.first(where: { $0.id == model })?.vendor == .meta {
+            self = .meta
+            return
+        }
         switch provider {
         case .claude: self = .claude
         case .codex: self = .codex
@@ -20,10 +30,21 @@ public enum RoutedProvider: String, Sendable, Hashable, CaseIterable {
         }
     }
 
+    /// Whether a thread of this harness names an account at all (a Meta row
+    /// runs under claude or codex, so the harness answers this alone).
+    public static func routes(_ harness: ProviderId) -> Bool {
+        switch harness {
+        case .claude, .codex: true
+        default: false
+        }
+    }
+
+    /// The provider's accounts; an older host's snapshot has no Meta entry.
     public func accounts(in snapshot: AccountsSnapshot) -> ProviderAccounts {
         switch self {
         case .claude: snapshot.providers.claude
         case .codex: snapshot.providers.codex
+        case .meta: snapshot.providers.meta ?? ProviderAccounts(pinned: nil, profiles: [], reports: [])
         }
     }
 }
@@ -81,10 +102,11 @@ public struct AccountScope: Sendable, Hashable {
         return "From \(inherited.level.rawValue) \(inherited.from)"
     }
 
-    /// nil for a provider the gateway does not route. The workspace is the
+    /// nil for a provider the gateway does not route. The provider follows
+    /// the thread's model through the catalog; the workspace is the
     /// project's, else the session's own.
-    public static func of(_ session: SessionMeta, projects: [ProjectMeta], workspaces: [WorkspaceMeta]) -> AccountScope? {
-        guard let provider = RoutedProvider(session.provider) else { return nil }
+    public static func of(_ session: SessionMeta, projects: [ProjectMeta], workspaces: [WorkspaceMeta], catalog: Catalog?) -> AccountScope? {
+        guard let provider = RoutedProvider(provider: session.provider, model: session.model, catalog: catalog) else { return nil }
         let (project, workspace) = context(of: session, projects: projects, workspaces: workspaces)
         var inherited: Inherited?
         if let project, let name = project.accountPins?[provider.rawValue] {
@@ -148,12 +170,15 @@ public struct HeadroomLook: Sendable, Hashable {
     public let stamp: String?
     /// "work: 61 percent left, refills in 2 hours 14 minutes".
     public let accessibility: String
+    /// False for an API key with room: pay as you go has no share to draw.
+    public let bar: Bool
 
-    public init(fraction: Double, tone: Tone, stamp: String?, accessibility: String) {
+    public init(fraction: Double, tone: Tone, stamp: String?, accessibility: String, bar: Bool = true) {
         self.fraction = fraction
         self.tone = tone
         self.stamp = stamp
         self.accessibility = accessibility
+        self.bar = bar
     }
 
     /// Below this share of a window the bar turns warning; below `destructiveBelow`, destructive.
@@ -171,8 +196,15 @@ public struct HeadroomLook: Sendable, Hashable {
             let spoken = until.map { "\(shortName): rate limited, picks again in \(Self.spoken($0, now: now))" } ?? "\(shortName): rate limited"
             return HeadroomLook(fraction: 0, tone: .destructive, stamp: stamp, accessibility: spoken)
         }
+        // An API key has no usage windows: its bar shows only a throttle or a revoked key.
+        let key = provider == .meta || accounts.profiles.first(where: { $0.name == profile })?.kind == .key
         if report?.expired == true {
-            return HeadroomLook(fraction: 0, tone: .destructive, stamp: "sign in again", accessibility: "\(shortName): signed out, sign in again")
+            return key
+                ? HeadroomLook(fraction: 0, tone: .destructive, stamp: "key revoked", accessibility: "\(shortName): key revoked")
+                : HeadroomLook(fraction: 0, tone: .destructive, stamp: "sign in again", accessibility: "\(shortName): signed out, sign in again")
+        }
+        if key {
+            return HeadroomLook(fraction: 0, tone: .none, stamp: "pay as you go", accessibility: "\(shortName): pay as you go", bar: false)
         }
         let labels = tiers(provider: provider, model: model)
         let windows = (report?.windows ?? []).filter { window in
@@ -192,9 +224,12 @@ public struct HeadroomLook: Sendable, Hashable {
 
     /// The window labels a model spends, in the report's own vocabulary
     /// (aliax-core `tiersFor` and `SCOPED_CAPS`): Claude's five-hour and
-    /// Weekly windows plus the Fable cap for a Fable model; Codex's 5h and week.
+    /// Weekly windows plus the Fable cap for a Fable model; Codex's 5h and
+    /// week; none for Meta, whose keys are pay as you go.
     public static func tiers(provider: RoutedProvider, model: String?) -> [String] {
         switch provider {
+        case .meta:
+            return []
         case .codex:
             return ["5h", "week"]
         case .claude:
@@ -397,7 +432,7 @@ extension EnvironmentClient {
         let current = projects.first { $0.id == projectId }?.accountPins
         let pins = AccountMenuModel.pins(after: current, provider: provider, name: name)
         try await pin {
-            try await self.request(Methods.ProjectSetAccounts.self, .init(projectId: projectId, pins: .init(claude: pins["claude"], codex: pins["codex"])))
+            try await self.request(Methods.ProjectSetAccounts.self, .init(projectId: projectId, pins: .init(claude: pins["claude"], codex: pins["codex"], meta: pins["meta"])))
         }
     }
 
@@ -405,7 +440,7 @@ extension EnvironmentClient {
         let current = workspaces.first { $0.id == workspaceId }?.accountPins
         let pins = AccountMenuModel.pins(after: current, provider: provider, name: name)
         try await pin {
-            try await self.request(Methods.WorkspaceSetAccounts.self, .init(workspaceId: workspaceId, pins: .init(claude: pins["claude"], codex: pins["codex"])))
+            try await self.request(Methods.WorkspaceSetAccounts.self, .init(workspaceId: workspaceId, pins: .init(claude: pins["claude"], codex: pins["codex"], meta: pins["meta"])))
         }
     }
 

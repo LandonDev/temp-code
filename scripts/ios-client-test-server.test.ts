@@ -35,7 +35,7 @@ describe('the iOS test server seeds', () => {
   })
   it('seed the ids the fleet codes against', () => {
     const ids = new Set(seededIds(source))
-    for (const id of ['ios-queued', 'ios-stopped', 'ios-master', 'ios-master-paused', 'ios-project-plan', 'ios-notes-five', 'ios-notes-two', 'ios-notices', 'ios-failures', 'ios-preamble', 'ios-resources', 'ios-pinned-account', 'ios-xhost'])
+    for (const id of ['ios-queued', 'ios-stopped', 'ios-master', 'ios-master-paused', 'ios-project-plan', 'ios-notes-five', 'ios-notes-two', 'ios-notices', 'ios-failures', 'ios-preamble', 'ios-resources', 'ios-pinned-account', 'ios-meta', 'ios-xhost'])
       expect(ids.has(id), id).toBe(true)
   })
   it('the regex reads a creation of each shape', () => {

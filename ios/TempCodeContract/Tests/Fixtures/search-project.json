@@ -4,12 +4,12 @@
   "result": {
     "matches": [
       {
-        "path": "/tmp/tc-swift-fixtures-repo-zTVvij/fixture-search.txt",
+        "path": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-swift-fixtures-repo-alQJjK/fixture-search.txt",
         "relative": "fixture-search.txt",
         "line": 2,
         "column": 7,
         "preview": "const fixtureNeedle = true",
-        "mtime": 1792706821445
+        "mtime": 1793821263479
       }
     ],
     "truncated": false

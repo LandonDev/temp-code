@@ -234,7 +234,7 @@ struct FixtureTests {
             guard case .error(let error) = row.event else { return nil }
             return error.failure?.kind
         }
-        for kind in [FailureKind.oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota, .modelUnavailable, .network, .harnessCrashed, .turnEnded, .unknown] {
+        for kind in [FailureKind.oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota, .keyInvalid, .modelUnavailable, .network, .harnessCrashed, .turnEnded, .unknown] {
             #expect(failures.contains(kind), "\(kind) missing")
         }
         #expect(!failures.contains { if case .unrecognized = $0 { true } else { false } })
@@ -269,6 +269,23 @@ struct FixtureTests {
         let claude = try #require(catalog["claude"])
         #expect(claude.id == .claude)
         #expect(claude.models.contains { $0.reasoning.contains(.high) })
+        // Meta's rows sit under both harnesses, marked by their vendor.
+        for harness in ["claude", "codex"] {
+            let wonder = try #require(catalog[harness]?.models.first { $0.id == "muse-wonder-1.0" })
+            #expect(wonder.vendor == .meta)
+        }
+        #expect(catalog["codex"]?.models.first { $0.id == "muse-wonder-1.0" }?.reasoning.contains(.minimal) == true)
+    }
+
+    @Test func accountsCarryAMetaKey() throws {
+        let snapshot = try Fixtures.output(Methods.AccountsList.self, "accounts-list")
+        let meta = try #require(snapshot.providers.meta)
+        let key = try #require(meta.profiles.first)
+        #expect(key.kind == .key)
+        #expect(key.static == true)
+        #expect(meta.reports.first?.windows.isEmpty == true)
+        guard case .accounts(let push) = try Fixtures.push("push-accounts") else { throw Fixtures.FixtureError.notAPush("push-accounts") }
+        #expect(push.snapshot.providers.meta?.profiles.map(\.name) == [key.name])
     }
 }
 

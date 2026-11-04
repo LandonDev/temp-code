@@ -992,6 +992,7 @@ at(THREAD_FAILURES, [
   fail('token_expired', 'landon@example.com', 'The token for landon@example.com expired on this instance', 'This instance does not own the gateway and never refreshes tokens; the owner renews it on its next use.'),
   fail('rate_limited', 'landon@example.com', 'landon@example.com hit its 5-hour limit', 'The usage window is spent until it resets; another account with room can take the thread.'),
   fail('quota', 'landon@example.com', 'landon@example.com is out of credits', 'The plan has nothing left to spend; top it up or route the thread to another account.'),
+  fail('key_invalid', 'build-key', 'Meta refused the key build-key', 'The key was revoked or never valid; make a new one at dev.meta.ai and add it in Settings → Accounts.'),
   fail('model_unavailable', null, 'gpt-6.1-sol is not available on this host', 'The installed Codex CLI is older than the model needs (0.162.1 or newer), or the provider refused the model.'),
   fail('network', null, 'Could not reach Anthropic', 'The connection dropped or was refused: a network change here, or an outage on their side.'),
   fail('harness_crashed', null, 'The Claude Code process died mid-turn', 'Its stream ended before the turn finished; the conversation can pick up from its last message.'),
@@ -1059,6 +1060,7 @@ for (const id of [THREAD_IMPL, THREAD_RESEARCH]) {
 
 // ── accounts: two Claude accounts with different headroom (thread 24's chip and menu) ──
 const hour = 3_600_000
+export const META_KEY = 'build-key'
 const seededAccounts: AccountsSnapshot = {
   updatedAt: Date.now(),
   providers: {
@@ -1079,7 +1081,14 @@ const seededAccounts: AccountsSnapshot = {
       }
     },
     codex: { pinned: null, profiles: [], reports: [], owner: null },
-    cursor: { pinned: null, profiles: [], reports: [], owner: null }
+    cursor: { pinned: null, profiles: [], reports: [], owner: null },
+    // One Meta Model API key: static, pay as you go, no usage windows.
+    meta: {
+      pinned: null,
+      owner: null,
+      profiles: [{ name: META_KEY, color: '#0866ff', createdAt: Date.now() - 2 * 24 * hour, active: false, static: true, kind: 'key' }],
+      reports: [{ profileName: META_KEY, windows: [], note: 'pay as you go' }]
+    }
   }
 }
 // The service has no vault here: hold the seeded snapshot in place of its rebuild (the poll would empty it).
@@ -1175,6 +1184,12 @@ await make(THREAD_PINNED_ACCOUNT, { projectId: project.id, threadType: 'chat', t
 say(THREAD_PINNED_ACCOUNT, 'Which account is this?', 'The pinned one.')
 server.registry.setAccount(THREAD_PINNED_ACCOUNT, 'work@example.com')
 server.store.setProjectAccounts(project.id, { claude: 'work@example.com' })
+
+// A Meta thread: Muse Wonder under the claude harness, on the seeded Meta key.
+export const THREAD_META = 'ios-meta'
+await make(THREAD_META, { projectId: project.id, threadType: 'chat', title: 'On Muse Wonder', model: 'muse-wonder-1.0' })
+say(THREAD_META, 'Which account is this?', 'The build key.')
+server.registry.setAccount(THREAD_META, META_KEY)
 
 // A note for notes.search ("fixtureNeedle"), beside the file of the same word on both hosts.
 export const SEARCH_NOTE = 'ios-search-note'
@@ -1887,6 +1902,7 @@ process.stdout.write(
       notesTwo: THREAD_NOTES_TWO,
       resources: THREAD_RESOURCES,
       pinned: THREAD_PINNED_ACCOUNT,
+      meta: THREAD_META,
       crossHost: THREAD_CROSS_HOST,
       media: THREAD_CHAT,
       searchNotes: SEARCH_NOTE
