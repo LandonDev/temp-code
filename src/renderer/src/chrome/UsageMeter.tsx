@@ -4,7 +4,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popove
 import { Progress } from "../components/ui/progress";
 import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY } from "../components/ui/tooltip";
 import { HarnessIcon } from "./HarnessIcon";
-import type { HarnessId } from "../lib/session";
 import { useSlowClock } from "../lib/turnClock";
 import { sessionStore, useSessionMeta } from "../lib/tcserver/store";
 import { useAccounts } from "../stores/accounts";
@@ -85,7 +84,7 @@ export function MeterRowView({ provider, meter, now, ...trigger }: MeterProps & 
       data-provider={provider}
       {...trigger}
     >
-      <HarnessIcon harness={provider as HarnessId} className="size-4 shrink-0 text-muted-foreground" />
+      <HarnessIcon harness={provider} className="size-4 shrink-0 text-muted-foreground" />
       <Progress
         value={meter.share === null ? null : percent(meter.share)}
         fill={fillOf(meter.share)}

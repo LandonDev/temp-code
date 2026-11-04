@@ -1,6 +1,6 @@
 import { PROVIDER_OF, type AccountHeadroom, type AccountProvider, type MintProgress, type PeerState } from "@shared/accounts";
 import type { ProfileView, ServiceId, ServiceView, UsageReport } from "aliax-core/shared/types";
-import { HarnessIcon } from "@renderer/chrome/HarnessIcon";
+import { HarnessIcon, type MarkId } from "@renderer/chrome/HarnessIcon";
 import { MoreHorizontal } from "@renderer/chrome/icons";
 import { PageSection } from "@renderer/components/page";
 import { Alert, AlertDescription } from "@renderer/components/ui/alert";
@@ -20,13 +20,12 @@ import { Empty, EmptyTitle } from "@renderer/components/ui/empty";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
-import type { HarnessId } from "@renderer/lib/session";
 import { useNow } from "@aliax/lib/accounts";
 import { AccountRow, barColumns } from "./accounts/row";
 import { STATIC_WARN_MS, type OwnerView, type RowAction } from "./accounts/rowLine";
 
-// The mark each section leads with; Meta takes the vendor mark once HarnessIcon carries it (the section is built in the accounts UI task).
-const HARNESS: Record<ServiceId, HarnessId> = { "claude-code": "claude", codex: "codex", cursor: "cursor", meta: "claude" };
+/** The mark each section leads with: the harness's, or Meta's vendor mark. */
+const HARNESS: Record<ServiceId, MarkId> = { "claude-code": "claude", codex: "codex", cursor: "cursor", meta: "meta" };
 
 export interface AccountsActions {
   onCapture: (serviceId: ServiceId) => void;

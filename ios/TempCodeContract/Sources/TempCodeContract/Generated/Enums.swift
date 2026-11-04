@@ -837,6 +837,7 @@ public enum ReviewOutcome: RawRepresentable, Codable, Hashable, Sendable {
 public enum FailureKind: RawRepresentable, Codable, Hashable, Sendable {
     case oauthExpired
     case accountUnknown
+    case keyInvalid
     case tokenExpired
     case rateLimited
     case quota
@@ -852,6 +853,7 @@ public enum FailureKind: RawRepresentable, Codable, Hashable, Sendable {
         switch rawValue {
         case "oauth_expired": self = .oauthExpired
         case "account_unknown": self = .accountUnknown
+        case "key_invalid": self = .keyInvalid
         case "token_expired": self = .tokenExpired
         case "rate_limited": self = .rateLimited
         case "quota": self = .quota
@@ -868,6 +870,7 @@ public enum FailureKind: RawRepresentable, Codable, Hashable, Sendable {
         switch self {
         case .oauthExpired: "oauth_expired"
         case .accountUnknown: "account_unknown"
+        case .keyInvalid: "key_invalid"
         case .tokenExpired: "token_expired"
         case .rateLimited: "rate_limited"
         case .quota: "quota"

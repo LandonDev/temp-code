@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { HarnessId } from "../../lib/session";
 import { PROVIDER_NAME } from "@server/shared/usageMeter";
 import { BuildEditor, takeRequestedBuildFocus } from "../../chrome/rail/buildSettings";
 import { ThreadDefaultsEditor } from "../../chrome/ThreadDefaultsDialog";
@@ -71,7 +70,7 @@ function AccountsSection({ workspace }: { workspace: WorkspaceMeta }) {
         return (
           <PageRow
             key={provider}
-            media={<HarnessIcon harness={provider as HarnessId} className="size-4 shrink-0" />}
+            media={<HarnessIcon harness={provider} className="size-4 shrink-0" />}
             title={PROVIDER_NAME[provider]}
             error={error?.provider === provider ? error.message : undefined}
           >
@@ -137,7 +136,7 @@ function pinsLine(pins: AccountPins, snapshot: ReturnType<typeof useAccounts>["s
         const profile = snapshot.providers[provider].profiles.find((p) => p.name === name);
         return (
           <span key={provider} className="inline-flex items-center gap-1">
-            <HarnessIcon harness={provider as HarnessId} className="size-3 shrink-0" />
+            <HarnessIcon harness={provider} className="size-3 shrink-0" />
             {profile ? shortName(profile) : name}
           </span>
         );

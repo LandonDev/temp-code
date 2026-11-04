@@ -342,7 +342,8 @@ export function visibleCatalog(): Record<ProviderId, ProviderInfo> {
 
 /** A provider's entry for a model id, if it's in the catalog and the installed CLI runs it. */
 export function modelInfo(provider: ProviderId, modelId: string): ModelInfo | undefined {
-  return CATALOG[provider].models.find((m) => m.id === modelId && runnableHere(provider, m))
+  // A provider the catalog does not list (a test's bare session) has no rows.
+  return CATALOG[provider]?.models.find((m) => m.id === modelId && runnableHere(provider, m))
 }
 
 /** Whether a provider's row is a Meta model (`vendor: 'meta'`). */
