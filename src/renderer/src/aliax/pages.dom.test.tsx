@@ -119,6 +119,7 @@ beforeEach(async () => {
     remove: vi.fn(async () => ({ ok: true })),
     loginStart: vi.fn(async () => ({ ok: true })),
     loginCancel: vi.fn(async () => {}),
+    addKey: vi.fn(async () => ({ ok: true, name: 'Meta key …LJYq' })),
     updateProfile: vi.fn(async () => ({ ok: true })),
     openExternal: vi.fn(async () => {}),
     onAccountsChanged: vi.fn(() => () => {}),
@@ -148,7 +149,7 @@ describe('AccountsPage', () => {
     await act(flush)
 
     expect(screen.getByRole('heading', { level: 1, name: 'Accounts' })).toBeTruthy()
-    expect(screen.getByText('The Claude and Codex sign-ins threads route through.')).toBeTruthy()
+    expect(screen.getByText('The sign-ins and keys threads route through.')).toBeTruthy()
     expect(screen.getByText('Claude Code')).toBeTruthy()
     expect(screen.getByText('Codex')).toBeTruthy()
     expect(screen.getByText('Main')).toBeTruthy()
@@ -171,6 +172,31 @@ describe('AccountsPage', () => {
     })
     await act(flush)
   }
+
+  it("Meta's Add key… opens the key dialog, saves through addKey and toasts the name", async () => {
+    aliax.listServices.mockResolvedValue([
+      ...services(),
+      { id: 'meta', name: 'Meta Model API', installed: true, canAddAccount: false, canSaveCurrent: false, switchTargets: [], profiles: [] }
+    ])
+    render(<AccountsPage />)
+    await act(flush)
+    const section = screen.getByRole('region', { name: 'Meta Model API' })
+    expect(within(section).queryByRole('button', { name: 'Sign in' })).toBeNull()
+    expect(within(section).queryByRole('button', { name: 'Add account' })).toBeNull()
+    await act(async () => {
+      fireEvent.click(within(section).getByRole('button', { name: 'Add key…' }))
+    })
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('Add Meta key')).toBeTruthy()
+    fireEvent.change(within(dialog).getByLabelText('Key'), { target: { value: 'LLM_1607_secret' } })
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }))
+    })
+    await act(flush)
+    expect(aliax.addKey).toHaveBeenCalledWith({ serviceId: 'meta', name: undefined, key: 'LLM_1607_secret' })
+    expect(toasts.success).toHaveBeenCalledWith('Added Meta key …LJYq')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
 
   it('a cancelled sign-in closes the dialog and says nothing', async () => {
     aliax.loginStart.mockResolvedValue({ ok: false, error: 'cancelled' })

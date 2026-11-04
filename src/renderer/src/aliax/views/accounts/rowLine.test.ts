@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProfileView, UsageReport } from "aliax-core/shared/types";
-import { rowLine } from "./rowLine";
+import { keyStatus, rowLine } from "./rowLine";
 
 const NOW = Date.UTC(2026, 9, 27, 12);
 const DAY = 86_400_000;
@@ -107,5 +107,29 @@ describe("rowLine", () => {
       tone: "muted",
       detail: "synced 4m ago",
     });
+  });
+});
+
+describe("a key account", () => {
+  const key = (extra: Partial<ProfileView> = {}) => p({ static: true, kind: "key", ...extra });
+
+  it("has no line while it works, and never reads as a lapsed token", () => {
+    expect(rowLine(key(), r({ note: "pay as you go" }), null, undefined, NOW)).toBeNull();
+    expect(rowLine(key(), r({ expired: true, note: "key revoked" }), null, undefined, NOW)).toBeNull();
+  });
+
+  it("says a throttle with its time left", () => {
+    expect(rowLine(key(), r({ rateLimit: { provider: "Meta Model API", until: NOW + 5 * 60_000 } }), null, undefined, NOW)).toEqual({
+      text: "Rate limited",
+      tone: "warning",
+      detail: "5m left",
+    });
+  });
+
+  it("is Pay as you go, Key revoked in amber, or the probe's note", () => {
+    expect(keyStatus(undefined)).toBeNull();
+    expect(keyStatus(r({ note: "pay as you go" }))).toEqual({ text: "Pay as you go", tone: "muted" });
+    expect(keyStatus(r({ expired: true, note: "key revoked" }))).toEqual({ text: "Key revoked", tone: "warning" });
+    expect(keyStatus(r({ note: "usage temporarily unavailable" }))).toEqual({ text: "Usage temporarily unavailable", tone: "muted" });
   });
 });

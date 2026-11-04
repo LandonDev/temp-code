@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServiceView, UsageReport } from "aliax-core/shared/types";
+import type { KeyProfileView } from "@shared/accounts";
 import { AccountsView, type AccountsViewProps } from "./accounts";
 
 const NOW = Date.UTC(2026, 9, 27, 12);
@@ -48,6 +49,7 @@ beforeEach(() => {
     now: NOW,
     onCapture: vi.fn(),
     onAdd: vi.fn(),
+    onAddKey: vi.fn(),
     onReauth: vi.fn(),
     onUse: vi.fn(),
     onDelete: vi.fn(),
@@ -155,5 +157,67 @@ describe("AccountsView", () => {
   it("says how far a convert run has got", () => {
     render(<AccountsView {...props} mint={{ rows: {}, run: { total: 5, done: 1 } }} />);
     expect(screen.getByText("Converting 2 of 5 to one-year tokens")).toBeTruthy();
+  });
+
+  describe("a key service (Meta)", () => {
+    const work: KeyProfileView = { name: "Work", createdAt: 1, active: false, static: true, kind: "key", color: "#38bdf8", accountId: "1607339912" };
+    const old: KeyProfileView = { name: "Meta key …9QzT", createdAt: 2, active: false, static: true, kind: "key", accountId: "2214" };
+    const meta: ServiceView = { id: "meta", name: "Meta Model API", installed: true, canAddAccount: false, canSaveCurrent: false, switchTargets: [], profiles: [work, old] };
+    const keyed = (extra: Partial<AccountsViewProps> = {}) =>
+      render(
+        <AccountsView
+          {...props}
+          views={[meta]}
+          usage={{ meta: [{ profileName: "Work", windows: [], note: "pay as you go" }, { profileName: "Meta key …9QzT", windows: [], expired: true, note: "key revoked" }] }}
+          headroom={{ meta: { Work: { room: 0.8, ratePerMin: 4, resetsAt: NOW + HOUR } as never } }}
+          {...extra}
+        />,
+      );
+
+    it("leads with Add key…, never a sign-in, and has no section menu", () => {
+      keyed();
+      const section = screen.getByRole("region", { name: "Meta Model API" });
+      expect(within(section).queryByRole("button", { name: /Sign in|Add account/ })).toBeNull();
+      expect(within(section).queryByRole("button", { name: "Meta Model API actions" })).toBeNull();
+      fireEvent.click(within(section).getByRole("button", { name: "Add key…" }));
+      expect(props.onAddKey).toHaveBeenCalledWith("meta");
+    });
+
+    it("shows each key masked from its account id, and its state in the status column", () => {
+      keyed();
+      expect(screen.getByText("LLM_1607…")).toBeTruthy();
+      expect(screen.getByText("LLM_2214…")).toBeTruthy();
+      expect(document.body.textContent).not.toContain("1607339912");
+      expect(screen.getByText("Pay as you go").className).toContain("text-muted-foreground");
+      expect(screen.getByText("Key revoked").className).toContain("text-warning");
+      // Never the lapsed-token line a static profile would otherwise get.
+      expect(screen.queryByText(/One-year token/)).toBeNull();
+    });
+
+    it("keeps the rate bar and draws no usage windows", () => {
+      keyed();
+      expect(screen.getByRole("button", { name: "Usage details for Work" })).toBeTruthy();
+      expect(screen.getAllByRole("progressbar")).toHaveLength(1);
+      expect(screen.getByRole("progressbar").getAttribute("aria-label")).toMatch(/^Rate/);
+    });
+
+    it("has no switch, and its menu is Remove alone", () => {
+      keyed();
+      expect(screen.queryByRole("switch")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "More actions for Work" }));
+      expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Remove…"]);
+      fireEvent.click(screen.getByRole("menuitem", { name: "Remove…" }));
+      const dialog = screen.getByRole("alertdialog");
+      expect(within(dialog).getByText("The key is deleted from every host. Adding it again brings it back.")).toBeTruthy();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+      expect(props.onDelete).toHaveBeenCalledWith("meta", "Work");
+    });
+
+    it("offers no refreshing host, and an empty one says No keys saved", () => {
+      keyed({ views: [{ ...meta, profiles: [] }] });
+      const section = screen.getByRole("region", { name: "Meta Model API" });
+      expect(within(section).getByText("No keys saved")).toBeTruthy();
+      expect(within(section).queryByRole("button", { name: "Meta Model API actions" })).toBeNull();
+    });
   });
 });

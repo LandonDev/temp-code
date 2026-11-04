@@ -19,6 +19,9 @@ export const aliaxApi = {
     ipcRenderer.invoke('aliax:profiles:delete', serviceId, name),
   loginStart: (serviceId: ServiceId, loginHint?: string): Promise<ActionResult> =>
     ipcRenderer.invoke('aliax:login:start', serviceId, loginHint),
+  /** Save an API key (Meta) after the provider accepted it; the error is one line for the dialog. */
+  addKey: (input: { serviceId: ServiceId; name?: string; key: string }): Promise<ActionResult> =>
+    ipcRenderer.invoke('aliax:profiles:addKey', input),
   loginCancel: (serviceId: ServiceId): Promise<void> =>
     ipcRenderer.invoke('aliax:login:cancel', serviceId),
   /**

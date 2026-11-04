@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CANCELLED, cliInstallNote, cliRepairNote, cliTakesSignIn, exchangeRefused, holdsGrant, NO_ACCOUNT, NO_ANSWER, signInNotes, UNREACHABLE } from './signInWords'
+import { CANCELLED, cliInstallNote, cliRepairNote, cliTakesSignIn, exchangeRefused, holdsGrant, KEY_NOT_META, KEY_REFUSED, keyErrorLine, META_UNREACHABLE, NO_ACCOUNT, NO_ANSWER, signInNotes, UNREACHABLE } from './signInWords'
 
 describe('the words a Claude sign-in sends', () => {
   it('says only "cancelled" for a closed window or Cancel', () => {
@@ -52,5 +52,19 @@ describe('holdsGrant', () => {
     expect(await holdsGrant(async () => null)).toBe(false)
     expect(await holdsGrant(async () => '{"claudeAiOauth":{}}')).toBe(true)
     expect(await holdsGrant(async () => { throw new Error('keychain locked') })).toBe(true)
+  })
+})
+
+describe('the words the Add key… dialog sends', () => {
+  it("maps core's refusals to the dialog's lines", () => {
+    expect(keyErrorLine('not a Meta key: keys start with LLM_')).toBe(KEY_NOT_META)
+    expect(KEY_NOT_META).toBe('Not a Meta key: keys start with LLM_')
+    expect(keyErrorLine('that key was refused by Meta')).toBe(KEY_REFUSED)
+    expect(KEY_REFUSED).toBe('That key was refused by Meta')
+    expect(keyErrorLine('Meta could not be reached: fetch failed')).toBe(META_UNREACHABLE)
+  })
+  it('capitalises anything else, and never says nothing', () => {
+    expect(keyErrorLine('disk full')).toBe('Disk full')
+    expect(keyErrorLine('')).toBe('The key was not saved')
   })
 })
