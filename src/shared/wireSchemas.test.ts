@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AccountsSnapshot } from './accounts'
-import type { SessionBatchResult, ThreadNotesDoc } from './contract'
+import { ClientRequestSchema, type SessionBatchResult, type ThreadNotesDoc } from './contract'
 import type { SessionChanges } from './wire'
 import type { BatchState } from './contract-batch'
 import type { DeployStatus, HostJobStatus, HostLogPush } from './contract-host'
@@ -218,6 +218,12 @@ describe('devices, deploy, the bridge, accounts', () => {
     expect(parsed.providers.claude.profiles[0]?.name).toBe('work@example.com')
     expect(W.AccountsPushSchema.parse({ push: 'accounts', snapshot }).snapshot.updatedAt).toBe(snapshot.updatedAt)
     parses(W.BuildFactsSchema, build)
+  })
+  it('keep a Meta key\'s kind and a Meta pin for the phone', () => {
+    const key = { name: 'build-key', active: false, static: true, kind: 'key' as const }
+    expect(W.AccountProfileSchema.parse(key).kind).toBe('key')
+    const request = ClientRequestSchema.parse({ id: '1', method: 'project.setAccounts', params: { projectId: 'p', pins: { claude: 'work', meta: 'build-key' } } })
+    expect(request.method === 'project.setAccounts' && request.params.pins).toEqual({ claude: 'work', meta: 'build-key' })
   })
 })
 

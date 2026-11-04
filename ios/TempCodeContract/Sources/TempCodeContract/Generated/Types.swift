@@ -1160,6 +1160,26 @@ public struct QueuedMessage: Codable, Hashable, Sendable {
 public typealias AccountPins = [String: String]
 
 public struct AccountProfile: Codable, Hashable, Sendable {
+    public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+        case key
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "key": self = .key
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .key: "key"
+            case .unknown(let value): value
+            }
+        }
+    }
+
     public let name: String
     public let email: String?
     public let nickname: String?
@@ -1167,8 +1187,9 @@ public struct AccountProfile: Codable, Hashable, Sendable {
     public let active: Bool
     public let duplicate: Bool?
     public let `static`: Bool?
+    public let kind: Kind?
 
-    public init(name: String, email: String? = nil, nickname: String? = nil, color: String? = nil, active: Bool, duplicate: Bool? = nil, `static`: Bool? = nil) {
+    public init(name: String, email: String? = nil, nickname: String? = nil, color: String? = nil, active: Bool, duplicate: Bool? = nil, `static`: Bool? = nil, kind: Kind? = nil) {
         self.name = name
         self.email = email
         self.nickname = nickname
@@ -1176,6 +1197,7 @@ public struct AccountProfile: Codable, Hashable, Sendable {
         self.active = active
         self.duplicate = duplicate
         self.`static` = `static`
+        self.kind = kind
     }
 }
 
@@ -3948,10 +3970,12 @@ public struct ProjectSettingsBundle: Codable, Hashable, Sendable {
     public struct AccountPins: Codable, Hashable, Sendable {
         public let claude: String?
         public let codex: String?
+        public let meta: String?
 
-        public init(claude: String? = nil, codex: String? = nil) {
+        public init(claude: String? = nil, codex: String? = nil, meta: String? = nil) {
             self.claude = claude
             self.codex = codex
+            self.meta = meta
         }
     }
 
