@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const copyText = vi.fn((_: string) => Promise.resolve());
 vi.mock("../../lib/clipboard", () => ({ copyText: (text: string) => copyText(text) }));
@@ -224,6 +224,16 @@ describe("TurnEnd's live state", () => {
 });
 
 describe("TurnEnd of a watching thread", () => {
+  // The fixture and render share a clock even when collection takes seconds.
+  const now = Date.now();
+  beforeEach(() => {
+    vi.useFakeTimers({ now });
+  });
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
   const user = { id: "u", role: "user" as const, text: "go" };
   const reply = { id: "a", role: "assistant" as const, text: "started it" };
   const settledTurn = { id: "t", index: 0, isLast: true, settled: true, blocks: [user, reply], userBlock: user, durationMs: 2_000, startedAt: 10 };
@@ -238,10 +248,10 @@ describe("TurnEnd of a watching thread", () => {
     busy: false,
     blocks: [user, reply],
     background: {
-      tasks: [{ id: "b1", label: "sleep 90 seconds", kind: "shell", startedAt: Date.now() - 5 * 60_000 }],
+      tasks: [{ id: "b1", label: "sleep 90 seconds", kind: "shell", startedAt: now - 5 * 60_000 }],
       agents: [],
       batch: null,
-      watchingSince: Date.now() - 5 * 60_000,
+      watchingSince: now - 5 * 60_000,
     },
   } as unknown as TurnSession;
 
