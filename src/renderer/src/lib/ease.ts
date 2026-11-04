@@ -31,10 +31,11 @@ export const SPRING_LAYOUT = {
 
 /**
  * The durations, in seconds for Motion, mirroring the CSS tokens in
- * index.css (`--dur-fast`, `--dur-base`, `--dur-slow`, `--dur-drawer`);
+ * index.css (`--dur-swap-out`, `--dur-fast`, `--dur-base`, `--dur-slow`,
+ * `--dur-drawer`);
  * ease.test.ts keeps the two in step.
  */
-export const DUR = { fast: 0.12, base: 0.18, slow: 0.24, drawer: 0.3 } as const;
+export const DUR = { swapOut: 0.09, fast: 0.12, base: 0.18, slow: 0.24, drawer: 0.3 } as const;
 
 /** How long a scroller's bar stays shown after its last scroll, in ms
  *  (lib/scrollActivity.ts; docs/DESIGN.md "Scrolling"). */
@@ -81,6 +82,58 @@ export const EASE_DRAWER = [0.32, 0.72, 0, 1] as const;
 
 /** A closing overlay's curve, as CSS `--ease-exit`. */
 export const EASE_EXIT = [0.4, 0, 0.6, 1] as const;
+
+/** The word morph (motion/MorphText.tsx), its width glide and the closing
+ *  line's slide home, as CSS `--ease-swap`: Claude desktop's status curve. */
+export const EASE_SWAP = [0.2, 0, 0, 1] as const;
+
+const bezier = (c: readonly number[]) => `cubic-bezier(${c.join(", ")})`;
+
+/** EASE_SWAP as a Web Animation easing string. */
+export const EASE_SWAP_CSS = bezier(EASE_SWAP);
+
+/** The breathing curve, as CSS `--ease-breathe`, for a loop's segments. */
+const EASE_BREATHE = bezier([0.37, 0, 0.63, 1]);
+
+/**
+ * The working words' shimmer (components/ui/working-text.tsx): a bright band
+ * crossing the words every 3s, held off the words until 15% of the period,
+ * swept to 85% on Claude's shimmer curve, then held again. The band moves one
+ * way and the copy of the words inside it the other, so the copy stays over
+ * the words; both are transforms, which the compositor runs alone.
+ */
+export const SHIMMER: { band: Keyframe[]; copy: Keyframe[]; timing: KeyframeAnimationOptions } = (() => {
+  const sweep = bezier([0.714, 0.121, 0.211, 0.888]);
+  const frames = (from: string, to: string): Keyframe[] => [
+    { transform: `translateX(${from})`, offset: 0 },
+    { transform: `translateX(${from})`, offset: 0.15, easing: sweep },
+    { transform: `translateX(${to})`, offset: 0.85 },
+    { transform: `translateX(${to})`, offset: 1 },
+  ];
+  return { band: frames("-100%", "100%"), copy: frames("100%", "-100%"), timing: { duration: 3000, iterations: Infinity, easing: "linear" } };
+})();
+
+/**
+ * The working line's mark (components/ui/working-mark.tsx): three 3px dots
+ * that gather into one and part again every 1.6s, each a transform on its own
+ * span, every segment on the breathing curve. The right dot runs 0.08 behind
+ * the left, so the three drift rather than clap.
+ */
+export const MARK: { dots: [Keyframe[], Keyframe[], Keyframe[]]; timing: KeyframeAnimationOptions } = (() => {
+  const side = (x: number, gather: number, part: number): Keyframe[] => [
+    { transform: `translateX(${x}px) scale(1)`, offset: 0, easing: EASE_BREATHE },
+    { transform: `translateX(${Math.sign(x)}px) scale(0.8)`, offset: gather },
+    { transform: `translateX(${Math.sign(x)}px) scale(0.8)`, offset: part, easing: EASE_BREATHE },
+    { transform: `translateX(${x}px) scale(1)`, offset: 1 },
+  ];
+  const middle: Keyframe[] = [
+    { transform: "scale(1)", offset: 0, easing: EASE_BREATHE },
+    { transform: "scale(1.7)", offset: 0.42 },
+    { transform: "scale(1.7)", offset: 0.58, easing: EASE_BREATHE },
+    { transform: "scale(1)", offset: 1 },
+  ];
+  return { dots: [side(-4.5, 0.42, 0.58), middle, side(4.5, 0.5, 0.66)], timing: { duration: 1600, iterations: Infinity, easing: "linear" } };
+})();
 
 /** The one entrance: fade up 4px over DUR.base. Spread onto a motion element. */
 export const ENTER = {

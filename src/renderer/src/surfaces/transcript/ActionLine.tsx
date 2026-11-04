@@ -4,7 +4,7 @@ import { ChevronRight } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
-import { SwapText, useCountUp } from "../../motion";
+import { MorphText, useCountUp } from "../../motion";
 import { Counts } from "./Counts";
 import { STEP_LINE } from "./stepLine";
 
@@ -82,11 +82,11 @@ export function ActionLine({
       )}
       {glyph}
       <span className="pointer-events-none flex min-w-0 items-center gap-2">
-        {/* Keyed by the word: a change of tense ("Reading" to "Read") swaps in place. */}
+        {/* Keyed by the word: a change of tense ("Reading" to "Read") morphs in place. */}
         {verb ? (
-          <SwapText state={verb} className={cn("shrink-0 text-muted-foreground", action && LIFT)}>
+          <MorphText state={verb} className={cn("shrink-0 text-muted-foreground", action && LIFT)}>
             {verb}
-          </SwapText>
+          </MorphText>
         ) : null}
         {objectText}
         {tally ? <span className="shrink-0 text-muted-foreground tabular-nums">{tally}</span> : null}

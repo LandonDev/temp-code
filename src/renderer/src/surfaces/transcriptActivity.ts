@@ -477,9 +477,14 @@ export function actionGroupOf(
   };
 }
 
-/** When a thought in a run settled: its own end, else the next step's start. */
-export function thoughtEndTs(blocks: Block[], index: number): number | undefined {
-  const block = blocks[index];
-  if (block?.doneTs != null) return block.doneTs;
-  return blocks.slice(index + 1).find((b) => b.ts != null)?.ts;
+/**
+ * A call the turn's working line tells while it runs (transcript/WorkingLine
+ * .tsx): a tool call still pending that does not wait on the person and is
+ * not agent work. While its turn is open it draws no row of its own; it lands
+ * as a past-tense row in its group once it settles. A spawn, a message to an
+ * agent or a check on one stays a row of the group with its state at its end,
+ * and a call waiting on the person is its card.
+ */
+export function toldByWorkingLine(block: Block): boolean {
+  return isToolBlock(block) && toolCallState(block) === "pending" && !awaitsUser(block) && toolCategory(block) !== "agents";
 }

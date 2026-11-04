@@ -1194,6 +1194,7 @@ const RowView = memo(function RowView({
       ) : row.kind === "end" ? (
         <TurnEnd
           turn={row.turn}
+          cwd={cwd}
           harnessOf={harnessOf}
           turnState={turnState}
           liveState={liveState}
@@ -1208,6 +1209,7 @@ const RowView = memo(function RowView({
           cwd={cwd}
           live={row.live}
           working={row.working}
+          settled={row.turn.settled}
           onApproval={onApproval}
           onOpenFile={onOpenFile}
           onOpenDiff={onOpenDiff}

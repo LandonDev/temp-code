@@ -6,6 +6,7 @@
  * ActionGroup renders here (AgentTranscript.rows.dom.test.tsx probes it).
  */
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { MotionGlobalConfig } from "motion/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Block } from "../lib/session";
 import { sessionStore } from "../lib/tcserver/store";
@@ -97,14 +98,19 @@ describe("AgentTranscript: a wait is the working line, then a step", () => {
     });
     const live = [user, spoke, spawn, wait("running")];
     const { container, rerender } = render(<AgentTranscript sessionId="s" turn={session(live, true)} blocks={live} busy visible />);
-    const tail = () => container.querySelector('[data-slot="thinking-tail"]');
-    expect(tail()?.getAttribute("aria-label")).toBe("Waiting on Review the perf pass");
+    const said = () => container.querySelector('[data-slot="turn-line"] [role="status"]')?.getAttribute("aria-label");
+    expect(said()).toBe("Waiting on Review the perf pass");
     expect(container.querySelector('[data-block="w"]')).toBeNull();
     expect(container.textContent).not.toMatch(/Waited for|Waiting for|Review only/);
 
     const done = [user, spoke, spawn, wait("completed", JSON.stringify({ agentId: "c1", status: "idle", reply: "Two issues." })), { id: "a1", role: "assistant" as const, text: "It found two issues.", seq: 5 }];
+    // The phrase morphs to its past tense: the old words leave first (Motion's frames, skipped here).
+    MotionGlobalConfig.skipAnimations = true;
     rerender(<AgentTranscript sessionId="s" turn={session(done, false)} blocks={done} busy={false} visible />);
-    expect(tail()).toBeNull();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 400)));
+    MotionGlobalConfig.skipAnimations = false;
+    // The working line moves on: it no longer says the wait, and the group holds its outcome.
+    expect(said() ?? "").not.toMatch(/Waiting on/);
     const line = container.querySelector<HTMLButtonElement>("[data-group-line]")!;
     expect(line.textContent).toContain("Spawned “Review the perf pass”, heard from “Review the perf pass”");
     // Open it if the fold has closed it (the group holds open a moment after its work ends).

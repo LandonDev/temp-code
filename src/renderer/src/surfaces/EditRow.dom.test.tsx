@@ -39,7 +39,8 @@ afterEach(() => {
 describe('EditRow', () => {
   it('reads as one line: the verb, the file, its counts', () => {
     const { getByText, container } = render(<EditRow block={edit} cwd="/repo" />)
-    expect(getByText('Edited').className).toContain('text-muted-foreground')
+    // The verb's colour sits on its MorphText box.
+    expect(getByText('Edited').closest('[data-slot=morph-text]')!.className).toContain('text-muted-foreground')
     expect(getByText('a.ts')).toBeTruthy()
     expect(getByText('+1').className).toContain('text-success')
     expect(getByText('−1').className).toContain('text-destructive')

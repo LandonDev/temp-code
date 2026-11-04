@@ -291,9 +291,9 @@ app replaces itself from the feed, and only from the feed.
   src/renderer writes a literal colour, duration or curve, and no bullet
   lists appear in the UI. The motion guard has no application timing
   exceptions: CSS uses the motion tokens, JavaScript uses `lib/ease.ts`,
-  the working words' pulse (`TextPulse`, the `text-pulse` utility) runs on
-  `--dur-pulse`, `--delay-pulse` and `--ease-breathe` and the spinner's turn
-  is `SPINNER_TURN` in lib/ease.ts.
+  the spinner's turn is `SPINNER_TURN`, the working mark's dots `MARK`, the
+  working words' shimmer `SHIMMER` and the word morph `--dur-swap-out` and
+  `--ease-swap` (`EASE_SWAP`), all in lib/ease.ts and the token layer.
 - Settings rows and sections use `components/page.tsx` (`PageRow`,
   `PageSection`), which pass native props and data attributes to their roots;
   Hosts exports these as `Row` and `Group` without copying their markup.
@@ -761,11 +761,17 @@ routed to (aliax-core's `forward`). Two listeners:
   nothing finer known (Thinking or the driver's own provider word) reads
   "Waiting for the provider, 25 s", re-pushed every 5 s (`providerRequest`,
   `PROVIDER_WAIT_MS`). The place these words show is the transcript's
-  working line (`ThinkingTail`, `tailWord` in surfaces/transcript/thinking.ts):
-  Sending while the person's row is still `pending` (not yet echoed), the
-  meta's activity while the turn has nothing of its own, Thinking after;
-  a word stays at least 300 ms once painted and one that came and went
-  inside the hold is skipped (lib/heldWord.ts), the swap the text alone.
+  working line (`TurnLine` in surfaces/transcript/WorkingLine.tsx on
+  `workingPhase` in workingPhase.ts): Sending while the person's row is
+  still `pending` (not yet echoed), the meta's activity while the turn has
+  nothing of its own, then the open wait on agents, the running call
+  ("Reading format.ts", told by the line alone: `toldByWorkingLine`, no row
+  until it settles), Thinking with a streaming thought's newest sentence,
+  the mark alone under streaming prose; a phase stays at least 300 ms once
+  painted and one that came and went inside the hold is skipped
+  (`useHeldPhase`, lib/heldWord.ts); a change of phase morphs the words
+  (`MorphText`), and the line becomes the closing line when the turn ends.
+  A thought is no transcript row (a group opened by hand shows "Thought").
   The timer above the composer counts from the click: `appendOptimisticUser`
   stamps `sentAt` when no turn is open, `turnStartOf` prefers it over the
   host's later `busySince`, the settle clears it, and the slot shows at once
@@ -1656,8 +1662,8 @@ names the far child).
   lands.
 - A wait is a state of the turn, never a transcript row
   (surfaces/agentSteps.ts): while open, `isHiddenTool` hides it and the
-  working line says `waitLine` (`WaitTail` in TurnEnd.tsx, when nothing
-  after the wait speaks or runs: `openWaitOf`); once it returns, each agent
+  working line says `waitLine` (its `wait` phase, fed by TurnEnd when
+  nothing after the wait speaks or runs: `openWaitOf`); once it returns, each agent
   it returned on (`waitOutcomes`: done, idle, watching, waiting, failed,
   error, stopped, paused) folds into the run as an `AgentStepRow`,
   "Finished <title>" (Failed, Needs you, Stopped, Paused by state), the
@@ -1967,9 +1973,11 @@ names the far child).
   runs (`.stream-step`, lib/streamReveal.ts, a rehype plugin per streaming
   row, named per row because streamdown caches processors by plugin name),
   and the settle waits for the last fade (docs/TRANSCRIPT.md "The stream
-  reveals a phrase at a time"). The working words pulse (`TextPulse`, still
-  for 3 s, then opacity 1→0.75→1 every 2 s), resting in a hidden pane or
-  document. A streaming code block colours on a 150 ms throttle.
+  reveals a phrase at a time"). The working line's words shimmer
+  (`WorkingText`: a masked band and its `::before` copy of the words moved
+  by transform alone, every 3 s) beside its three-dot mark (`WorkingMark`),
+  both Web Animations on the document timeline that the compositor runs,
+  unmounted or still in a hidden pane or document. A streaming code block colours on a 150 ms throttle.
 
 ## The shape that scales: many threads exist, a bounded number run
 docs/box.md "The shape that scales" has the before numbers, each step's

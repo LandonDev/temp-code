@@ -197,13 +197,21 @@ own), held equal to it by lib/ease.test.ts. Code that drives motion itself
 stream's reveal is `REVEAL` (a step of whole words every 100ms, each fading
 in over `--dur-reveal` 400ms on `--ease-reveal`, linear). A hover-revealed
 control waits `--delay-hover` 100ms before it shows. `FOLD_HOLD_MS` (600ms) is the beat a
-working group stays open after its work moved on.
+working group stays open after its work moved on. The word morph
+(`MorphText`) leaves over `--dur-swap-out` 90ms and arrives over
+`--dur-base`, both on `--ease-swap` (`cubic-bezier(0.2, 0, 0, 1)`,
+`EASE_SWAP`), which also glides its box's width and slides the closing
+line home.
 `lib/motionGuard.test.ts` fails on any literal duration or curve outside
 `lib/ease.ts` and this layer; its script and CSS allow-lists are empty.
-Two things loop: the spinner's 900ms turn (`SPINNER_TURN`, a Web Animation
-on the box around the arc, which the compositor runs alone) and the working
-words' pulse (`TextPulse`: still for `--delay-pulse` 3s, then opacity
-1→0.75→1 every `--dur-pulse` 2s on `--ease-breathe`).
+Three things loop, each a Web Animation of `transform` alone that the
+compositor runs: the spinner's 900ms turn (`SPINNER_TURN`, on the box
+around the arc), the working mark (`MARK`: three dots that gather and part
+every 1.6s, each segment on `--ease-breathe`) and the working words'
+shimmer (`SHIMMER`: a bright band crossing the words every 3s, held off
+them until 15% of the period and swept to 85% on Claude's shimmer curve).
+The mark and the shimmer start at 0 on the document timeline, so a remount
+picks the gesture up where it was.
 
 ### Layers
 
@@ -291,11 +299,14 @@ so once. A first response is said in the transcript's working line, never
 above the composer: Sending from the click until the host echoes the
 message, then the host's word for the wait (Starting the CLI, Initializing,
 Waiting for the provider, a retry, "Waiting for the provider, 25 s"), then
-Thinking with the summary's newest sentence once the thought streams. A
-word stays at least 300 ms once it paints and one that came and went inside
-that hold never shows; the words pulse, and a change swaps them inside the
-pulse (the old words lift 3px and fade, the new ones rise from 3px below),
-at the row's 32px, so nothing below it moves. The timer above the
+Thinking with the summary's newest sentence once the thought streams, then
+the running call ("Reading format.ts", "Running the tests", "Waiting on
+Review the perf pass"), and the mark alone while prose streams
+(`workingPhase`). A phase stays at least 300 ms once it paints and one that
+came and went inside that hold never shows; the words shimmer, and a change
+morphs them (the old words lift 3px and leave, then the new ones rise from
+3px below as the box glides to their width), in the row's 28px, so nothing
+below it moves. The timer above the
 composer counts from the click and never steps back when the host's own
 start arrives.
 
@@ -320,7 +331,8 @@ rotation and the one moving glyph. A row has one moving mark at most: a
 line that depends on a row's own mark (a subagent's under its board row, a
 batch thread's under its master in a project card) draws working's arc
 still (`StatusMark still`), and a settled row never
-moves. When a mounted mark's state changes into
+moves. In the transcript the one moving mark is the working line's
+(`WorkingMark`, its three dots); a running row's arc there is still. When a mounted mark's state changes into
 working, waiting or watching its glyph breathes once (opacity over
 `--dur-slow`); under reduced motion it does not. Every other change is
 instant.
@@ -441,7 +453,7 @@ messages yet"), never the new-thread screen. Inside a picker
 or menu, no match is one muted row, never `Empty`. A lazy surface falls back
 to a `SurfaceSkeleton` kind, and a small section's wait is `LoadingLine`
 (both in surfaces/SurfaceSkeleton.tsx, beside `EmptyState`). Text that is
-being produced pulses (`TextPulse`); nothing else does.
+being produced shimmers (`WorkingText`); nothing else does.
 
 ## Motion values
 
@@ -466,20 +478,21 @@ being produced pulses (`TextPulse`); nothing else does.
 | The working group's fold | waits `FOLD_HOLD_MS` once the work moved on, so the last row's settle shows, then folds on `.collapsible-auto` | — | the same wait, then the fade |
 | Disclosure chevron | rotates with its fold, `--dur-base` `--ease-out`, everywhere | same | none |
 | Icon swap (`SwapIcon`; keyed for more than two states, as a tool row's waiting, working, failed and icon) | opacity + scale 0.25→1 on `SPRING_LAYOUT` | fade + scale →0.25, `--dur-fast` | opacity, `--dur-fast` |
-| Label swap (`SwapText`: a row's verb or a group's phrase changing tense, the working line's phase words, Thinking becoming "Thought for 3s") | the new words rise from 3px below, `--dur-base` `--ease-out`; the width changes at once; never on mount or per streamed word | the old words lift 3px and fade, `--dur-fast` | cross-fade, `--dur-fast` |
+| Word morph (`MorphText`: a row's verb or a group's phrase changing tense, the working line's phases, the working line becoming the closing line) | only once the old words have left: the new rise from 3px below, `--dur-base` `--ease-swap`, while the box glides from the old width to theirs (a Web Animation from its live width when cut short); never on mount or for new words under one key | the old words lift 3px and fade first, `--dur-swap-out` `--ease-swap`; never two words in one place | fade out, then in, `--dur-fast`; no glide |
 | Scroll glide (jump to latest, a burst while following, a jump to a row) | `DUR.drawer` on `EASE_OUT` | — | instant |
 | Park on send (prompt to top) | the transcript glides to park the prompt, `DUR.drawer` on `EASE_DRAWER`; from more than 2.5 screens away it jumps to within 2.5 screens first, as every long jump does | the parked runway retires over `DUR.base` on `EASE_OUT` | instant |
 | Jump to latest button | fade + scale 0.95→1, `--dur-base` `--ease-out` | `FADE_OUT` | fade |
 | Count | ticks from the shown value, `--dur-slow` `--ease-out` | — | none |
-| Pulse (`TextPulse`) | still for `--delay-pulse` (3s), then opacity 1→0.75→1 every `--dur-pulse` (2s) on `--ease-breathe`; still in a hidden pane or document | — | still muted text |
+| Shimmer (`WorkingText`) | a masked band and a bright copy of the words (the band's `::before`) cross them in opposite directions, transform only, every 3s (`SHIMMER`); not mounted in a hidden pane or document | — | still muted text |
+| Working mark (`WorkingMark`, the working line's glyph) | three 3px dots gather into one and part every 1.6s, transform only (`MARK`); enters and leaves as an icon swap does | — | the three dots at rest |
+| The working line settling | the mark leaves as an icon does, the words morph into "Worked for 2m 4s" (or Stopped) and slide from the glyph slot to the prose edge, 22px, `--dur-base` `--ease-swap`; the hover actions mount | — | the morph's fades; no slide |
 | Spinner | the one arc turning | — | still |
 | Appshot | fade + scale 0.95→1 centred, `--dur-slow`; holds; glides into its chip, `--dur-drawer` `--ease-drawer` | — | fade in and out in place, `--dur-fast` |
 | Released drag | settles on `SPRING_GLIDE` | — | none |
 | Scrollbar | shows at once on hover or scroll | hides at once, `SCROLL_IDLE_MS` (900ms) after the last scroll or when the pointer leaves | same |
 | List rows (rail, tabs, fleet, attachments, the transcript's message list) | none | none | none |
 | Transcript rows | one `--dur-fast` fade on first appearance, never replayed | — | none |
-| Streaming text | the prose: the jitter buffer (surfaces/smoothText) steps whole words every 100ms (`REVEAL.stepMs`), holding a bare block marker and a table's header row until they have content; each step is one span fading in over `--dur-reveal` on `--ease-reveal` (lib/streamReveal.ts, `.stream-step`), and the settle waits for the last fade; a live short line (the thinking row's newest sentence) takes the same fade in `StreamingText` | — | whole-word steps, no fade |
-| Thinking settling | "Thinking" becomes "Thought for 3s" in place through `SwapText`, its chevron arriving with it; the live sentence fades `--dur-fast` | — | cross-fade, `--dur-fast` |
+| Streaming text | the prose: the jitter buffer (surfaces/smoothText) steps whole words every 100ms (`REVEAL.stepMs`), holding a bare block marker and a table's header row until they have content; each step is one span fading in over `--dur-reveal` on `--ease-reveal` (lib/streamReveal.ts, `.stream-step`), and the settle waits for the last fade; a live short line (the working line's newest sentence of a thought) takes the same fade in `StreamingText` | — | whole-word steps, no fade |
 | Composer send | the bubble rides with the content as the prompt parks, rising 16px and fading in, `--dur-slow` `--ease-drawer`; in follow mode it flies from the field only when it lands within 240px of it | — | fade, `--dur-fast` |
 | Composer field height | snaps on a keystroke and on the clear after a send; a change of more than one line the person did not type (a paste, a restore, a quote) eases over `--dur-base` | — | snaps |
 | Composer, a new thread's first send | the box keeps its width and moves into its docked place (a FLIP translate, `--dur-slow` `--ease-drawer`) | — | none |
@@ -576,13 +589,14 @@ the caret.
 
 The group the turn is working in opens on its own once it holds two calls:
 the line folds open above the first row and the rows glide into their hang.
-While it works it shows its newest five rows (a thought counts as one), the
-line still naming them all; when the work moves on (the model writes again,
-or the turn ends) it waits `FOLD_HOLD_MS`, its last row settling (the glyph,
-the verb's tense, the pulse stops), and folds. A person's hand decides for
+While it works it shows its newest five rows, the line still naming them
+all, the running ones included; a call still running is no row (the working
+line under the turn says it) and lands as a past-tense row once it settles.
+When the work moves on (the model writes again, or the turn ends) it waits
+`FOLD_HOLD_MS`, its last row landing, and folds. A person's hand decides for
 that group from then on: toggling its line or opening a row's body inside it
 ends the automatic open, window and fold, and a group opened by hand shows
-every row. A step waiting on the person keeps it open; a paused turn holds it
+every row, its thoughts among them. A step waiting on the person keeps it open; a paused turn holds it
 as it is; a group that mounts while working shows open with no motion, one
 that mounts settled shows closed. Live
 background work is the right panel's Activity section; a task that settled
@@ -596,10 +610,16 @@ its last row). A thread still watching ends in "Watching" with the watch's
 age under its last closing line, on every surface; in a pane it opens the
 Activity section.
 An approval card carries the amber glyph and its two buttons, not the
-word. A thought is one row
-of that list: "Thinking" pulsing with its newest sentence while it
-streams, then, in the same row, "Thought for 4s ▸", which opens the text. The closing line
-reads "Worked for 2m 4s", its copy, note, hand-off and second-opinion
+word. A thought is no row: while it streams the working line says Thinking
+and its newest sentence, and once it ends it shows only in a group opened
+by hand, as "Thought ▸" with no duration, which opens the text. Each live
+turn ends in one working line, from Send to the turn's end: the working
+mark, then the phase's words in the shimmer (one running call by its verb,
+muted, and its object in foreground, with an edit's live counts, or a
+chevron that opens a command's or a tool's body under the line). It hides
+while a step waits on the person (the card says so), while the turn is
+paused and after a Stop. When the turn ends it becomes the closing line,
+which reads "Worked for 2m 4s", its copy, note, hand-off and second-opinion
 buttons showing on hover or keyboard focus; a turn the person stopped
 closes on "Stopped" instead, with the same buttons. Every notice (a gate, a review, a compaction, a
 pass, a batch, a second opinion asked of another harness) is one muted

@@ -1,3 +1,3 @@
 export { cn } from "./cn";
 export { useCountUp } from "./useCountUp";
-export { SwapText } from "./SwapText";
+export { MorphText } from "./MorphText";

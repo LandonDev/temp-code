@@ -55,7 +55,7 @@ function AttachmentContent({ className, ...props }: ComponentProps<"div">) {
 }
 
 function AttachmentTitle({ className, ...props }: ComponentProps<"span">) {
-  return <span data-slot="attachment-title" className={cn("block min-w-0 max-w-full truncate font-medium text-foreground group-data-[state=processing]/attachment:text-muted-foreground group-data-[state=processing]/attachment:text-pulse group-data-[state=uploading]/attachment:text-muted-foreground group-data-[state=uploading]/attachment:text-pulse", className)} {...props} />;
+  return <span data-slot="attachment-title" className={cn("block min-w-0 max-w-full truncate font-medium text-foreground group-data-[state=processing]/attachment:text-muted-foreground group-data-[state=uploading]/attachment:text-muted-foreground", className)} {...props} />;
 }
 
 function AttachmentDescription({ className, ...props }: ComponentProps<"span">) {

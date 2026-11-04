@@ -56,9 +56,11 @@ foreground, the same words the group line uses); the components only draw it.
   icon from the `GLYPH` record, the connector's mark or the subagent's
   provider in its place, and while the call runs, fails (or was denied) or
   asks for approval the `StatusMark` of working, failed or waiting with no
-  word (nothing else on the line turns red); a change of face (the call
-  settling: spinner to icon) swaps in the box through the keyed `SwapIcon`,
-  and the verb changes tense in place through `SwapText`. The words hug their text, so
+  word (nothing else on the line turns red; working's arc is still, since
+  the working line under the turn is the one moving mark); a change of face
+  (the call settling: arc to icon) swaps in the box through the keyed
+  `SwapIcon`, and the verb changes tense in place through `MorphText` (the
+  old word leaves, then the new one arrives). The words hug their text, so
   the caret sits right after them, as on the group line. A command whose
   gist would only repeat it ("Ran bun run typecheck") says "Ran a command";
   more than two clauses end "and N more".
@@ -109,19 +111,45 @@ foreground, the same words the group line uses); the components only draw it.
   it from then on. Hover lifts the verb and the caret to foreground, as the
   group line does.
 - `transcript/ActionRow.fixtures.tsx` holds one of each row for a static
-  look and `ActionGroup.fixtures.tsx` a working group at 1, 2, 5 and 9
+  look and `ActionGroup.fixtures.tsx` a working group at 2, 5 and 9
   rows; `ToolRow.dom.test.tsx`, `EditRow.dom.test.tsx` and
   `ActionGroup.working.dom.test.tsx` prove the behaviour.
 
 ## Thinking, closing lines and notices
 
-- **A thought** is one row of the paragraph's action list
-  (`transcript/ThinkingRow.tsx`, words in `transcript/thinking.ts`):
-  "Thinking" in `TextPulse` with the newest finished sentence while it
-  streams, then, in the same row, "Thought for 4s" swapped in through
-  `SwapText` with its chevron while the sentence fades out, opening the
-  text on a `Collapsible` whose trigger lies over the row it names. The duration runs from the block's `ts` to the `endTs` the
-  row is given (the next block, or the turn's end).
+- **A thought** is no row. While it streams the working line says
+  Thinking and its newest finished sentence (`latestLine` in
+  `transcript/thinking.ts`); once it ends it leaves nothing in the run,
+  short or long, and shows only in a group a person opened by hand, as
+  "Thought ›" with no duration (`transcript/ThinkingRow.tsx`), opening the
+  text on a `Collapsible` whose trigger lies over the row it names. The
+  implementation board's running task draws no thoughts either.
+- **The working line** (`transcript/WorkingLine.tsx` `TurnLine`, drawn by
+  TurnEnd): each live turn ends in one 28px line at the prose edge, from
+  Send to the turn's end: `WorkingMark` (three dots that gather and part)
+  in the glyph slot, then the phase's words in `WorkingText`'s shimmer,
+  morphing through `MorphText` as the phase changes. `workingPhase`
+  (`transcript/workingPhase.ts`, first match wins): Sending until the host
+  echoes the message; the host's words for the wait while nothing of the
+  turn's own has come (keyed up to the first comma, so "25 s" becoming
+  "30 s" is drawn in place); an open wait on agents, "Waiting on <title>"
+  (UI-15's `openWaitOf`, `waitIds` and `waitLine`); the running calls, one
+  by its verb and object ("Reading format.ts"), several by the group's
+  present-tense phrase; Thinking and its newest sentence while a thought
+  streams; the mark alone while prose streams; else Thinking.
+  `useHeldPhase` (lib/heldWord.ts) holds a phase 300 ms by its key, so one
+  that lasted 40 ms never paints. A call the line tells (`toldByWorkingLine`
+  in transcriptActivity.ts: pending, not waiting on the person, not agent
+  work) is no row of its group while the turn is open; it lands there as a
+  past-tense row (`.step-land`) once it settles. One running edit shows its
+  live counts on the line; one running command or tool shows a chevron and
+  opens its body under the line, and a call opened there lands open in its
+  group, which counts as the person's hand (`transcript/workingOpen.ts`).
+  The line hides while a step waits on the person, while the turn is
+  paused or held, and after a Stop. When the turn settles in front of the
+  person the line is the closing line in the same element: the mark leaves
+  as an icon does, the words morph into "Worked for 2m 4s" and slide 22px
+  to the prose edge (a FLIP on `--ease-swap`).
 - **The closing line** (`transcript/TurnEnd.tsx`): "Worked for 2m 4s" and
   four hover-only icon actions (`transcript/IconAction.tsx`: a ghost
   `icon-xs` Button in a Tooltip armed on the line's first hover, so a long
@@ -157,8 +185,9 @@ foreground, the same words the group line uses); the components only draw it.
   a failure, Stopped, compaction, "Batch done", account-gone, the restart
   line, the handoff divider and an html_render page. A wait is never a row:
   while it is open the working line says "Waiting on <title>" ("Waiting on
-  3 subagents"; `WaitTail` in TurnEnd.tsx over `openWaitOf` in
-  surfaces/agentSteps.ts, re-worded when the title lands), and a wait that
+  3 subagents"; the `wait` phase of `workingPhase`, which TurnEnd feeds
+  `waitLine` over `openWaitOf` in surfaces/agentSteps.ts, re-worded in
+  place when the title lands), and a wait that
   returned on nobody (steered, stopped, timed out, refused) leaves nothing.
   The group line counts steps, not calls (one report alone is its own row;
   a wait counts one step per agent it returned on, a batch spawn one per
@@ -187,13 +216,14 @@ foreground, the same words the group line uses); the components only draw it.
 
 - **Rows are the unit.** The thread is a flat list of rows
   (`surfaces/transcriptRows.ts`): one per turn item (a block, or a group:
-  every step between two paragraphs, thinking, todo updates and the host's
-  folded steps included, one muted line whose rows hang under its words
+  every step between two paragraphs, todo updates and the host's folded
+  steps included (a thought is drawn only in a group opened by hand, and a
+  call still running only once its turn is over), one muted line whose rows hang under its words
   when it opens; a group of one step is that step's own row, the same tree,
   so a second call landing remounts nothing; the group the open turn works
   in, `working`, opens on its own at two calls, shows its newest five rows
   and folds `FOLD_HOLD_MS` after the work moves on), one closing row per turn (its
-  duration line, the live timer, the thinking tail), and a `more` row at
+  duration line, the live timer, the working line), and a `more` row at
   the top for the remote profile's "Load earlier messages". A row is keyed
   by the id of its first block, so it keeps its identity as the window
   moves, as the live turn grows into it, and across a rebuild with older

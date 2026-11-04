@@ -1,21 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { latestLine, latestLineKey, thoughtLabel, thoughtMs } from "./thinking";
+import { latestLine, latestLineKey, spanWords } from "./thinking";
 
-describe("thoughtLabel", () => {
-  it("reads the span, never under a second", () => {
-    expect(thoughtLabel(400)).toBe("Thought for 1s");
-    expect(thoughtLabel(4_000)).toBe("Thought for 4s");
-    expect(thoughtLabel(72_000)).toBe("Thought for 1m 12s");
-    expect(thoughtLabel(120_000)).toBe("Thought for 2m");
-    expect(thoughtLabel()).toBe("Thought");
-  });
-});
-
-describe("thoughtMs", () => {
-  it("runs from the block to the end it is given", () => {
-    expect(thoughtMs({ ts: 1_000 }, 5_000)).toBe(4_000);
-    expect(thoughtMs({ ts: 1_000 })).toBeUndefined();
-    expect(thoughtMs({}, 5_000)).toBeUndefined();
+describe("spanWords", () => {
+  it("is never shorter than a second, and counts minutes past one", () => {
+    expect(spanWords(400)).toBe("1s");
+    expect(spanWords(4_000)).toBe("4s");
+    expect(spanWords(72_000)).toBe("1m 12s");
+    expect(spanWords(120_000)).toBe("2m");
   });
 });
 

@@ -50,8 +50,10 @@ export const GLYPH: Record<GlyphKey, IconComponent> = {
  * The row's glyph, in order: the waiting, working or failed StatusMark
  * (the one status map), the connector's or the subagent's mark, else the
  * kind's icon. Always one 14px box, so the verbs line up; a change between
- * them (a call settling: the spinner to its icon) swaps in place through
- * the keyed SwapIcon.
+ * them (a call settling: the arc to its icon) swaps in place through the
+ * keyed SwapIcon. Working's arc is still: a running row shows only for agent
+ * work or under a turn that is over, and the turn's working line is the one
+ * moving mark.
  */
 export function ToolGlyph({ action, block }: { action: Action; block: Block }) {
   return (
@@ -73,7 +75,7 @@ export function glyphState(action: Action): "waiting" | "working" | "failed" | "
 
 function GlyphBody({ action, block }: { action: Action; block: Block }) {
   if (action.pending) return <StatusMark state="waiting" word={false} />;
-  if (action.running) return <StatusMark state="working" word={false} />;
+  if (action.running) return <StatusMark state="working" word={false} still />;
   if (action.failed) return <StatusMark state="failed" word={false} />;
   if (action.connector) return <ConnectorMark app={action.connector} />;
   if (action.agent) return <AgentGlyph block={block} />;

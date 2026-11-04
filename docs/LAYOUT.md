@@ -738,10 +738,12 @@ pieces it draws are surfaces/paneChrome.tsx.
 ### Chat
 
 The classic transcript, restyled with BUI primitives on the existing
-virtualized list: *Streaming Text* (assistant deltas), *Thinking* (collapsed
-one-liner, "Thought for 2s" weight/dim pattern), *Tool Chips*
-(call/result pairs), *Code Block* (shiki stays), *Approval Card*, *Loading
-State* (the pulse + elapsed while waiting). The person's message is a soft
+virtualized list: *Streaming Text* (assistant deltas), *Tool Chips*
+(call/result pairs), *Code Block* (shiki stays), *Approval Card*, and one
+*working line* per live turn (the working mark and the shimmering words of
+the phase: Sending, the host's wait, Thinking with its newest sentence, the
+running call), which becomes the closing line when the turn ends. A thought
+is no row; a group opened by hand shows it as "Thought". The person's message is a soft
 bubble on the right (`card`, 12px corners, 12/8 padding, at most 85% of the
 column, no outline); the model's prose is plain text on the left at 14px on
 22px lines. Column max-w-3xl (768px) centered (`COLUMN_MAX_CLASS` in
@@ -871,8 +873,8 @@ column's edge, its whole text in a
 tooltip on hover while it is cut, and the running task alone whole, in
 full foreground, so when the next task starts the last one collapses to
 its line and the new one opens. **The running task shows its work:** its
-last three steps (`liveSteps` in implementationBoard.ts: the calls and
-thoughts the transcript folds into a working line, never the todo calls
+last three steps (`liveSteps` in implementationBoard.ts: the calls the
+transcript folds into a working line (thoughts are no rows), never the todo calls
 and never a waiting approval or question, which stay the Needs you line)
 sit under its label, indented to it, as the transcript's own rows
 (`TaskSteps` through `ActivityRow`), on the card's surface with no box of

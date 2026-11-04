@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { cubicBezier, DUR, EASE_DRAWER, EASE_EXIT, EASE_IN_OUT, EASE_OUT, REVEAL, SPRING_LAYOUT, SPRING_LAYOUT_CSS, springEasing } from "./ease";
+import { cubicBezier, DUR, EASE_DRAWER, EASE_EXIT, EASE_IN_OUT, EASE_OUT, EASE_SWAP, EASE_SWAP_CSS, MARK, REVEAL, SHIMMER, SPRING_LAYOUT, SPRING_LAYOUT_CSS, springEasing } from "./ease";
 import * as ease from "./ease";
 
 const css = readFileSync(resolve(__dirname, "../index.css"), "utf8");
@@ -15,6 +15,30 @@ describe("the motion tokens", () => {
     expect(token("dur-base")).toBe(`${DUR.base * 1000}ms`);
     expect(token("dur-slow")).toBe(`${DUR.slow * 1000}ms`);
     expect(token("dur-drawer")).toBe(`${DUR.drawer * 1000}ms`);
+    expect(token("dur-swap-out")).toBe(`${Math.round(DUR.swapOut * 1000)}ms`);
+  });
+
+  it("hold the word morph's curve to --ease-swap", () => {
+    expect(token("ease-swap")).toBe(`cubic-bezier(${EASE_SWAP.join(", ")})`);
+    expect(EASE_SWAP_CSS).toBe(token("ease-swap"));
+  });
+
+  it("sweep the shimmer between 15% and 85% of a 3s period, by transform alone", () => {
+    expect(SHIMMER.timing).toMatchObject({ duration: 3000, iterations: Infinity });
+    for (const frames of [SHIMMER.band, SHIMMER.copy]) {
+      expect(frames.map((f) => f.offset)).toEqual([0, 0.15, 0.85, 1]);
+      for (const f of frames) expect(Object.keys(f).filter((k) => k !== "offset" && k !== "easing")).toEqual(["transform"]);
+    }
+    expect(SHIMMER.band[0].transform).toBe("translateX(-100%)");
+    expect(SHIMMER.copy[0].transform).toBe("translateX(100%)");
+  });
+
+  it("move the mark's three dots by transform alone, the right one behind the left", () => {
+    expect(MARK.timing).toMatchObject({ duration: 1600, iterations: Infinity });
+    for (const frames of MARK.dots) for (const f of frames) expect(Object.keys(f).filter((k) => k !== "offset" && k !== "easing")).toEqual(["transform"]);
+    expect(MARK.dots[0][1].offset).toBe(0.42);
+    expect(MARK.dots[2][1].offset).toBe(0.5);
+    expect(MARK.dots[1][1].transform).toBe("scale(1.7)");
   });
 
   it("hold the reveal's fade to --dur-reveal", () => {
@@ -22,8 +46,10 @@ describe("the motion tokens", () => {
     expect(token("ease-reveal")).toBe("linear");
   });
 
-  it("drop the shimmer and the veil", () => {
+  it("drop the old shimmer, the veil and the pulse", () => {
     expect(token("motion-shimmer")).toBeUndefined();
+    expect(token("dur-pulse")).toBeUndefined();
+    expect(token("delay-pulse")).toBeUndefined();
     expect(Object.keys(ease)).not.toContain("VEIL");
   });
 
