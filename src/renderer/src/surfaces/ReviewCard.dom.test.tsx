@@ -98,5 +98,12 @@ describe("ReviewCard", () => {
     );
     expect(container.textContent).toContain("1 minor finding");
     expect(container.textContent).not.toContain("Small thing");
+    // The fold's chevron turns with it.
+    const trigger = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("1 minor finding"))!;
+    const chevron = trigger.querySelector("svg")!;
+    expect(chevron.getAttribute("class")).toContain("duration-(--dur-base)");
+    expect(chevron.getAttribute("class")).not.toContain("rotate-90");
+    fireEvent.click(trigger);
+    expect(trigger.querySelector("svg")!.getAttribute("class")).toContain("rotate-90");
   });
 });

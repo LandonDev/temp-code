@@ -31,6 +31,7 @@ import { useProjects } from "../../lib/tcserver/workspaces";
 import { FileTypeIcon } from "../FileTypeIcon";
 import { ChevronRight, MoreHorizontal } from "../icons";
 import { Counts, FileName } from "./changeRows";
+import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 
 /**
  * The Changes section's lower group: this checkout against a target
@@ -375,7 +376,7 @@ export function AgainstCommits({ compare, open, onOpenChange }: { compare: Compa
       <CollapsibleTrigger
         className="flex h-7 w-full items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground"
       >
-        <ChevronRight className={cn("size-3 shrink-0 transition-transform duration-(--dur-fast) motion-reduce:transition-none", open && "rotate-90")} />
+        <ChevronRight className={cn("size-3 shrink-0", DISCLOSURE_CHEVRON, open && "rotate-90")} />
         {words.filter(Boolean).map((w, i) => (
           <span key={w} className={cn("tabular-nums", i > 0 && "ml-2")}>
             {w}

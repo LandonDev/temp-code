@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
+import { DISCLOSURE_CHEVRON } from "../../../components/ui/disclosure";
 import { Spinner } from "../../../components/ui/spinner";
 import { ChevronRight } from "../../../chrome/icons";
 import { errorText } from "../../../chrome/ConfirmDialog";
 import { useEnvironmentStatus } from "../../../lib/connection";
 import { hostJobCard, type HostJobCard } from "../../../lib/hostJobCard";
 import { dismissJob, stopPublish, useDeployStatuses, useHostJob } from "../../../lib/hostJobs";
+import { cn } from "../../../lib/cn";
 
 /** A log is open while its job runs and after a failure; a pass folds it to its one line. */
 export const openByDefault = (card: Pick<HostJobCard, "phase" | "ending">): boolean => card.phase !== "done" || card.ending?.failed === true;
@@ -49,7 +51,7 @@ export function JobLog({ environmentId, job, hostName }: { environmentId: string
           aria-label={card.title}
           className="group/fold flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left text-xs"
         >
-          <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform duration-(--dur-fast) group-data-[panel-open]/fold:rotate-90 motion-reduce:transition-none" />
+          <ChevronRight className={cn("size-3 shrink-0 text-muted-foreground group-data-[panel-open]/fold:rotate-90", DISCLOSURE_CHEVRON)} />
           {running ? <Spinner className="size-3.5 text-muted-foreground" /> : null}
           <span className="shrink-0 font-medium text-foreground">{card.title}</span>
           {running && card.note ? <span className="min-w-0 truncate text-muted-foreground">{card.note}</span> : null}

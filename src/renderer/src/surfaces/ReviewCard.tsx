@@ -1,8 +1,9 @@
 import { useContext, useState } from "react";
 import type { ReviewFinding } from "@server/shared/review";
-import { CircleDashed } from "../chrome/icons";
+import { ChevronRight, CircleDashed } from "../chrome/icons";
 import { Button } from "../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/ui/collapsible";
+import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
 import { StatusMark } from "../components/ui/status";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import type { Block } from "../lib/session";
@@ -14,6 +15,7 @@ import { useOpenAgentDetail } from "./agentDetailContext";
 import { NoticeLine } from "./transcript/NoticeLine";
 import { CARD_SHAPE } from "./QuestionCard";
 import { useTranscriptSession } from "./transcriptSession";
+import { cn } from "../lib/cn";
 
 type Review = NonNullable<Block["review"]>;
 
@@ -123,6 +125,7 @@ function HeldReview({
             render={<Button variant="ghost" size="xs" className="-ml-2 text-muted-foreground hover:text-foreground aria-expanded:bg-transparent aria-expanded:hover:bg-foreground/7" />}
           >
             {plural(minor, "minor finding")}
+            <ChevronRight aria-hidden className={cn("size-3 text-muted-foreground", DISCLOSURE_CHEVRON, minorOpen && "rotate-90")} />
           </CollapsibleTrigger>
           <CollapsibleContent>
             <FindingList findings={review.minor} cwd={cwd} onOpenFile={onOpenFile} className="pt-2" />

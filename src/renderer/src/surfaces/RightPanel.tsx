@@ -163,7 +163,7 @@ export function RightPanel(props: RightPanelProps) {
               />
             }
           >
-            <X className="size-3.5" strokeWidth={1.75} />
+            <X className="size-3.5" />
           </TooltipTrigger>
           <TooltipContent>Hide panel ⌘⇧R</TooltipContent>
         </Tooltip>

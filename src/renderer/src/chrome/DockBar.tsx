@@ -101,7 +101,7 @@ export function DockBar({ terminals, active, dev, onSelect, onSelectDev, onClose
                   <TooltipTrigger
                     render={<TabsTrigger value={file.id} className={`flex-none gap-2 ${closable ? "group-data-[variant=line]/tabs-list:pr-6" : ""}`} />}
                   >
-                    <Terminal className="size-3.5" strokeWidth={1.75} />
+                    <Terminal className="size-3.5" />
                     <span className="max-w-48 truncate">{label}</span>
                   </TooltipTrigger>
                   <TooltipContent side="top">{file.cwd}</TooltipContent>

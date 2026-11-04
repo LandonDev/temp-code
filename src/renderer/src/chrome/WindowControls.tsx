@@ -65,7 +65,7 @@ export function WindowControls() {
             onClick={handleMinimize}
             className="h-full w-10 rounded-none text-muted-foreground"
           >
-            <Minus className="size-3.5" strokeWidth={1.75} />
+            <Minus className="size-3.5" />
           </Button>
         </Tip>
         <Tip label={isMaximized ? "Restore" : "Maximize"} side="bottom">
@@ -76,7 +76,7 @@ export function WindowControls() {
             onClick={handleToggleMaximize}
             className="h-full w-10 rounded-none text-muted-foreground"
           >
-            {isMaximized ? <Copy className="size-3" strokeWidth={1.75} /> : <Square className="size-3" strokeWidth={1.75} />}
+            {isMaximized ? <Copy className="size-3" /> : <Square className="size-3" />}
           </Button>
         </Tip>
         <Tip label="Close" side="bottom">
@@ -87,7 +87,7 @@ export function WindowControls() {
             onClick={handleClose}
             className="h-full w-10 rounded-none text-muted-foreground hover:bg-destructive hover:text-destructive-foreground active:bg-destructive/90"
           >
-            <X className="size-3.5" strokeWidth={1.75} />
+            <X className="size-3.5" />
           </Button>
         </Tip>
       </div>

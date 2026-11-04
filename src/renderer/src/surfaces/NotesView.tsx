@@ -242,7 +242,7 @@ export function NotesView({
           {creating ? (
             <Spinner className="size-3.5" />
           ) : (
-            <Plus className="size-3.5" strokeWidth={1.75} />
+            <Plus className="size-3.5" />
           )}
         </Button>
         </Tip>
@@ -306,7 +306,6 @@ export function NotesView({
         <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px]">
           <File
             className="size-3.5 shrink-0 text-muted-foreground"
-            strokeWidth={1.75}
           />
           <span className="min-w-0 truncate text-foreground">Notes</span>
         </div>
@@ -619,7 +618,7 @@ function NoteEditor({
               onClick={() => setConfirmDelete(true)}
               className="text-muted-foreground hover:text-destructive"
             >
-              <Trash2 strokeWidth={1.75} />
+              <Trash2 />
               Delete
             </Button>
           </div>

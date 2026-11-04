@@ -2,6 +2,7 @@ import type { HarnessSyncStatus } from "@server/shared/contract-harness";
 import type { MemorySyncStatus } from "@server/shared/contract-memory";
 import { Button } from "../../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
+import { DISCLOSURE_CHEVRON } from "../../../components/ui/disclosure";
 import { SettingSwitch } from "../../../components/setting-switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { ChevronRight } from "../../../chrome/icons";
@@ -11,6 +12,7 @@ import { ago, harnessParts, setsText } from "../../harnessLine";
 import { memoryParts } from "../../memoryLine";
 import { Facts } from "./Facts";
 import { Group, Row } from "./Group";
+import { cn } from "../../../lib/cn";
 
 /**
  * Sync on this machine: the harness config going out to every host it holds
@@ -43,7 +45,7 @@ export function LocalSync({
       {conflicts.length > 0 ? (
         <Collapsible>
           <CollapsibleTrigger className="group/fold flex h-7 items-center gap-1 rounded-md text-xs text-muted-foreground hover:text-foreground">
-            <ChevronRight className="size-3 transition-transform duration-(--dur-fast) group-data-[panel-open]/fold:rotate-90 motion-reduce:transition-none" />
+            <ChevronRight className={cn("size-3 group-data-[panel-open]/fold:rotate-90", DISCLOSURE_CHEVRON)} />
             {conflicts.length === 1 ? "1 conflict copy" : `${conflicts.length} conflict copies`}
           </CollapsibleTrigger>
           <CollapsibleContent>

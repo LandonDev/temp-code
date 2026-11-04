@@ -66,7 +66,7 @@ export const HtmlRenderRow = memo(function HtmlRenderRow({
           onClick={() => openHtmlRenderOverlay(reference, host)}
           className="absolute right-2 top-2 bg-background/80 text-muted-foreground opacity-0 transition-[background-color,color,opacity,scale] hover:bg-background hover:text-foreground focus-visible:opacity-100 group-hover/html-render:opacity-100"
         >
-          <Maximize2 className="size-3.5" strokeWidth={1.75} />
+          <Maximize2 className="size-3.5" />
         </Button>
       </Tip>
     </div>

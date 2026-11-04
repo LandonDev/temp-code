@@ -3,6 +3,7 @@ import { registerToastAnchor } from "../../../lib/toastAnchor";
 import type { BatchState } from "@server/shared/contract-batch";
 import { Button } from "../../../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../../../components/ui/collapsible";
+import { DISCLOSURE_CHEVRON } from "../../../components/ui/disclosure";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { StatusMark } from "../../../components/ui/status";
 import { ChevronDown, Square } from "../../../chrome/icons";
@@ -223,7 +224,7 @@ const StepRow = memo(function StepRow({ step, detail, now, open, onStop, onFold 
         ) : failed && hasConsole(step) ? (
           <Button variant="ghost" size="xs" onClick={() => onFold(step.id, open)} aria-expanded={open}>
             {open ? "Hide" : "Show"}
-            <ChevronDown className={cn("size-3 transition-transform duration-(--dur-fast)", open && "rotate-180")} />
+            <ChevronDown className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-180")} />
           </Button>
         ) : null}
       </div>

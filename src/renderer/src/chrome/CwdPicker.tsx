@@ -8,6 +8,7 @@ import { looksLikeProject, sameProjectPath, type RecentProject } from "../lib/re
 import { shortcutFor } from "../lib/settings";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
 import { RowsMenu, tidy, type MenuRow } from "./menuRows";
+import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
 
 type Props = {
   cwd: string;
@@ -109,14 +110,13 @@ export function CwdPicker({
     >
       {children ?? (
         <>
-          <ProjectLogoIcon path={projectLogoPath} fallbackStrokeWidth={1.75} />
+          <ProjectLogoIcon path={projectLogoPath} />
           <span className="truncate font-mono text-[12px]">{label}</span>
         </>
       )}
       {chevron ? (
         <ChevronDown
-          className={cn("size-3 shrink-0 text-muted-foreground transition-transform duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none", open && "rotate-180")}
-          strokeWidth={1.75}
+          className={cn("size-3 shrink-0 text-muted-foreground", DISCLOSURE_CHEVRON, open && "rotate-180")}
         />
       ) : null}
     </Button>

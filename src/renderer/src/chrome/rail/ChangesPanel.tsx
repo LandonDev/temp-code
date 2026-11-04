@@ -59,6 +59,7 @@ import { SessionActionsContext } from "../../surfaces/threadChat";
 import { Counts, FileName } from "./changeRows";
 import { changesItems, estimateItem, foldKey, type ChangeSide, type ChangesItem } from "./changesItems";
 import { ChevronDown, ChevronRight, ExternalLink, GitCompare, Minus, MoreHorizontal, Plus, Trash2, Undo2, WandSparkles } from "../icons";
+import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 
 /**
  * The right panel's Changes section: the one place a checkout's changes
@@ -803,7 +804,7 @@ function FileRow({
                 open ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100",
               )}
             >
-              <ChevronRight className={cn("size-3 transition-transform duration-(--dur-fast) motion-reduce:transition-none", open && "rotate-90")} />
+              <ChevronRight className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />
             </Button>
           </>
         ) : (

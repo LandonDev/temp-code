@@ -38,7 +38,7 @@ export function HostGlyph({
       data-host-kind={mac ? "mac" : "server"}
       className={`inline-flex shrink-0 text-muted-foreground ${className}`}
     >
-      <Icon className="size-3" strokeWidth={1.75} aria-hidden />
+      <Icon className="size-3" aria-hidden />
     </span>
   );
   return bare ? glyph : <Tip label={label}>{glyph}</Tip>;

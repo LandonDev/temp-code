@@ -676,10 +676,10 @@ export function FileTree({
             onContextMenu={(e) => e.stopPropagation()}
           >
             <HeaderButton label="New file" onClick={() => startCreate(false)}>
-              <FilePlus className="size-3.5" strokeWidth={1.75} />
+              <FilePlus className="size-3.5" />
             </HeaderButton>
             <HeaderButton label="New folder" onClick={() => startCreate(true)}>
-              <FolderPlus className="size-3.5" strokeWidth={1.75} />
+              <FolderPlus className="size-3.5" />
             </HeaderButton>
             <HeaderButton
               label="Collapse all"
@@ -691,7 +691,7 @@ export function FileTree({
                 setExpanded(next);
               }}
             >
-              <FoldVertical className="size-3.5" strokeWidth={1.75} />
+              <FoldVertical className="size-3.5" />
             </HeaderButton>
           </div>
           <div
@@ -909,9 +909,9 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
             <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
               {entry.isDir ? (
                 open ? (
-                  <ChevronDown className="size-3.5" strokeWidth={1.75} />
+                  <ChevronDown className="size-3.5" />
                 ) : (
-                  <ChevronRight className="size-3.5" strokeWidth={1.75} />
+                  <ChevronRight className="size-3.5" />
                 )
               ) : null}
             </span>
@@ -1016,7 +1016,7 @@ function NameRow({
       >
         <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
           {isDir ? (
-            <ChevronRight className="size-3.5" strokeWidth={1.75} />
+            <ChevronRight className="size-3.5" />
           ) : null}
         </span>
         <span className="shrink-0">

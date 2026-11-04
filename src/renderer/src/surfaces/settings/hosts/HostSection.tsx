@@ -155,7 +155,7 @@ function PairedSection({
 function MenuTrigger({ name }: { name: string }) {
   return (
     <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`${name} actions`} className="text-muted-foreground" />}>
-      <MoreHorizontal strokeWidth={1.75} />
+      <MoreHorizontal />
     </DropdownMenuTrigger>
   );
 }

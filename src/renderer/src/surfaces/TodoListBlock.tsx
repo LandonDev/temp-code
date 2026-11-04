@@ -40,11 +40,11 @@ export function TodoList({ items }: { items: TodoItem[] }) {
             >
               <span className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">
                 {t.status === "completed" ? (
-                  <Check className="size-3.5" strokeWidth={1.75} />
+                  <Check className="size-3.5" />
                 ) : t.status === "in_progress" ? (
-                  <Minus className="size-3.5" strokeWidth={1.75} />
+                  <Minus className="size-3.5" />
                 ) : (
-                  <Circle className="size-3.5" strokeWidth={1.75} />
+                  <Circle className="size-3.5" />
                 )}
               </span>
               <span className="min-w-0">{t.text}</span>

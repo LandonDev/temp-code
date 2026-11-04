@@ -49,7 +49,7 @@ function MacBridgeCard({
   return (
     <div className={CARD_CLASS} role="group" aria-label="Mac bridge request" data-mac-bridge-request={request.id}>
       <div className="flex items-start gap-2">
-        <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" strokeWidth={1.75} />
+        <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" />
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium text-foreground">{requestTitle(request)}</div>
           {showThread && request.threadTitle ? (

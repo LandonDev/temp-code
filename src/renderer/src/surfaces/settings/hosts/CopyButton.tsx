@@ -25,7 +25,7 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
           />
         }
       >
-        <SwapIcon swapped={copied} from={<Copy strokeWidth={1.75} />} to={<Check strokeWidth={2.25} />} />
+        <SwapIcon swapped={copied} from={<Copy />} to={<Check />} />
       </TooltipTrigger>
       <TooltipContent>{copied ? "Copied" : label}</TooltipContent>
     </Tooltip>

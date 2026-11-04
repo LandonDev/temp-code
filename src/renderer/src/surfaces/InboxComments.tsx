@@ -166,7 +166,7 @@ export function InboxCommentForm({
           </span>
           <Tip label="Cancel reply">
             <Button variant="ghost" size="icon-xs" aria-label="Cancel reply" onClick={onCancelReply} className="shrink-0 text-muted-foreground">
-              <X className="size-3" strokeWidth={1.75} />
+              <X className="size-3" />
             </Button>
           </Tip>
         </div>

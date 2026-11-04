@@ -15,7 +15,6 @@ type Props = {
   className?: string;
   imageClassName?: string;
   fallback?: IconComponent;
-  fallbackStrokeWidth?: number;
 };
 
 export function ProjectLogoIcon({
@@ -24,7 +23,6 @@ export function ProjectLogoIcon({
   className = "size-4 shrink-0",
   imageClassName,
   fallback: Fallback = Folder,
-  fallbackStrokeWidth = 1.5,
 }: Props) {
   const [revision, setRevision] = useState(tabGroupLogoDisplayRevision);
 
@@ -49,9 +47,9 @@ export function ProjectLogoIcon({
   const HostMark =
     serverIcon?.host === "github" ? GitHub : serverIcon?.host === "gitlab" ? GitLab : null;
   if (HostMark) {
-    return <HostMark className={className} strokeWidth={fallbackStrokeWidth} />;
+    return <HostMark className={className} />;
   }
   return (
-    <Fallback className={className} strokeWidth={fallbackStrokeWidth} />
+    <Fallback className={className} />
   );
 }

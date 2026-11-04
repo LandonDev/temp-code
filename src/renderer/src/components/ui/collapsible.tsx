@@ -1,5 +1,6 @@
 import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
 import { cn } from "@renderer/lib/cn";
+import { DISCLOSURE_CHEVRON } from "./disclosure";
 
 /** A disclosure. The panel animates its height through
  *  `.collapsible-resize` (components.css) when given that class. */
@@ -15,4 +16,4 @@ function CollapsibleContent({ className, ...props }: CollapsiblePrimitive.Panel.
   return <CollapsiblePrimitive.Panel data-slot="collapsible-content" className={cn("collapsible-resize overflow-hidden", className)} {...props} />;
 }
 
-export { Collapsible, CollapsibleTrigger, CollapsibleContent };
+export { Collapsible, CollapsibleTrigger, CollapsibleContent, DISCLOSURE_CHEVRON };

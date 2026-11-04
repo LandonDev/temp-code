@@ -3,6 +3,7 @@ import { AnimatePresence } from "motion/react";
 import { ChevronRight, FileText } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
+import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { Spinner } from "../../components/ui/spinner";
 import { StatusMark } from "../../components/ui/status";
 import { TaskList } from "../../components/ui/task-list";
@@ -43,6 +44,7 @@ import { TaskSteps, taskStepsKey, useTaskStepsOpen } from "./TaskSteps";
 import { fitColumn } from "../../lib/taskListWidth";
 import type { ThreadViewProps } from "./ThreadView";
 import { useChatFold } from "../../lib/chatFold";
+import { cn } from "../../lib/cn";
 
 /**
  * Implementation thread: the TASKS and the CHANGES are the view. The board
@@ -446,7 +448,7 @@ function PastPass({
             ) : null}
             {stat.adds > 0 ? <span className="text-success">+{stat.adds}</span> : null}
             {stat.dels > 0 ? <span className="text-destructive">−{stat.dels}</span> : null}
-            <ChevronRight className="size-3.5 text-muted-foreground transition-transform duration-(--dur-fast) ease-(--ease-out) group-data-[panel-open]/pass:rotate-90 motion-reduce:transition-none" />
+            <ChevronRight className={cn("size-3.5 text-muted-foreground group-data-[panel-open]/pass:rotate-90", DISCLOSURE_CHEVRON)} />
           </span>
         </span>
         {facts.length > 0 ? (

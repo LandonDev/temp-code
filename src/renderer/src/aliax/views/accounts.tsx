@@ -146,7 +146,7 @@ function ProviderSection({ service, props, now }: { service: ServiceView; props:
                   <TooltipTrigger
                     render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`${service.name} actions`} className="text-muted-foreground" />} />}
                   >
-                    <MoreHorizontal strokeWidth={1.75} />
+                    <MoreHorizontal />
                   </TooltipTrigger>
                   <TooltipContent>{service.name} actions</TooltipContent>
                 </Tooltip>

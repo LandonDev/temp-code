@@ -81,7 +81,7 @@ export function MacBridgeRunningList({
               <TooltipTrigger
                 render={<span className="flex h-6 cursor-default items-center gap-1 px-2 text-xs text-muted-foreground" />}
               >
-                <Pause className="size-3" strokeWidth={1.75} aria-hidden="true" />
+                <Pause className="size-3" aria-hidden="true" />
                 Paused
               </TooltipTrigger>
               <TooltipContent>Held on its host until the thread continues; nothing runs on this Mac</TooltipContent>

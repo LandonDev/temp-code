@@ -132,7 +132,7 @@ export function AccountsPage(): React.JSX.Element {
       actions={
         <Tooltip>
           <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Refresh usage" disabled={refreshing} onClick={() => void reload()} />}>
-            {refreshing ? <Spinner className="size-3.5" /> : <RefreshCw strokeWidth={1.75} />}
+            {refreshing ? <Spinner className="size-3.5" /> : <RefreshCw />}
           </TooltipTrigger>
           <TooltipContent>Refresh usage</TooltipContent>
         </Tooltip>
@@ -252,7 +252,7 @@ export function StatsPage(): React.JSX.Element {
       description={description}
       actions={
         <Button variant="ghost" size="sm" disabled={reindexing} onClick={() => void reindex()}>
-          {reindexing ? <Spinner className="size-3.5" /> : <RefreshCw strokeWidth={1.75} />}
+          {reindexing ? <Spinner className="size-3.5" /> : <RefreshCw />}
           Reindex
         </Button>
       }

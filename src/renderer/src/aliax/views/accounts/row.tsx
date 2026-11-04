@@ -277,7 +277,7 @@ export function AccountRow({ serviceId, profile, report, headroom, columns, now,
           <TooltipTrigger
             render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`More actions for ${name}`} className="text-muted-foreground" />} />}
           >
-            <MoreHorizontal strokeWidth={1.75} />
+            <MoreHorizontal />
           </TooltipTrigger>
           <TooltipContent>More</TooltipContent>
         </Tooltip>

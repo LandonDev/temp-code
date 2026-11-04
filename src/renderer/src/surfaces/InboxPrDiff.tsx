@@ -1,5 +1,4 @@
 import {
-  ChevronDown,
   ChevronRight,
   FoldVertical,
   UnfoldVertical,
@@ -18,6 +17,8 @@ import {
   type PrDiffLine,
 } from "../lib/prDiff";
 import { EmptyState } from "./SurfaceSkeleton";
+import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
+import { cn } from "../lib/cn";
 
 const MAX_DISPLAY_LINES = 2000;
 
@@ -99,12 +100,12 @@ export function InboxPrDiff({ diff }: Props) {
           <span className="ml-auto flex items-center gap-0.5">
             <Tip label="Expand all files">
               <Button variant="ghost" size="icon-sm" aria-label="Expand all files" onClick={() => setOpen(new Set(files.map((file) => file.path)))} className="text-muted-foreground">
-                <UnfoldVertical className="size-3.5" strokeWidth={1.75} />
+                <UnfoldVertical className="size-3.5" />
               </Button>
             </Tip>
             <Tip label="Collapse all files">
               <Button variant="ghost" size="icon-sm" aria-label="Collapse all files" disabled={open.size === 0} onClick={() => setOpen(new Set())} className="text-muted-foreground">
-                <FoldVertical className="size-3.5" strokeWidth={1.75} />
+                <FoldVertical className="size-3.5" />
               </Button>
             </Tip>
           </span>
@@ -145,7 +146,6 @@ function PrFileCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const Chevron = expanded ? ChevronDown : ChevronRight;
   const name = basename(file.path);
   const label =
     file.status === "renamed" && file.previousPath
@@ -161,7 +161,7 @@ function PrFileCard({
         onClick={onToggle}
         className="w-full justify-start gap-2 rounded-none px-2.5 text-left font-normal"
       >
-        <Chevron className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} />
+        <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground", DISCLOSURE_CHEVRON, expanded && "rotate-90")} />
         <FileTypeIcon name={name} isDir={false} size={16} />
         <TruncateTip text={label}>
           <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground">{label}</span>

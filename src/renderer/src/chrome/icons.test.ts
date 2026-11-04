@@ -89,3 +89,37 @@ describe("provider marks", () => {
     expect(readFileSync(join(SRC, "assets/providers/meta.svg"), "utf8")).toContain('fill="currentColor" d="M6.915 4.03');
   });
 });
+
+describe("icon strokes", () => {
+  it("are the icons' default: no strokeWidth prop on an icon outside chrome/icons and the charts", () => {
+    // A thin glyph takes the next size up, never a heavier stroke (docs/DESIGN.md "Iconography").
+    // Raw svg elements (<svg>, <circle>, <path>) draw their own marks; recharts' Line and Area are series.
+    const KEEP = new Set(["Line", "Area"]);
+    const found: string[] = [];
+    for (const file of sourceFiles(SRC)) {
+      const rel = relative(SRC, file).replaceAll("\\", "/");
+      if (!rel.endsWith(".tsx") || rel.endsWith(".test.tsx") || rel === CATALOG || rel.startsWith("aliax/charts/")) continue;
+      const source = readFileSync(file, "utf8");
+      for (const match of source.matchAll(/strokeWidth=/g)) {
+        const tag = /<([A-Za-z][\w.]*)[^<]*$/.exec(source.slice(0, match.index))?.[1] ?? "";
+        if (/^[A-Z]/.test(tag) && !KEEP.has(tag)) found.push(`${rel}: <${tag} strokeWidth>`);
+      }
+    }
+    expect(found).toEqual([]);
+  });
+});
+
+describe("disclosure chevrons", () => {
+  it("turn on DISCLOSURE_CHEVRON's --dur-base, never the old --dur-fast", () => {
+    const found: string[] = [];
+    for (const file of sourceFiles(SRC)) {
+      const rel = relative(SRC, file).replaceAll("\\", "/");
+      if (!rel.endsWith(".tsx")) continue;
+      for (const match of readFileSync(file, "utf8").matchAll(/(["'`])([^"'`\n]*)\1/g)) {
+        const text = match[2]!;
+        if (/\brotate-90\b/.test(text) && text.includes("duration-(--dur-fast)")) found.push(`${rel}: ${text}`);
+      }
+    }
+    expect(found).toEqual([]);
+  });
+});

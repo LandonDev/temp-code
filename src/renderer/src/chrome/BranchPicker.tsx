@@ -272,7 +272,7 @@ export function BranchPicker({
         missingGit && "disabled:opacity-100",
       )}
     >
-      {head ? null : <GitBranch className="size-3.5 shrink-0" strokeWidth={1.75} />}
+      {head ? null : <GitBranch className="size-3.5 shrink-0" />}
       {head && !awaitingBranch ? (
         <span className="truncate">{label}</span>
       ) : awaitingBranch ? (

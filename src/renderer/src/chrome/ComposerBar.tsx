@@ -145,7 +145,7 @@ export function SendButton({
   const label = composerActionLabel(intent);
   const hint = composerActionHint(intent, MOD);
   const Glyph = GLYPH[intent];
-  const glyph = <Glyph className="size-4" strokeWidth={intent === "pause" ? 1.75 : 2} />;
+  const glyph = <Glyph className="size-4" />;
   const onClick = (e: MouseEvent<HTMLButtonElement>) => {
     if (intent === "pause") onPause();
     else onSubmit(e.metaKey);

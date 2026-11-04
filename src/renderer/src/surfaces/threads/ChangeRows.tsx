@@ -8,6 +8,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/too
 import type { OpenFileFn } from "../../lib/search";
 import { diskBlock, wholeChange } from "../../lib/threads/rounds";
 import type { ChangeGroup, ChangeRow } from "./implementationBoard";
+import { cn } from "../../lib/cn";
+import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 
 /** The files each task changed, grouped under the task's name; a row
  *  opens its diff in place, with the door to the full diff under it. */
@@ -65,7 +67,7 @@ function ChangeFile({
         <span className="ml-auto flex shrink-0 items-center gap-2 text-xs tabular-nums">
           {file.adds > 0 ? <span className="text-success">+{file.adds}</span> : null}
           {file.dels > 0 ? <span className="text-destructive">−{file.dels}</span> : null}
-          <ChevronRight className="size-3.5 text-muted-foreground transition-transform duration-(--dur-fast) ease-(--ease-out) group-data-[panel-open]/change:rotate-90 motion-reduce:transition-none" />
+          <ChevronRight className={cn("size-3.5 text-muted-foreground group-data-[panel-open]/change:rotate-90", DISCLOSURE_CHEVRON)} />
         </span>
       </Item>
       <CollapsibleContent>

@@ -43,6 +43,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/toolti
 import { useTruncated } from "../components/tip";
 import { cn } from "../lib/cn";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
+import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
 import {
   cardTasks,
   pausedElapsed,
@@ -458,7 +459,8 @@ export function ThreadRowView({
             >
               <ChevronRight
                 className={cn(
-                  "size-3 transition-transform duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
+                  "size-3",
+                  DISCLOSURE_CHEVRON,
                   fold.open && "rotate-90",
                 )}
               />
@@ -640,7 +642,8 @@ function FoldChevron({ open, className }: { open: boolean; className?: string })
     <ChevronRight
       aria-hidden
       className={cn(
-        "size-3.5 shrink-0 text-muted-foreground transition-transform duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
+        "size-3.5 shrink-0 text-muted-foreground",
+        DISCLOSURE_CHEVRON,
         open && "rotate-90",
         className,
       )}
