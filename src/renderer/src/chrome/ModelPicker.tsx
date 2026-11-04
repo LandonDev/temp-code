@@ -498,7 +498,8 @@ function ownThenVendor(models: AgentModel[]): AgentModel[] {
 /** The heading over a maker's rows in a harness tab. */
 const VENDOR_TITLE: Record<NonNullable<AgentModel["vendor"]>, string> = { meta: "Meta" };
 
-function ModelList({
+/** The menu's list; exported for its static preview (ModelPicker.fixtures.tsx). */
+export function ModelList({
   available,
   models,
   active,
