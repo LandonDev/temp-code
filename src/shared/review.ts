@@ -17,7 +17,7 @@ export const ReviewSettingsSchema = z.object({
   /** review every merge_branch call in the scope; off = the tool merges at once */
   beforeMerge: z.boolean().default(false),
   /** the reviewer's provider and model; the picker is limited to the approved, runnable catalog */
-  provider: z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx']).default('codex'),
+  provider: z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx', 'muse']).default('codex'),
   model: z.string().default('gpt-6.1-sol'),
   reasoning: z.enum(REASONING_LEVELS).default('high'),
   /** what holds the merge: a finding the reviewer confirmed, or any finding at all */

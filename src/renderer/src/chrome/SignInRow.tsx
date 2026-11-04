@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { loadToast } from "../components/ui/toaster";
 import {
-  ROUTED_PROVIDERS,
+  PICKED_PROVIDERS,
   SERVICE_OF,
   SIGN_IN_NAME,
-  isRoutedProvider,
+  isPickedProvider,
   type AccountsSnapshot,
-  type RoutedProvider,
+  type PickedProvider,
 } from "@server/shared/accounts";
 import { Spinner } from "../components/ui/spinner";
 import { registry } from "../lib/connection";
@@ -35,14 +35,14 @@ export function signInTarget({
   loaded: boolean;
   snapshot: AccountsSnapshot;
   harness: string;
-}): RoutedProvider | null {
+}): PickedProvider | null {
   if (!canSignIn || !loaded) return null;
-  if (ROUTED_PROVIDERS.some((p) => snapshot.providers[p].profiles.length > 0)) return null;
-  return isRoutedProvider(harness) ? harness : "claude";
+  if (PICKED_PROVIDERS.some((p) => snapshot.providers[p].profiles.length > 0)) return null;
+  return isPickedProvider(harness) ? harness : "claude";
 }
 
 /** The live target: this machine's accounts and the harness a new thread gets. */
-export function useSignInTarget(): RoutedProvider | null {
+export function useSignInTarget(): PickedProvider | null {
   const { snapshot, loaded } = useAccounts(registry.primary().environmentId);
   return signInTarget({ canSignIn: !!window.aliax, loaded, snapshot, harness: defaultSessionChoice().harness });
 }
@@ -53,7 +53,7 @@ export function SignInRowView({
   pending,
   onClick,
 }: {
-  provider: RoutedProvider;
+  provider: PickedProvider;
   pending: boolean;
   onClick?: () => void;
 }) {
@@ -75,7 +75,7 @@ export function SignInRowView({
  * the usage meter takes the foot), a cancel says nothing, a failure is one
  * toast.
  */
-export function SignInRow({ provider }: { provider: RoutedProvider }) {
+export function SignInRow({ provider }: { provider: PickedProvider }) {
   const [pending, setPending] = useState(false);
   const signIn = async () => {
     if (pending || !window.aliax) return;

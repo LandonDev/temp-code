@@ -1,0 +1,4 @@
+{"t":1793820929156,"dir":"result","method":"initialize","result":{"serverInfo":{"name":"muse","version":"1.4.14"},"userAgent":"muse-build/1.4.14 (serve; macos-aarch64; build dec7d7497fecdad135ec5835a8161dbc92e55b58)","museHome":"/tmp/muse-spike/home/.local/share/muse","platformFamily":"unix","platformOs":"macos","schema":{"version":1,"fingerprint":"sha256:c94c3d1f2f51e6424074b9ec43eac3eedcf532d3dcd77351ec1383a87d3049c6"},"grantedCapabilities":["sessionMcp"],"experimentalApi":true,"sessionDurability":"durable","sandboxAvailability":"available"}}
+{"t":1793820929157,"dir":"command","method":"usage/read","params":{}}
+{"t":1793820929157,"dir":"result","method":"usage/read","result":{}}
+{"t":1793820929167,"dir":"stderr","text":"muse serve: exit reason recorded: stdin_closed\n"}

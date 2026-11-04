@@ -10,6 +10,7 @@ public enum ProviderId: RawRepresentable, Codable, Hashable, Sendable {
     case pi
     case omp
     case fx
+    case muse
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -23,6 +24,7 @@ public enum ProviderId: RawRepresentable, Codable, Hashable, Sendable {
         case "pi": self = .pi
         case "omp": self = .omp
         case "fx": self = .fx
+        case "muse": self = .muse
         default: self = .unknown(rawValue)
         }
     }
@@ -37,6 +39,7 @@ public enum ProviderId: RawRepresentable, Codable, Hashable, Sendable {
         case .pi: "pi"
         case .omp: "omp"
         case .fx: "fx"
+        case .muse: "muse"
         case .unknown(let value): value
         }
     }

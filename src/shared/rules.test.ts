@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_RULES, ModelPolicySchema, OrchestrationRulesSchema, RoutingRuleSchema, ThreadRulesSchema, explicitModels, fitReasoning, modelApproved, parseRules, policyRoleOf, type OrchestrationRules } from './rules'
+import { CATALOG } from './catalog'
+import { DEFAULT_RULES, ModelPolicySchema, OrchestrationRulesSchema, RoutingRuleSchema, ThreadRulesSchema, defaultApproval, explicitModels, fitReasoning, modelApproved, parseRules, policyRoleOf, type OrchestrationRules } from './rules'
 
 it('maxParallel runs up to 128 in both the rules and a thread tune', () => {
   const at = (maxParallel: number) =>
@@ -57,6 +58,26 @@ describe('model policy by role', () => {
     }
     expect(modelApproved(DEFAULT_RULES, 'claude', 'claude-opus-5-5', 'thread')).toBe(true)
     expect(modelApproved(DEFAULT_RULES, 'codex', 'gpt-6.1-sol', 'thread')).toBe(true)
+  })
+
+  it('Muse Wonder Full is orchestrators only, Spark and Wonder for everyone, probed rows written out the same way', () => {
+    expect(defaultApproval('muse', 'muse-wonder-1.0-full')).toBe('orchestrators')
+    expect(defaultApproval('muse', 'muse-wonder-1.0')).toBe(true)
+    expect(defaultApproval('muse', 'muse-spark-1.3')).toBe(true)
+    expect(defaultApproval('claude', 'claude-fable-5-1')).toBe('orchestrators')
+    expect(defaultApproval('codex', 'gpt-6.1-sol')).toBe(true)
+    const before = CATALOG.muse.models
+    CATALOG.muse.models = [
+      { id: 'muse-spark-1.3', label: 'Spark', reasoning: [] },
+      { id: 'muse-wonder-1.0-full', label: 'Wonder Full', reasoning: [] }
+    ]
+    try {
+      const written = explicitModels({ ...DEFAULT_RULES, models: {} })
+      expect(written.models['muse:muse-spark-1.3']).toEqual({ approved: true })
+      expect(written.models['muse:muse-wonder-1.0-full']).toEqual({ approved: 'orchestrators' })
+    } finally {
+      CATALOG.muse.models = before
+    }
   })
 
   it('a saved rules object keeps its own model map; a model it does not mention is off', () => {

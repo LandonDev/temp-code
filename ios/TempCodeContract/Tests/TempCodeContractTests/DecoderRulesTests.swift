@@ -181,7 +181,7 @@ struct DecoderRulesTests {
         {"updatedAt":1760000000000,"providers":{"claude":{"pinned":"work@example.com","profiles":[{"name":"work@example.com","active":true},{"name":"spare@example.com","active":false}],
          "reports":[{"profileName":"work@example.com","windows":[{"label":"5h","usedPercent":40,"resetsAt":1760000100000}]}],
          "headroom":{"work@example.com":{"room":0.8,"ratePerMin":12,"seenAt":1760000000000},"spare@example.com":{"room":0.1,"throttledUntil":1760000600000,"ratePerMin":0,"seenAt":1759999000000}}},
-         "codex":{"pinned":null,"profiles":[],"reports":[]},"cursor":{"pinned":null,"profiles":[],"reports":[]}}}
+         "codex":{"pinned":null,"profiles":[],"reports":[]},"cursor":{"pinned":null,"profiles":[],"reports":[]},"muse":{"pinned":null,"profiles":[],"reports":[]}}}
         """)
         let claude = snapshot.providers.claude
         #expect(claude.profiles.count == 2)

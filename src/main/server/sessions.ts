@@ -47,9 +47,10 @@ import {
   type GoalState,
   type RootTreeSummary
 } from '@shared/session-lifecycle'
-import { routedProviderOf, type AccountPins, type AccountProvider, type AccountRoute } from '@shared/accounts'
+import { isAccountProvider, pickedProviderOf, routedProviderOf, type AccountPins, type AccountProvider, type AccountRoute } from '@shared/accounts'
 import { resolvePin, type ResolvedPin, type RouteOptions } from './accountRouting'
 import type { LimitWindow, PreambleStamp } from '@shared/events'
+import type { UsageWindow } from 'aliax-core'
 import { foldEvent, foldLog, newFoldState, reviveTodo, serializeTodo, toFoldRow } from './folds'
 import { FOLD_VERSION, type FoldRow, type ResumeAfterBootRow } from './db'
 
@@ -508,6 +509,10 @@ export interface AccountRouter {
     sessionId: string,
     info: { provider: AccountProvider; model: string | null; window: LimitWindow; account: string | null }
   ): Promise<Switched | null>
+  /** The harness reported the account's own usage windows (Muse's `usage/changed`); absent on a service without the hook. */
+  observeUsage?(provider: AccountProvider, account: string, windows: UsageWindow[]): void
+  /** The provider refused the account until `resetsAt` (Muse's quota stop): keep it out of the picks until then. */
+  observeQuota?(provider: AccountProvider, account: string, window: LimitWindow, resetsAt: number): void
 }
 /** @deprecated use AccountRouter */
 export type LimitFailover = AccountRouter
@@ -1604,7 +1609,7 @@ export class SessionRegistry {
       provider,
       model,
       account,
-      accountKnown: account && routedProviderOf(provider, model) ? (this.accountKnown?.(routedProviderOf(provider, model)!, account) ?? null) : null,
+      accountKnown: account && pickedProviderOf(provider, model) ? (this.accountKnown?.(pickedProviderOf(provider, model)!, account) ?? null) : null,
       limit: event.limit ?? null,
       // A row the catalog lists but hides here (minCodexVersion) is unavailable; a model it never listed is not ours to judge.
       modelVisible: !listed || visibleModels(provider).some((m) => m.id === model),
@@ -1731,7 +1736,7 @@ export class SessionRegistry {
    *  yet) changes nothing. */
   expectAccount(sessionId: string, opts?: RouteOptions): void {
     const meta = this.store.getSession(sessionId)
-    if (!meta || !this.limits || !routedProviderOf(meta.provider, meta.model)) return
+    if (!meta || !this.limits || !pickedProviderOf(meta.provider, meta.model)) return
     const pin = this.pinOf(meta)
     const { current, vanished } = this.limits.routeFor(meta, pin, opts)
     if (vanished) this.accountGone(meta, pin, vanished)
@@ -1748,7 +1753,7 @@ export class SessionRegistry {
    * the harness was spawned with no longer applies).
    */
   private accountGone(meta: SessionMeta, pin: ResolvedPin | null, vanished: { pin?: string; sticky?: string }): void {
-    const provider = routedProviderOf(meta.provider, meta.model)
+    const provider = pickedProviderOf(meta.provider, meta.model)
     if (vanished.pin && pin && pin.name === vanished.pin && provider) {
       if (pin.level === 'project' && meta.projectId) {
         const project = this.store.getProject(meta.projectId)
@@ -1809,7 +1814,7 @@ export class SessionRegistry {
    *  left alone: the gateway moves that one itself. */
   refreshAccount(sessionId: string, load?: (provider: AccountProvider) => Record<string, number>): void {
     const meta = this.store.getSession(sessionId)
-    const routed = meta ? routedProviderOf(meta.provider, meta.model) : null
+    const routed = meta ? pickedProviderOf(meta.provider, meta.model) : null
     if (!meta || meta.archived || !routed) return
     if (LIVE_STATUSES.has(meta.status) || this.starting.has(sessionId)) return
     const live = this.handles.has(sessionId)
@@ -1886,7 +1891,7 @@ export class SessionRegistry {
   private onLimitError(sessionId: string, window: LimitWindow): void {
     if (window === 'transient' || !this.limits || this.limited.has(sessionId)) return
     const meta = this.store.getSession(sessionId)
-    const routed = meta ? routedProviderOf(meta.provider, meta.model) : null
+    const routed = meta ? pickedProviderOf(meta.provider, meta.model) : null
     if (!meta || !routed) return
     const switching = this.limits
       .failover(sessionId, { provider: routed, model: meta.model ?? null, window, account: meta.account ?? null })
@@ -4209,6 +4214,14 @@ export class SessionRegistry {
               : this.append(sessionId, event),
           requestApproval: (req) => this.requestApproval(sessionId, req),
           awaitBaseline: () => this.awaitBaseline(sessionId),
+          observeUsage: (windows) => {
+            const account = this.store.getSession(sessionId)?.account ?? current
+            if (account && isAccountProvider(meta.provider)) this.limits?.observeUsage?.(meta.provider, account, windows)
+          },
+          observeLimit: (window, resetsAt) => {
+            const account = this.store.getSession(sessionId)?.account ?? current
+            if (account && isAccountProvider(meta.provider)) this.limits?.observeQuota?.(meta.provider, account, window, resetsAt)
+          },
           mark: (phase, note) => {
             // A boot ahead of any send (an eager create) has no span yet: its word waits for the first send.
             if (phase === 'handle' && note) this.bootedAs.set(sessionId, note)

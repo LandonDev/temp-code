@@ -32,7 +32,7 @@ final class CatalogChoice {
         self.reasoning = reasoning
     }
 
-    static let providerOrder: [ProviderId] = [.claude, .codex, .cursor, .grok, .opencode, .pi, .omp, .fx]
+    static let providerOrder: [ProviderId] = [.claude, .codex, .cursor, .grok, .opencode, .pi, .omp, .fx, .muse]
 
     /// Providers that have models, in the desktop's order.
     var providers: [ProviderInfo] {

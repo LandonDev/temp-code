@@ -639,7 +639,10 @@ routed to (aliax-core's `forward`). Two listeners:
   the next sync settles anything a lost message left half done. A peer's
   pushes and pull answers land only on accounts already on file here
   (`applyTransfer(..., 'peer')`); a grant the local CLI is signed in with
-  (Claude's Keychain item, Codex's auth.json) is never handed off. Removals
+  (Claude's Keychain item, Codex's auth.json, Muse Code's auth.json) is never
+  handed off; a Muse Code login is static (no refresh grant), so every host
+  holds the copy and routes its threads by it ("Muse Code: a harness of its
+  own" below). Removals
   follow the owner (`AccountSync.deleteProfile`, behind the `accounts.delete`
   RPC and the Accounts page's `aliax:profiles:delete`): the vault row goes,
   the snapshot rebuilds at once (`AccountsService.rebuildNow`, no debounce),
@@ -851,6 +854,83 @@ routed to (aliax-core's `forward`). Two listeners:
   burst all adopted (69–91 ms), cold 0.21 s with Starting the CLI at 35 ms,
   and a real low-effort Opus thread streamed its thought (model at 2.7 s,
   the summary at 5.2 s). docs/box.md "Warm start" has the tables.
+
+## Muse Code: a harness of its own
+Meta's Muse Code CLI is provider `muse` (`src/main/server/drivers/muse.ts`):
+one `muse serve` per thread over the Muse Session Protocol (newline JSON-RPC
+on stdio), spoken through Meta's `@muse-code/sdk` (pinned exactly, 1.4.14;
+bundled into main like aliax-core, so electron.vite excludes it from the
+externals). The spike's findings are `.temp-code/plan-R5k0vrmrvU4D/findings.md`
+(F1–F10) and its recorded frames `src/main/server/drivers/fixtures/muse/`
+(the README there); the SDK's schema fingerprint is the change detector and a
+mismatch logs one `[muse]` line.
+- `harness/museHost.ts` spawns the binary through the SDK's handshake and
+  keeps the raw `Connection` (the facade drops `usage/changed` and lacks
+  steer, cancel, `model/list`); `clientInfo.name` is `temp_code` (the wire
+  refuses a hyphen); the environment is `harnessEnv()` plus the guard's marks,
+  `TBH_CREDENTIAL_BACKEND=file` (on macOS the CLI otherwise keeps its login in
+  the Keychain), `MUSE_CONTRIBUTOR_MODE=0` (the person's code is not training
+  data unless they turn it on) and `XDG_CONFIG_HOME` for the thread's account.
+  `harness/museProtocol.ts` is the pure mapping: `safe` → `:ask-me` +
+  `promptUnmatched`, `edits` → `:ask-me` + `onRequest`, `auto` →
+  `:unrestricted` + `allowAll`; the app-tools bridge rides `session/start`'s
+  `config.mcpServers.app` as a stdio server (the `sessionMcp` grant), so no
+  settings file is generated; `turn/start` carries the effort on every turn
+  (`minimal` joins the ladder with half 1; `none` is never sent); a steer is
+  `turn/steer` on the live turn, received when the `userMessage` item with our
+  `commandId` lands; Stop is `turn/cancel`; approvals answer `approval/decide`
+  with the request's own `approved` choice, or `abort` (the wire offers no
+  `denied`), never a session-wide or policy choice, and the app's own tools
+  (`mcp__app__*`) are approved without a card; questions are
+  `userInput/request` → the question card → `userInput/answer`;
+  `session/contextUsage` is the context meter; `usage/changed` (the 5h and
+  Weekly percent blocks) goes to `AccountsService.observeUsage` and a quota
+  stop (`quota: tierLimit, resets …`, failureKind reads it as `rate_limited`
+  on the 5h window) to `observeQuota`; the SDK's exit classification words the
+  error row (`exited unexpectedly` keeps HARNESS_CRASHED); a Linux host whose
+  `initialize` says the sandbox is unavailable restarts with
+  `--disable-sandbox`; `TEMP_CODE_MUSE_TRACE=1` logs every frame.
+- The catalog is probed at boot (`harness/museCatalog.ts`: `model/list`,
+  `variants` the ladder, `isActive` the current pick and never a filter,
+  labels from the ids: Muse Wonder 1.0, Muse Wonder Full 1.0, Muse Spark 1.3,
+  1.2; the default is `isDefault`); it answers empty with no login, so the
+  renderer's static rows stand in until then. Wonder Full
+  (`muse-wonder-full-1.0`) is orchestrators-only by default
+  (`defaultApproval` in rules.ts, which `explicitModels` applies to probed
+  rows too); Spark and Wonder are for everyone.
+- Accounts: the login is static (`auth.json`: a device-code `access_token`,
+  the minted `api_key` the model traffic presents, `user_email`,
+  `subs_active`; no refresh, no expiry), aliax-core's `muse-code` service
+  (adapters/muse.ts) captures the file whole and every host holds the copy
+  (tombstones on delete). `src/main/server/museConfigDirs.ts` keeps
+  `<userData>/muse-accounts/<account>/muse/` with that `auth.json` (0600, by
+  rename) and a symlink per other entry of the person's `~/.config/muse`
+  (settings, skills, hooks, trust), and the driver hands the dir to `muse
+  serve` as `XDG_CONFIG_HOME`; a thread routed to no account runs on the
+  CLI's own login. `isPickedProvider` (claude, codex, muse) is the gate for
+  pins, the sticky account, the vanished rule and the chip
+  (`isRoutedProvider` stays for what rides the gateway: headroom, 401 marks,
+  the scope); a Muse pick lands at the next harness start, which the chip's
+  menu says. Routing scores the observed windows and the live load alone;
+  nothing polls Meta, and `muse usage` must never run against a copy (it
+  rotates the access token in place; `recaptureMuseDir` saves a dir's
+  rotated file back on dispose). The Aliax app's Add account runs `muse
+  login` (its CLAUDE.md). No gateway lane: `-c endpoint_transport.base_url`
+  does carry every model call (findings F4) but no rate-limit headers were
+  seen, so the lane buys nothing yet; warm start is left for later (the
+  bridge binds at `session/start`, so a warm host can be rebound).
+- On the box: `scripts/box/85-temp-code.sh` installs the CLI as agents; the
+  harness set syncs `~/.config/muse/{settings.json,skills,hooks}` and never
+  `auth.json`; account sync carries the login; but Meta serves the box's
+  address an empty catalog (findings F2), so a Muse thread there fails with
+  the sign-in row until that changes (docs/box.md "Muse Code on the box").
+- Proof: `bun run script:e2e-muse` (scripts/e2e-muse.ts: an in-process
+  registry on the real binary and the login its config dir holds; a shell
+  call, a denied network approval, a steer received, a cancel; skips with one
+  line where `muse` or the catalog is missing). Unit: muse.test.ts on
+  `harness/museFakeServe.mjs`, museProtocol, museCatalog (the recorded
+  `model-list.json`), museHost's exit words, museConfigDirs, museSettings,
+  providerEnums, the rules, failureKind, binaries and sendSpans cases.
 
 ## Remote access: the fixed port behind the tunnel
 - A second listener (src/main/server/remote/listener.ts) binds

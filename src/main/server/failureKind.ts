@@ -71,7 +71,7 @@ const TOKEN_EXPIRED = /token_expired/i
 export const NO_META_KEY_MESSAGE = 'No Meta Model API key on this host'
 const NO_META_KEY = /No Meta Model API key/i
 const QUOTA = /out of credits|insufficient[_ ]credits|credit balance|insufficient_quota|billing|exceeded your current quota|no credits/i
-const RATE_LIMITED = /rate[ _-]?limit|too many requests|usage limit|\b429\b|overloaded_error|overloaded|hit your limit|reached (your|the) (usage )?limit/i
+const RATE_LIMITED = /rate[ _-]?limit|too many requests|usage limit|\b429\b|overloaded_error|overloaded|hit your limit|reached (your|the) (usage )?limit|quota: tierlimit/i
 const MODEL_UNAVAILABLE =
   /model[^.\n]{0,40}(not found|does not exist|is not supported|not supported|unavailable|not available|is deprecated|has been retired)|not_found_error|unknown model|invalid model|minCodexVersion|no such model/i
 const NETWORK =
@@ -91,7 +91,8 @@ const PROVIDER_NAME: Record<ProviderId, string> = {
   opencode: 'OpenCode',
   pi: 'Pi',
   omp: 'OMP',
-  fx: 'FX'
+  fx: 'FX',
+  muse: 'Meta'
 }
 
 const HARNESS_NAME: Record<ProviderId, string> = {
@@ -102,7 +103,8 @@ const HARNESS_NAME: Record<ProviderId, string> = {
   opencode: 'OpenCode',
   pi: 'Pi',
   omp: 'OMP',
-  fx: 'FX'
+  fx: 'FX',
+  muse: 'Muse Code'
 }
 
 /** What the sign-in is called where the account lives. */
@@ -195,6 +197,9 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext): { summa
     case 'oauth_expired':
       if (!account && isRoutedProvider(ctx.provider) && NOT_SIGNED_IN.test(ctx.message)) {
         return { summary: `Not signed in to ${SIGN_IN_NAME[ctx.provider]}`, cause: 'No account on this host is signed in.' }
+      }
+      if (ctx.provider === 'muse' && NOT_SIGNED_IN.test(ctx.message)) {
+        return { summary: 'Not signed in to Muse Code', cause: 'Run `muse login` once on this host, or route the thread to an account that is signed in.' }
       }
       return {
         summary: account

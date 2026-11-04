@@ -411,7 +411,7 @@ public enum PlanBuild {
     }
 
     /// The desktop's provider order; providers it does not name follow, by label.
-    public static let providerOrder: [ProviderId] = [.claude, .codex, .cursor, .grok, .opencode, .pi, .omp, .fx]
+    public static let providerOrder: [ProviderId] = [.claude, .codex, .cursor, .grok, .opencode, .pi, .omp, .fx, .muse]
 
     /// Providers that have models, in the desktop's order.
     public static func providers(_ catalog: Catalog?) -> [ProviderInfo] {

@@ -1,4 +1,6 @@
 import { homedir, hostname } from 'node:os'
+import { vault } from 'aliax-core'
+import { configureMuseDirs } from './museConfigDirs'
 import { version as appVersion } from '../../../package.json'
 import { hubFromEnv, type HubClient } from './hub'
 import { existsSync, readFileSync } from 'node:fs'
@@ -518,6 +520,14 @@ export async function startServer(
     headroom: () => headroom
   })
   registry.limits = accounts
+  // A Muse thread's `muse serve` reads its account's login from a config dir
+  // of its own under the app's data (museConfigDirs.ts), filled from the vault.
+  configureMuseDirs({
+    root: join(options.dataDir ?? dirname(dbPath), 'muse-accounts'),
+    readBlob: (account) => vault.readSecret('muse-code', account),
+    saveBlob: (account, blob) => vault.saveSecret('muse-code', account, blob),
+    log: (line) => console.log(line)
+  })
   // An account gone from the vault explains a thread's 401 outright; with
   // no snapshot yet the host cannot say either way.
   registry.accountKnown = (provider, name) => {
@@ -1187,7 +1197,8 @@ export async function startServer(
         const next = accounts.substitute(info.serviceId, info.account, info.model)
         // The thread's own account, when it is the dead one: a substitute
         // dying later adds nothing the user can act on beyond that.
-        if (!next) registry.signInNeeded(info.thread, accounts.outFor(PROVIDER_OF[info.serviceId]).includes(info.own) ? info.own : info.account)
+        const provider = PROVIDER_OF[info.serviceId]
+        if (!next) registry.signInNeeded(info.thread, provider && accounts.outFor(provider).includes(info.own) ? info.own : info.account)
         return next
       },
       // Unscoped (terminal) traffic moved the global pin: the footer follows.

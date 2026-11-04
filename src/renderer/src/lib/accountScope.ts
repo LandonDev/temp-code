@@ -1,8 +1,9 @@
 import type { ProfileView } from "aliax-core/shared/types";
 import {
-  routedProviderOf,
-  type ProviderAccounts,
+  pickedProviderOf,
+  type PickedProvider,
   type RoutedProvider,
+  type ProviderAccounts,
 } from "@server/shared/accounts";
 import type { ProjectMeta, WorkspaceMeta } from "@server/shared/domain";
 
@@ -25,7 +26,7 @@ export interface InheritedPin {
 
 /** Where a thread's account comes from, as the popover and footer describe it. */
 export interface AccountScope {
-  provider: RoutedProvider;
+  provider: PickedProvider;
   /** The project's or workspace's pin that applies to the thread. */
   inherited: InheritedPin | null;
   /** The account the thread spends from (the expected pick until the gateway routes it; null while unknown). */
@@ -39,7 +40,7 @@ export function scopeOf(
   projects: readonly ProjectMeta[],
   workspaces: readonly WorkspaceMeta[],
 ): AccountScope | null {
-  const provider = meta ? routedProviderOf(meta.provider, meta.model) : null;
+  const provider = meta ? pickedProviderOf(meta.provider, meta.model) : null;
   if (!meta || !provider) return null;
   const project = meta.projectId ? projects.find((p) => p.id === meta.projectId) : undefined;
   const workspaceId = project?.workspaceId ?? meta.workspaceId;
@@ -64,8 +65,9 @@ export function pinRowShown(provider: RoutedProvider, profiles: readonly unknown
 
 /** One line on where the thread's account comes from. */
 export function sourceLine(scope: AccountScope): string {
-  if (scope.inherited) return `From ${scope.inherited.level} ${scope.inherited.from}`;
-  return "Auto, picked by model";
+  const source = scope.inherited ? `From ${scope.inherited.level} ${scope.inherited.from}` : "Auto, picked by model";
+  // A Muse thread's host reads its account when it starts: a pick lands at the next start, never mid-turn.
+  return scope.provider === "muse" ? `${source}; applies at the next start` : source;
 }
 
 /** The nickname, else the email's local part, else the profile name; a key is its name. */

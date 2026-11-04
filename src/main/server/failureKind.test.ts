@@ -76,6 +76,15 @@ describe('failureKindOf on captured messages', () => {
     expect(failureKindOf(ctx({ message: 'Your credit balance is too low to access the Anthropic API.' }))).toBe('quota')
   })
 
+  it("muse's rows: a tier limit is a rate limit with its window, a logged-out host says how to sign in", () => {
+    expect(failureKindOf(ctx({ provider: 'muse', message: 'quota: tierLimit, resets 6:20 PM', limit: { window: '5h' } }))).toBe('rate_limited')
+    expect(failureKindOf(ctx({ provider: 'muse', message: 'quota: tierLimit, resets 6:20 PM' }))).toBe('rate_limited')
+    const signIn = ctx({ provider: 'muse', message: 'Muse Code is not logged in on this host: run `muse login` once' })
+    expect(failureKindOf(signIn)).toBe('oauth_expired')
+    expect(describeFailure('oauth_expired', signIn).summary).toBe('Not signed in to Muse Code')
+    expect(describeFailure('harness_crashed', ctx({ provider: 'muse', message: 'muse serve exited unexpectedly (SIGKILL)' })).summary).toContain('Muse Code')
+  })
+
   it('a model the host hides or the provider refuses', () => {
     expect(failureKindOf(ctx({ message: 'API Error: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-opus-9 not found"}}' }))).toBe('model_unavailable')
     expect(failureKindOf(ctx({ provider: 'codex', model: 'gpt-6.1-sol', message: 'codex error', modelVisible: false }))).toBe('model_unavailable')

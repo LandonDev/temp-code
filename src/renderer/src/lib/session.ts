@@ -17,7 +17,7 @@ import type { BackgroundWork, Failure } from "@server/shared/events";
 import type { ThreadState } from "./tcserver/todos";
 
 export type HarnessId =
-  "claude" | "codex" | "cursor" | "grok" | "opencode" | "pi" | "omp" | "fx";
+  "claude" | "codex" | "cursor" | "grok" | "opencode" | "pi" | "omp" | "fx" | "muse";
 
 export const HARNESSES: HarnessId[] = [
   "claude",
@@ -28,6 +28,7 @@ export const HARNESSES: HarnessId[] = [
   "pi",
   "omp",
   "fx",
+  "muse",
 ];
 
 export type BlockRole =
@@ -429,6 +430,7 @@ export const HARNESS_LABEL: Record<HarnessId, string> = {
   pi: "pi",
   omp: "omp",
   fx: "fx",
+  muse: "muse",
 };
 
 export const HARNESS_TITLE: Record<HarnessId, string> = {
@@ -440,6 +442,7 @@ export const HARNESS_TITLE: Record<HarnessId, string> = {
   pi: "Pi",
   omp: "omp",
   fx: "fx",
+  muse: "Muse Code",
 };
 
 /** fx and Grok Build ACP reject image and audio blocks. */

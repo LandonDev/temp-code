@@ -1,6 +1,7 @@
 import { applyProbedCatalog, PROBED_PROVIDERS, type ProviderId } from '@shared/catalog'
 import { probeCatalog as probeFx } from './harness/fxCatalog'
 import { probeCatalog as probeGrok } from './harness/grokCatalog'
+import { probeCatalog as probeMuse } from './harness/museCatalog'
 import { probeCatalog as probeOpenCode } from './harness/opencodeCatalog'
 import { probeCatalog as probePi } from './harness/piCatalog'
 
@@ -15,7 +16,8 @@ const PROBES: Partial<Record<ProviderId, () => Promise<unknown>>> = {
   opencode: probeOpenCode,
   pi: () => probePi('pi'),
   omp: () => probePi('omp'),
-  fx: probeFx
+  fx: probeFx,
+  muse: () => probeMuse()
 }
 
 let inflight: Promise<void> | null = null

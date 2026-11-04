@@ -108,7 +108,7 @@ export const CrossHostCallerSchema = z.object({
 })
 export type CrossHostCaller = z.infer<typeof CrossHostCallerSchema>
 
-const providerArg = z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx'])
+const providerArg = z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx', 'muse'])
 const reasoningArg = z.enum(REASONING_LEVELS)
 
 /** thread.start: app.startThread's fields, plus where on the box the caller works (translated on the Mac). */

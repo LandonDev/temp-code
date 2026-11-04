@@ -55,7 +55,7 @@ const ProjectCleanupSchema = z.object({
  * updates, which are cheap and drive the sidebar).
  */
 
-const providerEnum = z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx'])
+const providerEnum = z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx', 'muse'])
 const reasoningEnum = z.enum(REASONING_LEVELS)
 
 export const CreateSessionParams = z.object({

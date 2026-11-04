@@ -172,14 +172,17 @@ const BIN_NAME: Record<ProviderId, string> = {
   opencode: 'opencode',
   pi: 'pi',
   omp: 'omp',
-  fx: 'fx'
+  fx: 'fx',
+  muse: 'muse'
 }
 
 /** The ported harnesses resolve through their own finders (extra install
- *  dirs, fx's agent check); `--version` is not probed for them. */
+ *  dirs, fx's agent check); `--version` is not probed for them, except
+ *  muse, whose version the doctor row shows against the SDK's pin. */
 const PORTED: Partial<Record<ProviderId, () => Promise<{ path: string }>>> = {}
+const VERSIONED_PORTED = new Set<ProviderId>(['muse'])
 async function portedResolver(provider: ProviderId): Promise<(() => Promise<{ path: string }>) | null> {
-  if (!['grok', 'opencode', 'pi', 'omp', 'fx'].includes(provider)) return null
+  if (!['grok', 'opencode', 'pi', 'omp', 'fx', 'muse'].includes(provider)) return null
   if (!PORTED[provider]) {
     const child = await import('./harness/child')
     Object.assign(PORTED, {
@@ -187,7 +190,8 @@ async function portedResolver(provider: ProviderId): Promise<(() => Promise<{ pa
       opencode: child.resolveOpenCodeBinary,
       pi: child.resolvePiBinary,
       omp: child.resolveOmpBinary,
-      fx: child.resolveFxBinary
+      fx: child.resolveFxBinary,
+      muse: child.resolveMuseBinary
     })
   }
   return PORTED[provider] ?? null
@@ -252,7 +256,7 @@ export function resolveClaude(): Promise<ClaudeChoice> {
   return claudeChoiceP
 }
 
-async function checkProvider(provider: ProviderId): Promise<DoctorReport> {
+export async function checkProvider(provider: ProviderId): Promise<DoctorReport> {
   if (provider === 'claude') {
     const choice = await resolveClaude()
     if (choice.path) return { found: true, path: choice.path, version: choice.version ?? undefined }
@@ -266,7 +270,11 @@ async function checkProvider(provider: ProviderId): Promise<DoctorReport> {
   if (ported) {
     try {
       const { path } = await ported()
-      return withBridgeNote(provider, { found: true, path })
+      if (!VERSIONED_PORTED.has(provider)) return withBridgeNote(provider, { found: true, path })
+      const env = await harnessEnv()
+      const { stdout } = await execFileP(path, ['--version'], { env, timeout: 15_000 }).catch(() => ({ stdout: '' }))
+      const version = stdout.trim().split('\n')[0] || undefined
+      return withBridgeNote(provider, { found: true, path, ...(version ? { version } : {}) })
     } catch (err) {
       return { found: false, error: err instanceof Error ? err.message : `${bin} not found` }
     }

@@ -1308,12 +1308,14 @@ public struct AccountsSnapshot: Codable, Hashable, Sendable {
         public let codex: ProviderAccounts
         public let cursor: ProviderAccounts
         public let meta: ProviderAccounts?
+        public let muse: ProviderAccounts?
 
-        public init(claude: ProviderAccounts, codex: ProviderAccounts, cursor: ProviderAccounts, meta: ProviderAccounts? = nil) {
+        public init(claude: ProviderAccounts, codex: ProviderAccounts, cursor: ProviderAccounts, meta: ProviderAccounts? = nil, muse: ProviderAccounts? = nil) {
             self.claude = claude
             self.codex = codex
             self.cursor = cursor
             self.meta = meta
+            self.muse = muse
         }
     }
 

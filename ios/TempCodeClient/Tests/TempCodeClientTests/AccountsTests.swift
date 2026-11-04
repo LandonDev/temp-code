@@ -50,7 +50,7 @@ private func claude(profiles: [AccountProfile]? = nil, reports: [UsageReport] = 
 
 private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: Int = now) -> AccountsSnapshot {
     let empty = ProviderAccounts(pinned: nil, profiles: [], reports: [], note: nil, headroom: nil)
-    return AccountsSnapshot(updatedAt: updatedAt, providers: .init(claude: accounts, codex: empty, cursor: empty))
+    return AccountsSnapshot(updatedAt: updatedAt, providers: .init(claude: accounts, codex: empty, cursor: empty, muse: empty))
 }
 
 @Suite struct AccountScopeTests {

@@ -25,7 +25,7 @@ import { AccountRow, barColumns } from "./accounts/row";
 import { STATIC_WARN_MS, type OwnerView, type RowAction } from "./accounts/rowLine";
 
 /** The mark each section leads with: the harness's, or Meta's vendor mark. */
-const HARNESS: Record<ServiceId, MarkId> = { "claude-code": "claude", codex: "codex", cursor: "cursor", meta: "meta" };
+const HARNESS: Record<ServiceId, MarkId> = { "claude-code": "claude", codex: "codex", cursor: "cursor", meta: "meta", "muse-code": "muse" };
 
 /** Services whose accounts are API keys: added with Add key…, never signed in to, switched or refreshed. */
 const KEY_SERVICES = new Set<ServiceId>(["meta"]);
@@ -114,7 +114,7 @@ function ProviderSection({ service, props, now }: { service: ServiceView; props:
     <PageSection
       title={
         <span className="flex items-center gap-2">
-          <HarnessIcon harness={HARNESS[service.id]} className={service.installed ? "size-3.5" : "size-3.5 opacity-50"} />
+          {HARNESS[service.id] ? <HarnessIcon harness={HARNESS[service.id]!} className={service.installed ? "size-3.5" : "size-3.5 opacity-50"} /> : null}
           {service.name}
         </span>
       }

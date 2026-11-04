@@ -16,7 +16,7 @@ export const THREAD_TITLES = {
   research: 'New research'
 } as const
 
-const HARNESS_LABELS = ['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx']
+const HARNESS_LABELS = ['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx', 'muse']
 
 const PLACEHOLDERS = new Set<string>([...Object.values(THREAD_TITLES), ...HARNESS_LABELS])
 

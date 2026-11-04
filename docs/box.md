@@ -698,6 +698,39 @@ RPCs) run the same `gh`, so they need nothing more:
 `auth.state: "ok"`, and the inbox polls only the repos of workspaces that have
 a GitHub remote. Agent commits carry no AI attribution trailers.
 
+### Muse Code on the box
+
+`scripts/box/85-temp-code.sh` installs Meta's Muse Code CLI as agents the way
+it installs claude and cursor-agent: the official installer
+(`https://dev.meta.ai/install.sh`, bash, no sudo) puts a launcher in
+`~/.local/bin/muse` that fetches the pinned binary (`muse-bin-1.4.14-R7309.1`,
+a static x86-64 ELF with its own bubblewrap, so `initialize` reports the
+sandbox available with no system bwrap); `MUSE_LOGIN=0` keeps a refused
+download from starting the launcher's own sign-in and `MUSE_NO_MODIFY_PATH=1`
+leaves the profile alone. Nothing signs in here: the login is one static file
+(`~/.config/muse/auth.json`: a device-code access token, the minted api_key,
+the email) that account sync carries from the Mac into every host's vault,
+and a thread's `muse serve` reads it from its account's config dir
+(`<userData>/muse-accounts/<account>/`, `TBH_CREDENTIAL_BACKEND=file`).
+
+What the spike found (2026-11-04, `.temp-code/plan-R5k0vrmrvU4D/findings.md`
+F2): the copied login is accepted (`muse usage` answers the subscription,
+`GET /v1/models` with the key is 200), but Meta serves the box's address an
+EMPTY model catalog while the same key lists every model from the Mac. `muse
+serve` then logs "model catalog has no visible models; composing the
+logged-out fallback" and every turn fails `not logged in`, which the thread
+shows as the sign-in row. Nothing in temp-code changes that: a Muse thread
+belongs on the Mac until Meta serves the box's network. Also: `muse usage`
+rotates the access token in place and invalidates the other copies' usage
+calls; never run it against a synced copy (turns never rewrite the file).
+
+Memory: Muse keeps project memory in the repo (`<repo>/.agents/memory/`),
+which git carries; the memory set has no new rule. The harness set syncs
+Muse settings `.config/muse/settings.json`, Muse skills `.config/muse/skills/**`
+and Muse hooks `.config/muse/hooks/**`; `auth.json` is a secret name and
+never crosses. `muse serve` costs about 120 MiB idle plus 40 MiB per loaded
+session (admission's median covers it).
+
 ### Routing by headroom: both hosts pick from one picture
 
 A thread in auto mode spends from the account with the most headroom for
@@ -774,6 +807,7 @@ uses (`HARNESS_SET` in `harnessSet.ts`):
   is the hook's own, so a hooks.json that names `$HOME` lands byte for byte
   and stays trusted)
 - Shared skills `.agents/skills/**`, read by Claude Code and Codex alike
+- Muse settings `.config/muse/settings.json`, Muse skills `.config/muse/skills/**` (the binary cache skipped), Muse hooks `.config/muse/hooks/**`; `auth.json` never
 
 A project's own `.claude/skills/` lives in its repository and crosses with
 git, not with this sync.

@@ -19,10 +19,11 @@ export type ProviderId =
   | 'pi'
   | 'omp'
   | 'fx'
+  | 'muse'
 
 /** Providers whose model list comes from probing the installed CLI at
  *  boot (and on `catalog.get {refresh}`), not from this file. */
-export const PROBED_PROVIDERS: ProviderId[] = ['grok', 'opencode', 'pi', 'omp', 'fx']
+export const PROBED_PROVIDERS: ProviderId[] = ['grok', 'opencode', 'pi', 'omp', 'fx', 'muse']
 
 /** Replace a probed provider's models in place; the object identity of
  *  CATALOG never changes, so every reader sees the update. */
@@ -290,7 +291,12 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
   opencode: { id: 'opencode', label: 'OpenCode', models: [], defaultModel: '', experimental: true },
   pi: { id: 'pi', label: 'Pi', models: [], defaultModel: '', experimental: true },
   omp: { id: 'omp', label: 'omp', models: [], defaultModel: '', experimental: true },
-  fx: { id: 'fx', label: 'fx', models: [], defaultModel: '', experimental: true }
+  fx: { id: 'fx', label: 'fx', models: [], defaultModel: '', experimental: true },
+  // Muse Code (Meta): one `muse serve` per thread over the Muse Session
+  // Protocol (drivers/muse.ts); the rows come from `model/list` at boot
+  // (harness/museCatalog.ts). The default names the model the CLI itself
+  // defaults to until the probe says otherwise.
+  muse: { id: 'muse', label: 'Muse Code', models: [], defaultModel: 'muse-spark-1.3', experimental: true }
 }
 
 /**
@@ -376,6 +382,10 @@ export function resolveModel(
 ): { provider: ProviderId; model: string } {
   if (!model) return { provider, model: CATALOG[provider].defaultModel }
   if (modelInfo(provider, model)) return { provider, model }
+  // A Muse id asked of the Muse harness stays there, probed or not: the
+  // same `muse-wonder-*` id is also a row under claude and codex (the Meta
+  // Model API), and only `muse serve` reaches Wonder Full.
+  if (provider === 'muse' && model.startsWith('muse-')) return { provider, model }
   for (const p of Object.keys(CATALOG) as ProviderId[]) {
     if (modelInfo(p, model)) return { provider: p, model }
   }

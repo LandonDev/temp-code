@@ -40,11 +40,12 @@ export const GENERAL_LABELS: Record<AccountProvider, string[]> = {
   codex: ['5h', 'week'],
   cursor: [],
   // Pay as you go: no window to pool; the meter shows a Meta row only while a key is throttled.
-  meta: []
+  meta: [],
+  muse: ['5h', 'Weekly']
 }
 
 /** The provider as the meter names it: the plan the accounts are on, not the harness. */
-export const PROVIDER_NAME: Record<AccountProvider, string> = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor', meta: 'Meta' }
+export const PROVIDER_NAME: Record<AccountProvider, string> = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor', meta: 'Meta', muse: 'Muse Code' }
 
 /** Below this share a bar's fill turns amber. */
 export const LOW_SHARE = 0.1

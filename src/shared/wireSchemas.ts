@@ -187,11 +187,12 @@ export const ProviderIdSchema = z.enum([
   'opencode',
   'pi',
   'omp',
-  'fx'
+  'fx',
+  'muse'
 ])
 export const ReasoningSchema = z.enum(REASONING_LEVELS)
 export const AgentTypeSchema = z.enum(AGENT_TYPES)
-export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor', 'meta'])
+export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor', 'meta', 'muse'])
 export const AccountPinsSchema = z.partialRecord(AccountProviderSchema, z.string())
 
 // ── accounts on the wire (the phone's subset of accounts.ts) ────────────
@@ -246,7 +247,9 @@ export const AccountsSnapshotSchema = z.object({
     codex: ProviderAccountsSchema,
     cursor: ProviderAccountsSchema,
     /** Meta Model API keys; optional so an older host's snapshot decodes. */
-    meta: ProviderAccountsSchema.optional()
+    meta: ProviderAccountsSchema.optional(),
+    /** Muse Code logins; optional for the same reason. */
+    muse: ProviderAccountsSchema.optional()
   })
 })
 

@@ -31,8 +31,9 @@ export function commandPathProbe(name: string, shell: string = loginShell()): st
 
 /** The dirs a tool usually lives in, in the order they should lead PATH. */
 export function toolDirs(platform: NodeJS.Platform = process.platform): string[] {
+  // ~/.local/bin on the Mac too: Muse Code's installer puts its launcher there.
   return platform === 'darwin'
-    ? ['$HOME/.bun/bin', '/opt/homebrew/bin', '/usr/local/bin']
+    ? ['$HOME/.bun/bin', '/opt/homebrew/bin', '/usr/local/bin', '$HOME/.local/bin']
     : ['$HOME/.bun/bin', '$HOME/.local/bin']
 }
 

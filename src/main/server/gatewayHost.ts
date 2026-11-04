@@ -288,7 +288,7 @@ export class GatewayHost {
 
   /** A secret landed in the vault: the child asks again for that service's credentials. */
   credentialsChanged(serviceId: ServiceId | null): void {
-    this.post({ t: 'credentials.drop', service: serviceId ? PROVIDER_OF[serviceId] : null })
+    this.post({ t: 'credentials.drop', service: (serviceId ? PROVIDER_OF[serviceId] : null) ?? null })
   }
 
   async start(): Promise<GatewayStatus> {

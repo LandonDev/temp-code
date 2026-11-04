@@ -1,5 +1,5 @@
 import type { FailureKind } from "@server/shared/events";
-import { isRoutedProvider, routedProviderOf } from "@server/shared/accounts";
+import { isPickedProvider, routedProviderOf } from "@server/shared/accounts";
 
 /**
  * What the failure card offers per kind. Never more than three; Retry is
@@ -39,7 +39,7 @@ const LABELS: Record<FailureActionId, string> = {
 const MAX_ACTIONS = 3;
 
 function ids(kind: FailureKind, ctx: FailureActionContext): FailureActionId[] {
-  const routed = isRoutedProvider(ctx.provider);
+  const routed = isPickedProvider(ctx.provider);
   const meta = routedProviderOf(ctx.provider, ctx.model) === "meta";
   switch (kind) {
     case "key_invalid":
@@ -74,6 +74,6 @@ export function failureActions(kind: FailureKind, ctx: FailureActionContext): Fa
 
 /** The note under the lines when signing in is not something this window can do. */
 export function failureNote(kind: FailureKind, ctx: FailureActionContext): string | null {
-  if (kind !== "oauth_expired" || ctx.signInHere || !isRoutedProvider(ctx.provider)) return null;
+  if (kind !== "oauth_expired" || ctx.signInHere || !isPickedProvider(ctx.provider)) return null;
   return SIGN_IN_ELSEWHERE_NOTE;
 }

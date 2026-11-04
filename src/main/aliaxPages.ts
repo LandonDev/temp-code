@@ -117,6 +117,13 @@ async function loginStart(serviceId: ServiceId, loginHint?: string): Promise<Act
       }
       return { ok: true, name, notes }
     }
+    // A key-only service is added with its key (accounts.saveApiKey); Muse
+    // Code signs in through its own CLI (`muse login`, a device code in the
+    // browser) and the Accounts page runs that in a terminal.
+    case 'meta':
+      return { ok: false, error: 'Meta Model API accounts are added with a key, not a sign-in' }
+    case 'muse-code':
+      return { ok: false, error: 'Sign in to Muse Code with `muse login` in a terminal; the account is captured from its auth.json' }
     case 'cursor': {
       const captured = await login.cursorLogin()
       const name = accounts.saveCaptured(serviceId, captured) ?? undefined

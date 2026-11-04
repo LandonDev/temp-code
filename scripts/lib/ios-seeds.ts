@@ -496,7 +496,8 @@ export function accountsSnapshot(peer: { environmentId: string; name: string; bu
         owner: null,
         profiles: [{ name: 'build-key', color: '#0866ff', createdAt: now - 2 * 86_400_000, active: false, static: true, kind: 'key' }],
         reports: [{ profileName: 'build-key', windows: [], note: 'pay as you go' }]
-      }
+      },
+      muse: { pinned: null, profiles: [], reports: [], owner: null, note: 'not signed in' }
     },
     peers: {
       [peer.environmentId]: { name: peer.name, connected: true, lastSyncAt: now - 300_000, error: null, build }

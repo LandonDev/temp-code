@@ -1088,7 +1088,8 @@ const seededAccounts: AccountsSnapshot = {
       owner: null,
       profiles: [{ name: META_KEY, color: '#0866ff', createdAt: Date.now() - 2 * 24 * hour, active: false, static: true, kind: 'key' }],
       reports: [{ profileName: META_KEY, windows: [], note: 'pay as you go' }]
-    }
+    },
+    muse: { pinned: null, profiles: [], reports: [], owner: null }
   }
 }
 // The service has no vault here: hold the seeded snapshot in place of its rebuild (the poll would empty it).

@@ -74,7 +74,7 @@ import type { HeadroomSnapshot, HeadroomStore } from '../headroom'
  *    and the routing stop naming the account before the next turn.
  */
 
-const SERVICES: ServiceId[] = ['claude-code', 'codex', 'cursor', 'meta']
+const SERVICES: ServiceId[] = ['claude-code', 'codex', 'cursor', 'meta', 'muse-code']
 /** Settings row per provider: the environment new sign-ins are handed to. */
 export const HOME_PREFIX = 'accounts.home.'
 const PUSH_DEBOUNCE_MS = 1_000
@@ -610,7 +610,8 @@ export class AccountSync {
       return false
     }
     if (!stored) return false
-    const home = this.homes()[PROVIDER_OF[service]]
+    const provider = PROVIDER_OF[service]
+    const home = provider ? this.homes()[provider] : undefined
     const wantsHandoff = !p.static && home === link.id && hasRefresh(service, stored)
     if (wantsHandoff && (await this.liveLineage(service, stored))) this.log(`${service} ${name}: the sign-in here, or one that cannot be told apart; access copy only`)
     const handoff = wantsHandoff && !(await this.liveLineage(service, stored))

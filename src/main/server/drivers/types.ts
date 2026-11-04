@@ -1,6 +1,7 @@
 import type { AccountRoute } from '@shared/accounts'
 import type { ProviderId } from '@shared/catalog'
-import type { AgentEvent, Attachment, SessionMeta } from '@shared/events'
+import type { AgentEvent, Attachment, LimitWindow, SessionMeta } from '@shared/events'
+import type { UsageWindow } from 'aliax-core'
 import type { SendPhase } from '../sendSpans'
 
 /**
@@ -66,6 +67,14 @@ export interface DriverCtx {
    *  own init, `first-message` on anything back, `first-content` on the
    *  first text delta or tool call. Cheap and idempotent; absent in tests. */
   mark?: (phase: SendPhase, note?: string) => void
+  /** The harness reported the account's own usage windows (Muse's
+   *  `usage/changed`: the 5-hour and weekly percent blocks): the registry
+   *  files them on the thread's account so the meters read them with no
+   *  poll. Absent in tests and for harnesses whose traffic the gateway sees. */
+  observeUsage?: (windows: UsageWindow[]) => void
+  /** The provider refused the thread's account until `resetsAt` (Muse's
+   *  quota stop): routing keeps the account out until then. */
+  observeLimit?: (window: LimitWindow, resetsAt: number) => void
 }
 
 /** What a send carries besides its text. */

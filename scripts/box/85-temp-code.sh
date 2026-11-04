@@ -46,6 +46,17 @@ if ! as_agents test -x "$AGENTS_HOME/.local/bin/cursor-agent"; then
     changed "cursor-agent $(as_agents cursor-agent --version 2>/dev/null | head -1)"
   else echo 'WARN: cursor-agent did not install; the cursor driver stays unavailable'; fi
 else skip "cursor-agent $(as_agents cursor-agent --version 2>/dev/null | head -1)"; fi
+# Muse Code (Meta): the official installer puts a launcher in ~/.local/bin that
+# fetches the pinned binary; bash, not sh (the script uses pipefail), no sudo,
+# MUSE_LOGIN=0 so a refused download never starts the launcher's own sign-in,
+# MUSE_NO_MODIFY_PATH=1 since the service's PATH already has ~/.local/bin.
+# Nothing signs in here (docs/box.md "Muse Code on the box").
+if ! as_agents test -x "$AGENTS_HOME/.local/bin/muse"; then
+  if curl -fsSL https://dev.meta.ai/install.sh -o "$STATE/muse-install.sh" && chmod 644 "$STATE/muse-install.sh" &&
+     as_agents env MUSE_LOGIN=0 MUSE_NO_MODIFY_PATH=1 bash "$STATE/muse-install.sh"; then
+    changed "muse $(as_agents "$AGENTS_HOME/.local/bin/muse" --version 2>/dev/null | head -1)"
+  else echo 'WARN: muse did not install; the muse driver stays unavailable'; fi
+else skip "muse $(as_agents "$AGENTS_HOME/.local/bin/muse" --version 2>/dev/null | head -1)"; fi
 
 # Builds are agents-owned; the directory containing current/previous is root-owned
 # so an app process cannot change the next service target.

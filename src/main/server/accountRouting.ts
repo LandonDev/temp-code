@@ -1,5 +1,5 @@
 import { DEFAULT_THREAD_CAP, hasRoom, pickFromCache, scopedSpent, tiersFor, type ServiceId, type UsageReport } from 'aliax-core'
-import { routedProviderOf, SERVICE_OF, type AccountHeadroom, type AccountRoute, type AccountsSnapshot } from '@shared/accounts'
+import { pickedProviderOf, SERVICE_OF, type AccountHeadroom, type AccountRoute, type AccountsSnapshot } from '@shared/accounts'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import { cacheWarmth, keepOrMove, rankAccounts, stickyTolerance } from './accountScore'
 
@@ -34,7 +34,7 @@ export function resolvePin(
   project: Pick<ProjectMeta, 'accountPins'> | null,
   workspace: Pick<WorkspaceMeta, 'accountPins'> | null
 ): ResolvedPin | null {
-  const provider = routedProviderOf(meta.provider, meta.model)
+  const provider = pickedProviderOf(meta.provider, meta.model)
   if (!provider) return null
   const fromProject = project?.accountPins?.[provider]
   if (fromProject) return { name: fromProject, level: 'project' }
@@ -129,7 +129,7 @@ export function eligible(name: string, { serviceId, out = [], reports, headroom,
  * fallback, a sticky thread leaves it, and a first spawn never lands on it.
  */
 export function chooseAccount({ pin, current: given, stored = null, model, provider: given_provider, snapshot, load = {}, out = [], headroom, lastActiveAt, fresh = false, now = Date.now() }: ChooseInput): Choice {
-  const provider = routedProviderOf(given_provider, model)
+  const provider = pickedProviderOf(given_provider, model)
   if (!provider) return { route: null, current: null }
   const snap = snapshot.providers[provider]
   const serviceId = SERVICE_OF[provider]

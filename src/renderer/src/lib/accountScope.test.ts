@@ -53,6 +53,12 @@ describe("labels", () => {
     const auto = scopeOf({ provider: "claude" }, [], [])!;
     expect(sourceLine(inherited)).toBe("From workspace Site");
     expect(sourceLine(auto)).toBe("Auto, picked by model");
+    // A Muse thread's pick lands when its host starts: the line says so.
+    const muse = scopeOf({ provider: "muse", account: "landon@example.com" }, [], [])!;
+    expect(muse.provider).toBe("muse");
+    expect(muse.shown).toBe("landon@example.com");
+    expect(sourceLine(muse)).toBe("Auto, picked by model; applies at the next start");
+    expect(scopeOf({ provider: "cursor" }, [], [])).toBeNull();
   });
   it("the control shows the nickname, else the email's local part, else nothing while unknown", () => {
     expect(shortName(profiles[1])).toBe("Main");

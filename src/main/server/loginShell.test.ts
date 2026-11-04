@@ -21,8 +21,14 @@ describe('withToolPath', () => {
 
   it('puts the macOS tool dirs first, in order, when PATH lacks them', () => {
     expect(run('echo "$PATH"', 'darwin', { HOME: '/h', PATH: '/usr/bin:/bin' }).trim()).toBe(
-      '/h/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin'
+      '/h/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/h/.local/bin:/usr/bin:/bin'
     )
+  })
+
+  it("puts Muse Code's install dir (~/.local/bin) on the PATH on both platforms", () => {
+    for (const platform of ['darwin', 'linux'] as const) {
+      expect(run('echo "$PATH"', platform, { HOME: '/h', PATH: '/usr/bin:/bin' }).split(':')).toContain('/h/.local/bin')
+    }
   })
 
   it('puts the Linux tool dirs first elsewhere', () => {

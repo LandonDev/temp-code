@@ -30,6 +30,37 @@ describe('resolvePin', () => {
     expect(resolvePin({ provider: 'codex' }, project, workspace)).toEqual({ name: 'ws-codex', level: 'workspace' })
     expect(resolvePin({ provider: 'cursor' }, project, workspace)).toBeNull()
   })
+  it('a muse thread is pinned like a routed one: its muse serve reads the pinned account\'s config dir', () => {
+    expect(resolvePin({ provider: 'muse' }, { accountPins: { muse: 'landon@example.com' } }, workspace)).toEqual({ name: 'landon@example.com', level: 'project' })
+    expect(resolvePin({ provider: 'muse' }, null, { accountPins: { muse: 'ws@example.com' } })).toEqual({ name: 'ws@example.com', level: 'workspace' })
+  })
+})
+
+describe('chooseAccount for muse', () => {
+  function museSnapshot(reports: Record<string, { label: string; usedPercent: number; resetsAt?: number }[]>): AccountsSnapshot {
+    const snap = emptyAccounts()
+    snap.providers.muse = {
+      pinned: null,
+      owner: null,
+      profiles: Object.keys(reports).map((name) => ({ name, createdAt: 1, active: false, static: true })),
+      reports: Object.entries(reports).map(([profileName, windows]) => ({ profileName, windows }))
+    }
+    return snap
+  }
+  const base = { model: 'muse-wonder-1.0', provider: 'muse' as const, now: NOW }
+  it('picks by the observed windows alone (no gateway headroom): a spent 5h window excludes the account, a quota cooldown too', () => {
+    const snap = museSnapshot({ 'a@x': [full('5h'), fine('Weekly')], 'b@x': [fine('5h', 20), fine('Weekly')] })
+    expect(chooseAccount({ ...base, pin: null, current: null, snapshot: snap })).toEqual({ route: { account: 'b@x', pin: false }, current: 'b@x' })
+    // a's 5h window lifted: the sticky account stays
+    expect(chooseAccount({ ...base, pin: null, current: 'a@x', snapshot: snap, now: NOW + 3_600_001 }).current).toBe('a@x')
+    // A pin is the route whatever its room; the row expects the account with room.
+    expect(chooseAccount({ ...base, pin: 'a@x', current: null, snapshot: snap })).toEqual({ route: { account: 'a@x', pin: true }, current: 'b@x' })
+    // An account never heard from has room (nothing says otherwise).
+    const quiet = museSnapshot({ 'a@x': [], 'b@x': [full('Weekly')] })
+    expect(chooseAccount({ ...base, pin: null, current: null, snapshot: quiet }).current).toBe('a@x')
+    // Nothing in the vault for muse: no route, the CLI's own login runs.
+    expect(chooseAccount({ ...base, pin: null, current: null, snapshot: emptyAccounts() })).toEqual({ route: null, current: null })
+  })
 })
 
 describe('a Meta model routes to Meta keys', () => {

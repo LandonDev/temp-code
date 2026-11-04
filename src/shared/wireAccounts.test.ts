@@ -47,7 +47,8 @@ describe('AccountsSnapshotSchema', () => {
         claude: { pinned: null, profiles: [], reports: [] },
         codex: { pinned: null, profiles: [], reports: [] },
         cursor: { pinned: null, profiles: [], reports: [] },
-        meta: { pinned: null, profiles: [], reports: [] }
+        meta: { pinned: null, profiles: [], reports: [] },
+        muse: { pinned: null, profiles: [], reports: [] }
       }
     })
   })

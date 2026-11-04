@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ProfileView, UsageReport } from 'aliax-core/shared/types'
 import { emptyAccounts, type AccountHeadroom, type AccountsSnapshot } from './accounts'
-import { isLow, meterFor, NO_CAPS_NOTE, untilShort, untilWords, windowName } from './usageMeter'
+import { GENERAL_LABELS, isLow, meterFor, NO_CAPS_NOTE, PROVIDER_NAME, untilShort, untilWords, windowName } from './usageMeter'
 
 const NOW = 1_000_000_000
 const MIN = 60_000
@@ -27,6 +27,10 @@ function snapshot(
 }
 
 describe('meterFor', () => {
+  it('names Muse Code with its two windows', () => {
+    expect(PROVIDER_NAME.muse).toBe('Muse Code')
+    expect(GENERAL_LABELS.muse).toEqual(['5h', 'Weekly'])
+  })
   it('is null for a provider with no accounts', () => {
     expect(meterFor('claude', emptyAccounts(), NOW)).toBeNull()
   })

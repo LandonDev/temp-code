@@ -24,6 +24,7 @@ import {
   PROVIDER_OF,
   SERVICE_OF,
   emptyAccounts,
+  pickedProviderOf,
   isRoutedProvider,
   routedProviderOf,
   type AccountHeadroom,
@@ -35,6 +36,7 @@ import {
 import type { SessionMeta } from '@shared/events'
 import { chooseAccount, eligible, type ResolvedPin, type RouteOptions } from './accountRouting'
 import type { HeadroomStore } from './headroom'
+import type { UsageWindow } from 'aliax-core'
 import { whenLoopIdle } from './stalls'
 
 export interface AccountsDeps {
@@ -53,6 +55,8 @@ export interface AccountsDeps {
   markStale: (id: ServiceId, name: string) => void
   /** Charge a window an error message named, so the account is not picked again before its report refreshes. */
   observeLimit: (id: ServiceId, name: string, limit: Limit) => void
+  /** File the windows a harness observed of its own account (Muse's `usage/changed`), behind the service's own poll. */
+  observeWindows: (id: ServiceId, name: string, windows: UsageWindow[]) => void
   /** Live threads per account for a provider, from the session registry. */
   load: (provider: AccountProvider) => Record<string, number>
   /** Per provider, the environment new sign-ins are handed to (remote/accountSync.ts). */
@@ -220,6 +224,7 @@ const defaults = (): AccountsDeps => ({
   usageOf: (id, name) => accounts.usageOf(id, name, true),
   markStale: accounts.markUsageStale,
   observeLimit: (id, name, limit) => void accounts.observeLimit(id, name, limit),
+  observeWindows: (id, name, windows) => void accounts.observeWindows(id, name, windows),
   load: () => ({}),
   homes: () => ({}),
   peers: () => ({}),
@@ -401,6 +406,8 @@ export class AccountsService {
   routeFor(meta: SessionMeta, pin: ResolvedPin | null, opts?: RouteOptions): { route: AccountRoute | null; current: string | null } {
     // A Meta row under either harness spends from the meta keys (shared/accounts.ts routedProviderOf).
     const routed = routedProviderOf(meta.provider, meta.model)
+    // A muse thread is picked by its windows alone: no gateway load marks, no headroom.
+    const picked = pickedProviderOf(meta.provider, meta.model)
     return chooseAccount({
       pin: pin?.name ?? null,
       current: meta.account ?? null,
@@ -411,7 +418,7 @@ export class AccountsService {
       model: meta.model ?? null,
       provider: meta.provider,
       snapshot: this.snap,
-      load: routed ? (opts?.load ?? this.deps.load(routed)) : {},
+      load: picked ? (opts?.load ?? this.deps.load(picked)) : {},
       out: routed ? this.outFor(routed) : [],
       headroom: routed ? this.headroomFor(routed, meta.model ?? null) : undefined,
       now: this.deps.now()
@@ -433,6 +440,7 @@ export class AccountsService {
    */
   markOut(serviceId: ServiceId, name: string): boolean {
     const provider = PROVIDER_OF[serviceId]
+    if (!provider) return false
     const marks = this.out.get(provider) ?? new Map<string, number>()
     const fresh = !this.isOut(provider, name)
     marks.set(name, this.deps.now())
@@ -443,7 +451,8 @@ export class AccountsService {
 
   /** The account answered: the mark lifts. */
   markAnswered(serviceId: ServiceId, name: string): void {
-    this.out.get(PROVIDER_OF[serviceId])?.delete(name)
+    const provider = PROVIDER_OF[serviceId]
+    if (provider) this.out.get(provider)?.delete(name)
   }
 
   isOut(provider: AccountProvider, name: string): boolean {
@@ -486,7 +495,7 @@ export class AccountsService {
    */
   substitute(serviceId: ServiceId, account: string, model: string | null): string | null {
     const provider = PROVIDER_OF[serviceId]
-    if (!this.outFor(provider).includes(account)) return null
+    if (!provider || !this.outFor(provider).includes(account)) return null
     const { route } = chooseAccount({
       pin: null,
       current: null,
@@ -511,6 +520,7 @@ export class AccountsService {
    */
   async pickNext(info: LimitInfo): Promise<string | null> {
     const provider = PROVIDER_OF[info.serviceId]
+    if (!provider) return null
     const snap = (await this.list()).providers[provider]
     const now = this.deps.now()
     const out = this.outFor(provider)
@@ -540,6 +550,20 @@ export class AccountsService {
    * reads the same cache and lands on the same account. Null leaves the
    * thread's Continue button alone.
    */
+  /** A harness that sees its own account's windows (Muse's `usage/changed`):
+   *  filed behind the service's poll, then the snapshot follows. */
+  observeUsage(provider: AccountProvider, account: string, windows: UsageWindow[]): void {
+    this.deps.observeWindows(SERVICE_OF[provider], account, windows)
+    this.deps.markStale(SERVICE_OF[provider], account)
+    void this.rebuild(true, provider)
+  }
+
+  /** The provider refused the account until `resetsAt` (Muse's quota stop): charge the window so the picks leave it out. */
+  observeQuota(provider: AccountProvider, account: string, window: Limit['window'], resetsAt: number): void {
+    this.deps.observeLimit(SERVICE_OF[provider], account, { window, ...(resetsAt ? { resetsAt } : {}) })
+    void this.rebuild(true, provider)
+  }
+
   failover(
     sessionId: string,
     info: { provider: AccountProvider; model: string | null; window: Limit['window']; account: string | null }

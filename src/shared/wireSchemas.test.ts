@@ -120,7 +120,8 @@ const snapshot: AccountsSnapshot = {
       headroom: { 'work@example.com': { room: 0.8, ratePerMin: 12, seenAt: 1_760_000_000_000 } }
     },
     codex: { pinned: null, profiles: [], reports: [], owner: null },
-    cursor: { pinned: null, profiles: [], reports: [], owner: null, note: 'vault locked' }
+    cursor: { pinned: null, profiles: [], reports: [], owner: null, note: 'vault locked' },
+    muse: { pinned: null, profiles: [], reports: [], owner: null }
   },
   homes: { claude: 'env_b' },
   peers: { env_b: { name: 'The box', connected: true, lastSyncAt: 1_759_999_700_000, error: null, build } }

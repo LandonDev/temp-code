@@ -123,6 +123,12 @@
             "note": "pay as you go"
           }
         ]
+      },
+      "muse": {
+        "pinned": null,
+        "profiles": [],
+        "reports": [],
+        "note": "not signed in"
       }
     }
   }

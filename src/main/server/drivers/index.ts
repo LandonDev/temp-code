@@ -5,6 +5,7 @@ import { codexDriver } from './codex'
 import { cursorDriver } from './cursor'
 import { fxDriver } from './fx'
 import { grokDriver } from './grok'
+import { museDriver } from './muse'
 import { ompDriver } from './omp'
 import { opencodeDriver } from './opencode'
 import { piDriver } from './pi'
@@ -17,5 +18,6 @@ export const BUILT_IN_DRIVERS: Record<ProviderId, HarnessDriver> = {
   opencode: opencodeDriver,
   pi: piDriver,
   omp: ompDriver,
-  fx: fxDriver
+  fx: fxDriver,
+  muse: museDriver
 }

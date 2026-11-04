@@ -3,26 +3,28 @@ import { isMetaModel, type ProviderId } from './catalog'
 
 /**
  * The account providers: the harnesses that have an Aliax service behind
- * them, and `meta`, the Meta Model API, whose keys serve the claude and
- * codex harnesses' Meta rows (catalog `vendor: 'meta'`) and are never a
- * harness of their own.
+ * them, `meta`, the Meta Model API, whose keys serve the claude and codex
+ * harnesses' Meta rows (catalog `vendor: 'meta'`) and are never a harness of
+ * their own, and `muse`, Muse Code, whose login its own harness reads.
  */
-export type AccountProvider = 'claude' | 'codex' | 'cursor' | 'meta'
+export type AccountProvider = 'claude' | 'codex' | 'cursor' | 'meta' | 'muse'
 
-export const ACCOUNT_PROVIDERS: AccountProvider[] = ['claude', 'codex', 'cursor', 'meta']
+export const ACCOUNT_PROVIDERS: AccountProvider[] = ['claude', 'codex', 'cursor', 'meta', 'muse']
 
 /** Account provider ↔ Aliax service id. */
 export const SERVICE_OF: Record<AccountProvider, ServiceId> = {
   claude: 'claude-code',
   codex: 'codex',
   cursor: 'cursor',
-  meta: 'meta'
+  meta: 'meta',
+  muse: 'muse-code'
 }
 export const PROVIDER_OF: Record<ServiceId, AccountProvider> = {
   'claude-code': 'claude',
   codex: 'codex',
   cursor: 'cursor',
-  meta: 'meta'
+  meta: 'meta',
+  'muse-code': 'muse'
 }
 
 export const isAccountProvider = (id: string): id is AccountProvider => id in SERVICE_OF
@@ -43,8 +45,8 @@ export function routedProviderOf(provider: string, model: string | null | undefi
   return provider === 'claude' || provider === 'codex' ? provider : null
 }
 
-/** The account a person signs in to for each routed provider (Meta: a key, not a sign-in). */
-export const SIGN_IN_NAME: Record<RoutedProvider, string> = { claude: 'Claude', codex: 'ChatGPT', meta: 'Meta' }
+/** The account a person signs in to for each picked provider (Meta: a key, not a sign-in). */
+export const SIGN_IN_NAME: Record<PickedProvider, string> = { claude: 'Claude', codex: 'ChatGPT', meta: 'Meta', muse: 'Muse Code' }
 
 /**
  * A key account's row on the Accounts page: the profile plus the account id
@@ -55,6 +57,20 @@ export type KeyProfileView = ProfileView & { accountId?: string }
 
 /** A key as a row shows it, built from its account id alone: `LLM_1607…`. */
 export const maskedKey = (accountId: string): string => `LLM_${accountId.slice(0, 4)}…`
+
+/** The providers whose threads the host routes to an account: the routed
+ *  ones through the gateway's scope, muse through the config dir its
+ *  `muse serve` reads (museConfigDirs.ts). Pins, the sticky account, the
+ *  vanished rule and the chip apply to all of them; only the routed ones
+ *  switch mid-turn and see the gateway's headroom. */
+export type PickedProvider = RoutedProvider | 'muse'
+export const PICKED_PROVIDERS: PickedProvider[] = ['claude', 'codex', 'meta', 'muse']
+export const isPickedProvider = (id: string): id is PickedProvider => isRoutedProvider(id) || id === 'muse'
+
+/** `routedProviderOf` plus muse: what a thread's account is picked for, else null. */
+export function pickedProviderOf(provider: string, model: string | null | undefined): PickedProvider | null {
+  return provider === 'muse' ? 'muse' : routedProviderOf(provider, model)
+}
 
 /**
  * One explicit account per provider, on a project or a workspace: threads of
@@ -139,7 +155,8 @@ export const emptyAccounts = (): AccountsSnapshot => ({
     claude: { pinned: null, profiles: [], reports: [], owner: null },
     codex: { pinned: null, profiles: [], reports: [], owner: null },
     cursor: { pinned: null, profiles: [], reports: [], owner: null },
-    meta: { pinned: null, profiles: [], reports: [], owner: null }
+    meta: { pinned: null, profiles: [], reports: [], owner: null },
+    muse: { pinned: null, profiles: [], reports: [], owner: null }
   }
 })
 

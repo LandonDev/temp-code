@@ -30,7 +30,7 @@ export const RoutingRuleSchema = z.object({
   id: z.string(),
   /** when this rule applies — shown to the orchestrator verbatim */
   task: z.string(),
-  provider: z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx']),
+  provider: z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx', 'muse']),
   /** model id; '' = the provider's default */
   model: z.string().default(''),
   reasoning: ReasoningEnum.default('medium'),
@@ -68,6 +68,16 @@ export type OrchestrationRules = z.infer<typeof OrchestrationRulesSchema>
 // with intelligence > taste > cost when axes conflict (→ fable-5),
 // reviews by fable-5/opus-4.8 with gpt-5.5 as an optional independent
 // second opinion. Never Haiku.
+/** The approval a catalog model gets before anyone decides: Fable and
+ *  Muse Wonder Full for orchestrators and masters only (CLAUDE.md "Master
+ *  threads"), everything else for every thread. One rule for the defaults
+ *  and for `explicitModels`, which writes probed rows out the same way. */
+export function defaultApproval(provider: ProviderId, modelId: string): ModelPolicy['approved'] {
+  if (provider === 'claude' && modelId.startsWith('claude-fable')) return 'orchestrators'
+  if (provider === 'muse' && /-full\b/.test(modelId)) return 'orchestrators'
+  return true
+}
+
 export const DEFAULT_RULES: OrchestrationRules = {
   conduct: {
     delegation: 'strict',
@@ -86,7 +96,7 @@ export const DEFAULT_RULES: OrchestrationRules = {
     (Object.keys(CATALOG) as ProviderId[]).flatMap((p) =>
       CATALOG[p].models.map((m): [string, ModelPolicy] => [
         `${p}:${m.id}`,
-        { approved: p === 'claude' && m.id.startsWith('claude-fable') ? 'orchestrators' : true }
+        { approved: defaultApproval(p, m.id) }
       ])
     )
   ),
@@ -237,7 +247,7 @@ export function policyRoleOf(
 export function explicitModels(rules: OrchestrationRules): OrchestrationRules {
   const models = { ...rules.models }
   for (const p of Object.keys(CATALOG) as ProviderId[]) {
-    for (const m of CATALOG[p].models) models[modelKey(p, m.id)] ??= { approved: true }
+    for (const m of CATALOG[p].models) models[modelKey(p, m.id)] ??= { approved: defaultApproval(p, m.id) }
   }
   return { ...rules, models }
 }

@@ -90,6 +90,12 @@ function metaModels(harness: "claude" | "codex", ladder: string[]): AgentModel[]
   }));
 }
 
+/** Muse Code's ladder (the spike of 2026-11-04: `model/list` variants
+ *  minimal..max). The probe replaces these rows with the live catalog once
+ *  the CLI answers. */
+const MUSE_SETTINGS: ModelSetting[] = [effortSelect("max", ["minimal", "low", "medium", "high", "xhigh", "max"])];
+const MUSE_CONTEXT = 1_007_997;
+
 export const MODELS: AgentModel[] = [
   {
     id: "claude:fable-5.1",
@@ -261,6 +267,30 @@ export const MODELS: AgentModel[] = [
     name: "GLM 5.2 Fast",
     nativeId: "zai/glm-5.2-fast",
   },
+  {
+    id: "muse:muse-wonder-1.0",
+    harness: "muse",
+    name: "Muse Wonder 1.0",
+    nativeId: "muse-wonder-1.0",
+    contextWindow: MUSE_CONTEXT,
+    settings: MUSE_SETTINGS,
+  },
+  {
+    id: "muse:muse-wonder-full-1.0",
+    harness: "muse",
+    name: "Muse Wonder Full 1.0",
+    nativeId: "muse-wonder-full-1.0",
+    contextWindow: MUSE_CONTEXT,
+    settings: MUSE_SETTINGS,
+  },
+  {
+    id: "muse:muse-spark-1.3",
+    harness: "muse",
+    name: "Muse Spark 1.3",
+    nativeId: "muse-spark-1.3",
+    contextWindow: MUSE_CONTEXT,
+    settings: MUSE_SETTINGS,
+  },
 ];
 
 export const DEFAULT_MODEL_ID: Record<HarnessId, string> = {
@@ -272,6 +302,7 @@ export const DEFAULT_MODEL_ID: Record<HarnessId, string> = {
   pi: "pi:default",
   omp: "omp:default",
   fx: "fx:zai/glm-5.2-fast",
+  muse: "muse:muse-wonder-1.0",
 };
 
 const FAVORITES_KEY = "monocode.favoriteModels";
@@ -297,6 +328,7 @@ const HARNESS_ORDER: HarnessId[] = [
   "pi",
   "omp",
   "fx",
+  "muse",
 ];
 
 const EMPTY_MODELS: AgentModel[] = [];

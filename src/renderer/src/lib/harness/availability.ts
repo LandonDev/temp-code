@@ -23,6 +23,7 @@ const CLI: Record<HarnessId, { name: string; install?: string }> = {
   pi: { name: "Pi CLI", install: "npm i -g @earendil-works/pi-coding-agent" },
   omp: { name: "omp CLI", install: "curl -fsSL https://omp.sh/install | sh" },
   fx: { name: "fx CLI", install: "curl -fsSL https://fx.sh/setup.sh | bash" },
+  muse: { name: "Muse Code CLI", install: "curl -fsSL https://dev.meta.ai/install.sh | sh" },
 };
 
 const NONE: HarnessAvailability = Object.fromEntries(HARNESSES.map((id) => [id, false])) as HarnessAvailability;

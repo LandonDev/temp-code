@@ -27,7 +27,7 @@ vi.mock("../lib/connection", () => ({ registry: { primaryEnvironmentId: "local" 
 
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as ModelInfo["reasoning"];
 
-function seed(provider: "claude" | "codex", models: ModelInfo[]) {
+function seed(provider: "claude" | "codex" | "muse", models: ModelInfo[]) {
   const info: ProviderInfo = { id: provider, label: provider, defaultModel: models[0].id, models };
   setHarnessModels(provider, agentModelsFor(info), models[0].id);
 }
@@ -57,6 +57,20 @@ beforeAll(async () => {
 });
 
 describe("ModelPicker", () => {
+  it("Muse Code lists its probed models under its own name, the effort on the ladder the probe gave", async () => {
+    seed("muse", [
+      { id: "muse-wonder-1.0", label: "Muse Wonder 1.0", reasoning: EFFORTS, defaultReasoning: "max", context: 1_007_997 },
+      { id: "muse-wonder-full-1.0", label: "Muse Wonder Full 1.0", reasoning: EFFORTS, defaultReasoning: "max", context: 1_007_997 },
+    ]);
+    picker("muse", "muse:muse-wonder-1.0", { effort: "max" });
+    const button = screen.getByRole("button", { name: /^Muse Code Muse Wonder 1\.0/ });
+    expect(button.textContent).toContain("Max");
+    const dialog = await open(/^Muse Code Muse Wonder 1\.0/);
+    const effort = within(dialog).getByRole("combobox", { name: "Effort" });
+    await act(async () => fireEvent.click(effort));
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Low", "Medium", "High", "Extra high", "Max"]);
+  });
+
   it("the button reads the model and the effort", () => {
     seed("claude", [{ id: "claude-opus-5-5", label: "Opus 5.5", reasoning: EFFORTS, defaultReasoning: "medium", context: 1_000_000 }]);
     picker("claude", "claude:claude-opus-5-5", { effort: "high" });
@@ -261,6 +275,7 @@ describe("ModelPicker: Meta's models", () => {
       fireEvent.change(within(menu).getByRole("textbox", { name: "Search models" }), { target: { value: "muse" } });
     });
     expect(groupIn(menu)).toBeNull();
-    expect(within(menu).getAllByRole("option")).toHaveLength(4);
+    // Meta's four rows under claude and codex, plus Muse Code's own three static rows.
+    expect(within(menu).getAllByRole("option")).toHaveLength(7);
   });
 });

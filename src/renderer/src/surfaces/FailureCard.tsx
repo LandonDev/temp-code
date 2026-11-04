@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import type { Failure } from "@server/shared/events";
-import { SERVICE_OF, isRoutedProvider } from "@server/shared/accounts";
+import { SERVICE_OF, isPickedProvider } from "@server/shared/accounts";
 import { AccountsPopover } from "../chrome/AccountsPopover";
 import { LOCAL_ENVIRONMENT_ID } from "../lib/connection/registry";
 import { scopeOf } from "../lib/accountScope";
@@ -180,7 +180,7 @@ export function FailureCard({
         if (!scope || !accounts || accounts.profiles.length === 0) settle("No saved accounts on this host.");
         return;
       case "sign-in": {
-        if (!window.aliax || !isRoutedProvider(provider)) return;
+        if (!window.aliax || !isPickedProvider(provider)) return;
         setState({ pending: "sign-in", outcome: null });
         void window.aliax
           .loginStart(SERVICE_OF[provider], failure.account ?? undefined)

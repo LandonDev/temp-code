@@ -315,6 +315,9 @@ export const resolveGrokBinary = resolver('grok', ['.grok/bin'])
 export const resolveOpenCodeBinary = resolver('opencode', ['.opencode/bin'])
 export const resolvePiBinary = resolver('pi')
 export const resolveOmpBinary = resolver('omp')
+/** Muse Code's installer puts its launcher in ~/.local/bin and offers to
+ *  edit the shell profile; a declined offer leaves it off the PATH. */
+export const resolveMuseBinary = resolver('muse', ['.local/bin'])
 
 /** An `fx` on the PATH may be the unrelated JSON viewer: the agent is the
  *  first `fx` whose binary carries its markers or whose --help talks ACP. */

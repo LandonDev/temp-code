@@ -11,7 +11,7 @@ import { REASONING_LEVELS } from './catalog'
  * gets the same answer.
  */
 export const ThreadDefaultsSchema = z.object({
-  provider: z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx']).default('claude'),
+  provider: z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx', 'muse']).default('claude'),
   /** model id; '' = the provider's catalog default */
   model: z.string().default(''),
   reasoning: z.enum(REASONING_LEVELS).default('medium'),

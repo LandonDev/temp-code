@@ -52,6 +52,24 @@ describe('SendSpans', () => {
     expect(lines).toHaveLength(1)
   })
 
+  it("a muse send: a cold handle, init at the handshake, no model phase (the host sees no provider frame)", () => {
+    const { spans, lines, advance } = rig()
+    spans.begin('m1')
+    advance(10)
+    spans.mark('m1', 'prepared')
+    advance(600)
+    spans.mark('m1', 'handle', 'cold')
+    advance(250)
+    spans.mark('m1', 'init')
+    advance(40)
+    spans.mark('m1', 'delivered')
+    advance(700)
+    spans.mark('m1', 'first-message')
+    advance(1_200)
+    spans.mark('m1', 'first-content')
+    expect(lines).toEqual(['send session=m1 accepted=0 prepared=10 handle=610(cold) delivered=900 init=860 first-message=1600 model=- first-content=2800'])
+  })
+
   it('a stalled span flushes at the deadline naming the phases missing', () => {
     const { spans, lines, advance } = rig()
     spans.begin('s1')

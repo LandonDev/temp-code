@@ -42,7 +42,11 @@ export const HARNESS_SET: readonly SetRule[] = [
   // Codex's user-level hooks; config.toml's [hooks.state."<home>/.codex/hooks.json:…"] trust rows translate with the home.
   { kind: 'file', path: '.codex/hooks.json', label: 'Codex hooks' },
   // Read by Claude Code and Codex alike.
-  { kind: 'tree', root: '.agents/skills', label: 'Shared skills', skip: SKILL_BINARY_CACHE }
+  { kind: 'tree', root: '.agents/skills', label: 'Shared skills', skip: SKILL_BINARY_CACHE },
+  // Muse Code's config root; its login (auth.json) is a secret and never crosses (SECRET_NAMES).
+  { kind: 'file', path: '.config/muse/settings.json', label: 'Muse settings' },
+  { kind: 'tree', root: '.config/muse/skills', label: 'Muse skills', skip: SKILL_BINARY_CACHE },
+  { kind: 'tree', root: '.config/muse/hooks', label: 'Muse hooks' }
 ]
 
 /** Files per set label, for the status line: every label of `rules`, zero when nothing is under it. */
