@@ -610,7 +610,7 @@ function NoteEditor({
             }}
             onKeyDown={onTitleKeyDown}
             aria-label="Note title"
-            className="h-auto rounded-none border-0 p-0 text-[16px] font-semibold leading-snug tracking-[-0.01em] text-foreground shadow-none!"
+            className="h-auto rounded-none border-0 p-0 text-base font-semibold leading-6 tracking-[-0.01em] text-foreground shadow-none!"
             placeholder="Untitled"
           />
           {time ? (

@@ -105,6 +105,39 @@ describe("Dialog", () => {
   });
 });
 
+describe("Dialog and sheet anatomy", () => {
+  it("one title recipe, a 22px body and one close recipe seated on the title's line", () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Rename</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+    const title = document.querySelector("[data-slot=dialog-title]")!.className.split(/\s+/);
+    expect(title).toEqual(expect.arrayContaining(["text-base", "font-semibold", "leading-6", "tracking-[-0.01em]", "text-balance"]));
+    expect(document.querySelector("[data-slot=dialog-content]")!.className).toContain("leading-[22px]");
+    const dialogClose = document.querySelector("[data-slot=dialog-close]")!;
+    cleanup();
+    render(
+      <Sheet open>
+        <SheetContent>
+          <SheetTitle>Project</SheetTitle>
+        </SheetContent>
+      </Sheet>,
+    );
+    const sheetClose = document.querySelector("[data-slot=sheet-close]")!;
+    for (const close of [dialogClose, sheetClose]) {
+      // The ghost icon button, so it presses like every ghost; 18px down puts its centre on the 24px title line.
+      expect(close.getAttribute("data-variant")).toBe("ghost");
+      expect(close.className).toContain("top-4.5");
+      expect(close.className).toContain("end-4");
+      expect(close.className).toContain("size-7");
+      expect(close.getAttribute("aria-label")).toBe("Close");
+    }
+  });
+});
+
 describe("Sheet", () => {
   it("enters and leaves by its edge on transitions, fading alone under reduced motion", () => {
     render(

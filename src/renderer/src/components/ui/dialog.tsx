@@ -42,7 +42,7 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
 }
 
 const dialogContentVariants = cva(
-  "fixed left-1/2 top-1/2 z-(--layer-dialog) grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl bg-popover p-5 text-sm text-popover-foreground shadow-overlay ring-1 ring-border outline-none transition-[opacity,scale,translate] duration-(--dur-slow) ease-(--ease-out) starting:opacity-0 starting:scale-95 starting:translate-y-[calc(-50%+4px)] data-ending-style:opacity-0 data-ending-style:scale-[0.98] data-ending-style:duration-(--dur-fast) data-ending-style:ease-(--ease-exit) motion-reduce:transition-opacity",
+  "fixed left-1/2 top-1/2 z-(--layer-dialog) grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl bg-popover p-5 text-sm leading-[22px] text-popover-foreground shadow-overlay ring-1 ring-border outline-none transition-[opacity,scale,translate] duration-(--dur-slow) ease-(--ease-out) starting:opacity-0 starting:scale-95 starting:translate-y-[calc(-50%+4px)] data-ending-style:opacity-0 data-ending-style:scale-[0.98] data-ending-style:duration-(--dur-fast) data-ending-style:ease-(--ease-exit) motion-reduce:transition-opacity",
   {
     variants: {
       size: {
@@ -73,10 +73,11 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="absolute end-3.5 top-3.5 inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition-[background-color,color] duration-(--dur-fast) hover:bg-foreground/7 hover:text-foreground"
+            aria-label="Close"
+            // Seated 18px down, so its centre is the title line's (the 20px inset plus half a 24px line).
+            render={<Button variant="ghost" size="icon-sm" className="absolute end-4 top-4.5 text-muted-foreground" />}
           >
-            <X className="size-4" />
-            <span className="sr-only">Close</span>
+            <X />
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>
@@ -93,11 +94,11 @@ function DialogFooter({ className, ...props }: ComponentProps<"div">) {
 }
 
 function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
-  return <DialogPrimitive.Title data-slot="dialog-title" className={cn("text-base font-semibold leading-tight tracking-tight", className)} {...props} />;
+  return <DialogPrimitive.Title data-slot="dialog-title" className={cn("text-base font-semibold leading-6 tracking-[-0.01em] text-balance", className)} {...props} />;
 }
 
 function DialogDescription({ className, ...props }: DialogPrimitive.Description.Props) {
-  return <DialogPrimitive.Description data-slot="dialog-description" className={cn("text-sm text-muted-foreground", className)} {...props} />;
+  return <DialogPrimitive.Description data-slot="dialog-description" className={cn("text-sm leading-[22px] text-pretty text-muted-foreground", className)} {...props} />;
 }
 
 function AlertDialogContent({ className, ...props }: ComponentProps<typeof DialogContent>) {

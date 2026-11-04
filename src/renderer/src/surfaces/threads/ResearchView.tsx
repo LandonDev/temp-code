@@ -260,7 +260,7 @@ function ReportPane({
   const state = running ? "working" : threadStateOf(session.status);
   return (
     <div>
-      <h2 className="text-base font-semibold tracking-[-0.01em] text-foreground">{report.title ?? session.title}</h2>
+      <h2 className="text-base font-semibold leading-6 tracking-[-0.01em] text-balance text-foreground">{report.title ?? session.title}</h2>
       {!complete ? (
         <>
           {state !== "idle" && state !== "done" ? (

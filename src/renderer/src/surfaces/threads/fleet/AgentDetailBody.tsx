@@ -53,7 +53,7 @@ export function AgentDetailHeader({
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex min-w-0 items-center gap-2">
           {Glyph ? <Glyph className="size-4 shrink-0 text-muted-foreground" /> : null}
-          <h2 className="truncate text-base font-semibold tracking-[-0.01em] text-foreground">{meta.title || "Subagent"}</h2>
+          <h2 className="truncate text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">{meta.title || "Subagent"}</h2>
         </div>
         <StatusMark
           state={status.state}

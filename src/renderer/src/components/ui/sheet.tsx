@@ -2,6 +2,7 @@ import { X } from "@renderer/chrome/icons";
 import type { ComponentProps } from "react";
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog";
 import { cn } from "@renderer/lib/cn";
+import { Button } from "./button";
 
 /** A dialog that enters from an edge: slides 16px and fades, on the drawer
  *  curve; 300ms in, 240ms back out by the same edge. Transitions, so a close
@@ -71,10 +72,11 @@ function SheetContent({
         {showCloseButton && (
           <SheetPrimitive.Close
             data-slot="sheet-close"
-            className="absolute end-3.5 top-3.5 inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition-[background-color,color] duration-(--dur-fast) hover:bg-foreground/7 hover:text-foreground"
+            aria-label="Close"
+            // Seated 18px down, so its centre is the title line's (the 20px inset plus half a 24px line).
+            render={<Button variant="ghost" size="icon-sm" className="absolute end-4 top-4.5 text-muted-foreground" />}
           >
-            <X className="size-4" />
-            <span className="sr-only">Close</span>
+            <X />
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Popup>
@@ -91,11 +93,11 @@ function SheetFooter({ className, ...props }: ComponentProps<"div">) {
 }
 
 function SheetTitle({ className, ...props }: SheetPrimitive.Title.Props) {
-  return <SheetPrimitive.Title data-slot="sheet-title" className={cn("text-base font-semibold leading-tight tracking-tight text-foreground", className)} {...props} />;
+  return <SheetPrimitive.Title data-slot="sheet-title" className={cn("text-base font-semibold leading-6 tracking-[-0.01em] text-balance text-foreground", className)} {...props} />;
 }
 
 function SheetDescription({ className, ...props }: SheetPrimitive.Description.Props) {
-  return <SheetPrimitive.Description data-slot="sheet-description" className={cn("text-sm text-muted-foreground", className)} {...props} />;
+  return <SheetPrimitive.Description data-slot="sheet-description" className={cn("text-sm leading-[22px] text-pretty text-muted-foreground", className)} {...props} />;
 }
 
 export { Sheet, SheetTrigger, SheetClose, SheetContent, SheetHeader, SheetFooter, SheetTitle, SheetDescription };

@@ -1108,7 +1108,7 @@ function InboxDetail({
             </span>
           ) : null}
         </div>
-        <h1 className="mt-2 text-[16px] font-semibold leading-snug tracking-[-0.01em] text-foreground">
+        <h1 className="mt-2 text-base font-semibold leading-6 tracking-[-0.01em] text-balance text-foreground">
           {item.title}
         </h1>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">

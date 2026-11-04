@@ -36,6 +36,11 @@ describe("Modal", () => {
     expect(screen.getByTestId("body").className).toContain("px-5");
     const footer = screen.getByRole("button", { name: "Save" }).parentElement!;
     expect(footer.className).toContain("px-5");
+    // 20px under the buttons, as ui/dialog's own footer sits.
+    expect(footer.className).toContain("pb-5");
+    expect(footer.className).toContain("pt-4");
+    // The close's centre sits on the 24px title line: 20px inset, 2px back up.
+    expect(screen.getByRole("button", { name: "Close" }).className).toContain("-mt-0.5");
   });
 
   it("enters on the dialog's motion: 240ms in, 120ms out", () => {

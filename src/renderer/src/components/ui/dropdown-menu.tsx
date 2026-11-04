@@ -193,7 +193,7 @@ function DropdownMenuSeparator({ className, ...props }: MenuPrimitive.Separator.
 }
 
 function DropdownMenuShortcut({ className, ...props }: ComponentProps<"span">) {
-  return <span data-slot="dropdown-menu-shortcut" className={cn("ms-auto ps-4 tracking-wide text-muted-foreground", SIZE.shortcut, className)} {...props} />;
+  return <span data-slot="dropdown-menu-shortcut" className={cn("ms-auto ps-4 text-muted-foreground", SIZE.shortcut, className)} {...props} />;
 }
 
 export {

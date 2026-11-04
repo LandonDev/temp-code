@@ -81,7 +81,7 @@ export function ModalPanel({ busy = false, title, description, size = "md", clas
         <DialogClose
           aria-label="Close"
           disabled={busy}
-          render={<Button variant="ghost" size="icon-sm" className="-me-1.5 -mt-1 text-muted-foreground" />}
+          render={<Button variant="ghost" size="icon-sm" className="-me-1 -mt-0.5 text-muted-foreground" />}
         >
           <X />
         </DialogClose>

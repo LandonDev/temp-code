@@ -31,7 +31,7 @@ function Page({
     <div data-slot="page" className={cn("mx-auto w-full max-w-2xl p-6", className)}>
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-base font-semibold leading-tight tracking-[-0.01em] text-foreground">{title}</h1>
+          <h1 className="truncate text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">{title}</h1>
           {description ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{description}</p> : null}
         </div>
         {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
