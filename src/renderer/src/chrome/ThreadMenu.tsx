@@ -229,7 +229,7 @@ export function ThreadListPopover({
               <ItemDescription className="tabular-nums">{timeAgo(thread.updatedAt)}</ItemDescription>
             </ItemContent>
             {restore ? (
-              <ItemActions className="gap-1 text-[12px] text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/item:opacity-100 group-hover/item:delay-(--delay-hover) group-focus-visible/item:opacity-100 group-focus-visible/item:delay-(--dur-instant) motion-reduce:transition-none">
+              <ItemActions className="gap-1 text-[12px] text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/item:opacity-100 group-hover/item:delay-(--delay-hover) group-focus-visible/item:opacity-100 group-focus-visible/item:delay-(--dur-instant) motion-reduce:transition-opacity">
                 <ArchiveRestore className="size-3.5" />
                 Restore
               </ItemActions>

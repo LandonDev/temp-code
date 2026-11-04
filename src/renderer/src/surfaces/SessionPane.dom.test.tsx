@@ -35,6 +35,7 @@ vi.mock("../lib/preconnect", () => ({ askPreconnect: () => {}, idleForPreconnect
 vi.mock("../lib/notes", () => ({ createNote: () => {}, noteTitle: () => "" }));
 
 import { PANE_FADE, SessionPane, loadLineText } from "./SessionPane";
+import { markKeyNav, resetKeyNav } from "../lib/navByKey";
 import { DUR, EASE_OUT } from "../lib/ease";
 import { SessionActionsContext } from "./threadChat";
 
@@ -256,4 +257,29 @@ describe("loadLineText", () => {
       "unknown session",
     ]);
   });
+
+describe("a pane switched by the keyboard", () => {
+  afterEach(() => resetKeyNav());
+  const root = () => document.querySelector<HTMLElement>("[data-session-drop]")!;
+
+  it("shows at once after a keystroke, and fades again once a click comes first", () => {
+    const view = pane(session({ phase: "loaded" }));
+    expect(root().hasAttribute("data-switch-by-key")).toBe(false);
+    markKeyNav();
+    view.rerender(
+      <SessionActionsContext.Provider value={actions}>
+        <SessionPane {...paneProps({ ...session({ phase: "loaded" }), id: "s2" })} />
+      </SessionActionsContext.Provider>,
+    );
+    expect(root().hasAttribute("data-switch-by-key")).toBe(true);
+    // The next press is the pointer's: the switch after it fades.
+    fireEvent.pointerDown(window);
+    view.rerender(
+      <SessionActionsContext.Provider value={actions}>
+        <SessionPane {...paneProps({ ...session({ phase: "loaded" }), id: "s3" })} />
+      </SessionActionsContext.Provider>,
+    );
+    expect(root().hasAttribute("data-switch-by-key")).toBe(false);
+  });
+});
 });

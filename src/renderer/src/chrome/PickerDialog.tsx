@@ -34,8 +34,9 @@ export function PickerDialog({
     <Dialog open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
       <DialogContent
         showCloseButton={false}
+        instant
         initialFocus={search}
-        className="top-[12%] translate-y-0 gap-0 p-1 sm:max-w-[560px]"
+        className="top-[12%] translate-y-0 starting:translate-y-0 gap-0 p-1 sm:max-w-[560px]"
         {...data}
       >
         <DialogTitle className="sr-only">{label}</DialogTitle>

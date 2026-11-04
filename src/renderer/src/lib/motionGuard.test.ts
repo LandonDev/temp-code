@@ -206,3 +206,21 @@ describe("the motion guard", () => {
     for (const [name, servedBy] of Object.entries(KEYFRAMES)) expect(existsSync(join(ROOT, servedBy)), name).toBe(true);
   });
 });
+
+describe("hover reveals under reduced motion", () => {
+  it("keep their fade: every class string that waits --delay-hover narrows its transition to opacity", () => {
+    const off: string[] = [];
+    for (const file of walk(ROOT).filter((path) => path.endsWith(".tsx"))) {
+      const text = readFileSync(file, "utf8");
+      for (const m of text.matchAll(/["'`][^"'`]*delay-\(--delay-hover\)[^"'`]*["'`]/g)) {
+        if (!m[0].includes("motion-reduce:transition-opacity")) off.push(`${relative(ROOT, file)}:${lineOf(text, m.index!)}`);
+      }
+    }
+    expect(off).toEqual([]);
+  });
+
+  it("the task share keeps its fade too; only its slide goes", () => {
+    const css = readFileSync(join(ROOT, "assets/components.css"), "utf8");
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.task-share \{\s*transition: opacity var\(--dur-fast\) var\(--ease-out\);/);
+  });
+});

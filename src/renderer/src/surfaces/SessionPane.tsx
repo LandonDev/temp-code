@@ -1,3 +1,4 @@
+import { navByKey } from "../lib/navByKey";
 import type { OpenFileFn } from "../lib/search";
 import { perfMark } from "../lib/perfMarks";
 import {
@@ -70,6 +71,13 @@ export const SessionPane = memo(function SessionPane({
   onPaneDragStart,
 }: Props) {
   const reduceMotion = useReducedMotion();
+  // Read once per session shown: the pane this keystroke brought in.
+  const [switchedByKey, setSwitchedByKey] = useState(navByKey);
+  const [shownId, setShownId] = useState(session.id);
+  if (shownId !== session.id) {
+    setShownId(session.id);
+    setSwitchedByKey(navByKey());
+  }
   const title = sessionDisplayTitle(session.title, session.harness);
   // App's handlers for every thread's chat, one route for the panes and
   // the views that mount a chat of their own (threadChat.tsx).
@@ -178,13 +186,15 @@ export const SessionPane = memo(function SessionPane({
   }, [addSelectionToChat, focused]);
 
   // Keyed remount per session; a --dur-fast fade bridges the swap without
-  // delaying it: no rise (a switch is navigation) and no exit animation.
+  // delaying it: no rise (a switch is navigation) and no exit animation. A
+  // switch by the keyboard (⌃Tab, ⌘1–9) shows the pane at once.
   return (
     <motion.div
       key={session.id}
       ref={rootRef}
       data-session-drop={session.id}
-      initial={reduceMotion ? false : { opacity: 0 }}
+      data-switch-by-key={switchedByKey || undefined}
+      initial={reduceMotion || switchedByKey ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={PANE_FADE}
       className="flex h-full min-h-0 min-w-0 flex-1 flex-col"

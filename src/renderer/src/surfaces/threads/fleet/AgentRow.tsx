@@ -50,11 +50,11 @@ const SETTLED = new Set<ThreadState>(["done", "idle", "stopped"]);
 
 /** Gives way to the row's actions: waits `--delay-hover` on hover, at once on focus and on leaving. */
 const YIELDS =
-  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover:opacity-0 group-hover:delay-(--delay-hover) group-focus-within:opacity-0 group-focus-within:delay-(--dur-instant) motion-reduce:transition-none";
+  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover:opacity-0 group-hover:delay-(--delay-hover) group-focus-within:opacity-0 group-focus-within:delay-(--dur-instant) motion-reduce:transition-opacity";
 
 /** The actions: hidden at rest, shown after `--delay-hover` on hover, at once on focus. */
 const REVEALS =
-  "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover:pointer-events-auto group-hover:opacity-100 group-hover:delay-(--delay-hover) group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-focus-within:delay-(--dur-instant) motion-reduce:transition-none";
+  "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover:pointer-events-auto group-hover:opacity-100 group-hover:delay-(--delay-hover) group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-focus-within:delay-(--dur-instant) motion-reduce:transition-opacity";
 
 const noHost: HostGlyphOf = () => null;
 

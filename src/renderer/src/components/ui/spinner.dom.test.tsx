@@ -6,7 +6,12 @@ import { Spinner } from "./spinner";
 
 // jsdom has no Web Animations; each turn is a cancellable handle.
 const cancel = vi.fn();
-const animate = vi.fn((_keyframes: Keyframe[], _timing: KeyframeAnimationOptions) => ({ cancel }) as unknown as Animation);
+const turns: { startTime: number | null }[] = [];
+const animate = vi.fn((_keyframes: Keyframe[], _timing: KeyframeAnimationOptions) => {
+  const turn = { cancel, startTime: null as number | null };
+  turns.push(turn);
+  return turn as unknown as Animation;
+});
 const motion = (reduce: boolean) =>
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: reduce && query.includes("reduce") }) as MediaQueryList);
 
@@ -41,5 +46,15 @@ describe("Spinner", () => {
     motion(true);
     render(<Spinner />);
     expect(animate).not.toHaveBeenCalled();
+  });
+
+  it("turns on the document timeline from 0, so every spinner turns in phase and a remount picks the turn up", () => {
+    render(
+      <>
+        <Spinner />
+        <Spinner />
+      </>,
+    );
+    expect(turns.slice(-2).map((t) => t.startTime)).toEqual([0, 0]);
   });
 });

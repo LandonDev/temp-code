@@ -64,7 +64,7 @@ export const HtmlRenderRow = memo(function HtmlRenderRow({
           size="icon-sm"
           aria-label="Open page"
           onClick={() => openHtmlRenderOverlay(reference, host)}
-          className="absolute right-2 top-2 bg-background/80 text-muted-foreground opacity-0 transition-[background-color,color,opacity,scale] hover:bg-background hover:text-foreground focus-visible:opacity-100 group-hover/html-render:opacity-100"
+          className="absolute right-2 top-2 bg-background/80 text-muted-foreground opacity-0 transition-[background-color,color,opacity] duration-(--dur-fast) ease-(--ease-out) hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:delay-(--dur-instant) group-hover/html-render:opacity-100 group-hover/html-render:delay-(--delay-hover) motion-reduce:transition-opacity"
         >
           <Maximize2 className="size-3.5" />
         </Button>

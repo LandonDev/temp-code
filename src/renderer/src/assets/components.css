@@ -317,3 +317,10 @@
     transition: none;
   }
 }
+
+/* The share keeps its fade under reduced motion; only its slide goes. */
+@media (prefers-reduced-motion: reduce) {
+  .task-share {
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+}

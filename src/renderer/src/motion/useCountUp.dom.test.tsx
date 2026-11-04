@@ -46,4 +46,12 @@ describe("useCountUp", () => {
     act(() => calls[1].options.onUpdate(60));
     expect(result.current).toBe(60);
   });
+
+  it("off, the shown value keeps up with the target, so turned back on with the same target it reads that count, not 0", () => {
+    const { result, rerender } = renderHook(({ on }) => useCountUp(46, on), { initialProps: { on: false } });
+    expect(result.current).toBe(46);
+    rerender({ on: true });
+    expect(result.current).toBe(46);
+    expect(calls).toHaveLength(0);
+  });
 });

@@ -63,12 +63,23 @@ function DialogContent({
   children,
   showCloseButton = true,
   size,
+  instant = false,
   ...props
-}: DialogPrimitive.Popup.Props & { showCloseButton?: boolean } & VariantProps<typeof dialogContentVariants>) {
+}: DialogPrimitive.Popup.Props & {
+  showCloseButton?: boolean;
+  /** Opened by a keystroke (a picker): it appears at once and keeps its exit,
+   *  since nothing animates on a keystroke. */
+  instant?: boolean;
+} & VariantProps<typeof dialogContentVariants>) {
   return (
     <DialogPortal>
-      <DialogOverlay />
-      <DialogPrimitive.Popup data-slot="dialog-content" data-size={size ?? "default"} className={cn(dialogContentVariants({ size }), className)} {...props}>
+      <DialogOverlay className={instant ? "starting:opacity-100" : undefined} />
+      <DialogPrimitive.Popup
+        data-slot="dialog-content"
+        data-size={size ?? "default"}
+        className={cn(dialogContentVariants({ size }), instant && "starting:opacity-100 starting:scale-100 starting:-translate-y-1/2", className)}
+        {...props}
+      >
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close

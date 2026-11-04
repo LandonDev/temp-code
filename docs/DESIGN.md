@@ -485,10 +485,10 @@ being produced shimmers (`WorkingText`); nothing else does.
 
 | Surface | Enter | Exit | Reduced motion |
 | --- | --- | --- | --- |
-| Dialog | fade + scale 0.95→1 + rise 4px, `--dur-slow` `--ease-out` | fade + scale →0.98, `--dur-fast` | fade only |
-| Sheet | fade + slide 16px from its edge, `--dur-drawer` `--ease-drawer` | fade + slide 16px back, `--dur-slow` | fade only |
-| Popover, menu, select | fade + scale 0.95→1 from the trigger, `--dur-base` | fade + scale →0.98, `--dur-fast` | fade only |
-| Context menu | fade at the pointer, `--dur-fast` | fade, `--dur-fast` | same |
+| Dialog (transitions, so a close mid-open turns back from where it is; the entry is CSS `@starting-style`) | fade + scale 0.95→1 + rise 4px, `--dur-slow` `--ease-out`; a picker opened by a key (⌘P, ⌘⇧O) appears at once | fade + scale →0.98, `--dur-fast` `--ease-exit` | fade only |
+| Sheet (transitions) | fade + slide 16px from its edge, `--dur-drawer` `--ease-drawer` | fade + slide 16px back by the same edge, `--dur-slow` | fade only |
+| Popover, menu, select (transitions) | fade + scale 0.95→1 from the trigger, `--dur-base` | fade + scale →0.98, `--dur-fast` `--ease-exit` | fade only |
+| Context menu (transitions) | fade at the pointer, `--dur-fast` | fade, `--dur-fast` | same |
 | Tooltip (13px regular on 20px lines, 24px tall) | after 300ms (`TOOLTIP` in lib/ease.ts), fade + scale 0.98→1, `--dur-fast` `--ease-drawer`; neighbours in one `TooltipProvider` (a closing line's or a notice's actions, the title bar's groups, a split view's header, a rail row's hover actions) open at once within the 120ms grace, the label moving instead of reopening | fade + scale →0.98, `--dur-fast` | fade |
 | Toast (sonner, on `--layer-toast`; index.css overrides its 400-500ms defaults, out-specifying its injected stylesheet) | rise and fade, `--dur-base` `--ease-out`, no height or shadow transition | fade, `--dur-fast` `--ease-exit` | fade, `--dur-fast` |
 | Right panel, rail | no width animation; content fades `--dur-fast` | same | same |
@@ -509,11 +509,12 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Scroll glide (jump to latest, a burst while following, a jump to a row) | `DUR.drawer` on `EASE_OUT` | — | instant |
 | Park on send (prompt to top) | the transcript glides to park the prompt, `DUR.drawer` on `EASE_DRAWER`; from more than 2.5 screens away it jumps to within 2.5 screens first, as every long jump does | the parked runway retires over `DUR.base` on `EASE_OUT` | instant |
 | Jump to latest button | fade + scale 0.95→1, `--dur-base` `--ease-out` | `FADE_OUT` | fade |
-| Count | ticks from the shown value, `--dur-slow` `--ease-out` | — | none |
+| Count | ticks from the shown value, `--dur-slow` `--ease-out`; a pane shown again reads the count it holds | — | none |
 | Shimmer (`WorkingText`) | a masked band and a bright copy of the words (the band's `::before`) cross them in opposite directions, transform only, every 3s (`SHIMMER`); not mounted in a hidden pane or document | — | still muted text |
 | Working mark (`WorkingMark`, the working line's glyph) | three 3px dots gather into one and part every 1.6s, transform only (`MARK`); enters and leaves as an icon swap does | — | the three dots at rest |
 | The working line settling | the mark leaves as an icon does, the words morph into "Worked for 2m 4s" (or Stopped) and slide from the glyph slot to the prose edge, 22px, `--dur-base` `--ease-swap`; the hover actions mount | — | the morph's fades; no slide |
-| Spinner | the one arc turning | — | still |
+| Spinner | the one arc turning, on the document timeline from 0 (every spinner in phase; a remount picks the turn up) | — | still |
+| Lightbox | opens from the thumbnail that asked for it (its transform origin is the thumbnail's centre) and settles back toward it as the dialog does | — | fade only |
 | Appshot | fade + scale 0.95→1 centred, `--dur-slow`; holds; glides into its chip, `--dur-drawer` `--ease-drawer` | — | fade in and out in place, `--dur-fast` |
 | Released drag (every sash let go past its bound, the reorder drop, an Escape glide-back) | settles on `SPRING_GLIDE` from where it is drawn, carrying the pointer's speed at release | — | at once |
 | Scrollbar | shows at once on hover or scroll | hides at once, `SCROLL_IDLE_MS` (900ms) after the last scroll or when the pointer leaves | same |
@@ -523,7 +524,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Composer send | the bubble rides with the content as the prompt parks, rising 16px and fading in, `--dur-slow` `--ease-drawer`; in follow mode it flies from the field only when it lands within 240px of it | — | fade, `--dur-fast` |
 | Composer field height | snaps on a keystroke and on the clear after a send; a change of more than one line the person did not type (a paste, a restore, a quote) eases over `--dur-base` | — | snaps |
 | Composer, a new thread's first send | the box keeps its width and moves into its docked place (a FLIP translate, `--dur-slow` `--ease-drawer`) | — | none |
-| Pane switch | opacity, `--dur-fast`; no rise | — | none |
+| Pane switch | opacity, `--dur-fast`; no rise; a switch by a key (⌃Tab, ⌘1–9) at once | — | none |
 | The slot above the composer emptying | — | the outgoing row stays, inert, and fades `--dur-fast` `--ease-out`; the 28px stays | at once |
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
 

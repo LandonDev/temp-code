@@ -13,6 +13,10 @@ const reducedMotion = (): boolean =>
 function turn(box: HTMLSpanElement | null): (() => void) | undefined {
   if (!box || typeof box.animate !== "function" || reducedMotion()) return undefined;
   const animation = box.animate(SPINNER_TURN.keyframes, SPINNER_TURN.timing);
+  // On the document timeline from 0, as the working mark and words are: every
+  // spinner of a thread turns in phase, and a remount picks the turn up where
+  // it was instead of starting again at 0°.
+  animation.startTime = 0;
   return () => animation.cancel();
 }
 

@@ -153,7 +153,7 @@ export function NewThreadChooser({
                           size="icon-xs"
                           aria-label={`${THREAD_LABELS[type]} options`}
                           data-tune-type={type}
-                          className="me-1 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) hover:text-foreground focus-visible:opacity-100 focus-visible:delay-(--dur-instant) group-hover/row:opacity-100 group-hover/row:delay-(--delay-hover) group-focus-within/row:opacity-100 group-focus-within/row:delay-(--dur-instant) motion-reduce:transition-none"
+                          className="me-1 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) hover:text-foreground focus-visible:opacity-100 focus-visible:delay-(--dur-instant) group-hover/row:opacity-100 group-hover/row:delay-(--delay-hover) group-focus-within/row:opacity-100 group-focus-within/row:delay-(--dur-instant) motion-reduce:transition-opacity"
                           onClick={() => openTune(type)}
                         />
                       }

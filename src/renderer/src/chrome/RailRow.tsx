@@ -61,7 +61,7 @@ const TRAILING =
 /** With hover actions over it, the trailing slot reserves their place and
  *  fades: one 24px action, or two. */
 const YIELDS =
-  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-focus-within/row:opacity-0 group-hover/row:opacity-0 group-hover/row:delay-(--delay-hover) group-focus-within/row:delay-(--dur-instant) motion-reduce:transition-none";
+  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-focus-within/row:opacity-0 group-hover/row:opacity-0 group-hover/row:delay-(--delay-hover) group-focus-within/row:delay-(--dur-instant) motion-reduce:transition-opacity";
 const RESERVE = ["", "min-w-5", "min-w-11"] as const;
 /** A plain mark beside an interactive trailing control that gives its place
  *  to the hover actions (the selected workspace's diff). Spread on the mark. */
@@ -225,9 +225,9 @@ function HoverAction({ action, inline = false }: { action: RailRowAction; inline
               inline
                 ? ["hidden group-focus-within/row:inline-flex group-hover/row:inline-flex", action.expanded && "inline-flex"]
                 : [
-                    "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
+                    "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-opacity",
                     // A pointer sweeping down the rail does not flash every row's actions: hover waits, focus does not.
-                    "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-hover/row:delay-(--delay-hover) group-focus-within/row:delay-(--dur-instant)",
+                    "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-hover/row:delay-(--delay-hover) group-focus-within/row:delay-(--dur-instant) motion-reduce:transition-opacity",
                     action.expanded && "pointer-events-auto opacity-100 delay-(--dur-instant)",
                   ],
             )}

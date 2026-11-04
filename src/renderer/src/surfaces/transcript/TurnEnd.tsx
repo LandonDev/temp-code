@@ -285,7 +285,7 @@ function ClosingActions({
   onHandoff?: (harness: HarnessId, model: string) => void;
 }) {
   return (
-    <span className="flex items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/turnend:opacity-100 group-hover/turnend:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) has-aria-expanded:opacity-100 motion-reduce:transition-none">
+    <span className="flex items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/turnend:opacity-100 group-hover/turnend:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) has-aria-expanded:opacity-100 motion-reduce:transition-opacity">
       {/* One provider: moving to a neighbour moves the label instead of waiting again. */}
       <TooltipProvider>
         {output ? <CopyTurnButton text={output} armed={armed} /> : null}

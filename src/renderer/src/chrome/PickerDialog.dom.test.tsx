@@ -43,4 +43,23 @@ describe("MarkdownModeToggle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Source" }));
     expect(onChange).toHaveBeenCalledWith("source");
   });
+
+  it("appears at once, as a keystroke opened it, and keeps its exit", async () => {
+    await act(async () => {
+      render(
+        <PickerDialog label="Go to Symbol" search={createRef()} query="" onQuery={vi.fn()} onSearchKey={vi.fn()} onClose={vi.fn()}>
+          <p>rows</p>
+        </PickerDialog>,
+      );
+    });
+    const classes = screen.getByRole("dialog").className.split(/\s+/);
+    // Its starting style is its resting one: no fade, no scale, no rise.
+    expect(classes).toEqual(expect.arrayContaining(["starting:opacity-100", "starting:scale-100", "starting:translate-y-0", "data-ending-style:opacity-0"]));
+    expect(classes).not.toContain("starting:opacity-0");
+    expect(classes).not.toContain("starting:scale-95");
+    expect(classes.filter((c) => c.startsWith("starting:translate-y"))).toEqual(["starting:translate-y-0"]);
+    const overlay = document.querySelector("[data-slot=dialog-overlay]")!.className.split(/\s+/);
+    expect(overlay).toContain("starting:opacity-100");
+    expect(overlay).not.toContain("starting:opacity-0");
+  });
 });

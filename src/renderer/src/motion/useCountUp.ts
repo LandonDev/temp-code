@@ -14,11 +14,13 @@ export function useCountUp(target: number, animateOn: boolean): number {
   const reduce = useReducedMotion() === true;
   const run = animateOn && shown && !reduce;
   useEffect(() => {
-    if (!run) {
+    // Off, the shown value keeps up with the target, so a pane shown again
+    // reads the count it holds, never the 0 it started from.
+    if (!run || current.current === target) {
       current.current = target;
+      setShownValue(target);
       return;
     }
-    if (current.current === target) return;
     const controls = animate(current.current, target, {
       duration: DUR.slow,
       ease: EASE_OUT,

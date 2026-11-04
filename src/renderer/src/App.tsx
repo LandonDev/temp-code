@@ -1,3 +1,4 @@
+import { markKeyNav } from "./lib/navByKey";
 import { registry } from "./lib/connection";
 import { environmentOfCwd } from "./lib/tcserver/projects";
 import { copiesOf, newThreadContext } from "./lib/projectHostChoice";
@@ -3287,6 +3288,7 @@ export default function App() {
       if (!cmd) return;
       e.preventDefault();
       e.stopPropagation();
+      markKeyNav();
       execute(cmd);
     };
     window.addEventListener("keydown", onKey, true);
