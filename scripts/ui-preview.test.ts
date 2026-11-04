@@ -46,7 +46,7 @@ describe('ui-preview', () => {
     for (const page of Object.values(html)) {
       expect(page).toContain('<!doctype html>')
       expect(page).toContain('data-slot="button"')
-      expect(page).toContain('bg-primary text-primary-foreground')
+      expect(page).toContain('t-raise-primary text-primary-foreground')
       expect(page).toMatch(/<button[^>]*>Save<\/button>/)
       expect(page).toContain('width: 480px')
       expect(page).not.toContain('<script')

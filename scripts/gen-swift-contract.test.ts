@@ -48,7 +48,8 @@ describe('Meta on the wire', () => {
     expect(W.AccountsSnapshotSchema.safeParse({ updatedAt: 1, providers }).success).toBe(true)
     expect(W.AccountsSnapshotSchema.safeParse({ updatedAt: 1, providers: { ...providers, meta: empty() } }).success).toBe(true)
     expect(files['Types.swift']).toContain('public let meta: ProviderAccounts?')
-    expect(files['Types.swift']).toContain('cursor: ProviderAccounts, meta: ProviderAccounts? = nil)')
+    // The optional field keeps its `= nil` default whatever optional providers follow it (muse does now).
+    expect(files['Types.swift']).toContain('cursor: ProviderAccounts, meta: ProviderAccounts? = nil')
   })
   it('emits Reasoning.minimal and an optional ModelInfo.vendor', () => {
     const enums = files['Enums.swift']

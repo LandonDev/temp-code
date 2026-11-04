@@ -366,7 +366,10 @@ describe('mac → box', () => {
       'Codex prompts': 1,
       'Codex config': 1,
       'Codex hooks': 1,
-      'Shared skills': 1
+      'Shared skills': 1,
+      'Muse settings': 0,
+      'Muse skills': 0,
+      'Muse hooks': 0
     })
     expect(status.environments[0].syncedAt).toBeGreaterThan(0)
     expect(JSON.parse(macStore.rows['harness.sync.status']).env_box.files).toBe(13)
