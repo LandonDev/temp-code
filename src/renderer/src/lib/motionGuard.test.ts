@@ -192,6 +192,16 @@ describe("the motion guard", () => {
     expect(misused).toEqual([]);
   });
 
+  it("opens and closes every popup on transitions, never on enter and exit keyframes", () => {
+    // A keyframe restarts from its first frame, so a popup closed mid-open jumped;
+    // a transition turns back from where it is.
+    const keyframed: string[] = [];
+    for (const file of walk(ROOT).filter((path) => path.endsWith(".tsx"))) {
+      if (/data-open:animate-in|data-closed:animate-out/.test(readFileSync(file, "utf8"))) keyframed.push(relative(ROOT, file));
+    }
+    expect(keyframed).toEqual([]);
+  });
+
   it("points each keyframes entry at a file that exists", () => {
     for (const [name, servedBy] of Object.entries(KEYFRAMES)) expect(existsSync(join(ROOT, servedBy)), name).toBe(true);
   });

@@ -76,6 +76,8 @@
   --chart-3: #199e70;
   --chart-4: #c98500;
   --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.5), 0 2px 6px -2px rgb(0 0 0 / 0.3);
+  /* The dim behind a dialog or a sheet. */
+  --scrim: rgb(0 0 0 / 0.3);
   /* Runner sprites keep their coin and star colours in both themes. */
   --composer-coin: #e8b923;
   --composer-star: #f4e27a;
@@ -187,6 +189,7 @@ html.theme-light {
   --chart-3: #1baf7a;
   --chart-4: #eda100;
   --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.18), 0 2px 6px -2px rgb(0 0 0 / 0.1);
+  --scrim: rgb(0 0 0 / 0.18);
   --raise-primary:
     inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 1px 2px -0.5px rgb(255 255 255 / 0.12),
     inset 0 8px 24px -4px rgb(255 255 255 / 0.1), inset 0 -4px 12px -4px rgb(255 255 255 / 0.06),
@@ -239,6 +242,7 @@ html.theme-light {
   --color-border: var(--border);
   --color-input: var(--input);
   --color-image-outline: var(--image-outline);
+  --color-scrim: var(--scrim);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -1154,8 +1158,9 @@ header[data-tauri-drag-region] button {
   text-overflow: ellipsis;
 }
 
-/* Reduced motion: an overlay keeps a --dur-fast fade and nothing else. It
-   never travels or scales, and never appears in one frame. */
+/* Reduced motion: an overlay keeps a --dur-fast fade and nothing else. Its
+   transitions narrow to opacity, so the starting and ending scale and
+   translate never move; it never appears in one frame. */
 @media (prefers-reduced-motion: reduce) {
   :is(
     [data-slot="dialog-overlay"],
@@ -1171,19 +1176,8 @@ header[data-tauri-drag-region] button {
     [data-slot="select-content"],
     [data-slot="tooltip-content"]
   ) {
-    --tw-enter-scale: 1;
-    --tw-exit-scale: 1;
-    --tw-enter-translate-x: 0;
-    --tw-enter-translate-y: 0;
-    --tw-exit-translate-x: 0;
-    --tw-exit-translate-y: 0;
-    animation-duration: var(--dur-fast);
     transition-property: opacity;
     transition-duration: var(--dur-fast);
-  }
-  [data-slot="sheet-content"]:is([data-starting-style], [data-ending-style]) {
-    --tw-translate-x: 0;
-    --tw-translate-y: 0;
   }
 }
 

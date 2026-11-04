@@ -48,7 +48,7 @@ function SelectContent({
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
           className={cn(
-            "relative isolate max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-xl bg-popover [--scrollbar-inset:var(--radius-xl)] text-popover-foreground shadow-overlay ring-1 ring-border duration-(--dur-base) ease-(--ease-out) data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-98 data-closed:duration-(--dur-fast) data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-[align-trigger=true]:zoom-in-100 data-[align-trigger=true]:zoom-out-100 motion-reduce:data-open:zoom-in-100",
+            "relative isolate max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-xl bg-popover [--scrollbar-inset:var(--radius-xl)] text-popover-foreground shadow-overlay ring-1 ring-border transition-[opacity,scale] duration-(--dur-base) ease-(--ease-out) starting:opacity-0 starting:scale-95 data-ending-style:opacity-0 data-ending-style:scale-[0.98] data-ending-style:duration-(--dur-fast) data-ending-style:ease-(--ease-exit) motion-reduce:transition-opacity data-[align-trigger=true]:starting:scale-100 data-[align-trigger=true]:data-ending-style:scale-100",
             className,
           )}
           {...props}

@@ -106,7 +106,7 @@ describe("Dialog", () => {
 });
 
 describe("Sheet", () => {
-  it("enters on keyframes from its edge, fading alone under reduced motion", () => {
+  it("enters and leaves by its edge on transitions, fading alone under reduced motion", () => {
     render(
       <Sheet open>
         <SheetContent side="right">
@@ -116,19 +116,20 @@ describe("Sheet", () => {
     );
     const classes = screen.getByRole("dialog").className.split(/\s+/);
     for (const c of [
-      "data-open:animate-in",
-      "data-open:fade-in-0",
+      "transition-[opacity,translate]",
       "duration-(--dur-drawer)",
       "ease-(--ease-drawer)",
-      "data-closed:animate-out",
-      "data-closed:duration-(--dur-slow)",
-      "motion-safe:data-[side=right]:data-open:slide-in-from-right-4",
-      "motion-safe:data-[side=right]:data-closed:slide-out-to-right-4",
+      "starting:opacity-0",
+      "data-ending-style:opacity-0",
+      "data-ending-style:duration-(--dur-slow)",
+      "motion-safe:data-[side=right]:starting:translate-x-4",
+      "motion-safe:data-[side=right]:data-ending-style:translate-x-4",
     ])
       expect(classes).toContain(c);
     // Every slide is motion-safe, so reduced motion keeps only the fade.
-    expect(classes.filter((c) => c.includes("slide-") && !c.startsWith("motion-safe:"))).toEqual([]);
-    expect(classes.some((c) => c.includes("starting-style"))).toBe(false);
+    expect(classes.filter((c) => c.includes("translate-") && !c.startsWith("motion-safe:"))).toEqual([]);
+    expect(classes.some((c) => c.includes("animate-"))).toBe(false);
+    expect(document.querySelector("[data-slot=sheet-overlay]")!.className).toContain("bg-scrim");
   });
 
   it("takes a width in px on a side sheet, and keeps the default without one", () => {

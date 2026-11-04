@@ -7,8 +7,10 @@ import { Button } from "./button";
 
 /**
  * The one modal, and the alert dialog that confirms. Centred, one radius,
- * one hairline ring, one shadow; it fades and rises 4px in, fades and
- * settles out. The AlertDialog aliases keep the confirm shape in one file.
+ * one hairline ring, one shadow; it fades, grows from 0.95 and rises 4px
+ * in, fades and settles to 0.98 out. Transitions, not keyframes, so a close
+ * mid-open turns back from where it is; the entry is CSS @starting-style
+ * because Base UI sets no starting status on a popup that mounts open. The AlertDialog aliases keep the confirm shape in one file.
  */
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
@@ -31,7 +33,7 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-(--layer-dialog) bg-black/30 duration-(--dur-slow) ease-(--ease-out) data-closed:duration-(--dur-fast) data-closed:ease-(--ease-exit) data-closed:animate-out data-closed:fade-out-0 data-open:animate-in data-open:fade-in-0",
+        "fixed inset-0 isolate z-(--layer-dialog) bg-scrim transition-opacity duration-(--dur-slow) ease-(--ease-out) starting:opacity-0 data-ending-style:opacity-0 data-ending-style:duration-(--dur-fast) data-ending-style:ease-(--ease-exit)",
         className,
       )}
       {...props}
@@ -40,7 +42,7 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
 }
 
 const dialogContentVariants = cva(
-  "fixed left-1/2 top-1/2 z-(--layer-dialog) grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl bg-popover p-5 text-sm text-popover-foreground shadow-overlay ring-1 ring-border outline-none duration-(--dur-slow) ease-(--ease-out) data-closed:duration-(--dur-fast) data-closed:ease-(--ease-exit) data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-98 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-open:slide-in-from-bottom-1 motion-reduce:data-closed:zoom-out-100 motion-reduce:data-open:zoom-in-100 motion-reduce:data-open:slide-in-from-bottom-0",
+  "fixed left-1/2 top-1/2 z-(--layer-dialog) grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl bg-popover p-5 text-sm text-popover-foreground shadow-overlay ring-1 ring-border outline-none transition-[opacity,scale,translate] duration-(--dur-slow) ease-(--ease-out) starting:opacity-0 starting:scale-95 starting:translate-y-[calc(-50%+4px)] data-ending-style:opacity-0 data-ending-style:scale-[0.98] data-ending-style:duration-(--dur-fast) data-ending-style:ease-(--ease-exit) motion-reduce:transition-opacity",
   {
     variants: {
       size: {
@@ -49,7 +51,7 @@ const dialogContentVariants = cva(
         md: "sm:max-w-xl",
         lg: "sm:max-w-3xl",
         /* A viewer: the window less 24px each side, no surface of its own. */
-        full: "inset-6 h-[calc(100vh-48px)] w-[calc(100vw-48px)] max-w-none translate-x-0 translate-y-0 bg-transparent shadow-none ring-0 sm:max-w-none",
+        full: "inset-6 h-[calc(100vh-48px)] w-[calc(100vw-48px)] max-w-none translate-x-0 translate-y-0 starting:translate-y-1 bg-transparent shadow-none ring-0 sm:max-w-none",
       },
     },
     defaultVariants: { size: "default" },

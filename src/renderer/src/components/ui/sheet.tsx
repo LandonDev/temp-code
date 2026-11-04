@@ -4,9 +4,10 @@ import { Dialog as SheetPrimitive } from "@base-ui/react/dialog";
 import { cn } from "@renderer/lib/cn";
 
 /** A dialog that enters from an edge: slides 16px and fades, on the drawer
- *  curve; 300ms in, 240ms back out. Keyframes, not transitions: Base UI
- *  skips the starting style of a popup that mounts open, as ours do. For
- *  CRUD forms and long lists; the one right panel is NOT a sheet. */
+ *  curve; 300ms in, 240ms back out by the same edge. Transitions, so a close
+ *  mid-open turns back from where it is; the entry is CSS @starting-style,
+ *  since Base UI skips the starting status of a popup that mounts open, as
+ *  ours do. For CRUD forms and long lists; the one right panel is NOT a sheet. */
 function Sheet({ ...props }: SheetPrimitive.Root.Props) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />;
 }
@@ -27,7 +28,7 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
   return (
     <SheetPrimitive.Backdrop
       data-slot="sheet-overlay"
-      className={cn("fixed inset-0 z-(--layer-dialog) bg-black/30 duration-(--dur-drawer) ease-(--ease-drawer) data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 data-closed:duration-(--dur-slow) data-closed:ease-(--ease-exit)", className)}
+      className={cn("fixed inset-0 z-(--layer-dialog) bg-scrim transition-opacity duration-(--dur-drawer) ease-(--ease-drawer) starting:opacity-0 data-ending-style:opacity-0 data-ending-style:duration-(--dur-fast) data-ending-style:ease-(--ease-exit)", className)}
       {...props}
     />
   );
@@ -55,12 +56,12 @@ function SheetContent({
         data-slot="sheet-content"
         data-side={side}
         className={cn(
-          "fixed z-(--layer-dialog) flex flex-col overflow-hidden rounded-2xl bg-popover text-sm text-popover-foreground shadow-overlay ring-1 ring-border duration-(--dur-drawer) ease-(--ease-drawer) data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 data-closed:duration-(--dur-slow) data-closed:ease-(--ease-exit)",
+          "fixed z-(--layer-dialog) flex flex-col overflow-hidden rounded-2xl bg-popover text-sm text-popover-foreground shadow-overlay ring-1 ring-border transition-[opacity,translate] duration-(--dur-drawer) ease-(--ease-drawer) starting:opacity-0 data-ending-style:opacity-0 data-ending-style:duration-(--dur-slow) data-ending-style:ease-(--ease-exit)",
           // The slide rides motion-safe, so reduced motion keeps the fade alone.
-          "data-[side=bottom]:inset-x-3 data-[side=bottom]:bottom-3 data-[side=bottom]:h-auto motion-safe:data-[side=bottom]:data-open:slide-in-from-bottom-4 motion-safe:data-[side=bottom]:data-closed:slide-out-to-bottom-4",
-          "data-[side=top]:inset-x-3 data-[side=top]:top-3 data-[side=top]:h-auto motion-safe:data-[side=top]:data-open:slide-in-from-top-4 motion-safe:data-[side=top]:data-closed:slide-out-to-top-4",
-          "data-[side=left]:inset-y-3 data-[side=left]:left-3 data-[side=left]:w-[440px] data-[side=left]:max-w-[calc(100%-1.5rem)] motion-safe:data-[side=left]:data-open:slide-in-from-left-4 motion-safe:data-[side=left]:data-closed:slide-out-to-left-4",
-          "data-[side=right]:inset-y-3 data-[side=right]:right-3 data-[side=right]:w-[440px] data-[side=right]:max-w-[calc(100%-1.5rem)] motion-safe:data-[side=right]:data-open:slide-in-from-right-4 motion-safe:data-[side=right]:data-closed:slide-out-to-right-4",
+          "data-[side=bottom]:inset-x-3 data-[side=bottom]:bottom-3 data-[side=bottom]:h-auto motion-safe:data-[side=bottom]:starting:translate-y-4 motion-safe:data-[side=bottom]:data-ending-style:translate-y-4",
+          "data-[side=top]:inset-x-3 data-[side=top]:top-3 data-[side=top]:h-auto motion-safe:data-[side=top]:starting:-translate-y-4 motion-safe:data-[side=top]:data-ending-style:-translate-y-4",
+          "data-[side=left]:inset-y-3 data-[side=left]:left-3 data-[side=left]:w-[440px] data-[side=left]:max-w-[calc(100%-1.5rem)] motion-safe:data-[side=left]:starting:-translate-x-4 motion-safe:data-[side=left]:data-ending-style:-translate-x-4",
+          "data-[side=right]:inset-y-3 data-[side=right]:right-3 data-[side=right]:w-[440px] data-[side=right]:max-w-[calc(100%-1.5rem)] motion-safe:data-[side=right]:starting:translate-x-4 motion-safe:data-[side=right]:data-ending-style:translate-x-4",
           className,
         )}
         style={sized ? (state) => ({ ...(typeof style === "function" ? style(state) : style), width }) : style}

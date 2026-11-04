@@ -46,8 +46,8 @@ describe("Modal", () => {
     );
     const classes = screen.getByRole("dialog").className;
     expect(classes).toContain("duration-(--dur-slow)");
-    expect(classes).toContain("data-closed:duration-(--dur-fast)");
-    expect(classes).toContain("data-open:slide-in-from-bottom-1");
+    expect(classes).toContain("data-ending-style:duration-(--dur-fast)");
+    expect(classes).toContain("starting:translate-y-[calc(-50%+4px)]");
   });
 
   it("closes from the close button and from Escape, after its exit", async () => {
