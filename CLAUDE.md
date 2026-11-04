@@ -295,6 +295,13 @@ app replaces itself from the feed, and only from the feed.
   the spinner's turn is `SPINNER_TURN`, the working mark's dots `MARK`, the
   working words' shimmer `SHIMMER` and the word morph `--dur-swap-out` and
   `--ease-swap` (`EASE_SWAP`), all in lib/ease.ts and the token layer.
+  The springs are `SPRING_LAYOUT` and `SPRING_GLIDE`; a drag settles from
+  where it is drawn with the pointer's speed (lib/drag.ts `releaseVelocity`,
+  `rubber`). Every popup moves on transitions, its entry CSS `@starting-style`
+  (Base UI sets no starting status on a popup mounted open), its exit
+  `data-ending-style`; a dialog or sheet dims behind it with the `scrim`
+  token. A plan, a board's plan and a report read at `AgentMarkdown`'s
+  document size (15/24).
 - Settings rows and sections use `components/page.tsx` (`PageRow`,
   `PageSection`), which pass native props and data attributes to their roots;
   Hosts exports these as `Row` and `Group` without copying their markup.

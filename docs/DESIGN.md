@@ -136,10 +136,11 @@ a surface above `/10`.
 | --- | --- |
 | 11px | a key cap, a group label in a menu |
 | 12px | secondary lines in the chrome, descriptions under a title, status words, a count in a row's status line |
-| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings, a tooltip (regular, 20px lines); the transcript's action, thinking, notice and closing lines (20px lines in 28px rows, 26px hung in an open group) and their counts (`+46 −3`) |
-| 14px | dialog and panel body text, an Item's title; the transcript's prose, the person's bubble, a question's prompt and the composer's field (22px lines) |
-| 15px | an h2 in the model's prose |
-| 16px | a dialog or sheet title (semibold); an h1 in the model's prose |
+| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings, an Item's title, a tooltip (regular, 20px lines); the transcript's action, thinking, notice and closing lines (20px lines in 28px rows, 26px hung in an open group) and their counts (`+46 −3`) |
+| 14px | dialog and panel body text (22px lines); the transcript's prose, the person's bubble, a question's prompt and the composer's field (22px lines) |
+| 15px | an h2 in the model's prose; a document's body (a plan, a board's plan, a report: 15/24, its h3 15/24 medium) |
+| 16px | a title: a dialog's, a sheet's, a page's, an inbox item's, a note's, a report's, an agent's (semibold on 24px lines at -0.01em, one recipe, `lib/typeScaleGuard.test.ts`); an h1 in the model's prose; a document's h2 |
+| 18px | a document's h1 (26px lines, -0.01em) |
 
 Weight and colour make the hierarchy, not size jumps: a title is `font-medium`
 foreground, its detail `muted-foreground` at the next size down. Code is the

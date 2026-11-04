@@ -805,7 +805,8 @@ remembered per thread for the app's run (`useChatFold`, lib/chatFold.ts),
 so a tab switch that unmounts a parked view keeps it; a relaunch starts on
 the view's phase default, and a question waiting at a remount still opens
 the chat. Each view's document
-is one column, `max-w-2xl`, at 15px/1.6. A view without a board is the chat
+is one column, `max-w-2xl`, read as a document: 15px on 24px lines,
+headings above the body (`AgentMarkdown size="document"`). A view without a board is the chat
 alone, with no header.
 
 ### Planning — a document, not a conversation
@@ -986,7 +987,10 @@ message first" as its tooltip, since the host pins only a thread it knows). The 
 the batch on the left, the master's own chat on the right, folding from
 the toggle at the end of the view header. The board comes with the batch: it shows while the batch has a row or a step runs. Until then the master is its transcript alone, full width, with no header, sash or fold, as any thread; its thread menu's New batch thread… and Add existing thread… start the first child. A board that arrives live comes with the chat open (a fold left closed by an earlier batch is reset) and fades in over `--dur-base`, opacity only, with no width tween; one there at mount follows the remembered fold. When the batch empties (Archive all, `then: archive-children`) the board leaves in the same frame the chat takes the width, unless a step still runs, in which case it leaves when the step ends. A child of the
 batch is never a tab: it lives on the board, and a click puts its full view
-in the whole pane, with Back.
+in the whole pane, with Back. Back returns to the board as it was left: the
+split the person set (MasterView holds SplitShell's split while the child
+shows), the board's scroll, and the focus on the row that opened the child,
+brought into view even when it moved section meanwhile.
 
 ```
 ┌ iOS batch 2  1/7                                          ⋯   +   ✉ ┐
