@@ -563,7 +563,10 @@ routed to (aliax-core's `forward`). Two listeners:
   `src/mint.ts`, `src/main/aliax/{staticMint,staticTokens}.ts`) by adding
   `expires_in: 31536000` to the ordinary code exchange or to a refresh_token
   grant; the token response names its account and a token is filed only
-  under that account. "Convert all to one-year tokens" in the Claude Code
+  under that account. A Meta key is a key account (`kind: 'key'`, static, no
+  owner, synced like a one-year token), added with the Meta section's Add key…
+  (AddKeyDialog → `aliax:profiles:addKey` → core's `saveApiKey`) and shown as
+  `LLM_1607…`; a refused key fails a turn as `key_invalid`. "Convert all to one-year tokens" in the Claude Code
   section's menu on the Accounts page converts every account; a grant
   another host refreshes (the box, from an
   earlier handoff) is taken back first over the peer link (`AccountSync.
@@ -654,7 +657,8 @@ routed to (aliax-core's `forward`). Two listeners:
   `src/shared/usageMeter.ts` (`meterFor`: the mean room over routable
   accounts, each its tighter of 5h and week) with the next refill, or
   "Limited 3m" while every account is throttled, and its popover lists the
-  windows and how many accounts have room. Each host pushes
+  windows and how many accounts have room; Meta, paid per token, has a row
+  only while every key is throttled (Limited and the time, no bar). Each host pushes
   its own picture to its peers every 30 s and within a second of a 429
   (`accounts.headroom`, admin; the answer carries the peer's), merged under
   the sender's id, so the Mac and the box pick from one picture. Proof:

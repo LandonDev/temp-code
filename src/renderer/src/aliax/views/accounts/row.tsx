@@ -109,7 +109,7 @@ export function UsageBars({
     return (
       <span className="flex items-center gap-3" aria-busy="true">
         <Skeleton className="h-6 w-[72px]" />
-        <Skeleton className="h-6 w-[72px]" />
+        {keyed ? null : <Skeleton className="h-6 w-[72px]" />}
       </span>
     );
   }
