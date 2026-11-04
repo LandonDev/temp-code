@@ -398,6 +398,11 @@ function useChipDrag(id: string, select: () => void) {
     if (event.button !== 0 || event.ctrlKey) return;
     const startX = event.clientX;
     const startY = event.clientY;
+    // The chip holds the pointer, so a drag over an html_render iframe keeps
+    // its moves and its release, which the frame's document would swallow.
+    const handle = event.currentTarget;
+    const pointerId = event.pointerId;
+    handle.setPointerCapture?.(pointerId);
     let restoreSelection: (() => void) | null = null;
 
     const move = (ev: PointerEvent) => {
@@ -432,6 +437,11 @@ function useChipDrag(id: string, select: () => void) {
       window.removeEventListener("pointercancel", end);
       window.removeEventListener("keydown", key, true);
       window.removeEventListener("blur", end);
+      try {
+        if (handle.hasPointerCapture?.(pointerId)) handle.releasePointerCapture(pointerId);
+      } catch {
+        /* already released */
+      }
       if (!restoreSelection) return;
       restoreSelection();
       restoreSelection = null;

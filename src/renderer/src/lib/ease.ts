@@ -4,22 +4,6 @@
  * share one feel. Nothing in the UI hand-rolls a transition.
  */
 
-/** Button presses: a quick spring with a small overshoot. */
-export const SPRING_PRESS = {
-  type: "spring",
-  stiffness: 500,
-  damping: 30,
-  mass: 0.6,
-} as const;
-
-/** Overlay panel entrances and the row-to-detail morph. */
-export const SPRING_PANEL = {
-  type: "spring",
-  stiffness: 420,
-  damping: 40,
-  mass: 0.5,
-} as const;
-
 /** Shared-layout glides: pills, washes and panels morphing between positions,
  *  and icon swaps inside a button (the composer's Send → Queue → Pause). */
 export const SPRING_LAYOUT = {

@@ -1,9 +1,33 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { animate } from "motion/react";
 import { SplitShell } from "./SplitShell";
 
+// A settle lands at once, so a test reads where it ends; the call is kept to read its spring.
+vi.mock("motion/react", async (original) => ({
+  ...(await original<typeof import("motion/react")>()),
+  animate: vi.fn((_from: number, to: number, options: { onUpdate?: (v: number) => void; onComplete?: () => void }) => {
+    options.onUpdate?.(to);
+    options.onComplete?.();
+    return { stop: vi.fn() };
+  }),
+}));
+
 afterEach(cleanup);
+
+/** The shell is `width` wide; the board as drawn reads its flex basis against it. */
+function mockShell(width: number) {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    let w = width;
+    if (this.hasAttribute("data-board")) {
+      const basis = this.style.flexBasis;
+      const fit = /^min\((\d+)px, 50%\)$/.exec(basis);
+      w = fit ? Math.min(Number(fit[1]), width / 2) : (parseFloat(basis) / 100) * width;
+    }
+    return { left: 0, width: w, top: 0, height: 600, right: w, bottom: 600, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+  });
+}
 
 const shell = (over: Partial<Parameters<typeof SplitShell>[0]> = {}) => (
   <SplitShell
@@ -124,7 +148,7 @@ describe("SplitShell", () => {
     const basis = () => (document.querySelector("[data-board]") as HTMLElement).style.flexBasis;
     const sash = () => screen.getByRole("separator", { name: "Resize" });
     const drag = (toX: number) => {
-      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000, top: 0, height: 600, right: 1000, bottom: 600, x: 0, y: 0, toJSON: () => ({}) });
+      mockShell(1000);
       fireEvent.pointerDown(sash(), { button: 0, clientX: 500 });
       fireEvent.pointerMove(window, { clientX: toX });
       fireEvent.pointerUp(window);
@@ -136,10 +160,11 @@ describe("SplitShell", () => {
       expect(basis()).toBe("min(420px, 50%)");
     });
 
-    it("a drag replaces the fit with the dragged share, and a double-click goes back to the fit", () => {
+    it("a drag replaces the fit with the dragged share, from the board as drawn, and a double-click goes back to the fit", () => {
       render(shell({ fit: 420 }));
+      // The fitted board stands at 420px; 120px to the right is 540px, 54%.
       drag(620);
-      expect(basis()).toBe("62%");
+      expect(basis()).toBe("54%");
       fireEvent.doubleClick(sash());
       expect(basis()).toBe("min(420px, 50%)");
     });
@@ -191,5 +216,66 @@ describe("SplitShell", () => {
     } finally {
       clock.mockRestore();
     }
+  });
+});
+
+describe("SplitShell's drag", () => {
+  const board = () => document.querySelector("[data-board]") as HTMLElement;
+  const sash = () => screen.getByRole("separator", { name: "Resize" });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.mocked(animate).mockClear();
+  });
+
+  it("holds the pointer, marks the page resizing, and starts from the board as drawn", () => {
+    mockShell(1600);
+    render(shell({ fit: 300 }));
+    const capture = vi.fn();
+    sash().setPointerCapture = capture;
+    fireEvent.pointerDown(sash(), { button: 0, pointerId: 7, clientX: 800 });
+    expect(capture).toHaveBeenCalledWith(7);
+    expect(document.documentElement.classList.contains("is-resizing")).toBe(true);
+    // One pixel moves the 300px board by one pixel of 1600: no jump to 30%.
+    fireEvent.pointerMove(window, { pointerId: 7, clientX: 801 });
+    expect(parseFloat(board().style.flexBasis)).toBeCloseTo((301 / 1600) * 100, 4);
+    fireEvent.pointerUp(window, { pointerId: 7 });
+    expect(document.documentElement.classList.contains("is-resizing")).toBe(false);
+  });
+
+  it("keys move 2% from the drawn fit, not from 50", () => {
+    mockShell(1600);
+    render(shell({ fit: 600 }));
+    fireEvent.keyDown(sash(), { key: "ArrowRight" });
+    expect(parseFloat(board().style.flexBasis)).toBeCloseTo(37.5 + 2, 4);
+  });
+
+  it("Escape puts the board back where the drag began", () => {
+    mockShell(1000);
+    render(shell());
+    fireEvent.pointerDown(sash(), { button: 0, pointerId: 1, clientX: 500 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 620 });
+    expect(board().style.flexBasis).toBe("62%");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(board().style.flexBasis).toBe("50%");
+    // The drag is over: a later move does nothing.
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 700 });
+    expect(board().style.flexBasis).toBe("50%");
+  });
+
+  it("dragged past 70% it stretches, and settles back at 70 on SPRING_GLIDE", () => {
+    mockShell(1000);
+    render(shell());
+    fireEvent.pointerDown(sash(), { button: 0, pointerId: 1, clientX: 500 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 800 });
+    const stretched = parseFloat(board().style.flexBasis);
+    expect(stretched).toBeGreaterThan(70);
+    expect(stretched).toBeLessThan(80);
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    expect(board().style.flexBasis).toBe("70%");
+    const [from, to, options] = vi.mocked(animate).mock.calls.at(-1)! as unknown as [number, number, { stiffness: number; damping: number }];
+    expect(from).toBeCloseTo(stretched);
+    expect(to).toBe(70);
+    expect(options.stiffness).toBe(700);
+    expect(options.damping).toBe(50);
   });
 });

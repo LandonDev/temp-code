@@ -7,7 +7,7 @@ import {
 } from "react";
 import { animate } from "motion/react";
 import { SPRING_GLIDE } from "../lib/ease";
-import { suppressTextSelection } from "../lib/drag";
+import { pushSample, releaseVelocity, rubber, suppressTextSelection, type DragSample } from "../lib/drag";
 
 type Options = {
   min: number;
@@ -21,17 +21,6 @@ type Options = {
 
 function clampTo(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-/** Diminishing overshoot past a bound: the pane stretches, but ever more reluctantly. */
-function rubberband(over: number) {
-  return (over * 300 * 0.55) / (300 + 0.55 * over);
-}
-
-function rubber(raw: number, min: number, max: number) {
-  if (raw > max) return max + rubberband(raw - max);
-  if (raw < min) return min - rubberband(min - raw);
-  return raw;
 }
 
 /** Drag a pane's width by writing the DOM directly so React re-renders can't fight the cursor. */
@@ -75,7 +64,9 @@ export function useDragResize({
 
   const settle = useRef<{ stop: () => void } | null>(null);
 
-  const commit = (next: number, immediate = false) => {
+  /** `velocity` is the width's speed at release in px/s, handed to the settle
+   *  so the pane carries on as the hand moved it instead of starting from rest. */
+  const commit = (next: number, immediate = false, velocity = 0) => {
     const value = clamp(next);
     const pane = paneRef.current;
     const from = widthRef.current;
@@ -91,7 +82,7 @@ export function useDragResize({
       return;
     }
     // Spring from the stretched (or previous) width to the committed one.
-    settle.current = animate(pane, { width: [`${from}px`, `${value}px`] }, SPRING_GLIDE);
+    settle.current = animate(pane, { width: [from, value] }, { ...SPRING_GLIDE, velocity });
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
@@ -111,17 +102,24 @@ export function useDragResize({
     document.body.style.cursor = "col-resize";
     document.documentElement.classList.add("is-resizing");
 
+    const sign = edge === "left" ? -1 : 1;
+    const samples: DragSample[] = [];
+
     const onMove = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
-      apply(rubber(startW + (edge === "left" ? startX - ev.clientX : ev.clientX - startX), minRef.current, maxRef.current()));
+      pushSample(samples, ev.clientX, ev.timeStamp);
+      apply(rubber(startW + sign * (ev.clientX - startX), minRef.current, maxRef.current()));
     };
 
-    const stop = () => {
+    // `now` is the release's time; a drag ended any other way (a blur, an unmount) carries no speed.
+    const stop = (now = Infinity) => {
       if (stopDrag.current !== stop) return;
       stopDrag.current = null;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("blur", onBlur);
+      handle.removeEventListener("lostpointercapture", onLost);
       restoreSelection();
       document.body.style.cursor = previousCursor;
       document.documentElement.classList.remove("is-resizing");
@@ -131,18 +129,25 @@ export function useDragResize({
       } catch {
         /* already released */
       }
-      commit(widthRef.current);
+      commit(widthRef.current, false, sign * releaseVelocity(samples, now));
     };
 
     const onUp = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
-      stop();
+      stop(ev.timeStamp);
     };
+    // A drag that ends outside the window, or loses its capture, still ends.
+    const onLost = (ev: PointerEvent) => {
+      if (ev.pointerId === pointerId) stop(ev.timeStamp);
+    };
+    const onBlur = () => stop();
 
     stopDrag.current = stop;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
+    window.addEventListener("blur", onBlur);
+    handle.addEventListener("lostpointercapture", onLost);
   };
 
   useEffect(() => () => stopDrag.current?.(), []);
@@ -158,6 +163,5 @@ export function useDragResize({
     onPointerDown,
     resizeTo,
     reset,
-    onDoubleClick: () => commit(defaultRef.current),
   };
 }

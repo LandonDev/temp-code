@@ -4,6 +4,9 @@ import { Toggle } from "../../components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import { MessageSquare } from "../../chrome/icons";
 import { useSashKeys } from "../../hooks/useSashKeys";
+import { animate } from "motion/react";
+import { SPRING_GLIDE } from "../../lib/ease";
+import { pushSample, releaseVelocity, rubber, suppressTextSelection, type DragSample } from "../../lib/drag";
 
 /**
  * The board | sash | chat recipe every thread view with a board shares.
@@ -23,7 +26,12 @@ import { useSashKeys } from "../../hooks/useSashKeys";
  * board yields first (DESIGN "Panels").
  */
 
-export function useSplit(initial = 50): {
+/** The split's bounds in percent of the shell. A fitted board drawn under
+ *  30% keeps its own width as the lower bound for the drag that starts there. */
+const SPLIT_MIN = 30;
+const SPLIT_MAX = 70;
+
+export type SplitState = {
   split: number;
   setSplit: (n: number) => void;
   /** The person dragged the sash: their split wins over a fitted width. */
@@ -31,33 +39,121 @@ export function useSplit(initial = 50): {
   setManual: (manual: boolean) => void;
   dragging: boolean;
   rootRef: React.RefObject<HTMLDivElement | null>;
-  startDrag: (e: React.PointerEvent) => void;
-} {
-  const [split, setSplit] = useState(initial);
+  startDrag: (e: React.PointerEvent<HTMLElement>) => void;
+};
+
+/**
+ * The board's share of the shell and the sash's drag. A drag starts from the
+ * board as drawn (a fitted width included), so a grab never jumps it; it holds
+ * the pointer (capture), keeps text from selecting, follows the rubber band
+ * past its bounds and, released, settles back inside them on SPRING_GLIDE with
+ * the pointer's speed. Escape glides it back to where the drag began. Reduced
+ * motion settles at once.
+ */
+export function useSplit(initial = 50): SplitState {
+  const [split, setSplitState] = useState(initial);
   const [manual, setManual] = useState(false);
   const [dragging, setDragging] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const startDrag = useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const root = rootRef.current;
-    if (!root) return;
-    setDragging(true);
-    const rect = root.getBoundingClientRect();
-    const onMove = (ev: PointerEvent): void => {
-      setManual(true);
-      setSplit(Math.min(70, Math.max(30, ((ev.clientX - rect.left) / rect.width) * 100)));
-    };
-    const onUp = (): void => {
-      setDragging(false);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      document.body.style.cursor = "";
-    };
-    document.body.style.cursor = "col-resize";
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+  const splitRef = useRef(initial);
+  const settle = useRef<{ stop: () => void } | null>(null);
+  const setSplit = useCallback((n: number) => {
+    splitRef.current = n;
+    setSplitState(n);
   }, []);
+  const startDrag = useCallback(
+    (e: React.PointerEvent<HTMLElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const root = rootRef.current;
+      if (!root) return;
+      settle.current?.stop();
+      settle.current = null;
+      const rect = root.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const board = root.querySelector<HTMLElement>("[data-board]");
+      const startPct = board ? (board.getBoundingClientRect().width / rect.width) * 100 : splitRef.current;
+      const lo = Math.min(SPLIT_MIN, startPct);
+      const manualAtStart = manual;
+      const startX = e.clientX;
+      const pointerId = e.pointerId;
+      const handle = e.currentTarget;
+      const toPct = (px: number) => (px / rect.width) * 100;
+      const startPx = (startPct / 100) * rect.width;
+      const samples: DragSample[] = [];
+      let moved = false;
+      handle.setPointerCapture?.(pointerId);
+      setDragging(true);
+      const restoreSelection = suppressTextSelection();
+      document.body.style.cursor = "col-resize";
+      document.documentElement.classList.add("is-resizing");
+      const glideTo = (to: number, velocity: number, done?: () => void) => {
+        const from = splitRef.current;
+        if (from === to || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          setSplit(to);
+          done?.();
+          return;
+        }
+        settle.current = animate(from, to, { ...SPRING_GLIDE, velocity, onUpdate: setSplit, onComplete: done });
+      };
+      const onMove = (ev: PointerEvent): void => {
+        if (ev.pointerId !== pointerId) return;
+        if (!moved) {
+          moved = true;
+          setManual(true);
+        }
+        const px = startPx + ev.clientX - startX;
+        pushSample(samples, toPct(px), ev.timeStamp);
+        setSplit(toPct(rubber(px, (lo / 100) * rect.width, (SPLIT_MAX / 100) * rect.width)));
+      };
+      const end = (): void => {
+        setDragging(false);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        window.removeEventListener("keydown", onKey, true);
+        handle.removeEventListener("lostpointercapture", onLost);
+        try {
+          handle.releasePointerCapture?.(pointerId);
+        } catch {
+          /* already released */
+        }
+        restoreSelection();
+        document.body.style.cursor = "";
+        document.documentElement.classList.remove("is-resizing");
+      };
+      const release = (now: number): void => {
+        end();
+        if (!moved) return;
+        const current = splitRef.current;
+        glideTo(Math.min(SPLIT_MAX, Math.max(lo, current)), releaseVelocity(samples, now));
+      };
+      const onUp = (ev: PointerEvent): void => {
+        if (ev.pointerId === pointerId) release(ev.timeStamp);
+      };
+      const onLost = (ev: PointerEvent): void => {
+        if (ev.pointerId === pointerId) release(ev.timeStamp);
+      };
+      const onKey = (ev: KeyboardEvent): void => {
+        if (ev.key !== "Escape") return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        end();
+        if (!moved) return;
+        // Back to where the drag began; a board that was drawn at its fit goes back to the fit.
+        glideTo(startPct, 0, () => {
+          if (!manualAtStart) setManual(false);
+        });
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+      window.addEventListener("keydown", onKey, true);
+      handle.addEventListener("lostpointercapture", onLost);
+    },
+    [manual, setSplit],
+  );
+  useEffect(() => () => settle.current?.stop(), []);
   return { split, setSplit, manual, setManual, dragging, rootRef, startDrag };
 }
 
@@ -80,6 +176,22 @@ function useLiveEntry(has: boolean): boolean {
     return () => cancelAnimationFrame(frame);
   }, [has]);
   return has && entered;
+}
+
+/** The shell's width while a fitted board is drawn, for the keys to read the board's share. */
+function useShellWidth(ref: React.RefObject<HTMLDivElement | null>, on: boolean): number {
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !on) return;
+    const read = () => setWidth(el.getBoundingClientRect().width);
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, on]);
+  return width;
 }
 
 /** The chat column's width while it is shown, so a fold can park it there. */
@@ -184,7 +296,11 @@ export function SplitShell({
   className?: string;
 }) {
   const { split, setSplit, manual, setManual, dragging, rootRef, startDrag } = useSplit(50);
-  const basis = fit !== undefined && !manual ? `min(${String(fit)}px, 50%)` : `${String(split)}%`;
+  const fitted = fit !== undefined && !manual;
+  const basis = fitted ? `min(${String(fit)}px, 50%)` : `${String(split)}%`;
+  const shellWidth = useShellWidth(rootRef, fitted);
+  // While a fit is drawn the keys move from the board as it stands, not from 50.
+  const drawn = fitted && shellWidth > 0 ? Math.min((fit / shellWidth) * 100, 50) : split;
   const resetSplit = (): void => {
     if (fit !== undefined) setManual(false);
     else setSplit(50);
@@ -193,9 +309,9 @@ export function SplitShell({
   const sashKeys = useSashKeys({
     label: "Resize",
     orientation: "vertical",
-    value: split,
-    min: 30,
-    max: 70,
+    value: drawn,
+    min: Math.min(SPLIT_MIN, drawn),
+    max: SPLIT_MAX,
     getSpan: () => 100,
     onChange: (next) => {
       setManual(true);

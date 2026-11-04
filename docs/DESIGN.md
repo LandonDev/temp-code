@@ -192,9 +192,11 @@ CSS `--dur-hover` 60ms (a button's hover fill; a menu row highlights at once), `
 sheet). Curves: `--ease-out` for entrances and most transitions,
 `--ease-exit` for a closing overlay, `--ease-drawer` for a sheet,
 `--ease-in-out` for a symmetric move. Springs live in `lib/ease.ts`:
-`SPRING_PRESS` (press only), `SPRING_LAYOUT` (the tab indicator, icon
-swaps), `SPRING_PANEL` (a row morphing into a card), `SPRING_GLIDE` (a
-released drag). `springEasing` turns a spring into a CSS `linear()` curve
+`SPRING_LAYOUT` (the tab indicator, icon swaps) and `SPRING_GLIDE` (a
+released drag, overdamped so even a flick never overshoots). A drag settles
+from where it is drawn and carries the pointer's speed at release
+(`releaseVelocity` in lib/drag.ts, the last 100ms of readings), and past its
+bounds it follows the rubber band (`rubber`). `springEasing` turns a spring into a CSS `linear()` curve
 and its settle time (`SPRING_LAYOUT_CSS`: 370ms, no overshoot), for a
 transition that glides like the spring without JavaScript; the same curve
 is a token, `--dur-layout` on `--ease-layout` (the folds that open on their

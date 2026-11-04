@@ -115,6 +115,25 @@ describe("ThreadHeaderStrip pointer", () => {
     expect(onSelect).toHaveBeenCalledWith("b");
   });
 
+  it("a chip holds the pointer while it is pressed, so a drag over an iframe keeps its release; a cancel clears the drop hint", () => {
+    const restore = paneUnderPointer();
+    mount();
+    const beta = tab("Beta");
+    const capture = vi.fn();
+    const release = vi.fn();
+    beta.setPointerCapture = capture;
+    beta.releasePointerCapture = release;
+    beta.hasPointerCapture = () => true;
+    fireEvent.pointerDown(beta, { button: 0, pointerId: 9, clientX: 10, clientY: 10 });
+    expect(capture).toHaveBeenCalledWith(9);
+    fireEvent.pointerMove(window, { clientX: 60, clientY: 80 });
+    expect(getExternalPaneDrop()).not.toBeNull();
+    fireEvent.pointerCancel(window);
+    expect(getExternalPaneDrop()).toBeNull();
+    expect(release).toHaveBeenCalledWith(9);
+    restore();
+  });
+
 
   it("the strip's rows take clicks: they are out of the window's drag region", () => {
     mount();
