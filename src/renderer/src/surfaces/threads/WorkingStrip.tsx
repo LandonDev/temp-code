@@ -1,4 +1,4 @@
-import { memo, useState, type ReactNode } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { STATUS_WORD } from "@renderer/components/ui/status";
 import { cn } from "@renderer/lib/cn";
@@ -11,6 +11,27 @@ import { isMasterThread } from "../../lib/masterThread";
 import { useSessionMetasWhen } from "../../lib/tcserver/store";
 import { duration } from "../../lib/duration";
 import { COLUMN_MAX_CLASS } from "../transcriptOutlineModel";
+import { DUR } from "../../lib/ease";
+
+/** What the row draws; the slot keeps the last of these for its exit fade. */
+type RowView = { slot: NonNullable<ReturnType<typeof composerSlotOf>>; state: string; status: ReturnType<typeof threadStatus>; elapsed: number; batchPaused: number };
+
+function sameView(a: RowView | null, b: RowView): boolean {
+  return (
+    !!a &&
+    a.slot === b.slot &&
+    a.state === b.state &&
+    a.status.state === b.status.state &&
+    a.status.detail === b.status.detail &&
+    a.status.tally === b.status.tally &&
+    a.elapsed === b.elapsed &&
+    a.batchPaused === b.batchPaused
+  );
+}
+
+function reducedMotion(): boolean {
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 /**
  * The slot above the composer, permanently reserved at 28px so neither the
@@ -98,12 +119,34 @@ export const WorkingStrip = memo(function WorkingStrip({
     onStop();
   };
 
+  // When the slot empties, the outgoing row stays for --dur-fast and fades
+  // (inert, so nothing in it takes a click on its way out); under reduced
+  // motion it goes at once. The reserved 28px never changes.
+  const live: RowView | null = slot ? { slot, state, status: shownStatus, elapsed, batchPaused } : null;
+  const [last, setLast] = useState<RowView | null>(live);
+  const [leaving, setLeaving] = useState<RowView | null>(null);
+  if (live) {
+    if (!sameView(last, live)) setLast(live);
+    if (leaving) setLeaving(null);
+  } else if (last) {
+    setLast(null);
+    if (!reducedMotion()) setLeaving(last);
+  }
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = setTimeout(() => setLeaving(null), DUR.fast * 1000);
+    return () => clearTimeout(timer);
+  }, [leaving]);
+  const view = live ?? leaving;
+
   const time = (ms: number, role?: "timer") => (
     <span role={role} className="shrink-0 tabular-nums text-muted-foreground">
       {duration(ms)}
     </span>
   );
   const row = ((): ReactNode => {
+    if (!view) return null;
+    const { slot, state, status: shownStatus, elapsed, batchPaused } = view;
     if (slot === "timer") {
       return (
         <>
@@ -174,8 +217,10 @@ export const WorkingStrip = memo(function WorkingStrip({
         {visible ? STATUS_WORD[state] : ""}
       </span>
       <div
+        inert={!visible}
+        data-leaving={!visible && leaving ? "" : undefined}
         className={cn(
-          "flex h-full items-center gap-2 px-4 text-xs transition-opacity duration-(--dur-fast) ease-(--ease-out)",
+          "flex h-full items-center gap-2 px-4 text-xs transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
           visible ? "opacity-100" : "opacity-0",
         )}
       >

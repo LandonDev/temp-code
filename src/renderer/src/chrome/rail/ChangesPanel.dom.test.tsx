@@ -299,7 +299,11 @@ describe("ChangesPanel", () => {
     h.index = indexOf({ files: [file("a.ts")] });
     mount();
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: "Show hunks of a.ts" }));
+    const toggle = screen.getByRole("button", { name: "Show hunks of a.ts" });
+    // Its 16px glyph takes a 24px hit area, above the row's open-the-diff overlay.
+    expect(toggle.classList).toContain("z-10");
+    expect(toggle.className).toContain("after:-inset-1");
+    fireEvent.click(toggle);
     await act(() => new Promise((r) => setTimeout(r, 50)));
     expect(screen.getByText("L2")).toBeTruthy();
     expect(screen.getByText("L7")).toBeTruthy();

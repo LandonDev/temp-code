@@ -232,3 +232,47 @@ describe('WorkingStrip: the held rows', () => {
     probe.unmount()
   })
 })
+
+describe('WorkingStrip: the slot empties with a fade', () => {
+  const working = session({ status: 'running', busySince: Date.now() - 5_000 })
+  const idle = { ...working, status: 'idle' as const, busy: false, busySince: null }
+  const strip = (s: Session) => (
+    <Probe id="strip">
+      <WorkingStrip session={s} onStop={() => {}} onResume={() => {}} />
+    </Probe>
+  )
+
+  it('keeps the outgoing row, inert, for --dur-fast, then the slot is empty', () => {
+    vi.useFakeTimers()
+    try {
+      const probe = mount(working)
+      expect(rowText(probe)).toContain('Stop')
+      probe.rerender(strip(idle))
+      // Still drawn while it fades, and nothing in it takes a click.
+      expect(rowText(probe)).toContain('Stop')
+      expect(row(probe).hasAttribute('inert')).toBe(true)
+      expect(row(probe).className).toContain('opacity-0')
+      vi.advanceTimersByTime(130)
+      probe.rerender(strip(idle))
+      expect(rowText(probe)).toBe('')
+      // The reserved 28px never changes.
+      expect(probe.container.firstElementChild?.className).toContain('h-7')
+      probe.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('goes at once under reduced motion', () => {
+    const original = window.matchMedia
+    window.matchMedia = ((query: string) => ({ matches: query.includes('reduce'), media: query })) as typeof window.matchMedia
+    try {
+      const probe = mount(working)
+      probe.rerender(strip(idle))
+      expect(rowText(probe)).toBe('')
+      probe.unmount()
+    } finally {
+      window.matchMedia = original
+    }
+  })
+})

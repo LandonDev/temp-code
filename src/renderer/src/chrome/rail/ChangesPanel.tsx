@@ -800,7 +800,8 @@ function FileRow({
               aria-expanded={open}
               onClick={() => actions.toggleHunks(file, side)}
               className={cn(
-                "absolute inset-0 size-4 rounded-sm text-muted-foreground hover:text-foreground",
+                // Above the row's open-the-diff overlay, with a 24px hit area around its 16px.
+                "absolute inset-0 z-10 size-4 rounded-sm text-muted-foreground after:absolute after:-inset-1 after:content-[''] hover:text-foreground",
                 open ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100",
               )}
             >
