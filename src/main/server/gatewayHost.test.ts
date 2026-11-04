@@ -11,7 +11,7 @@ import type { Credential, ServiceId } from 'aliax-core'
 import { holdStdin } from './drivers/claudeWarm'
 import type { ControlPlane, ResponseInfo, ScopedRequest } from './gatewayCore'
 import { PortControl, runGatewayChild } from './gatewayChild'
-import { GatewayHost, type GatewayChildLink } from './gatewayHost'
+import { GatewayHost, type GatewayChildLink, ROUTED_SERVICES } from './gatewayHost'
 import type { AccountsState, MainCall, OutMark, Wire, WireMessage } from './gatewayWire'
 import { makeCertificate, readTlsDir, type TlsMaterial } from './tls'
 
@@ -321,6 +321,12 @@ describe('the adoption gate', () => {
     expect(got).toEqual([])
     rebind()
     await vi.waitFor(() => expect(got.join('')).toBe('{"type":"control_request"}\n'))
+  })
+})
+
+describe('the services the child mirrors', () => {
+  it('names the Meta keys beside the two harness services, so a scoped Meta request finds its account in the child', () => {
+    expect(ROUTED_SERVICES).toEqual(['claude-code', 'codex', 'meta'])
   })
 })
 

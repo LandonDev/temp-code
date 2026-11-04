@@ -32,6 +32,64 @@ describe('resolvePin', () => {
   })
 })
 
+describe('a Meta model routes to Meta keys', () => {
+  const keyed = (): AccountsSnapshot => {
+    const snap = snapshot({ 'a@x.com': [fine('5h')] })
+    snap.providers.meta = {
+      pinned: null,
+      owner: 'temp-code',
+      profiles: [
+        { name: 'Meta key …LJY', createdAt: 1, active: false, static: true, kind: 'key' },
+        { name: 'Team key', createdAt: 2, active: false, static: true, kind: 'key' }
+      ],
+      reports: [
+        { profileName: 'Meta key …LJY', windows: [], note: 'pay as you go' },
+        { profileName: 'Team key', windows: [], note: 'pay as you go' }
+      ]
+    }
+    return snap
+  }
+  it('a Meta row under claude or codex picks a meta key, never a claude account, and the route names the service', () => {
+    for (const provider of ['claude', 'codex'] as const) {
+      const choice = chooseAccount({ model: 'muse-wonder-1.0', provider, pin: null, current: null, snapshot: keyed(), now: NOW })
+      expect(choice.route).toEqual({ account: 'Meta key …LJY', pin: false, service: 'meta' })
+      expect(choice.current).toBe('Meta key …LJY')
+    }
+    // The same harness on its own model spends its own accounts, with no service on the route.
+    const own = chooseAccount({ model: 'claude-opus-5-5', provider: 'claude', pin: null, current: null, snapshot: keyed(), now: NOW })
+    expect(own.route).toEqual({ account: 'a@x.com', pin: false })
+    // The accounts service hands the routed provider itself (substitute, failover).
+    expect(chooseAccount({ model: 'muse-spark-1.3', provider: 'meta', pin: null, current: null, snapshot: keyed(), now: NOW }).route).toMatchObject({ service: 'meta' })
+  })
+  it('a pin and a sticky key keep the service; a revoked key is out; no key at all is no route', () => {
+    expect(chooseAccount({ model: 'muse-wonder-1.0', provider: 'claude', pin: 'Team key', current: null, snapshot: keyed(), now: NOW })).toEqual({
+      route: { account: 'Team key', pin: true, service: 'meta' },
+      current: 'Team key'
+    })
+    expect(chooseAccount({ model: 'muse-wonder-1.0', provider: 'codex', pin: null, current: 'Team key', snapshot: keyed(), now: NOW })).toEqual({
+      route: { account: 'Team key', pin: false, service: 'meta' },
+      current: 'Team key'
+    })
+    const revoked = keyed()
+    revoked.providers.meta.reports[0] = { profileName: 'Meta key …LJY', windows: [], expired: true, note: 'key revoked' }
+    expect(chooseAccount({ model: 'muse-wonder-1.0', provider: 'claude', pin: null, current: 'Meta key …LJY', snapshot: revoked, now: NOW }).current).toBe('Team key')
+    // A pin the vault lost falls back to the keys and is reported vanished, as a claude pin would be.
+    expect(chooseAccount({ model: 'muse-wonder-1.0', provider: 'claude', pin: 'gone', current: null, snapshot: keyed(), now: NOW })).toEqual({
+      route: { account: 'Meta key …LJY', pin: false, service: 'meta' },
+      current: 'Meta key …LJY',
+      vanished: { pin: 'gone' }
+    })
+    expect(chooseAccount({ model: 'muse-wonder-1.0', provider: 'claude', pin: null, current: null, snapshot: snapshot({ 'a@x.com': [fine('5h')] }), now: NOW })).toEqual({ route: null, current: null })
+  })
+  it('resolvePin reads the meta pin for a Meta thread of either harness, and the harness pin otherwise', () => {
+    const project = { accountPins: { claude: 'proj@x.com', meta: 'Team key' } }
+    expect(resolvePin({ provider: 'claude', model: 'muse-wonder-1.0' }, project, null)).toEqual({ name: 'Team key', level: 'project' })
+    expect(resolvePin({ provider: 'codex', model: 'muse-spark-1.3' }, null, { accountPins: { meta: 'Team key' } })).toEqual({ name: 'Team key', level: 'workspace' })
+    expect(resolvePin({ provider: 'claude', model: 'claude-opus-5-5' }, project, null)).toEqual({ name: 'proj@x.com', level: 'project' })
+    expect(resolvePin({ provider: 'cursor', model: 'muse-wonder-1.0' }, project, null)).toBeNull()
+  })
+})
+
 describe('chooseAccount', () => {
   const base = { model: 'claude-opus-5-5', provider: 'claude' as const, now: NOW }
   it('a pin with room is the route and the expected account', () => {

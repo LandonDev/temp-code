@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { gateway, startGateway, type Gateway } from '../gateway'
+import { metaClaudeEnv } from './claude'
 import { claudeWarm, spawnOrAdoptClaude } from './claudeWarm'
 import type { WarmSpec } from './warm'
 
@@ -92,6 +93,18 @@ describe('the warm Claude process', () => {
     expect(kept).toBe(first)
     await new Promise((ok) => setTimeout(ok, 20))
     expect(gw.warmIds().map((w) => w.id).sort()).toEqual([first, second].sort())
+  })
+
+  it("a Meta thread's token-mode env is a shape of its own: it never adopts an Anthropic thread's warm process", async () => {
+    spawnOrAdoptClaude(spec(), undefined, { thread: 'T6', scope: null, warmable: true }).proc.kill('SIGTERM')
+    await claudeWarm.settled()
+    expect(claudeWarm.status().warm).toHaveLength(1)
+    const meta = spawnOrAdoptClaude(spec({ env: { ...spec().env, ...metaClaudeEnv({ provider: 'claude', model: 'muse-wonder-1.0' }) } }), undefined, { thread: 'T7', scope: null, warmable: true })
+    expect(meta.warmId).toBeNull()
+    meta.proc.kill('SIGTERM')
+    await exited(meta.proc)
+    await claudeWarm.settled()
+    expect(claudeWarm.status().warm).toHaveLength(2)
   })
 
   it('the abort signal of an adopting thread kills the adopted process', async () => {

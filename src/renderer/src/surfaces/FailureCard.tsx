@@ -17,6 +17,8 @@ import { useSessionMeta } from "../lib/tcserver/store";
 import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
 import { useSlowClock } from "../lib/turnClock";
 import { useAccounts } from "../stores/accounts";
+import { shell } from "../stores/shell";
+import { isWebMode } from "../lib/nativeWeb";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import { StatusMark } from "../components/ui/status";
@@ -135,7 +137,7 @@ export function FailureCard({
   const meta = useSessionMeta(sessionId);
   const environmentId = meta?.environmentId ?? LOCAL_ENVIRONMENT_ID;
   const provider = meta?.provider ?? "claude";
-  const ctx: FailureActionContext = { provider, signInHere: canSignInHere(environmentId) };
+  const ctx: FailureActionContext = { provider, model: meta?.model ?? null, signInHere: canSignInHere(environmentId) };
   const actions = failureActions(failure.kind, ctx).filter((a) => canRetry || a.id !== "retry");
   const note = failureNote(failure.kind, ctx);
   const [state, setState] = useState<FailureCardState>({ pending: null, outcome: null });
@@ -188,6 +190,12 @@ export function FailureCard({
       }
       case "pick-model":
         requestModelPicker(sessionId);
+        return;
+      case "add-key":
+      case "open-accounts":
+        // A Meta key is added on the Accounts page (desktop only; the web page has no Aliax pages).
+        if (isWebMode()) settle("Add the key in the desktop app's Settings → Accounts.");
+        else shell.openAccountsPage("accounts");
         return;
     }
   };

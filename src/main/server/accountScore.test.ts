@@ -39,6 +39,19 @@ describe('scoreAccount', () => {
   })
 })
 
+describe('a Meta key', () => {
+  it('spends no usage window: the window term is full room and only the per-request limits, the load and the rate move the score', () => {
+    const r = report('k', [])
+    expect(windowShare('meta', 'muse-wonder-1.0', r, NOW)).toBe(1)
+    expect(windowShare('meta', 'muse-wonder-1.0', undefined, NOW)).toBe(1)
+    const base = { serviceId: 'meta' as const, model: 'muse-wonder-1.0', report: r, now: NOW }
+    expect(scoreAccount({ ...base, headroom: undefined, threads: 0 })).toEqual({ total: 1, window: 1, limit: 1, load: 1, rate: 1, spendFirst: false })
+    // The limit term reads the room Meta's x-ratelimit headers left (headroom.ts).
+    expect(scoreAccount({ ...base, headroom: seen(0.25), threads: 0 }).total).toBeCloseTo(1 - WEIGHTS.limit * 0.75)
+    expect(scoreAccount({ ...base, headroom: seen(1), threads: 3 }).total).toBeCloseTo(1 - WEIGHTS.load)
+  })
+})
+
 describe('rankAccounts', () => {
   it('orders by score, then fewer threads, then name', () => {
     const ranked = rankAccounts({

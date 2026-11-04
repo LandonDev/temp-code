@@ -5,6 +5,7 @@ import { failureActions, failureNote, SIGN_IN_ELSEWHERE_NOTE } from "./failureAc
 const KINDS: FailureKind[] = [
   "oauth_expired",
   "account_unknown",
+  "key_invalid",
   "token_expired",
   "rate_limited",
   "quota",
@@ -55,6 +56,17 @@ describe("failureActions", () => {
     for (const kind of ["network", "harness_crashed", "turn_ended", "unknown"] as const) {
       expect(labels(kind)).toEqual(["Retry"]);
     }
+  });
+
+  it("a Meta thread: a refused key opens the accounts page, a missing key offers Add key, a limit routes to another key", () => {
+    const meta = { provider: "claude", model: "muse-wonder-1.0", signInHere: true };
+    expect(labels("key_invalid", meta)).toEqual(["Open accounts", "Retry"]);
+    expect(labels("key_invalid", { ...meta, provider: "codex", model: "muse-spark-1.3", signInHere: false })).toEqual(["Open accounts", "Retry"]);
+    expect(labels("account_unknown", meta)).toEqual(["Add key…", "Retry"]);
+    expect(labels("rate_limited", meta)).toEqual(["Route automatically", "Pick another account", "Retry"]);
+    // The harness's own model keeps its own set.
+    expect(labels("account_unknown", mac)).toEqual(["Route automatically", "Pick another account", "Retry"]);
+    expect(failureNote("key_invalid", meta)).toBeNull();
   });
 
   it("a provider without Aliax accounts never gets account actions", () => {

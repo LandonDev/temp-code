@@ -161,8 +161,10 @@ export type LimitWindow = z.infer<typeof LimitWindowSchema>
 export const FailureKindSchema = z.enum([
   /** the account's OAuth session lapsed and its refresh was refused: sign in again */
   'oauth_expired',
-  /** the thread's account is no longer on file (removed, cancelled) */
+  /** the thread's account is no longer on file (removed, cancelled), or a Meta thread has no key on this host */
   'account_unknown',
+  /** the Meta Model API refused the key (401/403): revoked or wrong */
+  'key_invalid',
   /** the gateway's 401 token_expired on an instance that is not the account's owner */
   'token_expired',
   /** a usage window is spent (5h, weekly, a per-model cap, a per-minute limiter) */

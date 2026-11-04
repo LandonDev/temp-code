@@ -12,6 +12,8 @@ describe('the gateway trace lines', () => {
 
   it('an unscoped request reads dashes', () => {
     expect(traceLine('[gateway]', 'start', { ...rec, thread: null, account: null, model: null })).toBe('[gateway] #12 POST /~t=T1;a=work/v1/messages start thread=- account=- model=-')
+    // A scope on the meta service names it, so a Meta key's turn on a claude lane is told from an Anthropic one.
+    expect(traceLine('[gateway]', 'start', { ...rec, thread: null, account: null, model: 'muse-wonder-1.0', service: 'meta' })).toBe('[gateway] #12 POST /~t=T1;a=work/v1/messages start thread=- account=- model=muse-wonder-1.0 service=meta')
   })
 
   it('the finish line carries the same number, the status, the socket reuse and the duration', () => {

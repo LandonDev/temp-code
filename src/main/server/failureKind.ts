@@ -1,6 +1,6 @@
 import type { Failure, FailureKind, LimitWindow } from '@shared/events'
 import type { ProviderId } from '@shared/catalog'
-import { isRoutedProvider, SIGN_IN_NAME } from '@shared/accounts'
+import { isRoutedProvider, routedProviderOf, SIGN_IN_NAME, type RoutedProvider } from '@shared/accounts'
 import { fallbackFailure, TURN_ENDED_SUMMARY } from '@shared/failureFallback'
 import { splitPath } from 'aliax-core'
 import type { NetworkInfo } from './gatewayCore'
@@ -54,13 +54,22 @@ export interface FailureContext {
   modelVisible: boolean
   /** The gateway's last refusal for this thread, when recent. */
   gateway?: GatewayRefusal | null
+  /** The provider the thread's accounts come from (`meta` for a Meta row under any harness); derived from provider and model when absent. */
+  routed?: RoutedProvider | null
 }
+
+const routedOf = (ctx: FailureContext): RoutedProvider | null => (ctx.routed !== undefined ? ctx.routed : routedProviderOf(ctx.provider, ctx.model))
+/** A Meta 429's Retry-After, as the gateway keeps it on the refusal (seconds), for the card's line. */
+const META_KEY_REFUSED = /invalid[_ ]api[_ ]key|invalid key|api key|unauthorized|forbidden|\b40[13]\b/i
 
 const OAUTH_EXPIRED =
   /oauth session expired|could not be refreshed|oauth token (has )?expired|token (has been |was )?revoked|please run \/login|invalid api key|authentication_error|failed to authenticate|needs sign-in|not logged in|unauthorized|\(401\)|\b401\b/i
 /** The CLI was never signed in, as opposed to a session that lapsed. */
 const NOT_SIGNED_IN = /not logged in|please run \/login|invalid api key|needs sign-in/i
 const TOKEN_EXPIRED = /token_expired/i
+/** The host's own refusal of a Meta send with no key on file (sessions.ts). */
+export const NO_META_KEY_MESSAGE = 'No Meta Model API key on this host'
+const NO_META_KEY = /No Meta Model API key/i
 const QUOTA = /out of credits|insufficient[_ ]credits|credit balance|insufficient_quota|billing|exceeded your current quota|no credits/i
 const RATE_LIMITED = /rate[ _-]?limit|too many requests|usage limit|\b429\b|overloaded_error|overloaded|hit your limit|reached (your|the) (usage )?limit/i
 const MODEL_UNAVAILABLE =
@@ -109,6 +118,13 @@ export function failureKindOf(ctx: FailureContext): FailureKind {
   if (ctx.account && ctx.accountKnown === false) return 'account_unknown'
   const gateway = ctx.gateway ?? null
   if (gateway?.timeout || gateway?.code === 'credential_timeout' || /credential_timeout/i.test(text)) return 'network'
+  if (routedOf(ctx) === 'meta') {
+    // A Meta key has no session to lapse: a 401 or 403 is the key itself refused; 402 and billing words are the team's balance; 429 is the per-minute limit.
+    if (NO_META_KEY.test(text)) return 'account_unknown'
+    if (gateway?.status === 401 || gateway?.status === 403 || META_KEY_REFUSED.test(text)) return 'key_invalid'
+    if (gateway?.status === 402 || QUOTA.test(text)) return 'quota'
+    if (gateway?.status === 429 || ctx.limit || RATE_LIMITED.test(text)) return 'rate_limited'
+  }
   if (gateway?.status === 401 && gateway.code && TOKEN_EXPIRED.test(gateway.code)) return 'token_expired'
   if (TOKEN_EXPIRED.test(text)) return 'token_expired'
   if (OAUTH_EXPIRED.test(text) || gateway?.status === 401 || gateway?.status === 403) return 'oauth_expired'
@@ -156,6 +172,13 @@ function limitLabel(window: LimitWindow | undefined): string {
   }
 }
 
+/** A `retry-after` the CLI's words or the gateway's body carry, in seconds. */
+function retryAfterOf(message: string): number | null {
+  const m = /retry[- ]after[:= ]+(\d+)|retry in (\d+) ?s/i.exec(message)
+  const n = m ? Number(m[1] ?? m[2]) : NaN
+  return Number.isFinite(n) ? n : null
+}
+
 /** The raw message as one line, short enough for a card's second line. */
 function oneLine(message: string, max = 160): string {
   const line = message.replace(/\s+/g, ' ').trim()
@@ -180,9 +203,19 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext): { summa
         cause: 'The stored sign-in lapsed and its refresh was refused; signing in again mints a new one.'
       }
     case 'account_unknown':
+      if (routedOf(ctx) === 'meta') {
+        return account
+          ? { summary: `Meta key ${account} is no longer on this host`, cause: 'The key was removed here; add a key to route this thread again.' }
+          : { summary: NO_META_KEY_MESSAGE, cause: 'A Meta model needs a Meta Model API key; add one in Settings → Accounts.' }
+      }
       return {
         summary: account ? `Account ${account} is no longer on file` : 'The account this thread used is no longer on file',
         cause: 'The account was removed or cancelled, so there is no sign-in to route this thread under.'
+      }
+    case 'key_invalid':
+      return {
+        summary: account ? `Meta refused the key ${account}` : 'Meta refused the API key',
+        cause: 'The key was revoked or never valid; make a new one at dev.meta.ai and add it in Settings → Accounts.'
       }
     case 'token_expired':
       return {
@@ -190,6 +223,13 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext): { summa
         cause: 'This instance does not own the gateway and never refreshes tokens; the owner renews it on its next use.'
       }
     case 'rate_limited': {
+      if (routedOf(ctx) === 'meta') {
+        const after = retryAfterOf(ctx.message)
+        return {
+          summary: after ? `Meta rate limit, retry in ${after} s` : 'Meta rate limit',
+          cause: "The team's per-minute request or token limit is spent; the thread retries once it lifts."
+        }
+      }
       const label = limitLabel(ctx.limit?.window)
       return {
         summary: account ? `${account} hit its ${label}` : `${provider} answered with a ${label}`,
@@ -197,6 +237,9 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext): { summa
       }
     }
     case 'quota':
+      if (routedOf(ctx) === 'meta') {
+        return { summary: `Meta billing: ${oneLine(ctx.message, 100) || 'the balance is spent'}`, cause: 'Pay as you go: top up the team at dev.meta.ai.' }
+      }
       return {
         summary: account ? `${account} is out of credits` : `The ${provider} plan is out of credits`,
         cause: 'The plan has nothing left to spend; top it up or route the thread to another account.'

@@ -83,8 +83,9 @@ export interface GatewayStatus {
 /** Exits inside this window that send the gateway back into the main process. */
 const EXIT_WINDOW_MS = 60_000
 const EXITS_BEFORE_FALLBACK = 3
-/** The services the gateway routes, whose accounts the child mirrors. */
-const ROUTED: ServiceId[] = ['claude-code', 'codex', 'meta']
+/** The services the gateway routes, whose accounts the child mirrors: the two harness services and the Meta keys behind their lanes. */
+export const ROUTED_SERVICES: ServiceId[] = ['claude-code', 'codex', 'meta']
+const ROUTED = ROUTED_SERVICES
 
 interface ChildState {
   link: GatewayChildLink

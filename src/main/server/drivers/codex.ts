@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { Attachment, PermissionPolicy, SessionStatus } from '@shared/events'
 import { limitField } from '../limitText'
-import type { Reasoning } from '@shared/catalog'
+import { isMetaModel, type ProviderId, type Reasoning } from '@shared/catalog'
 import type { DriverCtx, DriverHandle, HarnessDriver, SendOpts } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
 import { WarmPool, type WarmSpec } from './warm'
@@ -348,6 +348,39 @@ function connectorReauth(item: Item): { app: string; url: string } | undefined {
   return fail.connector_id || typeof fail.install_url === 'string' ? { app, url } : undefined
 }
 
+/**
+ * The Meta Model API through Codex: a `model_providers.meta` block whose
+ * base is the thread's scoped https port (codex keeps only the origin of an
+ * https base, so the port is the scope) plus `/v1`, speaking the Responses
+ * wire, with the key read from `TEMP_CODE_META_KEY` (a placeholder the
+ * gateway replaces with the thread's key); the native window and reasoning
+ * summaries as dev.meta.ai/docs/coding-agents prescribes. An OpenAI thread
+ * keeps `chatgpt_base_url` and no provider block.
+ */
+export const META_CONTEXT_WINDOW = 1_048_576
+export function metaCodexConfig(session: { provider: ProviderId; model: string }, endpoint: string | null): Record<string, unknown> {
+  if (!isMetaModel(session.provider, session.model)) return endpoint ? { chatgpt_base_url: endpoint } : {}
+  return {
+    model_provider: 'meta',
+    model_providers: {
+      meta: {
+        name: 'Meta Model API',
+        base_url: `${endpoint ?? 'https://api.meta.ai'}/v1`,
+        wire_api: 'responses',
+        env_key: 'TEMP_CODE_META_KEY'
+      }
+    },
+    model_context_window: META_CONTEXT_WINDOW,
+    model_supports_reasoning_summaries: true,
+    model_reasoning_summary: 'auto'
+  }
+}
+
+/** The placeholder the provider block's `env_key` names; the gateway swaps the real key in. */
+export function metaCodexEnv(session: { provider: ProviderId; model: string }): Record<string, string> {
+  return isMetaModel(session.provider, session.model) ? { TEMP_CODE_META_KEY: 'routed' } : {}
+}
+
 export const codexDriver: HarnessDriver = {
   id: 'codex',
 
@@ -361,7 +394,7 @@ export const codexDriver: HarnessDriver = {
     if (!binPath) throw new Error('codex CLI not found — install it and log in (`codex login`)')
     // The thread's mark for the host's process guard (processGuard.ts): every
     // shell the app-server runs inherits it, so its orphans are the thread's.
-    const env = { ...(await harnessEnv()), [THREAD_MARK]: session.id }
+    const env = { ...(await harnessEnv()), [THREAD_MARK]: session.id, ...metaCodexEnv(session) }
 
     let currentTurnId: string | null = null
     /** Steers sent and not yet echoed, id → how the model gets it: into the
@@ -872,7 +905,8 @@ export const codexDriver: HarnessDriver = {
         const endpoint = routed.url
         account = routed.account
         const writeRoots = researchWriteRoots(session)
-        const serviceTier = serviceTierFor(session, session.model)
+        // A Meta row lists no speed tiers, so no service_tier ever reaches Meta.
+        const serviceTier = isMetaModel(session.provider, session.model) ? null : serviceTierFor(session, session.model)
         const threadParams = {
           cwd: session.cwd,
           model: session.model,
@@ -901,7 +935,7 @@ export const codexDriver: HarnessDriver = {
             // A research tree in a worktree project writes its report and
             // angle files at the workspace root, outside this cwd.
             ...(writeRoots.length ? { sandbox_workspace_write: { writable_roots: writeRoots } } : {}),
-            ...(endpoint ? { chatgpt_base_url: endpoint } : {})
+            ...metaCodexConfig(session, endpoint)
           }
         }
         const startFresh = async (): Promise<void> => {

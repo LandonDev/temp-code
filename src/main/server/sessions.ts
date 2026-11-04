@@ -37,7 +37,7 @@ import type {
 } from '@shared/events'
 import { watchSubject } from '@shared/watch'
 import { blockedDetail, blockedWords } from '@shared/batchWords'
-import { classifyFailure, type GatewayRefusal } from './failureKind'
+import { classifyFailure, type GatewayRefusal, NO_META_KEY_MESSAGE } from './failureKind'
 import {
   LIVE_STATUSES,
   foldContinuableError,
@@ -4180,8 +4180,12 @@ export class SessionRegistry {
     if (vanished) this.accountGone(meta, pin, vanished)
     this.spawnedPin.set(sessionId, vanished?.pin ? null : (pin?.name ?? null))
     this.setAccount(sessionId, current)
+    // A Meta model with no Meta key on this host never goes out unscoped to
+    // Anthropic or OpenAI: the send fails here with the host's one line
+    // (failureKind.ts reads it as account_unknown with Add key…).
+    const noKey = this.limits !== null && route === null && routedProviderOf(meta.provider, meta.model) === 'meta'
 
-    const startP = this.ensureCwd(meta)
+    const startP = (noKey ? Promise.reject(new Error(NO_META_KEY_MESSAGE)) : this.ensureCwd(meta))
       .then(() =>
         driver.start({
           // Drivers seed goal state from here (resume dedup, watcher init).

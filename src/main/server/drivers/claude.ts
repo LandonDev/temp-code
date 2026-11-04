@@ -40,6 +40,7 @@ import { APP_TOOLS, appToolsMcp } from '../apptools'
 import { withMacTools } from '../macTools'
 import { expandSlashRefs } from '../slash'
 import { resolveClaude } from './binaries'
+import { isMetaModel, type ProviderId } from '@shared/catalog'
 import { routedEndpointFor } from '../endpoint'
 import { gateway } from '../gateway'
 import { spawnOrAdoptClaude } from './claudeWarm'
@@ -383,6 +384,28 @@ export function cacheNote(usage: { input_tokens?: number | null; cache_creation_
  * 180k (trigger 147k); the extra 10k is ~7% fewer compactions, each one a
  * ~150k summarization pass plus a full cache rewrite.
  */
+/**
+ * The Meta Model API through Claude Code: the CLI runs in token mode
+ * (`ANTHROPIC_AUTH_TOKEN`, a Bearer the gateway replaces with the thread's
+ * key; never `ANTHROPIC_API_KEY`, which it would send as x-api-key), with
+ * every model alias the CLI names pinned to a Meta row (the haiku and sonnet
+ * side calls to Spark, opus and the subagent model to the thread's own), and
+ * tool search on, as dev.meta.ai/docs/coding-agents prescribes. Empty for
+ * any other model, so nothing changes for an Anthropic thread.
+ */
+export const META_SPARK_MODEL = 'muse-spark-1.3'
+export function metaClaudeEnv(session: { provider: ProviderId; model: string }): Record<string, string> {
+  if (!isMetaModel(session.provider, session.model)) return {}
+  return {
+    ANTHROPIC_AUTH_TOKEN: 'routed',
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: META_SPARK_MODEL,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: META_SPARK_MODEL,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: session.model,
+    CLAUDE_CODE_SUBAGENT_MODEL: session.model,
+    ENABLE_TOOL_SEARCH: 'true'
+  }
+}
+
 export function claudeExtraArgs(session: { model: string; context1m?: boolean; fast?: boolean }): Record<string, string> {
   return {
     'thinking-display': THINKING_DISPLAY,
@@ -1591,14 +1614,15 @@ export const claudeDriver: HarnessDriver = {
       // supervision all fold those tool calls, so a thread without them is
       // invisible — the CLI's own env override switches them back on.
       // The guard's instance mark rides the harness's environment too, so every descendant is this instance's (processGuard.ts).
-      env: { ...process.env, CLAUDE_CODE_ENABLE_TODO_TOOLS: '1', ...guardInstanceEnv(), ...(endpoint ? { ANTHROPIC_BASE_URL: endpoint } : {}) },
+      env: { ...process.env, CLAUDE_CODE_ENABLE_TODO_TOOLS: '1', ...guardInstanceEnv(), ...(endpoint ? { ANTHROPIC_BASE_URL: endpoint } : {}), ...metaClaudeEnv(session) },
       // 1M rides the CLI's `[1m]` model suffix — the same lever as Claude
       // Code's own 1M picker: it sets the client-side window to 1M and the
       // CLI adds the API-side signaling itself. The `betas` Option is a
       // trap here: the CLI drops user-supplied betas on subscription auth
       // ("API key users only"), so a beta-based request silently fell back
       // to a 200k window and overflowed at ~180k.
-      model: session.context1m ? `${session.model}[1m]` : session.model,
+      // A Meta row's window is native (catalog `vendor`): `[1m]` is never appended to it.
+      model: session.context1m && !isMetaModel(session.provider, session.model) ? `${session.model}[1m]` : session.model,
       cwd: session.cwd,
       // The SDK ladder runs low..max; 'ultra' and 'minimal' are codex-only
       // (a session switched harness mid-ladder clamps rather than erroring).

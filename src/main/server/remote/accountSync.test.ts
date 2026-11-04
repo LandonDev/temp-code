@@ -543,6 +543,43 @@ describe('cliReadable', () => {
   })
 })
 
+describe('a Meta key across hosts', () => {
+  const key = (accountId: string): string => JSON.stringify({ key: `LLM_${accountId}_secret` })
+  const metaTransfer = (accountId: string, name = `Meta key …${accountId}`): Transfer => ({
+    service: 'meta',
+    mode: 'access',
+    profile: { name, accountId, createdAt: 1, static: true, owner: null },
+    blob: key(accountId),
+    expiresAt: null
+  })
+  const tomb = (accountId: string, at = Date.now()) => ({ service: 'meta' as const, accountId, name: `Meta key …${accountId}`, static: true, at })
+  it('a push from the Mac lands the key here as a static profile of nobody; a pull lists it as a static access copy', async () => {
+    const mac = fakeLink('env_mac', 'Mac')
+    const { sync } = host('env_box', [mac])
+    expect(await sync.handlePush('env_mac', metaTransfer('1607'))).toMatchObject({ ok: true, saved: true, owner: null, expiresAt: null, refreshFingerprint: null })
+    expect(vault.profiles('meta')).toMatchObject([{ name: 'Meta key …1607', accountId: '1607', static: true }])
+    expect(vault.profiles('meta')[0].owner).toBeUndefined()
+    expect(vault.readSecret('meta', 'Meta key …1607')).toBe(key('1607'))
+    const answer = await sync.handlePull('env_mac', {})
+    expect(answer.transfers.filter((t) => t.service === 'meta')).toMatchObject([{ service: 'meta', mode: 'access', profile: { accountId: '1607', static: true, owner: null } }])
+    expect(answer.listed!.filter((l) => l.service === 'meta')).toEqual([{ service: 'meta', accountId: '1607', name: 'Meta key …1607', static: true, owner: null }])
+  })
+  it("a tombstone removes the key; the Mac's list no longer naming it does not", async () => {
+    const mac = fakeLink('env_mac', 'Mac')
+    const refreshNow = vi.fn(async () => {})
+    const { sync } = host('env_box', [mac], { refreshNow })
+    await sync.handlePush('env_mac', metaTransfer('1607'))
+    await sync.handlePush('env_mac', metaTransfer('99', 'Other team'))
+    mac.request.mockImplementation(async (method: string) => (method === 'accounts.pull' ? { transfers: [], listed: [], tombstones: [] } : { ok: true }))
+    await sync.syncWith('env_mac')
+    expect(vault.profiles('meta').map((p) => p.name).sort()).toEqual(['Meta key …1607', 'Other team'])
+    mac.request.mockImplementation(async (method: string) => (method === 'accounts.pull' ? { transfers: [], listed: [], tombstones: [tomb('1607')] } : { ok: true }))
+    await sync.syncWith('env_mac')
+    expect(vault.profiles('meta').map((p) => p.name)).toEqual(['Other team'])
+    expect(refreshNow).toHaveBeenCalled()
+  })
+})
+
 describe('removals', () => {
   /** A profile on file here: `owner` undefined is this host's own; `refresh` false is an access-only copy. */
   const seed = (name: string, accountId: string, opts: { owner?: string; static?: boolean; refresh?: boolean } = {}): void => {

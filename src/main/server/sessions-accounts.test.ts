@@ -65,6 +65,27 @@ async function cold(router: AccountRouter): Promise<void> {
   registry.limits = router
 }
 
+it('a Meta model with no Meta key on this host is refused at the send with the host\'s line, never sent unscoped', async () => {
+  // The router knows the accounts and has no key: the route is null.
+  registry.limits = { routeFor: () => ({ route: null, current: null }), failover: async () => null }
+  const s = await registry.create({ cwd: root, provider: 'claude', model: 'muse-wonder-1.0' })
+  await registry.send(s.id, 'hello').catch(() => {})
+  await settle()
+  const rows = registry.events(s.id, {}).map((r) => r.event)
+  const error = rows.find((e) => e.type === 'error')
+  expect(error).toMatchObject({ type: 'error', message: 'No Meta Model API key on this host' })
+  expect(store.getSession(s.id)?.status).toBe('error')
+  expect((error as { failure?: unknown }).failure).toMatchObject({ kind: 'account_unknown', summary: 'No Meta Model API key on this host' })
+  expect(emits.has(s.id)).toBe(false)
+  // A key on file: the same thread spawns, scoped to it.
+  registry.limits = { routeFor: () => ({ route: { account: 'Meta key …LJY', pin: false, service: 'meta' }, current: 'Meta key …LJY' }), failover: async () => null }
+  const t = await registry.create({ cwd: root, provider: 'claude', model: 'muse-spark-1.3' })
+  await registry.send(t.id, 'hello').catch(() => {})
+  await settle()
+  expect(emits.has(t.id)).toBe(true)
+  expect(store.getSession(t.id)?.account).toBe('Meta key …LJY')
+})
+
 it("A's reset re-picks A's threads and the unassigned ones, tagged accounts; B's threads push no meta", async () => {
   const onA = await idleOn('a@x.com')
   const onB = await idleOn('b@x.com')

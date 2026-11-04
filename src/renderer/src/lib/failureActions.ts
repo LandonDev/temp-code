@@ -1,5 +1,5 @@
 import type { FailureKind } from "@server/shared/events";
-import { isRoutedProvider } from "@server/shared/accounts";
+import { isRoutedProvider, routedProviderOf } from "@server/shared/accounts";
 
 /**
  * What the failure card offers per kind. Never more than three; Retry is
@@ -8,7 +8,7 @@ import { isRoutedProvider } from "@server/shared/accounts";
  * box, or a browser window, gets the note instead and Route automatically
  * takes its place.
  */
-export type FailureActionId = "route" | "pick-account" | "sign-in" | "pick-model" | "retry";
+export type FailureActionId = "route" | "pick-account" | "sign-in" | "add-key" | "open-accounts" | "pick-model" | "retry";
 
 export interface FailureAction {
   id: FailureActionId;
@@ -18,6 +18,8 @@ export interface FailureAction {
 export interface FailureActionContext {
   /** The thread's provider: only claude and codex threads route through Aliax accounts. */
   provider: string;
+  /** The thread's model: a Meta row routes through Meta keys, whatever the harness. */
+  model?: string | null;
   /** This window can open the Aliax sign-in for the thread's host. */
   signInHere: boolean;
 }
@@ -28,6 +30,8 @@ const LABELS: Record<FailureActionId, string> = {
   route: "Route automatically",
   "pick-account": "Pick another account",
   "sign-in": "Sign in",
+  "add-key": "Add key…",
+  "open-accounts": "Open accounts",
   "pick-model": "Pick another model",
   retry: "Retry",
 };
@@ -36,11 +40,17 @@ const MAX_ACTIONS = 3;
 
 function ids(kind: FailureKind, ctx: FailureActionContext): FailureActionId[] {
   const routed = isRoutedProvider(ctx.provider);
+  const meta = routedProviderOf(ctx.provider, ctx.model) === "meta";
   switch (kind) {
+    case "key_invalid":
+      return ["open-accounts", "retry"];
     case "oauth_expired":
       if (!routed) return ["retry"];
       return ctx.signInHere ? ["sign-in", "route", "retry"] : ["route", "pick-account", "retry"];
     case "account_unknown":
+      // A Meta thread with no key on this host: the fix is a key, not a route.
+      if (meta) return ["add-key", "retry"];
+      return routed ? ["route", "pick-account", "retry"] : ["retry"];
     case "token_expired":
     case "rate_limited":
     case "quota":

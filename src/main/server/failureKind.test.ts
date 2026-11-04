@@ -192,6 +192,42 @@ describe('failureKindOf on captured messages', () => {
   })
 })
 
+describe('a Meta thread', () => {
+  const meta = (over: Partial<FailureContext> = {}): FailureContext => ctx({ provider: 'claude', model: 'muse-wonder-1.0', account: 'Meta key …LJY', ...over })
+  it('a 401 or 403 from the gateway, or the key words, is key_invalid with Meta named, never a lapsed session', () => {
+    expect(failureKindOf(meta({ gateway: { status: 401, code: null, account: 'Meta key …LJY' } }))).toBe('key_invalid')
+    expect(failureKindOf(meta({ gateway: { status: 403, code: null, account: 'Meta key …LJY' } }))).toBe('key_invalid')
+    expect(failureKindOf(meta({ message: 'API Error: 401 {"error":{"message":"Invalid API key"}}' }))).toBe('key_invalid')
+    const failure = classifyFailure(meta({ gateway: { status: 401, code: null, account: 'Meta key …LJY' } }))
+    expect(failure.summary).toBe('Meta refused the key Meta key …LJY')
+    expect(failure.cause).toMatch(/dev\.meta\.ai/)
+    // The same words on an Anthropic thread stay a lapsed sign-in.
+    expect(failureKindOf(ctx({ gateway: { status: 401, code: null, account: 'a@x' } }))).toBe('oauth_expired')
+    // The codex harness on a Meta row routes the same way.
+    expect(failureKindOf(meta({ provider: 'codex', model: 'muse-spark-1.3', gateway: { status: 401, code: null, account: 'k' } }))).toBe('key_invalid')
+  })
+  it('402 or billing words are quota with the billing line; 429 is the per-minute limit with Retry-After', () => {
+    expect(failureKindOf(meta({ gateway: { status: 402, code: null, account: 'k' }, message: 'insufficient balance' }))).toBe('quota')
+    expect(classifyFailure(meta({ gateway: { status: 402, code: null, account: 'k' }, message: 'insufficient balance' })).summary).toBe('Meta billing: insufficient balance')
+    expect(failureKindOf(meta({ gateway: { status: 429, code: null, account: 'k' }, message: 'rate limited, retry-after: 30' }))).toBe('rate_limited')
+    const limited = classifyFailure(meta({ gateway: { status: 429, code: null, account: 'k' }, message: 'Too many requests, retry-after: 30' }))
+    expect(limited.summary).toBe('Meta rate limit, retry in 30 s')
+    expect(classifyFailure(meta({ message: '429 Too Many Requests' })).summary).toBe('Meta rate limit')
+  })
+  it("a Meta send with no key on this host is account_unknown with the host's line and an Add key cause; a key gone from the host names it", () => {
+    const none = classifyFailure(meta({ account: null, message: 'No Meta Model API key on this host' }))
+    expect(none.kind).toBe('account_unknown')
+    expect(none.summary).toBe('No Meta Model API key on this host')
+    expect(none.cause).toMatch(/Settings → Accounts/)
+    const gone = classifyFailure(meta({ accountKnown: false, message: 'Aliax account Meta key …LJY needs sign-in' }))
+    expect(gone.kind).toBe('account_unknown')
+    expect(gone.summary).toBe('Meta key Meta key …LJY is no longer on this host')
+  })
+  it('the schema lists key_invalid', () => {
+    expect(FailureKindSchema.options).toContain('key_invalid')
+  })
+})
+
 describe('refusalCodeOf', () => {
   it("reads the upstream body's code and never keeps the body", () => {
     expect(refusalCodeOf('{"type":"error","error":{"type":"authentication_error","message":"x"}}')).toBe('authentication_error')

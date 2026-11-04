@@ -7,7 +7,7 @@ import type { DriverCtx } from './types'
 
 vi.mock('electron', () => ({ nativeImage: {} }))
 
-const { cacheNote, claudeExtraArgs, handleMessage, newStreamState, noteSend, phaseAfterInit, THINKING_DISPLAY } = await import('./claude')
+const { cacheNote, claudeExtraArgs, handleMessage, metaClaudeEnv, newStreamState, noteSend, phaseAfterInit, THINKING_DISPLAY } = await import('./claude')
 
 /**
  * The first response: thinking streams as a summary, the wait before it is
@@ -57,6 +57,23 @@ it('every catalog model is spawned with summarized thinking, beside its settings
       expect(JSON.parse(args.settings).autoCompactEnabled).toBe(!context1m)
     }
   }
+})
+
+it('a Meta row runs the CLI in token mode with every alias pinned to Meta; an Anthropic row adds nothing', () => {
+  expect(metaClaudeEnv({ provider: 'claude', model: 'muse-wonder-1.0' })).toEqual({
+    ANTHROPIC_AUTH_TOKEN: 'routed',
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: 'muse-spark-1.3',
+    ANTHROPIC_DEFAULT_SONNET_MODEL: 'muse-spark-1.3',
+    ANTHROPIC_DEFAULT_OPUS_MODEL: 'muse-wonder-1.0',
+    CLAUDE_CODE_SUBAGENT_MODEL: 'muse-wonder-1.0',
+    ENABLE_TOOL_SEARCH: 'true'
+  })
+  expect(metaClaudeEnv({ provider: 'claude', model: 'muse-spark-1.3' }).ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('muse-spark-1.3')
+  expect(metaClaudeEnv({ provider: 'claude', model: 'claude-opus-5-5' })).toEqual({})
+  // The key itself never appears: `routed` is the placeholder the gateway replaces.
+  expect(JSON.stringify(metaClaudeEnv({ provider: 'claude', model: 'muse-wonder-1.0' }))).not.toMatch(/LLM_/)
+  // The ladder the CLI takes: minimal is not on it, so a Meta row under claude never lists it.
+  for (const model of CATALOG.claude.models.filter((m) => m.vendor === 'meta')) expect(model.reasoning).not.toContain('minimal')
 })
 
 it('a thinking delta clears an open phase and is the first content', () => {

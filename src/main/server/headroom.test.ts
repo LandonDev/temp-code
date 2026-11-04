@@ -53,6 +53,27 @@ describe('header parsing', () => {
     expect(parsed.requests).toEqual({ limit: 500, remaining: 499, resetsAt: NOW + 360_000 })
     expect(parsed.tokens).toEqual({ limit: 30000, remaining: 29000, resetsAt: NOW + 1500 })
   })
+  it("reads the Meta Model API's documented set: limit and remaining for tokens and requests, no reset, Retry-After on a 429", () => {
+    // dev.meta.ai/docs/pricing-rate-limits: x-ratelimit-{limit,remaining}-{tokens,requests}; the window is a minute, never stated per answer.
+    const meta = headers({
+      'x-ratelimit-limit-requests': '3000',
+      'x-ratelimit-remaining-requests': '2998',
+      'x-ratelimit-limit-tokens': '4000000',
+      'x-ratelimit-remaining-tokens': '3990000'
+    })
+    const parsed = parseLimitHeaders(meta, NOW)
+    expect(parsed.requests).toEqual({ limit: 3000, remaining: 2998, resetsAt: undefined })
+    expect(parsed.tokens).toEqual({ limit: 4_000_000, remaining: 3_990_000, resetsAt: undefined })
+    expect(parsed.tier).toBeUndefined()
+    // A 429 lifts at Retry-After; without it the exhausted field has no reset to offer, so the default holds.
+    expect(throttleUntil(429, headers({ 'retry-after': '30' }), parsed, NOW)).toBe(NOW + 30_000)
+    expect(throttleUntil(429, headers({}), { ...parsed, requests: { limit: 3000, remaining: 0 } }, NOW)).toBe(NOW + THROTTLE_DEFAULT_MS)
+    const store = new HeadroomStore({ environmentId: 'env_a', now: () => NOW })
+    store.observe({ service: 'meta', account: 'Meta key …LJY', model: 'muse-wonder-1.0', status: 200, headers: meta })
+    const summary = store.summary('meta', ['Meta key …LJY'], NOW)
+    expect(summary['Meta key …LJY'].room).toBeCloseTo(2998 / 3000)
+    expect(summary['Meta key …LJY'].resetsAt).toBeUndefined()
+  })
   it('an answer without limit headers parses to nothing', () => {
     expect(parseLimitHeaders(headers({ 'content-type': 'application/json' }), NOW)).toEqual({})
   })
