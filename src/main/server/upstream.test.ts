@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Upstream, UpstreamTimeout, authKey, newTrace, upstreamTrace, type UpstreamTrace } from './upstream'
+import { Upstream, UpstreamTimeout, authKey, newTrace, upstreamTrace, type UpstreamTrace, fakeProviderRewrite } from './upstream'
 
 /** A keep-alive origin that counts sockets and remembers each request's line and auth. */
 function origin(): Promise<{ server: Server; url: string; connections: number; requests: { method: string; url: string; auth: string | null }[] }> {
@@ -182,6 +182,12 @@ describe('upstream pools', () => {
     await expect(res.text()).rejects.toMatchObject({ name: 'UpstreamTimeout', stage: 'body', timeoutMs: 30 })
   })
 
+  it('the fake provider stands in for api.meta.ai as for the others', () => {
+    const rewrite = fakeProviderRewrite('http://127.0.0.1:9')
+    expect(rewrite('https://api.meta.ai/v1/messages')).toBe('http://127.0.0.1:9/v1/messages')
+    expect(rewrite('https://api.meta.ai/v1/responses')).toBe('http://127.0.0.1:9/v1/responses')
+    expect(rewrite('https://example.com/v1/x')).toBe('https://example.com/v1/x')
+  })
   it('never puts the token in a pool key', () => {
     expect(authKey({ authorization: 'Bearer secret-token' })).toMatch(/^[0-9a-f]{12}$/)
     expect(authKey(new Headers({ Authorization: 'Bearer secret-token' }))).toBe(authKey({ authorization: 'Bearer secret-token' }))

@@ -2456,6 +2456,63 @@ because they always asked the thread's host (`attachment.read`).
   range and HEAD; the old host-less URL 404 on mac, a never-minted token
   404, box's own URL from its own table, and 503 with the reason once box
   is gone. On the box: ALL PASS.
+
+## Meta Model API
+
+Muse Wonder 1.0 (`muse-wonder-1.0`) and Muse Spark 1.3 (`muse-spark-1.3`)
+are catalog rows under both the claude and codex harnesses (`vendor:
+'meta'`, a native 1,048,576-token window, effort `minimal`..`max` on the
+codex rows and `low`..`max` on the claude rows, since the installed Claude
+CLI takes no `minimal`). The account is an API key from dev.meta.ai, held
+in Aliax's vault as the `meta` service (static, owned by nobody, every host
+holds it; add one on Settings → Accounts → Meta Model API → Add key…, which
+verifies it against `GET /v1/models` before saving; Remove is the only other
+action, there is nothing to switch). Facts verified against dev.meta.ai on
+2026-11-04: one origin `https://api.meta.ai`; Claude Code appends
+`/v1/messages`, Codex `/v1/responses`; auth is `Authorization: Bearer
+LLM_<numeric id>_<secret>` (Claude Code in token mode, never
+`ANTHROPIC_API_KEY`); limits are per team, 3,000 RPM and 4,000,000 TPM,
+reported as `x-ratelimit-{limit,remaining}-{requests,tokens}` with
+`Retry-After` on a 429 and no reset header; pricing per Mtok Wonder $4 /
+$0.20 cached / $20, Spark 1.3 $1.25 / $0.15 / $4.25. Two keys of one team
+share one bucket, so a second key buys no headroom: a 429 on one usually
+means the other is limited too.
+
+How a Meta thread flows (CLAUDE.md "Provider traffic" has the names):
+`routedProviderOf(provider, model)` says `meta`, the route carries `service:
+'meta'` and the child's URL `;s=meta`; the gateway sends the lane's wire
+shape to api.meta.ai with the key as the bearer; the fake-provider rewrite
+(`TEMP_CODE_FAKE_PROVIDERS`) admits api.meta.ai. A 429 is transient: it goes
+back to the CLI (which retries) and the headroom cooldown moves the next
+turn to another key, if there is one. No key on the host refuses the send
+with "No Meta Model API key on this host".
+
+Proof: `bun run script:e2e-meta-routing` (scripts/e2e-meta-routing.ts, not
+in the gate): a fake api.meta.ai behind the configured fetch serving
+`/v1/models`, `/v1/messages` and `/v1/responses` with the four headers, two
+keys in a file vault, an in-process server; a Meta row under claude and one
+under codex route to a key with the service; one claude-lane turn and one
+codex-lane turn leave with `Bearer LLM_…`, no `x-api-key` and no
+`chatgpt-account-id`; the first key's 429 with Retry-After goes back
+unreplayed, the next turn lands on the other key, the cooldown lifts, and
+headroom.json keeps both keys under `meta`. Last run 2026-11-04 on the Mac:
+all 17 checks passed.
+
+The live smoke (the user's key, a dev instance with `TEMP_CODE_USER_DATA`,
+`TEMP_CODE_GATEWAY_TRACE=1`): Settings → Accounts → Add key…, one chat turn
+on Wonder under claude and one under codex. What to read off the trace and
+write here: whether `api.meta.ai` answers over h2 with `reused=true` on the
+pooled path (then `DEFAULT_POOLED` in src/main/server/upstream.ts admits it;
+until then it rides `net.fetch`), whether the claude lane's request body
+carries the effort (the Messages adapter may drop Anthropic's effort field;
+Codex sends `reasoning.effort`), and the four limit fields in
+`<userData>/headroom.json`.
+
+| lane | model | status | protocol / reused | effort in body | limit fields seen |
+| --- | --- | --- | --- | --- | --- |
+| claude | muse-wonder-1.0 | (to fill) | | | |
+| codex | muse-wonder-1.0 | (to fill) | | | |
+
 ## The launch mirror against a slow box
 
 The desktop paints every host's rows from its launch mirror before any

@@ -515,6 +515,46 @@ routed to (aliax-core's `forward`). Two listeners:
   lacks to its nearest, so minimal lands on low. The picker groups them
   under "Meta" with Meta's mark (chrome/HarnessIcon.tsx `MarkId`), and the
   board row's model mark draws it.
+- The Meta Model API (Muse Wonder 1.0, Muse Spark 1.3) is the third
+  upstream, behind the same two lanes. A Meta key is an account of the
+  `meta` service in aliax-core (`accounts.saveApiKey`: the `LLM_<id>_…`
+  shape checked, the key presented to `GET /v1/models` once, saved as a
+  static ownerless profile whose account is the numeric id in the key, so
+  the same key twice is one row; its usage report is that probe: "pay as
+  you go", or "key revoked" with `expired`); it syncs like a one-year token
+  (every host holds it, a tombstone removes it). A thread's accounts come
+  from `routedProviderOf(provider, model)` (src/shared/accounts.ts): `meta`
+  for a vendor row under any harness, else the harness; chooseAccount,
+  resolvePin, the registry's expectAccount/liveLoad/refreshAccounts, the
+  pins, the chip and the failure kinds all read it, and the route carries
+  `service: 'meta'`, which `routeUrl` writes as `;s=meta` after the model
+  (the codex https port's scope carries it too). The gateway reads the
+  scope's service for the upstream (`https://api.meta.ai`, the lane's own
+  path: `/v1/messages` or `/v1/responses`), the credential (`Bearer
+  LLM_…`, no x-api-key, the CLI's chatgpt-account-id dropped), the limit
+  classifier (a Meta 429 is transient with Retry-After: never replayed onto
+  another key, since two keys of one team share the bucket; the host's
+  headroom cooldown moves the NEXT turn) and the trace line (`service=meta`);
+  every answer reaches the host with its `serviceId`, so headroom and the
+  out marks land on the keys (Meta's `x-ratelimit-{limit,remaining}-
+  {requests,tokens}` set is the one headroom.ts already parses; no reset).
+  The key never reaches a child: the claude driver runs a Meta row in token
+  mode (`metaClaudeEnv`: `ANTHROPIC_AUTH_TOKEN=routed` for the gateway to
+  swap, haiku and sonnet pinned to Spark 1.3, opus and the subagent model to
+  the thread's own, tool search on, never `[1m]`), the codex driver writes
+  `model_providers.meta` on the thread's scoped https port plus `/v1` with
+  the Responses wire and `TEMP_CODE_META_KEY=routed` as its `env_key`, the
+  native window and reasoning summaries, no `chatgpt_base_url` and no
+  `service_tier` (`metaCodexConfig`). A Meta model with no key on the host
+  is refused at the send with "No Meta Model API key on this host"
+  (`NO_META_KEY_MESSAGE`, kind `account_unknown`, the card offers Add key…),
+  never sent unscoped to Anthropic or OpenAI; a 401/403 on a Meta route is
+  `key_invalid` (Open accounts), 402 or billing words `quota`, 429
+  `rate_limited` with Retry-After's seconds. `api.meta.ai` stays on
+  Electron's `net.fetch` (not pooled) until the live smoke's trace says
+  undici reuses h2 there. Proof: `bun run script:e2e-meta-routing` (a fake
+  api.meta.ai, two keys, a claude-lane and a codex-lane turn, the 429
+  cooldown); docs/box.md "Meta Model API".
 - Speed tiers come from each CLI, never assumed: codex's `model/list`
   serviceTiers (drivers/codexTiers.ts) and claude's `supportedModels()`
   supportsFastMode, asked on the first claude init of a boot and cached as
