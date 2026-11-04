@@ -79,11 +79,32 @@ describe("appView", () => {
         titleOf,
       ),
     ).toEqual({ label: "Spawned", detail: "3 agents", phrase: "spawned 3 agents" });
+    // A message is never the agent's name: an unknown agent reads "a subagent", never the prompt.
     expect(appView(call("send_to_agent", { agentId: "nope", message: "read @thread:thread1 first" }), titleOf)).toMatchObject({
       label: "Messaged",
-      detail: "read @Auth rewrite first",
+      detail: "a subagent",
+      phrase: "messaged a subagent",
+      threadId: "nope",
     });
+    expect(appView(call("check_agent", { agentId: "agent1" }), titleOf)).toMatchObject({ label: "Checked", detail: "Explorer", threadId: "agent1" });
+    expect(appView(call("answer_agent", { agentId: "agent1" }), titleOf)).toMatchObject({ label: "Answered", detail: "Explorer" });
+    expect(appView(call("interrupt_agent", { agentId: "agent1" }), titleOf)).toMatchObject({ label: "Stopped", detail: "Explorer" });
     expect(appView(call("Bash", { command: "ls" }), titleOf)).toBeNull();
+  });
+  it("names a spawn by its title input until the store knows the agent, never by its prompt", () => {
+    const spawn = call("spawn_agent", { title: "Review the payment flow", task: "Review only. Do not edit, commit or push anything" });
+    expect(appView(spawn, titleOf)).toMatchObject({ label: "Spawned", detail: "Review the payment flow", phrase: "spawned “Review the payment flow”" });
+    // No title anywhere: the task's first line stands in, cut at a word, and the phrase says a subagent.
+    const untitled = call("spawn_agent", { task: "Review only. Do not edit, commit, push, or open a pull request in this repo\nmore" });
+    expect(appView(untitled, titleOf)).toMatchObject({ detail: "Review only. Do not edit, commit, push, or open…", phrase: "spawned a subagent" });
+    // The store's title wins once it lands.
+    const landed = call("spawn_agent", { title: "Given", task: "x" }, '{"agentId":"agent1"}');
+    expect(appView(landed, titleOf)).toMatchObject({ detail: "Explorer", threadId: "agent1" });
+  });
+  it("reads a cross-host child's id whole and its title by the bare session id", () => {
+    const far = call("spawn_agent", { task: "x" }, '{"agentId":"env_mac1:agent1","host":"env_mac1"}');
+    expect(agentIdOf(far)).toBe("env_mac1:agent1");
+    expect(appView(far, titleOf)).toMatchObject({ detail: "Explorer", threadId: "env_mac1:agent1" });
   });
   it("links a spawn to the child the host stamped on the call before its result lands", () => {
     const running: Block = {
@@ -98,8 +119,8 @@ describe("appView", () => {
   });
   it("speaks a running wait in the present and a settled one in the past", () => {
     const wait = call("wait_for_agent", { agentId: "agent1" });
-    expect(appView(wait, titleOf)).toMatchObject({ label: "Waited for", phrase: "waited for “Explorer”" });
-    expect(appView(wait, titleOf, true)).toMatchObject({ label: "Waiting for", phrase: "waiting for “Explorer”" });
+    expect(appView(wait, titleOf)).toMatchObject({ label: "Waited on", phrase: "waited on “Explorer”" });
+    expect(appView(wait, titleOf, true)).toMatchObject({ label: "Waiting on", phrase: "waiting on “Explorer”" });
   });
   it("names the app's own bookkeeping calls by what they did", () => {
     expect(appView(call("mcp__app__update_notes", { section: "State", content: "x" }), titleOf)).toEqual({

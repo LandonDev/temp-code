@@ -13,7 +13,7 @@
  */
 import type { Block } from "../lib/session";
 import { isErrorBlock } from "../lib/turnOutcome";
-import { awaitsUser, groupTurnItems, isHtmlRenderBlock, isStepBlock, isTodoBlock, type TurnItem } from "./transcriptActivity";
+import { awaitsUser, groupTurnItems, isHtmlRenderBlock, isStepBlock, isTodoBlock, stepRows, type TurnItem } from "./transcriptActivity";
 
 export type TurnInfo = {
   id: string;
@@ -269,7 +269,7 @@ function itemHeight(item: TurnItem, working: boolean): number {
   if (item.type === "activity") {
     // A lone run is its steps' own rows; a group is its line, open on its
     // newest five rows while the turn works in it, else closed.
-    if (item.blocks.filter(isStepBlock).length <= 1) return LINE * item.blocks.length;
+    if (item.blocks.reduce((n, b) => n + (isStepBlock(b) ? stepRows(b) : 0), 0) <= 1) return LINE * item.blocks.length;
     return working ? LINE + HUNG_LINE * Math.min(GROUP_WINDOW, item.blocks.length) : LINE;
   }
   const block = item.block;

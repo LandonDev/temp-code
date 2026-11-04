@@ -14,6 +14,8 @@ import { SwapText } from "../../motion/SwapText";
 import { useCountUp } from "../../motion/useCountUp";
 import { usePersistedOpen } from "../editOpenState";
 import { appThreadIds } from "../appTool";
+import { isWaitCall, spawnedNames, waitOutcomes } from "../agentSteps";
+import { bareAgentId } from "@shared/watch";
 import { ReconnectChip, reauthOf } from "../ToolChips";
 import { GROUP_WINDOW } from "../transcriptRows";
 import { useTranscriptSession } from "../transcriptSession";
@@ -29,13 +31,14 @@ import {
 import { actionOf } from "./actionModel";
 import { ActivityRow } from "./ActivityRow";
 import { Counts } from "./Counts";
-import { GroupHandContext } from "./groupHand";
+import { GroupHandContext, SpawnedNamesContext } from "./groupHand";
 import { GLYPH } from "./ToolGlyph";
 import type { ApprovalHandler } from "./types";
 
-/** The threads a step names: an app call's, a report's or a spawn row's agent. */
+/** The threads a step names: an app call's, a report's or a spawn row's agent, the agents a wait returned on. */
 function stepThreadIds(block: Block): string[] {
-  if (block.agent) return [block.agent.id];
+  if (block.agent) return [block.agent.id, bareAgentId(block.agent.id)];
+  if (isWaitCall(block)) return waitOutcomes(block).flatMap((o) => [o.id, bareAgentId(o.id)]);
   return isToolBlock(block) ? appThreadIds(block) : [];
 }
 
@@ -108,8 +111,11 @@ export function ActionGroup({
   const liveEdits = useLiveEdits(live ? sessionId : "");
   // The line names the threads its agent calls and reports are about; it re-words as their titles land.
   const ids = useMemo(() => blocks.flatMap(stepThreadIds), [blocks]);
-  const titleOf = useTitlesOf(ids);
-  const titles = ids.map((id) => titleOf(id) ?? "").join("|");
+  const storeTitle = useTitlesOf(ids);
+  const titles = ids.map((id) => storeTitle(id) ?? "").join("|");
+  // An agent the store has not listed is named by what its spawn in this run called it.
+  const names = useMemo(() => spawnedNames(blocks), [blocks]);
+  const titleOf = useCallback((id: string) => storeTitle(id) ?? names.get(id)?.title, [storeTitle, names]);
   const group = useMemo(
     () => actionGroupOf(blocks, { cwd, live, liveEdits: live ? liveEdits : undefined, titleOf }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `titles` is what changes when titleOf's answers do
@@ -167,6 +173,7 @@ export function ActionGroup({
 
   return (
     <GroupHandContext.Provider value={decide}>
+      <SpawnedNamesContext.Provider value={names}>
       <div className="flex min-w-0 flex-col">
         {/* The line: folded away while the run holds one call. */}
         <Collapsible open={!lone}>
@@ -209,6 +216,7 @@ export function ActionGroup({
           </CollapsibleContent>
         </Collapsible>
       </div>
+      </SpawnedNamesContext.Provider>
     </GroupHandContext.Provider>
   );
 }

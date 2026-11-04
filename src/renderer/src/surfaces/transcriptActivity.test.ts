@@ -7,8 +7,11 @@ import {
   groupTurnItems,
   groupTurns,
   isActivityBlock,
+  isHiddenTool,
+  isStepBlock,
   liveEditFor,
   proseSummary,
+  stepRows,
   thoughtEndTs,
   toolCallLabel,
   toolCallState,
@@ -665,6 +668,47 @@ describe("the host's steps fold into the run", () => {
 
   it("counts a red gate, a review that failed to run, a failed report and a failed task", () => {
     expect(actionGroupOf([gate(false), review("failed"), report("r", "error"), task("failed"), task("stopped"), gate(true)]).failed).toBe(4);
+  });
+
+  const waitCall = (id: string, status: string, detail?: unknown): Block => ({
+    id,
+    role: "tool",
+    text: "wait",
+    tool: { name: "mcp__orchestrator__wait_for_agent", input: { agentId: "a" }, status, detail: detail === undefined ? undefined : JSON.stringify(detail) },
+  });
+
+  it("an open wait is no item and no step; a wait that returned on nobody leaves nothing", () => {
+    expect(isHiddenTool(waitCall("w", "running"))).toBe(true);
+    expect(groupTurnItems([shell("a"), waitCall("w", "running")]).flatMap((i) => (i.type === "activity" ? i.blocks.map((b) => b.id) : [i.block.id]))).toEqual(["a"]);
+    for (const status of ["steered", "aborted", "timeout"]) {
+      expect(isHiddenTool(waitCall("w", "completed", { status })), status).toBe(true);
+    }
+    expect(isHiddenTool(waitCall("w", "completed", "refused: not a subagent"))).toBe(true);
+    expect(groupTurnItems([shell("a"), waitCall("w", "completed", { status: "steered" })])).toHaveLength(1);
+  });
+
+  it("a wait's outcomes are steps: one row each, a failed one red", () => {
+    const one = waitCall("w", "completed", { agentId: "a", status: "idle" });
+    expect(isHiddenTool(one)).toBe(false);
+    expect(isStepBlock(one)).toBe(true);
+    expect(stepRows(one)).toBe(1);
+    expect(actionGroupOf([one]).lone).toBe(true);
+    const two = waitCall("w2", "completed", [{ agentId: "a", status: "done" }, { agentId: "b", status: "failed" }, { agentId: "c", status: "error" }]);
+    expect(stepRows(two)).toBe(3);
+    expect(actionGroupOf([two]).lone).toBe(false);
+    expect(actionGroupOf([two]).failed).toBe(2);
+  });
+
+  it("a batch spawn draws a row per child it stamped", () => {
+    const batch: Block = {
+      id: "sp",
+      role: "tool",
+      text: "spawn",
+      tool: { name: "mcp__orchestrator__spawn_agent", input: { agents: [{ task: "a" }, { task: "b" }] }, status: "completed", spawned: ["a", "b"] },
+    };
+    expect(stepRows(batch)).toBe(2);
+    expect(actionGroupOf([batch]).lone).toBe(false);
+    expect(stepRows({ ...batch, tool: { ...batch.tool!, spawned: [] } })).toBe(1);
   });
 
   it("agent work leads with the agents kind", () => {

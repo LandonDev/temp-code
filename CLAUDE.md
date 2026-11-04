@@ -1494,11 +1494,27 @@ names the far child).
   status moves the row into watching). A child's status change re-pushes its
   non-root parent and its master. The activity line is `watchLine`,
   "Waiting on <watchSubject>": `watchPhrase` names one task alone by its
-  label and counts anything more ("3 subagents, a monitor"; the strip,
-  `wait_for_agent` and the settle report read the same words;
-  src/shared/watch.ts, with `STALE_WATCH_MS`
+  label and one subagent alone by its title, and counts anything more ("3
+  subagents, a monitor"; the strip, `wait_for_agent` and the settle report
+  read the same words; src/shared/watch.ts, with `STALE_WATCH_MS`
   30 min and `isStaleWatch`), "Waiting on the batch's steps" for a master
-  with nothing out.
+  with nothing out. A running turn a `wait_for_agent` holds (the meta's
+  `awaiting`) says its agents by title in its activity and `statusDetail`,
+  "Waiting on Review the payment flow" or "Waiting on 2 subagents"
+  (`waitLine`, `statusWordsOf`; an id `env_…:<sid>` reads by its bare
+  `<sid>`), and a parent below the root re-words when its child's title
+  lands.
+- A wait is a state of the turn, never a transcript row
+  (surfaces/agentSteps.ts): while open, `isHiddenTool` hides it and the
+  working line says `waitLine` (`WaitTail` in TurnEnd.tsx, when nothing
+  after the wait speaks or runs: `openWaitOf`); once it returns, each agent
+  it returned on (`waitOutcomes`: done, idle, watching, waiting, failed,
+  error, stopped, paused) folds into the run as an `AgentStepRow`,
+  "Finished <title>" (Failed, Needs you, Stopped, Paused by state), the
+  same step a report draws; a steered, aborted, timed-out or refused wait
+  leaves nothing. A batch spawn draws one `SpawnChildRow` per stamped
+  child. Every agent row names its agent by `agentTitle`
+  (lib/agentTitle.ts).
 - `session.stopTask { sessionId, taskId }` (operate) stops one task through
   the SDK's `query.stopTask` (`DriverHandle.stopTask`); `session.taskLog
   { sessionId, taskId, from? }` (read) answers `TaskLog` from
@@ -2527,6 +2543,16 @@ this is the short one.
   prompt carries `MASTER_MECHANICS` through `mechanicsFor`, and the claude
   driver denies it Edit, MultiEdit, Write and NotebookEdit: it steers, the
   batch edits.
+- **Subagents have titles.** `spawn_agent` (and each batch entry, and the
+  codex bridge's `app.spawnAgent`) takes `title`, 3 to 6 plain words the
+  transcript, the rail and the Agents list name the agent by; the
+  orchestrator's prompt asks for it, `cleanAgentTitle` keeps it one line of
+  at most 60 characters, and a batch entry never inherits a top-level one.
+  An agent spawned without one starts on its task's first line and the host
+  writes its title from the task at once (`SessionRegistry.titleFromTask`,
+  the root threads' one-shot `generateTitle`; a rename before it lands
+  wins, no answer keeps the first line); a spawn on another host sends
+  `autoTitle` on `thread.spawn` and that host writes it.
 - **The children are root threads, not subagents.** Each carries the
   master's id (`sessions.master_id`, `SessionMeta.masterId`,
   `session.create { masterId }`) and, when it waits for a sibling, that

@@ -17,6 +17,7 @@ import { splitEditCards } from "./editCards";
 import { htmlRenderOf } from "./htmlRenderBlock";
 import { passActionsOf } from "../lib/turnClock";
 import { AGENT_TOOLS } from "./appTool";
+import { isOpenWait, isWaitCall, waitOutcomes } from "./agentSteps";
 
 export type ToolCallState = "pending" | "accepted" | "rejected";
 
@@ -107,6 +108,9 @@ export function isIncompleteTool(
 
 export function isHiddenTool(block: Block): boolean {
   if (block.role !== "tool" && block.role !== "approval") return false;
+  // A wait is a state of the turn: never a row while open, and only its
+  // settled agents once it returns (agentSteps.ts).
+  if (isWaitCall(block)) return isOpenWait(block) || waitOutcomes(block).length === 0;
   if (
     isEditTool(
       block.tool?.kind,
@@ -144,7 +148,7 @@ export function isActivityBlock(block: Block): boolean {
 
 /**
  * A row the host wrote that is a step of the agent's work, so it folds into
- * the run it sits in: a subagent spawned or heard from, a background task
+ * the run it sits in: a subagent spawned or settled, a background task
  * that finished or the check on idle ones, a gate or release outcome, a
  * review that merged, the turn pass, the plan's build hand-off, a merge the
  * batch made. What asks the person something or ends a stretch of work
@@ -165,6 +169,27 @@ export function isStepBlock(block: Block): boolean {
 }
 
 const FAILED_REPORT = new Set(["error", "failed", "blocked"]);
+
+/** The rows a step draws: one per agent a wait returned on, one per child a batch spawn stamped, else one. */
+export function stepRows(block: Block): number {
+  if (isWaitCall(block)) return waitOutcomes(block).length;
+  const spawned = block.tool?.spawned?.length ?? 0;
+  return isBatchSpawn(block) && spawned > 1 ? spawned : 1;
+}
+
+/** A spawn_agent call that asked for several agents. */
+export function isBatchSpawn(block: Block): boolean {
+  const name = shortName(block.tool?.name ?? "");
+  const agents = (block.tool?.input as { agents?: unknown } | undefined)?.agents;
+  return name === "spawn_agent" && Array.isArray(agents) && agents.length > 1;
+}
+
+/** How many of a step's parts went wrong: a red gate, a review that failed
+ *  to run, a report of a failure, a failed task, each agent a wait found failed. */
+function stepFailures(block: Block): number {
+  if (isWaitCall(block)) return waitOutcomes(block).filter((o) => FAILED_REPORT.has(o.status)).length;
+  return stepFailed(block) ? 1 : 0;
+}
 
 /** A folded host step that went wrong: a red gate, a review that failed to run, a report of a failure, a failed task. */
 function stepFailed(block: Block): boolean {
@@ -446,8 +471,9 @@ export function actionGroupOf(
     phrase,
     adds,
     dels,
-    failed: tools.filter((b) => toolCallState(b) === "rejected").length + steps.filter(stepFailed).length,
-    lone: steps.length <= 1,
+    failed:
+      tools.filter((b) => toolCallState(b) === "rejected").length + steps.reduce((n, b) => n + stepFailures(b), 0),
+    lone: steps.reduce((n, b) => n + stepRows(b), 0) <= 1,
   };
 }
 

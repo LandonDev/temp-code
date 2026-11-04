@@ -76,12 +76,19 @@ foreground, the same words the group line uses); the components only draw it.
   its counts tick instead. Anything else opens its details
   (`ToolDetails.tsx`: the invocation, key and value rows for JSON, the
   output; the raw view behind a ghost icon button on hover). An app call
-  that names a thread links its title to that thread. A spawn is one row:
+  that names a thread links its title to that thread. An agent row names
+  its agent by title, never by its prompt (`agentTitle` in
+  lib/agentTitle.ts: the store's title, else the spawn's `title`, else a
+  report's stamp, else the task's first line until a title lands, else "a
+  subagent"; cut at a word past 48 characters, the whole in the tooltip).
   fold.ts stamps each `agent-spawned` child on the `spawn_agent` call that
-  asked for it (`tool.spawned`), so the call's row links to the agent from
-  the moment it exists and carries the one child's host glyph and state
-  (`SpawnedAgentMarks`); only an older log with no such call keeps a
-  "Spawned" row of its own. A todo update says how far the list is as a
+  asked for it (`tool.spawned`): a spawn of one is that call's row, linked
+  to the agent from the moment it exists, with the child's host glyph and
+  state (`SpawnedAgentMarks`, Working drawn still); a spawn of several is
+  one "Spawned <title>" row per child (`SpawnChildRow`, as an edit is one
+  row per file), and "Spawning 3 agents" only until the first child is
+  stamped; an older log with no such call keeps a "Spawned" row of its own.
+  A todo update says how far the list is as a
   muted tally in the counts slot, not a target ("Updated todos  3/7"), and
   opens the list. The body opens in place under
   the line through `Collapsible`.
@@ -134,9 +141,11 @@ foreground, the same words the group line uses); the components only draw it.
   after a message came in, and a turn that ended without one closes it as
   "Compaction stopped" with its span.
 - **The host's steps fold into the run** (`isFoldedStep` in
-  `surfaces/transcriptActivity.ts`): a subagent's report ("Heard from  A",
-  its state marked; the batch's own report "Heard from  the batch", linking
-  nowhere), a spawn row from an older log, a background task that settled
+  `surfaces/transcriptActivity.ts`): a subagent's report and each agent a
+  `wait_for_agent` returned on, as one step each (`AgentStepRow`: the
+  state's glyph, then "Finished", "Failed", "Needs you", "Stopped" or
+  "Paused" and the agent's title; the batch's own report "Finished  the
+  batch", linking nowhere), a spawn row from an older log, a background task that settled
   (`Block.task`, drawn by `TaskStepRow`: "Task finished  deploy the
   preview"), the check on idle tasks ("Checked background tasks",
   `Block.backgroundCheck`), a gate or release outcome, a review that merged,
@@ -146,14 +155,21 @@ foreground, the same words the group line uses); the components only draw it.
   open in place there. What stays a row of its own: the person's text, the
   prose, the plan, a question, an approval still undecided, a held review,
   a failure, Stopped, compaction, "Batch done", account-gone, the restart
-  line, the handoff divider and an html_render page. The group line counts
-  steps, not calls (one report alone is its own row; a red gate, a review
-  that failed to run, a failed report or task add to its red figure) and
+  line, the handoff divider and an html_render page. A wait is never a row:
+  while it is open the working line says "Waiting on <title>" ("Waiting on
+  3 subagents"; `WaitTail` in TurnEnd.tsx over `openWaitOf` in
+  surfaces/agentSteps.ts, re-worded when the title lands), and a wait that
+  returned on nobody (steered, stopped, timed out, refused) leaves nothing.
+  The group line counts steps, not calls (one report alone is its own row;
+  a wait counts one step per agent it returned on, a batch spawn one per
+  child; a red gate, a review that failed to run, a failed report, a failed
+  agent a wait returned on, or a failed task add to its red figure) and
   speaks agent work through `appView` (`lib/groupPhrase.ts`): "Spawned
-  “Port the view”, waited for “Port the view”, heard from “Port the
-  view”", like steps folding into a count ("heard from 3 agents", "merged
-  2 branches"); a run of mostly agent work leads with the Bot glyph (the
-  `agents` work kind).
+  “Port the view”, heard from “Port the view”", a wait's agents heard from
+  with the reports, like steps folding into a count ("heard from 3
+  agents", "merged 2 branches"); an agent the store has not listed is named
+  by what its spawn in the run called it (`spawnedNames`); a run of mostly
+  agent work leads with the Bot glyph (the `agents` work kind).
 - **A question** from the model is the one question card
   (`components/ui/question-card.tsx`, keys taken only inside the card)
   through `surfaces/QuestionCard.tsx`: an Other field unless the question

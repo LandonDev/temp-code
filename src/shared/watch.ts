@@ -47,6 +47,7 @@ function titleIn(id: string, titleOf: AgentTitleOf | undefined): string | undefi
 /** What a wait on these agents names: one by its title ("a subagent"
  *  while none is known), several counted, "3 subagents". */
 export function waitSubject(ids: readonly string[], titleOf?: AgentTitleOf): string {
+  if (ids.length === 0) return 'a subagent'
   if (ids.length === 1) return titleIn(ids[0], titleOf) ?? 'a subagent'
   return counted(ids.length, 'a subagent', 'subagents')
 }

@@ -266,13 +266,16 @@ subagents", Failed then "Usage cap". The host sends the detail on its own
 for old readers and is read only when the detail is absent. A watching
 thread always says what it watches; a row that cannot say is a bug. A
 thread idle or done whose subagents still work is watching them (Watching
-then "a subagent") in the transcript's closing line,
+then the one subagent's title, "Review the perf pass", or "3 subagents") in the transcript's closing line,
 the tab, the chip and the rail alike, and the fleet header counts watching on its own. `threadStatus` (lib/threadStripModel.ts) is the one
 place that decides a thread's state and its detail, the tree's overrides
 included, and `ThreadStatusMark` (chrome/TabIndicator.tsx) draws it with the
 round's tally 8px after the detail. A watching thread on one task names it
 in the model's words (Watching then "sleep 45 seconds"); more than one is
-counted (`watchPhrase`, src/shared/watch.ts).
+counted (`watchPhrase`, src/shared/watch.ts). A turn a wait_for_agent holds
+says what it waits on by title, Working then "Waiting on Review the perf
+pass" or "Waiting on 2 subagents" (`waitLine`), on the transcript's working
+line and in the host's detail alike.
 
 The slot above the composer (surfaces/threads/WorkingStrip.tsx, reserved
 at 28px so nothing moves when a turn starts or ends) holds the open turn's
@@ -604,11 +607,15 @@ line with a glyph, a lead and its details; only a held review and a failure
 are cards. A compaction is one line that counts from its start, takes
 its outcome in place and reads "Compaction stopped" when its turn ended
 without one. The host's steps of the agent's work fold into the run they sit
-in, as calls do: a subagent spawned (on its call's row) or heard from, a
+in, as calls do: a subagent spawned (on its call's row, one row per child
+for a batch), each agent that settled ("Finished", "Failed", "Needs you",
+"Stopped" or "Paused", then its title, behind the state's glyph), a
 finished task, the check on idle tasks, a gate or release outcome, a review
 that merged, the turn pass, the plan's build hand-off, a merge the batch
 made. A held review, a failure, Stopped, compaction, "Batch done" and
-account-gone stay lines of their own. A handoff keeps its bubble: its text is the person's brief. The
+account-gone stay lines of their own. Every agent row names its agent by
+title, the one bright text on its 28px line, and an open wait is no row:
+the working line says "Waiting on <title>". A handoff keeps its bubble: its text is the person's brief. The
 left side, where the column leaves room, lists the person's own messages,
 one line and a clock time each, the one being read in foreground
 (`TranscriptOutline` on `JumpList`; docs/LAYOUT.md "Chat"). A

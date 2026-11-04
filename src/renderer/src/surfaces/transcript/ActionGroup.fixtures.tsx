@@ -33,8 +33,17 @@ const orchestration = (prefix: string): Block[] => [
       spawned: [`${prefix}-child`],
     },
   },
-  call(`${prefix}2`, "mcp__orchestrator__wait_for_agent", "other", { agentId: `${prefix}-child` }),
-  { id: `${prefix}3`, role: "system", text: "", agent: { id: `${prefix}-child`, title: "Port the view", status: "done" } },
+  {
+    ...call(`${prefix}2`, "mcp__orchestrator__wait_for_agent", "other", { agentId: `${prefix}-child` }),
+    tool: {
+      callId: `${prefix}2`,
+      name: "mcp__orchestrator__wait_for_agent",
+      kind: "other",
+      status: "completed",
+      input: { agentId: `${prefix}-child` },
+      detail: JSON.stringify({ agentId: `${prefix}-child`, status: "idle", reply: "Ported." }),
+    },
+  },
   {
     id: `${prefix}4`,
     role: "system",
@@ -86,11 +95,57 @@ const mixed = (prefix: string): Block[] => [
   { id: `${prefix}9`, role: "reasoning", text: "The index belongs on the table.", ts: 1, doneTs: 3001 },
 ];
 
+/** Agent work: a titled spawn, a batch of two, a command, a wait whose child finished, a failed report. */
+const agents = (prefix: string): Block[] => [
+  {
+    id: `${prefix}1`,
+    role: "tool",
+    text: "spawn",
+    tool: {
+      callId: `${prefix}1`,
+      name: "mcp__orchestrator__spawn_agent",
+      kind: "other",
+      status: "completed",
+      input: { task: "Review only. Do not edit, commit, push, or open a pull request.", title: "Review the perf pass" },
+      spawned: [`${prefix}-r`],
+    },
+  },
+  {
+    id: `${prefix}2`,
+    role: "tool",
+    text: "spawn",
+    tool: {
+      callId: `${prefix}2`,
+      name: "mcp__orchestrator__spawn_agent",
+      kind: "other",
+      status: "completed",
+      input: { agents: [{ task: "Port the view to the new board", title: "Port the board view" }, { task: "Audit the gateway deadlines\nin depth" }] },
+      spawned: [`${prefix}-a`, `${prefix}-b`],
+    },
+  },
+  call(`${prefix}3`, "Bash", "execute", { command: "git log --oneline -5" }),
+  {
+    id: `${prefix}4`,
+    role: "tool",
+    text: "wait",
+    tool: {
+      callId: `${prefix}4`,
+      name: "mcp__orchestrator__wait_for_agent",
+      kind: "other",
+      status: "completed",
+      input: { agentId: `${prefix}-r` },
+      detail: JSON.stringify({ agentId: `${prefix}-r`, status: "idle", reply: "Two issues." }),
+    },
+  },
+  { id: `${prefix}5`, role: "system", text: "", agent: { id: `${prefix}-b`, title: "Gateway deadline audit", status: "error" } },
+];
+
 // The harness renders with no session, so the opened state is keyed ":a:<first id>".
 setEditOpen(":a:open1", true);
 setEditOpen(":a:orchOpen1", true);
 setEditOpen(":a:wakeOpen1", true);
 setEditOpen(":a:mixed1", true);
+setEditOpen(":a:agentsOpen1", true);
 
 /** A working run of `n` steps, the last still running (a thought counts as a row). */
 const working = (prefix: string, n: number): Block[] =>
@@ -131,6 +186,8 @@ export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; li
   },
   { name: "Orchestration run", props: { blocks: orchestration("orch"), cwd: CWD } },
   { name: "Orchestration run, opened", props: { blocks: orchestration("orchOpen"), cwd: CWD } },
+  { name: "Agents", props: { blocks: agents("agents"), cwd: CWD } },
+  { name: "Agents, opened", props: { blocks: agents("agentsOpen"), cwd: CWD } },
   { name: "Wake run", props: { blocks: wake("wake"), cwd: CWD } },
   { name: "Wake run, opened", props: { blocks: wake("wakeOpen"), cwd: CWD } },
   { name: "Mixed calls, opened", props: { blocks: mixed("mixed"), cwd: CWD } },

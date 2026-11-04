@@ -242,17 +242,17 @@ describe("ActionRow", () => {
   });
 
 
-  it("a report row is heard from: it opens its agent and says where it stands", () => {
+  it("a report row says what its agent did, by title: it opens its agent and its glyph is the state", () => {
     const onSelect = vi.fn();
     const block = { id: "sp", role: "system", text: "", agent: { id: "a1", title: "Port the view", status: "error" } } as Block;
-    const { getByRole, getByText } = render(
+    const { container, getByRole, getByText } = render(
       <SelectSessionContext.Provider value={onSelect}>
         <AgentSpawnRow block={block} />
       </SelectSessionContext.Provider>,
     );
-    expect(getByText("Heard from").className).toContain("text-muted-foreground");
-    expect(getByText("Failed")).toBeTruthy();
-    fireEvent.click(getByRole("button", { name: "Heard from Port the view" }));
+    expect(getByText("Failed").className).toContain("text-muted-foreground");
+    expect(container.querySelector('[data-slot="status-mark"]')?.getAttribute("data-state")).toBe("failed");
+    fireEvent.click(getByRole("button", { name: "Failed Port the view" }));
     expect(onSelect).toHaveBeenCalledWith("a1");
   });
 
@@ -264,9 +264,9 @@ describe("ActionRow", () => {
         <AgentSpawnRow block={block} />
       </SelectSessionContext.Provider>,
     );
-    expect(container.textContent).toContain("Heard from");
+    expect(container.textContent).toContain("Finished");
     expect(container.textContent).toContain("the batch");
-    expect(queryByRole("button", { name: "Heard from the batch" })).toBeNull();
+    expect(queryByRole("button", { name: "Finished the batch" })).toBeNull();
   });
 
   it("a spawn call links its one child; one asking for three counts them", () => {
