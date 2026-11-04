@@ -1,10 +1,14 @@
 import {
   useCallback,
+  useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { setGrabbing, suppressTextSelection } from "../lib/drag";
+import { animate } from "motion/react";
+import { pushSample, releaseVelocity, setGrabbing, suppressTextSelection, type DragSample } from "../lib/drag";
+import { SPRING_GLIDE } from "../lib/ease";
 import { moveItem } from "../lib/reorder";
 
 const THRESHOLD = 5;
@@ -38,7 +42,19 @@ type DragState = {
   active: boolean;
   toIndex: number;
   dropTarget: SortableDropTarget | null;
+  /** The dragged row's offset on the axis from where it was grabbed. */
+  offset: number;
+  /** The offset it is drawn at: none under reduced motion, where it does not follow. */
+  drawn: number;
+  samples: DragSample[];
 };
+
+/** A reorder just dropped: the row stays where the pointer left it until the
+ *  list renders in its new order, then glides from there into its slot. */
+type PendingDrop = { id: string; order: string; from: number; velocity: number };
+
+const reduceMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const orderOf = (ids: readonly string[]) => ids.join("\u0000");
 
 function optionsOf(
   axisOrOptions: "x" | "y" | SortableOptions | undefined,
@@ -48,6 +64,15 @@ function optionsOf(
   return { axis: "x", ...axisOrOptions };
 }
 
+/**
+ * Pointer reordering for a list of rows. The grabbed row follows the pointer
+ * on the list's axis from where it was grabbed, written straight to its node so
+ * a move re-renders nothing but the insertion line; the other rows hold still.
+ * On release the row glides home on SPRING_GLIDE carrying the pointer's speed:
+ * into its new slot once the list renders in the new order (a FLIP of that one
+ * row), or back to its own when the drop changes nothing or Escape cancels it.
+ * Reduced motion: no follow, the line alone, the drop at once.
+ */
 export function useSortable(
   ids: string[],
   onReorder: (ids: string[], movedId?: string) => void,
@@ -72,6 +97,76 @@ export function useSortable(
   const drag = useRef<DragState | null>(null);
   const suppressClickUntil = useRef(0);
 
+  const pending = useRef<PendingDrop | null>(null);
+  const glides = useRef(new Map<string, { stop: () => void }>());
+
+  const place = useCallback((el: HTMLElement, offset: number) => {
+    el.style.translate = offset === 0 ? "" : axis === "x" ? `${offset}px 0px` : `0px ${offset}px`;
+  }, [axis]);
+
+  /** Glide a row's offset from `from` to its slot, carrying `velocity` px/s. */
+  const glideHome = useCallback(
+    (id: string, from: number, velocity: number) => {
+      const el = nodes.current.get(id);
+      glides.current.get(id)?.stop();
+      glides.current.delete(id);
+      if (!el) return;
+      if (Math.abs(from) < 0.5 || reduceMotion()) {
+        place(el, 0);
+        return;
+      }
+      place(el, from);
+      const glide = animate(from, 0, {
+        ...SPRING_GLIDE,
+        velocity,
+        onUpdate: (value) => place(el, value),
+        onComplete: () => {
+          place(el, 0);
+          glides.current.delete(id);
+        },
+      });
+      glides.current.set(id, glide);
+    },
+    [place],
+  );
+
+  // After a reorder commits, the dropped row is in its new slot but still
+  // drawn where the pointer left it: measure the slot and glide from there.
+  useLayoutEffect(() => {
+    const drop = pending.current;
+    if (!drop || orderOf(ids) === drop.order) return;
+    pending.current = null;
+    const el = nodes.current.get(drop.id);
+    // A row the list no longer mounts (a virtual list scrolled away) has nothing to glide.
+    if (!el) return;
+    place(el, 0);
+    const slot = el.getBoundingClientRect();
+    glideHome(drop.id, drop.from - (axis === "x" ? slot.left : slot.top), drop.velocity);
+  });
+
+  // A reorder the parent never renders (it refused it) leaves the row where it
+  // was dropped: after a beat it glides back to its own slot.
+  useEffect(() => {
+    if (!pending.current) return;
+    const timer = window.setTimeout(() => {
+      const drop = pending.current;
+      if (!drop) return;
+      pending.current = null;
+      const el = nodes.current.get(drop.id);
+      if (!el) return;
+      const offset = parseFloat((el.style.translate || "0px 0px").split(" ")[axis === "x" ? 0 : 1] ?? "0");
+      glideHome(drop.id, offset, 0);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  });
+
+  useEffect(() => {
+    const running = glides.current;
+    return () => {
+      for (const glide of running.values()) glide.stop();
+    };
+  }, []);
+
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [toIndex, setToIndex] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<SortableDropTarget | null>(null);
@@ -94,8 +189,10 @@ export function useSortable(
       for (let i = 0; i < list.length; i++) {
         const rect = nodes.current.get(list[i])?.getBoundingClientRect();
         if (!rect) continue;
+        // The dragged row is drawn under the pointer; its slot is where it was.
+        const shift = drag.current?.id === list[i] ? drag.current.drawn : 0;
         const mid =
-          axis === "x" ? rect.left + rect.width / 2 : rect.top + rect.height / 2;
+          (axis === "x" ? rect.left + rect.width / 2 : rect.top + rect.height / 2) - shift;
         if (pos < mid) {
           next = i;
           break;
@@ -165,7 +262,17 @@ export function useSortable(
         active: false,
         toIndex: from,
         dropTarget: null,
+        offset: 0,
+        drawn: 0,
+        samples: [],
       };
+      // A row caught mid-glide stops where it is drawn.
+      glides.current.get(id)?.stop();
+      glides.current.delete(id);
+      // The row that moves is the registered node; the press may land on a part of it.
+      const row = nodes.current.get(id) ?? handle;
+      const grabbed = parseFloat((row.style.translate || "0px 0px").split(" ")[axis === "x" ? 0 : 1] ?? "0") || 0;
+      const follows = !reduceMotion();
       drag.current = state;
       handle.setPointerCapture(event.pointerId);
       // A press is a click until it moves: only a drag turns selection off
@@ -193,6 +300,13 @@ export function useSortable(
           setToIndex(from);
           onActivateRef.current?.(id);
         }
+        const along = axis === "x" ? ev.clientX - current.startX : ev.clientY - current.startY;
+        current.offset = grabbed + along;
+        pushSample(current.samples, axis === "x" ? ev.clientX : ev.clientY, ev.timeStamp);
+        if (follows) {
+          current.drawn = current.offset;
+          place(row, current.offset);
+        }
         const dropOn = dropTargetAt(id, ev.clientX, ev.clientY);
         const next = indexAt(ev.clientX, ev.clientY);
         if (
@@ -209,7 +323,7 @@ export function useSortable(
         setDropTarget(dropOn);
       };
 
-      const onUp = () => stop(true);
+      const onUp = (ev: PointerEvent) => stop(true, ev.timeStamp);
       const onKey = (ev: KeyboardEvent) => {
         if (ev.key === "Escape") {
           ev.preventDefault();
@@ -217,7 +331,7 @@ export function useSortable(
         }
       };
 
-      function stop(commit: boolean) {
+      function stop(commit: boolean, now = Infinity) {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         window.removeEventListener("pointercancel", onUp);
@@ -235,10 +349,19 @@ export function useSortable(
         } catch {
           /* already released */
         }
-        if (!current?.active) return;
-        if (!commit) return;
+        if (!current?.active) {
+          place(row, 0);
+          return;
+        }
+        const velocity = releaseVelocity(current.samples, now);
+        if (!commit) {
+          glideHome(current.id, current.offset, 0);
+          return;
+        }
         suppressClickUntil.current = performance.now() + 400;
         if (current.dropTarget) {
+          // The row joins another (a group, a tab): it leaves its place, so nothing glides.
+          place(row, 0);
           // A refused target still swallows the drop: the tab stays put rather
           // than reordering into a group it cannot join.
           if (!current.dropTarget.allowed) return;
@@ -252,7 +375,16 @@ export function useSortable(
         const list = idsRef.current;
         const fromIndex = list.indexOf(current.id);
         if (fromIndex >= 0 && current.toIndex !== fromIndex) {
+          const rect = row.getBoundingClientRect();
+          pending.current = {
+            id: current.id,
+            order: orderOf(list),
+            from: axis === "x" ? rect.left : rect.top,
+            velocity,
+          };
           onReorderRef.current(moveItem(list, fromIndex, current.toIndex), current.id);
+        } else {
+          glideHome(current.id, current.offset, velocity);
         }
       }
 
@@ -261,7 +393,7 @@ export function useSortable(
       window.addEventListener("pointercancel", onUp);
       window.addEventListener("keydown", onKey);
     },
-    [dropTargetAt, indexAt],
+    [axis, dropTargetAt, glideHome, indexAt, place],
   );
 
   const consumeClick = useCallback(

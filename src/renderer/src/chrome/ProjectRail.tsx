@@ -811,7 +811,7 @@ function WorkspaceRow({
         rowRef={(el) => sortable.setItemRef(item.path, el)}
         data-host-offline={offline || undefined}
         data-rail-path={item.path}
-        className={`@container/railrow touch-none ${dragging ? "opacity-40" : offline ? "opacity-50" : ""}`}
+        className={`@container/railrow touch-none ${dragging ? "relative z-10" : ""} ${offline ? "opacity-50" : ""}`}
         surface="group"
         label={name}
         ariaLabel={workspaceRowAriaLabel(name, busy, needsYou, stats)}

@@ -2,7 +2,18 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FilePaneTab } from "../lib/layout";
+import { animate } from "motion/react";
+import { SPRING_GLIDE } from "../lib/ease";
 import { SurfaceTabs } from "./SurfaceTabs";
+
+vi.mock("motion/react", async (original) => ({
+  ...(await original<typeof import("motion/react")>()),
+  animate: vi.fn((_from: number, to: number, options: { onUpdate?: (v: number) => void; onComplete?: () => void }) => {
+    options.onUpdate?.(to);
+    options.onComplete?.();
+    return { stop: vi.fn() };
+  }),
+}));
 
 const file = (id: string, path: string, extra: Partial<FilePaneTab> = {}): FilePaneTab => ({
   id,
@@ -138,5 +149,35 @@ describe("SurfaceTabs", () => {
       />,
     );
     expect(container.querySelector("[title]")).toBeNull();
+  });
+});
+
+describe("SurfaceTabs drag", () => {
+  afterEach(() => {
+    vi.mocked(animate).mockClear();
+    vi.restoreAllMocks();
+  });
+
+  it("the dragged tab follows the pointer along the strip, the others still, and a drop that changes nothing glides it home", () => {
+    // Each tab 100px wide in a row.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const index = [...(this.parentElement?.children ?? [])].indexOf(this);
+      const left = Math.max(0, index) * 100 + (parseFloat((this.style.translate || "0px").split(" ")[0]!) || 0);
+      return { left, right: left + 100, width: 100, top: 0, bottom: 28, height: 28, x: left, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    const props = strip();
+    fireEvent.pointerDown(tab("app.ts"), { button: 0, pointerId: 1, clientX: 20, clientY: 10 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 40, clientY: 50 });
+    // Along the strip only: 20px across, nothing down.
+    expect(wrapperOf("app.ts").style.translate).toBe("20px 0px");
+    expect(wrapperOf("app.ts").className).toContain("z-10");
+    expect(wrapperOf("app.ts").className).not.toContain("opacity-40");
+    expect(wrapperOf("store.ts").style.translate).toBe("");
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 40, clientY: 50 });
+    expect(props.onReorder).not.toHaveBeenCalled();
+    const [from, to, options] = vi.mocked(animate).mock.calls.at(-1)! as unknown as [number, number, typeof SPRING_GLIDE];
+    expect([from, to]).toEqual([20, 0]);
+    expect(options.stiffness).toBe(SPRING_GLIDE.stiffness);
+    expect(wrapperOf("app.ts").style.translate).toBe("");
   });
 });

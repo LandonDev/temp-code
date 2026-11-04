@@ -154,7 +154,7 @@ export function SurfaceTabs({
                   sortable.setItemRef(file.id, el);
                   if (el && file.id === activeFileId) activeTabRef.current = el;
                 }}
-                className={`relative min-w-24 max-w-52 shrink pt-1 ${dragging ? "opacity-40" : ""}`}
+                className={`relative min-w-24 max-w-52 shrink pt-1 ${dragging ? "z-10" : ""}`}
                 onMouseEnter={() => setHoveredId(file.id)}
                 onMouseLeave={() => setHoveredId((id) => (id === file.id ? null : id))}
               >

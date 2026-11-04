@@ -80,7 +80,7 @@ export function DockBar({ terminals, active, dev, onSelect, onSelectDev, onClose
                 key={file.id}
                 data-dock-tab={file.id}
                 ref={(el) => sortable.setItemRef(file.id, el)}
-                className={`group relative flex h-full shrink-0 items-stretch ${sortable.draggingId === file.id ? "opacity-40" : ""} ${canDrag ? "touch-none" : ""}`}
+                className={`group relative flex h-full shrink-0 items-stretch ${sortable.draggingId === file.id ? "z-10" : ""} ${canDrag ? "touch-none" : ""}`}
                 onPointerDown={(event) => {
                   if (!canDrag || event.button !== 0) return;
                   if ((event.target as HTMLElement | null)?.closest("[data-no-drag]")) return;

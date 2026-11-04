@@ -515,9 +515,9 @@ being produced shimmers (`WorkingText`); nothing else does.
 | The working line settling | the mark leaves as an icon does, the words morph into "Worked for 2m 4s" (or Stopped) and slide from the glyph slot to the prose edge, 22px, `--dur-base` `--ease-swap`; the hover actions mount | — | the morph's fades; no slide |
 | Spinner | the one arc turning | — | still |
 | Appshot | fade + scale 0.95→1 centred, `--dur-slow`; holds; glides into its chip, `--dur-drawer` `--ease-drawer` | — | fade in and out in place, `--dur-fast` |
-| Released drag | settles on `SPRING_GLIDE` | — | none |
+| Released drag (every sash let go past its bound, the reorder drop, an Escape glide-back) | settles on `SPRING_GLIDE` from where it is drawn, carrying the pointer's speed at release | — | at once |
 | Scrollbar | shows at once on hover or scroll | hides at once, `SCROLL_IDLE_MS` (900ms) after the last scroll or when the pointer leaves | same |
-| List rows (rail, tabs, fleet, attachments, the transcript's message list) | none | none | none |
+| List rows (rail, tabs, fleet, attachments, the transcript's message list) | none; a row being reordered follows the pointer on the list's axis from where it was grabbed while the others hold still with the insertion line, then glides into its slot (or back to its own, on Escape or a drop that changes nothing) on `SPRING_GLIDE` | none | the line alone; the drop at once |
 | Transcript rows | one `--dur-fast` fade on first appearance, never replayed | — | none |
 | Streaming text | the prose: the jitter buffer (surfaces/smoothText) steps whole words every 100ms (`REVEAL.stepMs`), holding a bare block marker and a table's header row until they have content; each step is one span fading in over `--dur-reveal` on `--ease-reveal` (lib/streamReveal.ts, `.stream-step`), and the settle waits for the last fade; a live short line (the working line's newest sentence of a thought) takes the same fade in `StreamingText` | — | whole-word steps, no fade |
 | Composer send | the bubble rides with the content as the prompt parks, rising 16px and fading in, `--dur-slow` `--ease-drawer`; in follow mode it flies from the field only when it lands within 240px of it | — | fade, `--dur-fast` |
