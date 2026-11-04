@@ -2,9 +2,9 @@ import type { ComponentProps } from "react";
 import { cn } from "@renderer/lib/cn";
 
 const kbdSizes = {
-  sm: "h-4 min-w-4 rounded-sm px-1 text-[10px] [&_svg:not([class*='size-'])]:size-2.5",
-  md: "h-5 min-w-5 rounded-sm px-1 text-xs [&_svg:not([class*='size-'])]:size-3",
-  lg: "h-6 min-w-6 rounded-md px-1.5 text-[13px] [&_svg:not([class*='size-'])]:size-3.5",
+  sm: "h-4 min-w-4 rounded-sm px-1 text-[11px] [&_svg:not([class*='size-'])]:size-2.5",
+  md: "h-5 min-w-5 rounded-sm px-1 text-[11px] [&_svg:not([class*='size-'])]:size-3",
+  lg: "h-6 min-w-6 rounded-md px-1.5 text-[11px] [&_svg:not([class*='size-'])]:size-3.5",
 } as const;
 
 type KbdSize = keyof typeof kbdSizes;

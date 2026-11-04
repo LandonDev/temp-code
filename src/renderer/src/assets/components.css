@@ -7,7 +7,8 @@
 @utility focus-field {
   outline: none;
   transition-property: color, background-color, border-color, box-shadow;
-  transition-duration: var(--dur-fast);
+  /* The hover fill follows the pointer like a button's; the focus ring keeps its pace. */
+  transition-duration: var(--dur-fast), var(--dur-hover), var(--dur-fast), var(--dur-fast);
   transition-timing-function: var(--ease-out);
 
   &:focus-within {

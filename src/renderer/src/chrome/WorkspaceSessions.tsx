@@ -334,6 +334,7 @@ export function ThreadRowView({
   menuId,
   more,
   onRename,
+  className,
 }: {
   row: ThreadRow;
   selected?: boolean;
@@ -351,6 +352,8 @@ export function ThreadRowView({
   /** The row's ⋯ menu, over the mark on hover and focus. */
   more?: ReactNode;
   onRename?: () => void;
+  /** The root's radius inside a padded surface (the popover's 8px, concentric with its 12px). */
+  className?: string;
 }) {
   const tally = batchTally(row);
   const RoleGlyph = child && row.agentType ? AGENT_GLYPHS[row.agentType] : null;
@@ -406,6 +409,7 @@ export function ThreadRowView({
         verdict ? "min-h-8 py-1.5" : child ? "h-7" : "h-8",
         selected ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
         offline && "opacity-50",
+        className,
       )}
     >
       {/* The lead column: a root's type glyph; under it a child's one step in. */}

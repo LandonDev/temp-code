@@ -92,11 +92,11 @@ function AgentsLine({ summary, className }: { summary: AgentSummary; className: 
 function MasterRows({ block, activeId, onSelect }: { block: MasterBlock; activeId: string | null; onSelect: (id: string) => void }) {
   return (
     <div className="flex flex-col">
-      <ThreadRowView row={block.master} word selected={block.master.id === activeId} onOpen={() => onSelect(block.master.id)} />
+      <ThreadRowView row={block.master} word className="rounded-lg" selected={block.master.id === activeId} onOpen={() => onSelect(block.master.id)} />
       {block.agents ? <AgentsLine summary={block.agents} className="pl-9" /> : null}
       {block.lines.map(({ thread, agents }) => (
         <div key={thread.id} className="flex flex-col">
-          <ThreadRowView row={thread} child word selected={thread.id === activeId} onOpen={() => onSelect(thread.id)} />
+          <ThreadRowView row={thread} child word className="rounded-lg" selected={thread.id === activeId} onOpen={() => onSelect(thread.id)} />
           {agents ? <AgentsLine summary={agents} className="pl-15" /> : null}
         </div>
       ))}
@@ -136,6 +136,7 @@ export function WorkspaceThreadsList({
                 key={entry.id}
                 row={entry.row}
                 word
+                className="rounded-lg"
                 selected={entry.id === activeSessionId}
                 onOpen={() => onSelectThread(entry.id)}
               />
