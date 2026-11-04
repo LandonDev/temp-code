@@ -106,7 +106,7 @@ describe("MediaGate", () => {
     expect(img.className).not.toContain("rounded");
     expect(container.querySelector("video, footer")).toBeNull();
     expect(container.querySelector('[data-testid="editor"]')).toBeNull();
-    expect(container.querySelector('[class*="bg-foreground"]')).toBeNull();
+    expect(container.querySelector('[class*="bg-foreground"]:not(button)')).toBeNull();
     const header = container.querySelector("header")!;
     expect(header.textContent).toContain("img");
     expect(header.textContent).not.toContain("shot.png");
@@ -185,7 +185,8 @@ describe("MediaGate", () => {
     expect(document.activeElement).toBe(el);
     expect(el.className).not.toContain("rounded-sm");
     expect(el.className).toContain("outline-image-outline");
-    expect(el.className).toContain("focus-visible:ring-2");
+    expect(el.classList).toContain("focus-ring");
+    expect(el.className).not.toMatch(/focus-visible:ring/);
     expect(container.querySelector('[aria-label="Image size"]')).toBeNull();
     expect(container.querySelector("header")!.textContent).toContain("5.0 MB");
   });
@@ -196,7 +197,8 @@ describe("MediaGate", () => {
     await act(async () => {});
     const el = container.querySelector("audio")!;
     expect(el.hasAttribute("controls")).toBe(true);
-    expect(el.className).toContain("focus-visible:ring-2");
+    expect(el.classList).toContain("focus-ring");
+    expect(el.className).not.toMatch(/focus-visible:ring/);
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector("header")!.textContent).toBe("2.0 KB");
   });

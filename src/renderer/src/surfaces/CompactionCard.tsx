@@ -2,7 +2,7 @@ import { COMPACTING_WORDS } from "@shared/statusWords";
 import { FoldVertical } from "../chrome/icons";
 import { Spinner } from "../components/ui/spinner";
 import { StatusMark } from "../components/ui/status";
-import { TextPulse } from "../components/ui/text-pulse";
+import { WorkingText } from "../components/ui/working-text";
 import type { Block } from "../lib/session";
 import { formatTokens } from "../lib/contextUsage";
 import { useClock } from "../lib/turnClock";
@@ -66,7 +66,7 @@ function ActiveCompaction({ startedAt }: { startedAt?: number }) {
       role="status"
       aria-label={COMPACTING_WORDS}
       glyph={<Spinner />}
-      lead={<TextPulse>{COMPACTING_WORDS}</TextPulse>}
+      lead={<WorkingText>{COMPACTING_WORDS}</WorkingText>}
       details={[elapsed !== undefined ? <span className="tabular-nums">{spanWords(elapsed)}</span> : undefined]}
     />
   );

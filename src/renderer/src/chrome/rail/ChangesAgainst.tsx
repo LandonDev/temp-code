@@ -373,7 +373,7 @@ export function AgainstCommits({ compare, open, onOpenChange }: { compare: Compa
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger
-        className="flex h-7 w-full items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex h-7 w-full items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground"
       >
         <ChevronRight className={cn("size-3 shrink-0 transition-transform duration-(--dur-fast) motion-reduce:transition-none", open && "rotate-90")} />
         {words.filter(Boolean).map((w, i) => (

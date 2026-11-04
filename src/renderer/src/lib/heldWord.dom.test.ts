@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useHeldWord, WORD_HOLD_MS } from "./heldWord";
+import { useHeldPhase, useHeldWord, WORD_HOLD_MS } from "./heldWord";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -57,5 +57,35 @@ describe("useHeldWord", () => {
     expect(view.result.current).toBe("Starting the CLI");
     act(() => vi.advanceTimersByTime(1));
     expect(view.result.current).toBe("Thinking");
+  });
+});
+
+describe("useHeldPhase", () => {
+  type Phase = { key: string; words: string };
+  const same = (a: Phase, b: Phase) => a.key === b.key && a.words === b.words;
+  const phase = (first: Phase) =>
+    renderHook(({ p }) => useHeldPhase(p, same), { initialProps: { p: first } });
+
+  it("never shows a phase that lasted 40 ms", () => {
+    const view = phase({ key: "thinking", words: "Thinking" });
+    view.rerender({ p: { key: "call:a", words: "Reading a.ts" } });
+    act(() => vi.advanceTimersByTime(40));
+    view.rerender({ p: { key: "thinking", words: "Thinking" } });
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(view.result.current.key).toBe("thinking");
+  });
+
+  it("holds the old phase, with its own words, while a new key waits", () => {
+    const view = phase({ key: "host:Waiting", words: "Waiting for the provider, 25 s" });
+    view.rerender({ p: { key: "thinking", words: "Thinking" } });
+    expect(view.result.current.words).toBe("Waiting for the provider, 25 s");
+    act(() => vi.advanceTimersByTime(300));
+    expect(view.result.current.words).toBe("Thinking");
+  });
+
+  it("takes new words under the same key at once", () => {
+    const view = phase({ key: "host:Waiting", words: "Waiting for the provider, 25 s" });
+    view.rerender({ p: { key: "host:Waiting", words: "Waiting for the provider, 30 s" } });
+    expect(view.result.current.words).toBe("Waiting for the provider, 30 s");
   });
 });

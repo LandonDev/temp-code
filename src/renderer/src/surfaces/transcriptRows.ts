@@ -13,7 +13,7 @@
  */
 import type { Block } from "../lib/session";
 import { isErrorBlock } from "../lib/turnOutcome";
-import { awaitsUser, groupTurnItems, isHtmlRenderBlock, isStepBlock, isTodoBlock, stepRows, type TurnItem } from "./transcriptActivity";
+import { awaitsUser, groupTurnItems, isHtmlRenderBlock, isStepBlock, isThinkingBlock, isTodoBlock, stepRows, toldByWorkingLine, type TurnItem } from "./transcriptActivity";
 
 export type TurnInfo = {
   id: string;
@@ -225,8 +225,9 @@ function sameTurn(a: TurnInfo, b: TurnInfo): boolean {
  * a delta into the live turn regroups it, so its other rows come back as new
  * objects holding the same blocks; RowView compares with this instead of
  * identity, so the delta re-renders the row it changed and the closing row.
- * An item row reads its turn's id, index and whether it is the last; the
- * closing row reads the whole turn.
+ * An item row reads its turn's id, index, whether it is the last and whether
+ * it is over (a group draws its running calls once it is); the closing row
+ * reads the whole turn.
  */
 export function sameRow(a: TranscriptRow, b: TranscriptRow): boolean {
   if (a === b) return true;
@@ -239,6 +240,7 @@ export function sameRow(a: TranscriptRow, b: TranscriptRow): boolean {
     a.turn.id === b.turn.id &&
     a.turn.index === b.turn.index &&
     a.turn.isLast === b.turn.isLast &&
+    a.turn.settled === b.turn.settled &&
     sameItem(a.item, b.item)
   );
 }
@@ -257,20 +259,27 @@ export const GROUP_WINDOW = 5;
 /**
  * A row's height before it is measured, its gap included: close enough
  * that the scrollbar and the window's reach are right to within a screen,
- * never exact. A closing row that draws nothing is 0, gap and all.
+ * never exact. A row that draws nothing (a closing row with no line, a run
+ * of thoughts alone, one call the working line tells) is 0, gap and all.
  */
 export function estimateRowHeight(row: TranscriptRow): number {
   if (row.kind === "more") return row.gap + LINE;
   if (row.kind === "end") return row.turn.durationMs != null || row.turn.isLast ? row.gap + LINE : 0;
-  return row.gap + itemHeight(row.item, row.working);
+  const height = itemHeight(row.item, row.working, row.turn.settled);
+  return height ? row.gap + height : 0;
 }
 
-function itemHeight(item: TurnItem, working: boolean): number {
+function itemHeight(item: TurnItem, working: boolean, settled: boolean): number {
   if (item.type === "activity") {
-    // A lone run is its steps' own rows; a group is its line, open on its
-    // newest five rows while the turn works in it, else closed.
-    if (item.blocks.reduce((n, b) => n + (isStepBlock(b) ? stepRows(b) : 0), 0) <= 1) return LINE * item.blocks.length;
-    return working ? LINE + HUNG_LINE * Math.min(GROUP_WINDOW, item.blocks.length) : LINE;
+    // The rows ActionGroup draws: no thought (a hand opens those), and no
+    // call the working line tells while the turn is open; a step counts its
+    // own rows (a wait's outcomes, a batch spawn's children). A lone run is
+    // those rows; a group is its line, open on its newest five rows while
+    // the turn works in it, else closed.
+    const rows = (b: Block) => (isStepBlock(b) ? stepRows(b) : 1);
+    const shown = item.blocks.filter((b) => !isThinkingBlock(b) && (settled || !toldByWorkingLine(b))).reduce((n, b) => n + rows(b), 0);
+    if (item.blocks.reduce((n, b) => n + (isStepBlock(b) ? stepRows(b) : 0), 0) <= 1) return LINE * shown;
+    return working ? LINE + HUNG_LINE * Math.min(GROUP_WINDOW, shown) : LINE;
   }
   const block = item.block;
   switch (block.role) {

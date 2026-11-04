@@ -20,23 +20,6 @@
   }
 }
 
-/* TextPulse and an uploading or processing Attachment title: the words
-   rest for --delay-pulse, then breathe 1 → 0.75 → 1 over --dur-pulse,
-   opacity only. Still under reduced motion. */
-@utility text-pulse {
-  animation: text-pulse var(--dur-pulse) var(--ease-breathe) var(--delay-pulse) infinite;
-
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-  }
-}
-
-@keyframes text-pulse {
-  50% {
-    opacity: 0.75;
-  }
-}
-
 /* The phrase fade (lib/streamReveal.ts, StreamingText): each step of a
    stream is one span fading in, linear, with no stagger inside it. */
 @keyframes stream-step-in {

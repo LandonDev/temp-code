@@ -12,8 +12,8 @@ import {
   liveEditFor,
   proseSummary,
   stepRows,
-  thoughtEndTs,
   toolCallLabel,
+  toldByWorkingLine,
   toolCallState,
   turnCopyText,
 } from "./transcriptActivity";
@@ -586,16 +586,20 @@ describe("liveEditFor", () => {
   });
 });
 
-describe("thoughtEndTs", () => {
-  it("is the thought's own end, else the next step's start", () => {
-    const blocks: Block[] = [
-      { ...thought("t1"), ts: 1, doneTs: 5 },
-      { ...thought("t2"), ts: 6 },
-      { ...shell("a"), ts: 9 },
-    ];
-    expect(thoughtEndTs(blocks, 0)).toBe(5);
-    expect(thoughtEndTs(blocks, 1)).toBe(9);
-    expect(thoughtEndTs([thought("t")], 0)).toBeUndefined();
+describe("toldByWorkingLine", () => {
+  const running = (block: Block): Block => ({ ...block, tool: { ...block.tool!, status: "running" } });
+
+  it("tells a running read or command", () => {
+    expect(toldByWorkingLine(running(read("r")))).toBe(true);
+    expect(toldByWorkingLine(running(shell("s")))).toBe(true);
+  });
+
+  it("leaves a call waiting on the person, agent work, a settled call and a thought as rows", () => {
+    expect(toldByWorkingLine(shell("s", "running", { requestId: 1 }))).toBe(false);
+    const spawn: Block = { id: "a", role: "tool", text: "spawn_agent", tool: { kind: "other", name: "mcp__orchestrator__spawn_agent", title: "spawn_agent", status: "running" } };
+    expect(toldByWorkingLine(spawn)).toBe(false);
+    expect(toldByWorkingLine(read("r"))).toBe(false);
+    expect(toldByWorkingLine({ ...thought("t"), streaming: true })).toBe(false);
   });
 });
 

@@ -2,6 +2,7 @@
 import { useContext, type ReactNode } from "react";
 import { ChevronRight } from "../../chrome/icons";
 import { CollapsibleTrigger } from "../../components/ui/collapsible";
+import { TooltipProvider } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
 import { STEP_NOTICE, StepRowContext } from "./stepLine";
 
@@ -61,7 +62,7 @@ export function NoticeLine({
         {fold ? (
           <CollapsibleTrigger
             aria-label={fold.label}
-            className="absolute inset-0 cursor-default rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute inset-0 cursor-default rounded-md"
           />
         ) : null}
         <span className="flex h-5 w-3.5 shrink-0 items-center justify-center text-muted-foreground [&_svg]:size-3.5">
@@ -103,7 +104,7 @@ export function NoticeLine({
               data-slot="notice-actions"
               className="pointer-events-auto relative flex shrink-0 items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/notice:opacity-100 group-hover/notice:delay-(--delay-hover) starting:opacity-0 focus-within:opacity-100 focus-within:delay-(--dur-instant) motion-reduce:transition-none"
             >
-              {actions}
+              <TooltipProvider>{actions}</TooltipProvider>
             </span>
           ) : null}
         </div>

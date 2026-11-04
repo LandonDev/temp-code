@@ -147,7 +147,7 @@ setEditOpen(":a:wakeOpen1", true);
 setEditOpen(":a:mixed1", true);
 setEditOpen(":a:agentsOpen1", true);
 
-/** A working run of `n` steps, the last still running (a thought counts as a row). */
+/** A working run of `n` steps, the last still running: the working line tells it, and a thought draws no row. */
 const working = (prefix: string, n: number): Block[] =>
   Array.from({ length: n }, (_, i) =>
     i % 4 === 2
@@ -155,15 +155,29 @@ const working = (prefix: string, n: number): Block[] =>
       : call(`${prefix}${i}`, i % 2 ? "Bash" : "Read", i % 2 ? "execute" : "read", i % 2 ? { command: `bun test step-${i}` } : { file_path: `${CWD}/convex/step-${i}.ts` }, i === n - 1 ? "running" : "completed"),
   );
 
-export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; live?: boolean; working?: boolean } }[] = [
-  { name: "Working, 1 row (lone)", props: { blocks: working("w1-", 1), cwd: CWD, live: true, working: true } },
-  { name: "Working, 2 rows", props: { blocks: working("w2-", 2), cwd: CWD, live: true, working: true } },
-  { name: "Working, 5 rows", props: { blocks: working("w5-", 5), cwd: CWD, live: true, working: true } },
-  { name: "Working, 9 rows (newest 5 shown)", props: { blocks: working("w9-", 9), cwd: CWD, live: true, working: true } },
+export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; live?: boolean; working?: boolean; settled?: boolean } }[] = [
+  { name: "Working, 2 steps", props: { blocks: working("w2-", 2), cwd: CWD, live: true, working: true, settled: false } },
+  { name: "Working, 5 steps", props: { blocks: working("w5-", 5), cwd: CWD, live: true, working: true, settled: false } },
+  { name: "Working, 9 steps (newest 5 shown)", props: { blocks: working("w9-", 9), cwd: CWD, live: true, working: true, settled: false } },
+  {
+    name: "Live group: three settled rows, one running (WorkingLine's \"One command\" under it)",
+    props: {
+      blocks: [
+        call("lg1", "Read", "read", { file_path: `${CWD}/convex/types.ts` }),
+        call("lg2", "Edit", "edit", { file_path: `${CWD}/convex/schema.ts`, old_string: "a", new_string: lines(3) }),
+        call("lg3", "Bash", "execute", { command: "npx convex dev --once" }),
+        call("lg4", "Bash", "execute", { command: "bun test convex" }, "running"),
+      ],
+      cwd: CWD,
+      live: true,
+      working: true,
+      settled: false,
+    },
+  },
   { name: "Settled run", props: { blocks: run("settled"), cwd: CWD } },
   { name: "Settled run, opened", props: { blocks: run("open"), cwd: CWD } },
   {
-    name: "A thought, then a read",
+    name: "A thought, then a read (the read alone)",
     props: {
       blocks: [
         { id: "tr0", role: "reasoning", text: "The types first.", ts: 1, doneTs: 3001 },
@@ -182,6 +196,7 @@ export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; li
       ],
       cwd: CWD,
       live: true,
+      settled: false,
     },
   },
   { name: "Orchestration run", props: { blocks: orchestration("orch"), cwd: CWD } },
@@ -192,7 +207,7 @@ export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; li
   { name: "Wake run, opened", props: { blocks: wake("wakeOpen"), cwd: CWD } },
   { name: "Mixed calls, opened", props: { blocks: mixed("mixed"), cwd: CWD } },
   {
-    name: "Thought only",
+    name: "Thought only (draws nothing)",
     props: {
       blocks: [{ id: "think", role: "reasoning", text: "Weighing whether the index belongs on the table.", ts: 1, doneTs: 4001 }],
       cwd: CWD,

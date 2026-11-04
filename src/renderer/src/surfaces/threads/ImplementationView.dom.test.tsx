@@ -237,6 +237,9 @@ describe("the implementation board", () => {
       }),
     );
     const pass = screen.getByRole("button", { name: /Pass 1/ });
+    // A row: it highlights at once.
+    expect(pass.className).toContain("hover:bg-foreground/5");
+    expect(pass.className).not.toMatch(/transition|hover:bg-muted/);
     expect(pass.textContent).toContain("Build the thing");
     expect(pass.textContent).toContain("1/1");
     expect(screen.getByText("Now test it")).toBeTruthy();

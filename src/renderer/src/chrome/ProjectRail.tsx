@@ -659,7 +659,7 @@ export function ProjectRail({
       <div
         {...sashKeys}
         className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none outline-none focus-visible:bg-accent ${
-          dragging ? "bg-foreground/15" : "hover:bg-foreground/10"
+          dragging ? "bg-foreground/12" : "hover:bg-foreground/7"
         }`}
         onPointerDown={onPointerDown}
       />

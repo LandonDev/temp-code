@@ -310,7 +310,7 @@ export function batchTally(row: ThreadRow): { done: number; total: number } | nu
 }
 
 const ROW =
-  "group/row relative flex w-full cursor-default items-center gap-2 rounded-md px-3 text-left text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-accent";
+  "group/row relative flex w-full cursor-default items-center gap-2 rounded-md px-3 text-left text-[13px] focus-ring";
 
 /**
  * A thread row, presentational: a root in the workspace column (32px, its
@@ -724,7 +724,8 @@ export function ProjectRowView({
 type CardMenu = { rows: () => readonly MenuRow[]; onPick: (id: string) => void };
 
 /** A card line's 12px lead: the state's glyph, so titles one level down
- *  share one column whatever the mark; empty for an unread line. */
+ *  share one column whatever the mark; empty for an unread line. `still`
+ *  draws working as a dot, for a line under its master's. */
 function LineMark({ state, still }: { state: ThreadState | null; still?: boolean }) {
   return (
     <span aria-hidden className="grid size-3 shrink-0 place-items-center">
@@ -798,14 +799,15 @@ function ThreadLine({ kind, thread, now }: { kind: "working" | "paused" | "unrea
 /** A master and its batch: its line with the batch's done tally, its own
  *  working subagents, each batch thread with something to say one step
  *  in, and the queued ones as one count. Settled batch threads are the tally.
- *  The block has one moving mark: a batch thread's working arc is still
- *  under the master's line, as a subagent's is under its board row. */
+ *  The block has one moving mark, at its head: the master's line spins while
+ *  anything in the block works (`block.lead`), whatever the master's own
+ *  state, and a working batch thread under it draws a dot. */
 function MasterLines({ block, now }: { block: MasterBlock; now: number }) {
   const { master, unread, done, total } = block;
   return (
     <span className="flex min-w-0 flex-col" data-card-line="master">
       <span className={LINE}>
-        <LineMark state={unread && !marksAtRest(block.state) ? null : block.state} />
+        <LineMark state={unread && !marksAtRest(block.lead) ? null : block.lead} />
         <LineGlyph thread={master} />
         <span className={cn("min-w-0 flex-1 truncate", unread ? "font-medium text-foreground" : "text-muted-foreground")}>
           {master.title || "Untitled"}
@@ -952,7 +954,7 @@ export function ProjectCardView({
     </>
   );
   const box = cn(
-    "flex w-full min-w-0 cursor-default flex-col rounded-lg px-3 py-2 text-left text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-accent",
+    "flex w-full min-w-0 cursor-default flex-col rounded-lg px-3 py-2 text-left text-[12px] focus-ring",
     // The card is the column's one container: always on its own fill, a step
     // further on hover, the farthest step while selected. No transition (list rows never animate).
     selected ? "bg-sidebar-group-selected" : "bg-sidebar-group hover:bg-sidebar-group-hover",

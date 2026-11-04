@@ -100,10 +100,12 @@ describe("ActionGroup", () => {
     expect(trigger(again.container)!.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("stays closed while live, with the phrase pulsing in the present tense", () => {
+  it("stays closed while live, its phrase in the present tense and still: the working line is the moving one", () => {
     const { container } = mount([read("a", "a.ts"), bash("b", "npm test", { status: "running" })], { live: true });
     expect(trigger(container)!.getAttribute("aria-expanded")).toBe("false");
     expect(container.textContent).toContain("Reading a.ts, running the tests");
+    expect(trigger(container)!.querySelector("[data-slot=working-text]")).toBeNull();
+    expect(trigger(container)!.querySelector("[data-slot=morph-text]")).not.toBeNull();
   });
 
   it("is forced open while a step waits on the person", () => {
@@ -120,20 +122,28 @@ describe("ActionGroup", () => {
     expect(mark.textContent).toBe("1");
   });
 
-  it("draws one call and the thought before it as two rows, no line and no hang", () => {
+  it("draws no row for a settled thought: one call and the thought before it is the call's row alone", () => {
     const { container } = mount([thought("t"), read("a", "src/types.ts")]);
     expect(trigger(container)).toBeNull();
     expect(container.querySelector("[data-group-rows]")!.className).not.toContain("pl-5.5");
+    expect(container.querySelectorAll("[data-step]")).toHaveLength(1);
     expect(container.textContent).toContain("types.ts");
-    // One row for the read (its glyph), nothing repeating it.
-    expect(container.querySelectorAll("[data-glyph]").length).toBe(1);
-    expect(container.textContent).toContain("Thought for 4s");
+    expect(container.textContent).not.toContain("Thought");
   });
 
-  it("draws a run of thinking alone as the thinking row, never a line saying Thought", () => {
-    const { container } = mount([thought("t")]);
-    expect(trigger(container)).toBeNull();
-    expect(container.textContent).toContain("Thought for 4s");
+  it("draws nothing for a run of thoughts alone", () => {
+    const { container } = mount([thought("t"), thought("u")]);
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("shows a thought only in a group opened by hand, as Thought with no duration", () => {
+    const { container } = mount([read("a", "a.ts"), thought("t"), bash("b", "ls")]);
+    act(() => {
+      fireEvent.click(trigger(container)!);
+    });
+    expect(container.querySelectorAll("[data-step]")).toHaveLength(3);
+    expect(container.querySelector("[data-step=t]")?.textContent).toBe("Thought");
+    expect(container.textContent).not.toMatch(/Thought for/);
   });
 
   it("leads the line with the same glyph the run's first read draws on its row", () => {

@@ -41,7 +41,8 @@ describe("NoticeLine", () => {
     const { container } = render(<Fold />);
     const trigger = screen.getByRole("button", { name: "Show the log" });
     expect(trigger.className).toContain("absolute inset-0");
-    expect(trigger.className).toContain("focus-visible:ring-ring");
+    // A button: index.css draws its one ring; nothing draws a second.
+    expect(trigger.className).not.toMatch(/focus-visible:ring/);
     expect(trigger.getAttribute("data-slot")).not.toBe("button");
     expect(container.querySelectorAll("button").length).toBe(1);
     fireEvent.click(trigger);

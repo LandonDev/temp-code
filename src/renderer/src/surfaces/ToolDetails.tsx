@@ -78,7 +78,7 @@ export const ToolDetails = memo(function ToolDetails({
               aria-label={raw ? "Show formatted" : "Show raw"}
               aria-pressed={raw}
               onClick={() => setRaw(!raw)}
-              className="absolute right-0 top-0 z-10 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/details:opacity-100 group-hover/details:delay-(--delay-hover) starting:opacity-0 focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
+              className="absolute right-0 top-0 z-10 text-muted-foreground aria-pressed:bg-foreground/7 aria-pressed:text-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/details:opacity-100 group-hover/details:delay-(--delay-hover) starting:opacity-0 focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
             />
           }
         >
@@ -165,7 +165,7 @@ export function ToolOutputLines({ text, error }: { text: string; error: boolean 
         data-slot="tool-output"
         tabIndex={scrolls ? 0 : undefined}
         className={cn(
-          "max-h-80 overflow-x-hidden overflow-y-auto font-mono text-xs leading-5 whitespace-pre-wrap [overflow-wrap:anywhere] outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "max-h-80 overflow-x-hidden overflow-y-auto font-mono text-xs leading-5 whitespace-pre-wrap [overflow-wrap:anywhere] focus-ring",
           error ? "text-destructive" : "text-muted-foreground",
         )}
       >

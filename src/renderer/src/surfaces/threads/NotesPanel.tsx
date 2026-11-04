@@ -226,7 +226,7 @@ export function NotesView({
             ) : null}
           </>
         ) : (
-          <div tabIndex={0} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+          <div tabIndex={0} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto focus-ring">
             <div className="px-3 py-2 select-text">
               <AgentMarkdown text={text} cwd={cwd} size="compact" />
             </div>

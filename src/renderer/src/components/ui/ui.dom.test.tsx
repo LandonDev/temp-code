@@ -10,7 +10,8 @@ import { Kbd } from "./kbd";
 import { Skeleton } from "./skeleton";
 import { GroupInput, InputGroup } from "./input";
 import { Progress } from "./progress";
-import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY, Tooltip, TooltipContent, TooltipTrigger, resetTooltips, tooltipChunk, warmTooltips } from "./tooltip";
+import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, resetTooltips, tooltipChunk, warmTooltips } from "./tooltip";
+import { TOOLTIP } from "@renderer/lib/ease";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 import { Item, ItemButton } from "./item";
 import { StreamingText } from "./streaming-text";
@@ -22,21 +23,40 @@ vi.mock("@renderer/hooks/paneVisibility", () => ({ usePaneVisible: () => true })
 afterEach(cleanup);
 
 describe("Button", () => {
-  it("is flat: no raise classes, a variant on the slot, a press scale", () => {
-    render(<Button variant="secondary">Save</Button>);
-    const button = screen.getByRole("button", { name: "Save" });
-    expect(button.dataset.slot).toBe("button");
-    expect(button.dataset.variant).toBe("secondary");
-    expect(button.className).not.toMatch(/t-raise|shadow-/);
-    expect(button.className).toMatch(/scale-\[0\.985\]/);
+  it("raises the solid variants on a fill layer, never on the element", () => {
+    const raised = { default: "t-raise-primary", secondary: "t-raise-secondary", destructive: "t-raise-destructive" } as const;
+    for (const [variant, raise] of Object.entries(raised)) {
+      render(<Button variant={variant as keyof typeof raised}>{variant}</Button>);
+      const button = screen.getByRole("button", { name: variant });
+      expect(button.dataset.slot).toBe("button");
+      expect(button.dataset.variant).toBe(variant);
+      expect(button.classList).toContain("t-raise");
+      expect(button.classList).toContain(raise);
+      expect(button.className).not.toMatch(/(^|\s)(hover:)?bg-(primary|secondary|destructive)\b/);
+      expect(button.className).not.toMatch(/scale-/);
+    }
   });
 
-  it("fills on hover over --dur-hover and presses over --dur-fast", () => {
-    render(<Button variant="ghost">Go</Button>);
-    const button = screen.getByRole("button", { name: "Go" });
-    expect(button.className).toContain("duration-(--dur-hover)");
-    expect(button.className).toContain("active:not-aria-[haspopup]:duration-(--dur-fast)");
-    expect(button.className).toContain("data-pressed:duration-(--dur-fast)");
+  it("keeps ghost, outline and link flat: a press steps the fill at once, nothing scales", () => {
+    for (const variant of ["ghost", "outline", "link"] as const) {
+      render(<Button variant={variant}>{variant}</Button>);
+      const button = screen.getByRole("button", { name: variant });
+      expect(button.className).not.toMatch(/scale-|t-raise/);
+      expect(button.className).toContain("duration-(--dur-hover)");
+    }
+    for (const variant of ["ghost", "outline"] as const) {
+      const classes = screen.getByRole("button", { name: variant }).classList;
+      expect(classes).toContain("active:bg-foreground/12");
+      expect(classes).toContain("active:transition-none");
+      expect(classes).toContain("data-pressed:bg-foreground/12");
+    }
+  });
+
+  it("lets a row's cancel win over the ghost press", () => {
+    render(<Button variant="ghost" className="active:bg-transparent">Row</Button>);
+    const classes = screen.getByRole("button", { name: "Row" }).classList;
+    expect(classes).toContain("active:bg-transparent");
+    expect(classes).not.toContain("active:bg-foreground/12");
   });
 
   it("icon sizes are square", () => {
@@ -235,13 +255,13 @@ describe("StatusMark", () => {
     expect(screen.getByLabelText("Queued: Waiting for memory")).toBeTruthy();
   });
 
-  it("still draws working's arc without its turn or its breath", () => {
+  it("still draws working as a dot, without a spinner or its breath", () => {
     const { container, rerender } = render(<StatusMark state="working" still />);
-    const turns = () => (container.querySelector("[data-slot=spinner]") as SVGElement).hasAttribute("data-turning");
-    expect(turns()).toBe(false);
+    expect(container.querySelector("[data-slot=working-dot]")).not.toBeNull();
+    expect(container.querySelector("[data-slot=spinner]")).toBeNull();
     expect(container.querySelector(".status-breathe")).toBeNull();
     rerender(<StatusMark state="working" />);
-    expect(turns()).toBe(true);
+    expect(container.querySelector("[data-slot=spinner]")?.hasAttribute("data-turning")).toBe(true);
   });
 
   it("glyph={false} draws the word alone", () => {
@@ -397,6 +417,54 @@ describe("Tooltip popup", () => {
       expect(popup.className).toContain(name);
     }
     expect(popup.className).not.toContain("font-medium");
+    // Tailwind's scale-* sets `scale`, so that is the property the popup transitions.
+    expect(popup.className).toContain("transition-[scale,opacity]");
+    expect(popup.className).toContain("motion-reduce:transition-[opacity]");
+    expect(popup.className).not.toMatch(/transition-\[transform|motion-reduce:transition-none/);
+  });
+});
+
+describe("Tooltip neighbours", () => {
+  const wait = (ms: number) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
+  const hover = (el: Element) => {
+    fireEvent.pointerEnter(el, { pointerType: "mouse" });
+    fireEvent.mouseEnter(el);
+    fireEvent.mouseMove(el);
+  };
+  const leave = (el: Element) => {
+    fireEvent.pointerLeave(el, { pointerType: "mouse" });
+    fireEvent.mouseLeave(el);
+  };
+
+  it("inside one provider, the second label opens without another wait", async () => {
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+    render(
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger render={<button type="button" />}>Copy</TooltipTrigger>
+          <TooltipContent>Copy the turn</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger render={<button type="button" />}>Note</TooltipTrigger>
+          <TooltipContent>Save as a note</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>,
+    );
+    hover(screen.getByRole("button", { name: "Copy" }));
+    await wait(TOOLTIP.delay + 60);
+    expect(screen.queryByText("Copy the turn")).not.toBeNull();
+    leave(screen.getByRole("button", { name: "Copy" }));
+    hover(screen.getByRole("button", { name: "Note" }));
+    await wait(40);
+    expect(screen.queryByText("Save as a note")).not.toBeNull();
+  });
+
+  it("the delays are TOOLTIP's, re-exported", () => {
+    expect(TOOLTIP_DELAY).toBe(TOOLTIP.delay);
+    expect(TOOLTIP_CLOSE_DELAY).toBe(TOOLTIP.closeDelay);
   });
 });
 

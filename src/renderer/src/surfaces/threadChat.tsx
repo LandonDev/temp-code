@@ -430,7 +430,7 @@ export function useThreadChat({
                   aria-label="Jump to latest"
                   data-jump-to-bottom
                   onClick={() => jumpToBottomRef.current?.()}
-                  className="pointer-events-auto border border-border bg-popover text-muted-foreground shadow-overlay hover:bg-popover hover:text-foreground"
+                  className="pointer-events-auto border border-border bg-popover text-muted-foreground shadow-overlay hover:bg-popover hover:text-foreground active:bg-muted data-pressed:bg-muted"
                 >
                   <ChevronDown className="size-4" />
                 </Button>

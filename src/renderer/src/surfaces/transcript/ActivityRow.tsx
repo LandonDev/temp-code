@@ -30,7 +30,6 @@ export function ActivityRow({
   block,
   cwd,
   expanded = false,
-  endTs,
   onApproval,
   onOpenFile,
   onOpenDiff,
@@ -40,8 +39,6 @@ export function ActivityRow({
   expanded?: boolean;
   /** The turn is live; a row speaks in its own call's tense either way. */
   live?: boolean;
-  /** A thought's settled time (its turn item's end), for "Thought for 4s". */
-  endTs?: number;
   onApproval?: ApprovalHandler;
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path: string) => void;
@@ -61,7 +58,7 @@ export function ActivityRow({
   }
   if (isThinkingBlock(block)) {
     return (
-      <ActivityThinkingRow block={block} cwd={cwd} expandable={expanded} endTs={endTs} onOpenFile={onOpenFile} />
+      <ActivityThinkingRow block={block} cwd={cwd} expandable={expanded} onOpenFile={onOpenFile} />
     );
   }
   // An edit, waiting or not, is one row per file; one approval card under them all.

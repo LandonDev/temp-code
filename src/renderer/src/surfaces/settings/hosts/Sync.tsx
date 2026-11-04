@@ -42,7 +42,7 @@ export function LocalSync({
       ) : null}
       {conflicts.length > 0 ? (
         <Collapsible>
-          <CollapsibleTrigger className="group/fold flex h-7 items-center gap-1 rounded-md text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+          <CollapsibleTrigger className="group/fold flex h-7 items-center gap-1 rounded-md text-xs text-muted-foreground hover:text-foreground">
             <ChevronRight className="size-3 transition-transform duration-(--dur-fast) group-data-[panel-open]/fold:rotate-90 motion-reduce:transition-none" />
             {conflicts.length === 1 ? "1 conflict copy" : `${conflicts.length} conflict copies`}
           </CollapsibleTrigger>

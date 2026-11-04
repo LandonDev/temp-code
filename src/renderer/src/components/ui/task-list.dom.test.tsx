@@ -81,7 +81,7 @@ describe("each task fits its column", () => {
   it("reads the active label in full foreground, with no pulse anywhere in the list", () => {
     const { container } = render(<TaskList tasks={TASKS} />);
     expect(labelOf(container, LONG).className).toContain("text-foreground");
-    expect(container.querySelector(".text-pulse")).toBeNull();
+    expect(container.querySelector('[data-slot="working-text"]')).toBeNull();
   });
 
   it("shows a cut label's whole text on hover, and nothing for a label that fits", async () => {
@@ -219,7 +219,7 @@ describe("the folded list's header", () => {
     expect(headline.className).toContain("block");
     expect(headline.className).toContain("truncate");
     expect(headline.className).toContain("min-w-0");
-    expect(headline.querySelector(".text-pulse")).toBeNull();
+    expect(headline.querySelector('[data-slot="working-text"]')).toBeNull();
   });
 });
 

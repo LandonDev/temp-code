@@ -1,6 +1,6 @@
 // A9 (notices): a system row, and the handoff divider.
 import { Spinner } from "../../components/ui/spinner";
-import { TextPulse } from "../../components/ui/text-pulse";
+import { WorkingText } from "../../components/ui/working-text";
 import { HARNESS_TITLE, type Block } from "../../lib/session";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import type { OpenFileFn } from "../../lib/search";
@@ -34,7 +34,7 @@ export function HandoffDivider({ block }: { block: Block }) {
         role="status"
         aria-label={`Preparing a handoff to ${to}`}
         glyph={<Spinner />}
-        lead={<TextPulse>{`Preparing a handoff to ${to}`}</TextPulse>}
+        lead={<WorkingText>{`Preparing a handoff to ${to}`}</WorkingText>}
       />
     );
   }

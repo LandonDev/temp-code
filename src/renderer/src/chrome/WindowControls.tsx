@@ -85,7 +85,7 @@ export function WindowControls() {
             aria-label="Close window"
             data-tauri-drag-region="false"
             onClick={handleClose}
-            className="h-full w-10 rounded-none text-muted-foreground hover:bg-destructive hover:text-primary-foreground"
+            className="h-full w-10 rounded-none text-muted-foreground hover:bg-destructive hover:text-destructive-foreground active:bg-destructive/90"
           >
             <X className="size-3.5" strokeWidth={1.75} />
           </Button>

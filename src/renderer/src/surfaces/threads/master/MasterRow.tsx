@@ -43,7 +43,7 @@ import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardR
  * whole line folds the task list open under it (compact TaskRows), closed
  * by default and remembered per row for the window's life (taskFold.ts).
  * Under them the thread's live
- * subagents, one still line each (AgentLines). A row of a host out of reach is
+ * subagents, one still line each, working as a dot (AgentLines). A row of a host out of reach is
  * under the offline tint. A click opens the thread's full view in the
  * board's place; on hover the model mark gives way to Message, the one
  * verb the state calls for (Pause, Resume, Start now) and ⋯, the thread's
@@ -345,7 +345,7 @@ function TaskBar({
         aria-label={`Tasks: ${String(bar.done)} of ${String(bar.total)} done`}
         onClick={stop}
         onKeyDown={stop}
-        className="-mx-1 flex h-4 w-[calc(100%+8px)] items-center gap-2 rounded-sm px-1 outline-none transition-[background-color] duration-(--dur-hover) hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+        className="-mx-1 flex h-4 w-[calc(100%+8px)] items-center gap-2 rounded-sm px-1 transition-[background-color] duration-(--dur-hover) hover:bg-foreground/5 motion-reduce:transition-none"
       >
         <Progress value={bar.done} max={bar.total} fill={working ? "foreground" : "muted"} aria-hidden className="min-w-0 flex-1" />
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums" dir="ltr" data-bar-tally>
@@ -394,8 +394,8 @@ function RowAction({
 }
 
 /** The thread's live subagents under its two lines (agentSummary.ts), in
- *  the title's column: per agent a still status glyph (the row's own
- *  spinner is its one moving mark), its title, the state's word in its
+ *  the title's column: per agent a still status glyph, working as a dot
+ *  (the row's own spinner is its one moving mark), its title, the state's word in its
  *  tone and what it is about, muted, then the host's glyph; one quiet line
  *  for the ones past the cap and the settled ones ("2 more, 3 done"). A
  *  line opens its agent in the board's place, where its approval or

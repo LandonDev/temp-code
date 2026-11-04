@@ -177,8 +177,11 @@ describe("SendButton", () => {
     render(<SendButton intent="send" disabled onSubmit={() => {}} onPause={() => {}} />);
     const button = screen.getByRole("button", { name: "Send" });
     expect(button.hasAttribute("disabled")).toBe(true);
-    expect(button.className).toContain("transition-[opacity,background-color,color,border-color,scale]");
+    expect(button.className).toContain("transition-[opacity,color]");
     expect(button.className).toContain("duration-(--dur-fast)");
+    expect(button.className).not.toMatch(/overflow-hidden|scale/);
+    expect(button.classList).toContain("t-raise-primary");
+    expect(button.querySelector("span.overflow-hidden")).not.toBeNull();
   });
 
   it("swaps its glyph through SwapIcon on every change of intent, with no blur", () => {

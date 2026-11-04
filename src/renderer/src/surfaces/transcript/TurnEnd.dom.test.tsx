@@ -76,82 +76,8 @@ describe("TurnDuration", () => {
   });
 });
 
-describe("TurnEnd's thinking tail", () => {
-  it("is the thinking row's shape: the glyph slot and a 28px row at 13px", () => {
-    const user = { id: "u", role: "user" as const, text: "go" };
-    const { container } = render(
-      <TurnEnd
-        turn={{ id: "t", index: 0, isLast: false, settled: false, blocks: [user], userBlock: user, durationMs: undefined, startedAt: undefined }}
-        harnessOf={() => undefined}
-        turnState={null}
-      />,
-    );
-    const tail = container.querySelector('[data-slot="thinking-tail"]')!;
-    expect(tail).not.toBeNull();
-    expect(tail.className).toContain("h-7");
-    expect(tail.className).toContain("text-[13px]");
-    expect(tail.className).not.toMatch(/h-\[/);
-    expect(tail.querySelector("svg")).not.toBeNull();
-    expect(tail.textContent).toBe("Thinking");
-  });
-});
-
-describe("TurnEnd's thinking tail says the turn's true phase", () => {
-  type Blocks = Parameters<typeof TurnEnd>[0]["turn"]["blocks"];
-  const live = (blocks: Blocks, activity?: string) => {
-    const state = { status: "running", busy: true, blocks, activity } as unknown as TurnSession;
-    return (
-      <TurnEnd
-        turn={{ id: "t", index: 0, isLast: true, settled: false, blocks, userBlock: blocks[0], durationMs: undefined, startedAt: undefined }}
-        harnessOf={() => undefined}
-        turnState={state}
-        liveState={false}
-      />
-    );
-  };
-  const tailOf = (container: HTMLElement) => container.querySelector('[data-slot="thinking-tail"]') as HTMLElement | null;
-  // The newest word: a changed word swaps in while the old one leaves.
-  const wordOf = (container: HTMLElement) => [...(tailOf(container)?.querySelectorAll("[data-swap-text]") ?? [])].at(-1)?.textContent;
-  const pending = { id: "pending:1", role: "user" as const, text: "go", pending: true };
-  const echoed = { id: "u", role: "user" as const, text: "go" };
-
-  it("reads Sending while the message is not yet echoed, then each phase word, held 300 ms apiece", () => {
-    vi.useFakeTimers();
-    try {
-      const view = render(live([pending], "Thinking"));
-      expect(wordOf(view.container)).toBe("Sending");
-      for (const word of ["Starting the CLI", "Initializing", "Waiting for the provider", "Rate limited, retry 2 in 30 s", "Waiting for the provider, 25 s"]) {
-        view.rerender(live([echoed], word));
-        act(() => vi.advanceTimersByTime(300));
-        expect(wordOf(view.container)).toBe(word);
-        expect(tailOf(view.container)?.getAttribute("aria-label")).toBe(word);
-      }
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("reads Thinking when the host's word is the running word, or with nothing said yet", () => {
-    expect(tailOf(render(live([echoed], "Thinking")).container)?.textContent).toBe("Thinking");
-    cleanup();
-    expect(tailOf(render(live([echoed])).container)?.textContent).toBe("Thinking");
-  });
-
-  it("reads Thinking once the turn has content of its own, whatever the host still says", () => {
-    const blocks = [echoed, { id: "a", role: "tool" as const, text: "", tool: { name: "Read" } }, { id: "r", role: "reasoning" as const, text: "" }] as Blocks;
-    expect(tailOf(render(live(blocks, "Reading b.ts")).container)?.textContent).toBe("Thinking");
-  });
-
-  it("gives way to the streaming summary row, which keeps the tail's 28px shape", () => {
-    const view = render(live([echoed], "Waiting for the provider"));
-    expect(tailOf(view.container)?.className).toContain("h-7");
-    view.rerender(live([echoed, { id: "r", role: "reasoning", text: "Reading the plan first.", streaming: true }], "Thinking"));
-    expect(tailOf(view.container)).toBeNull();
-  });
-});
-
 describe("TurnEnd of a paused turn", () => {
-  it("says Paused with the frozen time, never Worked for, and no thinking tail", () => {
+  it("says Paused with the frozen time, never Worked for, and no working line", () => {
     const user = { id: "u", role: "user" as const, text: "go", startedAt: 10, durationMs: 1000 };
     const state = { status: "paused", busy: false, frozenActiveElapsed: 63_000, blocks: [user] } as unknown as TurnSession;
     const { container } = render(
@@ -164,13 +90,13 @@ describe("TurnEnd of a paused turn", () => {
       </TurnStateContext.Provider>,
     );
     expect(container.textContent).not.toMatch(/Worked for/);
-    expect(container.querySelector('[data-slot="thinking-tail"]')).toBeNull();
+    expect(container.querySelector('[data-slot="turn-line"]')).toBeNull();
     expect(container.querySelector('[data-state="paused"]')).not.toBeNull();
   });
 });
 
 describe("TurnEnd of a queued turn", () => {
-  it("draws no closing line and no thinking tail before the turn ran: the strip says Queued", () => {
+  it("draws no closing line and no working line before the turn ran: the strip says Queued", () => {
     const user = { id: "u", role: "user" as const, text: "go", startedAt: 10, durationMs: 1000 };
     const state = { status: "queued", busy: false, blocks: [user] } as unknown as TurnSession;
     const { container } = render(
@@ -184,7 +110,7 @@ describe("TurnEnd of a queued turn", () => {
       </TurnStateContext.Provider>,
     );
     expect(container.textContent).not.toMatch(/Worked for/);
-    expect(container.querySelector('[data-slot="thinking-tail"]')).toBeNull();
+    expect(container.querySelector('[data-slot="turn-line"]')).toBeNull();
   });
 
   it("where no strip says it (the fleet's agent detail), the live row says Queued, not Working", () => {
@@ -224,8 +150,11 @@ describe("TurnEnd's live state", () => {
     expect(live().container.querySelector('[data-state="working"]')).not.toBeNull();
   });
 
-  it("draws nothing where liveState is off: the timer above the composer runs instead", () => {
-    expect(live(false).container.textContent).toBe("");
+  it("draws only the working line where liveState is off: the timer above the composer runs instead", () => {
+    const { container } = live(false);
+    expect(container.querySelector('[data-state="working"]')).toBeNull();
+    expect(container.querySelector('[data-slot="turn-line"] [role="status"]')?.getAttribute("aria-label")).toBe("Thinking");
+    expect(container.textContent).not.toMatch(/\d+s/);
   });
 });
 
@@ -378,7 +307,7 @@ describe("TurnEnd of a stopped turn", () => {
     expect(container.textContent).toBe("Worked for 1s");
   });
 
-  it("a stopped turn still open keeps its Stopped row and draws no closing line", () => {
+  it("a stopped turn still open keeps its Stopped row and draws no closing line and no working line", () => {
     const busy = { ...state, status: "running", busy: true } as unknown as TurnSession;
     const { container } = render(
       <TranscriptSessionContext.Provider value="s1">
@@ -410,26 +339,27 @@ describe("TurnEnd while the turn waits on its agents", () => {
       </TurnStateContext.Provider>,
     );
   };
-  const tail = (c: HTMLElement) => c.querySelector('[data-slot="thinking-tail"]');
+  /** The working line's words, as its status names them. */
+  const said = (c: HTMLElement) => c.querySelector('[data-slot="turn-line"] [role="status"]')?.getAttribute("aria-label");
   afterEach(() => sessionStore.reset());
 
   it("says Waiting on a subagent until the title lands, then names it", async () => {
     const view = live([user, reply, wait({ agentId: "c1" })]);
-    expect(tail(view.container)?.getAttribute("aria-label")).toBe("Waiting on a subagent");
+    expect(said(view.container)).toBe("Waiting on a subagent");
     await act(async () => {
       sessionStore.injectPush({ push: "session", session: agentMeta("c1", "Review the perf pass") }, "local");
       await new Promise((r) => setTimeout(r, 400));
     });
-    expect(tail(view.container)?.getAttribute("aria-label")).toBe("Waiting on Review the perf pass");
+    expect(said(view.container)).toBe("Waiting on Review the perf pass");
   });
 
   it("counts several agents", () => {
     const view = live([user, reply, wait({ agentIds: ["c1", "c2"] })]);
-    expect(tail(view.container)?.getAttribute("aria-label")).toBe("Waiting on 2 subagents");
+    expect(said(view.container)).toBe("Waiting on 2 subagents");
   });
 
-  it("draws no wait tail once prose follows the wait", () => {
+  it("stops saying the wait once prose follows it", () => {
     const view = live([user, wait({ agentId: "c1" }), { id: "p", role: "assistant", text: "Meanwhile I read the docs." }]);
-    expect(tail(view.container)).toBeNull();
+    expect(said(view.container)).toBe("Thinking");
   });
 });

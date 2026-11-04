@@ -18,14 +18,14 @@ function turn(box: HTMLSpanElement | null): (() => void) | undefined {
 
 /** The one indeterminate spinner: a 16px arc on a 900ms turn, in the
  *  current colour. Pair it with a word; never spin alone in empty space.
- *  `still` draws the arc without its turn. The class sizes the box; the arc
- *  fills it. */
-function Spinner({ className, still, ...props }: ComponentProps<"span"> & { still?: boolean }) {
+ *  The class sizes the box; the arc fills it. A line that must not move
+ *  draws working as a dot instead (StatusMark `still`). */
+function Spinner({ className, ...props }: ComponentProps<"span">) {
   return (
     <span
-      ref={still ? undefined : turn}
+      ref={turn}
       data-slot="spinner"
-      data-turning={still ? undefined : ""}
+      data-turning=""
       role="status"
       aria-label="Loading"
       className={cn("inline-grid size-4 shrink-0 place-items-center", className)}

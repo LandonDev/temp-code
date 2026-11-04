@@ -85,6 +85,14 @@ describe("SpawnChildRow", () => {
     expect(container.querySelector("[data-host-glyph]")).toBeNull();
   });
 
+  it("draws a running child's Working as a dot, never a spinner", async () => {
+    await push(meta("a", "Review the perf pass", "running"));
+    const { container } = render(<SpawnChildRow id="a" task="Review only" />);
+    expect(container.querySelector("[data-slot=working-dot]")).not.toBeNull();
+    expect(container.querySelector("[data-slot=spinner]")).toBeNull();
+    expect(container.querySelector("[data-slot=status-word]")?.textContent).toBe("Working");
+  });
+
   it("stands on the spawn's title, then its task's first line, until the store has one", () => {
     expect(seen(render(<SpawnChildRow id="x" inputTitle="Audit the gateway" task="long prompt" />).container)).toBe("SpawnedAudit the gateway");
     cleanup();

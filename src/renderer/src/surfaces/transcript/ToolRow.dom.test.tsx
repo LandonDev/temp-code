@@ -33,6 +33,9 @@ function call(
 
 afterEach(cleanup);
 
+/** A verb's colour sits on its MorphText box. */
+const verbBox = (word: HTMLElement) => word.closest("[data-slot=morph-text]") as HTMLElement;
+
 describe("ActionRow", () => {
   it("a read says Read and the basename, has an unturned caret, and opens the file at its line", () => {
     const onOpenFile = vi.fn();
@@ -70,15 +73,16 @@ describe("ActionRow", () => {
     );
     expect(getByLabelText("Failed").getAttribute("data-slot")).toBe("status-mark");
     expect(getByLabelText("Failed").getAttribute("class")).toContain("text-destructive");
-    expect(getByText("Ran").className).toContain("text-muted-foreground");
-    expect(getByText("Ran").className).not.toContain("destructive");
+    expect(verbBox(getByText("Ran")).className).toContain("text-muted-foreground");
+    expect(verbBox(getByText("Ran")).className).not.toContain("destructive");
   });
 
-  it("a running row shows the spinner and the live verb", () => {
+  it("a running row shows working as a dot and the live verb: the working line is the moving mark", () => {
     const { container, getByText } = render(
       <ActionRow block={call("Bash", { command: "npm test" }, { status: "running" })} />,
     );
-    expect(container.querySelector('[data-slot="spinner"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="working-dot"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="spinner"]')).toBeNull();
     expect(getByText("Running")).toBeTruthy();
   });
 
@@ -164,12 +168,13 @@ describe("ActionRow", () => {
     const box = view.container.querySelector<HTMLElement>("[data-glyph]")!;
     expect(box.className).toContain("size-3.5");
     expect(box.querySelector("[data-swap]")?.getAttribute("data-swap")).toBe("working");
-    expect(view.container.querySelector("[data-swap-text]")?.textContent).toBe("Reading");
+    expect(view.container.querySelector("[data-morph-key]")?.textContent).toBe("Reading");
     view.rerender(<ActionRow block={{ ...running, tool: { ...running.tool!, status: "completed" } }} />);
     // The same box: the old face leaves while the new one enters.
     expect(view.container.querySelector("[data-glyph]")).toBe(box);
     expect([...box.querySelectorAll("[data-swap]")].map((el) => el.getAttribute("data-swap"))).toEqual(["working", "icon"]);
-    expect([...view.container.querySelectorAll("[data-swap-text]")].map((el) => el.textContent)).toEqual(["Reading", "Read"]);
+    // The verb morphs: the old word leaves before the new one arrives.
+    expect([...view.container.querySelectorAll("[data-morph-key]")].map((el) => el.textContent)).toEqual(["Reading"]);
   });
 
   it("is a 28px line at 13px whose caret turns on --dur-base", () => {
@@ -201,7 +206,10 @@ describe("ActionRow", () => {
       fireEvent.click(getByRole("button", { name: "Show raw" }));
     });
     expect(container.querySelector("pre")!.textContent).toContain('"pattern"');
-    expect(getByRole("button", { name: "Show formatted" })).toBeTruthy();
+    // On, the toggle keeps a fill and the foreground, so its state shows.
+    const on = getByRole("button", { name: "Show formatted" });
+    expect(on.getAttribute("aria-pressed")).toBe("true");
+    for (const name of ["aria-pressed:bg-foreground/7", "aria-pressed:text-foreground"]) expect(on.classList).toContain(name);
   });
 
   it("a call waiting on approval shows its command open above Allow and Deny, with no caret", () => {
@@ -250,7 +258,7 @@ describe("ActionRow", () => {
         <AgentSpawnRow block={block} />
       </SelectSessionContext.Provider>,
     );
-    expect(getByText("Failed").className).toContain("text-muted-foreground");
+    expect(verbBox(getByText("Failed")).className).toContain("text-muted-foreground");
     expect(container.querySelector('[data-slot="status-mark"]')?.getAttribute("data-state")).toBe("failed");
     fireEvent.click(getByRole("button", { name: "Failed Port the view" }));
     expect(onSelect).toHaveBeenCalledWith("a1");

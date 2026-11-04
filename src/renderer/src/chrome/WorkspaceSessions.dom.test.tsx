@@ -252,10 +252,33 @@ describe('a project card', () => {
     expect(block.textContent).toContain('1 queued')
     // A housed thread prints only in its master's block.
     expect(probe.container.querySelectorAll('[data-card-line]')).toHaveLength(1)
-    // Its working arc is drawn still: the block has one moving mark at most.
-    const arcs = block.querySelectorAll('[data-slot="spinner"]')
-    expect(arcs).toHaveLength(1)
-    expect(arcs[0]!.hasAttribute('data-turning')).toBe(false)
+    // The block has one moving mark, on the master's line though the master
+    // only watches; the working batch line under it draws a dot.
+    const spinners = block.querySelectorAll('[data-slot="spinner"]')
+    expect(spinners).toHaveLength(1)
+    expect(spinners[0]!.hasAttribute('data-turning')).toBe(true)
+    const head = block.firstElementChild!
+    expect(head.textContent).toContain('Release train')
+    expect(head.querySelector('[data-slot="spinner"]')).toBe(spinners[0])
+    const batchLine = [...block.children].find((c) => c.textContent?.includes('Card view'))!
+    expect(batchLine.querySelector('[data-slot="working-dot"]')).not.toBeNull()
+    expect(batchLine.querySelector('[data-slot="spinner"]')).toBeNull()
+    probe.unmount()
+  })
+
+  it("keeps a watching master's own mark when nothing in its block works", () => {
+    const master: ThreadRow = {
+      ...threadRow(meta('m', { title: 'Release train', status: 'watching', isMaster: true }), {}),
+      batch: [
+        threadRow(meta('b1', { title: 'Card view', masterId: 'm', status: 'waiting' }), {}, 0, true),
+        threadRow(meta('b2', { masterId: 'm', status: 'queued' }), {}, 0, true)
+      ]
+    }
+    const probe = mountProbe(projectCard([master]))
+    const block = lineOf(probe.container, 'Release train')
+    expect(block.querySelector('[data-slot="spinner"]')).toBeNull()
+    expect(block.querySelector('[data-slot="working-dot"]')).toBeNull()
+    expect(block.firstElementChild!.querySelector('[data-slot="status-mark"]')?.getAttribute('data-state')).toBe('watching')
     probe.unmount()
   })
 

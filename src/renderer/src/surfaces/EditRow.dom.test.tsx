@@ -39,7 +39,8 @@ afterEach(() => {
 describe('EditRow', () => {
   it('reads as one line: the verb, the file, its counts', () => {
     const { getByText, container } = render(<EditRow block={edit} cwd="/repo" />)
-    expect(getByText('Edited').className).toContain('text-muted-foreground')
+    // The verb's colour sits on its MorphText box.
+    expect(getByText('Edited').closest('[data-slot=morph-text]')!.className).toContain('text-muted-foreground')
     expect(getByText('a.ts')).toBeTruthy()
     expect(getByText('+1').className).toContain('text-success')
     expect(getByText('−1').className).toContain('text-destructive')
@@ -141,7 +142,7 @@ describe('EditRow', () => {
     const running = withTool(edit, { status: 'running' }, 'run1')
     const { getByRole, rerender, container } = render(<EditRow block={running} cwd="/repo" />)
     expect(getByRole('button', { name: 'Editing a.ts' }).getAttribute('aria-expanded')).toBe('false')
-    expect(container.querySelector('[data-slot="spinner"]')).not.toBeNull()
+    expect(container.querySelector('[data-slot="working-dot"]')).not.toBeNull()
     await act(async () => {
       rerender(<EditRow block={withTool(running, { status: 'completed' }, 'run1')} cwd="/repo" />)
     })

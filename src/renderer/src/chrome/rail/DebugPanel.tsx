@@ -93,7 +93,7 @@ export function DebugView({
 
   const consoleGroup = (heading: string | null) => (
     <Group heading={heading} fill>
-      <div ref={consoleBox} tabIndex={0} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+      <div ref={consoleBox} tabIndex={0} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto focus-ring">
         <div className="px-3 py-1 font-mono text-xs leading-relaxed text-muted-foreground" data-slot="debug-console">
           {output.map((line, i) => (
             <div key={i} className="break-all whitespace-pre-wrap">

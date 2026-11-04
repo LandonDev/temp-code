@@ -4,7 +4,7 @@ import { ChevronRight } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
-import { SwapText, useCountUp } from "../../motion";
+import { MorphText, useCountUp } from "../../motion";
 import { Counts } from "./Counts";
 import { STEP_LINE } from "./stepLine";
 
@@ -75,18 +75,18 @@ export function ActionLine({
           aria-label={label}
           aria-expanded={opens ? !!open : undefined}
           onClick={action}
-          className="absolute inset-0 h-auto rounded-md hover:bg-transparent active:bg-transparent aria-expanded:bg-transparent active:not-aria-[haspopup]:scale-100 focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute inset-0 h-auto rounded-md hover:bg-transparent active:bg-transparent aria-expanded:bg-transparent"
         />
       ) : (
         <span className="sr-only">{label}</span>
       )}
       {glyph}
       <span className="pointer-events-none flex min-w-0 items-center gap-2">
-        {/* Keyed by the word: a change of tense ("Reading" to "Read") swaps in place. */}
+        {/* Keyed by the word: a change of tense ("Reading" to "Read") morphs in place. */}
         {verb ? (
-          <SwapText state={verb} className={cn("shrink-0 text-muted-foreground", action && LIFT)}>
+          <MorphText state={verb} className={cn("shrink-0 text-muted-foreground", action && LIFT)}>
             {verb}
-          </SwapText>
+          </MorphText>
         ) : null}
         {objectText}
         {tally ? <span className="shrink-0 text-muted-foreground tabular-nums">{tally}</span> : null}
@@ -141,7 +141,7 @@ function ObjectText({
         event.stopPropagation();
         onObject();
       }}
-      className="pointer-events-auto relative h-auto min-w-0 justify-start px-0 text-[13px] font-normal underline-offset-2 active:not-aria-[haspopup]:scale-100 focus-visible:underline"
+      className="pointer-events-auto relative h-auto min-w-0 justify-start px-0 text-[13px] font-normal underline-offset-2 focus-visible:underline"
     />
   ) : null;
   const text = <span className={cls}>{object}</span>;

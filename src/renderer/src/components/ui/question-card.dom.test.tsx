@@ -90,10 +90,14 @@ describe("QuestionCard", () => {
     expect(prompt.className.split(" ")).toEqual(expect.arrayContaining(["text-sm", "leading-[22px]"]));
     const list = card.querySelector<HTMLElement>("ul")!;
     expect(list.className.split(" ")).toEqual(expect.arrayContaining(["-mx-2", "mt-2"]));
+    // An option highlights at once, 4px inside the card's 8px corner on a concentric 4px radius.
+    const option = list.querySelector<HTMLElement>(".min-h-7")!;
+    expect(option.className.split(" ")).toEqual(expect.arrayContaining(["rounded-sm", "duration-(--dur-instant)"]));
+    expect(option.className).not.toMatch(/transition-\[|rounded-md/);
     const rows = [...list.querySelectorAll<HTMLElement>("button[aria-pressed]")];
     expect(rows).toHaveLength(3);
     for (const row of rows) {
-      expect(row.className.split(" ")).toEqual(expect.arrayContaining(["min-h-7", "px-2", "gap-2", "rounded-md"]));
+      expect(row.className.split(" ")).toEqual(expect.arrayContaining(["min-h-7", "px-2", "gap-2", "rounded-sm"]));
       expect(row.className).not.toMatch(/\b(gap-3|px-2\.5|rounded-lg)\b/);
       const cap = row.firstElementChild as HTMLElement;
       expect(cap.textContent).toMatch(/^[ABC]$/);

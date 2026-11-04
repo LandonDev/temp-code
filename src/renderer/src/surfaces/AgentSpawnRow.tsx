@@ -134,7 +134,7 @@ export function AgentSpawnRow({ block }: { block: Block }) {
 }
 
 /** What a spawn row says about one child: its host's glyph and where it
- *  stands, Working drawn still (the group's own line already moves). */
+ *  stands, working as a dot (the group's own line already moves). */
 export function SpawnedAgentMarks({ id }: { id: string }) {
   const meta = useAgentMeta(id);
   const state = stateOf(meta?.status);

@@ -288,6 +288,43 @@ describe("masterBlock", () => {
     expect(masterBlock(master, false)).toBeNull();
     expect(masterBlock(master, true)).not.toBeNull();
   });
+
+  describe("lead", () => {
+    const b = (id: string, status: SessionMeta["status"], children?: ThreadRow[]) => ({
+      ...row(id, { status, masterId: "m" }, {}, true),
+      ...(children ? { children } : {}),
+    });
+    const agent = (id: string, status: SessionMeta["status"]) => row(id, { status, parentId: "x" }, {}, true);
+    const block = (status: SessionMeta["status"], batch: ThreadRow[], children?: ThreadRow[]) =>
+      masterBlock({ ...row("m", { status, isMaster: true }), batch, ...(children ? { children } : {}) }, false)!;
+
+    it("leads as working while a watching master's block works, its own state kept", () => {
+      const working = block("watching", [b("run", "running"), b("wait", "waiting")]);
+      expect(working).toMatchObject({ state: "watching", lead: "working" });
+      const quiet = block("watching", [b("wait", "waiting"), b("q", "queued")]);
+      expect(quiet).toMatchObject({ state: "watching", lead: "watching" });
+    });
+
+    it("counts a batch thread's working subagents and the master's own", () => {
+      const viaLine = block("watching", [b("w", "watching", [agent("a", "running")])]);
+      expect(viaLine).toMatchObject({ state: "watching", lead: "working" });
+      const viaMaster = block("watching", [b("q", "queued")], [agent("a", "running")]);
+      expect(viaMaster).toMatchObject({ state: "watching", lead: "working" });
+      // A subagent that only waits is not work in hand.
+      const waitingAgent = block("watching", [b("w", "watching", [agent("a", "waiting")])]);
+      expect(waitingAgent.lead).toBe("watching");
+    });
+
+    it("keeps a louder or held state of the master's own", () => {
+      expect(block("waiting", [b("run", "running")])).toMatchObject({ state: "waiting", lead: "waiting" });
+      expect(block("paused", [b("run", "running")])).toMatchObject({ state: "paused", lead: "paused" });
+      expect(block("running", [b("wait", "waiting")])).toMatchObject({ state: "working", lead: "working" });
+    });
+
+    it("leads as working over an idle master (an older host) whose batch works", () => {
+      expect(block("idle", [b("run", "running")])).toMatchObject({ state: "idle", lead: "working" });
+    });
+  });
 });
 
 describe("workspaceMarks", () => {

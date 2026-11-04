@@ -1,5 +1,5 @@
 // A8 (action rows): the row for one call that is not a file change.
-import { useContext, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
 import { resolveWorkspacePath } from "../../lib/paths";
 import type { OpenFileFn } from "../../lib/search";
@@ -20,12 +20,15 @@ import { useAction, type Action } from "./actionModel";
 import { ApprovalCard } from "./ApprovalCard";
 import { ToolGlyph } from "./ToolGlyph";
 import { useGroupHand } from "./groupHand";
+import { openedLive } from "./workingOpen";
 import type { ApprovalHandler } from "./types";
 
 /**
  * One call as one quiet line. A read opens its file; a command, a search,
  * a tool open their body in place under the line; a call waiting on the
- * person shows its body open, with the approval card under it.
+ * person shows its body open, with the approval card under it. A call the
+ * person opened from the working line while it ran lands open, and that
+ * counts as their hand on its group.
  */
 export function ActionRow({
   block,
@@ -45,8 +48,12 @@ export function ActionRow({
   onApproval?: ApprovalHandler;
 }) {
   const action = useAction(block, cwd, live);
-  const [open, setOpen] = useState(false);
+  const [openedThere] = useState(() => openedLive(block.id));
+  const [open, setOpen] = useState(openedThere);
   const hand = useGroupHand();
+  useEffect(() => {
+    if (openedThere) hand?.();
+  }, [openedThere, hand]);
   const threadHost = useTranscriptHost();
   const openThread = useThreadOpener(action);
   const hasBody = action.opens !== "file" && action.opens !== "none";

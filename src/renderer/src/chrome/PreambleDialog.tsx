@@ -162,7 +162,7 @@ function PreambleForm({
           </Field>
           <section aria-label="Preview" className="flex min-w-0 flex-col gap-1">
             <h3 className="text-xs font-medium text-muted-foreground">Preview</h3>
-            <div tabIndex={0} className="h-64 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-card outline-none [--scrollbar-inset:var(--radius-lg)] focus-visible:ring-2 focus-visible:ring-ring">
+            <div tabIndex={0} className="h-64 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-card [--scrollbar-inset:var(--radius-lg)] focus-ring">
               <div className="px-3 py-2 text-[13px] [&_h1]:text-[13px] [&_h2]:text-[13px] [&_h3]:text-xs [&_h4]:text-xs" data-preamble-preview>
                 {normalized ? (
                   <Suspense fallback={<pre className="whitespace-pre-wrap font-sans text-xs leading-5">{normalized}</pre>}>
@@ -192,7 +192,7 @@ function PreambleForm({
                   aria-label={`{{${v.name}}}: ${v.meaning}`}
                   onFocus={() => setMeaning(v.meaning)}
                   onBlur={() => setMeaning(null)}
-                  className="rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="rounded-sm focus-ring"
                 >{`{{${v.name}}}`}</code>
               </Tip>
             ))}

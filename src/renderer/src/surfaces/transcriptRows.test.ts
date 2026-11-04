@@ -137,10 +137,21 @@ describe("flattenTurns", () => {
     expect(c[1].kind === "item" && a[1].kind === "item" && c[1].item !== a[1].item).toBe(true);
   });
 
-  it("estimates a lone run as its steps' rows", () => {
+  it("estimates a lone run as the rows it draws: a thought takes nothing", () => {
     const thought: Block = { id: "r0", role: "reasoning", text: "Hm." };
     const { rows } = flattenTurns([[user("u0"), thought, tool("t0"), reply("a0")]], false);
-    expect(estimateRowHeight(rows.find((r) => r.key === "r0")!)).toBe(ROW_GAP.reply + 28 * 2);
+    expect(estimateRowHeight(rows.find((r) => r.key === "r0")!)).toBe(ROW_GAP.reply + 28);
+    // A run of thoughts alone draws nothing, gap and all.
+    const alone = flattenTurns([[user("u0"), thought, reply("a0")]], false).rows;
+    expect(estimateRowHeight(alone.find((r) => r.key === "r0")!)).toBe(0);
+  });
+
+  it("estimates a running call at nothing while its turn is open, and a row once it is over", () => {
+    const run: Block = { ...tool("t0"), tool: { ...tool("t0").tool!, status: "running" } };
+    const open = flattenTurns([[user("u0"), run]], true).rows.find((r) => r.key === "t0")!;
+    expect(estimateRowHeight(open)).toBe(0);
+    const over = flattenTurns([[user("u0"), run]], false).rows.find((r) => r.key === "t0")!;
+    expect(estimateRowHeight(over)).toBe(ROW_GAP.reply + 28);
   });
 
   it("counts the host's folded steps: a call and a report are one closed line", () => {

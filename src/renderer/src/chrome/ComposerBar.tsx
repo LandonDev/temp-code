@@ -161,11 +161,14 @@ export function SendButton({
             data-intent={intent}
             disabled={disabled}
             onClick={onClick}
-            className="overflow-hidden transition-[opacity,background-color,color,border-color,scale]"
+            className="transition-[opacity,color] duration-(--dur-fast)"
           />
         }
       >
-        <SwapIcon swapped={side.swapped} from={glyph} to={glyph} />
+        {/* The clip for the swap sits inside, so the raise's shadow is not clipped. */}
+        <span className="flex size-full items-center justify-center overflow-hidden rounded-[inherit]">
+          <SwapIcon swapped={side.swapped} from={glyph} to={glyph} />
+        </span>
       </TooltipTrigger>
       <TooltipContent className="flex-col items-start gap-0.5">
         <span>{label}</span>

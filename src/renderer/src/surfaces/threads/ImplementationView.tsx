@@ -434,7 +434,7 @@ function PastPass({
   const tasks = useMemo(() => tasksOf(data.todos, round, false, data.blocks), [data, round]);
   return (
     <Collapsible data-pass={passNum}>
-      <CollapsibleTrigger className="group/pass flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none">
+      <CollapsibleTrigger className="group/pass flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-foreground/5">
         <span className="flex w-full items-center gap-2">
           <span className="shrink-0 text-[13px] font-medium text-foreground">Pass {passNum}</span>
           <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{firstLine(data.header)}</span>

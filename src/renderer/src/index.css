@@ -96,18 +96,20 @@
      (the layout duration and curve are SPRING_LAYOUT_CSS, critically damped,
      held equal by lib/ease.test.ts). Springs are in lib/ease.ts.
      The stream's phrase fade (--dur-reveal on --ease-reveal, REVEAL in
-     lib/ease.ts), the working words' pulse (still for --delay-pulse, then
-     --dur-pulse on --ease-breathe), the wait before a hover-revealed control
-     shows (--delay-hover) and a button's or menu row's hover fill
-     (--dur-hover). */
+     lib/ease.ts), the working mark's breathing segments (--ease-breathe,
+     MARK in lib/ease.ts), the wait before a hover-revealed control
+     shows (--delay-hover), a button's or menu row's hover fill
+     (--dur-hover), and the word morph (MorphText: the old words leave over
+     --dur-swap-out, then the new arrive over --dur-base, both on
+     --ease-swap). */
   --dur-instant: 0ms;
   --dur-hover: 60ms;
   --delay-hover: 100ms;
   --dur-reveal: 400ms;
   --ease-reveal: linear;
-  --dur-pulse: 2s;
-  --delay-pulse: 3s;
   --ease-breathe: cubic-bezier(0.37, 0, 0.63, 1);
+  --dur-swap-out: 90ms;
+  --ease-swap: cubic-bezier(0.2, 0, 0, 1);
   --dur-fast: 120ms;
   --dur-base: 180ms;
   --dur-slow: 240ms;
@@ -124,6 +126,33 @@
   --layer-popover: 95;
   --layer-toast: 100;
   --layer-tooltip: 110;
+  /* A raised button's own depth (`.t-raise` below, Kobra's stacks): the
+     one shadow on docked UI. A fill layer behind the label carries a lip, an
+     edge and a soft drop; hover brightens it (`-lit`), secondary also lifts
+     its drop (`-lifted`). */
+  --raise-primary:
+    inset 0 1px 0 rgb(255 255 255 / 0.95), inset 0 1px 2px -0.5px rgb(255 255 255 / 0.8),
+    inset 0 12px 16px -10px rgb(255 255 255 / 0.7), inset 0 -12px 16px -10px rgb(0 0 0 / 0.24),
+    inset 0 -1px 2px -1px rgb(0 0 0 / 0.14), 0 0 0 1px rgb(0 0 0 / 0.4),
+    0 0.5px 0.5px rgb(0 0 0 / 0.16), 0 2px 2px -1px rgb(0 0 0 / 0.12),
+    0 3px 3px -1.5px rgb(0 0 0 / 0.1), 0 5px 5px -2.5px rgb(0 0 0 / 0.08),
+    0 8px 8px -3px rgb(0 0 0 / 0.06), 0 12px 12px -6px rgb(0 0 0 / 0.05);
+  --raise-primary-lit: brightness(1.06);
+  --raise-secondary:
+    inset 0 1px 0 rgb(255 255 255 / 0.12), inset 0 1px 2px -0.5px rgb(255 255 255 / 0.1),
+    inset 0 8px 24px -4px rgb(255 255 255 / 0.06), inset 0 -4px 12px -4px rgb(255 255 255 / 0.08),
+    0 0 0 1px rgb(0 0 0 / 0.35), 0 0.5px 0.5px rgb(0 0 0 / 0.16), 0 2px 2px -1px rgb(0 0 0 / 0.12),
+    0 3px 3px -1.5px rgb(0 0 0 / 0.1), 0 5px 5px -2.5px rgb(0 0 0 / 0.08),
+    0 8px 8px -3px rgb(0 0 0 / 0.06), 0 12px 12px -6px rgb(0 0 0 / 0.05);
+  --raise-secondary-lifted: var(--raise-secondary);
+  --raise-secondary-lit: brightness(1.2);
+  --raise-destructive:
+    inset 0 1px 2px -0.5px rgb(255 255 255 / 0.12), inset 0 0.5px 0.5px rgb(255 255 255 / 0.16),
+    inset 0 8px 24px -4px rgb(255 255 255 / 0.16), inset 0 -4px 12px -4px rgb(255 255 255 / 0.06),
+    0 0 0 1px rgb(0 0 0 / 0.35), 0 0.5px 0.5px rgb(0 0 0 / 0.16), 0 2px 2px -1px rgb(0 0 0 / 0.12),
+    0 3px 3px -1.5px rgb(0 0 0 / 0.1), 0 5px 5px -2.5px rgb(0 0 0 / 0.08),
+    0 8px 8px -3px rgb(0 0 0 / 0.06), 0 12px 12px -6px rgb(0 0 0 / 0.05);
+  --raise-destructive-lit: brightness(1.08);
 }
 
 html.theme-light {
@@ -158,6 +187,36 @@ html.theme-light {
   --chart-3: #1baf7a;
   --chart-4: #eda100;
   --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.18), 0 2px 6px -2px rgb(0 0 0 / 0.1);
+  --raise-primary:
+    inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 1px 2px -0.5px rgb(255 255 255 / 0.12),
+    inset 0 8px 24px -4px rgb(255 255 255 / 0.1), inset 0 -4px 12px -4px rgb(255 255 255 / 0.06),
+    0 0 0 1px color-mix(in oklch, var(--primary), black 40%), 0 0.5px 0.5px rgb(0 0 0 / 0.08),
+    0 2px 2px -1px rgb(0 0 0 / 0.08), 0 3px 3px -1.5px rgb(0 0 0 / 0.08),
+    0 5px 5px -2.5px rgb(0 0 0 / 0.07), 0 8px 8px -3px rgb(0 0 0 / 0.06),
+    0 12px 12px -6px rgb(0 0 0 / 0.05);
+  --raise-primary-lit: brightness(1.25);
+  --raise-secondary:
+    inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 1px 2px -0.5px rgb(255 255 255 / 0.7),
+    inset 0 -6px 12px -6px rgb(0 0 0 / 0.04), inset 0 -1px 0 rgb(0 0 0 / 0.05),
+    0 0 0 1px rgb(0 0 0 / 0.06), 0 0.5px 0.5px rgb(0 0 0 / 0.04), 0 2px 2px -1px rgb(0 0 0 / 0.03),
+    0 3px 3px -1.5px rgb(0 0 0 / 0.025), 0 5px 5px -2.5px rgb(0 0 0 / 0.02),
+    0 8px 8px -3px rgb(0 0 0 / 0.015), 0 12px 12px -6px rgb(0 0 0 / 0.01);
+  --raise-secondary-lifted:
+    inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 1px 2px -0.5px rgb(255 255 255 / 0.7),
+    inset 0 -6px 12px -6px rgb(0 0 0 / 0.04), inset 0 -1px 0 rgb(0 0 0 / 0.05),
+    0 0 0 1px rgb(0 0 0 / 0.08), 0 1px 1px -0.5px rgb(0 0 0 / 0.05),
+    0 3px 3px -1.5px rgb(0 0 0 / 0.04), 0 5px 5px -2.5px rgb(0 0 0 / 0.035),
+    0 8px 8px -4px rgb(0 0 0 / 0.03), 0 12px 12px -6px rgb(0 0 0 / 0.025),
+    0 16px 16px -8px rgb(0 0 0 / 0.02);
+  --raise-secondary-lit: none;
+  --raise-destructive:
+    inset 0 1px 2px -0.5px rgb(255 255 255 / 0.12), inset 0 0.5px 0.5px rgb(255 255 255 / 0.16),
+    inset 0 8px 24px -4px rgb(255 255 255 / 0.16), inset 0 -4px 12px -4px rgb(255 255 255 / 0.06),
+    0 0 0 1px color-mix(in oklch, var(--destructive), black 30%), 0 0.5px 0.5px rgb(64 0 0 / 0.08),
+    0 2px 2px -1px rgb(64 0 0 / 0.07), 0 3px 3px -1.5px rgb(64 0 0 / 0.07),
+    0 5px 5px -2.5px rgb(64 0 0 / 0.06), 0 8px 8px -3px rgb(64 0 0 / 0.06),
+    0 12px 12px -6px rgb(64 0 0 / 0.05);
+  --raise-destructive-lit: brightness(1.1);
 }
 
 @theme inline {
@@ -199,6 +258,70 @@ html.theme-light {
 @source "../../../node_modules/streamdown/dist/*.js";
 @source "../../../node_modules/@streamdown/code/dist/*.js";
 @source "../../../node_modules/@streamdown/mermaid/dist/*.js";
+
+/* The raised button (default, secondary, destructive; Kobra's t-raise on our
+   tokens). The element paints nothing; its fill and shadow are a layer behind
+   the label that lightens on hover and presses in while the label stays put.
+   At rest it is a still shadow. Unlayered, so it outranks the utilities. */
+.t-raise::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background-color: var(--raise-fill);
+  box-shadow: var(--raise-shadow);
+  transition:
+    scale var(--dur-hover) var(--ease-out),
+    filter var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .t-raise:hover::before {
+    box-shadow: var(--raise-lifted, var(--raise-shadow));
+    filter: var(--raise-lit, none);
+  }
+}
+.t-raise[aria-expanded="true"]::before {
+  box-shadow: var(--raise-lifted, var(--raise-shadow));
+  filter: var(--raise-lit, none);
+}
+.t-raise:active:not([aria-haspopup])::before,
+.t-raise[data-pressed]::before {
+  scale: 0.985;
+  transition-duration: var(--dur-fast);
+  box-shadow: var(--raise-shadow);
+}
+.t-raise.w-full:active:not([aria-haspopup])::before,
+.t-raise.w-full[data-pressed]::before {
+  scale: 0.997 0.985;
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-raise::before {
+    transition-duration: var(--dur-instant);
+  }
+  .t-raise:active::before,
+  .t-raise[data-pressed]::before {
+    scale: 1;
+  }
+}
+.t-raise-primary::before {
+  --raise-fill: var(--primary);
+  --raise-shadow: var(--raise-primary);
+  --raise-lit: var(--raise-primary-lit);
+}
+.t-raise-secondary::before {
+  --raise-fill: var(--secondary);
+  --raise-shadow: var(--raise-secondary);
+  --raise-lifted: var(--raise-secondary-lifted);
+  --raise-lit: var(--raise-secondary-lit);
+}
+.t-raise-destructive::before {
+  --raise-fill: var(--destructive);
+  --raise-shadow: var(--raise-destructive);
+  --raise-lit: var(--raise-destructive-lit);
+}
 
 /* JetBrains Mono, the editor's face (OFL, see assets/fonts/JetBrainsMono-OFL.txt).
  * The real italic matters: semantic highlighting italicises statics. */
@@ -263,7 +386,11 @@ html.theme-light {
 }
 
 /* One focus ring for every control; the ring sits inside the box so rows
-   in tight lists do not clip it. */
+   in tight lists do not clip it. Unlayered, so it beats a utility's
+   outline-none. An element it does not name (a scroll region, a pre, a div
+   with tabIndex, a checkbox root) takes `focus-ring`; nothing draws a second
+   ring (lib/focusGuard.test.ts). */
+.focus-ring:focus-visible,
 button:focus-visible,
 a:focus-visible,
 [role="button"]:focus-visible,

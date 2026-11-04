@@ -4,13 +4,12 @@ import { useReducedMotion } from "motion/react";
 import { Bot, ChevronRight, Sparkles, type IconComponent } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
-import { TextPulse } from "../../components/ui/text-pulse";
 import type { Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { useLiveEdits } from "../../lib/tcserver/store";
 import { useTitlesOf } from "../../lib/threadMentions";
 import { DUR, FOLD_HOLD_MS, SPRING_LAYOUT_CSS } from "../../lib/ease";
-import { SwapText } from "../../motion/SwapText";
+import { MorphText } from "../../motion/MorphText";
 import { useCountUp } from "../../motion/useCountUp";
 import { usePersistedOpen } from "../editOpenState";
 import { appThreadIds } from "../appTool";
@@ -24,7 +23,7 @@ import {
   awaitsUser,
   isThinkingBlock,
   isToolBlock,
-  thoughtEndTs,
+  toldByWorkingLine,
   toolCategory,
   type ActionGroupKind,
 } from "../transcriptActivity";
@@ -71,12 +70,20 @@ function useFoldHold(working: boolean): boolean {
 }
 
 /**
- * Everything the agent did between two paragraphs. One call, with any
- * thoughts around it, or thoughts alone, are their own rows at the prose's
- * edge. More is one muted line, led by the glyph of the work it did most
- * ("Created diag.ts, ran a command  +46"), its rows hung 22px under its
- * words with no box and no rules. A lone call and a group are one tree, so
- * the second call's arrival remounts nothing.
+ * Everything the agent did between two paragraphs. One call is its own row
+ * at the prose's edge. More is one muted line, led by the glyph of the work
+ * it did most ("Created diag.ts, ran a command  +46"), its rows hung 22px
+ * under its words with no box and no rules. A lone call and a group are one
+ * tree, so the second call's arrival remounts nothing.
+ *
+ * Thoughts are no rows: a thought streaming is the turn's working line, and
+ * a settled one shows only in a group opened by hand, as "Thought". While
+ * the turn is open a running call is no row either (`toldByWorkingLine`):
+ * the working line under the turn says it, and it lands here as a
+ * past-tense row once it settles. The line's phrase, counts and whether the
+ * run is lone are over every step, running ones included, so the group
+ * opens at two calls and names them all. A run that shows no row and is
+ * lone draws nothing.
  *
  * While the turn works in it (`working`), the group opens on its own once it
  * holds two calls: the line folds open above the first row and the rows
@@ -93,6 +100,7 @@ export function ActionGroup({
   cwd,
   live = false,
   working = false,
+  settled = true,
   onApproval,
   onOpenFile,
   onOpenDiff,
@@ -102,6 +110,8 @@ export function ActionGroup({
   live?: boolean;
   /** The open turn works in this group (transcriptRows.ts `working`). */
   working?: boolean;
+  /** The group's turn is over (transcriptRows.ts `TurnInfo.settled`): its running calls draw as rows. */
+  settled?: boolean;
   onApproval?: ApprovalHandler;
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path: string) => void;
@@ -139,31 +149,40 @@ export function ActionGroup({
   }, [saved, setSaved]);
   const toggle = () => setSaved(!open);
 
-  // The rows a person has seen: those at mount, and every row when they open
-  // the group by hand. Any other row landed while it was open, and rises in.
-  const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set(blocks.map((b) => b.id)));
+  // The rows it draws: thoughts only once a hand opened it, a running call
+  // only once its turn is over.
+  const shown = useMemo(
+    () => blocks.filter((b) => (isThinkingBlock(b) ? saved === true && !b.streaming : settled || !toldByWorkingLine(b))),
+    [blocks, saved, settled],
+  );
+
+  // The rows a person has seen: those shown at mount, and every row when they
+  // open the group by hand. Any other row landed while it was open, a call
+  // that settled among them, and rises in.
+  const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set(shown.map((b) => b.id)));
   const [handOpen, setHandOpen] = useState(saved === true);
   if ((saved === true) !== handOpen) {
     setHandOpen(saved === true);
-    if (saved === true) setSeen(new Set(blocks.map((b) => b.id)));
+    if (saved === true) setSeen(new Set(shown.map((b) => b.id)));
   }
 
   // The newest GROUP_WINDOW rows while the group runs on its own; every row
   // once a hand decided it. A row leaving the top stays mounted, clipped, until
   // the list's glide ends (`useWindowGlide`).
   const listRef = useRef<HTMLDivElement>(null);
-  const from = auto && !lone ? Math.max(0, blocks.length - GROUP_WINDOW) : 0;
-  const shownFrom = useWindowGlide(listRef, blocks, from, reduce);
+  const from = auto && !lone ? Math.max(0, shown.length - GROUP_WINDOW) : 0;
+  const shownFrom = useWindowGlide(listRef, shown, from, reduce);
   useHangGlide(listRef, lone, auto && open, reduce);
 
-  const rows = blocks.slice(shownFrom).map((block, index) => (
+  if (lone && shown.length === 0) return null;
+
+  const rows = shown.slice(shownFrom).map((block) => (
     <div key={block.id} data-step={block.id} className={seen.has(block.id) ? "min-w-0" : "step-land min-w-0"}>
       <ActivityRow
         block={block}
         cwd={cwd}
         live={live}
         expanded
-        endTs={isThinkingBlock(block) ? thoughtEndTs(blocks, shownFrom + index) : undefined}
         onApproval={onApproval}
         onOpenFile={onOpenFile}
         onOpenDiff={onOpenDiff}
@@ -185,16 +204,17 @@ export function ActionGroup({
                 aria-expanded={open}
                 aria-controls={panelId}
                 onClick={toggle}
-                className="group/line h-7 w-fit min-w-0 justify-start gap-2 rounded-md px-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent active:not-aria-[haspopup]:scale-100 aria-expanded:bg-transparent focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+                className="group/line h-7 w-fit min-w-0 justify-start gap-2 rounded-md px-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent aria-expanded:bg-transparent motion-reduce:transition-none"
               >
                 <span data-kind={group.kind} className="flex shrink-0">
                   <Glyph className="size-3.5" aria-hidden />
                 </span>
                 {/* The phrase changes tense in place when the run settles; a count
-                    that grows under one tense never animates. */}
-                <SwapText state={live ? "live" : "settled"} className="min-w-0 truncate">
-                  {live ? <TextPulse>{group.phrase}</TextPulse> : group.phrase}
-                </SwapText>
+                    that grows under one tense never animates. The working line under
+                    the turn is its one moving element, so the phrase holds still. */}
+                <MorphText state={live ? "live" : "settled"} className="min-w-0">
+                  {group.phrase}
+                </MorphText>
                 <Counts added={adds} removed={dels} failed={group.failed} />
                 <ChevronRight
                   aria-hidden

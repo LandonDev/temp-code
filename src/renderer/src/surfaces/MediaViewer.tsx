@@ -327,7 +327,7 @@ function ReviewSide({
 
 /** The hairline on the media's own edge pixels: no wash, no radius. */
 const OUTLINE = "outline outline-1 -outline-offset-1 outline-image-outline";
-const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const FOCUS_RING = "focus-ring";
 
 function MediaBody({
   media,
@@ -371,7 +371,7 @@ function MediaBody({
     };
     return (
       <div
-        className={cn("relative h-full min-h-0 overflow-auto", !fit && FOCUS_RING, !fit && "focus-visible:ring-inset")}
+        className={cn("relative h-full min-h-0 overflow-auto", !fit && FOCUS_RING)}
         tabIndex={fit ? undefined : 0}
         aria-label={fit ? undefined : `${name} at actual size`}
       >
@@ -414,7 +414,7 @@ function MediaBody({
           tabIndex={0}
           onLoadedMetadata={(e) => onDims({ width: e.currentTarget.videoWidth, height: e.currentTarget.videoHeight })}
           onError={onError}
-          className={cn("max-h-full max-w-full", OUTLINE, "focus-visible:ring-2 focus-visible:ring-ring")}
+          className={cn("max-h-full max-w-full", OUTLINE, FOCUS_RING)}
         />
       </div>
     );

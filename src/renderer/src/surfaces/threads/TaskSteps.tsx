@@ -4,7 +4,7 @@ import type { OpenFileFn } from "../../lib/search";
 import { SelectSessionContext } from "../AgentMarkdown";
 import { getEditOpen, setEditOpen } from "../editOpenState";
 import { ActivityRow } from "../transcript/ActivityRow";
-import { thoughtEndTs } from "../transcriptActivity";
+import { isThinkingBlock } from "../transcriptActivity";
 import { TranscriptSessionContext } from "../transcriptSession";
 
 /**
@@ -14,7 +14,8 @@ import { TranscriptSessionContext } from "../transcriptSession";
  * does in the chat. They sit on the task card's surface with no box of
  * their own. A step that lands after the first render fades in and rises
  * 4px (`.step-land`); the ones already there at mount do not move, and
- * the one leaving the top goes without motion of its own.
+ * the one leaving the top goes without motion of its own. A thought is no
+ * row here: the thread's working line says it.
  */
 export function TaskSteps({
   sessionId,
@@ -36,14 +37,13 @@ export function TaskSteps({
     <SelectSessionContext.Provider value={onSelectSession}>
       <TranscriptSessionContext.Provider value={sessionId}>
         <div data-task-steps className="flex min-w-0 flex-col">
-          {steps.map((step, index) => (
+          {steps.filter((step) => !isThinkingBlock(step as Block)).map((step) => (
             <div key={step.id} className={atMount.has(step.id) ? "min-w-0" : "step-land min-w-0"}>
               <ActivityRow
                 block={step}
                 cwd={cwd}
                 live
                 expanded
-                endTs={thoughtEndTs(steps as Block[], index)}
                 onOpenFile={onOpenFile}
                 onOpenDiff={onOpenDiff}
               />

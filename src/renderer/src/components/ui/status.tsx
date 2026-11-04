@@ -137,7 +137,13 @@ function Glyph({ state, still, className }: { state: ThreadState; still?: boolea
   const c = cn("size-3.5 shrink-0", className);
   switch (state) {
     case "working":
-      return <Spinner className={cn(c, "size-3")} still={still} />;
+      // Under a row that already moves, a 6px dot in the tone: active, and
+      // never mistaken for a spinner that hung.
+      return still ? (
+        <span data-slot="working-dot" aria-hidden className="size-1.5 shrink-0 rounded-full bg-current" />
+      ) : (
+        <Spinner className={cn(c, "size-3")} />
+      );
     case "waiting":
       return <CircleDot className={c} />;
     case "paused":
@@ -173,7 +179,7 @@ const LIVE: ReadonlySet<ThreadState> = new Set(["working", "waiting", "watching"
  * (`word={false}`), glyph and the state's word, or glyph and a given word
  * (a link's); `glyph={false}` draws the word without its glyph. A line that
  * depends on a row's own mark (a subagent's under its thread) passes
- * `still`: working's arc is drawn and does not turn, so a row has one
+ * `still`: working draws a dot instead of the spinner, so a row has one
  * moving mark at most.
  */
 export function StatusMark({
@@ -190,7 +196,7 @@ export function StatusMark({
   word?: boolean | string;
   /** What the state is about, regular and muted after the word: "Editing Rail.tsx", "Approve Bash", a tally "3/7". */
   detail?: ReactNode;
-  /** Working's arc without its turn, for a line under a row that already spins. */
+  /** Working as a 6px dot instead of the spinner, for a line under a row that already spins. */
   still?: boolean;
   /** Draw the glyph (default); false for the word and the detail alone. */
   glyph?: boolean;

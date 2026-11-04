@@ -394,7 +394,7 @@ function NoteCard({
       variant="ghost"
       aria-current={active ? "true" : undefined}
       onClick={onSelect}
-      className={`h-auto w-full flex-col items-stretch justify-start gap-0 whitespace-normal rounded-md px-2.5 py-2 text-left font-normal transition-none active:not-aria-[haspopup]:scale-100 ${
+      className={`h-auto w-full flex-col items-stretch justify-start gap-0 whitespace-normal rounded-md px-2.5 py-2 text-left font-normal transition-none ${
         active ? "bg-muted hover:bg-muted" : "hover:bg-foreground/5"
       }`}
     >

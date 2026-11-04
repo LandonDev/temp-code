@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { refreshToastAnchor } from "../../lib/toastAnchor";
 import { Toggle } from "../../components/ui/toggle";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import { MessageSquare } from "../../chrome/icons";
 
 /**
@@ -137,8 +137,10 @@ function ViewHeader({
         ) : null}
       </div>
       <div data-view-actions className="ml-2 flex shrink-0 items-center gap-0.5">
-        {actions}
-        <ChatToggle open={chatOpen} onToggle={onToggleChat} />
+        <TooltipProvider>
+          {actions}
+          <ChatToggle open={chatOpen} onToggle={onToggleChat} />
+        </TooltipProvider>
       </div>
     </div>
   );

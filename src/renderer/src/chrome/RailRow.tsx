@@ -2,7 +2,7 @@ import type { HTMLAttributes, MouseEvent, ReactNode, Ref } from "react";
 import { Button } from "../components/ui/button";
 import { DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { useTruncated } from "../components/tip";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
 import type { IntentProps } from "../lib/lazyChunk";
 import type { IconComponent } from "./icons";
@@ -159,12 +159,12 @@ export function RailRow({
         "group/row relative flex items-center rounded-md",
         group
           ? [
-              "bg-sidebar-group text-foreground hover:bg-sidebar-group-hover",
+              "bg-sidebar-group text-foreground hover:bg-sidebar-group-hover has-[>[data-slot=button]:active]:bg-sidebar-group-selected",
               "has-[[aria-expanded=true]]:bg-sidebar-group-selected",
               selected && "bg-sidebar-group-selected hover:bg-sidebar-group-selected",
             ]
           : [
-              "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-within:text-foreground",
+              "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-within:text-foreground has-[>[data-slot=button]:active]:bg-foreground/12",
               "has-[[aria-expanded=true]]:bg-muted has-[[aria-expanded=true]]:text-foreground",
               selected && "bg-muted text-foreground hover:bg-muted",
               emphasis && "text-foreground",
@@ -187,9 +187,11 @@ export function RailRow({
       {trailingInteractive ? trailingSlot : null}
       {actions.length > 0 && !trailingInteractive ? (
         <span data-rail-actions className="pointer-events-none absolute top-1/2 right-1 flex -translate-y-1/2 items-center gap-0.5">
-          {actions.map((action) => (
-            <HoverAction key={action.label} action={action} />
-          ))}
+          <TooltipProvider>
+            {actions.map((action) => (
+              <HoverAction key={action.label} action={action} />
+            ))}
+          </TooltipProvider>
         </span>
       ) : null}
       {children}

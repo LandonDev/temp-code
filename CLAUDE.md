@@ -274,8 +274,9 @@ app replaces itself from the feed, and only from the feed.
   (Kobra on Base UI, adapted flat to the tokens at the top of
   `src/renderer/src/index.css`, to `chrome/icons` and to the motion tokens;
   `StatusMark` is the one status vocabulary, drawn as two spans (the word
-  medium in its tone, the detail regular and muted; `still` for a line
-  under a row that already spins, so a row has one moving mark), a plain
+  medium in its tone, the detail regular and muted; `still` (working as a
+  dot) for a line under a row that already spins, so a row has one moving
+  mark), a plain
   string only as "Word: Detail" (`plainStatus`), never a run of spaces
   (`lib/spaceGuard.test.ts`), `threadStateOf` turns a wire
   status into its state; `TypeGlyph` (surfaces/threads/TypeGlyph.tsx) is
@@ -291,12 +292,22 @@ app replaces itself from the feed, and only from the feed.
   src/renderer writes a literal colour, duration or curve, and no bullet
   lists appear in the UI. The motion guard has no application timing
   exceptions: CSS uses the motion tokens, JavaScript uses `lib/ease.ts`,
-  the working words' pulse (`TextPulse`, the `text-pulse` utility) runs on
-  `--dur-pulse`, `--delay-pulse` and `--ease-breathe` and the spinner's turn
-  is `SPINNER_TURN` in lib/ease.ts.
+  the spinner's turn is `SPINNER_TURN`, the working mark's dots `MARK`, the
+  working words' shimmer `SHIMMER` and the word morph `--dur-swap-out` and
+  `--ease-swap` (`EASE_SWAP`), all in lib/ease.ts and the token layer.
 - Settings rows and sections use `components/page.tsx` (`PageRow`,
   `PageSection`), which pass native props and data attributes to their roots;
   Hosts exports these as `Row` and `Group` without copying their markup.
+- Buttons and focus: the solid `Button` variants (default, secondary,
+  destructive) are raised, Kobra's `t-raise` on the `--raise-*` tokens in
+  index.css (a shadowed fill layer behind the label, pressing in to 0.985);
+  ghost, outline, link and every row are flat and press by stepping their
+  fill to `foreground/12` at once, never by scaling. There is one focus
+  ring, index.css's inset outline, which an element outside its selector
+  list joins with `focus-ring`; `lib/focusGuard.test.ts` refuses any
+  `focus-visible:ring`. Neighbouring tooltips share one `TooltipProvider`
+  (delays in `TOOLTIP`, lib/ease.ts), never around a scroller, the rail's
+  nav or a virtual list (the lazy provider remounts what it wraps).
 - Every resize handle uses `hooks/useSashKeys.ts` for focus,
   separator ARIA, axis arrows (2% of the container, Shift 10%) and a
   double-click reset. Keyboard resize commits at once; `useDragResize`
@@ -764,11 +775,17 @@ routed to (aliax-core's `forward`). Two listeners:
   nothing finer known (Thinking or the driver's own provider word) reads
   "Waiting for the provider, 25 s", re-pushed every 5 s (`providerRequest`,
   `PROVIDER_WAIT_MS`). The place these words show is the transcript's
-  working line (`ThinkingTail`, `tailWord` in surfaces/transcript/thinking.ts):
-  Sending while the person's row is still `pending` (not yet echoed), the
-  meta's activity while the turn has nothing of its own, Thinking after;
-  a word stays at least 300 ms once painted and one that came and went
-  inside the hold is skipped (lib/heldWord.ts), the swap the text alone.
+  working line (`TurnLine` in surfaces/transcript/WorkingLine.tsx on
+  `workingPhase` in workingPhase.ts): Sending while the person's row is
+  still `pending` (not yet echoed), the meta's activity while the turn has
+  nothing of its own, then the open wait on agents, the running call
+  ("Reading format.ts", told by the line alone: `toldByWorkingLine`, no row
+  until it settles), Thinking with a streaming thought's newest sentence,
+  the mark alone under streaming prose; a phase stays at least 300 ms once
+  painted and one that came and went inside the hold is skipped
+  (`useHeldPhase`, lib/heldWord.ts); a change of phase morphs the words
+  (`MorphText`), and the line becomes the closing line when the turn ends.
+  A thought is no transcript row (a group opened by hand shows "Thought").
   The timer above the composer counts from the click: `appendOptimisticUser`
   stamps `sentAt` when no turn is open, `turnStartOf` prefers it over the
   host's later `busySince`, the settle clears it, and the slot shows at once
@@ -1659,8 +1676,8 @@ names the far child).
   lands.
 - A wait is a state of the turn, never a transcript row
   (surfaces/agentSteps.ts): while open, `isHiddenTool` hides it and the
-  working line says `waitLine` (`WaitTail` in TurnEnd.tsx, when nothing
-  after the wait speaks or runs: `openWaitOf`); once it returns, each agent
+  working line says `waitLine` (its `wait` phase, fed by TurnEnd when
+  nothing after the wait speaks or runs: `openWaitOf`); once it returns, each agent
   it returned on (`waitOutcomes`: done, idle, watching, waiting, failed,
   error, stopped, paused) folds into the run as an `AgentStepRow`,
   "Finished <title>" (Failed, Needs you, Stopped, Paused by state), the
@@ -1970,9 +1987,11 @@ names the far child).
   runs (`.stream-step`, lib/streamReveal.ts, a rehype plugin per streaming
   row, named per row because streamdown caches processors by plugin name),
   and the settle waits for the last fade (docs/TRANSCRIPT.md "The stream
-  reveals a phrase at a time"). The working words pulse (`TextPulse`, still
-  for 3 s, then opacity 1→0.75→1 every 2 s), resting in a hidden pane or
-  document. A streaming code block colours on a 150 ms throttle.
+  reveals a phrase at a time"). The working line's words shimmer
+  (`WorkingText`: a masked band and its `::before` copy of the words moved
+  by transform alone, every 3 s) beside its three-dot mark (`WorkingMark`),
+  both Web Animations on the document timeline that the compositor runs,
+  unmounted or still in a hidden pane or document. A streaming code block colours on a 150 ms throttle.
 
 ## The shape that scales: many threads exist, a bounded number run
 docs/box.md "The shape that scales" has the before numbers, each step's
@@ -3069,7 +3088,7 @@ this is the short one.
   (Pause, Resume, Start now) and ⋯, the row's menu, where Stop, Archive
   and a queued thread's Remove from queue live. A row whose thread has
   live subagents lists them under its two lines, one line each: the status
-  glyph drawn still, the title, the state's word in its tone and what it
+  glyph drawn still (working as a dot), the title, the state's word in its tone and what it
   is about, muted, in the board row's own words (`rowStatus`), and the
   host's glyph, no role glyph; the
   whole tree by the parentId chain, archived ones out, a far child's from
@@ -3150,8 +3169,9 @@ this is the short one.
   is archived or unpinned shows as plain roots. In the workspace column a
   project's card draws a master's batch as one block under the master's
   line, which ends in the batch's done tally (`3/7`; `cardLines` in
-  lib/sidebarRows.ts, `MasterLines` in chrome/WorkspaceSessions.tsx; the
-  batch lines draw working's arc still, one moving mark per block); the
+  lib/sidebarRows.ts, `MasterLines` in chrome/WorkspaceSessions.tsx; a
+  working batch line draws a dot and the master's line spins while its
+  block works (`MasterBlock.lead`), one moving mark per block); the
   workspace popover (a rail row's word)
   keeps a master as one block (`masterBlock` in lib/sidebarRows.ts,
   `MasterRows` in chrome/WorkspaceThreadsPopover.tsx): the master's row
