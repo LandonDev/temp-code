@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BackgroundTask, BackgroundWork } from './events'
-import { STALE_WATCH_MS, isStaleWatch, watchPhrase, watchSubject } from './watch'
+import { STALE_WATCH_MS, bareAgentId, cutAtWord, isStaleWatch, waitLine, waitSubject, watchPhrase, watchSubject } from './watch'
 
 // Unlabelled, so a lone task counts; `labelled` names one in the model's words.
 const task = (kind: BackgroundTask['kind'], id: string = kind): BackgroundTask => ({ id, label: '', kind, startedAt: 0 })
@@ -82,5 +82,44 @@ describe('watchSubject', () => {
     expect(watchSubject(bg({ batch: { out: 0, total: 3 } }))).toBe("the batch's steps")
     expect(watchSubject(bg({}))).toBe('background work')
     expect(watchSubject(null)).toBe('background work')
+  })
+})
+
+describe('a subagent by its title', () => {
+  const titles: Record<string, string> = {
+    a: 'Review the payment flow',
+    long: 'Audit every caller of the gateway forward path for missing deadlines and retries'
+  }
+  const titleOf = (id: string) => titles[id]
+
+  it('names one subagent alone by its title, and counts it beside anything else', () => {
+    expect(watchPhrase(bg({ agents: ['a'] }), titleOf)).toBe('Review the payment flow')
+    expect(watchSubject(bg({ agents: ['a'] }), titleOf)).toBe('Review the payment flow')
+    expect(watchPhrase(bg({ agents: ['nobody'] }), titleOf)).toBe('a subagent')
+    expect(watchPhrase(bg({ agents: ['a'], tasks: [task('shell')] }), titleOf)).toBe('a subagent, a command')
+    expect(watchPhrase(bg({ agents: ['a'], batch: { out: 1, total: 2 } }), titleOf)).toBe('a batch thread, a subagent')
+    expect(watchPhrase(bg({ agents: ['a', 'long'] }), titleOf)).toBe('2 subagents')
+  })
+
+  it('reads a cross-host id by its bare session id', () => {
+    expect(bareAgentId('env_AbC-12_x:a')).toBe('a')
+    expect(bareAgentId('a')).toBe('a')
+    expect(watchPhrase(bg({ agents: ['env_box:a'] }), titleOf)).toBe('Review the payment flow')
+  })
+
+  it('waits on one agent by title, several counted', () => {
+    expect(waitSubject(['a'], titleOf)).toBe('Review the payment flow')
+    expect(waitSubject(['nobody'], titleOf)).toBe('a subagent')
+    expect(waitSubject(['a'])).toBe('a subagent')
+    expect(waitSubject(['a', 'nobody'], titleOf)).toBe('2 subagents')
+    expect(waitLine(['a'], titleOf)).toBe('Waiting on Review the payment flow')
+    expect(waitLine(['a', 'b', 'c'], titleOf)).toBe('Waiting on 3 subagents')
+  })
+
+  it('cuts a long title at a word with an ellipsis', () => {
+    expect(waitSubject(['long'], titleOf)).toBe('Audit every caller of the gateway forward path…')
+    expect(waitSubject(['long'], titleOf).length).toBeLessThanOrEqual(48)
+    expect(cutAtWord('short', 48)).toBe('short')
+    expect(cutAtWord('x'.repeat(60), 48)).toBe(`${'x'.repeat(47)}…`)
   })
 })

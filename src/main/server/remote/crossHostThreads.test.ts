@@ -231,6 +231,16 @@ describe('CrossHostThreads', () => {
     expect(r.cwd).toBe('/Users/landon/IdeaProjects/temp-code/.wt')
     expect(registry.sent[0].text).toBe('build it')
   })
+  it('thread.spawn with autoTitle titles the child from its task here; without it, the given title stands', async () => {
+    const { svc, registry } = service()
+    const titled: { id: string; text: string }[] = []
+    Object.assign(registry, { titleFromTask: (id: string, text: string) => titled.push({ id, text }) })
+    const spec = { provider: 'claude' as const, model: 'claude-sonnet-5-5', reasoning: 'medium' as const, context1m: false, agentType: 'explorer' as const, useWorktree: false, cwd: '/srv/agents/work/temp-code' }
+    const auto = (await svc.handle('thread.spawn', { caller, args: { ...spec, task: 'look\nhard', title: 'look', autoTitle: true } }, ctx)) as { sessionId: string }
+    expect(titled).toEqual([{ id: auto.sessionId, text: 'look\nhard' }])
+    await svc.handle('thread.spawn', { caller, args: { ...spec, task: 'look', title: 'Review the flow' } }, ctx)
+    expect(titled).toHaveLength(1)
+  })
   it('a start or a spawn whose first message is refused leaves no thread here and is the tool error', async () => {
     const { svc, registry } = service()
     registry.refuse = 'refused: the project is moving'

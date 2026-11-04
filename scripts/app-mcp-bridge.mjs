@@ -154,6 +154,11 @@ const SPAWN_SPEC = {
     type: 'boolean',
     description:
       'Claude models only: the 1M context window, on by default for models that offer it. Pass false for 200k. true is rejected for models that do not offer it.'
+  },
+  title: {
+    type: 'string',
+    description:
+      'A short name for this agent, 3 to 6 plain words, the way a thread is titled ("Review the payment flow"). The transcript, the rail and the Agents list name the agent by it. Omitted, the app titles it from the task.'
   }
 }
 
@@ -257,7 +262,7 @@ export const TOOLS = [
   {
     name: 'spawn_agent',
     description:
-      'Spawn a subagent session (any provider/model, freely mixed) and send it its task — the ONLY way to run another model; NEVER shell out to `claude`/`codex exec`/`cursor-agent`. The agent works asynchronously as a visible session; use wait_for_agent to collect its result. To fan out, pass `agents` (up to 16 entries, each with its own task) instead of `task`: one call starts the whole batch and returns every agent id; top-level fields are defaults each entry may override.',
+      'Spawn a subagent session (any provider/model, freely mixed) and send it its task — the ONLY way to run another model; NEVER shell out to `claude`/`codex exec`/`cursor-agent`. The agent works asynchronously as a visible session; use wait_for_agent to collect its result. To fan out, pass `agents` (up to 16 entries, each with its own task) instead of `task`: one call starts the whole batch and returns every agent id; top-level fields are defaults each entry may override. Give each agent a `title` of 3 to 6 plain words: the person sees it by that name.',
     inputSchema: {
       type: 'object',
       properties: {

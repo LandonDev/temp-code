@@ -8,6 +8,7 @@ import {
   findingsContract,
   isMasterSession,
   batchMembershipOf,
+  cleanAgentTitle,
   settleTargets,
   MASTER_MECHANICS,
   mechanicsFor,
@@ -49,7 +50,12 @@ let projects: Record<string, { id: string }> = {}
 const reports: { to: string; agentId: string; status: string; text: string }[] = []
 /** What a wait held on the parent's meta: `on` and `off` calls in order. */
 const awaiting: { parentId: string; ids: string[]; on: boolean }[] = []
+/** Agents the host was asked to title from their task. */
+const titled: { id: string; text: string }[] = []
 const stub = {
+  titleFromTask: (id: string, text: string) => {
+    titled.push({ id, text })
+  },
   nextSteer: () => ({ promise: new Promise<string>(() => {}), cancel: () => {} }),
   setAwaiting: (parentId: string, ids: string[], on: boolean) => {
     awaiting.push({ parentId, ids, on })
@@ -97,6 +103,7 @@ beforeEach(() => {
   sent.length = 0
   reports.length = 0
   awaiting.length = 0
+  titled.length = 0
   children = []
   sessions = {}
   projects = {}
@@ -159,6 +166,38 @@ it('spawn_agent with context1m on a claude model reaches create with the flag', 
   expect(created[0].context1m).toBe(true)
   expect(created[0].model).toBe('claude-opus-5')
   expect(sent).toEqual(['do the thing'])
+})
+
+it('spawn_agent names the agent by its title, and titles an untitled one from its task', async () => {
+  const reply = await orchSpawnAgent(parent, { model: 'claude-opus-5', task: 'Review the diff\nline two', title: ' Review  the\tpayment flow ' })
+  expect(created[0].title).toBe('Review the payment flow')
+  expect(JSON.parse(reply).title).toBe('Review the payment flow')
+  expect(titled).toEqual([])
+  await orchSpawnAgent(parent, { model: 'claude-opus-5', task: 'Audit the gateway\nin detail' })
+  expect(created[1].title).toBe('Audit the gateway')
+  expect(titled).toEqual([{ id: 'child-2', text: 'Audit the gateway\nin detail' }])
+})
+
+it('a batch titles each entry by its own title, never a top-level one', async () => {
+  await orchSpawnAgent(parent, {
+    model: 'claude-opus-5',
+    title: 'Shared title',
+    agents: [{ task: 'one', title: 'First agent' }, { task: 'two' }]
+  })
+  expect(created.map((c) => c.title)).toEqual(['First agent', 'two'])
+  expect(titled).toEqual([{ id: 'child-2', text: 'two' }])
+})
+
+it('cleanAgentTitle keeps a title short and on one line', () => {
+  expect(cleanAgentTitle('Review the flow\nand the rest')).toBe('Review the flow')
+  const long = 'Audit every caller of the gateway forward path for missing deadlines and retries now'
+  const cut = cleanAgentTitle(long)!
+  expect(cut.length).toBeLessThanOrEqual(60)
+  expect(long.startsWith(cut)).toBe(true)
+  expect(long[cut.length]).toBe(' ')
+  expect(cleanAgentTitle('   ')).toBeUndefined()
+  expect(cleanAgentTitle('')).toBeUndefined()
+  expect(cleanAgentTitle(undefined)).toBeUndefined()
 })
 
 it('spawn_agent whose first message is refused starts no child and is the tool error', async () => {

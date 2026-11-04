@@ -122,7 +122,7 @@ export interface CrossHostThreadsDeps {
     | 'listProjects'
     | 'list'
   > &
-    Partial<Pick<SessionRegistry, 'pauseRun' | 'resumePausedRun' | 'setArchived' | 'setBatchMembership'>>
+    Partial<Pick<SessionRegistry, 'pauseRun' | 'resumePausedRun' | 'setArchived' | 'setBatchMembership' | 'titleFromTask'>>
   /** The saved hosts (remote.environments), by id and name. */
   environments: () => { id: string; name: string }[]
   /** How to send on the link to a host, while it is up: the reply path of a `peer.call` served here. */
@@ -666,6 +666,8 @@ export class CrossHostThreads {
       args.task,
       { preamble: args.preamble !== false }
     )
+    // The spawner gave no title: write one from the task, here where the model call runs.
+    if (args.autoTitle) this.deps.registry.titleFromTask?.(child.id, args.task)
     this.remember(caller, child.id)
     this.lastStatus.set(child.id, child.status)
     return { sessionId: child.id, title: child.title, cwd, projectId: placed.projectId, ...(placed.cwdNote ? { cwdNote: placed.cwdNote } : {}) }
