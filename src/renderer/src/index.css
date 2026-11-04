@@ -386,7 +386,11 @@ html.theme-light {
 }
 
 /* One focus ring for every control; the ring sits inside the box so rows
-   in tight lists do not clip it. */
+   in tight lists do not clip it. Unlayered, so it beats a utility's
+   outline-none. An element it does not name (a scroll region, a pre, a div
+   with tabIndex, a checkbox root) takes `focus-ring`; nothing draws a second
+   ring (lib/focusGuard.test.ts). */
+.focus-ring:focus-visible,
 button:focus-visible,
 a:focus-visible,
 [role="button"]:focus-visible,

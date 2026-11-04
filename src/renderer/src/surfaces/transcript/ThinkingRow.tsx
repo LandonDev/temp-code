@@ -61,7 +61,7 @@ export function ActivityThinkingRow({
         {expandable ? (
           <CollapsibleTrigger
             aria-label="Thought"
-            className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute inset-0 rounded-md"
           />
         ) : null}
       </div>

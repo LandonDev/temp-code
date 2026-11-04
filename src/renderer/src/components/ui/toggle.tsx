@@ -4,7 +4,7 @@ import { cn } from "@renderer/lib/cn";
 
 /** A two-state button; pressed is a muted fill. */
 const toggleVariants = cva(
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-[13px] font-medium text-muted-foreground outline-none transition-[background-color,color] duration-(--dur-hover) hover:bg-foreground/7 hover:text-foreground active:bg-foreground/12 active:transition-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-pressed:bg-muted data-pressed:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-[13px] font-medium text-muted-foreground transition-[background-color,color] duration-(--dur-hover) hover:bg-foreground/7 hover:text-foreground active:bg-foreground/12 active:transition-none disabled:pointer-events-none disabled:opacity-50 data-pressed:bg-muted data-pressed:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: { default: "bg-transparent", outline: "border border-border bg-transparent" },

@@ -310,7 +310,7 @@ export function batchTally(row: ThreadRow): { done: number; total: number } | nu
 }
 
 const ROW =
-  "group/row relative flex w-full cursor-default items-center gap-2 rounded-md px-3 text-left text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-accent";
+  "group/row relative flex w-full cursor-default items-center gap-2 rounded-md px-3 text-left text-[13px] focus-ring";
 
 /**
  * A thread row, presentational: a root in the workspace column (32px, its
@@ -952,7 +952,7 @@ export function ProjectCardView({
     </>
   );
   const box = cn(
-    "flex w-full min-w-0 cursor-default flex-col rounded-lg px-3 py-2 text-left text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-accent",
+    "flex w-full min-w-0 cursor-default flex-col rounded-lg px-3 py-2 text-left text-[12px] focus-ring",
     // The card is the column's one container: always on its own fill, a step
     // further on hover, the farthest step while selected. No transition (list rows never animate).
     selected ? "bg-sidebar-group-selected" : "bg-sidebar-group hover:bg-sidebar-group-hover",

@@ -47,7 +47,7 @@ export function JobLog({ environmentId, job, hostName }: { environmentId: string
       <div className="flex min-h-7 items-center gap-2">
         <CollapsibleTrigger
           aria-label={card.title}
-          className="group/fold flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="group/fold flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left text-xs"
         >
           <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform duration-(--dur-fast) group-data-[panel-open]/fold:rotate-90 motion-reduce:transition-none" />
           {running ? <Spinner className="size-3.5 text-muted-foreground" /> : null}

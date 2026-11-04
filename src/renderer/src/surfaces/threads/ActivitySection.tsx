@@ -281,7 +281,7 @@ function TaskLogFold({ threadId, taskId, command, live }: { threadId: string; ta
   } else {
     body = (
       <>
-        <div ref={scroller} tabIndex={0} data-slot="task-log" className="max-h-60 overflow-x-hidden overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <div ref={scroller} tabIndex={0} data-slot="task-log" className="max-h-60 overflow-x-hidden overflow-y-auto focus-ring">
           <pre className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">{text}</pre>
         </div>
         {failed ? <p className="pt-1 text-xs text-muted-foreground">Couldn't read the output</p> : null}

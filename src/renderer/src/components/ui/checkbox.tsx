@@ -12,7 +12,7 @@ function Checkbox({ className, shape = "square", ...props }: CheckboxPrimitive.R
       data-slot="checkbox"
       data-shape={shape}
       className={cn(
-        "t-check peer relative flex size-4 shrink-0 items-center justify-center border border-input bg-transparent outline-none after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-invalid:border-destructive data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground",
+        "t-check peer relative flex size-4 shrink-0 items-center justify-center border border-input bg-transparent after:absolute after:-inset-x-3 after:-inset-y-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-invalid:border-destructive data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground focus-ring",
         checkboxShapes[shape],
         className,
       )}

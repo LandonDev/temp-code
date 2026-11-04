@@ -204,7 +204,7 @@ export function ActionGroup({
                 aria-expanded={open}
                 aria-controls={panelId}
                 onClick={toggle}
-                className="group/line h-7 w-fit min-w-0 justify-start gap-2 rounded-md px-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent aria-expanded:bg-transparent focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+                className="group/line h-7 w-fit min-w-0 justify-start gap-2 rounded-md px-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent aria-expanded:bg-transparent motion-reduce:transition-none"
               >
                 <span data-kind={group.kind} className="flex shrink-0">
                   <Glyph className="size-3.5" aria-hidden />

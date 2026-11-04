@@ -345,7 +345,7 @@ function TaskBar({
         aria-label={`Tasks: ${String(bar.done)} of ${String(bar.total)} done`}
         onClick={stop}
         onKeyDown={stop}
-        className="-mx-1 flex h-4 w-[calc(100%+8px)] items-center gap-2 rounded-sm px-1 outline-none transition-[background-color] duration-(--dur-hover) hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+        className="-mx-1 flex h-4 w-[calc(100%+8px)] items-center gap-2 rounded-sm px-1 transition-[background-color] duration-(--dur-hover) hover:bg-foreground/5 motion-reduce:transition-none"
       >
         <Progress value={bar.done} max={bar.total} fill={working ? "foreground" : "muted"} aria-hidden className="min-w-0 flex-1" />
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums" dir="ltr" data-bar-tally>

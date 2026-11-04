@@ -140,7 +140,7 @@ function TaskRow({ task }: { task: Task }) {
       <div className="flex items-start gap-2.5">
         <TaskMark state={task.state} className="mt-[3px]" />
         {has ? (
-          <CollapsibleTrigger className="group/steps -mx-1 flex min-w-0 items-start gap-1 rounded-md px-1 text-start outline-none transition-[background-color] duration-(--dur-fast) hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none">
+          <CollapsibleTrigger className="group/steps -mx-1 flex min-w-0 items-start gap-1 rounded-md px-1 text-start transition-[background-color] duration-(--dur-fast) hover:bg-foreground/5 motion-reduce:transition-none">
             {label}
             <ChevronRight
               aria-hidden
@@ -273,7 +273,7 @@ export function TaskList({
 
   return (
     <Collapsible ref={card} data-slot="task-list" open={open} onOpenChange={setOpen} className={cn("w-full rounded-xl border border-border bg-card text-card-foreground", className)}>
-      <CollapsibleTrigger className="group/task-header flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-start outline-none transition-[background-color] duration-(--dur-fast) focus-visible:ring-2 focus-visible:ring-ring">
+      <CollapsibleTrigger className="group/task-header flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-start transition-[background-color] duration-(--dur-fast)">
         <span className="relative mt-[3px] block size-3.5 shrink-0">
           {complete ? <TaskMark state="done" /> : <TaskDonut done={done} total={tasks.length} />}
         </span>

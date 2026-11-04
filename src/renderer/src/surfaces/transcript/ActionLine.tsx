@@ -75,7 +75,7 @@ export function ActionLine({
           aria-label={label}
           aria-expanded={opens ? !!open : undefined}
           onClick={action}
-          className="absolute inset-0 h-auto rounded-md hover:bg-transparent active:bg-transparent aria-expanded:bg-transparent focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute inset-0 h-auto rounded-md hover:bg-transparent active:bg-transparent aria-expanded:bg-transparent"
         />
       ) : (
         <span className="sr-only">{label}</span>

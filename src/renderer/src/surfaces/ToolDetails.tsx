@@ -165,7 +165,7 @@ export function ToolOutputLines({ text, error }: { text: string; error: boolean 
         data-slot="tool-output"
         tabIndex={scrolls ? 0 : undefined}
         className={cn(
-          "max-h-80 overflow-x-hidden overflow-y-auto font-mono text-xs leading-5 whitespace-pre-wrap [overflow-wrap:anywhere] outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "max-h-80 overflow-x-hidden overflow-y-auto font-mono text-xs leading-5 whitespace-pre-wrap [overflow-wrap:anywhere] focus-ring",
           error ? "text-destructive" : "text-muted-foreground",
         )}
       >

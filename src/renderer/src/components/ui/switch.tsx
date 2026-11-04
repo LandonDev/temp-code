@@ -20,7 +20,7 @@ function Switch({ className, checked, defaultChecked = false, onCheckedChange, o
       data-slot="switch"
       data-on={on ? "true" : "false"}
       className={cn(
-        "t-toggle peer group/switch relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full border border-transparent outline-none after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[on=false]:bg-input data-[on=true]:bg-primary",
+        "t-toggle peer group/switch relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full border border-transparent after:absolute after:-inset-x-3 after:-inset-y-2 disabled:cursor-not-allowed disabled:opacity-50 data-[on=false]:bg-input data-[on=true]:bg-primary",
         className,
       )}
       onClick={(event) => {

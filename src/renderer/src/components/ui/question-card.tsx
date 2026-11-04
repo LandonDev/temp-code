@@ -247,7 +247,7 @@ export function QuestionCard({
                     aria-label="Reset the answers"
                     data-turning={turning || undefined}
                     onClick={reset}
-                    className="group/reset relative grid size-4 shrink-0 place-items-center rounded-full outline-none after:absolute after:-inset-3 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring"
+                    className="group/reset relative grid size-4 shrink-0 place-items-center rounded-full after:absolute after:-inset-3 after:content-['']"
                   />
                 }
               >
@@ -301,7 +301,7 @@ export function QuestionCard({
                           // A 28px row: the 1px border and 3px make the 4px above the 20px line. It
                           // sits 4px inside the card's 8px corner, so its 4px radius is concentric.
                           className={cn(
-                            "flex min-h-7 w-full items-start gap-2 rounded-sm border px-2 py-[3px] text-start outline-none duration-(--dur-instant) focus-visible:ring-2 focus-visible:ring-ring",
+                            "flex min-h-7 w-full items-start gap-2 rounded-sm border px-2 py-[3px] text-start duration-(--dur-instant)",
                             active ? "border-border bg-foreground/5" : "border-transparent hover:bg-foreground/5",
                           )}
                         >

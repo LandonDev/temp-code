@@ -61,7 +61,7 @@ export function NoticeLine({
         {fold ? (
           <CollapsibleTrigger
             aria-label={fold.label}
-            className="absolute inset-0 cursor-default rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute inset-0 cursor-default rounded-md"
           />
         ) : null}
         <span className="flex h-5 w-3.5 shrink-0 items-center justify-center text-muted-foreground [&_svg]:size-3.5">

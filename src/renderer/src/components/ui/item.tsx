@@ -20,7 +20,7 @@ function ItemSeparator({ className, ...props }: ComponentProps<typeof Separator>
 }
 
 const itemVariants = cva(
-  "group/item flex w-full flex-wrap items-center rounded-lg border text-sm outline-none transition-[border-color] duration-(--dur-fast) focus-visible:ring-2 focus-visible:ring-ring [a]:hover:bg-muted",
+  "group/item flex w-full flex-wrap items-center rounded-lg border text-sm transition-[border-color] duration-(--dur-fast) [a]:hover:bg-muted focus-ring",
   {
     variants: {
       variant: { default: "border-transparent", outline: "border-border", muted: "border-transparent bg-muted/50" },
