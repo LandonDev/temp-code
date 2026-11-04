@@ -403,7 +403,7 @@ it('refreshAccounts reads the live load once per pass and the sessions table nev
   // cost threads × rows: 16 s of blocked loop on 1.8k threads × 3.2k rows.
   registry.limits = {
     routeFor: (meta, _pin, opts) => {
-      if (!opts?.load) registry.liveLoad(meta.provider)
+      if (!opts?.load) registry.liveLoad(meta.provider as 'claude')
       return { route: { account: 'a@x.com', pin: false }, current: 'a@x.com' }
     },
     failover: async () => null

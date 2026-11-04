@@ -1,7 +1,6 @@
-import { DEFAULT_THREAD_CAP, hasRoom, pickFromCache, scopedSpent, tiersFor, type UsageReport } from 'aliax-core'
-import { isRoutedProvider, SERVICE_OF, type AccountHeadroom, type AccountRoute, type AccountsSnapshot } from '@shared/accounts'
+import { DEFAULT_THREAD_CAP, hasRoom, pickFromCache, scopedSpent, tiersFor, type ServiceId, type UsageReport } from 'aliax-core'
+import { routedProviderOf, SERVICE_OF, type AccountHeadroom, type AccountRoute, type AccountsSnapshot } from '@shared/accounts'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
-import type { SessionMeta } from '@shared/events'
 import { cacheWarmth, keepOrMove, rankAccounts, stickyTolerance } from './accountScore'
 
 /**
@@ -31,14 +30,15 @@ export interface ResolvedPin {
  * under whatever scope pin applies.
  */
 export function resolvePin(
-  meta: Pick<SessionMeta, 'provider'>,
+  meta: { provider: string; model?: string | null },
   project: Pick<ProjectMeta, 'accountPins'> | null,
   workspace: Pick<WorkspaceMeta, 'accountPins'> | null
 ): ResolvedPin | null {
-  if (!isRoutedProvider(meta.provider)) return null
-  const fromProject = project?.accountPins?.[meta.provider]
+  const provider = routedProviderOf(meta.provider, meta.model)
+  if (!provider) return null
+  const fromProject = project?.accountPins?.[provider]
   if (fromProject) return { name: fromProject, level: 'project' }
-  const fromWorkspace = workspace?.accountPins?.[meta.provider]
+  const fromWorkspace = workspace?.accountPins?.[provider]
   if (fromWorkspace) return { name: fromWorkspace, level: 'workspace' }
   return null
 }
@@ -52,7 +52,8 @@ export interface ChooseInput {
    *  row must still learn that it is gone): reported as vanished when the snapshot no longer knows it. */
   stored?: string | null
   model: string | null
-  provider: SessionMeta['provider']
+  /** The thread's harness, or an account provider (`meta`) when the caller already routed it. */
+  provider: string
   snapshot: AccountsSnapshot
   /** Live threads per account (running, watching, starting), from the registry. */
   load?: Record<string, number>
@@ -83,6 +84,7 @@ export interface Choice {
 }
 
 export interface EligibilityInput {
+  serviceId: ServiceId
   out?: string[]
   reports: UsageReport[]
   headroom?: Record<string, AccountHeadroom>
@@ -91,9 +93,9 @@ export interface EligibilityInput {
 }
 
 /** The same health, usage and cooldown rule for a spawn and a failover. */
-export function eligible(name: string, { out = [], reports, headroom, tiers, now }: EligibilityInput): boolean {
+export function eligible(name: string, { serviceId, out = [], reports, headroom, tiers, now }: EligibilityInput): boolean {
   return !out.includes(name) &&
-    hasRoom(reports.find((r) => r.profileName === name), tiers, now) &&
+    hasRoom(serviceId, reports.find((r) => r.profileName === name), tiers, now) &&
     (headroom?.[name]?.throttledUntil ?? 0) <= now
 }
 
@@ -126,10 +128,13 @@ export function eligible(name: string, { out = [], reports, headroom, tiers, now
  * win every pick. It has no room here, so a pinned thread expects the
  * fallback, a sticky thread leaves it, and a first spawn never lands on it.
  */
-export function chooseAccount({ pin, current: given, stored = null, model, provider, snapshot, load = {}, out = [], headroom, lastActiveAt, fresh = false, now = Date.now() }: ChooseInput): Choice {
-  if (!isRoutedProvider(provider)) return { route: null, current: null }
+export function chooseAccount({ pin, current: given, stored = null, model, provider: given_provider, snapshot, load = {}, out = [], headroom, lastActiveAt, fresh = false, now = Date.now() }: ChooseInput): Choice {
+  const provider = routedProviderOf(given_provider, model)
+  if (!provider) return { route: null, current: null }
   const snap = snapshot.providers[provider]
   const serviceId = SERVICE_OF[provider]
+  // A Meta key rides the harness's lane under its own service (`;s=meta`).
+  const service = provider === 'meta' ? { service: 'meta' as const } : {}
   const tiers = tiersFor(serviceId, model)
   const known = (name: string | null): name is string => name !== null && snap.profiles.some((p) => p.name === name)
   const gone = (name: string | null): name is string => name !== null && snap.profiles.length > 0 && !known(name)
@@ -138,15 +143,16 @@ export function chooseAccount({ pin, current: given, stored = null, model, provi
   const goneSticky = gone(current) ? current : gone(stored ?? given) ? (stored ?? given) : null
   const vanished = gone(pin) || goneSticky ? { ...(gone(pin) ? { pin } : {}), ...(goneSticky ? { sticky: goneSticky } : {}) } : undefined
   const withVanished = (choice: Choice): Choice => (vanished ? { ...choice, vanished } : choice)
-  const room = (name: string): boolean => eligible(name, { out, reports: snap.reports, headroom, tiers, now })
+  const withService = (choice: Choice): Choice => (choice.route && provider === 'meta' ? { ...choice, route: { ...choice.route, ...service } } : choice)
+  const room = (name: string): boolean => eligible(name, { serviceId, out, reports: snap.reports, headroom, tiers, now })
   const effectiveLoad = snap.pinned ? { ...load, [snap.pinned]: (load[snap.pinned] ?? 0) + 1 } : load
-  if (headroom) return withVanished(chooseScored({ pin, current: given, model, serviceId, snap, known, room, load: effectiveLoad, headroom, lastActiveAt, fresh, now }))
+  if (headroom) return withVanished(withService(chooseScored({ pin, current: given, model, serviceId, snap, known, room, load: effectiveLoad, headroom, lastActiveAt, fresh, now })))
   const pick = (tried: string[]): string | null =>
     pickFromCache({ serviceId, model, scoped: true, profiles: snap.profiles.filter((p) => room(p.name)), reports: snap.reports, tried: [...tried, ...out], load: effectiveLoad, cap: DEFAULT_THREAD_CAP, now })
 
   if (known(pin)) {
     const expected = room(pin) ? pin : known(current) && room(current) ? current : (pick([pin]) ?? pin)
-    return { route: { account: pin, pin: true }, current: expected }
+    return { route: { account: pin, pin: true, ...service }, current: expected }
   }
   if (known(current) && room(current)) {
     const report = (name: string) => snap.reports.find((r) => r.profileName === name)
@@ -157,10 +163,10 @@ export function chooseAccount({ pin, current: given, stored = null, model, provi
       scopedSpent(serviceId, model, report(current), now) === false &&
       scopedSpent(serviceId, model, report(best), now) === true
     const kept = outclassed ? best : current
-    return withVanished({ route: { account: kept, pin: false }, current: kept })
+    return withVanished({ route: { account: kept, pin: false, ...service }, current: kept })
   }
   const picked = pick([]) ?? (known(current) ? current : null)
-  return withVanished({ route: picked ? { account: picked, pin: false } : null, current: picked })
+  return withVanished({ route: picked ? { account: picked, pin: false, ...service } : null, current: picked })
 }
 
 interface ScoredInput {

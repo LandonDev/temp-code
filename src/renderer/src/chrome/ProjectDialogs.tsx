@@ -37,7 +37,7 @@ import { DEFAULT_REVIEW_SETTINGS, type ReviewSettings } from "@server/shared/rev
 import { registry } from "../lib/connection";
 import { useAccounts } from "../stores/accounts";
 import { shortName } from "../lib/accountScope";
-import { HARNESS_LABEL } from "../lib/session";
+import { PROVIDER_NAME } from "@server/shared/usageMeter";
 import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
 import type { BuildConfig } from "@server/shared/build";
 import { TURN_PASS_OFF, passEnabled, type TurnPass } from "@server/shared/turnpass";
@@ -116,10 +116,8 @@ export function AccountPinFields({
   );
 }
 
-const providerName = (provider: (typeof ROUTED_PROVIDERS)[number]) => {
-  const label = HARNESS_LABEL[provider];
-  return label.charAt(0).toUpperCase() + label.slice(1);
-};
+/** The plan the pin names (Claude, Codex, Meta), never the harness. */
+const providerName = (provider: (typeof ROUTED_PROVIDERS)[number]) => PROVIDER_NAME[provider];
 
 /** "Inherit (workspace: a@x)" / "Inherit (auto)" for a project under `workspace`. */
 export function projectInheritLabel(workspace: WorkspaceMeta, profiles: { name: string; email?: string; nickname?: string; createdAt: number; active: boolean }[]) {

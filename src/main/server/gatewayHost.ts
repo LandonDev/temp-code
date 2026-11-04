@@ -84,7 +84,7 @@ export interface GatewayStatus {
 const EXIT_WINDOW_MS = 60_000
 const EXITS_BEFORE_FALLBACK = 3
 /** The services the gateway routes, whose accounts the child mirrors. */
-const ROUTED: ServiceId[] = ['claude-code', 'codex']
+const ROUTED: ServiceId[] = ['claude-code', 'codex', 'meta']
 
 interface ChildState {
   link: GatewayChildLink
@@ -542,7 +542,7 @@ export class GatewayHost {
   private async answerChild(call: MainCall): Promise<unknown> {
     switch (call.m) {
       case 'credentialFor':
-        return this.control.credentialFor(call.service, call.account)
+        return this.control.credentialFor(call.service, call.account, call.serviceId ?? null)
       case 'substitute':
         return this.control.substitute(call.info)
       case 'onUnauthorized': {

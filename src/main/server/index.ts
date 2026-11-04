@@ -1155,8 +1155,10 @@ export async function startServer(
       },
       onResponse: (info) => {
         observed.onResponse?.(info)
-        if (info.account && isRoutedProvider(info.service)) headroomChanged()
-        if (info.status < 400 && info.account && isRoutedProvider(info.service)) accounts.markAnswered(SERVICE_OF[info.service], info.account)
+        // The answering account's service: the scope's (`s=meta`), else the lane's.
+        const serviceId = (info as { serviceId?: 'meta' | null }).serviceId ?? (isRoutedProvider(info.service) ? SERVICE_OF[info.service] : null)
+        if (info.account && serviceId) headroomChanged()
+        if (info.status < 400 && info.account && serviceId) accounts.markAnswered(serviceId, info.account)
       },
       pickNext: (info) => {
         if (info.thread) registry.noteRefusal(info.thread, { status: 429, code: null, account: info.account })

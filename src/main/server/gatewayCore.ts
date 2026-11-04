@@ -9,6 +9,8 @@ import {
   readBody,
   routeOf,
   scanModel,
+  scopeSegment as coreScopeSegment,
+  serviceIdOf,
   splitPath,
   type AccountSource,
   type Credential,
@@ -114,6 +116,8 @@ export interface TraceStart {
   thread: string | null
   account: string | null
   model: string | null
+  /** The scope's service when it is not the lane's own (`meta`). */
+  service?: string | null
 }
 
 export function traceLine(label: string, stage: 'start', rec: TraceStart): string
@@ -121,13 +125,13 @@ export function traceLine(label: string, stage: 'finish', rec: TraceStart & { st
 export function traceLine(label: string, stage: 'start' | 'finish', rec: TraceStart & { status?: number | null; reused?: string; protocol?: string | null; ms?: number }): string {
   const head = `${label} #${rec.id} ${rec.method} ${rec.url}`
   if (stage === 'start') {
-    return `${head} start thread=${rec.thread ?? '-'} account=${rec.account ? shortHash(rec.account) : '-'} model=${rec.model ?? '-'}`
+    return `${head} start thread=${rec.thread ?? '-'} account=${rec.account ? shortHash(rec.account) : '-'} model=${rec.model ?? '-'}${rec.service ? ` service=${rec.service}` : ''}`
   }
   return `${head} → ${rec.status ?? 'no upstream'} reused=${rec.reused}${rec.protocol ? ` ${rec.protocol}` : ''} ${rec.ms}ms`
 }
 
-/** Core's word on one upstream answer, before its body streams back. */
-export type ResponseInfo = Parameters<NonNullable<ForwardHooks['onResponse']>>[0]
+/** Core's word on one upstream answer, before its body streams back, plus the vault service the answering account belongs to. */
+export type ResponseInfo = Parameters<NonNullable<ForwardHooks['onResponse']>>[0] & { serviceId?: ServiceId | null }
 export type FailedOverInfo = Parameters<NonNullable<ForwardHooks['onFailedOver']>>[0]
 
 /**
@@ -138,7 +142,7 @@ export type FailedOverInfo = Parameters<NonNullable<ForwardHooks['onFailedOver']
  */
 export interface ControlPlane {
   /** The credential for `service` under `account`, the pinned account's for null. */
-  credentialFor(service: string, account: string | null): Promise<Credential | null>
+  credentialFor(service: string, account: string | null, serviceId?: ServiceId | null): Promise<Credential | null>
   /** The saved accounts of a service. */
   profilesKnown(serviceId: ServiceId): Promise<string[]>
   /** The account unscoped (terminal) traffic spends from. */
@@ -210,7 +214,7 @@ export class GatewayCore {
     this.trace = options.trace ?? process.env.TEMP_CODE_GATEWAY_TRACE === '1'
     this.label = options.label ?? '[gateway]'
     this.accounts = {
-      credentialFor: (service, account) => c.credentialFor(service, account),
+      credentialFor: (service, account, serviceId) => c.credentialFor(service, account, serviceId ?? null),
       hasProfile: async (serviceId, name) => (await c.profilesKnown(serviceId)).includes(name),
       pinned: (serviceId) => c.pinned(serviceId),
       report: (serviceId, name) => c.usageReport(serviceId, name),
@@ -359,14 +363,16 @@ export class GatewayCore {
     const c = this.options.control
     if (await handleControl(req, res, OWNER, { pid: this.options.pid, usage: (serviceId, force) => c.usage(serviceId, force) })) return
     const parsed = splitPath(req.url ?? '/')
-    const serviceId = SERVICE_OF[parsed.service as AccountProvider] as ServiceId | undefined
+    // The scope's service picks the upstream and the accounts (`s=meta`); the lane stays the wire shape.
+    const serviceId = parsed.scope?.service ?? (SERVICE_OF[parsed.service as AccountProvider] as ServiceId | undefined)
     const rec: TraceStart = {
       id: ++this.requestSeq,
       method: req.method ?? 'GET',
       url: req.url ?? '/',
       thread: parsed.scope?.thread ?? null,
       account: parsed.scope?.account ?? null,
-      model: parsed.scope?.model ?? null
+      model: parsed.scope?.model ?? null,
+      service: parsed.scope?.service ?? null
     }
     const startedAt = Date.now()
     if (this.trace) console.log(traceLine(this.label, 'start', rec))
@@ -406,7 +412,8 @@ export class GatewayCore {
         onFailedOver: (info) => c.onFailedOver(info),
         onResponse: (info) => {
           onResponse?.(info)
-          c.onResponse(info)
+          // The scope's service rides with the answer, so the host charges the right accounts (a Meta key on a claude lane).
+          c.onResponse({ ...info, serviceId: splitPath(url).scope?.service ?? serviceIdOf(info.service) })
         },
         onError: (m) => {
           this.noteError(m)
@@ -438,7 +445,8 @@ export class GatewayCore {
     const info = (account: string, body?: string): ScopedRequest => ({ service, serviceId, thread: scope.thread, account, own: scope.account, model, ...(body !== undefined ? { body } : {}) })
     let substitute = await c.substitute(info(routeOf(scope.thread) ?? scope.account))
     for (let attempt = 0; ; attempt++) {
-      const effective: RouteScope = substitute ? { thread: scope.thread, account: substitute, pin: true } : scope
+      // A substitute keeps the scope's service: a Meta key stands in for a Meta key.
+      const effective: RouteScope = substitute ? { ...scope, account: substitute, pin: true } : scope
       this.noteSubstitute(service, serviceId, scope, substitute)
       let answered: string | null = null
       const held = new HeldResponse(res)
@@ -544,8 +552,8 @@ function replay(req: IncomingMessage, url: string, body: Buffer | undefined): In
   return Object.assign(Readable.from(body ? [body] : []), { url, method: req.method, headers: req.headers }) as unknown as IncomingMessage
 }
 
-const scopeSegment = (scope: RouteScope): string =>
-  `~t=${encodeURIComponent(scope.thread)};a=${encodeURIComponent(scope.account)}${scope.pin ? ';pin=1' : ''}${scope.model ? `;m=${encodeURIComponent(scope.model)}` : ''}`
+/** The segment core parses back (aliax-core's own writer): thread, account, pin, model and the scope's service (`s=meta`). */
+const scopeSegment = (scope: RouteScope): string => coreScopeSegment(scope)
 
 /** The same scoped path under another scope: `/codex/~t=T;a=A/rest` → `/codex/~t=T;a=B;pin=1/rest`. */
 export function rescope(url: string, scope: RouteScope): string {

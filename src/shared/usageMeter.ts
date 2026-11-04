@@ -38,11 +38,13 @@ export interface MeterWindow {
 export const GENERAL_LABELS: Record<AccountProvider, string[]> = {
   claude: ['5h', 'Weekly'],
   codex: ['5h', 'week'],
-  cursor: []
+  cursor: [],
+  // Pay as you go: no window to pool; the meter shows a Meta row only while a key is throttled.
+  meta: []
 }
 
 /** The provider as the meter names it: the plan the accounts are on, not the harness. */
-export const PROVIDER_NAME: Record<AccountProvider, string> = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor' }
+export const PROVIDER_NAME: Record<AccountProvider, string> = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor', meta: 'Meta' }
 
 /** Below this share a bar's fill turns amber. */
 export const LOW_SHARE = 0.1

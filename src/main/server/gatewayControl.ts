@@ -1,4 +1,4 @@
-import { accounts, localAccounts, vault, type ForwardHooks, type LimitInfo } from 'aliax-core'
+import { accounts, localAccounts, vault, type ForwardHooks, type LimitInfo, type ServiceId } from 'aliax-core'
 import type { ControlPlane, FailedOverInfo, NetworkInfo, RequestInfo, ResponseInfo, RoutingHooks, ScopedRequest } from './gatewayCore'
 
 /**
@@ -17,8 +17,8 @@ export class InProcessControl implements ControlPlane {
     if (hooks.pickNext) this.pickNext = (info) => hooks.pickNext!(info)
   }
 
-  credentialFor(service: string, account: string | null) {
-    return localAccounts.credentialFor(service, account)
+  credentialFor(service: string, account: string | null, serviceId: ServiceId | null = null) {
+    return localAccounts.credentialFor(service, account, serviceId)
   }
 
   async profilesKnown(serviceId: Parameters<ControlPlane['profilesKnown']>[0]): Promise<string[]> {

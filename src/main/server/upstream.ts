@@ -115,8 +115,8 @@ export interface PoolStatus {
 
 const DEFAULT_POOLED = (origin: string): boolean => origin === 'https://api.anthropic.com'
 
-/** Every provider origin a fake provider (TEMP_CODE_FAKE_PROVIDERS) stands in for. */
-const PROVIDER_ORIGIN = /^https:\/\/(api\.anthropic\.com|platform\.claude\.com|claude\.ai|chatgpt\.com|auth\.openai\.com|cursor\.com)/
+/** Every provider origin a fake provider (TEMP_CODE_FAKE_PROVIDERS) stands in for; api.meta.ai is the Meta Model API. */
+const PROVIDER_ORIGIN = /^https:\/\/(api\.anthropic\.com|platform\.claude\.com|claude\.ai|chatgpt\.com|auth\.openai\.com|cursor\.com|api\.meta\.ai)/
 
 /** A provider URL as an instance reaches it: itself, or the fake provider's origin in its place. */
 export const fakeProviderRewrite =

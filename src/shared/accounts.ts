@@ -1,31 +1,50 @@
 import type { ProfileView, ServiceId, UsageReport } from 'aliax-core/shared/types'
+import { isMetaModel, type ProviderId } from './catalog'
 
-/** The harnesses that have an Aliax service behind them. */
-export type AccountProvider = 'claude' | 'codex' | 'cursor'
+/**
+ * The account providers: the harnesses that have an Aliax service behind
+ * them, and `meta`, the Meta Model API, whose keys serve the claude and
+ * codex harnesses' Meta rows (catalog `vendor: 'meta'`) and are never a
+ * harness of their own.
+ */
+export type AccountProvider = 'claude' | 'codex' | 'cursor' | 'meta'
 
-export const ACCOUNT_PROVIDERS: AccountProvider[] = ['claude', 'codex', 'cursor']
+export const ACCOUNT_PROVIDERS: AccountProvider[] = ['claude', 'codex', 'cursor', 'meta']
 
-/** Harness id ↔ Aliax service id. */
+/** Account provider ↔ Aliax service id. */
 export const SERVICE_OF: Record<AccountProvider, ServiceId> = {
   claude: 'claude-code',
   codex: 'codex',
-  cursor: 'cursor'
+  cursor: 'cursor',
+  meta: 'meta'
 }
 export const PROVIDER_OF: Record<ServiceId, AccountProvider> = {
   'claude-code': 'claude',
   codex: 'codex',
-  cursor: 'cursor'
+  cursor: 'cursor',
+  meta: 'meta'
 }
 
 export const isAccountProvider = (id: string): id is AccountProvider => id in SERVICE_OF
 
 /** The providers whose traffic goes through the gateway, so a thread can name its account. */
-export type RoutedProvider = 'claude' | 'codex'
-export const ROUTED_PROVIDERS: RoutedProvider[] = ['claude', 'codex']
-export const isRoutedProvider = (id: string): id is RoutedProvider => id === 'claude' || id === 'codex'
+export type RoutedProvider = 'claude' | 'codex' | 'meta'
+export const ROUTED_PROVIDERS: RoutedProvider[] = ['claude', 'codex', 'meta']
+export const isRoutedProvider = (id: string): id is RoutedProvider => id === 'claude' || id === 'codex' || id === 'meta'
 
-/** The account a person signs in to for each routed provider. */
-export const SIGN_IN_NAME: Record<RoutedProvider, string> = { claude: 'Claude', codex: 'ChatGPT' }
+/**
+ * The provider a thread's accounts come from: `meta` for a Meta row under
+ * any harness, else the harness itself when the gateway routes it, else
+ * null. Everything that picks, pins, scores or names a thread's account
+ * reads this, never the harness alone.
+ */
+export function routedProviderOf(provider: string, model: string | null | undefined): RoutedProvider | null {
+  if (provider === 'meta' || (model && isMetaModel(provider as ProviderId, model))) return 'meta'
+  return provider === 'claude' || provider === 'codex' ? provider : null
+}
+
+/** The account a person signs in to for each routed provider (Meta: a key, not a sign-in). */
+export const SIGN_IN_NAME: Record<RoutedProvider, string> = { claude: 'Claude', codex: 'ChatGPT', meta: 'Meta' }
 
 /**
  * One explicit account per provider, on a project or a workspace: threads of
@@ -42,6 +61,8 @@ export type AccountPins = Partial<Record<AccountProvider, string>>
 export interface AccountRoute {
   account: string
   pin: boolean
+  /** The vault service the account belongs to when it is not the harness's own: a Meta key behind the claude or codex lane (`;s=meta`). */
+  service?: 'meta'
 }
 
 export interface ProviderAccounts {
@@ -107,9 +128,20 @@ export const emptyAccounts = (): AccountsSnapshot => ({
   providers: {
     claude: { pinned: null, profiles: [], reports: [], owner: null },
     codex: { pinned: null, profiles: [], reports: [], owner: null },
-    cursor: { pinned: null, profiles: [], reports: [], owner: null }
+    cursor: { pinned: null, profiles: [], reports: [], owner: null },
+    meta: { pinned: null, profiles: [], reports: [], owner: null }
   }
 })
+
+/**
+ * A snapshot as an older host sends it, with no `meta` provider (the wire
+ * schema leaves it optional for that reason): the empty provider in its
+ * place, so every reader indexes the record whole.
+ */
+export function wholeSnapshot<T extends { providers: Partial<AccountsSnapshot['providers']> }>(snapshot: T): T & { providers: AccountsSnapshot['providers'] } {
+  if (snapshot.providers.meta) return snapshot as T & { providers: AccountsSnapshot['providers'] }
+  return { ...snapshot, providers: { ...snapshot.providers, meta: { pinned: null, profiles: [], reports: [], owner: null } } as AccountsSnapshot['providers'] }
+}
 
 /**
  * One profile as it is listed to another host on a pull (remote/accountSync.ts):

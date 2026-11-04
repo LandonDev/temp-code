@@ -74,15 +74,15 @@ export class PortControl implements ControlPlane {
     this.credentials.delete(credentialKey(service, account))
   }
 
-  async credentialFor(service: string, account: string | null): Promise<Credential | null> {
-    const key = credentialKey(service, account)
+  async credentialFor(service: string, account: string | null, serviceId: ServiceId | null = null): Promise<Credential | null> {
+    const key = credentialKey(serviceId === 'meta' ? 'meta' : service, account)
     const kept = this.credentials.get(key)
     if (kept && kept.until > this.now()) return kept.credential
     const inflight = this.asking.get(key)
     if (inflight) return inflight
     const generation = this.generation
     const ask = this.calls
-      .call<Credential | null>({ m: 'credentialFor', service, account })
+      .call<Credential | null>({ m: 'credentialFor', service, account, serviceId })
       .then((credential) => {
         const until = credential ? keepUntil(credential, this.now()) : 0
         if (credential && until > this.now() && generation === this.generation) this.credentials.set(key, { credential, until })

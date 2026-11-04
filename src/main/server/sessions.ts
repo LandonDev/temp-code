@@ -47,7 +47,7 @@ import {
   type GoalState,
   type RootTreeSummary
 } from '@shared/session-lifecycle'
-import { isRoutedProvider, type AccountPins, type AccountProvider, type AccountRoute } from '@shared/accounts'
+import { routedProviderOf, type AccountPins, type AccountProvider, type AccountRoute } from '@shared/accounts'
 import { resolvePin, type ResolvedPin, type RouteOptions } from './accountRouting'
 import type { LimitWindow, PreambleStamp } from '@shared/events'
 import { foldEvent, foldLog, newFoldState, reviveTodo, serializeTodo, toFoldRow } from './folds'
@@ -1603,7 +1603,7 @@ export class SessionRegistry {
       provider,
       model,
       account,
-      accountKnown: account && isRoutedProvider(provider) ? (this.accountKnown?.(provider, account) ?? null) : null,
+      accountKnown: account && routedProviderOf(provider, model) ? (this.accountKnown?.(routedProviderOf(provider, model)!, account) ?? null) : null,
       limit: event.limit ?? null,
       // A row the catalog lists but hides here (minCodexVersion) is unavailable; a model it never listed is not ours to judge.
       modelVisible: !listed || visibleModels(provider).some((m) => m.id === model),
@@ -1730,7 +1730,7 @@ export class SessionRegistry {
    *  yet) changes nothing. */
   expectAccount(sessionId: string, opts?: RouteOptions): void {
     const meta = this.store.getSession(sessionId)
-    if (!meta || !this.limits || !isRoutedProvider(meta.provider)) return
+    if (!meta || !this.limits || !routedProviderOf(meta.provider, meta.model)) return
     const pin = this.pinOf(meta)
     const { current, vanished } = this.limits.routeFor(meta, pin, opts)
     if (vanished) this.accountGone(meta, pin, vanished)
@@ -1747,8 +1747,8 @@ export class SessionRegistry {
    * the harness was spawned with no longer applies).
    */
   private accountGone(meta: SessionMeta, pin: ResolvedPin | null, vanished: { pin?: string; sticky?: string }): void {
-    if (vanished.pin && pin && pin.name === vanished.pin && isRoutedProvider(meta.provider)) {
-      const provider = meta.provider
+    const provider = routedProviderOf(meta.provider, meta.model)
+    if (vanished.pin && pin && pin.name === vanished.pin && provider) {
       if (pin.level === 'project' && meta.projectId) {
         const project = this.store.getProject(meta.projectId)
         if (project?.accountPins?.[provider] === pin.name) {
@@ -1786,11 +1786,11 @@ export class SessionRegistry {
    *  the threads holding a process: a live status never outlives its
    *  handle, and refreshAccounts asks this once per open thread, so a
    *  whole-table read here re-read 3k rows 1.8k times per snapshot. */
-  liveLoad(provider: SessionMeta['provider']): Record<string, number> {
+  liveLoad(provider: AccountProvider): Record<string, number> {
     const load: Record<string, number> = {}
     for (const id of new Set([...this.handles.keys(), ...this.starting.keys()])) {
       const s = this.store.getSession(id)
-      if (!s || s.archived || s.provider !== provider || !s.account) continue
+      if (!s || s.archived || routedProviderOf(s.provider, s.model) !== provider || !s.account) continue
       if (!LIVE_STATUSES.has(s.status) && !this.starting.has(s.id)) continue
       load[s.account] = (load[s.account] ?? 0) + 1
     }
@@ -1806,12 +1806,13 @@ export class SessionRegistry {
    *  dropped so the next send respawns under the new account (resume keeps
    *  the conversation; the prompt cache is lost). A thread mid-turn is
    *  left alone: the gateway moves that one itself. */
-  refreshAccount(sessionId: string, load?: (provider: SessionMeta['provider']) => Record<string, number>): void {
+  refreshAccount(sessionId: string, load?: (provider: AccountProvider) => Record<string, number>): void {
     const meta = this.store.getSession(sessionId)
-    if (!meta || meta.archived || !isRoutedProvider(meta.provider)) return
+    const routed = meta ? routedProviderOf(meta.provider, meta.model) : null
+    if (!meta || meta.archived || !routed) return
     if (LIVE_STATUSES.has(meta.status) || this.starting.has(sessionId)) return
     const live = this.handles.has(sessionId)
-    this.expectAccount(sessionId, { fresh: !live, load: load?.(meta.provider) })
+    this.expectAccount(sessionId, { fresh: !live, load: load?.(routed) })
     if (live && (this.store.getSession(sessionId)?.account ?? null) !== (meta.account ?? null)) {
       void this.dropHandle(sessionId)
     }
@@ -1830,7 +1831,8 @@ export class SessionRegistry {
     // A window reset at the clock hour once re-picked every unarchived
     // thread at once (4,000 metas in a second, nine of nine storms).
     const match = (s: SessionMeta): boolean => {
-      const names = changed[s.provider as AccountProvider]
+      const routed = routedProviderOf(s.provider, s.model)
+      const names = routed ? changed[routed] : undefined
       if (!names) return false
       return names === 'all' || !s.account || names.has(s.account)
     }
@@ -1859,8 +1861,8 @@ export class SessionRegistry {
    *  loop 2.2 s: the pass runs only when the pickable set moved (index.ts)
    *  and notifies once it is written. */
   private expectAccountsOver(rows: readonly SessionMeta[]): void {
-    const loads = new Map<SessionMeta['provider'], Record<string, number>>()
-    const load = (provider: SessionMeta['provider']): Record<string, number> => {
+    const loads = new Map<AccountProvider, Record<string, number>>()
+    const load = (provider: AccountProvider): Record<string, number> => {
       let l = loads.get(provider)
       if (!l) loads.set(provider, (l = this.liveLoad(provider)))
       return l
@@ -1883,9 +1885,10 @@ export class SessionRegistry {
   private onLimitError(sessionId: string, window: LimitWindow): void {
     if (window === 'transient' || !this.limits || this.limited.has(sessionId)) return
     const meta = this.store.getSession(sessionId)
-    if (!meta || !isRoutedProvider(meta.provider)) return
+    const routed = meta ? routedProviderOf(meta.provider, meta.model) : null
+    if (!meta || !routed) return
     const switching = this.limits
-      .failover(sessionId, { provider: meta.provider, model: meta.model ?? null, window, account: meta.account ?? null })
+      .failover(sessionId, { provider: routed, model: meta.model ?? null, window, account: meta.account ?? null })
       .then((switched) => {
         if (switched) this.setAccount(sessionId, switched.to)
         return switched

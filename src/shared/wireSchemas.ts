@@ -191,7 +191,7 @@ export const ProviderIdSchema = z.enum([
 ])
 export const ReasoningSchema = z.enum(REASONING_LEVELS)
 export const AgentTypeSchema = z.enum(AGENT_TYPES)
-export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor'])
+export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor', 'meta'])
 export const AccountPinsSchema = z.partialRecord(AccountProviderSchema, z.string())
 
 // ── accounts on the wire (the phone's subset of accounts.ts) ────────────

@@ -75,6 +75,9 @@ const CLAUDE_CREDENTIALS = 'Claude Code-credentials'
 
 async function loginStart(serviceId: ServiceId, loginHint?: string): Promise<ActionResult> {
   switch (serviceId) {
+    case 'meta':
+      // A key, not a sign-in: the Accounts page's Add key… dialog (aliax:profiles:addKey).
+      return { ok: false, error: 'Meta uses an API key: add one with Add key…' }
     case 'claude-code': {
       // One window: signing in gives us the app session, approving gives us the
       // CLI tokens. Both halves, no code to paste. A hint pre-fills the address

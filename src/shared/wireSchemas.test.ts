@@ -103,6 +103,7 @@ const report: HostDevicesReport = {
 const snapshot: AccountsSnapshot = {
   updatedAt: 1_760_000_000_000,
   providers: {
+    meta: { pinned: null, profiles: [{ name: 'Meta key …LJY', createdAt: 1_750_000_000_000, active: false, static: true, kind: 'key' }], reports: [{ profileName: 'Meta key …LJY', windows: [], note: 'pay as you go' }], owner: 'temp-code' },
     claude: {
       pinned: 'work@example.com',
       profiles: [{ name: 'work@example.com', email: 'work@example.com', createdAt: 1_750_000_000_000, active: true, activeOn: ['CLI'] }],

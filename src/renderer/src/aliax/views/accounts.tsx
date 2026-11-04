@@ -25,7 +25,8 @@ import { useNow } from "@aliax/lib/accounts";
 import { AccountRow, barColumns } from "./accounts/row";
 import { STATIC_WARN_MS, type OwnerView, type RowAction } from "./accounts/rowLine";
 
-const HARNESS: Record<ServiceId, HarnessId> = { "claude-code": "claude", codex: "codex", cursor: "cursor" };
+// The mark each section leads with; Meta takes the vendor mark once HarnessIcon carries it (the section is built in the accounts UI task).
+const HARNESS: Record<ServiceId, HarnessId> = { "claude-code": "claude", codex: "codex", cursor: "cursor", meta: "claude" };
 
 export interface AccountsActions {
   onCapture: (serviceId: ServiceId) => void;

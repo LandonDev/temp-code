@@ -25,6 +25,7 @@ import {
   SERVICE_OF,
   emptyAccounts,
   isRoutedProvider,
+  routedProviderOf,
   type AccountHeadroom,
   type AccountProvider,
   type AccountRoute,
@@ -398,6 +399,8 @@ export class AccountsService {
    * snapshot (many subagents may spawn at once; nobody polls here).
    */
   routeFor(meta: SessionMeta, pin: ResolvedPin | null, opts?: RouteOptions): { route: AccountRoute | null; current: string | null } {
+    // A Meta row under either harness spends from the meta keys (shared/accounts.ts routedProviderOf).
+    const routed = routedProviderOf(meta.provider, meta.model)
     return chooseAccount({
       pin: pin?.name ?? null,
       current: meta.account ?? null,
@@ -408,9 +411,9 @@ export class AccountsService {
       model: meta.model ?? null,
       provider: meta.provider,
       snapshot: this.snap,
-      load: isRoutedProvider(meta.provider) ? (opts?.load ?? this.deps.load(meta.provider)) : {},
-      out: isRoutedProvider(meta.provider) ? this.outFor(meta.provider) : [],
-      headroom: isRoutedProvider(meta.provider) ? this.headroomFor(meta.provider, meta.model ?? null) : undefined,
+      load: routed ? (opts?.load ?? this.deps.load(routed)) : {},
+      out: routed ? this.outFor(routed) : [],
+      headroom: routed ? this.headroomFor(routed, meta.model ?? null) : undefined,
       now: this.deps.now()
     })
   }
@@ -513,7 +516,7 @@ export class AccountsService {
     const out = this.outFor(provider)
     const headroom = this.headroomFor(provider, info.model ?? null)
     const tiers = tiersFor(info.serviceId, info.model)
-    const usable = (name: string): boolean => eligible(name, { out, reports: snap.reports, headroom, tiers, now })
+    const usable = (name: string): boolean => eligible(name, { serviceId: info.serviceId, out, reports: snap.reports, headroom, tiers, now })
     const excluded = snap.profiles.filter((p) => !usable(p.name)).map((p) => p.name)
     return pickNext({
       serviceId: info.serviceId,

@@ -98,7 +98,7 @@ export type ChildCall =
 
 /** What the child asks main, answered with `reply`. */
 export type MainCall =
-  | { m: 'credentialFor'; service: string; account: string | null }
+  | { m: 'credentialFor'; service: string; account: string | null; serviceId?: ServiceId | null }
   | { m: 'substitute'; info: ScopedRequest }
   | { m: 'onUnauthorized'; info: ScopedRequest }
   | { m: 'pickNext'; info: LimitInfo }

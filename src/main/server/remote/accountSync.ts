@@ -19,7 +19,7 @@ import {
   type Transfer,
   type TransferProfile
 } from 'aliax-core/sync'
-import { ACCOUNT_PROVIDERS, PROVIDER_OF, type AccountProvider, type AccountRemoval, type ListedAccount } from '@shared/accounts'
+import { ACCOUNT_PROVIDERS, PROVIDER_OF, SERVICE_OF, type AccountProvider, type AccountRemoval, type ListedAccount } from '@shared/accounts'
 import type { ServerPush } from '@shared/contract'
 import type { PeerLink, Peers } from './peers'
 import type { HeadroomSnapshot, HeadroomStore } from '../headroom'
@@ -74,7 +74,7 @@ import type { HeadroomSnapshot, HeadroomStore } from '../headroom'
  *    and the routing stop naming the account before the next turn.
  */
 
-const SERVICES: ServiceId[] = ['claude-code', 'codex', 'cursor']
+const SERVICES: ServiceId[] = ['claude-code', 'codex', 'cursor', 'meta']
 /** Settings row per provider: the environment new sign-ins are handed to. */
 export const HOME_PREFIX = 'accounts.home.'
 const PUSH_DEBOUNCE_MS = 1_000
@@ -184,7 +184,7 @@ export class AccountSync {
     this.deps.store.setSetting(`${HOME_PREFIX}${provider}`, next)
     this.deps.nudge()
     if (!next && was) {
-      const service = ({ claude: 'claude-code', codex: 'codex', cursor: 'cursor' } as const)[provider]
+      const service = SERVICE_OF[provider]
       for (const p of vault.profiles(service)) {
         if (p.owner !== was || p.static) continue
         // takeOver says what became of it; a grant left provisional settles on the sync below.

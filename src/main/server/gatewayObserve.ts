@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { accounts, codexSnapshotToWindows, parseUnifiedHeaders, pinnedProfile, scopedCapOf, serviceIdOf, type ForwardHooks } from 'aliax-core'
+import { accounts, codexSnapshotToWindows, parseUnifiedHeaders, pinnedProfile, scopedCapOf, serviceIdOf, type ForwardHooks, type ServiceId } from 'aliax-core'
 import { shortHash, type NetworkInfo, type RoutingHooks } from './gatewayCore'
 import type { HeadroomStore } from './headroom'
 
@@ -25,9 +25,10 @@ export function observeHooks({ logDir, onObserved, headroom }: { logDir: string;
     onResponse: (info) => {
       const { service, path, status, headers, body, account, model } = info
       if (status === 429 || status === 529) logLimit(logDir, { service, path, status, headers, body, account, model, attempt: attemptOf(info) })
-      const serviceId = serviceIdOf(service)
+      // The scope's service when the answer came from a Meta key on a claude or codex lane.
+      const serviceId = (info as { serviceId?: ServiceId | null }).serviceId ?? serviceIdOf(service)
       if (headroom && serviceId && account) headroom.observe({ service: serviceId, account, model, status, headers })
-      if (service !== 'claude') return
+      if (service !== 'claude' || serviceId === 'meta') return
       const limits = parseUnifiedHeaders(headers, scopedCapOf('claude-code', model))
       if (!limits || !account || limits.windows.length === 0) return
       if (accounts.observeWindows('claude-code', account, limits.windows)) onObserved?.()

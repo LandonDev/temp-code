@@ -81,7 +81,7 @@ describe('AccountsService', () => {
     ;({ cleanup } = fixture())
     const { svc } = service()
     const snap = await svc.list()
-    expect(Object.keys(snap.providers).sort()).toEqual(['claude', 'codex', 'cursor'])
+    expect(Object.keys(snap.providers).sort()).toEqual(['claude', 'codex', 'cursor', 'meta'])
     const claude = snap.providers.claude
     expect(claude.pinned).toBe('a@x.com')
     expect(claude.profiles.map((p) => p.name)).toEqual(['a@x.com', 'b@x.com'])

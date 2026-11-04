@@ -36,6 +36,9 @@ describe('endpointFor', () => {
     expect(routeUrl('http://127.0.0.1:5/claude', 'T', { account: 'A', pin: true }, 'x/y')).toBe('http://127.0.0.1:5/claude/~t=T;a=A;pin=1;m=x%2Fy')
     expect(routeUrl('http://127.0.0.1:5/claude', 'T', { account: 'A', pin: false }, null)).toBe('http://127.0.0.1:5/claude/~t=T;a=A')
     expect(routeUrl('http://127.0.0.1:5/claude', 'T', { account: 'A', pin: false }, '[1m]')).toBe('http://127.0.0.1:5/claude/~t=T;a=A')
+    // A Meta key on either lane names its service, after the model, so the gateway sends the lane's shape to api.meta.ai.
+    expect(routeUrl('http://127.0.0.1:5/claude', 'T', { account: 'Meta key …LJY', pin: false, service: 'meta' }, 'muse-wonder-1.0')).toBe('http://127.0.0.1:5/claude/~t=T;a=Meta%20key%20%E2%80%A6LJY;m=muse-wonder-1.0;s=meta')
+    expect(routeUrl('http://127.0.0.1:5/codex', 'T', { account: 'k', pin: true, service: 'meta' }, 'muse-spark-1.3')).toBe('http://127.0.0.1:5/codex/~t=T;a=k;pin=1;m=muse-spark-1.3;s=meta')
   })
 
   it('routedEndpointFor scopes the URL only when the owner lists scoped-routes, and remembers the answer per origin', async () => {

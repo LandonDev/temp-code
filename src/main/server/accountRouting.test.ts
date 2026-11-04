@@ -245,7 +245,7 @@ describe('chooseAccount, scored (the registry passes the gateway\'s headroom)', 
 
 
 describe('eligible', () => {
-  const input = { reports: [{ profileName: 'a', windows: [fine('5h'), full('Fable')] }], tiers: ['5h', 'Weekly'], now: NOW }
+  const input = { serviceId: 'claude-code' as const, reports: [{ profileName: 'a', windows: [fine('5h'), full('Fable')] }], tiers: ['5h', 'Weekly'], now: NOW }
   it('one predicate checks out marks, expired sign-ins, spent tiers and live cooldowns', () => {
     expect(eligible('a', input)).toBe(true)
     expect(eligible('a', { ...input, out: ['a'] })).toBe(false)

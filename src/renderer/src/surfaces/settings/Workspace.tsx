@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { HARNESS_TITLE, type HarnessId } from "../../lib/session";
+import type { HarnessId } from "../../lib/session";
+import { PROVIDER_NAME } from "@server/shared/usageMeter";
 import { BuildEditor, takeRequestedBuildFocus } from "../../chrome/rail/buildSettings";
 import { ThreadDefaultsEditor } from "../../chrome/ThreadDefaultsDialog";
 import { TurnPassEditor } from "../../chrome/TurnPassFields";
@@ -71,11 +72,11 @@ function AccountsSection({ workspace }: { workspace: WorkspaceMeta }) {
           <PageRow
             key={provider}
             media={<HarnessIcon harness={provider as HarnessId} className="size-4 shrink-0" />}
-            title={HARNESS_TITLE[provider]}
+            title={PROVIDER_NAME[provider]}
             error={error?.provider === provider ? error.message : undefined}
           >
             <ChoiceSelect
-              label={`${HARNESS_TITLE[provider]} account`}
+              label={`${PROVIDER_NAME[provider]} account`}
               value={current}
               disabled={profiles.length === 0 && current === ""}
               onChange={(next) => {

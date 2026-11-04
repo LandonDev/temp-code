@@ -65,15 +65,17 @@ export function scopeModel(model: string | null | undefined): string | undefined
 
 /**
  * The per-thread scope segment, appended to the service base:
- *   <endpoint>/~t=<thread>;a=<account>[;pin=1][;m=<model>]
+ *   <endpoint>/~t=<thread>;a=<account>[;pin=1][;m=<model>][;s=meta]
  * Only a gateway that lists `scoped-routes` honours it; anything older would
  * pass the segment upstream as part of the path. `m=` is the thread's model,
  * so the gateway attributes a request without parsing its body (a side
- * call's body may still name another model; its first bytes win).
+ * call's body may still name another model; its first bytes win). `s=meta`
+ * says the account is a Meta key: the gateway sends the lane's wire shape
+ * to api.meta.ai under it.
  */
 export function routeUrl(endpoint: string, thread: string, route: AccountRoute, model?: string | null): string {
   const m = scopeModel(model)
-  return `${endpoint}/~t=${encodeURIComponent(thread)};a=${encodeURIComponent(route.account)}${route.pin ? ';pin=1' : ''}${m ? `;m=${encodeURIComponent(m)}` : ''}`
+  return `${endpoint}/~t=${encodeURIComponent(thread)};a=${encodeURIComponent(route.account)}${route.pin ? ';pin=1' : ''}${m ? `;m=${encodeURIComponent(m)}` : ''}${route.service ? `;s=${route.service}` : ''}`
 }
 
 /**
