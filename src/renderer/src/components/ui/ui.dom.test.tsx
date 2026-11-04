@@ -307,14 +307,20 @@ describe("Progress", () => {
   it("fills by a transform in the named colour", () => {
     const { rerender } = render(<Progress value={25} aria-label="room" />);
     const bar = () => document.querySelector("[data-slot=progress-indicator]") as HTMLElement;
-    expect(bar().style.transform).toBe("scaleX(0.25)");
+    expect(bar().style.transform).toBe("translateX(-75%)");
     expect(bar().style.width).toBe("100%");
     expect(bar().className).toContain("bg-primary");
     rerender(<Progress value={10} fill="warning" aria-label="room" />);
-    expect(bar().style.transform).toBe("scaleX(0.1)");
+    expect(bar().style.transform).toBe("translateX(-90%)");
     expect(bar().className).toContain("bg-warning");
     rerender(<Progress value={50} fill="muted" aria-label="room" />);
     expect(bar().className).toContain("bg-muted-foreground");
+    // It slides inside the clipped, rounded track: no scale squashes its end caps.
+    expect(bar().className).not.toContain("origin-left");
+    expect(bar().className).toContain("rounded-full");
+    const track = bar().parentElement!;
+    expect(track.className).toContain("overflow-x-hidden");
+    expect(track.className).toContain("rounded-full");
   });
 });
 

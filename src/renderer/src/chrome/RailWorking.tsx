@@ -42,8 +42,12 @@ export function workingTipLine(row: WorkingRow, now: number): string {
 }
 
 /** The tooltip: the word, its detail and the elapsed time 8px after it as
- *  spans (StatusMark), the project under them. */
-function tipOf(row: WorkingRow, project: string | null, now: number): ReactNode {
+ *  spans (StatusMark), the project under them. It mounts only while the
+ *  tooltip shows, so its second hand runs only then: the Working section
+ *  itself never re-renders on the clock. `at` fixes the time (a fixture). */
+function TipBody({ row, project, at }: { row: WorkingRow; project: string | null; at?: number }) {
+  const ticking = useClock(at === undefined && row.state === "working");
+  const now = at ?? ticking;
   const { detail, elapsed } = workingTip(row, now);
   return (
     <span data-working-tip aria-label={workingTipLine(row, now)} className="flex flex-col text-left">
@@ -65,6 +69,10 @@ function tipOf(row: WorkingRow, project: string | null, now: number): ReactNode 
   );
 }
 
+function tipOf(row: WorkingRow, project: string | null, at?: number): ReactNode {
+  return <TipBody row={row} project={project} at={at} />;
+}
+
 /**
  * The rail's Working section, presentational: a heading, then one RailRow
  * per thread that needs the person, works, or finished unseen, four at most
@@ -83,8 +91,9 @@ export function RailWorkingView({
   onSelect,
 }: {
   rows: readonly WorkingRow[];
-  /** The second hand; 0 leaves the elapsed time out of the tooltips. */
-  now: number;
+  /** A fixed time for the tooltips (a fixture or a test; 0 leaves the elapsed
+   *  time out); absent, each tooltip runs its own second hand while it shows. */
+  now?: number;
   activeSessionId?: string;
   projectOf: (row: WorkingRow) => string | null;
   onSelect?: (sessionId: string) => void;
@@ -134,14 +143,13 @@ export function RailWorkingView({
 }
 
 /** The Working section wired to the session store, the catalog and the
- *  live agent tracker; the second hand runs only while a working row shows. */
+ *  live agent tracker; the second hand runs only inside an open tooltip. */
 export function RailWorking({ activeSessionId, onSelect }: { activeSessionId?: string; onSelect?: (sessionId: string) => void }) {
   const metas = useSessionMetas();
   const { projects, workspaces } = useWorkspaceCatalog();
   const unseen = useSyncExternalStore(liveAgentTracker.subscribe, liveAgentTracker.unseenIds);
   const rows = useMemo(() => workingRows(metas, unseen), [metas, unseen]);
-  const now = useClock(rows.length >= WORKING_MIN && rows.some((r) => r.state === "working"));
   const projectOf = (row: WorkingRow): string | null =>
     projects.find((p) => p.id === row.meta.projectId)?.name ?? workspaces.find((w) => w.id === row.meta.workspaceId)?.name ?? null;
-  return <RailWorkingView rows={rows} now={now} activeSessionId={activeSessionId} projectOf={projectOf} onSelect={onSelect} />;
+  return <RailWorkingView rows={rows} activeSessionId={activeSessionId} projectOf={projectOf} onSelect={onSelect} />;
 }

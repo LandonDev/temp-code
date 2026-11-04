@@ -9,7 +9,7 @@ import type { SessionMeta } from "../lib/tcserver/types";
 import { buildHeaderModel, orderModel } from "../lib/threadHeaderModel";
 import type { ThreadHeaderProps } from "./ThreadHeader";
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
-import { TabVisitNav, TitleBar, TrafficLightSpacer } from "./TitleBar";
+import { TabVisitNav, TitleBar, TrafficLightSpacer, tabScrollBehavior } from "./TitleBar";
 import { chipThreadsOf } from "./ShellTitleBar";
 import { newSession } from "../lib/session";
 import { shellStore } from "../stores/shell";
@@ -171,6 +171,20 @@ describe("TitleBar", () => {
   it("names the rail's toggle by what it shows, as the panel's and the sidebar's are", () => {
     render(<TabVisitNav onTogglePanel={() => {}} />);
     expect(screen.getByRole("button", { name: "Workspaces" })).toBeTruthy();
+  });
+});
+
+describe("the tab strip's arrows", () => {
+  it("glide the strip, and jump it under reduced motion", () => {
+    const original = window.matchMedia;
+    try {
+      window.matchMedia = ((query: string) => ({ matches: false, media: query })) as typeof window.matchMedia;
+      expect(tabScrollBehavior()).toBe("smooth");
+      window.matchMedia = ((query: string) => ({ matches: query.includes("reduce"), media: query })) as typeof window.matchMedia;
+      expect(tabScrollBehavior()).toBe("auto");
+    } finally {
+      window.matchMedia = original;
+    }
   });
 });
 

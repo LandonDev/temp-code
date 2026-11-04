@@ -36,7 +36,7 @@ afterEach(() => {
 describe("the task bar", () => {
   it("fills done of total and says the tally once, on its own line", () => {
     const { container } = view(meta(), { todos: seven(3) });
-    expect(indicator(container)?.style.transform).toBe(`scaleX(${String(3 / 7)})`);
+    expect(indicator(container)?.style.transform).toBe("translateX(-57.14%)");
     expect(container.querySelector("[data-bar-tally]")?.textContent).toBe("3/7");
     expect(container.querySelector("[data-tally]")).toBeNull();
     expect(row(container).textContent?.match(/3\/7/g)).toHaveLength(1);

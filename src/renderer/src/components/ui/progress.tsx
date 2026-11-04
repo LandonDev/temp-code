@@ -12,13 +12,20 @@ const FILL_CLASS: Record<ProgressFill, string> = {
 /** A 4px determinate bar. The usage meter and task tallies build on it.
  *  `fill` tints the bar (muted for room that is not news, warning when it
  *  runs low); the fill is a transform, so a live update never relayouts. */
+/** The indicator slides in from the left inside the clipped, rounded track,
+ *  so its round end caps keep their shape (a scaleX squashed them into
+ *  ellipses): the share left to fill, as a negative percent, to 0.01. */
+export function indicatorShift(fraction: number): number {
+  return Math.round((fraction - 1) * 10_000) / 100;
+}
+
 function Progress({ className, children, value, max = 100, fill = "foreground", ...props }: ProgressPrimitive.Root.Props & { fill?: ProgressFill }) {
   const fraction = value == null ? 0 : Math.min(1, Math.max(0, value / max));
   return (
     <ProgressPrimitive.Root value={value} max={max} data-slot="progress" data-fill={fill} className={cn("flex flex-wrap gap-2", className)} {...props}>
       {children}
       <ProgressTrack>
-        <ProgressIndicator className={FILL_CLASS[fill]} style={{ width: "100%", transform: `scaleX(${fraction})` }} />
+        <ProgressIndicator className={FILL_CLASS[fill]} style={{ width: "100%", transform: `translateX(${indicatorShift(fraction)}%)` }} />
       </ProgressTrack>
     </ProgressPrimitive.Root>
   );
@@ -29,7 +36,7 @@ function ProgressTrack({ className, ...props }: ProgressPrimitive.Track.Props) {
 }
 
 function ProgressIndicator({ className, ...props }: ProgressPrimitive.Indicator.Props) {
-  return <ProgressPrimitive.Indicator data-slot="progress-indicator" className={cn("h-full origin-left rounded-full bg-primary transition-transform duration-(--dur-slow) ease-(--ease-out) motion-reduce:transition-none", className)} {...props} />;
+  return <ProgressPrimitive.Indicator data-slot="progress-indicator" className={cn("h-full rounded-full bg-primary transition-transform duration-(--dur-slow) ease-(--ease-out) motion-reduce:transition-none", className)} {...props} />;
 }
 
 function ProgressLabel({ className, ...props }: ProgressPrimitive.Label.Props) {

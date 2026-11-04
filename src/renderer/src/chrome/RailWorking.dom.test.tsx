@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkingRow } from "../lib/railWorking";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { RailWorkingView, workingTipLine } from "./RailWorking";
+import { clockForTest } from "../lib/turnClock";
 
 /** The hosts the window knows; one by default, two for the host glyph. */
 const hosts = vi.hoisted(() => ({ environments: [{ id: "local", name: "This Mac" }] as { id: string; name: string; platform?: string }[] }));
@@ -48,6 +49,12 @@ function mount(rows: WorkingRow[], over: { activeSessionId?: string; onSelect?: 
 const rowsShown = (root: HTMLElement) => [...root.querySelectorAll("[data-working-row]")].map((r) => r.getAttribute("data-working-row"));
 
 describe("the rail's Working section", () => {
+  it("holds no clock while its tooltips are shut: the section never re-renders on the second", () => {
+    render(<RailWorkingView rows={[row("a", "working"), row("b", "working")]} projectOf={() => "Alpha"} />);
+    expect(document.querySelectorAll("[data-working-row]")).toHaveLength(2);
+    expect(clockForTest.listeners()).toBe(0);
+  });
+
   it("shows from one row, and draws no hairline of its own (the foot's is above it)", () => {
     const { container } = mount([row("a", "working")]);
     expect(rowsShown(container)).toEqual(["a"]);

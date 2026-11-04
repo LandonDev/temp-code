@@ -157,7 +157,7 @@ describe('AccountsPage', () => {
     const bar = screen.getByRole('progressbar', { name: '5h: 70 percent left' })
     expect(bar.getAttribute('data-fill')).toBe('muted')
     const fill = bar.querySelector('[data-slot="progress-indicator"]') as HTMLElement
-    expect(fill.style.transform).toBe('scaleX(0.7)')
+    expect(fill.style.transform).toBe('translateX(-30%)')
 
     // One read on mount; the snapshot and the mount do not both fire it.
     expect(aliax.listServices).toHaveBeenCalledTimes(1)

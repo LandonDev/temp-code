@@ -31,7 +31,7 @@ export function UsageMeter({ sessionId }: { sessionId?: string }) {
   });
   if (rows.length === 0) return null;
   return (
-    <div aria-label="Usage" className="flex shrink-0 flex-col gap-px px-2 pb-2">
+    <div aria-label="Usage" className="flex shrink-0 flex-col px-2 pb-2">
       {rows.map(({ provider, meter }) => (
         <MeterRow key={provider} provider={provider} meter={meter} now={now} />
       ))}

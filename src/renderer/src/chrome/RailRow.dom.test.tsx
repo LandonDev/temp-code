@@ -102,6 +102,9 @@ describe("RailRow", () => {
     const trailing = container.querySelector("[data-rail-trailing]")!;
     expect(trailing.className).toContain("group-hover/row:opacity-0");
     expect(trailing.className).toContain("min-w-11");
+    // A pointer sweeping down the rail flashes nothing: hover waits, focus does not.
+    expect(trailing.className).toContain("group-hover/row:delay-(--delay-hover)");
+    expect(trailing.className).toContain("group-focus-within/row:delay-(--dur-instant)");
     const pin = screen.getByRole("button", { name: "Pin workspace" });
     const menu = screen.getByRole("button", { name: "Workspace options" });
     expect(pin.compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -110,6 +113,8 @@ describe("RailRow", () => {
       expect(action.hasAttribute("data-no-drag")).toBe(true);
       expect(action.className).toContain("group-hover/row:opacity-100");
       expect(action.className).toContain("group-focus-within/row:opacity-100");
+      expect(action.className).toContain("group-hover/row:delay-(--delay-hover)");
+      expect(action.className).toContain("group-focus-within/row:delay-(--dur-instant)");
       expect(action.className).toContain("size-6");
       fireEvent.pointerDown(action, { button: 0 });
       fireEvent.click(action);

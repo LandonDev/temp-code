@@ -158,10 +158,12 @@ function moreTrigger(className?: string) {
         "text-muted-foreground hover:text-foreground",
         "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
         "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100 data-popup-open:pointer-events-auto data-popup-open:opacity-100",
+        // Hover waits, so a pointer crossing the column flashes nothing; focus and an open menu show it at once.
+        "group-hover/row:delay-(--delay-hover) group-focus-within/row:delay-(--dur-instant) data-popup-open:delay-(--dur-instant)",
         className,
       )}
     >
-      <MoreHorizontal className="size-4" />
+      <MoreHorizontal className="size-3.5" />
     </Button>
   );
 }
@@ -169,7 +171,7 @@ function moreTrigger(className?: string) {
 
 /** The trailing slot fades while the row's hover action shows. */
 const YIELDS =
-  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-focus-within/row:opacity-0 group-hover/row:opacity-0 motion-reduce:transition-none";
+  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-focus-within/row:opacity-0 group-hover/row:opacity-0 group-hover/row:delay-(--delay-hover) group-focus-within/row:delay-(--dur-instant) motion-reduce:transition-none";
 
 function InlineRename({
   value,
@@ -459,7 +461,7 @@ export function ThreadRowView({
               }}
               onDoubleClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
-              className="h-5 gap-0.5 px-1 text-[11px] font-normal tabular-nums text-muted-foreground hover:text-foreground"
+              className="h-5 gap-0.5 px-1 text-[12px] font-normal tabular-nums text-muted-foreground after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-[''] hover:text-foreground"
             >
               <ChevronRight
                 className={cn(

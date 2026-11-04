@@ -85,6 +85,11 @@ type Props = {
   onChooseFolder?: () => void;
 };
 
+/** How the tab strip's arrows scroll it: a glide, or a jump under reduced motion. */
+export function tabScrollBehavior(): ScrollBehavior {
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
 /** Which tab-strip edges still have overflow to scroll toward. */
 export function tabStripOverflow(
   scrollLeft: number,
@@ -298,7 +303,7 @@ function TitleBarComponent({
     const el = tabStripRef.current;
     if (!el) return;
     const amount = Math.max(el.clientWidth * 0.6, 112);
-    el.scrollBy({ left: direction * amount, behavior: "smooth" });
+    el.scrollBy({ left: direction * amount, behavior: tabScrollBehavior() });
   }, []);
   const activeTabRef = useRef<HTMLDivElement | null>(null);
   // The active chip comes into view when the tab changes, when another pane

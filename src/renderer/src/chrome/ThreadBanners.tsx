@@ -298,10 +298,10 @@ function ContinueAs({
       side="bottom"
       align="end"
       label="Continue as"
-      className="w-75 gap-0 px-3 pt-2.5 pb-3"
+      className="w-75 gap-0 px-3 pt-3 pb-3"
     >
       <p className="text-[13px] font-medium">Continue as</p>
-      <div className="mt-1.5 -ml-1 flex flex-wrap items-center gap-1">
+      <div className="mt-2 -ml-1 flex flex-wrap items-center gap-1">
         <ModelPicker
           harness={choice.harness}
           model={choice.model}
@@ -313,7 +313,7 @@ function ContinueAs({
           settings={{ values: settings, onChange: setSettings }}
         />
       </div>
-      <Button className="mt-2.5 w-full" onClick={submit}>
+      <Button className="mt-3 w-full" onClick={submit}>
         {label}
       </Button>
     </LazyPopover>
