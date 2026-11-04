@@ -132,7 +132,7 @@ function HeldReview({
           </CollapsibleContent>
         </Collapsible>
       ) : null}
-      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3">
+      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
         <Button size="sm" disabled={pending || !sessionId} onClick={merge}>
           {pending ? "Merging…" : "Merge anyway"}
         </Button>
@@ -219,7 +219,7 @@ function FindingList({
                     variant="ghost"
                     size="xs"
                     disabled={!onOpenFile}
-                    className="-ml-2 h-5 max-w-full font-mono text-xs font-normal text-muted-foreground hover:text-foreground"
+                    className="-ml-2 h-5 max-w-full font-mono text-xs font-normal text-muted-foreground after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-[''] hover:text-foreground"
                     onClick={(event) => {
                       event.stopPropagation();
                       onOpenFile?.(path, f.line ? { line: f.line } : undefined);

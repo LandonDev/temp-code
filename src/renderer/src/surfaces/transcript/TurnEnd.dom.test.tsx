@@ -73,6 +73,8 @@ describe("TurnDuration", () => {
     const paused = render(<TurnDuration elapsedMs={63_000} live paused />);
     expect(paused.container.textContent).toBe("Pausedworked 1m 3s");
     expect(paused.container.querySelector('[data-state="paused"]')).not.toBeNull();
+    // The word matches the age beside it: 13px, like the Stopped mark.
+    expect(paused.container.querySelector('[data-state="paused"]')!.closest("[class*='text-[13px]']")).not.toBeNull();
   });
 });
 
@@ -289,10 +291,14 @@ describe("TurnEnd of a stopped turn", () => {
   it("carries the four actions, reachable by keyboard focus", () => {
     const { container } = view();
     const group = container.querySelector(".group-hover\\/turnend\\:opacity-100") as HTMLElement;
-    expect(group.className).toContain("focus-within:opacity-100");
+    // Keyboard focus shows them at once and an open menu keeps them; a mouse
+    // click that leaves Copy focused does not hold them on screen.
+    expect(group.className).toContain("has-focus-visible:opacity-100");
+    expect(group.className).toContain("has-aria-expanded:opacity-100");
+    expect(group.className).not.toContain("focus-within:");
     // A pointer crossing the row does not flash them: hover waits, focus does not.
     expect(group.className).toContain("group-hover/turnend:delay-(--delay-hover)");
-    expect(group.className).toContain("focus-within:delay-(--dur-instant)");
+    expect(group.className).toContain("has-focus-visible:delay-(--dur-instant)");
     for (const name of ["Copy response", "Save as note", "Hand off", "Second opinion"]) {
       const button = screen.getByRole("button", { name });
       expect(group.contains(button)).toBe(true);

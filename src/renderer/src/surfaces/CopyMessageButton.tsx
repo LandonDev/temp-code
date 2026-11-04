@@ -28,12 +28,14 @@ export function CopyMessageButton({
     [],
   );
   return (
+    // The reveal rides a wrapper, so the button keeps its own hover fill's transition.
+    <span className="absolute -left-8 top-1/2 z-10 flex -translate-y-1/2 opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/message:opacity-100 group-hover/message:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) motion-reduce:transition-none">
     <Tip label={copied ? "Copied" : "Copy message"}>
     <Button
       variant="ghost"
       size="icon-xs"
       aria-label={copied ? "Copied" : "Copy message"}
-      className="absolute -left-8 top-1/2 z-10 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/message:opacity-100 group-hover/message:delay-(--delay-hover) starting:opacity-0 focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
+      className="text-muted-foreground"
       onClick={(event) => {
         event.stopPropagation();
         playCue("copy");
@@ -50,5 +52,6 @@ export function CopyMessageButton({
       <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
     </Button>
     </Tip>
+    </span>
   );
 }

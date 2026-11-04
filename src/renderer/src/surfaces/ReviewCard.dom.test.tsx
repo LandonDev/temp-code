@@ -79,6 +79,10 @@ describe("ReviewCard", () => {
     expect(card.textContent).toContain("Drops the error");
     expect(card.textContent).toContain("A 500 reads as success");
     expect(card.textContent).not.toContain("Address the findings");
+    // A 20px file button reaches 24px through its hit area.
+    expect(screen.getByRole("button", { name: "src/x.ts:12" }).className).toContain("after:-inset-y-0.5");
+    // The actions sit 8px apart, as the failure card's do.
+    expect(screen.getByRole("button", { name: /Merge anyway/ }).parentElement!.classList).toContain("gap-2");
     fireEvent.click(screen.getByRole("button", { name: "src/x.ts:12" }));
     expect(onOpenFile).toHaveBeenCalledWith("/repo/src/x.ts", { line: 12 });
   });

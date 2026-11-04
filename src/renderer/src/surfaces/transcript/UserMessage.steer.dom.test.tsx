@@ -55,11 +55,11 @@ describe("a steer's line under its bubble", () => {
     const box = line(container)!;
     expect(box.className).toContain("h-4");
     expect(box.parentElement!.lastElementChild).toBe(box);
-    expect(word(container).className).not.toContain("z-fade-quick");
+    expect(word(container).className).not.toContain("z-fade-in");
     rerender(<UserMessageBlock block={user({ state: "received", how: "in-turn", ts: at + 1 })} stickyIndex={1} environmentId="local" />);
     expect(line(container)).toBe(box);
     expect(box.className).toContain("h-4");
     expect(word(container).textContent).toBe("Received");
-    expect(word(container).className).toContain("z-fade-quick");
+    expect(word(container).className).toContain("z-fade-in");
   });
 });

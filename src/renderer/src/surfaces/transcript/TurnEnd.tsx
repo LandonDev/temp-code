@@ -174,7 +174,7 @@ export function WatchingLine({
   const said = plainStatus(STATUS_WORD.watching, subject ?? null);
   const body = (
     <>
-      <StatusMark state="watching" detail={subject} className="min-w-0" />
+      <StatusMark state="watching" detail={subject} className="min-w-0 text-[13px]" />
       {since != null && now > 0 ? (
         <span aria-hidden className={cn(stale && "text-warning")}>
           {duration(Math.max(0, now - since))}
@@ -256,7 +256,7 @@ export function TurnDuration({
   const state = queued ? "queued" : paused ? "paused" : waiting ? "waiting" : "working";
   return (
     <div role={live ? "status" : undefined} aria-label={STATUS_WORD[state]} className={LINE}>
-      <StatusMark state={state} />
+      <StatusMark state={state} className="text-[13px]" />
       {state === "working" && elapsedMs != null ? <span aria-hidden>{spanWords(elapsedMs)}</span> : null}
       {state === "paused" && elapsedMs != null ? <span aria-hidden>worked {spanWords(elapsedMs)}</span> : null}
     </div>
@@ -285,7 +285,7 @@ function ClosingActions({
   onHandoff?: (harness: HarnessId, model: string) => void;
 }) {
   return (
-    <span className="flex items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/turnend:opacity-100 group-hover/turnend:delay-(--delay-hover) starting:opacity-0 focus-within:opacity-100 focus-within:delay-(--dur-instant) motion-reduce:transition-none">
+    <span className="flex items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/turnend:opacity-100 group-hover/turnend:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) has-aria-expanded:opacity-100 motion-reduce:transition-none">
       {/* One provider: moving to a neighbour moves the label instead of waiting again. */}
       <TooltipProvider>
         {output ? <CopyTurnButton text={output} armed={armed} /> : null}

@@ -6,6 +6,7 @@ import { WorkingText } from "../components/ui/working-text";
 import type { Block } from "../lib/session";
 import { formatTokens } from "../lib/contextUsage";
 import { useClock } from "../lib/turnClock";
+import { usePaneVisible } from "../hooks/paneVisibility";
 import { spanWords } from "./transcript/thinking";
 import { NoticeLine } from "./transcript/NoticeLine";
 
@@ -59,7 +60,8 @@ export function CompactionCard({ block }: { block: Block }) {
 }
 
 function ActiveCompaction({ startedAt }: { startedAt?: number }) {
-  const now = useClock(true);
+  // A hidden pane does not tick.
+  const now = useClock(usePaneVisible());
   const elapsed = startedAt && now ? Math.max(0, now - startedAt) : undefined;
   return (
     <NoticeLine

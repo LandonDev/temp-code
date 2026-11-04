@@ -196,7 +196,7 @@ export function SteerLine({ stamp }: { stamp: SteerStamp }) {
           render={
             <span
               key={word}
-              className={`text-xs leading-4 ${stamp.state === "failed" ? "text-destructive" : "text-muted-foreground"} ${changed ? "z-fade-quick" : ""}`}
+              className={`text-xs leading-4 ${stamp.state === "failed" ? "text-destructive" : "text-muted-foreground"} ${changed ? "z-fade-in" : ""}`}
             />
           }
         >

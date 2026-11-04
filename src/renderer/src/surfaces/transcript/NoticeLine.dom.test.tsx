@@ -50,13 +50,22 @@ describe("NoticeLine", () => {
     expect(container.textContent).toContain("the log");
   });
 
+  it("sizes only its own glyph, never a StatusMark's inside it", () => {
+    const { container } = render(<NoticeLine lead="Gate" glyph={<svg data-testid="glyph" />} />);
+    const slot = container.querySelector('[data-testid="glyph"]')?.parentElement;
+    expect(slot?.className).toContain("[&>svg]:size-3.5");
+    expect(slot?.className).not.toContain("[&_svg]");
+  });
+
   it("keeps actions in the hover group", () => {
     render(<NoticeLine lead="Reviewed" actions={<Button size="xs">Review thread</Button>} />);
     const actions = document.querySelector('[data-slot="notice-actions"]')!;
     expect(actions.className).toContain("group-hover/notice:opacity-100");
     expect(actions.className).toContain("opacity-0");
     expect(actions.className).toContain("group-hover/notice:delay-(--delay-hover)");
-    expect(actions.className).toContain("focus-within:delay-(--dur-instant)");
+    expect(actions.className).toContain("has-focus-visible:delay-(--dur-instant)");
+    expect(actions.className).toContain("has-aria-expanded:opacity-100");
+    expect(actions.className).not.toContain("focus-within:");
     expect(actions.contains(screen.getByRole("button", { name: "Review thread" }))).toBe(true);
   });
 });

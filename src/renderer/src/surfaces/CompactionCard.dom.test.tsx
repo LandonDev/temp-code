@@ -3,6 +3,10 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Block } from "../lib/session";
 import { CompactionCard } from "./CompactionCard";
+import { clockForTest } from "../lib/turnClock";
+
+const pane = vi.hoisted(() => ({ visible: true }));
+vi.mock("../hooks/paneVisibility", async (importOriginal) => ({ ...(await importOriginal<object>()), usePaneVisible: () => pane.visible }));
 
 const block = (compaction: Block["compaction"]): Block => ({ id: "c", role: "system", text: "", compaction });
 
@@ -12,6 +16,19 @@ afterEach(() => {
 });
 
 describe("CompactionCard", () => {
+  it("running in a hidden pane holds no clock", () => {
+    pane.visible = false;
+    try {
+      render(<CompactionCard block={block({ phase: "start", startedAt: Date.now() - 3_000 })} />);
+      expect(clockForTest.listeners()).toBe(0);
+    } finally {
+      pane.visible = true;
+    }
+    cleanup();
+    render(<CompactionCard block={block({ phase: "start", startedAt: Date.now() - 3_000 })} />);
+    expect(clockForTest.listeners()).toBe(1);
+  });
+
   it("running: a spinner and Compacting context, no bar", () => {
     const { container } = render(<CompactionCard block={block({ phase: "start", startedAt: Date.now() - 3_000 })} />);
     expect(screen.getByRole("status", { name: "Compacting context" })).toBeTruthy();

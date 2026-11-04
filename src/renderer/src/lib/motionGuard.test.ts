@@ -178,6 +178,20 @@ describe("the motion guard", () => {
     expect(new Set(names)).toEqual(new Set(Object.keys(KEYFRAMES)));
   });
 
+  it("never writes a keyframes name as a class that no rule defines: it would animate nothing", () => {
+    // `z-fade-quick` is a keyframes name; the class that runs it is `.z-fade-in`.
+    // A class may share its keyframes' name only where a stylesheet defines that class.
+    const css = walk(ROOT).filter((path) => path.endsWith(".css")).map((path) => readFileSync(path, "utf8")).join("\n");
+    const misused: string[] = [];
+    for (const file of walk(ROOT).filter((path) => path.endsWith(".tsx"))) {
+      const text = readFileSync(file, "utf8");
+      for (const name of Object.keys(KEYFRAMES).filter((name) => !new RegExp(`\\.${name}(?![\\w-])`).test(css))) {
+        if (new RegExp(`(["'\`\\s])${name}(?=["'\`\\s])`).test(text)) misused.push(`${relative(ROOT, file)}: ${name}`);
+      }
+    }
+    expect(misused).toEqual([]);
+  });
+
   it("points each keyframes entry at a file that exists", () => {
     for (const [name, servedBy] of Object.entries(KEYFRAMES)) expect(existsSync(join(ROOT, servedBy)), name).toBe(true);
   });

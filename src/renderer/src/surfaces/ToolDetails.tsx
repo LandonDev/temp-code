@@ -69,6 +69,8 @@ export const ToolDetails = memo(function ToolDetails({
 
   return (
     <div className="group/details relative flex min-w-0 flex-col">
+      {/* The reveal rides a wrapper, so the toggle keeps its own fill's transition. */}
+      <span className="absolute right-0 top-0 z-10 flex opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/details:opacity-100 group-hover/details:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) motion-reduce:transition-none">
       <Tooltip>
         <TooltipTrigger
           render={
@@ -78,7 +80,7 @@ export const ToolDetails = memo(function ToolDetails({
               aria-label={raw ? "Show formatted" : "Show raw"}
               aria-pressed={raw}
               onClick={() => setRaw(!raw)}
-              className="absolute right-0 top-0 z-10 text-muted-foreground aria-pressed:bg-foreground/7 aria-pressed:text-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/details:opacity-100 group-hover/details:delay-(--delay-hover) starting:opacity-0 focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
+              className="text-muted-foreground aria-pressed:bg-foreground/7 aria-pressed:text-foreground"
             />
           }
         >
@@ -86,6 +88,7 @@ export const ToolDetails = memo(function ToolDetails({
         </TooltipTrigger>
         <TooltipContent>{raw ? "Show formatted" : "Show raw"}</TooltipContent>
       </Tooltip>
+      </span>
       {pretty ? (
         <div className="pr-8">
           <PrettyJson value={input} titleOf={titleOf} />
@@ -197,14 +200,12 @@ function CopyOutput({ text, armed }: { text: string; armed: boolean }) {
     );
   };
   return (
-    <IconAction
-      label={copied ? "Copied" : "Copy output"}
-      onClick={copy}
-      armed={armed}
-      className="absolute right-0 top-0 opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/output:opacity-100 group-hover/output:delay-(--delay-hover) starting:opacity-0 focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
-    >
-      <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
-    </IconAction>
+    // The reveal rides a wrapper, so the button keeps its own hover fill's transition.
+    <span className="absolute right-0 top-0 flex opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/output:opacity-100 group-hover/output:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) motion-reduce:transition-none">
+      <IconAction label={copied ? "Copied" : "Copy output"} onClick={copy} armed={armed}>
+        <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
+      </IconAction>
+    </span>
   );
 }
 

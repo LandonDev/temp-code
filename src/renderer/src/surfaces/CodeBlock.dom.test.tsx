@@ -43,14 +43,17 @@ describe("CodeBlock", () => {
       expect(block.querySelector('[data-streamdown="code-block-header"]')).toBeNull();
       expect(block.className).toContain("relative");
       const button = block.querySelector("button") as HTMLElement;
-      expect(button.parentElement).toBe(block);
-      expect(button.className).toMatch(/\babsolute\b/);
-      expect(button.className).toMatch(/\bright-1\b/);
-      expect(button.className).toMatch(/\btop-1\b/);
+      // The reveal and the place ride a wrapper; the button keeps its own hover transition.
+      const reveal = button.parentElement as HTMLElement;
+      expect(reveal.parentElement).toBe(block);
+      expect(reveal.className).toMatch(/\babsolute\b/);
+      expect(reveal.className).toMatch(/\bright-1\b/);
+      expect(reveal.className).toMatch(/\btop-1\b/);
+      expect(reveal.className).toContain("group-hover/code:delay-(--delay-hover)");
+      expect(reveal.className).toContain("has-focus-visible:delay-(--dur-instant)");
       expect(button.className).toMatch(/\brounded-sm\b/);
-      expect(button.className).not.toMatch(/\brounded-md\b/);
-      expect(button.className).toContain("group-hover/code:delay-(--delay-hover)");
-      expect(button.className).toContain("focus-visible:delay-(--dur-instant)");
+      expect(button.className).not.toMatch(/\brounded-md\b|opacity-0|transition-opacity/);
+      expect(button.className).toContain("transition-[background-color,color,border-color]");
       view.unmount();
     }
   });

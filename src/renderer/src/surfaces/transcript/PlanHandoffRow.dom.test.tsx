@@ -46,4 +46,9 @@ describe("PlanHandoffRow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Build it" }));
     expect(onSelect).toHaveBeenCalledWith("b1");
   });
+  it("its 20px link reaches a 24px hit area", () => {
+    const { container } = render(<PlanHandoffRow block={block()} />);
+    const link = [...container.querySelectorAll("button")].find((b) => b.className.includes("h-5"))!;
+    expect(link.className).toContain("after:-inset-y-0.5");
+  });
 });

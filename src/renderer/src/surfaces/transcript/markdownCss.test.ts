@@ -109,7 +109,7 @@ describe("transcript/markdown.css", () => {
   it("frames code and tables as one card with no margin of their own", () => {
     const card = decl('.agent-markdown [data-streamdown="code-block"]');
     expect(card).toContain("border: 1px solid var(--border)");
-    expect(card).toContain("border-radius: 8px");
+    expect(card).toContain("border-radius: var(--radius-lg)");
     expect(card).toContain("background: var(--card)");
     expect(card).not.toContain("margin");
     expect(decl('.agent-markdown [data-streamdown="code-block-body"]')).toContain("padding: 12px");

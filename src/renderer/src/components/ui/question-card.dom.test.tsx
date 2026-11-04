@@ -1,11 +1,31 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { QuestionCard, type Question } from "./question-card";
 
 afterEach(cleanup);
 
 const one: Question[] = [{ prompt: "Which?", options: [{ label: "Alpha" }, { label: "Beta" }, { label: "Other", freeform: true }] }];
+
+describe("QuestionCard's motion", () => {
+  it("snaps its frame to the page and leaves its title glyph at its own size", () => {
+    const { container } = render(<QuestionCard title="Indentation" icon={<svg data-testid="glyph" />} questions={[{ prompt: "Which?", options: [{ label: "Tabs" }, { label: "Spaces" }] }]} />);
+    const frame = container.querySelector<HTMLElement>('[data-slot="question-card"] .overflow-hidden')!;
+    expect(frame.className).not.toMatch(/transition/);
+    expect(screen.getByTestId("glyph").parentElement!.className).not.toContain("[&_svg]");
+  });
+
+  it("moves Previous by a full transform string, with no blur", () => {
+    const source = readFileSync(resolve(__dirname, "question-card.tsx"), "utf8");
+    const previous = source.slice(source.indexOf("const PREVIOUS"), source.indexOf("};", source.indexOf("const PREVIOUS")));
+    expect(previous).toContain('transform: "translateX(-8px)"');
+    expect(previous).not.toMatch(/blur|filter|\bx:/);
+    const label = source.slice(source.indexOf("function MorphLabel"), source.indexOf("\n}\n", source.indexOf("function MorphLabel")));
+    expect(label).not.toMatch(/width/);
+  });
+});
 
 describe("QuestionCard", () => {
   it("sets the sans face on its root, whatever the transcript row around it uses", () => {

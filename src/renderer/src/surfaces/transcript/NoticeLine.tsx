@@ -65,7 +65,7 @@ export function NoticeLine({
             className="absolute inset-0 cursor-default rounded-md"
           />
         ) : null}
-        <span className="flex h-5 w-3.5 shrink-0 items-center justify-center text-muted-foreground [&_svg]:size-3.5">
+        <span className="flex h-5 w-3.5 shrink-0 items-center justify-center text-muted-foreground [&>svg]:size-3.5">
           {glyph}
         </span>
         <div className={cn("flex min-w-0 flex-1 gap-x-2 leading-5", fold && "pointer-events-none", wrap ? "flex-wrap" : "items-center")}>
@@ -102,7 +102,7 @@ export function NoticeLine({
           {actions ? (
             <span
               data-slot="notice-actions"
-              className="pointer-events-auto relative flex shrink-0 items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/notice:opacity-100 group-hover/notice:delay-(--delay-hover) starting:opacity-0 focus-within:opacity-100 focus-within:delay-(--dur-instant) motion-reduce:transition-none"
+              className="pointer-events-auto relative flex shrink-0 items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/notice:opacity-100 group-hover/notice:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) has-aria-expanded:opacity-100 motion-reduce:transition-none"
             >
               <TooltipProvider>{actions}</TooltipProvider>
             </span>

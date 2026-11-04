@@ -1,4 +1,4 @@
-import { DUR, EASE_EXIT, EASE_IN_OUT, EASE_OUT, SPRING_LAYOUT } from "@renderer/lib/ease";
+import { DUR, EASE_EXIT, EASE_IN_OUT, EASE_OUT } from "@renderer/lib/ease";
 import { RefreshCw } from "@renderer/chrome/icons";
 import { AnimatePresence, motion, MotionConfig, useReducedMotion, type Variants } from "motion/react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
@@ -46,7 +46,8 @@ function MorphFrame({ at, children }: { at: number; children: Array<ReactNode> }
     return () => observer.disconnect();
   }, [at]);
   return (
-    <div className="-m-3 overflow-hidden p-3 transition-[height] duration-(--dur-slow) ease-(--ease-out) motion-reduce:transition-none" style={{ height: height === undefined ? undefined : height + PAGE_INSET * 2 }}>
+    // The frame snaps to the page: a height tween would resize a windowed transcript row for its whole run.
+    <div className="-m-3 overflow-hidden p-3" style={{ height: height === undefined ? undefined : height + PAGE_INSET * 2 }}>
       <div className="relative">
         {children.map((page, index) => (
           <div
@@ -65,15 +66,14 @@ function MorphFrame({ at, children }: { at: number; children: Array<ReactNode> }
   );
 }
 
-const LABEL_MORPH = SPRING_LAYOUT;
+const LABEL_IN = { duration: DUR.fast, ease: EASE_OUT } as const;
 const LABEL_OUT = { duration: DUR.fast, ease: EASE_EXIT } as const;
 
+/** A button's words changing: the width changes at once and the words swap on opacity alone. */
 function MorphLabel({ children }: { children: ReactNode }) {
   return (
-    <motion.span initial={{ width: 0 }} animate={{ width: "auto" }} exit={{ width: 0 }} transition={LABEL_MORPH} className="inline-flex min-w-0 items-center overflow-hidden">
-      <motion.span initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -6, transition: LABEL_OUT }} transition={LABEL_MORPH} className="inline-flex whitespace-nowrap">
-        {children}
-      </motion.span>
+    <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: LABEL_OUT }} transition={LABEL_IN} className="inline-flex whitespace-nowrap">
+      {children}
     </motion.span>
   );
 }
@@ -106,8 +106,8 @@ const TURN = { duration: DUR.drawer, ease: EASE_IN_OUT } as const;
 const MARK_SWAP = "col-start-1 row-start-1 transition-[opacity,scale,filter] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none";
 
 const PREVIOUS: Variants = {
-  hidden: { opacity: 0, x: -8, filter: "blur(2px)", transition: { duration: DUR.fast, ease: EASE_EXIT } },
-  shown: { opacity: 1, x: 0, filter: "blur(0px)", transition: { duration: DUR.slow, ease: EASE_OUT } },
+  hidden: { opacity: 0, transform: "translateX(-8px)", transition: { duration: DUR.fast, ease: EASE_EXIT } },
+  shown: { opacity: 1, transform: "translateX(0px)", transition: { duration: DUR.slow, ease: EASE_OUT } },
 };
 
 export function QuestionCard({
@@ -230,7 +230,7 @@ export function QuestionCard({
       className={cn("w-full max-w-lg rounded-xl border border-border bg-card p-4 font-sans text-card-foreground in-[.bg-card]:border-0 in-[.bg-card]:bg-transparent in-[.bg-card]:p-0", className)}
     >
       <div className="flex items-center gap-2">
-        {icon ? <span className="flex shrink-0 [&_svg]:size-4">{icon}</span> : null}
+        {icon ? <span className="flex shrink-0">{icon}</span> : null}
         <h3 id={`${id}-title`} className="text-sm font-medium text-foreground">
           {title}
         </h3>

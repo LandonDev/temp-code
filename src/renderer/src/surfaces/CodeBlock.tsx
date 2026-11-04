@@ -149,17 +149,16 @@ export const CodeBlock = memo(function CodeBlock({
     );
   };
 
+  // The reveal rides a wrapper, so the button keeps its own hover fill's transition.
   const copyButton = (
-    <IconAction
-      label={copied ? "Copied" : "Copy code"}
-      onClick={copy}
-      armed={armed}
-      className={`rounded-sm opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/code:opacity-100 group-hover/code:delay-(--delay-hover) starting:opacity-0 focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none ${
-        heading ? "" : "absolute right-1 top-1 z-10"
-      }`}
+    <span
+      data-reveal="copy-code"
+      className={`flex opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/code:opacity-100 group-hover/code:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) motion-reduce:transition-none ${heading ? "" : "absolute right-1 top-1 z-10"}`}
     >
-      <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
-    </IconAction>
+      <IconAction label={copied ? "Copied" : "Copy code"} onClick={copy} armed={armed} className="rounded-sm">
+        <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
+      </IconAction>
+    </span>
   );
 
   return (
