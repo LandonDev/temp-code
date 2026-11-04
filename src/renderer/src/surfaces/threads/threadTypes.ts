@@ -76,6 +76,14 @@ export const AGENT_GLYPHS: Record<AgentType, Glyph> = {
   explorer: Search,
 };
 
+/** A subagent's role as a word, for tooltips and accessible names. */
+export const AGENT_WORDS: Record<AgentType, string> = {
+  orchestrator: "Orchestrator",
+  implementer: "Implementer",
+  reviewer: "Reviewer",
+  explorer: "Explorer",
+};
+
 export const THREAD_HINTS: Record<ThreadType, string> = {
   chat: "Ask questions, explore the code",
   planning: "Produce a plan document to implement from",

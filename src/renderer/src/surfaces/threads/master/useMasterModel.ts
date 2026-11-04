@@ -15,7 +15,7 @@ import { registry } from "../../../lib/connection";
 import { useEnvironmentStatuses } from "../../../lib/connection/status";
 import * as commands from "../../../lib/tcserver/commands";
 import type { EnvironmentStatus } from "../../../lib/connection/types";
-import { isLiveStatus } from "../../../lib/threads/agents";
+import { GROUP_LABEL, GROUP_ORDER, groupOf, type GroupedMeta, type MasterGroupId } from "../../../lib/threadGroups";
 import { sessionStore, useSessionMeta } from "../../../lib/tcserver/store";
 import type { SessionMeta, SessionStatus, ThreadType } from "../../../lib/tcserver/types";
 import { usePaneVisible } from "../../../hooks/paneVisibility";
@@ -188,34 +188,9 @@ export function mergeBatchChildren(rows: readonly MasterRowModel[], children: re
 
 // ── grouping ────────────────────────────────────────────────────────────
 
-export type MasterGroupId = "needsYou" | "running" | "queued" | "done";
-
-export const GROUP_ORDER: readonly MasterGroupId[] = ["needsYou", "running", "queued", "done"];
-
-export const GROUP_LABEL: Record<MasterGroupId, string> = {
-  needsYou: "Needs you",
-  running: "Working",
-  queued: "Queued",
-  done: "Done",
-};
-
-/** What a row's section reads off its meta. */
-export type GroupedMeta = Pick<SessionMeta, "status"> & { background?: SessionMeta["background"] };
-
-/** Which section a row sits in. A paused thread holds a live turn the
- *  person can resume, so it sits with the running ones; a queued one
- *  waits for a sibling. A settled one whose subagents still work is
- *  watching them (its row says Watching, settledWithAgents) and sits with
- *  the running ones too: the host's done rule and Archive done leave it
- *  out until they settle (batch.ts). */
-export function groupOf(meta: GroupedMeta): MasterGroupId {
-  const { status } = meta;
-  if (status === "waiting" || status === "error") return "needsYou";
-  if (isLiveStatus(status) || status === "watching" || status === "paused") return "running";
-  if (status === "queued") return "queued";
-  if ((status === "idle" || status === "done") && meta.background?.agents.length) return "running";
-  return "done";
-}
+// The section rule is lib/threadGroups.ts, shared with the right panel's
+// Agents rows; re-exported here for the board's callers.
+export { GROUP_LABEL, GROUP_ORDER, groupOf, type GroupedMeta, type MasterGroupId } from "../../../lib/threadGroups";
 
 export type MasterGroup = { id: MasterGroupId; label: string; rows: MasterRowModel[] };
 
@@ -253,10 +228,7 @@ export function typeWord(child: Pick<SessionMeta, "threadType">): string {
 }
 
 /** "12:08" for a done row's "Landed 12:08". */
-export function clockTime(ts: number): string {
-  const d = new Date(ts);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
+export { clockTime } from "../../../lib/duration";
 
 /** "2 of 10 landed" beside the land step. */
 export function mergedLine(batch: Pick<BatchState, "landed" | "pending">): string {

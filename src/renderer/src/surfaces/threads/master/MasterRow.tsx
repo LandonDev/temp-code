@@ -8,18 +8,16 @@ import { TaskRows } from "../../../components/ui/task-list";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { ChevronRight, MessageSquare, MoreHorizontal, Pause, Play } from "../../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../../chrome/menuRows";
-import { HarnessIcon } from "../../../chrome/HarnessIcon";
-import { HostGlyph } from "../../../chrome/HostGlyph";
 import { cn } from "../../../lib/cn";
 import { useKept } from "../../../lib/keptValue";
 import * as commands from "../../../lib/tcserver/commands";
-import { asHarness, useSessionMeta } from "../../../lib/tcserver/store";
+import { useSessionMeta } from "../../../lib/tcserver/store";
 import type { BoardDigest } from "@server/shared/contract-batch";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
 import { marksAtRest } from "../../../lib/threadStripModel";
 import { plainStatus } from "@shared/statusWords";
-import { modelLabel } from "../../../lib/threads/agents";
+import { ModelMark, modelMarkName, modelMarkTip, storeHostGlyph, type HostGlyphOf } from "../ModelMark";
 import { tasksOf } from "../implementationBoard";
 import { TypeGlyph } from "../TypeGlyph";
 import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
@@ -68,10 +66,10 @@ export type RowMenu = {
   onOpenChange: (id: string, open: boolean) => void;
 };
 
-/** The host's glyph for a thread, as a render function so the view itself reads no store. */
-export type HostGlyphOf = (environmentId: string, title?: string) => ReactNode;
+export type { HostGlyphOf };
+export { modelMarkName, modelMarkTip };
 
-const hostGlyph: HostGlyphOf = (environmentId, title) => <HostGlyph environmentId={environmentId} title={title} className="shrink-0" />;
+const hostGlyph = storeHostGlyph;
 
 /** What a board row never shows: the live context and each event's stamp. */
 const UNSHOWN = new Set<string>(["context", "lastEventAt"]);
@@ -438,43 +436,5 @@ function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph:
         {hostGlyph(line.environmentId)}
       </Button>
     </li>
-  );
-}
-
-/** How the model mark names effort and context in its tooltip. */
-const EFFORT_WORD: Record<string, string> = { low: "low", medium: "medium", high: "high", xhigh: "extra high", max: "max", ultra: "ultra" };
-
-/** The model's name beside its provider's mark: the mark already says Claude. */
-export function modelMarkName(provider: string, model: string): string {
-  const name = modelLabel(provider, model);
-  return asHarness(provider) === "claude" ? name.replace(/^Claude\s+/, "") : name;
-}
-
-/** The mark's tooltip: "Claude Opus 5.5, high effort, 1M context". */
-export function modelMarkTip(meta: Pick<SessionMeta, "provider" | "model" | "reasoning" | "context1m">): string {
-  const effort = meta.reasoning ? `${EFFORT_WORD[meta.reasoning] ?? meta.reasoning} effort` : null;
-  return [modelLabel(meta.provider, meta.model), effort, meta.context1m ? "1M context" : null].filter(Boolean).join(", ");
-}
-
-/** The provider's mark and the model at line one's end, its effort and
- *  context in its tooltip. Secondary, so in a narrow board it gives its
- *  width up before the title does (it shrinks a thousand times faster and
- *  clips), and it gives way to the row's actions on hover and focus. */
-function ModelMark({ meta }: { meta: SessionMeta }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className="flex min-w-0 shrink-[1000] items-center gap-1.5 overflow-hidden text-xs whitespace-nowrap text-muted-foreground transition-opacity duration-(--dur-fast) group-focus-within:opacity-0 group-hover:opacity-0 motion-reduce:transition-none"
-            data-model
-          />
-        }
-      >
-        <HarnessIcon harness={asHarness(meta.provider)} className="size-3 shrink-0" />
-        <span className="min-w-0 truncate">{modelMarkName(meta.provider, meta.model)}</span>
-      </TooltipTrigger>
-      <TooltipContent>{modelMarkTip(meta)}</TooltipContent>
-    </Tooltip>
   );
 }

@@ -268,8 +268,12 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   muted heading only where two groups meet, nothing in a row animating.
   Each body is a container (hooks, requests) over a pure `…View` that its
   jsdom test and `<Name>.fixtures.tsx` render.
-  - **Agents** (`FleetList`): A18's rows in a scroll area; none is one
-    Empty, "No subagents".
+  - **Agents** (`FleetList` over `FleetSectionsView`): the agents in the
+    master board's sections (Needs you, Working, Queued, Done,
+    lib/threadGroups.ts), each top agent by its own state with its
+    descendants indented 16px a level under it (three levels drawn), in a
+    native scroller; none is one Empty, "No subagents". The rows are
+    "Orchestration" below.
   - **Changes** (`chrome/rail/ChangesPanel.tsx`): the one place a
     checkout's changes are listed. Its top row is the branch, the one place
     a thread's branch is changed once it has a message (BranchPicker's
@@ -908,10 +912,15 @@ favicon, the title, the host, the claim; the address in a tooltip).
 
 ```
 ┌ Ship the iOS thread screens ──────────────┐  ┌ Agents ─────────────────────────────┐
-│ 2 working, 1 needs you, 3 done            │  │ ▫ Build the shell   ◌ Editing Home… │
-├───────────────────────────────────────────┤  │ ▫ Review the fold   ⊙ Needs you  a… │
-│ the orchestrator's transcript             │  │ ▫ Find the row sizes         ✓ Done │
-├ composer ─────────────────────────────────┤  └─────────────────────────────────────┘
+│ 2 working, 1 needs you, 3 done            │  │ Needs you                           │
+├───────────────────────────────────────────┤  │ ⊙ Review the fold          ✳ Opus 5.5│
+│ the orchestrator's transcript             │  │   Approve rm -rf build         48s │
+├ composer ─────────────────────────────────┤  │ Working                             │
+                                               │ ◌ Build the shell          ✳ Opus 5.5│
+                                               │   Editing HomeView.swift 3/7 2m 31s│
+                                               │ Done                                │
+                                               │ ✓ Find the row sizes  ✳ Opus 5.5 1m│
+                                               └─────────────────────────────────────┘
 ```
 
 - **The thread is the chat.** Above the transcript, inset to its column,
@@ -926,15 +935,27 @@ favicon, the title, the host, the claim; the address in a tooltip).
   Continue; while it waits on its agents the slot is empty and the
   transcript's closing line says "Watching" with the wait's age.
 - **The agents are rows in the right panel's Agents section** (`FleetList`,
-  fleet/AgentRow.tsx), on every thread that has subagents. A row is one
-  36px line: the role glyph, the title (at most half the row), the host
-  glyph (two or more hosts), and at the right edge the status: the host's
-  phrase while the agent works ("Editing HomeView.swift"), else the
-  vocabulary's word and what it is about ("Needs you  approve rm -rf
-  build", "Failed  usage cap", "Watching  bun test", "Queued  120 of 120
-  running"), Done alone once finished; the full text in a tooltip. Rows
-  read the meta (`agentStatus`); a row loads its transcript only to quote a
-  waiting agent or a failure the meta lacks. Nothing in a row moves.
+  fleet/AgentRow.tsx), on every thread that has subagents, in the board's
+  sections with a 12px muted heading only where two meet; the glyph column
+  sits 12px from the panel's edge, as the Activity section's. A live agent
+  (working, waiting, failed, watching, paused, queued) is two lines, 44px;
+  a settled one (done, idle, stopped) one 28px line with its title muted.
+  Line one: the state's glyph leading (working's spinner the row's one
+  moving mark, done's check the panel's only done cue), the title in 13px
+  medium ("Subagent" when it has none), the host glyph (two or more
+  hosts), and at the end the provider's mark and the short model
+  (`ModelMark`, surfaces/threads/ModelMark.tsx, the board's; the role
+  first in its tooltip, "Reviewer, Claude Opus 5.5, high effort"; a row
+  under 18rem keeps the mark alone), then on a settled row how long it ran
+  ("4m 12s", "Finished 14:02" on hover). Line two: the host's phrase while
+  it works, else the state's word where the heading does not say it and
+  what the state is about (a question or a failure in its tone), then the
+  task tally ("3/7") and the time, which ticks only while live
+  (`agentTime`). On hover, after `--delay-hover`, or keyboard focus the
+  model mark gives way to Open (the agent's thread) and, while a turn
+  runs, Stop. Rows read the meta (`agentStatus`); a row loads its
+  transcript only to quote a waiting agent or a failure the meta lacks.
+  Nothing in the list moves.
 - **A row opens the agent's detail**, a 672px Sheet from the window's
   right edge (fleet/AgentDetail.tsx, its content
   fleet/AgentDetailBody.tsx): the title, the status in full, one muted

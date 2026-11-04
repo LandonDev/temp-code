@@ -306,7 +306,10 @@ renderer never changes a detail's case; only a detail read from an old
 host's legacy `activity` takes a capital (`legacyDetail`).
 
 At rest a row draws no mark for idle and done (`marksAtRest`): a mark that
-would only say "nothing is happening" is noise. A tab is the glyph alone;
+would only say "nothing is happening" is noise. The one exception is the
+right panel's Agents rows, where done's check leads a finished agent: the
+panel has no other cue for what is done, and seeing it at a glance is the
+section's job. A tab is the glyph alone;
 its hover line and the transcript's working line say the word and the rest.
 
 Nothing loops. Every status glyph is still except working's spinner, a
@@ -451,7 +454,7 @@ being produced pulses (`TextPulse`); nothing else does.
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
 | Press | scale 0.985, `--dur-fast` | release, `--dur-hover` | colour only |
 | Hover fill (a button; a menu row and a rail row highlight at once) | `--dur-hover` | `--dur-hover` | same |
-| Hover reveal (a closing line's actions, a message's Copy, a code block's and a tool output's Copy) | waits `--delay-hover`, then fades in `--dur-fast`; keyboard focus shows it at once | fades `--dur-fast`, at once | same |
+| Hover reveal (a closing line's actions, a message's Copy, a code block's and a tool output's Copy, an Agents row's Open and Stop over its model mark) | waits `--delay-hover`, then fades in `--dur-fast`; keyboard focus shows it at once | fades `--dur-fast`, at once | same |
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
 | Fold that opens on its own (`.collapsible-auto`: the transcript's working group, the running task's steps, the title bar's shelf) | height on the layout spring (`--dur-layout` `--ease-layout`) + opacity `--dur-base` `--ease-out` | the same, so the rows are gone before the box closes | opacity, `--dur-fast` |
 | A step landing in it (`.step-land`) | fade + rise 4px, `--dur-base` `--ease-out`; only a step that lands while the fold is open, never at mount, on a hand open or when a panel unhides | none | none |

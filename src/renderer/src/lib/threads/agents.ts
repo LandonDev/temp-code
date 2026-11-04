@@ -7,6 +7,7 @@ import { asHarness, pickerModelId, sessionStore } from "../tcserver/store";
 import { tallyOf } from "../tcserver/todos";
 import type { SessionMeta, SessionStatus } from "../tcserver/types";
 import { detailText, legacyDetail } from "@shared/statusWords";
+import { GROUP_LABEL, GROUP_ORDER, groupOf, type MasterGroupId } from "../threadGroups";
 
 /**
  * Fleet selectors: which children a thread has, how they rank, the status
@@ -39,6 +40,70 @@ export function sortAgents<T extends { status: SessionStatus; createdAt: number 
  *  `environmentId` names the host it lives on. */
 export function childrenOf(metas: SessionMeta[], parentId: string): SessionMeta[] {
   return sortAgents(metas.filter((m) => m.parentId === parentId && !m.archived));
+}
+
+// ── the tree and its sections ─────────────────────────────────────────
+
+/** How deep a descendant is drawn: deeper ones sit at this depth. */
+export const MAX_AGENT_DEPTH = 3;
+
+export type AgentTreeRow = { meta: SessionMeta; depth: number };
+
+/** A top-level agent and its unarchived descendants in pre-order. */
+export type AgentTreeNode = { meta: SessionMeta; descendants: AgentTreeRow[] };
+
+function needsYou(meta: Pick<SessionMeta, "status">): boolean {
+  const state = threadStateOf(meta.status);
+  return state === "waiting" || state === "failed";
+}
+
+/**
+ * The agents under `rootId`: its direct unarchived children, each with
+ * its unarchived descendants in pre-order and their depth (1 for a
+ * grandchild, drawn at most `MAX_AGENT_DEPTH`). Siblings sort as the rows
+ * do (`agentRank`, then oldest first); a top agent whose subtree holds a
+ * waiting or failed agent sorts ahead of its peers, so it leads its
+ * section. One pass over the metas, so a meta change costs a linear walk.
+ */
+export function agentTree(metas: readonly SessionMeta[], rootId: string): AgentTreeNode[] {
+  const kids = new Map<string, SessionMeta[]>();
+  for (const m of metas) {
+    if (m.archived || !m.parentId) continue;
+    (kids.get(m.parentId) ?? kids.set(m.parentId, []).get(m.parentId)!).push(m);
+  }
+  const seen = new Set<string>([rootId]);
+  const walk = (id: string, depth: number, out: AgentTreeRow[]): void => {
+    for (const child of sortAgents(kids.get(id) ?? [])) {
+      if (seen.has(child.id)) continue;
+      seen.add(child.id);
+      out.push({ meta: child, depth: Math.min(depth, MAX_AGENT_DEPTH) });
+      walk(child.id, depth + 1, out);
+    }
+  };
+  const tops = sortAgents(kids.get(rootId) ?? []).filter((m) => !seen.has(m.id));
+  for (const m of tops) seen.add(m.id);
+  const nodes = tops.map((meta) => {
+    const descendants: AgentTreeRow[] = [];
+    walk(meta.id, 1, descendants);
+    return { meta, descendants };
+  });
+  const lifted = (n: AgentTreeNode) => (n.descendants.some((d) => needsYou(d.meta)) ? 0 : 1);
+  // Stable: a lifted top moves ahead, the rest keep the row order.
+  return nodes.map((n, i) => ({ n, i })).sort((a, b) => lifted(a.n) - lifted(b.n) || a.i - b.i).map((x) => x.n);
+}
+
+export type AgentSection = { id: MasterGroupId; label: string; nodes: AgentTreeNode[] };
+
+/** The tree in the board's sections (Needs you, Working, Queued, Done), by
+ *  each top agent's own state; its descendants travel with it. A section
+ *  with nothing in it is not returned. */
+export function agentSections(tree: readonly AgentTreeNode[]): AgentSection[] {
+  const by = new Map<MasterGroupId, AgentTreeNode[]>();
+  for (const node of tree) {
+    const g = groupOf(node.meta);
+    (by.get(g) ?? by.set(g, []).get(g)!).push(node);
+  }
+  return GROUP_ORDER.filter((id) => by.has(id)).map((id) => ({ id, label: GROUP_LABEL[id], nodes: by.get(id)! }));
 }
 
 export type FleetCounts = { working: number; watching: number; waiting: number; failed: number; done: number };
@@ -197,6 +262,52 @@ export function agentStatus(
   }
 }
 
+// ── time ───────────────────────────────────────────────────────────────
+
+export type AgentTime = {
+  /** How long, in ms (at least a second). */
+  ms: number;
+  /** It ticks on the second hand (working, waiting, watching). */
+  live: boolean;
+  /** A settled agent's last event, for "Finished 14:02". */
+  finishedAt?: number;
+};
+
+type TimedMeta = Pick<
+  SessionMeta,
+  "status" | "busySince" | "frozenActiveElapsed" | "createdAt" | "updatedAt" | "lastEventAt" | "background"
+>;
+
+/**
+ * How long a row says its agent has gone: a working or waiting agent since
+ * its turn began, a watching one since it began to watch, ticking on `now`;
+ * a paused one its frozen time; a settled one (done, idle, stopped,
+ * failed) how long it ran, spawn to last event, still. A queued agent, a
+ * missing stamp or a span under a second says nothing (null).
+ */
+export function agentTime(meta: TimedMeta, now: number): AgentTime | null {
+  const state = threadStateOf(meta.status, { settled: true });
+  const span = (ms: number | null | undefined, live: boolean, finishedAt?: number): AgentTime | null =>
+    ms == null || !Number.isFinite(ms) || ms < 1000 ? null : { ms, live, ...(finishedAt ? { finishedAt } : {}) };
+  switch (state) {
+    case "working":
+    case "waiting":
+      return meta.busySince ? span(now - meta.busySince, true) : null;
+    case "watching": {
+      const since = meta.background?.watchingSince ?? meta.busySince;
+      return since ? span(now - since, true) : null;
+    }
+    case "paused":
+      return span(meta.frozenActiveElapsed, false);
+    case "queued":
+      return null;
+    default: {
+      const end = meta.lastEventAt ?? meta.updatedAt;
+      return end && meta.createdAt ? span(end - meta.createdAt, false, end) : null;
+    }
+  }
+}
+
 // ── stats ──────────────────────────────────────────────────────────────
 
 export type AgentStats = {
@@ -247,6 +358,29 @@ export function useAgents(parentId: string): SessionMeta[] {
   return useSyncExternalStore(sessionStore.onMetaChange.bind(sessionStore), () => {
     const next = childrenOf(sessionStore.metas(), parentId);
     if (!sameList(cache.current, next)) cache.current = next;
+    return cache.current;
+  });
+}
+
+function sameTree(a: AgentTreeNode[], b: AgentTreeNode[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (n, i) =>
+        n.meta === b[i].meta &&
+        n.descendants.length === b[i].descendants.length &&
+        n.descendants.every((d, j) => d.meta === b[i].descendants[j].meta && d.depth === b[i].descendants[j].depth),
+    )
+  );
+}
+
+/** The agent tree under `rootId` (`agentTree`), the same array while no
+ *  row's meta or place changed: metas only, as `useAgents`. */
+export function useAgentTree(rootId: string): AgentTreeNode[] {
+  const cache = useRef<AgentTreeNode[]>([]);
+  return useSyncExternalStore(sessionStore.onMetaChange.bind(sessionStore), () => {
+    const next = agentTree(sessionStore.metas(), rootId);
+    if (!sameTree(cache.current, next)) cache.current = next;
     return cache.current;
   });
 }

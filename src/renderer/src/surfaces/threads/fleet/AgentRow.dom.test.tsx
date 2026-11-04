@@ -1,102 +1,230 @@
 // @vitest-environment jsdom
 /**
- * The agent row (A18): one 36px button line, the host's phrase for a
- * working agent, the vocabulary's word and detail otherwise, no mark at
- * rest (idle, done), and no numbers.
+ * The agent row (UI-17): two lines while the agent is live, one settled;
+ * the state's glyph leading, the provider's mark and model at line one's
+ * end with the role in its tooltip, the word only where the heading does
+ * not say it, the tally and a time that ticks only while live, Open and
+ * Stop on hover.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({
-  environments: [{ id: "local", name: "This Mac" }] as { id: string; name: string; platform?: string }[],
+const h = vi.hoisted(() => ({ interrupt: vi.fn(() => Promise.resolve()) }));
+vi.mock("../../../lib/tcserver/commands", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../lib/tcserver/commands")>()),
+  interrupt: h.interrupt,
 }));
 
-vi.mock("../../../lib/connection/status", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../../lib/connection/status")>()),
-  useEnvironments: () => h.environments,
-}));
-
-import { AgentRowView } from "./AgentRow";
-import { FLEET_ROWS, fixtureMeta } from "./fleetFixture";
+import { tooltipChunk, warmTooltips } from "../../../components/ui/tooltip";
 import { agentStatus } from "../../../lib/threads/agents";
+import { AgentRow, AgentRowView } from "./AgentRow";
+import { FLEET_ROWS, fixtureHostGlyph, fixtureMeta } from "./fleetFixture";
 
 const row = (title: string) => FLEET_ROWS.find((r) => r.meta.title === title)!;
+const tipText = () => document.querySelector('[data-slot="tooltip-content"]')?.textContent ?? null;
+const hover = (el: Element) => {
+  fireEvent.pointerEnter(el);
+  fireEvent.mouseEnter(el);
+  fireEvent.focus(el);
+};
+
+beforeAll(async () => {
+  await act(async () => {
+    await tooltipChunk.load();
+    warmTooltips();
+  });
+});
 
 afterEach(() => {
   cleanup();
-  h.environments = [{ id: "local", name: "This Mac" }];
+  vi.useRealTimers();
+  h.interrupt.mockClear();
 });
 
 describe("AgentRowView", () => {
-  it("is one button carrying no numbers, model or separators", () => {
-    const { meta, status } = row("Build the shell");
-    const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    const buttons = container.querySelectorAll("button");
-    expect(buttons).toHaveLength(1);
-    const text = buttons[0].textContent ?? "";
-    expect(text).not.toMatch(/[·$]/);
-    expect(text).not.toMatch(/tasks|%|Opus/);
-    expect(buttons[0].className).toContain("h-9");
+  it("carries the provider's mark and the short model, the role first in its tooltip", async () => {
+    const meta = fixtureMeta("r", { title: "Review the fold", agentType: "reviewer", status: "running", context1m: true });
+    const { container } = render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);
+    const mark = container.querySelector("[data-model]")!;
+    expect(mark.querySelector("img, svg")).not.toBeNull();
+    expect(mark.textContent).toBe("Opus 5.5");
+    hover(mark);
+    await waitFor(() => expect(tipText()).toBe("Reviewer, Claude Opus 5.5, high effort, 1M context"), { timeout: 2000 });
   });
 
-  it("a working row says the host's phrase, not Working", () => {
-    const { meta, status } = row("Build the shell");
-    const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    const mark = container.querySelector('[data-slot="status-mark"]')!;
-    expect(mark.getAttribute("data-state")).toBe("working");
-    expect(mark.textContent).toBe("Editing HomeView.swift");
+  it("names an untitled agent Subagent", () => {
+    const meta = fixtureMeta("x", { title: "" });
+    const { container } = render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);
+    expect(container.querySelector("[data-row-title]")?.textContent).toBe("Subagent");
   });
 
-  it("a waiting row says Needs you and the approval it waits on", () => {
+  it("turns one spinner on a working row and none on any other", () => {
+    for (const r of FLEET_ROWS) {
+      const { container, unmount } = render(<AgentRowView meta={r.meta} status={r.status} onOpen={() => {}} />);
+      const turning = container.querySelectorAll('[data-slot="spinner"][data-turning]').length;
+      expect([r.meta.title, turning]).toEqual([r.meta.title, r.status.state === "working" ? 1 : 0]);
+      unmount();
+    }
+  });
+
+  it("draws a done row on one line with its check and how long it ran, nothing under it", async () => {
+    const { meta, status } = row("Find the row sizes");
+    const { container } = render(<AgentRowView meta={meta} status={status} heading="Done" onOpen={() => {}} />);
+    const el = container.querySelector('[role="button"]')!;
+    expect(el.className).toContain("h-7");
+    expect(container.querySelector("[data-row-status]")).toBeNull();
+    expect(container.querySelector('[data-row-glyph] [data-state="done"]')).not.toBeNull();
+    expect(container.querySelector("[data-row-title]")?.className).toContain("text-muted-foreground");
+    const time = container.querySelector("[data-agent-time]")!;
+    expect(time.textContent).toBe("1m 14s");
+    hover(time);
+    await waitFor(() => expect(tipText()).toMatch(/^Finished \d\d:\d\d$/), { timeout: 2000 });
+  });
+
+  it("draws a live row on two lines, the title in the foreground", () => {
+    const { meta, status } = row("Build the shell");
+    const { container } = render(<AgentRowView meta={meta} status={status} heading="Working" onOpen={() => {}} />);
+    expect(container.querySelector('[role="button"]')!.className).toContain("py-1");
+    expect(container.querySelector("[data-row-title]")?.className).toContain("text-foreground");
+    const line = container.querySelector("[data-row-status]")!;
+    expect(line.querySelector('[data-slot="status-word"]')).toBeNull();
+    expect(line.querySelector('[data-slot="status-detail"]')?.textContent).toBe("Editing HomeView.swift");
+  });
+
+  it("leaves a waiting row's word to its heading and says the detail in amber", () => {
     const { meta, status } = row("Review the fold");
-    const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    const mark = container.querySelector('[data-slot="status-mark"]')!;
-    expect(mark.getAttribute("data-state")).toBe("waiting");
-    expect(mark.querySelector('[data-slot="status-word"]')?.textContent).toBe("Needs you");
-    expect(mark.querySelector('[data-slot="status-detail"]')?.textContent).toBe("Approve rm -rf ios/TempCodeClient/.build");
+    const under = render(<AgentRowView meta={meta} status={status} heading="Needs you" onOpen={() => {}} />);
+    const line = under.container.querySelector("[data-row-status]")!;
+    expect(line.querySelector('[data-slot="status-word"]')).toBeNull();
+    expect(line.querySelector('[data-slot="status-detail"]')?.textContent).toBe("Approve rm -rf ios/TempCodeClient/.build");
+    expect(line.querySelector('[data-slot="status-mark"]')?.className).toContain("**:data-[slot=status-detail]:text-current");
+    under.unmount();
+    const alone = render(<AgentRowView meta={meta} status={{ ...status, detail: "" }} heading="Needs you" onOpen={() => {}} />);
+    expect(alone.container.querySelector('[data-row-status] [data-slot="status-word"]')?.textContent).toBe("Needs you");
+    alone.unmount();
+    const bare = render(<AgentRowView meta={meta} status={status} heading={null} onOpen={() => {}} />);
+    expect(bare.container.querySelector('[data-row-status] [data-slot="status-word"]')?.textContent).toBe("Needs you");
   });
 
-  it("a failed row says the host's failure summary", () => {
+  it("says Failed in red under Needs you", () => {
     const { meta, status } = row("Port module 10");
+    const { container } = render(<AgentRowView meta={meta} status={status} heading="Needs you" onOpen={() => {}} />);
+    const mark = container.querySelector('[data-row-status] [data-slot="status-mark"]')!;
+    expect(mark.getAttribute("data-state")).toBe("failed");
+    expect(mark.className).toContain("text-destructive");
+    expect(mark.querySelector('[data-slot="status-word"]')?.textContent).toBe("Failed");
+    expect(mark.querySelector('[data-slot="status-detail"]')?.textContent).toBe("Usage cap reached on work");
+  });
+
+  it("ends line two with the task tally", () => {
+    const { meta, status } = row("Build the shell");
     const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    expect(container.querySelector('[data-slot="status-mark"]')?.textContent).toBe("FailedUsage cap reached on work");
+    expect(container.querySelector("[data-tally]")?.textContent).toBe("3/7");
+    const none = fixtureMeta("n", { status: "running", tasks: { done: 0, total: 0 } });
+    const other = render(<AgentRowView meta={none} status={agentStatus(none)} onOpen={() => {}} />);
+    expect(other.container.querySelector("[data-tally]")).toBeNull();
   });
 
-  it("at rest a row draws no mark and no word: done and idle are the title alone", () => {
-    const { meta, status } = row("Port module 4");
-    expect(status.state).toBe("done");
-    const { container, rerender } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    expect(container.querySelector('[data-slot="status-mark"]')).toBeNull();
-    expect(container.textContent).not.toContain("Done");
-    rerender(<AgentRowView meta={meta} status={{ state: "idle", detail: "", phrase: false }} onOpen={() => {}} />);
-    expect(container.querySelector('[data-slot="status-mark"]')).toBeNull();
-    expect(container.textContent).not.toContain("Idle");
-    expect(container.textContent).toContain("Port module 4");
+  it("ticks a working row's time and holds a settled one still", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(1_800_000_000_000);
+    const working = fixtureMeta("w", { status: "running", busySince: Date.now() - 10_000 });
+    const done = fixtureMeta("d", { status: "idle", createdAt: 1_799_999_000_000, lastEventAt: 1_799_999_030_000 });
+    const live = render(<AgentRowView meta={working} status={agentStatus(working)} onOpen={() => {}} />);
+    const still = render(<AgentRowView meta={done} status={agentStatus(done)} onOpen={() => {}} />);
+    const liveTime = () => live.container.querySelector("[data-agent-time]")?.textContent;
+    const stillTime = () => still.container.querySelector("[data-agent-time]")?.textContent;
+    expect(liveTime()).toBe("10s");
+    expect(stillTime()).toBe("30s");
+    act(() => {
+      vi.advanceTimersByTime(3_000);
+    });
+    expect(liveTime()).toBe("13s");
+    expect(stillTime()).toBe("30s");
   });
 
-  it("marks the selected row and opens on click", () => {
+  it("draws the host glyph only from its prop", () => {
+    const meta = fixtureMeta("far", { title: "Far", environmentId: "env_box" });
+    const none = render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);
+    expect(none.container.querySelector("[data-host-glyph]")).toBeNull();
+    none.unmount();
+    const two = render(<AgentRowView meta={meta} status={agentStatus(meta)} hostGlyph={fixtureHostGlyph} onOpen={() => {}} />);
+    expect(two.container.querySelector("[data-host-glyph]")?.getAttribute("aria-label")).toBe("The box");
+  });
+
+  it("offers Open on every row and Stop only while a turn runs, neither opening the detail", () => {
+    const onOpen = vi.fn();
+    const onOpenSession = vi.fn();
+    const onStop = vi.fn();
+    const { meta, status } = row("Build the shell");
+    const live = render(<AgentRowView meta={meta} status={status} onOpen={onOpen} onOpenSession={onOpenSession} onStop={onStop} />);
+    fireEvent.click(live.getByRole("button", { name: "Open" }));
+    fireEvent.click(live.getByRole("button", { name: "Stop" }));
+    expect(onOpenSession).toHaveBeenCalledOnce();
+    expect(onStop).toHaveBeenCalledOnce();
+    expect(onOpen).not.toHaveBeenCalled();
+    live.unmount();
+    const done = row("Port module 4");
+    const settled = render(<AgentRowView meta={done.meta} status={done.status} onOpen={onOpen} onOpenSession={onOpenSession} onStop={onStop} />);
+    expect(settled.getByRole("button", { name: "Open" })).toBeTruthy();
+    expect(settled.queryByRole("button", { name: "Stop" })).toBeNull();
+  });
+
+  it("waits --delay-hover before showing its actions and shows them at once on focus", () => {
+    const { meta, status } = row("Build the shell");
+    const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} onOpenSession={() => {}} />);
+    const actions = container.querySelector("[data-actions]")!.className;
+    expect(actions).toContain("opacity-0");
+    expect(actions).toContain("group-hover:delay-(--delay-hover)");
+    expect(actions).toContain("group-focus-within:delay-(--dur-instant)");
+    expect(container.querySelector("[data-model]")!.className).toContain("group-hover:delay-(--delay-hover)");
+  });
+
+  it("opens the detail on click, Enter and Space, and marks the selected row", () => {
     const onOpen = vi.fn();
     const { meta, status } = row("Port module 4");
     const { container, rerender } = render(<AgentRowView meta={meta} status={status} onOpen={onOpen} />);
-    const button = container.querySelector("button")!;
-    expect(button.hasAttribute("aria-current")).toBe(false);
+    const el = container.querySelector<HTMLElement>('[role="button"]')!;
+    expect(el.hasAttribute("aria-current")).toBe(false);
+    fireEvent.click(el);
+    fireEvent.keyDown(el, { key: "Enter" });
+    fireEvent.keyDown(el, { key: " " });
+    expect(onOpen).toHaveBeenCalledTimes(3);
     rerender(<AgentRowView meta={meta} status={status} selected onOpen={onOpen} />);
-    expect(button.getAttribute("aria-current")).toBe("true");
-    fireEvent.click(button);
-    expect(onOpen).toHaveBeenCalledOnce();
+    expect(el.getAttribute("aria-current")).toBe("true");
   });
 
-  it("draws the host glyph for a far child only with two hosts", () => {
-    const meta = fixtureMeta("far", { title: "Far", environmentId: "env_box" });
-    const status = agentStatus(meta);
-    const one = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    expect(one.container.querySelector("[data-host-glyph]")).toBeNull();
-    cleanup();
-    h.environments = [
-      { id: "local", name: "This Mac" },
-      { id: "env_box", name: "The box", platform: "linux" },
-    ];
-    const two = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    expect(two.container.querySelector("[data-host-glyph]")?.getAttribute("aria-label")).toBe("The box");
+  it("is named by its title, state, tally, time, role and model", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_800_000_000_000);
+    const meta = fixtureMeta("n", {
+      title: "Build the shell",
+      status: "running",
+      activity: "Editing HomeView.swift",
+      busySince: Date.now() - 151_000,
+      tasks: { done: 3, total: 7 },
+    });
+    render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);
+    expect(
+      screen.getByRole("button", {
+        name: "Build the shell, Working: Editing HomeView.swift, 3 of 7 tasks, 2m 31s, Implementer, Claude Opus 5.5",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("indents a descendant 16px a level", () => {
+    const { meta, status } = row("Port module 4");
+    const { container } = render(<AgentRowView meta={meta} status={status} depth={2} onOpen={() => {}} />);
+    expect(container.querySelector('[role="button"]')!.className).toContain("ms-8");
   });
 });
+
+describe("AgentRow", () => {
+  it("stops the agent's turn through the host", () => {
+    const { meta } = row("Build the shell");
+    const { getByRole } = render(<AgentRow agent={meta} onOpen={() => {}} />);
+    fireEvent.click(getByRole("button", { name: "Stop" }));
+    expect(h.interrupt).toHaveBeenCalledWith("ios-orch-a1");
+  });
+});
+
