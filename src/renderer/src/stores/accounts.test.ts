@@ -55,6 +55,14 @@ describe("accounts store", () => {
     expect(foldPush(s1, { push: "accounts", snapshot: snap(20, "c") }).snapshot.providers.claude.pinned).toBe("c");
   });
 
+  it("gives a snapshot from a host before Meta an empty meta provider", () => {
+    const old = snap(20, "b");
+    delete (old.providers as Partial<AccountsSnapshot["providers"]>).meta;
+    const folded = foldPush(initialAccountsState(), { push: "accounts", snapshot: old }).snapshot;
+    expect(folded.providers.meta).toEqual({ pinned: null, profiles: [], reports: [], owner: null });
+    expect(folded.providers.claude.pinned).toBe("b");
+  });
+
   it("seeds from accounts.list on connect and follows pushes", async () => {
     const link = new FakeLink();
     accountsStore.attach(link);

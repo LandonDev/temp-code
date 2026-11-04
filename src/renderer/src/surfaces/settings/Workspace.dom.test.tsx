@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   focus: false,
   rulesFocus: false,
   setAccounts: vi.fn(async () => {}),
+  metaKeys: [] as { name: string; kind: "key"; static: true }[],
 }));
 
 const profile = (name: string) => ({ name, email: `${name}@example.com` });
@@ -53,6 +54,7 @@ vi.mock("../../stores/accounts", () => ({
         claude: { profiles: [profile("alice"), profile("bob")] },
         codex: { profiles: [profile("carol")] },
         cursor: { profiles: [] },
+        meta: { profiles: state.metaKeys },
       },
     },
   }),
@@ -81,6 +83,7 @@ beforeEach(() => {
   state.focus = false;
   state.rulesFocus = false;
   state.setAccounts.mockClear();
+  state.metaKeys = [];
 });
 afterEach(cleanup);
 
@@ -100,19 +103,19 @@ describe("Workspace page", () => {
 
   it("pins an account and removes the pin on Auto", async () => {
     render(<WorkspacePage workspaceId="w1" />);
-    await choose(screen.getByRole("combobox", { name: "Claude Code account" }), "bob");
+    await choose(screen.getByRole("combobox", { name: "Claude account" }), "bob");
     expect(state.setAccounts).toHaveBeenLastCalledWith("w1", { claude: "bob" });
     cleanup();
     state.workspace = { ...state.workspace, accountPins: { claude: "bob", codex: "carol" } };
     render(<WorkspacePage workspaceId="w1" />);
-    await choose(screen.getByRole("combobox", { name: "Claude Code account" }), "Auto");
+    await choose(screen.getByRole("combobox", { name: "Claude account" }), "Auto");
     expect(state.setAccounts).toHaveBeenLastCalledWith("w1", { codex: "carol" });
   });
 
   it("names a pin Aliax does not know", () => {
     state.workspace = { ...state.workspace, accountPins: { claude: "gone" } };
     render(<WorkspacePage workspaceId="w1" />);
-    expect(screen.getByRole("combobox", { name: "Claude Code account" }).textContent).toContain("gone (not in Aliax)");
+    expect(screen.getByRole("combobox", { name: "Claude account" }).textContent).toContain("gone (not in Aliax)");
   });
 
   it("shows a failed pin under its row", async () => {
@@ -120,7 +123,7 @@ describe("Workspace page", () => {
       throw new Error("refused: offline");
     });
     render(<WorkspacePage workspaceId="w1" />);
-    await choose(screen.getByRole("combobox", { name: "Claude Code account" }), "bob");
+    await choose(screen.getByRole("combobox", { name: "Claude account" }), "bob");
     expect(screen.getByText("refused: offline").className).toContain("text-destructive");
   });
 
@@ -176,4 +179,27 @@ describe("Workspace page", () => {
     render(<WorkspacePage workspaceId="w1" />);
     expect(document.activeElement).toBe(document.getElementById("settings-orchestration"));
   });
+
+  it("offers no Meta row on a host with no key", () => {
+    render(<WorkspacePage workspaceId="w1" />);
+    expect(screen.queryByRole("combobox", { name: "Meta account" })).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Codex account" })).toBeTruthy();
+  });
+
+  it("pins a Meta key from Meta's row, its mark and the keys by name", async () => {
+    state.metaKeys = [{ name: "Work", kind: "key", static: true }, { name: "Meta key …9QzT", kind: "key", static: true }];
+    render(<WorkspacePage workspaceId="w1" />);
+    const row = screen.getByRole("combobox", { name: "Meta account" }).closest<HTMLElement>("[data-slot=page-row]")!;
+    expect(row.querySelector("[data-slot=item-title]")?.textContent).toBe("Meta");
+    expect(row.querySelector("svg")).toBeTruthy();
+    await choose(screen.getByRole("combobox", { name: "Meta account" }), "Meta key …9QzT");
+    expect(state.setAccounts).toHaveBeenLastCalledWith("w1", { meta: "Meta key …9QzT" });
+  });
+
+  it("keeps the Meta row for a pin whose key left", () => {
+    state.workspace = { ...state.workspace, accountPins: { meta: "Gone key" } };
+    render(<WorkspacePage workspaceId="w1" />);
+    expect(screen.getByRole("combobox", { name: "Meta account" }).textContent).toContain("Gone key (not in Aliax)");
+  });
 });
+

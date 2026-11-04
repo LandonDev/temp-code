@@ -14,7 +14,7 @@ import { useProjects, useWorkspaces } from "../../lib/tcserver/workspaces";
 import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { setWorkspaceAccounts } from "../../lib/tcserver/projects";
 import { useAccounts } from "../../stores/accounts";
-import { shortName } from "../../lib/accountScope";
+import { pinRowShown, shortName } from "../../lib/accountScope";
 import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
 
 /**
@@ -67,6 +67,7 @@ function AccountsSection({ workspace }: { workspace: WorkspaceMeta }) {
         const profiles = snapshot.providers[provider].profiles;
         const current = pins[provider] ?? "";
         const known = current === "" || profiles.some((p) => p.name === current);
+        if (!pinRowShown(provider, profiles, current)) return null;
         return (
           <PageRow
             key={provider}

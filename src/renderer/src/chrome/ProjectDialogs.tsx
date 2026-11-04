@@ -36,7 +36,7 @@ import { ReviewFields, saveReviewSettings, useReviewScope } from "./ReviewFields
 import { DEFAULT_REVIEW_SETTINGS, type ReviewSettings } from "@server/shared/review";
 import { registry } from "../lib/connection";
 import { useAccounts } from "../stores/accounts";
-import { shortName } from "../lib/accountScope";
+import { pinRowShown, shortName } from "../lib/accountScope";
 import { PROVIDER_NAME } from "@server/shared/usageMeter";
 import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
 import type { BuildConfig } from "@server/shared/build";
@@ -90,6 +90,7 @@ export function AccountPinFields({
         const profiles = snapshot.providers[provider].profiles;
         const current = value[provider] ?? "";
         const known = current === "" || profiles.some((p) => p.name === current);
+        if (!pinRowShown(provider, profiles, current)) return null;
         return (
           <FieldRow key={provider} label={providerName(provider)}>
             <ChoiceSelect

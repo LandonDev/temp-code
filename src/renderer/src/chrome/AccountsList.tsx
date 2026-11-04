@@ -50,11 +50,12 @@ export function AccountsList({
   scope: AccountScope | null;
   now: number;
 }) {
-  // Every row reserves the same columns so bars line up down the list.
-  const slots = Math.min(
-    MAX_SLOTS,
-    Math.max(MIN_SLOTS, ...accounts.reports.map((r) => groupWindows(r.windows).length)),
-  );
+  // Every row reserves the same columns so bars line up down the list. Keys
+  // (Meta) are paid per token: no usage windows, so no columns at all.
+  const keys = accounts.profiles.length > 0 && accounts.profiles.every((p) => p.kind === "key");
+  const slots = keys
+    ? 0
+    : Math.min(MAX_SLOTS, Math.max(MIN_SLOTS, ...accounts.reports.map((r) => groupWindows(r.windows).length)));
   const width = (NAME_REM + slots * CELL_REM + slots * GUTTER_REM + 1) * REM;
   const checked = scope ? scope.shown : accounts.pinned;
 
@@ -102,7 +103,8 @@ function AccountRow({
   now: number;
   slots: number;
 }) {
-  const status = statusLine(report, now);
+  const keyed = profile.kind === "key";
+  const status = keyed ? keyLine(report, now) : statusLine(report, now);
   return (
     <div
       role="option"
@@ -135,7 +137,7 @@ function AccountRow({
           {headroom ? <HeadroomLine headroom={headroom} now={now} /> : null}
         </span>
       </span>
-      <UsageBlock report={report} now={now} slots={slots} />
+      {keyed ? null : <UsageBlock report={report} now={now} slots={slots} />}
     </div>
   );
 }
@@ -170,6 +172,12 @@ function statusLine(report: UsageReport | undefined, now: number): { parts: stri
     return { parts, tone: "text-warning" };
   }
   return null;
+}
+
+/** A key's line: revoked or throttled, else nothing (paid per token, there is no usage to say). */
+function keyLine(report: UsageReport | undefined, now: number): { parts: string[]; tone: string } | null {
+  if (report?.expired || report?.note === "key revoked") return { parts: ["Key revoked"], tone: "text-warning" };
+  return report?.rateLimit ? statusLine({ ...report, expired: false }, now) : null;
 }
 
 const STATUS_TEXT: Record<string, string[]> = {

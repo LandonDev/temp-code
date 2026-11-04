@@ -22,7 +22,17 @@ const accounts = {
 
 const scope: AccountScope = { provider: "claude", inherited: null, current: "b", shown: "b" };
 
-function Harness({ onOpenChange, list = accounts }: { onOpenChange: (open: boolean) => void; list?: ProviderAccounts }) {
+function Harness({
+  onOpenChange,
+  list = accounts,
+  provider = "claude",
+  at = scope,
+}: {
+  onOpenChange: (open: boolean) => void;
+  list?: ProviderAccounts;
+  provider?: "claude" | "meta";
+  at?: AccountScope;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <AccountsPopover
@@ -32,9 +42,9 @@ function Harness({ onOpenChange, list = accounts }: { onOpenChange: (open: boole
         setOpen(next);
         onOpenChange(next);
       }}
-      provider="claude"
+      provider={provider}
       accounts={list}
-      scope={scope}
+      scope={at}
       now={0}
     />
   );
@@ -97,3 +107,32 @@ describe("an account row's lines", () => {
     expect(cell.textContent).not.toMatch(/AM|PM/);
   });
 });
+
+describe("a Meta thread's keys", () => {
+  it("lists the keys with no usage bars, the headroom bar where the gateways saw a key, and a revoked one in amber", async () => {
+    const keys = {
+      pinned: null,
+      owner: "temp-code",
+      profiles: [
+        { name: "Work", createdAt: 1, active: false, static: true, kind: "key" },
+        { name: "Old", createdAt: 2, active: false, static: true, kind: "key" },
+      ],
+      reports: [
+        { profileName: "Work", windows: [], note: "pay as you go" },
+        { profileName: "Old", windows: [], expired: true, note: "key revoked" },
+      ],
+      headroom: { Work: { room: 0.8, ratePerMin: 4, seenAt: 0 } },
+    } as unknown as ProviderAccounts;
+    const metaScope: AccountScope = { provider: "meta", inherited: null, current: "Work", shown: "Work" };
+    render(<Harness onOpenChange={() => {}} list={keys} provider="meta" at={metaScope} />);
+    fireEvent.click(screen.getByRole("button", { name: "Pick another account" }));
+    const list = await screen.findByRole("listbox", { name: "meta accounts" });
+    const [work, old] = within(list).getAllByRole("option");
+    expect(work.getAttribute("aria-selected")).toBe("true");
+    expect(within(list).getAllByRole("progressbar").map((b) => b.getAttribute("aria-label"))).toEqual([expect.stringMatching(/^Headroom/)]);
+    expect(within(work).queryByText(/pay as you go|Usage unavailable|Session expired/i)).toBeNull();
+    expect(within(old).getByText("Key revoked").parentElement!.className).toContain("text-warning");
+    expect(list.textContent).not.toContain("sign in again");
+  });
+});
+
