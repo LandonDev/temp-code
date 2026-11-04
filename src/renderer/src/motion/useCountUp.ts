@@ -14,10 +14,15 @@ export function useCountUp(target: number, animateOn: boolean): number {
   const reduce = useReducedMotion() === true;
   const run = animateOn && shown && !reduce;
   useEffect(() => {
-    // Off, the shown value keeps up with the target, so a pane shown again
-    // reads the count it holds, never the 0 it started from.
-    if (!run || current.current === target) {
+    // Off, it returns the target and only notes it: no state, so a settled
+    // row's count costs no render of its own.
+    if (!run) {
       current.current = target;
+      return;
+    }
+    // Back on with the count it already holds (a pane shown again): show that
+    // count, never the 0 it started from.
+    if (current.current === target) {
       setShownValue(target);
       return;
     }
