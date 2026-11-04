@@ -85,10 +85,10 @@ describe("chips inside rows", () => {
 });
 
 describe("CopyMessageButton", () => {
-  it("reveals with the out curve and its reduced-motion guard, at the 1.5 stroke", () => {
+  it("reveals with the out curve, keeps its fade under reduced motion, at the 1.5 stroke", () => {
     const { container } = render(<CopyMessageButton text="hi" attachments={[]} />);
     const reveal = container.querySelector("button")!.parentElement;
-    expect(classes(reveal)).toEqual(expect.arrayContaining(["transition-opacity", "duration-(--dur-fast)", "ease-(--ease-out)", "motion-reduce:transition-none"]));
+    expect(classes(reveal)).toEqual(expect.arrayContaining(["transition-opacity", "duration-(--dur-fast)", "ease-(--ease-out)", "motion-reduce:transition-opacity"]));
     const strokes = [...container.querySelectorAll("svg")].map((svg) => svg.getAttribute("stroke-width"));
     expect(strokes.length).toBeGreaterThan(0);
     expect(new Set(strokes)).toEqual(new Set(["1.5"]));
