@@ -307,7 +307,11 @@ app replaces itself from the feed, and only from the feed.
   list joins with `focus-ring`; `lib/focusGuard.test.ts` refuses any
   `focus-visible:ring`. Neighbouring tooltips share one `TooltipProvider`
   (delays in `TOOLTIP`, lib/ease.ts), never around a scroller, the rail's
-  nav or a virtual list (the lazy provider remounts what it wraps).
+  nav or a virtual list (the lazy provider remounts what it wraps). A
+  disclosure chevron turns on `DISCLOSURE_CHEVRON` (components/ui/
+  disclosure.ts), a bounded log is a `pre` on `CONSOLE` (components/ui/
+  console.ts), no icon takes a `strokeWidth` prop, and a solid red button
+  never sits in a list row (a row's remove is a ghost that turns red on hover).
 - Every resize handle uses `hooks/useSashKeys.ts` for focus,
   separator ARIA, axis arrows (2% of the container, Shift 10%) and a
   double-click reset. Keyboard resize commits at once; `useDragResize`

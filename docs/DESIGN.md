@@ -449,7 +449,8 @@ their options and `index.css`.
 buttons, 14px in dense chrome, 12px as a mark beside text, 1.5px stroke,
 `currentColor`. The stroke is the icons' default (`ICON_STROKE`, held to
 this line by chrome/icons.test.ts), so no call site writes 1.5; a glyph that
-reads too thin takes the next size up, never a heavier stroke. An icon never carries meaning alone where a word fits; a
+reads too thin takes the next size up, never a heavier stroke. No icon takes a
+`strokeWidth` prop outside chrome/icons and the charts (the same test refuses one). An icon never carries meaning alone where a word fits; a
 tool row in the transcript keeps its tool icon beside its humanized verb.
 Two glyphs carry colour: `StatusMark`'s, for a state, and the type glyph
 (`TypeGlyph`), in its type's tint ("Type tints"). Every other glyph is
@@ -487,20 +488,20 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Popover, menu, select | fade + scale 0.95→1 from the trigger, `--dur-base` | fade + scale →0.98, `--dur-fast` | fade only |
 | Context menu | fade at the pointer, `--dur-fast` | fade, `--dur-fast` | same |
 | Tooltip (13px regular on 20px lines, 24px tall) | after 300ms (`TOOLTIP` in lib/ease.ts), fade + scale 0.98→1, `--dur-fast` `--ease-drawer`; neighbours in one `TooltipProvider` (a closing line's or a notice's actions, the title bar's groups, a split view's header, a rail row's hover actions) open at once within the 120ms grace, the label moving instead of reopening | fade + scale →0.98, `--dur-fast` | fade |
-| Toast (sonner) | rise and fade, `--dur-base` | fade, `--dur-fast` | fade |
+| Toast (sonner, on `--layer-toast`; index.css overrides its 400-500ms defaults, out-specifying its injected stylesheet) | rise and fade, `--dur-base` `--ease-out`, no height or shadow transition | fade, `--dur-fast` `--ease-exit` | fade, `--dur-fast` |
 | Right panel, rail | no width animation; content fades `--dur-fast` | same | same |
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
 | Press, a raised button (`default`, `secondary`, `destructive`) | its fill layer scales 0.985 (0.997 × 0.985 full width) while the label stays put, `--dur-fast` | release, `--dur-hover` | none |
 | Press, ghost, link, outline and every row (a rail row, an Item, a toggle, a tab, a hover action) | the fill steps to `foreground/12` at once; nothing scales | back over `--dur-hover` | same |
 | Hover fill (a button; a menu row and a rail row highlight at once; a raised button lightens, and secondary lifts its shadow, over `--dur-fast`) | `--dur-hover` | `--dur-hover` | same |
-| Hover reveal (a closing line's actions, a message's Copy, a code block's and a tool output's Copy, an Agents row's Open and Stop over its model mark) | waits `--delay-hover`, then fades in `--dur-fast`; keyboard focus shows it at once | fades `--dur-fast`, at once | same |
+| Hover reveal (a closing line's and a notice's actions, a message's Copy, a code block's and a tool output's Copy and Raw, an Agents row's Open and Stop over its model mark, a rail row's hover actions and the slot that yields to them, a board row's and an archived row's actions) | waits `--delay-hover`, then fades in `--dur-fast`; keyboard focus (`has-focus-visible`) and an open menu show it at once, a mouse click does not hold it; the fade rides a wrapper, so the button keeps its own hover fill | fades `--dur-fast`, at once | same |
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
 | Fold that opens on its own (`.collapsible-auto`: the transcript's working group, the running task's steps, the title bar's shelf) | height on the layout spring (`--dur-layout` `--ease-layout`) + opacity `--dur-base` `--ease-out` | the same, so the rows are gone before the box closes | opacity, `--dur-fast` |
 | A step landing in it (`.step-land`) | fade + rise 4px, `--dur-base` `--ease-out`; only a step that lands while the fold is open, never at mount, on a hand open or when a panel unhides | none | none |
 | The working group's rows, opening on their own | glide 22px from the prose edge into their hang (translate), on the layout spring | — | none |
 | The working group's window (its newest five rows) | the oldest row leaves the top as the list glides up by its measured height, `--dur-base` `--ease-out` | — | none |
 | The working group's fold | waits `FOLD_HOLD_MS` once the work moved on, so the last row's settle shows, then folds on `.collapsible-auto` | — | the same wait, then the fade |
-| Disclosure chevron | rotates with its fold, `--dur-base` `--ease-out`, everywhere | same | none |
+| Disclosure chevron (`DISCLOSURE_CHEVRON`, components/ui/disclosure.ts: one ChevronRight turning `rotate-90`) | rotates with its fold, `--dur-base` `--ease-out`, everywhere | same | none |
 | Icon swap (`SwapIcon`; keyed for more than two states, as a tool row's waiting, working, failed and icon) | opacity + scale 0.25→1 on `SPRING_LAYOUT` | fade + scale →0.25, `--dur-fast` | opacity, `--dur-fast` |
 | Word morph (`MorphText`: a row's verb or a group's phrase changing tense, the working line's phases, the working line becoming the closing line) | only once the old words have left: the new rise from 3px below, `--dur-base` `--ease-swap`, while the box glides from the old width to theirs (a Web Animation from its live width when cut short); never on mount or for new words under one key | the old words lift 3px and fade first, `--dur-swap-out` `--ease-swap`; never two words in one place | fade out, then in, `--dur-fast`; no glide |
 | Scroll glide (jump to latest, a burst while following, a jump to a row) | `DUR.drawer` on `EASE_OUT` | — | instant |
@@ -521,6 +522,8 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Composer field height | snaps on a keystroke and on the clear after a send; a change of more than one line the person did not type (a paste, a restore, a quote) eases over `--dur-base` | — | snaps |
 | Composer, a new thread's first send | the box keeps its width and moves into its docked place (a FLIP translate, `--dur-slow` `--ease-drawer`) | — | none |
 | Pane switch | opacity, `--dur-fast`; no rise | — | none |
+| The slot above the composer emptying | — | the outgoing row stays, inert, and fades `--dur-fast` `--ease-out`; the 28px stays | at once |
+| Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
 
 Rules: animate `transform` and `opacity` (and height only through the
 collapsible); every animation is interruptible and starts from the current
