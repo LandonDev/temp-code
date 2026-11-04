@@ -1362,7 +1362,7 @@ function InboxProjectPicker({
 function InboxLabel({ label }: { label: GithubLabel }) {
   const color = labelColor(label.color);
   return (
-    <span className="inline-flex min-w-0 items-center gap-1 rounded-sm bg-muted px-1.5 text-[11px] text-muted-foreground">
+    <span className="inline-flex min-w-0 items-center gap-1 rounded-sm bg-muted px-1.5 text-xs text-muted-foreground">
       {color ? (
         // The label's own colour is data, not decoration.
         <span aria-hidden className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />

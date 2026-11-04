@@ -341,7 +341,7 @@ export function ImplementationView(props: ThreadViewProps) {
 
         {closing ? (
           <AgentMarkdown
-            className="mt-6 text-[15px] leading-[1.6]"
+            className="mt-6" size="document"
             text={closing.text}
             cwd={session.cwd}
             onOpenFile={props.onOpenFile}

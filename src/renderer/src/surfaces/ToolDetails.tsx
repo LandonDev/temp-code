@@ -241,7 +241,7 @@ function PrettyJson({ value, titleOf }: { value: unknown; titleOf: TitleOf }) {
           ),
         )}
         {value.length > shown.length ? (
-          <div className="text-[11px] tabular-nums text-muted-foreground">{value.length - shown.length} more</div>
+          <div className="text-xs tabular-nums text-muted-foreground">{value.length - shown.length} more</div>
         ) : null}
       </div>
     );

@@ -62,7 +62,7 @@ export function AccountsList({
   return (
     <div role="listbox" aria-label={`${provider} accounts`} aria-readonly data-account-picker style={{ width: `${width / REM}rem` }}>
       {scope ? (
-        <p className="px-2.5 pb-1.5 pt-1 text-[11px] text-muted-foreground">{sourceLine(scope)}</p>
+        <p className="px-2.5 pb-1.5 pt-1 text-xs text-muted-foreground">{sourceLine(scope)}</p>
       ) : null}
       {accounts.profiles.map((profile) => (
         <AccountRow
@@ -77,7 +77,7 @@ export function AccountsList({
         />
       ))}
       {accounts.note ? (
-        <p className="px-2.5 pb-1 pt-2 text-[11px] text-muted-foreground">{accounts.note}</p>
+        <p className="px-2.5 pb-1 pt-2 text-xs text-muted-foreground">{accounts.note}</p>
       ) : null}
     </div>
   );
@@ -121,16 +121,16 @@ function AccountRow({
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">
           <span className="flex items-center gap-1.5">
             <span className={`truncate ${checked ? "font-medium" : ""}`}>{displayName(profile)}</span>
-            {profile.duplicate ? <span className="shrink-0 text-[10px] text-warning">duplicate</span> : null}
+            {profile.duplicate ? <span className="shrink-0 text-xs text-warning">duplicate</span> : null}
             {checked ? <Check className="size-3 shrink-0 text-muted-foreground" aria-label="In use" /> : null}
             {inherited ? (
               <Pin className="size-3 shrink-0 text-muted-foreground" aria-label={`Pinned by the ${inherited}`} />
             ) : null}
           </span>
           {report?.plan ? <PlanLine plan={report.plan} now={now} /> : null}
-          {status ? <Facts parts={status.parts} className={`text-[11px] ${status.tone}`} /> : null}
+          {status ? <Facts parts={status.parts} className={`text-xs ${status.tone}`} /> : null}
           {report?.banked ? (
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {report.banked} banked reset{report.banked === 1 ? "" : "s"}
             </span>
           ) : null}
@@ -205,7 +205,7 @@ function PlanLine({ plan, now }: { plan: PlanInfo; now: number }) {
   else if (plan.status && !STATUS_OK.has(plan.status))
     parts.push(...(STATUS_TEXT[plan.status] ?? [plan.status.replace(/_/g, " ")]).map(warn));
   else if (plan.renewsAt !== undefined && plan.renewsAt > now) parts.push(`renews ${shortDate(plan.renewsAt)}`);
-  return <Facts parts={parts} className="text-[11px] text-muted-foreground" />;
+  return <Facts parts={parts} className="text-xs text-muted-foreground" />;
 }
 
 /** Group windows by the moment they refill, to the minute. */
@@ -237,7 +237,7 @@ function UsageBlock({ report, now, slots }: { report: UsageReport | undefined; n
   }
   if (report.windows.length === 0) {
     return (
-      <span className="flex shrink-0 items-center text-[11px] text-muted-foreground" style={style}>
+      <span className="flex shrink-0 items-center text-xs text-muted-foreground" style={style}>
         {report.rateLimit ? "No usage recorded yet" : (report.note ?? report.extra ?? "Usage unavailable")}
       </span>
     );
@@ -270,7 +270,7 @@ function UsageCell({ group, now }: { group: UsageWindow[]; now: number }) {
       {group.map((w) => (
         <WindowLine key={w.label} w={w} now={now} />
       ))}
-      <span className="flex h-3 items-center gap-1.5 text-[11px] text-muted-foreground">
+      <span className="flex h-3 items-center gap-1.5 text-xs text-muted-foreground">
         {refills ? (
           <>
             {period ? <CycleRing fraction={cycleFraction(head.resetsAt as number, period, now)} /> : null}
@@ -301,7 +301,7 @@ function WindowLine({ w, now }: { w: UsageWindow; now: number }) {
   return (
     <span className="flex flex-col gap-1.5" data-window={w.label}>
       <span className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-[11px] text-muted-foreground">{w.label}</span>
+        <span className="truncate text-xs text-muted-foreground">{w.label}</span>
         <span className={`text-[12px] font-medium tabular-nums ${toneFor(w, now)}`}>{formatPercent(left)}</span>
       </span>
       <Bar w={w} now={now} height="h-1.5" />

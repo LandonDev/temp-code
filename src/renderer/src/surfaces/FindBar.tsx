@@ -146,7 +146,7 @@ export function FindBar(props: FindBarProps) {
                       aria-label={label}
                       pressed={props[flag]}
                       onPressedChange={() => props.onToggle(flag)}
-                      className="font-mono text-[11px]"
+                      className="font-mono text-xs"
                     />
                   }
                 />

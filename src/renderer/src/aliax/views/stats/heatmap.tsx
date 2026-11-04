@@ -31,13 +31,13 @@ export function Heatmap({ data }: { data: StatsBundle["heatmap"] }) {
       <div className="grid grid-cols-[2rem_repeat(24,minmax(0,1fr))] gap-[3px]">
         <span />
         {Array.from({ length: 24 }, (_, h) => (
-          <span key={h} className="text-center text-[11px] leading-none text-muted-foreground">
+          <span key={h} className="text-center text-xs leading-none text-muted-foreground tabular-nums">
             {h % 3 === 0 ? hourShort(h) : ""}
           </span>
         ))}
         {DOW.map((day, dow) => (
           <div key={day} className="contents">
-            <span className="text-[11px] leading-4 text-muted-foreground">{day}</span>
+            <span className="text-xs leading-4 text-muted-foreground">{day}</span>
             {Array.from({ length: 24 }, (_, hour) => {
               const value = lookup.get(`${dow}:${hour}`) ?? 0;
               const step = stepOf(value, max);
@@ -65,7 +65,7 @@ export function Heatmap({ data }: { data: StatsBundle["heatmap"] }) {
       <Tooltip handle={handle}>
         <TooltipContent>{hovered}</TooltipContent>
       </Tooltip>
-      <div className="flex items-center justify-end gap-1.5 pt-2 text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-end gap-1.5 pt-2 text-xs text-muted-foreground">
         <span>0</span>
         {Array.from({ length: RAMP_STEPS }, (_, i) => (
           <span key={i} aria-hidden data-ramp className="size-2.5 rounded-sm" style={{ backgroundColor: ramp(i + 1) }} />

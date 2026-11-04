@@ -24,7 +24,7 @@ export function TodoList({ items }: { items: TodoItem[] }) {
   const done = items.filter((t) => t.status === "completed").length;
   return (
       <div className="rounded-[10px] border border-border bg-foreground/6 px-3 py-2 font-sans text-[13px]">
-        <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+        <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
           <span>Todo</span>
           <span className="tabular-nums">
             {done}/{items.length}

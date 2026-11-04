@@ -103,7 +103,7 @@ export function CommandPopover({
                       {c.description}
                     </span>
                   ) : null}
-                  <span className="ml-auto shrink-0 pl-2 text-[11px] text-muted-foreground">
+                  <span className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground">
                     {c.scope === "project" ? "project" : ""}
                   </span>
                 </div>
@@ -155,7 +155,7 @@ export function CommandPopover({
                     {projectName ? (
                       <span className="shrink-0 text-xs text-muted-foreground">{projectName}</span>
                     ) : null}
-                    <span className="ml-auto shrink-0 pl-2 text-[11px] tabular-nums text-muted-foreground">
+                    <span className="ml-auto shrink-0 pl-2 text-xs tabular-nums text-muted-foreground">
                       {timeAgo(t.updatedAt)}
                     </span>
                   </div>

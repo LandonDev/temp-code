@@ -200,7 +200,7 @@ export function SessionReviewView({
               <span aria-hidden className="pointer-events-none flex">
                 <FileTypeIcon name={name} isDir={false} size={14} />
               </span>
-              <span className="min-w-0 truncate font-mono text-[11px] text-foreground">
+              <span className="min-w-0 truncate font-mono text-xs text-foreground">
                 {name}
               </span>
             </>

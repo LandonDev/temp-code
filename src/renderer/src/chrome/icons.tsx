@@ -190,7 +190,12 @@ export const Globe = wrap(GlobeIcon, "Globe");
 export const ListChecks = wrap(CheckListIcon, "ListChecks");
 export const MapIcon = wrap(MapsIcon, "MapIcon");
 export const Milestone = wrap(MilestoneIcon, "Milestone");
-export const Play = wrap(PlayIcon, "Play");
+const PlayGlyph = wrap(PlayIcon, "Play");
+/** The triangle's weight sits about 1.3px left of its box at 14px, so it is
+ *  drawn a pixel right, where it looks centred in its button. */
+export const Play = forwardRef(function Play({ className, ...props }: IconProps, ref: Ref<SVGSVGElement>) {
+  return <PlayGlyph ref={ref} className={className ? `translate-x-px ${className}` : "translate-x-px"} {...props} />;
+});
 export const Telescope = wrap(Telescope01Icon, "Telescope");
 export const Users = wrap(UserMultipleIcon, "Users");
 export const ChartBar = wrap(BarChartIcon, "ChartBar");

@@ -310,7 +310,7 @@ export function EditorPage() {
             ) : (
               <>
                 <span className={java?.error ? "block text-warning" : "block"}>{jdkState}</span>
-                {java?.path ? <span className="block truncate font-mono text-[11px]">{java.path}</span> : null}
+                {java?.path ? <span className="block truncate font-mono text-xs">{java.path}</span> : null}
               </>
             )
           }

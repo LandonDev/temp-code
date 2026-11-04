@@ -125,6 +125,45 @@
   font-size: 15px;
 }
 
+/* A heading wraps balanced: no word left alone on its second line. */
+.agent-markdown [data-streamdown^="heading-"] {
+  text-wrap: balance;
+}
+
+/* A document (a plan, a board's plan, a report: `size="document"`) reads at
+   15/24, its headings scaled above the body, never under it: h1 18/26,
+   h2 16/24, h3 15/24 in medium, h4 to h6 the body's own 15/24. Lists sit on
+   the 24px line; code reads 14/22. */
+.agent-markdown.is-document [data-streamdown^="heading-"] {
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.agent-markdown.is-document [data-streamdown="heading-1"] {
+  font-size: 18px;
+  line-height: 26px;
+  letter-spacing: -0.01em;
+}
+
+.agent-markdown.is-document [data-streamdown="heading-2"] {
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+}
+
+.agent-markdown.is-document [data-streamdown="heading-3"] {
+  font-weight: 500;
+}
+
+.agent-markdown.is-document li {
+  line-height: 24px;
+}
+
+.agent-markdown.is-document [data-streamdown="code-block-body"] {
+  font-size: 14px;
+  line-height: 22px;
+}
+
 /* A quote: a 2px hairline, its text 12px in, muted and upright. */
 .agent-markdown [data-streamdown="blockquote"] {
   border-left: 2px solid var(--border);
@@ -221,6 +260,7 @@
   padding: 8px 12px;
   font-size: 13px;
   line-height: 20px;
+  font-variant-numeric: tabular-nums;
 }
 
 .agent-markdown [data-streamdown="table-header"] {

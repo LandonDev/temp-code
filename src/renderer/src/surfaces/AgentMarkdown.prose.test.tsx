@@ -21,12 +21,14 @@ vi.mock("../lib/highlight", () => ({
 // The file menu reads the editor config through the preload bridge.
 vi.mock("./FileRefMenu", () => ({ FileRefMenu: ({ children }: { children: unknown }) => children }));
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { AgentMarkdown } from "./AgentMarkdown";
 
 afterEach(cleanup);
 
 describe("AgentMarkdown prose", () => {
-  it("reads at 14px on 22px lines by default and on 24px when compact", () => {
+  it("reads at 14px on 22px lines by default and when compact, the narrow columns at the prose's leading", () => {
     const prose = render(<AgentMarkdown text="Hello" />);
     expect(prose.container.querySelector(".agent-markdown")?.className).toContain("text-sm");
     expect(prose.container.querySelector(".agent-markdown")?.className).toContain("leading-[22px]");
@@ -34,7 +36,32 @@ describe("AgentMarkdown prose", () => {
     const compact = render(<AgentMarkdown text="Hello" size="compact" />);
     const cls = compact.container.querySelector(".agent-markdown")?.className ?? "";
     expect(cls).toContain("text-sm");
-    expect(cls).toContain("leading-6");
+    expect(cls).toContain("leading-[22px]");
+  });
+
+  it("a document reads at 15/24 with one size and one leading, a caller's leading no longer losing to a string join", () => {
+    const doc = render(<AgentMarkdown text="Hello" size="document" className="mt-6 leading-[1.6]" />);
+    const classes = (doc.container.querySelector(".agent-markdown")?.className ?? "").split(/\s+/);
+    expect(classes.filter((c) => /^text-(sm|base|\[\d+px\])$/.test(c))).toEqual(["text-[15px]"]);
+    // cn() merges: the caller's leading wins over the size's, and there is one.
+    expect(classes.filter((c) => c.startsWith("leading-"))).toEqual(["leading-[1.6]"]);
+    expect(classes).toContain("is-document");
+    doc.unmount();
+    const plain = render(<AgentMarkdown text="Hello" size="document" />);
+    const own = (plain.container.querySelector(".agent-markdown")?.className ?? "").split(/\s+/);
+    expect(own.filter((c) => c.startsWith("leading-"))).toEqual(["leading-6"]);
+  });
+
+  it("a document's headings are never smaller than its body", () => {
+    const css = readFileSync(resolve(__dirname, "transcript/markdown.css"), "utf8");
+    const rule = (selector: string) => css.slice(css.indexOf(selector + " {"), css.indexOf("}", css.indexOf(selector + " {")));
+    expect(rule('.agent-markdown.is-document [data-streamdown^="heading-"]')).toMatch(/font-size: 15px;\s*line-height: 24px;/);
+    expect(rule('.agent-markdown.is-document [data-streamdown="heading-1"]')).toMatch(/font-size: 18px;\s*line-height: 26px;/);
+    expect(rule('.agent-markdown.is-document [data-streamdown="heading-2"]')).toMatch(/font-size: 16px;\s*line-height: 24px;/);
+    expect(rule('.agent-markdown.is-document [data-streamdown="heading-3"]')).toMatch(/font-weight: 500;/);
+    expect(rule('.agent-markdown.is-document [data-streamdown="code-block-body"]')).toMatch(/font-size: 14px;\s*line-height: 22px;/);
+    expect(css).toMatch(/table-cell"\] \{[^}]*font-variant-numeric: tabular-nums;/);
+    expect(css).toMatch(/\[data-streamdown\^="heading-"\] \{\s*text-wrap: balance;/);
   });
 
   it("a token longer than its column breaks instead of widening the transcript (a bare URL, a path)", () => {

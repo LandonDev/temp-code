@@ -466,13 +466,12 @@ body,
   user-select: none;
 }
 
-/* Linux/Windows: explicit sans. macOS keeps its default text rendering. */
+/* Linux/Windows: explicit sans (the smoothing properties are macOS-only and
+   did nothing here). macOS keeps its default text rendering. */
 html:not(.is-mac),
 html:not(.is-mac) body,
 html:not(.is-mac) #root {
   font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 

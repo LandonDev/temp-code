@@ -199,7 +199,7 @@ function PrFileBody({ file }: { file: PrDiffFile }) {
         />
       ))}
       {clipped ? (
-        <p className="px-3 py-2 text-[11px] text-muted-foreground">
+        <p className="px-3 py-2 text-xs text-muted-foreground">
           Diff truncated after {MAX_DISPLAY_LINES.toLocaleString()} lines
         </p>
       ) : null}
@@ -210,7 +210,7 @@ function PrFileBody({ file }: { file: PrDiffFile }) {
 function DiffLineRow({ line }: { line: PrDiffLine }) {
   if (line.kind === "hunk") {
     return (
-      <div className="bg-foreground/5 px-3 py-0.5 font-mono text-[11px] text-muted-foreground">
+      <div className="bg-foreground/5 px-3 py-0.5 font-mono text-xs text-muted-foreground">
         {line.text}
       </div>
     );
@@ -263,7 +263,7 @@ function DiffCounts({
 }) {
   if (additions <= 0 && deletions <= 0) return null;
   return (
-    <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] font-semibold tabular-nums">
+    <span className="flex shrink-0 items-center gap-1.5 font-mono text-xs font-semibold tabular-nums">
       {additions > 0 ? <span className="text-success">+{additions}</span> : null}
       {deletions > 0 ? <span className="text-destructive">-{deletions}</span> : null}
     </span>

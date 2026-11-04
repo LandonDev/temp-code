@@ -13,7 +13,7 @@ import { Spinner } from "./spinner";
  * eases back over --dur-hover, as every row does.
  */
 const buttonVariants = cva(
-  "group/button relative isolate inline-flex shrink-0 cursor-default select-none items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium outline-none transition-[background-color,color,border-color] duration-(--dur-hover) ease-(--ease-out) disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none aria-invalid:ring-2 aria-invalid:ring-destructive/30 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [--busy-space:1rem]",
+  "group/button relative isolate inline-flex shrink-0 cursor-default select-none items-center justify-center whitespace-nowrap rounded-lg text-[13px] leading-5 font-medium outline-none transition-[background-color,color,border-color] duration-(--dur-hover) ease-(--ease-out) disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none aria-invalid:ring-2 aria-invalid:ring-destructive/30 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [--busy-space:1rem]",
   {
     variants: {
       variant: {
@@ -27,10 +27,10 @@ const buttonVariants = cva(
         link: "text-foreground underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2",
+        default: "h-8 gap-1.5 px-2.5 has-[>svg:first-child]:ps-2 has-[>svg:last-child]:pe-2",
         xs: "h-6 gap-1 rounded-md px-2 text-xs [&_svg:not([class*='size-'])]:size-3 [&_[data-slot=spinner]:not([class*='size-'])]:size-3 [--busy-space:0.75rem]",
         sm: "h-7 gap-1 rounded-md px-2.5 text-[13px] [&_svg:not([class*='size-'])]:size-3.5 [&_[data-slot=spinner]:not([class*='size-'])]:size-3.5 [--busy-space:0.875rem]",
-        lg: "h-9 gap-2 px-4",
+        lg: "h-9 gap-2 px-4 has-[>svg:first-child]:ps-2 has-[>svg:last-child]:pe-2",
         icon: "size-8",
         "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3 [&_[data-slot=spinner]:not([class*='size-'])]:size-3",
         "icon-sm": "size-7 rounded-md [&_svg:not([class*='size-'])]:size-3.5 [&_[data-slot=spinner]:not([class*='size-'])]:size-3.5",

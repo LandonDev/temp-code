@@ -206,7 +206,7 @@ export function PlanView(props: ThreadViewProps) {
                 }}
               >
                 <AgentMarkdown
-                  className="text-[15px] leading-[1.6]"
+                  size="document"
                   text={s.body}
                   streaming={running && i === sections.length - 1}
                   cwd={session.cwd}

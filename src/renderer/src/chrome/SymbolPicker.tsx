@@ -170,7 +170,7 @@ function SymbolList({
             onClick={() => onPick(row)}
             className={pickerRowClass(highlighted)}
           >
-            <span className="w-16 shrink-0 truncate text-[11px] text-muted-foreground">
+            <span className="w-16 shrink-0 truncate text-xs text-muted-foreground">
               {KIND_LABELS[row.kind] ?? "symbol"}
             </span>
             <span className="min-w-0 flex-1 truncate">
@@ -179,7 +179,7 @@ function SymbolList({
                 <span className="ms-2 text-muted-foreground">{row.containerName}</span>
               ) : null}
             </span>
-            <span className="min-w-0 max-w-[45%] truncate font-mono text-[11px] text-muted-foreground">
+            <span className="min-w-0 max-w-[45%] truncate font-mono text-xs text-muted-foreground">
               {file}:{row.range.startLineNumber}
             </span>
           </div>

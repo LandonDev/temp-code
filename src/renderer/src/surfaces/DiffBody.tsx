@@ -38,7 +38,7 @@ export function DiffBody({
         ),
       )}
       {rows.length > DIFF_LINE_CAP ? (
-        <div className={`select-none pt-1 text-[11px] tabular-nums text-muted-foreground${side}`}>
+        <div className={`select-none pt-1 text-xs tabular-nums text-muted-foreground${side}`}>
           <span className="ps-7">Showing the first {DIFF_LINE_CAP} lines</span>
         </div>
       ) : null}

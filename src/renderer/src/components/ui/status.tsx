@@ -225,7 +225,7 @@ export function StatusMark({
         </span>
       ) : null}
       {hasDetail ? (
-        <span data-slot="status-detail" className="min-w-0 truncate font-normal text-muted-foreground tabular-nums">
+        <span data-slot="status-detail" className="-ms-0.5 min-w-0 truncate font-normal text-muted-foreground tabular-nums">
           {detail}
         </span>
       ) : null}

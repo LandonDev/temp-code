@@ -19,7 +19,7 @@ export function SecondOpinionCard({ card }: Props) {
       <div className="text-[13px] font-medium leading-snug text-foreground">
         Handoff
       </div>
-      <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
+      <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">
         <HarnessIcon harness={card.from} className="size-3 shrink-0" />
         <span className="truncate">{HARNESS_TITLE[card.from]}</span>
         <ChevronRight
@@ -29,7 +29,7 @@ export function SecondOpinionCard({ card }: Props) {
         <span className="truncate">{HARNESS_TITLE[card.to]}</span>
       </div>
       {files ? (
-        <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+        <div className="mt-1 text-xs leading-4 text-muted-foreground">
           {files}
         </div>
       ) : null}

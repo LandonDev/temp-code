@@ -262,7 +262,7 @@ function FileList({
               />
             </span>
             {dir ? (
-              <span className="min-w-0 max-w-[45%] truncate font-mono text-[11px] text-muted-foreground">
+              <span className="min-w-0 max-w-[45%] truncate font-mono text-xs text-muted-foreground">
                 <MatchText
                   text={dir}
                   positions={file.positions.filter((pos) => pos < slash)}

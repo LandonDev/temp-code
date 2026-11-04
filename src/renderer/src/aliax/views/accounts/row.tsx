@@ -73,7 +73,7 @@ function WindowDetail({ w, now }: { w: UsageWindow; now: number }) {
         <span className={cn("tabular-nums", toneFor(w, now))}>{Math.round(percentLeft(w))}% left</span>
       </div>
       {w.resetsAt && w.resetsAt > now ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground tabular-nums">
           Refills in {untilLabel(w.resetsAt, now)}
         </p>
       ) : null}

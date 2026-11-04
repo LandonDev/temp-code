@@ -141,7 +141,7 @@ export function MessageQueue({
                     className="h-auto min-w-0 flex-1 justify-start whitespace-normal px-0 py-0 text-left font-normal hover:bg-transparent aria-expanded:bg-transparent active:bg-transparent"
                   >
                     <span className="line-clamp-2 text-[13px] leading-5 text-foreground">
-                      <span className="mr-1.5 text-[11px] tabular-nums text-muted-foreground">
+                      <span className="mr-1.5 text-xs tabular-nums text-muted-foreground">
                         {ix + 1}
                       </span>
                       {m.text}
@@ -231,7 +231,7 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
                   variant="ghost"
                   size="xs"
                   aria-label="Model for this message"
-                  className={`h-5 px-1 text-[11px] font-normal text-muted-foreground hover:text-foreground aria-expanded:opacity-100 ${
+                  className={`h-5 px-1 text-xs font-normal text-muted-foreground hover:text-foreground aria-expanded:opacity-100 ${
                     overridden ? '' : 'opacity-0 group-hover/q:opacity-100 focus-visible:opacity-100'
                   }`}
                 />

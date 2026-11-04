@@ -38,3 +38,19 @@ describe("the type guard", () => {
     expect(off).toEqual([]);
   });
 });
+
+describe("the type scale guard", () => {
+  it("keeps 11px for key caps and a menu's group labels, and 10px nowhere", () => {
+    const off: string[] = [];
+    for (const { file, text } of files) {
+      if (file === "components/ui/kbd.tsx") continue;
+      for (const m of text.matchAll(/["'`][^"'`]*text-\[1[01]px\][^"'`]*["'`]/g)) {
+        const lit = m[0];
+        const keyCap = lit.includes("data-[slot=kbd]");
+        const label = lit.includes("text-[11px]") && lit.includes("font-medium");
+        if (lit.includes("text-[10px]") || !(keyCap || label)) off.push(`${file}: ${lit.slice(0, 80)}`);
+      }
+    }
+    expect(off).toEqual([]);
+  });
+});

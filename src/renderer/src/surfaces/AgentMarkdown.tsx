@@ -17,6 +17,7 @@ import {
 } from "streamdown";
 import type { PluggableList } from "unified";
 import { CodeBlock } from "./CodeBlock";
+import { cn } from "../lib/cn";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
@@ -228,9 +229,12 @@ const MARKDOWN_COMPONENTS = {
   code: MarkdownCode,
 } satisfies Components;
 
-/** Transcript prose is 14/22 (transcriptRows' prose line); panels and
- *  dialogs read it at 14/24. Its block rhythm is transcript/markdown.css. */
-const SIZE_CLASS = { prose: "text-sm leading-[22px]", compact: "text-sm leading-6" } as const;
+/** Transcript prose is 14/22 (transcriptRows' prose line), and so do the
+ *  narrow columns (`compact`: the notes panel, an inbox item, a plan card).
+ *  A plan, a board's plan or a report reads as a document: 15/24, its
+ *  headings scaled above it (`.is-document` in transcript/markdown.css).
+ *  Its block rhythm is transcript/markdown.css. */
+const SIZE_CLASS = { prose: "text-sm leading-[22px]", compact: "text-sm leading-[22px]", document: "text-[15px] leading-6 is-document" } as const;
 
 export const AgentMarkdown = memo(function AgentMarkdown({
   text,
@@ -296,13 +300,13 @@ export const AgentMarkdown = memo(function AgentMarkdown({
         {!ready ? (
           <pre
             aria-hidden
-            className={`agent-markdown invisible min-w-0 whitespace-pre-wrap break-words font-sans ${SIZE_CLASS[size]} ${className ?? ""}`}
+            className={cn("agent-markdown invisible min-w-0 whitespace-pre-wrap break-words font-sans", SIZE_CLASS[size], className)}
           >
             {shown}
           </pre>
         ) : (
         <Streamdown
-          className={`agent-markdown min-w-0 wrap-break-word font-sans ${SIZE_CLASS[size]} ${className ?? ""}`}
+          className={cn("agent-markdown min-w-0 wrap-break-word font-sans", SIZE_CLASS[size], className)}
           components={MARKDOWN_COMPONENTS}
           controls={false}
           // streamdown's memo ignores the plugin lists: the settle reaches it

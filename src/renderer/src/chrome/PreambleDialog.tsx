@@ -184,7 +184,7 @@ function PreambleForm({
           </FieldRow>
         </div>
         <div className="flex items-center justify-between gap-2">
-          <p className="flex gap-2 font-mono text-[11px] text-muted-foreground" data-preamble-variables>
+          <p className="flex gap-2 font-mono text-xs text-muted-foreground" data-preamble-variables>
             {PREAMBLE_VARIABLES.map((v) => (
               <Tip key={v.name} label={`${v.meaning}, filled in when the thread starts`}>
                 <code

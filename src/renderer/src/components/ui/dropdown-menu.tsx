@@ -2,6 +2,7 @@ import { Check, ChevronRight } from "@renderer/chrome/icons";
 import { useEffect, useState, type ComponentProps } from "react";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { cn } from "@renderer/lib/cn";
+import { KbdGroup } from "./kbd";
 import { MENU_ROW } from "./menu-row";
 
 export { MENU_ROW };
@@ -20,7 +21,7 @@ const SIZE = {
   mark: "end-3",
   inset: "data-inset:ps-8.5",
   icon: "[&_svg:not([class*='size-'])]:size-3.5",
-  label: "px-3 py-1 text-[11px]",
+  label: "px-3 py-1 text-[11px] font-medium",
   separator: "-mx-1.5 my-1.5",
   shortcut: "text-xs",
 } as const;
@@ -192,8 +193,9 @@ function DropdownMenuSeparator({ className, ...props }: MenuPrimitive.Separator.
   return <MenuPrimitive.Separator data-slot="dropdown-menu-separator" className={cn("h-px bg-border", SIZE.separator, className)} {...props} />;
 }
 
-function DropdownMenuShortcut({ className, ...props }: ComponentProps<"span">) {
-  return <span data-slot="dropdown-menu-shortcut" className={cn("ms-auto ps-4 text-muted-foreground", SIZE.shortcut, className)} {...props} />;
+/** The row's key cap, drawn as the context menu's is: one KbdGroup. */
+function DropdownMenuShortcut({ className, ...props }: ComponentProps<typeof KbdGroup>) {
+  return <KbdGroup data-slot="dropdown-menu-shortcut" className={cn("ms-auto gap-0.5 ps-4 text-muted-foreground", SIZE.shortcut, className)} {...props} />;
 }
 
 export {

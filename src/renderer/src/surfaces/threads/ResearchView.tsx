@@ -75,7 +75,7 @@ export function Favicon({ url }: { url: string }) {
   const [failed, setFailed] = useState(false);
   if (!host || failed) {
     return (
-      <span className="flex size-4 shrink-0 items-center justify-center rounded-sm bg-muted text-[11px] leading-none font-semibold text-muted-foreground uppercase">
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-sm bg-muted text-xs leading-none font-semibold text-muted-foreground uppercase">
         {host[0] ?? "?"}
       </span>
     );
@@ -278,7 +278,7 @@ function ReportPane({
             />
           ) : null}
           <AgentMarkdown
-            className="mt-4 text-[15px] leading-[1.6]"
+            className="mt-4" size="document"
             text={report.body}
             streaming={false}
             cwd={session.cwd}

@@ -247,7 +247,7 @@ export function ProjectSearch({
                       className="flex-nowrap items-start gap-2 rounded-md px-1.5 py-0.5 text-left transition-none hover:bg-foreground/5"
                       onClick={() => openMatch(match)}
                     >
-                      <span className="w-7 shrink-0 text-right font-mono text-[11px] leading-5 text-muted-foreground tabular-nums">
+                      <span className="w-7 shrink-0 text-right font-mono text-xs leading-5 text-muted-foreground tabular-nums">
                         {match.line}
                       </span>
                       <span className="min-w-0 flex-1 truncate font-mono text-[12px] leading-5 text-foreground/80">

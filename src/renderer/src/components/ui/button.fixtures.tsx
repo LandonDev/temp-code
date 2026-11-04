@@ -4,8 +4,8 @@
 // so the held and open states stand in through data-pressed and aria-expanded
 // (the raise lifts on aria-expanded as it does on hover).
 import type { ComponentProps } from "react";
-import { ChevronDown, Plus } from "../../chrome/icons";
-import { Button } from "./button";
+import { ChevronDown, ExternalLink, Play, Plus } from "../../chrome/icons";
+import { BusyLabel, Button } from "./button";
 
 type Variant = NonNullable<ComponentProps<typeof Button>["variant"]>;
 const VARIANTS: Variant[] = ["default", "secondary", "destructive", "ghost", "outline", "link"];
@@ -68,6 +68,23 @@ export function ButtonGallery() {
             <ChevronDown />
           </Button>
         </span>
+      </div>
+      <div className="flex items-center gap-3 pt-2">
+        <span className="w-28 text-xs text-muted-foreground">icons and busy</span>
+        <Button>
+          <Play />
+          Start build
+        </Button>
+        <Button variant="secondary">
+          Open
+          <ExternalLink />
+        </Button>
+        <Button variant="secondary" size="xs">
+          <BusyLabel busy={false} label="Stop" busyLabel="Stopping…" />
+        </Button>
+        <Button variant="secondary" size="xs">
+          <BusyLabel busy label="Stop" busyLabel="Stopping…" />
+        </Button>
       </div>
       <div className="flex w-72 pt-2">
         <Button className="w-full">Start build</Button>

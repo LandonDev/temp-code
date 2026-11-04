@@ -126,7 +126,7 @@ function RulesForm({
                   <ItemContent className="min-w-0">
                     {/* What the step does, unless its name already says it word for word. */}
                     {sameWords(step.name, stepLine(step)) ? null : (
-                      <span className={cn("truncate text-xs text-muted-foreground", step.kind === "shell" && "font-mono text-[11px]")} data-rule-line>
+                      <span className={cn("truncate text-xs text-muted-foreground", step.kind === "shell" && "font-mono text-xs")} data-rule-line>
                         {stepLine(step)}
                       </span>
                     )}

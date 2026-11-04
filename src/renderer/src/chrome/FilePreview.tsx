@@ -182,7 +182,7 @@ export function DiffLine({
       onClick={onClick}
     >
       <span
-        className={`w-7 shrink-0 select-none pr-1 text-right font-mono text-[11px] tabular-nums text-muted-foreground${onClick ? " group-hover/line:text-foreground" : ""}`}
+        className={`w-7 shrink-0 select-none pr-1 text-right font-mono text-xs tabular-nums text-muted-foreground${onClick ? " group-hover/line:text-foreground" : ""}`}
       >
         {number ?? ""}
       </span>
