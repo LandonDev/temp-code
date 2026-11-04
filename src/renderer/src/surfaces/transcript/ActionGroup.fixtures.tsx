@@ -52,10 +52,45 @@ const wake = (prefix: string): Block[] => [
   call(`${prefix}5`, "Read", "read", { file_path: `${CWD}/convex/schema.ts` }),
 ];
 
+/** One of every row kind, for the table: each row on the step grid (stepLine.ts). */
+const mixed = (prefix: string): Block[] => [
+  call(`${prefix}1`, "Bash", "execute", { command: "bun run typecheck", description: "Typecheck the renderer" }),
+  call(`${prefix}2`, "Bash", "execute", { command: "npm test", description: "npm test" }),
+  call(`${prefix}3`, "Write", "edit", { file_path: `${CWD}/convex/diag.ts`, content: lines(46) }),
+  call(`${prefix}4`, "Edit", "edit", { file_path: `${CWD}/convex/schema.ts`, old_string: "a\nb", new_string: lines(5) }),
+  call(`${prefix}5`, "TodoWrite", "other", {
+    todos: [
+      { content: "Read the schema", status: "completed" },
+      { content: "Add the index", status: "in_progress" },
+      { content: "Run the tests", status: "pending" },
+    ],
+  }),
+  call(`${prefix}6`, "mcp__cosmic-admin__build_get", "other", { build_id: "b-1042" }),
+  {
+    ...call(`${prefix}7`, "mcp__orchestrator__spawn_agent", "other", { task: "Port the view to the new board" }),
+    tool: {
+      callId: `${prefix}7`,
+      name: "mcp__orchestrator__spawn_agent",
+      kind: "other",
+      status: "completed",
+      input: { task: "Port the view to the new board" },
+      spawned: [`${prefix}-child`],
+    },
+  },
+  {
+    id: `${prefix}8`,
+    role: "system",
+    text: "",
+    gate: { step: "gate", branch: "port-the-view", ok: false, log: "› typecheck\n✓ typecheck 21s\n› vitest\n✗ vitest 48s\ngate failed: vitest", at: 0 },
+  },
+  { id: `${prefix}9`, role: "reasoning", text: "The index belongs on the table.", ts: 1, doneTs: 3001 },
+];
+
 // The harness renders with no session, so the opened state is keyed ":a:<first id>".
 setEditOpen(":a:open1", true);
 setEditOpen(":a:orchOpen1", true);
 setEditOpen(":a:wakeOpen1", true);
+setEditOpen(":a:mixed1", true);
 
 /** A working run of `n` steps, the last still running (a thought counts as a row). */
 const working = (prefix: string, n: number): Block[] =>
@@ -98,6 +133,7 @@ export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; li
   { name: "Orchestration run, opened", props: { blocks: orchestration("orchOpen"), cwd: CWD } },
   { name: "Wake run", props: { blocks: wake("wake"), cwd: CWD } },
   { name: "Wake run, opened", props: { blocks: wake("wakeOpen"), cwd: CWD } },
+  { name: "Mixed calls, opened", props: { blocks: mixed("mixed"), cwd: CWD } },
   {
     name: "Thought only",
     props: {

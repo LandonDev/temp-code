@@ -6,10 +6,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/too
 import { cn } from "../../lib/cn";
 import { SwapText, useCountUp } from "../../motion";
 import { Counts } from "./Counts";
+import { STEP_LINE } from "./stepLine";
 
 /**
- * `[glyph]  Verb  object  +46 −3  extras  ▸`, 28px tall at 13px, the caret right
- * after the words as on the group line. The list around
+ * `[glyph]  Verb  object  +46 −3  extras  ▸` on the step grid (stepLine.ts):
+ * 28px tall at 13px, 26px hung in an open group, the caret right after the
+ * last thing on the line as on the group line. A slot with nothing to draw
+ * takes no room. The list around
  * the rows gives them their side padding (ActionGroup), so a lone row lines
  * up with the prose. Hover lifts the verb and the caret to foreground, as
  * the group line does. The line's own action (open the
@@ -25,6 +28,7 @@ export function ActionLine({
   label,
   onObject,
   objectLabel,
+  tally,
   adds,
   dels,
   ticking = false,
@@ -43,6 +47,8 @@ export function ActionLine({
   /** Makes the object a link of its own (open the file, the thread). */
   onObject?: () => void;
   objectLabel?: string;
+  /** A tally in the counts slot, muted (a todo list's `1/3`). */
+  tally?: string;
   adds?: number;
   dels?: number;
   /** The counts tick toward their value while the edit streams. */
@@ -61,9 +67,7 @@ export function ActionLine({
   const objectText = object ? <ObjectText object={object} title={title} onObject={onObject} label={objectLabel} onLine={action} /> : null;
   return (
     <div
-      className={cn(
-        "group/action relative flex h-7 min-w-0 items-center gap-2 font-sans text-[13px] leading-5",
-      )}
+      className={cn("group/action relative", STEP_LINE)}
     >
       {action ? (
         <Button
@@ -85,11 +89,13 @@ export function ActionLine({
           </SwapText>
         ) : null}
         {objectText}
+        {tally ? <span className="shrink-0 text-muted-foreground tabular-nums">{tally}</span> : null}
         {adds || dels ? <TickingCounts adds={adds ?? 0} dels={dels ?? 0} ticking={ticking} /> : null}
       </span>
-      {/* Extras are buttons of their own; a click between them is the line's. */}
+      {/* Extras are buttons of their own; a click between them is the line's.
+          Extras that render nothing leave no slot (`empty:hidden`). */}
       {trailing ? (
-        <span className="relative flex shrink-0 items-center gap-2" onClick={action}>
+        <span className="relative flex shrink-0 items-center gap-2 empty:hidden" onClick={action}>
           {trailing}
         </span>
       ) : null}

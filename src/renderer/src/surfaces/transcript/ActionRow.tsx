@@ -62,7 +62,7 @@ export function ActionRow({
             threadHost ? { environmentId: threadHost } : undefined,
           )
       : undefined;
-  const label = [action.verb, action.object].filter(Boolean).join(" ") || "Tool call";
+  const label = [action.verb, action.object, action.tally].filter(Boolean).join(" ") || "Tool call";
 
   const line = (
     <ActionLine
@@ -72,6 +72,7 @@ export function ActionRow({
       title={action.title}
       label={label}
       onObject={openThread}
+      tally={action.tally}
       trailing={<Extras block={block} />}
       open={shown}
       onToggle={

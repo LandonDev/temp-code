@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Block, ToolPreview } from "./session";
-import { commandPhrases, humanName, kindOf, runClauses, toolPhrase, toolPhraseParts } from "./toolPhrase";
+import { commandPhrases, humanName, kindOf, sentenceName, runClauses, toolPhrase, toolPhraseParts } from "./toolPhrase";
 
 const CWD = "/Users/me/monocode";
 
@@ -61,6 +61,15 @@ describe("humanName", () => {
     expect(humanName("mcp__linear__save_document")).toBe("Save Document");
     expect(humanName("ExitPlanMode")).toBe("Exit Plan Mode");
     expect(humanName("someCamelTool")).toBe("Some Camel Tool");
+  });
+});
+
+describe("sentenceName", () => {
+  it("says a connector tool's name in sentence case and keeps the app's own names", () => {
+    expect(sentenceName("mcp__cosmic-admin__build_get")).toBe("Build get");
+    expect(sentenceName("mcp__notion__searchPages")).toBe("Search pages");
+    expect(sentenceName("list-open-issues")).toBe("List open issues");
+    expect(sentenceName("mcp__app__app_start_thread")).toBe("Create Thread");
   });
 });
 

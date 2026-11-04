@@ -2,7 +2,7 @@
 import { addonTitle } from "../../lib/addonNames";
 import type { Block } from "../../lib/session";
 import { useTitlesOf } from "../../lib/threadMentions";
-import { kindOf, toolPhraseParts, type ToolKind } from "../../lib/toolPhrase";
+import { kindOf, sentenceName, toolPhraseParts, type ToolKind } from "../../lib/toolPhrase";
 import { inputOf, todoItems } from "../../lib/toolDetails";
 import { appThreadIds, appView, type AppView } from "../appTool";
 import { editModel, isEditBlock } from "../editModel";
@@ -25,6 +25,8 @@ export interface Action {
   path?: string;
   /** The line the file opens at: the read's offset, the edit's first line. */
   line?: number;
+  /** A tally in the counts slot, muted: a todo list's `3/7`. */
+  tally?: string;
   adds?: number;
   dels?: number;
   opens: ActionOpens;
@@ -43,6 +45,18 @@ export interface Action {
 const num = (v: unknown): number | undefined =>
   typeof v === "number" && Number.isFinite(v) ? v : undefined;
 
+/**
+ * toolPhrase.ts's stand-in objects, said when a call names nothing: filler,
+ * not a target. A row folds them into its verb ("Ran a command"), all muted.
+ */
+const GENERIC_OBJECTS = new Set(["a command", "a file", "the project", "a page", "the web", "a question"]);
+
+/** Filler folded into the verb, so the row reads the verb alone. A subagent's words are its own. */
+function foldFiller(action: Action): Action {
+  if (action.agent || !GENERIC_OBJECTS.has(action.object)) return action;
+  return { ...action, verb: [action.verb, action.object].filter(Boolean).join(" "), object: "", title: undefined };
+}
+
 /** The connector a call went through, when it is not the app itself. */
 function connectorOf(block: Block): string | undefined {
   const app = block.tool?.display?.app;
@@ -56,6 +70,10 @@ function connectorOf(block: Block): string | undefined {
  * decision about a row lives here; the components only draw it.
  */
 export function actionOf(block: Block, cwd?: string, app: AppView | null = null, live?: boolean): Action {
+  return foldFiller(rowAction(block, cwd, app, live));
+}
+
+function rowAction(block: Block, cwd: string | undefined, app: AppView | null, live: boolean | undefined): Action {
   const state = toolCallState(block);
   const pending = needsApproval(block);
   const failed = state === "rejected";
@@ -101,6 +119,14 @@ export function actionOf(block: Block, cwd?: string, app: AppView | null = null,
     };
   }
 
+  // A connector's call reads as the connector doing it: "Cosmic Admin  Build get".
+  // The spinner says it is live, so the verb keeps no tense.
+  const server = mcpServerOf(block.tool?.name ?? "");
+  if (connector && server && server !== "orchestrator" && !base.agent) {
+    const object = sentenceName(block.tool?.name ?? "");
+    return { ...base, verb: addonTitle(connector), object, title: object };
+  }
+
   if (isEditBlock(block)) {
     const m = editModel(block);
     const startLine = block.tool?.preview?.startLine;
@@ -118,10 +144,10 @@ export function actionOf(block: Block, cwd?: string, app: AppView | null = null,
   if (kind === "run") return { ...base, opens: "command" };
 
   if (kind === "todo") {
-    // The row says how far the list is: "Updated todos  3/7"; its body is the list.
+    // The row says how far the list is, as a count: "Updated todos  3/7"; its body is the list.
     const items = todoItems(block);
     const done = items.filter((t) => t.status === "completed").length;
-    return items.length ? { ...base, object: `${done}/${items.length}` } : base;
+    return items.length ? { ...base, object: "", tally: `${done}/${items.length}` } : base;
   }
 
   if (kind === "read" || kind === "list") {

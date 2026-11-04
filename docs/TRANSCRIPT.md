@@ -21,11 +21,36 @@ IconAction and markdown.css (A9).
 
 One action (an edit, a command, a read, a search, a fetch, a skill, a call
 into the app, a connector call, a subagent spawn, an approval, a todo
-update) is one 28 px line at 13 px, `[glyph]  Verb  object  +46 −3  extras  ▸`
+update) is one line at 13 px, `[glyph]  Verb  object  +46 −3  extras  ▸`
 (`transcript/ActionLine.tsx`). What each row says and opens is decided once
 in `transcript/actionModel.ts` (`actionOf`, unit-tested) from the words of
 `lib/toolPhrase.ts` (`toolPhraseParts`: the verb muted, the object in
 foreground, the same words the group line uses); the components only draw it.
+
+- **One grid** (`transcript/stepLine.ts`): every step of a run, a call, a
+  thought, a folded host step, is one line of the same slots, each drawn
+  only when it has something, 8px apart: the 14px glyph (`GLYPH_SLOT`), the
+  verb muted, the target in foreground (it truncates first), the counts at
+  the text's size, the row's extras (an empty extras slot takes no room,
+  `empty:hidden`), the chevron on a row that opens. The glyph box is fixed,
+  so verbs line up and each target starts where its verb ends, as in
+  Claude's open group. A line is 28px at the prose's edge (a lone call) and
+  26px hung in an open group's list, which says so with `data-hung`
+  (`STEP_LINE`'s `in-data-[hung]:h-6.5`; a notice, which can wrap, takes
+  `STEP_NOTICE`). No border, fill or rule; hover lifts the verb and the
+  chevron to foreground, at once.
+- **The words.** A stand-in object toolPhrase.ts says when a call names
+  nothing ("a command", "a file", "the project", "a page", "the web", "a
+  question") is filler, not a target: it folds into the verb ("Ran a
+  command", all muted); a subagent call keeps its words. A connector's call
+  reads as the connector doing it, "Cosmic Admin  Build get": the verb is
+  the `mcp__<server>__` prefix through `addonTitle`, the target the tool's
+  name in sentence case (`sentenceName`), with no tense (the glyph's spinner
+  says it is live); the host's `display.app` words, the app's own tools and
+  the orchestrator's keep theirs. A host step folded into a run
+  (`StepRowContext`, set by ActivityRow) reads the same way: its lead muted
+  whatever its tone (a failure is the glyph's to say), its first detail in
+  foreground ("Gate failed  port-the-view  at vitest").
 
 - **The glyph** (`transcript/ToolGlyph.tsx`): one 14 px box, the kind's
   icon from the `GLYPH` record, the connector's mark or the subagent's
@@ -56,8 +81,9 @@ foreground, the same words the group line uses); the components only draw it.
   asked for it (`tool.spawned`), so the call's row links to the agent from
   the moment it exists and carries the one child's host glyph and state
   (`SpawnedAgentMarks`); only an older log with no such call keeps a
-  "Spawned" row of its own. A todo update says how far the list is
-  ("Updated todos  3/7") and opens the list. The body opens in place under
+  "Spawned" row of its own. A todo update says how far the list is as a
+  muted tally in the counts slot, not a target ("Updated todos  3/7"), and
+  opens the list. The body opens in place under
   the line through `Collapsible`.
 - **Approvals.** A call waiting on the person draws its line in the live
   tense with the waiting mark and no caret, its own body open under it (the
@@ -172,8 +198,8 @@ foreground, the same words the group line uses); the components only draw it.
   (`pb-4` outside the measured container).
 - **Estimates follow the metrics.** `estimateRowHeight` is the row's gap
   plus its body: 28px a line (a closed group, an action, a thought, a
-  notice, the closing line), a working group 28px plus 28px for each of its
-  newest five rows, prose 22px a line at about 100 characters plus 40px a
+  notice, the closing line), a working group 28px plus 26px (`HUNG_LINE`)
+  for each of its newest five rows, prose 22px a line at about 100 characters plus 40px a
   fence, a bubble 16px plus 22px a line, a failure card 88px, a closing row
   that draws nothing 0.
 - **Only the viewport is mounted.** `lib/transcriptWindow.ts` (`RowLayout`)

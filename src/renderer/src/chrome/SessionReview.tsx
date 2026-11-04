@@ -209,7 +209,7 @@ export function SessionReviewView({
               {label}
             </span>
           )}
-          <Counts added={adds} removed={dels} />
+          <Counts added={adds} removed={dels} className="text-xs" />
           <ChevronRight className="size-3 text-muted-foreground" />
         </Button>
         <StripAction

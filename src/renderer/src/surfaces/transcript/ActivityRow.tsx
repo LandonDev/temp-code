@@ -8,6 +8,7 @@ import { isFoldedStep, isThinkingBlock } from "../transcriptActivity";
 import { StatusMark, type ThreadState } from "../../components/ui/status";
 import { ActionLine } from "./ActionLine";
 import { NoticeLine } from "./NoticeLine";
+import { StepRowContext } from "./stepLine";
 import { SystemRow } from "./SystemRow";
 import { ActivityThinkingRow } from "./ThinkingRow";
 import { ApprovalCard } from "./ApprovalCard";
@@ -43,8 +44,16 @@ export function ActivityRow({
 }) {
   if (isFoldedStep(block)) {
     if (block.task) return <TaskStepRow task={block.task} />;
-    if (block.backgroundCheck) return <NoticeLine lead="Checked background tasks" />;
-    return <SystemRow block={block} cwd={cwd} onOpenFile={onOpenFile} />;
+    // A host step reads verb then target, as a call does (stepLine.ts).
+    return (
+      <StepRowContext.Provider value>
+        {block.backgroundCheck ? (
+          <NoticeLine lead="Checked background tasks" />
+        ) : (
+          <SystemRow block={block} cwd={cwd} onOpenFile={onOpenFile} />
+        )}
+      </StepRowContext.Provider>
+    );
   }
   if (isThinkingBlock(block)) {
     return (

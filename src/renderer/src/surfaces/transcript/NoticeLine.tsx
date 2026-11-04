@@ -1,8 +1,9 @@
 // A9 (notices): the one line every transcript notice is drawn on.
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
 import { ChevronRight } from "../../chrome/icons";
 import { CollapsibleTrigger } from "../../components/ui/collapsible";
 import { cn } from "../../lib/cn";
+import { STEP_NOTICE, StepRowContext } from "./stepLine";
 
 /**
  * A notice on one line, the action rows' size (13px on 20px in a 28px row): a 14px glyph
@@ -15,6 +16,10 @@ import { cn } from "../../lib/cn";
  * is its own trigger, as an action row is: the whole line, a bare chevron
  * at its end, the lead lifting on hover. `children` is what opens under
  * the line (a log, findings), indented to the lead.
+ *
+ * Folded into a run as one of its steps (`StepRowContext`), the line reads
+ * verb then target like a call: the lead muted whatever `tone` says (a
+ * failure is the glyph's to say), the first detail in foreground.
  */
 export function NoticeLine({
   glyph,
@@ -48,9 +53,11 @@ export function NoticeLine({
   "data-state"?: string;
 }) {
   const shown = details.filter((d) => d != null && d !== false && d !== "");
+  const step = useContext(StepRowContext);
+  const strong = tone === "strong" && !step;
   return (
     <div data-slot="notice-line" className={cn("group/notice flex min-w-0 flex-col font-sans text-[13px] leading-5", className)} {...rest}>
-      <div className="relative flex min-h-7 min-w-0 items-start gap-2 py-1">
+      <div className={cn("relative flex min-w-0 items-start gap-2", STEP_NOTICE)}>
         {fold ? (
           <CollapsibleTrigger
             aria-label={fold.label}
@@ -63,7 +70,7 @@ export function NoticeLine({
         <div className={cn("flex min-w-0 flex-1 gap-x-2 leading-5", fold && "pointer-events-none", wrap ? "flex-wrap" : "items-center")}>
           <span
             className={cn(
-              tone === "strong" ? "text-foreground" : "text-muted-foreground",
+              strong ? "text-foreground" : "text-muted-foreground",
               fold && "transition-colors duration-(--dur-fast) ease-(--ease-out) group-hover/notice:text-foreground motion-reduce:transition-none",
               wrap ? "min-w-0 whitespace-pre-wrap break-words" : "shrink-0",
             )}
@@ -74,7 +81,7 @@ export function NoticeLine({
             <span
               key={i}
               className={cn(
-                "text-muted-foreground",
+                step && i === 0 ? "text-foreground" : "text-muted-foreground",
                 wrap ? "" : "min-w-0 truncate",
               )}
             >
@@ -101,7 +108,12 @@ export function NoticeLine({
           ) : null}
         </div>
       </div>
-      {children ? <div className="min-w-0 pl-5.5">{children}</div> : null}
+      {/* What opens under the line is no step: its own lines read as notices. */}
+      {children ? (
+        <div className="min-w-0 pl-5.5">
+          <StepRowContext.Provider value={false}>{children}</StepRowContext.Provider>
+        </div>
+      ) : null}
     </div>
   );
 }

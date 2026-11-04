@@ -82,7 +82,7 @@ describe("TurnEnd's thinking tail", () => {
     );
     const tail = container.querySelector('[data-slot="thinking-tail"]')!;
     expect(tail).not.toBeNull();
-    expect(tail.className).toContain("min-h-7");
+    expect(tail.className).toContain("h-7");
     expect(tail.className).toContain("text-[13px]");
     expect(tail.className).not.toMatch(/h-\[/);
     expect(tail.querySelector("svg")).not.toBeNull();
@@ -138,7 +138,7 @@ describe("TurnEnd's thinking tail says the turn's true phase", () => {
 
   it("gives way to the streaming summary row, which keeps the tail's 28px shape", () => {
     const view = render(live([echoed], "Waiting for the provider"));
-    expect(tailOf(view.container)?.className).toContain("min-h-7");
+    expect(tailOf(view.container)?.className).toContain("h-7");
     view.rerender(live([echoed, { id: "r", role: "reasoning", text: "Reading the plan first.", streaming: true }], "Thinking"));
     expect(tailOf(view.container)).toBeNull();
   });

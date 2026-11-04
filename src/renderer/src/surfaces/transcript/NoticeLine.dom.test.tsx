@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/button";
 import type { Block } from "../../lib/session";
 import { NoticeLine } from "./NoticeLine";
 import { NoticeRow, PassRow } from "./NoticeRow";
+import { STEP_NOTICE, StepRowContext } from "./stepLine";
 
 afterEach(cleanup);
 
@@ -56,6 +57,50 @@ describe("NoticeLine", () => {
     expect(actions.className).toContain("group-hover/notice:delay-(--delay-hover)");
     expect(actions.className).toContain("focus-within:delay-(--dur-instant)");
     expect(actions.contains(screen.getByRole("button", { name: "Review thread" }))).toBe(true);
+  });
+});
+
+describe("NoticeLine as a step of a run", () => {
+  const spans = (c: HTMLElement) => [...c.querySelectorAll<HTMLElement>('[data-slot="notice-line"] > div > div > span')];
+
+  it("outside a run, a strong line sets its lead in foreground", () => {
+    const { container } = render(<NoticeLine lead="Gate failed" tone="strong" details={["port-the-view", "at vitest"]} />);
+    const [lead, branch] = spans(container);
+    expect(lead.className).toContain("text-foreground");
+    expect(lead.className).not.toContain("text-muted-foreground");
+    expect(branch.className).toContain("text-muted-foreground");
+  });
+
+  it("folded into a run, reads verb then target: the lead muted, the first detail in foreground, the rest muted", () => {
+    const { container } = render(
+      <StepRowContext.Provider value>
+        <NoticeLine lead="Gate failed" tone="strong" details={["port-the-view", "at vitest"]} />
+      </StepRowContext.Provider>,
+    );
+    const [lead, branch, rest] = spans(container);
+    expect(lead.className).toContain("text-muted-foreground");
+    expect(branch.className).toContain("text-foreground");
+    expect(branch.className).not.toContain("text-muted-foreground");
+    expect(rest.className).toContain("text-muted-foreground");
+  });
+
+  it("sits on the step grid, 26px hung", () => {
+    const { container } = render(<NoticeLine lead="Pass" />);
+    const line = container.querySelector('[data-slot="notice-line"]')!.firstElementChild!;
+    for (const c of STEP_NOTICE.split(" ")) expect(line.className.split(" ")).toContain(c);
+  });
+
+  it("what opens under a step's line reads as a notice again", () => {
+    const { container } = render(
+      <StepRowContext.Provider value>
+        <NoticeLine lead="Review held" details={["main"]}>
+          <NoticeLine lead="Finding" details={["a.ts:4"]} />
+        </NoticeLine>
+      </StepRowContext.Provider>,
+    );
+    const inner = container.querySelectorAll('[data-slot="notice-line"]')[1]!;
+    const detail = inner.querySelectorAll<HTMLElement>(":scope > div > div > span")[1]!;
+    expect(detail.className).toContain("text-muted-foreground");
   });
 });
 

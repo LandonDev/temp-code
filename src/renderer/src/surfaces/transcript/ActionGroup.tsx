@@ -199,10 +199,11 @@ export function ActionGroup({
           </CollapsibleContent>
         </Collapsible>
         {/* The rows: one list, the same parent for a lone call and a group,
-            so the second call's arrival remounts nothing. */}
+            so the second call's arrival remounts nothing. Hung under the
+            line, its rows are 26px (stepLine.ts). */}
         <Collapsible open={open}>
           <CollapsibleContent id={panelId} className={auto ? "collapsible-auto" : undefined}>
-            <div ref={listRef} data-group-rows className={lone ? "flex min-w-0 flex-col" : "flex min-w-0 flex-col pl-5.5"}>
+            <div ref={listRef} data-group-rows data-hung={lone ? undefined : ""} className={lone ? "flex min-w-0 flex-col" : "flex min-w-0 flex-col pl-5.5"}>
               {rows}
             </div>
           </CollapsibleContent>

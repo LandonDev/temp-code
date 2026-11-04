@@ -23,6 +23,7 @@ import { ConnectorMark, ProviderMark } from "../ToolChips";
 import { agentProviderOf } from "../toolMarks";
 import { SwapIcon } from "../../motion/IconSwap";
 import type { Action, GlyphKey } from "./actionModel";
+import { GLYPH_SLOT } from "./stepLine";
 
 /** Each kind's icon; one glyph per row, no file-type icon beside the name. */
 export const GLYPH: Record<GlyphKey, IconComponent> = {
@@ -54,7 +55,7 @@ export const GLYPH: Record<GlyphKey, IconComponent> = {
  */
 export function ToolGlyph({ action, block }: { action: Action; block: Block }) {
   return (
-    <span className="grid size-3.5 shrink-0 place-items-center text-muted-foreground" data-glyph>
+    <span className={GLYPH_SLOT} data-glyph>
       <SwapIcon state={glyphState(action)}>
         <GlyphBody action={action} block={block} />
       </SwapIcon>

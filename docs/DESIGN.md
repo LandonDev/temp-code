@@ -130,8 +130,8 @@ a surface above `/10`.
 | Size | Where |
 | --- | --- |
 | 11px | a key cap, a group label in a menu |
-| 12px | secondary lines in the chrome, descriptions under a title, status words, a count in a row's status line, the transcript's counts (`+46 −3`) |
-| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings, a tooltip (regular, 20px lines); the transcript's action, thinking, notice and closing lines (20px lines in 28px rows) |
+| 12px | secondary lines in the chrome, descriptions under a title, status words, a count in a row's status line |
+| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings, a tooltip (regular, 20px lines); the transcript's action, thinking, notice and closing lines (20px lines in 28px rows, 26px hung in an open group) and their counts (`+46 −3`) |
 | 14px | dialog and panel body text, an Item's title; the transcript's prose, the person's bubble, a question's prompt and the composer's field (22px lines) |
 | 15px | an h2 in the model's prose |
 | 16px | a dialog or sheet title (semibold); an h1 in the model's prose |
@@ -512,8 +512,8 @@ one class chain.
 | Element | Size / line |
 | --- | --- |
 | The prose, the person's bubble, a question's prompt, the composer's field | 14px / 22px |
-| A line: a group's line, an action, a thought, a notice, an approval, the closing line | 13px / 20px in a 28px row; the glyph in a 14px slot, 8px to the words, so words start at 22px |
-| Counts (`+46 −3`, a failed tally) | 12px `tabular-nums` |
+| A line: a group's line, an action, a thought, a notice, an approval, the closing line | 13px / 20px in a 28px row, 26px hung in an open group; the glyph in a 14px slot, 8px to the words, so words start at 22px |
+| Counts (`+46 −3`, a failed tally) | the text's size (13px in a row and on the group line) `tabular-nums`; the failed mark 4px from its number |
 | Code in a row's body: a command, its output, a diff | 12px / 20px mono |
 | A code block in the prose | 13px / 20px mono |
 | Inline code | one pixel under its text (13px in the prose), `rounded-sm bg-muted` |
@@ -551,7 +551,12 @@ Between paragraphs, the actions since the last paragraph are one muted line
 hung 22px under it, so a row's glyph sits under the line's words, with no box
 and no rules ("Created  diag.ts  +46 ▸", "Ran  npx convex dev…  ▸", "Read
 types.ts ▸"), verb muted, object in foreground, counts green and red, a
-caret per row. A row's opened body is one card (a hairline, `rounded-lg`,
+caret per row. Every row of the list sits on one grid (transcript/stepLine.ts):
+glyph, verb, target, counts, extras, caret, each slot only when it has
+something and 8px apart, 26px a row; a call that names nothing reads its
+verb alone ("Ran a command"), a connector's call names the connector
+("Cosmic Admin  Build get"), a todo update's tally sits muted in the counts
+slot, and a host step folded in reads verb then target like a call. A row's opened body is one card (a hairline, `rounded-lg`,
 `bg-card`, 12px inset, from the row's glyph to the column's end); an edit's
 diff takes the same card with its tints running to its edges. A lone command
 opens a card headed by its tool name with the command in mono and its output

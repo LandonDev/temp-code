@@ -12,10 +12,11 @@ import { type Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { SwapText } from "../../motion/SwapText";
 import { AgentMarkdown } from "../AgentMarkdown";
+import { STEP_LINE } from "./stepLine";
 import { latestLine, latestLineKey, thoughtLabel, thoughtMs } from "./thinking";
 
-/** One row of the action list: the 14px glyph slot, then the words. */
-const ROW = "flex min-h-7 min-w-0 items-center gap-2 font-sans text-[13px] leading-5";
+/** One row of the action list on the step grid: the 14px glyph slot, then the words. */
+const ROW = STEP_LINE;
 const GLYPH = <Sparkles className="size-3.5 shrink-0 text-muted-foreground" />;
 
 /**
