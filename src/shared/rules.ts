@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CATALOG, modelInfo, type ProviderId, type Reasoning } from './catalog'
+import { CATALOG, REASONING_LEVELS, modelInfo, type ProviderId, type Reasoning } from './catalog'
 
 /**
  * Structured orchestration rules — objective settings, not prose. Two
@@ -10,7 +10,7 @@ import { CATALOG, modelInfo, type ProviderId, type Reasoning } from './catalog'
  * into the prompt — these rules only decide what gets picked.
  */
 
-const ReasoningEnum = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+const ReasoningEnum = z.enum(REASONING_LEVELS)
 
 /** Per-model spawn policy, keyed `provider:modelId` in rules.models.
  *  A missing entry means OFF: a model the person never allowed is not
@@ -33,7 +33,7 @@ export const RoutingRuleSchema = z.object({
   provider: z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx']),
   /** model id; '' = the provider's default */
   model: z.string().default(''),
-  reasoning: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).default('medium'),
+  reasoning: ReasoningEnum.default('medium'),
   enabled: z.boolean().default(true)
 })
 export type RoutingRule = z.infer<typeof RoutingRuleSchema>
@@ -271,9 +271,25 @@ export function approvedLadder(
   return lo <= hi ? ladder.slice(lo, hi + 1) : ladder
 }
 
+/** The rung of `ladder` nearest `requested` in REASONING_LEVELS order, the
+ *  lower on a tie (`minimal` on a ladder from `low` → `low`); null for a
+ *  word that is no rung. */
+function nearestRung(ladder: Reasoning[], requested: string): Reasoning | null {
+  const at = REASONING_LEVELS.indexOf(requested as Reasoning)
+  if (at < 0 || ladder.length === 0) return null
+  let best: Reasoning | null = null
+  for (const r of ladder) {
+    const d = Math.abs(REASONING_LEVELS.indexOf(r) - at)
+    if (best === null || d < Math.abs(REASONING_LEVELS.indexOf(best) - at)) best = r
+  }
+  return best
+}
+
 /** Requested effort fitted to the approved ladder: kept when inside,
- *  clamped to the nearer bound when the model serves it outside the
- *  approved range, else the default (itself fitted). */
+ *  moved to the model's nearest rung when the model lacks it (a thread
+ *  moved off a ladder with `minimal` lands on `low`), clamped to the
+ *  nearer bound when the model serves it outside the approved range,
+ *  else the default (itself fitted). */
 export function fitReasoning(
   rules: OrchestrationRules,
   provider: ProviderId,
@@ -284,7 +300,7 @@ export function fitReasoning(
   if (ladder.length === 0) return 'medium'
   if (requested && ladder.includes(requested as Reasoning)) return requested as Reasoning
   const full = modelInfo(provider, modelId)?.reasoning ?? []
-  const want = requested && full.includes(requested as Reasoning) ? (requested as Reasoning) : null
+  const want = requested ? nearestRung(full, requested) : null
   const pick = want ?? modelInfo(provider, modelId)?.defaultReasoning ?? ladder[0]
   const ix = full.indexOf(pick)
   if (ix >= 0 && ix < full.indexOf(ladder[0])) return ladder[0]

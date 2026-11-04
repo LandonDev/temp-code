@@ -1,3 +1,4 @@
+import { REASONING_LEVELS } from "@server/shared/catalog";
 import { nativeModelId } from "../models";
 import { bridgeNewThread, bridgesNewThreads } from "../macBridge";
 import type { Attachment, Block, RuntimeMode, Session } from "../session";
@@ -49,7 +50,7 @@ export function agentTypeFor(threadType: ThreadType | null | undefined): AgentTy
  *  (prepared prompts expand mentions; the bubble keeps the typed text). */
 export type UserTurnDisplay = { text?: string; attachments?: Attachment[] };
 
-const REASONING = new Set(["low", "medium", "high", "xhigh", "max", "ultra"]);
+const REASONING: ReadonlySet<string> = new Set(REASONING_LEVELS);
 
 /** The server's effort ladder from MonoCode's per-model setting. */
 export function reasoningOf(session: Pick<Session, "modelSettings">): string | undefined {

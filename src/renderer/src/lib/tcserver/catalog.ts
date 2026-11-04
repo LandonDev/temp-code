@@ -4,6 +4,7 @@ import { setHarnessModels, type AgentModel, type ModelSetting } from "../models"
 import { registry } from "../connection";
 import type { ModelInfo, ProviderId, ProviderInfo } from "./types";
 import { supportsContext1m } from "@server/shared/catalog";
+import { EFFORT_LABELS } from "./defaults";
 
 /**
  * The server's capability catalog and provider health, fanned into
@@ -24,15 +25,6 @@ const CONTEXT_OPTIONS = [
   { value: "1m", label: "1M" },
 ];
 
-const EFFORT_LABELS: Record<string, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra high",
-  max: "Max",
-  ultra: "Ultra",
-};
-
 function effortSetting(model: ModelInfo): ModelSetting | null {
   if (model.reasoning.length === 0) return null;
   return {
@@ -42,7 +34,7 @@ function effortSetting(model: ModelInfo): ModelSetting | null {
     value: model.defaultReasoning ?? model.reasoning[0],
     options: model.reasoning.map((value) => ({
       value,
-      label: EFFORT_LABELS[value] ?? value[0].toUpperCase() + value.slice(1),
+      label: EFFORT_LABELS[value],
     })),
   };
 }
@@ -76,9 +68,10 @@ function speedSettings(harness: HarnessId, model: ModelInfo): ModelSetting[] {
   return out;
 }
 
-/** `claude-…` models that offer 1M get the context select (session.tune). */
+/** `claude-…` models that offer 1M get the context select (session.tune);
+ *  a vendor row's window is native, so it has none. */
 function claudeSettings(model: ModelInfo): ModelSetting[] {
-  if (!supportsContext1m("claude", model.id)) return [];
+  if (model.vendor || !supportsContext1m("claude", model.id)) return [];
   return [{ id: "context", label: "Context", kind: "select", value: "200k", options: CONTEXT_OPTIONS }];
 }
 
@@ -96,6 +89,7 @@ export function agentModelsFor(provider: ProviderInfo): AgentModel[] {
       name: model.label,
       nativeId: model.id,
       ...(model.context ? { contextWindow: model.context } : {}),
+      ...(model.vendor ? { vendor: model.vendor } : {}),
       ...(settings.length > 0 ? { settings } : {}),
     };
   });

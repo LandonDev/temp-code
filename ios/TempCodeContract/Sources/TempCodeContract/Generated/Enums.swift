@@ -43,6 +43,7 @@ public enum ProviderId: RawRepresentable, Codable, Hashable, Sendable {
 }
 
 public enum Reasoning: RawRepresentable, Codable, Hashable, Sendable {
+    case minimal
     case low
     case medium
     case high
@@ -54,6 +55,7 @@ public enum Reasoning: RawRepresentable, Codable, Hashable, Sendable {
 
     public init(rawValue: String) {
         switch rawValue {
+        case "minimal": self = .minimal
         case "low": self = .low
         case "medium": self = .medium
         case "high": self = .high
@@ -66,6 +68,7 @@ public enum Reasoning: RawRepresentable, Codable, Hashable, Sendable {
 
     public var rawValue: String {
         switch self {
+        case .minimal: "minimal"
         case .low: "low"
         case .medium: "medium"
         case .high: "high"

@@ -22,6 +22,9 @@ export type AgentModel = {
   settings?: ModelSetting[];
   /** Context window, when the harness catalog reports one. */
   contextWindow?: number;
+  /** The model's maker when it is not the harness's own (catalog `vendor`):
+   *  the picker groups these rows and leads each with the maker's mark. */
+  vendor?: "meta";
 };
 
 /** Reasoning ladder and the 1M context choice for the frontier Claude
@@ -51,6 +54,41 @@ const CLAUDE_FRONTIER_SETTINGS: ModelSetting[] = [
     ],
   },
 ];
+
+const EFFORT_WORDS: Record<string, string> = {
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+};
+
+const effortSelect = (value: string, ladder: string[]): ModelSetting => ({
+  id: "effort",
+  label: "Effort",
+  kind: "select",
+  value,
+  options: ladder.map((rung) => ({ value: rung, label: EFFORT_WORDS[rung] })),
+});
+
+/** Meta's models under a harness, as the live catalog builds them: no
+ *  context select (the window is native), the harness's own effort ladder
+ *  (the Claude CLI stops at low; Codex passes Meta's minimal). */
+function metaModels(harness: "claude" | "codex", ladder: string[]): AgentModel[] {
+  return [
+    { native: "muse-wonder-1.0", name: "Muse Wonder 1.0", effort: "high" },
+    { native: "muse-spark-1.3", name: "Muse Spark 1.3", effort: "medium" },
+  ].map((m): AgentModel => ({
+    id: `${harness}:${m.native}`,
+    harness,
+    name: m.name,
+    nativeId: m.native,
+    contextWindow: 1_048_576,
+    vendor: "meta",
+    settings: [effortSelect(m.effort, ladder)],
+  }));
+}
 
 export const MODELS: AgentModel[] = [
   {
@@ -119,6 +157,8 @@ export const MODELS: AgentModel[] = [
     name: "Opus 4.5",
     nativeId: "claude-opus-4-5",
   },
+  ...metaModels("claude", ["low", "medium", "high", "xhigh", "max"]),
+  ...metaModels("codex", ["minimal", "low", "medium", "high", "xhigh", "max"]),
 
   {
     id: "cursor:composer-2.5",
@@ -423,8 +463,10 @@ export function resolveModel(harness: HarnessId, id?: string, environmentId?: st
   const fallbackId = defaultModelId(harness, environmentId);
   return (
     (fallbackId ? available.find((model) => model.id === fallbackId) : undefined) ??
-    available[0] ??
-    MODELS.find((model) => model.harness === harness) ??
+    // A vendor row is picked, never fallen into: the built-in codex list
+    // holds only Meta's rows until the live catalog lands.
+    available.find((model) => !model.vendor) ??
+    MODELS.find((model) => model.harness === harness && !model.vendor) ??
     MODELS[0]
   );
 }

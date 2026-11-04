@@ -20,6 +20,7 @@ import { ReviewSettingsSchema } from './review'
 import type { BuildOutput, BuildRun, BuildStatus } from './build'
 import {
   AGENT_TYPES,
+  REASONING_LEVELS,
   type AgentType,
   type ModelInfo,
   type ProviderId,
@@ -188,7 +189,7 @@ export const ProviderIdSchema = z.enum([
   'omp',
   'fx'
 ])
-export const ReasoningSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+export const ReasoningSchema = z.enum(REASONING_LEVELS)
 export const AgentTypeSchema = z.enum(AGENT_TYPES)
 export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor'])
 export const AccountPinsSchema = z.partialRecord(AccountProviderSchema, z.string())
@@ -241,7 +242,9 @@ export const AccountsSnapshotSchema = z.object({
   providers: z.object({
     claude: ProviderAccountsSchema,
     codex: ProviderAccountsSchema,
-    cursor: ProviderAccountsSchema
+    cursor: ProviderAccountsSchema,
+    /** Meta Model API keys; optional so an older host's snapshot decodes. */
+    meta: ProviderAccountsSchema.optional()
   })
 })
 
@@ -252,7 +255,8 @@ export const ModelInfoSchema = z.object({
   defaultReasoning: ReasoningSchema.optional(),
   context: z.number().int().optional(),
   speedTiers: z.array(z.string()).optional(),
-  minCodexVersion: z.string().optional()
+  minCodexVersion: z.string().optional(),
+  vendor: z.enum(['meta']).optional()
 })
 export const ProviderInfoSchema = z.object({
   id: ProviderIdSchema,

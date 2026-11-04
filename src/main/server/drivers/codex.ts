@@ -55,6 +55,7 @@ const SANDBOX: Record<PermissionPolicy, string> = {
 // Our reasoning enum matches codex's effort ladder 1:1 (model/list,
 // codex-cli 0.147.0) — sol/terra go all the way to ultra.
 const EFFORT: Record<Reasoning, string> = {
+  minimal: 'minimal',
   low: 'low',
   medium: 'medium',
   high: 'high',

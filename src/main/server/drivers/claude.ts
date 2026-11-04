@@ -1600,9 +1600,10 @@ export const claudeDriver: HarnessDriver = {
       // to a 200k window and overflowed at ~180k.
       model: session.context1m ? `${session.model}[1m]` : session.model,
       cwd: session.cwd,
-      // The SDK ladder tops out at max; 'ultra' is codex-only (a session
-      // switched off sol mid-ultra clamps rather than erroring).
-      effort: session.reasoning === 'ultra' ? 'max' : session.reasoning,
+      // The SDK ladder runs low..max; 'ultra' and 'minimal' are codex-only
+      // (a session switched harness mid-ladder clamps rather than erroring).
+      effort:
+        session.reasoning === 'ultra' ? 'max' : session.reasoning === 'minimal' ? 'low' : session.reasoning,
       includePartialMessages: true,
       permissionMode: PERMISSION_MODE[session.permission],
       ...(session.permission === 'auto' ? { allowDangerouslySkipPermissions: true } : {}),

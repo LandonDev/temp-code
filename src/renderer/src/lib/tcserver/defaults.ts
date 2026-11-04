@@ -1,4 +1,5 @@
 import { DEFAULT_THREAD_DEFAULTS } from "@server/shared/defaults";
+import { REASONING_LEVELS as LEVELS } from "@server/shared/catalog";
 import { HARNESSES, HARNESS_TITLE, RUNTIME_MODE_HINT, RUNTIME_MODE_LABEL, type HarnessId, type RuntimeMode } from "../session";
 import { modelsFor, resolveModel, type AgentModel } from "../models";
 import { modeForPolicy } from "./access";
@@ -24,9 +25,10 @@ export type DefaultsScope = {
   overridden: boolean;
 };
 
-export const REASONING_LEVELS: readonly Reasoning[] = ["low", "medium", "high", "xhigh", "max", "ultra"];
+export const REASONING_LEVELS: readonly Reasoning[] = LEVELS;
 
 export const EFFORT_LABELS: Record<Reasoning, string> = {
+  minimal: "Minimal",
   low: "Low",
   medium: "Medium",
   high: "High",

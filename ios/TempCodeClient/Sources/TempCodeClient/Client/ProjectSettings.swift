@@ -384,6 +384,7 @@ extension Reasoning {
     /// The desktop's EFFORT_LABELS.
     public var title: String {
         switch self {
+        case .minimal: "Minimal"
         case .low: "Low"
         case .medium: "Medium"
         case .high: "High"

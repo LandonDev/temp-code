@@ -207,6 +207,35 @@ it('app_start_thread keeps the catalog refusals: an effort off the ladder, an un
   expect(created).toHaveLength(0)
 })
 
+it('app_start_thread names minimal on a Meta codex row and refuses it on the claude one', async () => {
+  policyRegistry(DEFAULT_RULES)
+  const claude = await appStartThread(policyFake, caller, {
+    threadType: 'chat',
+    provider: 'claude',
+    model: 'muse-wonder-1.0',
+    reasoning: 'minimal',
+    firstMessage: 'go'
+  })
+  expect(claude).toBe('refused: muse-wonder-1.0 supports reasoning low|medium|high|xhigh|max, not "minimal".')
+  const codex = await appStartThread(policyFake, caller, {
+    threadType: 'chat',
+    provider: 'codex',
+    model: 'muse-spark-1.3',
+    reasoning: 'ultra',
+    firstMessage: 'go'
+  })
+  expect(codex).toBe('refused: muse-spark-1.3 supports reasoning minimal|low|medium|high|xhigh|max, not "ultra".')
+  const ok = await appStartThread(policyFake, caller, {
+    threadType: 'chat',
+    provider: 'codex',
+    model: 'muse-wonder-1.0',
+    reasoning: 'minimal',
+    firstMessage: 'go'
+  })
+  expect(ok).toMatchObject({ threadId: 'thread-1' })
+  expect(created[0]).toMatchObject({ provider: 'codex', model: 'muse-wonder-1.0', reasoning: 'minimal' })
+})
+
 // ── packaging guard ──────────────────────────────────────────────────
 // The bridge only works in the installed app if electron-builder ships
 // the script. electron-builder's `files` defaults to everything and our

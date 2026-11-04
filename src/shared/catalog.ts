@@ -37,7 +37,10 @@ export function applyProbedCatalog(
   if (probed.label) entry.label = probed.label
 }
 
-export type Reasoning = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'
+/** Every effort rung, lowest first: the order `fitReasoning` clamps by and
+ *  every enum of the wire, the rules and the app tools reads. */
+export const REASONING_LEVELS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const
+export type Reasoning = (typeof REASONING_LEVELS)[number]
 
 export interface ModelInfo {
   id: string
@@ -61,6 +64,10 @@ export interface ModelInfo {
    *  the row everywhere (picker, spawn table, app tools) instead of
    *  offering a model that fails with a 400 at first use. */
   minCodexVersion?: string
+  /** The model's maker when it is not the harness's own (a Meta model
+   *  served by the Claude Code or Codex harness). Its window is native,
+   *  so it never takes `[1m]`; the picker groups it and marks it. */
+  vendor?: 'meta'
 }
 
 export interface ProviderInfo {
@@ -75,6 +82,30 @@ export const AGENT_TYPES = ['orchestrator', 'implementer', 'reviewer', 'explorer
 export type AgentType = (typeof AGENT_TYPES)[number]
 
 const CLAUDE_EFFORTS: Reasoning[] = ['low', 'medium', 'high', 'xhigh', 'max']
+/** Meta's ladder (dev.meta.ai; it refuses `none`), on the codex rows only. */
+const META_EFFORTS: Reasoning[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+
+/** Meta's models, served by both harnesses through the gateway. */
+function metaRows(efforts: Reasoning[]): ModelInfo[] {
+  return [
+    {
+      id: 'muse-wonder-1.0',
+      label: 'Muse Wonder 1.0',
+      reasoning: efforts,
+      defaultReasoning: 'high',
+      context: 1_048_576,
+      vendor: 'meta'
+    },
+    {
+      id: 'muse-spark-1.3',
+      label: 'Muse Spark 1.3',
+      reasoning: efforts,
+      defaultReasoning: 'medium',
+      context: 1_048_576,
+      vendor: 'meta'
+    }
+  ]
+}
 
 export const CATALOG: Record<ProviderId, ProviderInfo> = {
   claude: {
@@ -129,7 +160,9 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
         reasoning: CLAUDE_EFFORTS,
         defaultReasoning: 'medium',
         context: 1_000_000
-      }
+      },
+      // The Claude CLI (2.1.312) takes --effort low|medium|high|xhigh|max only.
+      ...metaRows(CLAUDE_EFFORTS)
     ],
     defaultModel: 'claude-fable-5-1'
   },
@@ -193,7 +226,8 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
         label: 'GPT-5.3 Codex Spark',
         reasoning: ['low', 'medium', 'high', 'xhigh'],
         defaultReasoning: 'high'
-      }
+      },
+      ...metaRows(META_EFFORTS)
     ],
     defaultModel: 'gpt-5.6-sol'
   },
@@ -311,14 +345,22 @@ export function modelInfo(provider: ProviderId, modelId: string): ModelInfo | un
   return CATALOG[provider].models.find((m) => m.id === modelId && runnableHere(provider, m))
 }
 
+/** Whether a provider's row is a Meta model (`vendor: 'meta'`). */
+export function isMetaModel(provider: ProviderId, modelId: string): boolean {
+  return modelInfo(provider, modelId)?.vendor === 'meta'
+}
+
 /**
  * Whether a model can run with the 1M context window. Only the Claude
  * harness honours `context1m` (drivers/claude.ts appends `[1m]`), and only
- * models the catalog says serve a million tokens. One predicate so the
- * picker, the spawn tools and their refusals can never disagree.
+ * models the catalog says serve a million tokens; a vendor row's window is
+ * native and never takes `[1m]`. One predicate so the picker, the spawn
+ * tools and their refusals can never disagree.
  */
 export function supportsContext1m(provider: ProviderId, modelId: string): boolean {
-  return provider === 'claude' && (modelInfo(provider, modelId)?.context ?? 0) >= 1_000_000
+  if (provider !== 'claude') return false
+  const info = modelInfo(provider, modelId)
+  return !info?.vendor && (info?.context ?? 0) >= 1_000_000
 }
 
 /**

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { REASONING_LEVELS } from './catalog'
 
 /**
  * Thread defaults — what a NEW thread starts with when the user doesn't
@@ -13,7 +14,7 @@ export const ThreadDefaultsSchema = z.object({
   provider: z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx']).default('claude'),
   /** model id; '' = the provider's catalog default */
   model: z.string().default(''),
-  reasoning: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).default('medium'),
+  reasoning: z.enum(REASONING_LEVELS).default('medium'),
   /** security: safe = ask first, edits = auto-edits, auto = full access */
   permission: z.enum(['safe', 'edits', 'auto']).default('edits')
 })

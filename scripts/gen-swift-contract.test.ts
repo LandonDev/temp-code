@@ -42,6 +42,27 @@ describe('named types', () => {
   })
 })
 
+describe('Meta on the wire', () => {
+  it("keeps providers.meta optional, so an older host's accounts snapshot decodes", () => {
+    const providers = { claude: empty(), codex: empty(), cursor: empty() }
+    expect(W.AccountsSnapshotSchema.safeParse({ updatedAt: 1, providers }).success).toBe(true)
+    expect(W.AccountsSnapshotSchema.safeParse({ updatedAt: 1, providers: { ...providers, meta: empty() } }).success).toBe(true)
+    expect(files['Types.swift']).toContain('public let meta: ProviderAccounts?')
+    expect(files['Types.swift']).toContain('cursor: ProviderAccounts, meta: ProviderAccounts? = nil)')
+  })
+  it('emits Reasoning.minimal and an optional ModelInfo.vendor', () => {
+    const enums = files['Enums.swift']
+    const reasoning = enums.slice(enums.indexOf('public enum Reasoning'), enums.indexOf('\n}\n', enums.indexOf('public enum Reasoning')))
+    expect(reasoning).toContain('case minimal')
+    expect(reasoning).toContain('case unknown(String)')
+    expect(files['Types.swift']).toContain('public let vendor: Vendor?')
+  })
+})
+
+function empty() {
+  return { pinned: null, profiles: [], reports: [] }
+}
+
 describe('the subset', () => {
   it('refuses a local-only method', () => {
     const subset = [...SUBSET, method('host.publish', z.null())]

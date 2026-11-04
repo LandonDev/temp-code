@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { REASONING_LEVELS } from './catalog'
 
 /**
  * Review before merge: an optional second-model review of an implementation
@@ -18,7 +19,7 @@ export const ReviewSettingsSchema = z.object({
   /** the reviewer's provider and model; the picker is limited to the approved, runnable catalog */
   provider: z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx']).default('codex'),
   model: z.string().default('gpt-6.1-sol'),
-  reasoning: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).default('high'),
+  reasoning: z.enum(REASONING_LEVELS).default('high'),
   /** what holds the merge: a finding the reviewer confirmed, or any finding at all */
   blockOn: z.enum(['confirmed', 'any']).default('confirmed'),
   /** the review's budget; past it the merge proceeds and the row says so */

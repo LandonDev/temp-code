@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { CATALOG, compareVersions, modelInfo, resolveModel, setInstalledCodexVersion, visibleCatalog } from './catalog'
+import {
+  CATALOG,
+  compareVersions,
+  isMetaModel,
+  modelInfo,
+  resolveModel,
+  runnableHere,
+  setInstalledCodexVersion,
+  supportsContext1m,
+  visibleCatalog
+} from './catalog'
 
 describe('resolveModel', () => {
   it('an empty id is the provider default; a known id stays; another provider\'s id routes there', () => {
@@ -64,5 +74,52 @@ describe('codex version gate', () => {
     setInstalledCodexVersion('0.162.1')
     expect(ids()).toEqual(expect.arrayContaining(sol))
     expect(modelInfo('codex', 'gpt-6-sol')?.minCodexVersion).toBe('0.162.1')
+  })
+})
+
+describe('Meta rows', () => {
+  afterEach(() => setInstalledCodexVersion(null))
+  const META = ['muse-wonder-1.0', 'muse-spark-1.3']
+
+  it('sit under both harnesses with a native 1M window and the vendor', () => {
+    for (const provider of ['claude', 'codex'] as const) {
+      for (const id of META) {
+        const row = modelInfo(provider, id)!
+        expect(row.vendor).toBe('meta')
+        expect(row.context).toBe(1_048_576)
+        expect(isMetaModel(provider, id)).toBe(true)
+      }
+      expect(modelInfo(provider, 'muse-wonder-1.0')!.label).toBe('Muse Wonder 1.0')
+      expect(modelInfo(provider, 'muse-wonder-1.0')!.defaultReasoning).toBe('high')
+      expect(modelInfo(provider, 'muse-spark-1.3')!.label).toBe('Muse Spark 1.3')
+      expect(modelInfo(provider, 'muse-spark-1.3')!.defaultReasoning).toBe('medium')
+    }
+    expect(isMetaModel('claude', 'claude-opus-5-5')).toBe(false)
+    expect(isMetaModel('cursor', 'muse-wonder-1.0')).toBe(false)
+  })
+
+  it('offer minimal on the codex rows only; the claude rows keep the CLI ladder', () => {
+    expect(modelInfo('codex', 'muse-wonder-1.0')!.reasoning).toEqual(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+    expect(modelInfo('claude', 'muse-wonder-1.0')!.reasoning).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+  })
+
+  it('never take the 1M suffix, though their window is a million tokens', () => {
+    for (const id of META) {
+      expect(supportsContext1m('claude', id)).toBe(false)
+      expect(supportsContext1m('codex', id)).toBe(false)
+    }
+    expect(supportsContext1m('claude', 'claude-opus-5-5')).toBe(true)
+  })
+
+  it('resolve under the harness asked, and a harness without them goes to the first that has them', () => {
+    expect(resolveModel('claude', 'muse-wonder-1.0')).toEqual({ provider: 'claude', model: 'muse-wonder-1.0' })
+    expect(resolveModel('codex', 'muse-wonder-1.0')).toEqual({ provider: 'codex', model: 'muse-wonder-1.0' })
+    expect(resolveModel('cursor', 'muse-wonder-1.0')).toEqual({ provider: 'claude', model: 'muse-wonder-1.0' })
+  })
+
+  it('run on any codex: they name no minimum version', () => {
+    setInstalledCodexVersion('0.153.4')
+    for (const id of META) expect(runnableHere('codex', modelInfo('codex', id)!)).toBe(true)
+    expect(visibleCatalog().codex.models.map((m) => m.id)).toEqual(expect.arrayContaining(META))
   })
 })

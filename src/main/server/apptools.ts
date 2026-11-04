@@ -11,6 +11,7 @@ import {
   modelInfo,
   resolveModel,
   supportsContext1m,
+  REASONING_LEVELS,
   type ProviderId
 } from '@shared/catalog'
 import type { SessionMeta } from '@shared/events'
@@ -628,7 +629,7 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
               `Defaults per provider: ${providerIds.map((p) => `${p}=${CATALOG[p].defaultModel}`).join(', ')}`
             ),
           reasoning: z
-            .enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+            .enum(REASONING_LEVELS)
             .optional()
             .describe("Must be on the chosen model's ladder; defaults to the model's default"),
           context1m: z

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Reasoning } from './catalog'
+import { REASONING_LEVELS, type Reasoning } from './catalog'
 import type { SessionMeta } from './events'
 
 /**
@@ -17,7 +17,7 @@ export const PlanSettingsSchema = z.object({
   /** Model for the build; '' = the planning thread's own. */
   implementModel: z.string().default(''),
   /** Reasoning for the build; '' = the planning thread's own. */
-  implementReasoning: z.enum(['', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']).default(''),
+  implementReasoning: z.enum(['', ...REASONING_LEVELS]).default(''),
   /** Context window for the build: '' = the planning thread's own, '1m' or '200k'. */
   implementContext: z.enum(['', '1m', '200k']).default('')
 })

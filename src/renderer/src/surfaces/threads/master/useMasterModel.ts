@@ -18,7 +18,7 @@ import type { EnvironmentStatus } from "../../../lib/connection/types";
 import { isLiveStatus } from "../../../lib/threads/agents";
 import { sessionStore, useSessionMeta } from "../../../lib/tcserver/store";
 import type { SessionMeta, SessionStatus, ThreadType } from "../../../lib/tcserver/types";
-import type { ProviderId, Reasoning } from "@server/shared/catalog";
+import { REASONING_LEVELS, type ProviderId, type Reasoning } from "@server/shared/catalog";
 import { usePaneVisible } from "../../../hooks/paneVisibility";
 
 /**
@@ -185,7 +185,7 @@ export function mergeBatchChildren(rows: readonly MasterRowModel[], children: re
 }
 
 const PROVIDERS: ReadonlySet<string> = new Set<ProviderId>(["claude", "codex", "cursor", "grok", "opencode", "pi", "omp", "fx"]);
-const REASONINGS: ReadonlySet<string> = new Set<Reasoning>(["low", "medium", "high", "xhigh", "max", "ultra"]);
+const REASONINGS: ReadonlySet<string> = new Set(REASONING_LEVELS);
 
 /**
  * A whole meta for a child the store has no row for: what the batch's

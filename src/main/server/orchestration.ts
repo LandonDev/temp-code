@@ -14,6 +14,7 @@ import {
 import {
   AGENT_TYPES,
   CATALOG,
+  REASONING_LEVELS,
   modelInfo,
   supportsContext1m,
   visibleCatalog,
@@ -1039,7 +1040,7 @@ const spawnSpecShape = {
       `Model id. Defaults per provider: ${providerIds.map((p) => `${p}=${CATALOG[p].defaultModel}`).join(', ')}`
     ),
   reasoning: z
-    .enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+    .enum(REASONING_LEVELS)
     .optional()
     .describe('Must be one of the efforts the chosen model supports (see system prompt); default medium'),
   agentType: z

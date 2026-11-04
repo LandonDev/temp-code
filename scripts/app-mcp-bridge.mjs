@@ -141,7 +141,7 @@ const SPAWN_SPEC = {
     description:
       'Model id — the full spawnable table is in your thread instructions (defaults: claude=claude-sonnet-5, codex=gpt-5.6-sol, cursor=composer-2.5). Loose names like "opus" resolve; a model of another provider auto-routes to it.'
   },
-  reasoning: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
+  reasoning: { type: 'string', enum: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
   agentType: {
     type: 'string',
     enum: ['orchestrator', 'implementer', 'reviewer', 'explorer']
@@ -229,7 +229,7 @@ export const TOOLS = [
         },
         provider: { type: 'string', enum: PROVIDERS },
         model: { type: 'string' },
-        reasoning: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
+        reasoning: { type: 'string', enum: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
         context1m: {
           type: 'boolean',
           description:

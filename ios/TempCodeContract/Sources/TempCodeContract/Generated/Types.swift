@@ -1285,11 +1285,13 @@ public struct AccountsSnapshot: Codable, Hashable, Sendable {
         public let claude: ProviderAccounts
         public let codex: ProviderAccounts
         public let cursor: ProviderAccounts
+        public let meta: ProviderAccounts?
 
-        public init(claude: ProviderAccounts, codex: ProviderAccounts, cursor: ProviderAccounts) {
+        public init(claude: ProviderAccounts, codex: ProviderAccounts, cursor: ProviderAccounts, meta: ProviderAccounts? = nil) {
             self.claude = claude
             self.codex = codex
             self.cursor = cursor
+            self.meta = meta
         }
     }
 
@@ -1303,6 +1305,26 @@ public struct AccountsSnapshot: Codable, Hashable, Sendable {
 }
 
 public struct ModelInfo: Codable, Hashable, Sendable {
+    public enum Vendor: RawRepresentable, Codable, Hashable, Sendable {
+        case meta
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "meta": self = .meta
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .meta: "meta"
+            case .unknown(let value): value
+            }
+        }
+    }
+
     public let id: String
     public let label: String
     public let reasoning: [Reasoning]
@@ -1310,8 +1332,9 @@ public struct ModelInfo: Codable, Hashable, Sendable {
     public let context: Int?
     public let speedTiers: [String]?
     public let minCodexVersion: String?
+    public let vendor: Vendor?
 
-    public init(id: String, label: String, reasoning: [Reasoning], defaultReasoning: Reasoning? = nil, context: Int? = nil, speedTiers: [String]? = nil, minCodexVersion: String? = nil) {
+    public init(id: String, label: String, reasoning: [Reasoning], defaultReasoning: Reasoning? = nil, context: Int? = nil, speedTiers: [String]? = nil, minCodexVersion: String? = nil, vendor: Vendor? = nil) {
         self.id = id
         self.label = label
         self.reasoning = reasoning
@@ -1319,6 +1342,7 @@ public struct ModelInfo: Codable, Hashable, Sendable {
         self.context = context
         self.speedTiers = speedTiers
         self.minCodexVersion = minCodexVersion
+        self.vendor = vendor
     }
 }
 
@@ -1781,6 +1805,7 @@ public struct ReviewSettings: Codable, Hashable, Sendable {
 public struct PlanSettings: Codable, Hashable, Sendable {
     public enum ImplementReasoning: RawRepresentable, Codable, Hashable, Sendable {
         case none
+        case minimal
         case low
         case medium
         case high
@@ -1793,6 +1818,7 @@ public struct PlanSettings: Codable, Hashable, Sendable {
         public init(rawValue: String) {
             switch rawValue {
             case "": self = .none
+            case "minimal": self = .minimal
             case "low": self = .low
             case "medium": self = .medium
             case "high": self = .high
@@ -1806,6 +1832,7 @@ public struct PlanSettings: Codable, Hashable, Sendable {
         public var rawValue: String {
             switch self {
             case .none: ""
+            case .minimal: "minimal"
             case .low: "low"
             case .medium: "medium"
             case .high: "high"

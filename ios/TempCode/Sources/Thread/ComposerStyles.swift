@@ -230,6 +230,7 @@ struct CardButton: View {
 extension Reasoning {
     nonisolated var label: String {
         switch self {
+        case .minimal: "Minimal"
         case .low: "Low"
         case .medium: "Medium"
         case .high: "High"

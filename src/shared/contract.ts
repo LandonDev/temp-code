@@ -22,7 +22,7 @@ import { ResourcesRequestSchemas } from './contract-resources'
 import { PortsRequestSchemas } from './contract-ports'
 import { DevServerRequestSchemas } from './contract-devservers'
 import { AdmissionRequestSchemas } from './contract-admission'
-import { AGENT_TYPES } from './catalog'
+import { AGENT_TYPES, REASONING_LEVELS } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
 import { OrchestrationRulesSchema, ThreadRulesSchema } from './rules'
@@ -56,7 +56,7 @@ const ProjectCleanupSchema = z.object({
  */
 
 const providerEnum = z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx'])
-const reasoningEnum = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+const reasoningEnum = z.enum(REASONING_LEVELS)
 
 export const CreateSessionParams = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]+$/).optional(),

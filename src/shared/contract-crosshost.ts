@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { ProjectLinkFactsSchema } from './projectLinks'
-import { AGENT_TYPES } from './catalog'
+import { AGENT_TYPES, REASONING_LEVELS } from './catalog'
 import { ThreadTypeSchema } from './domain'
 import { PermissionPolicySchema, type SessionStatus } from './events'
 
@@ -109,7 +109,7 @@ export const CrossHostCallerSchema = z.object({
 export type CrossHostCaller = z.infer<typeof CrossHostCallerSchema>
 
 const providerArg = z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx'])
-const reasoningArg = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+const reasoningArg = z.enum(REASONING_LEVELS)
 
 /** thread.start: app.startThread's fields, plus where on the box the caller works (translated on the Mac). */
 export const ThreadStartArgsSchema = z.object({

@@ -108,9 +108,9 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-it('supportsContext1m accepts every claude model and nothing else', () => {
+it('supportsContext1m accepts every claude model but a vendor row, and nothing else', () => {
   for (const model of CATALOG.claude.models) {
-    expect(supportsContext1m('claude', model.id)).toBe(true)
+    expect(supportsContext1m('claude', model.id)).toBe(!model.vendor)
   }
   for (const provider of ['codex', 'cursor'] as ProviderId[]) {
     for (const model of CATALOG[provider].models) {
@@ -122,13 +122,22 @@ it('supportsContext1m accepts every claude model and nothing else', () => {
 
 it('the spawnable table marks the claude rows +1m and explains the marker once', () => {
   const table = spawnableModels(DEFAULT_RULES)
-  for (const model of CATALOG.claude.models) {
+  for (const model of CATALOG.claude.models.filter((m) => !m.vendor)) {
     expect(table).toContain(`${model.id} (low|medium|high|xhigh|max) +1m`)
   }
   for (const model of CATALOG.codex.models) {
     expect(table).not.toContain(`${model.id} (low|medium|high|xhigh|max|ultra) +1m`)
   }
   expect(table.match(/context1m: false/g)).toHaveLength(1)
+})
+
+it('the spawnable table lists the Meta rows under both harnesses, minimal on the codex ones, never +1m', () => {
+  const table = spawnableModels(DEFAULT_RULES)
+  const [claude, codex] = [table.split('- codex:')[0], table.split('- codex:')[1].split('- cursor:')[0]]
+  expect(claude).toContain('muse-wonder-1.0 (low|medium|high|xhigh|max)\n')
+  expect(claude).toContain('muse-spark-1.3 (low|medium|high|xhigh|max)\n')
+  expect(codex).toContain('muse-wonder-1.0 (minimal|low|medium|high|xhigh|max)\n')
+  expect(codex).toContain('muse-spark-1.3 (minimal|low|medium|high|xhigh|max)\n')
 })
 
 it('the table by role: a thread sees orchestrators-only rows marked with the note, an orchestrator sees them plain, off rows never show', () => {

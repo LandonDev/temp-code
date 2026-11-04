@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_RULES, ModelPolicySchema, OrchestrationRulesSchema, ThreadRulesSchema, fitReasoning, modelApproved, parseRules, policyRoleOf, type OrchestrationRules } from './rules'
+import { DEFAULT_RULES, ModelPolicySchema, OrchestrationRulesSchema, RoutingRuleSchema, ThreadRulesSchema, explicitModels, fitReasoning, modelApproved, parseRules, policyRoleOf, type OrchestrationRules } from './rules'
 
 it('maxParallel runs up to 128 in both the rules and a thread tune', () => {
   const at = (maxParallel: number) =>
@@ -66,5 +66,40 @@ describe('model policy by role', () => {
     const own = parseRules(JSON.stringify({ ...DEFAULT_RULES, models: { 'claude:claude-fable-5-1': { approved: true } } }))!
     expect(modelApproved(own, 'claude', 'claude-fable-5-1', 'thread')).toBe(true)
     expect(modelApproved(own, 'claude', 'claude-fable-5', 'thread')).toBe(false)
+  })
+})
+
+describe('Meta rows and the minimal rung', () => {
+  const META = ['muse-wonder-1.0', 'muse-spark-1.3']
+
+  it('are approved for everyone by default, under both harnesses', () => {
+    for (const p of ['claude', 'codex'] as const)
+      for (const id of META) expect(modelApproved(DEFAULT_RULES, p, id, 'thread')).toBe(true)
+  })
+
+  it('stay off in a copy saved before they existed, until the person turns them on', () => {
+    const before = Object.fromEntries(Object.entries(DEFAULT_RULES.models).filter(([k]) => !k.includes('muse-')))
+    // A legacy copy is written out once (explicitModels); the copy it writes
+    // is what is saved, and a model added after that is not in it.
+    const saved = parseRules(JSON.stringify({ ...DEFAULT_RULES, models: before }))!
+    expect(Object.keys(saved.models).some((k) => k.includes('muse-'))).toBe(false)
+    for (const p of ['claude', 'codex'] as const)
+      for (const id of META) expect(modelApproved(saved, p, id, 'thread')).toBe(false)
+    // The one-time upgrade writes every catalog model it lacked as approved.
+    expect(modelApproved(explicitModels(saved), 'codex', 'muse-wonder-1.0', 'thread')).toBe(true)
+  })
+
+  it('takes minimal on the codex Meta row and clamps it to low on a row without it', () => {
+    expect(fitReasoning(DEFAULT_RULES, 'codex', 'muse-wonder-1.0', 'minimal')).toBe('minimal')
+    expect(fitReasoning(DEFAULT_RULES, 'claude', 'muse-wonder-1.0', 'minimal')).toBe('low')
+    expect(fitReasoning(DEFAULT_RULES, 'codex', 'gpt-5.5', 'minimal')).toBe('low')
+    // Off the top of a ladder the nearest rung wins as well.
+    expect(fitReasoning(DEFAULT_RULES, 'claude', 'claude-opus-5-5', 'ultra')).toBe('max')
+    expect(fitReasoning(DEFAULT_RULES, 'claude', 'muse-wonder-1.0', undefined)).toBe('high')
+  })
+
+  it('reads minimal in a routing rule and a policy bound', () => {
+    expect(RoutingRuleSchema.parse({ id: 'x', task: 't', provider: 'codex', reasoning: 'minimal' }).reasoning).toBe('minimal')
+    expect(ModelPolicySchema.parse({ minReasoning: 'minimal' }).minReasoning).toBe('minimal')
   })
 })
