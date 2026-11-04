@@ -282,6 +282,10 @@ rows say exactly this:
 | done | a check | Done | muted |
 | idle | a faint ring | Idle | muted |
 
+Working drawn under a row that already moves (`StatusMark still`) is a 6px
+dot in the working tone, never a still arc: a frozen arc reads as a spinner
+that hung.
+
 The word may be followed by what the state is about, drawn as a second
 span in regular weight and muted, 6px after the word: Working then
 "Editing Rail.tsx", Needs you then "Approve Bash", Watching then "3
@@ -345,10 +349,13 @@ its hover line and the transcript's working line say the word and the rest.
 Nothing loops. Every status glyph is still except working's spinner, a
 rotation and the one moving glyph. A row has one moving mark at most: a
 line that depends on a row's own mark (a subagent's under its board row, a
-batch thread's under its master in a project card) draws working's arc
-still (`StatusMark still`), and a settled row never
-moves. In the transcript the one moving mark is the working line's
-(`WorkingMark`, its three dots); a running row's arc there is still. When a mounted mark's state changes into
+batch thread's under its master in a project card, a spawned agent in the
+transcript) draws working as the dot (`StatusMark still`), and a settled
+row never moves. A master's line on a project card spins while anything in
+its block works, whatever the master's own state (`MasterBlock.lead`), so a
+block always moves while it works. In the transcript the one moving mark is
+the working line's (`WorkingMark`, its three dots); a running row there
+draws working as the dot. When a mounted mark's state changes into
 working, waiting or watching its glyph breathes once (opacity over
 `--dur-slow`); under reduced motion it does not. Every other change is
 instant.

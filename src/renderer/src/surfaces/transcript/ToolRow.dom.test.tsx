@@ -77,12 +77,12 @@ describe("ActionRow", () => {
     expect(verbBox(getByText("Ran")).className).not.toContain("destructive");
   });
 
-  it("a running row shows working's arc still and the live verb: the working line is the moving mark", () => {
+  it("a running row shows working as a dot and the live verb: the working line is the moving mark", () => {
     const { container, getByText } = render(
       <ActionRow block={call("Bash", { command: "npm test" }, { status: "running" })} />,
     );
-    expect(container.querySelector('[data-slot="spinner"]')).not.toBeNull();
-    expect(container.querySelector("[data-turning]")).toBeNull();
+    expect(container.querySelector('[data-slot="working-dot"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="spinner"]')).toBeNull();
     expect(getByText("Running")).toBeTruthy();
   });
 

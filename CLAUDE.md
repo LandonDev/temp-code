@@ -274,8 +274,9 @@ app replaces itself from the feed, and only from the feed.
   (Kobra on Base UI, adapted flat to the tokens at the top of
   `src/renderer/src/index.css`, to `chrome/icons` and to the motion tokens;
   `StatusMark` is the one status vocabulary, drawn as two spans (the word
-  medium in its tone, the detail regular and muted; `still` for a line
-  under a row that already spins, so a row has one moving mark), a plain
+  medium in its tone, the detail regular and muted; `still` (working as a
+  dot) for a line under a row that already spins, so a row has one moving
+  mark), a plain
   string only as "Word: Detail" (`plainStatus`), never a run of spaces
   (`lib/spaceGuard.test.ts`), `threadStateOf` turns a wire
   status into its state; `TypeGlyph` (surfaces/threads/TypeGlyph.tsx) is
@@ -3084,7 +3085,7 @@ this is the short one.
   (Pause, Resume, Start now) and ⋯, the row's menu, where Stop, Archive
   and a queued thread's Remove from queue live. A row whose thread has
   live subagents lists them under its two lines, one line each: the status
-  glyph drawn still, the title, the state's word in its tone and what it
+  glyph drawn still (working as a dot), the title, the state's word in its tone and what it
   is about, muted, in the board row's own words (`rowStatus`), and the
   host's glyph, no role glyph; the
   whole tree by the parentId chain, archived ones out, a far child's from
@@ -3165,8 +3166,9 @@ this is the short one.
   is archived or unpinned shows as plain roots. In the workspace column a
   project's card draws a master's batch as one block under the master's
   line, which ends in the batch's done tally (`3/7`; `cardLines` in
-  lib/sidebarRows.ts, `MasterLines` in chrome/WorkspaceSessions.tsx; the
-  batch lines draw working's arc still, one moving mark per block); the
+  lib/sidebarRows.ts, `MasterLines` in chrome/WorkspaceSessions.tsx; a
+  working batch line draws a dot and the master's line spins while its
+  block works (`MasterBlock.lead`), one moving mark per block); the
   workspace popover (a rail row's word)
   keeps a master as one block (`masterBlock` in lib/sidebarRows.ts,
   `MasterRows` in chrome/WorkspaceThreadsPopover.tsx): the master's row

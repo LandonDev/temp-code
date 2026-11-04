@@ -2896,6 +2896,11 @@ second, each with a style update, and two things paid on every one of them:
   keep the session they drew while only streamed text changed), and a
   project card's batch lines drawing working's arc still (16 of the 33
   turning spinners), as DESIGN.md asks of a line under a row that spins.
+  Since UI-20 those lines draw working as a dot, not a frozen arc that read
+  as a hung spinner, and each busy master's card line spins for its block:
+  one spinner back per master. The board scene on the box (2026-11-04,
+  `--gate --cpu-report-only`, two runs each, the box under load 11 to 19):
+  base 45.6% and 32.8%, branch 36.5% and 33.5% of one core, inside noise.
 - Animations. Each streamed phrase starts and ends one compositor animation
   (UI-13's phrase fade), which asks the main thread for about 57 more frames
   a second; Blink re-samples every turning spinner on each frame (on the

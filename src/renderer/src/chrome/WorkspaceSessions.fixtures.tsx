@@ -86,6 +86,14 @@ export function ProjectCards({ width = 260 }: { width?: number }) {
       row("b4", { title: "Queued one", masterId: "m", status: "queued" }, true),
     ],
   };
+  // A watching master whose batch only waits: nothing in the block moves.
+  const waitingMaster: ThreadRow = {
+    ...row("m2", { title: "Docs train", status: "watching", isMaster: true, updatedAt: minutes(2) }),
+    batch: [
+      row("c1", { title: "Copy review", masterId: "m2", status: "waiting" }, true),
+      row("c2", { title: "Queued two", masterId: "m2", status: "queued" }, true),
+    ],
+  };
   return (
     <div className="flex flex-col gap-1 bg-sidebar px-2 py-2" style={{ width }}>
       <Card name="Quiet" threads={[row("q1"), row("q2")]} minutesAgo={90} />
@@ -109,6 +117,7 @@ export function ProjectCards({ width = 260 }: { width?: number }) {
       <Card name="Paused work" threads={[row("p1", { title: "Docs pass", status: "paused", frozenActiveElapsed: 6 * 60_000 })]} />
       <Card name="Unread" mode="local" branch="main" threads={[row("u1", { title: "Fix login", status: "done", updatedAt: minutes(5) })]} minutesAgo={5} />
       <Card name="Batch" threads={[master]} minutesAgo={1} />
+      <Card name="Batch waiting" threads={[waitingMaster]} minutesAgo={2} />
       <Card name="Blocked" threads={[row("n1", { status: "waiting" }), row("f1", { status: "error" }), row("f2", { status: "error" }), row("d3")]} minutesAgo={8} />
       <Card name="Empty" branch={null} mode="local" threads={[]} />
     </div>

@@ -37,16 +37,6 @@ describe("Spinner", () => {
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
-  it("holds still when asked, and starts turning when released", () => {
-    const { container, rerender } = render(<Spinner still />);
-    expect(animate).not.toHaveBeenCalled();
-    expect(container.querySelector("[data-turning]")).toBeNull();
-    rerender(<Spinner />);
-    expect(animate).toHaveBeenCalledTimes(1);
-    rerender(<Spinner still />);
-    expect(cancel).toHaveBeenCalledTimes(1);
-  });
-
   it("does not turn under reduced motion", () => {
     motion(true);
     render(<Spinner />);

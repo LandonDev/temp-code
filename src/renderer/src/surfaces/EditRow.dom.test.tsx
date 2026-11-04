@@ -142,7 +142,7 @@ describe('EditRow', () => {
     const running = withTool(edit, { status: 'running' }, 'run1')
     const { getByRole, rerender, container } = render(<EditRow block={running} cwd="/repo" />)
     expect(getByRole('button', { name: 'Editing a.ts' }).getAttribute('aria-expanded')).toBe('false')
-    expect(container.querySelector('[data-slot="spinner"]')).not.toBeNull()
+    expect(container.querySelector('[data-slot="working-dot"]')).not.toBeNull()
     await act(async () => {
       rerender(<EditRow block={withTool(running, { status: 'completed' }, 'run1')} cwd="/repo" />)
     })

@@ -56,9 +56,9 @@ foreground, the same words the group line uses); the components only draw it.
   icon from the `GLYPH` record, the connector's mark or the subagent's
   provider in its place, and while the call runs, fails (or was denied) or
   asks for approval the `StatusMark` of working, failed or waiting with no
-  word (nothing else on the line turns red; working's arc is still, since
+  word (nothing else on the line turns red; working is a dot, since
   the working line under the turn is the one moving mark); a change of face
-  (the call settling: arc to icon) swaps in the box through the keyed
+  (the call settling: dot to icon) swaps in the box through the keyed
   `SwapIcon`, and the verb changes tense in place through `MorphText` (the
   old word leaves, then the new one arrives). The words hug their text, so
   the caret sits right after them, as on the group line. A command whose

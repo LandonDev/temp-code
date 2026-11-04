@@ -270,10 +270,12 @@ export type BatchLine = { thread: ThreadRow; state: ThreadState; agents: AgentSu
 
 /** A master on its card: its own line, its own working subagents apart,
  *  then every batch thread with something to say, loudest first. Queued
- *  and settled ones fold into counts. */
+ *  and settled ones fold into counts. `state` is the master's own; `lead`
+ *  is what its card line draws (`blockLead`). */
 export type MasterBlock = {
   master: ThreadRow;
   state: ThreadState;
+  lead: ThreadState;
   unread: boolean;
   agents: AgentSummary | null;
   lines: BatchLine[];
@@ -295,6 +297,17 @@ const LINE_RANK: Record<ThreadState, number> = {
   idle: 7,
 };
 
+/** The block's one moving mark is its master's line: a master that only
+ *  watches, idles or is done while a batch line works, or while a line's or
+ *  its own subagents work, leads as working. Any louder or held state of the
+ *  master's own (waiting, failed, paused, stopped, queued, plan-ready) leads
+ *  as itself. */
+function blockLead(state: ThreadState, lines: readonly BatchLine[], agents: AgentSummary | null): ThreadState {
+  if (state !== "watching" && state !== "idle" && state !== "done") return state;
+  const works = (agents?.working ?? 0) > 0 || lines.some((l) => l.state === "working" || (l.agents?.working ?? 0) > 0);
+  return works ? "working" : state;
+}
+
 /** The block for a master row with a batch, or null when nothing in it
  *  says anything: a master settled and seen over a finished batch is a
  *  dormant thread like any other. */
@@ -314,7 +327,7 @@ export function masterBlock(master: ThreadRow, unread: boolean): MasterBlock | n
   const state = rowState(master);
   const agents = liveAgents(master.children);
   if (!lines.length && !queued && !unread && !agents && !marksAtRest(state)) return null;
-  return { master, state, unread, agents, lines, queued, done, total: batch.length };
+  return { master, state, lead: blockLead(state, lines, agents), unread, agents, lines, queued, done, total: batch.length };
 }
 
 /** The blocks of a card's roots, one per master with something to say. */

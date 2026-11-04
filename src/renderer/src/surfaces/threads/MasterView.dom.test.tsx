@@ -774,7 +774,7 @@ describe("the master view", () => {
     expect(board).not.toMatch(/[·•—]/);
   });
 
-  it("a working row has one moving mark, its glyph on line two; its subagents' lines are still and say Working; settled and queued rows never move", async () => {
+  it("a working row has one moving mark, its glyph on line two; its subagents' lines draw working as a dot and say Working; settled and queued rows never move", async () => {
     seed([
       meta({ id: "c-run", title: "Home", status: "running", activity: "Running ios:test", createdAt: 1 }),
       meta({ id: "a1", title: "Rail rows", status: "running", parentId: "c-run", masterId: null as unknown as string, activity: "Editing Rail.tsx", createdAt: 2 }),
@@ -788,13 +788,28 @@ describe("the master view", () => {
     expect(spinning(run)).toHaveLength(1);
     expect(spinning(run)[0]!.closest("[data-row-glyph]")).toBeTruthy();
     const line = run.querySelector("[data-agent='a1']")!;
-    expect(spinning(line)).toHaveLength(0);
-    expect(line.querySelector("[data-slot=spinner]")).toBeTruthy();
+    expect(line.querySelector("[data-slot=spinner]")).toBeNull();
+    expect(line.querySelector("[data-slot=working-dot]")).toBeTruthy();
     expect(line.querySelector("[data-slot=status-word]")?.textContent).toBe("Working");
     expect(line.querySelector("[data-slot=status-detail]")?.textContent).toBe("Editing Rail.tsx");
     for (const name of [/Queued one/, /Done one/]) expect(spinning(screen.getByRole("button", { name }))).toHaveLength(0);
     // The queued row says the host's detail as written.
     expect(screen.getByRole("button", { name: /Queued one/ }).querySelector("[data-row-status]")?.textContent).toBe("Waiting for Home");
+  });
+
+  it("a child watching its working subagent keeps its ring; the subagent's line draws the dot and nothing in the row turns", async () => {
+    seed([
+      meta({ id: "c-watch", title: "Home", status: "watching", createdAt: 1 }),
+      meta({ id: "a1", title: "Rail rows", status: "running", parentId: "c-watch", masterId: null as unknown as string, activity: "Editing Rail.tsx", createdAt: 2 }),
+    ]);
+    renderView();
+    await flush();
+    const row = document.querySelector("[data-status][data-menu-id='c-watch']")!;
+    expect(row.querySelector("[data-row-glyph] [data-slot=status-mark]")?.getAttribute("data-state")).toBe("watching");
+    expect(row.querySelector("[data-slot=spinner]")).toBeNull();
+    const line = row.querySelector("[data-agent='a1']")!;
+    expect(line.querySelector("[data-slot=working-dot]")).toBeTruthy();
+    expect(line.querySelector("[data-slot=status-word]")?.textContent).toBe("Working");
   });
 
   it("no text on the board holds two spaces in a row, and every detail starts with its capital", async () => {
@@ -1572,7 +1587,7 @@ describe("a row's subagents", () => {
     expect(document.querySelectorAll("[data-status]")).toHaveLength(2);
   });
 
-  it("a row's type glyph is its type's tint; a subagent line leads with its still status glyph and no role or type glyph", async () => {
+  it("a row's type glyph is its type's tint; a subagent line leads with its status glyph, working as a dot, and no role or type glyph", async () => {
     seed([
       meta({ id: "c-impl", title: "Home screen", status: "running" }),
       agent("a1", "c-impl", "running", { title: "Rail rows" }),
@@ -1583,10 +1598,10 @@ describe("a row's subagents", () => {
     const row = rowOf(/Home screen/);
     expect(row.querySelector("[role=img] svg[data-type-glyph]")?.getAttribute("class")).toContain("text-type-implementation");
     for (const id of ["a1", "a2"]) {
+      // Working leads as the dot alone: no svg at all, so no role or type glyph.
       const line = row.querySelector(`[data-agent='${id}']`)!;
-      const glyphs = [...line.querySelectorAll("svg")];
-      expect(glyphs).toHaveLength(1);
-      expect(glyphs[0]!.closest("[data-slot=status-mark]")).toBeTruthy();
+      expect(line.querySelectorAll("svg")).toHaveLength(0);
+      expect(line.querySelector("[data-slot=status-mark] [data-slot=working-dot]")).toBeTruthy();
     }
   });
 

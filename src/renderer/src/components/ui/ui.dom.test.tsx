@@ -255,13 +255,13 @@ describe("StatusMark", () => {
     expect(screen.getByLabelText("Queued: Waiting for memory")).toBeTruthy();
   });
 
-  it("still draws working's arc without its turn or its breath", () => {
+  it("still draws working as a dot, without a spinner or its breath", () => {
     const { container, rerender } = render(<StatusMark state="working" still />);
-    const turns = () => (container.querySelector("[data-slot=spinner]") as SVGElement).hasAttribute("data-turning");
-    expect(turns()).toBe(false);
+    expect(container.querySelector("[data-slot=working-dot]")).not.toBeNull();
+    expect(container.querySelector("[data-slot=spinner]")).toBeNull();
     expect(container.querySelector(".status-breathe")).toBeNull();
     rerender(<StatusMark state="working" />);
-    expect(turns()).toBe(true);
+    expect(container.querySelector("[data-slot=spinner]")?.hasAttribute("data-turning")).toBe(true);
   });
 
   it("glyph={false} draws the word alone", () => {
