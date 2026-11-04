@@ -505,6 +505,16 @@ routed to (aliax-core's `forward`). Two listeners:
 - The installed codex version is read once at boot (drivers/codexVersion.ts)
   and catalog rows with `minCodexVersion` above it are hidden everywhere
   (picker, spawn table, app tools). GPT-6.1 Sol and GPT-6 Sol need 0.162.1.
+- Vendor rows: Meta's `muse-wonder-1.0` and `muse-spark-1.3` sit in the
+  catalog under both the claude and codex harnesses with `vendor: 'meta'`
+  (`isMetaModel`) and a native 1,048,576-token window, so
+  `supportsContext1m` is false and `[1m]` is never appended. The effort
+  ladder (`REASONING_LEVELS` in src/shared/catalog.ts, the one list every
+  reasoning enum reads) starts at `minimal`, which only the codex Meta rows
+  list (the Claude CLI takes low..max); `fitReasoning` moves a rung a model
+  lacks to its nearest, so minimal lands on low. The picker groups them
+  under "Meta" with Meta's mark (chrome/HarnessIcon.tsx `MarkId`), and the
+  board row's model mark draws it.
 - Speed tiers come from each CLI, never assumed: codex's `model/list`
   serviceTiers (drivers/codexTiers.ts) and claude's `supportedModels()`
   supportsFastMode, asked on the first claude init of a boot and cached as
