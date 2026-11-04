@@ -146,6 +146,8 @@ export const BatchChildSchema = z.object({
   threadType: z.string().nullable(),
   provider: z.string(),
   model: z.string(),
+  /** the child's effort when the host knows it (a far child adopted before its host said) */
+  reasoning: z.string().optional(),
   /** a child on another host: when its host last answered, and whether the link to it is down */
   seenAt: z.number().optional(),
   linkDown: z.boolean().optional()

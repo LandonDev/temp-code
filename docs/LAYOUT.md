@@ -1048,7 +1048,9 @@ in the whole pane, with Back.
   a plain row with the list's title and type).
 - **A row** (`master/MasterRow.tsx`: `MasterRowView` draws from props
   alone, `MasterRow` wires it to the store; the rule is `rowStatus` in
-  `master/rowBody.ts`) is an `Item` (a `div role="button"`, `rounded-md`,
+  `master/rowBody.ts`; each sits in its own `RowBoundary`, so a row that
+  throws is a still 48px row with "Couldn't load" in 13px muted and a
+  secondary Retry, and its siblings paint) is an `Item` (a `div role="button"`, `rounded-md`,
   hover `foreground/5`, no border), 48px (`py-1.5`, a 20px line and a 16px
   line, rows flush), on a 16px glyph column, and nothing on it is
   separated by a dot or a run of spaces. Line one: the type's glyph

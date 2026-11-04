@@ -149,6 +149,8 @@ interface BoundaryProps {
   name: string;
   fallback: ReactNode;
   onRetry: () => void;
+  /** The error held, as React hands it to componentDidCatch (a board row tags it with its place). */
+  onError?: (error: unknown) => void;
   children: ReactNode;
 }
 
@@ -162,6 +164,10 @@ export class ChunkBoundary extends Component<BoundaryProps, { failed: boolean; a
 
   static getDerivedStateFromError(): Partial<{ failed: boolean }> {
     return { failed: true };
+  }
+
+  componentDidCatch(error: unknown): void {
+    this.props.onError?.(error);
   }
 
   private retry = (): void => {

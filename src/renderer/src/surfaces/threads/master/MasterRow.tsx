@@ -373,14 +373,15 @@ function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph:
 /** How the model mark names effort and context in its tooltip. */
 const EFFORT_WORD: Record<string, string> = { low: "low", medium: "medium", high: "high", xhigh: "extra high", max: "max", ultra: "ultra" };
 
-/** The model's name beside its provider's mark: the mark already says Claude. */
-export function modelMarkName(provider: string, model: string): string {
+/** The model's name beside its provider's mark: the mark already says
+ *  Claude. "" when the meta names no model or no provider. */
+export function modelMarkName(provider: string | null | undefined, model: string | null | undefined): string {
   const name = modelLabel(provider, model);
-  return asHarness(provider) === "claude" ? name.replace(/^Claude\s+/, "") : name;
+  return provider && asHarness(provider) === "claude" ? name.replace(/^Claude\s+/, "") : name;
 }
 
 /** The mark's tooltip: "Claude Opus 5.5, high effort, 1M context". */
-export function modelMarkTip(meta: Pick<SessionMeta, "provider" | "model" | "reasoning" | "context1m">): string {
+export function modelMarkTip(meta: Partial<Pick<SessionMeta, "provider" | "model" | "reasoning" | "context1m">>): string {
   const effort = meta.reasoning ? `${EFFORT_WORD[meta.reasoning] ?? meta.reasoning} effort` : null;
   return [modelLabel(meta.provider, meta.model), effort, meta.context1m ? "1M context" : null].filter(Boolean).join(", ");
 }
@@ -390,6 +391,8 @@ export function modelMarkTip(meta: Pick<SessionMeta, "provider" | "model" | "rea
  *  width up before the title does (it shrinks a thousand times faster and
  *  clips), and it gives way to the row's actions on hover and focus. */
 function ModelMark({ meta }: { meta: SessionMeta }) {
+  // A stand-in for a child its host has not described yet names no model: no mark, rather than a wrong one.
+  if (!meta.provider || !meta.model) return null;
   return (
     <Tooltip>
       <TooltipTrigger

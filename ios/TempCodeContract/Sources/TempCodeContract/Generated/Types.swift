@@ -1636,10 +1636,11 @@ public struct BatchState: Codable, Hashable, Sendable {
         public let threadType: String?
         public let provider: String
         public let model: String
+        public let reasoning: String?
         public let seenAt: Double?
         public let linkDown: Bool?
 
-        public init(sessionId: String, environmentId: String, title: String, status: String, threadType: String?, provider: String, model: String, seenAt: Double? = nil, linkDown: Bool? = nil) {
+        public init(sessionId: String, environmentId: String, title: String, status: String, threadType: String?, provider: String, model: String, reasoning: String? = nil, seenAt: Double? = nil, linkDown: Bool? = nil) {
             self.sessionId = sessionId
             self.environmentId = environmentId
             self.title = title
@@ -1647,12 +1648,13 @@ public struct BatchState: Codable, Hashable, Sendable {
             self.threadType = threadType
             self.provider = provider
             self.model = model
+            self.reasoning = reasoning
             self.seenAt = seenAt
             self.linkDown = linkDown
         }
 
         private enum CodingKeys: String, CodingKey {
-            case sessionId, environmentId, title, status, threadType, provider, model, seenAt, linkDown
+            case sessionId, environmentId, title, status, threadType, provider, model, reasoning, seenAt, linkDown
         }
 
         public func encode(to encoder: any Encoder) throws {
@@ -1664,6 +1666,7 @@ public struct BatchState: Codable, Hashable, Sendable {
             try container.encode(threadType, forKey: .threadType)
             try container.encode(provider, forKey: .provider)
             try container.encode(model, forKey: .model)
+            try container.encodeIfPresent(reasoning, forKey: .reasoning)
             try container.encodeIfPresent(seenAt, forKey: .seenAt)
             try container.encodeIfPresent(linkDown, forKey: .linkDown)
         }

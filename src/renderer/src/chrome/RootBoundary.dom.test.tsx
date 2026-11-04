@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RootBoundary } from "./RootBoundary";
-import { rendererErrorLine, reportRendererError } from "../lib/rendererErrors";
+import { rendererErrorLine, reportRendererError, tagRendererError } from "../lib/rendererErrors";
 
 afterEach(() => {
   cleanup();
@@ -44,7 +44,7 @@ describe("rendererErrorLine", () => {
     expect(rendererErrorLine("uncaught", new Error("x".repeat(500))).length).toBe(300);
   });
 
-  it("reports through the given reporter and survives one that throws", () => {
+  it("reports through the given reporter and survives one that throws; a caught line waits a microtask for the boundary's tag", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const lines: string[] = [];
     reportRendererError("uncaught", new RangeError("deep"), (l) => lines.push(l));
@@ -54,5 +54,15 @@ describe("rendererErrorLine", () => {
         throw new Error("no link");
       }),
     ).not.toThrow();
+    const held = new TypeError("bad");
+    reportRendererError("caught", held, (l) => lines.push(l));
+    tagRendererError(held, { thread: "m1", row: "r1" });
+    expect(lines).toHaveLength(1);
+    await Promise.resolve();
+    expect(lines[1]).toBe("caught TypeError: bad thread=m1 row=r1");
+    const long = new Error("x".repeat(500));
+    tagRendererError(long, { thread: "m1", row: "r1" });
+    expect(rendererErrorLine("caught", long).length).toBe(300);
+    expect(rendererErrorLine("caught", long).endsWith(" thread=m1 row=r1")).toBe(true);
   });
 });

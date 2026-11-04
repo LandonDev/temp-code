@@ -1930,7 +1930,14 @@ every host:
   CLAUDE_PID, which names the thread while its harness lives) and is not a
   ledger pid or a backgrounded call's is killed 60 s after it was first
   seen orphaned, with one log line: `[guard] orphan thread=<id> pid=<pid>
-  rss=<MB>MB <command>`.
+  rss=<MB>MB <command>`. The sweep is one instance's: the harness's
+  environment and every wrapped call also carry `TEMP_CODE_INSTANCE`
+  (a hash of the data dir and the `guard.instanceNonce` setting), a
+  process another instance marked is left alone, and one with no
+  instance mark goes only on the prod data dir (`isProdData`: the Mac's
+  default userData, or `/srv/agents/temp-code-data` here). On 2026-11-04
+  a dev instance on a copy of the Mac's database swept the installed
+  app's Android emulator; now it cannot.
 - **The memory cap.** The processes of one call whose RSS together passes
   `tools.memoryCapMb` (8 GiB by default; a settings row) are killed, the
   log says `[guard] cap thread=… call=… rss=…MB over …MB: N processes

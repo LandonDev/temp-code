@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
+import { createHash, randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { CALL_MARK, THREAD_MARK } from '@shared/bashMarks'
+import { CALL_MARK, INSTANCE_MARK, THREAD_MARK } from '@shared/bashMarks'
 import type { EventRow } from '@shared/events'
 import { parseEnviron } from './portSweep'
 
@@ -35,7 +36,16 @@ import { parseEnviron } from './portSweep'
  *     (`TEMP_CODE_THREAD`, the gateway's `~t=` scope in ANTHROPIC_BASE_URL,
  *     or CLAUDE_PID) and is not a ledger-known server or a backgrounded
  *     call's is killed once it has been orphaned for ORPHAN_GRACE_MS, with
- *     one log line naming the thread, the command and its RSS.
+ *     one log line naming the thread, the command and its RSS. Only this
+ *     instance's, though: every harness and every wrapped call also
+ *     carries `TEMP_CODE_INSTANCE` (`guardInstanceOf`: a hash of the
+ *     userData dir and a nonce the settings keep, so a restart still owns
+ *     its earlier boot's orphans and a copied database does not), and a
+ *     process marked by another instance is left alone. One with no
+ *     instance mark (started by a build before the mark, or marked by the
+ *     gateway scope alone) is swept only by the instance on the prod data
+ *     dir (`isProdData`): on 2026-11-04 a dev instance on a copy of the
+ *     prod database swept the installed app's emulator.
  *  3. The memory cap. A call's processes whose RSS together passes the cap
  *     (the `tools.memoryCapMb` setting, 8 GiB by default) are killed and
  *     the call's tool result says so (`tail`). RSS is the per-process
@@ -58,6 +68,15 @@ export interface GuardProc {
 export interface GuardMarkers {
   threadId: string | null
   callId: string | null
+  /** The app instance that started it, when its environment says. */
+  instanceId: string | null
+}
+
+/** This app instance, as the sweep tells its own processes from another's. */
+export interface GuardInstance {
+  id: string
+  /** The instance on the prod data dir: the one that sweeps a marked process with no instance mark. */
+  sweepsUnmarked: boolean
 }
 
 export interface ProcessGuardDeps {
@@ -77,17 +96,23 @@ export interface ProcessGuardDeps {
   threadOfHarness?(pid: number): string | null
   /** The per-call RSS cap in bytes (the setting, else DEFAULT_CALL_CAP_BYTES). */
   capBytes(): number
+  /** This instance; absent, the sweep owns every marked orphan (the in-process proofs). */
+  instance?: GuardInstance
   now?: () => number
   log?: (line: string) => void
   ownPid?: number
 }
 
-export { CALL_MARK, THREAD_MARK, unwrapBashCommand } from '@shared/bashMarks'
+export { CALL_MARK, INSTANCE_MARK, THREAD_MARK, unwrapBashCommand } from '@shared/bashMarks'
 export const GUARD_TICK_MS = 10_000
 export const ORPHAN_GRACE_MS = 60_000
 export const KILL_GRACE_MS = 5_000
 export const DEFAULT_CALL_CAP_BYTES = 8 * 1024 * 1024 * 1024
 export const MEMORY_CAP_SETTING = 'tools.memoryCapMb'
+/** The setting holding this data dir's half of the instance id, made on its first boot and kept. */
+export const INSTANCE_NONCE_SETTING = 'guard.instanceNonce'
+/** The box's prod data dir (docs/box.md, /etc/temp-code.env). */
+export const BOX_PROD_DATA_DIR = '/srv/agents/temp-code-data'
 /** The tool-result line when the cap killed the call's processes. */
 export const CAP_LINE_PREFIX = "The host killed this command's processes"
 /** One `ps` serves every reader inside this window. */
@@ -106,25 +131,65 @@ export function shellQuote(text: string): string {
  * host can end them, sweep them and weigh them. The command itself runs as
  * written after the marks.
  */
-export function wrapBashCommand(command: string, callId: string, threadId: string): string {
-  return `export ${THREAD_MARK}=${shellQuote(threadId)} ${CALL_MARK}=${shellQuote(callId)}; ${command}`
+export function wrapBashCommand(command: string, callId: string, threadId: string, instanceId: string | null = instance?.id ?? null): string {
+  const mark = instanceId ? ` ${INSTANCE_MARK}=${shellQuote(instanceId)}` : ''
+  return `export ${THREAD_MARK}=${shellQuote(threadId)} ${CALL_MARK}=${shellQuote(callId)}${mark}; ${command}`
 }
 
-/** The thread and the call a process belongs to, read off its environment. */
+let instance: GuardInstance | null = null
+
+/** This process's instance, read by every wrapBashCommand and harness env after it (startServer sets it once). */
+export function setGuardInstance(next: GuardInstance | null): void {
+  instance = next
+}
+
+/** The instance mark for a harness's environment, so its every descendant carries it. */
+export function guardInstanceEnv(): Record<string, string> {
+  return instance ? { [INSTANCE_MARK]: instance.id } : {}
+}
+
+/** The data dir is the prod one: Electron's default userData (no TEMP_CODE_USER_DATA override), or the box's service dir. */
+export function isProdData(dataDir: string, defaultUserData: string | null): boolean {
+  return dataDir === defaultUserData || dataDir === BOX_PROD_DATA_DIR
+}
+
+/**
+ * This instance's id: a hash of its data dir and a nonce the settings
+ * keep from the dir's first boot. The dir keeps a restart on the same
+ * data owning its earlier boot's orphans; the nonce keeps a database
+ * copied elsewhere (a dev instance on a copy of prod's) from owning the
+ * original's, since the dir differs even where the nonce was copied.
+ */
+export function guardInstanceOf(
+  dataDir: string,
+  settings: { getSetting(key: string): string | null; setSetting(key: string, value: string | null): void },
+  prodData: boolean
+): GuardInstance {
+  let nonce = settings.getSetting(INSTANCE_NONCE_SETTING)
+  if (!nonce) {
+    nonce = randomBytes(8).toString('hex')
+    settings.setSetting(INSTANCE_NONCE_SETTING, nonce)
+  }
+  return { id: createHash('sha256').update(`${dataDir}\0${nonce}`).digest('hex').slice(0, 12), sweepsUnmarked: prodData }
+}
+
+/** The thread, the call and the instance a process belongs to, read off its environment. */
 export function markersOf(environ: string | null): GuardMarkers & { claudePid: number | null } {
-  if (!environ) return { threadId: null, callId: null, claudePid: null }
+  if (!environ) return { threadId: null, callId: null, instanceId: null, claudePid: null }
   const base = parseEnviron(environ)
   let threadId = base.threadId
   let callId: string | null = null
+  let instanceId: string | null = null
   for (const entry of environ.split('\0')) {
     if (entry.startsWith(`${THREAD_MARK}=`)) threadId = entry.slice(THREAD_MARK.length + 1) || threadId
     else if (entry.startsWith(`${CALL_MARK}=`)) callId = entry.slice(CALL_MARK.length + 1) || null
+    else if (entry.startsWith(`${INSTANCE_MARK}=`)) instanceId = entry.slice(INSTANCE_MARK.length + 1) || null
   }
-  return { threadId, callId, claudePid: base.claudePid }
+  return { threadId, callId, instanceId, claudePid: base.claudePid }
 }
 
 /** The environment keys the guard reads; on macOS `ps -E` prints them after the command line. */
-const MARK_KEYS = [THREAD_MARK, CALL_MARK, 'CLAUDE_PID', 'ANTHROPIC_BASE_URL'] as const
+const MARK_KEYS = [THREAD_MARK, CALL_MARK, INSTANCE_MARK, 'CLAUDE_PID', 'ANTHROPIC_BASE_URL'] as const
 
 /**
  * `ps -ww -E -o command= -p <pid>` (macOS: the command line, then the
@@ -280,7 +345,7 @@ export class ProcessGuard {
     for (const r of rows) {
       if (r.ppid !== 1 || r.pid === own || harness.has(r.pid) || ledger.has(r.pid)) continue
       const m = await this.markersFor(r)
-      if (!m.threadId) continue
+      if (!m.threadId || !this.owns(m)) continue
       if (m.callId && (this.calls.get(m.callId)?.background || this.deps.backgroundCalls(m.threadId).has(m.callId))) continue
       const since = this.orphanSeen.get(r.pid)
       if (since === undefined) {
@@ -313,6 +378,13 @@ export class ProcessGuard {
       this.killRows(tree, rows, ledger, harness, now)
       this.calls.delete(callId)
     }
+  }
+
+  /** The orphan is this instance's to sweep: its mark names this instance, or names none and this is the prod instance. */
+  private owns(m: GuardMarkers): boolean {
+    const own = this.deps.instance
+    if (!own) return true
+    return m.instanceId ? m.instanceId === own.id : own.sweepsUnmarked
   }
 
   /** Every process carrying the call's mark. */
@@ -358,7 +430,7 @@ export class ProcessGuard {
     if (!m) {
       const read = markersOf(await this.deps.environ(r.pid, r.args))
       const threadId = read.threadId ?? (read.claudePid ? (this.deps.threadOfHarness?.(read.claudePid) ?? `claude:${read.claudePid}`) : null)
-      m = { threadId, callId: read.callId }
+      m = { threadId, callId: read.callId, instanceId: read.instanceId }
       this.markers.set(key, m)
       if (this.markers.size > 5_000) this.markers.delete(this.markers.keys().next().value as string)
     }

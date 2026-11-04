@@ -474,6 +474,7 @@ export class Batches {
         threadType: m.local?.threadType ?? m.remote?.threadType ?? null,
         provider: m.local?.provider ?? m.remote?.provider ?? '',
         model: m.local?.model ?? m.remote?.model ?? '',
+        ...(m.local?.reasoning ?? m.remote?.reasoning ? { reasoning: m.local?.reasoning ?? m.remote?.reasoning } : {}),
         ...(m.remote ? { seenAt: m.remote.seenAt, linkDown: this.unreachable.get(masterId)?.has(m.remote.environmentId) ?? false } : {})
       }))
     }

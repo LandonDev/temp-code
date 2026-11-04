@@ -49,6 +49,10 @@ env -u ELECTRON_RUN_AS_NODE \
   server from another session is holding it. Kill it (`pkill -f
   electron-vite`) and relaunch — electron-vite never restarts the main
   process on its own, so main-process changes always need a relaunch.
+  When another app's dev server holds 5173 (lifeos sits on `[::1]:5173`,
+  and the window would load it in the renderer's place), set
+  `TEMP_CODE_RENDERER_PORT=5177` (electron.vite.config.ts: that port,
+  strict) and check `document.title` over CDP before trusting the window.
 - Kill your dev instance when the pass is done.
 - Updater end to end: `bun run script:e2e-updater` (scripts/e2e-updater.ts)
   builds two signed, un-notarized copies of the tree (1.0.N-1 and 1.0.N) with
@@ -1172,7 +1176,15 @@ routed to (aliax-core's `forward`). Two listeners:
   when the call ends (never a harness, a ledger pid or a backgrounded
   call); every 10 s an orphan sweep kills a process of this user with no
   parent left that carries a thread's mark (`TEMP_CODE_THREAD`, `~t=`,
-  CLAUDE_PID) 60 s after it was orphaned, one log line each; and a call
+  CLAUDE_PID) 60 s after it was orphaned, one log line each, but only
+  this instance's: the claude harness's environment and every wrapped
+  call carry `TEMP_CODE_INSTANCE` (`guardInstanceOf`: a hash of the
+  userData dir and a nonce in the `guard.instanceNonce` setting), a
+  process marked by another instance is left alone, and one with no
+  instance mark is swept only by the instance on the prod data dir
+  (`isProdData`: Electron's default userData, or the box's
+  /srv/agents/temp-code-data), so a dev instance never touches the
+  installed app's processes; and a call
   whose processes pass `tools.memoryCapMb` (8 GiB) is killed with its tool
   result saying so. A codex app-server carries `TEMP_CODE_THREAD` alone.
 - Pause and Stop reach the Mac
@@ -2847,7 +2859,14 @@ this is the short one.
   sends one, overrides a row's host and status, `mergeBatchChildren`); a
   row on another host than the master's carries that host's glyph after
   its title, its name on hover (`rowHost`), and sits under the
-  offline tint while that host's link is not open. A row is 48px, two
+  offline tint while that host's link is not open. A child the store has
+  no row for draws from a whole stand-in meta (`standInMeta`: the list's
+  provider, model and effort, the rest at rest; no model, no model mark).
+  Each row sits in its own `RowBoundary` (master/RowBoundary.tsx, the
+  ChunkBoundary pattern): a row that throws paints "Couldn't load" and
+  Retry at its height, its siblings, the board, the rail and the
+  transcript stay, and stalls.log's `[renderer] caught` line ends
+  `thread=<master> row=<child>` (`tagRendererError`). A row is 48px, two
   lines on `Item` with every left edge of the board 12px in
   (master/MasterRow.tsx, the rule `rowStatus` in master/rowBody.ts):
   the type glyph (its word in a tooltip), the title, the host glyph and the

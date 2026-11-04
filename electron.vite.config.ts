@@ -146,6 +146,9 @@ export default defineConfig({
       }
     },
     define: { 'import.meta.env.TEMP_CODE_PROFILE': JSON.stringify(profiling ? '1' : '') },
+    // The dev server's port, 5173 unless TEMP_CODE_RENDERER_PORT says otherwise (another
+    // app's dev server on [::1]:5173 would answer `localhost:5173` in the window's place).
+    ...(process.env.TEMP_CODE_RENDERER_PORT ? { server: { port: Number(process.env.TEMP_CODE_RENDERER_PORT), strictPort: true } } : {}),
     // Monaco's editor worker is a lazy chunk; iife workers cannot code-split.
     worker: { format: 'es' },
     plugins: [

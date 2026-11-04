@@ -18,6 +18,7 @@ import type { EnvironmentStatus } from "../../../lib/connection/types";
 import { isLiveStatus } from "../../../lib/threads/agents";
 import { sessionStore, useSessionMeta } from "../../../lib/tcserver/store";
 import type { SessionMeta, SessionStatus, ThreadType } from "../../../lib/tcserver/types";
+import type { ProviderId, Reasoning } from "@server/shared/catalog";
 import { usePaneVisible } from "../../../hooks/paneVisibility";
 
 /**
@@ -123,7 +124,12 @@ export type BatchChild = {
   title?: string;
   status?: SessionStatus;
   threadType?: ThreadType | null;
+  provider?: string;
+  model?: string;
+  reasoning?: string;
 };
+
+const str = (c: Record<string, unknown>, key: string): string | undefined => (typeof c[key] === "string" && c[key] ? (c[key] as string) : undefined);
 
 export function batchChildrenOf(state: unknown): BatchChild[] {
   const list = (state as { children?: unknown } | null)?.children;
@@ -139,6 +145,9 @@ export function batchChildrenOf(state: unknown): BatchChild[] {
       ...(typeof c.title === "string" ? { title: c.title } : {}),
       ...(typeof c.status === "string" ? { status: c.status as SessionStatus } : {}),
       ...(typeof c.threadType === "string" ? { threadType: c.threadType as ThreadType } : typeof c.type === "string" ? { threadType: c.type as ThreadType } : {}),
+      ...(str(c, "provider") ? { provider: str(c, "provider") } : {}),
+      ...(str(c, "model") ? { model: str(c, "model") } : {}),
+      ...(str(c, "reasoning") ? { reasoning: str(c, "reasoning") } : {}),
     });
   }
   return out;
@@ -168,22 +177,55 @@ export function mergeBatchChildren(rows: readonly MasterRowModel[], children: re
   });
   for (const child of children) {
     if (seen.has(child.sessionId) || rows.some((r) => r.plan?.id === child.sessionId)) continue;
-    const meta = {
-      id: child.sessionId,
-      environmentId: child.environmentId,
-      parentId: null,
-      masterId,
-      archived: false,
-      status: child.status ?? "idle",
-      title: child.title ?? "",
-      threadType: child.threadType ?? null,
-      createdAt: Number.MAX_SAFE_INTEGER,
-      updatedAt: 0,
-    } as unknown as SessionMeta;
+    const meta = standInMeta(child, masterId);
     out.push({ key: child.sessionId, meta, plan: null, title: meta.title });
     changed = true;
   }
   return changed ? out : rows;
+}
+
+const PROVIDERS: ReadonlySet<string> = new Set<ProviderId>(["claude", "codex", "cursor", "grok", "opencode", "pi", "omp", "fx"]);
+const REASONINGS: ReadonlySet<string> = new Set<Reasoning>(["low", "medium", "high", "xhigh", "max", "ultra"]);
+
+/**
+ * A whole meta for a child the store has no row for: what the batch's
+ * list says (its host, state, title, type, provider, model and effort) and
+ * the rest at rest. A provider this build does not know, or a list from a
+ * host that names none, leaves the model empty, so the row draws no model
+ * mark (ModelMark) instead of a wrong one; the effort is kept only when it
+ * is one the catalog knows. Never cast: a field the row reads is here.
+ */
+export function standInMeta(child: BatchChild, masterId: string): SessionMeta {
+  const known = !!child.provider && PROVIDERS.has(child.provider);
+  return {
+    id: child.sessionId,
+    environmentId: child.environmentId,
+    parentId: null,
+    projectId: null,
+    workspaceId: null,
+    masterId,
+    threadType: child.threadType ?? null,
+    planPath: null,
+    provider: known ? (child.provider as ProviderId) : "claude",
+    model: known ? (child.model ?? "") : "",
+    reasoning: child.reasoning && REASONINGS.has(child.reasoning) ? (child.reasoning as Reasoning) : "medium",
+    agentType: "implementer",
+    title: child.title ?? "",
+    cwd: "",
+    status: child.status ?? "idle",
+    pinned: false,
+    archived: false,
+    permission: "edits",
+    fast: false,
+    ultrafast: false,
+    context1m: false,
+    busySince: null,
+    pausedAt: null,
+    frozenActiveElapsed: null,
+    nativeId: null,
+    createdAt: Number.MAX_SAFE_INTEGER,
+    updatedAt: 0,
+  };
 }
 
 // ── grouping ────────────────────────────────────────────────────────────

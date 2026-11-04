@@ -90,8 +90,11 @@ export function agentSummaryParts(s: AgentSummary): { text: string; tone?: strin
   return parts;
 }
 
-/** The catalog name for a server (provider, native model) pair. */
-export function modelLabel(provider: string, model: string): string {
+/** The catalog name for a server (provider, native model) pair; the model
+ *  as written when the catalog lacks it, and "" when a meta names no model
+ *  or no provider (a board stand-in for a child its host has not described). */
+export function modelLabel(provider: string | null | undefined, model: string | null | undefined): string {
+  if (!provider || !model) return "";
   return findModel(pickerModelId(asHarness(provider), model))?.name ?? model;
 }
 

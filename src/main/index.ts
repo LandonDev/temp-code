@@ -13,6 +13,7 @@ import { aliaxCallCounts, registerAliaxPages } from './aliaxPages'
 import { registerAppshots } from './appshots'
 import { EditorLauncher, defaultEditorLaunchDeps, editorChoice, type EditorTarget } from './editorLaunch'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
+import { isProdData } from './server/processGuard'
 import { startServer, type RunningServer } from './server'
 import { listEnvironments } from './server/remote/environments'
 import type { LaunchMirrorSnapshot, MirrorWrite } from '@shared/launchMirror'
@@ -78,6 +79,8 @@ const FLUSH_AFTER_MS = 10_000
 // they never contend with the primary checkout's running app. A packaged
 // test build carries the same overrides in its package.json (harness.ts).
 applyHarness(process.env, bakedHarness(app.getAppPath()))
+/** Electron's own userData before any override: the installed app's data dir, the prod one on a Mac. */
+const defaultUserData = app.getPath('userData')
 if (process.env.TEMP_CODE_USER_DATA) {
   app.setPath('userData', process.env.TEMP_CODE_USER_DATA)
 }
@@ -172,6 +175,7 @@ app.whenReady().then(async () => {
     attention.start()
   }
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
+    prodData: isProdData(app.getPath('userData'), defaultUserData),
     appPath: app.getAppPath(),
     claimShim: mayClaimShim({ isPackaged: app.isPackaged }),
     assets: handleAssetRequest,

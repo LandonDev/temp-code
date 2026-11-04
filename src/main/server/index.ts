@@ -59,7 +59,7 @@ import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './m
 import { OfflineError, ThreadResources } from './threadResources'
 import { SharedScanner, ThreadPorts } from './threadPorts'
 import { PortTail } from './portTail'
-import { DEFAULT_CALL_CAP_BYTES, MEMORY_CAP_SETTING, ProcessGuard, hostGuardDeps } from './processGuard'
+import { DEFAULT_CALL_CAP_BYTES, MEMORY_CAP_SETTING, ProcessGuard, guardInstanceOf, hostGuardDeps, setGuardInstance } from './processGuard'
 import { notDevServer } from '@shared/devServerRules'
 import { PortSweep } from './portSweep'
 import { readTaskLog, type TaskLogDeps } from './taskLog'
@@ -355,6 +355,8 @@ export async function startServer(
   dbPath: string,
   options: {
     dataDir?: string
+    /** The data dir is the prod one (processGuard.ts isProdData): its guard sweeps orphans no instance marked. */
+    prodData?: boolean
     appPath?: string
     claimShim?: boolean
     /** The fixed port's override (tests: 0 for an ephemeral port). Absent: TEMP_CODE_REMOTE_PORT, else the settings. */
@@ -947,10 +949,13 @@ export async function startServer(
       ...devRuns.running().flatMap((run) => (run.sessionId === row.sessionId ? run.ports.map((p) => p.port) : []))
     ]
   })
-  // The process guard (processGuard.ts): a call's processes end with the call, a thread's
-  // orphans are swept, and a call past the memory cap is killed with its result saying so.
+  // The process guard (processGuard.ts): a call's processes end with the call, this
+  // instance's orphans are swept, and a call past the memory cap is killed with its result saying so.
+  const guardInstance = guardInstanceOf(options.dataDir ?? dirname(dbPath), store, options.prodData ?? false)
+  setGuardInstance(guardInstance)
   const guard = new ProcessGuard({
     ...hostGuardDeps(),
+    instance: guardInstance,
     ledgerPids: () => new Set(resources.listAll({ kind: 'port', environmentId }).flatMap((r) => (r.pid ? [r.pid] : []))),
     backgroundCalls: (id) => new Set((registry.get(id)?.background?.tasks ?? []).flatMap((t) => (t.callId ? [t.callId] : []))),
     harnessPids: () => new Set(registry.harnessPids()),

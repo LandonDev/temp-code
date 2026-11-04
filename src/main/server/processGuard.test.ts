@@ -6,8 +6,13 @@ import {
   KILL_GRACE_MS,
   ORPHAN_GRACE_MS,
   ProcessGuard,
+  INSTANCE_NONCE_SETTING,
+  BOX_PROD_DATA_DIR,
   environFromPsE,
+  guardInstanceOf,
+  isProdData,
   markersOf,
+  type GuardInstance,
   parseGuardPs,
   unwrapBashCommand,
   wrapBashCommand,
@@ -43,7 +48,7 @@ interface World {
   guard: ProcessGuard
 }
 
-function world(rows: GuardProc[], environs: Record<number, string>, over: { ledger?: number[]; harness?: number[]; cap?: number } = {}): World {
+function world(rows: GuardProc[], environs: Record<number, string>, over: { ledger?: number[]; harness?: number[]; cap?: number; instance?: GuardInstance } = {}): World {
   const w = {
     rows,
     environs: new Map(Object.entries(environs).map(([k, v]) => [Number(k), v])),
@@ -68,6 +73,7 @@ function world(rows: GuardProc[], environs: Record<number, string>, over: { ledg
     harnessPids: () => w.harness,
     threadOfHarness: (pid) => (pid === 77 ? 'tOf77' : null),
     capBytes: () => w.cap,
+    ...(over.instance ? { instance: over.instance } : {}),
     now: () => w.clock.now,
     log: (l) => w.log.push(l),
     ownPid: 42
@@ -127,6 +133,31 @@ describe('the orphan sweep', () => {
     await w.guard.tick()
     expect(w.kills).toEqual([])
     expect(w.log).toEqual([])
+  })
+
+  it("the sweep is this instance's alone: its own marked orphan goes, another instance's stays, and one marked by no instance goes only on the prod data dir", async () => {
+    const dev: GuardInstance = { id: 'inst-dev', sweepsUnmarked: false }
+    const prod: GuardInstance = { id: 'inst-prod', sweepsUnmarked: true }
+    const byInstance = (id: string): string => env({ PATH: '/usr/bin', TEMP_CODE_THREAD: 't1', TEMP_CODE_CALL: 'c1', TEMP_CODE_INSTANCE: id })
+    // The 2026-11-04 shape: an emulator a prod thread started (no instance mark, an older build), beside the dev instance's own orphan and prod's.
+    const rows = () => [proc(5000, 1, 5000, 'qemu-system-aarch64 -avd Pixel', 1_000_000), proc(5001, 1, 5001, TINYPOOL), proc(5002, 1, 5002, 'vite')]
+    const environs = { 5000: MARKED, 5001: byInstance('inst-dev'), 5002: byInstance('inst-prod') }
+    const sweep = async (w: World) => {
+      await w.guard.tick()
+      later(w, ORPHAN_GRACE_MS + 10_000)
+      await w.guard.tick()
+    }
+    const onDev = world(rows(), environs, { instance: dev })
+    await sweep(onDev)
+    expect(onDev.kills).toEqual(['SIGTERM 5001'])
+    expect(onDev.log).toEqual([`[guard] orphan thread=t1 pid=5001 rss=49MB ${TINYPOOL}`])
+    const onProd = world(rows(), environs, { instance: prod })
+    await sweep(onProd)
+    expect(onProd.kills).toEqual(['SIGTERM 5000', 'SIGTERM 5002'])
+    // No instance at all (the in-process proofs): every marked orphan, as before.
+    const unscoped = world(rows(), environs)
+    await sweep(unscoped)
+    expect(unscoped.kills).toEqual(['SIGTERM 5000', 'SIGTERM 5001', 'SIGTERM 5002'])
   })
 
   it("the gateway's scope and CLAUDE_PID mark a process too, and a live harness pid names its thread", async () => {
@@ -268,30 +299,55 @@ describe('the marks', () => {
     const quoted = wrapBashCommand("echo 'hi'; cd x", "a'b", 't1')
     expect(quoted).toBe("export TEMP_CODE_THREAD='t1' TEMP_CODE_CALL='a'\\''b'; echo 'hi'; cd x")
     expect(unwrapBashCommand(quoted)).toBe("echo 'hi'; cd x")
+    // With the instance: a third export, which unwrap strips too; the old two-mark form still unwraps.
+    const scoped = wrapBashCommand('bun test', 'toolu_01', 't1', 'inst-1')
+    expect(scoped).toBe("export TEMP_CODE_THREAD='t1' TEMP_CODE_CALL='toolu_01' TEMP_CODE_INSTANCE='inst-1'; bun test")
+    expect(unwrapBashCommand(scoped)).toBe('bun test')
+    expect(unwrapBashCommand(wrapBashCommand("echo 'hi'", "a'b", 't1', "i'x"))).toBe("echo 'hi'")
+    expect(markersOf(env({ TEMP_CODE_THREAD: 't1', TEMP_CODE_CALL: 'c1', TEMP_CODE_INSTANCE: 'inst-1' }))).toEqual({ threadId: 't1', callId: 'c1', instanceId: 'inst-1', claudePid: null })
+    const line = `/bin/bash -c eval 'x' PATH=/usr/bin TEMP_CODE_THREAD=t1 TEMP_CODE_CALL=c1 TEMP_CODE_INSTANCE=inst-1\n`
+    expect(markersOf(environFromPsE(line, "/bin/bash -c eval 'x'")).instanceId).toBe('inst-1')
+  })
+
+  it('the instance id is one hash of the data dir and a nonce the settings keep: the same across boots, another for a copy of the database elsewhere', () => {
+    const settings = new Map<string, string>()
+    const store = { getSetting: (k: string) => settings.get(k) ?? null, setSetting: (k: string, v: string | null) => void (v === null ? settings.delete(k) : settings.set(k, v)) }
+    const first = guardInstanceOf('/Users/me/Library/Application Support/temp-code', store, true)
+    expect(first.id).toMatch(/^[0-9a-f]{12}$/)
+    expect(first.sweepsUnmarked).toBe(true)
+    expect(settings.get(INSTANCE_NONCE_SETTING)).toMatch(/^[0-9a-f]{16}$/)
+    expect(guardInstanceOf('/Users/me/Library/Application Support/temp-code', store, true)).toEqual(first)
+    // The copy carries the nonce but sits in another dir: another id, and never the prod sweep.
+    const copy = guardInstanceOf('/Users/me/Library/Application Support/temp-code-whitescreen', store, false)
+    expect(copy.id).not.toBe(first.id)
+    expect(copy.sweepsUnmarked).toBe(false)
+    expect(isProdData('/Users/me/Library/Application Support/temp-code', '/Users/me/Library/Application Support/temp-code')).toBe(true)
+    expect(isProdData('/Users/me/Library/Application Support/temp-code-dev', '/Users/me/Library/Application Support/temp-code')).toBe(false)
+    expect(isProdData(BOX_PROD_DATA_DIR, '/root/.config/temp-code')).toBe(true)
   })
 
   it('markersOf reads the marks, the gateway scope and CLAUDE_PID, the mark winning', () => {
-    expect(markersOf(null)).toEqual({ threadId: null, callId: null, claudePid: null })
-    expect(markersOf(MARKED)).toEqual({ threadId: 't1', callId: 'c1', claudePid: null })
+    expect(markersOf(null)).toEqual({ threadId: null, callId: null, instanceId: null, claudePid: null })
+    expect(markersOf(MARKED)).toEqual({ threadId: 't1', callId: 'c1', instanceId: null, claudePid: null })
     expect(markersOf(env({ ANTHROPIC_BASE_URL: 'http://127.0.0.1:1/claude/~t=t9;a=x', TEMP_CODE_THREAD: 't1' }))).toMatchObject({ threadId: 't1', callId: null })
     expect(markersOf(env({ ANTHROPIC_BASE_URL: 'http://127.0.0.1:1/claude/~t=t9;a=x' }))).toMatchObject({ threadId: 't9', callId: null })
-    expect(markersOf(env({ CLAUDE_PID: '77' }))).toEqual({ threadId: null, callId: null, claudePid: 77 })
+    expect(markersOf(env({ CLAUDE_PID: '77' }))).toEqual({ threadId: null, callId: null, instanceId: null, claudePid: 77 })
   })
 
   it("environFromPsE reads the marks off macOS's ps -E line, where the environment follows the command, never off the command's own text", () => {
     const line = `/bin/bash -c eval 'bun test' PATH=/usr/bin TEMP_CODE_THREAD=t1 TEMP_CODE_CALL=toolu_01 CLAUDE_PID=77 ANTHROPIC_BASE_URL=http://127.0.0.1:1/claude/~t=t1;a=x HOME=/Users/me\n`
-    expect(markersOf(environFromPsE(line, "/bin/bash -c eval 'bun test'"))).toEqual({ threadId: 't1', callId: 'toolu_01', claudePid: 77 })
+    expect(markersOf(environFromPsE(line, "/bin/bash -c eval 'bun test'"))).toEqual({ threadId: 't1', callId: 'toolu_01', instanceId: null, claudePid: 77 })
     expect(environFromPsE('node server.js HOME=/Users/me\n', 'node server.js')).toBe('')
-    expect(markersOf(environFromPsE('node server.js HOME=/Users/me\n', 'node server.js'))).toEqual({ threadId: null, callId: null, claudePid: null })
+    expect(markersOf(environFromPsE('node server.js HOME=/Users/me\n', 'node server.js'))).toEqual({ threadId: null, callId: null, instanceId: null, claudePid: null })
     expect(environFromPsE('', 'x')).toBeNull()
     // The call's shell: the wrapped command's text carries the marks, its own environment does not (export ran inside it).
     const shellArgs = `/bin/bash -c ${wrapBashCommand('bun test', 'call-1', 't1')}`
-    expect(markersOf(environFromPsE(`${shellArgs} PATH=/usr/bin HOME=/Users/me\n`, shellArgs))).toEqual({ threadId: null, callId: null, claudePid: null })
+    expect(markersOf(environFromPsE(`${shellArgs} PATH=/usr/bin HOME=/Users/me\n`, shellArgs))).toEqual({ threadId: null, callId: null, instanceId: null, claudePid: null })
     // Its child inherited them: the environment's pair wins, not the command text's quoted one.
     const child = `node vitest.mjs ${wrapBashCommand('x', 'ignored', 'tX')} PATH=/usr/bin TEMP_CODE_THREAD=t1 TEMP_CODE_CALL=call-1\n`
-    expect(markersOf(environFromPsE(child, `node vitest.mjs ${wrapBashCommand('x', 'ignored', 'tX')}`))).toEqual({ threadId: 't1', callId: 'call-1', claudePid: null })
+    expect(markersOf(environFromPsE(child, `node vitest.mjs ${wrapBashCommand('x', 'ignored', 'tX')}`))).toEqual({ threadId: 't1', callId: 'call-1', instanceId: null, claudePid: null })
     // Without the scan's command line to strip, the last pair wins: the environment follows the command.
-    expect(markersOf(environFromPsE(child))).toEqual({ threadId: 't1', callId: 'call-1', claudePid: null })
+    expect(markersOf(environFromPsE(child))).toEqual({ threadId: 't1', callId: 'call-1', instanceId: null, claudePid: null })
   })
 
   it('parseGuardPs reads the ps rows', () => {

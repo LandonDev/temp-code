@@ -10,6 +10,7 @@ import {
   fleetSentence,
   leadStripped,
   loadsTranscript,
+  modelLabel,
   sortAgents,
   taskTitle,
   TONE_CLASS,
@@ -291,4 +292,13 @@ it("the queued lead parses the host's two spaces as it parses the old dot", () =
   expect(leadStripped("Queued · waiting for Sibling", "queued")).toBe("Waiting for Sibling");
   expect(leadStripped("Waiting on 3 subagents", "watching")).toBe("3 subagents");
   expect(leadStripped("Thinking", "queued")).toBe("Thinking");
+});
+
+it("modelLabel names the catalog's model, the native id when the catalog lacks it, and nothing without a model or a provider", () => {
+  expect(modelLabel("claude", "claude-opus-5-5")).toBe("Claude Opus 5.5");
+  expect(modelLabel("codex", "gpt-nope")).toBe("gpt-nope");
+  expect(modelLabel(undefined, undefined)).toBe("");
+  expect(modelLabel("claude", undefined)).toBe("");
+  expect(modelLabel("", "claude-opus-5-5")).toBe("");
+  expect(modelLabel(null, "")).toBe("");
 });

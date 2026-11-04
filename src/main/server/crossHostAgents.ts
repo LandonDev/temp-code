@@ -84,6 +84,8 @@ export interface RemoteChildRecord {
   cwd: string
   provider: string
   model: string
+  /** the effort it was started with, when this host asked for it */
+  reasoning?: string
   agentType: string
   threadType?: string | null
   /** The master (here) whose batch the thread belongs to. */
@@ -507,6 +509,7 @@ export class CrossHostAgents {
       cwd: result.cwd,
       provider: args.provider,
       model: args.model ?? '',
+      ...(args.reasoning ? { reasoning: args.reasoning } : {}),
       agentType: 'implementer',
       threadType: args.threadType,
       ...('masterId' in membership ? { masterId: membership.masterId } : {}),
@@ -555,6 +558,7 @@ export class CrossHostAgents {
         cwd: result.cwd,
         provider: r.provider,
         model: r.model,
+        reasoning: r.reasoning,
         agentType: r.agentType,
         seenAt: this.now()
       })

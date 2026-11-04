@@ -20,6 +20,7 @@ import {
   masterChildrenOf,
   masterCounts,
   mergeBatchChildren,
+  standInMeta,
   mergedLine,
   rowHost,
   typeWord,
@@ -158,6 +159,20 @@ describe("the batch's own child list", () => {
       ["running", 1],
       ["queued", 1],
     ]);
+  });
+
+  it("a stand-in for a child the store lacks is a whole meta: the list's provider, model and effort, the rest at rest, never cast", () => {
+    const listed = batchChildrenOf({
+      children: [{ sessionId: "far", environmentId: "box", title: "Far", status: "running", threadType: "implementation", provider: "codex", model: "gpt-6.1-sol", reasoning: "high" }],
+    });
+    expect(listed[0]).toMatchObject({ provider: "codex", model: "gpt-6.1-sol", reasoning: "high" });
+    const [row] = mergeBatchChildren([], listed, "m");
+    expect(row.meta).toMatchObject({ id: "far", masterId: "m", provider: "codex", model: "gpt-6.1-sol", reasoning: "high", context1m: false, archived: false, cwd: "" });
+    for (const key of ["provider", "model", "reasoning", "agentType", "permission", "projectId", "workspaceId", "planPath", "nativeId", "busySince"]) expect(key in row.meta).toBe(true);
+    // A list from a host that names no provider or model (an older host, or '' for a child not yet described): no model, so no mark.
+    expect(standInMeta({ sessionId: "x", environmentId: "box" }, "m")).toMatchObject({ provider: "claude", model: "", reasoning: "medium", status: "idle", title: "" });
+    expect(standInMeta({ sessionId: "x", environmentId: "box", provider: "", model: "m1", reasoning: "warp" }, "m")).toMatchObject({ model: "", reasoning: "medium" });
+    expect(standInMeta({ sessionId: "x", environmentId: "box", provider: "martian", model: "m1" }, "m").model).toBe("");
   });
 
   it("never doubles a plan the build's row already stands for", () => {

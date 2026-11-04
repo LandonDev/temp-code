@@ -44,7 +44,7 @@ import { routedEndpointFor } from '../endpoint'
 import { gateway } from '../gateway'
 import { spawnOrAdoptClaude } from './claudeWarm'
 import { claudeFastFor, noteClaudeInit } from './claudeTiers'
-import { unwrapBashCommand, wrapBashCommand } from '../processGuard'
+import { guardInstanceEnv, unwrapBashCommand, wrapBashCommand } from '../processGuard'
 
 // Dev override: a small window (e.g. 45_000 → compaction arms at ~12k)
 // makes a real compaction reachable in one short thread for UI work.
@@ -1590,7 +1590,8 @@ export const claudeDriver: HarnessDriver = {
       // default). The task board, tab tallies and the orchestrator's
       // supervision all fold those tool calls, so a thread without them is
       // invisible — the CLI's own env override switches them back on.
-      env: { ...process.env, CLAUDE_CODE_ENABLE_TODO_TOOLS: '1', ...(endpoint ? { ANTHROPIC_BASE_URL: endpoint } : {}) },
+      // The guard's instance mark rides the harness's environment too, so every descendant is this instance's (processGuard.ts).
+      env: { ...process.env, CLAUDE_CODE_ENABLE_TODO_TOOLS: '1', ...guardInstanceEnv(), ...(endpoint ? { ANTHROPIC_BASE_URL: endpoint } : {}) },
       // 1M rides the CLI's `[1m]` model suffix — the same lever as Claude
       // Code's own 1M picker: it sets the client-side window to 1M and the
       // CLI adds the API-side signaling itself. The `betas` Option is a

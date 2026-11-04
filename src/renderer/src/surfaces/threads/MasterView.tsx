@@ -20,6 +20,7 @@ import { BatchFoot } from "./master/BatchFoot";
 import { addMenuItems, adoptCandidates, boardMenuItems, doneRows, pairedProjectIds, pausableRows, pausedRows, type ArchiveWhich } from "./master/boardActions";
 import { ChildPane } from "./master/ChildPane";
 import { MasterRow, type RowMenu } from "./master/MasterRow";
+import { RowBoundary } from "./master/RowBoundary";
 import { NewPassDialog } from "./master/NewPassDialog";
 import { AgentSummaryContext } from "./master/agentSummary";
 import {
@@ -351,7 +352,9 @@ export function MasterView(props: ThreadViewProps) {
                         {item.group.label}
                       </h3>
                     ) : (
-                      <MasterRow rowRef={item.row} landed={landed.has(item.row.id)} blocked={blockedOf(item.row)} host={hostOf(item.row.environmentId)} onOpen={open} menu={rowMenu} />
+                      <RowBoundary threadId={session.id} rowId={item.row.id}>
+                        <MasterRow rowRef={item.row} landed={landed.has(item.row.id)} blocked={blockedOf(item.row)} host={hostOf(item.row.environmentId)} onOpen={open} menu={rowMenu} />
+                      </RowBoundary>
                     )}
                   </div>
                 );
