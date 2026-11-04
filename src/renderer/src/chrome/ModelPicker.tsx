@@ -49,6 +49,7 @@ import {
 import { refreshHarnessCatalogs } from "../lib/harness/registry";
 import { refreshCatalog } from "../lib/tcserver/catalog";
 import { registry } from "../lib/connection";
+import { useAccounts } from "../stores/accounts";
 import {
   HARNESSES,
   HARNESS_LABEL,
@@ -268,6 +269,13 @@ export function ModelPicker({
 
   searchRef.current = searching;
 
+  // A maker's rows inside a harness (Meta's under Claude and Codex) ride an
+  // API key: with none on the thread's host they are left out, so the tabs
+  // show only what a send could reach (a Meta model over the subscription is
+  // the Muse harness's own row).
+  const { snapshot } = useAccounts(environmentId ?? registry.primaryEnvironmentId);
+  const keyed = snapshot.providers.meta?.profiles.length > 0;
+  const reachable = (item: AgentModel) => shownInPicker(item.harness) && (keyed || !item.vendor);
   const visible = useMemo(() => {
     const needle = query.trim();
     if (!needle) {
@@ -276,14 +284,14 @@ export function ModelPicker({
             .map((id) => findModel(id))
             .filter(
               (item): item is AgentModel =>
-                item != null && shownInPicker(item.harness),
+                item != null && reachable(item),
             )
-        : tabModels(visibleTab, environmentId);
+        : tabModels(visibleTab, environmentId).filter(reachable);
     }
     // Typing searches every shown provider: rank ladder, favorites first
     // within a rank, catalog order last.
     return allModels(environmentId)
-      .filter((item) => shownInPicker(item.harness))
+      .filter(reachable)
       .flatMap((item, order) => {
         const rank = matchRank(
           needle,
@@ -302,6 +310,7 @@ export function ModelPicker({
     query,
     favorites,
     environmentId,
+    keyed,
     catalogVersion,
     availabilityVersion,
     visibilityVersion,

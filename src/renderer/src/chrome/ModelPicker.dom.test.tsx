@@ -13,6 +13,10 @@ import type { ModelInfo, ProviderInfo } from "../lib/tcserver/types";
 import { ModelPicker } from "./ModelPicker";
 import type { HarnessId } from "../lib/session";
 import { selectChunk } from "../surfaces/chunks";
+import { accountsStore } from "../stores/accounts";
+import { emptyAccounts, type AccountsSnapshot } from "@server/shared/accounts";
+import type { Link } from "../lib/connection/types";
+import type { ServerPush } from "@server/shared/contract";
 
 vi.mock("../lib/harness/availability", () => ({
   harnessUnavailableHint: () => "Not installed",
@@ -187,15 +191,61 @@ describe("ModelPicker", () => {
   });
 });
 
+/** A host whose accounts snapshot the picker reads: with a Meta key on file, or none. */
+class FakeLink implements Link {
+  environmentId = "local";
+  profile = "local" as const;
+  connected = true;
+  constructor(private readonly snapshot: AccountsSnapshot) {}
+  request<T>(method: string): Promise<T> {
+    if (method === "accounts.list") return Promise.resolve(this.snapshot as T);
+    return Promise.reject(new Error(`unexpected ${method}`));
+  }
+  onPush(_listener: (push: ServerPush) => void): () => void {
+    return () => {};
+  }
+  onOpen(): () => void {
+    return () => {};
+  }
+  onClose(): () => void {
+    return () => {};
+  }
+}
+async function hostWithMetaKey(keyed = true) {
+  const snapshot = emptyAccounts();
+  if (keyed) snapshot.providers.meta = { pinned: null, owner: "temp-code", profiles: [{ name: "Meta key …LJY", createdAt: 1, active: false, static: true, kind: "key" }], reports: [] };
+  accountsStore.attach(new FakeLink(snapshot));
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
+}
+
 describe("ModelPicker: Meta's models", () => {
   const META_LADDER = ["minimal", "low", "medium", "high", "xhigh", "max"] as ModelInfo["reasoning"];
   const meta = (efforts: ModelInfo["reasoning"]): ModelInfo[] => [
     { id: "muse-wonder-1.0", label: "Muse Wonder 1.0", reasoning: efforts, defaultReasoning: "high", context: 1_048_576, vendor: "meta" },
     { id: "muse-spark-1.3", label: "Muse Spark 1.3", reasoning: efforts, defaultReasoning: "medium", context: 1_048_576, vendor: "meta" },
   ];
-  beforeEach(() => {
+  beforeEach(async () => {
     seed("claude", [{ id: "claude-opus-5-5", label: "Opus 5.5", reasoning: EFFORTS, defaultReasoning: "medium", context: 1_000_000 }, ...meta(EFFORTS)]);
     seed("codex", [...meta(META_LADDER), { id: "gpt-6.1-sol", label: "GPT-6.1 Sol", reasoning: EFFORTS, defaultReasoning: "low" }]);
+    await hostWithMetaKey();
+  });
+  afterEach(() => accountsStore.reset());
+
+  it("without a Meta key on the host the Claude and Codex tabs and the search leave Meta's rows out", async () => {
+    accountsStore.reset();
+    await hostWithMetaKey(false);
+    saveModelPickerTab("claude");
+    picker("claude", "claude:claude-opus-5-5");
+    const menu = await open(/Opus 5\.5/);
+    expect(groupIn(menu)).toBeNull();
+    expect(within(menu).getAllByRole("option").map((o) => o.querySelector("span")?.textContent)).toEqual(["Opus 5.5"]);
+    await act(async () => {
+      fireEvent.change(within(menu).getByRole("textbox", { name: "Search models" }), { target: { value: "muse" } });
+    });
+    // Only the Muse harness's own rows answer a search: nothing under Claude or Codex.
+    expect(within(menu).queryAllByRole("option").every((o) => !o.querySelector("svg path")?.getAttribute("d")?.startsWith("M6.915"))).toBe(true);
   });
 
   const groupIn = (menu: HTMLElement) => menu.querySelector<HTMLElement>("[data-vendor-group=meta]");
