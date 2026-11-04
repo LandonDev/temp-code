@@ -145,7 +145,7 @@ export function RightPanel(props: RightPanelProps) {
       className="relative flex shrink-0 flex-col border-l border-border bg-sidebar"
       style={{ width: props.width ?? state.width, contain: "strict" }}
     >
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border pr-1.5 pl-2">
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border pr-3 pl-2">
         <PanelSections
           sections={available.sections}
           value={section}

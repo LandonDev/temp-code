@@ -231,7 +231,7 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
                   variant="ghost"
                   size="xs"
                   aria-label="Model for this message"
-                  className={`h-5 px-1 text-xs font-normal text-muted-foreground hover:text-foreground aria-expanded:opacity-100 ${
+                  className={`relative h-5 px-1 text-xs font-normal text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-[''] hover:text-foreground aria-expanded:opacity-100 ${
                     overridden ? '' : 'opacity-0 group-hover/q:opacity-100 focus-visible:opacity-100'
                   }`}
                 />

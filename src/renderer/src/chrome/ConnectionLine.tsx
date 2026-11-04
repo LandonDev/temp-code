@@ -27,8 +27,9 @@ export function useEnvironmentBlock(environmentId: string): { degraded: Degraded
   return { degraded, name, text: degraded ? degradedText(name, degraded, now) : null };
 }
 
-/** The line's one action: a ghost button in the line's own 12px muted type. */
-const ACTION = "h-5 px-1.5 text-xs font-normal text-muted-foreground hover:text-foreground";
+/** The line's one action: a ghost button in the line's own 12px muted type,
+ *  20px tall with its hit area stretched to 24px. */
+const ACTION = "h-5 px-1.5 text-xs font-normal text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-[''] hover:text-foreground";
 
 export function ConnectionLine({ environmentId }: { environmentId: string }) {
   const { degraded, text } = useEnvironmentBlock(environmentId);

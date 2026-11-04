@@ -67,11 +67,13 @@ export function DockBar({ terminals, active, dev, onSelect, onSelectDev, onClose
         onValueChange={(value) => (value === DEV_TAB ? onSelectDev() : onSelect(String(value)))}
         className="min-w-0 flex-1 gap-0"
       >
+        {/* The line variant zeroes a list's padding, so the 8px is stated on that
+            variant: a tab's label (4px into its trigger) starts on the terminal's 12px. */}
         <TabsList
           ref={setList}
           variant="line"
           aria-label="Dock"
-          className={`scrollbar-none w-full min-w-0 justify-start gap-3 overflow-x-auto overscroll-none px-3 group-data-[orientation=horizontal]/tabs:h-full ${OVERFLOW_FADE}`}
+          className={`scrollbar-none w-full min-w-0 justify-start gap-3 overflow-x-auto overscroll-none data-[variant=line]:px-2 group-data-[orientation=horizontal]/tabs:h-full ${OVERFLOW_FADE}`}
         >
           {terminals.map((file, index) => {
             const label = terminalTabLabel(file);

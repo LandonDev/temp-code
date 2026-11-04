@@ -213,7 +213,7 @@ export function SurfaceTabs({
                             variant="ghost"
                             size="icon-xs"
                             aria-label={`Close ${label}`}
-                            className="pointer-events-auto size-4 rounded-sm text-muted-foreground hover:text-foreground"
+                            className="pointer-events-auto relative size-4 rounded-sm text-muted-foreground after:absolute after:-inset-1 after:content-[''] hover:text-foreground"
                             onPointerDown={(event) => event.stopPropagation()}
                             onClick={(event) => {
                               event.stopPropagation();
