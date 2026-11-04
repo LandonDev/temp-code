@@ -2860,7 +2860,12 @@ this is the short one.
   the child the batch's `blocked` names says why, "Ended its turn without
   completing"; a watching or paused child under Working, a failed one
   under Needs you, says its own word) and the task tally `3/7` at the end; the sections read Needs you, Working, Queued,
-  Done with no counts, and the board holds no task list or progress bar.
+  Done with no counts. An implementation or orchestration row with tasks
+  is 64px: a third line holds the task bar (`Progress`, foreground while
+  working, muted otherwise), the tally said there alone and a chevron,
+  the whole line folding the task list open under it (`TaskRows` compact,
+  closed by default, remembered per row for the window's life in
+  master/taskFold.ts; `taskBar` in master/rowBody.ts).
   On hover the model mark gives way to Message, the state's one verb
   (Pause, Resume, Start now) and ⋯, the row's menu, where Stop, Archive
   and a queued thread's Remove from queue live. A row whose thread has

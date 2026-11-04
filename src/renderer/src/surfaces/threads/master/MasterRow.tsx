@@ -1,9 +1,12 @@
 import { memo, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Button } from "../../../components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
 import { Item } from "../../../components/ui/item";
+import { Progress } from "../../../components/ui/progress";
 import { STATUS_WORD, StatusMark, statusToneClass } from "../../../components/ui/status";
+import { TaskRows } from "../../../components/ui/task-list";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
-import { MessageSquare, MoreHorizontal, Pause, Play } from "../../../chrome/icons";
+import { ChevronRight, MessageSquare, MoreHorizontal, Pause, Play } from "../../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../../chrome/menuRows";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
 import { HostGlyph } from "../../../chrome/HostGlyph";
@@ -17,9 +20,11 @@ import { hasRunningTurn } from "../../../lib/threadBatch";
 import { marksAtRest } from "../../../lib/threadStripModel";
 import { plainStatus } from "@shared/statusWords";
 import { modelLabel } from "../../../lib/threads/agents";
+import { tasksOf } from "../implementationBoard";
 import { TypeGlyph } from "../TypeGlyph";
 import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
-import { rowStatus, taskList, taskTally } from "./rowBody";
+import { rowStatus, taskBar, taskList, taskTally } from "./rowBody";
+import { useTaskFold } from "./taskFold";
 import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
 
 /**
@@ -33,7 +38,13 @@ import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardR
  * word when the section heading does not say it (watching or paused under
  * Working, failed under Needs you, stopped under Done) and what the state
  * is about, 12px, and the task tally at the end. The child that blocks the
- * batch's end says why (`blocked`). Under them the thread's live
+ * batch's end says why (`blocked`). An implementation or orchestration row
+ * with a task list has a third line instead of the end tally (16px, the
+ * row 64px): the task bar across the title's column, foreground while the
+ * thread works and muted otherwise, then the tally and a chevron; the
+ * whole line folds the task list open under it (compact TaskRows), closed
+ * by default and remembered per row for the window's life (taskFold.ts).
+ * Under them the thread's live
  * subagents, one still line each (AgentLines). A row of a host out of reach is
  * under the offline tint. A click opens the thread's full view in the
  * board's place; on hover the model mark gives way to Message, the one
@@ -84,6 +95,7 @@ export function sameShownMeta(a: SessionMeta, b: SessionMeta): boolean {
 const sameShown = (kept: SessionMeta | null, next: SessionMeta | null): boolean => kept !== null && next !== null && sameShownMeta(kept, next);
 
 export const MasterRow = memo(function MasterRow({
+  masterId,
   rowRef,
   landed,
   blocked = null,
@@ -91,6 +103,8 @@ export const MasterRow = memo(function MasterRow({
   onOpen,
   menu,
 }: {
+  /** The master whose board this is: the fold memory's scope. */
+  masterId: string;
   rowRef: BoardRowRef;
   /** The batch marked this row's branch landed. */
   landed: boolean;
@@ -107,6 +121,7 @@ export const MasterRow = memo(function MasterRow({
   const plan = useSessionMeta(rowRef.planId);
   const digest = useBoardDigest(rowRef.id);
   const agents = useRowAgents(rowRef.id);
+  const [tasksOpen, setTasksOpen] = useTaskFold(masterId, rowRef.key);
   if (!meta) return null;
   return (
     <ShownRow
@@ -121,6 +136,8 @@ export const MasterRow = memo(function MasterRow({
       hostGlyph={hostGlyph}
       onOpen={onOpen}
       menu={menu}
+      tasksOpen={tasksOpen}
+      onTasksOpenChange={setTasksOpen}
     />
   );
 });
@@ -145,6 +162,8 @@ export function MasterRowView({
   hostGlyph,
   onOpen,
   menu,
+  tasksOpen = false,
+  onTasksOpenChange,
 }: {
   meta: SessionMeta;
   /** The plan's title when the row is a plan and the build it started. */
@@ -158,12 +177,17 @@ export function MasterRowView({
   hostGlyph: HostGlyphOf;
   onOpen: (id: string, focus?: boolean) => void;
   menu: RowMenu;
+  /** The task list's fold under the bar line (bar rows only). */
+  tasksOpen?: boolean;
+  onTasksOpenChange?: (open: boolean) => void;
 }) {
   const title = planTitle || meta.title;
   const { state, detail } = rowStatus(meta, digest, landed, blocked);
   // The word the glyph stands for and the detail, as one name for readers.
   const statusLabel = plainStatus(STATUS_WORD[state], detail);
-  const tally = taskTally(taskList(digest));
+  const bar = taskBar(meta, digest);
+  // A bar row says its tally on the bar's line alone.
+  const tally = bar ? null : taskTally(taskList(digest));
   const group = groupOf(meta);
   // The section heading says the word; a state it does not name says its own.
   const ownWord = STATUS_WORD[state] !== GROUP_LABEL[group];
@@ -253,6 +277,13 @@ export function MasterRowView({
         ) : null}
       </span>
 
+      {bar ? (
+        <>
+          <span />
+          <TaskBar bar={bar} working={state === "working"} todos={taskList(digest)} open={tasksOpen} onOpenChange={onTasksOpenChange} />
+        </>
+      ) : null}
+
       {agents ? (
         <>
           <span />
@@ -288,6 +319,46 @@ export function MasterRowView({
         />
       </span>
     </Item>
+  );
+}
+
+/** The bar line and the task list it folds open: the 4px bar (foreground
+ *  while the thread works, muted in every other state, so it never
+ *  competes with an amber or red detail), the tally and a chevron, the
+ *  whole line one button. The fold is the standard Fold row (DESIGN.md);
+ *  the bar's fill is Progress's own and moves only when a task ticks. Its
+ *  click and keys stay off the row, which would open the thread. */
+function TaskBar({
+  bar,
+  working,
+  todos,
+  open,
+  onOpenChange,
+}: {
+  bar: { done: number; total: number };
+  working: boolean;
+  todos: ReturnType<typeof taskList>;
+  open: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  return (
+    <Collapsible open={open} onOpenChange={(next) => onOpenChange?.(next)} className="min-w-0" data-task-bar>
+      <CollapsibleTrigger
+        aria-label={`Tasks: ${String(bar.done)} of ${String(bar.total)} done`}
+        onClick={stop}
+        onKeyDown={stop}
+        className="-mx-1 flex h-4 w-[calc(100%+8px)] items-center gap-2 rounded-sm px-1 outline-none transition-[background-color] duration-(--dur-hover) hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+      >
+        <Progress value={bar.done} max={bar.total} fill={working ? "foreground" : "muted"} aria-hidden className="min-w-0 flex-1" />
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums" dir="ltr" data-bar-tally>
+          {bar.done}/{bar.total}
+        </span>
+        <ChevronRight aria-hidden className={cn("size-3 shrink-0 text-muted-foreground transition-[rotate] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none", open && "rotate-90")} />
+      </CollapsibleTrigger>
+      <CollapsibleContent data-task-fold>
+        <TaskRows size="compact" tasks={tasksOf(todos, 0, working)} className="py-0.5" />
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

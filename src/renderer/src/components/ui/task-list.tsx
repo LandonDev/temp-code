@@ -93,15 +93,31 @@ function TaskMark({ state, className }: { state: TaskState; className?: string }
 
 type Spot = { x: number; y: number; slide: boolean; gone: boolean };
 
-function TaskCursor({ at }: { at: Spot }) {
+function TaskCursor({ at, size }: { at: Spot; size: TaskRowsSize }) {
   return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round" aria-hidden data-slide={at.slide || undefined} data-gone={at.gone || undefined} style={{ translate: `${at.x}px ${at.y}px` }} className="task-cursor absolute left-0 top-0 size-3.5 text-foreground">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round" aria-hidden data-slide={at.slide || undefined} data-gone={at.gone || undefined} style={{ translate: `${at.x}px ${at.y}px` }} className={cn("task-cursor absolute left-0 top-0 text-foreground", size === "compact" ? "size-3" : "size-3.5")}>
       <path d={ARROW} />
     </svg>
   );
 }
 
 const shareText = (value: number) => `${String(Math.round(Math.min(1, Math.max(0, value)) * 100))}%`;
+
+/** One task at the compact size: one line, cut at the column's edge with
+ *  its whole text on hover, no time, detail or share. */
+function CompactTaskRow({ task }: { task: Task }) {
+  return (
+    <li className="flex min-h-5 items-start gap-1.5">
+      <TaskMark state={task.state} className="mt-1 size-3" />
+      <TruncateTip text={task.label}>
+        <span data-state={task.state} className={cn("task-label relative min-w-0 truncate text-xs leading-5", task.state === "active" ? "text-foreground" : task.state === "done" ? "text-(--task-done)" : "text-muted-foreground")}>
+          {task.label}
+          <span aria-hidden className="task-strike" />
+        </span>
+      </TruncateTip>
+    </li>
+  );
+}
 
 /** One task. Every row is a disclosure, so a detail that arrives opens with
  *  motion and one that goes folds with its last content held. */
@@ -155,6 +171,54 @@ function listMeasure(root: HTMLElement): Measure | null {
   return canvasMeasure({ label: cssFont(label), time: cssFont(time) });
 }
 
+export type TaskRowsSize = "card" | "compact";
+
+/** The task rows with the cursor on the active one: the card's list, or at
+ *  `compact` (the master board's fold) 20px one-line rows at 12px with a
+ *  12px mark, read-only, with no time, detail or share. */
+export function TaskRows({ tasks, size = "card", className }: { tasks: readonly Task[]; size?: TaskRowsSize; className?: string }) {
+  const rows = useRef<HTMLUListElement>(null);
+  const [cursor, setCursor] = useState<Spot | null>(null);
+  const activeAt = tasks.findIndex((task) => task.state === "active");
+  const activeShare = size === "card" ? tasks[activeAt]?.progress : undefined;
+
+  useLayoutEffect(() => {
+    const list = rows.current;
+    const mark = list?.children[activeAt]?.querySelector(".task-mark");
+    if (!list || !mark) {
+      setCursor((was) => (was === null ? null : { ...was, gone: true }));
+      return;
+    }
+    const measure = () => {
+      const box = list.getBoundingClientRect();
+      const at = mark.getBoundingClientRect();
+      return { x: at.left - box.left - list.clientLeft, y: at.top - box.top - list.clientTop };
+    };
+    setCursor((was) => ({ ...measure(), slide: was !== null && !was.gone, gone: false }));
+    const watch = new ResizeObserver(() =>
+      setCursor((was) => {
+        if (was === null) return null;
+        const to = measure();
+        return was.x === to.x && was.y === to.y ? was : { ...was, ...to };
+      }),
+    );
+    watch.observe(list);
+    return () => watch.disconnect();
+  }, [activeAt, tasks.length]);
+
+  return (
+    <ul ref={rows} data-size={size} className={cn("relative", size === "card" && "-mt-1 px-3 pb-2", activeShare !== undefined && "pe-14", className)}>
+      {tasks.map((task) => (size === "compact" ? <CompactTaskRow key={task.id} task={task} /> : <TaskRow key={task.id} task={task} />))}
+      {cursor === null ? null : <TaskCursor at={cursor} size={size} />}
+      {cursor === null || activeShare === undefined ? null : (
+        <span aria-hidden data-slide={cursor.slide || undefined} data-gone={cursor.gone || undefined} style={{ translate: `0 ${cursor.y - 3}px` }} className="task-share absolute end-3 top-0 rounded-full bg-muted px-1.5 text-xs leading-5 text-muted-foreground tabular-nums">
+          {shareText(activeShare)}
+        </span>
+      )}
+    </ul>
+  );
+}
+
 export function TaskList({
   tasks,
   title = "Tasks",
@@ -199,38 +263,9 @@ export function TaskList({
   }, [labels, hasTimes, title, tasks.length, onFitWidth, measureText]);
 
   const done = tasks.filter((task) => task.state === "done").length;
-  const activeAt = tasks.findIndex((task) => task.state === "active");
-  const active = activeAt === -1 ? undefined : tasks[activeAt];
+  const active = tasks.find((task) => task.state === "active");
   const complete = tasks.length > 0 && done === tasks.length;
   const headline = open ? title : complete ? DONE_LINE : (active?.label ?? title);
-
-  const rows = useRef<HTMLUListElement>(null);
-  const [cursor, setCursor] = useState<Spot | null>(null);
-  const activeShare = tasks[activeAt]?.progress;
-
-  useLayoutEffect(() => {
-    const list = rows.current;
-    const mark = list?.children[activeAt]?.querySelector(".task-mark");
-    if (!list || !mark) {
-      setCursor((was) => (was === null ? null : { ...was, gone: true }));
-      return;
-    }
-    const measure = () => {
-      const box = list.getBoundingClientRect();
-      const at = mark.getBoundingClientRect();
-      return { x: at.left - box.left - list.clientLeft, y: at.top - box.top - list.clientTop };
-    };
-    setCursor((was) => ({ ...measure(), slide: was !== null && !was.gone, gone: false }));
-    const watch = new ResizeObserver(() =>
-      setCursor((was) => {
-        if (was === null) return null;
-        const to = measure();
-        return was.x === to.x && was.y === to.y ? was : { ...was, ...to };
-      }),
-    );
-    watch.observe(list);
-    return () => watch.disconnect();
-  }, [activeAt, open, tasks.length]);
 
   useEffect(() => {
     if (complete) setOpen(false);
@@ -254,17 +289,7 @@ export function TaskList({
       </CollapsibleTrigger>
 
       <CollapsibleContent>
-        <ul ref={rows} className={cn("relative -mt-1 px-3 pb-2", activeShare !== undefined && "pe-14")}>
-          {tasks.map((task) => (
-            <TaskRow key={task.id} task={task} />
-          ))}
-          {cursor === null ? null : <TaskCursor at={cursor} />}
-          {cursor === null || activeShare === undefined ? null : (
-            <span aria-hidden data-slide={cursor.slide || undefined} data-gone={cursor.gone || undefined} style={{ translate: `0 ${cursor.y - 3}px` }} className="task-share absolute end-3 top-0 rounded-full bg-muted px-1.5 text-xs leading-5 text-muted-foreground tabular-nums">
-              {shareText(activeShare)}
-            </span>
-          )}
-        </ul>
+        <TaskRows tasks={tasks} />
       </CollapsibleContent>
     </Collapsible>
   );

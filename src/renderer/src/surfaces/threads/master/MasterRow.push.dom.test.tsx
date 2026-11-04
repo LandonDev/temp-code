@@ -40,8 +40,8 @@ describe("a board row and the pushes it does not show", () => {
   it("draws nothing for 100 pushes of a thread not on the board, or of its own live context; one status change draws its row alone", async () => {
     render(
       <>
-        <MasterRow rowRef={ref("a")} landed={false} host={null} onOpen={() => {}} menu={menu} />
-        <MasterRow rowRef={ref("b")} landed={false} host={null} onOpen={() => {}} menu={menu} />
+        <MasterRow masterId="m" rowRef={ref("a")} landed={false} host={null} onOpen={() => {}} menu={menu} />
+        <MasterRow masterId="m" rowRef={ref("b")} landed={false} host={null} onOpen={() => {}} menu={menu} />
       </>,
     );
     await flush();

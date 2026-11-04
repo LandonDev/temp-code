@@ -965,7 +965,15 @@ in the whole pane, with Back.
 │  ⓘ  Failed  Usage cap until 14:00                                     │
 │ Working                                                                │
 │  ☷  Home: Needs you, Working, Workspaces            ✺ Fable 5.1      │
-│  ⠿  Workspaces list with the project headers                     3/7 │
+│  ⠿  Write the project header rows                                     │
+│     ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   3/7  ⌄ │
+│     ✓ Read the brief                                                   │
+│     ✓ Rail rows                                                        │
+│     ✓ Section headings                                                 │
+│     ➜ Write the project header rows                                    │
+│     ○ Tests                                                            │
+│     ○ Docs                                                             │
+│     ○ Look at it at 420 and 640px                                      │
 │     ◉ Run the tests  Needs you  Approve Bash                           │
 │     ◜ Rail rows  Working  Editing Rail.tsx                             │
 │     1 done                                                             │
@@ -978,7 +986,8 @@ in the whole pane, with Back.
 │  ◌  Waiting for Home                                                  │
 │ Done                                                                   │
 │  ☷  Design foundations                              ✺ Fable 5.1      │
-│     Landed 12:08                                                 4/4 │
+│     Landed 12:08                                                       │
+│     ███████████████████████████████████████████████████████████   4/4  › │
 ├────────────────────────────────────────────────────────────────────────┤
 │ When done                                                         Edit │
 │ ✓ Land        2 of 7 landed                                     1m 30s │
@@ -1066,7 +1075,8 @@ in the whole pane, with Back.
   or paused under Working, failed under Needs you, stopped under Done),
   12px medium in its tone, then what the state is about, 12px regular:
   amber for waiting, red for failed, else muted; the task tally (`3/7`,
-  12px, `tabular-nums`, no bar) ends the line once the thread has a list.
+  12px, `tabular-nums`) ends the line once the thread has a list, except
+  on a row with the task bar, which says it on the bar's line.
   The row's accessible name carries the colon form ("Working: Write the
   view", `plainStatus`). The detail: working, an implementation's task in
   hand (its `in_progress` todo), else the host's `statusDetail` or its
@@ -1081,9 +1091,32 @@ in the whole pane, with Back.
   `blocked` names says why ("Ended its turn without completing",
   `blockedReason` in src/shared/batchWords.ts, given its capital). A
   detail is written as the host says it (a sentence with its capital, a
-  name or a count as it is) and ends without a full stop. No task list,
-  third line or progress bar: the child pane has the list, one click
-  away. A row of a host whose link is not open sits under the offline
+  name or a count as it is) and ends without a full stop.
+  **The task bar.** An implementation or orchestration row with a task
+  list (`taskBar` in master/rowBody.ts; the digest's `todos`, the tally's
+  source) has a third 16px line in the title's column, so the row is 64px
+  (the board's estimate knows it before the measure): the 4px `Progress`
+  bar across the column, then the tally (`3/7`, 12px muted, said here and
+  nowhere else on the row) and a 12px chevron, the right edge where the
+  model mark ends. The fill is foreground while the row's state is
+  working and muted in every other state, so it never competes with an
+  amber or red detail and Done stays quiet; it moves only when a task
+  ticks, on Progress's own `--dur-slow` `--ease-out` scaleX, so working's
+  spinner stays the row's one moving mark. Line two keeps the task in
+  hand, said once, right above the bar. The whole line is one button
+  ("Tasks: 3 of 7 done", `aria-expanded`), hover `foreground/5`; its click
+  and keys stay off the row. It folds the task list open under it,
+  closed by default: `TaskRows` at its compact size (20px rows, 12px
+  labels and marks, each one line cut at the column's edge with the whole
+  text on hover; done ticks and strikes, the running task is foreground
+  with the cursor, pending muted; no card, header, times or steps). The
+  fold is the standard Fold row (DESIGN.md) and the chevron turns with it.
+  Each row's fold is remembered for the window's life by `<master>:<row
+  key>` (master/taskFold.ts; a plan's row key is the plan's id, so it
+  survives the build starting), through the virtualizer unmounting the
+  row, the child pane and back, and a section change; never across a
+  reload. Planning, chat, research and project-plan rows have no bar.
+  A row of a host whose link is not open sits under the offline
   tint (`opacity-50`, `data-host-offline`): its row is the launch
   mirror's and lifts when the host is back.
   Under the lines, the thread's live subagents, one 20px line each in the

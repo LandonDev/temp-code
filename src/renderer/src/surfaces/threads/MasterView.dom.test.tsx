@@ -652,7 +652,7 @@ describe("the master view", () => {
     expect(headers().map((h) => h.getAttribute("data-group-header"))).toEqual(["running"]);
   });
 
-  it("an implementation row says the task in hand and 3/7 at the line's end, with no task list on the board", async () => {
+  it("an implementation row says the task in hand on line two and 1/3 on its task bar, its list folded", async () => {
     seed([
       meta({ id: "c-impl", title: "Home screen", status: "running", activity: "Running bun" }),
       meta({ id: "c-chat", title: "A question", status: "running", threadType: "chat", activity: "Reading" }),
@@ -667,12 +667,13 @@ describe("the master view", () => {
     await flush();
     await flush();
     const impl = screen.getByRole("button", { name: /Home screen/ });
-    expect(impl.querySelector("[data-row-status]")?.textContent).toBe("Write the view1/3");
-    expect(impl.querySelector("[data-tally]")?.textContent).toBe("1/3");
+    expect(impl.querySelector("[data-row-status]")?.textContent).toBe("Write the view");
+    expect(impl.querySelector("[data-tally]")).toBeNull();
+    expect(impl.querySelector("[data-bar-tally]")?.textContent).toBe("1/3");
     // A reader hears the state and its detail, not the state alone.
     expect(screen.getByRole("button", { name: /Working: Write the view/ })).toBe(impl);
+    expect(within(impl).getByRole("button", { name: "Tasks: 1 of 3 done" }).getAttribute("aria-expanded")).toBe("false");
     expect(within(impl).queryByRole("list")).toBeNull();
-    expect(within(impl).queryByRole("progressbar")).toBeNull();
     // A chat keeps its activity; the tally still ends its line.
     const chat = screen.getByRole("button", { name: /A question/ });
     expect(chat.querySelector("[data-row-status]")?.textContent).toBe("Reading1/3");
@@ -1473,12 +1474,14 @@ describe("the board's static preview", () => {
     expect(lines).toEqual([
       "Approve WebFetch",
       "FailedUsage cap until 14:00",
-      "Wire the rows to the store2/7",
+      "Wire the rows to the store",
       "Watchingsleep 45 seconds",
       "PausedRunning bun test",
       "Waiting for Home screen",
-      "Landed 12:084/4",
+      "Landed 12:08",
     ]);
+    // The two implementation rows say their tally on the bar's line.
+    expect([...document.querySelectorAll("[data-bar-tally]")].map((t) => t.textContent)).toEqual(["2/7", "4/4"]);
     expect(document.querySelector("[data-agents-tail]")?.textContent).toBe("1 done");
     expect(document.querySelector("[data-step='smoke'] [data-console='smoke']")?.textContent?.split("\n")).toHaveLength(8);
     expect(document.body.textContent).not.toMatch(/[·•—]/);
@@ -1699,7 +1702,7 @@ describe("the batch across hosts", () => {
     await flush();
     const box = screen.getByRole("button", { name: /Inbox/ });
     expect(within(box).getByText("0/2")).toBeTruthy();
-    expect(box.querySelector("[data-row-status]")?.textContent).toBe("Swipe0/2");
+    expect(box.querySelector("[data-row-status]")?.textContent).toBe("Swipe");
     expect(boxLink.calls.filter((c) => c.method === "batch.board").map((c) => c.params)).toEqual([{ masterId: "m" }]);
     // Its board push moves the row; nothing is read per row on either host.
     act(() => boxLink.push({ push: "board", masterId: "m", sessionId: "c-box", digest: { todos: [{ content: "Swipe", status: "completed" }] } } as ServerPush));
