@@ -37,7 +37,7 @@ import {
   type BoardRowRef,
   type RowHost,
 } from "./master/useMasterModel";
-import { SplitShell } from "./SplitShell";
+import { SplitShell, useSplit } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 import { useChatFold } from "../../lib/chatFold";
 import { blockedReason } from "@shared/batchWords";
@@ -179,12 +179,12 @@ export function MasterView(props: ThreadViewProps) {
   const paired = useMemo(() => (meta ? pairedProjectIds(meta, workspaces, projects) : new Set<string>()), [meta, workspaces, projects]);
   const candidates = useMemo(() => (meta && menu === "add" ? adoptCandidates(metas, meta, paired) : []), [metas, meta, paired, menu]);
 
-  // The board's scroll offset survives a trip into a child's full view.
+  // A trip into a child's full view comes back where it left: the split the
+  // person set, the board's scroll, and the focus on the row that opened it.
+  const split = useSplit(50);
   const scroller = useRef<HTMLDivElement>(null);
   const savedScroll = useRef(0);
-  useLayoutEffect(() => {
-    if (!openId && scroller.current) scroller.current.scrollTop = savedScroll.current;
-  }, [openId]);
+  const returnTo = useRef<string | null>(null);
 
   const items = useMemo<BoardItem[]>(
     () =>
@@ -216,6 +216,37 @@ export function MasterView(props: ThreadViewProps) {
     measureElement: measureRow,
   });
 
+  // Back from a child: the saved offset first, then the row that opened it in
+  // view and focused. Rows re-sort by state while a child is open, so the raw
+  // offset can land elsewhere; a row the board no longer lists leaves the offset.
+  useLayoutEffect(() => {
+    if (openId) return;
+    const el = scroller.current;
+    const id = returnTo.current;
+    returnTo.current = null;
+    if (!el) return;
+    el.scrollTop = savedScroll.current;
+    if (!id) return;
+    const index = items.findIndex((item) => item.kind === "row" && item.row.id === id);
+    if (index < 0) return;
+    const rowOf = () => el.querySelector<HTMLElement>(`[data-menu-id="${id}"]`);
+    const land = (row: HTMLElement) => {
+      row.scrollIntoView?.({ block: "nearest" });
+      row.focus({ preventScroll: true });
+    };
+    const row = rowOf();
+    if (row) return land(row);
+    // Out of the rendered window: bring it in, and focus it once it is drawn.
+    virtualizer.scrollToIndex(index, { align: "auto" });
+    const frame = requestAnimationFrame(() => {
+      const drawn = rowOf();
+      if (drawn) land(drawn);
+    });
+    return () => cancelAnimationFrame(frame);
+    // Only a return from a child decides this; the rows and the virtualizer are read as they stand.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
+
   // The first complete paint: the answer is in and its rows are on screen.
   const openedAt = useRef(performance.now());
   const painted = useRef(false);
@@ -246,6 +277,7 @@ export function MasterView(props: ThreadViewProps) {
   const openRef = useRef<(id: string, focus?: boolean) => void>(() => {});
   openRef.current = (id: string, focus = false) => {
     savedScroll.current = scroller.current?.scrollTop ?? 0;
+    returnTo.current = id;
     setFocusComposer(focus);
     setOpenId(id);
   };
@@ -396,6 +428,7 @@ export function MasterView(props: ThreadViewProps) {
         board={board}
         chat={chat}
         hasBoard={showBoard}
+        splitState={split}
         collapsed={!chatOpen}
         onToggleChat={setChatOpen}
         title={title}

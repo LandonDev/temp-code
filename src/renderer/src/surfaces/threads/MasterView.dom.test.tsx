@@ -186,8 +186,10 @@ vi.mock("./ThreadView", () => ({
 // SplitShell's contract as the view sees it: the board (and its header and
 // fold toggle) only with `hasBoard`, the fold as data-folded; the real
 // shell's fade and widths are SplitShell.dom.test.tsx's.
-vi.mock("./SplitShell", () => ({
+vi.mock("./SplitShell", async (original) => ({
   ChatToggle: () => null,
+  // The real split state, so a test reads what MasterView holds across a child pane.
+  useSplit: (await original<typeof import("./SplitShell")>()).useSplit,
   SplitShell: ({
     board,
     chat,
@@ -197,6 +199,7 @@ vi.mock("./SplitShell", () => ({
     title,
     detail,
     actions,
+    splitState,
   }: {
     board: React.ReactNode;
     chat: React.ReactNode;
@@ -206,10 +209,12 @@ vi.mock("./SplitShell", () => ({
     title?: React.ReactNode;
     detail?: React.ReactNode;
     actions?: React.ReactNode;
+    splitState?: { split: number; setSplit: (n: number) => void };
   }) => (
     <div>
       {hasBoard ? (
-        <div data-board data-folded={collapsed ? "" : undefined}>
+        <div data-board data-folded={collapsed ? "" : undefined} data-split={splitState?.split}>
+          <button type="button" aria-label="Drag the sash to 60%" onClick={() => splitState?.setSplit(60)} />
           {title !== undefined ? (
             <div data-view-header>
               <span data-view-title>{title}</span>
@@ -909,6 +914,26 @@ describe("the master view", () => {
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /Back/ }));
     expect(screen.getByTestId("chat")).toBeTruthy();
+  });
+
+  it("Back keeps the split the person set, and lands on the row that opened the child even after it moved section", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" }), meta({ id: "c-two", title: "Inbox", status: "running" })]);
+    renderView();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Drag the sash to 60%" }));
+    expect(document.querySelector("[data-board]")!.getAttribute("data-split")).toBe("60");
+    fireEvent.click(screen.getByRole("button", { name: /Inbox/ }));
+    await flush();
+    expect(document.querySelector("[data-board]")).toBeNull();
+    // While the child is open, Inbox settles and moves to Done.
+    const { environmentId: _e, ...settled } = meta({ id: "c-two", title: "Inbox", status: "done" });
+    act(() => link.push({ push: "session", session: settled } as unknown as ServerPush));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    await flush();
+    expect(document.querySelector("[data-board]")!.getAttribute("data-split")).toBe("60");
+    expect(headers().map((h) => h.getAttribute("data-group-header"))).toEqual(["running", "done"]);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Inbox/ }));
   });
 
   it("the title bar's menu archives the done threads or every one through batch.archive, with the live count", async () => {

@@ -39,7 +39,7 @@ function useAttachmentSrc(environmentId: string, attachment: Attachment, wanted:
 }
 
 /** Open the viewer on `files`' images, starting at `at`. */
-export function openAttachmentImages(environmentId: string, files: readonly Attachment[], at: Attachment): void {
+export function openAttachmentImages(environmentId: string, files: readonly Attachment[], at: Attachment, from?: DOMRect): void {
   const images = files.filter((file) => file.kind === 'image')
   const items: LightboxItem[] = images.map((file) => ({
     // A file still on the host it was attached from reads from there.
@@ -48,15 +48,16 @@ export function openAttachmentImages(environmentId: string, files: readonly Atta
     src: attachmentPreviewSrc(file),
     path: file.path
   }))
-  openLightbox(items, Math.max(0, images.indexOf(at)))
+  openLightbox(items, Math.max(0, images.indexOf(at)), from)
 }
 
 type Props = {
   environmentId: string
   attachment: Attachment
   onRemove?: () => void
-  /** Image chips open the viewer when this is given. */
-  onOpen?: () => void
+  /** Image chips open the viewer when this is given, with the thumbnail's box
+   *  so the viewer grows from it. */
+  onOpen?: (from: DOMRect) => void
   /** An upload to the thread's host in flight (or failed): said in the chip's line. */
   progress?: { sent: number; total: number; failed?: boolean }
 }
@@ -98,7 +99,14 @@ export function AttachmentChip({ environmentId, attachment, onRemove, onOpen, pr
       </AttachmentContent>
       {/* An image always opens: the viewer reads it by path and says when it can't. */}
       {attachment.kind === 'image' && onOpen ? (
-        <AttachmentTrigger {...lightboxChunk.intent} onClick={onOpen} aria-label={`Preview ${attachment.name}`} className="cursor-zoom-in" />
+        <AttachmentTrigger
+          {...lightboxChunk.intent}
+          onClick={(event) => {
+            const chip = event.currentTarget.closest('[data-slot="attachment"]')
+            const thumb = chip?.querySelector('[data-slot="attachment-media"]') ?? chip ?? event.currentTarget
+            onOpen(thumb.getBoundingClientRect())
+          }}
+          aria-label={`Preview ${attachment.name}`} className="cursor-zoom-in" />
       ) : null}
       {onRemove ? (
         <AttachmentActions>

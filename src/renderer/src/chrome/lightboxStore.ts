@@ -42,7 +42,11 @@ export function imageDataFor(environmentId: string, path: string): Promise<strin
   return pending
 }
 
-let state: { items: LightboxItem[]; index: number } | null = null
+/** Where the viewer grows from and settles back to: the centre of the
+ *  thumbnail that opened it, in the window's coordinates. */
+export type LightboxOrigin = { x: number; y: number }
+
+let state: { items: LightboxItem[]; index: number; origin?: LightboxOrigin } | null = null
 const subs = new Set<() => void>()
 const emit = (): void => subs.forEach((f) => f())
 const subscribe = (f: () => void): (() => void) => {
@@ -50,10 +54,13 @@ const subscribe = (f: () => void): (() => void) => {
   return () => subs.delete(f)
 }
 
-/** Open the viewer on a group of images; arrows/keys move within the group. */
-export function openLightbox(items: LightboxItem[], index = 0): void {
+/** Open the viewer on a group of images; arrows/keys move within the group.
+ *  `from` is the thumbnail's box: the viewer opens from it, and keeps that
+ *  origin as it steps, so it closes back toward the image that was asked for. */
+export function openLightbox(items: LightboxItem[], index = 0, from?: DOMRect): void {
   if (items.length === 0) return
-  state = { items, index: Math.max(0, Math.min(index, items.length - 1)) }
+  const origin = from ? { x: from.left + from.width / 2, y: from.top + from.height / 2 } : undefined
+  state = { items, index: Math.max(0, Math.min(index, items.length - 1)), origin }
   emit()
 }
 
@@ -86,6 +93,6 @@ function close(): void {
 export function subscribeLightbox(f: () => void): () => void {
   return subscribe(f)
 }
-export function lightboxSnapshot(): { items: LightboxItem[]; index: number } | null {
+export function lightboxSnapshot(): { items: LightboxItem[]; index: number; origin?: LightboxOrigin } | null {
   return state
 }

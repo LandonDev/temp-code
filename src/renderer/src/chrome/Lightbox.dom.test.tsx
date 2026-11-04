@@ -51,6 +51,20 @@ describe('Lightbox', () => {
     expect(screen.getByRole('dialog').textContent).toContain('3 / 3')
   })
 
+  it('grows from the thumbnail that opened it, keeps that origin while it steps, and with no thumbnail from the centre', () => {
+    render(<Lightbox />)
+    // A chip at (100, 700), 40 by 40: its centre is (120, 720); the dialog sits 24px in.
+    act(() => openLightbox(items, 0, { left: 100, top: 700, width: 40, height: 40 } as DOMRect))
+    expect(screen.getByRole('dialog').style.transformOrigin).toBe('96px 696px')
+    fireEvent.click(screen.getByRole('button', { name: 'Next image' }))
+    expect(screen.getByRole('dialog').style.transformOrigin).toBe('96px 696px')
+    act(() => closeLightbox())
+    cleanup()
+    render(<Lightbox />)
+    act(() => openLightbox(items, 0))
+    expect(screen.getByRole('dialog').style.transformOrigin).toBe('')
+  })
+
   it('one image has no arrows and no counter', () => {
     render(<Lightbox />)
     act(() => openLightbox(items.slice(0, 1)))

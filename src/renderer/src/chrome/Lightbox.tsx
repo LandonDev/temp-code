@@ -84,6 +84,9 @@ function Slide({ item }: { item: LightboxItem }) {
   )
 }
 
+/** The full dialog's inset from the window (`inset-6`, ui/dialog.tsx). */
+const VIEWER_INSET = 24
+
 /**
  * Full-window image viewer on the Dialog primitive: the window less 24px a
  * side, no chrome but the close, the arrows and the counter. Escape and the
@@ -112,6 +115,10 @@ export function Lightbox() {
         size="full"
         data-lightbox
         className="flex items-center justify-center p-0"
+        // It grows from the thumbnail that opened it and settles back there; the
+        // full dialog sits VIEWER_INSET in from the window, so the origin is
+        // the thumbnail's centre less that inset. No thumbnail: the centre.
+        style={shown.origin ? { transformOrigin: `${shown.origin.x - VIEWER_INSET}px ${shown.origin.y - VIEWER_INSET}px` } : undefined}
         onClick={(e) => {
           if (e.target === e.currentTarget) closeLightbox()
         }}

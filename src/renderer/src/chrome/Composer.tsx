@@ -894,7 +894,7 @@ export function Composer({
                     onRemove={uploading ? undefined : () => removeAttachment(file.id)}
                     onOpen={
                       file.kind === 'image'
-                        ? () => openAttachmentImages(environmentId, attachments, file)
+                        ? (from) => openAttachmentImages(environmentId, attachments, file, from)
                         : undefined
                     }
                   />

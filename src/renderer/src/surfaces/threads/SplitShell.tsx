@@ -270,6 +270,7 @@ export function SplitShell({
   actions,
   held,
   fit,
+  splitState,
   className = "",
 }: {
   /** The board's body; the header is drawn from `title`. */
@@ -293,9 +294,13 @@ export function SplitShell({
   /** The board's wanted width in px while the chat shows, capped at half
    *  the pane; a drag replaces it, a double-click on the sash restores it. */
   fit?: number;
+  /** The split, held by a view that unmounts the shell for a while (the master
+   *  board's child pane) so the person's split is there when it comes back. */
+  splitState?: SplitState;
   className?: string;
 }) {
-  const { split, setSplit, manual, setManual, dragging, rootRef, startDrag } = useSplit(50);
+  const ownSplit = useSplit(50);
+  const { split, setSplit, manual, setManual, dragging, rootRef, startDrag } = splitState ?? ownSplit;
   const fitted = fit !== undefined && !manual;
   const basis = fitted ? `min(${String(fit)}px, 50%)` : `${String(split)}%`;
   const shellWidth = useShellWidth(rootRef, fitted);

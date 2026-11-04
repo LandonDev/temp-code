@@ -65,14 +65,18 @@ describe("AttachmentChip", () => {
     vi.stubGlobal("IntersectionObserver", FakeObserver);
     imageDataFor.mockImplementationOnce(() => Promise.resolve(null as unknown as string));
     const { container } = render(
-      <AttachmentChip environmentId="local" attachment={history} onOpen={() => openAttachmentImages("local", [history], history)} />,
+      <AttachmentChip environmentId="local" attachment={history} onOpen={(from) => openAttachmentImages("local", [history], history, from)} />,
     );
     await act(async () => FakeObserver.last!.cb([{ isIntersecting: true }]));
     expect(container.querySelector("img")).toBeNull();
+    // The viewer grows from the thumbnail: the chip hands over its media's box.
+    const media = container.querySelector<HTMLElement>("[data-slot=attachment-media]")!;
+    media.getBoundingClientRect = () => ({ left: 100, top: 700, width: 40, height: 40 }) as DOMRect;
     fireEvent.click(screen.getByRole("button", { name: "Preview shot.png" }));
     expect(lightboxSnapshot()).toEqual({
       items: [{ environmentId: "local", name: "shot.png", src: undefined, path: "/tmp/shot.png" }],
       index: 0,
+      origin: { x: 120, y: 720 },
     });
   });
 

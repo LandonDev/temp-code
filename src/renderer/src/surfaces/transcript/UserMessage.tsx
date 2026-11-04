@@ -142,7 +142,7 @@ export function UserMessageBlock({
                 attachment={file}
                 onOpen={
                   file.kind === "image"
-                    ? () => openAttachmentImages(environmentId, block.attachments ?? [], file)
+                    ? (from) => openAttachmentImages(environmentId, block.attachments ?? [], file, from)
                     : undefined
                 }
               />
