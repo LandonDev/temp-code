@@ -98,6 +98,13 @@ export function modelLabel(provider: string | null | undefined, model: string | 
   return findModel(pickerModelId(asHarness(provider), model))?.name ?? model;
 }
 
+/** The maker of a (provider, native model) pair when it is not the
+ *  harness's own (catalog `vendor`); null otherwise or when unknown. */
+export function modelVendor(provider: string | null | undefined, model: string | null | undefined): "meta" | null {
+  if (!provider || !model) return null;
+  return findModel(pickerModelId(asHarness(provider), model))?.vendor ?? null;
+}
+
 // ── transcript lines ───────────────────────────────────────────────────
 
 function firstLine(text: string): string {

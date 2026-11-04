@@ -71,3 +71,21 @@ describe("icon stroke", () => {
     expect(restated).toEqual([]);
   });
 });
+
+describe("provider marks", () => {
+  it("ships an asset for every mark HarnessIcon draws, Meta's among them", async () => {
+    const { HARNESS_ICONS, MONOCHROME_HARNESSES } = await import("./HarnessIcon");
+    const assets = readdirSync(join(SRC, "assets/providers")).map((f) => f.replace(/\.svg$/, "")).sort();
+    expect(assets).toContain("meta");
+    expect(Object.keys(HARNESS_ICONS).sort()).toEqual(assets);
+    expect(MONOCHROME_HARNESSES.has("meta")).toBe(true);
+  });
+
+  it("draws Meta's mark in currentColor, like the other monochrome marks", async () => {
+    const { HarnessIcon } = await import("./HarnessIcon");
+    const html = renderToStaticMarkup(createElement(HarnessIcon, { harness: "meta" }));
+    expect(html).toContain('fill="currentColor"');
+    expect(html).toContain('d="M6.915 4.03');
+    expect(readFileSync(join(SRC, "assets/providers/meta.svg"), "utf8")).toContain('fill="currentColor" d="M6.915 4.03');
+  });
+});

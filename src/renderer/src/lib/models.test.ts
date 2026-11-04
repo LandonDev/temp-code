@@ -361,3 +361,55 @@ describe("Claude Fable 5.1", () => {
     expect(nativeModelId("claude:claude-opus-4-1")).toBe("claude-opus-4-1");
   });
 });
+
+describe("Meta's models", () => {
+  afterEach(() => {
+    resetHarnessModelOverlays();
+  });
+
+  const effortsOf = (m: AgentModel) => m.settings?.find((s) => s.id === "effort")?.options.map((o) => o.value);
+
+  it("the built-in list carries Wonder and Spark under claude and codex, marked meta, with no context select", () => {
+    for (const harness of ["claude", "codex"] as const) {
+      const meta = modelsFor(harness).filter((m) => m.vendor === "meta");
+      expect(meta.map((m) => m.nativeId)).toEqual(["muse-wonder-1.0", "muse-spark-1.3"]);
+      for (const m of meta) {
+        expect(m.contextWindow).toBe(1_048_576);
+        expect(m.settings?.some((s) => s.id === "context")).toBe(false);
+      }
+    }
+    expect(effortsOf(modelsFor("codex")[0])).toEqual(["minimal", "low", "medium", "high", "xhigh", "max"]);
+    expect(effortsOf(modelsFor("claude").find((m) => m.nativeId === "muse-wonder-1.0")!)).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+
+  it("matches the shared catalog's rows, so the fallback and the live list agree", () => {
+    for (const harness of ["claude", "codex"] as const) {
+      const shared = CATALOG[harness].models.filter((m) => m.vendor === "meta");
+      const builtIn = modelsFor(harness).filter((m) => m.vendor === "meta");
+      expect(builtIn.map((m) => [m.nativeId, m.name, effortsOf(m), defaultEffort(m)])).toEqual(
+        shared.map((m) => [m.id, m.label, m.reasoning, m.defaultReasoning]),
+      );
+    }
+  });
+
+  it("the live overlay keeps the vendor and the ids, offers no context select, and labels Minimal", () => {
+    for (const harness of ["claude", "codex"] as const) {
+      const live = agentModelsFor(CATALOG[harness]).filter((m) => m.vendor === "meta");
+      expect(live.map((m) => m.id)).toEqual([`${harness}:muse-wonder-1.0`, `${harness}:muse-spark-1.3`]);
+      expect(live.every((m) => !m.settings?.some((s) => s.id === "context"))).toBe(true);
+    }
+    const codexWonder = agentModelsFor(CATALOG.codex).find((m) => m.nativeId === "muse-wonder-1.0")!;
+    expect(codexWonder.settings![0].options[0]).toEqual({ value: "minimal", label: "Minimal" });
+    expect(codexWonder.settings![0].value).toBe("high");
+  });
+
+  it("a Meta row is never the fallback: codex before its catalog lands does not fall into Wonder", () => {
+    expect(resolveModel("codex").vendor).toBeUndefined();
+    expect(resolveModel("codex", "codex:muse-wonder-1.0").nativeId).toBe("muse-wonder-1.0");
+    expect(resolveModel("claude", "claude:muse-spark-1.3").nativeId).toBe("muse-spark-1.3");
+  });
+});
+
+function defaultEffort(m: AgentModel): string | undefined {
+  return m.settings?.find((s) => s.id === "effort")?.value;
+}

@@ -7,7 +7,7 @@
  */
 import { beforeAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { resetHarnessModelOverlays, setHarnessModels } from "../lib/models";
+import { findModel, mergeModelSettings, resetHarnessModelOverlays, saveModelPickerTab, setHarnessModels } from "../lib/models";
 import { agentModelsFor } from "../lib/tcserver/catalog";
 import type { ModelInfo, ProviderInfo } from "../lib/tcserver/types";
 import { ModelPicker } from "./ModelPicker";
@@ -170,5 +170,97 @@ describe("ModelPicker", () => {
     picker("codex", "codex:gpt-a");
     const menu = await open(/^Codex A/);
     expect(menu.textContent).not.toMatch(/priority processing|fastest service tier|not on this account/i);
+  });
+});
+
+describe("ModelPicker: Meta's models", () => {
+  const META_LADDER = ["minimal", "low", "medium", "high", "xhigh", "max"] as ModelInfo["reasoning"];
+  const meta = (efforts: ModelInfo["reasoning"]): ModelInfo[] => [
+    { id: "muse-wonder-1.0", label: "Muse Wonder 1.0", reasoning: efforts, defaultReasoning: "high", context: 1_048_576, vendor: "meta" },
+    { id: "muse-spark-1.3", label: "Muse Spark 1.3", reasoning: efforts, defaultReasoning: "medium", context: 1_048_576, vendor: "meta" },
+  ];
+  beforeEach(() => {
+    seed("claude", [{ id: "claude-opus-5-5", label: "Opus 5.5", reasoning: EFFORTS, defaultReasoning: "medium", context: 1_000_000 }, ...meta(EFFORTS)]);
+    seed("codex", [...meta(META_LADDER), { id: "gpt-6.1-sol", label: "GPT-6.1 Sol", reasoning: EFFORTS, defaultReasoning: "low" }]);
+  });
+
+  const groupIn = (menu: HTMLElement) => menu.querySelector<HTMLElement>("[data-vendor-group=meta]");
+  const effortOptions = async (menu: HTMLElement) => {
+    await act(async () => {
+      fireEvent.click(within(menu).getByRole("combobox", { name: "Effort" }));
+    });
+    return screen
+      .getAllByRole("option")
+      .filter((o) => !o.closest("[aria-label=Models]"))
+      .map((o) => o.textContent);
+  };
+
+  it("lists Meta's rows under a Meta heading after the harness's own, in the claude and codex tabs", async () => {
+    for (const [harness, own, button] of [
+      ["claude", "Opus 5.5", /Opus 5\.5/],
+      ["codex", "GPT-6.1 Sol", /GPT-6\.1 Sol/],
+    ] as const) {
+      saveModelPickerTab(harness);
+      picker(harness, harness === "claude" ? "claude:claude-opus-5-5" : "codex:gpt-6.1-sol");
+      const menu = await open(button);
+      const group = groupIn(menu)!;
+      expect(group).not.toBeNull();
+      expect(group.getAttribute("role")).toBe("group");
+      expect(group.getAttribute("aria-labelledby") && menu.querySelector(`#${CSS.escape(group.getAttribute("aria-labelledby")!)}`)?.textContent).toBe("Meta");
+      expect(within(group).getAllByRole("option").map((o) => o.querySelector("span")?.textContent)).toEqual(["Muse Wonder 1.0", "Muse Spark 1.3"]);
+      // The harness's own rows come first, outside the group; Meta's rows lead with the mark.
+      const names = within(menu).getAllByRole("option").map((o) => o.querySelector("span")?.textContent);
+      expect(names[0]).toBe(own);
+      expect(within(group).getAllByRole("option").every((o) => o.querySelector("svg path")?.getAttribute("d")?.startsWith("M6.915"))).toBe(true);
+      cleanup();
+    }
+  });
+
+  it("picking Wonder lands on High and offers no context; Minimal only where the ladder has it", async () => {
+    const wonder = findModel("claude:muse-wonder-1.0")!;
+    // Fresh, and from a codex thread at minimal: Claude Code's Wonder starts at High.
+    expect(mergeModelSettings(wonder, {})).toEqual({ effort: "high" });
+    expect(mergeModelSettings(wonder, { effort: "minimal" })).toEqual({ effort: "high" });
+
+    saveModelPickerTab("claude");
+    const onPick = vi.fn();
+    render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" onChange={onPick} />);
+    const list = await open(/Opus 5\.5/);
+    await act(async () => {
+      fireEvent.click(within(list).getByRole("option", { name: /Muse Wonder 1\.0/ }));
+    });
+    expect(onPick).toHaveBeenCalledWith("claude", "claude:muse-wonder-1.0");
+    cleanup();
+
+    picker("claude", "claude:muse-wonder-1.0", mergeModelSettings(wonder, {}));
+    let menu = await open(/Muse Wonder 1\.0/);
+    expect(screen.getByRole("button", { name: /Muse Wonder 1\.0 High/ })).toBeTruthy();
+    expect(within(menu).queryByRole("combobox", { name: "Context" })).toBeNull();
+    expect(await effortOptions(menu)).toEqual(["Low", "Medium", "High", "Extra high", "Max"]);
+    cleanup();
+
+    picker("codex", "codex:muse-wonder-1.0", { effort: "high" });
+    menu = await open(/Muse Wonder 1\.0/);
+    expect(within(menu).queryByRole("combobox", { name: "Context" })).toBeNull();
+    expect(await effortOptions(menu)).toEqual(["Minimal", "Low", "Medium", "High", "Extra high", "Max"]);
+  });
+
+  it("the Codex tab reads as loading until its catalog lands, not as Meta's built-in rows", async () => {
+    resetHarnessModelOverlays();
+    saveModelPickerTab("codex");
+    picker("claude", "claude:claude-opus-5");
+    const menu = await open(/Opus 5/);
+    expect(within(menu).queryAllByRole("option")).toHaveLength(0);
+    expect(menu.textContent).toContain("Loading Codex models…");
+  });
+
+  it("search and favorites list Meta's rows with the mark and no heading", async () => {
+    picker("claude", "claude:claude-opus-5-5");
+    const menu = await open(/Opus 5\.5/);
+    await act(async () => {
+      fireEvent.change(within(menu).getByRole("textbox", { name: "Search models" }), { target: { value: "muse" } });
+    });
+    expect(groupIn(menu)).toBeNull();
+    expect(within(menu).getAllByRole("option")).toHaveLength(4);
   });
 });

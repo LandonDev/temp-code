@@ -1,6 +1,7 @@
 import { Check, ChevronDown, Search, Star } from "./icons";
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -23,6 +24,7 @@ import {
   findModel,
   getModelSnapshot,
   getPickerVisibilitySnapshot,
+  hasLiveCatalog,
   loadFavoriteModels,
   loadModelPickerTab,
   modelsFor,
@@ -276,7 +278,7 @@ export function ModelPicker({
               (item): item is AgentModel =>
                 item != null && shownInPicker(item.harness),
             )
-        : modelsFor(visibleTab, environmentId);
+        : tabModels(visibleTab, environmentId);
     }
     // Typing searches every shown provider: rank ladder, favorites first
     // within a rank, catalog order last.
@@ -439,6 +441,7 @@ export function ModelPicker({
           active={active}
           currentId={current.id}
           favorites={favorites}
+          grouped={!searching && visibleTab !== "favorites"}
           emptyLabel={
             searching
               ? "No matching models"
@@ -480,12 +483,29 @@ function ProviderToggle({ value, title, children }: { value: ModelPickerTab; tit
   );
 }
 
-function ModelList({
+/** A harness tab's rows. Before its live catalog lands a tab whose built-in
+ *  list is only a maker's rows (Codex) reads as loading, not as that list. */
+function tabModels(harness: HarnessId, environmentId?: string): AgentModel[] {
+  const models = ownThenVendor(modelsFor(harness, environmentId));
+  return models.every((m) => m.vendor) && !hasLiveCatalog(harness, environmentId) ? [] : models;
+}
+
+/** A harness tab lists its own rows first, then a maker's (catalog `vendor`). */
+function ownThenVendor(models: AgentModel[]): AgentModel[] {
+  return models.some((m) => m.vendor) ? [...models.filter((m) => !m.vendor), ...models.filter((m) => m.vendor)] : models;
+}
+
+/** The heading over a maker's rows in a harness tab. */
+const VENDOR_TITLE: Record<NonNullable<AgentModel["vendor"]>, string> = { meta: "Meta" };
+
+/** The menu's list; exported for its static preview (ModelPicker.fixtures.tsx). */
+export function ModelList({
   available,
   models,
   active,
   currentId,
   favorites,
+  grouped,
   emptyLabel,
   onActive,
   onPick,
@@ -496,12 +516,15 @@ function ModelList({
   active: number;
   currentId: string;
   favorites: string[];
+  /** A harness tab: a maker's rows sit under its heading. */
+  grouped: boolean;
   emptyLabel: string;
   onActive: (index: number) => void;
   onPick: (model: AgentModel) => void;
   onToggleFavorite: (id: string) => void;
 }) {
   const activeRef = useRef<HTMLDivElement>(null);
+  const headingId = useId();
 
   useEffect(() => {
     activeRef.current?.scrollIntoView?.({ block: "nearest" });
@@ -514,7 +537,7 @@ function ModelList({
   return (
     <div className="max-h-[340px] min-h-0 overflow-x-hidden overflow-y-auto">
       <div role="listbox" aria-label="Models">
-        {models.map((item, index) => {
+        {renderGroups(grouped, models, headingId, (item, index) => {
           const selected = item.id === currentId;
           const highlighted = index === active;
           const favorited = favorites.includes(item.id);
@@ -537,6 +560,7 @@ function ModelList({
                 disabled ? "text-muted-foreground opacity-60" : highlighted && "bg-muted",
               )}
             >
+              {item.vendor ? <HarnessIcon harness={item.vendor} className="size-3.5 shrink-0 text-muted-foreground" /> : null}
               <span className="min-w-0 flex-1 truncate">{item.name}</span>
               {selected ? <Check className="size-3.5 shrink-0" /> : null}
               <Button
@@ -572,5 +596,30 @@ function ModelList({
         })}
       </div>
     </div>
+  );
+}
+
+/** The rows in order; in a harness tab a maker's rows (they come last,
+ *  `ownThenVendor`) sit in a group under its name. Indexes stay the flat
+ *  list's, so the keys and the active row read one sequence. */
+function renderGroups(
+  grouped: boolean,
+  models: AgentModel[],
+  headingId: string,
+  row: (item: AgentModel, index: number) => ReactNode,
+): ReactNode {
+  const split = grouped ? models.findIndex((m) => m.vendor) : -1;
+  if (split < 0) return models.map(row);
+  const vendor = models[split].vendor!;
+  return (
+    <>
+      {models.slice(0, split).map(row)}
+      <div role="group" aria-labelledby={headingId} data-vendor-group={vendor}>
+        <div id={headingId} role="presentation" className="px-2 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
+          {VENDOR_TITLE[vendor]}
+        </div>
+        {models.slice(split).map((item, i) => row(item, split + i))}
+      </div>
+    </>
   );
 }
