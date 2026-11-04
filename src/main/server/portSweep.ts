@@ -1,8 +1,8 @@
-import { execFile } from 'node:child_process'
 import { readFile, readlink } from 'node:fs/promises'
 import { notDevServer, underRunner } from '@shared/devServerRules'
 import { listenerWords } from '@shared/devServerWords'
 import type { EventRow } from '@shared/events'
+import { execFileOffBudget } from './spawnBudget'
 import type { ThreadResources } from './threadResources'
 import { shellOf } from './threadResourcesParse'
 import type { SharedScanner } from './threadPorts'
@@ -202,7 +202,10 @@ async function linuxProbe(pid: number): ReturnType<Probe> {
 }
 
 const exec = (cmd: string, args: string[]): Promise<string> =>
-  new Promise((resolve) => execFile(cmd, args, { timeout: 3_000 }, (_err, stdout) => resolve(String(stdout ?? ''))))
+  execFileOffBudget(cmd, args, { timeout: 3_000 }).then(
+    ({ stdout }) => stdout,
+    (err: { stdout?: string }) => err.stdout ?? ''
+  )
 
 async function macProbe(pid: number): ReturnType<Probe> {
   const [lsof, args] = await Promise.all([exec('lsof', ['-a', '-p', String(pid), '-d', 'cwd,1,2', '-Fn']), exec('ps', ['-o', 'args=', '-p', String(pid)])])

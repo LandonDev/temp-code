@@ -110,13 +110,16 @@ export default defineConfig({
     // require, so neither copy of them can drift from the other.
     // statsWorker.js is the stats worker thread (statsService.ts starts it):
     // the stats index and bundle run there, never on main's loop.
+    // execBroker.js is the exec broker's utility process (execBrokerSpawn.ts
+    // forks it): every helper child forks from it, never from main.
     build: {
       rollupOptions: {
         input: {
           index: resolve('src/main/index.ts'),
           boot: resolve('src/main/boot.ts'),
           gateway: resolve('src/main/gatewayProcess.ts'),
-          statsWorker: resolve('src/main/aliax/stats/statsWorker.ts')
+          statsWorker: resolve('src/main/aliax/stats/statsWorker.ts'),
+          execBroker: resolve('src/main/execBrokerProcess.ts')
         }
       }
     }

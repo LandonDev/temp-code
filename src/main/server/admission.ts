@@ -1,7 +1,7 @@
-import { execFile } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import type { AdmissionMemory, AdmissionState } from '@shared/contract-admission'
+import { execFileOffBudget } from './spawnBudget'
 
 /**
  * Admission control: how many harness processes may run on this host at
@@ -251,9 +251,13 @@ export class Admission {
 
 function nodeIo(): AdmissionIo {
   const run = (cmd: string, args: string[]): Promise<string> =>
-    new Promise((resolve, reject) =>
-      // `ps` exits 1 when any pid is gone; what it printed is still good.
-      execFile(cmd, args, { timeout: 10_000 }, (err, stdout) => (err && !stdout ? reject(err) : resolve(stdout)))
+    // `ps` exits 1 when any pid is gone; what it printed is still good. Through the broker: never a fork of this process.
+    execFileOffBudget(cmd, args, { timeout: 10_000 }).then(
+      ({ stdout }) => stdout,
+      (err: Error & { stdout?: string }) => {
+        if (err.stdout) return err.stdout
+        throw err
+      }
     )
   return {
     platform: process.platform,

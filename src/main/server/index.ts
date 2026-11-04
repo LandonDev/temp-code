@@ -216,7 +216,8 @@ import {
   sweepIdeaWarmState,
   warmIdeaIndexes
 } from './lsp'
-import { killTrackedChildren } from './spawnBudget'
+import { execBroker, killTrackedChildren } from './spawnBudget'
+import type { SpawnExecBroker } from './execBroker'
 import { fimComplete } from './fim'
 import {
   BuildRunner,
@@ -369,6 +370,8 @@ export async function startServer(
     preconnect?: (provider: string, account: string | null) => void
     /** Run the gateway's byte path in a utility process of its own (gatewayHost.ts); in this process when absent (tests, the in-process proofs). */
     spawnGatewayChild?: SpawnGatewayChild
+    /** Run every helper child (git, gh, ps, ss, lsof) from the exec broker's utility process (execBroker.ts); in this process when absent (tests, the in-process proofs). */
+    spawnExecBroker?: SpawnExecBroker
     /** This app's updater (update.ts selfUpdate): fetch a version just published, by this host's Publisher or on a peer's word. The installed Mac app only. */
     selfUpdate?: (version: string) => Promise<SelfUpdateOutcome>
     /** The local devices gatherer, in place of the `isMacHost()` pick: a proof injects a fake on Linux (scripts/ios-client-test-server.ts); null for none. */
@@ -378,6 +381,8 @@ export async function startServer(
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
+  // First, before any helper runs: from here on no git, gh or ps forks from this process.
+  if (options.spawnExecBroker) execBroker.install(options.spawnExecBroker)
   const db = openDb(dbPath)
   bootMark('db-open')
   // WAL checkpoints of both files run on a worker's own connection; the
@@ -1762,7 +1767,8 @@ export async function startServer(
                 java: await javaDoctor(),
                 loop: currentLag(),
                 inFlight: inFlightRequests(),
-                gateway: { ...gateway.status().process, port: gateway.status().port }
+                gateway: { ...gateway.status().process, port: gateway.status().port },
+                execBroker: execBroker.status()
               } satisfies DoctorGetResult
             })
             break
@@ -3038,6 +3044,7 @@ export async function startServer(
       builder.disposeAll()
       devRuns.disposeAll()
       await gateway.stop()
+      execBroker.stop()
       clearInterval(syncTimer)
       accountSync.close()
       harnessSync.close()

@@ -85,6 +85,7 @@
     "script:e2e-research": "esbuild scripts/e2e-research.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:aliax-core=./node_modules/aliax-core/src --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-research.mjs && node scripts/.out/e2e-research.mjs",
     "script:e2e-remote-fence": "esbuild scripts/e2e-remote-fence.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:aliax-core=./node_modules/aliax-core/src --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-remote-fence.mjs && node scripts/.out/e2e-remote-fence.mjs",
     "script:e2e-gateway-process": "bun scripts/e2e-gateway-process.ts",
+    "script:e2e-exec-broker": "bun scripts/e2e-exec-broker.ts",
     "script:e2e-quota-routing": "esbuild scripts/e2e-quota-routing.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:aliax-core=./node_modules/aliax-core/src --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-quota-routing.mjs && node scripts/.out/e2e-quota-routing.mjs",
     "script:e2e-interactive-lane": "esbuild scripts/e2e-interactive-lane.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:aliax-core=./node_modules/aliax-core/src --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-interactive-lane.mjs && node scripts/.out/e2e-interactive-lane.mjs",
     "script:measure-project-switch": "bun scripts/measure-project-switch.ts",
