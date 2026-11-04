@@ -78,7 +78,7 @@ export const ToolDetails = memo(function ToolDetails({
               aria-label={raw ? "Show formatted" : "Show raw"}
               aria-pressed={raw}
               onClick={() => setRaw(!raw)}
-              className="absolute right-0 top-0 z-10 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/details:opacity-100 group-hover/details:delay-(--delay-hover) starting:opacity-0 focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
+              className="absolute right-0 top-0 z-10 text-muted-foreground aria-pressed:bg-foreground/7 aria-pressed:text-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/details:opacity-100 group-hover/details:delay-(--delay-hover) starting:opacity-0 focus-visible:opacity-100 focus-visible:delay-(--dur-instant) motion-reduce:transition-none"
             />
           }
         >

@@ -298,9 +298,10 @@ export function QuestionCard({
                             if (active && event.target instanceof HTMLInputElement) return;
                             pick(index);
                           }}
-                          // A 28px row: the 1px border and 3px make the 4px above the 20px line.
+                          // A 28px row: the 1px border and 3px make the 4px above the 20px line. It
+                          // sits 4px inside the card's 8px corner, so its 4px radius is concentric.
                           className={cn(
-                            "flex min-h-7 w-full items-start gap-2 rounded-md border px-2 py-[3px] text-start outline-none transition-[background-color,border-color] duration-(--dur-fast) ease-(--ease-out) focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+                            "flex min-h-7 w-full items-start gap-2 rounded-sm border px-2 py-[3px] text-start outline-none duration-(--dur-instant) focus-visible:ring-2 focus-visible:ring-ring",
                             active ? "border-border bg-foreground/5" : "border-transparent hover:bg-foreground/5",
                           )}
                         >

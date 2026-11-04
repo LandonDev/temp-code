@@ -159,12 +159,12 @@ export function RailRow({
         "group/row relative flex items-center rounded-md",
         group
           ? [
-              "bg-sidebar-group text-foreground hover:bg-sidebar-group-hover",
+              "bg-sidebar-group text-foreground hover:bg-sidebar-group-hover has-[>[data-slot=button]:active]:bg-sidebar-group-selected",
               "has-[[aria-expanded=true]]:bg-sidebar-group-selected",
               selected && "bg-sidebar-group-selected hover:bg-sidebar-group-selected",
             ]
           : [
-              "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-within:text-foreground",
+              "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-within:text-foreground has-[>[data-slot=button]:active]:bg-foreground/12",
               "has-[[aria-expanded=true]]:bg-muted has-[[aria-expanded=true]]:text-foreground",
               selected && "bg-muted text-foreground hover:bg-muted",
               emphasis && "text-foreground",

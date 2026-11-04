@@ -149,7 +149,7 @@ export function JumpList({
                 aria-current={current ? "location" : undefined}
                 aria-label={item.name}
                 className={cn(
-                  "w-full min-w-0 justify-start font-normal",
+                  "w-full min-w-0 justify-start font-normal duration-(--dur-instant)",
                   current ? "text-foreground" : "text-muted-foreground",
                   item.className,
                 )}

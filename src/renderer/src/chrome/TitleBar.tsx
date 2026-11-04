@@ -136,7 +136,7 @@ export function IconButton({
         }}
         className={
           disabled
-            ? "text-muted-foreground opacity-40"
+            ? "text-muted-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:active:bg-transparent"
             : accent
               ? "text-accent"
               : active

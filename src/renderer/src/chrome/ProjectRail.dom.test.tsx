@@ -25,6 +25,8 @@ describe("ProjectRail sash", () => {
     expect(handle.tabIndex).toBe(0);
     expect(handle.getAttribute("aria-orientation")).toBe("vertical");
     expect(handle.className).toContain("focus-visible:bg-accent");
+    expect(handle.className).toContain("hover:bg-foreground/7");
+    expect(handle.className).not.toMatch(/transition/);
     fireEvent.keyDown(handle, { key: "ArrowRight" });
     expect(handle.getAttribute("aria-valuenow")).toBe("220");
     expect(pane.style.width).toBe("220px");

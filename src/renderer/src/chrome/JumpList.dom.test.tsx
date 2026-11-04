@@ -97,9 +97,11 @@ describe("JumpList", () => {
 
   it("puts no motion on a row beyond the button's own press", () => {
     render(<JumpList label="L" groups={groups} active="a" onJump={() => {}} />);
-    // The button's own motion: the hover fill over --dur-hover, the press over --dur-fast.
-    const own = /^(transition-\[background-color,color,border-color,scale\]|motion-reduce:transition-none|duration-\(--dur-hover\)|(active:not-aria-\[haspopup\]:|data-pressed:)?duration-\(--dur-fast\)|ease-\(--ease-out\))$/;
+    // A row highlights at once; the button's press steps its fill with no transition.
+    const own = /^(transition-\[background-color,color,border-color\]|motion-reduce:transition-none|duration-\(--dur-instant\)|active:transition-none|ease-\(--ease-out\))$/;
     for (const r of rows()) {
+      expect(r.className).not.toMatch(/scale-/);
+      if (r.dataset.jumpKey) expect(r.classList).toContain("duration-(--dur-instant)");
       for (const cls of r.classList) {
         expect(cls).not.toMatch(/^animate-|z-fade/);
         if (/transition|duration-|ease-/.test(cls)) expect(cls).toMatch(own);

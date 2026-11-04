@@ -182,6 +182,14 @@ describe("TitleBar's controls", () => {
     for (const svg of panel.closest("header")!.querySelectorAll("button svg")) expect(svg.getAttribute("stroke-width")).toBe("1.5");
   });
 
+  it("holds a disabled Back still: half opacity, no hover or press fill", () => {
+    render(<TabVisitNav canGoForward onGoBack={() => {}} onGoForward={() => {}} />);
+    const back = screen.getByRole("button", { name: /Back/ });
+    expect(back.getAttribute("aria-disabled")).toBe("true");
+    for (const name of ["aria-disabled:opacity-50", "aria-disabled:hover:bg-transparent", "aria-disabled:active:bg-transparent"]) expect(back.classList).toContain(name);
+    expect(back.className).not.toContain("opacity-40");
+  });
+
   it("keeps the traffic lights' 78px only on macOS", () => {
     const rail = shellStore.getState().projectRailOpen;
     shellStore.setState({ projectRailOpen: false });

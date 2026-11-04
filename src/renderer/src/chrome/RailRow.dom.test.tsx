@@ -20,6 +20,19 @@ describe("RailRow", () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  it("presses with the wrapper's fill at once; the row never scales", () => {
+    render(<RailRow icon={Inbox} label="Inbox" />);
+    const row = screen.getByRole("button", { name: "Inbox" });
+    expect(row.closest("[data-rail-row]")!.className).toContain("has-[>[data-slot=button]:active]:bg-foreground/12");
+    expect(row.className).toContain("active:bg-transparent");
+    expect(row.className).not.toMatch(/scale-/);
+    cleanup();
+    render(<RailRow surface="group" label="alpha" />);
+    expect(screen.getByRole("button", { name: "alpha" }).closest("[data-rail-row]")!.className).toContain(
+      "has-[>[data-slot=button]:active]:bg-sidebar-group-selected",
+    );
+  });
+
   it("marks selection with aria-current and a muted fill, never a bar", () => {
     render(<RailRow icon={Inbox} label="Inbox" selected />);
     const row = screen.getByRole("button", { name: "Inbox" });

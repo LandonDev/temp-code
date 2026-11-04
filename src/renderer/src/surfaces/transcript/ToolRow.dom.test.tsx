@@ -206,7 +206,10 @@ describe("ActionRow", () => {
       fireEvent.click(getByRole("button", { name: "Show raw" }));
     });
     expect(container.querySelector("pre")!.textContent).toContain('"pattern"');
-    expect(getByRole("button", { name: "Show formatted" })).toBeTruthy();
+    // On, the toggle keeps a fill and the foreground, so its state shows.
+    const on = getByRole("button", { name: "Show formatted" });
+    expect(on.getAttribute("aria-pressed")).toBe("true");
+    for (const name of ["aria-pressed:bg-foreground/7", "aria-pressed:text-foreground"]) expect(on.classList).toContain(name);
   });
 
   it("a call waiting on approval shows its command open above Allow and Deny, with no caret", () => {
