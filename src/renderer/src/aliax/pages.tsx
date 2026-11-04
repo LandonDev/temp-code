@@ -189,7 +189,7 @@ export function AccountsPage(): React.JSX.Element {
           </DialogHeader>
           {login?.error ? <p className="text-[13px] text-destructive">{login.error}</p> : null}
           <DialogFooter>
-            <Button variant={login?.error ? "ghost" : "secondary"} onClick={closeLogin}>
+            <Button variant="secondary" onClick={closeLogin}>
               Cancel
             </Button>
             {login?.error ? <Button onClick={() => void addAccount(login.serviceId, login.hint)}>Try again</Button> : null}

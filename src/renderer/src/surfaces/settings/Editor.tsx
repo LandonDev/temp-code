@@ -30,6 +30,8 @@ import { SettingSwitch } from "../../components/setting-switch";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Keys, MOD_CAP } from "./keys";
+import { CONSOLE } from "../../components/ui/console";
+import { cn } from "../../lib/cn";
 
 type IdeaEngine = { dist: boolean; accepted: boolean; build: string };
 
@@ -329,7 +331,7 @@ export function EditorPage() {
             {eula ? <DialogDescription>intellij-server {eula.build}</DialogDescription> : null}
           </DialogHeader>
           {eula ? (
-            <pre className="max-h-80 overflow-y-auto rounded-lg [--scrollbar-inset:var(--radius-lg)] bg-muted/50 p-3 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+            <pre tabIndex={0} className={cn(CONSOLE, "max-h-80 overflow-y-auto whitespace-pre-wrap")}>
               {eula.text}
             </pre>
           ) : note ? (

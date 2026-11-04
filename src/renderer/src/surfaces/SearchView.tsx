@@ -18,7 +18,6 @@ import { ProjectLogoIcon } from "../chrome/ProjectLogoIcon";
 import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
-import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { ItemButton } from "../components/ui/item";
@@ -68,6 +67,7 @@ import { sessionDisplayTitle, type HarnessId } from "../lib/session";
 import { environmentOfCwd, hostOfCwd } from "../lib/tcserver/projects";
 import { sessionStore, useServerSessions, useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
+import { EmptyState } from "./SurfaceSkeleton";
 
 /**
  * Search over every connected host at once. The field takes the words and
@@ -544,17 +544,11 @@ export function SearchView({
             </EmptyHeader>
           </Empty>
         ) : noResults ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>No results</EmptyTitle>
-              {filtered ? <EmptyDescription>Filters are narrowing this search</EmptyDescription> : null}
-            </EmptyHeader>
-            {filtered ? (
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                Clear filters
-              </Button>
-            ) : null}
-          </Empty>
+          <EmptyState
+            title="No results"
+            line={filtered ? "Filters are narrowing this search" : undefined}
+            action={filtered ? { label: "Clear filters", onClick: clearFilters } : undefined}
+          />
         ) : (
           <ResultList
             hits={hits}

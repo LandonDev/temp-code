@@ -20,6 +20,7 @@ import { ProjectMascot } from "../chrome/ProjectMascot";
 import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useDragResize } from "../hooks/useDragResize";
+import { useSashKeys } from "../hooks/useSashKeys";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { Button } from "../components/ui/button";
 import { GroupInput, InputGroup } from "../components/ui/input";
@@ -342,6 +343,16 @@ export function InboxView({
       rememberedWidth = width;
     },
   });
+  const sashKeys = useSashKeys({
+    label: "Resize inbox list",
+    orientation: "vertical",
+    value: resize.width,
+    min: MIN_WIDTH,
+    max: Math.min(MAX_WIDTH, Math.round(window.innerWidth * 0.5)),
+    getSpan: (handle) => handle.closest(".app-shell")?.getBoundingClientRect().width || window.innerWidth,
+    onChange: resize.resizeTo,
+    onReset: resize.reset,
+  });
 
   useEffect(() => {
     if (sidebar) return;
@@ -528,7 +539,7 @@ export function InboxView({
             }}
           />
         ) : (
-          <ul className="flex flex-col gap-0.5 p-1.5">
+          <ul className="flex flex-col gap-0.5 p-1">
             {visibleItems.map((item) => {
               const key = inboxItemKey(item);
               return (
@@ -574,14 +585,11 @@ export function InboxView({
       </div>
       {sidebar ? null : (
         <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize inbox list"
-          className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none ${
-            resize.dragging ? "bg-foreground/10" : "hover:bg-foreground/10"
+          {...sashKeys}
+          className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none outline-none focus-visible:bg-accent ${
+            resize.dragging ? "bg-foreground/12" : "hover:bg-foreground/7"
           }`}
           onPointerDown={resize.onPointerDown}
-          onDoubleClick={resize.onDoubleClick}
         />
       )}
     </div>
@@ -762,7 +770,7 @@ export function InboxRow({
       aria-label={unseen ? `${item.title}, new` : undefined}
       onClick={onSelect}
       className={cn(
-        "flex-col flex-nowrap items-stretch gap-0.5 rounded-md px-2.5 py-2 text-left transition-none",
+        "flex-col flex-nowrap items-stretch gap-0.5 rounded-md px-2 py-2 text-left transition-none",
         active ? "bg-muted" : "hover:bg-foreground/5",
       )}
     >
@@ -800,9 +808,9 @@ export function InboxRow({
 /** Five rows in the row's shape while the first list loads. */
 function InboxRowsSkeleton() {
   return (
-    <div aria-label="Loading inbox" className="flex flex-col gap-0.5 p-1.5">
+    <div aria-label="Loading inbox" className="flex flex-col gap-0.5 p-1">
       {[0, 1, 2, 3, 4].map((index) => (
-        <div key={index} className="flex flex-col gap-1.5 px-2.5 py-2">
+        <div key={index} className="flex flex-col gap-1.5 px-2 py-2">
           <div className="flex items-center gap-2">
             <Skeleton className="size-3.5 rounded-sm" />
             <Skeleton className="h-3.5 flex-1" />
@@ -1162,7 +1170,7 @@ function InboxDetail({
                     .finally(() => setStarting(false));
                 }}
               >
-                {starting ? <Spinner className="size-3" /> : null}
+                {starting ? <Spinner className="size-3.5" /> : null}
                 Send to agent
               </Button>
               {linear ? (

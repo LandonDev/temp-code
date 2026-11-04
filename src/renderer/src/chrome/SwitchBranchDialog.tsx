@@ -106,7 +106,7 @@ function Body({
         <ErrorLine error={error || generateError} />
       </div>
       <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-        <Button variant="ghost" disabled={waiting} onClick={() => (close ? close(onCancel) : onCancel())}>
+        <Button variant="secondary" disabled={waiting} onClick={() => (close ? close(onCancel) : onCancel())}>
           Cancel
         </Button>
         <Button variant="secondary" disabled={!canCommit} onClick={() => onCommit(trimmed)}>

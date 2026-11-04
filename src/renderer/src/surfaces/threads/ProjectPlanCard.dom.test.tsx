@@ -98,6 +98,16 @@ describe("ProjectPlanCard", () => {
     expect(onStarted).toHaveBeenCalledWith("plan-m2");
   });
 
+  it("a busy button keeps its words beside the spinner, so it never shrinks", async () => {
+    let finish: () => void = () => {};
+    actions.startMilestonePlanning.mockImplementationOnce(() => new Promise((resolve) => (finish = () => resolve({ id: "plan-m2" }))));
+    render(<ProjectPlanCard session={session} doc={DOC} state={state()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Plan milestone 2" }));
+    const busy = screen.getByRole("button", { name: /Planning…/ });
+    expect(busy.querySelector('[data-slot="spinner"]')).not.toBeNull();
+    await act(async () => finish());
+  });
+
   it("Orchestrate milestone N orchestrates that milestone", async () => {
     const onStarted = vi.fn();
     render(<ProjectPlanCard session={session} doc={DOC} state={state()} onStarted={onStarted} />);

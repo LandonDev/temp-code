@@ -292,7 +292,7 @@ export function MasterRowView({
       <span
         data-actions
         onKeyDown={stop}
-        className="pointer-events-none absolute top-1 right-2 flex gap-0.5 opacity-0 transition-opacity duration-(--dur-fast) group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+        className="pointer-events-none absolute top-1 right-2 flex gap-0.5 opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-focus-within:delay-(--dur-instant) group-hover:pointer-events-auto group-hover:opacity-100 group-hover:delay-(--delay-hover) has-[[data-popup-open]]:opacity-100 has-[[data-popup-open]]:delay-(--dur-instant) motion-reduce:transition-none"
       >
         <RowAction label="Message" onClick={() => onOpen(meta.id, true)}>
           <MessageSquare />

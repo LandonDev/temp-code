@@ -22,6 +22,7 @@ import { ProjectMascot } from "../chrome/ProjectMascot";
 import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useDragResize } from "../hooks/useDragResize";
+import { useSashKeys } from "../hooks/useSashKeys";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useTabGroupLogos } from "../hooks/useTabGroupLogos";
 import { formatRelativeTime } from "../lib/githubTasks";
@@ -97,6 +98,16 @@ export function NotesView({
     onCommit: (width) => {
       rememberedWidth = width;
     },
+  });
+  const sashKeys = useSashKeys({
+    label: "Resize notes list",
+    orientation: "vertical",
+    value: resize.width,
+    min: MIN_WIDTH,
+    max: Math.min(MAX_WIDTH, Math.round(window.innerWidth * 0.5)),
+    getSpan: (handle) => handle.closest(".app-shell")?.getBoundingClientRect().width || window.innerWidth,
+    onChange: resize.resizeTo,
+    onReset: resize.reset,
   });
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
@@ -258,7 +269,7 @@ export function NotesView({
         ) : visible.length === 0 ? (
           <EmptyState title={query.trim() ? "No matching notes" : "No notes yet"} />
         ) : (
-          <ul className="flex flex-col gap-0.5 p-1.5">
+          <ul className="flex flex-col gap-0.5 p-1">
             {visible.map((note) => (
               <li key={note.id}>
                 <NoteCard
@@ -276,14 +287,11 @@ export function NotesView({
         )}
       </div>
       <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize notes list"
-        className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none ${
+        {...sashKeys}
+        className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none outline-none focus-visible:bg-accent ${
           resize.dragging ? "bg-foreground/12" : "hover:bg-foreground/7"
         }`}
         onPointerDown={resize.onPointerDown}
-        onDoubleClick={resize.onDoubleClick}
       />
     </div>
   );
@@ -393,13 +401,13 @@ function NoteCard({
       variant="ghost"
       aria-current={active ? "true" : undefined}
       onClick={onSelect}
-      className={`h-auto w-full flex-col items-stretch justify-start gap-0 whitespace-normal rounded-md px-2.5 py-2 text-left font-normal transition-none ${
+      className={`h-auto w-full flex-col items-stretch justify-start gap-0 whitespace-normal rounded-md px-2 py-2 text-left font-normal transition-none ${
         active ? "bg-muted hover:bg-muted" : "hover:bg-foreground/5"
       }`}
     >
       <span className="flex items-center gap-2">
         {project ? (
-          <span className="min-w-0 flex-1 text-[11px] text-muted-foreground">
+          <span className="min-w-0 flex-1 text-xs text-muted-foreground">
             <NoteProjectMark
               project={project}
               logos={logos}
@@ -412,7 +420,7 @@ function NoteCard({
           <span className="min-w-0 flex-1" />
         )}
         {time ? (
-          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
             {time}
           </span>
         ) : null}

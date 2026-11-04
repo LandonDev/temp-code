@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ConductOverride, ThreadRules } from "@server/shared/rules";
-import { Modal } from "./Modal";
+import { Modal, ModalBody } from "./Modal";
+import { DialogFooter } from "./ConfirmDialog";
 import { Button } from "../components/ui/button";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageRow } from "../components/page";
@@ -88,7 +89,8 @@ export function ThreadTune({
     onChange(out);
   };
   return (
-    <div className="flex flex-col gap-4 px-5 py-3">
+    // No inset of its own: the dialog or popover it sits in gives it one.
+    <div className="flex flex-col gap-4">
       <Textarea
         rows={3}
         aria-label="Custom instructions"
@@ -179,13 +181,10 @@ export function TuneDialog({
       description={thread}
       size="md"
     >
-      <ThreadTune environmentId={environmentId} tune={tune} onChange={setTune} workspaceId={workspaceId} />
-      <div className="flex items-center justify-end gap-2 px-5 py-3">
-        <Button variant="secondary" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button onClick={() => onSave(normalizeTune(tune))}>Save</Button>
-      </div>
+      <ModalBody>
+        <ThreadTune environmentId={environmentId} tune={tune} onChange={setTune} workspaceId={workspaceId} />
+      </ModalBody>
+      <DialogFooter onCancel={onCancel} confirmLabel="Save" onConfirm={() => onSave(normalizeTune(tune))} />
     </Modal>
   );
 }

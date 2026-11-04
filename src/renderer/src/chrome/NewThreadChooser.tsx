@@ -96,7 +96,8 @@ export function NewThreadChooser({
       <PopoverContent ref={popup} align="start" className={cn("gap-0 p-1", tuning ? "w-90" : "w-68")}>
         {tuning ? (
           <>
-            <div className="flex items-center gap-1 px-1 pt-1">
+            {/* Header, options and footer on one 12px inset (the popover's 4px and 8px). */}
+            <div className="flex items-center gap-1 px-2 pt-2">
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -116,8 +117,10 @@ export function NewThreadChooser({
               </Tooltip>
               <span className="text-[13px] font-medium text-foreground">{THREAD_LABELS[tuning]} options</span>
             </div>
-            <ThreadTune environmentId={environmentId} tune={tune} onChange={setTune} workspaceId={workspaceId} />
-            <div className="flex justify-end px-4 pb-3">
+            <div className="px-2 py-3">
+              <ThreadTune environmentId={environmentId} tune={tune} onChange={setTune} workspaceId={workspaceId} />
+            </div>
+            <div className="flex justify-end px-2 pb-2">
               <Button size="sm" onClick={() => start(tuning, normalizeTune(tune))}>
                 Start {THREAD_LABELS[tuning].toLowerCase()}
               </Button>

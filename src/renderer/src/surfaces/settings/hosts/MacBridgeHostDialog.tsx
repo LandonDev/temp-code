@@ -91,8 +91,9 @@ export function MacBridgeHostDialog({ host: initial, onClose }: { host: MacBridg
               {host.shared.map((folder) => (
                 <Row key={folder} title={<span className="block truncate font-mono text-xs font-normal">{folder}</span>}>
                   <Button
-                    variant="destructive"
+                    variant="ghost"
                     size="xs"
+                    className="text-muted-foreground hover:text-destructive"
                     onClick={() => void run(() => setMacBridgeShared(id, host.shared.filter((f) => f !== folder)))}
                   >
                     Remove

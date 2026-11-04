@@ -378,7 +378,7 @@ function InboxCommentPerson({
       ) : (
         <span
           aria-hidden
-          className="grid size-5 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground"
+          className="grid size-5 shrink-0 place-items-center rounded-full bg-muted text-xs font-medium text-muted-foreground"
         >
           {initial}
         </span>

@@ -260,10 +260,24 @@ export function ProjectPlanOptions({
       {next ? (
         <>
           <Button disabled={busy !== null} onClick={plan}>
-            {busy === "plan" ? <Spinner /> : `Plan milestone ${next.index}`}
+            {busy === "plan" ? (
+              <>
+                <Spinner />
+                Planning…
+              </>
+            ) : (
+              `Plan milestone ${next.index}`
+            )}
           </Button>
           <Button variant="secondary" disabled={busy !== null} onClick={orchestrate}>
-            {busy === "orchestrate" ? <Spinner /> : `Orchestrate milestone ${next.index}`}
+            {busy === "orchestrate" ? (
+              <>
+                <Spinner />
+                Orchestrating…
+              </>
+            ) : (
+              `Orchestrate milestone ${next.index}`
+            )}
           </Button>
         </>
       ) : (

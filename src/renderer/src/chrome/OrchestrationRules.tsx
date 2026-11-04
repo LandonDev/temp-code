@@ -517,7 +517,7 @@ export function RuleDialog({
               </Button>
             ) : null}
             <span className="flex-1" />
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="secondary" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={!task.trim()}>

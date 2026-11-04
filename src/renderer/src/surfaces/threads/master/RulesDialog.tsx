@@ -115,7 +115,7 @@ function RulesForm({
               const name = step.name || "step";
               return (
                 <Item key={step.id} size="xs" render={<li />} className="flex-nowrap px-0" data-rule-step={step.id} data-rule-kind={step.kind}>
-                  <span className="w-4 shrink-0 text-end text-[11px] tabular-nums text-muted-foreground">{i + 1}</span>
+                  <span className="w-4 shrink-0 text-end text-xs tabular-nums text-muted-foreground">{i + 1}</span>
                   <Input
                     aria-label={`Step ${i + 1} name`}
                     value={step.name}

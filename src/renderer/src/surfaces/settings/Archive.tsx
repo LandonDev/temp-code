@@ -266,7 +266,7 @@ function RowActions({
   onDelete?: () => void;
 }) {
   return (
-    <span className="flex items-center gap-1 opacity-0 transition-opacity duration-(--dur-fast) group-hover/item:opacity-100 group-focus-within/item:opacity-100 has-[[data-popup-open]]:opacity-100">
+    <span className="flex items-center gap-1 opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/item:opacity-100 group-hover/item:delay-(--delay-hover) group-focus-within/item:opacity-100 group-focus-within/item:delay-(--dur-instant) has-[[data-popup-open]]:opacity-100 has-[[data-popup-open]]:delay-(--dur-instant) motion-reduce:transition-none">
       {onRestore ? (
         <Button variant="ghost" size="sm" aria-label={`Restore ${name}`} onClick={onRestore}>
           Restore

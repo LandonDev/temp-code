@@ -17,6 +17,31 @@ const shell = (over: Partial<Parameters<typeof SplitShell>[0]> = {}) => (
   />
 );
 
+describe("SplitShell's sash", () => {
+  it("takes the keyboard: focusable, ArrowRight moves the split 2%, a double-click resets it", () => {
+    const { container } = render(shell());
+    const sash = screen.getByRole("separator", { name: "Resize" });
+    const board = container.querySelector<HTMLElement>("[data-board]")!;
+    expect(sash.tabIndex).toBe(0);
+    expect(board.style.flexBasis).toBe("50%");
+    fireEvent.keyDown(sash, { key: "ArrowRight" });
+    expect(board.style.flexBasis).toBe("52%");
+    fireEvent.keyDown(sash, { key: "ArrowLeft", shiftKey: true });
+    expect(board.style.flexBasis).toBe("42%");
+    fireEvent.doubleClick(sash);
+    expect(board.style.flexBasis).toBe("50%");
+    // Hovered /7, dragged /12, at once.
+    expect(sash.className).toContain("hover:bg-foreground/7");
+    expect(sash.className).not.toMatch(/transition/);
+  });
+
+  it("draws the conversation toggle's glyph at the 14px of its icon-sm neighbours", () => {
+    render(shell());
+    const toggle = screen.getByRole("button", { name: "Conversation" });
+    expect(toggle.querySelector("svg")!.getAttribute("class") ?? "").not.toContain("size-4");
+  });
+});
+
 describe("SplitShell", () => {
   it("without a board the chat fills the pane: no header, no separator", () => {
     render(shell({ hasBoard: false }));

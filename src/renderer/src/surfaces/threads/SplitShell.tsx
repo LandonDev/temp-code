@@ -3,6 +3,7 @@ import { refreshToastAnchor } from "../../lib/toastAnchor";
 import { Toggle } from "../../components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import { MessageSquare } from "../../chrome/icons";
+import { useSashKeys } from "../../hooks/useSashKeys";
 
 /**
  * The board | sash | chat recipe every thread view with a board shares.
@@ -101,7 +102,7 @@ export function ChatToggle({ open, onToggle }: { open: boolean; onToggle: (open:
       <TooltipTrigger
         render={<Toggle size="sm" aria-label="Conversation" pressed={open} onPressedChange={(p) => onToggle(p)} />}
       >
-        <MessageSquare className="size-4" />
+        <MessageSquare />
       </TooltipTrigger>
       <TooltipContent>Conversation</TooltipContent>
     </Tooltip>
@@ -188,6 +189,20 @@ export function SplitShell({
     if (fit !== undefined) setManual(false);
     else setSplit(50);
   };
+  // The keyboard moves the split 2% (Shift 10%) of the shell, in percent.
+  const sashKeys = useSashKeys({
+    label: "Resize",
+    orientation: "vertical",
+    value: split,
+    min: 30,
+    max: 70,
+    getSpan: () => 100,
+    onChange: (next) => {
+      setManual(true);
+      setSplit(next);
+    },
+    onReset: resetSplit,
+  });
   const entered = useLiveEntry(hasBoard);
   const folded = hasBoard && collapsed;
   const chatRef = useRef<HTMLDivElement | null>(null);
@@ -242,13 +257,10 @@ export function SplitShell({
       ) : null}
       {hasBoard && !folded ? (
         <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize"
+          {...sashKeys}
           onPointerDown={startDrag}
-          onDoubleClick={resetSplit}
-          className={`relative w-px shrink-0 cursor-col-resize transition-colors duration-(--dur-fast) hover:bg-foreground/12 motion-reduce:transition-none ${
-            dragging ? "bg-foreground/12" : "bg-border"
+          className={`relative w-px shrink-0 cursor-col-resize outline-none focus-visible:bg-accent ${
+            dragging ? "bg-foreground/12" : "bg-border hover:bg-foreground/7"
           }`}
         >
           {/* The hairline is the sash; this widens the grab to 8px. */}

@@ -12,6 +12,7 @@ import { useNow } from "../../../lib/duration";
 import { RulesDialog } from "./RulesDialog";
 import { consoleStep, liveSteps, nearBottom, stepDetail, stepState, stepTime, consoleLines, hasConsole, type LiveStep } from "./steps";
 import { blockedLine, type Rules } from "./useMasterModel";
+import { CONSOLE } from "../../../components/ui/console";
 
 /**
  * Under the list, what happens when the threads are done (docs/LAYOUT.md
@@ -259,7 +260,8 @@ function Console({ step }: { step: LiveStep }) {
       }}
       data-console={step.id}
       data-log
-      className="mb-1 ml-[22px] max-h-44 min-h-15 overflow-y-auto rounded-lg [--scrollbar-inset:var(--radius-lg)] bg-card px-3 py-2 font-mono text-xs leading-[1.5] whitespace-pre-wrap text-muted-foreground"
+      tabIndex={0}
+      className={cn(CONSOLE, "mb-1 ml-[22px] max-h-44 min-h-15 overflow-y-auto whitespace-pre-wrap")}
     >
       {lines.length > 0 ? lines.join("\n") : "Starting…"}
     </pre>

@@ -126,7 +126,7 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
                   Shut down
                 </Button>
               ) : null}
-              <Button variant="destructive" size="xs" disabled={busy !== null} onClick={() => setConfirm(sim)}>
+              <Button variant="ghost" className="text-muted-foreground hover:text-destructive" size="xs" disabled={busy !== null} onClick={() => setConfirm(sim)}>
                 Delete
               </Button>
             </DeviceRow>

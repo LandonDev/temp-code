@@ -145,14 +145,12 @@ export function StartBuildDialog({
           <Input value={goal} onChange={(e) => setGoal(e.target.value)} />
         </label>
         {type === "orchestration" ? (
-          <div className="-mx-4 -my-3">
-            <ThreadTune
-              tune={tune}
-              onChange={setTune}
-              environmentId={session.environmentId}
-              workspaceId={session.workspaceId ?? null}
-            />
-          </div>
+          <ThreadTune
+            tune={tune}
+            onChange={setTune}
+            environmentId={session.environmentId}
+            workspaceId={session.workspaceId ?? null}
+          />
         ) : null}
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
         <DialogFooter>

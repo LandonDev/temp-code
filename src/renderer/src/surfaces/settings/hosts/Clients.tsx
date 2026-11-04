@@ -88,7 +88,7 @@ export function Clients({
             />
           }
         >
-          <Button variant="destructive" size="sm" onClick={() => void revoke(k)}>
+          <Button variant="ghost" className="text-muted-foreground hover:text-destructive" size="sm" onClick={() => void revoke(k)}>
             Revoke
           </Button>
         </Row>
@@ -100,7 +100,7 @@ export function Clients({
           title={s.keyName}
           description={<Facts parts={[shortAgent(s.userAgent ?? "") || "Browser", capsText(s.caps), `seen ${ago(s.lastSeenAt)}`]} />}
         >
-          <Button variant="destructive" size="sm" onClick={() => void signOut(s)}>
+          <Button variant="ghost" className="text-muted-foreground hover:text-destructive" size="sm" onClick={() => void signOut(s)}>
             Sign out
           </Button>
         </Row>

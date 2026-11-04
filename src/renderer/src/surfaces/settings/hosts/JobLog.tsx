@@ -9,6 +9,7 @@ import { useEnvironmentStatus } from "../../../lib/connection";
 import { hostJobCard, type HostJobCard } from "../../../lib/hostJobCard";
 import { dismissJob, stopPublish, useDeployStatuses, useHostJob } from "../../../lib/hostJobs";
 import { cn } from "../../../lib/cn";
+import { CONSOLE } from "../../../components/ui/console";
 
 /** A log is open while its job runs and after a failure; a pass folds it to its one line. */
 export const openByDefault = (card: Pick<HostJobCard, "phase" | "ending">): boolean => card.phase !== "done" || card.ending?.failed === true;
@@ -62,7 +63,7 @@ export function JobLog({ environmentId, job, hostName }: { environmentId: string
           ) : null}
         </CollapsibleTrigger>
         {card.stoppable ? (
-          <Button variant="destructive" size="xs" onClick={() => void stopPublish().catch((e) => setError(errorText(e)))}>
+          <Button variant="ghost" className="text-muted-foreground hover:text-destructive" size="xs" onClick={() => void stopPublish().catch((e) => setError(errorText(e)))}>
             Stop
           </Button>
         ) : null}
@@ -79,7 +80,8 @@ export function JobLog({ environmentId, job, hostName }: { environmentId: string
             const el = e.currentTarget;
             follow.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
           }}
-          className="mt-1 mb-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg [--scrollbar-inset:var(--radius-lg)] bg-muted/40 px-3 py-2 font-mono text-[11px] leading-4 text-muted-foreground"
+          tabIndex={0}
+          className={cn(CONSOLE, "mt-1 mb-2 max-h-72 overflow-auto whitespace-pre-wrap break-words")}
         >
           {card.lines.length ? card.lines.join("\n") : running ? "Waiting for output…" : ""}
         </pre>

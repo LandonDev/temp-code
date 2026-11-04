@@ -238,13 +238,13 @@ function DiffLineRow({ line }: { line: PrDiffLine }) {
   return (
     <div className={`relative flex min-w-max items-baseline ${bg}`}>
       <span className={`absolute inset-y-0 left-0 w-0.5 ${bar}`} />
-      <span className="w-10 shrink-0 pr-1 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
+      <span className="w-10 shrink-0 pr-1 text-right font-mono text-xs tabular-nums text-muted-foreground">
         {line.oldNumber ?? ""}
       </span>
-      <span className="w-10 shrink-0 pr-1 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
+      <span className="w-10 shrink-0 pr-1 text-right font-mono text-xs tabular-nums text-muted-foreground">
         {line.newNumber ?? ""}
       </span>
-      <span className={`w-3 shrink-0 text-center font-mono text-[10px] font-bold ${markColor}`}>
+      <span className={`w-3 shrink-0 text-center font-mono text-xs font-bold ${markColor}`}>
         {mark}
       </span>
       <span className="whitespace-pre pr-3 font-mono text-[12px] leading-5">
