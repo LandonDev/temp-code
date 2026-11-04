@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render } from "@testing-library/react";
-import { TOAST_WIDTH, toastInset } from "./toaster";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { loadToast, TOAST_WIDTH, Toaster, toastInset } from "./toaster";
 import { toastAnchor } from "../../lib/toastAnchor";
 import { ChatFooter } from "../../surfaces/threads/chatSlots";
 import { SplitShell } from "../../surfaces/threads/SplitShell";
@@ -132,5 +134,34 @@ describe("the master view's seat", () => {
     const view = render(shell(true, false));
     expect(toastAnchor()).toBeNull();
     view.unmount();
+  });
+});
+
+describe("a toast's buttons and motion", () => {
+  it("draws its action and cancel as our raised buttons", async () => {
+    render(<Toaster />);
+    const toast = await loadToast();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      toast("Archived", { action: { label: "Undo", onClick: () => {} }, cancel: { label: "Dismiss", onClick: () => {} } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const undo = await screen.findByRole("button", { name: "Undo" });
+    expect(undo.classList).toContain("t-raise-primary");
+    expect(undo.classList).toContain("!bg-transparent");
+    const dismiss = screen.getByRole("button", { name: "Dismiss" });
+    expect(dismiss.classList).toContain("t-raise-secondary");
+    expect(dismiss.classList).not.toContain("!bg-muted");
+  });
+
+  it("rides the motion tokens and the toast layer, out-specifying sonner's stylesheet", () => {
+    const css = readFileSync(resolve(__dirname, "../../index.css"), "utf8");
+    const block = css.slice(css.indexOf(":root [data-sonner-toaster] {"), css.indexOf("}\n}", css.indexOf("@media (prefers-reduced-motion: reduce) {\n  :root [data-sonner-toaster]")) + 3);
+    expect(block).toContain("z-index: var(--layer-toast)");
+    expect(block).toContain("transition-property: transform, opacity;");
+    expect(block).toContain("transition-duration: var(--dur-base)");
+    expect(block).toMatch(/\[data-removed="true"\] \{[^}]*var\(--dur-fast\) !important[^}]*var\(--ease-exit\) !important/);
+    expect(block).toContain("transition: opacity var(--dur-fast) var(--ease-out) !important");
+    expect(block).not.toMatch(/\d+m?s\b|height/);
   });
 });

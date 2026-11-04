@@ -2,6 +2,8 @@ import { lazy, Suspense, useEffect, useState, useSyncExternalStore, type CSSProp
 import type { toast as Toast, ToasterProps } from "sonner";
 import { CircleAlert, CircleCheck, Info } from "@renderer/chrome/icons";
 import { Spinner } from "./spinner";
+import { buttonVariants } from "./button";
+import { cn } from "@renderer/lib/cn";
 import { subscribeToastAnchor, toastAnchor } from "@renderer/lib/toastAnchor";
 
 export type ToastApi = typeof Toast;
@@ -14,6 +16,10 @@ export function loadToast(): Promise<ToastApi> {
   loading ??= import("sonner").then((m) => m.toast);
   return loading;
 }
+
+/** What a toast's raised button resets of sonner's own button (its fill, 4px
+ *  radius, size and colour, which sonner writes on the element). */
+const TOAST_BUTTON = "!h-6 !rounded-md !bg-transparent !px-2 !text-xs !font-medium !transition-[opacity] !duration-(--dur-fast)";
 
 const Sonner = lazy(() => import("sonner").then((m) => ({ default: m.Toaster })));
 
@@ -107,8 +113,10 @@ export function Toaster(props: ToasterProps) {
             toast: "!rounded-xl !border-0 !bg-popover !text-popover-foreground !shadow-overlay !ring-1 !ring-border !text-[13px]",
             title: "!font-medium",
             description: "!text-muted-foreground",
-            actionButton: "!h-7 !rounded-md !bg-primary !text-primary-foreground !text-xs",
-            cancelButton: "!h-7 !rounded-md !bg-muted !text-foreground !text-xs",
+            // Our raised buttons: sonner's own button paints a background, a 4px radius
+            // and its own sizes, so those are reset for the raise's fill layer to show.
+            actionButton: cn(buttonVariants({ variant: "default", size: "xs" }), TOAST_BUTTON, "!text-primary-foreground"),
+            cancelButton: cn(buttonVariants({ variant: "secondary", size: "xs" }), TOAST_BUTTON, "!text-secondary-foreground"),
           },
         }}
         style={
@@ -116,7 +124,7 @@ export function Toaster(props: ToasterProps) {
             "--normal-bg": "var(--popover)",
             "--normal-text": "var(--popover-foreground)",
             "--normal-border": "var(--border)",
-            "--border-radius": "12px",
+            "--border-radius": "var(--radius-xl)",
             "--width": `${width}px`,
           } as CSSProperties
         }

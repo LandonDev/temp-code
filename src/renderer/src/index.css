@@ -323,6 +323,32 @@ html.theme-light {
   --raise-lit: var(--raise-destructive-lit);
 }
 
+/* The toast stack (sonner) on our motion and layers instead of its 400-500ms
+   defaults: a toast rises and fades over --dur-base, a removed one leaves
+   over --dur-fast, and under reduced motion it fades. Sonner injects its
+   stylesheet after ours, so these rules out-specify it (:root plus the
+   toaster), and the removed and reduced-motion rules, which sonner writes
+   five attributes deep or with !important, take !important. */
+:root [data-sonner-toaster] {
+  z-index: var(--layer-toast);
+}
+:root [data-sonner-toaster] [data-sonner-toast] {
+  transition-property: transform, opacity;
+  transition-duration: var(--dur-base);
+  transition-timing-function: var(--ease-out);
+}
+:root [data-sonner-toaster] [data-sonner-toast][data-removed="true"] {
+  transition-property: transform, opacity !important;
+  transition-duration: var(--dur-fast) !important;
+  transition-timing-function: var(--ease-exit) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root [data-sonner-toaster] [data-sonner-toast] {
+    /* Positions still jump (sonner stacks by transform); only the fade eases. */
+    transition: opacity var(--dur-fast) var(--ease-out) !important;
+  }
+}
+
 /* JetBrains Mono, the editor's face (OFL, see assets/fonts/JetBrainsMono-OFL.txt).
  * The real italic matters: semantic highlighting italicises statics. */
 @font-face {
