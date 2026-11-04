@@ -1,3 +1,4 @@
+import { COPIED_MS } from "../../lib/clipboard";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { emptyNotes, notesAsBrief, notesEmpty } from "@shared/notes";
 import { Button } from "@renderer/components/ui/button";
@@ -16,7 +17,6 @@ import { IconAction } from "../transcript/IconAction";
 
 const SAVE_DEBOUNCE_MS = 700;
 /** How long the copy button shows its check. */
-const COPIED_MS = 1400;
 
 type SaveState = "idle" | "saving" | "saved" | "failed";
 
@@ -247,7 +247,7 @@ function CopyBrief({ text, title }: { text: string; title: string }) {
   }, [done]);
   return (
     <IconAction
-      label="Copy as brief"
+      label={done ? "Copied" : "Copy as brief"}
       onClick={() => {
         void navigator.clipboard.writeText(notesAsBrief(text, title)).then(
           () => setDone(true),
@@ -255,7 +255,7 @@ function CopyBrief({ text, title }: { text: string; title: string }) {
         );
       }}
     >
-      <SwapIcon swapped={done} from={<Copy className="size-3.5" />} to={<Check className="size-3.5 text-success" />} />
+      <SwapIcon swapped={done} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
     </IconAction>
   );
 }

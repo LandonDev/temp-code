@@ -1,3 +1,5 @@
+import { copyText } from "../../../lib/clipboard";
+import { loadToast } from "../../../components/ui/toaster";
 import { useEffect, useState, type ReactNode } from "react";
 import type { SavedEnvironment } from "@server/shared/contract-remote";
 import { Button } from "../../../components/ui/button";
@@ -181,7 +183,16 @@ function LocalMenu({ name, environmentId }: { name: string; environmentId: strin
     <DropdownMenu>
       <MenuTrigger name={name} />
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(environmentId)}>Copy environment id</DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() =>
+            void copyText(environmentId).then(
+              () => loadToast().then((toast) => toast("Copied environment id")),
+              () => loadToast().then((toast) => toast.error("Couldn't copy the environment id")),
+            )
+          }
+        >
+          Copy environment id
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

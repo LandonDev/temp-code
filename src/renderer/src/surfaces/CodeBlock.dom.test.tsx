@@ -7,7 +7,7 @@ vi.mock("../lib/highlight", () => ({
   highlightCached: () => undefined,
 }));
 const copyText = vi.fn((_: string) => Promise.resolve());
-vi.mock("../lib/clipboard", () => ({ copyText: (text: string) => copyText(text) }));
+vi.mock("../lib/clipboard", () => ({ COPIED_MS: 1200, copyText: (text: string) => copyText(text) }));
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
 
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
@@ -88,7 +88,7 @@ describe("CodeBlock", () => {
     expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
   });
 
-  it("holds its check COPIED_MS (1.2 s), shorter than a message's 2 s", async () => {
+  it("holds its check COPIED_MS (1.2 s), the one beat every Copy control holds", async () => {
     expect(COPIED_MS).toBe(1200);
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {

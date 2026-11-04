@@ -24,11 +24,12 @@ export type HarnessAdapter = {
   sendTurn(input: SendTurnInput): Promise<void>;
   steerTurn(input: SteerTurnInput): Promise<void>;
   cancelTurn(sessionId: string): Promise<void>;
+  /** Settles once the host has the decision, when the harness can say. */
   respondApproval(
     sessionId: string,
     requestId: string | number,
     decision: ApprovalDecision,
-  ): void;
+  ): void | Promise<void>;
   /** Kill the child but keep resume state for later rebind. */
   stopSession(sessionId: string): Promise<void>;
   /** Drop resume state and kill the child (delete, harness switch, idle detach). */
@@ -152,8 +153,8 @@ export function respondHarnessApproval(
   sessionId: string,
   requestId: string | number,
   decision: ApprovalDecision,
-): void {
-  getHarness(harness)?.respondApproval(sessionId, requestId, decision);
+): void | Promise<void> {
+  return getHarness(harness)?.respondApproval(sessionId, requestId, decision);
 }
 
 export async function stopHarnessSession(

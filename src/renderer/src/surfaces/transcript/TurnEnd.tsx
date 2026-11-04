@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { HandoffButton, SecondOpinionButton } from "../../chrome/SecondOpinionButton";
 import { STATUS_WORD, StatusMark } from "../../components/ui/status";
 import { cn } from "../../lib/cn";
-import { copyText } from "../../lib/clipboard";
+import { COPIED_MS, copyText } from "../../lib/clipboard";
 import { playCue } from "../../lib/sounds";
 import { type TurnInfo } from "../transcriptRows";
 import { type Block, type HarnessId } from "../../lib/session";
@@ -318,7 +318,7 @@ export function CopyTurnButton({ text, armed }: { text: string; armed?: boolean 
           () => {
             setCopied(true);
             if (timer.current != null) window.clearTimeout(timer.current);
-            timer.current = window.setTimeout(() => setCopied(false), 2000);
+            timer.current = window.setTimeout(() => setCopied(false), COPIED_MS);
           },
           () => {},
         );

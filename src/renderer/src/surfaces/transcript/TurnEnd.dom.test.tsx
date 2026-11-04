@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const copyText = vi.fn((_: string) => Promise.resolve());
-vi.mock("../../lib/clipboard", () => ({ copyText: (text: string) => copyText(text) }));
+vi.mock("../../lib/clipboard", () => ({ COPIED_MS: 1200, copyText: (text: string) => copyText(text) }));
 vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
 
 import { TurnDuration, TurnEnd } from "./TurnEnd";

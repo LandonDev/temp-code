@@ -31,12 +31,15 @@ export function MacBridgeHostDialog({ host: initial, onClose }: { host: MacBridg
   const [error, setError] = useState<string | null>(null);
   const id = host.environmentId;
   const runs = host.policy === "read+run" || host.policy === "full";
-  const run = async (work: () => Promise<void>): Promise<void> => {
+  /** Resolves whether the work landed; a failure is said in the error line. */
+  const run = async (work: () => Promise<void>): Promise<boolean> => {
     setError(null);
     try {
       await work();
+      return true;
     } catch (err) {
       setError(errorText(err));
+      return false;
     }
   };
   const add = (folder: string): Promise<void> => run(() => setMacBridgeShared(id, [...host.shared, folder])).then(() => setPath(""));
@@ -55,7 +58,7 @@ export function MacBridgeHostDialog({ host: initial, onClose }: { host: MacBridg
           <Group>
             {fwd ? (
               <Row title="Dev server forwarding">
-                <SettingSwitch label="Dev server forwarding" on={fwd.enabled} onChange={(on) => void run(() => setForwarding(id, on))} />
+                <SettingSwitch label="Dev server forwarding" on={fwd.enabled} onChange={(on) => run(() => setForwarding(id, on))} />
               </Row>
             ) : null}
             {runs ? (

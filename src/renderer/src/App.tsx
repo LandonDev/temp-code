@@ -2891,7 +2891,7 @@ export default function App() {
     (sessionId: string, requestId: string | number, decision: ApprovalDecision) => {
       const session = sessionStore.getSnapshot().find((s) => s.id === sessionId);
       if (!session) return;
-      respondHarnessApproval(session.harness, sessionId, requestId, decision);
+      return respondHarnessApproval(session.harness, sessionId, requestId, decision);
     },
     [],
   );

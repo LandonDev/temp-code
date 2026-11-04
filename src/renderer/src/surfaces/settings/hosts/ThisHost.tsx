@@ -28,8 +28,9 @@ export function ThisHost({
   status: RemoteStatus;
   attachments: AttachmentSettings | null;
   error: string | null;
-  onSettings: (patch: SettingsPatch) => void;
-  onAct: (method: string, params: unknown) => void;
+  /** Each resolves whether the change landed, so a switch can slide back. */
+  onSettings: (patch: SettingsPatch) => void | Promise<boolean>;
+  onAct: (method: string, params: unknown) => void | Promise<boolean>;
 }) {
   return (
     <>

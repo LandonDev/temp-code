@@ -1,3 +1,4 @@
+import { COPIED_MS } from "../lib/clipboard";
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "../chrome/icons";
 import { Tip } from "../components/tip";
@@ -43,7 +44,7 @@ export function CopyMessageButton({
           () => {
             setCopied(true);
             if (timer.current != null) window.clearTimeout(timer.current);
-            timer.current = window.setTimeout(() => setCopied(false), 2000);
+            timer.current = window.setTimeout(() => setCopied(false), COPIED_MS);
           },
           () => {},
         );

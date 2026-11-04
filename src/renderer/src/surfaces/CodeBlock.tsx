@@ -24,7 +24,8 @@ import { IconAction, useArmOnIntent } from "./transcript/IconAction";
  * transcript/markdown.css frames it like a table: one card, one hairline.
  */
 /** How long a code block's Copy holds its check (a message's holds 2s). */
-export const COPIED_MS = 1200;
+export { COPIED_MS } from "../lib/clipboard";
+import { COPIED_MS } from "../lib/clipboard";
 
 /** How often a streaming fence asks the worker to colour it, at most. */
 export const HIGHLIGHT_EVERY_MS = 150;

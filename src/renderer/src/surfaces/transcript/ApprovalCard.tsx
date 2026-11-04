@@ -1,6 +1,7 @@
 // A9 (notices): the approval under an action row.
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
+import { loadToast } from "../../components/ui/toaster";
 import { StatusMark } from "../../components/ui/status";
 import type { ApprovalDecision } from "../../lib/harness";
 import { cn } from "../../lib/cn";
@@ -19,19 +20,32 @@ export function decidedLine(approval: NonNullable<Block["approval"]>): string {
  * glyph column and Allow and Deny where the row's words start. Decided: the
  * verdict, one muted line at the words, fading in when the decision lands on
  * screen (a verdict that mounts decided just shows). Not a bordered card.
+ * A click draws the verdict at once, before the host's decided row comes
+ * back, so a second click can send nothing more; a decision the host never
+ * took puts the buttons back and says so in a toast.
  */
 export function ApprovalCard({
   block,
   onApproval,
 }: {
   block: Block;
-  onApproval?: (requestId: string | number, decision: ApprovalDecision) => void;
+  onApproval?: (requestId: string | number, decision: ApprovalDecision) => void | Promise<unknown>;
 }) {
   const approval = block.approval;
   // Seen waiting on this mount: only then is the verdict news worth a fade.
   const sawWaiting = useRef(!!approval && !approval.decided);
+  const [sent, setSent] = useState<ApprovalDecision | null>(null);
   if (!approval) return null;
-  if (approval.decided) {
+  const decide = (decision: ApprovalDecision) => {
+    if (sent) return;
+    setSent(decision);
+    const delivered = onApproval?.(approval.requestId, decision);
+    void Promise.resolve(delivered).catch(() => {
+      setSent(null);
+      void loadToast().then((toast) => toast.error("Couldn't send the decision"));
+    });
+  };
+  if (approval.decided || sent) {
     return (
       <div
         data-slot="approval"
@@ -40,7 +54,7 @@ export function ApprovalCard({
           sawWaiting.current && "animate-in fade-in-0 duration-(--dur-fast) ease-(--ease-out) motion-reduce:animate-none",
         )}
       >
-        {decidedLine(approval)}
+        {approval.decided ? decidedLine(approval) : decidedLine({ ...approval, decided: sent ?? undefined })}
       </div>
     );
   }
@@ -49,10 +63,10 @@ export function ApprovalCard({
       <span data-approval-mark className="flex w-3.5 shrink-0 justify-center">
         <StatusMark state="waiting" word={false} />
       </span>
-      <Button size="sm" onClick={() => onApproval?.(approval.requestId, "allow")}>
+      <Button size="sm" onClick={() => decide("allow")}>
         Allow
       </Button>
-      <Button size="sm" variant="secondary" onClick={() => onApproval?.(approval.requestId, "deny")}>
+      <Button size="sm" variant="secondary" onClick={() => decide("deny")}>
         Deny
       </Button>
     </div>

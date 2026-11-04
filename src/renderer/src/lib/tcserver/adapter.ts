@@ -54,9 +54,7 @@ export function serverAdapter(id: HarnessId): HarnessAdapter {
       await commands.steer(sessionFor(input), input.text, input.attachments ?? []);
     },
     cancelTurn: (sessionId) => commands.interrupt(sessionId),
-    respondApproval(sessionId, requestId, decision) {
-      void commands.approve(sessionId, requestId, decision === "allow");
-    },
+    respondApproval: (sessionId, requestId, decision) => commands.approve(sessionId, requestId, decision === "allow"),
     stopSession: async () => {},
     forgetSession: async () => {},
     bindSession: () => {},

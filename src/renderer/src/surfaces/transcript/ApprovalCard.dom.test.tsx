@@ -29,13 +29,41 @@ describe("ApprovalCard", () => {
   it("Allow and Deny answer with the request id", () => {
     const onApproval = vi.fn();
     render(<ApprovalCard block={approval("Write", { file_path: "/a.ts", content: "x" })} onApproval={onApproval} />);
+    expect(screen.getByRole("button", { name: "Allow" }).getAttribute("data-slot")).toBe("button");
     fireEvent.click(screen.getByRole("button", { name: "Allow" }));
+    cleanup();
+    render(<ApprovalCard block={approval("Write", { file_path: "/a.ts", content: "x" })} onApproval={onApproval} />);
     fireEvent.click(screen.getByRole("button", { name: "Deny" }));
     expect(onApproval.mock.calls).toEqual([
       [7, "allow"],
       [7, "deny"],
     ]);
-    expect(screen.getByRole("button", { name: "Allow" }).getAttribute("data-slot")).toBe("button");
+  });
+
+  it("a click draws the decision at once, before the host answers, and a second click sends nothing", () => {
+    const onApproval = vi.fn(() => new Promise<void>(() => {}));
+    const { container } = render(<ApprovalCard block={approval("Bash", { command: "ls" })} onApproval={onApproval} />);
+    fireEvent.click(screen.getByRole("button", { name: "Allow" }));
+    expect(container.textContent).toBe("Allowed");
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(onApproval).toHaveBeenCalledTimes(1);
+  });
+
+  it("a decision the host never took puts the buttons back and says so", async () => {
+    const toasted = vi.hoisted(() => ({ error: [] as string[] }));
+    vi.doMock("../../components/ui/toaster", async (original) => ({
+      ...(await original<typeof import("../../components/ui/toaster")>()),
+      loadToast: () => Promise.resolve(Object.assign(() => {}, { error: (m: string) => toasted.error.push(m) })),
+    }));
+    vi.resetModules();
+    const { ApprovalCard: Card } = await import("./ApprovalCard");
+    const onApproval = vi.fn(() => Promise.reject(new Error("link down")));
+    const { container } = render(<Card block={approval("Bash", { command: "ls" })} onApproval={onApproval} />);
+    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    expect(container.textContent).toBe("Denied");
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Deny" })).toBeTruthy());
+    await vi.waitFor(() => expect(toasted.error).toEqual(["Couldn't send the decision"]));
+    vi.doUnmock("../../components/ui/toaster");
   });
 
   it("a decided approval is one line with no buttons", () => {

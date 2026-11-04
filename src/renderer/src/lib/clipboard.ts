@@ -1,3 +1,6 @@
+/** How long a Copy control holds its check (and its "Copied"): one beat everywhere. */
+export const COPIED_MS = 1200;
+
 export async function copyText(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);

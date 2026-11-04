@@ -85,13 +85,16 @@ function useRemoteData() {
     const t = window.setInterval(() => void refresh(), POLL_MS);
     return () => window.clearInterval(t);
   }, [refresh]);
+  /** Resolves whether the call landed; a failure is said in the error line. */
   const act = useCallback(
-    async (method: string, params: unknown) => {
+    async (method: string, params: unknown): Promise<boolean> => {
       try {
         await rpc(method, params);
         await refresh();
+        return true;
       } catch (err) {
         setError(errorText(err));
+        return false;
       }
     },
     [refresh],
@@ -178,8 +181,8 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
                     status={status}
                     attachments={attachments}
                     error={remote.error}
-                    onSettings={(patch) => void remote.act("remote.settings.set", patch)}
-                    onAct={(method, params) => void remote.act(method, params)}
+                    onSettings={(patch) => remote.act("remote.settings.set", patch)}
+                    onAct={(method, params) => remote.act(method, params)}
                   />
                   <HostAdmission environmentId={section.id} />
                   {web ? null : <LoadLimitRow />}
@@ -206,7 +209,7 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
                 onAct={(method, params) => void remote.act(method, params)}
               />
               {web ? null : <LocalRelease />}
-              {harness ? <LocalSync harness={harness} memory={memory} onAct={(method, params) => void remote.act(method, params)} /> : null}
+              {harness ? <LocalSync harness={harness} memory={memory} onAct={(method, params) => remote.act(method, params)} /> : null}
               {web ? null : <MacBridgeRememberedSection />}
             </>
           ) : null}

@@ -3,6 +3,8 @@ import type { ProfileView, ServiceId } from "aliax-core/shared/types";
 import { Button } from "@renderer/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@renderer/components/ui/dialog";
 import { Input } from "@renderer/components/ui/input";
+import { Spinner } from "@renderer/components/ui/spinner";
+import { ErrorLine, errorText } from "@renderer/chrome/ConfirmDialog";
 import { ToggleGroup, ToggleGroupItem } from "@renderer/components/ui/toggle-group";
 import { ACCOUNT_COLORS, DEFAULT_COLOR } from "@aliax/lib/accounts";
 
@@ -31,10 +33,22 @@ export function EditAccountDialog({
     setColor(profile.color ?? DEFAULT_COLOR);
   }, [open, profile.nickname, profile.color]);
 
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // One save at a time: Enter and a click together write once, and a failure is said.
   const save = async () => {
-    await window.aliax.updateProfile(serviceId, profile.name, { nickname, color });
-    onOpenChange(false);
-    onSaved();
+    if (pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      await window.aliax.updateProfile(serviceId, profile.name, { nickname, color });
+      onOpenChange(false);
+      onSaved();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -81,11 +95,15 @@ export function EditAccountDialog({
             </ToggleGroup>
           </div>
         </div>
+        <ErrorLine error={error} />
         <DialogFooter>
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={() => void save()}>Save</Button>
+          <Button disabled={pending} onClick={() => void save()}>
+            {pending ? <Spinner /> : null}
+            Save
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

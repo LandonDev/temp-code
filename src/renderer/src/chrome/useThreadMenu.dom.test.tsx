@@ -13,6 +13,13 @@ const { sessions, commands, dropThread, goalOpen, tabs, dev, masters } = vi.hois
   tabs: { state: { activeTabId: "tab1", tabs: [{ id: "tab1", focusedId: "other" }] } },
 }));
 
+const toasts = vi.hoisted(() => [] as { message: string; description?: string }[]);
+vi.mock("../components/ui/toaster", async (original) => ({
+  ...(await original<typeof import("../components/ui/toaster")>()),
+  loadToast: () =>
+    Promise.resolve(Object.assign(() => {}, { error: (message: string, opts?: { description?: string }) => toasts.push({ message, description: opts?.description }) })),
+}));
+
 vi.mock("../lib/tcserver/store", () => ({
   sessionStore: { get: (id: string) => sessions.get(id), metaOf: () => null, subscribe: () => () => {}, isDraft: () => false },
 }));
@@ -129,6 +136,17 @@ describe("one thread menu on every surface", () => {
     fireEvent.contextMenu(screen.getByText("Row t1"));
     fireEvent.click(within(await screen.findByRole("menu", { name: "Rail" })).getByText("Pause"));
     expect(commands.pause).toHaveBeenCalledWith("t1");
+  });
+
+  it("a pick the host refuses says so in a toast naming the thread", async () => {
+    thread("t1", { title: "Fix the rail" });
+    commands.pause.mockImplementationOnce(() => Promise.reject(new Error("offline")));
+    toasts.length = 0;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    render(<Surfaces />);
+    fireEvent.contextMenu(screen.getByText("Row t1"));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Rail" })).getByText("Pause"));
+    await waitFor(() => expect(toasts).toEqual([{ message: "Couldn't pause it", description: "Fix the rail" }]));
   });
 
   it("a Type pick goes through the chat's onThreadTypeChange", async () => {

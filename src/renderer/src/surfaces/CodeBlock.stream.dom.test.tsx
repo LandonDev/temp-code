@@ -17,7 +17,7 @@ vi.mock("../lib/highlight", () => ({
   },
   highlightCached: () => undefined,
 }));
-vi.mock("../lib/clipboard", () => ({ copyText: () => Promise.resolve() }));
+vi.mock("../lib/clipboard", () => ({ COPIED_MS: 1200, copyText: () => Promise.resolve() }));
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
 
 import { CodeBlock, colourPrefix, HIGHLIGHT_EVERY_MS } from "./CodeBlock";

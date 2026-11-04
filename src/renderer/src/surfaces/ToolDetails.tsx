@@ -4,7 +4,7 @@ import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
-import { copyText } from "../lib/clipboard";
+import { copyText, COPIED_MS } from "../lib/clipboard";
 import { playCue } from "../lib/sounds";
 import { SwapIcon } from "../motion/IconSwap";
 import { IconAction, useArmOnIntent } from "./transcript/IconAction";
@@ -194,7 +194,7 @@ function CopyOutput({ text, armed }: { text: string; armed: boolean }) {
       () => {
         setCopied(true);
         if (timer.current != null) window.clearTimeout(timer.current);
-        timer.current = window.setTimeout(() => setCopied(false), 2000);
+        timer.current = window.setTimeout(() => setCopied(false), COPIED_MS);
       },
       () => {},
     );

@@ -31,4 +31,28 @@ describe("EditAccountDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onSaved).toHaveBeenCalled();
   });
+
+  it("saves once while a save is in flight, and says a failure under the fields", async () => {
+    let fail: (e: Error) => void = () => {};
+    const updateProfile = vi.fn(() => new Promise((_, reject) => (fail = reject)));
+    (window as unknown as { aliax: unknown }).aliax = { updateProfile };
+    const onOpenChange = vi.fn();
+    render(
+      <EditAccountDialog
+        open
+        onOpenChange={onOpenChange}
+        serviceId="codex"
+        profile={{ name: "a@x.com", email: "a@x.com", createdAt: 1, active: false }}
+        onSaved={vi.fn()}
+      />,
+    );
+    fireEvent.keyDown(screen.getByLabelText("Nickname"), { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: /Save/ }));
+    expect(updateProfile).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("button", { name: /Save/ }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => fail(new Error("The vault is locked")));
+    expect(screen.getByText("The vault is locked")).toBeTruthy();
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect((screen.getByRole("button", { name: /Save/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });

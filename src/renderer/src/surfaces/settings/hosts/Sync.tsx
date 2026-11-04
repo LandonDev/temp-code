@@ -26,7 +26,8 @@ export function LocalSync({
 }: {
   harness: HarnessSyncStatus;
   memory: MemorySyncStatus | null;
-  onAct: (method: string, params: unknown) => void;
+  /** Resolves whether the change landed, so a switch can slide back. */
+  onAct: (method: string, params: unknown) => void | Promise<boolean>;
 }) {
   const conflicts = memory?.conflicts ?? [];
   return (

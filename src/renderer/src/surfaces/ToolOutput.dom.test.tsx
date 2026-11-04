@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToolOutputLines } from "./ToolDetails";
 
 const copyText = vi.fn((_: string) => Promise.resolve());
-vi.mock("../lib/clipboard", () => ({ copyText: (text: string) => copyText(text) }));
+vi.mock("../lib/clipboard", () => ({ COPIED_MS: 1200, copyText: (text: string) => copyText(text) }));
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
 
 afterEach(() => {

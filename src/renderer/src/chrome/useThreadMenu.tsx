@@ -1,3 +1,4 @@
+import { loadToast } from "../components/ui/toaster";
 import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { devPane, useDevPane } from "../lib/devPane";
 import { useDevRunning, useDevServable } from "../lib/devServers";
@@ -167,7 +168,12 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     void loadThreadResources(id);
   }, []);
 
-  const quiet = (run: Promise<unknown>) => void run.catch((err) => console.warn("[thread-menu]", err));
+  /** A pick that failed on the host says so, with the thread it was for. */
+  const quiet = (run: Promise<unknown>, verb: string, id: string) =>
+    void run.catch((err) => {
+      console.warn("[thread-menu]", err);
+      void loadToast().then((toast) => toast.error(`Couldn't ${verb}`, { description: titleOf(id) }));
+    });
   const onPick = (id: string, pick: string) => {
     const h = latest.current;
     if (id === target && host.pick(pick)) return;
@@ -175,7 +181,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
       const type = pick.slice("type:".length) as ThreadType;
       if (h.onSetType) h.onSetType(id, type);
       else if (actions) actions.onThreadTypeChange(id, type);
-      else quiet(commands.retype(id, type));
+      else quiet(commands.retype(id, type), "change its type", id);
     } else if (pick === "rename") (h.onRename ? h.onRename(id) : setDialog({ kind: "rename", id }));
     else if (pick === "open") h.onOpen?.(id);
     else if (pick === "close-tab") actions?.onCloseTab?.(id);
@@ -186,29 +192,29 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     else if (pick === "new-pass") h.onNewPass?.(id);
     else if (pick === "tune") setDialog({ kind: "tune", id });
     else if (pick === "goal") goalDialog.open(id);
-    else if (pick === "pause") quiet(commands.pause(id));
-    else if (pick === "resume") quiet(commands.resume(id));
-    else if (pick === "compact") quiet(commands.compact(id));
-    else if (pick === "killBackground") quiet(commands.killBackground(id));
-    else if (pick === "stop") quiet(commands.interrupt(id));
-    else if (pick === "start-now") quiet(commands.startNow(id));
-    else if (pick === "master") quiet(commands.setMaster(id, !masterIds.has(id)));
+    else if (pick === "pause") quiet(commands.pause(id), "pause it", id);
+    else if (pick === "resume") quiet(commands.resume(id), "resume it", id);
+    else if (pick === "compact") quiet(commands.compact(id), "compact it", id);
+    else if (pick === "killBackground") quiet(commands.killBackground(id), "stop its background work", id);
+    else if (pick === "stop") quiet(commands.interrupt(id), "stop it", id);
+    else if (pick === "start-now") quiet(commands.startNow(id), "start it", id);
+    else if (pick === "master") quiet(commands.setMaster(id, !masterIds.has(id)), masterIds.has(id) ? "remove it as master" : "make it master", id);
     else if (pick === "batch-new" || pick === "batch-adopt") setDialog({ kind: pick, id });
     else if (pick === "mac-bridge") {
       const env = sessionStore.get(id)?.environmentId ?? sessionStore.metaOf(id)?.environmentId;
-      if (env) quiet(setThreadBridge(env, id, !bridgeState?.macPeer));
+      if (env) quiet(setThreadBridge(env, id, !bridgeState?.macPeer), "change its Mac bridge", id);
     } else if (pick === "mac-bridge-rules") setDialog({ kind: "bridge", id });
     else if (pick === "resources") setDialog({ kind: "resources", id });
     else if (pick === "dev") devPane.toggle();
     else if (pick === "remove-queue") {
       const env = metaOf(id)?.environmentId ?? sessionStore.get(id)?.environmentId;
-      if (env) quiet(commands.sessionBatch(env, "stop", [id]));
+      if (env) quiet(commands.sessionBatch(env, "stop", [id]), "remove it from the queue", id);
     }
     // With resources on the ledger the archive asks whether they go too.
     else if (pick === "archive") {
       if (liveResources(id).length) setDialog({ kind: "archive", id });
       else if (h.onArchive) h.onArchive(id);
-      else quiet(archiveThread(id));
+      else quiet(archiveThread(id), "archive it", id);
     } else if (pick === "delete") setDialog({ kind: "delete", id });
   };
 
@@ -231,7 +237,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
           close();
           const save = latest.current.onSetRules;
           if (save) save(id, rules);
-          else quiet(commands.setThreadRules(id, rules));
+          else quiet(commands.setThreadRules(id, rules), "save its options", id);
         }}
       />
     );
@@ -258,7 +264,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
           close();
           const h = latest.current;
           if (h.onDelete) h.onDelete(id);
-          else quiet(commands.remove(id));
+          else quiet(commands.remove(id), "delete it", id);
         }}
       />
     );

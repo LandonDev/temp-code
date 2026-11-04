@@ -77,7 +77,8 @@ export type SessionActions = {
     options?: { newPass?: boolean; intent?: ComposerIntent },
   ) => void;
   onStop: (sessionId: string) => void;
-  onApproval: (sessionId: string, requestId: string | number, decision: ApprovalDecision) => void;
+  /** Settles once the host has the decision, so the card can take it back on a failure. */
+  onApproval: (sessionId: string, requestId: string | number, decision: ApprovalDecision) => void | Promise<void>;
   onCwdChange: (sessionId: string, cwd: string) => void;
   /** The folder dialog for a draft's project picker; the pick goes to `onCwdChange`. */
   onChooseFolder?: (sessionId: string) => void;
