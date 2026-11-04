@@ -1922,6 +1922,24 @@ every host:
   written, so its calls carry no call mark and get the orphan sweep alone.
   A codex app-server carries `TEMP_CODE_THREAD` in its environment (a warm
   one `warm:<id>` until a thread adopts it) and has no per-call mark.
+- **A call's processes run at low priority.** The wrapped command also
+  opens with `renice -n 10 -p $$; ionice -c 3 -p $$` (`NICE_PRELUDE` in
+  src/shared/bashMarks.ts, failures swallowed: macOS has no ionice), so the
+  call's shell and everything it starts, a Maven, vitest or Fabric batch
+  among them, sit at nice 10 in the idle I/O class, and the host's server,
+  at nice 0, is scheduled ahead of them when the box is full. On
+  2026-11-04 the main thread waited for the CPU 23% of the time behind 27
+  tool JVMs at the same priority. The approval card and the Activity row
+  show the command as written (`unwrapBashCommand` strips the prelude with
+  the marks). A codex app-server has no per-call hook, so the process
+  itself starts under `nice -n 10` (and `ionice -c 3` on Linux) and every
+  command it runs inherits that. The unit (`temp-code.service`) stays as
+  it is; the server's own threads should sit at `Nice=-5` so they also win
+  against anything at nice 0 (a user's own shell on the box, a build the
+  Mac bridge runs), which the admin sets with `systemctl edit
+  temp-code.service` → `[Service]` `Nice=-5` and a restart at the next
+  deploy. The hand relief of 2026-11-04 (`renice 19` on every java, `-10`
+  on the server's threads) is what these make permanent.
 - **The orphan sweep.** Every 10 s the host reads one process table of
   its own user: `/proc` directly on Linux (procScan.ts: `stat`, `cmdline`
   and the pid dir's owner per process, no child process at all), one `ps`

@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { CALL_MARK, INSTANCE_MARK, THREAD_MARK } from '@shared/bashMarks'
+import { CALL_MARK, INSTANCE_MARK, NICE_PRELUDE, THREAD_MARK } from '@shared/bashMarks'
 import type { EventRow } from '@shared/events'
 import { parseEnviron } from './portSweep'
 import { readProcTable } from './procScan'
@@ -130,14 +130,16 @@ export function shellQuote(text: string): string {
 }
 
 /**
- * The command a Bash call runs, marked: the thread and the call exported
- * into the call's shell, so every process of the call carries them and the
- * host can end them, sweep them and weigh them. The command itself runs as
- * written after the marks.
+ * The command a Bash call runs, marked and lowered: the thread and the call
+ * exported into the call's shell, so every process of the call carries them
+ * and the host can end them, sweep them and weigh them; then the shell's
+ * own priority dropped (`NICE_PRELUDE`: nice 10, idle I/O where ionice
+ * exists), which every process of the call inherits, so a build never
+ * starves the host's server. The command itself runs as written after.
  */
 export function wrapBashCommand(command: string, callId: string, threadId: string, instanceId: string | null = instance?.id ?? null): string {
   const mark = instanceId ? ` ${INSTANCE_MARK}=${shellQuote(instanceId)}` : ''
-  return `export ${THREAD_MARK}=${shellQuote(threadId)} ${CALL_MARK}=${shellQuote(callId)}${mark}; ${command}`
+  return `export ${THREAD_MARK}=${shellQuote(threadId)} ${CALL_MARK}=${shellQuote(callId)}${mark}; ${NICE_PRELUDE}${command}`
 }
 
 let instance: GuardInstance | null = null

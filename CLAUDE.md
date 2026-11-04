@@ -1174,7 +1174,9 @@ routed to (aliax-core's `forward`). Two listeners:
   with the two marks),
   and the host SIGTERMs then SIGKILLs what still carries the call's mark
   when the call ends (never a harness, a ledger pid or a backgrounded
-  call); every 10 s an orphan sweep (one read of /proc on Linux, one `ps`
+  call); the wrapped command also renices its own shell to 10 and idle
+  I/O (`NICE_PRELUDE`; a codex app-server starts under `nice -n 10`), so
+  tool builds never starve the server; every 10 s an orphan sweep (one read of /proc on Linux, one `ps`
   through the exec broker elsewhere, shared with a call end inside 2 s)
   kills a process of this user with no
   parent left that carries a thread's mark (`TEMP_CODE_THREAD`, `~t=`,

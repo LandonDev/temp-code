@@ -18,6 +18,7 @@ import {
   wrapBashCommand,
   type GuardProc
 } from './processGuard'
+import { NICE_PRELUDE } from '@shared/bashMarks'
 
 /**
  * The process guard over fake process trees: the orphan sweep, a call's
@@ -293,15 +294,17 @@ describe('the memory cap', () => {
 describe('the marks', () => {
   it('wrapBashCommand exports the thread and the call ahead of the command; unwrapBashCommand gives the command back', () => {
     const wrapped = wrapBashCommand('bun test', 'toolu_01', 't1')
-    expect(wrapped).toBe("export TEMP_CODE_THREAD='t1' TEMP_CODE_CALL='toolu_01'; bun test")
+    expect(wrapped).toBe(`export TEMP_CODE_THREAD='t1' TEMP_CODE_CALL='toolu_01'; ${NICE_PRELUDE}bun test`)
     expect(unwrapBashCommand(wrapped)).toBe('bun test')
     expect(unwrapBashCommand('bun test')).toBe('bun test')
     const quoted = wrapBashCommand("echo 'hi'; cd x", "a'b", 't1')
-    expect(quoted).toBe("export TEMP_CODE_THREAD='t1' TEMP_CODE_CALL='a'\\''b'; echo 'hi'; cd x")
+    expect(quoted).toBe(`export TEMP_CODE_THREAD='t1' TEMP_CODE_CALL='a'\\''b'; ${NICE_PRELUDE}echo 'hi'; cd x`)
     expect(unwrapBashCommand(quoted)).toBe("echo 'hi'; cd x")
     // With the instance: a third export, which unwrap strips too; the old two-mark form still unwraps.
     const scoped = wrapBashCommand('bun test', 'toolu_01', 't1', 'inst-1')
-    expect(scoped).toBe("export TEMP_CODE_THREAD='t1' TEMP_CODE_CALL='toolu_01' TEMP_CODE_INSTANCE='inst-1'; bun test")
+    expect(scoped).toBe(`export TEMP_CODE_THREAD='t1' TEMP_CODE_CALL='toolu_01' TEMP_CODE_INSTANCE='inst-1'; ${NICE_PRELUDE}bun test`)
+    // A command wrapped by a build before the prelude still unwraps.
+    expect(unwrapBashCommand("export TEMP_CODE_THREAD='t1' TEMP_CODE_CALL='toolu_01'; bun test")).toBe('bun test')
     expect(unwrapBashCommand(scoped)).toBe('bun test')
     expect(unwrapBashCommand(wrapBashCommand("echo 'hi'", "a'b", 't1', "i'x"))).toBe("echo 'hi'")
     expect(markersOf(env({ TEMP_CODE_THREAD: 't1', TEMP_CODE_CALL: 'c1', TEMP_CODE_INSTANCE: 'inst-1' }))).toEqual({ threadId: 't1', callId: 'c1', instanceId: 'inst-1', claudePid: null })

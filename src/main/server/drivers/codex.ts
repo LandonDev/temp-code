@@ -17,6 +17,8 @@ import { gateway } from '../gateway'
 import { observeCodexSnapshot } from '../gatewayObserve'
 import { serviceTierFor } from './codexTiers'
 import { THREAD_MARK } from '../processGuard'
+import { NICE_LEVEL } from '@shared/bashMarks'
+import { existsSync } from 'node:fs'
 
 /**
  * Codex driver — `codex app-server`, protocol v2 (verified live against
@@ -84,6 +86,9 @@ function logBootFailure(entry: { session: string; cwd: string; account: string |
 }
 
 /** Lines from app-server's stderr that say nothing about why it died. */
+/** `ionice -c 3 nice -n 10` on a Linux host with ionice, `nice -n 10` elsewhere: the prefix the app-server starts under. */
+const lowered = (): string[] => [...(process.platform === 'linux' && existsSync('/usr/bin/ionice') ? ['/usr/bin/ionice', '-c', '3'] : []), 'nice', '-n', String(NICE_LEVEL)]
+
 const STDERR_NOISE = /rmcp::|rmcp_|^\s*$/
 
 /** The process ended while requests were pending: the exit code and what it said on stderr. */
@@ -142,7 +147,13 @@ export class AppServerConn {
     this.onNotify = onNotify
     this.onRequest = onRequest
     this.onExit = onExit
-    this.proc = spawn(binPath, ['app-server'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
+    // Lowered like a claude thread's Bash calls (bashMarks.ts NICE_PRELUDE): the
+    // app-server runs the thread's shell commands itself, with no hook to wrap
+    // them, so the process is started at nice 10 (idle I/O too where ionice
+    // exists) and every build it runs inherits that. nice and ionice exec
+    // into codex, so the pid the host tracks is the app-server's own.
+    const [file, ...prefix] = lowered()
+    this.proc = spawn(file, [...prefix, binPath, 'app-server'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
     // stderr is read even when nobody wants it: an unread pipe stalls a
     // chatty child, and its tail is the only account of a boot that died.
     createInterface({ input: this.proc.stderr }).on('line', (line) => {
