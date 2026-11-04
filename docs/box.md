@@ -1922,9 +1922,13 @@ every host:
   written, so its calls carry no call mark and get the orphan sweep alone.
   A codex app-server carries `TEMP_CODE_THREAD` in its environment (a warm
   one `warm:<id>` until a thread adopts it) and has no per-call mark.
-- **The orphan sweep.** Every 10 s the host reads one `ps` of its own user
-  (a process's environment once, from `/proc` on Linux and `ps -E` on
-  macOS, which has no /proc);
+- **The orphan sweep.** Every 10 s the host reads one process table of
+  its own user: `/proc` directly on Linux (procScan.ts: `stat`, `cmdline`
+  and the pid dir's owner per process, no child process at all), one `ps`
+  through the exec broker elsewhere; a call ending within 2 s of a sweep
+  reads the sweep's rows (`SCAN_SHARE_MS`), and a process's environment is
+  read once (`/proc/<pid>/environ` on Linux, `ps -E` on macOS, which has no
+  /proc);
   a process whose parent is gone (ppid 1) that carries a thread's mark
   (`TEMP_CODE_THREAD`, the gateway's `~t=` scope in ANTHROPIC_BASE_URL, or
   CLAUDE_PID, which names the thread while its harness lives) and is not a
@@ -2931,6 +2935,22 @@ respawned. On the Mac (2026-11-04, load 12):
 |---|---|---|---|---|---|---|---|---|
 | forks from main | 192 | 291 | 514 | 543 | 4.1 | 21.1 | 25 | 0 |
 | exec broker | 192 | 302 | 530 | 605 | 4.3 | 21.3 | 25 | 0 |
+
+Fewer children, too. The wire's `git.diffIndex` and `git.branches` answer
+from a read cache (gitops.ts `gitDiffIndexCached`, `gitBranchesCached`):
+a repeat ask for one checkout within `gitCacheTtl.ms` (3 s) whose git dir
+has not moved runs no git at all, and concurrent asks share the run in
+flight, so a 48-row board's refresh costs one run per repository instead of
+one per row (each run five or six children). The stamp costs no child
+either: the mtimes of the git dir's HEAD, index and logs/HEAD and the
+common dir's packed-refs and refs/heads, the `.git` dir or file found by
+walking up as git does (a worktree's own dir and its common dir both). The
+host's own readers (the checkpoint store's listings) call the plain
+functions and always see the tree as it is. The guard reads `/proc` on
+Linux instead of `ps` (procScan.ts) and a call ending within 2 s of a
+sweep reads the sweep's rows. Proof: gitops.cache.test.ts (hit, join, the
+misses on a staged file, a commit and a new branch, the window) and
+procScan.test.ts (the reader over a fixture tree).
 
 The Mac shows no gain, and none was expected there: libuv starts children
 with `posix_spawn` on macOS, which copies no page tables, so a 700 MB main

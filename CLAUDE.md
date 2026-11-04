@@ -1174,7 +1174,9 @@ routed to (aliax-core's `forward`). Two listeners:
   with the two marks),
   and the host SIGTERMs then SIGKILLs what still carries the call's mark
   when the call ends (never a harness, a ledger pid or a backgrounded
-  call); every 10 s an orphan sweep kills a process of this user with no
+  call); every 10 s an orphan sweep (one read of /proc on Linux, one `ps`
+  through the exec broker elsewhere, shared with a call end inside 2 s)
+  kills a process of this user with no
   parent left that carries a thread's mark (`TEMP_CODE_THREAD`, `~t=`,
   CLAUDE_PID) 60 s after it was orphaned, one log line each, but only
   this instance's: the claude harness's environment and every wrapped
@@ -1694,9 +1696,15 @@ names the far child).
   of them answer from a host cache, since the panels ask on every mount,
   focus and branch change: `github.prStatus` for 60 s per checkout and
   branch (concurrent asks share one gh child; the host's own PR and
-  comment mutations forget the checkout, `invalidatePrStatus`) and
+  comment mutations forget the checkout, `invalidatePrStatus`),
   `project.compare` for 30 s per checkout, target and HEAD
-  (`COMPARE_TTL_MS`). attach() answers through
+  (`COMPARE_TTL_MS`), and `git.diffIndex` / `git.branches` for 3 s per
+  checkout while the git dir's HEAD, index, reflog and refs have not moved
+  (gitops.ts `gitDiffIndexCached`, `gitCacheTtl`; the host's own readers
+  call the plain functions). No helper child forks from the main process:
+  every git, gh, ps, ss and lsof runs from the exec broker's utility
+  process (src/main/server/execBroker.ts, spawnBudget.ts; docs/box.md
+  "The exec broker"), and the guard reads /proc on Linux (procScan.ts). attach() answers through
   `serve(req, sendFrame)`; the `LaneGate` runs bulk two at a time while the
   loop's mean lag is under 50 ms, joins a duplicate read (method and a
   digest of params, from any socket) to the one waiting or running, runs a

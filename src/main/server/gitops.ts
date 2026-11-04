@@ -1,5 +1,5 @@
 import { execFileChildBudgeted } from './spawnBudget'
-import { lstat, mkdir, open, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { extname, isAbsolute, join, resolve } from 'node:path'
 import { APP_DIR_PATHSPEC } from './appDir'
@@ -11,6 +11,94 @@ import type {
 
 const MAX_TEXT_BYTES = 8 * 1024 * 1024
 const rootPath = (cwd: string): string => resolve(cwd === '~' ? homedir() : cwd.startsWith('~/') ? join(homedir(), cwd.slice(2)) : cwd)
+
+/**
+ * The read cache behind the wire's `git.diffIndex` and `git.branches`
+ * (`gitDiffIndexCached`, `gitBranchesCached`; the host's own readers, the
+ * checkpoint store among them, call the plain functions and always see the
+ * tree as it is): a repeat ask for the same checkout answers from a fresh
+ * answer while nothing of the repository moved. A
+ * 48-row board asks diffIndex once per row on every refresh, each ask five
+ * or six git children; with the cache a refresh costs one run per repo.
+ * The stamp is read with no child at all: the mtimes of the git dir's
+ * HEAD, index and reflog (any commit, checkout or reset touches logs/HEAD)
+ * and the common dir's packed-refs and refs/heads (a branch made or
+ * deleted), found by walking up to `.git` as git itself does. A stamp that
+ * moved is a miss at once; an unchanged one serves for `gitCacheTtl.ms`
+ * (an untracked file appearing moves nothing in the git dir, so the window
+ * is short). Concurrent asks for one checkout share the run in flight, and
+ * a rejected run is never kept.
+ */
+export const gitCacheTtl = { ms: 3_000 }
+interface CacheEntry<T> { stamp: string; at: number; value: Promise<T> }
+const diffIndexCache = new Map<string, CacheEntry<GitDiffIndex>>()
+const branchesCache = new Map<string, CacheEntry<GitBranches>>()
+/** The runs the cache saved since boot, for a proof. */
+export const gitCacheStats = { hits: 0, misses: 0 }
+
+export function invalidateGitCache(): void {
+  diffIndexCache.clear()
+  branchesCache.clear()
+}
+
+const mtimeOf = async (path: string): Promise<number> => (await stat(path).catch(() => null))?.mtimeMs ?? 0
+
+/** `{ gitDir, commonDir }` of the checkout holding `dir` (a worktree's own dir and the main repository's), null outside any repository. No child process: the `.git` dir or file, walked up as git does. */
+export async function gitDirs(dir: string): Promise<{ gitDir: string; commonDir: string } | null> {
+  let at = dir
+  for (let depth = 0; depth < 64; depth++) {
+    const dot = join(at, '.git')
+    const s = await stat(dot).catch(() => null)
+    if (s?.isDirectory()) return withCommon(dot)
+    if (s?.isFile()) {
+      const text = await readFile(dot, 'utf8').catch(() => '')
+      const m = /^gitdir:\s*(.+?)\s*$/m.exec(text)
+      if (m) return withCommon(resolve(at, m[1]))
+      return null
+    }
+    const up = resolve(at, '..')
+    if (up === at) return null
+    at = up
+  }
+  return null
+}
+async function withCommon(gitDir: string): Promise<{ gitDir: string; commonDir: string }> {
+  const common = (await readFile(join(gitDir, 'commondir'), 'utf8').catch(() => '')).trim()
+  return { gitDir, commonDir: common ? resolve(gitDir, common) : gitDir }
+}
+
+/** What the cached answers depend on, as one string; '' outside a repository (never cached). */
+export async function gitStamp(cwd: string): Promise<string> {
+  const dirs = await gitDirs(rootPath(cwd))
+  if (!dirs) return ''
+  const parts = await Promise.all([
+    mtimeOf(join(dirs.gitDir, 'HEAD')),
+    mtimeOf(join(dirs.gitDir, 'index')),
+    mtimeOf(join(dirs.gitDir, 'logs', 'HEAD')),
+    mtimeOf(join(dirs.commonDir, 'packed-refs')),
+    mtimeOf(join(dirs.commonDir, 'refs', 'heads'))
+  ])
+  return parts.join(':')
+}
+
+async function cached<T>(cache: Map<string, CacheEntry<T>>, cwd: string, run: () => Promise<T>): Promise<T> {
+  const stamp = await gitStamp(cwd)
+  if (!stamp) return run()
+  const now = Date.now()
+  const hit = cache.get(cwd)
+  if (hit && hit.stamp === stamp && now - hit.at < gitCacheTtl.ms) {
+    gitCacheStats.hits++
+    return hit.value
+  }
+  gitCacheStats.misses++
+  const value = run()
+  const entry = { stamp, at: now, value }
+  cache.set(cwd, entry)
+  value.catch(() => {
+    if (cache.get(cwd) === entry) cache.delete(cwd)
+  })
+  return value
+}
 
 /** No shell; stdin stays separate from arguments for index-only hunk staging.
  *  Paths after `--` are literal, except in a call that carries the app
@@ -183,6 +271,9 @@ async function sideCounts(cwd: string, partly: string[]): Promise<{ staged: Map<
   return { staged, unstaged }
 }
 const countsOf = (acc: FileAcc | undefined): { additions: number; deletions: number } => ({ additions: acc?.additions ?? 0, deletions: acc?.deletions ?? 0 })
+export function gitDiffIndexCached(cwd: string): Promise<GitDiffIndex> {
+  return cached(diffIndexCache, cwd, () => gitDiffIndex(cwd))
+}
 export async function gitDiffIndex(cwd: string): Promise<GitDiffIndex> {
   const { files, statuses, info } = await changes(cwd)
   const partly = [...files].filter(([, acc]) => acc.staged && acc.unstaged && !acc.untracked).map(([rel]) => rel)
@@ -318,6 +409,9 @@ export async function gitRangeContext(cwd: string): Promise<GitRangeContext> {
   const diffPatch = await text(cwd, ['diff', '--no-ext-diff', `${baseRef}...HEAD`])
   if (!commitSummary.trim() && !diffPatch.trim()) throw new Error('No commits to include in a pull request')
   return { base, head, commitSummary, diffSummary, diffPatch }
+}
+export function gitBranchesCached(cwd: string): Promise<GitBranches> {
+  return cached(branchesCache, cwd, () => gitBranches(cwd))
 }
 export async function gitBranches(cwd: string): Promise<GitBranches> {
   if (!(await isWorkTree(cwd))) return { current: null, detached: false, branches: [] }

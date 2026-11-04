@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { CALL_MARK, INSTANCE_MARK, THREAD_MARK } from '@shared/bashMarks'
 import type { EventRow } from '@shared/events'
 import { parseEnviron } from './portSweep'
+import { readProcTable } from './procScan'
 import { execFileOffBudget } from './spawnBudget'
 
 /**
@@ -51,10 +52,13 @@ import { execFileOffBudget } from './spawnBudget'
  *     the call's tool result says so (`tail`). RSS is the per-process
  *     reading admission.ts samples the harnesses with, the same `ps` column.
  *
- * Everything here reads one `ps` per tick (shared for a second) and a
- * process's environment once (`/proc/<pid>/environ` on Linux, `ps -E` on
- * macOS, which has no /proc); the deps are injectable so the rules run over
- * fake trees in processGuard.test.ts.
+ * Everything here reads one process table per tick (shared for
+ * SCAN_SHARE_MS, so a call ending right after a sweep reads its rows):
+ * `/proc` directly on Linux (procScan.ts; no child process at all), one
+ * `ps` through the exec broker elsewhere; and a process's environment once
+ * (`/proc/<pid>/environ` on Linux, `ps -E` on macOS, which has no /proc).
+ * The deps are injectable so the rules run over fake trees in
+ * processGuard.test.ts.
  */
 
 export interface GuardProc {
@@ -115,8 +119,8 @@ export const INSTANCE_NONCE_SETTING = 'guard.instanceNonce'
 export const BOX_PROD_DATA_DIR = '/srv/agents/temp-code-data'
 /** The tool-result line when the cap killed the call's processes. */
 export const CAP_LINE_PREFIX = "The host killed this command's processes"
-/** One `ps` serves every reader inside this window. */
-const SCAN_SHARE_MS = 1_000
+/** One scan serves every reader inside this window: a call ending right after the sweep reads the sweep's rows. */
+export const SCAN_SHARE_MS = 2_000
 
 const SETTLE_STATUSES = new Set(['idle', 'error', 'stopped', 'done'])
 
@@ -458,8 +462,9 @@ const darwinEnviron = (pid: number, args?: string): Promise<string | null> =>
   )
 
 export function hostGuardDeps(): Pick<ProcessGuardDeps, 'scan' | 'environ' | 'kill'> {
+  const uid = process.getuid?.()
   return {
-    scan: async () => parseGuardPs(await psRows()),
+    scan: process.platform === 'linux' ? () => readProcTable({ uid }) : async () => parseGuardPs(await psRows()),
     environ: (pid, args) =>
       process.platform === 'linux'
         ? readFile(`/proc/${pid}/environ`, 'utf8').catch(() => null)
