@@ -1,5 +1,5 @@
 {
-  "n": 311,
-  "notes": "Muse Wonder over the Meta Model API: Meta keys as accounts (aliax-core 63a9538), Muse Wonder 1.0 and Spark 1.3 under the claude and codex harnesses, routing by routedProviderOf with the s=meta scope, the drivers' Meta blocks, key_invalid and the no-key refusal, the Accounts page's Add key, the phone's Meta accounts",
-  "ts": 1793823987566
+  "n": 312,
+  "notes": "The Claude and Codex tabs show Meta's rows only while the host holds a Meta key; three gate expectations catch up with master",
+  "ts": 1793826114752
 }
