@@ -3,16 +3,17 @@ import TempCodeClient
 import TempCodeContract
 
 /// The account a thread spends from, in the header's subtitle: a dot in the
-/// account's colour and its short name, or "Auto" one step dimmer. Tap opens
-/// the menu sheet (AccountMenu.swift). Nothing renders for a provider the
-/// gateway does not route. docs/IOS-DESIGN.md "The account chip and menu".
+/// account's colour and its short name (a Meta key's own name), or "Auto"
+/// one step dimmer. Tap opens the menu sheet (AccountMenu.swift). Nothing
+/// renders for a provider the gateway does not route. docs/IOS-DESIGN.md
+/// "The account chip and menu".
 struct AccountChip: View {
     let client: EnvironmentClient
     let session: SessionMeta
     @State private var open = false
 
     var body: some View {
-        if let scope = AccountScope.of(session, projects: client.projects, workspaces: client.workspaces) {
+        if let scope = AccountScope.of(session, projects: client.projects, workspaces: client.workspaces, catalog: client.catalog) {
             let accounts = client.accounts.snapshot.map { scope.provider.accounts(in: $0) }
             let label = AccountName.chipLabel(scope: scope, accounts: accounts)
             Button { open = true } label: {
@@ -37,7 +38,10 @@ struct AccountChip: View {
             .accessibilityHint(scope.sourceLine)
             .task(id: client.status.transport) {
                 guard client.status.transport == .open else { return }
+                // The catalog names a Meta row, whose accounts are Meta's keys.
+                async let catalog = client.loadCatalog()
                 await client.loadAccounts()
+                _ = await catalog
             }
             .onAppear {
                 #if DEBUG

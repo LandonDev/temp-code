@@ -8,15 +8,15 @@
         "seq": 1,
         "role": "user",
         "snippet": "Turn 1: say hello",
-        "ts": 1792706821462,
-        "rank": -1.0586241908937064
+        "ts": 1793821263504,
+        "rank": -1.0586241908937066
       },
       {
         "sessionId": "fixture-thread",
         "seq": 4,
         "role": "assistant",
         "snippet": "Hello from the fixture thread.",
-        "ts": 1792706821463,
+        "ts": 1793821263504,
         "rank": -0.9744951161206967
       }
     ],

@@ -15,15 +15,18 @@ struct FailureCard: View {
     @State private var outcome: String?
     @State private var outcomeIsError = false
 
-    /// A thread this client cannot see is unrouted: Retry alone, no account note.
-    private var provider: ProviderId { client.session(sessionId)?.provider ?? .unknown("") }
+    /// Where the thread's accounts come from: Meta's keys for a Meta row. A
+    /// thread this client cannot see is unrouted: Retry alone, no account note.
+    private var routed: RoutedProvider? {
+        client.session(sessionId).flatMap { RoutedProvider(provider: $0.provider, model: $0.model, catalog: client.catalog) }
+    }
     /// The thread is working again: the buttons rest.
     private var busy: Bool { Fleet.isLive(client.session(sessionId)?.status ?? .idle) }
 
     var body: some View {
         let busy = busy
         let block = client.operateBlock
-        let actions = FailureActions.actions(kind: failure.kind, provider: provider)
+        let actions = FailureActions.actions(kind: failure.kind, routed: routed)
         ThreadCard(tinted: !busy) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -37,7 +40,7 @@ struct FailureCard: View {
                 Text(failure.cause)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                if let note = FailureActions.note(kind: failure.kind, provider: provider) {
+                if let note = FailureActions.note(kind: failure.kind, routed: routed) {
                     Text(note)
                         .font(.footnote)
                         .foregroundStyle(.secondary)

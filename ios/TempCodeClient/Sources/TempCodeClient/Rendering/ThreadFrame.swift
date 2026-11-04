@@ -203,7 +203,7 @@ public struct ThreadHeaderLine: Equatable, Sendable {
         let root = session.parentId == nil
         if root, session.isMaster == true { parts.append(.master) }
         var identity: [Part] = root ? [.type(session.threadType ?? .chat), .model(session.model)] : [.agent(session.agentType), .model(session.model)]
-        if RoutedProvider(session.provider) != nil { identity.append(.account(session.account)) }
+        if RoutedProvider.routes(session.provider) { identity.append(.account(session.account)) }
         let since = session.busySince ?? session.updatedAt
         var live = false
         let mark: Mark

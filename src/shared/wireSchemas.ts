@@ -207,7 +207,9 @@ export const AccountProfileSchema = z.object({
   color: z.string().optional(),
   active: z.boolean(),
   duplicate: z.boolean().optional(),
-  static: z.boolean().optional()
+  static: z.boolean().optional(),
+  /** `key` for an API key (Meta): no usage windows, nothing to sign in to. */
+  kind: z.enum(['key']).optional()
 })
 export const UsageWindowSchema = z.object({
   label: z.string(),

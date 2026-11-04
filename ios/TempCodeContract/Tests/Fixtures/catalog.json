@@ -96,6 +96,34 @@
           ],
           "defaultReasoning": "medium",
           "context": 1000000
+        },
+        {
+          "id": "muse-wonder-1.0",
+          "label": "Muse Wonder 1.0",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "high",
+          "context": 1048576,
+          "vendor": "meta"
+        },
+        {
+          "id": "muse-spark-1.3",
+          "label": "Muse Spark 1.3",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "medium",
+          "context": 1048576,
+          "vendor": "meta"
         }
       ],
       "defaultModel": "claude-fable-5-1"
@@ -224,6 +252,36 @@
             "xhigh"
           ],
           "defaultReasoning": "high"
+        },
+        {
+          "id": "muse-wonder-1.0",
+          "label": "Muse Wonder 1.0",
+          "reasoning": [
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "high",
+          "context": 1048576,
+          "vendor": "meta"
+        },
+        {
+          "id": "muse-spark-1.3",
+          "label": "Muse Spark 1.3",
+          "reasoning": [
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "medium",
+          "context": 1048576,
+          "vendor": "meta"
         }
       ],
       "defaultModel": "gpt-5.6-sol"

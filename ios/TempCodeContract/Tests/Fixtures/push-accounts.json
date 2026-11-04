@@ -1,7 +1,7 @@
 {
   "push": "accounts",
   "snapshot": {
-    "updatedAt": 1792706821984,
+    "updatedAt": 1793821264388,
     "providers": {
       "claude": {
         "pinned": "work@example.com",
@@ -27,13 +27,13 @@
               {
                 "label": "5h",
                 "usedPercent": 40,
-                "resetsAt": 1792709221984,
+                "resetsAt": 1793823664388,
                 "periodMs": 18000000
               },
               {
                 "label": "Weekly",
                 "usedPercent": 22,
-                "resetsAt": 1792966021984,
+                "resetsAt": 1794080464388,
                 "periodMs": 604800000
               }
             ]
@@ -44,37 +44,37 @@
               {
                 "label": "5h",
                 "usedPercent": 100,
-                "resetsAt": 1792707421984,
+                "resetsAt": 1793821864388,
                 "periodMs": 18000000
               },
               {
                 "label": "Weekly",
                 "usedPercent": 95,
-                "resetsAt": 1792793221984,
+                "resetsAt": 1793907664388,
                 "periodMs": 604800000
               }
             ],
             "note": "rate limited",
             "rateLimit": {
               "provider": "anthropic",
-              "until": 1792707421984
+              "until": 1793821864388
             }
           }
         ],
         "headroom": {
           "work@example.com": {
             "room": 0.8,
-            "resetsAt": 1792706881984,
+            "resetsAt": 1793821324388,
             "ratePerMin": 12,
             "tier": "allowed",
-            "seenAt": 1792706816984
+            "seenAt": 1793821259388
           },
           "spare@example.com": {
             "room": 0.1,
-            "throttledUntil": 1792707421984,
+            "throttledUntil": 1793821864388,
             "ratePerMin": 0,
             "tier": "allowed_warning",
-            "seenAt": 1792706701984
+            "seenAt": 1793821144388
           }
         }
       },
@@ -104,6 +104,25 @@
         "profiles": [],
         "reports": [],
         "note": "not signed in"
+      },
+      "meta": {
+        "pinned": null,
+        "profiles": [
+          {
+            "name": "build-key",
+            "color": "#0866ff",
+            "active": false,
+            "static": true,
+            "kind": "key"
+          }
+        ],
+        "reports": [
+          {
+            "profileName": "build-key",
+            "windows": [],
+            "note": "pay as you go"
+          }
+        ]
       }
     }
   }

@@ -163,24 +163,21 @@ public struct FailureAction: Sendable, Hashable, Identifiable {
 }
 
 /// The desktop's failureActions with the phone's reach: it can route and
-/// retry; signing in, picking an account or a model are desktop work, so
-/// the note names them instead.
+/// retry; signing in, adding a key, picking an account or a model are
+/// desktop work, so the note names them instead. `routed` is the provider
+/// the thread's accounts come from (`RoutedProvider(provider:model:catalog:)`),
+/// nil for a thread no account routes.
 public enum FailureActions {
     public static let maxActions = 3
 
-    /// Only claude and codex threads route through Aliax accounts.
-    public static func isRouted(_ provider: ProviderId) -> Bool {
-        switch provider {
-        case .claude, .codex: true
-        default: false
-        }
-    }
-
-    public static func actions(kind: FailureKind, provider: ProviderId) -> [FailureAction] {
+    public static func actions(kind: FailureKind, routed: RoutedProvider?) -> [FailureAction] {
         let ids: [FailureAction.ID] = switch kind {
+        case .accountUnknown where routed == .meta:
+            // A Meta thread with no key on the host: the fix is a key, not a route.
+            [.retry]
         case .oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota:
-            isRouted(provider) ? [.route, .retry] : [.retry]
-        case .modelUnavailable, .network, .harnessCrashed, .turnEnded, .unknown, .unrecognized:
+            routed != nil ? [.route, .retry] : [.retry]
+        case .keyInvalid, .modelUnavailable, .network, .harnessCrashed, .turnEnded, .unknown, .unrecognized:
             [.retry]
         }
         // Retry closes every set, whatever the kind added before it; the cap leaves room for it.
@@ -192,12 +189,16 @@ public enum FailureActions {
     }
 
     /// The desktop actions the phone lacks, named in one line; nil when none apply.
-    public static func note(kind: FailureKind, provider: ProviderId) -> String? {
+    public static func note(kind: FailureKind, routed: RoutedProvider?) -> String? {
         switch kind {
+        case .keyInvalid:
+            "Add a new key on the desktop."
+        case .accountUnknown where routed == .meta:
+            "Add a Meta key on the desktop."
         case .oauthExpired:
-            isRouted(provider) ? "Sign in on the Mac, or pick another account on the desktop." : nil
+            routed != nil ? "Sign in on the Mac, or pick another account on the desktop." : nil
         case .accountUnknown, .tokenExpired, .rateLimited, .quota:
-            isRouted(provider) ? "Pick another account on the desktop." : nil
+            routed != nil ? "Pick another account on the desktop." : nil
         case .modelUnavailable:
             "Pick another model on the desktop."
         case .network, .harnessCrashed, .turnEnded, .unknown, .unrecognized:

@@ -135,6 +135,7 @@ const FAILURE_LINES: Record<FailureKind, [summary: string, cause: string]> = {
   token_expired: ['work@example.com answered 401 token_expired', 'this instance is not the account owner, so nothing refreshed the token'],
   rate_limited: ['work@example.com hit the 5h window', 'the window is spent; it refills in 40 minutes'],
   quota: ['work@example.com has nothing left to spend', 'the plan is out of credits'],
+  key_invalid: ['Meta refused the key build-key', 'the key was revoked or never valid'],
   model_unavailable: ['claude-fable-5-1 is not available here', 'the model is orchestrators-only on this host'],
   network: ['api.anthropic.com could not be reached', 'the socket closed before the first byte'],
   harness_crashed: ['The harness exited mid-turn', 'claude exited with code 137'],
@@ -146,7 +147,8 @@ const FAILURE_LINES: Record<FailureKind, [summary: string, cause: string]> = {
 export function failureRows(): AgentEvent[] {
   return FailureKindSchema.options.map((kind): AgentEvent => {
     const [summary, cause] = FAILURE_LINES[kind]
-    const account = kind === 'unknown' || kind === 'network' || kind === 'harness_crashed' || kind === 'turn_ended' ? null : 'work@example.com'
+    const account =
+      kind === 'unknown' || kind === 'network' || kind === 'harness_crashed' || kind === 'turn_ended' ? null : kind === 'key_invalid' ? 'build-key' : 'work@example.com'
     return {
       type: 'error',
       message: `${summary}: ${cause}`,
@@ -487,7 +489,14 @@ export function accountsSnapshot(peer: { environmentId: string; name: string; bu
         reports: [{ profileName: 'codex@example.com', windows: [{ label: '5h', usedPercent: 12 }], banked: 2 }],
         owner: 'temp-code'
       },
-      cursor: { pinned: null, profiles: [], reports: [], owner: null, note: 'not signed in' }
+      cursor: { pinned: null, profiles: [], reports: [], owner: null, note: 'not signed in' },
+      // A Meta Model API key: static, pay as you go, no usage windows.
+      meta: {
+        pinned: null,
+        owner: null,
+        profiles: [{ name: 'build-key', color: '#0866ff', createdAt: now - 2 * 86_400_000, active: false, static: true, kind: 'key' }],
+        reports: [{ profileName: 'build-key', windows: [], note: 'pay as you go' }]
+      }
     },
     peers: {
       [peer.environmentId]: { name: peer.name, connected: true, lastSyncAt: now - 300_000, error: null, build }

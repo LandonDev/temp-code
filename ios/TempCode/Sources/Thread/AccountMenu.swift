@@ -31,7 +31,7 @@ struct AccountMenu: View {
         let live = client.session(session.id) ?? session
         NavigationStack {
             Group {
-                if let scope = AccountScope.of(live, projects: client.projects, workspaces: client.workspaces) {
+                if let scope = AccountScope.of(live, projects: client.projects, workspaces: client.workspaces, catalog: client.catalog) {
                     content(scope: scope, session: live)
                 } else {
                     Text("This thread's provider has no accounts here.")
@@ -61,7 +61,7 @@ struct AccountMenu: View {
         let (project, workspace) = AccountScope.context(of: session, projects: client.projects, workspaces: client.workspaces)
         let scopes = AccountMenuModel.scopes(session: session, project: project, workspace: workspace)
         let accounts = client.accounts.snapshot.map { scope.provider.accounts(in: $0) }
-        let pinOnScreen = pinned(scopeKind, project: project, workspace: workspace)
+        let pinOnScreen = pinned(scopeKind, provider: scope.provider, project: project, workspace: workspace)
         return VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(scope.sourceLine)
@@ -89,7 +89,7 @@ struct AccountMenu: View {
                             if scopeKind == .thread {
                                 AccountRow(row: row, checked: checked, appeared: appeared)
                             } else {
-                                Button { choose(row.name, project: project, workspace: workspace) } label: {
+                                Button { choose(row.name, provider: scope.provider, project: project, workspace: workspace) } label: {
                                     AccountRow(row: row, checked: checked, appeared: appeared)
                                 }
                                 .buttonStyle(.pressable)
@@ -113,7 +113,7 @@ struct AccountMenu: View {
         }
         .onChange(of: pinOnScreen) {
             // The host's push caught up with the optimistic check.
-            if let pending, pending.kind == scopeKind, pinned(pending.kind, project: project, workspace: workspace) == pending.name { self.pending = nil }
+            if let pending, pending.kind == scopeKind, pinned(pending.kind, provider: scope.provider, project: project, workspace: workspace) == pending.name { self.pending = nil }
         }
         .onChange(of: scopeKind) { reason = nil }
     }
@@ -124,8 +124,7 @@ struct AccountMenu: View {
         return block.text(now: Date().timeIntervalSince1970 * 1000)
     }
 
-    private func pinned(_ kind: AccountScopeKind, project: ProjectMeta?, workspace: WorkspaceMeta?) -> String? {
-        guard let provider = RoutedProvider(session.provider) else { return nil }
+    private func pinned(_ kind: AccountScopeKind, provider: RoutedProvider, project: ProjectMeta?, workspace: WorkspaceMeta?) -> String? {
         switch kind {
         case .thread: return nil
         case .project: return project?.accountPins?[provider.rawValue]
@@ -135,8 +134,7 @@ struct AccountMenu: View {
 
     /// Pin `name` (nil = Automatic) at the scope on screen: the check moves at
     /// once and comes back with the reason if the host says no.
-    private func choose(_ name: String?, project: ProjectMeta?, workspace: WorkspaceMeta?) {
-        guard let provider = RoutedProvider(session.provider) else { return }
+    private func choose(_ name: String?, provider: RoutedProvider, project: ProjectMeta?, workspace: WorkspaceMeta?) {
         if let block = client.pinBlock {
             say(block.text(now: Date().timeIntervalSince1970 * 1000), tone: .secondary)
             return
@@ -213,7 +211,8 @@ private struct AccountRow: View {
                 }
                 switch row.kind {
                 case .account(_, _, _, let look):
-                    HeadroomBar(look: look, appeared: appeared)
+                    // A key with room has no share to draw: its stamp says "pay as you go".
+                    if look.bar { HeadroomBar(look: look, appeared: appeared) }
                 case .automatic(let detail):
                     Text(detail)
                         .textStep(.meta)

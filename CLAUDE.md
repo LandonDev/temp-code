@@ -2281,10 +2281,17 @@ proof and the sizing rules; the pieces, by name:
   Project and Workspace pin over `project.setAccounts` /
   `workspace.setAccounts` (admin; a lesser key sees "This key can't change
   pins"); the pure rules (`AccountScope`, `HeadroomLook`, `AccountMenuModel`)
-  are the client package's `Client/Accounts.swift`. A failed thread's row
-  and Home's cue read the host's `failure.summary` (`Shell/FailureCue.swift`).
-  The test server seeds two Claude accounts and answers
-  `POST /accounts/headroom`.
+  are the client package's `Client/Accounts.swift`. The provider is
+  `RoutedProvider(provider:model:catalog:)`: a catalog row with `vendor:
+  meta` under either harness spends the host's Meta keys (`providers.meta`,
+  absent on an older host and read as none; pins carry `meta`; a key's row,
+  `AccountProfile.kind == .key`, draws no bar while it has room and says
+  "pay as you go"); the failure card's `FailureActions` takes the same
+  provider (`key_invalid` and a keyless Meta thread are Retry with a line
+  naming the desktop). A failed thread's row and Home's cue read the
+  host's `failure.summary` (`Shell/FailureCue.swift`). The test server
+  seeds two Claude accounts, one Meta key and a Meta thread (`ios-meta`,
+  Muse Wonder on the claude harness) and answers `POST /accounts/headroom`.
 - Push (L6): the phone registers its APNs token with every paired host
   (`remote.push.register`/`unregister`/`status`/`activity`, capability read:
   the key's own row); the host keeps one row per key (`remote_push`,

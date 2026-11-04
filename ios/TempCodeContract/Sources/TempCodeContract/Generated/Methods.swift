@@ -708,10 +708,12 @@ public enum Methods {
             public struct Pins: Codable, Hashable, Sendable {
                 public let claude: String?
                 public let codex: String?
+                public let meta: String?
 
-                public init(claude: String? = nil, codex: String? = nil) {
+                public init(claude: String? = nil, codex: String? = nil, meta: String? = nil) {
                     self.claude = claude
                     self.codex = codex
+                    self.meta = meta
                 }
             }
 
@@ -734,10 +736,12 @@ public enum Methods {
             public struct Pins: Codable, Hashable, Sendable {
                 public let claude: String?
                 public let codex: String?
+                public let meta: String?
 
-                public init(claude: String? = nil, codex: String? = nil) {
+                public init(claude: String? = nil, codex: String? = nil, meta: String? = nil) {
                     self.claude = claude
                     self.codex = codex
+                    self.meta = meta
                 }
             }
 
