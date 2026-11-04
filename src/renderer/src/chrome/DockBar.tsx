@@ -1,3 +1,4 @@
+import { OVERFLOW_FADE, useOverflowEdges } from "../hooks/useOverflowEdges";
 import { useCallback, useLayoutEffect, useRef } from "react";
 import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
@@ -40,12 +41,14 @@ export type DockBarProps = {
 export function DockBar({ terminals, active, dev, onSelect, onSelectDev, onClose, onReorder, onAdd, onHide }: DockBarProps) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const listRef = useRef<HTMLDivElement | null>(null);
+  const edges = useOverflowEdges<HTMLDivElement>();
   const setList = useCallback(
     (el: HTMLDivElement | null) => {
       listRef.current = el;
       lockOverscroll(el);
+      edges(el);
     },
-    [lockOverscroll],
+    [lockOverscroll, edges],
   );
   const ids = terminals.map((file) => file.id);
   const sortable = useSortable(ids, onReorder ?? noop);
@@ -68,7 +71,7 @@ export function DockBar({ terminals, active, dev, onSelect, onSelectDev, onClose
           ref={setList}
           variant="line"
           aria-label="Dock"
-          className="scrollbar-none w-full min-w-0 justify-start gap-3 overflow-x-auto overscroll-none px-3 group-data-[orientation=horizontal]/tabs:h-full"
+          className={`scrollbar-none w-full min-w-0 justify-start gap-3 overflow-x-auto overscroll-none px-3 group-data-[orientation=horizontal]/tabs:h-full ${OVERFLOW_FADE}`}
         >
           {terminals.map((file, index) => {
             const label = terminalTabLabel(file);

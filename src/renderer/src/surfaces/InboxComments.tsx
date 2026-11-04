@@ -373,7 +373,7 @@ function InboxCommentPerson({
           referrerPolicy="no-referrer"
           draggable={false}
           onError={() => setFailed(true)}
-          className="size-5 shrink-0 rounded-full bg-muted object-cover"
+          className="size-5 shrink-0 rounded-full bg-muted object-cover outline outline-1 -outline-offset-1 outline-image-outline"
         />
       ) : (
         <span

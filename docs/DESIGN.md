@@ -61,7 +61,7 @@ or glass setting any more.
 | `sidebar` | the rail and the title bar | oklch 0.17 | oklch 0.972 warm |
 | `background` | content | oklch 0.195 | white |
 | `card` | a bounded region inside content (a card, a transcript action list) | oklch 0.225 | oklch 0.985 |
-| `popover` | every floating layer: menu, popover, dialog, sheet, tooltip (light) | oklch 0.24 | white |
+| `popover` | every floating layer: menu, popover, dialog, sheet, the editors' widgets | oklch 0.24 | white |
 | `muted` | a hovered or highlighted row, a track, a key cap | oklch 0.275 | oklch 0.955 |
 | `sidebar-group` | a group's resting fill in the chrome (a project card in the workspace column) | oklch 0.213 | oklch 0.961 warm |
 | `sidebar-group-hover` | that group hovered | oklch 0.244 | oklch 0.95 warm |
@@ -77,6 +77,11 @@ or glass setting any more.
 | `destructive` | failed, delete | red | red |
 | `success` | lines added, passed | green | green |
 | `info` | the one informational tint | blue | blue |
+
+The tooltip is drawn inverted in both themes: `foreground` fill, `background`
+text. The dim behind a dialog or a sheet is `scrim` (black at 30% dark, 18%
+light). An image's edge is `image-outline`, a 1px outline at 10% (white in
+dark, black in light), on a thumbnail, the lightbox, the QR code and avatars.
 
 The status colours (`success`, `warning`, `destructive`, `info`) are text
 as often as fills, so each reaches 4.5:1 as small text on `background`,
@@ -166,9 +171,14 @@ concentric: the inner radius is the outer minus the padding.
 
 ### Shadow
 
-`shadow-overlay` on floating layers only (menu, popover, dialog, sheet).
-Docked chrome and cards have no shadow; their depth is the gray step and
-the hairline. The one exception is a raised button (`default`, `secondary`,
+`shadow-overlay` on floating layers only: a menu, a popover, a dialog, a
+sheet, a toast, the find bar, the jump-to-latest button, the `/` and `@`
+popover and the editors' widgets (CodeMirror's tooltip and autocomplete,
+Monaco's suggest, hover and usages, each on the popover's fill, hairline and
+12px radius). Docked chrome and cards have no shadow, the segmented control's
+pill included; their depth is the gray step and the hairline
+(`lib/depthGuard.test.ts`). A scroller cut at an edge (the file tabs, the dock
+bar) fades that edge over 24px (`useOverflowEdges`) instead of a hard stop. The one exception is a raised button (`default`, `secondary`,
 `destructive`): it carries its own stack, a lip, an edge and a soft drop
 (`--raise-primary`, `--raise-secondary`, `--raise-destructive`, with their
 `-lit` and `-lifted` steps, a value per theme), on a fill layer behind its

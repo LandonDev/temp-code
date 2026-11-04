@@ -21,10 +21,10 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 describe("the focus ring", () => {
-  it("is index.css's one outline: no focus-visible ring anywhere in the renderer", () => {
+  it("is index.css's one outline: no focus-visible or focus-within ring anywhere in the renderer", () => {
     const found: Record<string, number> = {};
     for (const path of walk(root)) {
-      const hits = readFileSync(path, "utf8").match(/focus-visible:(?:[\w-]+:)*ring\b[^\s"'`]*/g);
+      const hits = readFileSync(path, "utf8").match(/focus-(?:visible|within):(?:[\w-]+:)*ring\b[^\s"'`]*/g);
       if (hits) found[relative(root, path)] = hits.length;
     }
     expect(found).toEqual(ALLOWED);

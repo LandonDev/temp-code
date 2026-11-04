@@ -4,6 +4,7 @@ import { SECTION_LABELS } from "../lib/composerTriggers";
 import type { ProjectFile } from "../lib/fs";
 import type { ProjectMeta, SessionMeta, SlashCommand } from "../lib/tcserver/types";
 import { StatusMark, threadStateOf } from "../components/ui/status";
+import { MENU_ROW } from "../components/ui/menu-row";
 import { timeAgo } from "../lib/duration";
 import { marksAtRest } from "../lib/threadStripModel";
 import { AddonMark } from "./AddonMark";
@@ -26,7 +27,8 @@ export type PopoverMatches =
   | { mode: "command"; rows: SlashCommand[] }
   | { mode: "file"; rows: AtMatch[] };
 
-const ROW = "flex h-7 w-full cursor-default items-center gap-2 rounded-md px-2 text-left text-[13px]";
+/** A menu's row (MENU_ROW), its 8px radius concentric in the 12px popover's 4px inset. */
+const ROW = `${MENU_ROW} flex w-full cursor-default items-center rounded-lg text-left`;
 /** A thread row's glyph: its status mark when it has one at rest, else the thread glyph. */
 function ThreadGlyph({ status }: { status: SessionMeta["status"] }) {
   const state = threadStateOf(status);
@@ -74,7 +76,7 @@ export function CommandPopover({
   return (
     <div
       data-command-popover
-      className="absolute right-0 bottom-full left-0 z-30 mb-2 rounded-xl border border-border bg-popover text-popover-foreground shadow-overlay"
+      className="absolute right-0 bottom-full left-0 z-30 mb-2 rounded-xl bg-popover text-popover-foreground shadow-overlay ring-1 ring-border [--scrollbar-inset:var(--radius-xl)]"
     >
       <div
         ref={listRef}
@@ -87,7 +89,7 @@ export function CommandPopover({
               <Fragment key={`${c.scope}:${c.name}`}>
                 {SECTION_LABELS[c.source] !==
                 SECTION_LABELS[matches.rows[n - 1]?.source as SlashCommand["source"]] ? (
-                  <p className="px-2 pt-2 pb-1 text-[11px] font-medium text-muted-foreground first:pt-1">
+                  <p className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground first:pt-1">
                     {SECTION_LABELS[c.source]}
                   </p>
                 ) : null}
@@ -116,7 +118,7 @@ export function CommandPopover({
               const mixed = matches.rows.some((x) => x.kind !== m.kind);
               const label =
                 mixed && prev !== m.kind && m.kind !== "file" ? (
-                  <div className="px-2 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
+                  <div className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
                     {m.kind === "thread" ? "Threads" : "Notes"}
                   </div>
                 ) : null;

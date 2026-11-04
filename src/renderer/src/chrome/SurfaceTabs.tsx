@@ -1,7 +1,7 @@
 import { MOD } from "../lib/platform";
 import { Terminal, X } from "./icons";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
@@ -18,6 +18,7 @@ import {
 import { releaseNotesTitle } from "../lib/releaseNotes";
 import { terminalTabLabel } from "../lib/terminalTab";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { OVERFLOW_FADE, useOverflowEdges } from "../hooks/useOverflowEdges";
 import { useSortable } from "../hooks/useSortable";
 import { FileTypeIcon } from "./FileTypeIcon";
 
@@ -90,6 +91,14 @@ export function SurfaceTabs({
   trailing,
 }: Props) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
+  const edges = useOverflowEdges<HTMLDivElement>();
+  const setList = useCallback(
+    (el: HTMLDivElement | null) => {
+      lockOverscroll(el);
+      edges(el);
+    },
+    [lockOverscroll, edges],
+  );
   const activeTabRef = useRef<HTMLDivElement | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   // Every tab of one pane shares a checkout; the pane's first file names it.
@@ -120,10 +129,10 @@ export function SurfaceTabs({
         className="h-9 min-w-0 shrink-0 gap-0 border-b border-border data-[orientation=horizontal]:flex-row"
       >
         <TabsList
-          ref={lockOverscroll}
+          ref={setList}
           variant="line"
           aria-label={label}
-          className="scrollbar-none min-w-0 flex-1 items-stretch justify-start overflow-x-auto overflow-y-hidden overscroll-none px-1 group-data-[orientation=horizontal]/tabs:h-full"
+          className={`scrollbar-none min-w-0 flex-1 items-stretch justify-start overflow-x-auto overflow-y-hidden overscroll-none px-1 group-data-[orientation=horizontal]/tabs:h-full ${OVERFLOW_FADE}`}
         >
           {files.map((file, index) => {
             const active = file.id === activeFileId;

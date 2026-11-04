@@ -80,7 +80,7 @@ describe("the inbox detail", () => {
     const approved = view.getByText("Approved");
     expect(approved.className).not.toMatch(/text-success|text-destructive/);
     expect(header.textContent).toContain("Open");
-    expect(view.getByRole("heading", { name: "Fix the gate" }).className).toContain("text-[16px]");
+    expect(view.getByRole("heading", { name: "Fix the gate" }).className).toContain("text-base");
     // The description is panel prose, not the transcript's.
     expect(view.getByText("The gate holds a merge.").getAttribute("data-markdown-size")).toBe("compact");
   });

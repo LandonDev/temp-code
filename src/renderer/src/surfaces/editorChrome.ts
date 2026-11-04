@@ -87,21 +87,25 @@ function editorThemeStyles(dark: boolean) {
       backgroundColor: "color-mix(in srgb, var(--destructive) 32%, transparent)",
       outline: "1px solid color-mix(in srgb, var(--destructive) 55%, transparent)",
     },
-    ".cm-panels, .cm-tooltip": {
+    ".cm-panels": {
       backgroundColor: "var(--background)",
       color: "var(--foreground)",
     },
     ".cm-panels": {
       borderColor: "color-mix(in srgb, var(--foreground) 10%, transparent)",
     },
+    // A floating layer like every popover: the popover fill, the hairline,
+    // the 12px radius and the overlay shadow.
     ".cm-tooltip": {
-      border:
-        "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
-      borderRadius: "6px",
+      backgroundColor: "var(--popover)",
+      color: "var(--foreground)",
+      border: "1px solid var(--border)",
+      borderRadius: "var(--radius-xl)",
+      boxShadow: "var(--shadow-overlay)",
       overflow: "hidden",
     },
     ".cm-tooltip.cm-tooltip-autocomplete": {
-      backgroundColor: "var(--background)",
+      backgroundColor: "var(--popover)",
     },
     ".cm-tooltip-autocomplete > ul": {
       fontFamily: "var(--font-mono)",
@@ -111,9 +115,9 @@ function editorThemeStyles(dark: boolean) {
     ".cm-tooltip-autocomplete > ul > li": {
       padding: "2px 8px",
     },
+    // The highlighted row is a muted fill, as in every menu.
     ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
-      backgroundColor:
-        "color-mix(in srgb, var(--color-accent) 25%, transparent)",
+      backgroundColor: "var(--muted)",
       color: "var(--foreground)",
     },
     ".cm-completionDetail": {

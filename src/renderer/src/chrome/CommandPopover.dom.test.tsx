@@ -3,6 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ProjectFile } from "../lib/fs";
 import type { SessionMeta } from "../lib/tcserver/types";
+import { MENU_ROW } from "../components/ui/menu-row";
 import { CommandPopover, type PopoverMatches } from "./CommandPopover";
 
 beforeAll(() => {
@@ -33,5 +34,16 @@ describe("CommandPopover", () => {
     const { container } = render(<CommandPopover matches={at} {...props} />);
     const marks = [...container.querySelectorAll('[data-slot="status-mark"]')].map((m) => m.getAttribute("data-state"));
     expect(marks).toEqual(["paused", "working"]);
+  });
+
+  it("draws its rows as a menu's, 8px radius inside the 12px popover, on the hairline ring", () => {
+    const at: PopoverMatches = { mode: "file", rows: [{ kind: "file", file: file("src/a.ts") }] };
+    const { container } = render(<CommandPopover matches={at} {...props} />);
+    const root = container.querySelector<HTMLElement>("[data-command-popover]")!;
+    expect(root.className).toContain("ring-1");
+    expect(root.className.split(/\s+/)).not.toContain("border");
+    const row = container.querySelector<HTMLElement>("[role=option]")!;
+    for (const c of MENU_ROW.split(" ")) expect(row.className).toContain(c);
+    expect(row.className).toContain("rounded-lg");
   });
 });

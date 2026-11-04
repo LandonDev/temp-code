@@ -37,7 +37,7 @@ function Code({ made, onClose, onChanged }: Props & { made: Made }) {
     <>
       <div className="flex flex-col gap-4 px-5 py-4">
         <div className="flex items-center gap-4">
-          {made.qr ? <img src={made.qr} alt="Pairing QR code" className="size-32 shrink-0 rounded-lg outline outline-1 outline-foreground/10" /> : null}
+          {made.qr ? <img src={made.qr} alt="Pairing QR code" className="size-32 shrink-0 rounded-lg outline outline-1 -outline-offset-1 outline-image-outline" /> : null}
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-xs font-medium text-muted-foreground">Code</span>
             <div className="flex items-center gap-1">

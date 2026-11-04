@@ -27,7 +27,7 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
       data-slot="tabs-trigger"
       className={cn(
         "relative inline-flex h-full flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-0.5 text-[13px] font-medium text-muted-foreground transition-[background-color,color] duration-(--dur-hover) hover:text-foreground disabled:pointer-events-none disabled:opacity-50 group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start data-active:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        "group-data-[variant=default]/tabs-list:data-active:bg-background group-data-[variant=default]/tabs-list:data-active:shadow-xs",
+        "group-data-[variant=default]/tabs-list:data-active:bg-background",
         "group-data-[variant=line]/tabs-list:rounded-none group-data-[variant=line]/tabs-list:px-1 group-data-[variant=line]/tabs-list:after:absolute group-data-[variant=line]/tabs-list:after:inset-x-0 group-data-[variant=line]/tabs-list:after:-bottom-px group-data-[variant=line]/tabs-list:after:h-0.5 group-data-[variant=line]/tabs-list:after:bg-foreground group-data-[variant=line]/tabs-list:after:opacity-0 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
         className,
       )}
@@ -47,7 +47,7 @@ function TabsIndicator({ className, style, ...props }: TabsPrimitive.Indicator.P
     <TabsPrimitive.Indicator
       data-slot="tabs-indicator"
       className={cn(
-        "absolute top-(--active-tab-top) left-0 h-(--active-tab-height) w-(--active-tab-width) translate-x-(--active-tab-left) rounded-md bg-background shadow-xs transition-[translate,width] motion-reduce:transition-none",
+        "absolute top-(--active-tab-top) left-0 h-(--active-tab-height) w-(--active-tab-width) translate-x-(--active-tab-left) rounded-md bg-background transition-[translate,width] motion-reduce:transition-none",
         className,
       )}
       style={{ transitionDuration: `${SPRING_LAYOUT_CSS.ms}ms`, transitionTimingFunction: SPRING_LAYOUT_CSS.easing, ...(typeof style === "object" ? style : {}) }}

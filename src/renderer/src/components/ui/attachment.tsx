@@ -6,9 +6,12 @@ import { cn } from "@renderer/lib/cn";
 import { Button } from "./button";
 
 /** A file on its way into a turn, or shown in one: a media tile, a name,
- *  one line under it, an action at the end. `state` tints and pulses. */
+ *  one line under it, an action at the end. `state` tints and pulses. Its
+ *  12px frame holds the tile's 6px radius concentric (xs: 6 around 4). Inside
+ *  a card (the composer, a sent bubble) it is a muted fill with no hairline,
+ *  never a card in a card. Its focus is the trigger's one ring. */
 const attachmentVariants = cva(
-  "group/attachment relative flex w-fit min-w-0 max-w-full shrink-0 flex-wrap rounded-lg border border-border bg-card text-card-foreground transition-[background-color,border-color] duration-(--dur-fast) focus-within:ring-2 focus-within:ring-ring has-[>a,>button]:hover:bg-muted/50 data-[state=error]:border-destructive/40 data-[state=idle]:border-dashed",
+  "group/attachment relative flex w-fit min-w-0 max-w-full shrink-0 flex-wrap rounded-xl border border-border bg-card text-card-foreground transition-[background-color,border-color] duration-(--dur-fast) in-[.bg-card]:border-transparent in-[.bg-card]:bg-muted has-[>a,>button]:hover:bg-muted/50 data-[state=error]:border-destructive/40 data-[state=idle]:border-dashed",
   {
     variants: {
       size: {
@@ -34,7 +37,7 @@ function Attachment({
 }
 
 const attachmentMediaVariants = cva(
-  "relative flex aspect-square w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground group-data-[orientation=vertical]/attachment:w-full group-data-[size=sm]/attachment:w-8 group-data-[size=xs]/attachment:w-6 group-data-[state=error]/attachment:bg-destructive/10 group-data-[state=error]/attachment:text-destructive [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 group-data-[size=xs]/attachment:[&_svg:not([class*='size-'])]:size-3.5",
+  "relative flex aspect-square w-9 shrink-0 items-center justify-center overflow-hidden rounded-md group-data-[size=xs]/attachment:rounded-sm bg-muted text-muted-foreground group-data-[orientation=vertical]/attachment:w-full group-data-[size=sm]/attachment:w-8 group-data-[size=xs]/attachment:w-6 group-data-[state=error]/attachment:bg-destructive/10 group-data-[state=error]/attachment:text-destructive [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 group-data-[size=xs]/attachment:[&_svg:not([class*='size-'])]:size-3.5",
   {
     variants: {
       variant: {
@@ -73,7 +76,7 @@ function AttachmentAction({ className, variant, size = "icon-xs", ...props }: Co
 function AttachmentTrigger({ className, render, type, ...props }: useRender.ComponentProps<"button">) {
   return useRender({
     defaultTagName: "button",
-    props: mergeProps<"button">({ type: render ? type : (type ?? "button"), className: cn("absolute inset-0 z-10 outline-none", className) }, props),
+    props: mergeProps<"button">({ type: render ? type : (type ?? "button"), className: cn("absolute inset-0 z-10 rounded-[inherit]", className) }, props),
     render,
     state: { slot: "attachment-trigger" },
   });

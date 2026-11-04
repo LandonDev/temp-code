@@ -79,7 +79,7 @@ function Slide({ item }: { item: LightboxItem }) {
       alt={item.name}
       draggable={false}
       onError={() => setState({ kind: 'failed' })}
-      className="max-h-[calc(100vh-112px)] max-w-[calc(100vw-160px)] select-none rounded-lg object-contain outline-1 -outline-offset-1 outline-foreground/10"
+      className="max-h-[calc(100vh-112px)] max-w-[calc(100vw-160px)] select-none rounded-lg object-contain outline outline-1 -outline-offset-1 outline-image-outline"
     />
   )
 }

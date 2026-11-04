@@ -386,10 +386,6 @@ html.theme-light {
   --color-info: var(--thread-info);
   --color-violet: var(--thread-violet);
   --color-cyan: var(--thread-cyan);
-  /* Every floating layer's fill (see .floating-surface): a lifted, near-opaque
-     plane a step above the base so a busy transcript never reads through a
-     menu or a dialog. */
-  --color-overlay: color-mix(in oklab, var(--popover) 96%, transparent);
   /* Motion bar: one duration and one curve for every utility transition.
      The same curve is EASE_OUT in lib/ease.ts. */
   --default-transition-duration: var(--dur-fast);
@@ -566,76 +562,6 @@ html.theme-switching *::after {
   pointer-events: none;
 }
 
-
-/* Every popover, menu, dialog and floating panel shares this surface: the
- * blur, tint and border in one place. `.glass-surface--sm|md|xl` pick the
- * blur strength; the bare class is the Tailwind default (8px).
- *
- * `translateZ(0)` + `will-change: transform` promote the surface to its own
- * compositor layer up front, and `contain: paint` + `isolation: isolate`
- * keep the blur sampling a bounded region instead of forcing a window-wide
- * recomposite. Both are set on mount, not toggled, so the layer already
- * exists by the time the blur is asked for — that is what avoids the dark
- * cutout/flicker macOS shows when `backdrop-filter` first paints over a
- * vibrant transparent NSWindow.
- */
-.glass-surface {
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  transform: translateZ(0);
-  will-change: transform;
-  contain: paint;
-  isolation: isolate;
-}
-
-.glass-surface--xs {
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-}
-
-.glass-surface--sm {
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-
-.glass-surface--md {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-.glass-surface--xl {
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-}
-
-/* Every popover, menu, dialog, toast and tooltip: one fill (`--color-overlay`,
- * near-opaque) over one 20px blur, plus the hairline, so they all lift the
- * same amount. Pair it with `.glass-surface` for the layer promotion.
- * `bg-foreground/10` stays for the highlighted row inside, never for the surface. */
-.floating-surface {
-  background: var(--color-overlay);
-  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
-}
-
-/* Solid chrome when the OS asks for it: no blur anywhere, and the tinted
- * surfaces fall back to the theme background. */
-@media (prefers-reduced-transparency: reduce) {
-  .glass-surface,
-  .glass-surface--xs,
-  .glass-surface--sm,
-  .glass-surface--md,
-  .glass-surface--xl,
-  .floating-surface {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-
-  .floating-surface {
-    background: var(--background);
-  }
-}
 
 textarea,
 input,
@@ -904,11 +830,10 @@ header[data-tauri-drag-region] button {
 /* Suggest widget: IDEA's new-UI popup. Surfaces come from the app tokens;
  * the per-kind hues are IDEA's own, they are what makes it read as IDEA. */
 .monaco-editor .suggest-widget {
-  border-radius: 10px !important;
+  border-radius: var(--radius-xl) !important;
+  background: var(--popover) !important;
+  border: 1px solid var(--border) !important;
   overflow: hidden !important;
-  box-shadow: var(--shadow-overlay) !important;
-}
-.theme-light .monaco-editor .suggest-widget {
   box-shadow: var(--shadow-overlay) !important;
 }
 .monaco-editor .suggest-widget .monaco-list-row {
@@ -1038,13 +963,11 @@ header[data-tauri-drag-region] button {
 }
 /* Hover card (errors, docs) and code lenses on tokens. */
 .monaco-editor .monaco-hover {
-  border-radius: 8px !important;
-  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent) !important;
+  border-radius: var(--radius-xl) !important;
+  background: var(--popover) !important;
+  border: 1px solid var(--border) !important;
   box-shadow: var(--shadow-overlay);
   overflow: hidden;
-}
-.theme-light .monaco-editor .monaco-hover {
-  box-shadow: var(--shadow-overlay);
 }
 .monaco-editor .monaco-hover .hover-row {
   padding: 2px 0;
@@ -1070,9 +993,9 @@ header[data-tauri-drag-region] button {
 /* Parameter info (⌘P) and the usages / hierarchy popup. */
 .monaco-editor .tc-param-info,
 .monaco-editor .tc-usages {
-  background: color-mix(in srgb, var(--foreground) 5%, var(--background));
-  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
-  border-radius: 8px;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-overlay);
   font-family: var(--font-mono);
   font-size: 12px;

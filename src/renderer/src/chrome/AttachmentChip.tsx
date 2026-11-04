@@ -90,7 +90,8 @@ export function AttachmentChip({ environmentId, attachment, onRemove, onOpen, pr
       data-attachment-path={attachment.path}
       data-upload={progress ? (progress.failed ? 'failed' : String(progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0)) : undefined}
     >
-      <AttachmentMedia variant={image ? 'image' : 'icon'}>
+      {/* An image's edge: the 1px image outline, inside the tile's radius. */}
+      <AttachmentMedia variant={image ? 'image' : 'icon'} className={image ? 'outline outline-1 -outline-offset-1 outline-image-outline' : undefined}>
         {image ? <img src={preview} alt="" decoding="async" /> : <FileTypeIcon name={attachment.name} isDir={false} size={16} />}
       </AttachmentMedia>
       <AttachmentContent>

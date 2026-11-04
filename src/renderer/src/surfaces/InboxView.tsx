@@ -1291,7 +1291,7 @@ function InboxPerson({
           referrerPolicy="no-referrer"
           draggable={false}
           onError={() => setFailed(true)}
-          className="shrink-0 rounded-full bg-muted object-cover"
+          className="shrink-0 rounded-full bg-muted object-cover outline outline-1 -outline-offset-1 outline-image-outline"
           style={{ width: size, height: size }}
         />
       ) : (
