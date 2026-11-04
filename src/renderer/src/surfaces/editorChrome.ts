@@ -90,8 +90,6 @@ function editorThemeStyles(dark: boolean) {
     ".cm-panels": {
       backgroundColor: "var(--background)",
       color: "var(--foreground)",
-    },
-    ".cm-panels": {
       borderColor: "color-mix(in srgb, var(--foreground) 10%, transparent)",
     },
     // A floating layer like every popover: the popover fill, the hairline,
