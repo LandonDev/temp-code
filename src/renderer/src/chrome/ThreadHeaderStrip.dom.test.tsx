@@ -276,17 +276,39 @@ describe("ThreadHeaderStrip rows", () => {
 });
 
 describe("ThreadHeaderStrip chip", () => {
-  it("a master chip reads its type glyph, title, Master and status glyph, nothing else, and carries no title attribute", () => {
+  it("a master chip that needs you reads its status glyph in the type glyph's place, the title and Master, and carries no title attribute", () => {
     const waiting: StripChip = { ...chip("a", "Alpha"), status: "waiting", thread: { ...thread("a", "Alpha"), status: "waiting" } };
     mount({ masterIds: new Set(["a"]), model: { ...model, live: [waiting, ...model.live.slice(1)] } });
     const el = tab("Alpha");
-    expect(el.children).toHaveLength(4);
-    expect(el.children[0]!.tagName.toLowerCase()).toBe("svg");
-    expect(el.textContent).toBe("AlphaMaster");
+    expect(el.children).toHaveLength(3);
+    const slot = el.children[0]!;
+    expect(slot.hasAttribute("data-chip-glyph")).toBe(true);
+    // The live mark stands in for the type glyph, as a tab's favicon turns into a spinner.
+    expect(slot.querySelector("svg[data-type-glyph]")).toBeNull();
+    expect(slot.querySelectorAll('[data-slot="status-mark"]')).toHaveLength(1);
     expect(el.querySelector('[data-slot="status-mark"]')?.getAttribute("aria-label")).toBe("Needs you");
-    // A settled chip says nothing at rest.
+    expect(el.textContent).toBe("AlphaMaster");
+    // A settled chip says nothing at rest: its type glyph is back.
     expect(tab("Beta").querySelector('[data-slot="status-mark"]')).toBeNull();
+    expect(tab("Beta").querySelector("[data-chip-glyph] svg[data-type-glyph]")).toBeTruthy();
     for (const el of document.querySelectorAll("[role=tab], [role=tab] *")) expect(el.hasAttribute("title")).toBe(false);
+  });
+
+  it("a chip keeps its structure and slots working or at rest, and an unread title holds the bold width", () => {
+    const working: StripChip = { ...chip("a", "Alpha"), status: "running", thread: { ...thread("a", "Alpha"), status: "running" } };
+    const unread: StripChip = { ...chip("b", "Beta"), unread: true };
+    mount({ model: { ...model, live: [working, unread, model.live[2]!] } });
+    const shape = (name: string) => [...tab(name).children].map((c) => c.getAttribute("data-chip-glyph") !== null ? "glyph" : c.hasAttribute("data-chip-title") ? "title" : c.tagName);
+    expect(shape("Alpha")).toEqual(["glyph", "title"]);
+    expect(shape("Gamma")).toEqual(["glyph", "title"]);
+    expect(tab("Alpha").querySelector("[data-chip-glyph]")!.className).toContain("size-3.5");
+    // The title's ::after is an unseen medium-weight copy with no height.
+    const title = tab("Beta").querySelector<HTMLElement>("[data-chip-title]")!;
+    expect(title.getAttribute("data-text")).toBe("Beta");
+    expect(title.className).toEqual(expect.stringContaining("after:content-[attr(data-text)]"));
+    expect(title.className).toEqual(expect.stringContaining("after:font-medium"));
+    expect(title.className).toEqual(expect.stringContaining("after:h-0"));
+    expect(title.className).toEqual(expect.stringContaining("after:invisible"));
   });
 
   it("tints every chip's type glyph, active or not; a chip with no type draws chat's", () => {
@@ -354,6 +376,10 @@ describe("ThreadHeaderStrip chip", () => {
     const line = container.querySelector('[data-slot="status-mark"]')!;
     expect(line.getAttribute("data-state")).toBe("working");
     expect(container.textContent).toBe("AlphaWorkingRunning bun3/7");
+    cleanup();
+    // While the mark stands in for the glyph, the hover line names the type.
+    const { container: typed } = render(<ChipHoverLabel title="Alpha" status={chipStatus(working, {})} type="Implementation" />);
+    expect(typed.textContent).toBe("AlphaWorkingRunning bun3/7Implementation");
   });
 });
 

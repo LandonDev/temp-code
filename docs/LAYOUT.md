@@ -434,14 +434,19 @@ before the host's meta lands (`chipThreadsOf` in chrome/ShellTitleBar.tsx).
   selected as a click on it is (`slotTarget`), so a chip sharing a split
   focuses its own pane and a chip with no tab opens its thread.
 - **The live chip.** A ghost `Button` with `role="tab"`, 28px tall, 12px
-  padding, `rounded-md`, 2px apart: the type glyph (`TypeGlyph`, 14px,
-  1.5 stroke, its type's tint on every chip, active or not), 8px, the title
-  (13px, truncated at 224px), "Master" in
-  muted type when pinned, the host glyph (12px, two or more hosts), then
-  the `StatusMark` glyph (none for an idle or done thread). Muted at rest,
+  padding, `rounded-md`, 2px apart: one 14px glyph slot, 8px, the title
+  (13px, truncated at 224px), "Master" in muted type when pinned, the host
+  glyph (12px, two or more hosts). The slot holds the type glyph
+  (`TypeGlyph`, 1.5 stroke, its type's tint on every chip, active or not)
+  at rest, and the `StatusMark` glyph in its place while the thread works,
+  waits, fails, pauses or queues, as a browser tab's favicon turns into a
+  spinner; the hover line then names the type. Nothing else in the chip
+  moves: its width never changes with its state. Muted at rest,
   `foreground/5` and foreground on hover (the colour swap takes
   `--dur-fast`), `bg-muted` when active (no transition), medium weight when
-  unread, the accent ring on keyboard focus. A chip whose host's link is
+  unread (an unseen medium-weight copy of the title, its `::after`, holds
+  that width at all times, so unread never widens it), the accent ring on
+  keyboard focus. A chip whose host's link is
   down takes the rail's offline tint (`opacity-50`, `data-host-offline`).
   No motion: list rows take none.
 - **The shelf chip.** The same ghost `Button`, quieter: 24px tall, 8px

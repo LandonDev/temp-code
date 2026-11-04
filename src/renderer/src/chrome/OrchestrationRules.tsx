@@ -83,7 +83,7 @@ export function RulesSkeleton({ workspaceId }: { workspaceId: string | null }) {
               <Skeleton className="h-3.5 w-32" />
               <Skeleton className="h-3 w-56" />
             </div>
-            <Skeleton className="h-5 w-8 rounded-full" />
+            <Skeleton className="h-[18px] w-8 rounded-full" />
           </div>
         ))}
       </div>

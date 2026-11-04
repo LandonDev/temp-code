@@ -1,5 +1,5 @@
 import { memo, useEffect, useState, type ReactNode } from "react";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { STATUS_WORD } from "@renderer/components/ui/status";
 import { cn } from "@renderer/lib/cn";
 import { usePaneVisible } from "../../hooks/paneVisibility";
@@ -153,7 +153,7 @@ export const WorkingStrip = memo(function WorkingStrip({
           {elapsed >= 1000 ? time(elapsed, "timer") : null}
           <Actions>
             <Button variant="ghost" size="xs" onClick={stopTurn} disabled={stopping}>
-              {stopping ? "Stopping…" : "Stop"}
+              <BusyLabel busy={stopping} label="Stop" busyLabel="Stopping…" />
             </Button>
           </Actions>
         </>
@@ -175,7 +175,7 @@ export const WorkingStrip = memo(function WorkingStrip({
                 Stop
               </Button>
               <Button variant="secondary" size="xs" onClick={resume} disabled={resumeBusy}>
-                {resumeBusy ? "Continuing…" : "Continue"}
+                <BusyLabel busy={resumeBusy} label="Continue" busyLabel="Continuing…" />
               </Button>
             </Actions>
           </>
@@ -187,7 +187,7 @@ export const WorkingStrip = memo(function WorkingStrip({
             {elapsed > 0 ? time(elapsed) : null}
             <Actions>
               <Button variant="secondary" size="xs" onClick={resume} disabled={resumeBusy}>
-                {resumeBusy ? "Resuming…" : "Resume"}
+                <BusyLabel busy={resumeBusy} label="Resume" busyLabel="Resuming…" />
               </Button>
             </Actions>
           </>
@@ -199,7 +199,7 @@ export const WorkingStrip = memo(function WorkingStrip({
             {onStart ? (
               <Actions>
                 <Button variant="ghost" size="xs" onClick={start} disabled={startBusy}>
-                  {startBusy ? "Starting…" : "Start now"}
+                  <BusyLabel busy={startBusy} label="Start now" busyLabel="Starting…" />
                 </Button>
               </Actions>
             ) : null}

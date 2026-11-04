@@ -14,8 +14,10 @@ import { COLUMN_MAX_CLASS } from "./transcriptOutlineModel";
  * around it does not jump when the real thing lands; nothing in it moves.
  */
 export type SkeletonKind =
-  /** A full page with a list column beside its content (Search, Inbox, Notes). */
+  /** A full page with a list column beside its content (Inbox, Notes): the title strip, the list, the detail. */
   | "page"
+  /** Search: the title strip, then its result rows. */
+  | "search"
   /** A page in the one 672px column under the title strip (Settings, Stats). */
   | "column"
   /** The Accounts page: the column with account rows (a dot, the name over its line, two usage bars, a switch). */
@@ -36,7 +38,12 @@ export type SkeletonKind =
   | "rows";
 
 const PROSE = [72, 48, 88, 36, 64, 56];
-const NAV = [60, 45, 70, 50, 65, 40, 55, 48];
+/** The Inbox's and Notes' list column at its default width; both views start there. */
+export const PAGE_LIST_WIDTH = 280;
+/** The 40px title strip every full surface opens with (Search, Inbox, Notes, the pages). */
+const STRIP = "h-10 shrink-0 border-b border-border";
+/** A Switch's box (components/ui/switch.tsx), for a skeleton standing in for one. */
+const SWITCH_SKELETON = "h-[18px] w-8 rounded-full";
 const HUNK = [64, 40, 76, 52, 30];
 /** The most lines a diff's skeleton draws: past them the fold is already a screen's worth. */
 export const DIFF_ROWS_SKELETON_CAP = 8;
@@ -52,35 +59,61 @@ function Lines({ widths, count, className, gap }: { widths: number[]; count: num
   );
 }
 
-function body(kind: SkeletonKind, count: number): ReactNode {
+/**
+ * List rows in the shape of what comes: one line (a search hit), a title
+ * over a line (an inbox item), or Notes' three-line card (its time, its
+ * title, its first words).
+ */
+function rowsOf(count: number, lines: 1 | 2 | 3): ReactNode {
+  return Array.from({ length: count }, (_, i) =>
+    lines === 3 ? (
+      <div key={i} data-skeleton-row className="flex flex-col px-2 py-2">
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="mt-1 h-3.5 w-40 max-w-full" />
+        <Skeleton className="mt-0.5 h-3 w-56 max-w-full" />
+      </div>
+    ) : lines === 2 ? (
+      <div key={i} data-skeleton-row className="flex h-12 flex-col justify-center gap-2 px-3">
+        <Skeleton className="h-3 w-40 max-w-full" />
+        <Skeleton className="h-2.5 w-56 max-w-full" />
+      </div>
+    ) : (
+      <div key={i} data-skeleton-row className="flex h-7 items-center px-2">
+        <Skeleton className="h-3" style={{ width: `${PROSE[i % PROSE.length]}%` }} />
+      </div>
+    ),
+  );
+}
+
+function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
   switch (kind) {
     case "page":
+      // The Inbox's and Notes' frame: the strip, the list column at its
+      // default width with two-line rows, then the detail's title and lines.
       return (
-        <div className="flex min-h-0 flex-1">
-          <div className="flex w-52 shrink-0 flex-col border-r border-border p-2">
-            {NAV.map((width, i) => (
-              <div key={i} className="flex h-9 items-center px-3">
-                <Skeleton className="h-3" style={{ width: `${width}%` }} />
-              </div>
-            ))}
-          </div>
-          <div className="min-w-0 flex-1 px-8 pt-8">
-            <div className="max-w-2xl">
-              <Skeleton className="h-4 w-32" />
-              <div className="mt-6 flex flex-col gap-4">
-                {Array.from({ length: 5 }, (_, i) => (
-                  <div key={i} className="flex items-center gap-4">
-                    <div className="flex min-w-0 flex-1 flex-col gap-2">
-                      <Skeleton className="h-3 w-40 max-w-full" />
-                      <Skeleton className="h-2.5 w-64 max-w-full" />
-                    </div>
-                    <Skeleton className="h-5 w-9 rounded-full" />
-                  </div>
-                ))}
+        <>
+          <div data-skeleton-strip className={STRIP} />
+          <div className="flex min-h-0 flex-1">
+            <div data-skeleton-list className="flex shrink-0 flex-col border-r border-border px-1 py-1" style={{ width: PAGE_LIST_WIDTH }}>
+              {rowsOf(8, 2)}
+            </div>
+            <div className="min-w-0 flex-1 px-6 pt-6">
+              <div className="max-w-2xl">
+                <Skeleton className="h-4 w-48" />
+                <div className="mt-4">
+                  <Lines widths={PROSE} count={6} className="h-3" gap="gap-3" />
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </>
+      );
+    case "search":
+      return (
+        <>
+          <div data-skeleton-strip className={STRIP} />
+          <div className="flex flex-col px-1 py-1">{rowsOf(count, 1)}</div>
+        </>
       );
     case "column":
     case "accounts":
@@ -89,7 +122,7 @@ function body(kind: SkeletonKind, count: number): ReactNode {
       // of the page it stands in for.
       return (
         <>
-          <div className="h-10 shrink-0 border-b border-border" />
+          <div data-skeleton-strip className={STRIP} />
           <div data-skeleton-scroller className={PAGE_SCROLLER}>
             <div data-skeleton-column className="mx-auto w-full max-w-2xl p-6">
               <Skeleton className="h-4 w-32" />
@@ -107,7 +140,7 @@ function body(kind: SkeletonKind, count: number): ReactNode {
                         </div>
                         <Skeleton data-skeleton-bar className="h-6 w-[72px]" />
                         <Skeleton data-skeleton-bar className="h-6 w-[72px]" />
-                        <Skeleton data-skeleton-switch className="h-5 w-9 rounded-full" />
+                        <Skeleton data-skeleton-switch className={SWITCH_SKELETON} />
                       </div>
                     ))}
                   </div>
@@ -178,21 +211,13 @@ function body(kind: SkeletonKind, count: number): ReactNode {
         </div>
       );
     case "rows":
-      return (
-        <div className="flex flex-col gap-1">
-          {Array.from({ length: count }, (_, i) => (
-            <div key={i} data-skeleton-row className="flex h-12 flex-col justify-center gap-2 px-3">
-              <Skeleton className="h-3 w-40 max-w-full" />
-              <Skeleton className="h-2.5 w-56 max-w-full" />
-            </div>
-          ))}
-        </div>
-      );
+      return lines === 3 ? <div className="flex flex-col gap-0.5 p-1">{rowsOf(count, 3)}</div> : <div className="flex flex-col gap-1">{rowsOf(count, 2)}</div>;
   }
 }
 
 const FRAME: Record<SkeletonKind, string> = {
   page: "flex min-h-0 min-w-0 flex-1 flex-col",
+  search: "flex min-h-0 min-w-0 flex-1 flex-col",
   column: "flex min-h-0 min-w-0 flex-1 flex-col",
   accounts: "flex min-h-0 min-w-0 flex-1 flex-col",
   pane: "h-full min-h-0 w-full overflow-hidden",
@@ -204,10 +229,21 @@ const FRAME: Record<SkeletonKind, string> = {
   rows: "w-full",
 };
 
-export function SurfaceSkeleton({ kind, label, count = 4 }: { kind: SkeletonKind; label?: string; count?: number }) {
+export function SurfaceSkeleton({
+  kind,
+  label,
+  count = 4,
+  lines = 2,
+}: {
+  kind: SkeletonKind;
+  label?: string;
+  count?: number;
+  /** `rows` only: 3 draws Notes' three-line cards. */
+  lines?: 2 | 3;
+}) {
   return (
     <div role="status" aria-label={label ?? "Loading"} aria-busy data-surface-skeleton={kind} className={`select-none ${FRAME[kind]}`}>
-      {body(kind, count)}
+      {body(kind, count, lines)}
     </div>
   );
 }

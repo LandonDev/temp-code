@@ -5,7 +5,7 @@ import { Spinner } from "../components/ui/spinner";
 import { GroupInput, Input, InputGroup } from "../components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
-import { EmptyState, SurfaceSkeleton } from "./SurfaceSkeleton";
+import { EmptyState, PAGE_LIST_WIDTH, SurfaceSkeleton } from "./SurfaceSkeleton";
 import { ConfirmDialog } from "../chrome/ConfirmDialog";
 import {
   Fragment,
@@ -53,7 +53,7 @@ import { AgentMarkdown, MarkdownSourceHighlight } from "./AgentMarkdown";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
-const DEFAULT_WIDTH = 280;
+const DEFAULT_WIDTH = PAGE_LIST_WIDTH;
 
 let rememberedWidth = DEFAULT_WIDTH;
 let rememberedNoteId: string | null = null;
@@ -265,7 +265,7 @@ export function NotesView({
         {error && notes.length === 0 ? (
           <p className="px-3 py-2 text-[12px] text-destructive">{error}</p>
         ) : loading && notes.length === 0 ? (
-          <SurfaceSkeleton kind="rows" count={6} label="Loading notes" />
+          <SurfaceSkeleton kind="rows" lines={3} count={6} label="Loading notes" />
         ) : visible.length === 0 ? (
           <EmptyState title={query.trim() ? "No matching notes" : "No notes yet"} />
         ) : (

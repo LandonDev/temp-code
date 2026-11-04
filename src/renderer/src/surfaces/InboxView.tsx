@@ -113,11 +113,11 @@ import {
   type InboxReplyTarget,
 } from "./InboxComments";
 import { InboxPrDiff } from "./InboxPrDiff";
-import { EmptyState } from "./SurfaceSkeleton";
+import { EmptyState, PAGE_LIST_WIDTH } from "./SurfaceSkeleton";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
-const DEFAULT_WIDTH = 280;
+const DEFAULT_WIDTH = PAGE_LIST_WIDTH;
 /** A stored snapshot older than this is refreshed when the inbox opens. */
 const OPEN_REFRESH_AGE_MS = 60_000;
 /** While the inbox is open and the window visible, GitHub is asked again this often. */

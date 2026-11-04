@@ -1,6 +1,7 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@renderer/lib/cn";
+import { Spinner } from "./spinner";
 
 /**
  * The one button. The solid variants are raised (Kobra's `t-raise` in
@@ -12,7 +13,7 @@ import { cn } from "@renderer/lib/cn";
  * eases back over --dur-hover, as every row does.
  */
 const buttonVariants = cva(
-  "group/button relative isolate inline-flex shrink-0 cursor-default select-none items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium outline-none transition-[background-color,color,border-color] duration-(--dur-hover) ease-(--ease-out) disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none aria-invalid:ring-2 aria-invalid:ring-destructive/30 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button relative isolate inline-flex shrink-0 cursor-default select-none items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium outline-none transition-[background-color,color,border-color] duration-(--dur-hover) ease-(--ease-out) disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none aria-invalid:ring-2 aria-invalid:ring-destructive/30 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [--busy-space:1rem]",
   {
     variants: {
       variant: {
@@ -27,12 +28,12 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2",
-        xs: "h-6 gap-1 rounded-md px-2 text-xs [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 gap-1 rounded-md px-2.5 text-[13px] [&_svg:not([class*='size-'])]:size-3.5",
+        xs: "h-6 gap-1 rounded-md px-2 text-xs [&_svg:not([class*='size-'])]:size-3 [&_[data-slot=spinner]:not([class*='size-'])]:size-3 [--busy-space:0.75rem]",
+        sm: "h-7 gap-1 rounded-md px-2.5 text-[13px] [&_svg:not([class*='size-'])]:size-3.5 [&_[data-slot=spinner]:not([class*='size-'])]:size-3.5 [--busy-space:0.875rem]",
         lg: "h-9 gap-2 px-4",
         icon: "size-8",
-        "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "size-7 rounded-md [&_svg:not([class*='size-'])]:size-3.5",
+        "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3 [&_[data-slot=spinner]:not([class*='size-'])]:size-3",
+        "icon-sm": "size-7 rounded-md [&_svg:not([class*='size-'])]:size-3.5 [&_[data-slot=spinner]:not([class*='size-'])]:size-3.5",
       },
       rounded: { true: "rounded-full", false: "" },
     },
@@ -57,4 +58,36 @@ function Button({
   );
 }
 
-export { Button, buttonVariants };
+/** The two unseen widths: zero-height copies of both states, the busy one
+ *  padded by the spinner's place and the 4px gap beside it. */
+const BUSY_WIDTHS =
+  "grid grid-cols-1 before:invisible before:h-0 before:overflow-hidden before:content-[attr(data-idle)] after:invisible after:h-0 after:overflow-hidden after:ps-[calc(var(--busy-space,1rem)+0.25rem)] after:content-[attr(data-busy-text)]";
+
+/**
+ * A button's words through a busy state, holding the button's width. Both
+ * states sit unseen in the same column as the shown one (its ::before and
+ * ::after, no height), so the button keeps its widest width at rest and the
+ * spinner appears beside the word without anything around it moving. The
+ * unseen busy copy reserves the spinner's place as padding (`--busy-space`,
+ * set by the button's size), never a spinner, so nothing turns at rest.
+ * `busyLabel` defaults to `label`: a confirm keeps its verb and reserves only
+ * the spinner's slot.
+ */
+function BusyLabel({ busy, label, busyLabel = label }: { busy: boolean; label: string; busyLabel?: string }) {
+  return (
+    <span data-slot="busy-label" data-busy={busy || undefined} data-idle={label} data-busy-text={busyLabel} className={BUSY_WIDTHS}>
+      <span className="inline-flex items-center justify-center gap-1">
+        {busy ? (
+          <>
+            <Spinner />
+            {busyLabel}
+          </>
+        ) : (
+          label
+        )}
+      </span>
+    </span>
+  );
+}
+
+export { BusyLabel, Button, buttonVariants };

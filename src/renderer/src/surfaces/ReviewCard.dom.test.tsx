@@ -93,7 +93,7 @@ describe("ReviewCard", () => {
       fireEvent.click(screen.getByRole("button", { name: "Merge anyway" }));
     });
     expect(mergeAnyway).toHaveBeenCalledWith("s1", "run1");
-    expect(screen.getByRole("button", { name: "Merging…" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Merging…/ })).toBeTruthy();
   });
 
   it("a hold's minor findings stay collapsed", () => {

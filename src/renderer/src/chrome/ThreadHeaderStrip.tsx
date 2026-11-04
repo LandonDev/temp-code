@@ -41,6 +41,7 @@ import { useHostsOffline } from "./hostOffline";
 import { ChevronLeft, ChevronRight } from "./icons";
 import { RowsContextMenu, type MenuRow } from "./menuRows";
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
+import { THREAD_LABELS } from "../surfaces/threads/threadTypes";
 import { ThreadStatusMark } from "./TabIndicator";
 
 /** The tooltip is inverted (foreground on background), so the hover line takes its muted tone whole. */
@@ -321,12 +322,14 @@ export function chipStatus(chip: StripChip, planReady: ReadyMap): ThreadStatus {
 }
 
 /** The chip's hover label: the title, then its status line (the word, what
- *  it is about, the tally), then the host's name when the chip shows its glyph. */
-export function ChipHoverLabel({ title, status, host }: { title: string; status: ThreadStatus; host?: string | null }) {
+ *  it is about, the tally), then the thread's type while the status mark
+ *  stands in for its glyph, then the host's name when the chip shows its glyph. */
+export function ChipHoverLabel({ title, status, host, type }: { title: string; status: ThreadStatus; host?: string | null; type?: string }) {
   return (
     <>
       <span>{title}</span>
       <ThreadStatusMark status={status} className={HOVER_LINE} />
+      {type ? <span className="text-background/70">{type}</span> : null}
       {host ? <span className="text-background/70">{host}</span> : null}
     </>
   );
@@ -473,6 +476,9 @@ function dropChip(id: string, paneId: string, edge: PaneEdge): void {
 
 const LIVE_CHIP =
   "h-7 max-w-56 gap-2 px-3 text-[13px] data-unread:font-medium data-unread:text-foreground";
+/** A chip's title; its ::after is the bold copy that holds the width. */
+const CHIP_TITLE =
+  "min-w-0 truncate after:invisible after:block after:h-0 after:overflow-hidden after:font-medium after:content-[attr(data-text)]";
 /** A shelf chip: 24px, 8px padding, 6px from glyph to title, 12px muted type. */
 const SHELF_CHIP = "h-6 gap-1.5 px-2 text-[12px]";
 
@@ -500,6 +506,10 @@ function Chip({
   const status = chipStatus(chip, events.planReady);
   const title = chipTitle(chip);
   const unread = !shelf && !active && chip.unread;
+  // While it works, waits or fails, a live chip's status mark takes the type
+  // glyph's 14px place, as a browser tab's favicon turns into a spinner; at
+  // rest the glyph is back. Nothing else in the chip moves.
+  const marked = !shelf && marksAtRest(status.state);
   return (
     <div
       ref={active ? events.activeRef : undefined}
@@ -529,18 +539,27 @@ function Chip({
             />
           }
         >
-          <TypeGlyph type={chip.thread.threadType} className={shelf ? "size-3" : "size-3.5"} />
-          <span className={`min-w-0 truncate${shelf ? " max-w-40" : ""}`}>{title}</span>
+          {shelf ? (
+            <TypeGlyph type={chip.thread.threadType} className="size-3" />
+          ) : (
+            <span data-chip-glyph className="flex size-3.5 shrink-0 items-center justify-center">
+              {marked ? <StatusMark state={status.state} word={false} /> : <TypeGlyph type={chip.thread.threadType} className="size-3.5" />}
+            </span>
+          )}
+          {/* An unseen medium-weight copy of the title (its ::after, no height)
+              holds the bold width, so unread never widens the chip. */}
+          <span data-chip-title data-text={title} className={`${CHIP_TITLE}${shelf ? " max-w-40" : ""}`}>
+            {title}
+          </span>
           {events.masterIds?.has(chip.id) ? (
             <span className="shrink-0 font-normal text-muted-foreground" data-master-word>
               Master
             </span>
           ) : null}
           {host ? <HostGlyph environmentId={environmentId} bare /> : null}
-          {!shelf && marksAtRest(status.state) ? <StatusMark state={status.state} word={false} /> : null}
         </TooltipTrigger>
         <TooltipContent side="bottom" className="flex-col items-start gap-0.5 text-left">
-          <ChipHoverLabel title={title} status={status} host={host} />
+          <ChipHoverLabel title={title} status={status} host={host} type={marked ? THREAD_LABELS[chip.thread.threadType ?? "chat"] : undefined} />
         </TooltipContent>
       </Tooltip>
     </div>

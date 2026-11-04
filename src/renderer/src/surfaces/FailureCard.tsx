@@ -19,8 +19,7 @@ import { useSlowClock } from "../lib/turnClock";
 import { useAccounts } from "../stores/accounts";
 import { shell } from "../stores/shell";
 import { isWebMode } from "../lib/nativeWeb";
-import { Button } from "../components/ui/button";
-import { Spinner } from "../components/ui/spinner";
+import { BusyLabel, Button } from "../components/ui/button";
 import { StatusMark } from "../components/ui/status";
 
 /**
@@ -97,8 +96,7 @@ export function FailureCardView({
                   disabled={busy || state.pending !== null}
                   onClick={() => onAction(action.id)}
                 >
-                  {pending ? <Spinner className="size-3.5" /> : null}
-                  {pending ? pendingLabel(action.id) || action.label : action.label}
+                  <BusyLabel busy={pending} label={action.label} busyLabel={pendingLabel(action.id) || action.label} />
                 </Button>
               );
               const wrapped = renderAction?.(action.id, button);

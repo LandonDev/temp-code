@@ -1,7 +1,7 @@
 import { useContext, useState } from "react";
 import type { ReviewFinding } from "@server/shared/review";
 import { ChevronRight, CircleDashed } from "../chrome/icons";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/ui/collapsible";
 import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
 import { StatusMark } from "../components/ui/status";
@@ -134,7 +134,7 @@ function HeldReview({
       ) : null}
       <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
         <Button size="sm" disabled={pending || !sessionId} onClick={merge}>
-          {pending ? "Merging…" : "Merge anyway"}
+          <BusyLabel busy={pending} label="Merge anyway" busyLabel="Merging…" />
         </Button>
         {openThread ? (
           <Button variant="ghost" size="sm" onClick={openThread}>

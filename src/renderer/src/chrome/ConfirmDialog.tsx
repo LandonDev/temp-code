@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore, type ReactNode } from "react";
-import { Button, buttonVariants } from "@renderer/components/ui/button";
+import { BusyLabel, Button, buttonVariants } from "@renderer/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,7 +10,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@renderer/components/ui/dialog";
-import { Spinner } from "@renderer/components/ui/spinner";
 import { useClosingDialog, useModalClose } from "./Modal";
 
 /** The dialog button kit, for buttons a dialog lays out by hand. */
@@ -61,8 +60,7 @@ export function DialogFooter({
         onClick={onConfirm}
         disabled={pending || disabled}
       >
-        {pending ? <Spinner /> : null}
-        {confirmLabel}
+        <BusyLabel busy={!!pending} label={confirmLabel} />
       </Button>
     </div>
   );
@@ -117,8 +115,7 @@ export function ConfirmDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
           <AlertDialogAction variant={danger ? "destructive" : "default"} disabled={pending} onClick={() => void confirm()}>
-            {pending ? <Spinner /> : null}
-            {confirmLabel}
+            <BusyLabel busy={pending} label={confirmLabel} />
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

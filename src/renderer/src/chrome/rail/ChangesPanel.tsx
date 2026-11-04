@@ -946,7 +946,7 @@ function CommitFooter({
         />
         <span className="absolute top-1 right-1">
           <IconAction label="Generate commit message" disabled={!rules.canGenerate} onClick={actions.generate}>
-            {busy === "generate" ? <Spinner className="size-3" /> : <WandSparkles className="size-3.5" />}
+            {busy === "generate" ? <Spinner className="size-3.5" /> : <WandSparkles className="size-3.5" />}
           </IconAction>
         </span>
       </div>

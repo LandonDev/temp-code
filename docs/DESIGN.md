@@ -345,8 +345,10 @@ At rest a row draws no mark for idle and done (`marksAtRest`): a mark that
 would only say "nothing is happening" is noise. The one exception is the
 right panel's Agents rows, where done's check leads a finished agent: the
 panel has no other cue for what is done, and seeing it at a glance is the
-section's job. A tab is the glyph alone;
-its hover line and the transcript's working line say the word and the rest.
+section's job. A tab is the glyph alone, in the type glyph's place while it
+works, waits or fails (the type glyph comes back at rest), so a tab's width
+never moves with its state; its hover line and the transcript's working
+line say the word and the rest.
 
 Nothing loops. Every status glyph is still except working's spinner, a
 rotation and the one moving glyph. A row has one moving mark at most: a

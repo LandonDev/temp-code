@@ -11,7 +11,7 @@ import { sessionFromMeta, useSessionMetas } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { stateLine } from "@shared/notes";
 import { useThreadNotes } from "../lib/threadNotes";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { StatusMark, type ThreadState } from "../components/ui/status";
 import { cn } from "../lib/cn";
 import { ChevronDown } from "./icons";
@@ -186,7 +186,9 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
           failed={failed.recovery}
           disabled={busy !== null}
           primary={{
-            label: busy === "recovery" ? "Continuing…" : continueLabel,
+            label: continueLabel,
+            busyLabel: "Continuing…",
+            busy: busy === "recovery",
             onClick: () => void continueErrored(),
           }}
           menu={
@@ -206,7 +208,7 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
           amber={stale.length === 1}
           failed={failed.watching}
           disabled={busy !== null}
-          secondary={{ label: busy === "watching" ? "Stopping…" : "Stop all", onClick: () => void stopWatchers() }}
+          secondary={{ label: "Stop all", busyLabel: "Stopping…", busy: busy === "watching", onClick: () => void stopWatchers() }}
           primary={{ label: "Open", onClick: () => onOpen(stale[0].id) }}
         />
       ) : null}
@@ -217,11 +219,15 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
           failed={failed.paused}
           disabled={busy !== null}
           secondary={{
-            label: busy === "stop" ? "Stopping…" : paused.length === 1 ? "Stop" : "Stop all",
+            label: paused.length === 1 ? "Stop" : "Stop all",
+            busyLabel: "Stopping…",
+            busy: busy === "stop",
             onClick: () => void stopPaused(),
           }}
           primary={{
-            label: busy === "paused" ? "Continuing…" : paused.length === 1 ? "Continue" : "Continue all",
+            label: paused.length === 1 ? "Continue" : "Continue all",
+            busyLabel: "Continuing…",
+            busy: busy === "paused",
             onClick: () => void continuePaused(),
           }}
         />
@@ -230,7 +236,8 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
   );
 }
 
-type Action = { label: string; onClick: () => void };
+/** A banner's button; while `busy` it says `busyLabel` beside a spinner, holding its width. */
+type Action = { label: string; onClick: () => void; busy?: boolean; busyLabel?: string };
 
 /** One thread waiting on the person: its title, and the first line of its
  *  notes' State — what it was doing when it stopped to ask. */
@@ -363,7 +370,7 @@ function Banner({
       <span className="ml-auto flex shrink-0 items-center gap-1">
         {secondary ? (
           <Button variant="ghost" size="xs" onClick={secondary.onClick} disabled={disabled}>
-            {secondary.label}
+            <BusyLabel busy={!!secondary.busy} label={secondary.label} busyLabel={secondary.busyLabel} />
           </Button>
         ) : null}
         <span className="flex items-center">
@@ -374,7 +381,7 @@ function Banner({
             disabled={disabled}
             className={menu ? "rounded-r-none" : undefined}
           >
-            {primary.label}
+            <BusyLabel busy={!!primary.busy} label={primary.label} busyLabel={primary.busyLabel} />
           </Button>
           {menu}
         </span>

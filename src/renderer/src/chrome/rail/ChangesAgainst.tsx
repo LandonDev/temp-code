@@ -285,7 +285,7 @@ export function AgainstHead({ model }: { model: AgainstModel }) {
                 />
               }
             >
-              {moving ? <Spinner className="size-3" /> : <MoreHorizontal className="size-3.5" />}
+              {moving ? <Spinner className="size-3.5" /> : <MoreHorizontal className="size-3.5" />}
             </TooltipTrigger>
             <TooltipContent>Merge or rebase</TooltipContent>
           </Tooltip>

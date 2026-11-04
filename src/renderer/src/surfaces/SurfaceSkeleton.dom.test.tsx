@@ -2,11 +2,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PAGE_SCROLLER } from "../components/page";
-import { DIFF_ROWS_SKELETON_CAP, EmptyState, LoadingLine, SurfaceSkeleton, type SkeletonKind } from "./SurfaceSkeleton";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { DIFF_ROWS_SKELETON_CAP, EmptyState, LoadingLine, PAGE_LIST_WIDTH, SurfaceSkeleton, type SkeletonKind } from "./SurfaceSkeleton";
 
 afterEach(cleanup);
 
-const KINDS: SkeletonKind[] = ["page", "column", "accounts", "pane", "diff", "diff-rows", "terminal", "frame", "transcript", "rows"];
+const KINDS: SkeletonKind[] = ["page", "search", "column", "accounts", "pane", "diff", "diff-rows", "terminal", "frame", "transcript", "rows"];
 
 describe("SurfaceSkeleton", () => {
   it.each(KINDS)("%s: a labelled status of still skeleton blocks", (kind) => {
@@ -55,6 +57,35 @@ describe("SurfaceSkeleton", () => {
       expect(row.querySelectorAll("[data-skeleton-switch]")).toHaveLength(1);
       expect(row.querySelector(".rounded-full.size-2")).not.toBeNull();
     }
+  });
+
+  it("page: the title strip first, then the list at the Inbox's and Notes' own default width", () => {
+    const { container } = render(<SurfaceSkeleton kind="page" />);
+    const root = container.querySelector("[data-surface-skeleton]")!;
+    expect(root.children[0]!.hasAttribute("data-skeleton-strip")).toBe(true);
+    expect(root.children[0]!.className).toContain("h-10");
+    expect(container.querySelector<HTMLElement>("[data-skeleton-list]")!.style.width).toBe(`${PAGE_LIST_WIDTH}px`);
+    for (const view of ["InboxView.tsx", "NotesView.tsx"]) expect(readFileSync(resolve(__dirname, view), "utf8")).toContain("const DEFAULT_WIDTH = PAGE_LIST_WIDTH;");
+  });
+
+  it("search: the strip, then count one-line rows", () => {
+    const { container } = render(<SurfaceSkeleton kind="search" count={5} />);
+    expect(container.querySelector("[data-surface-skeleton]")!.children[0]!.hasAttribute("data-skeleton-strip")).toBe(true);
+    expect(container.querySelectorAll("[data-skeleton-row]")).toHaveLength(5);
+  });
+
+  it("rows with three lines draws Notes' cards: its time, its title, its first words", () => {
+    const { container } = render(<SurfaceSkeleton kind="rows" lines={3} count={2} />);
+    const rows = container.querySelectorAll("[data-skeleton-row]");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(3);
+  });
+
+  it("a switch's skeleton has the Switch's box", () => {
+    const switchSource = readFileSync(resolve(__dirname, "../components/ui/switch.tsx"), "utf8");
+    expect(switchSource).toContain("h-[18px] w-8");
+    const { container } = render(<SurfaceSkeleton kind="accounts" count={1} />);
+    expect(container.querySelector("[data-skeleton-switch]")!.className).toContain("h-[18px] w-8");
   });
 
   it("rows: count rows, four by default", () => {

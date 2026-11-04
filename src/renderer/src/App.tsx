@@ -296,7 +296,7 @@ const DevServersPane = terminalChunk.surface("DevServersPane", <SurfaceSkeleton 
 const SettingsView = settingsChunk.surface("SettingsView", <SurfaceSkeleton kind="column" label="Loading settings" />);
 const AliaxPagesView = aliaxChunk.surface("AliaxPagesView", <SurfaceSkeleton kind="accounts" label="Loading accounts" />);
 // The full-body views ride their own chunks: none is in the first paint.
-const SearchView = searchChunk.surface("SearchView", <SurfaceSkeleton kind="page" label="Loading search" />);
+const SearchView = searchChunk.surface("SearchView", <SurfaceSkeleton kind="search" count={8} label="Loading search" />);
 // The action-opened dialogs, mounted only while open (chrome/dialogs.ts).
 const ThreadBatchDialog = dialogsChunk.surface("ThreadBatchDialog");
 const FilePicker = pickersChunk.surface("FilePicker");
