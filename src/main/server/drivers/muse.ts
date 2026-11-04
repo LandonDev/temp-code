@@ -307,7 +307,10 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
     if (typeof sid === 'string' && nativeId && sid !== nativeId) return
     switch (n.method) {
       case 'turn/started':
-        sawFrame()
+        // The host's own ack that a turn began, not the model's first word:
+        // the first-output watchdog stays armed until an item, a retry
+        // notice, an approval or a question lands (a host that opens a turn
+        // and then says nothing is the silence it exists for).
         currentTurnId = String(params.turnId)
         return
       case 'item/started':
