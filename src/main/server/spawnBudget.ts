@@ -1,12 +1,8 @@
-import {
-  execFile as nodeExecFile,
-  spawn as nodeSpawn,
-  type ChildProcess,
-  type ExecFileException,
-  type ExecFileOptions,
-  type SpawnOptions
-} from 'node:child_process'
+import { spawn as nodeSpawn, type ChildProcess, type ExecFileException, type ExecFileOptions, type SpawnOptions } from 'node:child_process'
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { fileURLToPath } from 'node:url'
+import { BrokerChild, brokerError, ExecBroker, type BrokerOutcome } from './execBroker'
+import type { BrokerSpawnOptions } from './execBrokerWire'
 
 /**
  * One budget for every helper process the server starts: git, gh, unzip,
@@ -16,13 +12,23 @@ import { AsyncLocalStorage } from 'node:async_hooks'
  * fork storm that took the machine down; this is the wall against the next
  * one. Harness drivers and PTYs have their own lifecycles and stay outside.
  *
+ * None of them forks from this process: every budgeted helper (and the
+ * off-budget `ps`, `ss` and `lsof` reads of the guard and the sweeps) is
+ * started by the exec broker (execBroker.ts), a small process of its own,
+ * because a fork of a 700 MB main process stalls its loop for 50-70 ms on
+ * the box (docs/box.md "The exec broker"). Long-lived children with their
+ * own stdio protocol (`spawnTracked`: a language server) and the harnesses
+ * themselves still fork here.
+ *
  * Every child also lands in a registry, budgeted or not, so the app can
- * kill them all on quit. Children are never `detached`: they stay in the
- * app's process group, so killing the group takes them too.
+ * kill them all on quit. Children are never `detached`: the broker's die
+ * with it, and this process's stay in its group.
  */
 
 export const DEFAULT_CONCURRENCY = 4
 export const DEFAULT_TIMEOUT_MS = 60_000
+/** node's own `execFile` default. */
+const DEFAULT_MAX_BUFFER = 1024 * 1024
 
 type Waiter = () => void
 
@@ -99,7 +105,19 @@ export function currentBudget(): ChildBudget {
   return budgetScope.getStore() ?? childBudget
 }
 
-const children = new Set<ChildProcess>()
+/** The one broker every helper goes through; startServer moves it into its own process (`install`). */
+export const execBroker = new ExecBroker()
+
+/** What the registry needs of a child, whichever process started it: node's ChildProcess and the broker's child both have it. */
+export interface TrackedChild {
+  exitCode: number | null
+  signalCode: string | null
+  kill(signal?: NodeJS.Signals): boolean
+  on(event: 'exit', listener: () => void): unknown
+  once(event: 'exit', listener: () => void): unknown
+}
+
+const children = new Set<TrackedChild>()
 
 type SpawnListener = (file: string, args: readonly string[]) => void
 const spawnListeners = new Set<SpawnListener>()
@@ -115,7 +133,7 @@ function announce(file: string, args: readonly string[]): void {
 }
 
 /** Remember a child until it exits so quit can kill whatever is left. */
-export function trackChild<T extends ChildProcess | undefined>(child: T): T {
+export function trackChild<T extends TrackedChild | undefined>(child: T): T {
   if (!child || typeof child.on !== 'function') return child
   if (child.exitCode !== null || child.signalCode !== null) return child
   children.add(child)
@@ -144,6 +162,42 @@ export function killTrackedChildren(signal: NodeJS.Signals = 'SIGKILL'): number 
 export type ExecResult<T = string> = { stdout: T; stderr: T }
 export type ExecOptions = ExecFileOptions & { encoding?: BufferEncoding | 'buffer' | null }
 
+/** The broker's options from `execFile`'s: cwd, env, timeout (the default when unset), killSignal, maxBuffer. `detached` and `shell` are dropped. */
+function brokerOptions(options: ExecOptions | SpawnOptions, stdin: boolean, buffered: boolean): BrokerSpawnOptions {
+  const o = options as ExecOptions & { killSignal?: NodeJS.Signals | number }
+  const cwd = typeof o.cwd === 'string' ? o.cwd : o.cwd ? fileURLToPath(o.cwd) : undefined
+  return {
+    ...(cwd ? { cwd } : {}),
+    ...(o.env ? { env: o.env as Record<string, string | undefined> } : {}),
+    timeout: o.timeout ?? DEFAULT_TIMEOUT_MS,
+    ...(typeof o.killSignal === 'string' ? { killSignal: o.killSignal } : {}),
+    ...(buffered ? { maxBuffer: o.maxBuffer ?? DEFAULT_MAX_BUFFER } : {}),
+    stdin
+  }
+}
+
+const decode = (bytes: Uint8Array | undefined, encoding: ExecOptions['encoding']): string | Buffer => {
+  const buf = Buffer.from(bytes ?? new Uint8Array())
+  return encoding === 'buffer' || encoding === null ? buf : buf.toString(encoding ?? 'utf8')
+}
+
+/** One buffered run through the broker, resolving and rejecting as `promisify(execFile)` does. */
+function execNow(file: string, args: readonly string[], options: ExecOptions): { child: BrokerChild; result: Promise<ExecResult<string | Buffer>> } {
+  const encoding = options.encoding === undefined ? 'utf8' : options.encoding
+  let child!: BrokerChild
+  const result = new Promise<ExecResult<string | Buffer>>((resolve, reject) => {
+    announce(file, args)
+    child = execBroker.run(file, args, 'exec', brokerOptions(options, false, true), (outcome) => {
+      const stdout = decode(outcome.stdout, encoding)
+      const stderr = decode(outcome.stderr, encoding)
+      if (outcome.error) reject(Object.assign(brokerError(outcome.error, [file, ...args].join(' ')), { stdout, stderr }))
+      else resolve({ stdout, stderr })
+    })
+    trackChild(child)
+  })
+  return { child, result }
+}
+
 /**
  * `promisify(execFile)` behind the budget: same resolve/reject shape (the
  * error carries `stdout`/`stderr`), utf8 unless the caller says otherwise,
@@ -164,46 +218,53 @@ export function execFileBudgeted(
   args: readonly string[],
   options: ExecOptions = {}
 ): Promise<ExecResult<string | Buffer>> {
-  return currentBudget().run(
-    () =>
-      new Promise((resolve, reject) => {
-        const { detached: _detached, ...rest } = options as ExecOptions & { detached?: boolean }
-        const opts = { timeout: DEFAULT_TIMEOUT_MS, encoding: 'utf8', ...rest } as ExecOptions
-        announce(file, args)
-        const child = nodeExecFile(
-          file,
-          [...args],
-          opts as ExecFileOptions,
-          (error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) => {
-            if (error) reject(Object.assign(error, { stdout, stderr }))
-            else resolve({ stdout, stderr })
-          }
-        )
-        trackChild(child)
-      })
-  )
+  return currentBudget().run(() => execNow(file, args, options).result)
 }
 
 /**
- * `execFile` for callers that need the ChildProcess (stdin, streaming) but
- * still one slot each. The callback is the slot's end; the child is tracked.
+ * `execFileBudgeted` with no slot: the guard's `ps`, the sweeps' `ss` and
+ * `lsof`, admission's memory read. They run every few seconds, must never
+ * wait behind four git diffs, and still fork from the broker, not here.
+ */
+export function execFileOffBudget(
+  file: string,
+  args: readonly string[],
+  options: ExecOptions & { encoding: 'buffer' }
+): Promise<ExecResult<Buffer>>
+export function execFileOffBudget(
+  file: string,
+  args: readonly string[],
+  options?: ExecOptions
+): Promise<ExecResult<string>>
+export function execFileOffBudget(
+  file: string,
+  args: readonly string[],
+  options: ExecOptions = {}
+): Promise<ExecResult<string | Buffer>> {
+  return execNow(file, args, options).result
+}
+
+/**
+ * `execFile` for callers that need the child (stdin, the pid) but still one
+ * slot each. The callback is the slot's end; the child is tracked.
  */
 export function execFileChildBudgeted(
   file: string,
   args: readonly string[],
   options: ExecOptions,
   callback: (error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) => void
-): Promise<ChildProcess> {
+): Promise<BrokerChild> {
   return new Promise((resolveChild) => {
     void currentBudget().run(
       () =>
         new Promise<void>((done) => {
-          const { detached: _detached, ...rest } = options as ExecOptions & { detached?: boolean }
-          const opts = { timeout: DEFAULT_TIMEOUT_MS, ...rest } as ExecFileOptions
+          const encoding = options.encoding === undefined ? 'utf8' : options.encoding
           announce(file, args)
-          const child = nodeExecFile(file, [...args], opts, (error, stdout, stderr) => {
+          const child = execBroker.run(file, args, 'exec', brokerOptions(options, true, true), (outcome: BrokerOutcome) => {
             done()
-            callback(error, stdout, stderr)
+            const stdout = decode(outcome.stdout, encoding)
+            const stderr = decode(outcome.stderr, encoding)
+            callback(outcome.error ? (brokerError(outcome.error, [file, ...args].join(' ')) as ExecFileException) : null, stdout, stderr)
           })
           trackChild(child)
           resolveChild(child)
@@ -212,25 +273,24 @@ export function execFileChildBudgeted(
   })
 }
 
-/** A spawned helper that holds a slot until it exits (git fetch with progress). */
+/** A spawned helper, its output streamed, that holds a slot until it exits (git fetch with progress). */
 export async function spawnBudgeted(
   command: string,
   args: readonly string[],
   options: SpawnOptions = {}
-): Promise<ChildProcess> {
+): Promise<BrokerChild> {
   const release = await currentBudget().acquire()
-  const { detached: _detached, ...rest } = options
   announce(command, args)
-  const child = nodeSpawn(command, [...args], rest)
+  const stdin = Array.isArray(options.stdio) ? options.stdio[0] === 'pipe' : options.stdio === 'pipe'
+  const child = execBroker.run(command, args, 'spawn', { ...brokerOptions(options, stdin, false), timeout: options.timeout ?? 0 }, () => release())
   trackChild(child)
-  child.once('exit', release)
-  child.once('error', release)
   return child
 }
 
 /**
  * A long-lived child (language server, index warm-up) that must die with the
- * app but should not hold one of the few helper slots.
+ * app but should not hold one of the few helper slots. The one helper that
+ * still forks from this process: it speaks a protocol over its stdio.
  */
 export function spawnTracked(
   command: string,

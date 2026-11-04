@@ -1,9 +1,9 @@
-import { execFile } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { CALL_MARK, INSTANCE_MARK, THREAD_MARK } from '@shared/bashMarks'
 import type { EventRow } from '@shared/events'
 import { parseEnviron } from './portSweep'
+import { execFileOffBudget } from './spawnBudget'
 
 /**
  * The process guard: an agent's tool processes never outlive their call,
@@ -440,18 +440,22 @@ export class ProcessGuard {
 
 // ── the host's deps ──────────────────────────────────────────────────
 
-const psRows = (): Promise<string> =>
-  new Promise((resolve) => {
-    const uid = process.getuid?.()
-    const args = uid === undefined ? ['-ww', '-A', '-o', 'pid=,ppid=,pgid=,rss=,args='] : ['-ww', '-u', String(uid), '-o', 'pid=,ppid=,pgid=,rss=,args=']
-    execFile('ps', args, { timeout: 5_000, maxBuffer: 8 * 1024 * 1024 }, (_err, stdout) => resolve(String(stdout ?? '')))
-  })
+/** `ps` through the exec broker, off the budget: what it printed, whatever its exit (it exits 1 when a pid is gone). */
+const psRows = (): Promise<string> => {
+  const uid = process.getuid?.()
+  const args = uid === undefined ? ['-ww', '-A', '-o', 'pid=,ppid=,pgid=,rss=,args='] : ['-ww', '-u', String(uid), '-o', 'pid=,ppid=,pgid=,rss=,args=']
+  return execFileOffBudget('ps', args, { timeout: 5_000, maxBuffer: 8 * 1024 * 1024 }).then(
+    ({ stdout }) => stdout,
+    (err: { stdout?: string }) => err.stdout ?? ''
+  )
+}
 
 /** macOS has no /proc: `ps -E` shows a process's environment after its command line (one child per process the guard has to decide about; the markers cache keeps it to once per process). */
 const darwinEnviron = (pid: number, args?: string): Promise<string | null> =>
-  new Promise((resolve) => {
-    execFile('ps', ['-ww', '-E', '-o', 'command=', '-p', String(pid)], { timeout: 5_000, maxBuffer: 1024 * 1024 }, (err, stdout) => resolve(err ? null : environFromPsE(String(stdout ?? ''), args)))
-  })
+  execFileOffBudget('ps', ['-ww', '-E', '-o', 'command=', '-p', String(pid)], { timeout: 5_000, maxBuffer: 1024 * 1024 }).then(
+    ({ stdout }) => environFromPsE(stdout, args),
+    () => null
+  )
 
 export function hostGuardDeps(): Pick<ProcessGuardDeps, 'scan' | 'environ' | 'kill'> {
   return {

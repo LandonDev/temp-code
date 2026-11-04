@@ -2925,6 +2925,82 @@ in-flight depth counts the entries in the log, capped at twelve.
 `doctor.get` also answers with the last second's `loop` mean and max,
 its `ewmaMs`, and all `inFlight` requests with their method and age in ms.
 
+## The exec broker: main never forks a helper
+
+Measured on the box on 2026-11-04 (v307, 30 live threads, 27 Java
+processes of the threads' builds, load 66 on 32 cores): a 10 s CPU profile
+of the main process (`doctor.profile`, read with scripts/profile-summary.ts)
+had 72% of the main thread's self time inside the native `spawn`, reached
+through `execFileBudgeted` → `ChildBudget.run`, and a further slice in the
+process guard's `ps`. A fork copies the parent's page tables, so it costs
+what the parent is: a spawn of `true` from a small node process took
+2.5 ms there, from a 1 GB-resident one 68 ms. The server's main process was
+700 MB with 3,624 mappings and 42 threads, and it started a child dozens of
+times a minute (the Mac's board asking `git.diffIndex` per row, the guard's
+`ps` every 10 s and at every call end, the port sweep's `ss` every 15 s).
+Loop mean lag sat at 120–140 ms; the LaneGate holds bulk requests past
+50 ms, so diffIndex, resources.listAll, fs.watch and the sync methods waited
+45–285 s, the Mac's requests timed out, and the app called the box
+unreachable.
+
+The fix is that main forks nothing for a helper. The exec broker
+(src/main/server/execBroker.ts in main, execBrokerChild.ts in the broker,
+the messages in execBrokerWire.ts) is a utility process of its own
+(src/main/execBrokerProcess.ts → out/main/execBroker.js, forked by
+execBrokerSpawn.ts the way the gateway's is), a few dozen MB with nothing
+of the server bundle in it, so its forks stay at the small-process price.
+Main sends `exec` (buffered: one answer with both streams) or `spawn`
+(streamed chunks), `stdin` and `kill`; the broker answers `started` with
+the pid, `out` and `done` with the exit, the signal and an error shaped
+like `execFile`'s (`code`, `signal`, `killed`, ENOENT's errno fields,
+ERR_CHILD_PROCESS_STDIO_MAXBUFFER). Timeout, cwd, env and maxBuffer are
+honoured where they always were. Every budgeted helper goes through it
+(`execFileBudgeted`, `execFileChildBudgeted`, `spawnBudgeted` in
+spawnBudget.ts: git, gh, unzip, the java probes, the login-shell PATH
+reads), and so do the off-budget reads that must never wait behind four
+git diffs (`execFileOffBudget`: the guard's `ps`, the port sweep's `ss`,
+`lsof` and `ps`, admission's memory sample). The budget's slots, the
+registry (`trackChild`, `killTrackedChildren`) and the pid the guard and
+the ledger read are unchanged: a `BrokerChild` has the ChildProcess
+surface they use. Still forked from main, on purpose: a language server
+(`spawnTracked`, a protocol over its stdio), the harness CLIs the SDKs
+spawn (claude, codex, cursor), PTYs, the Mac bridge's commands and jobs,
+and the host jobs' login shells; those are a handful a minute, not dozens.
+
+A broker that exits is respawned and the asks it held fail with `EBROKER`
+(the caller retries or reports, as for any child that died); three exits in
+a minute and helpers run from main again with one log line, the gateway's
+rule. The broker dies with main: the port closing, or main's pid gone on
+its 5 s watch, SIGKILLs what it still runs. `doctor.get` names it
+(`execBroker: { mode, pid, restarts }`); `TEMP_CODE_EXEC_BROKER=0` keeps
+helpers in main (the before side of the proof). Without a spawner (tests,
+the in-process proofs) the same broker logic runs in main over a
+synchronous pair, so the semantics are one code path everywhere.
+
+Proof: `bun run script:e2e-exec-broker` (scripts/e2e-exec-broker.ts, after
+`electron-vite build`): two isolated headless instances of the built tree,
+each with 700 MiB of ballast resident in main (`TEMP_CODE_E2E_BALLAST_MB`,
+isolated instances only), each flooded with `git.diffIndex` over 24 scratch
+repos in 8 rounds; in the broker run the broker is SIGKILLed mid-flood and
+respawned. On the Mac (2026-11-04, load 12):
+
+| helpers | asks | p50 ms | p95 ms | max ms | total s | loop mean ms | loop max ms | failed |
+|---|---|---|---|---|---|---|---|---|
+| forks from main | 192 | 291 | 514 | 543 | 4.1 | 21.1 | 25 | 0 |
+| exec broker | 192 | 302 | 530 | 605 | 4.3 | 21.3 | 25 | 0 |
+
+The Mac shows no gain, and none was expected there: libuv starts children
+with `posix_spawn` on macOS, which copies no page tables, so a 700 MB main
+forks as cheaply as a small one. The cost is Linux's `fork`, and the
+box's reading is the one that counts: after a deploy, run
+`tc-local doctor.profile '{"seconds":10}'` under a build-heavy batch and
+read it with scripts/profile-summary.ts; `spawn`'s share of the main
+thread's self time (72% on 2026-11-04) should be near zero, and
+`bun scripts/stalls-summary.ts stalls.log` should show the loop mean under
+the lane's 50 ms. The proof's checks that do carry on the Mac: the mode and
+pid, the respawn with `restarts: 1` and no ask lost outside the kill's
+window, and the broker dying with the instance.
+
 ## Updating
 
 For a ref already on GitHub, press "Deploy master…" in the Mac

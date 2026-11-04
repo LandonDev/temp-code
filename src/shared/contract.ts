@@ -1281,6 +1281,8 @@ export type DoctorGetResult = Record<z.infer<typeof providerEnum>, DoctorReport>
   inFlight: InFlightRequest[]
   /** Where the gateway's byte path runs: its own utility process (that pid, respawned `restarts` times) or the host's main process. */
   gateway?: { mode: 'child' | 'in-process'; pid: number; restarts: number; port: number }
+  /** Where helper children (git, gh, ps) fork from: the exec broker's process (that pid, respawned `restarts` times) or the host's main process. */
+  execBroker?: { mode: 'child' | 'in-process'; pid: number; restarts: number }
 }
 
 export type ServerResponse =

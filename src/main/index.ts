@@ -18,6 +18,7 @@ import { startServer, type RunningServer } from './server'
 import { listEnvironments } from './server/remote/environments'
 import type { LaunchMirrorSnapshot, MirrorWrite } from '@shared/launchMirror'
 import { preconnectAccount } from './server/preconnect'
+import { spawnExecBrokerChild } from './execBrokerSpawn'
 import { spawnGatewayChild } from './gatewaySpawn'
 import { mayClaimShim, releaseGateway } from './server/gateway'
 import { killTrackedChildren } from './server/spawnBudget'
@@ -83,6 +84,9 @@ applyHarness(process.env, bakedHarness(app.getAppPath()))
 const defaultUserData = app.getPath('userData')
 if (process.env.TEMP_CODE_USER_DATA) {
   app.setPath('userData', process.env.TEMP_CODE_USER_DATA)
+  // A proof's ballast: this many MiB resident in main, so a fork here costs what it costs on the box (scripts/e2e-exec-broker.ts). Isolated instances only.
+  const ballastMb = Number(process.env.TEMP_CODE_E2E_BALLAST_MB ?? 0)
+  if (ballastMb > 0) (globalThis as { __tcBallast?: Buffer }).__tcBallast = Buffer.alloc(ballastMb * 1024 * 1024, 1)
 }
 if (process.env.TEMP_CODE_DEBUG_PORT) {
   app.commandLine.appendSwitch('remote-debugging-port', process.env.TEMP_CODE_DEBUG_PORT)
@@ -182,6 +186,9 @@ app.whenReady().then(async () => {
     watchMaster: !headless,
     // The gateway's byte path runs in a utility process of its own, on the Mac and on the headless box alike.
     spawnGatewayChild,
+    // So do the helper children (git, gh, ps): the exec broker forks them, never this process.
+    // TEMP_CODE_EXEC_BROKER=0 keeps them here (the before side of scripts/e2e-exec-broker.ts).
+    spawnExecBroker: process.env.TEMP_CODE_EXEC_BROKER === '0' ? undefined : spawnExecBrokerChild,
     // Its pre-connect when it falls back into this process (three exits in a minute).
     preconnect: (provider, account) => void preconnectAccount(provider, account, { upstream: upstream() }),
     // A release this app published, or the box's word that one landed, is fetched at once (update.ts).

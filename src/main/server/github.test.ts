@@ -11,7 +11,8 @@ const mocks = vi.hoisted(() => ({
   harnessEnv: vi.fn()
 }))
 
-vi.mock('node:child_process', () => ({ execFile: mocks.execFile }))
+// The budget is the seam: gh runs through `execFileBudgeted` (and, under it, the exec broker), never node's execFile directly.
+vi.mock('./spawnBudget', () => ({ execFileBudgeted: mocks.execFile }))
 vi.mock('./drivers/binaries', () => ({
   resolveBinary: mocks.resolveBinary,
   harnessEnv: mocks.harnessEnv
@@ -48,25 +49,21 @@ beforeEach(async () => {
   mocks.resolveBinary.mockReset().mockResolvedValue('/mock/gh')
   mocks.harnessEnv.mockReset().mockResolvedValue({ PATH: '/login/bin:/usr/bin' })
   mocks.execFile.mockImplementation(
-    (
-      program: string,
-      args: string[],
-      options: Record<string, unknown>,
-      callback: ExecCallback
-    ) => {
-      if (args[0] === '-lic' && args[1] === 'printenv PATH') {
-        callback(null, shellPath, '')
-        return undefined
-      }
-      const fixture = fixtures.shift()
-      expect(fixture, `unexpected command: ${program} ${args.join(' ')}`).toBeDefined()
-      if (!fixture) return undefined
-      expect(program).toBe(fixture.program ?? '/mock/gh')
-      expect(args).toEqual(fixture.args)
-      fixture.inspect?.(args, options)
-      callback(fixture.error ?? null, fixture.stdout ?? '', fixture.stderr ?? '')
-      return undefined
-    }
+    (program: string, args: string[], options: Record<string, unknown>) =>
+      new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+        const answer: ExecCallback = (error, stdout, stderr) => (error ? reject(Object.assign(error, { stdout, stderr })) : resolve({ stdout, stderr }))
+        if (args[0] === '-lic' && args[1] === 'printenv PATH') {
+          answer(null, shellPath, '')
+          return
+        }
+        const fixture = fixtures.shift()
+        expect(fixture, `unexpected command: ${program} ${args.join(' ')}`).toBeDefined()
+        if (!fixture) return
+        expect(program).toBe(fixture.program ?? '/mock/gh')
+        expect(args).toEqual(fixture.args)
+        fixture.inspect?.(args, options)
+        answer(fixture.error ?? null, fixture.stdout ?? '', fixture.stderr ?? '')
+      })
   )
   github = await import('./github')
 })
