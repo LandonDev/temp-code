@@ -11,7 +11,7 @@ DESIGN.md wins.
 
 | Class of element | Component (file) | Rule |
 | --- | --- | --- |
-| Any button, icon button, row action | `Button` (button.tsx) | Flat. `default` is the one primary per surface; `secondary` gray; `ghost` for icon and row buttons; `outline` only inside forms; `destructive` red; `link` inline. Never a raw button element with classes. |
+| Any button, icon button, row action | `Button` (button.tsx) | `default` is the one primary per surface; `secondary` gray; `destructive` red: the three are raised (`t-raise`, a shadowed fill layer behind the label that lightens on hover and presses in to 0.985; never inside an `overflow-hidden` box). `ghost` for icon and row buttons, `outline` only inside forms, `link` inline: flat, and a press steps their fill to `foreground/12` at once with nothing scaling, as every row does. Never a raw button element with classes. |
 | A toggle button, a segmented bar | `Toggle`, `ToggleGroup` (toggle.tsx, toggle-group.tsx) | `spacing={0}` joins a group into one bar. |
 | A modal | `Dialog` (dialog.tsx) | Centred, `size` sm/default/md/lg; `full` for a viewer (an image, a rendered page). CRUD and every form opens in one. |
 | A confirm | `AlertDialog*` (dialog.tsx); from code, `useConfirm()` (chrome/ConfirmDialog.tsx) | Only for destructive, irreversible actions. One title, one line, Cancel + the verb. Never `window.confirm`. |
@@ -37,7 +37,7 @@ DESIGN.md wins.
 | Rows and columns of structured data | `Table` (table.tsx) | Flat: hairline rows, no box, no column rules, first and last columns on the inset. No hover fill; the cells hold the controls. |
 | A list of places to jump to beside a document (the plan's headings, the transcript's messages) | `JumpList` (chrome/JumpList.tsx) | A `nav` of ghost rows with one tab stop, arrows and Home/End, Enter or Space landing at once, the row being read in foreground with `aria-current`, optional day headings and a trailing time. No motion. |
 | A list row, a settings row | `Item` (item.tsx) | Media, title + description, actions. Settings pages are columns of these. |
-| A list row the whole of which acts (open, pick, restore) | `ItemButton` (item.tsx) | The `Item` row as one button element (type button), with Item's variants and sizes; the caller names its hover fill. Never an `Item` turned into a button through its `render` prop. |
+| A list row the whole of which acts (open, pick, restore) | `ItemButton` (item.tsx) | The `Item` row as one button element (type button), with Item's variants and sizes; the caller names its hover fill, and a press steps it to `foreground/12`. A row highlights at once (no background transition). Never an `Item` turned into a button through its `render` prop. |
 | A divider | `Separator` (separator.tsx) | Spacing first; a separator only where spacing cannot tell groups apart. |
 | A disclosure | `Collapsible` (collapsible.tsx) | Height eases through `.collapsible-resize`. A fold with no trigger of its own is the same panel, opened by `open`; one that opens and shuts on its own adds `.collapsible-auto` (height on the layout spring and opacity, the same both ways), and a step landing in it `.step-land`. |
 | An icon replacing another (Copy → Check) | `SwapIcon` (../../motion/IconSwap.tsx) | The new glyph grows from a quarter size on `SPRING_LAYOUT`; reduced motion cross-fades. `on` swaps between two glyphs; `state={key}` swaps whenever the key changes, for more than two (a tool row's waiting, working, failed and icon), in one fixed box. |

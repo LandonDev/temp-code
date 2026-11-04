@@ -1,13 +1,15 @@
 import type { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { cloneElement, isValidElement, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { defineChunk } from "@renderer/lib/lazyChunk";
+import { TOOLTIP } from "@renderer/lib/ease";
 import type * as Primitive from "./tooltip-primitive";
 
 /** The hover delay before a label opens, and the grace after the pointer
- *  leaves during which a neighbour's label moves instead of reopening. A
- *  Popover opened on hover reads these rather than writing a number. */
-export const TOOLTIP_DELAY = 300;
-export const TOOLTIP_CLOSE_DELAY = 120;
+ *  leaves during which a neighbour's label moves instead of reopening
+ *  (`TOOLTIP` in lib/ease.ts). A Popover opened on hover reads these rather
+ *  than writing a number. */
+export const TOOLTIP_DELAY = TOOLTIP.delay;
+export const TOOLTIP_CLOSE_DELAY = TOOLTIP.closeDelay;
 
 /**
  * Tooltips open after a short delay, from the trigger, as one dark label.

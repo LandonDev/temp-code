@@ -12,6 +12,7 @@ import { type Block, type HarnessId } from "../../lib/session";
 import { bareAgentId, isStaleWatch, waitLine, watchSubject } from "@server/shared/watch";
 import { plainStatus } from "@shared/statusWords";
 import { Button } from "../../components/ui/button";
+import { TooltipProvider } from "../../components/ui/tooltip";
 import { isTurnHeld, isTurnPaused, turnElapsed, useClock, useSlowClock } from "../../lib/turnClock";
 import { duration } from "../../lib/duration";
 import { threadStatus } from "../../lib/threadStripModel";
@@ -285,10 +286,13 @@ function ClosingActions({
 }) {
   return (
     <span className="flex items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/turnend:opacity-100 group-hover/turnend:delay-(--delay-hover) starting:opacity-0 focus-within:opacity-100 focus-within:delay-(--dur-instant) motion-reduce:transition-none">
-      {output ? <CopyTurnButton text={output} armed={armed} /> : null}
-      {output && onSaveNote ? <SaveNoteButton text={output} onSave={onSaveNote} armed={armed} /> : null}
-      {fromHarness && onHandoff ? <HandoffButton from={fromHarness} onPick={onHandoff} armed={armed} /> : null}
-      {fromHarness && onSecondOpinion ? <SecondOpinionButton from={fromHarness} onPick={onSecondOpinion} armed={armed} /> : null}
+      {/* One provider: moving to a neighbour moves the label instead of waiting again. */}
+      <TooltipProvider>
+        {output ? <CopyTurnButton text={output} armed={armed} /> : null}
+        {output && onSaveNote ? <SaveNoteButton text={output} onSave={onSaveNote} armed={armed} /> : null}
+        {fromHarness && onHandoff ? <HandoffButton from={fromHarness} onPick={onHandoff} armed={armed} /> : null}
+        {fromHarness && onSecondOpinion ? <SecondOpinionButton from={fromHarness} onPick={onSecondOpinion} armed={armed} /> : null}
+      </TooltipProvider>
     </span>
   );
 }

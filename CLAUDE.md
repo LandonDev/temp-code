@@ -297,6 +297,16 @@ app replaces itself from the feed, and only from the feed.
 - Settings rows and sections use `components/page.tsx` (`PageRow`,
   `PageSection`), which pass native props and data attributes to their roots;
   Hosts exports these as `Row` and `Group` without copying their markup.
+- Buttons and focus: the solid `Button` variants (default, secondary,
+  destructive) are raised, Kobra's `t-raise` on the `--raise-*` tokens in
+  index.css (a shadowed fill layer behind the label, pressing in to 0.985);
+  ghost, outline, link and every row are flat and press by stepping their
+  fill to `foreground/12` at once, never by scaling. There is one focus
+  ring, index.css's inset outline, which an element outside its selector
+  list joins with `focus-ring`; `lib/focusGuard.test.ts` refuses any
+  `focus-visible:ring`. Neighbouring tooltips share one `TooltipProvider`
+  (delays in `TOOLTIP`, lib/ease.ts), never around a scroller, the rail's
+  nav or a virtual list (the lazy provider remounts what it wraps).
 - Every resize handle uses `hooks/useSashKeys.ts` for focus,
   separator ARIA, axis arrows (2% of the container, Shift 10%) and a
   double-click reset. Keyboard resize commits at once; `useDragResize`

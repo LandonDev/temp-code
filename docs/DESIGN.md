@@ -168,7 +168,13 @@ concentric: the inner radius is the outer minus the padding.
 
 `shadow-overlay` on floating layers only (menu, popover, dialog, sheet).
 Docked chrome and cards have no shadow; their depth is the gray step and
-the hairline.
+the hairline. The one exception is a raised button (`default`, `secondary`,
+`destructive`): it carries its own stack, a lip, an edge and a soft drop
+(`--raise-primary`, `--raise-secondary`, `--raise-destructive`, with their
+`-lit` and `-lifted` steps, a value per theme), on a fill layer behind its
+label (`.t-raise` in index.css). A raised button never sits inside an
+`overflow-hidden` box that would clip its drop; a clip the content needs
+goes on an inner span.
 
 ### Scrollbar
 
@@ -218,6 +224,16 @@ picks the gesture up where it was.
 `--layer-dialog` 90, `--layer-popover` 95 (menus, popovers, selects:
 above a dialog so a picker inside one is never hidden), `--layer-toast`
 100, `--layer-tooltip` 110.
+
+### Focus
+
+One ring: index.css draws a 2px `accent` outline inset 2px on every
+button, link, option, menu item and tab, unlayered so it beats a utility's
+`outline-none`, and so a row in a tight list never clips it. An element it
+does not name (a scroll region, a `pre`, a `div` with `tabIndex`, a checkbox
+root) takes `focus-ring`, the same outline. Nothing draws a second band
+(`focus-visible:ring`); a field keeps `focus-field`. `lib/focusGuard.test.ts`
+holds it.
 
 ## Typography and text hierarchy
 
@@ -412,7 +428,7 @@ a bounded log or code console. A vertical list says `overflow-x-hidden`
 beside `overflow-y-auto`, so a 1px overhang never raises a sideways bar; a
 horizontal bar appears only where content overflows. A pure text region
 (notes, a log, the preamble preview) takes `tabIndex={0}` and the focus
-ring, so the keyboard reaches it. Where a first overflow must not shift
+ring (`focus-ring`), so the keyboard reaches it. Where a first overflow must not shift
 the content (the transcript, the pages) the scroller reserves its strip
 with `scrollbar-gutter: stable`. Nothing sets `scrollbar-color` or
 `scrollbar-width` but `.scrollbar-none` (tab strips scrolled by wheel):
@@ -463,12 +479,13 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Sheet | fade + slide 16px from its edge, `--dur-drawer` `--ease-drawer` | fade + slide 16px back, `--dur-slow` | fade only |
 | Popover, menu, select | fade + scale 0.95→1 from the trigger, `--dur-base` | fade + scale →0.98, `--dur-fast` | fade only |
 | Context menu | fade at the pointer, `--dur-fast` | fade, `--dur-fast` | same |
-| Tooltip (13px regular on 20px lines, 24px tall) | after 300ms, fade + scale 0.98→1, `--dur-fast` `--ease-drawer`; moves between triggers instead of reopening | fade + scale →0.98, `--dur-fast` | fade |
+| Tooltip (13px regular on 20px lines, 24px tall) | after 300ms (`TOOLTIP` in lib/ease.ts), fade + scale 0.98→1, `--dur-fast` `--ease-drawer`; neighbours in one `TooltipProvider` (a closing line's or a notice's actions, the title bar's groups, a split view's header, a rail row's hover actions) open at once within the 120ms grace, the label moving instead of reopening | fade + scale →0.98, `--dur-fast` | fade |
 | Toast (sonner) | rise and fade, `--dur-base` | fade, `--dur-fast` | fade |
 | Right panel, rail | no width animation; content fades `--dur-fast` | same | same |
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
-| Press | scale 0.985, `--dur-fast` | release, `--dur-hover` | colour only |
-| Hover fill (a button; a menu row and a rail row highlight at once) | `--dur-hover` | `--dur-hover` | same |
+| Press, a raised button (`default`, `secondary`, `destructive`) | its fill layer scales 0.985 (0.997 × 0.985 full width) while the label stays put, `--dur-fast` | release, `--dur-hover` | none |
+| Press, ghost, link, outline and every row (a rail row, an Item, a toggle, a tab, a hover action) | the fill steps to `foreground/12` at once; nothing scales | back over `--dur-hover` | same |
+| Hover fill (a button; a menu row and a rail row highlight at once; a raised button lightens, and secondary lifts its shadow, over `--dur-fast`) | `--dur-hover` | `--dur-hover` | same |
 | Hover reveal (a closing line's actions, a message's Copy, a code block's and a tool output's Copy, an Agents row's Open and Stop over its model mark) | waits `--delay-hover`, then fades in `--dur-fast`; keyboard focus shows it at once | fades `--dur-fast`, at once | same |
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
 | Fold that opens on its own (`.collapsible-auto`: the transcript's working group, the running task's steps, the title bar's shelf) | height on the layout spring (`--dur-layout` `--ease-layout`) + opacity `--dur-base` `--ease-out` | the same, so the rows are gone before the box closes | opacity, `--dur-fast` |

@@ -25,6 +25,7 @@ import { CwdPicker } from "./CwdPicker";
 import { shortcutFor } from "../lib/settings";
 import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
+import { TooltipProvider } from "../components/ui/tooltip";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import type { TabThread } from "./TabIndicator";
 import { ThreadHeader, type ThreadHeaderProps } from "./ThreadHeader";
@@ -195,6 +196,7 @@ export function TabVisitNav({
 }) {
   return (
     <div className="flex shrink-0 items-center">
+      <TooltipProvider>
       <IconButton
         label="Back"
         shortcut={shortcutFor("Tabs", "Back")}
@@ -220,6 +222,7 @@ export function TabVisitNav({
           <PanelLeft className="size-3.5" />
         </IconButton>
       ) : null}
+      </TooltipProvider>
     </div>
   );
 }
@@ -359,6 +362,7 @@ function TitleBarComponent({
   const trailingControls = (
     <div className="flex h-10 shrink-0 items-stretch">
       <div className="flex items-center gap-0.5 px-2">
+        <TooltipProvider>
         {projectless && railClosed && onOpenInbox ? (
           <IconButton label="Inbox" onClick={onOpenInbox}>
             <Inbox className="size-3.5" />
@@ -384,6 +388,7 @@ function TitleBarComponent({
             <Settings className="size-3.5" />
           </IconButton>
         ) : null}
+        </TooltipProvider>
       </div>
       {!IS_MAC ? <WindowControls /> : null}
     </div>

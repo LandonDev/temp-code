@@ -37,6 +37,11 @@ export const SPRING_LAYOUT = {
  */
 export const DUR = { swapOut: 0.09, fast: 0.12, base: 0.18, slow: 0.24, drawer: 0.3 } as const;
 
+/** A tooltip's wait before it opens and the grace after the pointer leaves,
+ *  in ms: inside one TooltipProvider a neighbour's label opens at once within
+ *  the grace (components/ui/tooltip.tsx). */
+export const TOOLTIP = { delay: 300, closeDelay: 120 } as const;
+
 /** How long a scroller's bar stays shown after its last scroll, in ms
  *  (lib/scrollActivity.ts; docs/DESIGN.md "Scrolling"). */
 export const SCROLL_IDLE_MS = 900;

@@ -2,7 +2,7 @@ import type { HTMLAttributes, MouseEvent, ReactNode, Ref } from "react";
 import { Button } from "../components/ui/button";
 import { DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { useTruncated } from "../components/tip";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
 import type { IntentProps } from "../lib/lazyChunk";
 import type { IconComponent } from "./icons";
@@ -187,9 +187,11 @@ export function RailRow({
       {trailingInteractive ? trailingSlot : null}
       {actions.length > 0 && !trailingInteractive ? (
         <span data-rail-actions className="pointer-events-none absolute top-1/2 right-1 flex -translate-y-1/2 items-center gap-0.5">
-          {actions.map((action) => (
-            <HoverAction key={action.label} action={action} />
-          ))}
+          <TooltipProvider>
+            {actions.map((action) => (
+              <HoverAction key={action.label} action={action} />
+            ))}
+          </TooltipProvider>
         </span>
       ) : null}
       {children}

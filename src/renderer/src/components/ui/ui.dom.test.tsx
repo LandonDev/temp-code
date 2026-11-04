@@ -10,7 +10,8 @@ import { Kbd } from "./kbd";
 import { Skeleton } from "./skeleton";
 import { GroupInput, InputGroup } from "./input";
 import { Progress } from "./progress";
-import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY, Tooltip, TooltipContent, TooltipTrigger, resetTooltips, tooltipChunk, warmTooltips } from "./tooltip";
+import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, resetTooltips, tooltipChunk, warmTooltips } from "./tooltip";
+import { TOOLTIP } from "@renderer/lib/ease";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 import { Item, ItemButton } from "./item";
 import { StreamingText } from "./streaming-text";
@@ -416,6 +417,54 @@ describe("Tooltip popup", () => {
       expect(popup.className).toContain(name);
     }
     expect(popup.className).not.toContain("font-medium");
+    // Tailwind's scale-* sets `scale`, so that is the property the popup transitions.
+    expect(popup.className).toContain("transition-[scale,opacity]");
+    expect(popup.className).toContain("motion-reduce:transition-[opacity]");
+    expect(popup.className).not.toMatch(/transition-\[transform|motion-reduce:transition-none/);
+  });
+});
+
+describe("Tooltip neighbours", () => {
+  const wait = (ms: number) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
+  const hover = (el: Element) => {
+    fireEvent.pointerEnter(el, { pointerType: "mouse" });
+    fireEvent.mouseEnter(el);
+    fireEvent.mouseMove(el);
+  };
+  const leave = (el: Element) => {
+    fireEvent.pointerLeave(el, { pointerType: "mouse" });
+    fireEvent.mouseLeave(el);
+  };
+
+  it("inside one provider, the second label opens without another wait", async () => {
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+    render(
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger render={<button type="button" />}>Copy</TooltipTrigger>
+          <TooltipContent>Copy the turn</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger render={<button type="button" />}>Note</TooltipTrigger>
+          <TooltipContent>Save as a note</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>,
+    );
+    hover(screen.getByRole("button", { name: "Copy" }));
+    await wait(TOOLTIP.delay + 60);
+    expect(screen.queryByText("Copy the turn")).not.toBeNull();
+    leave(screen.getByRole("button", { name: "Copy" }));
+    hover(screen.getByRole("button", { name: "Note" }));
+    await wait(40);
+    expect(screen.queryByText("Save as a note")).not.toBeNull();
+  });
+
+  it("the delays are TOOLTIP's, re-exported", () => {
+    expect(TOOLTIP_DELAY).toBe(TOOLTIP.delay);
+    expect(TOOLTIP_CLOSE_DELAY).toBe(TOOLTIP.closeDelay);
   });
 });
 
