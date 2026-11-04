@@ -288,3 +288,34 @@ describe("Orchestration page", () => {
     expect(seen).toEqual(["ws:w1", "orchestration"]);
   });
 });
+
+describe("Meta's rows in the subagent models table", () => {
+  const META_LADDER = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+  const CLAUDE_LADDER = ["low", "medium", "high", "xhigh", "max"] as const;
+  const wonder = (reasoning: readonly string[]) =>
+    ({ id: "muse-wonder-1.0", label: "Muse Wonder 1.0", reasoning: [...reasoning], defaultReasoning: "high", context: 1_048_576, vendor: "meta" }) as RulesCatalog["claude"]["models"][number];
+
+  beforeEach(() => {
+    state.catalog = {
+      claude: { ...CATALOG.claude, models: [...CATALOG.claude.models, wonder(CLAUDE_LADDER)] },
+      codex: { ...CATALOG.codex, models: [...CATALOG.codex.models, wonder(META_LADDER)] },
+    };
+    state.scope = {
+      rules: rules({ models: { "claude:muse-wonder-1.0": { approved: true }, "codex:muse-wonder-1.0": { approved: true } } }),
+      overridden: false,
+    };
+  });
+
+  it("lists Wonder under Claude and Codex, Minimal on the Codex row's ladder alone", async () => {
+    render(<OrchestrationPage />);
+    const spawn = screen.getAllByRole("combobox", { name: "Who may spawn Muse Wonder 1.0" });
+    expect(spawn).toHaveLength(2);
+    const [claudeLow, codexLow] = screen.getAllByRole("combobox", { name: "Muse Wonder 1.0 lowest effort" });
+    expect(claudeLow.textContent).toContain("Low");
+    expect(codexLow.textContent).toContain("Minimal");
+    await act(async () => {
+      fireEvent.click(codexLow);
+    });
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Minimal", "Low", "Medium", "High", "Extra high", "Max"]);
+  });
+});

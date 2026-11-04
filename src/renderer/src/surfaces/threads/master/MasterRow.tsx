@@ -16,7 +16,8 @@ import type { SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
 import { marksAtRest } from "../../../lib/threadStripModel";
 import { plainStatus } from "@shared/statusWords";
-import { modelLabel } from "../../../lib/threads/agents";
+import { modelLabel, modelVendor } from "../../../lib/threads/agents";
+import { HARNESS_TITLE } from "../../../lib/session";
 import { TypeGlyph } from "../TypeGlyph";
 import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
 import { rowStatus, taskList, taskTally } from "./rowBody";
@@ -371,7 +372,7 @@ function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph:
 }
 
 /** How the model mark names effort and context in its tooltip. */
-const EFFORT_WORD: Record<string, string> = { low: "low", medium: "medium", high: "high", xhigh: "extra high", max: "max", ultra: "ultra" };
+const EFFORT_WORD: Record<string, string> = { minimal: "minimal", low: "low", medium: "medium", high: "high", xhigh: "extra high", max: "max", ultra: "ultra" };
 
 /** The model's name beside its provider's mark: the mark already says
  *  Claude. "" when the meta names no model or no provider. */
@@ -380,10 +381,15 @@ export function modelMarkName(provider: string | null | undefined, model: string
   return provider && asHarness(provider) === "claude" ? name.replace(/^Claude\s+/, "") : name;
 }
 
-/** The mark's tooltip: "Claude Opus 5.5, high effort, 1M context". */
+/** The mark's tooltip: "Claude Opus 5.5, high effort, 1M context". A
+ *  vendor's model names its maker and the harness its mark gave way to:
+ *  "Meta Muse Wonder 1.0 on Codex, high effort". */
 export function modelMarkTip(meta: Partial<Pick<SessionMeta, "provider" | "model" | "reasoning" | "context1m">>): string {
   const effort = meta.reasoning ? `${EFFORT_WORD[meta.reasoning] ?? meta.reasoning} effort` : null;
-  return [modelLabel(meta.provider, meta.model), effort, meta.context1m ? "1M context" : null].filter(Boolean).join(", ");
+  const label = modelLabel(meta.provider, meta.model);
+  const name =
+    modelVendor(meta.provider, meta.model) === "meta" ? `Meta ${label} on ${HARNESS_TITLE[asHarness(meta.provider!)]}` : label;
+  return [name, effort, meta.context1m ? "1M context" : null].filter(Boolean).join(", ");
 }
 
 /** The provider's mark and the model at line one's end, its effort and
@@ -403,7 +409,7 @@ function ModelMark({ meta }: { meta: SessionMeta }) {
           />
         }
       >
-        <HarnessIcon harness={asHarness(meta.provider)} className="size-3 shrink-0" />
+        <HarnessIcon harness={modelVendor(meta.provider, meta.model) ?? asHarness(meta.provider)} className="size-3 shrink-0" />
         <span className="min-w-0 truncate">{modelMarkName(meta.provider, meta.model)}</span>
       </TooltipTrigger>
       <TooltipContent>{modelMarkTip(meta)}</TooltipContent>
