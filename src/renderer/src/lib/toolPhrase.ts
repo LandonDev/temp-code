@@ -132,6 +132,20 @@ export function humanName(name: string): string {
   );
 }
 
+/** "build_get" → "Build get", "listIssues" → "List issues": a connector tool's name as words; the app's own tools keep theirs. */
+export function sentenceName(name: string): string {
+  const short = shortName(name);
+  const known = APP_TOOL[short];
+  if (known) return known;
+  const words = short
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.toLowerCase());
+  return cap(words.join(" "));
+}
+
 /** The file a call names, from its input or the server's preview. */
 export function pathOf(block: Block): string {
   const i = inputOf(block);

@@ -149,6 +149,15 @@ describe('CrossHostAgents: start, spawn, supervise', () => {
     expect(call.params.args).toMatchObject({ cwd: '/srv/agents/work/temp-code', workRoot: '/srv/agents/work', firstMessage: 'go' })
     expect(JSON.parse(settings.get(`${CHILDREN_PREFIX}box-thread`)!)).toMatchObject([{ environmentId: MAC, sessionId: 'mac1', kind: 'started' }])
   })
+  it('spawn sends the given title, or the first line with autoTitle so the far host writes one', async () => {
+    const { agents, seen } = setup()
+    const spec = { provider: 'claude' as const, model: 'claude-sonnet-5-5', reasoning: 'medium' as const, context1m: false, agentType: 'explorer' as const, task: 'first line\nmore', useWorktree: false, preamble: true }
+    await agents.spawn(parent, MAC, [{ ...spec, title: 'Review the flow' }, spec])
+    const spawns = seen.filter((c) => c.method === 'thread.spawn').map((c) => c.params.args as { title: string; autoTitle?: boolean })
+    expect(spawns[0]).toMatchObject({ title: 'Review the flow' })
+    expect(spawns[0].autoTitle).toBeUndefined()
+    expect(spawns[1]).toMatchObject({ title: 'first line', autoTitle: true })
+  })
   it('spawn records the children, appends agent-spawned with the host, and carries the cwd note', async () => {
     const { agents, appended, states } = setup()
     const spec = { provider: 'claude' as const, model: 'claude-sonnet-5-5', reasoning: 'medium' as const, context1m: false, agentType: 'implementer' as const, task: 'first line\nmore', useWorktree: true, preamble: true }

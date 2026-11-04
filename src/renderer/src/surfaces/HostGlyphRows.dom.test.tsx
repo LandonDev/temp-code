@@ -73,6 +73,8 @@ describe("the host glyph beside agents and Inbox items", () => {
     const row = render(<AgentRow agent={agent()} onOpen={() => {}} />);
     expect(glyphOf(row.container)?.getAttribute("aria-label")).toBe("The box");
     expect(glyphOf(row.container)?.getAttribute("data-host-kind")).toBe("server");
+    // On line one, right after the title.
+    expect(glyphOf(row.container)?.previousElementSibling?.hasAttribute("data-row-title")).toBe(true);
   });
 
   it("the spawn row names the child's host, from the row or from a cross-host id", () => {

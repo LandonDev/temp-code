@@ -141,7 +141,7 @@ describe("AgentDetailBody", () => {
         turnState={turn}
       />,
     );
-    expect(container.querySelector('[role="status"]')?.textContent).toBe("Watching2m");
+    expect(container.querySelector('[role="status"]')?.textContent).toMatch(/^Watchingsleep 90 seconds2m( \d+s)?$/);
   });
 
   it("names a far child's host", () => {

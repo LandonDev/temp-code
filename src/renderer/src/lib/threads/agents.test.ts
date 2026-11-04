@@ -3,6 +3,10 @@ import type { Block, Session } from "../session";
 import type { SessionMeta } from "../tcserver/types";
 import {
   agentRank,
+  agentSections,
+  agentTime,
+  agentTree,
+  MAX_AGENT_DEPTH,
   agentStats,
   agentStatus,
   childrenOf,
@@ -301,4 +305,134 @@ it("modelLabel names the catalog's model, the native id when the catalog lacks i
   expect(modelLabel("claude", undefined)).toBe("");
   expect(modelLabel("", "claude-opus-5-5")).toBe("");
   expect(modelLabel(null, "")).toBe("");
+});
+
+describe("agentTree", () => {
+  const ids = (rows: { meta: SessionMeta }[]) => rows.map((r) => r.meta.id);
+
+  it("lists the direct children ranked, oldest first within a rank, archived out", () => {
+    const metas = [
+      meta("done-old", { parentId: "root", createdAt: 1 }),
+      meta("working", { parentId: "root", status: "running", createdAt: 5 }),
+      meta("waiting", { parentId: "root", status: "waiting", createdAt: 9 }),
+      meta("done-new", { parentId: "root", createdAt: 3 }),
+      meta("gone", { parentId: "root", archived: true }),
+      meta("elsewhere", { parentId: "other" }),
+    ];
+    expect(ids(agentTree(metas, "root"))).toEqual(["waiting", "working", "done-old", "done-new"]);
+  });
+
+  it("puts each top agent's descendants under it in pre-order with their depth", () => {
+    const metas = [
+      meta("a", { parentId: "root", createdAt: 1 }),
+      meta("b", { parentId: "root", createdAt: 2 }),
+      meta("a1", { parentId: "a", createdAt: 3 }),
+      meta("a1x", { parentId: "a1", createdAt: 4 }),
+      meta("a2", { parentId: "a", createdAt: 5 }),
+      meta("a2gone", { parentId: "a", archived: true }),
+    ];
+    const tree = agentTree(metas, "root");
+    expect(ids(tree)).toEqual(["a", "b"]);
+    expect(tree[0].descendants.map((d) => [d.meta.id, d.depth])).toEqual([
+      ["a1", 1],
+      ["a1x", 2],
+      ["a2", 1],
+    ]);
+    expect(tree[1].descendants).toEqual([]);
+  });
+
+  it("draws a deep chain at most MAX_AGENT_DEPTH in", () => {
+    const metas = [meta("t", { parentId: "root" })];
+    for (let i = 1; i <= 5; i++) metas.push(meta(`d${i}`, { parentId: i === 1 ? "t" : `d${i - 1}` }));
+    const depths = agentTree(metas, "root")[0].descendants.map((d) => d.depth);
+    expect(depths).toEqual([1, 2, 3, 3, 3]);
+    expect(Math.max(...depths)).toBe(MAX_AGENT_DEPTH);
+  });
+
+  it("lifts a top agent whose subtree waits on the person ahead of its peers", () => {
+    const metas = [
+      meta("w1", { parentId: "root", status: "running", createdAt: 1 }),
+      meta("w2", { parentId: "root", status: "running", createdAt: 2 }),
+      meta("w2child", { parentId: "w2" }),
+      meta("w2grand", { parentId: "w2child", status: "waiting" }),
+    ];
+    expect(ids(agentTree(metas, "root"))).toEqual(["w2", "w1"]);
+  });
+
+  it("survives a parent loop", () => {
+    const metas = [meta("a", { parentId: "root" }), meta("b", { parentId: "a" }), meta("a2", { parentId: "b" })];
+    const looped = [...metas, { ...metas[0], id: "a", parentId: "b" } as SessionMeta];
+    expect(() => agentTree(looped, "root")).not.toThrow();
+  });
+});
+
+describe("agentSections", () => {
+  it("sections the top agents by their own state in the board's order", () => {
+    const metas = [
+      meta("done", { parentId: "root" }),
+      meta("queued", { parentId: "root", status: "queued" }),
+      meta("failed", { parentId: "root", status: "error" }),
+      meta("paused", { parentId: "root", status: "paused" }),
+      meta("working", { parentId: "root", status: "running" }),
+      meta("child", { parentId: "done", status: "running" }),
+    ];
+    const sections = agentSections(agentTree(metas, "root"));
+    expect(sections.map((s) => [s.label, s.nodes.map((n) => n.meta.id)])).toEqual([
+      ["Needs you", ["failed"]],
+      ["Working", ["working", "paused"]],
+      ["Queued", ["queued"]],
+      ["Done", ["done"]],
+    ]);
+    // A running grandchild travels with its done top agent.
+    expect(sections[3].nodes[0].descendants.map((d) => d.meta.id)).toEqual(["child"]);
+  });
+
+  it("returns no empty section", () => {
+    expect(agentSections(agentTree([meta("a", { parentId: "root" })], "root")).map((s) => s.id)).toEqual(["done"]);
+    expect(agentSections([])).toEqual([]);
+  });
+});
+
+describe("agentTime", () => {
+  const NOW = 1_000_000;
+  const timed = (extra: Partial<SessionMeta>) => meta("t", { busySince: null, frozenActiveElapsed: null, ...extra });
+
+  it("ticks a working or waiting agent from its turn's start", () => {
+    expect(agentTime(timed({ status: "running", busySince: NOW - 151_000 }), NOW)).toEqual({ ms: 151_000, live: true });
+    expect(agentTime(timed({ status: "waiting", busySince: NOW - 5_000 }), NOW)).toEqual({ ms: 5_000, live: true });
+    expect(agentTime(timed({ status: "starting", busySince: null }), NOW)).toBeNull();
+  });
+
+  it("ticks a watching agent from when it began to watch, else its turn", () => {
+    const background = { tasks: [], agents: ["x"], watchingSince: NOW - 60_000 } as unknown as SessionMeta["background"];
+    expect(agentTime(timed({ status: "watching", background, busySince: NOW - 90_000 }), NOW)).toEqual({ ms: 60_000, live: true });
+    expect(agentTime(timed({ status: "watching", busySince: NOW - 90_000 }), NOW)).toEqual({ ms: 90_000, live: true });
+  });
+
+  it("holds a paused agent's frozen time still", () => {
+    expect(agentTime(timed({ status: "paused", frozenActiveElapsed: 42_000 }), NOW)).toEqual({ ms: 42_000, live: false });
+    expect(agentTime(timed({ status: "paused" }), NOW)).toBeNull();
+  });
+
+  it("says nothing for a queued agent", () => {
+    expect(agentTime(timed({ status: "queued", busySince: NOW - 9_000, createdAt: 1 }), NOW)).toBeNull();
+  });
+
+  it("gives a settled agent how long it ran, spawn to last event, with its finish", () => {
+    for (const status of ["idle", "done", "stopped", "error"] as const) {
+      expect(agentTime(timed({ status, createdAt: 10_000, lastEventAt: 262_000, updatedAt: 999_999 }), NOW)).toEqual({
+        ms: 252_000,
+        live: false,
+        finishedAt: 262_000,
+      });
+    }
+    expect(agentTime(timed({ status: "idle", createdAt: 10_000, lastEventAt: null, updatedAt: 70_000 }), NOW)?.ms).toBe(60_000);
+  });
+
+  it("says nothing under a second or without its stamps", () => {
+    expect(agentTime(timed({ status: "idle", createdAt: 10_000, updatedAt: 10_400 }), NOW)).toBeNull();
+    expect(agentTime(timed({ status: "running", busySince: NOW - 300 }), NOW)).toBeNull();
+    expect(agentTime(timed({ status: "running", busySince: NOW + 5_000 }), 0)).toBeNull();
+    expect(agentTime(timed({ status: "idle", createdAt: 0, updatedAt: 0 }), NOW)).toBeNull();
+  });
 });

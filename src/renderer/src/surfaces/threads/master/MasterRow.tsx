@@ -1,26 +1,28 @@
 import { memo, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Button } from "../../../components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
 import { Item } from "../../../components/ui/item";
+import { Progress } from "../../../components/ui/progress";
 import { STATUS_WORD, StatusMark, statusToneClass } from "../../../components/ui/status";
+import { TaskRows } from "../../../components/ui/task-list";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
-import { MessageSquare, MoreHorizontal, Pause, Play } from "../../../chrome/icons";
+import { ChevronRight, MessageSquare, MoreHorizontal, Pause, Play } from "../../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../../chrome/menuRows";
-import { HarnessIcon } from "../../../chrome/HarnessIcon";
-import { HostGlyph } from "../../../chrome/HostGlyph";
 import { cn } from "../../../lib/cn";
 import { useKept } from "../../../lib/keptValue";
 import * as commands from "../../../lib/tcserver/commands";
-import { asHarness, useSessionMeta } from "../../../lib/tcserver/store";
+import { useSessionMeta } from "../../../lib/tcserver/store";
 import type { BoardDigest } from "@server/shared/contract-batch";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
 import { marksAtRest } from "../../../lib/threadStripModel";
 import { plainStatus } from "@shared/statusWords";
-import { modelLabel, modelVendor } from "../../../lib/threads/agents";
-import { HARNESS_TITLE } from "../../../lib/session";
+import { ModelMark, modelMarkName, modelMarkTip, storeHostGlyph, type HostGlyphOf } from "../ModelMark";
+import { tasksOf } from "../implementationBoard";
 import { TypeGlyph } from "../TypeGlyph";
 import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
-import { rowStatus, taskList, taskTally } from "./rowBody";
+import { rowStatus, taskBar, taskList, taskTally } from "./rowBody";
+import { useTaskFold } from "./taskFold";
 import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
 
 /**
@@ -34,7 +36,13 @@ import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardR
  * word when the section heading does not say it (watching or paused under
  * Working, failed under Needs you, stopped under Done) and what the state
  * is about, 12px, and the task tally at the end. The child that blocks the
- * batch's end says why (`blocked`). Under them the thread's live
+ * batch's end says why (`blocked`). An implementation or orchestration row
+ * with a task list has a third line instead of the end tally (16px, the
+ * row 64px): the task bar across the title's column, foreground while the
+ * thread works and muted otherwise, then the tally and a chevron; the
+ * whole line folds the task list open under it (compact TaskRows), closed
+ * by default and remembered per row for the window's life (taskFold.ts).
+ * Under them the thread's live
  * subagents, one still line each (AgentLines). A row of a host out of reach is
  * under the offline tint. A click opens the thread's full view in the
  * board's place; on hover the model mark gives way to Message, the one
@@ -58,10 +66,10 @@ export type RowMenu = {
   onOpenChange: (id: string, open: boolean) => void;
 };
 
-/** The host's glyph for a thread, as a render function so the view itself reads no store. */
-export type HostGlyphOf = (environmentId: string, title?: string) => ReactNode;
+export type { HostGlyphOf };
+export { modelMarkName, modelMarkTip };
 
-const hostGlyph: HostGlyphOf = (environmentId, title) => <HostGlyph environmentId={environmentId} title={title} className="shrink-0" />;
+const hostGlyph = storeHostGlyph;
 
 /** What a board row never shows: the live context and each event's stamp. */
 const UNSHOWN = new Set<string>(["context", "lastEventAt"]);
@@ -85,6 +93,7 @@ export function sameShownMeta(a: SessionMeta, b: SessionMeta): boolean {
 const sameShown = (kept: SessionMeta | null, next: SessionMeta | null): boolean => kept !== null && next !== null && sameShownMeta(kept, next);
 
 export const MasterRow = memo(function MasterRow({
+  masterId,
   rowRef,
   landed,
   blocked = null,
@@ -92,6 +101,8 @@ export const MasterRow = memo(function MasterRow({
   onOpen,
   menu,
 }: {
+  /** The master whose board this is: the fold memory's scope. */
+  masterId: string;
   rowRef: BoardRowRef;
   /** The batch marked this row's branch landed. */
   landed: boolean;
@@ -108,6 +119,7 @@ export const MasterRow = memo(function MasterRow({
   const plan = useSessionMeta(rowRef.planId);
   const digest = useBoardDigest(rowRef.id);
   const agents = useRowAgents(rowRef.id);
+  const [tasksOpen, setTasksOpen] = useTaskFold(masterId, rowRef.key);
   if (!meta) return null;
   return (
     <ShownRow
@@ -122,6 +134,8 @@ export const MasterRow = memo(function MasterRow({
       hostGlyph={hostGlyph}
       onOpen={onOpen}
       menu={menu}
+      tasksOpen={tasksOpen}
+      onTasksOpenChange={setTasksOpen}
     />
   );
 });
@@ -146,6 +160,8 @@ export function MasterRowView({
   hostGlyph,
   onOpen,
   menu,
+  tasksOpen = false,
+  onTasksOpenChange,
 }: {
   meta: SessionMeta;
   /** The plan's title when the row is a plan and the build it started. */
@@ -159,12 +175,17 @@ export function MasterRowView({
   hostGlyph: HostGlyphOf;
   onOpen: (id: string, focus?: boolean) => void;
   menu: RowMenu;
+  /** The task list's fold under the bar line (bar rows only). */
+  tasksOpen?: boolean;
+  onTasksOpenChange?: (open: boolean) => void;
 }) {
   const title = planTitle || meta.title;
   const { state, detail } = rowStatus(meta, digest, landed, blocked);
   // The word the glyph stands for and the detail, as one name for readers.
   const statusLabel = plainStatus(STATUS_WORD[state], detail);
-  const tally = taskTally(taskList(digest));
+  const bar = taskBar(meta, digest);
+  // A bar row says its tally on the bar's line alone.
+  const tally = bar ? null : taskTally(taskList(digest));
   const group = groupOf(meta);
   // The section heading says the word; a state it does not name says its own.
   const ownWord = STATUS_WORD[state] !== GROUP_LABEL[group];
@@ -254,6 +275,13 @@ export function MasterRowView({
         ) : null}
       </span>
 
+      {bar ? (
+        <>
+          <span />
+          <TaskBar bar={bar} working={state === "working"} todos={taskList(digest)} open={tasksOpen} onOpenChange={onTasksOpenChange} />
+        </>
+      ) : null}
+
       {agents ? (
         <>
           <span />
@@ -289,6 +317,46 @@ export function MasterRowView({
         />
       </span>
     </Item>
+  );
+}
+
+/** The bar line and the task list it folds open: the 4px bar (foreground
+ *  while the thread works, muted in every other state, so it never
+ *  competes with an amber or red detail), the tally and a chevron, the
+ *  whole line one button. The fold is the standard Fold row (DESIGN.md);
+ *  the bar's fill is Progress's own and moves only when a task ticks. Its
+ *  click and keys stay off the row, which would open the thread. */
+function TaskBar({
+  bar,
+  working,
+  todos,
+  open,
+  onOpenChange,
+}: {
+  bar: { done: number; total: number };
+  working: boolean;
+  todos: ReturnType<typeof taskList>;
+  open: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  return (
+    <Collapsible open={open} onOpenChange={(next) => onOpenChange?.(next)} className="min-w-0" data-task-bar>
+      <CollapsibleTrigger
+        aria-label={`Tasks: ${String(bar.done)} of ${String(bar.total)} done`}
+        onClick={stop}
+        onKeyDown={stop}
+        className="-mx-1 flex h-4 w-[calc(100%+8px)] items-center gap-2 rounded-sm px-1 outline-none transition-[background-color] duration-(--dur-hover) hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+      >
+        <Progress value={bar.done} max={bar.total} fill={working ? "foreground" : "muted"} aria-hidden className="min-w-0 flex-1" />
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums" dir="ltr" data-bar-tally>
+          {bar.done}/{bar.total}
+        </span>
+        <ChevronRight aria-hidden className={cn("size-3 shrink-0 text-muted-foreground transition-[rotate] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none", open && "rotate-90")} />
+      </CollapsibleTrigger>
+      <CollapsibleContent data-task-fold>
+        <TaskRows size="compact" tasks={tasksOf(todos, 0, working)} className="py-0.5" />
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -368,51 +436,5 @@ function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph:
         {hostGlyph(line.environmentId)}
       </Button>
     </li>
-  );
-}
-
-/** How the model mark names effort and context in its tooltip. */
-const EFFORT_WORD: Record<string, string> = { minimal: "minimal", low: "low", medium: "medium", high: "high", xhigh: "extra high", max: "max", ultra: "ultra" };
-
-/** The model's name beside its provider's mark: the mark already says
- *  Claude. "" when the meta names no model or no provider. */
-export function modelMarkName(provider: string | null | undefined, model: string | null | undefined): string {
-  const name = modelLabel(provider, model);
-  return provider && asHarness(provider) === "claude" ? name.replace(/^Claude\s+/, "") : name;
-}
-
-/** The mark's tooltip: "Claude Opus 5.5, high effort, 1M context". A
- *  vendor's model names its maker and the harness its mark gave way to:
- *  "Meta Muse Wonder 1.0 on Codex, high effort". */
-export function modelMarkTip(meta: Partial<Pick<SessionMeta, "provider" | "model" | "reasoning" | "context1m">>): string {
-  const effort = meta.reasoning ? `${EFFORT_WORD[meta.reasoning] ?? meta.reasoning} effort` : null;
-  const label = modelLabel(meta.provider, meta.model);
-  const name =
-    modelVendor(meta.provider, meta.model) === "meta" ? `Meta ${label} on ${HARNESS_TITLE[asHarness(meta.provider!)]}` : label;
-  return [name, effort, meta.context1m ? "1M context" : null].filter(Boolean).join(", ");
-}
-
-/** The provider's mark and the model at line one's end, its effort and
- *  context in its tooltip. Secondary, so in a narrow board it gives its
- *  width up before the title does (it shrinks a thousand times faster and
- *  clips), and it gives way to the row's actions on hover and focus. */
-function ModelMark({ meta }: { meta: SessionMeta }) {
-  // A stand-in for a child its host has not described yet names no model: no mark, rather than a wrong one.
-  if (!meta.provider || !meta.model) return null;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className="flex min-w-0 shrink-[1000] items-center gap-1.5 overflow-hidden text-xs whitespace-nowrap text-muted-foreground transition-opacity duration-(--dur-fast) group-focus-within:opacity-0 group-hover:opacity-0 motion-reduce:transition-none"
-            data-model
-          />
-        }
-      >
-        <HarnessIcon harness={modelVendor(meta.provider, meta.model) ?? asHarness(meta.provider)} className="size-3 shrink-0" />
-        <span className="min-w-0 truncate">{modelMarkName(meta.provider, meta.model)}</span>
-      </TooltipTrigger>
-      <TooltipContent>{modelMarkTip(meta)}</TooltipContent>
-    </Tooltip>
   );
 }

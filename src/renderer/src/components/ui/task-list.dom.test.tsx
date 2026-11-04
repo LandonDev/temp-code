@@ -8,7 +8,7 @@ import { PaneVisibilityContext } from "../../hooks/paneVisibility";
 import { clockForTest } from "../../lib/turnClock";
 import { ChangeRows } from "../../surfaces/threads/ChangeRows";
 import type { ChangeGroup } from "../../surfaces/threads/implementationBoard";
-import { type Task, TaskList } from "./task-list";
+import { type Task, TaskList, TaskRows } from "./task-list";
 import { tooltipChunk, warmTooltips } from "./tooltip";
 
 const LONG = "Make every task one line that fits the column, with the whole text on hover";
@@ -220,5 +220,73 @@ describe("the folded list's header", () => {
     expect(headline.className).toContain("truncate");
     expect(headline.className).toContain("min-w-0");
     expect(headline.querySelector(".text-pulse")).toBeNull();
+  });
+});
+
+describe("the compact rows", () => {
+  const timed: Task[] = [
+    { id: "1", label: "Read the brief", state: "done", time: { ms: 12_000 } },
+    { id: "2", label: LONG, state: "active", time: { ms: 5_000 }, progress: 0.4, detail: <span data-steps>steps</span> },
+    { id: "3", label: "Tests", state: "pending" },
+  ];
+
+  it("draws done, active and pending marks with their states on 20px rows", () => {
+    const { container } = render(<TaskRows size="compact" tasks={timed} />);
+    expect(container.querySelector("ul")?.dataset.size).toBe("compact");
+    const rows = [...container.querySelectorAll("li")];
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.querySelector(".task-mark")?.getAttribute("data-state"))).toEqual(["done", "active", "pending"]);
+    for (const row of rows) {
+      expect(row.className).toContain("min-h-5");
+      expect(row.className).toContain("gap-1.5");
+      expect(row.className).not.toContain("min-h-7");
+      const mark = row.querySelector(".task-mark")!;
+      expect(mark.getAttribute("class")).toContain("size-3");
+      expect(mark.getAttribute("class")).not.toContain("size-3.5");
+    }
+  });
+
+  it("cuts every label to one 12px line, the active one too", () => {
+    const { container } = render(<TaskRows size="compact" tasks={timed} />);
+    for (const label of container.querySelectorAll<HTMLElement>(".task-label")) {
+      expect(label.className).toContain("truncate");
+      expect(label.className).toContain("text-xs");
+      expect(label.className).toContain("leading-5");
+      expect(label.className).not.toContain("break-words");
+    }
+    expect(labelOf(container, LONG).className).toContain("text-foreground");
+    expect(labelOf(container, "Read the brief").className).toContain("text-(--task-done)");
+    expect(labelOf(container, "Tests").className).toContain("text-muted-foreground");
+  });
+
+  it("shows no time, detail, trigger or share", () => {
+    const { container } = render(<TaskRows size="compact" tasks={timed} />);
+    expect(container.querySelector(".tabular-nums")).toBeNull();
+    expect(container.querySelector("[data-steps]")).toBeNull();
+    expect(container.querySelector("[data-slot='collapsible-trigger']")).toBeNull();
+    expect(container.querySelector(".task-share")).toBeNull();
+    expect(container.querySelector("button")).toBeNull();
+  });
+
+  it("puts the 12px cursor on the active row, still on its first spot", () => {
+    const { container } = render(<TaskRows size="compact" tasks={timed} />);
+    const cursor = container.querySelector(".task-cursor")!;
+    expect(cursor).not.toBeNull();
+    expect(cursor.getAttribute("class")).toContain("size-3");
+    expect(cursor.getAttribute("class")).not.toContain("size-3.5");
+    expect(cursor.hasAttribute("data-slide")).toBe(false);
+  });
+
+  it("draws no cursor when nothing is active", () => {
+    const { container } = render(<TaskRows size="compact" tasks={timed.map((task) => ({ ...task, state: "done" as const }))} />);
+    expect(container.querySelector(".task-cursor")).toBeNull();
+  });
+
+  it("leaves the card's rows as they were: 28px, times, the share chip", () => {
+    const { container } = render(<TaskRows tasks={timed} />);
+    expect(container.querySelector("ul")?.className).toContain("px-3");
+    expect(container.querySelector("li")?.className).toContain("min-h-7");
+    expect(container.querySelector("li .tabular-nums")?.textContent).toBe("12s");
+    expect(container.querySelector(".task-share")?.textContent).toBe("40%");
   });
 });

@@ -116,6 +116,8 @@ const SpawnAgentSpecSchema = z.object({
   reasoning: z.string().optional(),
   agentType: z.string().optional(),
   task: z.string().optional(),
+  /** The agent's short name; omitted, the host titles it from the task. */
+  title: z.string().optional(),
   useWorktree: z.boolean().optional(),
   context1m: z.boolean().optional(),
   /** Run on another host: `mac`, or an environment id (contract-crosshost.ts). */

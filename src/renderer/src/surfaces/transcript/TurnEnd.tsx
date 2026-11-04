@@ -9,14 +9,16 @@ import { copyText } from "../../lib/clipboard";
 import { playCue } from "../../lib/sounds";
 import { type TurnInfo } from "../transcriptRows";
 import { type Block, type HarnessId } from "../../lib/session";
-import { isStaleWatch } from "@server/shared/watch";
+import { bareAgentId, isStaleWatch, waitLine, watchSubject } from "@server/shared/watch";
+import { plainStatus } from "@shared/statusWords";
 import { Button } from "../../components/ui/button";
 import { isTurnHeld, isTurnPaused, turnElapsed, useClock, useSlowClock } from "../../lib/turnClock";
 import { duration } from "../../lib/duration";
 import { threadStatus } from "../../lib/threadStripModel";
 import { useTurnState, type TurnSession } from "../turnState";
 import { usePaneVisible } from "../../hooks/paneVisibility";
-import { storeTitleOf, threadMentionsToTitles } from "../../lib/threadMentions";
+import { storeTitleOf, threadMentionsToTitles, useTitlesOf } from "../../lib/threadMentions";
+import { openWaitOf, waitIds } from "../agentSteps";
 import { needsApproval, turnCopyText } from "../transcriptActivity";
 import { turnEndsStopped } from "../../lib/turnOutcome";
 import { SwapIcon } from "../../motion/IconSwap";
@@ -24,7 +26,8 @@ import { IconAction, useArmOnIntent } from "./IconAction";
 import { spanWords, tailWord } from "./thinking";
 import { ThinkingTail } from "./ThinkingRow";
 
-/** A turn's closing row: the thinking tail while it starts, its duration
+/** A turn's closing row: the thinking tail while it starts or waits on its
+ *  agents ("Waiting on <title>"), its duration
  *  line once it is over ("Stopped" when the person stopped it: the stopped
  *  error row then draws nothing), the live state while it runs or waits
  *  (unless `liveState` is off: the timer above the composer runs instead),
@@ -64,9 +67,13 @@ export function TurnEnd({
     () => (settled ? harnessOf(turn.blocks) : undefined),
     [settled, harnessOf, turn.blocks],
   );
+  // An open wait is the turn's state, said on the working line, never a row of its own.
+  const wait = settled || paused ? null : openWaitOf(turn.blocks);
   return (
     <>
-      {!settled && !paused && showsThinkingTail(turn.blocks) ? (
+      {wait ? (
+        <WaitTail ids={waitIds(wait)} />
+      ) : !settled && !paused && showsThinkingTail(turn.blocks) ? (
         <ThinkingTail word={tailWord(turn.blocks, turnState?.activity)} />
       ) : null}
       {settled && (stopped || durationMs != null) ? (
@@ -116,37 +123,52 @@ export function LiveTurnDuration({ turn }: { turn: Block[] }) {
   );
 }
 
+/** The working line while the turn waits on its agents, re-worded as their titles land. */
+function WaitTail({ ids }: { ids: string[] }) {
+  const titleOf = useTitlesOf(useMemo(() => [...new Set(ids.flatMap((id) => [id, bareAgentId(id)]))], [ids]));
+  return <ThinkingTail word={waitLine(ids, titleOf)} />;
+}
+
 function isWatching(session: TurnSession): boolean {
   return threadStatus({ status: session.status, background: session.background, activity: session.activity }).state === "watching";
 }
 
-/** The watching line for a thread, amber once its own watch passes `STALE_WATCH_MS`. */
+/** The watching line for a thread, naming what it watches (one subagent by
+ *  title), amber once its own watch passes `STALE_WATCH_MS`. */
 function WatchingTail({ session, onOpen }: { session: TurnSession; onOpen?: () => void }) {
   const since = session.background?.watchingSince ?? null;
   const now = useSlowClock(since != null && usePaneVisible());
   const stale = now > 0 && isStaleWatch({ status: session.status ?? "idle", background: session.background }, now);
-  return <WatchingLine since={since} stale={stale} onOpen={onOpen} />;
+  const titleOf = useTitlesOf(session.background?.agents ?? NO_AGENTS);
+  return <WatchingLine since={since} stale={stale} onOpen={onOpen} subject={watchSubject(session.background, titleOf)} />;
 }
+
+const NO_AGENTS: string[] = [];
 
 /**
  * A settled turn's thread still watching its background work or its
- * subagents: the word and the stretch's age on the half-minute clock, the age
- * amber when `stale`. What it watches is the Activity section, which the line
+ * subagents: the word, what it watches ("Review the perf pass", "3
+ * subagents") and the stretch's age on the half-minute clock, the age amber
+ * when `stale`. The Activity section has the whole list, which the line
  * opens when given `onOpen`.
  */
 export function WatchingLine({
   since,
   stale = false,
   onOpen,
+  subject,
 }: {
   since: number | null;
   stale?: boolean;
   onOpen?: () => void;
+  /** What the thread watches, in the watch words (shared/watch.ts `watchSubject`). */
+  subject?: string;
 }) {
   const now = useSlowClock(since != null && usePaneVisible());
+  const said = plainStatus(STATUS_WORD.watching, subject ?? null);
   const body = (
     <>
-      <StatusMark state="watching" />
+      <StatusMark state="watching" detail={subject} className="min-w-0" />
       {since != null && now > 0 ? (
         <span aria-hidden className={cn(stale && "text-warning")}>
           {duration(Math.max(0, now - since))}
@@ -155,13 +177,13 @@ export function WatchingLine({
     </>
   );
   return (
-    <div role="status" aria-label={STATUS_WORD.watching} className={LINE}>
+    <div role="status" aria-label={said} className={LINE}>
       {onOpen ? (
         <Button
           variant="ghost"
           size="xs"
           onClick={onOpen}
-          aria-label={`${STATUS_WORD.watching}, open Activity`}
+          aria-label={`${said}, open Activity`}
           className="-ml-2 gap-2 text-[13px] font-normal text-muted-foreground hover:text-foreground"
         >
           {body}
@@ -317,6 +339,7 @@ export function formatWorkingDuration(elapsedMs: number | null, done = false): s
  * the answer. The next content takes that slot, so nothing jumps.
  */
 export function showsThinkingTail(turn: Block[]): boolean {
+  if (openWaitOf(turn)) return true;
   const last = turn[turn.length - 1];
   if (!last || last.role === "user") return true;
   if (last.role === "reasoning" || last.role === "assistant") return !last.text;

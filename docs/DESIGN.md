@@ -130,8 +130,8 @@ a surface above `/10`.
 | Size | Where |
 | --- | --- |
 | 11px | a key cap, a group label in a menu |
-| 12px | secondary lines in the chrome, descriptions under a title, status words, a count in a row's status line, the transcript's counts (`+46 −3`) |
-| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings, a tooltip (regular, 20px lines); the transcript's action, thinking, notice and closing lines (20px lines in 28px rows) |
+| 12px | secondary lines in the chrome, descriptions under a title, status words, a count in a row's status line |
+| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings, a tooltip (regular, 20px lines); the transcript's action, thinking, notice and closing lines (20px lines in 28px rows, 26px hung in an open group) and their counts (`+46 −3`) |
 | 14px | dialog and panel body text, an Item's title; the transcript's prose, the person's bubble, a question's prompt and the composer's field (22px lines) |
 | 15px | an h2 in the model's prose |
 | 16px | a dialog or sheet title (semibold); an h1 in the model's prose |
@@ -266,13 +266,16 @@ subagents", Failed then "Usage cap". The host sends the detail on its own
 for old readers and is read only when the detail is absent. A watching
 thread always says what it watches; a row that cannot say is a bug. A
 thread idle or done whose subagents still work is watching them (Watching
-then "a subagent") in the transcript's closing line,
+then the one subagent's title, "Review the perf pass", or "3 subagents") in the transcript's closing line,
 the tab, the chip and the rail alike, and the fleet header counts watching on its own. `threadStatus` (lib/threadStripModel.ts) is the one
 place that decides a thread's state and its detail, the tree's overrides
 included, and `ThreadStatusMark` (chrome/TabIndicator.tsx) draws it with the
 round's tally 8px after the detail. A watching thread on one task names it
 in the model's words (Watching then "sleep 45 seconds"); more than one is
-counted (`watchPhrase`, src/shared/watch.ts).
+counted (`watchPhrase`, src/shared/watch.ts). A turn a wait_for_agent holds
+says what it waits on by title, Working then "Waiting on Review the perf
+pass" or "Waiting on 2 subagents" (`waitLine`), on the transcript's working
+line and in the host's detail alike.
 
 The slot above the composer (surfaces/threads/WorkingStrip.tsx, reserved
 at 28px so nothing moves when a turn starts or ends) holds the open turn's
@@ -306,7 +309,10 @@ renderer never changes a detail's case; only a detail read from an old
 host's legacy `activity` takes a capital (`legacyDetail`).
 
 At rest a row draws no mark for idle and done (`marksAtRest`): a mark that
-would only say "nothing is happening" is noise. A tab is the glyph alone;
+would only say "nothing is happening" is noise. The one exception is the
+right panel's Agents rows, where done's check leads a finished agent: the
+panel has no other cue for what is done, and seeing it at a glance is the
+section's job. A tab is the glyph alone;
 its hover line and the transcript's working line say the word and the rest.
 
 Nothing loops. Every status glyph is still except working's spinner, a
@@ -451,7 +457,7 @@ being produced pulses (`TextPulse`); nothing else does.
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
 | Press | scale 0.985, `--dur-fast` | release, `--dur-hover` | colour only |
 | Hover fill (a button; a menu row and a rail row highlight at once) | `--dur-hover` | `--dur-hover` | same |
-| Hover reveal (a closing line's actions, a message's Copy, a code block's and a tool output's Copy) | waits `--delay-hover`, then fades in `--dur-fast`; keyboard focus shows it at once | fades `--dur-fast`, at once | same |
+| Hover reveal (a closing line's actions, a message's Copy, a code block's and a tool output's Copy, an Agents row's Open and Stop over its model mark) | waits `--delay-hover`, then fades in `--dur-fast`; keyboard focus shows it at once | fades `--dur-fast`, at once | same |
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
 | Fold that opens on its own (`.collapsible-auto`: the transcript's working group, the running task's steps, the title bar's shelf) | height on the layout spring (`--dur-layout` `--ease-layout`) + opacity `--dur-base` `--ease-out` | the same, so the rows are gone before the box closes | opacity, `--dur-fast` |
 | A step landing in it (`.step-land`) | fade + rise 4px, `--dur-base` `--ease-out`; only a step that lands while the fold is open, never at mount, on a hand open or when a panel unhides | none | none |
@@ -512,8 +518,8 @@ one class chain.
 | Element | Size / line |
 | --- | --- |
 | The prose, the person's bubble, a question's prompt, the composer's field | 14px / 22px |
-| A line: a group's line, an action, a thought, a notice, an approval, the closing line | 13px / 20px in a 28px row; the glyph in a 14px slot, 8px to the words, so words start at 22px |
-| Counts (`+46 −3`, a failed tally) | 12px `tabular-nums` |
+| A line: a group's line, an action, a thought, a notice, an approval, the closing line | 13px / 20px in a 28px row, 26px hung in an open group; the glyph in a 14px slot, 8px to the words, so words start at 22px |
+| Counts (`+46 −3`, a failed tally) | the text's size (13px in a row and on the group line) `tabular-nums`; the failed mark 4px from its number |
 | Code in a row's body: a command, its output, a diff | 12px / 20px mono |
 | A code block in the prose | 13px / 20px mono |
 | Inline code | one pixel under its text (13px in the prose), `rounded-sm bg-muted` |
@@ -551,7 +557,12 @@ Between paragraphs, the actions since the last paragraph are one muted line
 hung 22px under it, so a row's glyph sits under the line's words, with no box
 and no rules ("Created  diag.ts  +46 ▸", "Ran  npx convex dev…  ▸", "Read
 types.ts ▸"), verb muted, object in foreground, counts green and red, a
-caret per row. A row's opened body is one card (a hairline, `rounded-lg`,
+caret per row. Every row of the list sits on one grid (transcript/stepLine.ts):
+glyph, verb, target, counts, extras, caret, each slot only when it has
+something and 8px apart, 26px a row; a call that names nothing reads its
+verb alone ("Ran a command"), a connector's call names the connector
+("Cosmic Admin  Build get"), a todo update's tally sits muted in the counts
+slot, and a host step folded in reads verb then target like a call. A row's opened body is one card (a hairline, `rounded-lg`,
 `bg-card`, 12px inset, from the row's glyph to the column's end); an edit's
 diff takes the same card with its tints running to its edges. A lone command
 opens a card headed by its tool name with the command in mono and its output
@@ -596,11 +607,15 @@ line with a glyph, a lead and its details; only a held review and a failure
 are cards. A compaction is one line that counts from its start, takes
 its outcome in place and reads "Compaction stopped" when its turn ended
 without one. The host's steps of the agent's work fold into the run they sit
-in, as calls do: a subagent spawned (on its call's row) or heard from, a
+in, as calls do: a subagent spawned (on its call's row, one row per child
+for a batch), each agent that settled ("Finished", "Failed", "Needs you",
+"Stopped" or "Paused", then its title, behind the state's glyph), a
 finished task, the check on idle tasks, a gate or release outcome, a review
 that merged, the turn pass, the plan's build hand-off, a merge the batch
 made. A held review, a failure, Stopped, compaction, "Batch done" and
-account-gone stay lines of their own. A handoff keeps its bubble: its text is the person's brief. The
+account-gone stay lines of their own. Every agent row names its agent by
+title, the one bright text on its 28px line, and an open wait is no row:
+the working line says "Waiting on <title>". A handoff keeps its bubble: its text is the person's brief. The
 left side, where the column leaves room, lists the person's own messages,
 one line and a clock time each, the one being read in foreground
 (`TranscriptOutline` on `JumpList`; docs/LAYOUT.md "Chat"). A

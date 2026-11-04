@@ -42,6 +42,19 @@ export function taskTally(tasks: readonly TodoItem[]): string | null {
   return `${tasks.filter((t) => t.status === "completed").length}/${tasks.length}`;
 }
 
+/** The thread types whose rows carry the task bar: the ones that work
+ *  through a task list toward a branch. */
+export const BAR_TYPES: ReadonlySet<string> = new Set(["implementation", "orchestration"]);
+
+/** The bar line's share, done of total: an implementation or orchestration
+ *  row once it has a task list; null for every other row (they keep the
+ *  tally at the end of line two). */
+export function taskBar(meta: Pick<SessionMeta, "threadType">, digest: Pick<BoardDigest, "todos">): { done: number; total: number } | null {
+  const tasks = taskList(digest);
+  if (tasks.length === 0 || !BAR_TYPES.has(meta.threadType ?? "")) return null;
+  return { done: tasks.filter((t) => t.status === "completed").length, total: tasks.length };
+}
+
 /** A row's state and its detail. An idle thread on the board has had a
  *  turn, so it is done; one whose subagents still work is watching them
  *  (the strip's rule, threadStatus). The detail: the task in hand or the

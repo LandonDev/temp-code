@@ -12,7 +12,7 @@ import type { SessionMeta } from "../../lib/tcserver/types";
 import { resourcesHeldBy } from "../../lib/threadBatch";
 import { useProjects, useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useMetaById } from "../../lib/threads/agents";
-import { useSessionMetasWhen } from "../../lib/tcserver/store";
+import { sessionStore, useSessionMetasWhen } from "../../lib/tcserver/store";
 import { chatOf, heldRowOf } from "./chatSlots";
 import { ArchiveBatchDialog } from "./master/ArchiveBatchDialog";
 import { BatchAddDialog } from "./master/BatchAddDialogs";
@@ -21,6 +21,7 @@ import { addMenuItems, adoptCandidates, boardMenuItems, doneRows, pairedProjectI
 import { ChildPane } from "./master/ChildPane";
 import { MasterRow, type RowMenu } from "./master/MasterRow";
 import { RowBoundary } from "./master/RowBoundary";
+import { taskBar } from "./master/rowBody";
 import { NewPassDialog } from "./master/NewPassDialog";
 import { AgentSummaryContext } from "./master/agentSummary";
 import {
@@ -81,10 +82,12 @@ export function pausable(children: readonly SessionMeta[]): SessionMeta[] {
 type BoardItem = { kind: "header"; key: string; group: BoardGroup } | { kind: "row"; key: string; row: BoardRowRef };
 
 /** A section heading is 32px, its words on the last 16px with 4px under
- *  them; the first one 24px. A row is 48px (MasterRow); rows sit flush. */
+ *  them; the first one 24px. A row is 48px (MasterRow), 64px with its task
+ *  bar's line; rows sit flush. */
 const HEADER_PX = 32;
 const FIRST_HEADER_PX = 24;
 const ROW_PX = 48;
+const BAR_LINE_PX = 16;
 
 /** Row sizes come from the ResizeObserver (WorkspaceSessions' rule): a row
  *  mounting while the list scrolls keeps its cached or estimated size
@@ -191,7 +194,16 @@ export function MasterView(props: ThreadViewProps) {
       ]),
     [layout],
   );
-  const estimateSize = useCallback((i: number) => (items[i]?.kind === "header" ? (i === 0 ? FIRST_HEADER_PX : HEADER_PX) : ROW_PX), [items]);
+  // A row with its task bar is a line taller; the measure follows its fold.
+  const estimateSize = useCallback(
+    (i: number) => {
+      const item = items[i];
+      if (item?.kind !== "row") return i === 0 ? FIRST_HEADER_PX : HEADER_PX;
+      const meta = sessionStore.metaOf(item.row.id) ?? item.row.fallback;
+      return meta && taskBar(meta, digests.get(item.row.id)) ? ROW_PX + BAR_LINE_PX : ROW_PX;
+    },
+    [items, digests],
+  );
   const getItemKey = useCallback((i: number) => items[i]?.key ?? i, [items]);
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -353,7 +365,7 @@ export function MasterView(props: ThreadViewProps) {
                       </h3>
                     ) : (
                       <RowBoundary threadId={session.id} rowId={item.row.id}>
-                        <MasterRow rowRef={item.row} landed={landed.has(item.row.id)} blocked={blockedOf(item.row)} host={hostOf(item.row.environmentId)} onOpen={open} menu={rowMenu} />
+                        <MasterRow masterId={session.id} rowRef={item.row} landed={landed.has(item.row.id)} blocked={blockedOf(item.row)} host={hostOf(item.row.environmentId)} onOpen={open} menu={rowMenu} />
                       </RowBoundary>
                     )}
                   </div>

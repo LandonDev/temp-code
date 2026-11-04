@@ -29,7 +29,7 @@ import {
 } from '@shared/contract-crosshost'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectLinkFacts } from '@shared/projectLinks'
-import { batchMembershipOf, type ResolvedSpawn } from './orchestration'
+import { batchMembershipOf, taskTitle, type ResolvedSpawn } from './orchestration'
 import type { HostTransport } from './remote/hostLinks'
 import { PeerOfflineError, servePeerCall, type LinkRequest } from './remote/peerCalls'
 
@@ -533,7 +533,6 @@ export class CrossHostAgents {
     const started: { agentId: string; title: string; cwd: string; host: string; cwdNote?: string }[] = []
     const project = this.projectFacts(session.projectId)
     for (const r of specs) {
-      const title = r.task.split('\n')[0].slice(0, 80) || `${r.provider} · ${r.agentType}`
       const wire: ThreadSpawnArgs = {
         provider: r.provider,
         model: r.model,
@@ -541,7 +540,8 @@ export class CrossHostAgents {
         context1m: r.context1m,
         agentType: r.agentType,
         task: r.task,
-        title,
+        title: r.title ?? taskTitle(r),
+        ...(r.title ? {} : { autoTitle: true }),
         useWorktree: r.useWorktree,
         cwd: session.cwd,
         workRoot: this.deps.workRoot(),

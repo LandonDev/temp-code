@@ -39,7 +39,7 @@ const base = (over: Partial<SessionMeta>): SessionMeta =>
     ...over,
   }) as SessionMeta;
 
-export type FixtureRow = { meta: SessionMeta; digest: BoardDigest; agents: RowAgents | null; landed: boolean };
+export type FixtureRow = { meta: SessionMeta; digest: BoardDigest; agents: RowAgents | null; landed: boolean; tasksOpen?: boolean };
 
 const todos = (inHand: number, total: number, names: string[]) =>
   names.slice(0, total).map((content, i) => ({ content, status: i < inHand ? "completed" : i === inHand ? "in_progress" : "pending" }) as const);
@@ -89,6 +89,30 @@ export const FIXTURE_ROWS: FixtureRow[] = [
     agents: null,
     landed: true,
   },
+];
+
+const SEVEN = ["Read the brief", "Rail rows", "Section headings", "Write the project header rows", "Tests", "Docs", "Look at it at 420 and 640px"];
+
+/** The task bar's cases (board.preview.tsx `TaskBarPreview`): an
+ *  implementation row with no tasks yet (no bar), 3/7 working folded and
+ *  open, 7/7 done folded and open. */
+export const TASK_BAR_ROWS: FixtureRow[] = [
+  { meta: base({ id: "fresh", title: "Settings sheet", status: "running", activity: "Reading the brief", createdAt: 1 }), digest: {}, agents: null, landed: false },
+  {
+    meta: base({ id: "list", title: "Workspaces list with the project headers", status: "running", activity: "Editing Rail.tsx", createdAt: 2 }),
+    digest: { todos: todos(3, 7, SEVEN) },
+    agents: null,
+    landed: false,
+  },
+  {
+    meta: base({ id: "headers", title: "Project headers", status: "running", threadType: "orchestration", provider: "codex", model: "gpt-6.1-sol", context1m: false, activity: "Spawning", createdAt: 3 }),
+    digest: { todos: todos(3, 7, SEVEN) },
+    agents: null,
+    landed: false,
+    tasksOpen: true,
+  },
+  { meta: base({ id: "tokens", title: "Design tokens", status: "idle", createdAt: 0 }), digest: { todos: todos(7, 7, SEVEN) }, agents: null, landed: true },
+  { meta: base({ id: "type", title: "Type scale", status: "idle", createdAt: 0 }), digest: { todos: todos(7, 7, SEVEN) }, agents: null, landed: true, tasksOpen: true },
 ];
 
 /** The fixture's rows in their sections, in the board's order. */

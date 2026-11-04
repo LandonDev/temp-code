@@ -7,11 +7,12 @@ import {
   agentStatus,
   fleetCounts,
   loadsTranscript,
-  useAgents,
+  useAgentTree,
   useSessionById,
   useSessionIfLoaded,
   type AgentStats,
   type AgentStatus,
+  type AgentTreeNode,
   type FleetCounts,
 } from "../../../lib/threads/agents";
 import { readingPercent, type ContextReading } from "../../../lib/contextCache";
@@ -69,6 +70,9 @@ export function agentNumbers(s: FleetStats, cost: number | undefined): NumberPar
 // ── hooks ───────────────────────────────────────────────────────────────
 
 export type FleetModel = {
+  /** The direct children, each with its descendants (`agentTree`). */
+  tree: AgentTreeNode[];
+  /** Every row of the tree, top agents and descendants. */
   agents: SessionMeta[];
   counts: FleetCounts;
   /** A child works or waits. */
@@ -78,9 +82,15 @@ export type FleetModel = {
   setDetailId: (id: string | null) => void;
 };
 
+/** Every row of the tree in the order drawn. */
+export function treeRows(tree: readonly AgentTreeNode[]): SessionMeta[] {
+  return tree.flatMap((n) => [n.meta, ...n.descendants.map((d) => d.meta)]);
+}
+
 /** One thread's fleet, and which row is open. */
 export function useFleetModel(sessionId: string): FleetModel {
-  const agents = useAgents(sessionId);
+  const tree = useAgentTree(sessionId);
+  const agents = useMemo(() => treeRows(tree), [tree]);
   const counts = useMemo(() => fleetCounts(agents), [agents]);
   const [detailId, setDetailId] = useState<string | null>(null);
 
@@ -89,7 +99,7 @@ export function useFleetModel(sessionId: string): FleetModel {
     if (detailId && !agents.some((a) => a.id === detailId)) setDetailId(null);
   }, [agents, detailId]);
 
-  return { agents, counts, active: fleetActive(counts), anyWaiting: counts.waiting > 0, detailId, setDetailId };
+  return { tree, agents, counts, active: fleetActive(counts), anyWaiting: counts.waiting > 0, detailId, setDetailId };
 }
 
 /** One row's status. The transcript is fetched only under `loadsTranscript`

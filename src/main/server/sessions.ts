@@ -35,7 +35,7 @@ import type {
   SessionStatus,
   SteerState
 } from '@shared/events'
-import { watchSubject } from '@shared/watch'
+import { type AgentTitleOf, waitLine, watchSubject } from '@shared/watch'
 import { blockedDetail, blockedWords } from '@shared/batchWords'
 import { classifyFailure, type GatewayRefusal, NO_META_KEY_MESSAGE } from './failureKind'
 import {
@@ -311,8 +311,8 @@ export function foreignReference(text: string, tokens: string[], name: string, r
 /** The header line of a watching thread: what it waits on. One task is
  *  named in the model's words; anything more is counted (watchPhrase). */
 const WATCH_LINE_MAX = 120
-export function watchLine(bg: BackgroundWork | null | undefined): string {
-  const line = `Waiting on ${watchSubject(bg)}`
+export function watchLine(bg: BackgroundWork | null | undefined, titleOf?: AgentTitleOf): string {
+  const line = `Waiting on ${watchSubject(bg, titleOf)}`
   return line.length > WATCH_LINE_MAX ? `${line.slice(0, WATCH_LINE_MAX - 1)}…` : line
 }
 
@@ -432,7 +432,8 @@ const TOOL_WORDS: Record<string, Activity> = {
   app_read_thread: { text: 'Reading a thread', kind: 'investigate' },
   app_list_threads: { text: 'Listing threads', kind: 'investigate' },
   spawn_agent: { text: 'Spawning an agent', kind: 'think' },
-  wait_for_agent: { text: 'Waiting for an agent', kind: 'think' },
+  // A wait the registry tracks says its agents by title (statusWordsOf); this is one on another host.
+  wait_for_agent: { text: 'Waiting on a subagent', kind: 'think' },
   check_agent: { text: 'Checking an agent', kind: 'investigate' },
   send_to_agent: { text: 'Messaging an agent', kind: 'think' },
   answer_agent: { text: 'Answering an agent', kind: 'think' },
@@ -3562,6 +3563,17 @@ export class SessionRegistry {
     if (next) this.notifyMeta(next)
   }
 
+  /** A subagent the spawner did not name: write its title from the task now,
+   *  not after its first turn. Its current title (the task's first line)
+   *  stays until the new one lands, and stays for good when no title comes
+   *  back; a rename meanwhile wins, as for a root thread. */
+  titleFromTask(sessionId: string, text: string): void {
+    const placeholder = this.store.getSession(sessionId)?.title
+    if (placeholder === undefined || !text.trim()) return
+    this.pendingTitles.set(sessionId, { placeholder, text })
+    this.maybeRetitle(sessionId)
+  }
+
   /** After the first turn: swap the sliced-first-message placeholder for a
    *  generated title. Skips silently if the user renamed meanwhile. */
   private maybeRetitle(sessionId: string): void {
@@ -5527,7 +5539,7 @@ export class SessionRegistry {
       ...(awaiting?.size ? { awaiting: [...awaiting.keys()] } : {}),
       background,
       lastEventAt: this.lastActivity.get(session.id) ?? null,
-      ...this.statusWordsOf(session, background, act?.text ?? null),
+      ...this.statusWordsOf(session, background, act?.text ?? null, awaiting, (id) => index.byId.get(id)?.title),
       activityKind: act?.kind ?? null,
       tasks: this.tasksOf(session.id),
       goal: this.goalOf(session.id),
@@ -5544,16 +5556,19 @@ export class SessionRegistry {
   /** A row's status line both ways: `statusDetail`, what its word is about
    *  as the row draws it, and `activity`, the legacy string old readers take
    *  (statusWords.ts). Watching: the batch's reason or what it watches;
-   *  queued: why it waits; working: what it does, or the provider wait. */
+   *  queued: why it waits; working: the agents a wait_for_agent holds it
+   *  on, else what it does, or the provider wait. Agents read by title. */
   private statusWordsOf(
     session: SessionMeta,
     background: BackgroundWork | null,
-    act: string | null
+    act: string | null,
+    awaiting?: Map<string, number>,
+    titleOf?: AgentTitleOf
   ): Pick<SessionMeta, 'activity' | 'statusDetail'> {
     if (session.status === 'watching') {
       const reason = this.batchReason(session)
       if (reason) return { activity: reason.line, statusDetail: reason.detail }
-      return { activity: watchLine(background), statusDetail: watchSubject(background) }
+      return { activity: watchLine(background, titleOf), statusDetail: watchSubject(background, titleOf) }
     }
     if (session.status === 'queued') {
       const line = this.queuedLines.get(session.id)
@@ -5562,6 +5577,10 @@ export class SessionRegistry {
     // A request out at the provider past the threshold, with nothing finer known
     // (Thinking, or the driver's own provider word): say so with its seconds.
     const live = session.status === 'running' || session.status === 'starting'
+    if (live && awaiting?.size) {
+      const line = waitLine([...awaiting.keys()], titleOf)
+      return { activity: line, statusDetail: line }
+    }
     const text = live && (!act || act === 'Thinking' || act === WAITING_PROVIDER_LINE) ? (this.providerWaitLine(session.id) ?? act) : act
     return { activity: text, statusDetail: live ? text : null }
   }
@@ -5585,6 +5604,12 @@ export class SessionRegistry {
       if (root) {
         const decoratedRoot = this.decorate(root, index)
         for (const l of this.metaListeners) l(decoratedRoot, producer)
+      }
+      // A parent below the root waiting on this child says it by title: a new title re-words it.
+      const parent = root?.id === session.parentId ? null : index.byId.get(session.parentId)
+      if (parent && this.awaiting.get(parent.id)?.has(session.id)) {
+        const decoratedParent = this.decorate(parent, index)
+        for (const l of this.metaListeners) l(decoratedParent, producer)
       }
     }
   }

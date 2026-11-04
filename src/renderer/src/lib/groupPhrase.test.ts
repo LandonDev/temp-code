@@ -144,16 +144,11 @@ describe("groupPhrase: agent work and the host's steps", () => {
   it("send, wait, check, answer, interrupt", () => {
     expect(say([orch("send_to_agent", { agentId: "a" }, "1")])).toBe("Messaged “Port the view”");
     expect(say([orch("send_to_agent", { agentId: "a" }, "1"), orch("send_to_agent", { agentId: "b" }, "2")])).toBe("Messaged 2 agents");
-    expect(say([orch("wait_for_agent", { agentId: "a" }, "1")])).toBe("Waited for “Port the view”");
-    expect(say([orch("wait_for_agent", { agentId: "a" }, "1")], true)).toBe("Waiting for “Port the view”");
-    expect(say([orch("wait_for_agent", { agentId: "a" }, "1"), orch("wait_for_agent", { agentId: "b" }, "2")])).toBe("Waited for 2 agents");
     expect(say([orch("check_agent", { agentId: "a" }, "1"), orch("check_agent", { agentId: "b" }, "2"), orch("check_agent", { agentId: "c" }, "3")])).toBe(
       "Checked 3 agents",
     );
     expect(say([orch("answer_agent", { agentId: "a" }, "1")])).toBe("Answered “Port the view”");
     expect(say([orch("interrupt_agent", { agentId: "a" }, "1"), orch("interrupt_agent", { agentId: "b" }, "2")])).toBe("Stopped 2 agents");
-    // The same agent waited on twice is one target.
-    expect(say([orch("wait_for_agent", { agentId: "a" }, "1"), orch("wait_for_agent", { agentId: "a" }, "2")])).toBe("Waited for “Port the view”");
   });
 
   it("a report is heard from; the batch's report reads as the batch", () => {
@@ -162,10 +157,21 @@ describe("groupPhrase: agent work and the host's steps", () => {
     expect(say([sys("rb", "", { agent: { id: "self", title: "Batch", status: "done", batch: true } })])).toBe("Heard from the batch");
   });
 
-  it("a master's run reads as one line", () => {
-    expect(say([spawn("a"), orch("wait_for_agent", { agentId: "a" }, "w"), report("a")])).toBe(
-      "Spawned “Port the view”, waited for “Port the view”, heard from “Port the view”",
+  const waited = (id: string, detail: unknown) =>
+    orch("wait_for_agent", { agentId: "a" }, id, { status: "completed", detail: JSON.stringify(detail) });
+
+  it("a wait that returned is heard from the agents it returned on, with the reports", () => {
+    expect(say([waited("w", { agentId: "a", status: "idle", reply: "done" })])).toBe("Heard from “Port the view”");
+    expect(say([waited("w", { agentId: "env_mac:a", status: "done" })])).toBe("Heard from “Port the view”");
+    expect(say([waited("w", [{ agentId: "a", status: "done" }, { agentId: "b", status: "failed" }, { agentId: "c", status: "done" }])])).toBe(
+      "Heard from 3 agents",
     );
+    // A wait that returned on nobody says nothing of its own.
+    expect(say([spawn("a"), waited("w", { status: "steered", message: "hi" })])).toBe("Spawned “Port the view”");
+  });
+
+  it("a master's run reads as one line", () => {
+    expect(say([spawn("a"), waited("w", { agentId: "a", status: "idle" }), report("a")])).toBe("Spawned “Port the view”, heard from “Port the view”");
   });
 
   it("a thread the store does not know is named by the report in the run", () => {

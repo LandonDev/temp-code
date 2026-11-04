@@ -13,7 +13,7 @@
  */
 import type { Block } from "../lib/session";
 import { isErrorBlock } from "../lib/turnOutcome";
-import { awaitsUser, groupTurnItems, isHtmlRenderBlock, isStepBlock, isTodoBlock, type TurnItem } from "./transcriptActivity";
+import { awaitsUser, groupTurnItems, isHtmlRenderBlock, isStepBlock, isTodoBlock, stepRows, type TurnItem } from "./transcriptActivity";
 
 export type TurnInfo = {
   id: string;
@@ -247,8 +247,10 @@ export function sameRow(a: TranscriptRow, b: TranscriptRow): boolean {
  *  characters fit one in the 768px column. */
 const PROSE_LINE = 22;
 const PROSE_CHARS = 100;
-/** Every line row: an action, a group's line, a thought, a notice, the closing line. */
+/** Every line row: an action, a group's line, a thought, a notice, the closing line;
+ *  a row hung in an open group's list is 26px (transcript/stepLine.ts). */
 const LINE = 28;
+const HUNG_LINE = 26;
 /** How many rows a group shows while it works on its own (a thought counts). */
 export const GROUP_WINDOW = 5;
 
@@ -267,8 +269,8 @@ function itemHeight(item: TurnItem, working: boolean): number {
   if (item.type === "activity") {
     // A lone run is its steps' own rows; a group is its line, open on its
     // newest five rows while the turn works in it, else closed.
-    if (item.blocks.filter(isStepBlock).length <= 1) return LINE * item.blocks.length;
-    return working ? LINE + LINE * Math.min(GROUP_WINDOW, item.blocks.length) : LINE;
+    if (item.blocks.reduce((n, b) => n + (isStepBlock(b) ? stepRows(b) : 0), 0) <= 1) return LINE * item.blocks.length;
+    return working ? LINE + HUNG_LINE * Math.min(GROUP_WINDOW, item.blocks.length) : LINE;
   }
   const block = item.block;
   switch (block.role) {

@@ -268,8 +268,12 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   muted heading only where two groups meet, nothing in a row animating.
   Each body is a container (hooks, requests) over a pure `…View` that its
   jsdom test and `<Name>.fixtures.tsx` render.
-  - **Agents** (`FleetList`): A18's rows in a scroll area; none is one
-    Empty, "No subagents".
+  - **Agents** (`FleetList` over `FleetSectionsView`): the agents in the
+    master board's sections (Needs you, Working, Queued, Done,
+    lib/threadGroups.ts), each top agent by its own state with its
+    descendants indented 16px a level under it (three levels drawn), in a
+    native scroller; none is one Empty, "No subagents". The rows are
+    "Orchestration" below.
   - **Changes** (`chrome/rail/ChangesPanel.tsx`): the one place a
     checkout's changes are listed. Its top row is the branch, the one place
     a thread's branch is changed once it has a message (BranchPicker's
@@ -912,10 +916,15 @@ favicon, the title, the host, the claim; the address in a tooltip).
 
 ```
 ┌ Ship the iOS thread screens ──────────────┐  ┌ Agents ─────────────────────────────┐
-│ 2 working, 1 needs you, 3 done            │  │ ▫ Build the shell   ◌ Editing Home… │
-├───────────────────────────────────────────┤  │ ▫ Review the fold   ⊙ Needs you  a… │
-│ the orchestrator's transcript             │  │ ▫ Find the row sizes         ✓ Done │
-├ composer ─────────────────────────────────┤  └─────────────────────────────────────┘
+│ 2 working, 1 needs you, 3 done            │  │ Needs you                           │
+├───────────────────────────────────────────┤  │ ⊙ Review the fold          ✳ Opus 5.5│
+│ the orchestrator's transcript             │  │   Approve rm -rf build         48s │
+├ composer ─────────────────────────────────┤  │ Working                             │
+                                               │ ◌ Build the shell          ✳ Opus 5.5│
+                                               │   Editing HomeView.swift 3/7 2m 31s│
+                                               │ Done                                │
+                                               │ ✓ Find the row sizes  ✳ Opus 5.5 1m│
+                                               └─────────────────────────────────────┘
 ```
 
 - **The thread is the chat.** Above the transcript, inset to its column,
@@ -930,15 +939,27 @@ favicon, the title, the host, the claim; the address in a tooltip).
   Continue; while it waits on its agents the slot is empty and the
   transcript's closing line says "Watching" with the wait's age.
 - **The agents are rows in the right panel's Agents section** (`FleetList`,
-  fleet/AgentRow.tsx), on every thread that has subagents. A row is one
-  36px line: the role glyph, the title (at most half the row), the host
-  glyph (two or more hosts), and at the right edge the status: the host's
-  phrase while the agent works ("Editing HomeView.swift"), else the
-  vocabulary's word and what it is about ("Needs you  approve rm -rf
-  build", "Failed  usage cap", "Watching  bun test", "Queued  120 of 120
-  running"), Done alone once finished; the full text in a tooltip. Rows
-  read the meta (`agentStatus`); a row loads its transcript only to quote a
-  waiting agent or a failure the meta lacks. Nothing in a row moves.
+  fleet/AgentRow.tsx), on every thread that has subagents, in the board's
+  sections with a 12px muted heading only where two meet; the glyph column
+  sits 12px from the panel's edge, as the Activity section's. A live agent
+  (working, waiting, failed, watching, paused, queued) is two lines, 44px;
+  a settled one (done, idle, stopped) one 28px line with its title muted.
+  Line one: the state's glyph leading (working's spinner the row's one
+  moving mark, done's check the panel's only done cue), the title in 13px
+  medium ("Subagent" when it has none), the host glyph (two or more
+  hosts), and at the end the provider's mark and the short model
+  (`ModelMark`, surfaces/threads/ModelMark.tsx, the board's; the role
+  first in its tooltip, "Reviewer, Claude Opus 5.5, high effort"; a row
+  under 18rem keeps the mark alone), then on a settled row how long it ran
+  ("4m 12s", "Finished 14:02" on hover). Line two: the host's phrase while
+  it works, else the state's word where the heading does not say it and
+  what the state is about (a question or a failure in its tone), then the
+  task tally ("3/7") and the time, which ticks only while live
+  (`agentTime`). On hover, after `--delay-hover`, or keyboard focus the
+  model mark gives way to Open (the agent's thread) and, while a turn
+  runs, Stop. Rows read the meta (`agentStatus`); a row loads its
+  transcript only to quote a waiting agent or a failure the meta lacks.
+  Nothing in the list moves.
 - **A row opens the agent's detail**, a 672px Sheet from the window's
   right edge (fleet/AgentDetail.tsx, its content
   fleet/AgentDetailBody.tsx): the title, the status in full, one muted
@@ -969,7 +990,15 @@ in the whole pane, with Back.
 │  ⓘ  Failed  Usage cap until 14:00                                     │
 │ Working                                                                │
 │  ☷  Home: Needs you, Working, Workspaces            ✺ Fable 5.1      │
-│  ⠿  Workspaces list with the project headers                     3/7 │
+│  ⠿  Write the project header rows                                     │
+│     ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   3/7  ⌄ │
+│     ✓ Read the brief                                                   │
+│     ✓ Rail rows                                                        │
+│     ✓ Section headings                                                 │
+│     ➜ Write the project header rows                                    │
+│     ○ Tests                                                            │
+│     ○ Docs                                                             │
+│     ○ Look at it at 420 and 640px                                      │
 │     ◉ Run the tests  Needs you  Approve Bash                           │
 │     ◜ Rail rows  Working  Editing Rail.tsx                             │
 │     1 done                                                             │
@@ -982,7 +1011,8 @@ in the whole pane, with Back.
 │  ◌  Waiting for Home                                                  │
 │ Done                                                                   │
 │  ☷  Design foundations                              ✺ Fable 5.1      │
-│     Landed 12:08                                                 4/4 │
+│     Landed 12:08                                                       │
+│     ███████████████████████████████████████████████████████████   4/4  › │
 ├────────────────────────────────────────────────────────────────────────┤
 │ When done                                                         Edit │
 │ ✓ Land        2 of 7 landed                                     1m 30s │
@@ -1072,7 +1102,8 @@ in the whole pane, with Back.
   or paused under Working, failed under Needs you, stopped under Done),
   12px medium in its tone, then what the state is about, 12px regular:
   amber for waiting, red for failed, else muted; the task tally (`3/7`,
-  12px, `tabular-nums`, no bar) ends the line once the thread has a list.
+  12px, `tabular-nums`) ends the line once the thread has a list, except
+  on a row with the task bar, which says it on the bar's line.
   The row's accessible name carries the colon form ("Working: Write the
   view", `plainStatus`). The detail: working, an implementation's task in
   hand (its `in_progress` todo), else the host's `statusDetail` or its
@@ -1087,9 +1118,32 @@ in the whole pane, with Back.
   `blocked` names says why ("Ended its turn without completing",
   `blockedReason` in src/shared/batchWords.ts, given its capital). A
   detail is written as the host says it (a sentence with its capital, a
-  name or a count as it is) and ends without a full stop. No task list,
-  third line or progress bar: the child pane has the list, one click
-  away. A row of a host whose link is not open sits under the offline
+  name or a count as it is) and ends without a full stop.
+  **The task bar.** An implementation or orchestration row with a task
+  list (`taskBar` in master/rowBody.ts; the digest's `todos`, the tally's
+  source) has a third 16px line in the title's column, so the row is 64px
+  (the board's estimate knows it before the measure): the 4px `Progress`
+  bar across the column, then the tally (`3/7`, 12px muted, said here and
+  nowhere else on the row) and a 12px chevron, the right edge where the
+  model mark ends. The fill is foreground while the row's state is
+  working and muted in every other state, so it never competes with an
+  amber or red detail and Done stays quiet; it moves only when a task
+  ticks, on Progress's own `--dur-slow` `--ease-out` scaleX, so working's
+  spinner stays the row's one moving mark. Line two keeps the task in
+  hand, said once, right above the bar. The whole line is one button
+  ("Tasks: 3 of 7 done", `aria-expanded`), hover `foreground/5`; its click
+  and keys stay off the row. It folds the task list open under it,
+  closed by default: `TaskRows` at its compact size (20px rows, 12px
+  labels and marks, each one line cut at the column's edge with the whole
+  text on hover; done ticks and strikes, the running task is foreground
+  with the cursor, pending muted; no card, header, times or steps). The
+  fold is the standard Fold row (DESIGN.md) and the chevron turns with it.
+  Each row's fold is remembered for the window's life by `<master>:<row
+  key>` (master/taskFold.ts; a plan's row key is the plan's id, so it
+  survives the build starting), through the virtualizer unmounting the
+  row, the child pane and back, and a section change; never across a
+  reload. Planning, chat, research and project-plan rows have no bar.
+  A row of a host whose link is not open sits under the offline
   tint (`opacity-50`, `data-host-offline`): its row is the launch
   mirror's and lifts when the host is back.
   Under the lines, the thread's live subagents, one 20px line each in the

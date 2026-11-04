@@ -2,7 +2,8 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sessionStore } from "../../../lib/tcserver/store";
 import { FakeMetaLink } from "../../../test/fakeMetaLink";
-import { MasterRow, modelMarkName, modelMarkTip } from "./MasterRow";
+import { MasterRow } from "./MasterRow";
+import { modelMarkName, modelMarkTip } from "../ModelMark";
 import { standInMeta, type BoardRowRef } from "./useMasterModel";
 
 /**

@@ -564,6 +564,8 @@ export interface SpawnAgentSpec {
   /** Unknown types coerce to 'implementer' instead of failing. */
   agentType?: string
   task?: string
+  /** A short name the person sees the agent by; omitted, the host titles it from the task. */
+  title?: string
   useWorktree?: boolean
   /** Defaults to on for models with a 1M window; asking for it on any
    *  other model is refused. */
@@ -608,9 +610,30 @@ export interface ResolvedSpawn {
   context1m: boolean
   agentType: (typeof AGENT_TYPES)[number]
   task: string
+  /** The spawner's title, cleaned (cleanAgentTitle); absent = the host titles it from the task. */
+  title?: string
   useWorktree: boolean
   /** false = the spawner opted out of the project preamble */
   preamble: boolean
+}
+
+/** The longest agent title kept, cut at the last word boundary before it. */
+const AGENT_TITLE_MAX = 60
+
+/** A spawner's title as a row shows it: its first line, whitespace
+ *  collapsed, cut to AGENT_TITLE_MAX at a word boundary; empty is none. */
+export function cleanAgentTitle(raw: string | undefined): string | undefined {
+  const line = (raw ?? '').split('\n')[0].replace(/\s+/g, ' ').trim()
+  if (!line) return undefined
+  if (line.length <= AGENT_TITLE_MAX) return line
+  const cut = line.slice(0, AGENT_TITLE_MAX + 1)
+  const space = cut.lastIndexOf(' ')
+  return (space > 0 ? cut.slice(0, space) : line.slice(0, AGENT_TITLE_MAX)).trim()
+}
+
+/** The title a child starts with while no better one is known: the task's first line. */
+export function taskTitle(r: Pick<ResolvedSpawn, 'task' | 'provider' | 'agentType'>): string {
+  return r.task.split('\n')[0].slice(0, 80) || `${r.provider} · ${r.agentType}`
 }
 
 /**
@@ -637,8 +660,10 @@ export function resolveSpawnSpecs(
   // may spawn the models approved for orchestrators only; any other thread
   // sees them refused.
   const role = policyRole(parentNow)
+  // A title names one agent: a batch's entries never inherit a top-level one.
   const { agents: batch, ...defaults } = args
-  const specs: SpawnAgentSpec[] = batch?.length ? batch.map((a) => ({ ...defaults, ...a })) : [defaults]
+  const { title: _batchTitle, ...entryDefaults } = defaults
+  const specs: SpawnAgentSpec[] = batch?.length ? batch.map((a) => ({ ...entryDefaults, ...a })) : [defaults]
   if (specs.length > SPAWN_BATCH_MAX) {
     return `refused: one spawn_agent call starts at most ${SPAWN_BATCH_MAX} agents (${specs.length} given). Split the batch across calls.`
   }
@@ -673,6 +698,7 @@ export function resolveSpawnSpecs(
           ? 'explorer'
           : 'implementer',
       task,
+      ...(cleanAgentTitle(spec.title) ? { title: cleanAgentTitle(spec.title) } : {}),
       useWorktree: (spec.useWorktree ?? true) && rules.conduct.useWorktrees,
       preamble: spec.preamble !== false
     })
@@ -740,7 +766,7 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
       (writer && r.useWorktree
         ? await worktreeFor(parent.cwd, n > 1 ? `${parent.id}-${stamp}-${i}` : `${parent.id}-${stamp}`)
         : null) ?? parent.cwd
-    const title = r.task.split('\n')[0].slice(0, 80) || `${r.provider} · ${r.agentType}`
+    const title = r.title ?? taskTitle(r)
     // Every explorer in a research tree gets a findings file the app
     // assigns, beside the root's report: its deliverable, which survives a
     // truncated reply and a stopped run, and which the root synthesizes from.
@@ -770,6 +796,9 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
       anglePath ? `${r.task}\n\n${findingsContract(anglePath)}` : r.task,
       { preamble: r.preamble }
     )
+    // An agent the spawner did not name gets a title written from its task;
+    // the first line stands until it lands, and a rename before that wins.
+    if (!r.title) registry.titleFromTask(child.id, r.task)
     const queued = registry.get(child.id)?.status === 'queued' ? statusOf({ id: child.id, status: 'queued' }) : null
     started.push({
       agentId: child.id,
@@ -1027,6 +1056,10 @@ export async function orchListAgents(parent: SessionMeta): Promise<string> {
   return JSON.stringify([...local, ...batch, ...remote])
 }
 
+/** What spawn_agent's `title` is for (the codex bridge says the same, scripts/app-mcp-bridge.mjs). */
+export const AGENT_TITLE_DESCRIPTION =
+  'A short name for this agent, 3 to 6 plain words, the way a thread is titled ("Review the payment flow"). The transcript, the rail and the Agents list name the agent by it. Omitted, the app titles it from the task.'
+
 /** Fields a single spawn and each batch entry share. */
 const spawnSpecShape = {
   provider: z
@@ -1058,7 +1091,8 @@ const spawnSpecShape = {
     .optional()
     .describe(
       'Isolate a writing agent in its own git worktree (default true; ignored outside a git repo)'
-    )
+    ),
+  title: z.string().optional().describe(AGENT_TITLE_DESCRIPTION)
 }
 /** The host field a single spawn (not a batch entry) and app_start_thread take. */
 export const HOST_PARAM_DESCRIPTION = "Which host runs it: omit for this machine; `mac` for this thread's Mac (or the only Mac linked here), `box` for the one host linked from here, or a host's environment id. Use the Mac for anything that needs Xcode, the iOS simulator, a Mac app, computer use, or files that live on the Mac; use the box for its checkouts and services. The thread runs there as an ordinary thread of that host, and its agent id comes back as `<host>:<id>` so every later call reaches it. Work meant for the Mac is a child ON the Mac (`environmentId: \"mac\"`), never a child here that reaches the Mac through mac_* tools. If the Mac refuses at its thread cap, wait for one of its threads to finish and retry; never start the work on this host instead."
@@ -1076,7 +1110,7 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
     tools: [
       tool(
         'spawn_agent',
-        `Spawn a subagent session and send it its task. Returns the agent id. The agent works asynchronously — use wait_for_agent to collect its result. To fan out, pass \`agents\` (up to ${SPAWN_BATCH_MAX} entries, each with its own task) instead of \`task\`: one call starts the whole batch and returns every agent id; the top-level fields are defaults each entry may override.`,
+        `Spawn a subagent session and send it its task. Returns the agent id. The agent works asynchronously — use wait_for_agent to collect its result. To fan out, pass \`agents\` (up to ${SPAWN_BATCH_MAX} entries, each with its own task) instead of \`task\`: one call starts the whole batch and returns every agent id; the top-level fields are defaults each entry may override. Give each agent a \`title\` of 3 to 6 plain words: the person sees it by that name.`,
         {
           ...spawnSpecShape,
           environmentId: z.string().optional().describe(hostParamDescription()),
@@ -1207,7 +1241,8 @@ its thread cap, wait for one of its threads to finish and retry; do not
 spawn the work on this host instead.
 
 Give each agent a complete, self-contained task prompt — it cannot see this
-conversation. Parallelize independent work; sequence dependent work. A
+conversation — and a \`title\` of 3 to 6 plain words: the person sees the
+agent by that name in the transcript, the rail and the Agents list. Parallelize independent work; sequence dependent work. A
 fan-out is ONE spawn_agent call with \`agents\` (up to ${SPAWN_BATCH_MAX} entries,
 each its own task and model) — not one call per agent.
 

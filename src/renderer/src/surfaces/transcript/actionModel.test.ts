@@ -159,7 +159,60 @@ describe("GLYPH", () => {
 
   it("a todo update says how far the list is", () => {
     const todos = [{ content: "a", status: "completed" }, { content: "b", status: "pending" }, { content: "c", status: "in_progress" }];
-    expect(actionOf(call("TodoWrite", { todos }), CWD)).toMatchObject({ verb: "Updated todos", object: "1/3" });
-    expect(actionOf(call("TodoWrite", {}), CWD).object).toBe("");
+    // The tally is a count, not a target: it sits in the counts slot.
+    expect(actionOf(call("TodoWrite", { todos }), CWD)).toMatchObject({ verb: "Updated todos", object: "", tally: "1/3" });
+    const empty = actionOf(call("TodoWrite", {}), CWD);
+    expect(empty.object).toBe("");
+    expect(empty.tally).toBeUndefined();
+  });
+});
+
+describe("a row's words", () => {
+  it("folds each stand-in object into the verb, so the row reads the verb alone", () => {
+    const cases: [Block, string][] = [
+      [call("Bash", {}), "Ran a command"],
+      [call("Read", {}), "Read a file"],
+      [call("Grep", {}), "Searched the project"],
+      [call("WebFetch", {}), "Fetched a page"],
+      [call("WebSearch", {}), "Searched the web"],
+      [call("AskUserQuestion", {}, { kind: "question" }), "Asked a question"],
+    ];
+    for (const [block, verb] of cases) {
+      expect(actionOf(block, CWD)).toMatchObject({ verb, object: "", title: undefined });
+    }
+  });
+
+  it("leaves a named object where it is", () => {
+    expect(actionOf(call("Read", { file_path: "/repo/src/a.ts" }), CWD)).toMatchObject({ verb: "Read", object: "a.ts" });
+  });
+
+  it("leaves a subagent call's words alone", () => {
+    const spawn = call("Agent", {});
+    const a = actionOf(spawn, CWD);
+    expect(a.agent).toBe(true);
+    expect(a.verb).not.toMatch(/ a (command|file|question)$/);
+  });
+
+  it("names a connector call by the connector, its tool in sentence case", () => {
+    expect(actionOf(call("mcp__cosmic-admin__build_get", {}), CWD)).toMatchObject({
+      connector: "cosmic-admin",
+      verb: "Cosmic Admin",
+      object: "Build get",
+    });
+    // The spinner says it is live; the verb has no tense to change.
+    expect(actionOf(call("mcp__notion__searchPages", {}, { status: "running" }), CWD)).toMatchObject({
+      verb: "Notion",
+      object: "Search pages",
+      running: true,
+    });
+  });
+
+  it("keeps the host's display words, the app's own tools and the orchestrator's", () => {
+    const shown = actionOf(call("mcp__linear__save_issue", {}, { display: { app: "linear", action: "Saved issue ENG-12" } }), CWD);
+    expect(shown).toMatchObject({ verb: "Linear", object: "Saved issue ENG-12" });
+    const view = { label: "Read thread", detail: "Auth rewrite", phrase: "read thread", threadId: "t1" };
+    expect(actionOf(call("mcp__app__app_read_thread", { threadId: "t1" }), CWD, view)).toMatchObject({ verb: "Read thread" });
+    expect(actionOf(call("mcp__app__app_list_threads", {}), CWD)).toMatchObject({ verb: "Used", object: "List Threads" });
+    expect(actionOf(call("mcp__orchestrator__list_agents", {}), CWD).verb).not.toBe("Orchestrator");
   });
 });

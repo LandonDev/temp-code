@@ -21,11 +21,36 @@ IconAction and markdown.css (A9).
 
 One action (an edit, a command, a read, a search, a fetch, a skill, a call
 into the app, a connector call, a subagent spawn, an approval, a todo
-update) is one 28 px line at 13 px, `[glyph]  Verb  object  +46 −3  extras  ▸`
+update) is one line at 13 px, `[glyph]  Verb  object  +46 −3  extras  ▸`
 (`transcript/ActionLine.tsx`). What each row says and opens is decided once
 in `transcript/actionModel.ts` (`actionOf`, unit-tested) from the words of
 `lib/toolPhrase.ts` (`toolPhraseParts`: the verb muted, the object in
 foreground, the same words the group line uses); the components only draw it.
+
+- **One grid** (`transcript/stepLine.ts`): every step of a run, a call, a
+  thought, a folded host step, is one line of the same slots, each drawn
+  only when it has something, 8px apart: the 14px glyph (`GLYPH_SLOT`), the
+  verb muted, the target in foreground (it truncates first), the counts at
+  the text's size, the row's extras (an empty extras slot takes no room,
+  `empty:hidden`), the chevron on a row that opens. The glyph box is fixed,
+  so verbs line up and each target starts where its verb ends, as in
+  Claude's open group. A line is 28px at the prose's edge (a lone call) and
+  26px hung in an open group's list, which says so with `data-hung`
+  (`STEP_LINE`'s `in-data-[hung]:h-6.5`; a notice, which can wrap, takes
+  `STEP_NOTICE`). No border, fill or rule; hover lifts the verb and the
+  chevron to foreground, at once.
+- **The words.** A stand-in object toolPhrase.ts says when a call names
+  nothing ("a command", "a file", "the project", "a page", "the web", "a
+  question") is filler, not a target: it folds into the verb ("Ran a
+  command", all muted); a subagent call keeps its words. A connector's call
+  reads as the connector doing it, "Cosmic Admin  Build get": the verb is
+  the `mcp__<server>__` prefix through `addonTitle`, the target the tool's
+  name in sentence case (`sentenceName`), with no tense (the glyph's spinner
+  says it is live); the host's `display.app` words, the app's own tools and
+  the orchestrator's keep theirs. A host step folded into a run
+  (`StepRowContext`, set by ActivityRow) reads the same way: its lead muted
+  whatever its tone (a failure is the glyph's to say), its first detail in
+  foreground ("Gate failed  port-the-view  at vitest").
 
 - **The glyph** (`transcript/ToolGlyph.tsx`): one 14 px box, the kind's
   icon from the `GLYPH` record, the connector's mark or the subagent's
@@ -51,13 +76,21 @@ foreground, the same words the group line uses); the components only draw it.
   its counts tick instead. Anything else opens its details
   (`ToolDetails.tsx`: the invocation, key and value rows for JSON, the
   output; the raw view behind a ghost icon button on hover). An app call
-  that names a thread links its title to that thread. A spawn is one row:
+  that names a thread links its title to that thread. An agent row names
+  its agent by title, never by its prompt (`agentTitle` in
+  lib/agentTitle.ts: the store's title, else the spawn's `title`, else a
+  report's stamp, else the task's first line until a title lands, else "a
+  subagent"; cut at a word past 48 characters, the whole in the tooltip).
   fold.ts stamps each `agent-spawned` child on the `spawn_agent` call that
-  asked for it (`tool.spawned`), so the call's row links to the agent from
-  the moment it exists and carries the one child's host glyph and state
-  (`SpawnedAgentMarks`); only an older log with no such call keeps a
-  "Spawned" row of its own. A todo update says how far the list is
-  ("Updated todos  3/7") and opens the list. The body opens in place under
+  asked for it (`tool.spawned`): a spawn of one is that call's row, linked
+  to the agent from the moment it exists, with the child's host glyph and
+  state (`SpawnedAgentMarks`, Working drawn still); a spawn of several is
+  one "Spawned <title>" row per child (`SpawnChildRow`, as an edit is one
+  row per file), and "Spawning 3 agents" only until the first child is
+  stamped; an older log with no such call keeps a "Spawned" row of its own.
+  A todo update says how far the list is as a
+  muted tally in the counts slot, not a target ("Updated todos  3/7"), and
+  opens the list. The body opens in place under
   the line through `Collapsible`.
 - **Approvals.** A call waiting on the person draws its line in the live
   tense with the waiting mark and no caret, its own body open under it (the
@@ -108,9 +141,11 @@ foreground, the same words the group line uses); the components only draw it.
   after a message came in, and a turn that ended without one closes it as
   "Compaction stopped" with its span.
 - **The host's steps fold into the run** (`isFoldedStep` in
-  `surfaces/transcriptActivity.ts`): a subagent's report ("Heard from  A",
-  its state marked; the batch's own report "Heard from  the batch", linking
-  nowhere), a spawn row from an older log, a background task that settled
+  `surfaces/transcriptActivity.ts`): a subagent's report and each agent a
+  `wait_for_agent` returned on, as one step each (`AgentStepRow`: the
+  state's glyph, then "Finished", "Failed", "Needs you", "Stopped" or
+  "Paused" and the agent's title; the batch's own report "Finished  the
+  batch", linking nowhere), a spawn row from an older log, a background task that settled
   (`Block.task`, drawn by `TaskStepRow`: "Task finished  deploy the
   preview"), the check on idle tasks ("Checked background tasks",
   `Block.backgroundCheck`), a gate or release outcome, a review that merged,
@@ -120,14 +155,21 @@ foreground, the same words the group line uses); the components only draw it.
   open in place there. What stays a row of its own: the person's text, the
   prose, the plan, a question, an approval still undecided, a held review,
   a failure, Stopped, compaction, "Batch done", account-gone, the restart
-  line, the handoff divider and an html_render page. The group line counts
-  steps, not calls (one report alone is its own row; a red gate, a review
-  that failed to run, a failed report or task add to its red figure) and
+  line, the handoff divider and an html_render page. A wait is never a row:
+  while it is open the working line says "Waiting on <title>" ("Waiting on
+  3 subagents"; `WaitTail` in TurnEnd.tsx over `openWaitOf` in
+  surfaces/agentSteps.ts, re-worded when the title lands), and a wait that
+  returned on nobody (steered, stopped, timed out, refused) leaves nothing.
+  The group line counts steps, not calls (one report alone is its own row;
+  a wait counts one step per agent it returned on, a batch spawn one per
+  child; a red gate, a review that failed to run, a failed report, a failed
+  agent a wait returned on, or a failed task add to its red figure) and
   speaks agent work through `appView` (`lib/groupPhrase.ts`): "Spawned
-  “Port the view”, waited for “Port the view”, heard from “Port the
-  view”", like steps folding into a count ("heard from 3 agents", "merged
-  2 branches"); a run of mostly agent work leads with the Bot glyph (the
-  `agents` work kind).
+  “Port the view”, heard from “Port the view”", a wait's agents heard from
+  with the reports, like steps folding into a count ("heard from 3
+  agents", "merged 2 branches"); an agent the store has not listed is named
+  by what its spawn in the run called it (`spawnedNames`); a run of mostly
+  agent work leads with the Bot glyph (the `agents` work kind).
 - **A question** from the model is the one question card
   (`components/ui/question-card.tsx`, keys taken only inside the card)
   through `surfaces/QuestionCard.tsx`: an Other field unless the question
@@ -172,8 +214,8 @@ foreground, the same words the group line uses); the components only draw it.
   (`pb-4` outside the measured container).
 - **Estimates follow the metrics.** `estimateRowHeight` is the row's gap
   plus its body: 28px a line (a closed group, an action, a thought, a
-  notice, the closing line), a working group 28px plus 28px for each of its
-  newest five rows, prose 22px a line at about 100 characters plus 40px a
+  notice, the closing line), a working group 28px plus 26px (`HUNG_LINE`)
+  for each of its newest five rows, prose 22px a line at about 100 characters plus 40px a
   fence, a bubble 16px plus 22px a line, a failure card 88px, a closing row
   that draws nothing 0.
 - **Only the viewport is mounted.** `lib/transcriptWindow.ts` (`RowLayout`)

@@ -14,3 +14,5 @@
     service: http://127.0.0.1:3220
   - hostname: lifeos-dash.landonhale.com
     service: http://127.0.0.1:6792
+  - hostname: lifeos-mcp.landonhale.com
+    service: http://127.0.0.1:4311

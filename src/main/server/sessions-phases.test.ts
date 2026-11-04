@@ -249,7 +249,7 @@ it('describeTool words every tool the strip can meet; an unknown name is humaniz
     ['mcp__app__app_read_thread', 'Reading a thread'],
     ['mcp__app__app_list_threads', 'Listing threads'],
     ['mcp__orchestrator__spawn_agent', 'Spawning an agent'],
-    ['mcp__orchestrator__wait_for_agent', 'Waiting for an agent'],
+    ['mcp__orchestrator__wait_for_agent', 'Waiting on a subagent'],
     ['mcp__orchestrator__check_agent', 'Checking an agent'],
     ['mcp__orchestrator__send_to_agent', 'Messaging an agent'],
     ['mcp__orchestrator__answer_agent', 'Answering an agent'],

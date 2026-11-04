@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const copyText = vi.fn((_: string) => Promise.resolve());
 vi.mock("../../lib/clipboard", () => ({ copyText: (text: string) => copyText(text) }));
@@ -10,6 +10,12 @@ import { TurnDuration, TurnEnd } from "./TurnEnd";
 import { TurnStateContext, type TurnSession } from "../turnState";
 import { TranscriptSessionContext } from "../transcriptSession";
 import { ErrorRowView } from "./NoticeRow";
+import { sessionStore } from "../../lib/tcserver/store";
+import type { SessionMeta } from "../../lib/tcserver/types";
+
+const agentMeta = (id: string, title: string): SessionMeta =>
+  ({ id, parentId: "p", provider: "claude", model: "claude-sonnet-5-5", permission: "edits", title, cwd: "/repo",
+    environmentId: "local", archived: false, status: "running", createdAt: 0 }) as unknown as SessionMeta;
 
 afterEach(() => {
   cleanup();
@@ -82,7 +88,7 @@ describe("TurnEnd's thinking tail", () => {
     );
     const tail = container.querySelector('[data-slot="thinking-tail"]')!;
     expect(tail).not.toBeNull();
-    expect(tail.className).toContain("min-h-7");
+    expect(tail.className).toContain("h-7");
     expect(tail.className).toContain("text-[13px]");
     expect(tail.className).not.toMatch(/h-\[/);
     expect(tail.querySelector("svg")).not.toBeNull();
@@ -138,7 +144,7 @@ describe("TurnEnd's thinking tail says the turn's true phase", () => {
 
   it("gives way to the streaming summary row, which keeps the tail's 28px shape", () => {
     const view = render(live([echoed], "Waiting for the provider"));
-    expect(tailOf(view.container)?.className).toContain("min-h-7");
+    expect(tailOf(view.container)?.className).toContain("h-7");
     view.rerender(live([echoed, { id: "r", role: "reasoning", text: "Reading the plan first.", streaming: true }], "Thinking"));
     expect(tailOf(view.container)).toBeNull();
   });
@@ -224,6 +230,16 @@ describe("TurnEnd's live state", () => {
 });
 
 describe("TurnEnd of a watching thread", () => {
+  // The fixture and render share a clock even when collection takes seconds.
+  const now = Date.now();
+  beforeEach(() => {
+    vi.useFakeTimers({ now });
+  });
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
   const user = { id: "u", role: "user" as const, text: "go" };
   const reply = { id: "a", role: "assistant" as const, text: "started it" };
   const settledTurn = { id: "t", index: 0, isLast: true, settled: true, blocks: [user, reply], userBlock: user, durationMs: 2_000, startedAt: 10 };
@@ -238,10 +254,10 @@ describe("TurnEnd of a watching thread", () => {
     busy: false,
     blocks: [user, reply],
     background: {
-      tasks: [{ id: "b1", label: "sleep 90 seconds", kind: "shell", startedAt: Date.now() - 5 * 60_000 }],
+      tasks: [{ id: "b1", label: "sleep 90 seconds", kind: "shell", startedAt: now - 5 * 60_000 }],
       agents: [],
       batch: null,
-      watchingSince: Date.now() - 5 * 60_000,
+      watchingSince: now - 5 * 60_000,
     },
   } as unknown as TurnSession;
 
@@ -249,21 +265,31 @@ describe("TurnEnd of a watching thread", () => {
     const { container } = end(watching);
     expect(container.textContent).toMatch(/^Worked for 2s/);
     const row = container.querySelector('[role="status"]')!;
-    expect(row.getAttribute("aria-label")).toBe("Watching");
+    expect(row.getAttribute("aria-label")).toBe("Watching: sleep 90 seconds");
     expect(row.querySelector('[data-state="watching"]')).not.toBeNull();
-    expect(row.textContent).toBe("Watching5m");
+    expect(row.querySelector('[data-slot="status-detail"]')?.textContent).toBe("sleep 90 seconds");
+    expect(row.textContent).toMatch(/^Watchingsleep 90 seconds5m( \d+s)?$/);
     expect(container.textContent?.indexOf("Worked for")).toBeLessThan(container.textContent!.indexOf("Watching"));
   });
 
   it("reads an idle parent with a live subagent as watching, with no age", () => {
     const parent = { status: "idle", busy: false, blocks: [user, reply], background: { tasks: [], agents: ["c1"], watchingSince: null } } as unknown as TurnSession;
     const row = end(parent).container.querySelector('[role="status"]')!;
-    expect(row.textContent).toBe("Watching");
+    expect(row.textContent).toBe("Watchinga subagent");
+  });
+
+  it("names the one subagent it watches by title, several counted", () => {
+    sessionStore.injectPush({ push: "session", session: agentMeta("c1", "Review the perf pass") }, "local");
+    const one = { status: "idle", busy: false, blocks: [user, reply], background: { tasks: [], agents: ["c1"], watchingSince: null } } as unknown as TurnSession;
+    expect(end(one).container.querySelector('[role="status"]')!.getAttribute("aria-label")).toBe("Watching: Review the perf pass");
+    const three = { ...one, background: { tasks: [], agents: ["c1", "c2", "c3"], watchingSince: null } } as unknown as TurnSession;
+    expect(end(three).container.querySelector('[role="status"]')!.textContent).toBe("Watching3 subagents");
+    sessionStore.reset();
   });
 
   it("draws the watching line on a pane too, whose timer slot above the composer stays empty", () => {
     const row = end(watching, false).container.querySelector('[role="status"]')!;
-    expect(row.textContent).toBe("Watching5m");
+    expect(row.textContent).toMatch(/^Watchingsleep 90 seconds5m( \d+s)?$/);
     expect(row.querySelector("button")).toBeNull();
   });
 
@@ -271,7 +297,8 @@ describe("TurnEnd of a watching thread", () => {
     const open = vi.fn();
     const row = end(watching, false, open).container.querySelector('[role="status"]')!;
     const button = row.querySelector("button")!;
-    expect(button.textContent).toBe("Watching5m");
+    expect(button.textContent).toMatch(/^Watchingsleep 90 seconds5m( \d+s)?$/);
+    expect(button.getAttribute("aria-label")).toBe("Watching: sleep 90 seconds, open Activity");
     fireEvent.click(button);
     expect(open).toHaveBeenCalledTimes(1);
   });
@@ -362,5 +389,47 @@ describe("TurnEnd of a stopped turn", () => {
       </TranscriptSessionContext.Provider>,
     );
     expect(container.textContent).toBe("Stopped");
+  });
+});
+
+describe("TurnEnd while the turn waits on its agents", () => {
+  const user = { id: "u", role: "user" as const, text: "go" };
+  const reply = { id: "a", role: "assistant" as const, text: "Spawning the review." };
+  const wait = (input: unknown) => ({
+    id: "w",
+    role: "tool" as const,
+    text: "wait",
+    tool: { callId: "w", name: "mcp__orchestrator__wait_for_agent", input, status: "running" },
+  });
+  const live = (blocks: unknown[]) => {
+    const state = { status: "running", busy: true, busySince: Date.now() - 5_000, blocks } as unknown as TurnSession;
+    const turn = { id: "t", index: 0, isLast: true, settled: false, blocks, userBlock: user, durationMs: undefined, startedAt: undefined };
+    return render(
+      <TurnStateContext.Provider value={state}>
+        <TurnEnd turn={turn as never} harnessOf={() => undefined} turnState={state} liveState={false} />
+      </TurnStateContext.Provider>,
+    );
+  };
+  const tail = (c: HTMLElement) => c.querySelector('[data-slot="thinking-tail"]');
+  afterEach(() => sessionStore.reset());
+
+  it("says Waiting on a subagent until the title lands, then names it", async () => {
+    const view = live([user, reply, wait({ agentId: "c1" })]);
+    expect(tail(view.container)?.getAttribute("aria-label")).toBe("Waiting on a subagent");
+    await act(async () => {
+      sessionStore.injectPush({ push: "session", session: agentMeta("c1", "Review the perf pass") }, "local");
+      await new Promise((r) => setTimeout(r, 400));
+    });
+    expect(tail(view.container)?.getAttribute("aria-label")).toBe("Waiting on Review the perf pass");
+  });
+
+  it("counts several agents", () => {
+    const view = live([user, reply, wait({ agentIds: ["c1", "c2"] })]);
+    expect(tail(view.container)?.getAttribute("aria-label")).toBe("Waiting on 2 subagents");
+  });
+
+  it("draws no wait tail once prose follows the wait", () => {
+    const view = live([user, wait({ agentId: "c1" }), { id: "p", role: "assistant", text: "Meanwhile I read the docs." }]);
+    expect(tail(view.container)).toBeNull();
   });
 });

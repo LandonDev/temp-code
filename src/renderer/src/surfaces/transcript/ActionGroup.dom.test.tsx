@@ -6,6 +6,12 @@ import { TranscriptSessionContext } from "../transcriptSession";
 import { ActionGroup } from "./ActionGroup";
 
 import { setEditorConfigForTest } from "../../lib/editorConfig";
+import { sessionStore } from "../../lib/tcserver/store";
+import type { SessionMeta } from "../../lib/tcserver/types";
+
+const agentMeta = (id: string, status: string): SessionMeta =>
+  ({ id, parentId: "p", provider: "claude", model: "claude-sonnet-5-5", permission: "edits", title: id, cwd: "/r",
+    environmentId: "local", archived: false, status, createdAt: 0 }) as unknown as SessionMeta;
 
 // The agent's thread is titled "A" wherever a call or a report names it.
 vi.mock("../../lib/threadMentions", async (importOriginal) => ({
@@ -46,6 +52,12 @@ function mount(blocks: Block[], props: { live?: boolean } = {}, session = `s${++
     </TranscriptSessionContext.Provider>,
   );
 }
+/** What a row shows, without the accessible name a line with no action keeps in a hidden span. */
+const seen = (el: Element): string => {
+  const copy = el.cloneNode(true) as Element;
+  copy.querySelectorAll(".sr-only").forEach((n) => n.remove());
+  return copy.textContent ?? "";
+};
 /** The group's line, when it shows: a lone call folds it away (kept mounted, hidden). */
 const trigger = (c: HTMLElement) => {
   const line = c.querySelector<HTMLButtonElement>("[data-group-line]");
@@ -149,19 +161,118 @@ describe("ActionGroup", () => {
         fireEvent.click(trigger(c)!);
       });
 
+    const waited = (id: string, detail: unknown) => orch(id, "wait_for_agent", { agentId: "a" }, { detail: JSON.stringify(detail) });
+
     it("a master's run reads as one line and opens onto its three rows, the report's state marked", () => {
       const { container } = mount([
         orch("s", "spawn_agent", { task: "x" }, { spawned: ["a"] }),
-        orch("w", "wait_for_agent", { agentId: "a" }),
+        waited("w", { agentId: "a", status: "idle", reply: "done" }),
         report("r", "error"),
       ]);
-      expect(trigger(container)!.textContent).toContain("Spawned “A”, waited for “A”, heard from “A”");
+      expect(trigger(container)!.textContent).toContain("Spawned “A”, heard from “A”");
       expect(container.querySelector("[data-kind]")?.getAttribute("data-kind")).toBe("agents");
       open(container);
       const list = container.querySelector("[data-group-rows]")!;
       expect(list.children.length).toBe(3);
-      expect(list.children[2].textContent).toContain("Heard from");
+      expect(seen(list.children[1])).toBe("FinishedA");
+      expect(seen(list.children[2])).toBe("FailedA");
       expect(list.children[2].querySelector('[data-slot="status-mark"]')?.getAttribute("data-state")).toBe("failed");
+    });
+
+    it("a batch spawn is one Spawned row per child, each by its title with where it stands", async () => {
+      sessionStore.injectPush({ push: "session", session: agentMeta("a", "running") }, "local");
+      sessionStore.injectPush({ push: "session", session: agentMeta("b", "idle") }, "local");
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      const { container } = mount([
+        bash("x", "ls"),
+        orch("s", "spawn_agent", { agents: [{ task: "Review only. Do not edit", title: "Review the flow" }, { task: "Audit the gateway\nin depth" }] }, { spawned: ["a", "b"] }),
+      ]);
+      open(container);
+      const lines = [...container.querySelectorAll('[data-block="s"] [class*="group/action"]')];
+      expect(lines).toHaveLength(2);
+      expect(lines.map((l) => l.querySelector('[data-slot="status-mark"]')?.getAttribute("data-state"))).toEqual(["working", "done"]);
+      // The store's title (A) wins; the second child stands on its task's first line until its own lands.
+      expect(seen(lines[0])).toBe("SpawnedAWorking");
+      expect(seen(lines[1])).toBe("SpawnedAudit the gatewayDone");
+      // The row's mark is still: the group's line is the one that moves.
+      expect(lines[0].querySelector(".animate-spinner")).toBeNull();
+      sessionStore.reset();
+    });
+
+    it("a settled wait folds in as Finished <title>, never Waited for or its agent's prompt", () => {
+      const { container } = mount([
+        bash("x", "ls"),
+        orch("s", "spawn_agent", { task: "Review only. Do not edit, commit, push" }, { spawned: ["a"] }),
+        waited("w", { agentId: "a", status: "done", reply: "Found two issues." }),
+      ]);
+      open(container);
+      expect(container.textContent).toContain("FinishedA");
+      expect(container.textContent).not.toMatch(/Waited|Waiting|Review only/);
+    });
+
+    it("an agent the store has not listed is named by what its spawn in the run called it", () => {
+      const { container } = mount([
+        orch("s", "spawn_agent", { agents: [{ task: "x", title: "Port the board view" }, { task: "Audit the gateway\nin depth" }] }, { spawned: ["z", "y"] }),
+        orch("w", "wait_for_agent", { agentIds: ["z", "y"] }, { detail: JSON.stringify([{ agentId: "z", status: "done" }, { agentId: "y", status: "failed" }]) }),
+      ]);
+      expect(trigger(container)!.textContent).toContain("Spawned 2 agents, heard from 2 agents");
+      open(container);
+      const steps = [...container.querySelectorAll('[data-block="w"] [class*="group/action"]')].map(seen);
+      expect(steps).toEqual(["FinishedPort the board view", "FailedAudit the gateway"]);
+    });
+
+    it("a wait that returned on nobody leaves no row", () => {
+      const { container } = mount([bash("x", "ls"), waited("w", { status: "steered", message: "hi" }), bash("y", "pwd")]);
+      open(container);
+      expect(container.querySelector('[data-block="w"]')?.textContent ?? "").toBe("");
+    });
+
+    it("every agent row is one 28px line with the title its one bright text", () => {
+      const kinds: Block[] = [
+        orch("s1", "spawn_agent", { task: "x", title: "Given" }, { spawned: ["a"] }),
+        orch("s2", "spawn_agent", { agents: [{ task: "one" }, { task: "two" }] }, { spawned: ["a", "q"] }),
+        { id: "old", role: "system", text: "", agent: { id: "q", title: "Older spawn" } },
+        report("r", "done"),
+        waited("w", { agentId: "a", status: "failed" }),
+        orch("m", "send_to_agent", { agentId: "a", message: "go on" }),
+        orch("c", "check_agent", { agentId: "a" }),
+        orch("an", "answer_agent", { agentId: "a" }),
+        orch("i", "interrupt_agent", { agentId: "a" }),
+        tool("t", "mcp__app__app_start_thread", { threadType: "planning", title: "Plan the move" }),
+      ];
+      const { container } = mount(kinds);
+      open(container);
+      const lines = [...container.querySelectorAll<HTMLElement>('[data-group-rows] [class*="group/action"]')];
+      expect(lines.map(seen)).toEqual([
+        "SpawnedA",
+        "SpawnedA",
+        "Spawnedtwo",
+        "SpawnedOlder spawn",
+        "FinishedA",
+        "FailedA",
+        "MessagedA",
+        "CheckedA",
+        "AnsweredA",
+        "StoppedA",
+        "New planning threadPlan the move",
+      ]);
+      for (const line of lines) {
+        expect(line.className, line.textContent ?? "").toContain("h-7");
+        // No wrapper of the row adds space of its own.
+        for (let el = line.parentElement; el && !el.hasAttribute("data-group-rows"); el = el.parentElement) {
+          expect(el.className, line.textContent ?? "").not.toMatch(/(^|\s)-?[mp][trblxy]?-/);
+        }
+        // The bright text: foreground text outside the state's own mark, innermost (a link wraps
+        // its text; the line's own button is an empty layer under the words).
+        const bright = [...line.querySelectorAll(".text-foreground")].filter(
+          (el) => !!el.textContent?.trim() && !el.closest('[data-slot="status-mark"]') && !el.querySelector(".text-foreground"),
+        );
+        expect(bright.map((el) => el.textContent), line.textContent ?? "").toHaveLength(1);
+        expect(["A", "two", "Older spawn", "Plan the move"]).toContain(bright[0].textContent);
+        expect(line.querySelector(".text-muted-foreground")).not.toBeNull();
+      }
     });
 
     it("a red gate counts on the line's figure and opens its log in place", () => {

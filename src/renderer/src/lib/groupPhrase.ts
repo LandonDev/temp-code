@@ -4,12 +4,14 @@ import { isLive, isRefused, kindOf, pathOf, runClauses, shortName, toolPhrase } 
 import { editModel, isEditBlock } from "../surfaces/editModel";
 import { splitEditCards } from "../surfaces/editCards";
 import { agentIdOf, appView } from "../surfaces/appTool";
+import { isWaitCall, waitOutcomes } from "../surfaces/agentSteps";
+import { bareAgentId } from "@shared/watch";
 import type { TitleOf } from "./threadMentions";
 
 /**
  * One line for a run of steps, the group line's words: "Created diag.ts,
- * ran a command", "Spawned “Port the view”, waited for “Port the view”,
- * heard from “Port the view”". Like steps in a row fold into one phrase
+ * ran a command", "Spawned “Port the view”, heard from “Port the view”".
+ * A wait that returned is heard from the agents it returned on. Like steps in a row fold into one phrase
  * (reads by folder, edits by verb, commands and searches by count, agent
  * calls by agent, reports and finished tasks by count); app calls speak
  * through appView, the host's steps (gate, review, pass, check, hand-off)
@@ -89,7 +91,6 @@ const COUNTED: Record<string, [past: string, live: string]> = {
   spawn_agent: ["spawned # agents", "spawning # agents"],
   app_start_thread: ["started # threads", "starting # threads"],
   send_to_agent: ["messaged # agents", "messaging # agents"],
-  wait_for_agent: ["waited for # agents", "waiting for # agents"],
   check_agent: ["checked # agents", "checking # agents"],
   answer_agent: ["answered # agents", "answering # agents"],
   interrupt_agent: ["stopped # agents", "stopping # agents"],
@@ -101,6 +102,7 @@ const COUNTED: Record<string, [past: string, live: string]> = {
 const noTitles: TitleOf = () => undefined;
 
 function stretchOf(block: Block): Stretch {
+  if (isWaitCall(block)) return "report";
   if (block.role === "system") {
     if (block.agent?.status !== undefined) return "report";
     if (block.agent) return "app:spawn_agent";
@@ -134,11 +136,19 @@ function targetsOf(block: Block): string[] {
 
 const quoted = (title: string): string => `“${trim(title, 24)}”`;
 
+/** An agent a step heard from: a report's, or one a wait returned on. */
+type Heard = { id: string; batch: boolean; title?: string };
+
+function heardOf(block: Block): Heard[] {
+  if (isWaitCall(block)) return waitOutcomes(block).map((o) => ({ id: o.id, batch: false }));
+  const agent = block.agent;
+  return agent ? [{ id: agent.id, batch: !!agent.batch, title: agent.title }] : [];
+}
+
 /** A report's words: the agent by title, the master's batch as the batch. */
-function reportPhrase(block: Block, titleOf: TitleOf): string {
-  const agent = block.agent!;
-  if (agent.batch) return "heard from the batch";
-  const title = titleOf(agent.id) || agent.title;
+function heardPhrase(heard: Heard, titleOf: TitleOf): string {
+  if (heard.batch) return "heard from the batch";
+  const title = titleOf(bareAgentId(heard.id)) || titleOf(heard.id) || heard.title;
   return `heard from ${title ? quoted(title) : "a subagent"}`;
 }
 
@@ -174,7 +184,7 @@ function hostPhrase(block: Block): string {
 /** One step's words in an "other" stretch, or a stretch of one. */
 function stepPhrase(block: Block, cwd: string | undefined, live: boolean, titleOf: TitleOf): string {
   if (block.role === "system") {
-    if (block.agent?.status !== undefined) return reportPhrase(block, titleOf);
+    if (block.agent?.status !== undefined) return heardPhrase(heardOf(block)[0], titleOf);
     if (block.agent) {
       const title = titleOf(block.agent.id) || block.agent.title;
       return `spawned ${title ? quoted(title) : "a subagent"}`;
@@ -214,10 +224,10 @@ function stretchPhrases(
       if (blocks.length === 1) return [toolPhrase(blocks[0], cwd, live)];
       return [`${live ? "Running" : "Ran"} ${blocks.length} searches`];
     case "report": {
-      const batch = blocks.filter((b) => b.agent?.batch);
-      const agents = new Set(blocks.filter((b) => !b.agent?.batch).map((b) => b.agent!.id));
-      const out = batch.length ? ["heard from the batch"] : [];
-      if (agents.size === 1) out.push(reportPhrase(blocks.find((b) => !b.agent?.batch)!, titleOf));
+      const heard = blocks.flatMap(heardOf);
+      const agents = new Map(heard.filter((h) => !h.batch).map((h) => [h.id, h] as const));
+      const out = heard.some((h) => h.batch) ? ["heard from the batch"] : [];
+      if (agents.size === 1) out.push(heardPhrase([...agents.values()][0], titleOf));
       else if (agents.size > 1) out.push(`heard from ${agents.size} agents`);
       return out;
     }

@@ -110,7 +110,7 @@ describe("ActivityThinkingRow", () => {
     expect(trigger.className).toContain("absolute inset-0");
     const drawn = row.firstElementChild as HTMLElement;
     expect(drawn.getAttribute("aria-hidden")).toBe("true");
-    expect(drawn.className).toContain("min-h-7");
+    expect(drawn.className).toContain("h-7");
     expect(drawn.className).toContain("text-[13px]");
   });
 

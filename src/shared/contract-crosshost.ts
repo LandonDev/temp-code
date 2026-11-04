@@ -142,6 +142,8 @@ export const ThreadSpawnArgsSchema = z.object({
   agentType: z.enum(AGENT_TYPES),
   task: z.string().min(1).max(200_000),
   title: z.string().max(300),
+  /** The spawner gave no title: `title` is the task's first line, and this host writes one from the task (SessionRegistry.titleFromTask). */
+  autoTitle: z.boolean().optional(),
   useWorktree: z.boolean(),
   cwd: z.string().max(2_000),
   workRoot: z.string().max(2_000).optional(),

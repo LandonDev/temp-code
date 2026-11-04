@@ -618,9 +618,12 @@ rows, the foot and the add sheet are the UI thread's
   coming with the board. The first child brings the board with the chat
   open, fading in; the batch emptying takes it away at once, or when its
   last running step ends.
-- **Left out on purpose.** No cost column, no per-row progress bars or task
-  lists (the child pane has the list; the row says the task in hand and
-  `3/7`), no counts, no badges on the title. The type is the row's glyph,
+- **Left out on purpose.** No cost column, no counts, no badges on the
+  title. Progress bars and task lists are on implementation and
+  orchestration rows only: the task bar on a third line with `3/7`,
+  folding open to the task list (docs/LAYOUT.md "Master"); every other
+  row says the task in hand or its state and `3/7` at its line's end. The
+  phone's MasterBoard rows keep the tally alone. The type is the row's glyph,
   its word in a tooltip. On hover the row offers Message, the one verb its
   state calls for and ⋯; everything else is the row's menu.
 

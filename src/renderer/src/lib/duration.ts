@@ -22,6 +22,12 @@ export function duration(ms: number): string {
   return `${d}d${h % 24 ? ` ${h % 24}h` : ""}`;
 }
 
+/** A local clock time, "14:02". */
+export function clockTime(ts: number): string {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 /** Epoch ms on the shared second hand while `active` and the pane is on screen; a still 0 otherwise. */
 export function useNow(active: boolean): number {
   // Both hooks run every render: `active &&` would skip the second one.

@@ -1,6 +1,8 @@
 import type { Block } from "../lib/session";
 import { isAppshotPath, isInternalPath, memoryLabel } from "../lib/internalPath";
-import { threadMentionsToTitles, type TitleOf } from "../lib/threadMentions";
+import { agentTitle } from "../lib/agentTitle";
+import { type TitleOf } from "../lib/threadMentions";
+import { bareAgentId } from "@shared/watch";
 import { inputOf, toolPathOf } from "../lib/toolDetails";
 import { hostOf } from "../lib/threads/researchBoard";
 import { isLive } from "../lib/toolPhrase";
@@ -32,7 +34,8 @@ export const AGENT_TOOLS = new Set([
 const AGENT_VERB: Record<string, [past: string, live: string]> = {
   spawn_agent: ["Spawned", "Spawning"],
   send_to_agent: ["Messaged", "Messaging"],
-  wait_for_agent: ["Waited for", "Waiting for"],
+  // A wait draws no row of its own (agentSteps.ts); these words are for anything else that reads the call.
+  wait_for_agent: ["Waited on", "Waiting on"],
   interrupt_agent: ["Stopped", "Stopping"],
   check_agent: ["Checked", "Checking"],
   answer_agent: ["Answered", "Answering"],
@@ -45,7 +48,7 @@ export function agentIdOf(block: Block): string | null {
   const fromInput = str(inputOf(block).agentId);
   if (fromInput) return fromInput;
   const out = block.tool?.detail;
-  const m = out ? /"agentId"\s*:\s*"([\w-]+)"/.exec(out) : null;
+  const m = out ? /"agentId"\s*:\s*"([\w:-]+)"/.exec(out) : null;
   return m?.[1] ?? null;
 }
 
@@ -72,18 +75,21 @@ export function appView(block: Block, titleOf: TitleOf, live = isLive(block)): A
   }
   if (AGENT_TOOLS.has(short) || short === "Agent" || short === "Task") {
     const id = agentIdOf(block);
-    const title = id ? titleOf(id) : undefined;
     const words = AGENT_VERB[short];
     const verb = words ? tense(...words) : "Subagent";
-    const task = trim(
-      threadMentionsToTitles(str(i.description) || str(i.task) || str(i.prompt) || str(i.message), titleOf),
-      48,
-    );
+    // Only a spawn carries the agent's name and task; any other call names its agent by title alone.
+    const builtin = short === "Agent" || short === "Task";
+    const spawn = short === "spawn_agent" || builtin;
+    const name = agentTitle(id, {
+      titleOf,
+      inputTitle: spawn ? str(i.title) || (builtin ? str(i.description) : "") : undefined,
+      task: spawn ? str(i.task) || str(i.prompt) : undefined,
+    });
     return {
       label: verb,
-      detail: title ?? (task || "a subagent"),
-      phrase: `${verb === "Subagent" ? tense("ran", "running") : verb.toLowerCase()} ${title ? `“${trim(title, 24)}”` : "a subagent"}`,
-      threadId: title && id ? id : undefined,
+      detail: name.title,
+      phrase: `${verb === "Subagent" ? tense("ran", "running") : verb.toLowerCase()} ${name.named ? `“${trim(name.title, 24)}”` : "a subagent"}`,
+      threadId: id ?? undefined,
     };
   }
   switch (short) {
@@ -171,7 +177,8 @@ export function appView(block: Block, titleOf: TitleOf, live = isLive(block)): A
 /** The thread ids a call's view could name — what a row subscribes to. */
 export function appThreadIds(block: Block): string[] {
   const i = inputOf(block);
-  const ids = [str(i.threadId), agentIdOf(block) ?? "", ...(block.tool?.spawned ?? [])].filter(Boolean);
+  const agents = [agentIdOf(block) ?? "", ...(block.tool?.spawned ?? [])].filter(Boolean);
+  const ids = [str(i.threadId), ...agents, ...agents.map(bareAgentId)].filter(Boolean);
   const text = str(i.description) || str(i.task) || str(i.prompt) || str(i.message);
   for (const m of text.matchAll(/@thread:([\w-]{6,})/g)) ids.push(m[1]);
   return Array.from(new Set(ids));

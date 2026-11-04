@@ -3,7 +3,7 @@ import { MoreHorizontal, Plus } from "../../../chrome/icons";
 import { Button } from "../../../components/ui/button";
 import { SplitShell } from "../SplitShell";
 import { BatchFoot } from "./BatchFoot";
-import { FIXTURE_BATCH, FIXTURE_ROWS, fixtureGroups } from "./boardFixture";
+import { FIXTURE_BATCH, FIXTURE_ROWS, fixtureGroups, TASK_BAR_ROWS, type FixtureRow } from "./boardFixture";
 import { MasterRowView } from "./MasterRow";
 
 /**
@@ -17,11 +17,11 @@ const noop = () => {};
 const hostGlyph = (environmentId: string) => (environmentId === "local" ? null : <HostGlyph environmentId={environmentId} className="shrink-0" />);
 const tally = `${FIXTURE_ROWS.filter((r) => r.meta.status === "idle").length}/${FIXTURE_ROWS.length}`;
 
-export function BoardPreview() {
+export function BoardPreview({ rows = FIXTURE_ROWS, foot = true }: { rows?: readonly FixtureRow[]; foot?: boolean }) {
   return (
     <div className="flex flex-col bg-background">
       <div className="px-1 pt-1 pb-2">
-        {fixtureGroups().map((group, i) => (
+        {fixtureGroups(rows).map((group, i) => (
           <div key={group.id} data-group={group.id}>
             <h3 className={`flex ${i === 0 ? "h-6" : "h-8"} items-end px-2 pb-1 text-xs leading-4 font-medium text-muted-foreground`} data-group-header={group.id}>
               {group.label}
@@ -37,12 +37,24 @@ export function BoardPreview() {
                 hostGlyph={hostGlyph}
                 onOpen={noop}
                 menu={{ rowsFor: () => [], onPick: noop, onOpenChange: noop }}
+                tasksOpen={row.tasksOpen}
+                onTasksOpenChange={noop}
               />
             ))}
           </div>
         ))}
       </div>
-      <BatchFoot batch={FIXTURE_BATCH} titleOf={() => undefined} onSave={async () => {}} onStop={async () => {}} />
+      {foot ? <BatchFoot batch={FIXTURE_BATCH} titleOf={() => undefined} onSave={async () => {}} onStop={async () => {}} /> : null}
+    </div>
+  );
+}
+
+/** The task bar's rows alone at a board width (`ui:preview
+ *  …board.preview.tsx#TaskBarPreview --props '{"width":420}'`). */
+export function TaskBarPreview({ width = 420 }: { width?: number }) {
+  return (
+    <div style={{ width }}>
+      <BoardPreview rows={TASK_BAR_ROWS} foot={false} />
     </div>
   );
 }
