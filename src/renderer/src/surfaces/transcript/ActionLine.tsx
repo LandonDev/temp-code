@@ -75,7 +75,7 @@ export function ActionLine({
           aria-label={label}
           aria-expanded={opens ? !!open : undefined}
           onClick={action}
-          className="absolute inset-0 h-auto rounded-md hover:bg-transparent active:bg-transparent aria-expanded:bg-transparent active:not-aria-[haspopup]:scale-100 focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute inset-0 h-auto rounded-md hover:bg-transparent active:bg-transparent aria-expanded:bg-transparent focus-visible:ring-2 focus-visible:ring-ring"
         />
       ) : (
         <span className="sr-only">{label}</span>
@@ -141,7 +141,7 @@ function ObjectText({
         event.stopPropagation();
         onObject();
       }}
-      className="pointer-events-auto relative h-auto min-w-0 justify-start px-0 text-[13px] font-normal underline-offset-2 active:not-aria-[haspopup]:scale-100 focus-visible:underline"
+      className="pointer-events-auto relative h-auto min-w-0 justify-start px-0 text-[13px] font-normal underline-offset-2 focus-visible:underline"
     />
   ) : null;
   const text = <span className={cls}>{object}</span>;

@@ -3,23 +3,26 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@renderer/lib/cn";
 
 /**
- * The one button. Flat by design: a quiet solid primary, a gray secondary,
- * ghost for icon and row buttons, outline inside forms, destructive red,
- * link for inline text actions. Depth never comes from shadows here. The
- * hover fill follows the pointer over --dur-hover (60ms); the press scales
- * to 0.985 over --dur-fast.
+ * The one button. The solid variants are raised (Kobra's `t-raise` in
+ * index.css): primary, the gray secondary and destructive red carry their own
+ * shadow on a fill layer behind the label, which lightens on hover and
+ * presses in to 0.985 while the label stays put. Ghost (icon and row
+ * buttons), outline (inside forms) and link (inline text actions) are flat
+ * and never move: a press steps the fill to foreground/12 at once and it
+ * eases back over --dur-hover, as every row does.
  */
 const buttonVariants = cva(
-  "group/button relative isolate inline-flex shrink-0 cursor-default select-none items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium outline-none transition-[background-color,color,border-color,scale] duration-(--dur-hover) ease-(--ease-out) active:not-aria-[haspopup]:scale-[0.985] active:not-aria-[haspopup]:duration-(--dur-fast) data-pressed:scale-[0.985] data-pressed:duration-(--dur-fast) disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100 aria-invalid:ring-2 aria-invalid:ring-destructive/30 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button relative isolate inline-flex shrink-0 cursor-default select-none items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium outline-none transition-[background-color,color,border-color] duration-(--dur-hover) ease-(--ease-out) disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none aria-invalid:ring-2 aria-invalid:ring-destructive/30 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        default: "t-raise t-raise-primary text-primary-foreground",
+        secondary: "t-raise t-raise-secondary text-secondary-foreground",
         ghost:
-          "text-foreground hover:bg-foreground/7 aria-expanded:bg-foreground/7 active:bg-foreground/12 data-pressed:bg-foreground/12",
-        outline: "border border-border bg-transparent text-foreground hover:bg-muted",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+          "text-foreground hover:bg-foreground/7 aria-expanded:bg-foreground/7 active:bg-foreground/12 active:transition-none data-pressed:bg-foreground/12",
+        outline:
+          "border border-border bg-transparent text-foreground hover:bg-muted active:bg-foreground/12 active:transition-none data-pressed:bg-foreground/12",
+        destructive: "t-raise t-raise-destructive text-destructive-foreground",
         link: "text-foreground underline-offset-4 hover:underline",
       },
       size: {

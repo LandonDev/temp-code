@@ -22,21 +22,40 @@ vi.mock("@renderer/hooks/paneVisibility", () => ({ usePaneVisible: () => true })
 afterEach(cleanup);
 
 describe("Button", () => {
-  it("is flat: no raise classes, a variant on the slot, a press scale", () => {
-    render(<Button variant="secondary">Save</Button>);
-    const button = screen.getByRole("button", { name: "Save" });
-    expect(button.dataset.slot).toBe("button");
-    expect(button.dataset.variant).toBe("secondary");
-    expect(button.className).not.toMatch(/t-raise|shadow-/);
-    expect(button.className).toMatch(/scale-\[0\.985\]/);
+  it("raises the solid variants on a fill layer, never on the element", () => {
+    const raised = { default: "t-raise-primary", secondary: "t-raise-secondary", destructive: "t-raise-destructive" } as const;
+    for (const [variant, raise] of Object.entries(raised)) {
+      render(<Button variant={variant as keyof typeof raised}>{variant}</Button>);
+      const button = screen.getByRole("button", { name: variant });
+      expect(button.dataset.slot).toBe("button");
+      expect(button.dataset.variant).toBe(variant);
+      expect(button.classList).toContain("t-raise");
+      expect(button.classList).toContain(raise);
+      expect(button.className).not.toMatch(/(^|\s)(hover:)?bg-(primary|secondary|destructive)\b/);
+      expect(button.className).not.toMatch(/scale-/);
+    }
   });
 
-  it("fills on hover over --dur-hover and presses over --dur-fast", () => {
-    render(<Button variant="ghost">Go</Button>);
-    const button = screen.getByRole("button", { name: "Go" });
-    expect(button.className).toContain("duration-(--dur-hover)");
-    expect(button.className).toContain("active:not-aria-[haspopup]:duration-(--dur-fast)");
-    expect(button.className).toContain("data-pressed:duration-(--dur-fast)");
+  it("keeps ghost, outline and link flat: a press steps the fill at once, nothing scales", () => {
+    for (const variant of ["ghost", "outline", "link"] as const) {
+      render(<Button variant={variant}>{variant}</Button>);
+      const button = screen.getByRole("button", { name: variant });
+      expect(button.className).not.toMatch(/scale-|t-raise/);
+      expect(button.className).toContain("duration-(--dur-hover)");
+    }
+    for (const variant of ["ghost", "outline"] as const) {
+      const classes = screen.getByRole("button", { name: variant }).classList;
+      expect(classes).toContain("active:bg-foreground/12");
+      expect(classes).toContain("active:transition-none");
+      expect(classes).toContain("data-pressed:bg-foreground/12");
+    }
+  });
+
+  it("lets a row's cancel win over the ghost press", () => {
+    render(<Button variant="ghost" className="active:bg-transparent">Row</Button>);
+    const classes = screen.getByRole("button", { name: "Row" }).classList;
+    expect(classes).toContain("active:bg-transparent");
+    expect(classes).not.toContain("active:bg-foreground/12");
   });
 
   it("icon sizes are square", () => {

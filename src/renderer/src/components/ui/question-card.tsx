@@ -247,7 +247,7 @@ export function QuestionCard({
                     aria-label="Reset the answers"
                     data-turning={turning || undefined}
                     onClick={reset}
-                    className="group/reset relative grid size-4 shrink-0 place-items-center rounded-full outline-none transition-[scale] duration-(--dur-base) ease-(--ease-out) after:absolute after:-inset-3 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
+                    className="group/reset relative grid size-4 shrink-0 place-items-center rounded-full outline-none after:absolute after:-inset-3 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 }
               >
