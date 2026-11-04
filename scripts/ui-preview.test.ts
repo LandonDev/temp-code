@@ -47,7 +47,8 @@ describe('ui-preview', () => {
       expect(page).toContain('<!doctype html>')
       expect(page).toContain('data-slot="button"')
       expect(page).toContain('t-raise-primary text-primary-foreground')
-      expect(page).toMatch(/<button[^>]*>Save<\/button>/)
+      // A class such as has-[>svg:first-child] puts a raw > inside a quoted attribute.
+      expect(page).toMatch(/<button(?:[^>"]|"[^"]*")*>Save<\/button>/)
       expect(page).toContain('width: 480px')
       expect(page).not.toContain('<script')
     }

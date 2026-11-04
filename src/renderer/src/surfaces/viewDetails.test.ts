@@ -7,13 +7,14 @@ import { describe, expect, it } from "vitest";
 const read = (file: string) => readFileSync(resolve(__dirname, "..", file), "utf8");
 
 describe("thread views and pages", () => {
-  it("hover reveals wait --delay-hover, show at once on focus or an open menu, and keep a reduced-motion guard", () => {
+  it("hover reveals wait --delay-hover, show at once on focus or an open menu, and keep their fade under reduced motion", () => {
     for (const file of ["surfaces/threads/master/MasterRow.tsx", "surfaces/settings/Archive.tsx"]) {
       const text = read(file);
       const reveal = text.match(/className="[^"]*opacity-0 transition-opacity[^"]*"/)?.[0] ?? "";
-      for (const cls of ["delay-(--delay-hover)", "delay-(--dur-instant)", "ease-(--ease-out)", "motion-reduce:transition-none", "has-[[data-popup-open]]:opacity-100"]) {
+      for (const cls of ["delay-(--delay-hover)", "delay-(--dur-instant)", "ease-(--ease-out)", "motion-reduce:transition-opacity", "has-[[data-popup-open]]:opacity-100"]) {
         expect(reveal, `${file} ${cls}`).toContain(cls);
       }
+      expect(reveal, file).not.toContain("motion-reduce:transition-none");
     }
   });
 

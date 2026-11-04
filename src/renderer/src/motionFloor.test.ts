@@ -17,8 +17,13 @@ describe("the motion floor", () => {
   });
 
   it("keeps a --dur-fast fade on overlays under reduced motion", () => {
-    const reduced = css.split("@media (prefers-reduced-motion: reduce)").slice(1).join("");
-    expect(reduced).toContain('[data-slot="dialog-content"]');
-    expect(reduced).toContain("animation-duration: var(--dur-fast);");
+    // Overlays move on transitions, so reduced motion narrows them to opacity.
+    const overlays = css.split("@media (prefers-reduced-motion: reduce)").slice(1).find((block) => block.includes('[data-slot="dialog-content"]')) ?? "";
+    for (const slot of ["dialog-content", "sheet-content", "popover-content", "dropdown-menu-content", "select-content", "tooltip-content"]) {
+      expect(overlays, slot).toContain(`[data-slot="${slot}"]`);
+    }
+    const body = overlays.match(/\) \{([^}]*)\}/)?.[1] ?? "";
+    expect(body).toContain("transition-property: opacity;");
+    expect(body).toContain("transition-duration: var(--dur-fast);");
   });
 });
