@@ -2,7 +2,7 @@ import { registry, useEnvironments } from "../lib/connection";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ServiceId } from "aliax-core/shared/types";
-import type { AccountProvider } from "@shared/accounts";
+import { isRoutedProvider, PROVIDER_OF, SIGN_IN_NAME, type AccountProvider } from "@shared/accounts";
 import type { StatsBundle, StatsStatus } from "@shared/aliaxStats";
 import { CANCELLED, SIGN_IN_REFRESHED } from "@shared/signInWords";
 import { RefreshCw } from "@renderer/chrome/icons";
@@ -13,6 +13,7 @@ import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { compact, localDayTime } from "@aliax/lib/viz";
 import { AccountsSkeleton, AccountsView } from "@aliax/views/accounts";
+import { AddKeyDialog } from "@aliax/views/AddKeyDialog";
 import { StatsView } from "@aliax/views/stats";
 import { useAliax } from "./useAliax";
 
@@ -26,6 +27,8 @@ export function AccountsPage(): React.JSX.Element {
   const [busy, setBusy] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [login, setLogin] = useState<Login | null>(null);
+  /** The key service whose Add key… dialog is open. */
+  const [keyFor, setKeyFor] = useState<ServiceId | null>(null);
   // Each sign-in attempt's number: an answer for an attempt the person cancelled says nothing.
   const attempt = useRef(0);
   // The hosts this machine shares accounts with: the snapshot's peers, named by the registry.
@@ -125,7 +128,7 @@ export function AccountsPage(): React.JSX.Element {
   return (
     <Page
       title="Accounts"
-      description="The Claude and Codex sign-ins threads route through."
+      description="The sign-ins and keys threads route through."
       actions={
         <Tooltip>
           <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Refresh usage" disabled={refreshing} onClick={() => void reload()} />}>
@@ -150,6 +153,7 @@ export function AccountsPage(): React.JSX.Element {
           mint={snapshot.providers.claude.mint}
           onCapture={(id) => void run(`capture:${id}`, () => window.aliax.capture(id), "Saved")}
           onAdd={(id) => void addAccount(id)}
+          onAddKey={setKeyFor}
           onReauth={(id, email) => void addAccount(id, email)}
           onUse={(id, name) => void onUse(id, name)}
           onDelete={(id, name) => void run(`remove:${id}:${name}`, () => window.aliax.remove(id, name), "Removed")}
@@ -160,6 +164,17 @@ export function AccountsPage(): React.JSX.Element {
           onSync={(id) => void onSync(id)}
         />
       )}
+
+      <AddKeyDialog
+        open={keyFor !== null}
+        onOpenChange={(open) => !open && setKeyFor(null)}
+        serviceName={keyFor && isRoutedProvider(PROVIDER_OF[keyFor]) ? SIGN_IN_NAME[PROVIDER_OF[keyFor]] : ""}
+        submit={({ name, key }) => window.aliax.addKey({ serviceId: keyFor ?? "meta", name, key })}
+        onAdded={(name) => {
+          toast.success(name ? `Added ${name}` : "Key added");
+          void refresh(true);
+        }}
+      />
 
       <Dialog open={login !== null} onOpenChange={(open) => !open && closeLogin()}>
         <DialogContent size="sm" showCloseButton={false}>

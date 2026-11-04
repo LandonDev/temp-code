@@ -5,7 +5,9 @@ import { IDLE_STATUS, type EnvironmentStatus } from '../lib/connection/types'
 import type { Link } from '../lib/connection'
 import { workspaceStore } from '../lib/tcserver/workspaces'
 import type { ProjectMeta, WorkspaceMeta } from '../lib/tcserver/types'
-import { NewProjectDialog, ProjectSettingsDialog, ProjectTeardownDialog } from './ProjectDialogs'
+import { AccountPinFields, NewProjectDialog, ProjectSettingsDialog, ProjectTeardownDialog } from './ProjectDialogs'
+import { accountsStore } from '../stores/accounts'
+import { emptyAccounts, type AccountPins } from '@server/shared/accounts'
 import { PreambleDialog } from './PreambleDialog'
 import { resetPlanSettingsForTests } from '../lib/tcserver/plans'
 
@@ -329,3 +331,48 @@ describe('NewProjectDialog', () => {
     expect(writes().find((c) => c.method === 'project.create')?.params).toEqual({ workspaceId: 'w_mac', name: 'Search', mode: 'local' })
   })
 })
+
+describe('AccountPinFields', () => {
+  const keysLink = (keys: string[]): Link =>
+    ({
+      environmentId: LOCAL_ENVIRONMENT_ID,
+      connected: true,
+      onOpen: () => () => {},
+      onClose: () => () => {},
+      onPush: () => () => {},
+      request: async (method: string) => {
+        if (method !== 'accounts.list') return null
+        const snap = emptyAccounts()
+        snap.updatedAt = 1
+        snap.providers.claude.profiles = [{ name: 'a@x.com', email: 'a@x.com', createdAt: 1, active: true }]
+        snap.providers.meta.profiles = keys.map((name) => ({ name, createdAt: 1, active: false, static: true, kind: 'key' as const }))
+        return snap
+      }
+    }) as unknown as Link
+  const mount = async (keys: string[], value: AccountPins = {}) => {
+    accountsStore.attach(keysLink(keys))
+    await act(() => new Promise((r) => setTimeout(r, 0)))
+    render(
+      <AccountPinFields
+        environmentId={LOCAL_ENVIRONMENT_ID}
+        value={value}
+        onChange={() => {}}
+        inheritLabel={() => 'Inherit (auto)'}
+      />
+    )
+  }
+  afterEach(() => accountsStore.reset())
+
+  it('has a Meta row only once the host holds a key, named Meta with the keys as its choices', async () => {
+    await mount([])
+    expect(screen.queryByRole('combobox', { name: 'Meta' })).toBeNull()
+    expect(screen.getByRole('combobox', { name: 'Claude' })).toBeTruthy()
+    cleanup()
+    await mount(['Work', 'Meta key …9QzT'], { meta: 'Work' })
+    const meta = screen.getByRole('combobox', { name: 'Meta' }) as HTMLButtonElement
+    expect(meta.disabled).toBe(false)
+    expect(meta.textContent).toContain('Work')
+    expect(meta.textContent).not.toContain('not in Aliax')
+  })
+})
+

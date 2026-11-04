@@ -4,7 +4,7 @@ const DAY = 24 * HOUR
 const fn = 'fn'
 const actions = {
   onCapture: fn, onAdd: fn, onReauth: fn, onUse: fn, onDelete: fn, onRefresh: fn,
-  onSetupToken: fn, onConvertAll: fn, onSetHome: fn, onSync: fn
+  onSetupToken: fn, onConvertAll: fn, onSetHome: fn, onSync: fn, onAddKey: fn
 }
 
 const views = [
@@ -21,7 +21,15 @@ const views = [
     id: 'codex', name: 'Codex', installed: true, canAddAccount: true, canSaveCurrent: true, switchTargets: [],
     profiles: [{ name: 'work@x.com', email: 'work@x.com', nickname: 'Work', createdAt: 1, active: true, owner: 'env_box', syncedAt: NOW - 4 * 60_000 }]
   },
-  { id: 'cursor', name: 'Cursor', installed: false, canAddAccount: false, canSaveCurrent: false, switchTargets: [], profiles: [] }
+  { id: 'cursor', name: 'Cursor', installed: false, canAddAccount: false, canSaveCurrent: false, switchTargets: [], profiles: [] },
+  {
+    id: 'meta', name: 'Meta Model API', installed: true, canAddAccount: false, canSaveCurrent: false, switchTargets: [],
+    billingUrl: 'https://dev.meta.ai',
+    profiles: [
+      { name: 'Work', color: '#34d399', createdAt: 1, active: false, static: true, kind: 'key', accountId: '1607339912' },
+      { name: 'Meta key …9QzT', color: '#f472b6', createdAt: 2, active: false, static: true, kind: 'key', accountId: '2214870031' }
+    ]
+  }
 ]
 
 const usage = {
@@ -44,6 +52,10 @@ const usage = {
     },
     { profileName: 'old@x.com', windows: [], rateLimit: { provider: 'claude' } }
   ],
+  meta: [
+    { profileName: 'Work', windows: [], note: 'pay as you go' },
+    { profileName: 'Meta key …9QzT', windows: [], expired: true, note: 'key revoked' }
+  ],
   codex: [
     {
       profileName: 'work@x.com', banked: 2, plan: { name: 'Plus', monthlyUsd: 20, renewsAt: NOW + 4 * DAY },
@@ -55,7 +67,10 @@ const usage = {
   ]
 }
 
-const headroom = { 'claude-code': { 'main@x.com': { room: 0.4, ratePerMin: 3, resetsAt: NOW + 20 * 60_000 } } }
+const headroom = {
+  'claude-code': { 'main@x.com': { room: 0.4, ratePerMin: 3, resetsAt: NOW + 20 * 60_000 } },
+  meta: { Work: { room: 0.9, ratePerMin: 12, resetsAt: NOW + 60_000 } }
+}
 
 const base = {
   ...actions, views, usage, headroom, busy: null, homes: {},
@@ -66,5 +81,7 @@ const base = {
 
 export default [
   { name: 'Three providers: a mint, a lapsing token, a copy the box refreshes, one not installed', props: base },
+  { name: 'Meta keys: one paying as it goes with its rate bar, one revoked', props: { ...base, views: views.filter((v) => v.id === 'meta') } },
+  { name: 'Meta with no keys', props: { ...base, views: [{ ...views[3], profiles: [] }] } },
   { name: 'Loading usage after Refresh', props: { ...base, usage: {}, mint: { rows: {}, run: { total: 3, done: 1 } } } }
 ]

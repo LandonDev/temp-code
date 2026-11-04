@@ -73,15 +73,25 @@ export const NO_CAPS_NOTE = 'no usage caps on this plan'
 
 const usable = (r: UsageReport): boolean => !r.expired && (r.windows.length > 0 || r.rateLimit !== undefined)
 
-function accountRoom(report: UsageReport, accounts: ProviderAccounts, general: Set<string> | null, now: number): AccountRoom {
-  const throttle = accounts.headroom?.[report.profileName]?.throttledUntil ?? 0
-  const limit = report.rateLimit
+/** Whether an account is throttled now (the gateways' cooldown or the provider's own limit), and until when. */
+function throttleOf(
+  name: string,
+  report: UsageReport | undefined,
+  accounts: ProviderAccounts,
+  now: number
+): { throttled: boolean; throttledUntil: number | null } {
+  const throttle = accounts.headroom?.[name]?.throttledUntil ?? 0
+  const limit = report?.rateLimit
   const limitLive = limit !== undefined && (limit.until === undefined || limit.until > now)
-  const throttled = throttle > now || limitLive
   const lifts = [throttle > now ? throttle : null, limitLive ? (limit?.until ?? null) : null].filter(
     (t): t is number => t !== null
   )
-  const throttledUntil = lifts.length > 0 ? Math.max(...lifts) : null
+  return { throttled: throttle > now || limitLive, throttledUntil: lifts.length > 0 ? Math.max(...lifts) : null }
+}
+
+function accountRoom(report: UsageReport, accounts: ProviderAccounts, general: Set<string> | null, now: number): AccountRoom {
+  const { throttled, throttledUntil } = throttleOf(report.profileName, report, accounts, now)
+  const limit = report.rateLimit
   if (limit) {
     const until = limit.until !== undefined && limit.until > now ? limit.until : null
     return { room: 0, resetsAt: until, throttled, throttledUntil }
@@ -109,6 +119,7 @@ const soonest = (times: (number | null)[]): number | null => {
 export function meterFor(provider: AccountProvider, snapshot: AccountsSnapshot, now = Date.now()): UsageMeter | null {
   const accounts = snapshot.providers[provider]
   if (!accounts || accounts.profiles.length === 0) return null
+  if (provider === 'meta') return keyMeter(accounts, now)
   const names = new Set(accounts.profiles.map((p) => p.name))
   const reports = accounts.reports.filter((r) => names.has(r.profileName) && usable(r))
   if (reports.length === 0) {
@@ -128,6 +139,20 @@ export function meterFor(provider: AccountProvider, snapshot: AccountsSnapshot, 
   const withRoom = rooms.filter((a) => a.room > 0 && !a.throttled).length
 
   return { share, resetsAt, limited, withRoom, windows: windowsOf(reports, labels, now) }
+}
+
+/**
+ * A pay-as-you-go provider's meter (Meta's keys): there is no share to pool,
+ * so it is null unless every live key is throttled, and then a row with no
+ * share that says Limited and the soonest lift. A revoked key is no key.
+ */
+function keyMeter(accounts: ProviderAccounts, now: number): UsageMeter | null {
+  const reports = new Map(accounts.reports.map((r) => [r.profileName, r]))
+  const live = accounts.profiles.filter((p) => !reports.get(p.name)?.expired)
+  if (live.length === 0) return null
+  const throttles = live.map((p) => throttleOf(p.name, reports.get(p.name), accounts, now))
+  if (!throttles.every((t) => t.throttled)) return null
+  return { share: null, resetsAt: null, limited: { until: soonest(throttles.map((t) => t.throttledUntil)) }, withRoom: 0, windows: [] }
 }
 
 function windowsOf(reports: UsageReport[], labels: string[], now: number): MeterWindow[] {

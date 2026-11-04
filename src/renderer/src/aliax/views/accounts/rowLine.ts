@@ -45,11 +45,27 @@ function rateDetail(rl: NonNullable<UsageReport["rateLimit"]>, now: number): str
   return `${mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`} left`;
 }
 
+/**
+ * A key account's state, for the status column: revoked in amber, else paid
+ * per token; null while the probe has not answered (the column's skeleton).
+ */
+export function keyStatus(report: UsageReport | undefined): { text: string; tone: "muted" | "warning" } | null {
+  if (!report) return null;
+  if (report.expired || report.note === "key revoked") return { text: "Key revoked", tone: "warning" };
+  // Anything else is the probe's own note: "pay as you go", or why it could not answer (a 429, a 5xx).
+  const note = report.note ?? "Pay as you go";
+  return { text: note.charAt(0).toUpperCase() + note.slice(1), tone: "muted" };
+}
+
 /** A row's state line, first match wins; null when there is nothing to say. */
 export function rowLine(profile: ProfileView, report: UsageReport | undefined, owner: OwnerView | null, mint: MintState | undefined, now: number): RowLine | null {
   const lapsed = report?.expired === true || (profile.expiresAt !== undefined && profile.expiresAt <= now);
   const token: RowAction = { label: "Make a new one", kind: "token" };
 
+  // A key never lapses, refreshes or mints: the status column says revoked, and a throttle is the only line.
+  if (profile.kind === "key") {
+    return report?.rateLimit && !report.expired ? { text: "Rate limited", tone: "warning", detail: rateDetail(report.rateLimit, now) } : null;
+  }
   if (mint?.state === "minting") return { text: "Making a one-year token", tone: "muted", busy: true };
   if (mint) {
     const verb = profile.static ? "renew" : "make";

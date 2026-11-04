@@ -47,6 +47,16 @@ export function routedProviderOf(provider: string, model: string | null | undefi
 export const SIGN_IN_NAME: Record<RoutedProvider, string> = { claude: 'Claude', codex: 'ChatGPT', meta: 'Meta' }
 
 /**
+ * A key account's row on the Accounts page: the profile plus the account id
+ * inside its key (the numeric part of `LLM_<id>_<secret>`), which the main
+ * process adds to the services list. The secret never leaves the vault.
+ */
+export type KeyProfileView = ProfileView & { accountId?: string }
+
+/** A key as a row shows it, built from its account id alone: `LLM_1607…`. */
+export const maskedKey = (accountId: string): string => `LLM_${accountId.slice(0, 4)}…`
+
+/**
  * One explicit account per provider, on a project or a workspace: threads of
  * both providers hang off the same project. Absent means inherit (workspace,
  * then auto).

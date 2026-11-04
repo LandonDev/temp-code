@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AccountHeadroom, MintState } from "@shared/accounts";
+import { maskedKey, type AccountHeadroom, type KeyProfileView, type MintState } from "@shared/accounts";
 import { windowName } from "@shared/usageMeter";
 import type { PlanInfo, ProfileView, ServiceId, UsageReport, UsageWindow } from "aliax-core/shared/types";
 import { MoreHorizontal } from "@renderer/chrome/icons";
@@ -26,7 +26,7 @@ import { cn } from "@renderer/lib/cn";
 import { headroomLook, type HeadroomLook } from "@renderer/lib/headroom";
 import { DEFAULT_COLOR, displayName, fillFor, onPaceLeft, percentLeft, toneFor, untilLabel } from "@aliax/lib/accounts";
 import { EditAccountDialog } from "@aliax/views/edit-account-dialog";
-import { rowLine, shortDay, type OwnerView, type RowAction } from "./rowLine";
+import { keyStatus, rowLine, shortDay, type OwnerView, type RowAction } from "./rowLine";
 
 /** A row shows at most this many bars: the windows, then Rate. */
 export const MAX_BARS = 4;
@@ -89,12 +89,27 @@ function WindowDetail({ w, now }: { w: UsageWindow; now: number }) {
  * section reserves; each row fills its window columns from the right and
  * keeps Rate last, so the weekly bars line up down the section.
  */
-export function UsageBars({ name, report, headroom, columns, now }: { name: string; report: UsageReport | undefined; headroom: AccountHeadroom | undefined; columns: BarColumns; now: number }) {
+export function UsageBars({
+  name,
+  report,
+  headroom,
+  columns,
+  now,
+  keyed = false,
+}: {
+  name: string;
+  report: UsageReport | undefined;
+  headroom: AccountHeadroom | undefined;
+  columns: BarColumns;
+  now: number;
+  /** A key account: no windows to draw, its state in their place (Pay as you go, Key revoked). */
+  keyed?: boolean;
+}) {
   if (report === undefined) {
     return (
       <span className="flex items-center gap-3" aria-busy="true">
         <Skeleton className="h-6 w-[72px]" />
-        <Skeleton className="h-6 w-[72px]" />
+        {keyed ? null : <Skeleton className="h-6 w-[72px]" />}
       </span>
     );
   }
@@ -102,10 +117,12 @@ export function UsageBars({ name, report, headroom, columns, now }: { name: stri
   const rate = headroom ? headroomLook(headroom, now) : null;
   const count = windows.length + (rate ? 1 : 0);
   const spacer = (key: string) => <span key={key} aria-hidden className="w-[72px]" />;
-  const note = report.windows.length === 0 ? (report.rateLimit ? "No usage yet" : (report.note ?? report.extra ?? "Usage unavailable")) : null;
+  const status = keyed ? keyStatus(report) : null;
+  const note = keyed ? null : report.windows.length === 0 ? (report.rateLimit ? "No usage yet" : (report.note ?? report.extra ?? "Usage unavailable")) : null;
   return (
     <span className="flex items-center gap-3">
       {note ? <span className="text-xs text-muted-foreground">{note}</span> : null}
+      {status ? <span className={cn("text-xs", status.tone === "warning" ? "text-warning" : "text-muted-foreground")}>{status.text}</span> : null}
       {Array.from({ length: Math.max(0, columns.windows - windows.length) }, (_, i) => spacer(`w${i}`))}
       {count > 0 ? (
         <Popover>
@@ -212,14 +229,19 @@ export function AccountRow({ serviceId, profile, report, headroom, columns, now,
   const [removing, setRemoving] = useState(false);
   const name = displayName(profile);
   const line = rowLine(profile, report, owner, mint, now);
+  const keyed = profile.kind === "key";
+  // A key shows as `LLM_1607…`, built from the account id the main process adds; the key never reaches the page.
+  const accountId = (profile as KeyProfileView).accountId;
+  const mask = keyed && accountId ? maskedKey(accountId) : null;
   const plan = planFacts(report?.plan, report?.banked);
   return (
     <PageRow
       media={<span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: profile.color ?? DEFAULT_COLOR }} />}
       title={<span className={cn("truncate", profile.active ? null : "font-normal text-muted-foreground")}>{name}</span>}
       description={
-        line || plan.length ? (
+        line || plan.length || mask ? (
           <>
+            {mask ? <span className="tabular-nums">{mask}</span> : null}
             {line ? (
               <span className={cn("flex items-center gap-2", line.tone === "warning" ? "text-warning" : null)}>
                 {line.busy ? <Spinner className="size-3" /> : null}
@@ -245,8 +267,11 @@ export function AccountRow({ serviceId, profile, report, headroom, columns, now,
         ) : undefined
       }
     >
-      <UsageBars name={name} report={report} headroom={headroom} columns={columns} now={now} />
-      <Switch aria-label={`Use ${name}`} checked={profile.active || switching} disabled={profile.active || switching} onCheckedChange={(on) => on && onUse()} />
+      <UsageBars name={name} report={report} headroom={headroom} columns={columns} now={now} keyed={keyed} />
+      {/* A key is not switched to: routing picks among the keys per thread. */}
+      {keyed ? null : (
+        <Switch aria-label={`Use ${name}`} checked={profile.active || switching} disabled={profile.active || switching} onCheckedChange={(on) => on && onUse()} />
+      )}
       <DropdownMenu>
         <Tooltip>
           <TooltipTrigger
@@ -257,14 +282,14 @@ export function AccountRow({ serviceId, profile, report, headroom, columns, now,
           <TooltipContent>More</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setEditing(true)}>Edit account…</DropdownMenuItem>
-          {serviceId === "claude-code" ? (
+          {keyed ? null : <DropdownMenuItem onClick={() => setEditing(true)}>Edit account…</DropdownMenuItem>}
+          {serviceId === "claude-code" && !keyed ? (
             <DropdownMenuItem disabled={mint?.state === "minting"} onClick={onSetupToken}>
               {profile.static ? "New one-year token" : "Replace with a one-year token"}
             </DropdownMenuItem>
           ) : null}
-          {billingUrl ? <DropdownMenuItem onClick={() => void window.aliax.openExternal(billingUrl)}>Manage plan</DropdownMenuItem> : null}
-          <DropdownMenuSeparator />
+          {billingUrl && !keyed ? <DropdownMenuItem onClick={() => void window.aliax.openExternal(billingUrl)}>Manage plan</DropdownMenuItem> : null}
+          {keyed ? null : <DropdownMenuSeparator />}
           <DropdownMenuItem variant="destructive" onClick={() => setRemoving(true)}>
             Remove…
           </DropdownMenuItem>
@@ -275,7 +300,7 @@ export function AccountRow({ serviceId, profile, report, headroom, columns, now,
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {name}?</AlertDialogTitle>
-            <AlertDialogDescription>Its saved sign-in is deleted. Signing in again brings it back.</AlertDialogDescription>
+            <AlertDialogDescription>{keyed ? "The key is deleted from every host. Adding it again brings it back." : "Its saved sign-in is deleted. Signing in again brings it back."}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

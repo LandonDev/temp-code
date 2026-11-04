@@ -19,7 +19,7 @@ const throttle = (until: number): AccountHeadroom => ({ room: 0.5, throttledUnti
 function snapshot(
   reports: UsageReport[],
   extra: Partial<AccountsSnapshot['providers']['claude']> = {},
-  provider: 'claude' | 'codex' | 'cursor' = 'claude'
+  provider: 'claude' | 'codex' | 'cursor' | 'meta' = 'claude'
 ): AccountsSnapshot {
   const s = emptyAccounts()
   s.providers[provider] = { ...s.providers[provider], profiles: reports.map((r) => profile(r.profileName)), reports, ...extra }
@@ -214,3 +214,29 @@ describe('untilShort', () => {
     expect(untilShort(NOW + 76 * HOUR, NOW)).toBe('3d')
   })
 })
+
+describe("meterFor('meta'): pay as you go", () => {
+  const key = (name: string, extra: Partial<UsageReport> = {}) => report(name, [], { note: 'pay as you go', ...extra })
+
+  it('is null while any key has room: there is no share to draw', () => {
+    expect(meterFor('meta', snapshot([key('a'), key('b')], {}, 'meta'), NOW)).toBeNull()
+    expect(meterFor('meta', snapshot([key('a'), key('b')], { headroom: { a: throttle(NOW + MIN) } }, 'meta'), NOW)).toBeNull()
+  })
+
+  it('is a Limited row with no share while every key is throttled, until the soonest lift', () => {
+    const s = snapshot([key('a'), key('b')], { headroom: { a: throttle(NOW + 32_000), b: throttle(NOW + 5 * MIN) } }, 'meta')
+    expect(meterFor('meta', s, NOW)).toEqual({ share: null, resetsAt: null, limited: { until: NOW + 32_000 }, withRoom: 0, windows: [] })
+  })
+
+  it("counts the provider's own limit, ignores a revoked key, and is null once the cooldown passed", () => {
+    const s = snapshot([key('a', { rateLimit: { provider: 'Meta Model API', until: NOW + MIN } }), key('b', { expired: true, note: 'key revoked' })], {}, 'meta')
+    expect(meterFor('meta', s, NOW)?.limited).toEqual({ until: NOW + MIN })
+    expect(meterFor('meta', s, NOW + 2 * MIN)).toBeNull()
+  })
+
+  it('is null with no keys, or only revoked ones', () => {
+    expect(meterFor('meta', emptyAccounts(), NOW)).toBeNull()
+    expect(meterFor('meta', snapshot([key('a', { expired: true })], {}, 'meta'), NOW)).toBeNull()
+  })
+})
+

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import {
   emptyAccounts,
+  wholeSnapshot,
   type AccountProvider,
   type AccountsSnapshot,
 } from "@server/shared/accounts";
@@ -28,11 +29,15 @@ export const initialAccountsState = (): AccountsState => ({
 
 const EMPTY_STATE = initialAccountsState();
 
-/** A push replaces the snapshot; an older one than what we hold is dropped. */
+/**
+ * A push replaces the snapshot; an older one than what we hold is dropped.
+ * A host from before Meta sends no `meta` provider: it lands as an empty one,
+ * so every reader may index each provider.
+ */
 export function foldPush(state: AccountsState, push: ServerPush): AccountsState {
   if (push.push !== "accounts") return state;
   if (push.snapshot.updatedAt < state.snapshot.updatedAt) return state;
-  return { ...state, snapshot: push.snapshot, loaded: true };
+  return { ...state, snapshot: wholeSnapshot(push.snapshot), loaded: true };
 }
 
 /** Aliax accounts live on each host: one snapshot per environment. */

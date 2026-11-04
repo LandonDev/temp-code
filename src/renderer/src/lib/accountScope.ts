@@ -1,6 +1,6 @@
 import type { ProfileView } from "aliax-core/shared/types";
 import {
-  isRoutedProvider,
+  routedProviderOf,
   type ProviderAccounts,
   type RoutedProvider,
 } from "@server/shared/accounts";
@@ -9,6 +9,8 @@ import type { ProjectMeta, WorkspaceMeta } from "@server/shared/domain";
 /** The fields of a thread that decide its account. */
 export interface ScopeMeta {
   provider: string;
+  /** A Meta row under either harness spends Meta keys, not the harness's accounts. */
+  model?: string | null;
   account?: string | null;
   projectId?: string | null;
   workspaceId?: string | null;
@@ -37,8 +39,8 @@ export function scopeOf(
   projects: readonly ProjectMeta[],
   workspaces: readonly WorkspaceMeta[],
 ): AccountScope | null {
-  if (!meta || !isRoutedProvider(meta.provider)) return null;
-  const provider = meta.provider;
+  const provider = meta ? routedProviderOf(meta.provider, meta.model) : null;
+  if (!meta || !provider) return null;
   const project = meta.projectId ? projects.find((p) => p.id === meta.projectId) : undefined;
   const workspaceId = project?.workspaceId ?? meta.workspaceId;
   const workspace = workspaceId ? workspaces.find((w) => w.id === workspaceId) : undefined;
@@ -51,14 +53,24 @@ export function scopeOf(
   return { provider, inherited, current, shown: current ?? inherited?.name ?? null };
 }
 
+/**
+ * Whether a pin row is drawn for a provider: always for the harnesses, and
+ * for Meta once the host holds a key or the scope already pins one. A host
+ * with no Meta key has nothing to choose, so it is not offered.
+ */
+export function pinRowShown(provider: RoutedProvider, profiles: readonly unknown[], current: string): boolean {
+  return provider !== "meta" || profiles.length > 0 || current !== "";
+}
+
 /** One line on where the thread's account comes from. */
 export function sourceLine(scope: AccountScope): string {
   if (scope.inherited) return `From ${scope.inherited.level} ${scope.inherited.from}`;
   return "Auto, picked by model";
 }
 
-/** The nickname, else the email's local part, else the profile name. */
+/** The nickname, else the email's local part, else the profile name; a key is its name. */
 export function shortName(p: ProfileView): string {
+  if (p.kind === "key") return p.name;
   if (p.nickname) return p.nickname;
   const source = p.email ?? p.name;
   const at = source.indexOf("@");

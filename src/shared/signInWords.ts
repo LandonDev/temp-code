@@ -58,3 +58,16 @@ export function holdsGrant(read: () => Promise<string | null>): Promise<boolean>
     () => true
   )
 }
+
+// The Add key… dialog's one red line, from aliax-core's saveApiKey messages.
+export const KEY_NOT_META = 'Not a Meta key: keys start with LLM_'
+export const KEY_REFUSED = 'That key was refused by Meta'
+export const META_UNREACHABLE = "Couldn't reach Meta"
+
+/** What the dialog says for a key core would not save: the known refusals in our words, anything else capitalised. */
+export function keyErrorLine(message: string): string {
+  if (/^not a Meta key/i.test(message)) return KEY_NOT_META
+  if (/^that key was refused/i.test(message)) return KEY_REFUSED
+  if (/^Meta could not be reached/i.test(message)) return META_UNREACHABLE
+  return message ? message.charAt(0).toUpperCase() + message.slice(1) : 'The key was not saved'
+}

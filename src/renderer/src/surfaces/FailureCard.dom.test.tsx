@@ -13,6 +13,14 @@ vi.mock("../lib/tcserver/commands", () => ({
   rerouteSession: (id: string) => rerouteSession(id),
 }));
 
+// The thread the card belongs to: null (a claude thread by default) unless a test names one.
+let threadMeta: { provider: string; model: string; environmentId?: string } | null = null;
+vi.mock("../lib/tcserver/store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/tcserver/store")>()),
+  useSessionMeta: () => threadMeta,
+}));
+
+import { shell } from "../stores/shell";
 import { FailureCard, FailureCardView, canSignInHere } from "./FailureCard";
 
 const failure = (kind: FailureKind, over: Partial<Failure> = {}): Failure => ({
@@ -26,6 +34,7 @@ const failure = (kind: FailureKind, over: Partial<Failure> = {}): Failure => ({
 const KINDS: FailureKind[] = [
   "oauth_expired",
   "account_unknown",
+  "key_invalid",
   "token_expired",
   "rate_limited",
   "quota",
@@ -117,6 +126,43 @@ describe("FailureCard wired", () => {
   });
   afterEach(() => {
     delete (window as { aliax?: unknown }).aliax;
+    threadMeta = null;
+    vi.restoreAllMocks();
+  });
+
+  it("a refused Meta key: its two lines, then Open accounts and Retry; Open accounts opens the Accounts page", () => {
+    threadMeta = { provider: "claude", model: "muse-wonder-1.0" };
+    const open = vi.spyOn(shell, "openAccountsPage").mockImplementation(() => {});
+    const f = failure("key_invalid", {
+      account: "Work",
+      summary: "Meta refused the key Work",
+      cause: "The key was revoked or deleted; make a new one at dev.meta.ai",
+    });
+    const probe = mountProbe(<FailureCard sessionId="s1" failure={f} />);
+    const text = probe.container.textContent ?? "";
+    expect(text).toContain("Meta refused the key Work");
+    expect(text).toContain("make a new one at dev.meta.ai");
+    expect(buttons(probe.container)).toEqual(["Open accounts", "Retry"]);
+    fireEvent.click(probe.container.querySelector("button[data-failure-action=open-accounts]")!);
+    expect(open).toHaveBeenCalledWith("accounts");
+    probe.unmount();
+  });
+
+  it("a Meta thread with no key offers Add key…, under either harness, and it opens the Accounts page", () => {
+    const open = vi.spyOn(shell, "openAccountsPage").mockImplementation(() => {});
+    for (const provider of ["claude", "codex"]) {
+      threadMeta = { provider, model: "muse-spark-1.3" };
+      const probe = mountProbe(<FailureCard sessionId="s1" failure={failure("account_unknown", { account: null })} />);
+      expect(buttons(probe.container)).toEqual(["Add key…", "Retry"]);
+      fireEvent.click(probe.container.querySelector("button[data-failure-action=add-key]")!);
+      probe.unmount();
+    }
+    expect(open).toHaveBeenCalledTimes(2);
+    // A Claude model's unknown account still routes.
+    threadMeta = { provider: "claude", model: "claude-opus-5-5" };
+    const probe = mountProbe(<FailureCard sessionId="s1" failure={failure("account_unknown")} />);
+    expect(buttons(probe.container)).toEqual(["Route automatically", "Pick another account", "Retry"]);
+    probe.unmount();
   });
 
   it("Pick another account with no saved accounts says so instead of opening", () => {

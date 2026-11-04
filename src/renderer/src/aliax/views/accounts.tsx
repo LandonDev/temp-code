@@ -27,9 +27,14 @@ import { STATIC_WARN_MS, type OwnerView, type RowAction } from "./accounts/rowLi
 /** The mark each section leads with: the harness's, or Meta's vendor mark. */
 const HARNESS: Record<ServiceId, MarkId> = { "claude-code": "claude", codex: "codex", cursor: "cursor", meta: "meta" };
 
+/** Services whose accounts are API keys: added with Add key…, never signed in to, switched or refreshed. */
+const KEY_SERVICES = new Set<ServiceId>(["meta"]);
+
 export interface AccountsActions {
   onCapture: (serviceId: ServiceId) => void;
   onAdd: (serviceId: ServiceId) => void;
+  /** A key service's Add key…: the page opens AddKeyDialog. */
+  onAddKey: (serviceId: ServiceId) => void;
   onReauth: (serviceId: ServiceId, email?: string) => void;
   onUse: (serviceId: ServiceId, name: string) => void;
   onDelete: (serviceId: ServiceId, name: string) => void;
@@ -88,7 +93,9 @@ function ProviderSection({ service, props, now }: { service: ServiceView; props:
   const run = claude ? (mint?.run ?? null) : null;
   // Rows a Convert all would touch: not yet a one-year token, or one inside its last 30 days.
   const convertible = claude ? service.profiles.filter((p) => !p.static || (p.expiresAt !== undefined && p.expiresAt - now <= STATIC_WARN_MS)).length : 0;
-  const showHome = environments.length > 0 && service.id !== "cursor";
+  const keyed = KEY_SERVICES.has(service.id);
+  // A key has no refresher: every host holds it, so there is no home to pick.
+  const showHome = environments.length > 0 && service.id !== "cursor" && !keyed;
   const menu = service.installed && (service.canSaveCurrent || convertible > 0 || showHome);
   const reportOf = (p: ProfileView) => reports?.find((r) => r.profileName === p.name);
   const columns = barColumns(service.profiles.map((p) => ({ report: reportOf(p), headroom: rates?.[p.name] })));
@@ -124,7 +131,11 @@ function ProviderSection({ service, props, now }: { service: ServiceView; props:
       action={
         service.installed ? (
           <>
-            {service.canAddAccount ? (
+            {keyed ? (
+              <Button variant="ghost" size="sm" onClick={() => props.onAddKey(service.id)}>
+                Add key…
+              </Button>
+            ) : service.canAddAccount ? (
               <Button variant="ghost" size="sm" onClick={() => props.onAdd(service.id)}>
                 Add account
               </Button>
@@ -167,7 +178,7 @@ function ProviderSection({ service, props, now }: { service: ServiceView; props:
       ) : null}
       {!service.installed ? null : service.profiles.length === 0 ? (
         <Empty className="py-6">
-          <EmptyTitle>No accounts saved</EmptyTitle>
+          <EmptyTitle>{keyed ? "No keys saved" : "No accounts saved"}</EmptyTitle>
         </Empty>
       ) : (
         service.profiles.map((p) => (

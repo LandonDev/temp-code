@@ -27,6 +27,24 @@ describe("scopeOf", () => {
     expect(scopeOf({ provider: "cursor", account: "x" }, [], [])).toBeNull();
     expect(scopeOf(null, [], [])).toBeNull();
   });
+
+  it("a Meta row under either harness is scoped to Meta's keys and reads Meta's pin, never the harness's", () => {
+    const metaWs: WorkspaceMeta = { ...ws, accountPins: { claude: "ws@x.com", meta: "Work key" } };
+    expect(scopeOf({ provider: "claude", model: "muse-wonder-1.0", account: null, workspaceId: "w" }, [], [metaWs])).toEqual({
+      provider: "meta",
+      inherited: { name: "Work key", level: "workspace", from: "Site" },
+      current: null,
+      shown: "Work key",
+    });
+    expect(scopeOf({ provider: "codex", model: "muse-spark-1.3", account: "Spare key", projectId: "p" }, [project], [ws])).toEqual({
+      provider: "meta",
+      inherited: null,
+      current: "Spare key",
+      shown: "Spare key",
+    });
+    // The harness's own models keep the harness's scope.
+    expect(scopeOf({ provider: "claude", model: "claude-opus-5-5", account: null, workspaceId: "w" }, [], [metaWs])?.provider).toBe("claude");
+  });
 });
 
 describe("labels", () => {
@@ -45,3 +63,14 @@ describe("labels", () => {
     expect(controlLabel(scopeOf({ provider: "claude" }, [], [])!, accounts)).toBeNull();
   });
 });
+
+describe("a key account's label", () => {
+  it("is its name", () => {
+    const key = { name: "me@work", createdAt: 1, active: false, static: true, kind: "key" as const };
+    // Never cut at an @ as an email would be.
+    expect(shortName(key)).toBe("me@work");
+    const scope = scopeOf({ provider: "claude", model: "muse-wonder-1.0", account: "me@work" }, [], [])!;
+    expect(controlLabel(scope, { pinned: null, owner: null, profiles: [key], reports: [] })).toBe("me@work");
+  });
+});
+

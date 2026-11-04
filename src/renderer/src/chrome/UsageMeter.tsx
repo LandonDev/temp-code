@@ -65,8 +65,12 @@ function MeterRow(props: MeterProps) {
   );
 }
 
+/** A pay-as-you-go row (Meta's keys): no share to draw, only the limit while every key is throttled. */
+const shareless = (meter: Meter): boolean => meter.share === null && meter.limited !== null;
+
 function rowLabel({ provider, meter, now }: MeterProps): string {
   const name = `${PROVIDER_NAME[provider]} usage`;
+  if (meter.limited && meter.share === null) return `${name}, ${future(meter.limited.until, now) ? `limited for ${untilWords(meter.limited.until, now)}` : "limited"}`;
   if (meter.share === null) return `${name}, no report yet`;
   const parts = [name, `${percent(meter.share)}% left`];
   if (meter.limited) parts.push(future(meter.limited.until, now) ? `limited for ${untilWords(meter.limited.until, now)}` : "limited");
@@ -85,12 +89,17 @@ export function MeterRowView({ provider, meter, now, ...trigger }: MeterProps & 
       {...trigger}
     >
       <HarnessIcon harness={provider} className="size-4 shrink-0 text-muted-foreground" />
-      <Progress
-        value={meter.share === null ? null : percent(meter.share)}
-        fill={fillOf(meter.share)}
-        aria-label={`${PROVIDER_NAME[provider]} usage left`}
-        className="w-20 shrink-0 @max-[15rem]/railrow:w-14"
-      />
+      {shareless(meter) ? (
+        // The bar's place kept empty, so Limited lines up with the other rows' times.
+        <span aria-hidden className="w-20 shrink-0 @max-[15rem]/railrow:w-14" />
+      ) : (
+        <Progress
+          value={meter.share === null ? null : percent(meter.share)}
+          fill={fillOf(meter.share)}
+          aria-label={`${PROVIDER_NAME[provider]} usage left`}
+          className="w-20 shrink-0 @max-[15rem]/railrow:w-14"
+        />
+      )}
       {meter.limited ? (
         <span data-meter-limited className="flex min-w-0 gap-2 text-[12px] whitespace-nowrap text-warning tabular-nums">
           <span>Limited</span>
@@ -118,7 +127,11 @@ export function MeterDetails({ provider, meter, now }: MeterProps) {
           <span className="text-muted-foreground tabular-nums">{percent(meter.share)}% left</span>
         ) : null}
       </div>
-      {meter.share === null ? (
+      {shareless(meter) && meter.limited ? (
+        <p className="text-[12px] text-warning">
+          {future(meter.limited.until, now) ? `Every key limited for ${untilShort(meter.limited.until, now)}` : "Every key limited"}
+        </p>
+      ) : meter.share === null ? (
         <p className="text-[12px] text-muted-foreground">No usage reported yet</p>
       ) : (
         <>

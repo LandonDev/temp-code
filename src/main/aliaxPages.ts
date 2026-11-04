@@ -6,11 +6,11 @@ import { accounts, adapter, credentials, vault, type ActionResult, type ServiceI
 import { appSessionEmail } from 'aliax-core/adapters/claude'
 import * as login from './aliax/login'
 import { mintInWindow } from './aliax/staticMint'
-import { CANCELLED, cliInstallNote, cliRepairNote, cliTakesSignIn, holdsGrant, signInNotes } from '@shared/signInWords'
+import { CANCELLED, cliInstallNote, cliRepairNote, cliTakesSignIn, holdsGrant, keyErrorLine, signInNotes } from '@shared/signInWords'
 import { StaticTokens } from './aliax/staticTokens'
 import type { AccountSync } from './server/remote/accountSync'
 import { statsHost } from './aliax/stats/statsService'
-import { ACCOUNT_PROVIDERS, SERVICE_OF, type AccountsSnapshot, type MintProgress } from '@shared/accounts'
+import { ACCOUNT_PROVIDERS, SERVICE_OF, type AccountsSnapshot, type KeyProfileView, type MintProgress } from '@shared/accounts'
 
 /**
  * The main-process half of the embedded Aliax pages (Accounts, Stats): the
@@ -194,6 +194,19 @@ export interface AliaxPagesHost {
 let staticTokens: StaticTokens | null = null
 export const staticTokensFor = (): StaticTokens | null => staticTokens
 
+/**
+ * A key service's rows carry the account id inside each key (the numeric
+ * `LLM_<id>_…` part, from the vault's profile), so the page can show the key
+ * masked; the key itself stays in the vault.
+ */
+function withKeyIds(views: Awaited<ReturnType<typeof accounts.listServices>>): typeof views {
+  return views.map((v) => {
+    if (v.id !== 'meta') return v
+    const ids = new Map(vault.profiles('meta').map((p) => [p.name, p.accountId]))
+    return { ...v, profiles: v.profiles.map((p): KeyProfileView => ({ ...p, accountId: ids.get(p.name) })) }
+  })
+}
+
 /** The stats index runs once per process, on the first Stats page ask. */
 let indexKicked = false
 
@@ -229,7 +242,22 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
     accounts.repairProfiles(id).catch(() => {})
   }
 
-  handle('aliax:services:list', () => accounts.listServices())
+  handle('aliax:services:list', async () => withKeyIds(await accounts.listServices()))
+  // An API key (Meta): checked for its shape, presented to the provider once,
+  // saved only when it answers; the error is the dialog's one red line.
+  handle('aliax:profiles:addKey', (_e, input: { serviceId: ServiceId; name?: string; key: string }) =>
+    asResult(async () => {
+      if (input?.serviceId !== 'meta') return { ok: false, error: 'This service takes a sign-in, not a key' }
+      try {
+        const name = await accounts.saveApiKey('meta', { key: String(input.key ?? ''), name: input.name })
+        notifyAccountsChanged()
+        void sync?.syncAll()
+        return { ok: true, name }
+      } catch (e) {
+        return { ok: false, error: keyErrorLine((e as Error).message) }
+      }
+    })
+  )
   handle('aliax:profiles:capture', (_e, serviceId: ServiceId) =>
     asResult(async () => {
       const result = await accounts.capture(serviceId)

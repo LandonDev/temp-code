@@ -277,4 +277,48 @@ describe('UsageMeter', () => {
     expect(bar(before).getAttribute('aria-valuenow')).toBe('100')
     expect(link.calls.filter((c) => c.method.startsWith('accounts.')).map((c) => c.method)).toEqual(['accounts.list'])
   })
+
+  describe('Meta keys, pay as you go', () => {
+    const withMeta = (throttled: string[]) => {
+      const s = snapshot()
+      s.providers.meta = {
+        pinned: null,
+        owner: 'temp-code',
+        profiles: [profile('Work', { static: true, kind: 'key' }), profile('Spare', { static: true, kind: 'key' })],
+        reports: [
+          { profileName: 'Work', windows: [], note: 'pay as you go' },
+          { profileName: 'Spare', windows: [], note: 'pay as you go' }
+        ],
+        headroom: Object.fromEntries(throttled.map((name) => [name, { room: 0, throttledUntil: now + 32_000, ratePerMin: 0, seenAt: now }]))
+      }
+      return s
+    }
+    const push = async (link: FakeLink, s: AccountsSnapshot) => {
+      await probe!.act(async () => {
+        for (const l of link.listeners) l({ push: 'accounts', snapshot: s } as ServerPush)
+      })
+    }
+
+    it('draws no Meta row while any key has room', async () => {
+      const { root, link } = await mount()
+      await push(link, withMeta(['Work']))
+      expect(row(root, 'meta')).toBeNull()
+      expect(root.querySelectorAll('[data-provider]')).toHaveLength(3)
+    })
+
+    it('draws Limited with the time while every key is throttled, with no bar', async () => {
+      const { root, link } = await mount()
+      await push(link, withMeta(['Work', 'Spare']))
+      const meta = row(root, 'meta')
+      expect(bar(meta)).toBeNull()
+      expect((meta.querySelector('[data-meter-limited]') as HTMLElement).textContent).toBe('Limited<1m')
+      expect(meta.getAttribute('aria-label')).toBe('Meta usage, limited for under a minute')
+      await probe!.act(async () => {
+        fireEvent.click(meta)
+      })
+      expect(details()!.textContent).toContain('Every key limited for <1m')
+      expect(details()!.textContent).not.toContain('No usage reported yet')
+    })
+  })
 })
+

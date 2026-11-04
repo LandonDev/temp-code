@@ -32,16 +32,20 @@ const limited: UsageMeter = {
 
 const empty: UsageMeter = { share: null, resetsAt: null, limited: null, withRoom: 0, windows: [] };
 
-function Rows({ claude, codex }: { claude: UsageMeter; codex: UsageMeter }) {
+/** Meta's keys, every one throttled: no share, only the limit. */
+const metaLimited: UsageMeter = { share: null, resetsAt: null, limited: { until: NOW + 32_000 }, withRoom: 0, windows: [] };
+
+function Rows({ claude, codex, meta }: { claude: UsageMeter; codex: UsageMeter; meta?: UsageMeter }) {
   return (
     <div className="flex w-[260px] flex-col gap-px bg-sidebar px-2 py-2">
       <MeterRowView provider="claude" meter={claude} now={NOW} />
       <MeterRowView provider="codex" meter={codex} now={NOW} />
+      {meta ? <MeterRowView provider="meta" meter={meta} now={NOW} /> : null}
     </div>
   );
 }
 
-function Card({ meter, provider = "claude" }: { meter: UsageMeter; provider?: "claude" | "codex" }) {
+function Card({ meter, provider = "claude" }: { meter: UsageMeter; provider?: "claude" | "codex" | "meta" }) {
   return (
     <div className="flex w-64 flex-col gap-3 rounded-xl bg-popover p-3 text-sm ring-1 ring-border">
       <MeterDetails provider={provider} meter={meter} now={NOW} />
@@ -54,3 +58,6 @@ export const RowsEmpty = () => <Rows claude={empty} codex={pooled} />;
 export const DetailsPooled = () => <Card meter={pooled} />;
 export const DetailsLimited = () => <Card meter={limited} provider="codex" />;
 export const DetailsEmpty = () => <Card meter={empty} />;
+export const RowsMetaLimited = () => <Rows claude={pooled} codex={pooled} meta={metaLimited} />;
+export const DetailsMetaLimited = () => <Card meter={metaLimited} provider="meta" />;
+
