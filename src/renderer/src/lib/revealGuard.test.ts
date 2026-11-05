@@ -8,11 +8,9 @@ import { describe, expect, it } from "vitest";
    focus-within is never what shows (or yields to) a reveal: keyboard focus
    is `focus-visible`. The guard reads every class string in the renderer.
    The allow-list only shrinks; each entry names the landing that redoes it
-   (L5: the rail and the workspace column).
+   It is empty: every reveal in the renderer keeps the rule.
    A count may fall below its entry: a sibling slice fixing one leaves it. */
 const ALLOWED: Record<string, { landing: string; count: number }> = {
-  "chrome/RailRow.tsx": { landing: "L5", count: 2 },
-  "chrome/WorkspaceSessions.tsx": { landing: "L5", count: 3 },
 };
 
 const root = resolve(__dirname, "..");

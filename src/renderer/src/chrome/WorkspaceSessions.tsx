@@ -37,6 +37,7 @@ import { AGENT_GLYPHS, THREAD_MENU_ICONS } from "../surfaces/threads/threadTypes
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 import { STATUS_ON_TIP, STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/status";
 import { plainStatus } from "@shared/statusWords";
+import { yields } from "../components/ui/reveal";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
@@ -160,9 +161,8 @@ function moreTrigger(className?: string) {
       onKeyDown={(e) => e.stopPropagation()}
       className={cn(
         "text-muted-foreground hover:text-foreground",
-        "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-opacity",
-        "group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100 data-popup-open:pointer-events-auto data-popup-open:opacity-100",
-        "group-hover/row:delay-(--delay-hover) group-has-focus-visible/row:delay-(--dur-instant) data-popup-open:delay-(--dur-instant) motion-reduce:transition-opacity",
+        // The one reveal's timing (reveal.ts) on the trigger itself, which a menu renders as its own.
+        "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-hover/row:delay-(--delay-hover) group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100 group-has-focus-visible/row:delay-(--dur-instant) data-popup-open:pointer-events-auto data-popup-open:opacity-100 data-popup-open:delay-(--dur-instant) motion-reduce:transition-opacity",
         className,
       )}
     >
@@ -175,8 +175,7 @@ function moreTrigger(className?: string) {
 /** The trailing slot fades while the row's hover action shows, and stays
  *  away while its menu is open (the pointer has gone into the menu), so the
  *  two never draw over each other. */
-const YIELDS =
-  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/row:opacity-0 group-hover/row:delay-(--delay-hover) group-has-focus-visible/row:opacity-0 group-has-focus-visible/row:delay-(--dur-instant) group-has-[[data-popup-open]]/row:opacity-0 group-has-[[data-popup-open]]/row:delay-(--dur-instant) motion-reduce:transition-opacity";
+const YIELDS = yields("row");
 
 function InlineRename({
   value,
@@ -832,7 +831,7 @@ function ThreadLine({ kind, thread }: { kind: "working" | "paused" | "unread"; t
         <HostGlyph environmentId={thread.environmentId} />
         {kind === "working" ? <LineElapsed thread={thread} /> : null}
         {kind === "paused" ? (
-          <StatusMark state="paused" glyph={false} detail={duration(pausedElapsed(thread))} className="shrink-0 text-[12px]" />
+          <StatusMark state="paused" glyph={false} detail={duration(pausedElapsed(thread))} className="shrink-0 text-xs" />
         ) : null}
       </span>
       {tasks ? <TaskLine tasks={tasks} indent="pl-10" /> : null}

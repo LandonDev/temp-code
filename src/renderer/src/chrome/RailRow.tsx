@@ -1,4 +1,5 @@
 import type { HTMLAttributes, MouseEvent, ReactNode, Ref } from "react";
+import { reveal } from "../components/ui/reveal";
 import { Button } from "../components/ui/button";
 import { DropdownMenuTrigger } from "../components/ui/lazy-menus";
 import { useTruncated } from "../components/tip";
@@ -79,11 +80,7 @@ export const RAIL_YIELD = {
  *  keyboard focus and an open menu show them at once, a mouse click does not
  *  hold them. The fade rides this wrapper, so the button keeps its own hover
  *  fill. */
-const REVEAL = [
-  "pointer-events-none inline-flex opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-opacity",
-  "group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-hover/row:delay-(--delay-hover) motion-reduce:transition-opacity",
-  "group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100 group-has-focus-visible/row:delay-(--dur-instant)",
-].join(" ");
+const REVEAL = `inline-flex ${reveal("row", { row: true, overlay: true })}`;
 /** Inline after an interactive trailing node, the actions take their place in
  *  the line on hover (the mark they replace leaves in the same frame) and
  *  fade in after the same wait; `starting:` fades them in from `display:
