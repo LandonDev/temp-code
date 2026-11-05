@@ -46,6 +46,7 @@ vi.mock("../../lib/native", async (importOriginal) => ({
 }));
 
 const { BuildPanel, BuildView } = await import("./BuildPanel");
+const { resetTooltips, tooltipChunk, warmTooltips } = await import("../../components/ui/tooltip");
 
 const now = Date.now();
 const run = (over: Partial<BuildRun> = {}): BuildRun => ({
@@ -204,6 +205,21 @@ describe("BuildView", () => {
     expect(props.onReveal).toHaveBeenCalledWith("/w/plugin/build/libs/plugin.jar");
     fireEvent.keyDown(document.querySelector('[data-output="build/libs/old.jar"]') as HTMLElement, { key: "Enter" });
     expect(props.onReveal).toHaveBeenLastCalledWith("/w/plugin/build/libs/old.jar");
+  });
+});
+
+describe("BuildView's tooltips", () => {
+  it("warming keeps the log's scroller: the provider holds the top row alone", async () => {
+    resetTooltips();
+    view({ run: run({ status: "running", endedAt: undefined }), lines: Array.from({ length: 50 }, (_, i) => `line ${i}`) });
+    const log = document.querySelector<HTMLElement>('[data-slot="build-log"]')!;
+    log.scrollTop = 30;
+    await tooltipChunk.load();
+    act(() => warmTooltips());
+    await flush();
+    expect(document.querySelector('[data-slot="build-log"]')).toBe(log);
+    expect(log.scrollTop).toBe(30);
+    resetTooltips();
   });
 });
 

@@ -203,9 +203,11 @@ export function BuildView({
   if (chosen && !options.some((o) => o.value === chosen)) options.unshift({ value: chosen, label: chosen });
   const where = targets.find((t) => t.branch === chosen)?.cwd ?? (chosen ? `${chosen} builds in its own worktree` : null);
 
+  // The provider holds the top row alone, never the log's scroller: the lazy
+  // provider remounts what it wraps when the tooltips warm.
   return (
-    <TooltipProvider>
-      <div className="flex min-h-0 flex-1 flex-col" data-slot="build-section">
+    <div className="flex min-h-0 flex-1 flex-col" data-slot="build-section">
+      <TooltipProvider>
         <div data-slot="section-top" className="flex h-9 shrink-0 items-center gap-2 px-3">
           {chosen ? (
             <Tooltip>
@@ -235,28 +237,28 @@ export function BuildView({
             </Button>
           )}
         </div>
-        {error ? <p className="shrink-0 px-3 pb-2 text-xs break-words text-destructive">{error}</p> : null}
-        <OriginLine remote={remote} pulling={pulling} progress={progress} error={pullError} disabled={running} onFetch={onFetch} />
-        {effective === null ? (
-          <Empty className={cn("p-4", run && "flex-none")}>
-            <EmptyHeader>
-              <EmptyTitle className="text-[13px]">No build command</EmptyTitle>
-            </EmptyHeader>
-            <EmptyContent>
-              <Button variant="link" size="sm" onClick={onSetCommand}>
-                Set one
-              </Button>
-            </EmptyContent>
-          </Empty>
-        ) : (
-          <div className="shrink-0 px-1">
-            <StatusRow run={run} own={own} chosen={chosen} effective={effective} />
-          </div>
-        )}
-        {run || lines.length > 0 ? <Log lines={lines} runId={run?.id ?? null} /> : null}
-        {run && run.outputs.length > 0 ? <Outputs outputs={run.outputs} onReveal={onReveal} /> : null}
-      </div>
-    </TooltipProvider>
+      </TooltipProvider>
+      {error ? <p className="shrink-0 px-3 pb-2 text-xs break-words text-destructive">{error}</p> : null}
+      <OriginLine remote={remote} pulling={pulling} progress={progress} error={pullError} disabled={running} onFetch={onFetch} />
+      {effective === null ? (
+        <Empty className={cn("p-4", run && "flex-none")}>
+          <EmptyHeader>
+            <EmptyTitle className="text-[13px]">No build command</EmptyTitle>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button variant="link" size="sm" onClick={onSetCommand}>
+              Set one
+            </Button>
+          </EmptyContent>
+        </Empty>
+      ) : (
+        <div className="shrink-0 px-1">
+          <StatusRow run={run} own={own} chosen={chosen} effective={effective} />
+        </div>
+      )}
+      {run || lines.length > 0 ? <Log lines={lines} runId={run?.id ?? null} /> : null}
+      {run && run.outputs.length > 0 ? <Outputs outputs={run.outputs} onReveal={onReveal} /> : null}
+    </div>
   );
 }
 

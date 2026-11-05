@@ -120,10 +120,13 @@ export function DebugView({
   const paused = phase === "stopped";
   const stacked = frames.length > 0 || variables.length > 0;
 
+  // The provider holds the 36px controls alone, never the stack, variables or
+  // console scrollers: the lazy provider remounts what it wraps when the
+  // tooltips warm.
   return (
-    <TooltipProvider>
-      <div className="flex min-h-0 flex-1 flex-col" data-slot="debug-section">
-        <div className="flex h-9 shrink-0 items-center gap-0.5 px-2">
+    <div className="flex min-h-0 flex-1 flex-col" data-slot="debug-section">
+      <TooltipProvider>
+        <div data-slot="section-top" className="flex h-9 shrink-0 items-center gap-0.5 px-2">
           <Control label="Continue" icon={Play} enabled={paused} onClick={() => onStep("continue")} />
           <Control label="Step over" icon={ArrowTurnForward} enabled={paused} onClick={() => onStep("next")} />
           <Control label="Step into" icon={ArrowDownLong} enabled={paused} onClick={() => onStep("stepIn")} />
@@ -132,64 +135,64 @@ export function DebugView({
           <StatusMark state={error ? "failed" : paused ? "paused" : "working"} className="ml-2 min-w-0 flex-1" />
           <Control label="Stop" icon={StopGlyph} enabled onClick={onStop} />
         </div>
-        {error ? <ErrorLine text={error} /> : null}
-        {frames.length > 0 ? (
-          <Group heading="Call stack">
-            <div className="max-h-40 overflow-x-hidden overflow-y-auto">
-              <div className="flex flex-col px-1">
-                {frames.map((f) => (
-                  <ItemButton
-                    key={f.id}
-                    size="xs"
-                    aria-current={f.id === activeFrameId ? "true" : undefined}
-                    onClick={() => onSelectFrame(f)}
-                    className={cn("min-h-7 flex-nowrap py-0 text-left", f.id === activeFrameId ? "bg-muted" : "hover:bg-foreground/5")}
-                  >
-                    <ItemContent className="min-w-0">
-                      <span className={cn("block truncate text-[13px]", f.path ? "text-foreground" : "text-muted-foreground")}>{f.name}</span>
-                    </ItemContent>
-                    <ItemActions>
-                      <span className="text-xs tabular-nums text-muted-foreground">{f.line}</span>
-                    </ItemActions>
-                  </ItemButton>
-                ))}
-              </div>
+      </TooltipProvider>
+      {error ? <ErrorLine text={error} /> : null}
+      {frames.length > 0 ? (
+        <Group heading="Call stack">
+          <div className="max-h-40 overflow-x-hidden overflow-y-auto">
+            <div className="flex flex-col px-1">
+              {frames.map((f) => (
+                <ItemButton
+                  key={f.id}
+                  size="xs"
+                  aria-current={f.id === activeFrameId ? "true" : undefined}
+                  onClick={() => onSelectFrame(f)}
+                  className={cn("min-h-7 flex-nowrap py-0 text-left", f.id === activeFrameId ? "bg-muted" : "hover:bg-foreground/5")}
+                >
+                  <ItemContent className="min-w-0">
+                    <span className={cn("block truncate text-[13px]", f.path ? "text-foreground" : "text-muted-foreground")}>{f.name}</span>
+                  </ItemContent>
+                  <ItemActions>
+                    <span className="text-xs tabular-nums text-muted-foreground">{f.line}</span>
+                  </ItemActions>
+                </ItemButton>
+              ))}
             </div>
-          </Group>
-        ) : null}
-        {variables.length > 0 ? (
-          <Group heading="Variables">
-            <div className="max-h-48 overflow-x-hidden overflow-y-auto">
-              <div className="flex flex-col px-1 font-mono text-xs">
-                {variables.map((v, i) => (
-                  <VariableRow key={`${v.name}:${i}`} variable={v} open={(variables[i + 1]?.depth ?? -1) > v.depth} onExpand={onExpand} />
-                ))}
-              </div>
+          </div>
+        </Group>
+      ) : null}
+      {variables.length > 0 ? (
+        <Group heading="Variables">
+          <div className="max-h-48 overflow-x-hidden overflow-y-auto">
+            <div className="flex flex-col px-1 font-mono text-xs">
+              {variables.map((v, i) => (
+                <VariableRow key={`${v.name}:${i}`} variable={v} open={(variables[i + 1]?.depth ?? -1) > v.depth} onExpand={onExpand} />
+              ))}
             </div>
-          </Group>
-        ) : null}
-        {consoleGroup(stacked ? "Console" : null)}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const q = expr.trim();
-            if (!q) return;
-            setExpr("");
-            onEvaluate(q);
-          }}
-          className="shrink-0 px-3 pt-2 pb-3"
-        >
-          <Input
-            value={expr}
-            onChange={(e) => setExpr(e.target.value)}
-            placeholder="Evaluate…"
-            disabled={!paused}
-            aria-label="Evaluate expression"
-            className="font-mono text-xs"
-          />
-        </form>
-      </div>
-    </TooltipProvider>
+          </div>
+        </Group>
+      ) : null}
+      {consoleGroup(stacked ? "Console" : null)}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const q = expr.trim();
+          if (!q) return;
+          setExpr("");
+          onEvaluate(q);
+        }}
+        className="shrink-0 px-3 pt-2 pb-3"
+      >
+        <Input
+          value={expr}
+          onChange={(e) => setExpr(e.target.value)}
+          placeholder="Evaluate…"
+          disabled={!paused}
+          aria-label="Evaluate expression"
+          className="font-mono text-xs"
+        />
+      </form>
+    </div>
   );
 }
 

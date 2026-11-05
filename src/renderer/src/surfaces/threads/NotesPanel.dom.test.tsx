@@ -49,6 +49,7 @@ if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => []
 import { resetNotesStore } from "../../lib/threadNotes";
 import type { Session } from "../../lib/session";
 import { NotesBody } from "./NotesPanel";
+import { resetTooltips, tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 
 const session = { id: "s1", environmentId: "local", title: "Notes feature", cwd: "/p", status: "idle", blocks: [] } as unknown as Session;
 const push = (p: unknown): void => {
@@ -176,6 +177,28 @@ describe("NotesBody", () => {
     expect(screen.getByLabelText("Loading notes").getAttribute("aria-busy")).toBe("true");
     expect(screen.getByLabelText("Loading notes").className).toContain("gap-3");
     expect(screen.queryByRole("button", { name: "Edit notes" })).toBeNull();
+  });
+
+  it("tooltips warming keep the notes' scroller and the editor: the provider holds the top row alone", async () => {
+    resetTooltips();
+    render(<NotesBody session={session} />);
+    await flush();
+    const scroller = document.querySelector<HTMLElement>('[data-slot="notes-scroller"]')!;
+    scroller.scrollTop = 40;
+    await tooltipChunk.load();
+    act(() => warmTooltips());
+    await flush();
+    expect(document.querySelector('[data-slot="notes-scroller"]')).toBe(scroller);
+    expect(scroller.scrollTop).toBe(40);
+    // The editor too: a warm-up while editing keeps the field and its text.
+    resetTooltips();
+    fireEvent.click(screen.getByRole("button", { name: "Edit notes" }));
+    const field = screen.getByLabelText("Notes source") as HTMLTextAreaElement;
+    await tooltipChunk.load();
+    act(() => warmTooltips());
+    await flush();
+    expect(screen.getByLabelText("Notes source")).toBe(field);
+    resetTooltips();
   });
 
   it("an empty thread offers to start the notes", async () => {

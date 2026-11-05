@@ -16,6 +16,7 @@ vi.mock("../../lib/monaco/opener", () => ({ openFileAt }));
 
 import { getEditorState, setEditorState, type EditorState } from "../../lib/monaco/editorState";
 import DebugPanel from "./DebugPanel";
+import { resetTooltips, tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 
 const initial: EditorState = getEditorState();
 
@@ -130,6 +131,21 @@ describe("DebugPanel", () => {
     fireEvent.change(field(), { target: { value: "   " } });
     fireEvent.submit(field().form!);
     expect(controller.evaluate).toHaveBeenCalledTimes(1);
+  });
+
+  it("tooltips warming keep the console's scroller: the provider holds the controls alone", async () => {
+    resetTooltips();
+    seed({ debugPhase: "stopped" });
+    render(<DebugPanel />);
+    const scroller = document.querySelector<HTMLElement>('[data-slot="debug-console"]')!.parentElement!;
+    scroller.scrollTop = 20;
+    await tooltipChunk.load();
+    act(() => warmTooltips());
+    await act(async () => {});
+    expect(document.querySelector('[data-slot="debug-console"]')!.parentElement).toBe(scroller);
+    expect(scroller.scrollTop).toBe(20);
+    expect(document.querySelector('[data-slot="section-top"]')!.className).toContain("h-9");
+    resetTooltips();
   });
 
   it("shows an error as one line and follows the store", () => {

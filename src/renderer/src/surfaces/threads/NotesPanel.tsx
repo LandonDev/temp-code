@@ -183,9 +183,11 @@ export function NotesView({
     );
   }
 
+  // The provider holds the top row alone, never the scroller: the lazy
+  // provider remounts what it wraps when the tooltips warm.
   return (
-    <TooltipProvider>
-      <div className="flex min-h-0 flex-1 flex-col" data-slot="notes-section">
+    <div className="flex min-h-0 flex-1 flex-col" data-slot="notes-section">
+      <TooltipProvider>
         <div data-slot="section-top" className="flex h-9 shrink-0 items-center justify-between gap-2 px-3">
           <span className={cn("truncate text-xs tabular-nums", saving === "failed" ? "text-destructive" : "text-muted-foreground")}>{state}</span>
           {loading ? null : (
@@ -203,37 +205,37 @@ export function NotesView({
             </div>
           )}
         </div>
-        {loading ? (
-          <div className="flex flex-col gap-3 px-3 py-2" aria-busy="true" aria-label="Loading notes">
-            <Skeleton className="h-3.5 w-1/3" />
-            <Skeleton className="h-3.5 w-11/12" />
-            <Skeleton className="h-3.5 w-3/4" />
-          </div>
-        ) : editing ? (
-          <>
-            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-              <div className="px-3 py-2">
-                <NotesSource value={draft} onChange={onChange} onDone={onDone} />
-              </div>
-            </div>
-            {remoteChanged ? (
-              <div className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-                <span className="min-w-0 flex-1 truncate">The thread updated the notes</span>
-                <Button variant="link" size="sm" className="h-auto shrink-0 px-0 text-xs" onClick={onLoadTheirs}>
-                  Load theirs
-                </Button>
-              </div>
-            ) : null}
-          </>
-        ) : (
-          <div tabIndex={0} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto focus-ring">
-            <div className="px-3 py-2 select-text">
-              <AgentMarkdown text={text} cwd={cwd} size="compact" />
+      </TooltipProvider>
+      {loading ? (
+        <div className="flex flex-col gap-3 px-3 py-2" aria-busy="true" aria-label="Loading notes">
+          <Skeleton className="h-3.5 w-1/3" />
+          <Skeleton className="h-3.5 w-11/12" />
+          <Skeleton className="h-3.5 w-3/4" />
+        </div>
+      ) : editing ? (
+        <>
+          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+            <div className="px-3 py-2">
+              <NotesSource value={draft} onChange={onChange} onDone={onDone} />
             </div>
           </div>
-        )}
-      </div>
-    </TooltipProvider>
+          {remoteChanged ? (
+            <div className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+              <span className="min-w-0 flex-1 truncate">The thread updated the notes</span>
+              <Button variant="link" size="sm" className="h-auto shrink-0 px-0 text-xs" onClick={onLoadTheirs}>
+                Load theirs
+              </Button>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div tabIndex={0} data-slot="notes-scroller" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto focus-ring">
+          <div className="px-3 py-2 select-text">
+            <AgentMarkdown text={text} cwd={cwd} size="compact" />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

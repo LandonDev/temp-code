@@ -433,9 +433,11 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   `FileTree`, `BuildPanel`, `DebugPanel`), whose first row (Changes' branch,
   Build's target, Notes' state, Files' buttons) is one 36px row on the 12px
   inset in every section. A tooltip provider in a body wraps its toolbars
-  alone (Changes' top row and its commit footer each have one, Activity
-  none): the lazy provider remounts what it wraps when tooltips warm, so
-  none sits round a scroller, the Changes list or an open log. An Activity
+  alone (Changes' top row and its commit footer each have one, Notes' and
+  Build's top row and Debug's 36px controls one each, Activity none): the
+  lazy provider remounts what it wraps when tooltips warm, so none sits
+  round a scroller, the Changes list, an open log, Notes' markdown or
+  editor, Build's log or Debug's stack and console. An Activity
   shell row's log stays in its fold while the fold closes and stops asking
   for output as the close starts. It never tweens its width: a
   toggle in place gives the thread its new width at once (one layout; the
