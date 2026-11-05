@@ -3,12 +3,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetMenus } from "./menuRows";
 
-const h = vi.hoisted(() => ({ checkout: vi.fn(), create: vi.fn() }));
+const h = vi.hoisted(() => ({ checkout: vi.fn(), create: vi.fn(), state: null as null | { settled: boolean; branches: null } }));
 
 vi.mock("../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
 vi.mock("../lib/tcserver/projects", () => ({ environmentOfCwd: () => "local" }));
 vi.mock("../hooks/useProjectBranches", () => ({
-  useProjectBranchesState: () => ({
+  useProjectBranchesState: () => h.state ?? ({
     settled: true,
     branches: {
       current: "main",
@@ -33,7 +33,10 @@ vi.mock("../lib/fs", () => ({
 
 import { BranchPicker } from "./BranchPicker";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  h.state = null;
+});
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   resetMenus();
@@ -45,6 +48,32 @@ async function open() {
   fireEvent.click(screen.getByRole("button", { name: "Branch main" }));
   return screen.findByRole("dialog", { name: "Branch picker" });
 }
+
+describe("BranchPicker: no branch yet", () => {
+  it("No repo is sans: words, not a branch name", () => {
+    h.state = { settled: true, branches: null };
+    render(<BranchPicker cwd="/u/me/app" />);
+    const trigger = screen.getByRole("button", { name: "No git repository" });
+    const text = within(trigger).getByText("No repo");
+    expect(text.className.split(" ")).toContain("text-xs");
+    expect(text.className).not.toContain("font-mono");
+  });
+
+  it("loading draws a Skeleton in a short branch name's shape, never a hand-made pill", () => {
+    h.state = { settled: false, branches: null };
+    render(<BranchPicker cwd="/u/me/app" />);
+    const trigger = screen.getByRole("button", { name: "Loading branch" });
+    const skeleton = trigger.querySelector<HTMLElement>("[data-slot=skeleton]")!;
+    expect(skeleton.className.split(" ")).toEqual(expect.arrayContaining(["h-3", "w-10"]));
+    expect(trigger.querySelector(".rounded-full")).toBeNull();
+    expect(trigger.className.split(" ")).toContain("h-6");
+  });
+
+  it("a branch name keeps the mono face", () => {
+    render(<BranchPicker cwd="/u/me/app" />);
+    expect(within(screen.getByRole("button", { name: "Branch main" })).getByText("main").className).toContain("font-mono");
+  });
+});
 
 describe("BranchPicker", () => {
   it("the head form is the branch name alone in 13px medium type, and opens the same list", async () => {

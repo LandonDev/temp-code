@@ -803,6 +803,10 @@ surface and for every root claude or codex thread, answered by the app's one
 dialog (`GoalDialogHost` in chrome/GoalDialog.tsx); usage and accounts are the rail's meter (A3), and
 the context window is the composer's meter above.
 
+The branch in that row (chrome/BranchPicker.tsx) is the branch's glyph and
+its name in mono; a folder that is no repo reads "No repo" in sans, and the
+wait for the branch is a `Skeleton` in a short name's shape, never a pill.
+
 The host in that row (chrome/DraftHostPicker.tsx) shows for a draft of a
 project linked across hosts: the host's glyph and name, and a menu of every
 connected host; picking one moves the draft there. A host with no copy

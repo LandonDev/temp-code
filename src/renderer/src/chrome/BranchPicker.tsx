@@ -21,6 +21,7 @@ import {
 import { useProjectBranchesState } from "../hooks/useProjectBranches";
 import { TruncateTip } from "../components/tip";
 import { Button } from "../components/ui/button";
+import { Skeleton } from "../components/ui/skeleton";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { cn } from "../lib/cn";
 import { LazyPopover } from "./menuRows";
@@ -240,8 +241,8 @@ export function BranchPicker({
   };
 
   // Always keep the control mounted so the composer's toolbar does not resize
-  // when a folder isn't a git repo. The loading skeleton, "No repo" label, and
-  // real branch all share the same icon + 12px mono line box.
+  // when a folder isn't a git repo: the loading skeleton, "No repo" and the
+  // branch all sit in the same 24px button beside the same icon.
   const awaitingBranch = inProject && !current && !branchesSettled;
   const missingGit = !current && !awaitingBranch;
   const label = current
@@ -274,19 +275,13 @@ export function BranchPicker({
       {head && !awaitingBranch ? (
         <span className="truncate">{label}</span>
       ) : awaitingBranch ? (
-        <span className="relative truncate font-mono text-xs">
-          {/*
-            A real text node, hidden rather than absent, so the pending
-            line box is produced exactly the way the loaded one is — the
-            toolbar's height cannot depend on which branch we are in.
-            "main" also keeps the reserved width near a typical branch.
-          */}
-          <span className="invisible">main</span>
-          <span className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-current opacity-50" />
-        </span>
+        // The wait is a load: a Skeleton in the shape of a short branch name,
+        // holding the width the name will take. The button is h-6 whatever it holds.
+        <Skeleton data-branch-skeleton className="h-3 w-10 shrink-0" />
       ) : (
         <TruncateTip text={label}>
-          <span className="truncate font-mono text-xs">{label}</span>
+          {/* Mono only for a real branch name: "No repo" is words. */}
+          <span className={cn("truncate text-xs", current && "font-mono")}>{label}</span>
         </TruncateTip>
       )}
       {/* A menu trigger's still chevron, as every picker in the draft row has. */}
