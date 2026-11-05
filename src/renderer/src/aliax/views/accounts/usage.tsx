@@ -37,7 +37,7 @@ const CELL = "flex min-w-0 flex-1 basis-0 flex-col gap-1 @3xl/accounts:w-34 @3xl
  * reset are never cut to "We…" and "Resets 1…"; from 48rem they are the
  * table's fixed columns in one line.
  */
-const CELLS = "grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-3 @3xl/accounts:flex";
+const CELLS = "grid grid-cols-[repeat(auto-fit,minmax(min(8.5rem,100%),1fr))] gap-3 @3xl/accounts:flex";
 /** The bars' box: the window columns and Rate, growing by how many it holds under 48rem. */
 const GROW = "min-w-0 flex-[var(--grow)_1_0%] @3xl/accounts:flex-none";
 /** The status words of a row with no windows, over the window columns it stands in for (`--span`). */

@@ -448,7 +448,7 @@ describe("a row's bars while its report loads", () => {
   it("stack two to a line under the name: each a whole column wide, never cut to a letter", () => {
     render(<AccountsView {...props} />);
     const details = screen.getByRole("button", { name: "Usage details for Main" });
-    expect(details.className).toContain("grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]");
+    expect(details.className).toContain("grid-cols-[repeat(auto-fit,minmax(min(8.5rem,100%),1fr))]");
     // From 48rem, the table's one line again.
     expect(details.className).toContain("@3xl/accounts:flex");
   });

@@ -130,7 +130,7 @@ describe("AccountsList", () => {
     expect(bars.querySelectorAll("[data-slot=usage-cell]")).toHaveLength(4);
     // Stacked, the cells wrap as many to a line as hold a whole column (two in a 400px window).
     const cells = bars.querySelector<HTMLElement>("[data-slot=usage-cell]")!.parentElement!;
-    expect(cells.className).toContain("grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]");
+    expect(cells.className).toContain("grid-cols-[repeat(auto-fit,minmax(min(8.5rem,100%),1fr))]");
   });
 
   it("waits in the bars' own height: no button inset, and a key's one line", () => {
