@@ -374,8 +374,9 @@ app replaces itself from the feed, and only from the feed.
   checks literal renderer colours against the token layer and counted
   palette exceptions; the counts only shrink.
 - The renderer is split (docs/bundle-split.md): the index chunk carries
-  only the first paint (rail, transcript, composer, thread header; 5,062.2
-  kB since the select left it on 2026-11-02, under the 5,136.0 kB budget)
+  only the first paint (rail, transcript, composer, thread header; 5,110.1
+  kB on 2026-11-05, once the thread lists and the plan chip's options left
+  it, under the 5,136.0 kB budget)
   and every other surface is a
   lazy chunk behind
   `defineChunk` (src/renderer/src/lib/lazyChunk.tsx), listed in
@@ -386,8 +387,9 @@ app replaces itself from the feed, and only from the feed.
   frame, the media viewer, the lightbox, the release notes with the
   changelog parser, the action-opened dialogs (`dialogsChunk` over
   chrome/dialogs.ts, each mounted only while open, the thread menu's
-  Resources, Archive, Mac bridge and Rename and the branch picker's switch
-  confirm among them), the failure card's account list (`accountsChunk`),
+  Resources, Archive, Mac bridge and Rename, its Recent and Archived lists
+  (`ThreadListPopover`), the plan chip's options and the branch picker's
+  switch confirm among them), the failure card's account list (`accountsChunk`),
   a workspace's threads beside the rail (`workspaceThreadsChunk`), the
   file and symbol pickers (`pickersChunk`, mounted while open), a box
   thread's waiting Mac bridge card (`macBridgeChunk`) and the
@@ -1712,6 +1714,14 @@ names the far child).
   Watching "a subagent" / "N subagents" wherever `threadStatus` or the
   rail's `rowState` decides (`settledWithAgents`, lib/threadStripModel.ts),
   and the fleet header counts watching on its own ("1 watching, 1 done").
+- The title bar's agents cue (chrome/AgentsCue.tsx, left of ⋯): while any
+  subagent of the thread on screen works, watches, waits or is queued (by
+  `parentId`, any depth; a master's batch is its board's), the loudest
+  state's glyph and "3 agents", its line "Agents: 1 needs you, 2 working";
+  working is the still dot while the thread's own turn runs; a click opens
+  or closes the right panel on Agents (`useAgentsCue` in
+  lib/threads/agents.ts, woken only for a change in that thread's tree).
+  The Agents rows end with the model and its effort (`ModelMark effort`).
 - Renderer: `lib/activity.ts` joins the meta's `background`, the thread's
   dev servers (its tree's ledger rows and the runs the pane started for it,
   `threadServers`) and its running Mac calls into
@@ -3087,7 +3097,8 @@ this is the short one.
   lines on `Item` with every left edge of the board 12px in
   (master/MasterRow.tsx, the rule `rowStatus` in master/rowBody.ts):
   the type glyph (its word in a tooltip), the title, the host glyph and the
-  model mark (provider mark and model, effort and context in its tooltip);
+  model mark (provider mark, model and effort, "Opus 5.5 High"; the whole
+  model, effort and context in its tooltip; the title gives way first);
   then `StatusMark`'s glyph hanging under the type's (working's spinner the
   row's one moving mark; none for done or idle) and in the title's column
   the word where the section does not say it, then what the state is

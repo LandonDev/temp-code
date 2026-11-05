@@ -1,5 +1,7 @@
 // Fixtures for `bun run ui:preview src/renderer/src/surfaces/threads/master/MasterRow.tsx#MasterRowView`.
-// A row's subagent lines draw working as a dot: the row's own mark is the one that moves.
+// A row's subagent lines draw working as a dot: the row's own mark is the one
+// that moves. Each row's model mark ends with its effort (low, high, xhigh), and
+// a Cursor row, which has none, draws the model alone.
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import type { RowAgents } from "./agentSummary";
 
@@ -17,6 +19,7 @@ const meta = (over: Partial<SessionMeta>): SessionMeta =>
     threadType: "implementation",
     provider: "claude",
     model: "claude-opus-5-5",
+    reasoning: "high",
     title: "Home screen",
     cwd: "/wt/p",
     status: "running",
@@ -63,5 +66,17 @@ export default [
     // The row watches its subagent: a ring and Watching, nothing turns.
     name: "watching, a working subagent",
     props: props(meta({ status: "watching", statusDetail: "Rail rows", busySince: null }), agents([line("a1", "Rail rows", "working", "Editing Rail.tsx")])),
+  },
+  {
+    name: "working on GPT-6.1 Sol at extra high",
+    props: props(meta({ id: "c2", title: "Settings sheet", provider: "codex", model: "gpt-6.1-sol", reasoning: "xhigh", statusDetail: "Running the tests" }), agents([])),
+  },
+  {
+    name: "working at low effort",
+    props: props(meta({ id: "c3", title: "Copy pass", model: "claude-opus-5-5", reasoning: "low", statusDetail: "Reading Composer.tsx" }), agents([])),
+  },
+  {
+    name: "a Cursor row: no effort",
+    props: props(meta({ id: "c4", title: "Lint fixes", provider: "cursor", model: "composer-2.5", reasoning: undefined, statusDetail: "Editing eslint.config.js" }), agents([])),
   },
 ];

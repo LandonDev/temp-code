@@ -97,11 +97,28 @@ column keep their 40px headers. The bar's icon buttons are 28px
 (`icon-sm`) beside the 28px chips, their glyphs 14px at a 1.5 stroke; a
 chip's focus ring is the global outline alone.
 The live row's right end is the end group: the project plan's chip when
-the project has one, then exactly two ghost icon buttons, each with a
-`Tooltip`: the ⋯ thread menu, then the panel toggle (`aria-pressed` while
-the right panel is open, "Panel ⌘⇧R"; disabled with "No room for the
-panel" while the thread's row is too narrow for it), last because it is
-nearest the panel it opens. The live chips, New thread and the end group
+the project has one, the agents cue while a subagent of the thread on
+screen is live, then two ghost icon buttons, each with a `Tooltip`: the ⋯
+thread menu, then the panel toggle (`aria-pressed` while the right panel
+is open, "Panel ⌘⇧R"; disabled with "No room for the panel" while the
+thread's row is too narrow for it), last because it is nearest the panel
+it opens. The end group is right-aligned, so ⋯ and Panel keep their places
+while the cue comes and goes. The agents cue (chrome/AgentsCue.tsx) is a
+28px ghost chip, the plan chip's size: the state's glyph, then "1 agent"
+or "3 agents" in 13px muted `tabular-nums`, counting every subagent of the
+thread's tree (by `parentId`, any depth; a master's batch threads are its
+board's) that works, watches, waits or is queued. Its glyph is the
+loudest state's: waiting's amber ring when one needs you, else working,
+else queued's dashed ring. Working spins only while the thread itself is
+not running a turn (watching or idle); while its own turn runs, its tab and
+working line already spin, so the cue draws working's still dot. The
+tooltip and the accessible name are one line, "Agents: 1 needs you, 2
+working". A click opens the right panel on Agents and the chip takes the
+panel toggle's pressed fill; a second click closes the panel. With no room
+for the panel it is disabled like the toggle, its tooltip "No room for the
+panel". It shows in every view (chat, board, plan, research,
+orchestration) with the panel open or closed, never on a subagent's tab,
+fades in on `--dur-fast` and leaves at once. The live chips, New thread and the end group
 share one 40px row box, so all of them sit on one 28px line at y 6. The
 scroll arrows belong to the live row: they sit over its own box, never over
 the end group. The rail-closed
@@ -126,7 +143,7 @@ can start its first child. Then the project: Pause all with the running count (o
 something runs; a failure is a toast), Dev server checked while the Dev
 servers pane is open (only when a host can serve the project), Terminal
 with ⌘\`, Recent threads… and Archived threads…: each a `Popover` from
-the ⋯ button over one list body (`ThreadListPopover`), freshest first, a
+the ⋯ button over one list body (`ThreadListPopover`, in the dialogs chunk, mounted only while a list is open), freshest first, a
 row the tinted type glyph, the title and the age, a filter past six and one muted
 "No matches" row; Recent threads… lists every settled root of the strip's
 scope and a row opens it, Archived threads… restores one (Restore on
@@ -272,8 +289,13 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     master board's sections (Needs you, Working, Queued, Done,
     lib/threadGroups.ts), each top agent by its own state with its
     descendants indented 16px a level under it (three levels drawn), in a
-    native scroller; none is one Empty, "No subagents". The rows are
-    "Orchestration" below.
+    native scroller; none is one Empty, "No subagents". A row's line one
+    ends with the provider's logo, the model and its effort ("Opus 5.5
+    High"); the title gives its width up first, down to 64px, then the
+    model's name truncates, and under 13rem (a deep descendant in a narrow
+    panel) the mark is the logo alone. The rows are "Orchestration" below.
+    While any agent is live the title bar's agents cue says so, whatever the
+    panel shows.
   - **Changes** (`chrome/rail/ChangesPanel.tsx`): the one place a
     checkout's changes are listed. Its top row is the branch, the one place
     a thread's branch is changed once it has a message (BranchPicker's
@@ -955,10 +977,12 @@ favicon, the title, the host, the claim; the address in a tooltip).
   Line one: the state's glyph leading (working's spinner the row's one
   moving mark, done's check the panel's only done cue), the title in 13px
   medium ("Subagent" when it has none), the host glyph (two or more
-  hosts), and at the end the provider's mark and the short model
-  (`ModelMark`, surfaces/threads/ModelMark.tsx, the board's; the role
-  first in its tooltip, "Reviewer, Claude Opus 5.5, high effort"; a row
-  under 18rem keeps the mark alone), then on a settled row how long it ran
+  hosts), and at the end the provider's mark, the short model and its
+  effort in the composer's words ("Opus 5.5 High"; `ModelMark`,
+  surfaces/threads/ModelMark.tsx, the board's; the role first in its
+  tooltip, "Reviewer, Claude Opus 5.5, high effort"; the title gives way
+  first, down to 64px, then the model's name; a row under 13rem keeps the
+  logo alone), then on a settled row how long it ran
   ("4m 12s", "Finished 2:02 PM" on hover). Line two: the host's phrase while
   it works, else the state's word where the heading does not say it and
   what the state is about (a question or a failure in its tone), then the
@@ -1101,10 +1125,11 @@ brought into view even when it moved section meanwhile.
   (`TypeGlyph`, its type's tint; its word in a tooltip and as its
   accessible name, never printed beside the title), the 13px medium title
   (muted while the row sits in Done or Queued), the host's glyph, and at
-  the end the model mark: the provider's mark (12px) and the model's name
-  (12px muted, "Fable 5.1": the mark already says Claude), its effort and
-  context in its tooltip ("Claude Fable 5.1, high effort, 1M context",
-  `modelMarkTip`). Line two: `StatusMark`'s glyph hangs in the glyph
+  the end the model mark: the provider's mark (12px), the model's name and
+  its effort (12px muted, "Fable 5.1 High": the mark already says Claude),
+  the whole model, effort and context in its tooltip ("Claude Fable 5.1,
+  high effort, 1M context", `modelMarkTip`); the title gives its width up
+  first, down to 64px. Line two: `StatusMark`'s glyph hangs in the glyph
   column under the type's (`threadStateOf`, an idle row being done; drawn
   for every state but done and idle), so the detail starts exactly under
   the title; working's spinner is the row's one moving mark. In the text

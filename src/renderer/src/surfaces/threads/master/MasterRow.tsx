@@ -252,12 +252,12 @@ export function MasterRowView({
         ) : null}
       </span>
       <span className="flex h-5 min-w-0 items-center gap-2">
-        <span className={cn("min-w-0 truncate text-[13px] font-medium", quiet ? "text-muted-foreground" : "text-foreground")} data-row-title>
+        <span className={cn("min-w-16 shrink-[1000] truncate text-[13px] font-medium", quiet ? "text-muted-foreground" : "text-foreground")} data-row-title>
           {title || "Untitled"}
         </span>
         {hostGlyph(meta.environmentId, host?.offline ? `${host.name} is offline` : undefined)}
         <span className="flex-1" />
-        <ModelMark meta={meta} />
+        <ModelMark meta={meta} effort />
       </span>
 
       {/* Line two: the status glyph hangs under the type's, so the detail

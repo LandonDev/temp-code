@@ -222,6 +222,23 @@ describe("TitleBar's controls", () => {
   });
 });
 
+describe("TitleBar's agents cue", () => {
+  const meta = (id: string, over: Partial<SessionMeta>) => ({ ...chat, id, title: id, ...over }) as SessionMeta;
+
+  it("sits in the end group before the thread menu while a subagent works, and a subagent's tab shows none", async () => {
+    sessionStore.attach(listing([meta("root", { status: "idle" }), meta("kid", { parentId: "root", status: "running" })]));
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    bar({ header: { ...header, model: { live: [], dormant: [], activeId: "root" } } });
+    const cue = screen.getByRole("button", { name: "Agents: 1 working" });
+    const menu = screen.getByRole("button", { name: "Thread menu" });
+    expect(cue.compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cue.closest('[role="tablist"]')).toBeNull();
+    cleanup();
+    bar({ header: { ...header, model: { live: [], dormant: [], activeId: "kid" } } });
+    expect(document.querySelector("[data-agents-cue]")).toBeNull();
+  });
+});
+
 describe("TitleBar with no project selected", () => {
   it("a loose chat on screen has its chip and the thread menu lists its rows", async () => {
     Element.prototype.scrollIntoView = () => {};

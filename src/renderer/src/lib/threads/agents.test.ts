@@ -6,6 +6,8 @@ import {
   agentSections,
   agentTime,
   agentTree,
+  agentsCue,
+  liveAgentCounts,
   MAX_AGENT_DEPTH,
   agentStats,
   agentStatus,
@@ -434,5 +436,64 @@ describe("agentTime", () => {
     expect(agentTime(timed({ status: "running", busySince: NOW - 300 }), NOW)).toBeNull();
     expect(agentTime(timed({ status: "running", busySince: NOW + 5_000 }), 0)).toBeNull();
     expect(agentTime(timed({ status: "idle", createdAt: 0, updatedAt: 0 }), NOW)).toBeNull();
+  });
+});
+
+describe("the live-agents cue", () => {
+  const m = (id: string, parentId: string | null, over: Partial<SessionMeta> = {}) =>
+    ({ id, parentId, status: "running", archived: false, createdAt: 1, ...over }) as SessionMeta;
+  const index = (metas: SessionMeta[]) => (id: string) => metas.filter((x) => x.parentId === id);
+
+  it("counts starting, running and watching as working, and waiting and queued; nothing settled", () => {
+    const metas = [
+      m("a", "r", { status: "starting" }),
+      m("b", "r", { status: "running" }),
+      m("c", "r", { status: "watching" }),
+      m("d", "r", { status: "waiting" }),
+      m("e", "r", { status: "queued" }),
+      ...(["paused", "error", "stopped", "done", "idle"] as const).map((status) => m(`x-${status}`, "r", { status })),
+    ];
+    expect(liveAgentCounts(index(metas), "r")).toEqual({ working: 3, waiting: 1, queued: 1 });
+  });
+
+  it("walks every depth, skips an archived agent but counts its live child, and ends on a cycle", () => {
+    const metas = [
+      m("a", "r", { status: "idle" }),
+      m("a1", "a", { status: "running" }),
+      m("a11", "a1", { status: "waiting" }),
+      m("gone", "r", { archived: true }),
+      m("gone1", "gone", { status: "running" }),
+    ];
+    expect(liveAgentCounts(index(metas), "r")).toEqual({ working: 2, waiting: 1, queued: 0 });
+    const loop = [m("p", "q"), m("q", "p")];
+    expect(liveAgentCounts(index(loop), "p")).toEqual({ working: 1, waiting: 0, queued: 0 });
+  });
+
+  it("does not count a master's batch threads, which carry masterId alone", () => {
+    const metas = [m("batch1", null, { masterId: "r" } as Partial<SessionMeta>), m("batch2", null, { masterId: "r" } as Partial<SessionMeta>)];
+    expect(liveAgentCounts(index(metas), "r")).toEqual({ working: 0, waiting: 0, queued: 0 });
+  });
+
+  it("says nothing at zero, and leads with waiting, then working, then queued", () => {
+    expect(agentsCue({ working: 0, waiting: 0, queued: 0 }, false)).toBeNull();
+    expect(agentsCue({ working: 2, waiting: 1, queued: 1 }, false)?.state).toBe("waiting");
+    expect(agentsCue({ working: 2, waiting: 0, queued: 1 }, false)?.state).toBe("working");
+    expect(agentsCue({ working: 0, waiting: 0, queued: 3 }, false)?.state).toBe("queued");
+  });
+
+  it("draws working still only while the root's own turn runs", () => {
+    expect(agentsCue({ working: 1, waiting: 0, queued: 0 }, true)?.still).toBe(true);
+    expect(agentsCue({ working: 1, waiting: 0, queued: 0 }, false)?.still).toBe(false);
+    expect(agentsCue({ working: 1, waiting: 1, queued: 0 }, true)?.still).toBe(false);
+    expect(agentsCue({ working: 0, waiting: 0, queued: 1 }, true)?.still).toBe(false);
+  });
+
+  it("counts every live agent in its label and names each part in its line", () => {
+    expect(agentsCue({ working: 1, waiting: 0, queued: 0 }, false)?.label).toBe("1 agent");
+    expect(agentsCue({ working: 2, waiting: 1, queued: 1 }, false)).toMatchObject({
+      label: "4 agents",
+      line: "Agents: 1 needs you, 2 working, 1 queued",
+    });
+    expect(agentsCue({ working: 1, waiting: 0, queued: 0 }, false)?.line).toBe("Agents: 1 working");
   });
 });

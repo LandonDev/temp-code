@@ -595,14 +595,17 @@ describe("the master view", () => {
     expect(states).toEqual({ waiting: "waiting", running: "working", error: "failed", paused: "paused", queued: "queued", idle: undefined });
   });
 
-  it("the title keeps the lead: the model at the line's end gives its width up first", async () => {
+  it("the title gives its width up first, down to 64px, then the model's name truncates", async () => {
     seed([meta({ id: "c-run", title: "A batch thread with a long title", status: "running", createdAt: 1 })]);
     renderView();
     await flush();
     const row = document.querySelector<HTMLElement>("[data-status=running]")!;
-    expect(row.querySelector("[data-row-title]")!.className).toContain("truncate");
+    const title = row.querySelector("[data-row-title]")!.className;
+    expect(title).toContain("truncate");
+    expect(title).toContain("shrink-[1000]");
+    expect(title).toContain("min-w-16");
     const model = row.querySelector<HTMLElement>("[data-model]")!;
-    expect(model.className).toContain("shrink-[1000]");
+    expect(model.className).not.toContain("shrink-[1000]");
     expect(model.className).toContain("overflow-hidden");
     expect(model.className).not.toContain("shrink-0");
   });

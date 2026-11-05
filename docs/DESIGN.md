@@ -388,6 +388,25 @@ working, waiting or watching its glyph breathes once (opacity over
 `--dur-slow`); under reduced motion it does not. Every other change is
 instant.
 
+A thread's model at a row's end is `ModelMark` (surfaces/threads/ModelMark.tsx):
+the provider's logo, the short model name and, where the row asks for it
+(the right panel's Agents rows, the master board's thread rows), the
+effort in the composer's words ("Opus 5.5 High", "Sol Extra high"), all
+12px `muted-foreground`, the logo 6px from the name and the effort 4px
+after it, never joined by a dot. In a narrow row the title gives its width
+up first, down to 64px; then the name truncates, and the effort never
+does. Its tooltip is the uncut form ("Claude Opus 5.5, high effort, 1M
+context"), the one home of what a narrow row hides.
+
+While any subagent of the thread on screen is live, the title bar's end
+group holds the agents cue (chrome/AgentsCue.tsx): the loudest state's
+glyph and "3 agents", the line "Agents: 1 needs you, 2 working" as its
+tooltip and name. It keeps the one-moving-mark rule: while the thread's own
+turn runs (its tab and working line spin), the cue draws working's still
+dot, and it spins only while the thread watches or idles. It fades in on
+`--dur-fast` `--ease-out` and leaves at once, so no dead control stays
+under the pointer.
+
 ## Panels, modals, menus, popovers, sheets
 
 The right side is one panel, one width (320px, resizable), one header, with
@@ -551,6 +570,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Composer field height | snaps on a keystroke and on the clear after a send; a change of more than one line the person did not type (a paste, a restore, a quote) eases over `--dur-base` | — | snaps |
 | Composer, a new thread's first send | the box keeps its width and moves into its docked place (a FLIP translate, `--dur-slow` `--ease-drawer`) | — | none |
 | Pane switch | opacity, `--dur-fast`; no rise; a switch by a key (⌃Tab, ⌘1–9) at once | — | none |
+| The agents cue arriving in the title bar | fade, `--dur-fast` `--ease-out` (`@starting-style`) | at once | the fade |
 | The slot above the composer emptying | — | the outgoing row stays, inert, and fades `--dur-fast` `--ease-out`; the 28px stays | at once |
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
 

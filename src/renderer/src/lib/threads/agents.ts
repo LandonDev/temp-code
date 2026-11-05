@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { contextPercent } from "../contextUsage";
 import { STATUS_WORD, statusNeedsYou, statusToneClass, threadStateOf, type ThreadState } from "../../components/ui/status";
 import { findModel } from "../models";
@@ -6,7 +6,7 @@ import type { Block, Session } from "../session";
 import { asHarness, pickerModelId, sessionStore } from "../tcserver/store";
 import { tallyOf } from "../tcserver/todos";
 import type { SessionMeta, SessionStatus } from "../tcserver/types";
-import { detailText, legacyDetail } from "@shared/statusWords";
+import { detailText, legacyDetail, plainStatus } from "@shared/statusWords";
 import { GROUP_LABEL, GROUP_ORDER, groupOf, type MasterGroupId } from "../threadGroups";
 
 /**
@@ -424,4 +424,87 @@ const subscribeMeta = (listener: () => void): (() => void) => sessionStore.onMet
 
 export function useMetaById(id: string | null): SessionMeta | null {
   return useSyncExternalStore(subscribeMeta, () => (id ? sessionStore.metaOf(id) : null));
+}
+
+// ── the live-agents cue ───────────────────────────────────────────────
+
+/** How many of a thread's subagents are live, by what the cue says of them. */
+export type LiveAgents = { working: number; waiting: number; queued: number };
+
+/** The live part of a subagent's state: watching counts as working (it
+ *  watches its own subagents); paused, failed, stopped, done and idle are
+ *  not live. */
+function liveKind(status: SessionStatus | undefined): keyof LiveAgents | null {
+  const state = threadStateOf(status);
+  if (state === "working" || state === "watching") return "working";
+  if (state === "waiting") return "waiting";
+  if (state === "queued") return "queued";
+  return null;
+}
+
+/** The live agents in `rootId`'s subagent tree, walked by `parentId` at any
+ *  depth through the store's parent index. A master's batch threads carry
+ *  `masterId`, not `parentId`, so they are not counted: they live on its
+ *  board. An archived agent is not counted, but its own children are. */
+export function liveAgentCounts(childrenOf: (id: string) => readonly SessionMeta[], rootId: string): LiveAgents {
+  const counts: LiveAgents = { working: 0, waiting: 0, queued: 0 };
+  const seen = new Set<string>([rootId]);
+  const walk = (id: string): void => {
+    for (const child of childrenOf(id)) {
+      if (seen.has(child.id)) continue;
+      seen.add(child.id);
+      const kind = child.archived ? null : liveKind(child.status);
+      if (kind) counts[kind]++;
+      walk(child.id);
+    }
+  };
+  walk(rootId);
+  return counts;
+}
+
+/** What the title bar's agents cue says. `still` draws working as the dot
+ *  while the thread's own turn spins (one moving mark); `line` is its
+ *  tooltip and accessible name. */
+export type AgentsCue = { state: "working" | "waiting" | "queued"; still: boolean; label: string; line: string };
+
+/** The cue for these counts, or null when nothing is live. Waiting leads,
+ *  then working, then queued. */
+export function agentsCue(counts: LiveAgents, rootRunning: boolean): AgentsCue | null {
+  const total = counts.working + counts.waiting + counts.queued;
+  if (total === 0) return null;
+  const state = counts.waiting ? "waiting" : counts.working ? "working" : "queued";
+  const parts = (["waiting", "working", "queued"] as const).filter((k) => counts[k] > 0).map((k) => `${counts[k]} ${STATUS_WORD[k].toLowerCase()}`);
+  return {
+    state,
+    still: state === "working" && rootRunning,
+    label: total === 1 ? "1 agent" : `${total} agents`,
+    line: plainStatus("Agents", parts.join(", ")),
+  };
+}
+
+function sameCue(a: AgentsCue | null, b: AgentsCue | null): boolean {
+  return a === b || (!!a && !!b && a.state === b.state && a.still === b.still && a.label === b.label && a.line === b.line);
+}
+
+/** The cue for a root thread on screen, read from the store's parent index.
+ *  It wakes React only for a meta change in that thread's tree (the store
+ *  puts every ancestor of a changed meta in `affected`), and an equal
+ *  answer is the same object. Null for no id, an unknown id, or a
+ *  subagent (its tab has no panel). */
+export function useAgentsCue(rootId: string | null): AgentsCue | null {
+  const cache = useRef<AgentsCue | null>(null);
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      sessionStore.onMetaChange((changes) => {
+        if (rootId && changes.affected.has(rootId)) listener();
+      }),
+    [rootId],
+  );
+  return useSyncExternalStore(subscribe, () => {
+    const root = rootId ? sessionStore.metaOf(rootId) : null;
+    const next =
+      root && !root.parentId ? agentsCue(liveAgentCounts(sessionStore.childrenOf, root.id), threadStateOf(root.status) === "working") : null;
+    if (!sameCue(cache.current, next)) cache.current = next;
+    return cache.current;
+  });
 }

@@ -11,9 +11,9 @@ import { clockTime, duration, useNow } from "../../../lib/duration";
 import * as commands from "../../../lib/tcserver/commands";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
-import { agentTime, modelLabel, type AgentStatus } from "../../../lib/threads/agents";
+import { agentTime, type AgentStatus } from "../../../lib/threads/agents";
 import { plainStatus } from "@shared/statusWords";
-import { ModelMark, storeHostGlyph, type HostGlyphOf } from "../ModelMark";
+import { ModelMark, modelMarkTip, storeHostGlyph, type HostGlyphOf } from "../ModelMark";
 import { AGENT_WORDS } from "../threadTypes";
 import { useAgentStatus } from "./useFleetModel";
 
@@ -26,10 +26,11 @@ import { useAgentStatus } from "./useFleetModel";
  * Line one (20px): the state's glyph in the lead column (working's spinner
  * is the row's one moving mark; done draws its check, the panel's only done
  * cue), the title in 13px medium, the host's glyph (two or more hosts),
- * then at the end the provider's mark and the model, the role first in its
- * tooltip ("Reviewer, Claude Opus 5.5, high effort"; a row under 18rem
- * keeps the mark alone, so the title keeps its width), and on a settled row
- * how long it ran. Line two (16px), live rows only, in the title's column:
+ * then at the end the provider's mark, the model and its effort ("Opus 5.5
+ * High"), the role first in its tooltip ("Reviewer, Claude Opus 5.5, high
+ * effort"), and on a settled row how long it ran. The title gives its width
+ * up first, down to 64px; then the model's name truncates, and under 13rem
+ * (a deep descendant in a narrow panel) the mark is the logo alone. Line two (16px), live rows only, in the title's column:
  * the host's phrase while it works, else the state's word where the
  * section heading does not say it and what the state is about (amber or
  * red for a question or a failure), and at the end the task tally and the
@@ -117,9 +118,7 @@ export function AgentRowView({
   const toned = state === "waiting" || state === "failed";
   const statusText = plainStatus(STATUS_WORD[state], detail || null);
   const time = agentTime(meta, Date.now());
-  const name = [title, statusText, tally?.spoken, time ? duration(time.ms) : null, role, modelLabel(meta.provider, meta.model)]
-    .filter(Boolean)
-    .join(", ");
+  const name = [title, statusText, tally?.spoken, time ? duration(time.ms) : null, modelMarkTip(meta, role)].filter(Boolean).join(", ");
   const stoppable = !!onStop && hasRunningTurn(meta);
 
   const own = (e: { currentTarget: EventTarget; target: EventTarget }) => (e.currentTarget as Node).contains(e.target as Node);
@@ -157,13 +156,20 @@ export function AgentRowView({
       </span>
       <span className="flex h-5 min-w-0 items-center gap-2">
         <TruncateTip text={title}>
-          <span className={cn("min-w-0 truncate text-[13px] leading-5 font-medium", settled ? "text-muted-foreground" : "text-foreground")} data-row-title>
+          <span className={cn("min-w-16 shrink-[1000] truncate text-[13px] leading-5 font-medium", settled ? "text-muted-foreground" : "text-foreground")} data-row-title>
             {title}
           </span>
         </TruncateTip>
         {hostGlyph(meta.environmentId)}
         <span className="flex-1" />
-        <ModelMark meta={meta} lead={role} className={cn(YIELDS, "@max-[18rem]/agent:shrink-0")} nameClassName="@max-[18rem]/agent:hidden" />
+        <ModelMark
+          meta={meta}
+          lead={role}
+          effort
+          className={YIELDS}
+          nameClassName="@max-[13rem]/agent:hidden"
+          effortClassName="@max-[13rem]/agent:hidden"
+        />
         {settled ? (
           <span className={cn("-ms-1 shrink-0 text-xs leading-5 text-muted-foreground tabular-nums", YIELDS)}>
             <AgentClock meta={meta} state={state} />

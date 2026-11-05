@@ -64,12 +64,18 @@ const EFFORT_WORDS: Record<string, string> = {
   max: "Max",
 };
 
+/** An effort in the composer's words ("xhigh" → "Extra high"); a rung the
+ *  map lacks reads capitalised ("ultra" → "Ultra"). */
+export function effortWord(reasoning: string): string {
+  return EFFORT_WORDS[reasoning] ?? reasoning.charAt(0).toUpperCase() + reasoning.slice(1);
+}
+
 const effortSelect = (value: string, ladder: string[]): ModelSetting => ({
   id: "effort",
   label: "Effort",
   kind: "select",
   value,
-  options: ladder.map((rung) => ({ value: rung, label: EFFORT_WORDS[rung] })),
+  options: ladder.map((rung) => ({ value: rung, label: effortWord(rung) })),
 });
 
 /** Meta's models under a harness, as the live catalog builds them: no

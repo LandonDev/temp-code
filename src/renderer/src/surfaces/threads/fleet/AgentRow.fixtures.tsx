@@ -1,5 +1,6 @@
 // One row per state of the large fleet, each under the heading its section
-// draws, plus a paused agent, a descendant and a fleet of one section.
+// draws, plus a paused agent, a Cursor agent with no effort and descendants
+// one and two levels in.
 import { GROUP_LABEL, groupOf } from "../../../lib/threadGroups";
 import { FLEET_DESCENDANTS, FLEET_ROWS, fixtureHostGlyph, fixtureMeta, fixtureStatus } from "./fleetFixture";
 
@@ -24,6 +25,28 @@ export default [
   {
     name: "A working agent with no heading drawn",
     props: { meta: FLEET_ROWS[0].meta, status: FLEET_ROWS[0].status, heading: null, onOpen: "fn", onOpenSession: "fn", onStop: "fn" },
+  },
+  {
+    name: "A Cursor agent: no effort",
+    props: {
+      meta: FLEET_DESCENDANTS[2],
+      status: fixtureStatus(FLEET_DESCENDANTS[2]),
+      heading: "Done",
+      depth: 1,
+      onOpen: "fn",
+      onOpenSession: "fn",
+    },
+  },
+  {
+    name: "A descendant, two levels in",
+    props: {
+      meta: FLEET_DESCENDANTS[1],
+      status: fixtureStatus(FLEET_DESCENDANTS[1]),
+      heading: "Done",
+      depth: 2,
+      onOpen: "fn",
+      onOpenSession: "fn",
+    },
   },
   {
     name: "A descendant, one level in",

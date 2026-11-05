@@ -3,6 +3,7 @@ import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
 import type { ReadyMap } from "../lib/threadStripModel";
+import { AgentsCue } from "./AgentsCue";
 import { NewThreadChooser } from "./NewThreadChooser";
 import { ProjectPlanChip } from "./ProjectPlanChip";
 import {
@@ -22,7 +23,9 @@ import { useMasterIds } from "../lib/masterThread";
  * are the thread's one menu (chrome/useThreadMenu.tsx); this keeps the
  * inline rename, Pause all and the panel toggle, and hands rename, archive,
  * delete, the type and the options back to App by thread id. The end group
- * is the project plan's chip when there is one, then ⋯, then Panel.
+ * is the project plan's chip when there is one, the live-agents cue while a
+ * subagent of the thread on screen is live (chrome/AgentsCue.tsx, its own
+ * subscriber), then ⋯, then Panel.
  */
 
 export type ThreadHeaderProps = {
@@ -134,6 +137,7 @@ export function ThreadHeader({
         end={
           <div className="flex shrink-0 items-center gap-0.5">
             <ProjectPlanChip />
+            <AgentsCue threadId={model.activeId} room={panelRoom} />
             <ThreadMenu
             host={activeChip ? host.host : null}
             cost={cost}

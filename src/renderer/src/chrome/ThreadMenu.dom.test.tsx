@@ -1,13 +1,17 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { threadMenuRows, type ThreadMenuFacts } from "../lib/threadMenu";
 import type { ChipThread, StripChip } from "./ThreadHeaderStrip";
 import { MenuRows } from "./menuBody";
 import { ThreadMenu } from "./ThreadMenu";
+import { dialogsChunk } from "../surfaces/chunks";
+
+// The Recent and Archived lists ride the dialogs chunk; load it once so a list paints with its popover.
+beforeAll(() => dialogsChunk.load());
 
 vi.mock("./HostGlyph", () => ({ HostGlyph: () => <span data-host-glyph /> }));
 

@@ -19,3 +19,7 @@ export { MacBridgeRulesDialog } from "./MacBridgeRulesDialog";
 export { RenameThreadDialog } from "../surfaces/threads/master/RenameThreadDialog";
 // The branch picker's confirm when a switch would carry changes (chrome/BranchPicker.tsx).
 export { SwitchBranchDialog } from "./SwitchBranchDialog";
+// The thread menu's Recent and Archived lists (chrome/ThreadMenu.tsx), mounted only while one is open.
+export { ThreadListPopover } from "./ThreadListPopover";
+// The project plan chip's popover options (chrome/ProjectPlanChip.tsx), mounted only while it is open.
+export { ProjectPlanOptions } from "../surfaces/threads/ProjectPlanCard";

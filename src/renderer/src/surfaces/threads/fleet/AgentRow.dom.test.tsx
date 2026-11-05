@@ -17,6 +17,7 @@ vi.mock("../../../lib/tcserver/commands", async (importOriginal) => ({
 
 import { tooltipChunk, warmTooltips } from "../../../components/ui/tooltip";
 import { agentStatus } from "../../../lib/threads/agents";
+import { modelMarkName } from "../ModelMark";
 import { AgentRow, AgentRowView } from "./AgentRow";
 import { FLEET_ROWS, fixtureHostGlyph, fixtureMeta } from "./fleetFixture";
 
@@ -47,9 +48,42 @@ describe("AgentRowView", () => {
     const { container } = render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);
     const mark = container.querySelector("[data-model]")!;
     expect(mark.querySelector("img, svg")).not.toBeNull();
-    expect(mark.textContent).toBe("Opus 5.5");
+    expect(mark.textContent).toBe("Opus 5.5High");
     hover(mark);
     await waitFor(() => expect(tipText()).toBe("Reviewer, Claude Opus 5.5, high effort, 1M context"), { timeout: 2000 });
+  });
+
+  it("ends line one with the logo, the model and its effort, after the title", () => {
+    const { meta, status } = row("Review the fold");
+    const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
+    const line = container.querySelector("[data-row-title]")!.parentElement!;
+    const order = [...line.querySelectorAll("[data-row-title], [data-model] :is(img, svg), [data-model-name], [data-model-effort]")].map((el) =>
+      el.matches("img, svg") ? "logo" : el.textContent,
+    );
+    expect(order).toEqual(["Review the fold", "logo", modelMarkName("codex", "gpt-6-astra"), "Extra high"]);
+  });
+
+  it("gives the title's width up first and keeps the effort whole", () => {
+    const { meta, status } = row("Build the shell");
+    const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
+    const title = container.querySelector("[data-row-title]")!.className;
+    expect(title).toContain("shrink-[1000]");
+    expect(title).toContain("min-w-16");
+    const mark = container.querySelector("[data-model]")!.className;
+    expect(mark).not.toContain("shrink-[1000]");
+    expect(mark).not.toContain("shrink-0");
+    expect(container.querySelector("[data-model-name]")!.className).toContain("@max-[13rem]/agent:hidden");
+    expect(container.querySelector("[data-model-effort]")!.className).toContain("@max-[13rem]/agent:hidden");
+    expect(container.innerHTML).not.toContain("18rem");
+  });
+
+  it("keeps a settled row's clock after the mark", () => {
+    const { meta, status } = row("Find the row sizes");
+    const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
+    const mark = container.querySelector("[data-model]")!;
+    const time = container.querySelector("[data-agent-time]")!;
+    expect(mark.compareDocumentPosition(time) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(mark.querySelector("[data-model-effort]")?.textContent).toBe("Low");
   });
 
   it("names an untitled agent Subagent", () => {
@@ -207,7 +241,7 @@ describe("AgentRowView", () => {
     render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);
     expect(
       screen.getByRole("button", {
-        name: "Build the shell, Working: Editing HomeView.swift, 3 of 7 tasks, 2m 31s, Implementer, Claude Opus 5.5",
+        name: "Build the shell, Working: Editing HomeView.swift, 3 of 7 tasks, 2m 31s, Implementer, Claude Opus 5.5, high effort",
       }),
     ).toBeTruthy();
   });

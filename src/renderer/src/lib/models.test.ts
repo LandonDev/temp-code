@@ -4,6 +4,7 @@ import {
   coerceModelPickerTab,
   defaultModelId,
   defaultSessionChoice,
+  effortWord,
   hasLiveCatalog,
   isPickerProviderVisible,
   loadDefaultModels,
@@ -100,6 +101,16 @@ function mockLocalStorage() {
     configurable: true,
   });
 }
+
+describe("effortWord", () => {
+  it("reads the composer's words, and capitalises a rung the map lacks", () => {
+    expect(effortWord("minimal")).toBe("Minimal");
+    expect(effortWord("high")).toBe("High");
+    expect(effortWord("xhigh")).toBe("Extra high");
+    expect(effortWord("max")).toBe("Max");
+    expect(effortWord("ultra")).toBe("Ultra");
+  });
+});
 
 describe("model settings memory", () => {
   beforeEach(() => {

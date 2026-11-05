@@ -2,7 +2,8 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sessionStore } from "../../../lib/tcserver/store";
 import { FakeMetaLink } from "../../../test/fakeMetaLink";
-import { MasterRow } from "./MasterRow";
+import { MasterRow, MasterRowView } from "./MasterRow";
+import FIXTURES from "./MasterRow.fixtures";
 import { modelMarkName, modelMarkTip } from "../ModelMark";
 import { standInMeta, type BoardRowRef } from "./useMasterModel";
 
@@ -43,7 +44,8 @@ describe("a board row on a Meta model", () => {
       </>,
     );
     const [wonder, sol] = [...container.querySelectorAll("[data-model]")];
-    expect(wonder.textContent).toBe("Muse Wonder 1.0");
+    expect(wonder.querySelector("[data-model-name]")?.textContent).toBe("Muse Wonder 1.0");
+    expect(wonder.querySelector("[data-model-effort]")?.textContent).toBe("High");
     expect(wonder.querySelector("svg path")?.getAttribute("d")).toMatch(META_PATH);
     expect(sol.querySelector("svg path")?.getAttribute("d") ?? "").not.toMatch(META_PATH);
   });
@@ -57,5 +59,38 @@ describe("a board row on a Meta model", () => {
       "Meta Muse Spark 1.3 on Claude Code, medium effort",
     );
     expect(modelMarkTip({ provider: "claude", model: "claude-opus-5-5", reasoning: "high" })).toBe("Claude Opus 5.5, high effort");
+  });
+});
+
+describe("a board row's model mark", () => {
+  afterEach(cleanup);
+
+  it("ends with the effort after the model, and a model with none draws the model alone", () => {
+    const marks = FIXTURES.map((f) => {
+      const { container, unmount } = render(<MasterRowView {...(f.props as Parameters<typeof MasterRowView>[0])} />);
+      const mark = container.querySelector("[data-row-title]")!.parentElement!.querySelector("[data-model]")!;
+      const read = [mark.querySelector("[data-model-name]")?.textContent, mark.querySelector("[data-model-effort]")?.textContent ?? null];
+      unmount();
+      return read;
+    });
+    expect(marks).toEqual([
+      ["Opus 5.5", "High"],
+      ["Opus 5.5", "High"],
+      [expect.any(String), "Extra high"],
+      ["Opus 5.5", "Low"],
+      [expect.any(String), null],
+    ]);
+  });
+
+  it("gives the title's width up first", () => {
+    const { container } = render(<MasterRowView {...(FIXTURES[0].props as Parameters<typeof MasterRowView>[0])} />);
+    const title = container.querySelector("[data-row-title]")!.className;
+    expect(title).toContain("shrink-[1000]");
+    expect(title).toContain("min-w-16");
+  });
+
+  it("draws no model mark on its subagent lines", () => {
+    const { container } = render(<MasterRowView {...(FIXTURES[0].props as Parameters<typeof MasterRowView>[0])} />);
+    expect(container.querySelectorAll("[data-model]")).toHaveLength(1);
   });
 });

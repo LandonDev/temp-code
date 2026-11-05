@@ -7,8 +7,11 @@ import { usePlanFile } from "../hooks/usePlanFile";
 import { useProjectPlan } from "../lib/projectPlan";
 import { sessionStore } from "../lib/tcserver/store";
 import { useProject } from "../stores/project";
-import { ProjectPlanOptions } from "../surfaces/threads/ProjectPlanCard";
+import { dialogsChunk } from "../surfaces/chunks";
 import { Milestone } from "./icons";
+
+/** The plan's options ride the dialogs chunk, mounted only while the popover is open (surfaces/threads/ProjectPlanCard.tsx). */
+const ProjectPlanOptions = dialogsChunk.surface("ProjectPlanOptions");
 
 /** The chip's words: "Plan", and the milestones done of all of them once
  *  the plan is kept as the project's plan. */
@@ -49,6 +52,7 @@ export function ProjectPlanChip() {
                   size="sm"
                   data-tauri-drag-region="false"
                   className="gap-1.5 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground"
+                  {...dialogsChunk.intent}
                 />
               }
             />

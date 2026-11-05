@@ -50,7 +50,8 @@ describe("a board row for a stand-in child", () => {
     expect([...rows].map((r) => r.getAttribute("data-menu-id"))).toEqual(["far", "near"]);
     expect(rows[0].querySelector("[data-model]")).toBeNull();
     expect(rows[0].textContent).toContain("Update 35 cont child");
-    expect(rows[1].querySelector("[data-model]")?.textContent).toBe("gpt-6.1-sol");
+    expect(rows[1].querySelector("[data-model-name]")?.textContent).toBe("gpt-6.1-sol");
+    expect(rows[1].querySelector("[data-model-effort]")?.textContent).toBe("High");
   });
 
   it("the mark's words take a missing model or provider", () => {
