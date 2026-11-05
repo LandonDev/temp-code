@@ -2167,7 +2167,7 @@ keyboard action. Every animated change has a static cue as well.
 
   | Proof | `List` (today) | `ScrollView` + `LazyVStack`, same ids |
   | --- | --- | --- |
-  | transcript, rows made twice on screen | 0 in all four runs (26 to 34 rows; 2 to 5 rows made again after scrolling off) | not run |
+  | transcript, rows made twice on screen | 0 in all four runs (26 to 34 rows; up to 5 made again after scrolling off) | not run |
   | transcript, scrolled-up offset | held exactly (0 offset changes while 12 rows arrived) | not run |
   | stream, late frames of ~1,370 | 22, worst 71 ms (most while the 420-line Edit grows, 7 to 11 s) | 25, worst 94 ms |
   | stream, reader at the bottom | lost at 20 s (the turn's settle) and never back, 203 frames | held (3 frames at 2.8 s) |
