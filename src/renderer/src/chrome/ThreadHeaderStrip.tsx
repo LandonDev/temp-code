@@ -12,8 +12,9 @@ import type { ThreadRules } from "@server/shared/rules";
 import { Tip, TruncateTip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
+import { OVERFLOW_FADE, useOverflowEdges } from "../hooks/useOverflowEdges";
 import { Input } from "../components/ui/input";
-import { StatusMark } from "../components/ui/status";
+import { STATUS_ON_TIP, StatusMark } from "../components/ui/status";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { pendingApprovalForSession } from "../lib/approvalToast";
 import { DRAG_THRESHOLD, setGrabbing, suppressTextSelection } from "../lib/drag";
@@ -43,9 +44,6 @@ import { RowsContextMenu, type MenuRow } from "./menuRows";
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 import { THREAD_LABELS } from "../surfaces/threads/threadTypes";
 import { ThreadStatusMark } from "./TabIndicator";
-
-/** The tooltip is inverted (foreground on background), so the hover line takes its muted tone whole. */
-const HOVER_LINE = "font-normal text-background/70 **:data-[slot=status-detail]:text-background/70";
 
 /**
  * The deck title bar's thread strip: every root thread of the scope on two
@@ -151,6 +149,8 @@ export function ThreadHeaderStrip({
   if (shelf.length > 0 && keptShelf !== shelf) setKeptShelf(shelf);
   const shownShelf = shelf.length > 0 ? shelf : keptShelf;
   useStripHoldRelease();
+  // The shelf has no arrows: its cut edges fade over 24px instead (DESIGN "Shadow").
+  const shelfEdges = useOverflowEdges<HTMLDivElement>();
   // Plain string keys: a cast inside a computed key stops the React Compiler from compiling the strip.
   const pad = {
     "--strip-pad-l": overflow?.left ? `${ARROW_ROOM_PX}px` : undefined,
@@ -211,13 +211,14 @@ export function ThreadHeaderStrip({
         <Collapsible open={shelf.length > 0}>
           <CollapsibleContent data-shelf-fold className="collapsible-auto">
             <div
+              ref={shelfEdges}
               onWheel={wheelToX}
               role="tablist"
               aria-label="Settled threads"
               aria-orientation="horizontal"
               data-strip="shelf"
               data-tauri-drag-region="false"
-              className="scrollbar-none flex h-8 min-w-0 items-start gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5 pt-0.5"
+              className={`scrollbar-none flex h-8 min-w-0 items-start gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5 pt-0.5 ${OVERFLOW_FADE}`}
             >
               <TooltipProvider>
                 <ChipRow chips={shownShelf} activeId={activeId} onSelect={onSelect} shelf {...events} />
@@ -340,7 +341,8 @@ export function ChipHoverLabel({ title, status, host, type }: { title: string; s
   return (
     <>
       <span>{title}</span>
-      <ThreadStatusMark status={status} className={HOVER_LINE} />
+      {/* The word in the tooltip's ink and weight, its detail the muted step. */}
+      <ThreadStatusMark status={status} className={STATUS_ON_TIP} />
       {type ? <span className="text-background/70">{type}</span> : null}
       {host ? <span className="text-background/70">{host}</span> : null}
     </>
@@ -518,8 +520,7 @@ function HomeHeading({ chip, ...events }: { chip: StripChip } & ChipEvents) {
   );
 }
 
-const LIVE_CHIP =
-  "h-7 max-w-56 gap-2 px-3 text-[13px] data-unread:font-medium data-unread:text-foreground";
+const LIVE_CHIP = "h-7 gap-2 px-3 text-[13px] data-unread:font-medium data-unread:text-foreground";
 /** A chip's title; its ::after is the bold copy that holds the width. */
 const CHIP_TITLE =
   "min-w-0 truncate after:invisible after:block after:h-0 after:overflow-hidden after:font-medium after:content-[attr(data-text)]";
@@ -592,7 +593,9 @@ function Chip({
           )}
           {/* An unseen medium-weight copy of the title (its ::after, no height)
               holds the bold width, so unread never widens the chip. */}
-          <span data-chip-title data-text={title} className={`${CHIP_TITLE}${shelf ? " max-w-40" : ""}`}>
+          {/* The cap is the title's in both rows (224px live, 160px on the
+              shelf), so Master and the host glyph never take its room. */}
+          <span data-chip-title data-text={title} className={`${CHIP_TITLE} ${shelf ? "max-w-40" : "max-w-56"}`}>
             {title}
           </span>
           {events.masterIds?.has(chip.id) ? (

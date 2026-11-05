@@ -2,7 +2,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { STATUS_ON_TIP } from "../components/ui/status";
 import { resetTooltips, tooltipChunk, warmTooltips } from "../components/ui/tooltip";
+import { OVERFLOW_FADE } from "../hooks/useOverflowEdges";
 import { slotTarget, type HeaderModel } from "../lib/threadHeaderModel";
 import { getExternalPaneDrop } from "../lib/paneDrop";
 import type { Session } from "../lib/session";
@@ -409,6 +411,37 @@ describe("ThreadHeaderStrip chip", () => {
     // While the mark stands in for the glyph, the hover line names the type.
     const { container: typed } = render(<ChipHoverLabel title="Alpha" status={chipStatus(working, {})} type="Implementation" />);
     expect(typed.textContent).toBe("AlphaWorkingRunning bun3/7Implementation");
+    // The word keeps the tooltip's full ink; only the detail takes its muted step.
+    const mark = typed.querySelector<HTMLElement>('[data-slot="status-mark"]')!;
+    expect(mark.className).toContain(STATUS_ON_TIP);
+    expect(mark.className.split(/\s+/)).not.toContain("text-background/70");
+    expect(mark.className).not.toContain("font-normal");
+  });
+
+  it("caps the title, not the chip: 224px on the live row, 160px on the shelf", () => {
+    mount({ model: { live: [chip("a", "Alpha")], dormant: [{ ...chip("s", "Settled"), live: false }], activeId: "a" } });
+    const live = tab("Alpha");
+    expect(live.className.split(/\s+/)).not.toContain("max-w-56");
+    expect(live.querySelector("[data-chip-title]")!.className.split(/\s+/)).toContain("max-w-56");
+    expect(tab("Settled").querySelector("[data-chip-title]")!.className.split(/\s+/)).toContain("max-w-40");
+  });
+
+  it("fades the shelf's cut edges instead of a hard stop", () => {
+    const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollWidth");
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 100 });
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => 300 });
+    try {
+      mount({ model: { live: [chip("a", "Alpha")], dormant: [{ ...chip("s", "Settled"), live: false }], activeId: "a" } });
+      const shelf = shelfRow()!;
+      for (const c of OVERFLOW_FADE.split(" ")) expect(shelf.className).toContain(c);
+      // Scrolled to its start, only the far edge has more past it.
+      expect(shelf.hasAttribute("data-overflow-end")).toBe(true);
+      expect(shelf.hasAttribute("data-overflow-start")).toBe(false);
+    } finally {
+      if (width) Object.defineProperty(HTMLElement.prototype, "clientWidth", width);
+      if (scroll) Object.defineProperty(HTMLElement.prototype, "scrollWidth", scroll);
+    }
   });
 });
 

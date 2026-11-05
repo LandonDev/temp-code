@@ -643,14 +643,17 @@ before the host's meta lands (`chipThreadsOf` in chrome/ShellTitleBar.tsx).
 - **Hover.** One `Tooltip` per chip under its row's `TooltipProvider`,
   which sits inside the row's tablist (the end group has its own): the lazy
   provider remounts what it wraps when tooltips warm, so none sits around a
-  scroller and a scrolled row keeps its place. The
-  title, under it the status word with what it is about ("Working
-  typecheck", "Needs you  approve Bash", a tally, a failure's verdict), and
-  the host's name with two or more hosts.
+  scroller and a scrolled row keeps its place. The label is the title, under
+  it the status line as two spans, the word in the tooltip's own ink and
+  weight and what it is about in its muted step (`STATUS_ON_TIP`): Working
+  then "Running typecheck", Needs you then "Approve Bash", a tally, a
+  failure's verdict; then the type while the status mark stands in for its
+  glyph, and the host's name with two or more hosts.
 - **Overflow.** A live row wider than its room scrolls sideways (a mouse
   wheel scrolls it too), and each end that hides chips gets a ghost
   `icon-xs` arrow on the bar's tone, over the row's own box, that scrolls it
-  by most of a width. The shelf scrolls on its own.
+  by most of a width. The shelf scrolls on its own, with no arrows: an edge
+that hides chips fades over 24px (`useOverflowEdges`, `OVERFLOW_FADE`).
 - **New thread.** The "+" right after the live row, outside its tablist so
   it never scrolls away (chrome/NewThreadChooser.tsx), is a ghost icon
   button, or "New thread" in words on an empty strip, opening a `Popover`
