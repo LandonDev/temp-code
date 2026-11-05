@@ -991,12 +991,14 @@ export function ProjectCardView({
           </>
         )}
       </span>
-      <span className="mt-0.5 flex h-4 min-w-0 items-center gap-2 text-muted-foreground">
+      <span className="mt-0.5 flex h-4 min-w-0 items-center gap-1 text-muted-foreground" data-card-branch>
         <span className="flex min-w-0 items-center gap-1">
           <GitBranch aria-hidden className="size-3 shrink-0" />
           <span className="min-w-0 truncate">{branch ?? "local checkout"}</span>
         </span>
-        <span className="shrink-0">{mode === "worktree" ? "worktree" : "local"}</span>
+        {/* The mode is said only when it is not the default (a local checkout),
+            and by weight, so the two facts never differ by space alone. */}
+        {mode === "worktree" ? <span className="shrink-0 font-medium">worktree</span> : null}
       </span>
       {lines.length ? (
         <span className="mt-1 flex min-w-0 flex-col">

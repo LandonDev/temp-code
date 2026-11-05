@@ -7,7 +7,7 @@ import type { ProjectMeta, SessionMeta } from '../lib/tcserver/types'
 import { mountProbe } from '../test/renderProbe'
 import { threadRow, type ThreadRow } from '../lib/workspaceSessions'
 import { nextPage } from '../lib/sidebarRows'
-import { PlanReadyContext, ProjectCard, ThreadList } from './WorkspaceSessions'
+import { PlanReadyContext, ProjectCard, ProjectCardView, ThreadList } from './WorkspaceSessions'
 import { screen, within } from '@testing-library/react'
 import { resetMenus } from './menuRows'
 import { subagentRowsStore } from '../stores/subagentRows'
@@ -107,7 +107,8 @@ describe('a project card', () => {
     expect(card.textContent).toContain('Project p1')
     expect(card.textContent).toContain('3m')
     expect(card.textContent).toContain('main')
-    expect(card.textContent).toContain('local')
+    // A local checkout is the default: its mode is not said.
+    expect(card.querySelector('[data-card-branch]')?.textContent).toBe('main')
     // The 13px name and the 12px time share a baseline.
     const nameLine = Array.from(card.querySelectorAll<HTMLElement>('span')).find((el) => el.textContent?.startsWith('Project p1') && el.className.includes('h-5'))!
     expect(nameLine.className).toContain('items-baseline')
@@ -218,6 +219,17 @@ describe('a project card', () => {
     expect(onOpen).toHaveBeenCalledTimes(1)
     // The row's press steps its fill to /12 while the open control is held.
     expect(row.className).toContain('has-[>[data-row-open]:active]:bg-foreground/12')
+    probe.unmount()
+  })
+
+  it("says a worktree's mode by weight, 4px after the branch, and a local checkout's not at all", () => {
+    const probe = mountProbe(
+      <ProjectCardView name="Alpha" branch="tc/alpha" mode="worktree" latest={0} now={0} lines={[]} hidden={0} counts={[]} ariaLabel="Alpha" selected={false} />,
+    )
+    const line = probe.container.querySelector<HTMLElement>('[data-card-branch]')!
+    expect(line.className).toContain('gap-1')
+    const mode = Array.from(line.querySelectorAll('span')).find((s) => s.textContent === 'worktree')
+    expect(mode?.className).toContain('font-medium')
     probe.unmount()
   })
 
