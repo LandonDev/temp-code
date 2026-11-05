@@ -1703,6 +1703,52 @@ names the far child).
   compaction block, digests, plan hand-off), session-search.test.ts,
   app-bridge.test.ts, the renderer's threadNotes.test.ts,
   NotesPanel.dom.test.tsx and ThreadBanners.dom.test.tsx.
+## Away from computer: threads finish without the person
+- The state is the person's, one copy per host: `{ enabled, at, by }` and
+  the stretch's tally of decisions per thread in the settings table
+  (`away`, `away:decided`; src/main/server/away.ts `AwayService`,
+  src/shared/away.ts). `away.get` (read), `away.set` (approve: it denies
+  every thread's approvals), `away.apply` (admin, the peer leg) and the
+  `away` push (src/shared/contract-away.ts). No home host: the Mac sends a
+  flip to every link, applies the box's push when newer and never sends it
+  back, and link-up settles both ways, newest wins
+  (remote/awaySync.ts; docs/box.md "Away from computer: one state on every
+  host"). Only a person turns it off.
+- The words (src/main/server/awayPrompts.ts): `AWAY_MECHANICS` rides every
+  prompt beside the steer rule (claude's system prompt through
+  `mechanicsFor`, other harnesses' first message through threads.ts), with
+  the `<away state="on">` block while away is on at spawn. The registry
+  keeps what each live harness was told (`awayToldAs`): a flip whispers the
+  block into every running or waiting turn (`awayChanged`), every other
+  thread catches up ahead of its next turn (`takeNotices`: a send, the turn
+  pass, a reports wake), so on and off again while idle tells it nothing.
+  A master's report gathers its batch's decisions.
+- The host backs the prompt up (sessions.ts `interceptAway`, in the emit
+  path): while away, a question is answered with `AWAY_QUESTION_REPLY` as
+  each question's typed answer and an approval is denied with
+  `AWAY_APPROVAL_REPLY` (`DriverHandle.approve(…, reason)`; claude sends
+  the reason, the other wires carry no text); the request's row, its
+  `waiting` and its resolved row are never written, so nothing reads Needs
+  you and the notifier stays quiet; a driver with no resolver yet gets the
+  card as usual after one retry. Turning away on answers the cards already
+  waiting (`Store.unresolvedRequests`, the newest rows only). The Mac
+  bridge refuses a call that would ask its away person
+  (`MAC_AWAY_REFUSAL`) and the box writes the row. Each of these, and each
+  `note_decision` call (an app tool on every thread, `app.noteDecision`
+  over the codex bridge), is one `notice` of kind `away`
+  (`away: { kind: decision | question | approval, text }`) that counts
+  toward the tally.
+- The app: the rail foot's Away row above Settings (chrome/AwayRow.tsx, a
+  switch on lib/away.ts, its track from components/ui/switch-track.ts),
+  Threads → Away from Computer (a checkbox row, `MenuState.checked`), the
+  away notice line folded into the run, and on the way back one toast
+  "Decided without you in N threads" with Review (chrome/AwayReturn.tsx,
+  AwayReviewDialog in the dialogs chunk). The phone only decodes the rows.
+- Proof: `bun run script:e2e-away` (a haiku thread asks a question while
+  away and finishes without a card; a flip off reaches a running turn);
+  unit tests away, awaySync, sessions-away, macBridge, macTools, the
+  drivers' answers and denials, AwayRow.dom, AwayReturn.dom.
+
 ## Background work and watching: a structured wait on the session row
 - The claude driver keeps every live background task as an item
   (`BackgroundTaskSchema` in src/shared/events.ts: id, the model's label,

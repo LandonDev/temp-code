@@ -578,6 +578,14 @@ banner (chrome/ThreadBanners.tsx `bannerThreads`) folds a batch thread
 paused with its master under the master's line: "Master is paused, and 3
 batch threads with it, and 2 Mac jobs with it".
 
+While the person is away (Away from computer, src/main/server/away.ts),
+every thread of the batch decides without asking and notes each choice
+with `note_decision`, and the host answers any question or approval for
+them (CLAUDE.md "Away from computer"). The master's mechanics add one
+rule: its final report gathers every child's decisions under "Decisions
+made while you were away". A master watching through the flip hears the
+away block at its next wake, ahead of the reports (`takeNotices`).
+
 ## The view
 
 docs/LAYOUT.md "Master" has the diagram and the rules; the board, its
