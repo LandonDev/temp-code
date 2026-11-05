@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { RemoteKey, RemotePairing, RemoteSession } from "@server/shared/contract-remote";
 import { PageEmpty } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
@@ -31,17 +32,24 @@ export function Clients({
   sessions: RemoteSession[];
   onPair: () => void;
   onNewKey: () => void;
-  onAct: (method: string, params: unknown) => void;
+  /** Resolves null once the call landed, else why it did not, said under the client's own row. */
+  onAct: (method: string, params: unknown) => Promise<string | null>;
 }) {
   const empty = pairings.length === 0 && keys.length === 0 && sessions.length === 0;
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const run = async (id: string, method: string): Promise<void> => {
+    setErrors(({ [id]: _gone, ...rest }) => rest);
+    const failure = await onAct(method, { id });
+    if (failure !== null) setErrors((prev) => ({ ...prev, [id]: failure }));
+  };
   // Neither can be undone: the client has to pair again.
   const revoke = async (k: RemoteKey): Promise<void> => {
     if (await confirmAction({ title: `Revoke ${k.name}`, body: "Its sockets close now and it has to pair again.", action: "Revoke", danger: true }))
-      onAct("remote.keys.revoke", { id: k.id });
+      await run(k.id, "remote.keys.revoke");
   };
   const signOut = async (s: RemoteSession): Promise<void> => {
     if (await confirmAction({ title: `Sign out ${s.keyName}`, body: "The browser has to pair again to come back.", action: "Sign out", danger: true }))
-      onAct("remote.sessions.revoke", { id: s.id });
+      await run(s.id, "remote.sessions.revoke");
   };
   return (
     <Group
@@ -63,11 +71,12 @@ export function Clients({
           data-client-pairing={p.id}
           title={p.name}
           description={<Facts parts={["Pairing code", capsText(p.caps)]} />}
+          error={errors[p.id]}
         >
           <span className="text-xs tabular-nums text-muted-foreground">
             <Countdown prefix="expires in" at={p.expiresAt} />
           </span>
-          <Button variant="ghost" size="sm" onClick={() => onAct("remote.pairings.revoke", { id: p.id })}>
+          <Button variant="ghost" size="sm" onClick={() => void run(p.id, "remote.pairings.revoke")}>
             Cancel
           </Button>
         </Row>
@@ -87,6 +96,7 @@ export function Clients({
               ]}
             />
           }
+          error={errors[k.id]}
         >
           <Button variant="ghost" className="text-muted-foreground hover:text-destructive" size="sm" onClick={() => void revoke(k)}>
             Revoke
@@ -99,6 +109,7 @@ export function Clients({
           data-client-session={s.id}
           title={s.keyName}
           description={<Facts parts={[shortAgent(s.userAgent ?? "") || "Browser", capsText(s.caps), `seen ${ago(s.lastSeenAt)}`]} />}
+          error={errors[s.id]}
         >
           <Button variant="ghost" className="text-muted-foreground hover:text-destructive" size="sm" onClick={() => void signOut(s)}>
             Sign out

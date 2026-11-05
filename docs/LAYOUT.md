@@ -257,7 +257,11 @@ Running threads and Sync with Sync now; "Mac bridge for <host>" follows
 (Access, the running and held calls, the forwarded ports, Settings… for the
 caps, forwarding and shared folders). Facts on one line are `Facts` spans,
 never dots; numbers are `CommitField`s; switches `SettingSwitch`; options
-`ChoiceSelect`. Add host sits at the page's foot (desktop only).
+`ChoiceSelect`. A refused change is said under its own row (a client's
+Revoke under that client, a port under Port, Sync now under Sync); only the
+listener's own failure sits under Remote access. A refused field puts the
+value the host still holds back, as a refused switch slides back. Add host
+sits at the page's foot (desktop only).
 
 ### Settings → a workspace
 

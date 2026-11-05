@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { HarnessSyncStatus } from "@server/shared/contract-harness";
 import type { MemorySyncStatus } from "@server/shared/contract-memory";
 import { Button } from "../../../components/ui/button";
@@ -26,21 +27,29 @@ export function LocalSync({
 }: {
   harness: HarnessSyncStatus;
   memory: MemorySyncStatus | null;
-  /** Resolves whether the change landed, so a switch can slide back. */
-  onAct: (method: string, params: unknown) => void | Promise<boolean>;
+  /** Resolves null once the change landed, else why it did not; a switch slides back and its row says why. */
+  onAct: (method: string, params: unknown) => Promise<string | null>;
 }) {
   const conflicts = memory?.conflicts ?? [];
+  const [errors, setErrors] = useState<{ harness?: string; memory?: string }>({});
+  const run = async (leg: "harness" | "memory", enabled: boolean): Promise<boolean> => {
+    setErrors(({ [leg]: _gone, ...rest }) => rest);
+    const failure = await onAct(`${leg}.settings.set`, { enabled });
+    if (failure !== null) setErrors((prev) => ({ ...prev, [leg]: failure }));
+    return failure === null;
+  };
   return (
     <Group title="Sync" data-sync="local">
       <Row
         title="Harness config"
         description={harness.skipped > 0 ? `${harness.skipped} ${harness.skipped === 1 ? "file stays" : "files stay"} here: over 16 MB, a symlink out of reach, or a macOS binary.` : undefined}
+        error={errors.harness}
       >
-        <SettingSwitch label="Harness config" on={harness.enabled} onChange={(enabled) => onAct("harness.settings.set", { enabled })} />
+        <SettingSwitch label="Harness config" on={harness.enabled} onChange={(enabled) => run("harness", enabled)} />
       </Row>
       {memory ? (
-        <Row title="Memory">
-          <SettingSwitch label="Memory" on={memory.enabled} onChange={(enabled) => onAct("memory.settings.set", { enabled })} />
+        <Row title="Memory" error={errors.memory}>
+          <SettingSwitch label="Memory" on={memory.enabled} onChange={(enabled) => run("memory", enabled)} />
         </Row>
       ) : null}
       {conflicts.length > 0 ? (
@@ -79,8 +88,10 @@ export function HostSync({
   environmentId: string;
   harness: HarnessSyncStatus;
   memory: MemorySyncStatus | null;
-  onSync: (environmentId: string, harnessOn: boolean, memoryOn: boolean) => void;
+  /** Resolves null once the sync ran, else why it did not, said under this row. */
+  onSync: (environmentId: string, harnessOn: boolean, memoryOn: boolean) => Promise<string | null>;
 }) {
+  const [error, setError] = useState<string | null>(null);
   const env = harness.environments.find((e) => e.id === environmentId);
   if (!env) return null;
   const mem = memory?.environments.find((m) => m.id === environmentId) ?? null;
@@ -92,6 +103,7 @@ export function HostSync({
     <Row
       title="Sync"
       data-sync={environmentId}
+      error={error}
       description={
         <>
           {sets ? (
@@ -110,7 +122,10 @@ export function HostSync({
         variant="secondary"
         size="sm"
         disabled={(!harness.enabled && !memoryOn) || !env.connected || running}
-        onClick={() => onSync(environmentId, harness.enabled, memoryOn)}
+        onClick={() => {
+          setError(null);
+          void onSync(environmentId, harness.enabled, memoryOn).then(setError);
+        }}
       >
         Sync now
       </Button>

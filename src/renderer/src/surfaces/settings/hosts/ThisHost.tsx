@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { RemoteStatus } from "@server/shared/contract-remote";
 import type { AttachmentSettings } from "@server/shared/contract-attachments";
 import { SettingSwitch } from "../../../components/setting-switch";
@@ -17,7 +18,12 @@ export function listenerText(status: RemoteStatus): string {
   return status.enabled ? "Off (TEMP_CODE_REMOTE_PORT=0)." : "Off.";
 }
 
-/** This machine's own rows, under its heading: the listener and its port, the pairing origin, the stuck clock and the attachment limit. */
+type Field = "enabled" | "port" | "publicOrigin" | "stuckMinutes" | "attachments";
+
+/** This machine's own rows, under its heading: the listener and its port,
+ *  the pairing origin, the stuck clock and the attachment limit. A refused
+ *  change is said under its own row; `error` (the listener's poll) is
+ *  Remote access's alone. */
 export function ThisHost({
   status,
   attachments,
@@ -28,17 +34,32 @@ export function ThisHost({
   status: RemoteStatus;
   attachments: AttachmentSettings | null;
   error: string | null;
-  /** Each resolves whether the change landed, so a switch can slide back. */
-  onSettings: (patch: SettingsPatch) => void | Promise<boolean>;
-  onAct: (method: string, params: unknown) => void | Promise<boolean>;
+  /** Each resolves null once the change landed, else why it did not. */
+  onSettings: (patch: SettingsPatch) => Promise<string | null>;
+  onAct: (method: string, params: unknown) => Promise<string | null>;
 }) {
+  const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
+  /** Runs a change, keeps its failure on its row, and resolves whether it landed (a switch slides back, a field restores its value). */
+  const run = async (field: Field, change: Promise<string | null>): Promise<boolean> => {
+    setErrors(({ [field]: _gone, ...rest }) => rest);
+    const failure = await change;
+    if (failure !== null) setErrors((prev) => ({ ...prev, [field]: failure }));
+    return failure === null;
+  };
   return (
     <>
-      <Row title="Remote access" description={listenerText(status)} error={error}>
-        <SettingSwitch label="Remote access" on={status.enabled} onChange={(enabled) => onSettings({ enabled })} />
+      <Row title="Remote access" description={listenerText(status)} error={errors.enabled ?? error}>
+        <SettingSwitch label="Remote access" on={status.enabled} onChange={(enabled) => run("enabled", onSettings({ enabled }))} />
       </Row>
-      <Row title="Port">
-        <CommitField kind="int" aria-label="Port" value={status.configuredPort} min={1} max={65535} onCommit={(port) => port !== null && onSettings({ port })} />
+      <Row title="Port" error={errors.port}>
+        <CommitField
+          kind="int"
+          aria-label="Port"
+          value={status.configuredPort}
+          min={1}
+          max={65535}
+          onCommit={(port) => (port === null ? undefined : run("port", onSettings({ port })))}
+        />
       </Row>
       <Row
         title="Public origin"
@@ -47,27 +68,28 @@ export function ThisHost({
             ? "Pairing links start with this."
             : `Pairing links start with ${status.origin}${status.learnedOrigin ? ", learned from the tunnel" : ""}.`
         }
+        error={errors.publicOrigin}
       >
         <CommitField
           aria-label="Public origin"
           value={status.publicOrigin}
           placeholder="https://tempcode.example.com"
           className="w-64"
-          onCommit={(publicOrigin) => onSettings({ publicOrigin })}
+          onCommit={(publicOrigin) => run("publicOrigin", onSettings({ publicOrigin }))}
         />
       </Row>
-      <Row title="Stuck after" description="Minutes of silence before a working thread is stuck.">
+      <Row title="Stuck after" description="Minutes of silence before a working thread is stuck." error={errors.stuckMinutes}>
         <CommitField
           kind="int"
           aria-label="Stuck after minutes"
           value={status.stuckMinutes}
           min={1}
           max={1440}
-          onCommit={(stuckMinutes) => stuckMinutes !== null && onSettings({ stuckMinutes })}
+          onCommit={(stuckMinutes) => (stuckMinutes === null ? undefined : run("stuckMinutes", onSettings({ stuckMinutes })))}
         />
       </Row>
       {attachments ? (
-        <Row title="Attachment limit" description="Largest upload or paste, in MB.">
+        <Row title="Attachment limit" description="Largest upload or paste, in MB." error={errors.attachments}>
           <CommitField
             kind="int"
             aria-label="Attachment limit in MB"
@@ -77,7 +99,7 @@ export function ThisHost({
             onCommit={(mb) => {
               if (mb === null) return;
               forgetAttachmentSettings();
-              onAct("attachment.settings.set", { maxBytes: mb * 1024 * 1024 });
+              return run("attachments", onAct("attachment.settings.set", { maxBytes: mb * 1024 * 1024 }));
             }}
           />
         </Row>

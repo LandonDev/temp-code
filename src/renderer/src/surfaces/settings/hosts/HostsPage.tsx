@@ -86,30 +86,32 @@ function useRemoteData() {
     const t = window.setInterval(() => void refresh(), POLL_MS);
     return () => window.clearInterval(t);
   }, [refresh]);
-  /** Resolves whether the call landed; a failure is said in the error line. */
+  /** Resolves null once the call landed, else its failure, which the
+   *  caller says under its own row (never the page's: the listener's
+   *  line is Remote access's alone). */
   const act = useCallback(
-    async (method: string, params: unknown): Promise<boolean> => {
+    async (method: string, params: unknown): Promise<string | null> => {
       try {
         await rpc(method, params);
-        await refresh();
-        return true;
       } catch (err) {
-        setError(errorText(err));
-        return false;
+        return errorText(err);
       }
+      await refresh();
+      return null;
     },
     [refresh],
   );
   /** Sync now on a host runs whichever legs are on: the harness config out, the memory both ways. */
   const sync = useCallback(
-    async (environmentId: string, harnessOn: boolean, memoryOn: boolean) => {
+    async (environmentId: string, harnessOn: boolean, memoryOn: boolean): Promise<string | null> => {
       try {
         if (harnessOn) await rpc("harness.sync", { environmentId });
         if (memoryOn) await rpc("memory.sync", { environmentId });
-        await refresh();
       } catch (err) {
-        setError(errorText(err));
+        return errorText(err);
       }
+      await refresh();
+      return null;
     },
     [refresh],
   );
@@ -183,7 +185,7 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
                     attachments={attachments}
                     error={remote.error}
                     onSettings={(patch) => remote.act("remote.settings.set", patch)}
-                    onAct={(method, params) => remote.act(method, params)}
+                    onAct={remote.act}
                   />
                   <HostAdmission environmentId={section.id} />
                   {web ? null : <LoadLimitRow />}
@@ -193,7 +195,7 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
                   <HostDeploy environmentId={section.id} name={section.name} />
                   <HostAdmission environmentId={section.id} />
                   {harness ? (
-                    <HostSync environmentId={section.id} harness={harness} memory={memory} onSync={(id, h, m) => void remote.sync(id, h, m)} />
+                    <HostSync environmentId={section.id} harness={harness} memory={memory} onSync={remote.sync} />
                   ) : null}
                 </>
               )}
@@ -207,10 +209,10 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
                 sessions={sessions}
                 onPair={() => setDialog({ kind: "pair" })}
                 onNewKey={() => setDialog({ kind: "key" })}
-                onAct={(method, params) => void remote.act(method, params)}
+                onAct={remote.act}
               />
               {web ? null : <LocalRelease />}
-              {harness ? <LocalSync harness={harness} memory={memory} onAct={(method, params) => remote.act(method, params)} /> : null}
+              {harness ? <LocalSync harness={harness} memory={memory} onAct={remote.act} /> : null}
               {web ? null : <MacBridgeRememberedSection />}
             </>
           ) : null}

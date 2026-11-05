@@ -210,4 +210,33 @@ describe("HostsPage", () => {
     await flush();
     expect(calls[0]).toEqual({ method: "remote.settings.set", params: { port: 7700 } });
   });
+
+  it("says a refused revoke under that client's own row, not under Remote access", async () => {
+    seed({ "remote.keys.list": [key()] });
+    delete answers["remote.keys.revoke"];
+    const { container } = render(<HostsPage />);
+    await flush();
+    fireEvent.click(screen.getByText("Revoke"));
+    await flush();
+    const row = container.querySelector('[data-client-key="k1"]')!;
+    expect(row.textContent).toContain("no remote.keys.revoke");
+    const remote = screen.getByText("Remote access").closest("[data-slot=page-row]")!;
+    expect(remote.textContent).not.toContain("no remote.keys.revoke");
+  });
+
+  it("puts the port it holds back in the field when a new one is refused, and says why under Port", async () => {
+    render(<HostsPage />);
+    await flush();
+    delete answers["remote.settings.set"];
+    const field = screen.getByLabelText("Port") as HTMLInputElement;
+    fireEvent.focus(field);
+    fireEvent.change(field, { target: { value: "7700" } });
+    fireEvent.blur(field);
+    await flush();
+    expect(field.value).toBe("7677");
+    const row = field.closest("[data-slot=page-row]")!;
+    expect(row.textContent).toContain("no remote.settings.set");
+    const remote = screen.getByText("Remote access").closest("[data-slot=page-row]")!;
+    expect(remote.textContent).not.toContain("no remote.settings.set");
+  });
 });

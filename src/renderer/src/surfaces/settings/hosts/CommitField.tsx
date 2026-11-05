@@ -4,7 +4,8 @@ import { cn } from "../../../lib/cn";
 
 /**
  * The one settings field: commits on blur or Enter, snaps back to the value
- * when the text is not one it takes, and Escape restores it. A number field
+ * when the text is not one it takes or the commit is refused (`onCommit`
+ * resolving false), and Escape restores it. A number field
  * takes a whole number (`int`) or a decimal in `min`..`max`; with
  * `allowEmpty` an empty field commits null (follow the default). A text
  * field commits its trimmed text when it changed.
@@ -16,9 +17,11 @@ type NumberField = Shared & {
   min?: number;
   max?: number;
   allowEmpty?: boolean;
-  onCommit: (value: number | null) => void;
+  onCommit: (value: number | null) => Commit;
 };
-type TextField = Shared & { kind?: "text"; value: string; onCommit: (value: string) => void };
+type TextField = Shared & { kind?: "text"; value: string; onCommit: (value: string) => Commit };
+/** A commit's outcome: false (now or once it settles) puts the committed value back in the field. */
+type Commit = void | boolean | Promise<boolean>;
 
 const shown = (props: NumberField | TextField): string => (props.value === null ? "" : String(props.value));
 
@@ -32,21 +35,27 @@ export function CommitField(props: NumberField | TextField) {
     if (!editing.current) setText(committed);
   }, [committed]);
 
+  // A refused commit leaves `committed` as it was, so nothing else would put the text back.
+  const settle = (outcome: Commit): void => {
+    void Promise.resolve(outcome).then((landed) => {
+      if (landed === false && !editing.current) setText(committed);
+    });
+  };
   const commit = (): void => {
     const raw = text.trim();
     if (kind === "text") {
       const field = props as TextField;
-      if (raw !== field.value) field.onCommit(raw);
+      if (raw !== field.value) settle(field.onCommit(raw));
       return;
     }
     if (raw === "") {
-      if (allowEmpty && value !== null) onCommit(null);
+      if (allowEmpty && value !== null) settle(onCommit(null));
       else setText(committed);
       return;
     }
     const n = Number(raw);
     const fits = Number.isFinite(n) && (kind === "decimal" || Number.isInteger(n)) && n >= (min ?? -Infinity) && n <= (max ?? Infinity);
-    if (fits && n !== value) onCommit(n);
+    if (fits && n !== value) settle(onCommit(n));
     else setText(committed);
   };
 
