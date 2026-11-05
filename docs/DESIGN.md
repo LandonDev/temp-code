@@ -496,7 +496,10 @@ body or its list, never both (the Modal body is a flex column, so a list
 marked `min-h-0` shrinks under its cap first); the only nested scroller is
 a bounded log or code console. A vertical list says `overflow-x-hidden`
 beside `overflow-y-auto`, so a 1px overhang never raises a sideways bar; a
-horizontal bar appears only where content overflows. A pure text region
+horizontal bar appears only where content overflows.
+`lib/scrollerGuard.test.ts` checks each renderer class string and refuses
+`overflow-y-auto` without `overflow-x-hidden` or `overflow-x-auto`; there
+are no exceptions. A pure text region
 (notes, a log, the preamble preview) takes `tabIndex={0}` and the focus
 ring (`focus-ring`), so the keyboard reaches it. Where a first overflow must not shift
 the content (the transcript, the pages) the scroller reserves its strip

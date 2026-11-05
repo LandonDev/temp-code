@@ -279,7 +279,7 @@ export function ImplementationView(props: ThreadViewProps) {
     <div
       ref={scrollRef}
       onPointerDown={() => (interactingUntil.current = Date.now() + 1500)}
-      className="flex-1 overflow-y-auto select-text"
+      className="flex-1 overflow-x-hidden overflow-y-auto select-text"
     >
       {/* px-6 is BOARD_INSET_PX, which the fitted column counts. */}
       <div className="mx-auto w-full max-w-2xl px-6 pt-6 pb-12">

@@ -122,7 +122,7 @@ export function CommandPopover({
         ref={listRef}
         role="listbox"
         aria-label={rows.mode === "command" ? "Skills and commands" : "Files and threads"}
-        className="max-h-72 overflow-y-auto overscroll-none rounded-xl p-1 [--scrollbar-inset:var(--radius-xl)]"
+        className="max-h-72 overflow-x-hidden overflow-y-auto overscroll-none rounded-xl p-1 [--scrollbar-inset:var(--radius-xl)]"
       >
         {rows.mode === "command"
           ? rows.rows.map((c, n) => (

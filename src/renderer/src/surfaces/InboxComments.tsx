@@ -182,7 +182,7 @@ export function InboxCommentForm({
         }
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={onKeyDown}
-        className="max-h-40 resize-none overflow-y-auto px-3 leading-5 text-foreground"
+        className="max-h-40 resize-none overflow-x-hidden overflow-y-auto px-3 leading-5 text-foreground"
       />
       <div className="flex items-start gap-3">
         <p className="min-w-0 flex-1 pt-1 text-[12px] text-destructive">

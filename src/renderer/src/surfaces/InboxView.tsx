@@ -504,7 +504,7 @@ export function InboxView({
       </div>
       <div
         ref={listLock}
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none"
+        className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none"
       >
         {sourceError && visibleItems.length === 0 ? (
           <p className="px-3 py-2 text-[12px] text-destructive">{sourceError}</p>
@@ -615,7 +615,7 @@ export function InboxView({
         {list}
         <div
           ref={detailLock}
-          className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-none"
+          className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
         >
           <InboxDetailBody
             item={selected}
@@ -680,7 +680,7 @@ export function InboxDetailPane({
     <div
       role="region"
       aria-label="Inbox"
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-none text-foreground"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none text-foreground"
     >
       <InboxDetailBody
         item={item}

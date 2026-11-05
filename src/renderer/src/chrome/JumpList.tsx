@@ -114,7 +114,7 @@ export function JumpList({
       ref={nav}
       id={id}
       aria-label={label}
-      className={cn("flex flex-col overflow-y-auto overscroll-contain", className)}
+      className={cn("flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain", className)}
       onPointerEnter={() => (hovered.current = true)}
       onPointerLeave={() => (hovered.current = false)}
       onBlur={(event) => {

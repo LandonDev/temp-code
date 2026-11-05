@@ -93,6 +93,12 @@ function seed(): void {
 }
 
 describe("the research view", () => {
+  it("clips horizontal overhang in its research scroller", () => {
+    seed();
+    const { container } = render(<ResearchView {...props(session())} />);
+    expect(container.querySelector(".overflow-y-auto")?.classList.contains("overflow-x-hidden")).toBe(true);
+  });
+
   it("states the header's facts as separate words, no middle dot, and opens the report", () => {
     seed();
     docs[REPORT] = "---\ntitle: Build speed\nstatus: draft\n---\n";

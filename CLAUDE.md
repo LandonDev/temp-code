@@ -305,6 +305,9 @@ app replaces itself from the feed, and only from the feed.
 - Settings rows and sections use `components/page.tsx` (`PageRow`,
   `PageSection`), which pass native props and data attributes to their roots;
   Hosts exports these as `Row` and `Group` without copying their markup.
+- Every `overflow-y-auto` class string names its horizontal policy:
+  `overflow-x-hidden` for lists or `overflow-x-auto` for content that needs
+  both axes. `lib/scrollerGuard.test.ts` enforces this without exceptions.
 - Cut text uses `TruncateTip`; fitted text mounts no tooltip trigger.
   It measures truncating text inside a status line too.
 - Agent details use `ModelLine` before their host, branch and numbers.

@@ -13,7 +13,7 @@ export function EmptySession({ composer }: { composer?: ReactNode }) {
     <div
       ref={lockOverscroll}
       data-empty-session
-      className="flex h-full min-h-0 overflow-y-auto overscroll-none"
+      className="flex h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-none"
     >
       {composer ? (
         <div className={`${COLUMN_GUTTER_CLASS} flex flex-1 flex-col justify-center pt-8 pb-16`}>

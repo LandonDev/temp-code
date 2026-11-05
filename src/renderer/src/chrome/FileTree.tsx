@@ -696,7 +696,7 @@ export function FileTree({
           </div>
           <div
             ref={lockOverscroll}
-            className="min-h-0 flex-1 overflow-y-auto overscroll-none pt-1"
+            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none pt-1"
           >
             {opError ? (
               <p className="px-3 py-1 text-[12px] leading-4 text-destructive">

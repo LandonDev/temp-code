@@ -80,7 +80,7 @@ function Body({
             placeholder={`Message (${MOD}↩ to commit)`}
             disabled={waiting}
             aria-label="Commit message"
-            className="max-h-40 min-h-8 resize-none overflow-y-auto py-1.5 pe-9"
+            className="max-h-40 min-h-8 resize-none overflow-x-hidden overflow-y-auto py-1.5 pe-9"
             onChange={(event) => setMessage(event.target.value)}
             onKeyDown={(event) => {
               if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canCommit) {

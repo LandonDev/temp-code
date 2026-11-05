@@ -195,7 +195,7 @@ export function PlanView(props: ThreadViewProps) {
         ) : null}
         <div
           ref={scrollRef}
-          className="min-h-0 flex-1 overflow-y-auto select-text"
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto select-text"
         >
           <div className="mx-auto w-full max-w-2xl px-6 pt-6 pb-12">
             {rendered.map(({ s, i, milestones }) => (

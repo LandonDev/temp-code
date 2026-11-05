@@ -555,7 +555,7 @@ export function ChangesView({
           </p>
         ) : null}
         {/* A native scroller, as the rail's and the board's virtual lists have. */}
-        <div ref={setScroller} className="min-h-0 flex-1 overflow-y-auto" data-slot="changes-scroller">
+        <div ref={setScroller} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto" data-slot="changes-scroller">
           <RowsContextMenu label="File actions" lazyMount rowsFor={rowsFor} onPick={pick}>
             <div className="px-1 pb-3">
               {rowsInFlow ? (

@@ -310,7 +310,7 @@ export function AgainstHead({ model }: { model: AgainstModel }) {
           <AlertTitle>
             Conflicts in {conflicts.length} {conflicts.length === 1 ? "file" : "files"}, nothing changed
           </AlertTitle>
-          <AlertDescription className="max-h-32 overflow-y-auto font-mono text-xs">
+          <AlertDescription className="max-h-32 overflow-x-hidden overflow-y-auto font-mono text-xs">
             {conflicts.map((f) => (
               <div key={f} className="truncate">
                 {f}

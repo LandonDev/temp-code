@@ -74,6 +74,12 @@ afterEach(() => {
 const collapsed = () => document.querySelector("[data-collapsed]")?.getAttribute("data-collapsed");
 
 describe("PlanView's chat fold", () => {
+  it("clips horizontal overhang in its plan scroller", () => {
+    doc = "# A plan\n\n## Tasks\n- [ ] one\n";
+    const { container } = render(<PlanView {...props(session({}))} />);
+    expect(container.querySelector(".overflow-y-auto")?.classList.contains("overflow-x-hidden")).toBe(true);
+  });
+
   it("survives the view unmounting, as a tab switch does", () => {
     doc = "# A plan\n\n## Tasks\n- [ ] one\n";
     render(<PlanView {...props(session({}))} />);

@@ -226,7 +226,7 @@ export function ProjectSearch({
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-none px-1.5 pb-1.5">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto overscroll-none px-1.5 pb-1.5">
         {groups.map((group) => {
           const folder = group.relative.slice(0, Math.max(0, group.relative.length - group.name.length - 1));
           return (

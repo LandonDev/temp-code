@@ -334,7 +334,7 @@ export function EditorPage() {
             {eula ? <DialogDescription>intellij-server {eula.build}</DialogDescription> : null}
           </DialogHeader>
           {eula ? (
-            <pre tabIndex={0} className={cn(CONSOLE, "max-h-80 overflow-y-auto whitespace-pre-wrap")}>
+            <pre tabIndex={0} className={cn(CONSOLE, "max-h-80 overflow-x-hidden overflow-y-auto whitespace-pre-wrap")}>
               {eula.text}
             </pre>
           ) : note ? (

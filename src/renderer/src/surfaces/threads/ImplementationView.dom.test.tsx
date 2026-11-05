@@ -126,6 +126,11 @@ describe("the implementation header", () => {
 });
 
 describe("the implementation board", () => {
+  it("clips horizontal overhang in its board scroller", () => {
+    view(session({ status: "running", blocks: [first], todos: [todo("Write a", "in_progress")] }));
+    expect(document.querySelector(".overflow-y-auto")?.classList.contains("overflow-x-hidden")).toBe(true);
+  });
+
   it("is one TaskList and the changes, with no Subagents section and no inline colours", () => {
     view(
       session({

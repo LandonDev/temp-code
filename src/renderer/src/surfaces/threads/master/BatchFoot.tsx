@@ -264,7 +264,7 @@ function Console({ step }: { step: LiveStep }) {
       data-console={step.id}
       data-log
       tabIndex={0}
-      className={cn(CONSOLE, "mb-1 ml-[22px] max-h-44 min-h-15 overflow-y-auto whitespace-pre-wrap")}
+      className={cn(CONSOLE, "mb-1 ml-[22px] max-h-44 min-h-15 overflow-x-hidden overflow-y-auto whitespace-pre-wrap")}
     >
       {lines.length > 0 ? lines.join("\n") : "Starting…"}
     </pre>

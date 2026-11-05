@@ -562,7 +562,7 @@ export function ProjectRail({
               lockOverscroll(el);
               scrollRef.current = el;
             }}
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none pb-2"
+            className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none pb-2"
           >
             <RowsContextMenu
               label="Workspace actions"

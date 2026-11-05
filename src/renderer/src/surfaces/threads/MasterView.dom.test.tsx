@@ -444,6 +444,13 @@ const settleSteps = (): void => {
 };
 
 describe("the master view", () => {
+  it("clips horizontal overhang in its board scroller", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    renderView();
+    await flush();
+    expect(document.querySelector("[data-board-scroller]")?.classList.contains("overflow-x-hidden")).toBe(true);
+  });
+
   it("a master with no child and no running step is its transcript alone: no board, header, sash or foot", async () => {
     settleSteps();
     seed([]);

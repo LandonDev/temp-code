@@ -174,7 +174,7 @@ export function ResearchView(props: ThreadViewProps) {
 
   const boardPane = (
     <>
-      <div className="min-h-0 flex-1 overflow-y-auto select-text">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto select-text">
         <div className="mx-auto w-full max-w-2xl px-6 pt-6 pb-12">
           {hasDoc ? (
             <ReportPane

@@ -341,7 +341,7 @@ export function BranchPicker({
             onPick={pick}
           />
           {error ? (
-            <p className="mt-1 max-h-16 shrink-0 overflow-y-auto whitespace-pre-wrap px-2 py-1.5 text-xs text-destructive">
+            <p className="mt-1 max-h-16 shrink-0 overflow-x-hidden overflow-y-auto whitespace-pre-wrap px-2 py-1.5 text-xs text-destructive">
               {error}
             </p>
           ) : null}

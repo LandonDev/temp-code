@@ -106,7 +106,7 @@ export function RailWorkingView({
   return (
     <section aria-label="Working" className="flex shrink-0 flex-col px-2 pt-2 pb-2" data-rail-working>
       <RailHeading>Working</RailHeading>
-      <div ref={open ? lockList : undefined} className={cn("flex flex-col", open && "max-h-[45vh] overflow-y-auto overscroll-none")}>
+      <div ref={open ? lockList : undefined} className={cn("flex flex-col", open && "max-h-[45vh] overflow-x-hidden overflow-y-auto overscroll-none")}>
         {shown.map((row) => (
           <RailRow
             key={row.id}

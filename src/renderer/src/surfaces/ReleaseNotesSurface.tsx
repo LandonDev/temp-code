@@ -18,7 +18,7 @@ export function ReleaseNotesSurface({
   return (
     <div
       ref={lockOverscroll}
-      className="h-full overflow-y-auto overscroll-none"
+      className="h-full overflow-x-hidden overflow-y-auto overscroll-none"
     >
       <article
         aria-label="Release notes"

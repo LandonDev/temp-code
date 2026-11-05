@@ -354,7 +354,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
   return (
     <div
       ref={lockOverscroll}
-      className="markdown-preview h-full overflow-y-auto overscroll-none [overflow-anchor:none]"
+      className="markdown-preview h-full overflow-x-hidden overflow-y-auto overscroll-none [overflow-anchor:none]"
     >
       <div className="px-6 py-8">
         <AgentMarkdown
@@ -378,7 +378,7 @@ export const MarkdownSource = memo(function MarkdownSource({
   return (
     <div
       ref={lockOverscroll}
-      className="markdown-preview h-full overflow-y-auto overscroll-none [overflow-anchor:none]"
+      className="markdown-preview h-full overflow-x-hidden overflow-y-auto overscroll-none [overflow-anchor:none]"
     >
       <pre className="min-h-full min-w-0 whitespace-pre-wrap wrap-break-word px-4 py-3 font-mono text-[13px] leading-5 text-foreground">
         <MarkdownSourceHighlight text={text} />

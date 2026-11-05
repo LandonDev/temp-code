@@ -153,7 +153,7 @@ function SymbolList({
       ref={lockOverscroll}
       role="listbox"
       aria-label="Symbols"
-      className="max-h-[min(380px,50vh)] overflow-y-auto overscroll-none [--scrollbar-inset:var(--radius-xl)]"
+      className="max-h-[min(380px,50vh)] overflow-x-hidden overflow-y-auto overscroll-none [--scrollbar-inset:var(--radius-xl)]"
     >
       {rows.map((row, index) => {
         const highlighted = index === active;

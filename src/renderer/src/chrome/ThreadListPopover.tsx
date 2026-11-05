@@ -46,7 +46,7 @@ export function ThreadListPopover({
           />
         </div>
       ) : null}
-      <div className="max-h-80 overflow-y-auto">
+      <div className="max-h-80 overflow-x-hidden overflow-y-auto">
         {shown.length === 0 ? <p className="flex h-7 items-center px-2 text-[13px] text-muted-foreground">No matches</p> : null}
         {shown.map((thread) => (
           <ItemButton

@@ -231,7 +231,7 @@ function FileList({
       role="listbox"
       aria-label="Files"
       onMouseMove={onListMouseMove}
-      className="max-h-[min(380px,50vh)] overflow-y-auto overscroll-none [--scrollbar-inset:var(--radius-xl)]"
+      className="max-h-[min(380px,50vh)] overflow-x-hidden overflow-y-auto overscroll-none [--scrollbar-inset:var(--radius-xl)]"
     >
       {files.map((file, index) => {
         const highlighted = index === active;

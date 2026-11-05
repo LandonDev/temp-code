@@ -258,7 +258,7 @@ export function NotesView({
       </div>
       <div
         ref={listLock}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-none"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
       >
         {error && notes.length === 0 ? (
           <p className="px-3 py-2 text-[12px] text-destructive">{error}</p>
@@ -568,7 +568,7 @@ function NoteEditor({
   return (
     <div
       ref={lockOverscroll}
-      className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-none"
+      className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-8 py-8">
         <header className="flex flex-col gap-3">

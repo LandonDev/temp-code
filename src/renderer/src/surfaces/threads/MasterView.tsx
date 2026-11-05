@@ -428,7 +428,7 @@ function MasterBoardView(props: ThreadViewProps) {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <BoardDigestContext.Provider value={digests}>
         <AgentSummaryContext.Provider value={summaries}>
-          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-1 pt-1 pb-2" data-board-scroller>
+          <div ref={scroller} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pt-1 pb-2" data-board-scroller>
             <RowsContextMenu
               label="Thread actions"
               rowsFor={(id) => (id ? rowMenu.rowsFor(id) : null)}
