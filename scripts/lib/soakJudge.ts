@@ -59,6 +59,8 @@ export interface SoakArgs {
   reducedMotion: boolean
   /** --scrolled-up: the scenarios play with the reader scrolled up into the history */
   scrolledUp: boolean
+  /** --height-report: the scenarios' tool tables and code blocks watched for a height jump (scripts/lib/heightReport.ts) */
+  heightReport: boolean
 }
 
 /** The gate's run: 20 s to launch, pair and open, 10 s to warm up, a 50 s window, then teardown, inside 90 s. */
@@ -84,6 +86,8 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const screencast = flag('--screencast') ?? null
   const scrolledUp = argv.includes('--scrolled-up')
   if (scrolledUp && scene !== 'scenarios') throw new Error('--scrolled-up belongs to --scene scenarios')
+  const heightReport = argv.includes('--height-report')
+  if (heightReport && scene !== 'scenarios') throw new Error('--height-report belongs to --scene scenarios')
   if (screencast && gate) throw new Error('--screencast is for a hand run, never the gate')
   if (!['synthetic', 'box'].includes(host)) throw new Error('--host is synthetic or box')
   if (!['prod', 'dev'].includes(build)) throw new Error('--build is prod or dev')
@@ -131,7 +135,8 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
     revealReport: argv.includes('--reveal-report'),
     screencast,
     reducedMotion: argv.includes('--reduced-motion'),
-    scrolledUp
+    scrolledUp,
+    heightReport
   }
 }
 

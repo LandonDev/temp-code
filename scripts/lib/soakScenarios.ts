@@ -103,6 +103,31 @@ export function scenarioTimeline(): ScenarioStep[] {
   // 6. A question: the card arrives, Next pages it, the answer folds it into its lines.
   steps.push(...questionSteps(at(2_500)))
   t = steps[steps.length - 1]!.at
+  // 7. Ten parallel calls land in the open table, one every 300 ms, then four
+  // in one push (a running call is no row while the turn is open: each lands
+  // with its result); then a 40-line code fence streams in, then a list of
+  // 8 items and a table of 6 rows.
+  steps.push({ at: at(4_000), label: 'turn 6: sent', events: [{ type: 'user-text', text: 'Check every module, then show the new one.' }, status('running')] })
+  const reads = Array.from({ length: 10 }, (_, i) => `convex/module${i}.ts`)
+  steps.push({ at: at(300), label: 'turn 6: ten calls start', events: reads.map((file, i) => call(`t6-r${i}`, 'Read', { file_path: file })) })
+  for (let i = 0; i < 6; i++) steps.push({ at: at(300), label: `turn 6: call ${i + 1} lands in the table`, events: [result(`t6-r${i}`, 'ok')] })
+  steps.push({ at: at(300), label: 'turn 6: four calls land at once', events: [6, 7, 8, 9].map((i) => result(`t6-r${i}`, 'ok')) })
+  steps.push(...stream(at(600), 60, 't6-p', 'Here is the new module:', 2, 'turn 6: prose before the fence'))
+  at(200)
+  steps.push({ at: at(0), label: 'turn 6: the fence opens', events: [delta('\n\n```ts\n', 't6-p')] })
+  for (let i = 0; i < 40; i++) {
+    const line = `export const value${i} = compute(${i}, { cached: true });`
+    steps.push({ at: at(60), label: 'turn 6: the fence streams', events: [delta(line.slice(0, 24), 't6-p')] })
+    steps.push({ at: at(60), label: 'turn 6: the fence streams', events: [delta(`${line.slice(24)}\n`, 't6-p')] })
+  }
+  steps.push({ at: at(60), label: 'turn 6: the fence closes', events: [delta('```\n\nThe steps, in order:\n\n', 't6-p')] })
+  for (let i = 1; i <= 8; i++) {
+    steps.push({ at: at(90), label: 'turn 6: a list streams', events: [delta(`- Step ${i} moves `, 't6-p')] })
+    steps.push({ at: at(90), label: 'turn 6: a list streams', events: [delta(`the thing number ${i}\n`, 't6-p')] })
+  }
+  steps.push({ at: at(120), label: 'turn 6: a table starts', events: [delta('\nAnd the figures:\n\n| Name | Value |\n|---|---|\n', 't6-p')] })
+  for (let i = 1; i <= 6; i++) steps.push({ at: at(150), label: 'turn 6: a table streams', events: [delta(`| row ${i} | ${i * 10} |\n`, 't6-p')] })
+  steps.push({ at: at(1_500), label: 'turn 6: settles', events: end })
   steps.push({ at: at(4_000), label: 'the end', events: [] })
   return steps
 }
