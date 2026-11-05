@@ -132,6 +132,8 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
     agentType: agentTypeFor(session.threadType),
     ...(session.planPath ? { planPath: session.planPath } : {}),
     ...(session.threadRules ? { threadRules: session.threadRules } : {}),
+    // A chat draft ticked "Master thread" is born pinned, so its first spawn is a master's.
+    ...(session.draftMaster && (session.threadType ?? "chat") === "chat" ? { master: true } : {}),
     projectId: session.projectId ?? null,
     // A draft minted before the catalog loaded still lands in its folder's workspace.
     workspaceId:
@@ -624,6 +626,8 @@ export type StartThreadParams = {
   after?: string;
   /** Queue behind the host's cap and `after` instead of booting at once (scheduler.ts). */
   queue?: boolean;
+  /** Pin the new root thread as a master from its first spawn (admin on the host). */
+  master?: boolean;
 };
 
 /** Create a whole thread server-side with its kickoff brief as its first

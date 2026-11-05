@@ -92,6 +92,9 @@ export const CreateSessionParams = z.object({
   /** Queue instead of booting when the host is over its running cap or
    *  `after` is unmet (scheduler.ts); a master's children always queue. */
   queue: z.boolean().optional(),
+  /** Pin the new root thread as a master from its first spawn (the same
+   *  flag `session.setMaster` sets; admin, requiredCapability). */
+  master: z.boolean().optional(),
   /** The thread's first message, stored as its first row in the same step
    *  (SessionRegistry.startWith): the thread and its brief, or neither. */
   firstMessage: z.string().min(1).optional()

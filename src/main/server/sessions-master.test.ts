@@ -6,7 +6,7 @@ import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { Batches, setBatches } from './batch'
 import { cancelMirrors } from './mirror'
-import { orchCheckAgent, orchListAgents, orchSendToAgent, orchWaitForAgent, setOrchestrationRegistry, isMasterSession } from './orchestration'
+import { orchCheckAgent, orchListAgents, orchSendToAgent, orchWaitForAgent, setOrchestrationRegistry, isMasterSession, mechanicsFor, MASTER_MECHANICS } from './orchestration'
 import { appStartThread } from './apptools'
 import { writeFileSync } from 'node:fs'
 import type { DriverCtx, DriverHandle, SendOpts } from './drivers/types'
@@ -528,6 +528,24 @@ describe('the batch follows the starter', () => {
     expect(spawnedWith.get(master)?.isMaster).toBe(false)
     expect(sends.get(master)?.at(-1)).toBe('as a thread')
     void a
+  })
+
+  it('session.create with master pins the thread before its first spawn: the prompt carries the master block, no pin notice follows', async () => {
+    const ws = await registry.createWorkspace(root, 'ws')
+    const project = await registry.createProject(ws.id, 'P', 'local')
+    const meta = await registry.createSession({ cwd: root, provider: 'claude', projectId: project.id, threadType: 'chat', master: true, firstMessage: 'run the batch' })
+    expect(meta.isMaster).toBe(true)
+    expect(store.getSession(meta.id)?.isMaster).toBe(true)
+    await settle()
+    expect(spawns.get(meta.id)).toBe(1)
+    const spawned = spawnedWith.get(meta.id)!
+    expect(spawned.isMaster).toBe(true)
+    expect(mechanicsFor(spawned)).toContain(MASTER_MECHANICS)
+    expect(sends.get(meta.id)?.join('\n')).not.toContain('<master-pinned>')
+    expect(registry.isMaster(meta.id)).toBe(true)
+    const plain = await registry.createSession({ cwd: root, provider: 'claude', threadType: 'chat', firstMessage: 'hello' })
+    expect(plain.isMaster ?? false).toBe(false)
+    await expect(registry.create({ cwd: root, provider: 'claude', parentId: meta.id, master: true })).rejects.toThrow(/root thread/)
   })
 
   it('setMaster pins and unpins a root, refuses a subagent, and pushes the meta', async () => {

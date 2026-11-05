@@ -32,6 +32,8 @@ export type DraftRecord = DraftPlace & {
   runtimeMode: RuntimeMode;
   threadType: ThreadType;
   threadRules: ThreadRules | null;
+  /** A chat draft's "Master thread" pick (Session.draftMaster). */
+  master?: boolean;
   segments: ComposerSegment[];
   attachments: Attachment[];
   seenAt: number;
@@ -204,6 +206,7 @@ export function draftPicks(session: Session): DraftPatch {
     runtimeMode: session.runtimeMode,
     threadType: session.threadType ?? "chat",
     threadRules: session.threadRules ?? null,
+    master: !!session.draftMaster,
   };
 }
 
@@ -223,6 +226,7 @@ export function sessionFromDraft(record: DraftRecord, place: DraftPlace | null, 
     workspaceId: where.workspaceId,
     threadType: record.threadType,
     ...(record.threadRules ? { threadRules: record.threadRules } : {}),
+    ...(record.master ? { draftMaster: true } : {}),
     createdAt: now,
     blocks: [],
   };

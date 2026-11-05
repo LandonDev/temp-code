@@ -142,6 +142,9 @@ describe('requiredCapability', () => {
     expect(requiredCapability({ method: 'session.create', params: { permission: 'auto' } } as never)).toBe('approve')
     expect(requiredCapability({ method: 'session.create', params: { permission: 'edits' } } as never)).toBe('operate')
     expect(requiredCapability({ method: 'session.create', params: {} } as never)).toBe('operate')
+    expect(requiredCapability({ method: 'session.create', params: { master: true } } as never)).toBe('admin')
+    expect(requiredCapability({ method: 'session.create', params: { master: true, permission: 'auto' } } as never)).toBe('admin')
+    expect(requiredCapability({ method: 'session.create', params: { master: false } } as never)).toBe('operate')
   })
 })
 

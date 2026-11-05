@@ -360,6 +360,8 @@ export type Session = {
   masterId?: string | null;
   /** This root thread is a master: it runs a batch of root threads (CLAUDE.md "Master threads"). */
   isMaster?: boolean;
+  /** An unsent chat draft's "Master thread" pick: its first send creates it pinned (`session.create { master }`). */
+  draftMaster?: boolean;
   /** A queued thread's sibling: the session it waits for before it boots. */
   after?: string | null;
   /** Parent session for subagent children. */

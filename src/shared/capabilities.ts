@@ -184,7 +184,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'projectLogo.save': 'operate',
   'projectLogo.remove': 'operate',
   'text.generate': 'operate',
-  'session.create': 'operate', // permission: 'auto' needs approve (requiredCapability)
+  'session.create': 'operate', // permission: 'auto' needs approve, master admin (requiredCapability)
   'session.send': 'operate',
   'session.interrupt': 'operate',
   'session.preconnect': 'operate',
@@ -444,11 +444,15 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'remote.environments.pair': 'local'
 }
 
-/** The capability one request needs: the table row, plus the one
- *  param-level rule (a full-access thread skips every prompt). */
+/** The capability one request needs: the table row, plus the param-level
+ *  rules of session.create (a master pin is session.setMaster's admin; a
+ *  full-access thread skips every prompt). */
 export function requiredCapability(req: { method: ClientRequest['method']; params?: unknown }): MethodCapability {
-  if (req.method === 'session.create' && (req.params as { permission?: string } | undefined)?.permission === 'auto')
-    return 'approve'
+  if (req.method === 'session.create') {
+    const params = req.params as { permission?: string; master?: boolean } | undefined
+    if (params?.master) return 'admin'
+    if (params?.permission === 'auto') return 'approve'
+  }
   return METHOD_CAPABILITY[req.method]
 }
 

@@ -43,7 +43,16 @@ its id (one master per release train, another for a side quest). The pin
 is "Make master thread" / "Remove as master" on the thread's context menu
 (the rail row and the tab) and the RPC `session.setMaster { sessionId,
 master }` (admin; a subagent is refused). Clients hear it as the thread's
-meta push. The harness's prompt and tool set were built at its spawn, and
+meta push. A new chat can be born a master: while the composer shows an
+unsent chat draft, its draft row offers "Master thread"
+(chrome/MasterCheck.tsx; the pick lives on the project's draft record as
+`master`, so it survives a reload until the send), and the first send
+creates the thread with `session.create { master: true }` (admin, like
+`session.setMaster`; `requiredCapability` asks it of the param, and a
+subagent is refused). The flag is set before the eager boot, so the first
+spawn carries the master block and the batch tools with no pin notice.
+Another type never offers it, nor does a thread that exists (its menu
+does); the phone's New thread sheet has no such pick yet. The harness's prompt and tool set were built at its spawn, and
 the harness boots eagerly at create, before any pin: pinned or unpinned
 once booted with no turn running (a watching master unpinned idles first),
 the thread loses its handle and its next send spawns a harness that knows

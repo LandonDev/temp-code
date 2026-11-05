@@ -96,6 +96,7 @@ import {
 } from '../lib/notes'
 import { resolveTabGroupLogo } from '../lib/tabGroups'
 import { ThreadTypeChip } from './ThreadTypeChip'
+import { MasterCheck } from './MasterCheck'
 import { useSlashCommands } from '../lib/tcserver/slashCommands'
 import { readCopiedMessage } from '../lib/copyMessage'
 import { sessionStore, useSessionMeta, useSessionMetasWhen } from '../lib/tcserver/store'
@@ -156,6 +157,9 @@ type Props = {
   /** What kind of thread this is; absent hides the chip (subagent children). */
   threadType?: ThreadType | null
   onThreadTypeChange?: (type: ThreadType) => void
+  /** An unsent draft's "Master thread" pick; absent once the thread exists. */
+  master?: boolean
+  onMasterChange?: (master: boolean) => void
   children?: ReactNode
 }
 
@@ -205,6 +209,8 @@ export function Composer({
   topSlot,
   threadType,
   onThreadTypeChange,
+  master,
+  onMasterChange,
   children
 }: Props) {
   const inputRef = useRef<ComposerInputHandle>(null)
@@ -1017,6 +1023,8 @@ export function Composer({
             sessionId={sessionId}
             hideProjectPicker={hideProjectPicker}
             threadType={threadType}
+            master={master}
+            onMasterChange={onMasterChange}
             onCwdChange={onCwdChange}
             onChooseFolder={onChooseFolder}
             onNewTerminal={onNewTerminal}
@@ -1085,7 +1093,7 @@ function hasFiles(data: DataTransfer | null): data is DataTransfer {
 /**
  * Under the composer's row until a thread's first message, 4px below it with
  * the same edges, its pickers' glyphs on the model's: its project, host,
- * branch and type. After it the row is gone: the branch is changed in the Changes
+ * branch, type and, for a chat, Master thread. After it the row is gone: the branch is changed in the Changes
  * section's head, the type in the thread menu.
  */
 export function DraftRow({
@@ -1104,6 +1112,8 @@ export function DraftRow({
   onNewTerminal,
   onBranchChange,
   onThreadTypeChange,
+  master,
+  onMasterChange,
   onClose
 }: {
   /** No message yet: the row shows; after the first one it folds away. */
@@ -1122,6 +1132,8 @@ export function DraftRow({
   onNewTerminal?: () => void
   onBranchChange?: () => void
   onThreadTypeChange?: (type: ThreadType) => void
+  master?: boolean
+  onMasterChange?: (master: boolean) => void
   onClose: () => void
 }) {
   return (
@@ -1143,6 +1155,7 @@ export function DraftRow({
           {sessionId && enabled ? <DraftHostPicker sessionId={sessionId} onClose={onClose} /> : null}
           <BranchPicker cwd={cwd} branch={branch} enabled={enabled && !busy} onChange={onBranchChange} onClose={onClose} />
           {threadType && onThreadTypeChange ? <ThreadTypeChip value={threadType} onChange={onThreadTypeChange} onClose={onClose} /> : null}
+          {threadType === 'chat' && master !== undefined && onMasterChange ? <MasterCheck checked={master} onChange={onMasterChange} /> : null}
         </div>
       </CollapsibleContent>
     </Collapsible>

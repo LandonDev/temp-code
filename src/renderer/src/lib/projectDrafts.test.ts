@@ -8,6 +8,7 @@ import {
   projectDrafts,
   projectDraftsStore,
   sessionFromDraft,
+  draftPicks,
   type DraftRecord,
 } from "./projectDrafts";
 
@@ -159,6 +160,13 @@ describe("planProjectDraft", () => {
     expect(
       planProjectDraft({ ...args, record: base, inPane: () => true, threadType: "chat", threadRules: rules }),
     ).toEqual({ kind: "focus", id: "d1", retype: { threadType: "chat", threadRules: rules } });
+  });
+  it("keeps a chat draft's Master thread pick both ways", () => {
+    expect(sessionFromDraft({ ...base, master: true }, null, 5).draftMaster).toBe(true);
+    expect(sessionFromDraft(base, null, 5)).not.toHaveProperty("draftMaster");
+    const session = sessionFromDraft(base, null, 5);
+    expect(draftPicks({ ...session, draftMaster: true }).master).toBe(true);
+    expect(draftPicks(session).master).toBe(false);
   });
   it("keeps the record's text and picks in the rebuilt session", () => {
     const session = sessionFromDraft({ ...base, threadType: "planning" }, null, 5);

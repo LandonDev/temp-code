@@ -2756,7 +2756,14 @@ this is the short one.
   thread's context menu, rail row and tab; RPC `session.setMaster
   { sessionId, master }`, admin, a subagent refused, answered as the
   thread's meta push; the row is disabled on an unsent draft with "Send a
-  message first" as its tooltip, since the host pins only a thread it knows). Several threads of one project may be, each with
+  message first" as its tooltip, since the host pins only a thread it knows).
+  A new chat is born pinned instead: an unsent chat draft's composer
+  offers "Master thread" in its draft row (chrome/MasterCheck.tsx, the
+  box from the select chunk, kept on the draft's record as `master`), and
+  its first send passes `session.create { master: true }` (admin through
+  `requiredCapability`, a subagent refused), which sets the flag before
+  the eager boot, so the first spawn is a master's; the phone's New thread
+  sheet has no such pick yet. Several threads of one project may be, each with
   its own batch keyed by its id. `projects.master_thread_id` is read once
   into the flag when the column is added and ignored since (the column
   stays; `ProjectMeta.masterThreadId` left the wire). Its tab reads one

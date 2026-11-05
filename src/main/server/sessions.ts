@@ -2579,6 +2579,7 @@ export class SessionRegistry {
     const params = CreateSessionParams.parse(raw)
     const now = Date.now()
     if (params.id && this.store.getSession(params.id)) throw new Error(`session id already taken: ${params.id}`)
+    if (params.master && params.parentId) throw new Error('only a root thread can be a master')
     const membership = batchMembershipOf(params.startedBy ? this.store.getSession(params.startedBy) : null)
     const id = params.id ?? nanoid(12)
     const project = params.projectId ? this.store.getProject(params.projectId) : null
@@ -2661,6 +2662,8 @@ export class SessionRegistry {
       // build), carries the master's id unless the caller said otherwise.
       masterId: params.masterId ?? ('masterId' in membership ? membership.masterId : null),
       after: params.after ?? null,
+      // Pinned before the eager boot, so the first spawn is a master's.
+      ...(params.master ? { isMaster: true } : {}),
       createdAt: now,
       updatedAt: now
     }

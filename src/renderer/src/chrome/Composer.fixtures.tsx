@@ -1,6 +1,6 @@
 // Fixtures for `bun run ui:preview src/renderer/src/chrome/Composer.tsx#Composer`:
 // the docked box at rest, three lines in the field, the meter amber, and a
-// draft with its row under the box.
+// draft with its row under the box, and a chat draft ticked Master thread.
 import type { ComponentProps } from "react";
 import type { Composer } from "./Composer";
 
@@ -35,4 +35,8 @@ export default [
   },
   { name: "Context amber", props: { ...base, sessionId: "fixture-amber", context: { used: 176_000, window: 200_000 } } },
   { name: "Draft", props: { ...base, sessionId: undefined, shell: true, hideProjectPicker: true } },
+  {
+    name: "Chat draft, master thread",
+    props: { ...base, sessionId: undefined, shell: true, hideProjectPicker: true, threadType: "chat", onThreadTypeChange: noop, master: true, onMasterChange: noop },
+  },
 ];

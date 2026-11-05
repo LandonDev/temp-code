@@ -39,7 +39,7 @@ import {
   type Session,
 } from "../lib/session";
 import * as serverCommands from "../lib/tcserver/commands";
-import { useQueue } from "../lib/tcserver/store";
+import { sessionStore, useQueue } from "../lib/tcserver/store";
 import type { ThreadType } from "../lib/tcserver/types";
 import { AgentTranscript } from "./AgentTranscript";
 import { DeferredMount } from "./DeferredMount";
@@ -208,6 +208,8 @@ export const ThreadComposer = memo(function ThreadComposer({
       onGesture={() => askOnGesture(session)}
       {...bound}
       threadType={session.parentId ? null : (session.threadType ?? "chat")}
+      master={sessionStore.isDraft(id) ? !!session.draftMaster : undefined}
+      onMasterChange={(on) => setDraftMaster(id, on)}
       onSubmit={submit}
       busy={!!session.busy}
       paused={paused}
@@ -226,6 +228,11 @@ export const ThreadComposer = memo(function ThreadComposer({
     </Composer>
   );
 });
+
+/** An unsent draft's "Master thread" pick; the project's draft record follows it. */
+function setDraftMaster(id: string, on: boolean): void {
+  sessionStore.mutate((prev) => prev.map((s) => (s.id === id ? { ...s, draftMaster: on } : s)));
+}
 
 /** App's handlers bound to one thread, under the composer's own names. */
 function boundTo(actions: SessionActions, id: string) {

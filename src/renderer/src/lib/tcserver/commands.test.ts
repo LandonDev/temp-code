@@ -171,6 +171,25 @@ describe("send", () => {
 });
 
 describe("thread commands", () => {
+  it("a chat draft ticked Master thread is created pinned; any other type or an unticked chat is not", async () => {
+    const chat = { ...newSession("local", "claude", "/repo"), draftMaster: true };
+    sessionStore.mutate([chat]);
+    await send(chat, "run the batch", [], undefined, undefined);
+    expect(link.of("session.create")[0]).toMatchObject({ threadType: "chat", master: true });
+    const plan = { ...newSession("local", "claude", "/repo", undefined, undefined, undefined, { threadType: "planning" }), draftMaster: true };
+    const plain = newSession("local", "claude", "/repo");
+    sessionStore.mutate([plan, plain]);
+    await send(plan, "plan it", [], undefined, undefined);
+    await send(plain, "hello", [], undefined, undefined);
+    expect(link.of("session.create")[1]).not.toHaveProperty("master");
+    expect(link.of("session.create")[2]).not.toHaveProperty("master");
+  });
+
+  it("startThread passes master through to session.create", async () => {
+    await startThread({ environmentId: "local", threadType: "chat", provider: "claude", master: true }, "lead the batch");
+    expect(link.of("session.create")[0]).toMatchObject({ threadType: "chat", master: true, firstMessage: "lead the batch" });
+  });
+
   it("create carries the thread type and its agent type", async () => {
     const draft = newSession("local", "claude", "/repo", undefined, undefined, undefined, { threadType: "orchestration" });
     sessionStore.mutate([draft]);
