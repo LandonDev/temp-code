@@ -128,7 +128,8 @@ export function DebugView({
           <Control label="Step over" icon={ArrowTurnForward} enabled={paused} onClick={() => onStep("next")} />
           <Control label="Step into" icon={ArrowDownLong} enabled={paused} onClick={() => onStep("stepIn")} />
           <Control label="Step out" icon={ArrowUpLong} enabled={paused} onClick={() => onStep("stepOut")} />
-          <StatusMark state={paused ? "paused" : "working"} className="ml-2 min-w-0 flex-1" />
+          {/* A failed attach is failed, never a spinning Working over its red line. */}
+          <StatusMark state={error ? "failed" : paused ? "paused" : "working"} className="ml-2 min-w-0 flex-1" />
           <Control label="Stop" icon={StopGlyph} enabled onClick={onStop} />
         </div>
         {error ? <ErrorLine text={error} /> : null}

@@ -529,7 +529,7 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     one" (the workspace's Build settings) and no Build button beside it.
   - **Debug** (`DebugPanel`): with no session one muted line, "⌃D in a
     Java file starts a session here"; while one runs, the step controls,
-    its `StatusMark` (Working, Paused) and Stop, then Call stack, Variables
+    its `StatusMark` (Working, Paused, Failed while its error line shows) and Stop, then Call stack, Variables
     and Console, and the Evaluate field, live only while paused. Variables
     are 28px rows, a name in foreground and its value muted, an expandable
     one led by the disclosure chevron, each level 16px in.

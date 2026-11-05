@@ -136,7 +136,12 @@ describe("DebugPanel", () => {
     seed({ debugPhase: "running", debugError: "Could not attach to 5005" });
     render(<DebugPanel />);
     expect(screen.getByText("Could not attach to 5005").className).toContain("text-destructive");
+    // A failed attach is failed: no spinner says work is in flight.
+    expect(document.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("failed");
+    expect(screen.getByText("Failed")).toBeTruthy();
+    expect(document.querySelector("[data-slot=spinner]")).toBeNull();
     act(() => setEditorState({ debugPhase: "stopped", debugError: null }));
+    expect(document.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("paused");
     expect(screen.queryByText("Could not attach to 5005")).toBeNull();
     expect(control("Continue").disabled).toBe(false);
   });
