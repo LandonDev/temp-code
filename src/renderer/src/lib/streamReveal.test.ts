@@ -5,7 +5,9 @@ import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 import { describe, expect, it } from "vitest";
 import { REVEAL } from "./ease";
-import { createStreamReveal, LEDGER_KEY_CHARS, renderedText, STEP_CLASS } from "./streamReveal";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { createStreamReveal, LEDGER_KEY_CHARS, renderedText, RISE_CLASS, STEP_CLASS } from "./streamReveal";
 
 function harness(reduced = false) {
   let t = 1000;
@@ -80,9 +82,16 @@ describe("streamReveal", () => {
     advance(REVEAL.fadeMs * 2);
     const tree = run("| a | b |\n| - | - |\n| 1 | 2 |");
     // The paragraph became a table: its text no longer starts with the
-    // ledger's, so every cell is the new step and fades.
+    // ledger's, so every cell is the new step, and every row rises with it.
     expect(spans(tree).length).toBeGreaterThan(0);
-    expect(spans(tree).every(young)).toBe(true);
+    const rows: Element[] = [];
+    const walk = (n: Root | RootContent) => {
+      if (n.type === "element" && n.tagName === "tr") rows.push(n);
+      if (n.type === "element" || n.type === "root") n.children.forEach(walk);
+    };
+    walk(tree);
+    expect(rows.length).toBe(2);
+    expect(rows.every((tr) => (tr.properties?.className as string[] | undefined)?.includes(RISE_CLASS))).toBe(true);
   });
 
   it("leaves code blocks alone", () => {
@@ -156,5 +165,105 @@ describe("lineTimes", () => {
     const still = createStreamReveal(() => 0, () => true);
     still.arm();
     expect(still.freshLines("a", 1)).toEqual([false]);
+  });
+});
+
+describe("blocks born mid-stream", () => {
+  const find = (tree: Root, tag: string): Element[] => {
+    const out: Element[] = [];
+    const walk = (n: Root | RootContent) => {
+      if (n.type === "element") {
+        if (n.tagName === tag) out.push(n);
+        n.children.forEach(walk);
+      } else if (n.type === "root") n.children.forEach(walk);
+    };
+    walk(tree);
+    return out;
+  };
+  const rises = (el: Element) => Array.isArray(el.properties?.className) && el.properties.className.includes(RISE_CLASS);
+
+  it("raise a new list item, and its first step's spans leave the fade to it", () => {
+    const { run, advance } = harness();
+    run("- one\n");
+    advance(REVEAL.fadeMs);
+    const tree = run("- one\n- two and more\n");
+    expect(find(tree, "li").map(rises)).toEqual([false, true]);
+    const item = find(tree, "li")[1];
+    expect(spans(item).some(young)).toBe(false);
+  });
+
+  it("raise a table row, a heading and a quote's line", () => {
+    const { run, advance } = harness();
+    run("| a | b |\n| - | - |\n| 1 | 2 |\n");
+    advance(REVEAL.fadeMs);
+    const table = run("| a | b |\n| - | - |\n| 1 | 2 |\n| 3 | 4 |\n");
+    expect(find(table, "tr").map(rises)).toEqual([false, false, true]);
+
+    const heading = harness();
+    heading.run("Intro\n");
+    heading.advance(REVEAL.fadeMs);
+    expect(find(heading.run("Intro\n\n## Next part\n"), "h2").map(rises)).toEqual([true]);
+
+    const quote = harness();
+    quote.run("Intro\n");
+    quote.advance(REVEAL.fadeMs);
+    const quoted = quote.run("Intro\n\n> said this\n");
+    expect(find(quoted, "blockquote").map(rises)).toEqual([false]);
+    expect(find(quoted, "p").map(rises)).toEqual([false, true]);
+  });
+
+  it("never raise a plain paragraph: it keeps the word fade", () => {
+    const { run, advance } = harness();
+    run("First paragraph\n");
+    advance(REVEAL.fadeMs);
+    const tree = run("First paragraph\n\nSecond one here\n");
+    expect(find(tree, "p").map(rises)).toEqual([false, false]);
+    expect(spans(find(tree, "p")[1]).every(young)).toBe(true);
+  });
+
+  it("keep an older item still when it gains a nested list, and raise only the new item", () => {
+    const { run, advance } = harness();
+    run("- one\n- two\n");
+    advance(REVEAL.fadeMs);
+    const tree = run("- one\n- two\n  - nested\n");
+    const items = find(tree, "li");
+    expect(items.map((li) => renderedText(li).trim().split("\n")[0])).toEqual(["one", "two", "nested"]);
+    expect(items.map(rises)).toEqual([false, false, true]);
+  });
+
+  it("raise one element per branch: a list born whole rises by its items, not twice", () => {
+    const { run, advance } = harness();
+    run("Intro\n");
+    advance(REVEAL.fadeMs);
+    const tree = run("Intro\n\n- a\n  - b\n");
+    expect(find(tree, "li").map(rises)).toEqual([true, false]);
+  });
+
+  it("raise nothing under reduced motion", () => {
+    const { run, advance } = harness(true);
+    run("- one\n");
+    advance(REVEAL.fadeMs);
+    expect(find(run("- one\n- two\n"), "li").some(rises)).toBe(false);
+  });
+});
+
+describe("the stream's motion rules", () => {
+  const css = readFileSync(resolve(__dirname, "../assets/components.css"), "utf8");
+  const reduced = css.slice(css.indexOf(".stream-rise {"));
+
+  it("raise a block on the fade and a 4px rise, and only fade it under reduced motion", () => {
+    expect(css).toMatch(/@keyframes stream-rise-in \{\s*from \{\s*translate: 0 4px;/);
+    expect(css).toMatch(/\.stream-rise \{\s*animation:\s*stream-step-in var\(--dur-reveal\) var\(--ease-reveal\) both,\s*stream-rise-in var\(--dur-base\) var\(--ease-out\) both;/);
+    expect(reduced).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.stream-rise \{\s*animation: stream-step-in var\(--dur-reveal\) var\(--ease-reveal\) both;/);
+  });
+
+  it("fade a table's card with its header row, the row then only rising", () => {
+    expect(css).toContain('.agent-markdown [data-streamdown="table-wrapper"]:has(thead tr.stream-rise) {\n  animation: stream-step-in var(--dur-reveal) var(--ease-reveal) both;');
+    expect(css).toContain("thead tr.stream-rise {\n  animation: stream-rise-in var(--dur-base) var(--ease-out) both;");
+  });
+
+  it("delay a landing step by its place in the batch, with no transition under reduced motion", () => {
+    expect(css).toMatch(/\.step-land \{[^}]*transition-delay: calc\(var\(--stagger-step\) \* var\(--stagger, 0\)\);/);
+    expect(css).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.step-land \{\s*transition: none;/);
   });
 });

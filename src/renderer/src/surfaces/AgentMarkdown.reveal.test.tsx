@@ -62,6 +62,31 @@ describe("AgentMarkdown's phrase fade", () => {
     expect(steps().at(-1)!.classList.contains("stream-step")).toBe(true);
   });
 
+  it("raises each list item as it is born and keeps every item's element as the list grows and nests", () => {
+    const view = render(<AgentMarkdown text="" streaming />);
+    const intro = "Here is the plan for the change today.\n\n";
+    const list = `${intro}- first item of the list\n- second item of the list\n`;
+    stream(view.rerender, "", list);
+    act(() => vi.advanceTimersByTime(REVEAL.stepMs * 10));
+    const items = () => Array.from(view.container.querySelectorAll("li"));
+    expect(items()).toHaveLength(2);
+    const [first, second] = items();
+    // The paragraph never rises; it keeps the word fade.
+    expect(view.container.querySelector("p.stream-rise")).toBeNull();
+    // A nested item under the second: the old items keep their elements and
+    // never rise again; the new one rises.
+    act(() => vi.advanceTimersByTime(REVEAL.fadeMs));
+    stream(view.rerender, list, `${list}  - a nested point under it\n`);
+    act(() => vi.advanceTimersByTime(REVEAL.stepMs * 10));
+    const now = items();
+    expect(now).toHaveLength(3);
+    expect(now[0]).toBe(first);
+    expect(now[1]).toBe(second);
+    expect(first.classList.contains("stream-rise")).toBe(false);
+    expect(second.classList.contains("stream-rise")).toBe(false);
+    expect(now[2].classList.contains("stream-rise")).toBe(true);
+  });
+
   /** Advances 10 ms at a time until the row shows `text`; the ms it took. */
   function until(container: HTMLElement, text: string, limit = 3000): number {
     for (let ms = 0; ms <= limit; ms += 10) {

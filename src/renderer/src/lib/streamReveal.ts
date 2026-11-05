@@ -16,6 +16,13 @@
  * into a table) starts a new ledger, so the reparsed block fades in whole.
  * Text the row already held when it mounted is shown, not faded.
  *
+ * A block element born in a young step (a list item, a table row, a
+ * heading, a line of a quote: its first prose character is in that step)
+ * takes `.stream-rise` instead: the same fade on the element, plus a 4px
+ * rise, and that step's spans inside it drop their own fade. A paragraph
+ * outside a quote keeps the word fade alone. One rise per branch: an item
+ * inside a risen item does not rise again.
+ *
  * Code is not prose: a fence's lines fade in one element each
  * (surfaces/CodeBlock.tsx), timed by `lineTimes`, a ledger per fence keyed
  * the same way by its code's first characters.
@@ -32,6 +39,11 @@ type Ledger = { text: string; steps: Step[] };
 export const LEDGER_KEY_CHARS = 32;
 
 export const STEP_CLASS = "stream-step";
+export const RISE_CLASS = "stream-rise";
+
+/** Blocks that rise when they are born mid-stream; a quote's direct
+ *  children rise too. */
+const RISERS = new Set(["li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"]);
 
 /** Elements whose text is not prose: code, drawings, math. */
 function skipped(node: Element): boolean {
@@ -121,6 +133,7 @@ export function createStreamReveal(
     ledger.text = text;
     if (reduced()) return;
     wrapSteps(tree, ledger.steps, t);
+    riseBlocks(tree);
   };
 
   // streamdown caches a processor under its plugins' function names, so the
@@ -216,4 +229,51 @@ function wrapSteps(tree: Root, steps: Step[], t: number): void {
     parent.children = next as typeof parent.children;
   };
   visit(tree);
+}
+
+function classesOf(node: Element): string[] {
+  const className = node.properties?.className;
+  return Array.isArray(className) ? className.map(String) : [];
+}
+
+/** The first step span under `node`, in document order. */
+function firstStep(node: Element): Element | null {
+  for (const child of node.children) {
+    if (child.type !== "element" || skipped(child)) continue;
+    if (child.tagName === "span" && child.properties?.dataRevealStep !== undefined) return child;
+    const found = firstStep(child);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Drops the fade from `step`'s spans under `node`: the element fades instead. */
+function unstep(node: Element, step: unknown): void {
+  for (const child of node.children) {
+    if (child.type !== "element") continue;
+    if (child.tagName === "span" && child.properties?.dataRevealStep === step) {
+      child.properties.className = classesOf(child).filter((name) => name !== STEP_CLASS);
+    } else unstep(child, step);
+  }
+}
+
+/** Gives `.stream-rise` to each block born in a young step (see the header). */
+function riseBlocks(tree: Root): void {
+  const visit = (parent: Root | Element, risen: boolean): void => {
+    const quote = parent.type === "element" && parent.tagName === "blockquote";
+    for (const child of parent.children) {
+      if (child.type !== "element" || skipped(child)) continue;
+      let rose = false;
+      if (!risen && (RISERS.has(child.tagName) || quote)) {
+        const first = firstStep(child);
+        if (first && classesOf(first).includes(STEP_CLASS)) {
+          child.properties = { ...child.properties, className: [...classesOf(child), RISE_CLASS] };
+          unstep(child, first.properties.dataRevealStep);
+          rose = true;
+        }
+      }
+      visit(child, risen || rose);
+    }
+  };
+  visit(tree, false);
 }

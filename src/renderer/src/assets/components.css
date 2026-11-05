@@ -61,6 +61,22 @@
   }
 }
 
+/* A table born mid-stream: its hairline card fades in with its header row,
+   not before it. The card carries the fade, so the header row only rises. */
+.agent-markdown [data-streamdown="table-wrapper"]:has(thead tr.stream-rise) {
+  animation: stream-step-in var(--dur-reveal) var(--ease-reveal) both;
+}
+
+.agent-markdown [data-streamdown="table-wrapper"]:has(thead tr.stream-rise) thead tr.stream-rise {
+  animation: stream-rise-in var(--dur-base) var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-markdown [data-streamdown="table-wrapper"]:has(thead tr.stream-rise) thead tr.stream-rise {
+    animation: none;
+  }
+}
+
 /* Switch: the thumb slides on a clip-path and grows 5px toward the other
    side on hover, so the hand knows which way it goes. */
 .t-toggle {
