@@ -167,6 +167,20 @@ export function questionClicks(clicks: string[]): string {
   })()`
 }
 
+/** The event with its message, call, request and steer ids suffixed by the play
+ *  (`~2`, `~3`; the first play keeps its own), so a second play on the same
+ *  thread makes rows of its own instead of folding into the first play's
+ *  (the iOS test server's POST /scenario replays it on one chat). */
+export function uniqueScenarioIds(event: AgentEvent, play: number): AgentEvent {
+  if (play <= 1) return event
+  const fields = event as unknown as Record<string, unknown>
+  const out: Record<string, unknown> = { ...fields }
+  for (const key of ['msgId', 'callId', 'steerId', 'requestId']) {
+    if (typeof fields[key] === 'string') out[key] = `${fields[key]}~${play}`
+  }
+  return out as unknown as AgentEvent
+}
+
 /** The timeline's length, ms. */
 export function scenarioLength(steps: ScenarioStep[] = scenarioTimeline()): number {
   return steps.reduce((ms, s) => Math.max(ms, s.at), 0)

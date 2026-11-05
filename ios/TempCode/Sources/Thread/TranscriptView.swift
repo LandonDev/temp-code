@@ -140,19 +140,28 @@ struct TranscriptView: View {
             } action: { _, now in
                 // Held at the captured value while a reflow is open: the geometry flickers mid-fold.
                 guard !scrollState.reflowHeld else { return }
-                scrollState.atBottom = now
+                let verdict = FollowRule.atBottom(was: scrollState.atBottom, geometry: now, readerMoving: scrollState.readerMoving, offBottomWrite: scrollState.offBottomWrite)
+                if scrollState.atBottom != verdict.atBottom { scrollState.atBottom = verdict.atBottom }
+                if verdict.pin { pinTail(proxy: proxy) }
                 #if DEBUG
                 // The transcript proof: the reader leaving the bottom on its own is a jerk.
-                LayoutProbe.note("atBottom", now ? "1" : "0")
+                LayoutProbe.note("atBottom", verdict.atBottom ? "1" : "0")
                 #endif
             }
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
                 recorder?.noteOffset(y)
                 noteHold(y)
             }
+            .transcriptTrace(topRow: { scrollState.topRow })
+            // The reader's own scroll: the one road off the bottom besides a deliberate scroll to a row.
+            .onScrollPhaseChange { _, phase in
+                let moving = phase == .tracking || phase == .interacting || phase == .decelerating
+                if scrollState.readerMoving != moving { scrollState.readerMoving = moving }
+                if moving { scrollState.offBottomWrite = false }
+            }
             .overlay(alignment: .bottom) {
                 TranscriptScrollControls(state: scrollState) {
-                    withAnimation(Motion.base) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+                    TranscriptTrace.write("jumpPill"); scrollState.offBottomWrite = false; withAnimation(Motion.base) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
                 }
             }
             .overlay(alignment: .top) {
@@ -272,8 +281,8 @@ struct TranscriptView: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             switch anchor {
-            case .end: proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
-            case .row(let id): proxy.scrollTo(id, anchor: .top)
+            case .end: TranscriptTrace.write("reflow.end"); proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
+            case .row(let id): TranscriptTrace.write("reflow.row \(id.key)"); scrollState.offBottomWrite = true; proxy.scrollTo(id, anchor: .top)
             }
         }
     }
@@ -289,7 +298,7 @@ struct TranscriptView: View {
             try? await Task.sleep(for: .milliseconds(60))
             var transaction = Transaction()
             transaction.disablesAnimations = true
-            withTransaction(transaction) { proxy.scrollTo(first.id, anchor: .center) }
+            TranscriptTrace.write("openGroup"); scrollState.offBottomWrite = true; withTransaction(transaction) { proxy.scrollTo(first.id, anchor: .center) }
         }
     }
 
@@ -333,6 +342,8 @@ struct TranscriptView: View {
         try? await Task.sleep(for: .seconds(2))
         guard let proofScrollView = await proofScroller() else { return }
         let top = -proofScrollView.adjustedContentInset.top
+        // The proof stands in for the reader's drag.
+        scrollState.offBottomWrite = true
         proofScrollView.setContentOffset(CGPoint(x: proofScrollView.contentOffset.x, y: max(top, proofScrollView.contentOffset.y - 700)), animated: false)
         try? await Task.sleep(for: .milliseconds(500))
         let y = Double(proofScrollView.contentOffset.y)
@@ -403,7 +414,7 @@ struct TranscriptView: View {
         }
         var transaction = Transaction()
         transaction.disablesAnimations = true
-        withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+        TranscriptTrace.write("snapToBottom window=\(window)"); scrollState.offBottomWrite = false; withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
     }
 
     /// Pin on data changes, not on scroll geometry changes. Replacing the
@@ -418,7 +429,7 @@ struct TranscriptView: View {
             guard follows() else { return }
             var transaction = Transaction()
             transaction.disablesAnimations = true
-            withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+            TranscriptTrace.write("pinTail"); withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
         }
     }
 
@@ -448,7 +459,7 @@ struct TranscriptView: View {
         guard !Task.isCancelled else { return }
         var transaction = Transaction()
         transaction.disablesAnimations = true
-        withTransaction(transaction) { proxy.scrollTo(id, anchor: .center) }
+        TranscriptTrace.write("land \(id.key)"); scrollState.offBottomWrite = true; withTransaction(transaction) { proxy.scrollTo(id, anchor: .center) }
         #if DEBUG
         TestHooks.recordTranscript(sessionId: sessionId, state: scrollState)
         #endif
@@ -477,7 +488,7 @@ struct TranscriptView: View {
         try? await Task.sleep(for: .milliseconds(16))
         var transaction = Transaction()
         transaction.disablesAnimations = true
-        withTransaction(transaction) { proxy.scrollTo(anchor, anchor: .top) }
+        TranscriptTrace.write("extend \(anchor.key)"); scrollState.offBottomWrite = true; withTransaction(transaction) { proxy.scrollTo(anchor, anchor: .top) }
     }
 }
 
@@ -497,6 +508,11 @@ final class TranscriptScrollState {
     var topRow: TranscriptRowID?
     /// A reflow is open: `atBottom` holds its captured value.
     var reflowHeld = false
+    /// The reader's finger is on the list or it is still decelerating from one.
+    @ObservationIgnored var readerMoving = false
+    /// The view scrolled to a row away from the bottom on purpose (a landing,
+    /// a page above, a reflow's row); cleared by the reader's scroll or a write to the bottom.
+    @ObservationIgnored var offBottomWrite = false
     /// The anchor the last reflow restored (the proof reads it).
     var reflowAnchor: TranscriptReflow.Anchor?
 }
@@ -587,5 +603,48 @@ private struct JumpPill: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.pressable)
+    }
+}
+
+/// DEBUG: the transcript proof's trace of what moves the offset. Every
+/// scroll the view makes is a numbered `write` event in the layout events;
+/// an offset that drops more than 200 pt is a `jumpUp` event with the
+/// content height and the top row, so a jump no write explains stands out.
+@MainActor
+enum TranscriptTrace {
+    #if DEBUG
+    private static var writes = 0
+    #endif
+
+    static func write(_ cause: String) {
+        #if DEBUG
+        writes += 1
+        LayoutProbe.note("write", "\(writes) \(cause)")
+        #endif
+    }
+}
+
+private struct TranscriptTraceModifier: ViewModifier {
+    let topRow: () -> TranscriptRowID?
+    @State private var last: CGPoint?
+
+    func body(content: Content) -> some View {
+        content.onScrollGeometryChange(for: CGPoint.self) { CGPoint(x: $0.contentSize.height, y: $0.contentOffset.y) } action: { _, now in
+            if let last, last.y - now.y > 200 {
+                LayoutProbe.note("jumpUp", "\(Int(last.y))→\(Int(now.y)) h \(Int(last.x))→\(Int(now.x)) top \(topRow()?.key ?? -1)")
+            }
+            last = now
+        }
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func transcriptTrace(topRow: @escaping () -> TranscriptRowID?) -> some View {
+        #if DEBUG
+        modifier(TranscriptTraceModifier(topRow: topRow))
+        #else
+        self
+        #endif
     }
 }

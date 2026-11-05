@@ -69,7 +69,7 @@ import { startServer } from '../src/main/server/index'
 import { BUILT_IN_DRIVERS } from '../src/main/server/drivers'
 import type { DriverHandle } from '../src/main/server/drivers/types'
 import { emitLiveEdit } from '../src/main/server/livediff'
-import { playScenarios, scenarioLength } from './lib/soakScenarios'
+import { playScenarios, scenarioLength, uniqueScenarioIds } from './lib/soakScenarios'
 import { MacDevices } from '../src/main/server/devices/hostDevices'
 import { loadEnvironmentId } from '../src/main/server/remote/environment'
 import { mediaUrl, serveMedia } from '../src/main/server/media'
@@ -1613,6 +1613,8 @@ const sleep = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, 
 let streamRun: { sessionId: string; stopped: boolean } | null = null
 /** The no-jerk timeline playing (POST /scenario): its thread and its stop. */
 let scenarioRun: { sessionId: string; stop: () => void } | null = null
+/** How many times the timeline has been played, for its per-play ids. */
+let scenarioPlays = 0
 const streamAnswer = (length: number): string => {
   const parts = [
     'The gateway forwards every request a harness makes and swaps in the account the thread is routed to. ' + streamParagraph(1),
@@ -1853,10 +1855,13 @@ const control = createServer((req, res) => {
         if (scenarioRun || streamRun) return answer(409, { error: `a run is playing on ${(scenarioRun ?? streamRun)!.sessionId}` })
         const sessionId = String(body.sessionId ?? THREAD_STREAM)
         const ms = scenarioLength()
+        // Each play its own ids: a second play on the same thread would otherwise fold its
+        // messages, calls and steers into the first play's rows (same msgId, callId, steerId).
+        const play = ++scenarioPlays
         const run = {
           sessionId,
           stop: playScenarios(
-            (event) => registry.append(sessionId, event),
+            (event) => registry.append(sessionId, uniqueScenarioIds(event, play)),
             (step) => console.log(`[scenario] ${step.at}ms ${step.label}`),
             undefined,
             () => registry.markStatusForProof(sessionId, 'running')

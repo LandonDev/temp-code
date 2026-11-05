@@ -34,7 +34,8 @@ enum LayoutProbe {
     /// A free-form fact for the report (`notes.<key>`), and an event when it changes.
     static func note(_ key: String, _ value: String) {
         guard state.notes[key] != value else { return }
-        state.event(key, from: state.notes[key], to: value)
+        // The reveal's step count changes ten times a second: kept as a note, never logged as an event.
+        if key != "revealedUnits" { state.event(key, from: state.notes[key], to: value) }
         state.notes[key] = value
         state.schedule()
     }

@@ -29,6 +29,23 @@ public enum FollowRule {
         case glide
     }
 
+    /// Where the reader is after the scroll geometry moved: `geometry` is
+    /// what the geometry says (the bottom edge within the slack, or content
+    /// shorter than the screen). The geometry alone cannot tell a reader who
+    /// scrolled up from rows that grew below a reader at the bottom (a list
+    /// keeps no bottom on size changes, and a streaming row grows between
+    /// rows landing), so only the reader's own scroll (`readerMoving`: a
+    /// drag or its deceleration) or a scroll the view made on purpose to a
+    /// row away from the bottom (`offBottomWrite`: a search landing, a page
+    /// joining above, a reflow restoring a row) takes a reader off the
+    /// bottom. Growth under a reader at the bottom keeps them there and asks
+    /// for a pin.
+    public static func atBottom(was: Bool, geometry: Bool, readerMoving: Bool, offBottomWrite: Bool) -> (atBottom: Bool, pin: Bool) {
+        if geometry { return (true, false) }
+        if readerMoving || offBottomWrite || !was { return (false, false) }
+        return (true, true)
+    }
+
     /// The write for `event`. `atBottom` is the reader's place, `landing`
     /// a landing on a named row in flight, `reflowHeld` a width change
     /// restoring its own anchor.

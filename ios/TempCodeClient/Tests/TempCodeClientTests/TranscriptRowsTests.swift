@@ -162,6 +162,20 @@ import TempCodeContract
 
 /// `FollowRule`: the offset follows only a reader at the bottom.
 @Suite struct FollowRuleTests {
+    @Test func `rows growing below a reader at the bottom keep them there and pin`() {
+        let after = FollowRule.atBottom(was: true, geometry: false, readerMoving: false, offBottomWrite: false)
+        #expect(after.atBottom && after.pin)
+    }
+
+    @Test func `only the reader's own scroll or a deliberate scroll to a row leaves the bottom`() {
+        #expect(FollowRule.atBottom(was: true, geometry: false, readerMoving: true, offBottomWrite: false) == (false, false))
+        #expect(FollowRule.atBottom(was: true, geometry: false, readerMoving: false, offBottomWrite: true) == (false, false))
+        // A reader already up stays up whatever grows, and nothing pins them.
+        #expect(FollowRule.atBottom(was: false, geometry: false, readerMoving: false, offBottomWrite: false) == (false, false))
+        // Reaching the bottom by any road is being there.
+        #expect(FollowRule.atBottom(was: false, geometry: true, readerMoving: true, offBottomWrite: false) == (true, false))
+    }
+
     @Test func `rows changing pin a reader at the bottom and leave one who is up`() {
         #expect(FollowRule.write(for: .rowsChanged, atBottom: true) == .pin)
         #expect(FollowRule.write(for: .rowsChanged, atBottom: false) == .none)
