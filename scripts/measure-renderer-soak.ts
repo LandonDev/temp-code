@@ -48,7 +48,8 @@
  * --height-report (--scene scenarios): every open tool table and code block
  *   watched for a height that jumps instead of gliding (scripts/lib/heightReport.ts);
  *   a jump fails the run, except under --reduced-motion, which steps by design.
- *   With --scrolled-up the run also fails when the reader's top row moved.
+ *   With --scrolled-up the run also fails when the reader's top row moved
+ *   while turn 6 streamed (each send parks the prompt, by design).
  *
  * Each sample forces a GC (HeapProfiler.collectGarbage) and reads the heap
  * (Runtime.getHeapUsage), the renderer's memory (Linux: smaps_rollup PSS and
@@ -798,7 +799,8 @@ async function main(): Promise<void> {
  * ones to look at. `--scrolled-up` scrolls the reader up into the history
  * first; `--trace <s>` traces the same run. Fails on a long task over 200 ms,
  * and with `--height-report` on a tool table or code block that jumped
- * (never under reduced motion) or, scrolled up, on the reader's top row moving.
+ * (never under reduced motion) or, scrolled up, on the reader's top row moving
+ * through turn 6.
  */
 async function recordScenarios(c: Cdp): Promise<void> {
   if (!soakHost?.stdin || !soakHost.stdout) throw new Error('the scenarios need the synthetic host')
@@ -841,14 +843,30 @@ async function recordScenarios(c: Cdp): Promise<void> {
     const row = [...el.querySelectorAll('[data-row]')].find((r) => r.getBoundingClientRect().bottom > top + 1)
     return row ? { row: row.dataset.row, top: Math.round(row.getBoundingClientRect().top - top) } : null
   })()`
-  const topBefore = args.scrolledUp ? await c.eval<{ row: string; top: number } | null>(TOP_ROW) : null
+  // Each send parks the transcript on its prompt, by design, so the reader's
+  // place is held over turn 6 alone: scrolled up once its calls start, its top
+  // row read again as it settles, through the landings, the fence and the list.
+  const SCROLL_UP = `(() => {
+    const el = document.querySelector('.agent-transcript')
+    if (!el) return -1
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY: -600, bubbles: true }))
+    el.scrollTop = Math.max(0, el.scrollTop - 600)
+    el.dispatchEvent(new Event('scroll'))
+    return el.scrollTop
+  })()`
+  let topBefore: Promise<{ row: string; top: number } | null> | null = null
+  let topAfter: Promise<{ row: string; top: number } | null> | null = null
   const steps: { label: string; t: number }[] = []
   const lines = createInterface({ input: soakHost.stdout })
   lines.on('line', (l) => {
     if (!l.startsWith('{"step"')) return
     const step = JSON.parse(l) as { step: string; clicks?: string[] }
-    steps.push({ label: step.step, t: Date.now() })
+    const label = step.step
+    steps.push({ label, t: Date.now() })
     if (step.clicks) void c.eval(questionClicks(step.clicks)).catch(() => {})
+    if (!args.scrolledUp) return
+    if (label === 'turn 6: ten calls start') topBefore = c.eval<number>(SCROLL_UP).then(() => sleep(300)).then(() => c.eval(TOP_ROW))
+    if (label === 'turn 6: settles') topAfter = c.eval(TOP_ROW)
   })
   const length = scenarioLength()
   soakHost.stdin.write('go\n')
@@ -861,8 +879,9 @@ async function recordScenarios(c: Cdp): Promise<void> {
   const drained = await c.eval<{ tasks: { start: number; duration: number }[] }>('window.__soakDrain()')
   const longest = Math.max(0, ...drained.tasks.map((t) => t.duration))
   const heights = args.heightReport ? summarizeHeights(await c.eval<HeightRecord[]>('window.__heightRecords()'), steps) : null
-  const topAfter = args.scrolledUp ? await c.eval<{ row: string; top: number } | null>(TOP_ROW) : null
-  const anchored = !topBefore || (!!topAfter && topAfter.row === topBefore.row && Math.abs(topAfter.top - topBefore.top) <= 1)
+  const before = topBefore ? await topBefore : null
+  const after = topAfter ? await topAfter : null
+  const anchored = !args.scrolledUp || (!!before && !!after && after.row === before.row && Math.abs(after.top - before.top) <= 1)
   const index = {
     steps: steps.map((s) => ({ ...s, frames: frames.filter((f) => f.t >= s.t - 50 && f.t <= s.t + 600).map((f) => f.file) })),
     frames: frames.length,
@@ -871,7 +890,7 @@ async function recordScenarios(c: Cdp): Promise<void> {
     longestTaskMs: longest,
     trace: traced,
     heights,
-    topRow: topBefore ? { before: topBefore, after: topAfter } : null,
+    topRow: args.scrolledUp ? { before, after } : null,
   }
   if (dir) writeFileSync(join(dir, 'index.json'), JSON.stringify(index, null, 1))
   if (traced) writeFileSync(join(ROOT, `${args.label}.trace.md`), traceMarkdown(traced).join('\n') + '\n')
@@ -885,8 +904,9 @@ async function recordScenarios(c: Cdp): Promise<void> {
     console.log(`${failed ? '✗' : heights.jumps.length ? '!' : '✓'} heights: ${heightLine(heights)}${args.reducedMotion && heights.jumps.length ? ' (reduced motion, reported only)' : ''}`)
     if (failed) ok = false
   }
-  if (topBefore) {
-    console.log(`${anchored ? '✓' : '✗'} the reader's top row: ${topBefore.row} at ${topBefore.top}px, then ${topAfter ? `${topAfter.row} at ${topAfter.top}px` : 'none'}`)
+  if (args.scrolledUp) {
+    const at = (r: { row: string; top: number } | null) => (r ? `${r.row} at ${r.top}px` : 'none')
+    console.log(`${anchored ? '✓' : '✗'} the reader's top row through turn 6: ${at(before)}, then ${at(after)}`)
     if (!anchored) ok = false
   }
   process.exitCode = ok ? 0 : 1

@@ -20,6 +20,11 @@ describe('the height report', () => {
     expect(findJumps(records)).toEqual([])
   })
 
+  it('takes a box hidden or shown again (its height to or from 0) for no jump', () => {
+    const records = [rec(1, 0, 131), rec(1, 10, 131), rec(1, 20, 0), rec(1, 30, 0), rec(1, 40, 131), rec(1, 50, 131)]
+    expect(findJumps(records)).toEqual([])
+  })
+
   it('ignores a step under JUMP_PX and keeps boxes apart', () => {
     const records = [rec(1, 0, 20), rec(2, 0, 20), rec(1, 10, 35), rec(2, 20, 40), rec(2, 30, 40)]
     expect(findJumps(records).map((j) => j.box)).toEqual([2])
@@ -28,7 +33,7 @@ describe('the height report', () => {
   it('counts the jumps per step in one line', () => {
     const steps = [{ label: 'turn 5: the fence streams', t: 0 }]
     const summary = summarizeHeights([rec(3, 10, 40, 'code'), rec(3, 20, 40, 'code'), rec(3, 30, 60, 'code')], steps)
-    expect(summary).toMatchObject({ boxes: 1, records: 3, perStep: { 'turn 5: the fence streams': 1 } })
+    expect(summary).toMatchObject({ boxes: 1, records: 3, byBox: { 3: { kind: 'code', heights: [40, 40, 60] } }, perStep: { 'turn 5: the fence streams': 1 } })
     expect(heightLine(summary)).toBe('1 boxes, 3 height records, 1 jumps: turn 5: the fence streams 1')
   })
 })

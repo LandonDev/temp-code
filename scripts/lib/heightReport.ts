@@ -8,7 +8,9 @@
  * records line up with the host's steps. ResizeObserver reports once per
  * frame a box's size changed, so a glide is a run of small steps and a jump
  * one step of JUMP_PX or more with the box still on both sides of it
- * (`findJumps`). A box's first record is its mount, never a jump.
+ * (`findJumps`). A box's first record is its mount, never a jump, and a box
+ * going to or coming back from 0 is hidden or shown (a fold closing over its
+ * group, a row leaving the window), not drawn at another height.
  */
 
 /** A height change this large in one frame, with no motion around it, is a jump. */
@@ -36,6 +38,8 @@ export interface Jump {
 export interface HeightSummary {
   boxes: number
   records: number
+  /** each box's kind and the heights it was drawn at, in order, for reading a run back */
+  byBox: Record<number, { kind: HeightRecord['kind']; heights: number[] }>
   jumps: Jump[]
   /** the jumps per step label */
   perStep: Record<string, number>
@@ -94,7 +98,7 @@ export function findJumps(records: HeightRecord[], steps: { label: string; t: nu
     for (let i = 1; i < list.length; i++) {
       const before = list[i - 1]!
       const now = list[i]!
-      if (Math.abs(now.height - before.height) < JUMP_PX) continue
+      if (Math.abs(now.height - before.height) < JUMP_PX || now.height === 0 || before.height === 0) continue
       const stillBefore = i === 1 || list[i - 2]!.height === before.height
       const after = list[i + 1]
       const stillAfter = !after || after.height === now.height
@@ -108,7 +112,9 @@ export function summarizeHeights(records: HeightRecord[], steps: { label: string
   const jumps = findJumps(records, steps)
   const perStep: Record<string, number> = {}
   for (const j of jumps) perStep[j.step] = (perStep[j.step] ?? 0) + 1
-  return { boxes: new Set(records.map((r) => r.box)).size, records: records.length, jumps, perStep }
+  const byBox: HeightSummary['byBox'] = {}
+  for (const r of records.slice().sort((a, b) => a.t - b.t)) (byBox[r.box] ??= { kind: r.kind, heights: [] }).heights.push(r.height)
+  return { boxes: Object.keys(byBox).length, records: records.length, byBox, jumps, perStep }
 }
 
 /** The summary as one line for the log and the report. */
