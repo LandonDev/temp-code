@@ -190,7 +190,8 @@ function oneLine(message: string, max = 160): string {
 }
 
 /** The two lines for a kind: what happened (with the account) and why. */
-export function describeFailure(kind: FailureKind, ctx: FailureContext): { summary: string; cause: string } {
+/** `room`: a cap's verdict on the other accounts (classifyFailure asks it once); null when unknown. */
+export function describeFailure(kind: FailureKind, ctx: FailureContext, room: boolean | null = null): { summary: string; cause: string } {
   const account = refusedAccount(ctx)
   const provider = PROVIDER_NAME[ctx.provider] ?? ctx.provider
   const harness = HARNESS_NAME[ctx.provider] ?? ctx.provider
@@ -240,7 +241,10 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext): { summa
       const label = limitLabel(ctx.limit?.window)
       return {
         summary: account ? `${account} hit its ${label}` : `${provider} answered with a ${label}`,
-        cause: 'The usage window is spent until it resets; another account with room can take the thread.'
+        cause:
+          room === false
+            ? 'The usage window is spent until it resets, and no other account has room for this model; another model can take the thread.'
+            : 'The usage window is spent until it resets; another account with room can take the thread.'
       }
     }
     case 'quota':
@@ -249,7 +253,10 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext): { summa
       }
       return {
         summary: account ? `${account} is out of credits` : `The ${provider} plan is out of credits`,
-        cause: 'The plan has nothing left to spend; top it up or route the thread to another account.'
+        cause:
+          room === false
+            ? 'The plan has nothing left to spend, and no other account has room; top it up or continue on another model.'
+            : 'The plan has nothing left to spend; top it up or route the thread to another account.'
       }
     case 'model_unavailable':
       return {
@@ -301,8 +308,8 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext): { summa
 
 export function classifyFailure(ctx: FailureContext): Failure {
   const kind = failureKindOf(ctx)
-  const { summary, cause } = describeFailure(kind, ctx)
   const room = kind === 'rate_limited' || kind === 'quota' ? (ctx.roomElsewhere?.() ?? null) : null
+  const { summary, cause } = describeFailure(kind, ctx, room)
   return { kind, account: refusedAccount(ctx), summary, cause, ...(room === null ? {} : { roomElsewhere: room }) }
 }
 

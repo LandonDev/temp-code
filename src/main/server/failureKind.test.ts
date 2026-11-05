@@ -268,6 +268,10 @@ describe('a usage cap', () => {
   it('says whether another account has room, on the cap kinds alone', () => {
     expect(classifyFailure(ctx({ ...cap, roomElsewhere: () => true }))).toMatchObject({ kind: 'rate_limited', roomElsewhere: true })
     expect(classifyFailure(ctx({ ...cap, roomElsewhere: () => false }))).toMatchObject({ kind: 'rate_limited', roomElsewhere: false })
+    // The cause says what the card can offer: another account while one has room, else another model.
+    expect(classifyFailure(ctx({ ...cap, roomElsewhere: () => true })).cause).toContain('another account with room')
+    expect(classifyFailure(ctx({ ...cap, roomElsewhere: () => false })).cause).toContain('no other account has room for this model; another model')
+    expect(classifyFailure(ctx({ message: 'insufficient_quota', roomElsewhere: () => false })).cause).toContain('continue on another model')
     // No answer (no snapshot yet) leaves the field out.
     expect(classifyFailure(ctx({ ...cap, roomElsewhere: () => null }))).not.toHaveProperty('roomElsewhere')
     // Another kind never asks.
