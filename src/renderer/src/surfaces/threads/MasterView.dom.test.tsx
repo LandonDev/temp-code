@@ -238,6 +238,10 @@ import { resetChatFolds } from "../../lib/chatFold";
 import { SessionActionsContext, type SessionActions } from "../threadChat";
 import { MasterView } from "./MasterView";
 import { BoardPreview } from "./master/board.preview";
+import { clockTime } from "../../lib/duration";
+
+// 12:08 on the fixtures' day, in the app's one clock (lib/duration.ts).
+const LANDED = clockTime(new Date(2026, 9, 21, 12, 8).getTime());
 
 const meta = (over: Partial<SessionMeta>): SessionMeta =>
   ({
@@ -559,7 +563,7 @@ describe("the master view", () => {
     // Line two: the activity for a running row, the scheduler's note without its lead for a queued one, when a landed one landed.
     expect(screen.getByText("Running ios:test:client")).toBeTruthy();
     expect(screen.getByText("Waiting for Home")).toBeTruthy();
-    expect(screen.getByText("Landed 12:08")).toBeTruthy();
+    expect(screen.getByText(`Landed ${LANDED}`)).toBeTruthy();
     // The model at the end of line one: the provider's mark and the model; effort and context live in its tooltip.
     expect(screen.getAllByText("Opus 5.5")).toHaveLength(4);
     expect(screen.queryByText("high 1M")).toBeNull();
@@ -609,8 +613,8 @@ describe("the master view", () => {
     const row = screen.getByRole("button", { name: /Design foundations/ });
     expect(row.querySelector("[data-row-glyph]")?.childElementCount).toBe(0);
     const status = row.querySelector("[data-row-status]")!;
-    expect(status.textContent).toBe("Landed 12:08");
-    expect(status.querySelector("[data-slot=status-mark]")?.getAttribute("aria-label")).toBe("Done: Landed 12:08");
+    expect(status.textContent).toBe(`Landed ${LANDED}`);
+    expect(status.querySelector("[data-slot=status-mark]")?.getAttribute("aria-label")).toBe(`Done: Landed ${LANDED}`);
   });
 
   it("the child that blocks the batch says why on its second line; a watching or paused child under Working says its own word", async () => {
@@ -1518,10 +1522,11 @@ describe("the board's static preview", () => {
       "Watchingsleep 45 seconds",
       "PausedRunning bun test",
       "Waiting for Home screen",
-      "Landed 12:08",
+      `Landed ${LANDED}`,
     ]);
-    // The two implementation rows say their tally on the bar's line.
-    expect([...document.querySelectorAll("[data-bar-tally]")].map((t) => t.textContent)).toEqual(["2/7", "4/4"]);
+    // The working implementation row says its tally on the bar's line; the
+    // finished one draws no bar and, every task ticked, no tally.
+    expect([...document.querySelectorAll("[data-bar-tally]")].map((t) => t.textContent)).toEqual(["2/7"]);
     expect(document.querySelector("[data-agents-tail]")?.textContent).toBe("1 done");
     expect(document.querySelector("[data-step='smoke'] [data-console='smoke']")?.textContent?.split("\n")).toHaveLength(8);
     expect(document.body.textContent).not.toMatch(/[·•—]/);

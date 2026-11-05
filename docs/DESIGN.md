@@ -145,7 +145,11 @@ a surface above `/10`.
 Weight and colour make the hierarchy, not size jumps: a title is `font-medium`
 foreground, its detail `muted-foreground` at the next size down. Code is the
 mono face one size below its surroundings. Tracking: `-0.01em` from 16px
-up, none below. Numbers in tables and tallies are `tabular-nums`.
+up, none below. Numbers in tables and tallies are `tabular-nums`. A clock
+time has one form, `clockTime` (lib/duration.ts): the locale's hour and
+minute, 12-hour with AM/PM where it writes it so ("Landed 12:08 PM",
+"Finished 2:02 PM"), never a hand-padded "14:02"; `tabular-nums` where it
+sits in a column.
 
 ### Spacing
 
@@ -344,7 +348,7 @@ composer counts from the click and never steps back when the host's own
 start arrives.
 
 A detail is sentence-cased when it is a sentence ("Waiting for memory",
-"Approve Bash", "Landed 12:08", "The harness is gone") and written as it
+"Approve Bash", "Landed 12:08 PM", "The harness is gone") and written as it
 is when it is a name or a count ("3 subagents", "sleep 45 seconds",
 "Rail.tsx"); it never ends in a full stop and never repeats the word. A
 phase keeps its comma inside the detail ("Rate limited, retry 3 in 32

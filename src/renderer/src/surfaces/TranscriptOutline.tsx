@@ -1,12 +1,12 @@
 import { memo, useMemo, useSyncExternalStore } from "react";
 import { Button } from "../components/ui/button";
 import { JumpList, type JumpGroup, type JumpHow } from "../chrome/JumpList";
+import { clockTime } from "../lib/duration";
 import type { Block } from "../lib/session";
 import { threadMentionsInText, useThreadTitles } from "../lib/threadMentions";
 import {
   currentEntry,
   dayGroups,
-  entryClock,
   entryLine,
   entryTime,
   outlineEntries,
@@ -66,7 +66,7 @@ export const TranscriptOutline = memo(function TranscriptOutline({
         items: group.entries.map((entry) => {
           const line = entryLine(entry.block.text, entry.block.attachments, titleOf) || "Message";
           const time = entryTime(entry.block);
-          const clock = time === undefined ? undefined : entryClock(time, locale);
+          const clock = time === undefined ? undefined : clockTime(time, locale);
           return {
             key: entry.id,
             label: line,

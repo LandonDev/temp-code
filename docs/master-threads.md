@@ -603,7 +603,7 @@ rows, the foot and the add sheet are the UI thread's
 - **Land stays first.** The rules dialog pins the land step at the top,
   as the engine runs it: no move or remove of its own, nothing moves above
   it, and the add picker never offers it.
-- **A done row says only what it did.** "landed 12:08" or the summary, no
+- **A done row says only what it did.** "Landed 12:08 PM" or the summary, no
   glyph: a mark that only says "nothing is happening" is noise
   (docs/DESIGN.md "Status vocabulary").
 - **An opened child shows at once.** Back and the title draw from the
@@ -620,8 +620,10 @@ rows, the foot and the add sheet are the UI thread's
   last running step ends.
 - **Left out on purpose.** No cost column, no counts, no badges on the
   title. Progress bars and task lists are on implementation and
-  orchestration rows only: the task bar on a third line with `3/7`,
-  folding open to the task list (docs/LAYOUT.md "Master"); every other
+  orchestration rows only, and only until the row is done: the task bar
+  on a third line with `3/7`, folding open to the task list
+  (docs/LAYOUT.md "Master"); a finished one is 48px again with its tally
+  at the end of line two, none once every task is ticked; every other
   row says the task in hand or its state and `3/7` at its line's end. The
   phone's MasterBoard rows keep the tally alone. The type is the row's glyph,
   its word in a tooltip. On hover the row offers Message, the one verb its

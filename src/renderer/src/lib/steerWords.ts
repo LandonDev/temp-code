@@ -1,3 +1,4 @@
+import { clockTime as clock } from "./duration";
 import type { SteerStamp } from "./session";
 
 /** The one word under a steered bubble (UserMessage's SteerLine). */
@@ -14,14 +15,9 @@ export function steerWord(stamp: SteerStamp): string {
   }
 }
 
-/** Its tooltip: when, and how it went in ("Received at 14:02, as its own turn"). */
+/** Its tooltip: when, and how it went in ("Received at 2:02 PM, as its own turn"). */
 export function steerTip(stamp: SteerStamp): string {
   if (stamp.state === "failed") return stamp.reason ? `Not delivered: ${stamp.reason}` : `Not delivered at ${clock(stamp.ts)}`;
   const word = stamp.state === "queued" ? "Queued" : steerWord(stamp);
   return `${word} at ${clock(stamp.ts)}${stamp.state === "received" && stamp.how === "next-turn" ? ", as its own turn" : ""}`;
-}
-
-function clock(ts: number): string {
-  const at = new Date(ts);
-  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
 }

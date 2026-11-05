@@ -4,6 +4,7 @@ import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { leadStripped } from "../../../lib/threads/agents";
 import { settledWithAgents } from "../../../lib/threadStripModel";
+import { groupOf, type GroupedMeta } from "../../../lib/threadGroups";
 import { detailText, sentenceStart } from "@shared/statusWords";
 import { watchPhrase } from "@shared/watch";
 import { clockTime } from "./useMasterModel";
@@ -47,11 +48,12 @@ export function taskTally(tasks: readonly TodoItem[]): string | null {
 export const BAR_TYPES: ReadonlySet<string> = new Set(["implementation", "orchestration"]);
 
 /** The bar line's share, done of total: an implementation or orchestration
- *  row once it has a task list; null for every other row (they keep the
- *  tally at the end of line two). */
-export function taskBar(meta: Pick<SessionMeta, "threadType">, digest: Pick<BoardDigest, "todos">): { done: number; total: number } | null {
+ *  row once it has a task list, until it sits under Done (finished, landed
+ *  or stopped: groupOf); null for every other row, and for a finished one
+ *  (they keep the tally at the end of line two). */
+export function taskBar(meta: Pick<SessionMeta, "threadType"> & GroupedMeta, digest: Pick<BoardDigest, "todos">): { done: number; total: number } | null {
   const tasks = taskList(digest);
-  if (tasks.length === 0 || !BAR_TYPES.has(meta.threadType ?? "")) return null;
+  if (tasks.length === 0 || !BAR_TYPES.has(meta.threadType ?? "") || groupOf(meta) === "done") return null;
   return { done: tasks.filter((t) => t.status === "completed").length, total: tasks.length };
 }
 

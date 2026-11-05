@@ -95,7 +95,8 @@ const SEVEN = ["Read the brief", "Rail rows", "Section headings", "Write the pro
 
 /** The task bar's cases (board.preview.tsx `TaskBarPreview`): an
  *  implementation row with no tasks yet (no bar), 3/7 working folded and
- *  open, 7/7 done folded and open. */
+ *  open, 5/7 paused (the muted bar), a finished row with every task ticked
+ *  (no bar, no tally) and one stopped at 5/7 (no bar, 5/7 at the end). */
 export const TASK_BAR_ROWS: FixtureRow[] = [
   { meta: base({ id: "fresh", title: "Settings sheet", status: "running", activity: "Reading the brief", createdAt: 1 }), digest: {}, agents: null, landed: false },
   {
@@ -111,8 +112,9 @@ export const TASK_BAR_ROWS: FixtureRow[] = [
     landed: false,
     tasksOpen: true,
   },
-  { meta: base({ id: "tokens", title: "Design tokens", status: "idle", createdAt: 0 }), digest: { todos: todos(7, 7, SEVEN) }, agents: null, landed: true },
-  { meta: base({ id: "type", title: "Type scale", status: "idle", createdAt: 0 }), digest: { todos: todos(7, 7, SEVEN) }, agents: null, landed: true, tasksOpen: true },
+  { meta: base({ id: "type", title: "Type scale", status: "paused", activity: "Running bun test", createdAt: 4 }), digest: { todos: todos(5, 7, SEVEN) }, agents: null, landed: false },
+  { meta: base({ id: "tokens", title: "Design tokens", status: "idle", createdAt: 0 }), digest: { todos: todos(7, 7, SEVEN) }, agents: null, landed: true, tasksOpen: true },
+  { meta: base({ id: "icons", title: "Icon set", status: "stopped", createdAt: 0 }), digest: { todos: todos(5, 7, SEVEN) }, agents: null, landed: false },
 ];
 
 /** The fixture's rows in their sections, in the board's order. */

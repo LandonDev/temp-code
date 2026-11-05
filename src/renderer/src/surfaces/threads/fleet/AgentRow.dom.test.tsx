@@ -78,7 +78,7 @@ describe("AgentRowView", () => {
     const time = container.querySelector("[data-agent-time]")!;
     expect(time.textContent).toBe("1m 14s");
     hover(time);
-    await waitFor(() => expect(tipText()).toMatch(/^Finished \d\d:\d\d$/), { timeout: 2000 });
+    await waitFor(() => expect(tipText()).toMatch(/^Finished \d{1,2}:\d\d([ \u202f][AP]M)?$/), { timeout: 2000 });
   });
 
   it("draws a live row on two lines, the title in the foreground", () => {

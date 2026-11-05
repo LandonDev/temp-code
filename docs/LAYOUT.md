@@ -760,7 +760,7 @@ The transcript's left side lists the person's own messages
 (surfaces/TranscriptOutline.tsx, rules in surfaces/transcriptOutlineModel.ts):
 one 28px row per user or handoff message (a steer and an optimistic send
 included; reports, nudges and notices never), its first line in 13px muted
-text and its clock time at the end in 12px `tabular-nums`; a thread that
+text and its clock time ("2:32 PM", `clockTime`) at the end in 12px `tabular-nums`; a thread that
 spans days heads each day with an 11px label (Today, Yesterday, Oct 30).
 The message being read (the row a third of the way down the viewport; the
 first at the top, the last at the end) is in foreground with
@@ -959,7 +959,7 @@ favicon, the title, the host, the claim; the address in a tooltip).
   (`ModelMark`, surfaces/threads/ModelMark.tsx, the board's; the role
   first in its tooltip, "Reviewer, Claude Opus 5.5, high effort"; a row
   under 18rem keeps the mark alone), then on a settled row how long it ran
-  ("4m 12s", "Finished 14:02" on hover). Line two: the host's phrase while
+  ("4m 12s", "Finished 2:02 PM" on hover). Line two: the host's phrase while
   it works, else the state's word where the heading does not say it and
   what the state is about (a question or a failure in its tone), then the
   task tally ("3/7") and the time, which ticks only while live
@@ -1022,8 +1022,7 @@ brought into view even when it moved section meanwhile.
 │  ◌  Waiting for Home                                                  │
 │ Done                                                                   │
 │  ☷  Design foundations                              ✺ Fable 5.1      │
-│     Landed 12:08                                                       │
-│     ███████████████████████████████████████████████████████████   4/4  › │
+│     Landed 12:08 PM                                                    │
 ├────────────────────────────────────────────────────────────────────────┤
 │ When done                                                         Edit │
 │ ✓ Land        2 of 7 landed                                     1m 30s │
@@ -1123,7 +1122,7 @@ brought into view even when it moved section meanwhile.
   `statusDetail`; an idle child with live subagents is watching them,
   `threadStatus`'s rule) and queued, why it waits ("Waiting for Home",
   `statusDetail`, else an old host's activity past its lead with a
-  capital); paused, what it was doing; done, "Landed 12:08" once the
+  capital); paused, what it was doing; done, "Landed 12:08 PM" once the
   batch lists it, else a research or orchestration thread's summary (the
   notes' State line, else its last words). The child the batch's
   `blocked` names says why ("Ended its turn without completing",
@@ -1132,8 +1131,13 @@ brought into view even when it moved section meanwhile.
   name or a count as it is) and ends without a full stop.
   **The task bar.** An implementation or orchestration row with a task
   list (`taskBar` in master/rowBody.ts; the digest's `todos`, the tally's
-  source) has a third 16px line in the title's column, so the row is 64px
-  (the board's estimate knows it before the measure): the 4px `Progress`
+  source) has a third 16px line in the title's column while it is not yet
+  under Done, so the row is 64px (the board's estimate knows it before the
+  measure). Once it sits under Done (finished, landed or stopped:
+  `groupOf`) the line goes and the row is 48px again, like every settled
+  row: its tally back at the end of line two, or none when every task is
+  ticked, since Done already says so; a fold remembered open stays in
+  taskFold.ts and is simply not drawn. The line: the 4px `Progress`
   bar across the column, then the tally (`3/7`, 12px muted, said here and
   nowhere else on the row) and a 12px chevron, the right edge where the
   model mark ends. The fill is foreground while the row's state is

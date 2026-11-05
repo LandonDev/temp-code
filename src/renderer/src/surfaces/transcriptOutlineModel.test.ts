@@ -11,7 +11,6 @@ import {
   createReaderStore,
   currentEntry,
   dayGroups,
-  entryClock,
   entryLine,
   entryTime,
   outlineEntries,
@@ -69,18 +68,12 @@ describe("entryLine", () => {
   });
 });
 
-describe("entryTime and entryClock", () => {
+describe("entryTime", () => {
   it("prefers the row's start, then its time, then a pending send's birth", () => {
     expect(entryTime(user("u", "x", { startedAt: 3, ts: 2, born: 1 }))).toBe(3);
     expect(entryTime(user("u", "x", { ts: 2, born: 1 }))).toBe(2);
     expect(entryTime(user("u", "x", { born: 1 }))).toBe(1);
     expect(entryTime(user("u"))).toBeUndefined();
-  });
-
-  it("formats the clock time by the locale", () => {
-    const t = new Date(2026, 10, 1, 14, 32).getTime();
-    expect(entryClock(t, "en-US")).toBe("2:32 PM");
-    expect(entryClock(t, "en-GB")).toBe("14:32");
   });
 });
 

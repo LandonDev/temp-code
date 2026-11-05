@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 import type { SessionStatus } from "@shared/events";
 import { Check, Circle, CircleAlert, CircleDashed, CircleDot, FileText, Pause, Square } from "@renderer/chrome/icons";
 import { cn } from "@renderer/lib/cn";
+import { clockTime } from "@renderer/lib/duration";
 import { plainStatus } from "@shared/statusWords";
 import { Spinner } from "./spinner";
 
@@ -122,10 +123,6 @@ export function linkMarkOf(
         ? { state: "waiting", word: `Unreachable since ${clockTime(opts.unreachableSince)}` }
         : { state: "stopped", word: "Offline" };
   }
-}
-
-function clockTime(at: number): string {
-  return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 /** Does the state need the person's eyes: a live dot in the rail, an unread-style weight. */

@@ -269,7 +269,7 @@ export function typeWord(child: Pick<SessionMeta, "threadType">): string {
   return (child.threadType && TYPE_WORD[child.threadType]) || "";
 }
 
-/** "12:08" for a done row's "Landed 12:08". */
+/** "12:08 PM" for a done row's "Landed 12:08 PM". */
 export { clockTime } from "../../../lib/duration";
 
 /** "2 of 10 landed" beside the land step. */

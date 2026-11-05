@@ -3085,12 +3085,13 @@ this is the short one.
   row's one moving mark; none for done or idle) and in the title's column
   the word where the section does not say it, then what the state is
   about (the task in hand, the question or "Approve Bash" in amber, the
-  failure in red; "Landed 12:08" or a settled research thread's summary;
+  failure in red; "Landed 12:08 PM" (lib/duration.ts `clockTime`, the app's one clock time: 12-hour with AM/PM where the locale writes it) or a settled research thread's summary;
   the child the batch's `blocked` names says why, "Ended its turn without
   completing"; a watching or paused child under Working, a failed one
   under Needs you, says its own word) and the task tally `3/7` at the end; the sections read Needs you, Working, Queued,
   Done with no counts. An implementation or orchestration row with tasks
-  is 64px: a third line holds the task bar (`Progress`, foreground while
+  is 64px until it is done (a finished one is 48px, its tally back at the
+  end of line two, none once every task is ticked): a third line holds the task bar (`Progress`, foreground while
   working, muted otherwise), the tally said there alone and a chevron,
   the whole line folding the task list open under it (`TaskRows` compact,
   closed by default, remembered per row for the window's life in

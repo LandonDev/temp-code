@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { BoardDigest } from "@server/shared/contract-batch";
 import type { SessionMeta } from "../../../lib/tcserver/types";
+import { clockTime } from "../../../lib/duration";
 import { passLine, rowStatus, summaryLine, taskBar, taskInHand, taskTally } from "./rowBody";
 
 const todos: TodoItem[] = [
@@ -33,20 +34,35 @@ describe("the task bar", () => {
   const seven = (done: number): TodoItem[] =>
     Array.from({ length: 7 }, (_, i) => ({ content: `Task ${String(i + 1)}`, status: i < done ? "completed" : i === done ? "in_progress" : "pending" }) as TodoItem);
 
+  const live = (over: Partial<SessionMeta>) => m({ status: "running", ...over });
+
   it("is done of total on an implementation or orchestration row with tasks", () => {
-    expect(taskBar(m({ threadType: "implementation" }), { todos: seven(3) })).toEqual({ done: 3, total: 7 });
-    expect(taskBar(m({ threadType: "orchestration" }), { todos: seven(3) })).toEqual({ done: 3, total: 7 });
-    expect(taskBar(m({ threadType: "implementation" }), { todos: seven(7) })).toEqual({ done: 7, total: 7 });
+    expect(taskBar(live({ threadType: "implementation" }), { todos: seven(3) })).toEqual({ done: 3, total: 7 });
+    expect(taskBar(live({ threadType: "orchestration" }), { todos: seven(3) })).toEqual({ done: 3, total: 7 });
+    expect(taskBar(live({ threadType: "implementation" }), { todos: seven(7) })).toEqual({ done: 7, total: 7 });
+  });
+
+  it("stays while the row works, waits, fails, is paused or queued", () => {
+    for (const status of ["running", "starting", "watching", "waiting", "error", "paused", "queued"] as const) {
+      expect(taskBar(m({ status }), { todos: seven(3) })).toEqual({ done: 3, total: 7 });
+    }
+  });
+
+  it("is null once the row sits under Done: finished, landed or stopped", () => {
+    for (const status of ["idle", "done", "stopped"] as const) {
+      expect(taskBar(m({ status }), { todos: seven(7) })).toBeNull();
+      expect(taskBar(m({ status }), { todos: seven(5) })).toBeNull();
+    }
   });
 
   it("is null with no tasks yet", () => {
-    expect(taskBar(m({ threadType: "implementation" }), {})).toBeNull();
-    expect(taskBar(m({ threadType: "implementation" }), { todos: [] })).toBeNull();
+    expect(taskBar(live({ threadType: "implementation" }), {})).toBeNull();
+    expect(taskBar(live({ threadType: "implementation" }), { todos: [] })).toBeNull();
   });
 
   it("is null for a planning, chat, research or project-plan row, todos or not", () => {
     for (const threadType of ["planning", "chat", "research", "project-plan"] as const) {
-      expect(taskBar(m({ threadType }), { todos: seven(3) })).toBeNull();
+      expect(taskBar(live({ threadType }), { todos: seven(3) })).toBeNull();
     }
   });
 });
@@ -112,7 +128,7 @@ describe("rowStatus", () => {
   });
 
   it("an idle row is done: when it landed, else a research or orchestration summary, else nothing", () => {
-    expect(rowStatus(m({}), {}, true)).toEqual({ state: "done", detail: "Landed 12:08" });
+    expect(rowStatus(m({}), {}, true)).toEqual({ state: "done", detail: `Landed ${clockTime(at)}` });
     expect(rowStatus(m({ threadType: "research" }), { state: "Composer done", last: "x" }, false)).toEqual({ state: "done", detail: "Composer done" });
     expect(rowStatus(m({ status: "done", threadType: "orchestration" }), { last: "Looked at three sources." }, false).detail).toBe("Looked at three sources");
     expect(rowStatus(m({ threadType: "chat" }), { last: "x" }, false)).toEqual({ state: "done", detail: "" });

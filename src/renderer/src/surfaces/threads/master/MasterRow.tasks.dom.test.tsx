@@ -58,7 +58,7 @@ describe("the task bar", () => {
       return tone;
     };
     expect(fill(meta({ status: "running" }))).toBe("foreground");
-    for (const status of ["paused", "idle", "waiting", "error", "queued"] as const) expect(fill(meta({ status, activity: null }))).toBe("muted");
+    for (const status of ["paused", "watching", "waiting", "error", "queued"] as const) expect(fill(meta({ status, activity: null }))).toBe("muted");
   });
 
   it("shows on an orchestration row too", () => {
@@ -79,12 +79,27 @@ describe("the task bar", () => {
     }
   });
 
-  it("a finished row's list is all done", () => {
-    const { container } = view(meta({ status: "idle", activity: null }), { todos: seven(7) }, { tasksOpen: true });
-    expect(container.querySelector("[data-bar-tally]")?.textContent).toBe("7/7");
-    const marks = [...container.querySelectorAll("[data-task-fold] .task-mark")];
-    expect(marks).toHaveLength(7);
-    for (const mark of marks) expect(mark.getAttribute("data-state")).toBe("done");
+  it("goes once the row is finished, even with its fold remembered open: no tally when every task is ticked, else it ends line two", () => {
+    for (const over of [{ status: "idle" }, { status: "done" }, { status: "stopped" }] as const) {
+      const all = view(meta({ ...over, activity: null }), { todos: seven(7, false) }, { tasksOpen: true });
+      expect(all.container.querySelector("[data-task-bar]")).toBeNull();
+      expect(all.container.querySelector("[data-task-fold]")).toBeNull();
+      expect(all.container.querySelector("[data-tally]")).toBeNull();
+      expect(row(all.container).textContent).not.toMatch(/\d\/7/);
+      all.unmount();
+      const left = view(meta({ ...over, activity: null }), { todos: seven(5, false) });
+      expect(left.container.querySelector("[data-task-bar]")).toBeNull();
+      expect(left.container.querySelector("[data-row-status] [data-tally]")?.textContent).toBe("5/7");
+      left.unmount();
+    }
+  });
+
+  it("stays on a working row, and on a settled one whose subagents still work", () => {
+    const working = view(meta({ status: "running" }), { todos: seven(6) });
+    expect(working.container.querySelector("[data-task-bar]")).not.toBeNull();
+    working.unmount();
+    const watching = view(meta({ status: "idle", activity: null, background: { tasks: [], agents: ["s1"] } as unknown as SessionMeta["background"] }), { todos: seven(7, false) });
+    expect(watching.container.querySelector("[data-task-bar]")).not.toBeNull();
   });
 });
 
@@ -167,12 +182,16 @@ describe("the fold's memory", () => {
 });
 
 describe("the task bar's preview fixture", () => {
-  it("draws no bar with no tasks, 3/7 folded and open, 7/7 folded and open", async () => {
+  it("draws no bar with no tasks, 3/7 folded and open, 5/7 paused, and none on the finished rows", async () => {
     const { TaskBarPreview } = await import("./board.preview");
     render(<TaskBarPreview />);
     const bars = [...document.querySelectorAll("[data-task-bar]")];
     expect(document.querySelector("[data-menu-id='fresh'] [data-task-bar]")).toBeNull();
-    expect(bars.map((b) => b.querySelector("[data-bar-tally]")?.textContent)).toEqual(["3/7", "3/7", "7/7", "7/7"]);
-    expect(bars.map((b) => b.querySelector("[data-slot='collapsible-trigger']")?.getAttribute("aria-expanded"))).toEqual(["false", "true", "false", "true"]);
+    expect(document.querySelector("[data-menu-id='tokens'] [data-task-bar]")).toBeNull();
+    expect(document.querySelector("[data-menu-id='tokens'] [data-tally]")).toBeNull();
+    expect(document.querySelector("[data-menu-id='icons'] [data-task-bar]")).toBeNull();
+    expect(document.querySelector("[data-menu-id='icons'] [data-tally]")?.textContent).toBe("5/7");
+    expect(bars.map((b) => b.querySelector("[data-bar-tally]")?.textContent)).toEqual(["3/7", "3/7", "5/7"]);
+    expect(bars.map((b) => b.querySelector("[data-slot='collapsible-trigger']")?.getAttribute("aria-expanded"))).toEqual(["false", "true", "false"]);
   });
 });

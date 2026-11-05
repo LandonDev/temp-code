@@ -279,7 +279,7 @@ export type AgentTime = {
   ms: number;
   /** It ticks on the second hand (working, waiting, watching). */
   live: boolean;
-  /** A settled agent's last event, for "Finished 14:02". */
+  /** A settled agent's last event, for "Finished 2:02 PM". */
   finishedAt?: number;
 };
 

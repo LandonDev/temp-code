@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { cloneElement, type ReactElement, type ReactNode } from "react";
 import type { Block, SteerStamp } from "../../lib/session";
+import { clockTime } from "../../lib/duration";
 import { steerTip, steerWord } from "../../lib/steerWords";
 
 // The tooltip's label inline, so the test reads what it would say.
@@ -16,6 +17,8 @@ vi.mock("../../components/ui/tooltip", () => ({
 const { UserMessageBlock } = await import("./UserMessage");
 
 const at = new Date(2026, 10, 1, 14, 2).getTime();
+// The app's one clock (lib/duration.ts), by this machine's locale.
+const t = clockTime(at);
 const user = (steer?: SteerStamp): Block => ({ id: "u", role: "user", text: "use the other table", steerId: "s1", ...(steer ? { steer } : {}) });
 const mount = (block: Block) => render(<UserMessageBlock block={block} stickyIndex={1} environmentId="local" />);
 const line = (c: HTMLElement) => c.querySelector<HTMLElement>("[data-steer]");
@@ -27,10 +30,10 @@ afterEach(cleanup);
 describe("a steer's line under its bubble", () => {
   it("says each state in one word, the time and how in its tooltip", () => {
     const cases: [SteerStamp, string, string][] = [
-      [{ state: "sent", ts: at }, "Sent", "Sent at 14:02"],
-      [{ state: "received", how: "in-turn", ts: at }, "Received", "Received at 14:02"],
-      [{ state: "received", how: "next-turn", ts: at }, "Received", "Received at 14:02, as its own turn"],
-      [{ state: "queued", ts: at }, "Queued for the next turn", "Queued at 14:02"],
+      [{ state: "sent", ts: at }, "Sent", `Sent at ${t}`],
+      [{ state: "received", how: "in-turn", ts: at }, "Received", `Received at ${t}`],
+      [{ state: "received", how: "next-turn", ts: at }, "Received", `Received at ${t}, as its own turn`],
+      [{ state: "queued", ts: at }, "Queued for the next turn", `Queued at ${t}`],
       [{ state: "failed", reason: "the harness did not start", ts: at }, "Not delivered", "Not delivered: the harness did not start"],
     ];
     for (const [stamp, w, t] of cases) {

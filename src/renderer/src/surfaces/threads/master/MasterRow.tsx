@@ -37,8 +37,9 @@ import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardR
  * Working, failed under Needs you, stopped under Done) and what the state
  * is about, 12px, and the task tally at the end. The child that blocks the
  * batch's end says why (`blocked`). An implementation or orchestration row
- * with a task list has a third line instead of the end tally (16px, the
- * row 64px): the task bar across the title's column, foreground while the
+ * with a task list that is not yet under Done has a third line instead of
+ * the end tally (16px, the row 64px; a finished one is 48px again, its
+ * tally back at the end, or none once every task is ticked): the task bar across the title's column, foreground while the
  * thread works and muted otherwise, then the tally and a chevron; the
  * whole line folds the task list open under it (compact TaskRows), closed
  * by default and remembered per row for the window's life (taskFold.ts).
@@ -184,9 +185,11 @@ export function MasterRowView({
   // The word the glyph stands for and the detail, as one name for readers.
   const statusLabel = plainStatus(STATUS_WORD[state], detail);
   const bar = taskBar(meta, digest);
-  // A bar row says its tally on the bar's line alone.
-  const tally = bar ? null : taskTally(taskList(digest));
   const group = groupOf(meta);
+  // A bar row says its tally on the bar's line alone; a finished row with
+  // every task ticked says none (Done already says it).
+  const tasks = taskList(digest);
+  const tally = bar || (group === "done" && tasks.every((t) => t.status === "completed")) ? null : taskTally(tasks);
   // The section heading says the word; a state it does not name says its own.
   const ownWord = STATUS_WORD[state] !== GROUP_LABEL[group];
   const quiet = group === "done" || group === "queued";
@@ -255,7 +258,7 @@ export function MasterRowView({
       </span>
 
       {/* Line two: the status glyph hangs under the type's, so the detail
-          starts under the title; a settled row draws none ("Landed 12:08"). */}
+          starts under the title; a settled row draws none ("Landed 12:08 PM"). */}
       <span className="flex h-4 items-center justify-center" data-row-glyph>
         {marksAtRest(state) ? <StatusMark state={state} word={false} aria-hidden /> : null}
       </span>
