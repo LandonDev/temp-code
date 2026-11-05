@@ -4,12 +4,12 @@ import type { PaceSeries, StatsBundle, StatsStatus } from "@shared/aliaxStats";
 import { PageEmpty, PageSection } from "@renderer/components/page";
 import { Empty, EmptyDescription, EmptyTitle } from "@renderer/components/ui/empty";
 import { Skeleton } from "@renderer/components/ui/skeleton";
-import { AXIS, BAR, BAR_CURSOR, ChartFrame, GRID, HBAR, LINE, LINE_CURSOR } from "@aliax/charts/chart";
+import { AXIS, BAR, BAR_CURSOR, CHART_HEIGHT, ChartFrame, GRID, HBAR, LINE, LINE_CURSOR } from "@aliax/charts/chart";
 import { ChartLegend } from "@aliax/charts/legend";
 import { SERIES, SERVICE_SERIES } from "@aliax/charts/palette";
 import { ChartTooltipContent } from "@aliax/charts/tooltip";
 import { TIMEZONE, clip, compact, compactTick, modelLabel, shortDay } from "@aliax/lib/viz";
-import { Heatmap } from "./stats/heatmap";
+import { HEATMAP_HEIGHT, Heatmap } from "./stats/heatmap";
 import { modelMix, OTHER_KEY } from "./stats/modelMix";
 
 const PROVIDER: Record<string, string> = { codex: "Codex", "claude-code": "Claude Code" };
@@ -36,7 +36,7 @@ export function paceLine(p: PaceSeries): { text: string; warning: boolean } {
 }
 
 /** The headings, in order, while the bundle loads. */
-const HEADINGS = ["Pace", "Daily output", "Model mix", "Top projects", "Cache hit rate", "Busiest hours", "Tools used"];
+const HEADINGS = ["Pace", "Daily output", "Model mix", "Top projects", "Cache hit rate", "Busiest hours", "Tools used"] as const;
 
 const percent = (v: number): string => `${Math.round(v)}%`;
 type TooltipProps = Parameters<typeof ChartTooltipContent>[0];
@@ -53,9 +53,11 @@ function Section({ title, description, children }: { title: string; description?
   );
 }
 
-/** A section with no data, naming the window its query reads: 30 days, the heatmap's 60. */
-function NoData({ days = 30 }: { days?: number }) {
-  return <PageEmpty>Nothing in the last {days} days</PageEmpty>;
+/** A section with no data in the 30 days its query reads. A section whose
+ *  description already names its window (Cache hit rate, Busiest hours'
+ *  60 days) says Nothing yet, so the window is said once. */
+function NoData({ named = false }: { named?: boolean }) {
+  return <PageEmpty>{named ? "Nothing yet" : "Nothing in the last 30 days"}</PageEmpty>;
 }
 
 function PaceChart({ series }: { series: PaceSeries }) {
@@ -101,11 +103,15 @@ function PaceChart({ series }: { series: PaceSeries }) {
   );
 }
 
+/** A ranked list shows at most this many rows, each 28px, with 8px under the last. */
+const RANKED_ROWS = 8;
+const rankedHeight = (rows: number): number => rows * 28 + 8;
+
 function RankedBars({ label, data, unit }: { label: string; data: { name: string; value: number }[]; unit: string }) {
-  const rows = data.slice(0, 8);
+  const rows = data.slice(0, RANKED_ROWS);
   if (rows.length === 0) return <NoData />;
   return (
-    <ChartFrame label={label} height={rows.length * 28 + 8}>
+    <ChartFrame label={label} height={rankedHeight(rows.length)}>
       <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 4, bottom: 0, left: 0 }} barCategoryGap={6}>
         <XAxis type="number" hide />
         <YAxis {...AXIS} type="category" dataKey="name" width={128} tickFormatter={(v: string) => clip(v)} />
@@ -116,15 +122,44 @@ function RankedBars({ label, data, unit }: { label: string; data: { name: string
   );
 }
 
-/** The skeleton while the bundle loads or a first index runs: each section's heading over a 200px block. */
+/** A legend's line: 16px of 12px text and its 8px to the plot. */
+const LEGEND_PX = 24;
+/** A pace series' headline above its legend, the same 16px line and 8px. */
+const HEADLINE_PX = 24;
+
+/**
+ * What each section holds once loaded, so the skeleton takes its shape and
+ * the page does not jump when the bundle lands: the plot's height, a legend
+ * where the chart draws one, the ranked lists at their eight rows, and the
+ * description lines Cache hit rate and Busiest hours carry.
+ */
+export const SECTION_SKELETON: Record<(typeof HEADINGS)[number], { height: number; description?: boolean }> = {
+  Pace: { height: HEADLINE_PX + LEGEND_PX + CHART_HEIGHT },
+  "Daily output": { height: LEGEND_PX + CHART_HEIGHT },
+  "Model mix": { height: LEGEND_PX + CHART_HEIGHT },
+  "Top projects": { height: rankedHeight(RANKED_ROWS) },
+  "Cache hit rate": { height: CHART_HEIGHT, description: true },
+  "Busiest hours": { height: HEATMAP_HEIGHT, description: true },
+  "Tools used": { height: rankedHeight(RANKED_ROWS) },
+};
+
+/** The skeleton while the bundle loads or a first index runs: each section's heading over the shape it will hold. */
 function StatsSkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading" className="contents">
-      {HEADINGS.map((h) => (
-        <Section key={h} title={h}>
-          <Skeleton aria-hidden className="h-[200px] w-full rounded-lg" />
-        </Section>
-      ))}
+      {HEADINGS.map((h) => {
+        const shape = SECTION_SKELETON[h];
+        return (
+          <Section
+            key={h}
+            title={h}
+            // A line of the description's 16px, the bar at its text's height (a span: the description is a paragraph).
+            description={shape.description ? <span aria-hidden data-slot="skeleton" className="inline-block h-3 w-56 rounded-md bg-muted align-middle" /> : undefined}
+          >
+            <Skeleton aria-hidden data-section-skeleton={h} className="w-full rounded-lg" style={{ height: shape.height }} />
+          </Section>
+        );
+      })}
     </div>
   );
 }
@@ -233,7 +268,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
 
       <Section title="Cache hit rate" description={`${cacheHit}% of input served from cache, 30 days`}>
         {data.cacheDaily.length === 0 ? (
-          <NoData />
+          <NoData named />
         ) : (
           <ChartFrame label="Cache hit rate">
             <LineChart data={data.cacheDaily} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
@@ -248,7 +283,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
       </Section>
 
       <Section title="Busiest hours" description={`Output tokens by weekday and hour, last 60 days, times in ${TIMEZONE}`}>
-        {data.heatmap.length === 0 ? <NoData days={60} /> : <Heatmap data={data.heatmap} />}
+        {data.heatmap.length === 0 ? <NoData named /> : <Heatmap data={data.heatmap} />}
       </Section>
 
       <Section title="Tools used">

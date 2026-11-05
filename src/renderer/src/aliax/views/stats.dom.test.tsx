@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { StatsView, paceLine, paceTitle } from "./stats";
+import { SECTION_SKELETON, StatsView, paceLine, paceTitle } from "./stats";
+import { HEATMAP_HEIGHT } from "./stats/heatmap";
 import { STATS } from "./stats.fixtures";
 
 afterEach(cleanup);
@@ -41,10 +42,12 @@ describe("Stats", () => {
     expect(daily.querySelector("[data-slot=empty]")).toBeNull();
   });
 
-  it("names each empty section's real window: Busiest hours reads 60 days", () => {
+  it("names each empty section's real window once: Busiest hours reads 60 days", () => {
     render(<StatsView data={{ ...STATS, heatmap: [] }} status={null} />);
     const busiest = screen.getByRole("region", { name: "Busiest hours" });
-    expect(busiest.querySelector("[data-slot=page-empty]")!.textContent).toContain("60 days");
+    // The description names the 60 days once; the empty line does not repeat it, nor contradict it.
+    expect(busiest.textContent).toContain("last 60 days");
+    expect(busiest.querySelector("[data-slot=page-empty]")!.textContent).toBe("Nothing yet");
     expect(busiest.textContent).not.toContain("30 days");
   });
 
@@ -63,8 +66,24 @@ describe("Stats", () => {
     expect(swatch.style.backgroundColor).toBe("var(--chart-2)");
   });
 
-  it("loads under the same seven headings", () => {
+  it("loads under the same seven headings, each section in the shape it will hold", () => {
     render(<StatsView data={null} status={null} />);
     expect(headings()).toEqual(ORDER);
+    const height = (h: string) => (document.querySelector(`[data-section-skeleton="${h}"]`) as HTMLElement).style.height;
+    // A chart's 200px plot, with its legend's 24px where it draws one and the pace headline's above that.
+    expect(height("Pace")).toBe("248px");
+    expect(height("Daily output")).toBe("224px");
+    expect(height("Model mix")).toBe("224px");
+    expect(height("Cache hit rate")).toBe("200px");
+    // The ranked lists at their eight 28px rows; the heatmap at its grid.
+    expect(height("Top projects")).toBe("232px");
+    expect(height("Tools used")).toBe("232px");
+    expect(height("Busiest hours")).toBe(`${HEATMAP_HEIGHT}px`);
+    // The two sections with a description line keep it.
+    for (const h of ORDER) {
+      const region = screen.getByRole("region", { name: h });
+      const line = region.querySelector("p [data-slot=skeleton]");
+      expect(Boolean(line), h).toBe(Boolean(SECTION_SKELETON[h as keyof typeof SECTION_SKELETON].description));
+    }
   });
 });

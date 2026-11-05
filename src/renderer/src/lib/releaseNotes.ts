@@ -16,6 +16,9 @@ export type ReleaseNotesDocument = {
   markdown: string;
 };
 
+/** What What's New and the release notes tab say for a version with no notes: one sentence for one state. */
+export const NO_RELEASE_NOTES = "No release notes for this version";
+
 export function releaseNotesTitle(version: string): string {
   return `What's new in release ${version}`;
 }

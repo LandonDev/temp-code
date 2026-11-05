@@ -59,4 +59,6 @@ export const STATS: StatsBundle = {
 export default [
   { name: "Two pace series, one running low", props: { data: STATS, status: null } },
   { name: "Pace with no finished cycles", props: { data: { ...STATS, pace: [] }, status: null } },
+  { name: "Empty sections", props: { data: { ...STATS, daily: [], heatmap: [], byTool: [] }, status: null } },
+  { name: "Loading", props: { data: null, status: null } },
 ];

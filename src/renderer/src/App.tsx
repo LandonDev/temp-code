@@ -1,3 +1,4 @@
+import { NO_RELEASE_NOTES } from "./lib/releaseNotes";
 import { markKeyNav } from "./lib/navByKey";
 import { registry } from "./lib/connection";
 import { environmentOfCwd } from "./lib/tcserver/projects";
@@ -691,10 +692,7 @@ export default function App() {
     void releaseNotesChunk.load().then(({ releaseNotesForVersion }) => {
       const document = releaseNotesForVersion(version);
       if (!document) {
-        void message(
-          "Release notes for this version are not available in this build.",
-          { title: "TempCode" },
-        );
+        void message(NO_RELEASE_NOTES, { title: "TempCode" });
         return;
       }
       shell.showWhatsNew({ version: document.source.version });

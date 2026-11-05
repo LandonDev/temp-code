@@ -1,5 +1,5 @@
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
-import type { ReleaseNotesTabSource } from "../lib/releaseNotes";
+import { NO_RELEASE_NOTES, type ReleaseNotesTabSource } from "../lib/releaseNotes";
 import { releaseNotesMarkdown } from "../lib/releaseNotesParse";
 
 /** App asks for a version's notes through this chunk (`releaseNotesChunk.load()`). */
@@ -27,7 +27,7 @@ export function ReleaseNotesSurface({
         {markdown ? (
           <AgentMarkdown text={markdown} streaming={false} />
         ) : (
-          <EmptyState title="No release notes for this version" />
+          <EmptyState title={NO_RELEASE_NOTES} />
         )}
       </article>
     </div>

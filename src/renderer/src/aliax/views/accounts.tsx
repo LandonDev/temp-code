@@ -230,22 +230,27 @@ export function AccountsSkeleton() {
     <div className="@container/accounts flex flex-col gap-6">
       {[0, 1, 2].map((section) => (
         <div key={section} aria-busy="true" aria-label="Loading" className="flex flex-col">
-          <Skeleton className="h-3 w-24" />
-          {[0, 1].map((row) => (
-            <div key={row} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
-              <Skeleton className="size-2 rounded-full" />
-              <div className="flex flex-1 flex-col gap-1.5">
-                <Skeleton className="h-3.5 w-36" />
-                <Skeleton className="h-3 w-24" />
+          {/* PageSection's 20px heading line, then its 8px to the rows. */}
+          <div data-slot="heading-skeleton" className="flex h-5 items-center">
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <div className="mt-2 flex flex-col">
+            {[0, 1].map((row) => (
+              <div key={row} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+                <Skeleton className="size-2 rounded-full" />
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Skeleton className="h-3.5 w-36" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+                <div className="order-last flex basis-full gap-3 ps-5 @3xl/accounts:order-none @3xl/accounts:basis-auto @3xl/accounts:ps-0">
+                  {[0, 1, 2].map((cell) => (
+                    <Skeleton key={cell} className="h-9 min-w-0 flex-1 @3xl/accounts:w-34 @3xl/accounts:flex-none" />
+                  ))}
+                </div>
+                <Skeleton className="h-[18px] w-8 rounded-full" />
               </div>
-              <div className="order-last flex basis-full gap-3 ps-5 @3xl/accounts:order-none @3xl/accounts:basis-auto @3xl/accounts:ps-0">
-                {[0, 1, 2].map((cell) => (
-                  <Skeleton key={cell} className="h-9 min-w-0 flex-1 @3xl/accounts:w-34 @3xl/accounts:flex-none" />
-                ))}
-              </div>
-              <Skeleton className="h-[18px] w-8 rounded-full" />
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       ))}
     </div>

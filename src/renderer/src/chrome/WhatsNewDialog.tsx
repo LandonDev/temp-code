@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { formatReleaseDate, releaseNotesTitle } from "../lib/releaseNotes";
+import { formatReleaseDate, NO_RELEASE_NOTES, releaseNotesTitle } from "../lib/releaseNotes";
 import { presentReleaseNotes, type ReleaseNotesPresentation } from "../lib/releaseNotesParse";
 import { AgentMarkdown } from "../surfaces/AgentMarkdown";
 import { Modal } from "./Modal";
@@ -49,19 +49,17 @@ export function WhatsNewBody({
           streaming={false}
         />
       ) : (
-        <p className="text-sm text-muted-foreground">
-          Release notes for this version are not available in this build.
-        </p>
+        <p className="text-sm text-muted-foreground">{NO_RELEASE_NOTES}</p>
       )}
     </article>
   );
 }
 
 /** The frame's one line: the release in medium weight, then its date
- *  regular and muted 6px after it (docs/DESIGN.md "Typography"). */
+ *  regular and muted 4px after it (docs/DESIGN.md "Typography"). */
 export function whatsNewLine(version: string, date: string | null): ReactNode {
   return (
-    <span className="flex min-w-0 gap-1.5">
+    <span className="flex min-w-0 gap-1">
       <span className="font-medium text-foreground">Release {version}</span>
       {date ? <span data-release-date>{date}</span> : null}
     </span>

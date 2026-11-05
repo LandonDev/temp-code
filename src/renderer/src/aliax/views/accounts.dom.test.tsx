@@ -6,7 +6,7 @@ import type { KeyProfileView } from "@shared/accounts";
 import { tooltipChunk, warmTooltips } from "@renderer/components/ui/tooltip";
 import { clockTime } from "@renderer/lib/duration";
 import { dayClockTime } from "./accounts/rowLine";
-import { AccountsView, type AccountsViewProps } from "./accounts";
+import { AccountsSkeleton, AccountsView, type AccountsViewProps } from "./accounts";
 import { AccountsPagePreview } from "./accounts.preview";
 import PREVIEW_FIXTURES from "./accounts.preview.fixtures";
 
@@ -381,5 +381,17 @@ describe("an account row's two facts on a line", () => {
     expect(row.querySelector("[data-slot=plan-line]")!.textContent).toMatch(/^Max 20x \$200\/mo, renews /);
     const description = row.querySelector("[data-slot=item-description]")!;
     expect(description.querySelector(".gap-2, .gap-x-2")).toBeNull();
+  });
+});
+
+describe("AccountsSkeleton", () => {
+  it("draws each heading on PageSection's 20px line, 8px above its rows", () => {
+    const { container } = render(<AccountsSkeleton />);
+    const headings = container.querySelectorAll("[data-slot=heading-skeleton]");
+    expect(headings).toHaveLength(3);
+    for (const h of headings) {
+      expect(h.className).toContain("h-5");
+      expect((h.nextElementSibling as HTMLElement).className).toContain("mt-2");
+    }
   });
 });

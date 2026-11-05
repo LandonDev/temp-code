@@ -12,6 +12,10 @@ const DOW_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 const hourShort = (h: number): string => (h === 0 ? "12a" : h === 12 ? "12p" : h > 12 ? `${h - 12}p` : `${h}a`);
 const hourLong = (h: number): string => (h === 0 ? "12 AM" : h === 12 ? "12 PM" : h > 12 ? `${h - 12} PM` : `${h} AM`);
 
+/** The grid's height as drawn below, for the page's skeleton: the 12px hour
+ *  labels, seven 16px rows 4px apart, then the ramp's 24px line 4px under it. */
+export const HEATMAP_HEIGHT = 12 + 7 * 16 + 7 * 4 + 4 + 24;
+
 /** Which ramp step a value falls in: 0 for none, else 1..RAMP_STEPS by its share of the busiest hour. */
 export const stepOf = (value: number, max: number): number => (value <= 0 ? 0 : Math.max(1, Math.ceil((value / max) * RAMP_STEPS)));
 

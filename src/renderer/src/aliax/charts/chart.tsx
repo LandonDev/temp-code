@@ -46,8 +46,11 @@ function useNearViewport<T extends HTMLElement>(): [React.RefObject<T | null>, b
   return [ref, seen];
 }
 
+/** A chart's plot height unless it names its own (the ranked lists size by their rows). */
+export const CHART_HEIGHT = 200;
+
 /** One chart's plot area: a fixed height, the chart mounted once it nears the screen. */
-export function ChartFrame({ label, height = 200, children }: { label: string; height?: number; children: ReactElement }) {
+export function ChartFrame({ label, height = CHART_HEIGHT, children }: { label: string; height?: number; children: ReactElement }) {
   const [ref, visible] = useNearViewport<HTMLDivElement>();
   return (
     <div ref={ref} data-chart role="img" aria-label={label} style={{ height }} className="w-full">
