@@ -398,8 +398,9 @@ the provider's logo, the short model name and, where the row asks for it
 ("Opus 5.5 High", "Sol Extra high"), all 12px `muted-foreground`, the logo
 6px from the name and the effort 4px after it, never joined by a dot. In a
 narrow row the title gives its width up first, down to 64px; then the name
-truncates, and the effort never does. A right panel Agents row says its
-model on a line of its own under everything else (`ModelLine`): the logo,
+truncates, and the effort never does. The agent detail leads its numbers line with the same `ModelLine`, then
+the host and branch; queues use `effortWord` for effort names. A right
+panel Agents row says its model on a line of its own under everything else (`ModelLine`): the logo,
 the name, the effort and the context window ("Opus 5.5 High 1M", "Sonnet
 5.5 Low 200k"), each 4px from the next, only the name truncating. The
 tooltip is the uncut form ("Claude Opus 5.5, high effort, 1M context"),

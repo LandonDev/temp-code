@@ -14,6 +14,12 @@ const item = (id: string, text: string, stored?: boolean): QueuedMessage => ({ i
 const noop = () => {};
 
 describe("MessageQueue", () => {
+  it.each([["xhigh", "Extra high"], ["ultra", "Ultra"]])("uses the shared effort word for %s", (reasoning, word) => {
+    const { container, unmount } = render(<MessageQueue sessionId="s" items={[{ ...item("model", "follow up"), reasoning }]} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
+    expect(container.querySelector('[aria-label="Model for this message"]')?.textContent).toContain(word);
+    unmount();
+  });
+
   it("on a queued thread, skips a stored item, the held-back boot's first message the transcript already shows", () => {
     expect(visibleQueue([item("a", "first", true), item("b", "second")], true).map((m) => m.id)).toEqual(["b"]);
     expect(visibleQueue([item("a", "first", true), item("b", "second")], false).map((m) => m.id)).toEqual(["a", "b"]);

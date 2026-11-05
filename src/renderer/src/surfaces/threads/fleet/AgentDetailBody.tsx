@@ -12,7 +12,6 @@ import type { SessionMeta } from "../../../lib/tcserver/types";
 import {
   agentStatus,
   isLiveStatus,
-  modelLabel,
   useMetaById,
   useSessionById,
   type AgentStatus,
@@ -20,6 +19,7 @@ import {
 import { AgentTranscript } from "../../AgentTranscript";
 import { AGENT_GLYPHS } from "../threadTypes";
 import { useContextReading } from "../../../lib/contextCache";
+import { ModelLine } from "../ModelMark";
 import { AgentNumbersLine } from "./rowBits";
 import { agentNumbers, fleetStats, type NumberPart } from "./useFleetModel";
 
@@ -64,9 +64,8 @@ export function AgentDetailHeader({
         <AgentNumbersLine
           className="mt-1"
           lead={[
+            <ModelLine key="model" meta={meta} />,
             <HostGlyph key="host" environmentId={meta.environmentId} />,
-            modelLabel(meta.provider, meta.model),
-            meta.reasoning,
             branch,
           ]}
           parts={parts}

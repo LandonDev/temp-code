@@ -39,6 +39,7 @@ vi.mock("../../AgentTranscript", () => ({
 }));
 
 import { AgentDetailBody, AgentDetailHeader } from "./AgentDetailBody";
+import { setHarnessModels, resetHarnessModelOverlays } from "../../../lib/models";
 import { TurnEnd } from "../../transcript/TurnEnd";
 import type { TurnSession } from "../../turnState";
 import { FLEET, fixtureMeta } from "./fleetFixture";
@@ -46,6 +47,7 @@ import { agentStatus } from "../../../lib/threads/agents";
 
 afterEach(() => {
   cleanup();
+  resetHarnessModelOverlays();
   h.metas.clear();
   h.send.mockClear();
   h.steer.mockClear();
@@ -54,7 +56,7 @@ afterEach(() => {
 });
 
 describe("AgentDetailHeader", () => {
-  it("says the numbers in one muted tabular line, no icons and no dots, the diff in its tones", () => {
+  it("says the numbers after the model, with no dots and the diff in its tones", () => {
     const meta = FLEET[0].meta;
     const { container } = render(
       <AgentDetailHeader
@@ -70,13 +72,23 @@ describe("AgentDetailHeader", () => {
     );
     const line = container.querySelector('[data-slot="agent-numbers"]')!;
     expect(line.className).toContain("tabular-nums");
-    expect(line.querySelector("svg")).toBeNull();
+    expect(line.querySelector("[data-model-line] [data-model]")).not.toBeNull();
     expect(line.textContent).not.toContain("·");
     expect(line.textContent).toContain("feature-x");
-    expect(line.textContent).toContain("high");
+    expect(line.querySelector("[data-model-effort]")?.textContent).toBe("High");
     expect(line.querySelector(".text-success")?.textContent).toBe("+140");
     expect(line.querySelector(".text-destructive")?.textContent).toBe("−12");
   });
+  it("leads the detail with the same model name and effort as the panel row", () => {
+    setHarnessModels("codex", [{ id: "codex:gpt-6.1-sol", nativeId: "gpt-6.1-sol", harness: "codex", name: "GPT-6.1 Sol" }]);
+    const meta = fixtureMeta("sol", { provider: "codex", model: "gpt-6.1-sol", reasoning: "xhigh" });
+    const { container } = render(<AgentDetailHeader meta={meta} status={agentStatus(meta)} parts={[]} />);
+    const line = container.querySelector("[data-slot=agent-numbers]")!;
+    expect(line.firstElementChild?.hasAttribute("data-model-line")).toBe(true);
+    expect(line.querySelector("[data-model-name]")?.textContent).toBe("GPT-6.1 Sol");
+    expect(line.querySelector("[data-model-effort]")?.textContent).toBe("Extra high");
+  });
+
 });
 
 describe("AgentDetailBody", () => {

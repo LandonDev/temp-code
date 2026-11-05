@@ -1,4 +1,5 @@
 // A18: the agent detail's header in three states, for a static look.
+import { setHarnessModels } from "../../../lib/models";
 import { agentStatus } from "../../../lib/threads/agents";
 import { FLEET, fixtureMeta } from "./fleetFixture";
 
@@ -10,7 +11,11 @@ const waiting = fixtureMeta("q", {
 });
 const done = FLEET[2].meta;
 
+setHarnessModels("codex", [{ id: "codex:gpt-6.1-sol", nativeId: "gpt-6.1-sol", harness: "codex", name: "GPT-6.1 Sol" }]);
+const codex = fixtureMeta("sol", { provider: "codex", model: "gpt-6.1-sol", reasoning: "xhigh", title: "Check the shared recipes" });
+
 export default [
+  { name: "Codex, shared effort word", props: { meta: codex, status: agentStatus(codex), parts: [], onOpen: "fn" } },
   {
     name: "Working, every number",
     props: {

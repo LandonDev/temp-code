@@ -4,7 +4,7 @@ import { DUR, EASE_OUT, FADE_OUT } from '../lib/ease'
 import type { QueuedMessage } from '../lib/tcserver/types'
 import { queueTune, type QueueTune } from '../lib/tcserver/commands'
 import { useSessionMeta } from '../lib/tcserver/store'
-import { modelsFor, resolveModel } from '../lib/models'
+import { effortWord, modelsFor, resolveModel } from '../lib/models'
 import { HARNESSES, HARNESS_TITLE, type HarnessId } from '../lib/session'
 import { HarnessIcon } from './HarnessIcon'
 import { Button } from '../components/ui/button'
@@ -170,10 +170,6 @@ export function MessageQueue({
   )
 }
 
-const EFFORT_LABEL: Record<string, string> = { xhigh: 'Extra high' }
-const effortLabel = (value: string) =>
-  EFFORT_LABEL[value] ?? value[0].toUpperCase() + value.slice(1)
-
 /**
  * A queued message's own run settings. Unset fields follow the thread at
  * send time; a set one shows on the row and is edited in the popover.
@@ -243,7 +239,7 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
             <>
               <HarnessIcon harness={harness} className="size-3 shrink-0" />
               <span className="max-w-28 truncate">{model.name}</span>
-              {item.reasoning ? <span className="ms-1">{effortLabel(item.reasoning)}</span> : null}
+              {item.reasoning ? <span className="ms-1">{effortWord(item.reasoning)}</span> : null}
             </>
           ) : (
             <SlidersHorizontal className="size-3" />
