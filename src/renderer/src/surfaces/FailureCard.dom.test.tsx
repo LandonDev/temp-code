@@ -4,13 +4,14 @@ import { act, fireEvent } from "@testing-library/react";
 import type { Failure, FailureKind } from "@server/shared/events";
 import { mountProbe } from "../test/renderProbe";
 import { failureActions, failureNote, SIGN_IN_ELSEWHERE_NOTE } from "../lib/failureActions";
-import { OPEN_MODEL_PICKER } from "../lib/modelPickerSignal";
+import { OPEN_MODEL_PICKER, type ModelPickerRequest } from "../lib/modelPickerSignal";
 
-const continueSession = vi.fn<(id: string) => Promise<void>>();
+const continueSession = vi.fn<(id: string, run?: Record<string, string>) => Promise<void>>();
 const rerouteSession = vi.fn<(id: string) => Promise<{ account: string | null; moved: boolean }>>();
 vi.mock("../lib/tcserver/commands", () => ({
-  continueSession: (id: string) => continueSession(id),
+  continueSession: (id: string, run?: Record<string, string>) => (run ? continueSession(id, run) : continueSession(id)),
   rerouteSession: (id: string) => rerouteSession(id),
+  reasoningOf: (s: { modelSettings: Record<string, string> }) => s.modelSettings.effort,
 }));
 
 // The thread the card belongs to: null (a claude thread by default) unless a test names one.
@@ -226,14 +227,62 @@ describe("FailureCard wired", () => {
     probe.unmount();
   });
 
-  it("Pick another model asks the active composer's picker to open", () => {
-    const heard = vi.fn();
+  /** The composer's picker, stood in: it hears the request and answers with `pick`, or never does. */
+  function picker(pick?: Parameters<NonNullable<ModelPickerRequest["onPick"]>>[0]) {
+    const heard = vi.fn((event: Event) => {
+      const { onPick } = (event as CustomEvent<ModelPickerRequest>).detail;
+      if (pick) onPick?.(pick);
+    });
     window.addEventListener(OPEN_MODEL_PICKER, heard);
+    return { heard, done: () => window.removeEventListener(OPEN_MODEL_PICKER, heard) };
+  }
+
+  it("a hidden model asks the composer's picker to open, and a close without a pick continues nothing", () => {
+    const { heard, done } = picker();
     const probe = mountProbe(<FailureCard sessionId="s1" failure={failure("model_unavailable")} />);
-    expect(buttons(probe.container)).toEqual(["Pick another model", "Retry"]);
+    expect(buttons(probe.container)).toEqual(["Continue on another model", "Retry"]);
     fireEvent.click(probe.container.querySelector("button[data-failure-action=pick-model]")!);
     expect(heard).toHaveBeenCalledTimes(1);
-    window.removeEventListener(OPEN_MODEL_PICKER, heard);
+    expect(continueSession).not.toHaveBeenCalled();
+    done();
+    probe.unmount();
+  });
+
+  it("a cap with no other account leads with Continue on another model; a pick continues on that model", async () => {
+    threadMeta = { provider: "claude", model: "claude-fable-5-1" };
+    const { done } = picker({ harness: "claude", model: "claude-opus-5-5", settings: { effort: "high" } });
+    const probe = mountProbe(<FailureCard sessionId="s1" failure={failure("rate_limited", { roomElsewhere: false })} />);
+    expect(buttons(probe.container)).toEqual(["Continue on another model", "Retry"]);
+    expect(probe.container.querySelector("button[data-failure-action]")?.getAttribute("data-failure-action")).toBe("pick-model");
+    await act(async () => {
+      fireEvent.click(probe.container.querySelector("button[data-failure-action=pick-model]")!);
+    });
+    expect(continueSession).toHaveBeenCalledWith("s1", { provider: "claude", model: "claude-opus-5-5", reasoning: "high" });
+    expect(buttons(probe.container)).toEqual(["Continuing…", "Retry"]);
+    done();
+    probe.unmount();
+  });
+
+  it("a cap with room elsewhere leads with Route automatically; a refused continue says why", async () => {
+    threadMeta = { provider: "claude", model: "claude-fable-5-1" };
+    const probe = mountProbe(<FailureCard sessionId="s1" failure={failure("rate_limited", { roomElsewhere: true })} />);
+    expect(buttons(probe.container)).toEqual(["Route automatically", "Continue on another model", "Retry"]);
+    probe.unmount();
+    continueSession.mockRejectedValue(new Error("session s1 is manually paused"));
+    const { done } = picker({ harness: "codex", model: "gpt-6.1-sol", settings: {} });
+    const next = mountProbe(<FailureCard sessionId="s1" failure={failure("quota", { roomElsewhere: false })} />);
+    await act(async () => {
+      fireEvent.click(next.container.querySelector("button[data-failure-action=pick-model]")!);
+    });
+    expect(continueSession).toHaveBeenCalledWith("s1", { provider: "codex", model: "gpt-6.1-sol" });
+    expect(next.container.textContent).toContain("session s1 is manually paused");
+    done();
+    next.unmount();
+  });
+
+  it("a row the host cannot continue from offers neither Retry nor Continue on another model", () => {
+    const probe = mountProbe(<FailureCard sessionId="s1" failure={failure("rate_limited", { roomElsewhere: false })} canRetry={false} />);
+    expect(buttons(probe.container)).toEqual([]);
     probe.unmount();
   });
 });

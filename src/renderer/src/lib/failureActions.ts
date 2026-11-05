@@ -22,6 +22,8 @@ export interface FailureActionContext {
   model?: string | null;
   /** This window can open the Aliax sign-in for the thread's host. */
   signInHere: boolean;
+  /** A cap's verdict: whether another account had room for the model (absent: the host did not say). */
+  roomElsewhere?: boolean;
 }
 
 export const SIGN_IN_ELSEWHERE_NOTE = "Sign in on the Mac, the box never signs in.";
@@ -32,7 +34,7 @@ const LABELS: Record<FailureActionId, string> = {
   "sign-in": "Sign in",
   "add-key": "Add key…",
   "open-accounts": "Open accounts",
-  "pick-model": "Pick another model",
+  "pick-model": "Continue on another model",
   retry: "Retry",
 };
 
@@ -52,9 +54,14 @@ function ids(kind: FailureKind, ctx: FailureActionContext): FailureActionId[] {
       if (meta) return ["add-key", "retry"];
       return routed ? ["route", "pick-account", "retry"] : ["retry"];
     case "token_expired":
+      return routed ? ["route", "pick-account", "retry"] : ["retry"];
     case "rate_limited":
     case "quota":
-      return routed ? ["route", "pick-account", "retry"] : ["retry"];
+      // A Meta key's per-minute limit lifts on its own and its quota is billing: the keys, not the model.
+      if (meta) return ["route", "pick-account", "retry"];
+      // A cap is per account and model: another account while one has room, else another model.
+      if (routed && ctx.roomElsewhere !== false) return ["route", "pick-model", "retry"];
+      return ["pick-model", "retry"];
     case "model_unavailable":
       return ["pick-model", "retry"];
     case "network":

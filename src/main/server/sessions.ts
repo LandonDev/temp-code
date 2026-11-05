@@ -3714,6 +3714,9 @@ export class SessionRegistry {
     const routed = requested ? resolveModel(meta.provider, requested) : null
     const model = routed && routed.provider === meta.provider ? routed.model : undefined
     const modelChanged = model !== undefined && model !== meta.model
+    // Nothing moves (the card's continue already landed the model): no reboot owed.
+    const changed = modelChanged || (Object.keys(rest) as (keyof typeof rest)[]).some((k) => rest[k] !== undefined && meta[k] !== rest[k])
+    if (!changed) return
     if (LIVE_STATUSES.has(meta.status)) this.pendingReboot.add(sessionId)
     else await this.dropHandle(sessionId)
     const next = this.store.updateSession(sessionId, modelChanged ? { ...rest, model } : rest)

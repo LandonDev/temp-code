@@ -12,7 +12,8 @@ import {
   type FailureActionId,
 } from "../lib/failureActions";
 import { requestModelPicker } from "../lib/modelPickerSignal";
-import { continueSession, rerouteSession } from "../lib/tcserver/commands";
+import { continueSession, reasoningOf, rerouteSession } from "../lib/tcserver/commands";
+import { nativeModelId } from "../lib/models";
 import { useSessionMeta } from "../lib/tcserver/store";
 import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
 import { useSlowClock } from "../lib/turnClock";
@@ -64,6 +65,8 @@ export function FailureCardView({
         return "Routing…";
       case "sign-in":
         return "Signing in…";
+      case "pick-model":
+        return "Continuing…";
       default:
         return "";
     }
@@ -135,8 +138,14 @@ export function FailureCard({
   const meta = useSessionMeta(sessionId);
   const environmentId = meta?.environmentId ?? LOCAL_ENVIRONMENT_ID;
   const provider = meta?.provider ?? "claude";
-  const ctx: FailureActionContext = { provider, model: meta?.model ?? null, signInHere: canSignInHere(environmentId) };
-  const actions = failureActions(failure.kind, ctx).filter((a) => canRetry || a.id !== "retry");
+  const ctx: FailureActionContext = {
+    provider,
+    model: meta?.model ?? null,
+    signInHere: canSignInHere(environmentId),
+    ...(failure.roomElsewhere === undefined ? {} : { roomElsewhere: failure.roomElsewhere }),
+  };
+  // Both continue the work, which only a host that can continue does.
+  const actions = failureActions(failure.kind, ctx).filter((a) => canRetry || (a.id !== "retry" && a.id !== "pick-model"));
   const note = failureNote(failure.kind, ctx);
   const [state, setState] = useState<FailureCardState>({ pending: null, outcome: null });
   const [picking, setPicking] = useState(false);
@@ -187,7 +196,16 @@ export function FailureCard({
         return;
       }
       case "pick-model":
-        requestModelPicker(sessionId);
+        // The composer's own change lands the pick (its state, session.tune); the continue then runs on it.
+        requestModelPicker(sessionId, {
+          onPick: ({ harness, model, settings }) => {
+            setState({ pending: "pick-model", outcome: null });
+            const reasoning = reasoningOf({ modelSettings: settings });
+            void continueSession(sessionId, { provider: harness, model: nativeModelId(model), ...(reasoning ? { reasoning } : {}) }).catch(
+              (err: unknown) => settle(errorLine(err)),
+            );
+          },
+        });
         return;
       case "add-key":
       case "open-accounts":

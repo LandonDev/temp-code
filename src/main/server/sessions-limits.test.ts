@@ -376,6 +376,17 @@ describe('a cap with no other account for the model', () => {
   })
 })
 
+it('a tune that changes nothing owes no reboot, so a running continue keeps its handle', async () => {
+  registry.limits = byModel()
+  const { id, emit } = await running({ model: 'claude-opus-5-5' })
+  emit({ type: 'status', status: 'running' })
+  await registry.tune(id, { model: 'claude-opus-5-5', fast: false })
+  emit({ type: 'status', status: 'watching' })
+  const spawns = spawned.length
+  await registry.send(id, 'go')
+  expect(spawned).toHaveLength(spawns)
+})
+
 it('a scope pin change recomputes threads under it; a refresh re-picks threads with no account', async () => {
   registry.limits = byModel()
   const ws = await registry.createWorkspace(root)

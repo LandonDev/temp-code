@@ -11,6 +11,7 @@ import { findModel, mergeModelSettings, resetHarnessModelOverlays, saveModelPick
 import { agentModelsFor } from "../lib/tcserver/catalog";
 import type { ModelInfo, ProviderInfo } from "../lib/tcserver/types";
 import { ModelPicker } from "./ModelPicker";
+import { requestModelPicker } from "../lib/modelPickerSignal";
 import type { HarnessId } from "../lib/session";
 import { menuChunk, selectChunk } from "../surfaces/chunks";
 import { accountsStore } from "../stores/accounts";
@@ -188,6 +189,43 @@ describe("ModelPicker", () => {
       fireEvent.click(within(menu).getByRole("option", { name: /Fable 5\.1/ }));
     });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("a request's onPick runs once, after the picker's own change, and only for a pick it opened", async () => {
+    seed("claude", [
+      { id: "claude-opus-5-5", label: "Opus 5.5", reasoning: EFFORTS, context: 1_000_000 },
+      { id: "claude-fable-5-1", label: "Fable 5.1", reasoning: EFFORTS, context: 1_000_000 },
+    ]);
+    const order: string[] = [];
+    const onChange = vi.fn(() => order.push("change"));
+    const onPick = vi.fn(() => order.push("pick"));
+    render(
+      <ModelPicker hotkeys harness="claude" model="claude:claude-fable-5-1" onChange={onChange} settings={{ values: { effort: "high" }, onChange: () => {} }} />,
+    );
+    const choose = async (name: RegExp) => {
+      const menu = screen.getByRole("dialog", { name: "Model picker" });
+      await act(async () => {
+        fireEvent.change(within(menu).getByRole("textbox"), { target: { value: "Opus" } });
+      });
+      await act(async () => {
+        fireEvent.click(within(menu).getByRole("option", { name }));
+      });
+    };
+    // Closed without a pick: nothing.
+    await act(async () => requestModelPicker("s1", { onPick }));
+    await act(async () => {
+      fireEvent.keyDown(within(screen.getByRole("dialog", { name: "Model picker" })).getByRole("textbox"), { key: "Escape" });
+    });
+    expect(onPick).not.toHaveBeenCalled();
+    // Opened by the request and picked: the change, then the pick with the settings merged for it.
+    await act(async () => requestModelPicker("s1", { onPick }));
+    await choose(/Opus 5\.5/);
+    expect(order).toEqual(["change", "pick"]);
+    expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ harness: "claude", model: expect.stringContaining("claude-opus-5-5"), settings: expect.objectContaining({ effort: "high" }) }));
+    // Opened by hand afterwards: the old request is gone.
+    await open(/Fable 5\.1/);
+    await choose(/Opus 5\.5/);
+    expect(onPick).toHaveBeenCalledTimes(1);
   });
 
   it("says nothing it cannot know", async () => {

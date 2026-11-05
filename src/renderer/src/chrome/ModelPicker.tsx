@@ -29,6 +29,7 @@ import {
   hasLiveCatalog,
   loadFavoriteModels,
   loadModelPickerTab,
+  mergeModelSettings,
   modelsFor,
   resolveModel,
   saveFavoriteModels,
@@ -60,7 +61,7 @@ import {
 } from "../lib/session";
 import { HarnessIcon } from "./HarnessIcon";
 import { MOD } from "../lib/platform";
-import { OPEN_MODEL_PICKER } from "../lib/modelPickerSignal";
+import { OPEN_MODEL_PICKER, type ModelPick, type ModelPickerRequest } from "../lib/modelPickerSignal";
 import { effortLabel, ModelSettingsRows, useModelSettings } from "./ModelSettings";
 
 type Props = {
@@ -160,15 +161,19 @@ export function ModelPicker({
     if (toField.current) onCloseRef.current?.();
   };
 
-  const openPicker = () => {
+  // The request that opened the picker, until it closes: its onPick runs once, after a pick.
+  const requested = useRef<((pick: ModelPick) => void) | null>(null);
+
+  const openPicker = (onPick: ((pick: ModelPick) => void) | null = null) => {
     toField.current = false;
+    requested.current = onPick;
     setOpen(true);
   };
 
-  // The failure card's "Pick another model" opens the active composer's picker.
+  // The failure card's "Continue on another model" opens the active composer's picker.
   useEffect(() => {
     if (!hotkeys) return;
-    const onRequest = () => openPicker();
+    const onRequest = (event: Event) => openPicker((event as CustomEvent<ModelPickerRequest>).detail?.onPick ?? null);
     window.addEventListener(OPEN_MODEL_PICKER, onRequest);
     return () => window.removeEventListener(OPEN_MODEL_PICKER, onRequest);
   }, [hotkeys]);
@@ -333,7 +338,10 @@ export function ModelPicker({
   const pick = (item: AgentModel) => {
     if (!available(item.harness)) return;
     onChange(item.harness, item.id);
+    const onPick = requested.current;
+    requested.current = null;
     dismiss(true);
+    onPick?.({ harness: item.harness, model: item.id, settings: mergeModelSettings(item, settings?.values) });
   };
 
   const toggleFavorite = (id: string) => {
