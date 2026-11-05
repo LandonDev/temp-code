@@ -776,8 +776,10 @@ operate reads the model; one that cannot approve reads the mode. The row
 never wraps; a narrow one gives way in the desktop's order
 (`ComposerRow.fit`): the percent under 400 pt (the ring stays), the effort
 under 368, the mode's label under 320 (its glyph stays), the model's name
-under 144 (its glyph stays). An iPhone in portrait (a 370 pt box) keeps
-everything but the percent. The sheets' permission rows read the same words
+under 144 (its glyph stays). At a large text size, where the words outgrow
+those widths, it keeps giving way in the same order and only the last step
+lets the model's name truncate (`ComposerRow.steps`, one `ViewThatFits`). An
+iPhone in portrait (a 370 pt box) keeps everything but the percent. The sheets' permission rows read the same words
 (`PermissionWords`).
 
 Photos (`Thread/ComposerAttachments.swift`): `+`, for a key that
