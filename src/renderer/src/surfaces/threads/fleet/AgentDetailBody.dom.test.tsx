@@ -75,6 +75,8 @@ describe("AgentDetailHeader", () => {
     expect(line.querySelector("[data-model-line] [data-model]")).not.toBeNull();
     expect(line.textContent).not.toContain("·");
     expect(line.textContent).toContain("feature-x");
+    // The words and numbers are one comma run, never facts apart by space alone.
+    expect(line.querySelector('[data-slot="agent-facts"]')?.textContent).toBe("feature-x, +140 −12, 3/7 tasks, $0.12");
     expect(line.querySelector("[data-model-effort]")?.textContent).toBe("High");
     expect(line.querySelector(".text-success")?.textContent).toBe("+140");
     expect(line.querySelector(".text-destructive")?.textContent).toBe("−12");

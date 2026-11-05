@@ -99,13 +99,12 @@ describe("the research view", () => {
     expect(container.querySelector(".overflow-y-auto")?.classList.contains("overflow-x-hidden")).toBe(true);
   });
 
-  it("states the header's facts as separate words, no middle dot, and opens the report", () => {
+  it("states the header's facts as one comma run, no middle dot, and opens the report", () => {
     seed();
     docs[REPORT] = "---\ntitle: Build speed\nstatus: draft\n---\n";
     const onOpenFile = vi.fn();
     render(<ResearchView {...props(session(), onOpenFile)} />);
-    const facts = [...document.querySelectorAll("[data-detail] span")].map((e) => e.textContent);
-    expect(facts).toEqual(["1 of 2 angles", "18 sources", "6 searches"]);
+    expect(document.querySelector("[data-detail]")?.textContent).toBe("1 of 2 angles, 18 sources, 6 searches");
     expect((document.querySelector("[data-view-header]") as HTMLElement).textContent).not.toContain("·");
     fireEvent.click(screen.getByRole("button", { name: "Open the report" }));
     expect(onOpenFile).toHaveBeenCalledWith(REPORT);

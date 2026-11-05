@@ -1018,7 +1018,7 @@ double-click then goes back to the fit instead of 50; only
 implementation asks today. The
 transcript's prose breaks a token longer than its column (a bare URL, a
 path) instead of widening it; a code block scrolls inside its own box. The board has one 36px header: a short title, one muted state line in
-`tabular-nums` (facts set apart by margin, never a middle dot), the view's
+`tabular-nums` (its facts one comma run, "2 of 3 angles, 12 sources, 4 searches", never a middle dot or space alone), the view's
 actions, and last the conversation `Toggle` (`ChatToggle`, pressed while
 the chat shows). While the chat is folded and the thread is paused, the
 board draws the paused row of the slot above the composer under its header

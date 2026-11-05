@@ -442,23 +442,19 @@ function PastPass({
         <span className="flex w-full items-baseline gap-2">
           <span className="shrink-0 text-[13px] font-medium text-foreground">Pass {passNum}</span>
           <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{firstLine(data.header)}</span>
-          <span className="flex shrink-0 items-center gap-2 self-center text-xs tabular-nums">
+          <span className="flex shrink-0 items-center gap-1 self-center text-xs tabular-nums">
             {data.todos.length > 0 ? (
               <span className="text-muted-foreground">
                 {done}/{data.todos.length}
               </span>
             ) : null}
             <Counts additions={stat.adds} deletions={stat.dels} />
-            <ChevronRight className={cn("size-3.5 text-muted-foreground group-data-[panel-open]/pass:rotate-90", DISCLOSURE_CHEVRON)} />
+            <ChevronRight className={cn("ml-1 size-3.5 text-muted-foreground group-data-[panel-open]/pass:rotate-90", DISCLOSURE_CHEVRON)} />
           </span>
         </span>
         {facts.length > 0 ? (
-          <span className="block truncate text-xs text-muted-foreground tabular-nums">
-            {facts.map((f, i) => (
-              <span key={i} className={i ? "ml-2" : undefined}>
-                {f}
-              </span>
-            ))}
+          <span data-pass-facts className="block truncate text-xs text-muted-foreground tabular-nums">
+            {facts.join(", ")}
           </span>
         ) : null}
       </CollapsibleTrigger>

@@ -149,15 +149,8 @@ export function ResearchView(props: ThreadViewProps) {
     board.sources > 0 || board.searches > 0 ? `${board.sources} source${board.sources === 1 ? "" : "s"}` : null,
     board.sources > 0 || board.searches > 0 ? `${board.searches} search${board.searches === 1 ? "" : "es"}` : null,
   ].filter((f): f is string => f !== null);
-  const detail = facts.length ? (
-    <>
-      {facts.map((f, i) => (
-        <span key={i} className={i ? "ml-2" : undefined}>
-          {f}
-        </span>
-      ))}
-    </>
-  ) : null;
+  // One comma run: "2 of 3 angles, 12 sources, 4 searches".
+  const detail = facts.length ? facts.join(", ") : null;
   const reportPath = hasDoc ? session.planPath : null;
   const actions = reportPath ? (
     <Tooltip>

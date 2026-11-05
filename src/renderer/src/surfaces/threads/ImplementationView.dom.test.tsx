@@ -227,6 +227,23 @@ describe("the implementation board", () => {
     expect(props.onArmNewPass).toHaveBeenCalledWith(true);
   });
 
+  it("an earlier pass's record is one comma run, and its tally sits 4px from its counts", () => {
+    const header = { ...first, turn: { model: "claude-opus-5-5", reasoning: "high" } } as unknown as Block;
+    view(
+      session({
+        status: "running",
+        blocks: [header, edit("e0", "src/a.ts", 0, 0), { id: "u1", role: "user", text: "Now test it", round: 1 } as Block, edit("e1", "src/a.test.ts", 0, 1)],
+        rounds: [[todo("Write a", "completed")]],
+        todos: [todo("Test a", "in_progress")],
+      }),
+    );
+    const facts = document.querySelector("[data-pass-facts]") as HTMLElement;
+    expect(facts.children).toHaveLength(0);
+    expect(facts.textContent).toMatch(/, High, 200k$/);
+    const tally = screen.getByRole("button", { name: /Pass 1/ }).querySelector("[data-slot=counts]")!.parentElement!;
+    expect(tally.className).toContain("gap-1");
+  });
+
   it("an earlier pass folds into a row that opens its tasks and changes", async () => {
     view(
       session({
