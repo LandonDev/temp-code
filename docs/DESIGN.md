@@ -686,7 +686,9 @@ table rows and nothing else. A blockquote is a 2px
 
 The person's message is a right-aligned bubble (`card`, `rounded-xl`, 12/8
 padding, at most 85% of the column) with no avatar or timestamp, its
-preamble line 4px above it. A message the person sent into a running
+preamble line 4px above it, its chevron trailing and its text ending on the
+bubble's right edge. Attachments sit 8px apart inside it; past twelve lines
+it clamps, and Show more is a 24px target whose words keep their place. A message the person sent into a running
 turn (a steer) carries one 12px `muted-foreground` word under the bubble at
 its right edge, Sent, Received or Queued for the next turn, or Not
 delivered in the red tone; its time is in the word's tooltip, never in the

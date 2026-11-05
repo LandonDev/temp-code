@@ -5,7 +5,9 @@ import { cn } from "../lib/cn";
 
 /**
  * The project rules a thread's first message opened with, folded to one
- * line above the brief the person wrote: "Project rules  212 words". The
+ * line above the brief the person wrote: "Project rules  212 words", its
+ * chevron trailing as every disclosure's does and its text ending on the
+ * bubble's right edge (the row's 8px padding hangs past it). The
  * caret opens the text in place; the bubble's own clamp toggle never sees
  * the click. The thread keeps the text it started with, so this is a
  * record, not an editor.
@@ -17,7 +19,7 @@ export function PreambleRow({ text, words }: { text: string; words: number }) {
     <Collapsible open={open} onOpenChange={setOpen} className="mb-1 flex flex-col" data-preamble-row>
       <CollapsibleTrigger
         onClick={stop}
-        className="-ml-2 flex h-6 w-fit items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:text-foreground"
+        className="-mr-2 flex h-6 w-fit items-center gap-1 self-end rounded-md px-2 text-xs text-muted-foreground hover:text-foreground"
       >
         <span>Project rules</span>
         <span className="tabular-nums">

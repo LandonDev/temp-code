@@ -134,7 +134,7 @@ export function UserMessageBlock({
         ) : null}
         {block.attachments?.length ? (
           <div
-            className={`flex flex-wrap gap-1.5 ${text || card || note ? "mb-2" : ""}`}
+            className={`flex flex-wrap gap-2 ${text || card || note ? "mb-2" : ""}`}
           >
             {block.attachments.map((file) => (
               <AttachmentChip
@@ -169,7 +169,8 @@ export function UserMessageBlock({
           </pre>
         ) : null}
         {overflows || expanded ? (
-          <Button variant="link" size="xs" aria-expanded={expanded} className="mt-1 h-auto px-0 text-muted-foreground" onClick={toggle}>
+          // A 24px target whose words sit where a 20px line 4px under the text would: the extra 2px a side reaches into the bubble's padding.
+          <Button variant="link" size="xs" aria-expanded={expanded} className="-mb-0.5 mt-0.5 h-6 px-0 text-muted-foreground" onClick={toggle}>
             {expanded ? "Show less" : "Show more"}
           </Button>
         ) : null}

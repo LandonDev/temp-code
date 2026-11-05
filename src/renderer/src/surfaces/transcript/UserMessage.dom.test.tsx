@@ -79,6 +79,37 @@ describe("UserMessageBlock", () => {
     expect(pre.className).toContain("line-clamp-12");
   });
 
+  it("Show more is a 24px target whose words keep their place", () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 400 });
+    const { getByRole } = mount(user({ text: "line\n".repeat(30) }));
+    const cls = getByRole("button", { name: "Show more" }).className.split(" ");
+    for (const c of ["h-6", "mt-0.5", "-mb-0.5"]) expect(cls).toContain(c);
+    expect(cls).not.toContain("h-auto");
+  });
+
+  it("sets attachments 8px apart, on the grid", () => {
+    const { container } = mount(
+      user({
+        attachments: [
+          { id: "f", name: "log.txt", mimeType: "text/plain", kind: "file", size: 10 },
+          { id: "g", name: "trace.txt", mimeType: "text/plain", kind: "file", size: 12 },
+        ],
+      }),
+    );
+    const row = bubble(container).querySelector("pre")!.previousElementSibling as HTMLElement;
+    expect(row.className.split(" ")).toContain("gap-2");
+  });
+
+  it("the project rules line ends on the bubble's edge, its chevron trailing", () => {
+    const { container } = mount(user({ preamble: { text: "Work in a worktree.", words: 4 } }));
+    const trigger = container.querySelector<HTMLElement>("[data-preamble-row] > button")!;
+    const cls = trigger.className.split(" ");
+    expect(cls).toContain("-mr-2");
+    expect(cls).toContain("self-end");
+    expect(cls).not.toContain("-ml-2");
+    expect(trigger.lastElementChild?.tagName.toLowerCase()).toBe("svg");
+  });
+
   it("offers no Show more for a message that fits", () => {
     const { queryByRole } = mount(user());
     expect(queryByRole("button", { name: "Show more" })).toBeNull();
