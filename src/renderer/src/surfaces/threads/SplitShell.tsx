@@ -4,6 +4,7 @@ import { Toggle } from "../../components/ui/toggle";
 import { TruncateTip } from "../../components/tip";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import { MessageSquare } from "../../chrome/icons";
+import { BackButton, useViewBack } from "./viewBack";
 import { useSashKeys } from "../../hooks/useSashKeys";
 import { animate } from "motion/react";
 import { SPRING_GLIDE } from "../../lib/ease";
@@ -236,11 +237,15 @@ function ViewHeader({
   onToggleChat: (open: boolean) => void;
 }) {
   const heading = <span data-view-title className="min-w-0 truncate text-sm font-semibold text-foreground">{title}</span>;
+  // Opened from a master's board, the header leads with Back (viewBack.tsx)
+  // and the child pane draws no bar of its own.
+  const back = useViewBack();
   // The title reads as the header (14px semibold) over 13px rows; its one
   // fact sits 8px after it at 12px, muted. The controls are equal 28px
   // squares 2px apart, the last ending on the rows' 12px right edge.
   return (
-    <div data-view-header className="flex h-9 shrink-0 items-center border-b border-border bg-background px-3">
+    <div data-view-header className={`flex h-9 shrink-0 items-center gap-2 border-b border-border bg-background pr-3 ${back ? "pl-2" : "pl-3"}`}>
+      {back ? <BackButton onBack={back} /> : null}
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
         {typeof title === "string" ? <TruncateTip text={title}>{heading}</TruncateTip> : heading}
         {detail ? (
@@ -249,7 +254,7 @@ function ViewHeader({
           </span>
         ) : null}
       </div>
-      <div data-view-actions className="ml-2 flex shrink-0 items-center gap-0.5">
+      <div data-view-actions className="flex shrink-0 items-center gap-0.5">
         <TooltipProvider>
           {actions}
           <ChatToggle open={chatOpen} onToggle={onToggleChat} />

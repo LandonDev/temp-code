@@ -1,8 +1,5 @@
-import { useEffect, useRef, type KeyboardEvent } from "react";
-import { Button } from "../../../components/ui/button";
-import { Kbd } from "../../../components/ui/kbd";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
-import { ChevronLeft } from "../../../chrome/icons";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { BackButton, ViewBackContext } from "../viewBack";
 import type { OpenFileFn } from "../../../lib/search";
 import type { Session } from "../../../lib/session";
 import { useMetaById, useSessionById } from "../../../lib/threads/agents";
@@ -23,7 +20,9 @@ import { ThreadView } from "../ThreadView";
  * on `environmentId`, the master's host or another: the store holds every
  * host's rows by id, so the view, the transcript and every send reach that
  * host the way a rail row of another host opens. The header is one Back
- * control to the board; Escape and ⌘↩ outside the composer go back too
+ * control to the board and the title; a board-type view (implementation,
+ * plan, research) draws its own header with Back leading it instead, so
+ * the title shows once (viewBack.tsx). Escape and ⌘↩ outside the composer go back too
  * (inside it ⌘↩ is the composer's own). The header shows at once, titled
  * from the board's row until the meta lands; the body is the transcript's
  * skeleton until the thread's rows do. The thread's view is `bare`: the
@@ -64,6 +63,9 @@ export function ChildPane({
   const answered = session?.loaded === true || session?.load?.phase === "loaded";
   const loading = !meta || !session || (session.blocks.length === 0 && !answered);
   const block = useEnvironmentBlock(environmentId);
+  // A board-type view's own header takes Back (viewBack.tsx); then this bar steps aside.
+  const [claimed, setClaimed] = useState(false);
+  const back = useMemo(() => ({ onBack, claim: setClaimed }), [onBack]);
 
   // The composer mounts with the rows: until then the pane holds focus, so Escape still goes back.
   useEffect(() => {
@@ -84,18 +86,12 @@ export function ChildPane({
 
   return (
     <div ref={paneRef} tabIndex={-1} onKeyDown={onKey} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none" data-child-pane={sessionId} data-child-host={environmentId}>
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-background pr-3 pl-2">
-        <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="xs" onClick={onBack} />}>
-            <ChevronLeft />
-            Back
-          </TooltipTrigger>
-          <TooltipContent>
-            Back to the board <Kbd size="sm">Esc</Kbd>
-          </TooltipContent>
-        </Tooltip>
-        <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{meta?.title || title || "Untitled"}</span>
-      </div>
+      {claimed ? null : (
+        <div data-child-bar className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-background pr-3 pl-2">
+          <BackButton onBack={onBack} />
+          <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{meta?.title || title || "Untitled"}</span>
+        </div>
+      )}
       {loading ? (
         <div className="flex min-h-0 flex-1 flex-col" data-transcript-loading={session?.load?.phase ?? "loading"}>
           {/* Slow or failed: SessionPane's one line, with Retry. */}
@@ -105,6 +101,7 @@ export function ChildPane({
           </div>
         </div>
       ) : (
+        <ViewBackContext.Provider value={back}>
         <ChildThread
           session={session}
           actions={actions}
@@ -114,6 +111,7 @@ export function ChildPane({
           onOpenDiff={onOpenDiff}
           onOpenSession={onOpenSession}
         />
+        </ViewBackContext.Provider>
       )}
     </div>
   );

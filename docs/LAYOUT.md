@@ -1486,7 +1486,11 @@ brought into view even when it moved section meanwhile.
   host opens against that host the way a rail row of that host does (the
   store holds every host's rows by id, `data-child-host` names it). The
   header is 36px: Back (a ghost button whose tooltip says "Back to the
-  board" with Esc) and the thread's title; Escape, or ⌘↩ outside the composer (inside it ⌘↩ is the composer's
+  board" with Esc) and the thread's title. A board-type child (an
+  implementation, a plan, research) whose board shows draws one header,
+  its view's own, with Back leading it (`useViewBack`,
+  surfaces/threads/viewBack.tsx), so the title shows once; a chat child,
+  and every child while its rows load, keep the pane's bar. Escape, or ⌘↩ outside the composer (inside it ⌘↩ is the composer's
   own), goes back, and the board returns at the scroll it was left at.
   The pane's right panel and the title bar's agents cue follow the child
   while it shows (its subagents, its Activity, its Notes, on its host;

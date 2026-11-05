@@ -11,7 +11,18 @@ vi.mock("../../threadChat", () => ({
   useSessionActions: () => ({}),
   useThreadChat: () => ({ renderChat: () => null, renderSlots: () => null, newPassArmed: false, armNewPass: () => {} }),
 }));
-vi.mock("../ThreadView", () => ({ ThreadView: () => <div data-testid="thread-view" /> }));
+// A board-type child draws the real SplitShell header; a chat child a plain view.
+vi.mock("../ThreadView", async () => {
+  const { SplitShell } = await import("../SplitShell");
+  return {
+    ThreadView: ({ session }: { session: Session }) =>
+      session.threadType === "implementation" ? (
+        <SplitShell hasBoard title="Build the home screen" board={<div data-testid="thread-view" />} chat={<div />} collapsed={false} onToggleChat={() => {}} />
+      ) : (
+        <div data-testid="thread-view" />
+      ),
+  };
+});
 const retryLoad = vi.hoisted(() => vi.fn());
 vi.mock("../../../lib/tcserver/store", () => ({ sessionStore: { retryLoad } }));
 vi.mock("../../../chrome/ConnectionLine", () => ({ useEnvironmentBlock: () => ({ name: "box", degraded: null }) }));
@@ -90,6 +101,30 @@ describe("ChildPane", () => {
     pane();
     expect(skeleton()).toBeTruthy();
     expect(screen.queryByTestId("thread-view")).toBeNull();
+  });
+
+  it("a board-type child draws one header, its view's, with Back leading it and the title once", () => {
+    const onBack = vi.fn();
+    h.meta = { id: "c1", environmentId: "local", title: "Build the home screen" } as SessionMeta;
+    h.session = { id: "c1", threadType: "implementation", blocks: [], loaded: true } as unknown as Session;
+    render(<ChildPane sessionId="c1" environmentId="local" title="Build the home screen" focusComposer={false} onBack={onBack} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(document.querySelectorAll("[data-view-header]")).toHaveLength(1);
+    expect(document.querySelector("[data-child-bar]")).toBeNull();
+    expect(screen.getAllByText("Build the home screen")).toHaveLength(1);
+    const header = document.querySelector("[data-view-header]") as HTMLElement;
+    const back = screen.getByRole("button", { name: /Back/ });
+    expect(header.firstElementChild).toBe(back);
+    fireEvent.click(back);
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it("a chat child keeps the pane's own bar with Back and the title", () => {
+    h.meta = { id: "c1", environmentId: "local", title: "Home" } as SessionMeta;
+    h.session = { id: "c1", threadType: "chat", blocks: [], loaded: true } as unknown as Session;
+    pane();
+    expect(document.querySelector("[data-child-bar]")).toBeTruthy();
+    expect(document.querySelector("[data-view-header]")).toBeNull();
+    expect(screen.getByRole("button", { name: /Back/ })).toBeTruthy();
   });
 
   it("an empty thread the host answered opens its view", () => {
