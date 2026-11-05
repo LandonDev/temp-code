@@ -12,7 +12,7 @@ import type { GroupMark } from "../lib/sidebarRows";
 import type { SessionMeta, ThreadType } from "../lib/tcserver/types";
 import type { ThreadRow } from "../lib/workspaceSessions";
 import { ChartBar, FolderPlus, Inbox, ListChecks, MessageSquare, MoreHorizontal, Pin, PinOff, Plus, Search, Server, Settings, StickyNote, Users } from "./icons";
-import { RAIL_YIELD, RailHeading, RailRow } from "./RailRow";
+import { RailHeading, RailRow } from "./RailRow";
 import { RailWorkingView } from "./RailWorking";
 import { SignInRowView } from "./SignInRow";
 import { UpdateRow } from "./UpdateRow";
@@ -80,17 +80,9 @@ function Workspace({
       data-host-offline={offline || undefined}
       className={offline ? "@container/railrow opacity-50" : "@container/railrow"}
       trailingInteractive
-      trailing={
-        diff || mark ? (
-          <>
-            {diff ? (
-              <span data-rail-yield="" className={cn("pr-1 whitespace-nowrap @max-[15rem]/railrow:hidden", RAIL_YIELD.className)}>
-                {diffWords(diff[0], diff[1])}
-              </span>
-            ) : null}
-            {mark ? <WorkspaceMarkView mark={mark} /> : null}
-          </>
-        ) : null
+      trailing={mark ? <WorkspaceMarkView mark={mark} /> : null}
+      trailingYield={
+        diff ? <span className="block pr-1 whitespace-nowrap @max-[15rem]/railrow:hidden">{diffWords(diff[0], diff[1])}</span> : null
       }
       hoverActions={[
         { label: pinned ? "Unpin workspace" : "Pin workspace", icon: pinned ? PinOff : Pin, onClick: noop },

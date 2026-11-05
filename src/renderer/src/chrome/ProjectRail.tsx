@@ -82,7 +82,7 @@ import {
   workspaceByPath,
   workspaceLabelKey,
 } from "../lib/tcserver/workspaces";
-import { RAIL_YIELD, RailHeading, RailRow } from "./RailRow";
+import { RailHeading, RailRow } from "./RailRow";
 import { WorkspaceGlyph, workspaceLook } from "./WorkspaceGlyph";
 import { diffWords, useWorkspaceMarks, WorkspaceMarkTrigger } from "./WorkspaceRowMarks";
 import type { WorkspaceMark } from "../lib/sidebarRows";
@@ -846,29 +846,23 @@ function WorkspaceRow({
         emphasis={!!railStatus?.unread}
         trailingInteractive
         trailing={
-          changed || (railStatus?.mark && workspaceId) ? (
-            <>
-              {changed ? (
-                // Muted: the colours belong to the Changes section. It yields to
-                // the hover actions, and to the name in a rail under 15rem; the
-                // button's name still says it.
-                <span
-                  data-workspace-diff
-                  data-rail-yield={RAIL_YIELD["data-rail-yield"]}
-                  className={cn("pointer-events-none pr-1 whitespace-nowrap @max-[15rem]/railrow:hidden", RAIL_YIELD.className)}
-                >
-                  {diffWords(stats.additions, stats.deletions)}
-                </span>
-              ) : null}
-              {railStatus?.mark && workspaceId ? (
-                <WorkspaceMarkTrigger
-                  mark={railStatus.mark}
-                  workspaceIds={item.workspaceIds.length > 0 ? item.workspaceIds : [workspaceId]}
-                  activeSessionId={activeSessionId}
-                  onSelectThread={onSelectAgent}
-                />
-              ) : null}
-            </>
+          railStatus?.mark && workspaceId ? (
+            <WorkspaceMarkTrigger
+              mark={railStatus.mark}
+              workspaceIds={item.workspaceIds.length > 0 ? item.workspaceIds : [workspaceId]}
+              activeSessionId={activeSessionId}
+              onSelectThread={onSelectAgent}
+            />
+          ) : null
+        }
+        trailingYield={
+          changed ? (
+            // Muted: the colours belong to the Changes section. It shares the
+            // hover actions' slot and fades as they show, and leaves for the
+            // name in a rail under 15rem; the button's name still says it.
+            <span data-workspace-diff className="pointer-events-none block pr-1 whitespace-nowrap @max-[15rem]/railrow:hidden">
+              {diffWords(stats.additions, stats.deletions)}
+            </span>
           ) : null
         }
         hoverActions={[

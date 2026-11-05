@@ -27,14 +27,18 @@
  * mark), so they take no pointer until the group is hovered.
  */
 
-export type RevealGroup = "" | "body" | "code" | "details" | "dock-tab" | "html-render" | "hunk" | "item" | "message" | "model" | "notice" | "output" | "q" | "row" | "turnend";
+export type RevealGroup = "" | "body" | "code" | "details" | "dock-tab" | "html-render" | "hunk" | "item" | "message" | "model" | "notice" | "output" | "q" | "row" | "steps" | "turnend";
 /** The groups whose rows take focus (index.css lists their `row` variants). */
-export type RevealRowGroup = "" | "dock-tab" | "hunk" | "item" | "row";
+export type RevealRowGroup = "" | "dock-tab" | "hunk" | "item" | "row" | "steps";
 /** The groups whose controls lie over something (`overlay`) and what yields to them. */
-export type YieldGroup = "" | "row";
+export type YieldGroup = "" | "item" | "row";
 
 const BASE =
-  "opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) has-[[data-popup-open]]:opacity-100 has-[[data-popup-open]]:delay-(--dur-instant) motion-reduce:transition-opacity";
+  "opacity-0 duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) has-[[data-popup-open]]:opacity-100 has-[[data-popup-open]]:delay-(--dur-instant)";
+/** What a reveal transitions: its opacity, and an overlay's pointer with it
+ *  (discrete, so it turns on halfway through the fade, never before it). */
+const MOVES = "transition-opacity motion-reduce:transition-opacity";
+const OVERLAY_MOVES = "transition-[opacity,pointer-events] transition-discrete motion-reduce:transition-[opacity,pointer-events]";
 
 const FADE = "transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-opacity";
 
@@ -51,7 +55,7 @@ export function reveal(group: RevealRowGroup, options: { row?: boolean }): strin
 export function reveal(group: YieldGroup, options: { row?: boolean; overlay: true }): string;
 export function reveal(group: RevealGroup, options: { row?: boolean; overlay?: boolean } = {}): string {
   const hover = on("group-hover", group);
-  let cls = `${BASE} ${hover}:opacity-100 ${hover}:delay-(--delay-hover)`;
+  let cls = `${BASE} ${options.overlay ? OVERLAY_MOVES : MOVES} ${hover}:opacity-100 ${hover}:delay-(--delay-hover)`;
   if (options.row) cls += ` ${atOnce(["group-focus-visible", "group-has-focus-visible"], group, "opacity-100")}`;
   if (options.overlay) cls += ` pointer-events-none ${hover}:pointer-events-auto has-[[data-popup-open]]:pointer-events-auto`;
   return cls;

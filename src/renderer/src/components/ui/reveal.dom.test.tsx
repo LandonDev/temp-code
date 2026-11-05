@@ -4,7 +4,7 @@ import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { FADE_IN, reveal, yields, type RevealGroup } from "./reveal";
 
-const GROUPS: RevealGroup[] = ["", "body", "code", "details", "dock-tab", "html-render", "hunk", "item", "message", "model", "notice", "output", "q", "row", "turnend"];
+const GROUPS: RevealGroup[] = ["", "body", "code", "details", "dock-tab", "html-render", "hunk", "item", "message", "model", "notice", "output", "q", "row", "steps", "turnend"];
 
 /** `group-hover/q` for a named group, `group-hover` for the unnamed one. */
 const v = (variant: string, group: string) => (group ? `${variant}/${group}` : variant);
@@ -53,14 +53,14 @@ describe("the hover reveal recipe", () => {
     for (const group of GROUPS) expect(hover).toMatch(group ? new RegExp(`/${group}[,}]`) : /\{,/);
     expect(hover).toContain(":{opacity-100,delay-(--delay-hover)}");
     const row = lists.find((l) => l.includes("{focus-visible,has-focus-visible}"))!;
-    for (const group of ["dock-tab", "hunk", "item", "row"]) expect(row).toMatch(new RegExp(`/${group}[,}]`));
+    for (const group of ["dock-tab", "hunk", "item", "row", "steps"]) expect(row).toMatch(new RegExp(`/${group}[,}]`));
     const yieldList = lists.find((l) => l.includes("has-[[data-popup-open]]}"))!;
-    expect(yieldList).toContain("{,/row}:{opacity-0,delay-(--dur-instant)}");
-    expect(lists.some((l) => l.includes("group-hover{,/row}:{pointer-events-auto,opacity-0}"))).toBe(true);
+    expect(yieldList).toContain("{,/item,/row}:{opacity-0,delay-(--dur-instant)}");
+    expect(lists.some((l) => l.includes("group-hover{,/item,/row}:{pointer-events-auto,opacity-0}"))).toBe(true);
   });
 
   it("a row reveal also answers keyboard focus on the row or anywhere in it", () => {
-    for (const group of ["", "dock-tab", "hunk", "item", "row"] as const) {
+    for (const group of ["", "dock-tab", "hunk", "item", "row", "steps"] as const) {
       const cls = reveal(group, { row: true });
       expect(cls).toContain(`${v("group-focus-visible", group)}:opacity-100`);
       expect(cls).toContain(`${v("group-has-focus-visible", group)}:opacity-100`);
@@ -69,15 +69,23 @@ describe("the hover reveal recipe", () => {
     expect(reveal("row")).not.toContain("group-has-focus-visible");
   });
 
-  it("an overlay takes no pointer until its group is hovered", () => {
+  it("an overlay takes no pointer until it shows: the pointer turns on with the fade, after the same wait", () => {
     const cls = reveal("row", { row: true, overlay: true });
     expect(cls).toContain("pointer-events-none");
     expect(cls).toContain("group-hover/row:pointer-events-auto");
+    // pointer-events transitions with the opacity (discretely), so the hover's
+    // --delay-hover holds the pointer back as long as it holds the fade.
+    expect(cls).toContain("transition-[opacity,pointer-events]");
+    expect(cls).toContain("transition-discrete");
+    expect(cls).toContain("group-hover/row:delay-(--delay-hover)");
+    expect(cls).not.toMatch(/(^| )transition-opacity( |$)/);
+    expect(cls).toContain("motion-reduce:transition-[opacity,pointer-events]");
     expect(reveal("row")).not.toContain("pointer-events-none");
+    expect(reveal("row")).not.toContain("pointer-events]");
   });
 
   it("what yields crosses over on the reveal's own timing", () => {
-    for (const group of ["", "row"] as const) {
+    for (const group of ["", "item", "row"] as const) {
       const cls = yields(group);
       expect(cls).toContain(`${v("group-hover", group)}:opacity-0`);
       expect(cls).toContain(`${v("group-hover", group)}:delay-(--delay-hover)`);
