@@ -45,6 +45,13 @@ describe('the soak arguments', () => {
     expect(parseSoakArgs(['--gate', '--trace', '5', '--eval', 'document.getAnimations().length'])).toMatchObject({ traceS: 5, evalJs: 'document.getAnimations().length' })
     expect(() => parseSoakArgs(['--trace', '60'])).toThrow('0 to 30')
   })
+  it('takes a burst cadence for the chat scene and the reveal report by hand', () => {
+    expect(parseSoakArgs(['--gate'])).toMatchObject({ burstMs: null, revealReport: false })
+    expect(parseSoakArgs(['--scene', 'chat', '--burst', '250', '--reveal-report'])).toMatchObject({ burstMs: 250, revealReport: true, view: 'stream' })
+    expect(() => parseSoakArgs(['--burst', '250'])).toThrow('--scene chat')
+    expect(() => parseSoakArgs(['--scene', 'chat', '--burst', '2'])).toThrow('10 to 5000')
+    expect(() => parseSoakArgs(['--gate', '--scene', 'chat', '--burst', '250'])).toThrow('never the gate')
+  })
 })
 
 describe('the gate rule', () => {

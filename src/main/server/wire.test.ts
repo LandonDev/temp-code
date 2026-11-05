@@ -16,6 +16,7 @@ import {
   LAGGING_EVENTS_MS
 } from './wire'
 import { BACKPRESSURE_BYTES } from './stalls'
+import { FocusSet } from './focus'
 import { isOmittedBody } from '@shared/wire'
 import {
   BODY_OMIT_BYTES,
@@ -769,6 +770,36 @@ describe('the events window follows the loop', () => {
     expect(eventsWindowMs('local', 50)).toBe(LAGGING_EVENTS_MS.local)
     expect(eventsWindowMs('remote', 120)).toBe(LAGGING_EVENTS_MS.remote)
     expect(LAGGING_EVENTS_MS).toEqual({ local: 100, remote: 250 })
+  })
+
+  it('under lag the thread a socket shows (not focused) sends its rows as they land; another thread\'s still wait', () => {
+    const out: { at: number; frame: ServerPush }[] = []
+    const start = Date.now()
+    const focus = new FocusSet({ parentOf: () => null, masterOf: () => null })
+    // The window shows `reading` while another app has the focus.
+    focus.set(7, null)
+    focus.setShown(7, 'reading')
+    const c = new PushCoalescer((frame) => out.push({ at: Date.now() - start, frame }), undefined, undefined, {
+      project: false,
+      immediate: (id) => focus.pushesAtOnce(7, id),
+      eventsDelay: () => eventsWindowMs('remote', 80)
+    })
+    const row = (sessionId: string, seq: number): ServerPush => ({
+      push: 'event',
+      row: { sessionId, seq, ts: seq, event: { type: 'assistant-text', text: `t${seq}`, delta: true } }
+    })
+    const rows = (sessionId: string) =>
+      out.flatMap((o) => (o.frame.push === 'events' && o.frame.sessionId === sessionId ? o.frame.rows.map((r) => [o.at, r.seq]) : []))
+    c.push(row('other', 1))
+    c.push(row('other', 2))
+    for (let seq = 1; seq <= 3; seq++) {
+      c.push(row('reading', seq))
+      vi.advanceTimersByTime(20)
+    }
+    expect(rows('reading')).toEqual([[0, 1], [20, 2], [40, 3]])
+    expect(rows('other')).toEqual([[0, 1]])
+    vi.advanceTimersByTime(LAGGING_EVENTS_MS.remote)
+    expect(rows('other')).toEqual([[0, 1], [LAGGING_EVENTS_MS.remote, 2]])
   })
 
   it('under lag an unfocused thread\'s rows wait the wide window, the focused thread\'s go at once', () => {

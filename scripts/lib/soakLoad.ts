@@ -22,6 +22,12 @@
  * its period instead of firing them together. The host decides what an
  * emission becomes on the wire; the test (scripts/soak-load.test.ts) holds
  * the rates over 60 s of fake time.
+ *
+ * A burst cadence (`--burst <ms>`, `BurstCadence`) holds the focused
+ * child's deltas and lets what it owes leave together every `everyMs`
+ * ± 30%, with a stall of BURST_STALL_MS every BURST_STALL_EVERY_MS: the
+ * shape a box thread reached the Mac in on 2026-11-05 (docs/TRANSCRIPT.md
+ * "The stream reveals a phrase at a time").
  */
 
 export type SoakKind = 'meta' | 'delta' | 'tool' | 'log'
@@ -106,19 +112,52 @@ export const realClock: SoakClock = {
 
 export const SOAK_TICK_MS = 25
 
+/** A burst's release time varies this much either way. */
+export const BURST_JITTER = 0.3
+/** Every this long the focused stream stalls… */
+export const BURST_STALL_EVERY_MS = 10_000
+/** …for this long, then releases what it held. */
+export const BURST_STALL_MS = 1_000
+
+/** The focused child's deltas leave in bursts: what is owed, every `everyMs` ± BURST_JITTER, held through a stall. */
+export interface BurstCadence {
+  everyMs: number
+  /** 0 to 1; Math.random by default */
+  random?: () => number
+}
+
 export interface SoakDriver {
   stop(): void
   counts(): Record<SoakKind, number>
 }
 
+/** Whether a burst may leave at `ms` into the load: not inside a stall
+ *  (the last BURST_STALL_MS of each BURST_STALL_EVERY_MS). */
+export function burstOpen(ms: number): boolean {
+  return ms % BURST_STALL_EVERY_MS < BURST_STALL_EVERY_MS - BURST_STALL_MS
+}
+
 /** Runs the profile from now until stop(): each tick pays every stream what it owes. */
-export function startLoad(sink: (emit: SoakEmit) => void, clock: SoakClock = realClock, p: SoakProfile = SOAK_PROFILE): SoakDriver {
+export function startLoad(
+  sink: (emit: SoakEmit) => void,
+  clock: SoakClock = realClock,
+  p: SoakProfile = SOAK_PROFILE,
+  burst: BurstCadence | null = null
+): SoakDriver {
   const start = clock.now()
   const paid = p.streams.map(() => 0)
   const counts: Record<SoakKind, number> = { meta: 0, delta: 0, tool: 0, log: 0 }
+  const random = burst?.random ?? Math.random
+  const bursty = (s: SoakStream): boolean => burst !== null && s.kind === 'delta' && s.child === p.focused
+  let release = 0
   const tick = (): void => {
-    const seconds = (clock.now() - start) / 1000
+    const ms = clock.now() - start
+    const seconds = ms / 1000
+    // The focused stream's next burst: due, and not inside a stall.
+    const releasing = burst !== null && ms >= release && burstOpen(ms)
+    if (releasing) release = ms + burst!.everyMs * (1 - BURST_JITTER + 2 * BURST_JITTER * random())
     p.streams.forEach((s, i) => {
+      if (bursty(s) && !releasing) return
       const owed = Math.floor(seconds * s.perSecond + s.phase)
       while (paid[i]! < owed) {
         const n = paid[i]!

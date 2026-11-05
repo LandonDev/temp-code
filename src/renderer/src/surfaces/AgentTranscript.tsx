@@ -44,7 +44,7 @@ import { useTranscriptAnchor } from "../hooks/useTranscriptAnchor";
 import { useTranscriptSelection } from "../hooks/useTranscriptSelection";
 import { SelectSessionContext } from "./AgentMarkdown";
 import type { OpenFileFn } from "../lib/search";
-import { TranscriptSessionContext } from "./transcriptSession";
+import { RowBornContext, TranscriptSessionContext } from "./transcriptSession";
 import { TranscriptSelectionMenu } from "./TranscriptSelectionMenu";
 import { groupTurns } from "./transcriptActivity";
 import { TurnEnd } from "./transcript/TurnEnd";
@@ -661,6 +661,14 @@ export function AgentTranscript({
   if (!initialTurns.current) {
     initialTurns.current = new Set(turns.map((turn) => rowKeyOf(turn[0])));
   }
+  // A row that joins the live turn after open was born live: its prose
+  // reveals from its first word, however much its first commit carried. One
+  // there at open, one of a page loaded above (never the last turn) and one
+  // scrolled back into view show whole.
+  const initialRowKeys = useRef<Set<string> | null>(null);
+  if (!initialRowKeys.current) {
+    initialRowKeys.current = new Set(rows.map((row) => row.key));
+  }
   const shownRows = useRef(new Set<string>());
 
   /**
@@ -1050,6 +1058,12 @@ export function AgentTranscript({
                 !initialTurns.current!.has(row.turn.id) &&
                 !shownRows.current.has(row.key)
               }
+              bornLive={
+                row.kind === "item" &&
+                row.turn.isLast &&
+                !initialRowKeys.current!.has(row.key) &&
+                !shownRows.current.has(row.key)
+              }
               cwd={cwd}
               harnessOf={harnessOf}
               turnState={rowTurnState(row, turnState)}
@@ -1113,6 +1127,9 @@ type RowViewProps = {
   top: number;
   /** Born after the transcript mounted and never shown: fades in, once. */
   fresh: boolean;
+  /** Joined the live turn after the transcript opened and never shown: its
+   *  prose reveals from its first word. */
+  bornLive: boolean;
   cwd?: string;
   harnessOf: (turn: Block[]) => HarnessId | undefined;
   /** The session, for the live turn's closing row only (`rowTurnState`). */
@@ -1151,6 +1168,7 @@ const RowView = memo(function RowView({
   row: next,
   top,
   fresh,
+  bornLive,
   cwd,
   harnessOf,
   turnState,
@@ -1171,6 +1189,7 @@ const RowView = memo(function RowView({
   const key = row.key;
   // Decided at mount: a later render never starts or cuts the fade.
   const [fadeIn] = useState(fresh);
+  const [born] = useState(bornLive);
   const ref = useCallback(
     (el: HTMLElement | null) => {
       register(key, el);
@@ -1228,14 +1247,16 @@ const RowView = memo(function RowView({
           />
         </div>
       ) : (
-        <TranscriptBlock
-          block={row.item.block}
-          stickyIndex={row.turn.index + 1}
-          onApproval={onApproval}
-          onOpenFile={onOpenFile}
-          onOpenDiff={onOpenDiff}
-          cwd={cwd}
-        />
+        <RowBornContext.Provider value={born}>
+          <TranscriptBlock
+            block={row.item.block}
+            stickyIndex={row.turn.index + 1}
+            onApproval={onApproval}
+            onOpenFile={onOpenFile}
+            onOpenDiff={onOpenDiff}
+            cwd={cwd}
+          />
+        </RowBornContext.Provider>
       )}
     </div>
     </RevealTurnContext.Provider>

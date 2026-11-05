@@ -32,7 +32,7 @@ import { configure } from 'aliax-core'
 import { startServer } from '../../src/main/server/index'
 import type { AgentEvent } from '../../src/shared/events'
 import { batchRowMidRun, withShellLog } from './ios-seeds'
-import { profileOf, startLoad, type SoakClock, type SoakDriver, type SoakEmit, type SoakScene } from './soakLoad'
+import { profileOf, startLoad, type BurstCadence, type SoakClock, type SoakDriver, type SoakEmit, type SoakScene } from './soakLoad'
 
 export const SOAK_MASTER = 'soak-master'
 export const SOAK_CHAT = 'soak-chat'
@@ -76,7 +76,7 @@ export interface SoakHost {
   keyId: string
   key: string
   /** Starts the profile's load; one driver per host. */
-  startLoad(clock?: SoakClock): SoakDriver
+  startLoad(clock?: SoakClock, burst?: BurstCadence | null): SoakDriver
   close(): Promise<void>
 }
 
@@ -215,9 +215,9 @@ export async function startSoakHost(scene: SoakScene = 'board'): Promise<SoakHos
     workspaceId: workspace.id,
     keyId: created.key.id,
     key: created.token,
-    startLoad(clock) {
+    startLoad(clock, burst) {
       if (driver) throw new Error('the load already runs')
-      driver = startLoad(apply, clock, profile)
+      driver = startLoad(apply, clock, profile, burst ?? null)
       return driver
     },
     async close() {

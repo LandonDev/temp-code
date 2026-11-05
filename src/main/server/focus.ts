@@ -9,6 +9,13 @@
  * The lane gate (lane.ts) runs this set's requests first, the push
  * coalescer (wire.ts) sends a socket's own focused rows at once, and the
  * scheduler's admission reads `isInteractive`.
+ *
+ * Apart from focus, a socket may name the thread its window SHOWS
+ * (`session.focus { shown }`): the focused pane's thread while the document
+ * is visible, whatever the window's focus or the person's attention. Only
+ * the push coalescer reads it (`pushesAtOnce`), so a person reading a long
+ * reply with another app focused still gets its rows as they land; the
+ * lanes, admission, `onScreen` and the socket budget stay on focus.
  */
 
 /** What the set needs from the session rows: a thread's parent, and a root's master. */
@@ -23,6 +30,8 @@ export class FocusSet {
   private byConnection = new Map<number, string>()
   /** focused id → how many sockets name it */
   private counts = new Map<string, number>()
+  /** the thread each socket's window shows */
+  private shownBy = new Map<number, string>()
 
   constructor(private readonly links: SessionLinks) {}
 
@@ -39,9 +48,16 @@ export class FocusSet {
     this.counts.set(sessionId, (this.counts.get(sessionId) ?? 0) + 1)
   }
 
+  /** The thread a socket's window shows, replacing what it named; null clears it. */
+  setShown(connection: number, sessionId: string | null): void {
+    if (sessionId === null) this.shownBy.delete(connection)
+    else this.shownBy.set(connection, sessionId)
+  }
+
   /** The socket closed. */
   drop(connection: number): void {
     this.set(connection, null)
+    this.shownBy.delete(connection)
   }
 
   focusOf(connection: number): string | null {
@@ -69,6 +85,19 @@ export class FocusSet {
     const focus = this.byConnection.get(connection)
     if (focus === undefined) return false
     return this.reaches(sessionId, (id) => id === focus)
+  }
+
+  /** What this one socket's window shows, widened as focus is. */
+  isShownBy(connection: number, sessionId: string): boolean {
+    const shown = this.shownBy.get(connection)
+    if (shown === undefined) return false
+    return this.reaches(sessionId, (id) => id === shown)
+  }
+
+  /** The push coalescer's rule: a thread this socket focuses or shows gets
+   *  its rows as they land. */
+  pushesAtOnce(connection: number, sessionId: string): boolean {
+    return this.isFocusedBy(connection, sessionId) || this.isShownBy(connection, sessionId)
   }
 
   private release(sessionId: string): void {

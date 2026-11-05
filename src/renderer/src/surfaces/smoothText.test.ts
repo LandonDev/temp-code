@@ -1,64 +1,29 @@
 import { describe, expect, it } from "vitest";
 import {
+  BASE_MAX_CPS,
+  CATCH_UP_MS,
+  DEFAULT_CPS,
   FLOOR_CPS,
-  MAX_LAG,
-  MAX_LAG_MS,
-  MIN_LAG_MS,
+  LEAD_DECAY_MS,
+  LEAD_LOCAL_MS,
+  LEAD_MAX_MS,
+  LEAD_MIN_MS,
+  LEAD_REMOTE_MS,
+  MAX_SURGE,
   PAUSE_MS,
-  TAU_DRAIN_MS,
-  TAU_STREAM_MS,
-  advanceReveal,
   arrivalRate,
+  basePace,
+  catchUpPace,
+  currentLead,
   isRewrite,
+  leadFloor,
   newPacer,
   noteArrival,
   revealCut,
   stepPacer,
-  targetLagMs,
 } from "./smoothText";
 import { REVEAL } from "../lib/ease";
-
-describe("advanceReveal", () => {
-  it("reveals remaining × (1 − e^(−dt/τ)) while streaming", () => {
-    const next = advanceReveal(0, 1000, TAU_STREAM_MS, true);
-    expect(next).toBeCloseTo(1000 * (1 - Math.exp(-1)), 6);
-  });
-
-  it("drains faster once the stream ends", () => {
-    const live = advanceReveal(0, 1000, 50, true);
-    const drain = advanceReveal(0, 1000, 50, false);
-    expect(drain).toBeGreaterThan(live);
-    expect(drain).toBeCloseTo(1000 * (1 - Math.exp(-50 / TAU_DRAIN_MS)), 6);
-  });
-
-  it("never moves slower than the 25 chars/s floor", () => {
-    // 2 chars left: exponential step would be tiny; the floor wins.
-    const next = advanceReveal(98, 100, 16, true);
-    expect(next - 98).toBeCloseTo((16 * FLOOR_CPS) / 1000, 9);
-  });
-
-  it("never overshoots the live end", () => {
-    expect(advanceReveal(99.9, 100, 1000, false)).toBe(100);
-    expect(advanceReveal(100, 100, 16, true)).toBe(100);
-  });
-
-  it("skips ahead when the lag exceeds the cap", () => {
-    const next = advanceReveal(0, 5000, 16, true);
-    expect(5000 - next).toBe(MAX_LAG);
-  });
-
-  it("converges to the end in a bounded number of frames", () => {
-    let pos = 0;
-    let frames = 0;
-    while (pos < 400 && frames < 1000) {
-      pos = advanceReveal(pos, 400, 16, true);
-      frames++;
-    }
-    expect(pos).toBe(400);
-    // Exponential toward the tail then the floor: well under a second of frames.
-    expect(frames).toBeLessThan(300);
-  });
-});
+import { cov, frames, localDeltas, prng, simulate, type Arrival, type SimRun } from "../test/revealSim";
 
 describe("isRewrite", () => {
   it("treats an append as no rewrite", () => {
@@ -79,224 +44,307 @@ describe("isRewrite", () => {
 
 // ── the jitter buffer, simulated ─────────────────────────────────────
 //
-// A stream at CPS chars/s reaches the renderer as one of the patterns
-// below; a 60 fps loop notes what arrived by each frame (the store bumps
-// once per frame, so that is when the hook sees it) and steps the reveal.
-// The measure is the reveal speed per frame while the stream is live,
-// after a warm-up: its coefficient of variation (sd / mean) is how jerky
-// the text reads. `legacy` runs the backlog-proportional catch-up the
-// pacer replaced, for comparison.
+// test/revealSim.ts drives the pacer the way the hook does: a step every
+// REVEAL.stepMs plus 0–16 ms of timer jitter, arrivals noted as they land.
+// The cadences are the ones measured on 2026-11-05 between the box and the
+// Mac (docs/TRANSCRIPT.md "The stream reveals a phrase at a time").
 
-const CPS = 300;
-const DURATION_MS = 8000;
-const WARMUP_MS = 1500;
-const FRAME_MS = 1000 / 60;
+const CPS = 500;
 
-interface Arrival {
-  t: number;
-  chars: number;
+/** The steps after the first one that moved. */
+function afterStart(run: SimRun) {
+  const first = run.steps.findIndex((s) => s.chars > 0);
+  return run.steps.slice(first);
 }
 
-function prng(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 2 ** 32;
-  };
-}
-
-/** A local harness: a delta every 7 ms of a varying few chars. */
-function localDeltas(): Arrival[] {
-  const r = prng(1);
-  const out: Arrival[] = [];
-  let owed = 0;
-  for (let t = 0; t < DURATION_MS; t += 7) {
-    owed += (CPS * 7) / 1000;
-    const chars = Math.max(1, Math.round(owed * (0.5 + r())));
-    owed -= chars;
-    out.push({ t, chars });
+/**
+ * The rules every run keeps: once a spurt has started no step shows nothing
+ * while text is in hand (a hold is the only empty step with text in hand),
+ * and no step shows more than the faster of the surge on the base pace and
+ * the catch-up's pace on the largest backlog of the last CATCH_UP_MS, plus
+ * the one long token a word cut may release.
+ */
+function keepsTheRules(run: SimRun): void {
+  const steps = afterStart(run);
+  for (const s of steps) if (s.inHand > 0 && !s.held) expect(s.chars, `step at ${s.t}`).toBeGreaterThan(0);
+  for (let i = 0; i < run.steps.length; i++) {
+    const s = run.steps[i];
+    const recent = run.steps.filter((o) => o.t <= s.t && o.t > s.t - CATCH_UP_MS);
+    const backlog = Math.max(...recent.map((o) => o.inHand));
+    const bound = Math.max(MAX_SURGE * s.base * s.dt, (backlog * s.dt) / (CATCH_UP_MS - REVEAL.stepMs)) + REVEAL.longTokenChars;
+    expect(s.chars, `step at ${s.t}`).toBeLessThanOrEqual(bound);
   }
-  return out;
 }
 
-/** A remote host: a frame every `every` ms, each sent frame delivered
- *  `delay` ms later and never before the one ahead of it. */
-function frames(every: number, delay: (sent: number) => number): Arrival[] {
-  const out: Arrival[] = [];
-  let last = 0;
-  for (let t = 0; t < DURATION_MS; t += every) {
-    last = Math.max(last, t + delay(t));
-    out.push({ t: last, chars: (CPS * every) / 1000 });
-  }
-  return out;
+/** The steady stretch's per-step speed: chars over dt, live, after `from`. */
+function speedCov(run: SimRun, from: number, to = Infinity): number {
+  return cov(run.steps.filter((s) => s.live && s.t >= from && s.t < to && s.chars > 0).map((s) => s.chars / s.dt));
 }
 
-const steady100 = (): Arrival[] => frames(100, () => 20);
-const jittered100 = (): Arrival[] => {
-  const r = prng(7);
-  return frames(100, () => 20 + 60 * r());
-};
-const jittered33 = (): Arrival[] => {
+/** The Mac's measured remote cadence: frames every 33 ms, each 0–100 ms late
+ *  and never before the one ahead of it. */
+const macRemote = (): Arrival[] => {
   const r = prng(3);
-  return frames(33, () => 20 + 30 * r());
+  return frames(33, CPS, 8000, () => 100 * r());
 };
-/** The link holds everything for `stallMs` after the frame sent at 4 s:
- *  one gap of 100 + stallMs ms, then the held frames land together. */
-const stalled = (stallMs: number) => (): Arrival[] =>
-  frames(100, (t) => 20 + (t > 4000 && t < 4000 + stallMs + 100 ? 4000 + stallMs + 100 - t : 0));
-
-interface Run {
-  cov: number;
-  mean: number;
-  min: number;
-  max: number;
-  /** mean ms of text between shown and arrived */
-  lagMs: number;
-  /** speeds by frame time, for a window of the run */
-  speeds: { t: number; v: number }[];
-}
-
-function simulate(arrivals: Arrival[], legacy = false): Run {
-  const pacer = newPacer(0);
-  let legacyPos = 0;
-  let end = 0;
-  let next = 0;
-  const speeds: { t: number; v: number }[] = [];
-  let lag = 0;
-  const live = arrivals[arrivals.length - 1].t;
-  for (let t = 0; t <= live; t += FRAME_MS) {
-    while (next < arrivals.length && arrivals[next].t <= t) end += arrivals[next++].chars;
-    noteArrival(pacer, end, t);
-    const before = legacy ? legacyPos : pacer.pos;
-    const after = legacy
-      ? (legacyPos = advanceReveal(legacyPos, end, FRAME_MS, true))
-      : stepPacer(pacer, FRAME_MS, t, true);
-    if (t >= arrivals[0].t + WARMUP_MS) {
-      speeds.push({ t, v: ((after - before) / FRAME_MS) * 1000 });
-      lag += ((end - after) / CPS) * 1000;
-    }
-  }
-  return { ...stats(speeds.map((s) => s.v)), lagMs: lag / speeds.length, speeds };
-}
-
-function stats(vs: number[]): { cov: number; mean: number; min: number; max: number } {
-  const mean = vs.reduce((a, b) => a + b, 0) / vs.length;
-  const sd = Math.sqrt(vs.reduce((a, b) => a + (b - mean) ** 2, 0) / vs.length);
-  return { cov: sd / mean, mean, min: Math.min(...vs), max: Math.max(...vs) };
-}
+/** A lagging box: frames every 250 ± 60 ms. */
+const laggingBox = (durationMs = 8000): Arrival[] => {
+  const r = prng(5);
+  return frames(250, CPS, durationMs, () => 60 * r());
+};
+/** The same with the link holding everything for a second from 4 s. */
+const stalledBox = (durationMs = 8000): Arrival[] =>
+  laggingBox(durationMs).map((a) => (a.t > 4000 && a.t < 5000 ? { ...a, t: 5000 } : a));
+/** A whole reply: 3,342 chars inside 20 ms, the stream ending 30 ms later. */
+const WHOLE = 3342;
+const wholeReply = (): Arrival[] =>
+  Array.from({ length: 143 }, (_, i) => ({ t: 1000 + (i * 20) / 143, chars: i < 142 ? 23 : WHOLE - 23 * 142 }));
+/** One 1,632-char frame in a 33 ms stream. */
+const BURST = 1632;
+const burstFrame = (): { arrivals: Arrival[]; at: number } => {
+  const r = prng(9);
+  const arrivals = frames(33, CPS, 6000, () => 20 * r());
+  const k = Math.floor(arrivals.length / 2);
+  arrivals[k] = { ...arrivals[k], chars: BURST };
+  return { arrivals, at: arrivals[k].t };
+};
 
 describe("jitter buffer (simulated streams)", () => {
-  it("local deltas every 7 ms: as smooth as before, keeping up with the stream at the minimum lag", () => {
-    const now = simulate(localDeltas());
-    const before = simulate(localDeltas(), true);
-    expect(now.cov).toBeLessThan(0.05);
-    expect(now.cov).toBeLessThanOrEqual(before.cov + 0.005);
-    expect(Math.abs(now.mean - CPS) / CPS).toBeLessThan(0.02);
-    // at most the minimum lag plus a frame of arrivals; the old catch-up
-    // trailed by τ (about 320 ms)
-    expect(now.lagMs).toBeLessThan(MIN_LAG_MS + 2 * FRAME_MS);
-    expect(now.lagMs).toBeLessThan(before.lagMs);
+  it("the Mac's remote cadence: an even pace at the stream's rate, no underrun", () => {
+    const run = simulate(macRemote(), { leadMs: LEAD_REMOTE_MS });
+    keepsTheRules(run);
+    expect(run.underruns).toEqual([]);
+    expect(speedCov(run, 1500)).toBeLessThan(0.1);
+    const live = run.steps.filter((s) => s.live && s.t >= 1500);
+    const pace = (live.reduce((a, s) => a + s.chars, 0) / (live[live.length - 1].t - live[0].t)) * 1000;
+    expect(Math.abs(pace - CPS) / CPS).toBeLessThan(0.1);
+    // The rest drains in steps after the stream ends, within a lead or two.
+    expect(run.doneAt - run.endAt).toBeLessThan(2 * LEAD_REMOTE_MS + REVEAL.stepMs);
   });
 
-  it("steady 100 ms frames: an even pace, where the old catch-up surged on every frame", () => {
-    const now = simulate(steady100());
-    const before = simulate(steady100(), true);
-    expect(now.cov).toBeLessThan(0.05);
-    expect(before.cov).toBeGreaterThan(0.05);
-    expect(Math.abs(now.mean - CPS) / CPS).toBeLessThan(0.02);
-    // the playout delay is twice the gap, plus half a gap on average
-    expect(now.lagMs).toBeGreaterThan(200);
-    expect(now.lagMs).toBeLessThan(300);
+  it("a lagging box (250 ± 60 ms frames): an even pace after warm-up, at most one underrun", () => {
+    const run = simulate(laggingBox(), { leadMs: LEAD_REMOTE_MS });
+    keepsTheRules(run);
+    expect(run.underruns.length).toBeLessThanOrEqual(1);
+    expect(speedCov(run, 1500)).toBeLessThan(0.15);
+    // The lead covers the link: twice its high gap.
+    expect(currentLead(run.pacer)).toBeGreaterThanOrEqual(500);
   });
 
-  it("100 ms frames with 0–60 ms of jitter: still an even pace", () => {
-    const now = simulate(jittered100());
-    const before = simulate(jittered100(), true);
-    expect(now.cov).toBeLessThan(0.05);
-    expect(before.cov).toBeGreaterThan(0.05);
-    expect(now.lagMs).toBeLessThan(MAX_LAG_MS);
+  it("a 1 s stall: exactly one underrun, the lead grown after it, and back near its floor ten steady seconds on", () => {
+    const run = simulate(stalledBox(16_000), { leadMs: LEAD_REMOTE_MS });
+    keepsTheRules(run);
+    expect(run.underruns.length).toBe(1);
+    expect(run.underruns[0]).toBeGreaterThan(4000);
+    expect(run.underruns[0]).toBeLessThan(5000);
+    const before = run.steps.filter((s) => s.t < run.underruns[0]).at(-1)!.lead;
+    const after = run.steps.find((s) => s.t > 5000)!.lead;
+    expect(after).toBeGreaterThan(before);
+    expect(speedCov(run, 5500)).toBeLessThan(0.15);
+    // Ten steady seconds after the stall the lead is within 10% of its floor.
+    const later = run.steps.find((s) => s.t >= 15_000)!;
+    expect(later.lead).toBeGreaterThan(later.floor);
+    expect(later.lead).toBeLessThanOrEqual(1.1 * later.floor);
   });
 
-  it("33 ms frames with jitter (the remote events window): an even pace at the minimum lag", () => {
-    const now = simulate(jittered33());
-    expect(now.cov).toBeLessThan(0.05);
-    expect(now.lagMs).toBeLessThan(MIN_LAG_MS + 50);
+  it("a whole reply inside 20 ms: shown over at least ten steps, all of it within CATCH_UP_MS", () => {
+    const run = simulate(wholeReply(), { leadMs: LEAD_REMOTE_MS, endAt: 1050 });
+    keepsTheRules(run);
+    const moving = run.steps.filter((s) => s.chars > 0);
+    expect(moving.length).toBeGreaterThanOrEqual(10);
+    expect(run.doneAt - 1000).toBeLessThanOrEqual(CATCH_UP_MS + 2 * REVEAL.stepMs);
+    // The stream ended 30 ms in: the rest drained over steps, never at once.
+    const drain = run.steps.filter((s) => !s.live && s.chars > 0);
+    expect(drain.length).toBeGreaterThanOrEqual(10);
+    for (const s of drain) expect(s.chars).toBeLessThan(WHOLE / 5);
   });
 
-  it("a 300 ms gap (a frame 200 ms late, the edge of the buffer): an even pace", () => {
-    const now = simulate(stalled(200)());
-    const before = simulate(stalled(200)(), true);
-    expect(now.cov).toBeLessThan(0.05);
-    expect(before.cov).toBeGreaterThan(0.1);
-    expect(now.min).toBeGreaterThan(0.4 * CPS);
-    expect(now.max).toBeLessThan(1.05 * CPS);
+  it("one 1,632-char frame in a 33 ms stream: played out over steps within CATCH_UP_MS, no underrun after", () => {
+    const { arrivals, at } = burstFrame();
+    const run = simulate(arrivals, { leadMs: LEAD_REMOTE_MS });
+    keepsTheRules(run);
+    const during = run.steps.filter((s) => s.t >= at && s.t <= at + CATCH_UP_MS + 2 * REVEAL.stepMs);
+    expect(during.filter((s) => s.chars > 0).length).toBeGreaterThanOrEqual(10);
+    // Everything that had arrived with the burst showed within the catch-up.
+    const shownBy = during.reduce((a, s) => a + s.chars, 0);
+    const before = run.steps.filter((s) => s.t < at).reduce((a, s) => a + s.chars, 0);
+    const arrivedWith = arrivals.filter((a) => a.t <= at).reduce((a, b) => a + b.chars, 0);
+    expect(before + shownBy).toBeGreaterThanOrEqual(arrivedWith);
+    expect(run.underruns).toEqual([]);
   });
 
-  it("one 300 ms stall (a 400 ms gap): eases down and back without stopping or surging, and is even again within a second", () => {
-    const now = simulate(stalled(300)());
-    const before = simulate(stalled(300)(), true);
-    // The buffer (twice the 100 ms gap) cannot cover a frame 300 ms late:
-    // when the frame is first overdue 200 ms of text is left for 300 ms of
-    // wait, so any reveal that does not see the future dips here (its CoV
-    // over this run cannot go much under 0.07). It never stops and never
-    // surges...
-    expect(now.min).toBeGreaterThan(0.1 * CPS);
-    expect(now.max).toBeLessThan(1.15 * CPS);
-    expect(before.max).toBeGreaterThan(1.5 * CPS);
-    expect(now.cov).toBeLessThan(before.cov);
-    // ...and away from it the pace is as even as a steady stream's.
-    const calm = (from: number, to: number) => stats(now.speeds.filter((s) => s.t >= from && s.t < to).map((s) => s.v));
-    expect(calm(0, 4000).cov).toBeLessThan(0.05);
-    expect(calm(5500, DURATION_MS).cov).toBeLessThan(0.05);
+  it("local deltas every 7 ms: a lead under 150 ms, the pace within 2% of the stream", () => {
+    const local = 300;
+    const run = simulate(localDeltas(local, 8000), { leadMs: LEAD_LOCAL_MS });
+    keepsTheRules(run);
+    expect(run.underruns).toEqual([]);
+    const live = run.steps.filter((s) => s.live && s.t >= 1500);
+    const pace = (live.reduce((a, s) => a + s.chars, 0) / (live[live.length - 1].t - live[0].t)) * 1000;
+    expect(Math.abs(pace - local) / local).toBeLessThan(0.02);
+    // What is left behind the live end after each step, in ms of the stream.
+    const lagMs = (live.reduce((a, s) => a + (s.inHand - s.chars), 0) / live.length / local) * 1000;
+    expect(lagMs).toBeLessThan(150);
+    expect(speedCov(run, 1500)).toBeLessThan(0.05);
   });
 });
 
 describe("pacer", () => {
-  it("learns nothing from the first chunk and reveals it with the exponential catch-up", () => {
-    const p = newPacer(0);
-    noteArrival(p, 50, 0);
-    expect(arrivalRate(p)).toBe(0);
-    expect(stepPacer(p, 16, 16, true)).toBeCloseTo(advanceReveal(0, 50, 16, true), 9);
+  /** A pacer that has seen `n` 30-char chunks every 100 ms (300 chars/s). */
+  function steady(n = 20, leadMs?: number) {
+    const p = newPacer(0, leadMs);
+    for (let i = 0; i <= n; i++) noteArrival(p, 30 * (i + 1), 100 * i);
+    return p;
+  }
+
+  it("is seeded with the host's lead and starts where it mounts", () => {
+    expect(newPacer(10)).toMatchObject({ pos: 10, end: 10, lead: LEAD_LOCAL_MS });
+    const remote = newPacer(0, LEAD_REMOTE_MS);
+    expect(currentLead(remote)).toBe(LEAD_REMOTE_MS);
+    expect(currentLead(newPacer(0))).toBe(LEAD_LOCAL_MS);
   });
 
-  it("measures the arrival rate and holds a lag of twice the high gap, within its clamps", () => {
-    const p = newPacer(0);
-    for (let i = 0; i <= 20; i++) noteArrival(p, 30 * (i + 1), 100 * i);
+  it("measures the arrival rate over its window, and holds a lead floor of twice the high gap, within its clamps", () => {
+    const p = steady();
     expect(arrivalRate(p) * 1000).toBeCloseTo(300, 6);
-    expect(targetLagMs(p)).toBeCloseTo(200, 6);
+    expect(leadFloor(p)).toBeCloseTo(200, 6);
     const fast = newPacer(0);
     for (let i = 0; i <= 50; i++) noteArrival(fast, 2 * (i + 1), 7 * i);
-    expect(targetLagMs(fast)).toBe(MIN_LAG_MS);
+    expect(leadFloor(fast)).toBe(LEAD_MIN_MS);
     const slow = newPacer(0);
     for (let i = 0; i <= 10; i++) noteArrival(slow, 300 * (i + 1), 900 * i);
-    expect(targetLagMs(slow)).toBe(MAX_LAG_MS);
+    expect(leadFloor(slow)).toBe(LEAD_MAX_MS);
   });
 
-  it("a pause past PAUSE_MS starts a new spurt without dragging the rate down", () => {
+  it("counts frames that land together whole", () => {
+    // 33 ms frames released in pairs: the rate is still the stream's.
     const p = newPacer(0);
-    for (let i = 0; i <= 20; i++) noteArrival(p, 30 * (i + 1), 100 * i);
-    const rate = arrivalRate(p);
-    noteArrival(p, 30 * 22, 2000 + PAUSE_MS + 1);
-    expect(arrivalRate(p)).toBe(rate);
+    for (let i = 0; i <= 40; i++) noteArrival(p, 17 * (i + 1), 66 * Math.floor(i / 2));
+    expect(arrivalRate(p) * 1000).toBeGreaterThan(480);
+    expect(arrivalRate(p) * 1000).toBeLessThan(540);
   });
 
-  it("drains with the end-of-stream catch-up once the stream ends", () => {
+  it("the base pace: DEFAULT_CPS before a gap, the rate within FLOOR_CPS and BASE_MAX_CPS", () => {
     const p = newPacer(0);
-    for (let i = 0; i <= 20; i++) noteArrival(p, 30 * (i + 1), 100 * i);
-    p.pos = 400;
-    expect(stepPacer(p, 16, 2016, false)).toBeCloseTo(advanceReveal(400, 630, 16, false), 9);
+    noteArrival(p, 40, 0);
+    expect(basePace(p)).toBe(DEFAULT_CPS / 1000);
+    expect(basePace(steady()) * 1000).toBeCloseTo(300, 6);
+    const whole = newPacer(0);
+    for (const a of wholeReply()) noteArrival(whole, whole.end + a.chars, a.t);
+    expect(basePace(whole)).toBe(BASE_MAX_CPS / 1000);
+    const trickle = newPacer(0);
+    for (let i = 0; i <= 5; i++) noteArrival(trickle, i + 1, 900 * i);
+    expect(basePace(trickle)).toBe(FLOOR_CPS / 1000);
   });
 
-  it("keeps the lag cap: a torrent skips ahead", () => {
+  it("a burst counts at BASE_MAX_CPS over a step at most, so the base stays near the stream's", () => {
+    const p = steady();
+    noteArrival(p, p.end + 1632, 2100);
+    expect(basePace(p) * 1000).toBeLessThan(500);
+  });
+
+  it("an underrun grows the lead by LEAD_GROWTH or by the wait, whichever is more, up to LEAD_MAX_MS", () => {
+    const grow = (lead: number, stallMs: number) => {
+      const p = newPacer(0, lead);
+      noteArrival(p, 10, 0);
+      p.pos = 10;
+      p.dryAt = 1000;
+      noteArrival(p, 20, 1000 + stallMs);
+      return p;
+    };
+    expect(grow(200, 50).lead).toBe(300);
+    expect(grow(200, 400).lead).toBe(600);
+    expect(grow(400, 600).lead).toBe(LEAD_MAX_MS);
+    // A pause past PAUSE_MS adds PAUSE_MS at most.
+    expect(grow(100, 600).lead).toBe(700);
+    expect(grow(100, 5 * PAUSE_MS).lead).toBe(LEAD_MAX_MS);
+    // And it starts a spurt.
+    const p = grow(200, 50);
+    expect(p.holding).toBe(true);
+    expect(p.dryAt).toBeNaN();
+  });
+
+  it("a pause past PAUSE_MS counts as PAUSE_MS on the rate's clock", () => {
+    const pauses = [PAUSE_MS, 5 * PAUSE_MS].map((pause) => {
+      const p = steady();
+      noteArrival(p, p.end + 30, 2000 + pause);
+      return arrivalRate(p);
+    });
+    expect(pauses[1]).toBeCloseTo(pauses[0], 9);
+  });
+
+  it("holds a spurt until a lead and a step of text are in hand, or as long has passed", () => {
+    const enough = LEAD_LOCAL_MS + REVEAL.stepMs;
+    // 50 chars at the default pace is 125 ms of text: the hold ends on time.
+    const short = newPacer(0);
+    noteArrival(short, 50, 0);
+    expect(short.holding).toBe(true);
+    expect(stepPacer(short, 100, 100, true)).toBe(0);
+    expect(stepPacer(short, 100, enough, true)).toBeGreaterThan(0);
+    // 100 chars is 250 ms of text: the hold ends at once.
+    const long = newPacer(0);
+    noteArrival(long, 100, 0);
+    expect(stepPacer(long, 10, 10, true)).toBeGreaterThan(0);
+    // Once the stream ended nothing holds.
+    const ended = newPacer(0);
+    noteArrival(ended, 50, 0);
+    expect(stepPacer(ended, 10, 10, false)).toBeGreaterThan(0);
+  });
+
+  it("runs at the base pace while the buffer is within the lead, faster above it, never past the surge", () => {
+    const p = steady(20, 200);
+    p.holding = false;
+    p.due = [];
+    p.pos = p.end - 0.3 * 300; // 300 ms of text: a step and the lead
+    const at = p.pos;
+    stepPacer(p, 100, 2010, true);
+    expect(p.pos - at).toBeCloseTo(30, 6);
+    const q = steady(20, 200);
+    q.holding = false;
+    q.due = [];
+    q.pos = q.end - 0.3 * 3000; // three seconds of text
+    const from = q.pos;
+    stepPacer(q, 100, 2010, true);
+    expect(q.pos - from).toBeLessThanOrEqual(MAX_SURGE * 30 + 1e-9);
+    expect(q.pos - from).toBeGreaterThan(30);
+  });
+
+  it("shows every arrival within CATCH_UP_MS: the catch-up's pace is the backlog over the time it has left", () => {
     const p = newPacer(0);
-    for (let i = 0; i <= 20; i++) noteArrival(p, 30 * (i + 1), 100 * i);
-    noteArrival(p, 5000, 2050);
-    expect(p.end - stepPacer(p, 16, 2066, true)).toBe(MAX_LAG);
+    noteArrival(p, 3000, 0);
+    expect(catchUpPace(p, 0)).toBeCloseTo(3000 / CATCH_UP_MS, 9);
+    p.pos = 1000;
+    expect(catchUpPace(p, 500)).toBeCloseTo(2000 / (CATCH_UP_MS - 500), 9);
+    expect(catchUpPace(p, CATCH_UP_MS + 500)).toBeCloseTo(2000 / REVEAL.stepMs, 9);
+  });
+
+  it("decays the lead's excess toward its floor while no underrun happens, and not during one", () => {
+    const p = newPacer(100, LEAD_MAX_MS);
+    noteArrival(p, 200, 0);
+    stepPacer(p, LEAD_DECAY_MS, LEAD_DECAY_MS, false);
+    expect(p.lead).toBeCloseTo(LEAD_MIN_MS + (LEAD_MAX_MS - LEAD_MIN_MS) * Math.exp(-1), 6);
+    const dry = newPacer(0, LEAD_MAX_MS);
+    dry.dryAt = 0;
+    stepPacer(dry, 1000, 1000, true);
+    expect(dry.lead).toBe(LEAD_MAX_MS);
+  });
+
+  it("marks an underrun when the shown text reaches the live end while live", () => {
+    const p = steady();
+    p.holding = false;
+    p.pos = p.end - 1;
+    stepPacer(p, 100, 2010, true);
+    expect(p.pos).toBe(p.end);
+    expect(p.dryAt).toBe(2010);
+    const ended = steady();
+    ended.holding = false;
+    ended.pos = ended.end - 1;
+    stepPacer(ended, 100, 2010, false);
+    expect(ended.dryAt).toBeNaN();
   });
 
   it("never passes the live end", () => {
-    const p = newPacer(0);
-    for (let i = 0; i <= 20; i++) noteArrival(p, 30 * (i + 1), 100 * i);
+    const p = steady();
+    p.holding = false;
     p.pos = 629.99;
     expect(stepPacer(p, 100, 2100, true)).toBe(630);
     expect(stepPacer(p, 16, 2116, true)).toBe(630);
@@ -304,7 +352,7 @@ describe("pacer", () => {
 });
 
 describe("revealCut", () => {
-  const shown = (text: string, pos: number, live = true) => text.slice(0, revealCut(text, pos, live));
+  const shown = (text: string, pos: number, revealing = true) => text.slice(0, revealCut(text, pos, revealing));
 
   it("ends at a word boundary, never inside a word", () => {
     expect(shown("the transcript reads", 8)).toBe("the ");
@@ -365,7 +413,12 @@ describe("revealCut", () => {
     expect(shown(code, code.length)).toBe(code);
   });
 
-  it("shows everything once the stream ends", () => {
+  it("still cuts at words while a stream that ended drains", () => {
+    // The hook passes `revealing` while text is still in hand after the end.
+    expect(shown("the reply has ended", 9, true)).toBe("the ");
+  });
+
+  it("shows everything once nothing is left to reveal", () => {
     for (const text of ["the transcri", "Intro\n- ", "| a | b |\n|--", "x".repeat(40)]) {
       expect(revealCut(text, 3, false)).toBe(text.length);
     }

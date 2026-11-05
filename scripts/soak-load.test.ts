@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHAT_PROFILE, declaredRates, profileOf, SOAK_PROFILE, SOAK_TICK_MS, startLoad, type SoakClock, type SoakEmit } from './lib/soakLoad'
+import { BURST_STALL_EVERY_MS, BURST_STALL_MS, burstOpen, CHAT_PROFILE, declaredRates, profileOf, SOAK_PROFILE, SOAK_TICK_MS, startLoad, type SoakClock, type SoakEmit } from './lib/soakLoad'
 
 function fakeClock(): SoakClock & { advance(ms: number, step?: number): void } {
   let now = 1_000_000
@@ -70,5 +70,52 @@ describe('soak load', () => {
     expect(CHAT_PROFILE.streams.every((s) => s.child === 0)).toBe(true)
     expect(profileOf('chat')).toBe(CHAT_PROFILE)
     expect(profileOf('board')).toBe(SOAK_PROFILE)
+  })
+
+  it('a burst cadence: the focused stream\'s owed deltas leave together about every burst, its rate kept', () => {
+    const clock = fakeClock()
+    const at: { t: number; emit: SoakEmit }[] = []
+    let r = 0
+    const driver = startLoad((emit) => at.push({ t: clock.now(), emit }), clock, CHAT_PROFILE, { everyMs: 250, random: () => (r = (r + 0.37) % 1) })
+    clock.advance(30_000)
+    driver.stop()
+    const deltas = at.filter((a) => a.emit.kind === 'delta')
+    // The stream's rate is kept: it is only regrouped.
+    expect(Math.abs(deltas.length - 20 * 30)).toBeLessThanOrEqual(20)
+    const releases = [...new Set(deltas.map((d) => d.t))]
+    const gaps = releases.slice(1).map((t, i) => t - releases[i]!)
+    // Bursts of several deltas each, 250 ms ± 30% apart (a tick's rounding on top).
+    expect(deltas.length / releases.length).toBeGreaterThan(3)
+    const ordinary = gaps.filter((g) => g < BURST_STALL_MS)
+    expect(Math.min(...ordinary)).toBeGreaterThanOrEqual(0.7 * 250 - SOAK_TICK_MS)
+    expect(Math.max(...ordinary)).toBeLessThanOrEqual(1.3 * 250 + SOAK_TICK_MS)
+    // The other streams keep their own cadence (the tool calls, the metas).
+    expect(at.filter((a) => a.emit.kind === 'tool').length).toBe(6)
+  })
+
+  it('a burst cadence stalls for BURST_STALL_MS every BURST_STALL_EVERY_MS, then releases what it held', () => {
+    expect(burstOpen(0)).toBe(true)
+    expect(burstOpen(BURST_STALL_EVERY_MS - BURST_STALL_MS - 1)).toBe(true)
+    expect(burstOpen(BURST_STALL_EVERY_MS - BURST_STALL_MS)).toBe(false)
+    expect(burstOpen(BURST_STALL_EVERY_MS)).toBe(true)
+    const clock = fakeClock()
+    const start = clock.now()
+    const at: number[] = []
+    const driver = startLoad((emit) => emit.kind === 'delta' && at.push(clock.now() - start), clock, CHAT_PROFILE, { everyMs: 100, random: () => 0.5 })
+    clock.advance(25_000)
+    driver.stop()
+    // Nothing leaves inside a stall, and the release after it carries the second's deltas.
+    expect(at.filter((t) => t % BURST_STALL_EVERY_MS >= BURST_STALL_EVERY_MS - BURST_STALL_MS)).toEqual([])
+    const after = at.filter((t) => t === at.find((x) => x >= BURST_STALL_EVERY_MS))
+    expect(after.length).toBeGreaterThanOrEqual(18)
+  })
+
+  it('no burst cadence leaves the stream as it was', () => {
+    const clock = fakeClock()
+    const seen: SoakEmit[] = []
+    const driver = startLoad((emit) => seen.push(emit), clock, CHAT_PROFILE, null)
+    clock.advance(10_000)
+    driver.stop()
+    expect(seen.filter((e) => e.kind === 'delta').length).toBe(200)
   })
 })

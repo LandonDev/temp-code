@@ -49,6 +49,10 @@ export interface SoakArgs {
   traceS: number
   /** --eval <js>: an experiment run in the page once the view is open, before the warm-up */
   evalJs: string | null
+  /** --burst <ms>: the chat scene's deltas leave in bursts about this far apart (soakLoad.ts BurstCadence) */
+  burstMs: number | null
+  /** --reveal-report: the streaming reveal's steps over the window (scripts/lib/revealReport.ts) */
+  revealReport: boolean
 }
 
 /** The gate's run: 20 s to launch, pair and open, 10 s to warm up, a 50 s window, then teardown, inside 90 s. */
@@ -87,6 +91,11 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   if (!/^[a-z0-9-]+$/i.test(label)) throw new Error('--label takes letters, digits and dashes')
   const traceS = Number(flag('--trace') ?? '0')
   if (!(traceS >= 0 && traceS <= 30)) throw new Error('--trace takes seconds, 0 to 30')
+  const burst = flag('--burst')
+  const burstMs = burst === undefined ? null : Number(burst)
+  if (burstMs !== null && !(burstMs >= 10 && burstMs <= 5000)) throw new Error('--burst takes ms between bursts, 10 to 5000')
+  if (burstMs !== null && scene !== 'chat') throw new Error('--burst shapes the chat scene\'s stream: add --scene chat')
+  if (burstMs !== null && gate) throw new Error('--burst is a hand run, never the gate\'s load')
   const port = Number(flag('--port') ?? '9251')
   if (!Number.isInteger(port) || port < 1024) throw new Error('--port takes a debug port number')
   return {
@@ -105,7 +114,9 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
     scene,
     cpuReportOnly: argv.includes('--cpu-report-only'),
     traceS,
-    evalJs: flag('--eval') ?? null
+    evalJs: flag('--eval') ?? null,
+    burstMs,
+    revealReport: argv.includes('--reveal-report')
   }
 }
 

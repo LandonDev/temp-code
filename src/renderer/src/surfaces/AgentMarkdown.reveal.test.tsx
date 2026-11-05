@@ -52,26 +52,52 @@ describe("AgentMarkdown's phrase fade", () => {
     const first = steps()[0];
     // No partial word on screen while it streams.
     expect(view.container.textContent!.trim().split(/\s+/).every((w) => words.includes(`${w} `))).toBe(true);
+    // The 300 ms pause was an underrun: the rest holds for a grown lead, then
+    // reveals.
     stream(view.rerender, words, words + "and then some more words arrive here ");
-    act(() => vi.advanceTimersByTime(REVEAL.stepMs * 3));
+    act(() => vi.advanceTimersByTime(REVEAL.stepMs * 10));
     expect(steps()[0]).toBe(first);
     // The first step is older than the fade: no class; the newest fades.
     expect(first.classList.contains("stream-step")).toBe(false);
     expect(steps().at(-1)!.classList.contains("stream-step")).toBe(true);
   });
 
-  it("holds the streaming tree until the last step's fade ends, then settles", () => {
+  /** Advances 10 ms at a time until the row shows `text`; the ms it took. */
+  function until(container: HTMLElement, text: string, limit = 3000): number {
+    for (let ms = 0; ms <= limit; ms += 10) {
+      if (container.textContent!.includes(text)) return ms;
+      act(() => vi.advanceTimersByTime(10));
+    }
+    throw new Error(`never showed ${JSON.stringify(text)}`);
+  }
+
+  it("drains what is in hand when the stream ends, then holds the streaming tree until the last step's fade ends, then settles", () => {
     const view = render(<AgentMarkdown text="" streaming />);
     const text = "A short reply that ends here.";
     stream(view.rerender, "", text);
     act(() => view.rerender(<AgentMarkdown text={text} />));
-    expect(view.container.textContent).toContain("ends here.");
+    // The stream ended with text in hand: it drains on the streaming path.
+    expect(view.container.textContent).not.toContain("ends here.");
+    expect(until(view.container, "ends here.")).toBeGreaterThan(0);
     expect(view.container.querySelector(".stream-step")).not.toBeNull();
     act(() => vi.advanceTimersByTime(REVEAL.fadeMs - 50));
     expect(view.container.querySelector("[data-reveal-step]")).not.toBeNull();
     act(() => vi.advanceTimersByTime(100));
     expect(view.container.querySelector("[data-reveal-step]")).toBeNull();
     expect(view.container.textContent).toContain("A short reply that ends here.");
+  });
+
+  it("a row born live that mounts settled still reveals over steps, then settles", () => {
+    const text = "A reply that landed whole in one commit, born live in the transcript, which still reveals. ";
+    const view = render(<AgentMarkdown text={text} revealFromStart />);
+    act(() => vi.advanceTimersByTime(REVEAL.stepMs * 2));
+    expect(view.container.textContent!.length).toBeGreaterThan(0);
+    expect(view.container.textContent!.length).toBeLessThan(text.length);
+    expect(view.container.querySelector("[data-reveal-step]")).not.toBeNull();
+    until(view.container, "which still reveals.");
+    act(() => vi.advanceTimersByTime(REVEAL.fadeMs + 50));
+    expect(view.container.querySelector("[data-reveal-step]")).toBeNull();
+    expect(view.container.textContent).toContain("which still reveals.");
   });
 
   it("mounts history without a span", () => {

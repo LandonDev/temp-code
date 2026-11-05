@@ -8,9 +8,12 @@
  */
 import { startSoakHost } from './lib/soakHost'
 
-// `--scene chat`: one plain chat thread instead of the master's batch.
-const host = await startSoakHost(process.argv[process.argv.indexOf('--scene') + 1] === 'chat' ? 'chat' : 'board')
-host.startLoad()
+// `--scene chat`: one plain chat thread instead of the master's batch;
+// `--burst <ms>`: its deltas leave in bursts (soakLoad.ts BurstCadence).
+const argAfter = (name: string): string | undefined => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined)
+const host = await startSoakHost(argAfter('--scene') === 'chat' ? 'chat' : 'board')
+const burstMs = Number(argAfter('--burst') ?? 0)
+host.startLoad(undefined, burstMs > 0 ? { everyMs: burstMs } : null)
 // JSON drops the two functions; the rest is the line the soak reads.
 process.stdout.write(JSON.stringify({ ready: true, ...host }) + '\n')
 let closing = false

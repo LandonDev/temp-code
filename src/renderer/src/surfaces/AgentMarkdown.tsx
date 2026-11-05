@@ -41,7 +41,7 @@ import { useColorScheme } from "../hooks/useColorScheme";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useReportReveal } from "./revealDrain";
 import { useSmoothText } from "./smoothText";
-import { useTranscriptHost } from "./transcriptSession";
+import { useRevealLead, useTranscriptHost } from "./transcriptSession";
 
 const MERMAID_BASE_CONFIG = {
   startOnLoad: false,
@@ -240,6 +240,7 @@ const SIZE_CLASS = { prose: "text-sm leading-[22px]", compact: "text-sm leading-
 export const AgentMarkdown = memo(function AgentMarkdown({
   text,
   streaming,
+  revealFromStart,
   className,
   size = "prose",
   cwd,
@@ -247,6 +248,9 @@ export const AgentMarkdown = memo(function AgentMarkdown({
 }: {
   text: string;
   streaming?: boolean;
+  /** The row was born live: reveal from its first word, even when its first
+   *  commit already carried most of the reply. */
+  revealFromStart?: boolean;
   className?: string;
   size?: keyof typeof SIZE_CLASS;
   cwd?: string;
@@ -258,15 +262,19 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   const source = hasThreadMention(text) ? threadMentionsToLinks(text, titleOf) : text;
   // Coarse chunks glide out through a reveal buffer in whole-word steps,
   // each step fading in whole (lib/streamReveal.ts). History mounts at full
-  // text. The reveal and its plugin list are the row's own: streamdown keys
-  // its processor and Block memo on plugin identity.
-  const shown = useSmoothText(source, streaming);
+  // text; a row born live reveals from its first word, with the lead its
+  // host calls for. The reveal and its plugin list are the row's own:
+  // streamdown keys its processor and Block memo on plugin identity.
+  const leadMs = useRevealLead();
+  const shown = useSmoothText(source, streaming, { fromStart: revealFromStart, leadMs });
   const [reveal] = useState(createStreamReveal);
   const [streamingRehype] = useState<PluggableList>(() => [...MARKDOWN_REHYPE_PLUGINS, reveal.plugin]);
   useEffect(() => reveal.arm(), [reveal]);
-  // The settle waits for the last step's fade, so a reply's last words (and
-  // a Stop's) finish fading before the cached tree takes their place.
-  const done = !streaming && shown === source;
+  // The settle waits for the drain and the last step's fade, so a reply's
+  // last words (and a Stop's) finish fading before the cached tree takes
+  // their place.
+  const revealing = !!streaming || shown !== source;
+  const done = !revealing;
   // `fading` turns on in the render the stream ends in (state from the
   // previous render), so the cached tree never mounts for a frame first:
   // when that render shows new text (its step is timed once it commits) or
@@ -293,8 +301,8 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   // row's place, unseen, in the same measure. A row that streamed here is
   // already parsed on this thread, and settles in place as before: taking
   // it down for the worker would remount its tree and flicker.
-  const streamedHere = useRef(!!streaming);
-  if (streaming) streamedHere.current = true;
+  const streamedHere = useRef(revealing);
+  if (revealing) streamedHere.current = true;
   const ready = useMarkdownReady(shown, settled && !streamedHere.current);
   return (
     <FileOpenContext.Provider value={fileOpen}>

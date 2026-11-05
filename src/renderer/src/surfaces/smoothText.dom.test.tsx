@@ -1,23 +1,37 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
-import { useSmoothText } from "./smoothText";
+import { useSmoothText, type SmoothTextOptions } from "./smoothText";
 import { REVEAL } from "../lib/ease";
 
-vi.mock("../hooks/paneVisibility", () => ({ usePaneVisible: () => true }));
+const pane = vi.hoisted(() => ({ visible: true }));
+vi.mock("../hooks/paneVisibility", () => ({ usePaneVisible: () => pane.visible }));
 
-function Shown({ text, streaming }: { text: string; streaming: boolean }) {
-  return <span>{useSmoothText(text, streaming)}</span>;
+const FAKE = ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame", "performance"] as const;
+
+function Shown({ text, streaming, opts }: { text: string; streaming: boolean; opts?: SmoothTextOptions }) {
+  return <span>{useSmoothText(text, streaming, opts)}</span>;
+}
+
+/** The shown length after each `every` ms until `ms` have passed. */
+function watch(container: HTMLElement, ms: number, every = 10): number[] {
+  const seen: number[] = [];
+  for (let at = 0; at < ms; at += every) {
+    act(() => vi.advanceTimersByTime(every));
+    seen.push(container.textContent!.length);
+  }
+  return seen;
 }
 
 describe("useSmoothText", () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    pane.visible = true;
   });
 
   it("asks for a frame when a paint is due, not at every display frame, and still reveals it all", () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    vi.useFakeTimers({ toFake: [...FAKE] });
     const frames = vi.spyOn(window, "requestAnimationFrame");
     const { container, rerender } = render(<Shown text="" streaming />);
     let text = "";
@@ -37,7 +51,7 @@ describe("useSmoothText", () => {
   });
 
   it("steps whole words about every REVEAL.stepMs", () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    vi.useFakeTimers({ toFake: [...FAKE] });
     const { container, rerender } = render(<Shown text="" streaming />);
     let text = "";
     const seen: { at: number; text: string }[] = [];
@@ -58,7 +72,7 @@ describe("useSmoothText", () => {
   });
 
   it("keeps pace with deltas that come faster than it paints", () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    vi.useFakeTimers({ toFake: [...FAKE] });
     const { container, rerender } = render(<Shown text="" streaming />);
     let text = "";
     // Five seconds of 2 characters every 10 ms: each arrival restarts the
@@ -68,7 +82,80 @@ describe("useSmoothText", () => {
       act(() => rerender(<Shown text={text} streaming />));
       act(() => vi.advanceTimersByTime(10));
     }
-    // Behind the live end by the pacer's lag alone (at most 500 ms of text).
-    expect(container.textContent!.length).toBeGreaterThan(900);
+    // Behind the live end by the lead and a step at most.
+    expect(container.textContent!.length).toBeGreaterThan(950);
+  });
+
+  it("a burst that ends the stream 30 ms later drains over steps, never in one", () => {
+    vi.useFakeTimers({ toFake: [...FAKE] });
+    const text = "word ".repeat(600); // 3,000 chars
+    const { container, rerender } = render(<Shown text="" streaming />);
+    act(() => rerender(<Shown text={text} streaming />));
+    act(() => vi.advanceTimersByTime(30));
+    act(() => rerender(<Shown text={text} streaming={false} />));
+    const seen = watch(container, 2_000);
+    expect(seen[0]).toBeLessThan(text.length / 5);
+    const changes = seen.filter((n, i) => n !== (i === 0 ? 0 : seen[i - 1])).length;
+    expect(changes).toBeGreaterThanOrEqual(10);
+    let biggest = 0;
+    for (let i = 1; i < seen.length; i++) biggest = Math.max(biggest, seen[i] - seen[i - 1]);
+    expect(biggest).toBeLessThan(text.length / 5);
+    expect(seen.at(-1)).toBe(text.length);
+  });
+
+  it("a row born live mounts at nothing and reveals; one mounted without it shows whole", () => {
+    vi.useFakeTimers({ toFake: [...FAKE] });
+    const text = "A reply whose first commit carried most of it. ".repeat(10);
+    const born = render(<Shown text={text} streaming opts={{ fromStart: true }} />);
+    expect(born.container.textContent).toBe("");
+    act(() => vi.advanceTimersByTime(REVEAL.stepMs * 4));
+    const midway = born.container.textContent!.length;
+    expect(midway).toBeGreaterThan(0);
+    expect(midway).toBeLessThan(text.length);
+    born.unmount();
+    expect(render(<Shown text={text} streaming />).container.textContent).toBe(text);
+  });
+
+  it("a row born live that mounted already settled still reveals, then shows whole", () => {
+    vi.useFakeTimers({ toFake: [...FAKE] });
+    const text = "word ".repeat(200);
+    const { container } = render(<Shown text={text} streaming={false} opts={{ fromStart: true }} />);
+    expect(container.textContent).toBe("");
+    act(() => vi.advanceTimersByTime(REVEAL.stepMs * 3));
+    expect(container.textContent!.length).toBeGreaterThan(0);
+    expect(container.textContent!.length).toBeLessThan(text.length);
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(container.textContent).toBe(text);
+  });
+
+  it("a settled row whose text changes shows the change at once", () => {
+    vi.useFakeTimers({ toFake: [...FAKE] });
+    const { container, rerender } = render(<Shown text="An old reply" streaming={false} />);
+    act(() => rerender(<Shown text="An old reply, edited" streaming={false} />));
+    expect(container.textContent).toBe("An old reply, edited");
+  });
+
+  it("a rewrite snaps", () => {
+    vi.useFakeTimers({ toFake: [...FAKE] });
+    const { container, rerender } = render(<Shown text="" streaming />);
+    const text = "word ".repeat(100);
+    act(() => rerender(<Shown text={text} streaming />));
+    act(() => vi.advanceTimersByTime(REVEAL.stepMs * 4));
+    expect(container.textContent!.length).toBeGreaterThan(0);
+    const rewritten = "other ".repeat(100);
+    act(() => rerender(<Shown text={rewritten} streaming />));
+    expect(container.textContent).toBe(rewritten);
+  });
+
+  it("a hidden pane snaps", () => {
+    vi.useFakeTimers({ toFake: [...FAKE] });
+    const { container, rerender } = render(<Shown text="" streaming />);
+    const text = "word ".repeat(400);
+    act(() => rerender(<Shown text={text} streaming />));
+    act(() => vi.advanceTimersByTime(REVEAL.stepMs * 3));
+    expect(container.textContent!.length).toBeLessThan(text.length);
+    pane.visible = false;
+    act(() => rerender(<Shown text={text + "more "} streaming />));
+    expect(container.textContent).toBe(text + "more ");
   });
 });

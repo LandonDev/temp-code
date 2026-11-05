@@ -1838,6 +1838,12 @@ names the far child).
   `scrollToRow`, which lands exactly once the row is measured (a keyboard
   jump with `instant`, no glide). Never put `content-visibility` or size containment on a row:
   the window measures natural heights.
+- The streaming reveal (surfaces/smoothText.ts) holds a lead behind the live
+  end (seeded 100 ms, 250 ms for another host's thread, grown by an
+  underrun, decaying back), never runs slower than the stream, shows every
+  character within 1.5 s of arriving, drains at the stream's end instead of
+  snapping, and reveals a row born live (`RowBornContext`) from its first
+  word (docs/TRANSCRIPT.md "The stream reveals a phrase at a time").
 - Settled markdown parses in `lib/markdown.worker.ts` (streamdown's own
   block split and plugin chain, shared through `lib/markdownPipeline.ts`);
   the answer fills the hast cache under each block's text and the row
@@ -1885,7 +1891,10 @@ names the far child).
   `FocusSet` (src/main/server/focus.ts) keeps the union across sockets,
   widened to subagents and a focused master's batch; a closed socket drops
   its own. `RunningServer.isInteractive` and the scheduler's `focused` hook
-  read it.
+  read it. Beside it the socket names `shown` (the same pane's thread while
+  the document is visible, whatever the window's focus or attention), which
+  makes that thread's rows leave the push coalescer at once
+  (`FocusSet.pushesAtOnce`); nothing else reads it.
 - Requests sort into lanes (src/main/server/lane.ts): interactive (names an
   interactive thread, or the renderer marked it `lane: 'ui'`: send,
   approve, answer, stop, pause, resume, start now, archive, the fleet

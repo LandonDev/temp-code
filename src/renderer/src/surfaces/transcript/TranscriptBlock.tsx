@@ -11,7 +11,7 @@ import { htmlRenderOf } from "../htmlRenderBlock";
 import { type Block } from "../../lib/session";
 import { AgentMarkdown } from "../AgentMarkdown";
 import type { OpenFileFn } from "../../lib/search";
-import { useTranscriptHost } from "../transcriptSession";
+import { RowBornContext, useTranscriptHost } from "../transcriptSession";
 import { isTodoBlock } from "../transcriptActivity";
 import { UserMessageBlock } from "./UserMessage";
 import { ToolCall } from "./ToolCall";
@@ -63,6 +63,7 @@ export const TranscriptBlock = memo(function TranscriptBlock({
 }) {
   // The thread's own host: its attachments and pages live there, whatever the cwd says.
   const threadHost = useTranscriptHost() ?? (cwd ? hostOfCwd(cwd) : registry.primary().environmentId);
+  const bornLive = useContext(RowBornContext);
   if (block.role === "user") {
     return (
       <UserMessageBlock
@@ -149,6 +150,7 @@ export const TranscriptBlock = memo(function TranscriptBlock({
       <AgentMarkdown
         text={block.text}
         streaming={block.streaming}
+        revealFromStart={bornLive && block.role === "assistant"}
         cwd={cwd}
         onOpenFile={onOpenFile}
       />

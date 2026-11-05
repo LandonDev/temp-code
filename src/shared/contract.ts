@@ -781,7 +781,10 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({
     id: z.string(),
     method: z.literal('session.focus'),
-    params: z.object({ sessionId: z.string().nullable() })
+    // `shown`: the thread the window's focused pane displays, whatever the
+    // window's focus or the person's attention; only the push coalescer
+    // reads it (index.ts). An older host ignores it.
+    params: z.object({ sessionId: z.string().nullable(), shown: z.string().nullable().optional() })
   }),
   z.object({
     id: z.string(),

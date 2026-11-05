@@ -1490,11 +1490,12 @@ export async function startServer(
     // leading edge. A fleet once pushed 13k metas in a second, each its own
     // frame to every socket. Only the remote profile takes large bodies off;
     // the pieces' JSON is shared across sockets (frameJson). The thread this
-    // socket looks at (session.focus) sends its rows at once; every other
-    // thread's rows wait 100 ms (250 ms remote) while the loop lags.
+    // socket looks at or its window shows (session.focus, `shown`) sends its
+    // rows at once; every other thread's rows wait 100 ms (250 ms remote)
+    // while the loop lags.
     const coalescer = new PushCoalescer(sendFrame, undefined, undefined, {
       project: profile === 'remote',
-      immediate: (sessionId) => focus.isFocusedBy(connection, sessionId),
+      immediate: (sessionId) => focus.pushesAtOnce(connection, sessionId),
       eventsDelay: () => eventsWindowMs(profile, currentLag().meanMs)
     })
     const emitPush = (frame: ServerPush): void => coalescer.push(frame)
@@ -2429,6 +2430,7 @@ export async function startServer(
           }
           case 'session.focus':
             focus.set(connection, req.params.sessionId)
+            focus.setShown(connection, req.params.shown ?? null)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.interrupt':

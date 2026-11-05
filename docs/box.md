@@ -2959,6 +2959,30 @@ The runs are in `.temp-code/perf2/` (`mac/` and `box/` reports, one Mac
 trace, `tools/` with the trace readers, the experiment scripts and the
 animated PNG generator).
 
+#### A bursty stream (UI-24)
+
+A box thread reaches the Mac in bursts: whole frames of rows at once over
+the tunnel, now and then a whole reply inside a few ms. `--burst <ms>`
+(chat scene) holds the stream's deltas and lets what it owes leave together
+every `<ms>` ± 30%, with a 1 s stall every 10 s (soakLoad.ts
+`BurstCadence`); `--reveal-report` records each new step span the reveal
+paints (scripts/lib/revealReport.ts, an observer the script installs) and
+reports the gaps between steps of one row and the chars each showed. On the
+box under xvfb (2026-11-05, one-minute windows after a 30 s warm-up,
+`--scene chat --burst <ms> --trace 8 --reveal-report --minutes 1 --every 30
+--no-profile`):
+
+| Burst | Steps | Gap between steps, ms (p50 / p90 / max) | Chars a step (p50 / p90 / max) | Gaps over two steps | Renderer CPU |
+|---|---|---|---|---|---|
+| 250 ms | 526 | 117 / 118 / 567 | 18 / 23 / 30 | 6 | 13.3% |
+| 33 ms | 533 | 116 / 118 / 952 | 18 / 23 / 32 | 6 | 14.3% |
+
+The six long gaps are the six stalls of the minute; outside them the steps
+come every step and its frame, and no step shows more than 32 chars where
+the old reveal dropped a burst in one frame. The gate's two scenes on the
+same tree: board 22.3% (bound 33%), chat 17.2% (bound 22%), heap after GC
++3.0 and +2.6 MB, no long task.
+
 ## Profiling the host
 
 On the box, run `tc-local doctor.profile '{"seconds":15}'` (the local

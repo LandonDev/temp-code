@@ -103,6 +103,9 @@ function installFocusHooks(): void {
   // Away (locked, asleep, idle two minutes): no host is told a thread is on screen, so the phone still hears.
   void nativeAttention.present().then((present) => focusSignal.attention(present), () => undefined);
   nativeAttention.onChange((present) => focusSignal.attention(present));
+  // A hidden document shows no thread: its rows may wait for the host's window.
+  focusSignal.visible(document.visibilityState === "visible");
+  document.addEventListener("visibilitychange", () => focusSignal.visible(document.visibilityState === "visible"));
   window.addEventListener("focus", () => focusSignal.window(true));
   window.addEventListener("blur", () => {
     setTimeout(() => focusSignal.window(document.hasFocus()), 0);

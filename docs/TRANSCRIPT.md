@@ -337,27 +337,70 @@ foreground, the same words the group line uses); the components only draw it.
   board). Test: AgentTranscript.window.test.tsx "AgentTranscript follow
   loop".
 - **The stream reveals a phrase at a time and costs nothing per frame.**
-  `useSmoothText` (surfaces/smoothText.ts) is a jitter buffer: it measures
-  the arrival rate and the gaps, and holds a lag of 120 to 500 ms behind the
-  live end. It steps every `REVEAL.stepMs` (100 ms), waiting on a timer
-  between steps, so a step carries what 100 ms of the stream holds (about
-  35 to 45 characters, Claude's group size) and the markdown re-parses ten
-  times a second, not thirty. `revealCut` ends each step at a word boundary
-  (a token over 24 characters with none is cut where the pace reaches),
-  and while live it holds a bare block marker (`#`, `-`, `1.`, `- [ ]`) and
-  a table's header row until they have content, so an empty heading or raw
-  pipes never paint. Each step fades in as one span: `lib/streamReveal.ts`
-  is a rehype plugin on the streaming path, one per row (named per row,
-  since streamdown caches processors by plugin name), keeping a ledger per
-  block of the steps it has seen; every step's text is its own span so it
-  keeps its element, and only a step under 400 ms old carries
-  `.stream-step`, a CSS opacity animation over `--dur-reveal`, linear, that
-  the compositor runs. Nothing reads layout per step and nothing animates
-  per frame in JavaScript. The settle waits for the last step's fade (a
-  Stop's too) before the cached tree replaces the streaming one, and
-  reaches streamdown through `isAnimating`, since its memo ignores the
-  plugin lists. Tests: smoothText.test.ts, smoothText.dom.test.tsx,
-  lib/streamReveal.test.ts, AgentMarkdown.reveal.test.tsx.
+  `useSmoothText` (surfaces/smoothText.ts) is an adaptive jitter buffer,
+  the way a media player plays packets that arrive unevenly. Measured
+  2026-11-05 (a box thread, ~700 words of prose): on the box itself the
+  host's deltas come every ~20 ms; over the tunnel the Mac saw gaps of
+  p90 99 ms and p99 120 ms, frames of up to 104 rows (1,632 chars) at once,
+  and once a whole 3,342-char reply inside 4 ms, the final row 0 to 37 ms
+  after the last delta. The rules:
+  - **The base pace** is the arrival rate: the text that arrived over the
+    last 1.5 s of the rate's clock divided by the time it took, a gap
+    counting `PAUSE_MS` (1 s) at most, so frames a link releases together
+    count whole and a pause only dims the rate; a burst counts at
+    `BASE_MAX_CPS` over a step at most. It is clamped to 25–1,500 chars/s
+    (`DEFAULT_CPS`, 400, before the first gap).
+  - **The lead** is held behind the live end, as text at the base pace left
+    once a step has shown its share. It is seeded by the thread's host
+    (`useRevealLead` in transcriptSession.ts: `LEAD_LOCAL_MS` 100 ms on this
+    machine, `LEAD_REMOTE_MS` 250 ms for another host), never under twice
+    the gaps' 90th percentile (100–800 ms). An underrun (the shown text
+    reached the live end while live and waited) grows it to 1.5 times, or
+    by the wait if more, up to 800 ms; with no underrun its excess decays
+    toward that floor with a 6 s time constant.
+  - **A spurt holds** (the first chunk, and the chunk that ends an
+    underrun) until a lead and a step of text are in hand, or as long has
+    passed: it waits once for enough to stream smoothly.
+  - **Then it never runs slower than the stream** while text is in hand,
+    leaning faster (at most 1.5 times) while more than the lead is
+    buffered, and **every character shows within `CATCH_UP_MS` (1.5 s) of
+    arriving**: the catch-up's pace is each arrival's backlog over the time
+    it has left. That replaces the old 900-char skip, so a burst or a whole
+    reply plays out over steps (a 3,342-char reply over 15) instead of
+    landing in one.
+  - **The stream's end drains**: the final row no longer snaps what was in
+    hand; it reveals at the same pace with no hold, and the last step shows
+    the whole text. Only a rewrite and a hidden pane snap.
+  - **A row born live reveals from its first word.** AgentTranscript keeps
+    the row keys it opened with; a row that joins the last turn after that
+    and was never shown is born live (`RowBornContext`), and its assistant
+    prose passes `revealFromStart`, so a row whose first commit already
+    carried most of the reply, or the whole of it settled, still reveals.
+    History, a page loaded above and a row scrolled back into view show
+    whole.
+
+  It steps every `REVEAL.stepMs` (100 ms), waiting on a timer between
+  steps, so a step carries what 100 ms of the stream holds (about 35 to 45
+  characters, Claude's group size) and the markdown re-parses ten times a
+  second, not thirty. `revealCut` ends each step at a word boundary (a
+  token over 24 characters with none is cut where the pace reaches), and
+  while it reveals it holds a bare block marker (`#`, `-`, `1.`, `- [ ]`)
+  and a table's header row until they have content, so an empty heading or
+  raw pipes never paint. Each step fades in as one span:
+  `lib/streamReveal.ts` is a rehype plugin on the streaming path, one per
+  row (named per row, since streamdown caches processors by plugin name),
+  keeping a ledger per block of the steps it has seen; every step's text is
+  its own span so it keeps its element, and only a step under 400 ms old
+  carries `.stream-step`, a CSS opacity animation over `--dur-reveal`,
+  linear, that the compositor runs. Nothing reads layout per step and
+  nothing animates per frame in JavaScript. The settle waits for the drain
+  and the last step's fade (a Stop's too) before the cached tree replaces
+  the streaming one, and reaches streamdown through `isAnimating`, since
+  its memo ignores the plugin lists. Tests: smoothText.test.ts (the
+  measured cadences on test/revealSim.ts, which steps the pacer as the hook
+  does), smoothText.dom.test.tsx, lib/streamReveal.test.ts,
+  AgentMarkdown.reveal.test.tsx, AgentTranscript.born.dom.test.tsx; the
+  soak's `--burst` and `--reveal-report` (docs/box.md "A bursty stream").
 - **A streaming code block is coloured.** CodeBlock asks the shiki worker
   at once and then at most every 150 ms (`HIGHLIGHT_EVERY_MS`, never put
   off by a delta), and until the newest answer lands it draws the coloured
@@ -456,6 +499,14 @@ event rows in 13–17 ms (box CPU).
   the brief its host stored before answering is in its first page; only a
   thread this window created empty (`adopt(meta, { created: true })`)
   waits on pushes alone.
+- **The thread a window shows gets its rows as they land.** The host's push
+  coalescer sends a socket's rows at once for the thread its window shows
+  (`session.focus { shown }`: the focused pane's thread while the document
+  is visible, whatever the window's focus or the person's attention;
+  FocusSet `pushesAtOnce`), not only for the one in focus; every other
+  thread's rows ride a 33 ms window, 250 ms while the box's loop lags. A
+  person reading a long reply with another app focused once dropped to
+  those windows and saw it in clumps.
 - **Hover warms.** A tab or rail row hovered for 150 ms fetches its
   transcript (lib/hoverPrefetch.ts), which with a round trip of 200 ms is
   usually most of the way there by the click.

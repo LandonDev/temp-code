@@ -40,6 +40,10 @@
  *   report as <label>.trace.json. --eval <js>: an experiment evaluated in the
  *   page once the view is open, before the warm-up (docs/box.md has the ones
  *   that sized the bounds).
+ * --burst <ms> (chat scene): the stream's deltas leave together about every
+ *   <ms> ± 30%, with a 1 s stall every 10 s (soakLoad.ts BurstCadence).
+ *   --reveal-report: the streaming reveal's steps over the window, their gaps
+ *   and sizes, read by an observer the script installs (scripts/lib/revealReport.ts).
  *
  * Each sample forces a GC (HeapProfiler.collectGarbage) and reads the heap
  * (Runtime.getHeapUsage), the renderer's memory (Linux: smaps_rollup PSS and
@@ -60,6 +64,8 @@ import { createInterface } from 'node:readline'
 import { Cdp, REPO, portFree, sleep, type Target } from './lib/packagedApp'
 import { profileSummary, type CpuProfile } from './profile-summary'
 import { summarizeTrace, TRACE_CATEGORIES, traceMarkdown, type TraceEvent, type TraceSummary } from './lib/soakTrace'
+import { REVEAL_OBSERVER, revealLine, summarizeReveal, type RevealRecord } from './lib/revealReport'
+import { REVEAL } from '../src/renderer/src/lib/ease'
 import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSoak, parseSoakArgs, REACT_MEASURE_PREFIX, type BuildStamp, type SoakSample } from './lib/soakJudge'
 
 const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
@@ -390,7 +396,8 @@ type Shown = { environmentId: string; masterId: string; threadId: string }
  *  on macOS bundled by esbuild under node, since the Mac's bun has no
  *  node:sqlite (scripts/ios-client-test.ts runs its server the same way). */
 function hostCommand(): [string, string[]] {
-  if (!mac) return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts', '--scene', args.scene]]
+  const burst = args.burstMs ? ['--burst', String(args.burstMs)] : []
+  if (!mac) return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts', '--scene', args.scene, ...burst]]
   const out = join(REPO, 'scripts', '.out', 'soak-host.mjs')
   execFileSync(
     join(REPO, 'node_modules', '.bin', 'esbuild'),
@@ -408,7 +415,7 @@ function hostCommand(): [string, string[]] {
     ],
     { cwd: REPO, stdio: ['ignore', 'ignore', 'inherit'] }
   )
-  return ['node', [out, '--scene', args.scene]]
+  return ['node', [out, '--scene', args.scene, ...burst]]
 }
 
 async function startSynthetic(c: Cdp): Promise<Shown> {
@@ -645,6 +652,7 @@ async function main(): Promise<void> {
   log(`warming up ${warmMs / 1000} s`)
   await sleep(warmMs)
   await c.eval('window.__soakDrain()')
+  if (args.revealReport) log(`reveal observer ${await c.eval(REVEAL_OBSERVER)}`)
 
   const rows: Row[] = []
   const renderTotals = new Map<string, number>()
@@ -704,6 +712,8 @@ async function main(): Promise<void> {
     throw new Error("a dev build showed no React component measures: React renamed or dropped its track, and the render counts are blind")
   }
 
+  const reveal = args.revealReport ? summarizeReveal(await c.eval<RevealRecord[]>('window.__revealSteps()'), REVEAL.stepMs) : null
+  if (reveal) log(`reveal: ${revealLine(reveal)}`)
   const trace = args.traceS ? await traceFrames(c, args.traceS) : null
   let profile: string | null = null
   if (args.profile) {
@@ -732,7 +742,7 @@ async function main(): Promise<void> {
   const owners = why ? await c.eval<[string, number][]>('window.__soakOwners ? window.__soakOwners() : []') : []
   writeFileSync(
     join(ROOT, `${args.label}.json`),
-    JSON.stringify({ label: args.label, args, tree, sha, platform: process.platform, memory: linux ? 'pss' : 'rss', shown, rule, verdict, rows, topRenders, trace, ...(why ? { whyTop, owners } : {}) }, null, 1)
+    JSON.stringify({ label: args.label, args, tree, sha, platform: process.platform, memory: linux ? 'pss' : 'rss', shown, rule, verdict, rows, topRenders, trace, reveal, ...(why ? { whyTop, owners } : {}) }, null, 1)
   )
   const md = [
     `# ${args.label}: ${args.host} host, ${args.scene} scene, ${args.build} build, ${args.view} view (${sha ?? 'no git'}, ${process.platform})`,
@@ -753,6 +763,7 @@ async function main(): Promise<void> {
       ? ['', 'Top re-rendered components (changed props):', '', `| component | renders |${why ? ' changed props |' : ''}`, `|---|---|${why ? '---|' : ''}`, ...topRenders.map(([n, k]) => `| ${n} | ${k} |${why ? ` ${(whyTop.find(([m]) => m === n)?.[1] ?? []).map(([p, x]) => `${p} ${x}`).join(', ')} |` : ''}`)]
       : []),
     ...(owners.length ? ['', 'Re-renders by owner chain (component < owner < its owner):', '', '| chain | renders |', '|---|---|', ...owners.map(([k, n]) => `| ${k} | ${n} |`)] : []),
+    ...(reveal ? ['', `Reveal: ${revealLine(reveal)}`] : []),
     ...(trace ? ['', ...traceMarkdown(trace)] : []),
     ...(profile ? ['', '```', profile, '```'] : [])
   ].join('\n')

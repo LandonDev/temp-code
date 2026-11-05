@@ -430,9 +430,13 @@ describe("FocusSignal", () => {
   class FocusLink {
     connected = true;
     sent: (string | null)[] = [];
+    /** Each send as "focus|shown". */
+    pairs: string[] = [];
     request<T>(method: string, params?: unknown): Promise<T> {
       expect(method).toBe("session.focus");
-      this.sent.push((params as { sessionId: string | null }).sessionId);
+      const { sessionId, shown } = params as { sessionId: string | null; shown: string | null };
+      this.sent.push(sessionId);
+      this.pairs.push(`${sessionId}|${shown}`);
       return Promise.resolve(null as T);
     }
   }
@@ -491,16 +495,53 @@ describe("FocusSignal", () => {
     settle();
     signal.attention(false);
     settle();
-    // Moving panes while away tells no host of a thread on screen.
+    // Moving panes while away tells no host of a thread in focus; the
+    // window still shows it.
     signal.left("a");
     signal.pane("box", "x");
     settle();
-    expect(links.mac.sent).toEqual(["a", null]);
-    expect(links.box.sent).toEqual([]);
+    expect(links.mac.pairs).toEqual(["a|a", "null|a", "null|null"]);
+    expect(links.box.pairs).toEqual(["null|x"]);
     signal.attention(true);
     settle();
-    expect(links.box.sent).toEqual(["x"]);
-    expect(links.mac.sent).toEqual(["a", null]);
+    expect(links.box.sent).toEqual([null, "x"]);
+    expect(links.mac.sent).toEqual(["a", null, null]);
+  });
+
+  it("a blurred window or an absent person sends no focus but keeps the thread shown", () => {
+    const { links, signal, settle } = setup();
+    signal.pane("box", "x");
+    settle();
+    signal.window(false);
+    settle();
+    signal.window(true);
+    signal.attention(false);
+    settle();
+    expect(links.box.pairs).toEqual(["x|x", "null|x"]);
+  });
+
+  it("a hidden document clears the thread shown; shown again restores it", () => {
+    const { links, signal, settle } = setup();
+    signal.pane("mac", "a");
+    settle();
+    signal.window(false);
+    signal.visible(false);
+    settle();
+    signal.visible(true);
+    settle();
+    expect(links.mac.pairs).toEqual(["a|a", "null|null", "null|a"]);
+  });
+
+  it("sends the same pair once", () => {
+    const { links, signal, settle } = setup();
+    signal.pane("mac", "a");
+    settle();
+    signal.visible(true);
+    signal.window(true);
+    signal.attention(true);
+    signal.pane("mac", "a");
+    settle();
+    expect(links.mac.pairs).toEqual(["a|a"]);
   });
 
   it("a send that failed leaves the host unknown, so the next change still reaches it", async () => {

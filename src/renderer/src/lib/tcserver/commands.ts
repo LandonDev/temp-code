@@ -308,23 +308,31 @@ type FocusLink = Pick<Link, "connected" | "request">;
 /** A send that failed: the host may hold the focus or not, so the next change is sent whatever it is. */
 const UNKNOWN = Symbol("unknown focus");
 
+/** What one host is told: the thread in focus and the thread on screen. */
+type FocusPair = { sessionId: string | null; shown: string | null };
+
 /**
  * `session.focus`: the thread this window's focused pane shows goes to its
  * host, null to every other host and to all of them while the window is
  * not focused or its person is away (src/main/attention.ts); the host runs
  * that thread's requests and pushes first (src/main/server/focus.ts) and
- * sends the phone nothing about it (remote/notifier.ts `onScreen`). Sent
- * once per change per link, the changes of one commit folded into one (a
- * pane's cleanup and the next pane's effect), and again when a link opens a
- * new socket.
+ * sends the phone nothing about it (remote/notifier.ts `onScreen`). Beside
+ * it rides `shown`: the same pane's thread while the document is visible,
+ * whatever the window's focus or the person's attention, which only the
+ * host's push coalescer reads (a reader with another app focused still gets
+ * the reply's rows as they land). Sent once per change of the pair per
+ * link, the changes of one commit folded into one (a pane's cleanup and the
+ * next pane's effect), and again when a link opens a new socket.
  */
 export class FocusSignal {
   private active: { environmentId: string; sessionId: string } | null = null;
   private windowFocused = true;
   /** The person is at the machine (unlocked, awake, input in the last two minutes). */
   private personPresent = true;
+  /** The document is visible (not minimised, not a hidden tab). */
+  private documentVisible = true;
   /** What each link's socket was last told; absent: nothing since it opened. */
-  private sent = new Map<string, string | null | typeof UNKNOWN>();
+  private sent = new Map<string, FocusPair | typeof UNKNOWN>();
   private queued = false;
 
   constructor(
@@ -359,6 +367,13 @@ export class FocusSignal {
     this.schedule();
   }
 
+  /** The document was hidden (minimised, a background tab) or shown again. */
+  visible(shown: boolean): void {
+    if (this.documentVisible === shown) return;
+    this.documentVisible = shown;
+    this.schedule();
+  }
+
   /** The link opened a new socket, which holds no focus yet. */
   reopened(environmentId: string): void {
     this.sent.delete(environmentId);
@@ -376,11 +391,17 @@ export class FocusSignal {
 
   private flush(): void {
     const want = this.windowFocused && this.personPresent ? this.active : null;
+    const onScreen = this.documentVisible ? this.active : null;
     const hosts = new Set(this.sent.keys());
     if (want) hosts.add(want.environmentId);
+    if (onScreen) hosts.add(onScreen.environmentId);
     for (const environmentId of hosts) {
-      const next = want?.environmentId === environmentId ? want.sessionId : null;
-      if (this.sent.has(environmentId) ? this.sent.get(environmentId) === next : next === null) continue;
+      const next: FocusPair = {
+        sessionId: want?.environmentId === environmentId ? want.sessionId : null,
+        shown: onScreen?.environmentId === environmentId ? onScreen.sessionId : null,
+      };
+      const prev = this.sent.get(environmentId);
+      if (prev === undefined ? next.sessionId === null && next.shown === null : prev !== UNKNOWN && samePair(prev, next)) continue;
       const link = this.linkOf(environmentId);
       if (!link?.connected) {
         // Told again when it opens.
@@ -388,12 +409,16 @@ export class FocusSignal {
         continue;
       }
       this.sent.set(environmentId, next);
-      void link.request("session.focus", { sessionId: next }, { retry: false }).catch(() => {
+      void link.request("session.focus", next, { retry: false }).catch(() => {
         // It may have landed (a late answer) or not: the next change goes to this host either way.
         if (this.sent.get(environmentId) === next) this.sent.set(environmentId, UNKNOWN);
       });
     }
   }
+}
+
+function samePair(a: FocusPair, b: FocusPair): boolean {
+  return a.sessionId === b.sessionId && a.shown === b.shown;
 }
 
 export const focusSignal = new FocusSignal((environmentId) => registry.link(environmentId));
