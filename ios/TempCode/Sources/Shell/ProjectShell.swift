@@ -29,7 +29,7 @@ struct ProjectShell: View {
                 ThreadStripView(scope: scope, shown: shown)
             }
             if let shown, let client = model.registry.client(shown.environmentId) {
-                ThreadScreen(client: client, sessionId: shown.sessionId, targetSeq: seq)
+                ThreadScreen(client: client, sessionId: shown.sessionId, targetSeq: seq, shellTitle: scope?.name)
                     .id(thread)
             } else if let scope {
                 ShellDraftBody(scope: scope, slots: slots)

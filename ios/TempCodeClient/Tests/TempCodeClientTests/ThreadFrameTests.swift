@@ -236,6 +236,16 @@ private let pendingApproval: [AgentEvent] = [
         #expect(with.compact == identity)
     }
 
+    @Test("inside the shell there is no subtitle; a bare thread and a subagent keep theirs") func insideTheShellThereIsNoSubtitle() {
+        for status in [SessionStatus.running, .waiting, .idle, .paused, .queued] {
+            let session = meta("t", status: status, updatedAt: 900)
+            #expect(Line.subtitle(session: session, hostName: "box", inShell: true) == nil)
+            #expect(Line.subtitle(session: session, hostName: "box", inShell: false) == Line(session: session, hostName: "box"))
+        }
+        let child = meta("c", parentId: "t", status: .running, updatedAt: 900)
+        #expect(Line.subtitle(session: child, hostName: nil, inShell: false) != nil)
+    }
+
     @Test("compact height has no words under the title, whatever the status") func compactHeightHasNoWordsUnderTheTitle() {
         for status in [SessionStatus.running, .idle, .queued, .stopped, .paused, .waiting] {
             #expect(line(status, host: "box", frozen: 4_000).compactHeight.isEmpty)
@@ -301,5 +311,14 @@ private let pendingApproval: [AgentEvent] = [
         #expect(routed.compact == [.type(.chat), .model("claude-sonnet-5-5")])
         let cursor = Line(session: meta("t", status: .idle, provider: .cursor), hostName: nil)
         #expect(cursor.parts == [.type(.chat), .model("claude-sonnet-5-5")])
+    }
+}
+
+@Suite struct ThreadMenuTests {
+    @Test func `inside the shell a routed thread's account is Account… after Rename; bare, the chip keeps it`() {
+        #expect(ThreadMenuItem.items(root: true, inShell: true, routed: true) == [.rename, .account, .pin, .master, .fleet, .resources, .archive])
+        #expect(ThreadMenuItem.items(root: true, inShell: false, routed: true) == [.rename, .pin, .master, .fleet, .resources, .archive])
+        #expect(ThreadMenuItem.items(root: true, inShell: true, routed: false) == [.rename, .pin, .master, .fleet, .resources, .archive])
+        #expect(ThreadMenuItem.items(root: false, inShell: false, routed: true) == [.rename])
     }
 }

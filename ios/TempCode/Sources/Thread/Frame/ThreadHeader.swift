@@ -20,6 +20,9 @@ struct ThreadHeader: View {
     let fallbackTitle: String?
     /// The host's name when more than one host is paired, else nil.
     let hostName: String?
+    /// The project's name in its shell: the title, with no line under it
+    /// (`ThreadHeaderLine.subtitle`). Rename still opens the field in place.
+    var shellTitle: String?
     @Binding var renaming: Bool
     @Binding var draft: String
     /// The screen runs `client.rename` with the trimmed draft.
@@ -35,6 +38,12 @@ struct ThreadHeader: View {
         VStack(spacing: 1) {
             if renaming {
                 InlineTitleField(draft: $draft, original: session?.title ?? "", onCommit: onCommit, onCancel: { renaming = false })
+            } else if let shellTitle {
+                // The bar names the project; the strip's chip says the thread and its state.
+                Text(shellTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             } else if compactHeight {
                 // One line: the mark says the state, the words wait for the tall pose.
                 HStack(spacing: 6) {
@@ -50,8 +59,8 @@ struct ThreadHeader: View {
                     .contentShape(Rectangle())
                     // On the title only: inside the field the long-press is the cursor's.
                     .onLongPressGesture(minimumDuration: 0.4) { if session != nil { onBeginRename() } }
-                if let session {
-                    Subtitle(client: client, line: ThreadHeaderLine(session: session, hostName: hostName), session: session)
+                if let session, let line = ThreadHeaderLine.subtitle(session: session, hostName: hostName, inShell: false) {
+                    Subtitle(client: client, line: line, session: session)
                 }
             }
         }
@@ -60,7 +69,7 @@ struct ThreadHeader: View {
         // One element to read; while renaming the field stays its own, so VoiceOver can edit it.
         .accessibilityElement(children: renaming ? .contain : .combine)
         .accessibilityAddTraits(.isHeader)
-        .accessibilityAction(named: "Rename") { onBeginRename() }
+        .accessibilityAction(named: "Rename") { if shellTitle == nil { onBeginRename() } }
     }
 
     /// The title, cross-fading when it changes.

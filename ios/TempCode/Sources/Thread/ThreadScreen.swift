@@ -22,6 +22,9 @@ struct ThreadScreen: View {
     var targetSeq: Int?
     /// DEBUG proof: only the screen the launch route opened performs `TC_TEST_ACTION`; a screen this one pushed never does.
     var performsLaunchAction = true
+    /// The project's name when the screen sits in its project's shell (`ProjectShell`): the bar
+    /// names the project and the subtitle goes. Nil for a bare chat and a pushed subagent.
+    var shellTitle: String?
     @Environment(NavigationRouter.self) private var router
     @Environment(AppModel.self) private var app
     @Environment(\.shellPose) private var pose
@@ -81,8 +84,9 @@ struct ThreadScreen: View {
     private var regularWidth: Bool { horizontalSizeClass == .regular }
     private var compactHeight: Bool { verticalSizeClass == .compact }
 
-    init(client: EnvironmentClient, sessionId: String, targetSeq: Int? = nil, performsLaunchAction: Bool = true) {
+    init(client: EnvironmentClient, sessionId: String, targetSeq: Int? = nil, performsLaunchAction: Bool = true, shellTitle: String? = nil) {
         self.client = client
+        self.shellTitle = shellTitle
         self.sessionId = sessionId
         // Decided once: a screen the launch restored from the saved stacks opens at the bottom
         // even when its route named a row; a later re-init never brings the row back.
@@ -126,7 +130,7 @@ struct ThreadScreen: View {
         .animation(Motion.rowAppear, value: gone)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                ThreadHeader(client: client, session: session, fallbackTitle: lastTitle, hostName: hostName, renaming: $renaming, draft: $draftTitle, onCommit: commitRename, onBeginRename: { beginRename(session) })
+                ThreadHeader(client: client, session: session, fallbackTitle: lastTitle, hostName: hostName, shellTitle: shellTitle, renaming: $renaming, draft: $draftTitle, onCommit: commitRename, onBeginRename: { beginRename(session) })
             }
             ToolbarItem(placement: .topBarTrailing) {
                 // The field takes the whole bar while renaming; nothing acts on a thread that is gone.
@@ -277,12 +281,25 @@ struct ThreadScreen: View {
     /// in the plan page's header row (PlanFlow.swift), not here.
     @ViewBuilder
     private func trailing(session: SessionMeta, phase: ThreadPhase, children: [SessionMeta], segments: [ThreadSegment]) -> some View {
-        // iOS 18: a root thread's notes (NotesSheet.swift), before the agents button.
-        if session.parentId == nil { NotesButton(client: client, sessionId: sessionId) }
-        if SegmentRules.showsAgents(children: children.count, segments: segments) {
-            AgentsButton(running: Fleet.counts(children.map(\.status)).working, total: children.count) { showAgents = true }
+        let agents = SegmentRules.showsAgents(children: children.count, segments: segments)
+        if shellTitle != nil {
+            // In the shell: the plan chip, the agents button (the agents cue's place), Notes, the menu.
+            if let project = session.projectId.flatMap({ id in client.projects.first { $0.id == id } }) {
+                ProjectPlanChip(client: client, project: project)
+                    .environment(\.inBar, true)
+            }
+            if agents { agentsButton(children) }
+            if session.parentId == nil { NotesButton(client: client, sessionId: sessionId) }
+        } else {
+            // iOS 18: a root thread's notes (NotesSheet.swift), before the agents button.
+            if session.parentId == nil { NotesButton(client: client, sessionId: sessionId) }
+            if agents { agentsButton(children) }
         }
-        ThreadMenu(client: client, session: session, onRename: { beginRename(session) }, onFailure: { failure = $0 })
+        ThreadMenu(client: client, session: session, inShell: shellTitle != nil, onRename: { beginRename(session) }, onFailure: { failure = $0 })
+    }
+
+    private func agentsButton(_ children: [SessionMeta]) -> some View {
+        AgentsButton(running: Fleet.counts(children.map(\.status)).working, total: children.count) { showAgents = true }
     }
 
     /// The thread is no longer on this host: the subscription was refused,

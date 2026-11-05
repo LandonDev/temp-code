@@ -2482,8 +2482,13 @@ proof and the sizing rules; the pieces, by name:
   whose pill is bound to the pager, the agents button and the menu, the
   gone line) is `Sources/Thread/Frame/`, drawing the client package's
   `Rendering/ThreadFrame.swift` (`ThreadKind`, `ThreadSegment`,
-  `ThreadPhase`, `SegmentRules`, `ThreadHeaderLine`: pure, tested in
-  ThreadFrameTests). The screen's pose on the iPhone Duo (the pager or two
+  `ThreadPhase`, `SegmentRules`, `ThreadHeaderLine`, `ThreadMenuItem`: pure,
+  tested in ThreadFrameTests). In a project's shell (`shellTitle:` from
+  `ProjectShell`) the bar's title is the project's name and the subtitle
+  goes (`ThreadHeaderLine.subtitle(inShell:)`), the account chip becomes the
+  menu's "Account…" (the same AccountMenu sheet), and the trailing group is
+  the plan chip, the agents button, Notes and the menu; a subagent's screen
+  and a bare chat keep the thread's own header. The screen's pose on the iPhone Duo (the pager or two
   panes by its own size class and width, the columns from the fold's
   division band, the 640 pt measure, the transcript's reflow) is
   `Rendering/ThreadPose.swift` (`ThreadPose`, `TwoPaneColumns`,
@@ -2732,8 +2737,9 @@ proof and the sizing rules; the pieces, by name:
   `StatusWords.swift` and `Resources.swift` (`ResourceLedger` on the
   `resources` push, loaded whole at every open) through
   `Shell/FleetSwitches.swift` and `Thread/ResourcesSheet.swift`.
-- Accounts on the phone (iOS 24): every routed thread's header ends with
-  the account chip (`ios/TempCode/Sources/Thread/AccountChip.swift`) and
+- Accounts on the phone (iOS 24): a routed thread's header ends with
+  the account chip (`ios/TempCode/Sources/Thread/AccountChip.swift`; in a
+  project's shell, which has no subtitle, the menu's "Account…") and
   its menu sheet (`AccountMenu.swift`): `accounts.list` once on open, then
   the `accounts` push into `EnvironmentClient.accounts` (`HostAccounts`);
   This thread reads the route and offers `session.reroute` (operate),

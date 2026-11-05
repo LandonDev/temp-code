@@ -249,6 +249,14 @@ public struct ThreadHeaderLine: Equatable, Sendable {
         self.live = live
     }
 
+    /// The line under the title, or nil inside a project's shell: there the
+    /// bar names the project, the strip's chip says the state, the composer's
+    /// row the model and the slot the time, so the line would say it twice.
+    /// A subagent's screen and a bare chat keep it.
+    public static func subtitle(session: SessionMeta, hostName: String?, inShell: Bool) -> ThreadHeaderLine? {
+        inShell ? nil : ThreadHeaderLine(session: session, hostName: hostName)
+    }
+
     /// The parts with the host dropped, for `ViewThatFits`.
     public var withoutHost: [Part] {
         parts.filter { if case .host = $0 { false } else { true } }
@@ -272,5 +280,21 @@ public struct ThreadHeaderLine: Equatable, Sendable {
             default: false
             }
         }
+    }
+}
+
+/// The thread's ellipsis menu, in order. Inside a project's shell the
+/// account chip has no subtitle to sit in, so it moves here as "Account…",
+/// after Rename, opening the same sheet; a subagent's menu has the block
+/// line and Rename only.
+public enum ThreadMenuItem: Sendable, Hashable {
+    case rename, account, pin, master, fleet, resources, archive
+
+    /// `routed`: the thread spends from an account (`AccountScope.of` is not nil).
+    public static func items(root: Bool, inShell: Bool, routed: Bool) -> [ThreadMenuItem] {
+        var items: [ThreadMenuItem] = [.rename]
+        if inShell, routed { items.append(.account) }
+        if root { items += [.pin, .master, .fleet, .resources, .archive] }
+        return items
     }
 }

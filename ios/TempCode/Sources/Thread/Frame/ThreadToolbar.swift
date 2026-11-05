@@ -39,35 +39,44 @@ struct AgentsButton: View {
     }
 }
 
-/// The ellipsis menu. Its sections, in order, each a named place a sibling
-/// adds to: the reason a lesser key cannot act (first, when there is one),
-/// Rename, Pin (roots), slot (d) for the fleet switches and Resources
-/// (thread 20), then a divider and Archive (roots). A subagent's menu has
-/// the block line and Rename only. Failures go to `onFailure` and the
-/// screen's "Couldn't do that" alert.
+/// The ellipsis menu, its items in `ThreadMenuItem.items`' order: the
+/// reason a lesser key cannot act (first, when there is one), Rename, then
+/// in a project's shell "Account…" (the account chip's sheet, since the shell
+/// has no subtitle for the chip), Pin, the master pin, slot (d) for the
+/// fleet switches and Resources (thread 20), then a divider and Archive
+/// (roots). A subagent's menu has the block line and Rename only. Failures
+/// go to `onFailure` and the screen's "Couldn't do that" alert.
 struct ThreadMenu: View {
     let client: EnvironmentClient
     let session: SessionMeta
+    var inShell = false
     let onRename: () -> Void
     let onFailure: (String) -> Void
     /// Slot (d), thread 20: the Resources sheet and the archive prompt the menu opens.
     @State private var showResources = false
     @State private var archiving: ArchiveWithResourcesSheet.Target?
+    @State private var showAccount = false
 
     private var block: ActionBlock? { client.operateBlock }
     private var root: Bool { session.parentId == nil }
+    private var routed: Bool { AccountScope.of(session, projects: client.projects, workspaces: client.workspaces, catalog: client.catalog) != nil }
 
     var body: some View {
         Menu {
             blockLine
-            renameItem
-            if root {
-                pinItem
-                MasterPinButton(client: client, session: session, onFailure: onFailure)
-                fleetSection
-                resourcesItem
-                Divider()
-                archiveItem
+            ForEach(ThreadMenuItem.items(root: root, inShell: inShell, routed: routed), id: \.self) { item in
+                switch item {
+                case .rename: renameItem
+                case .account:
+                    Button { showAccount = true } label: { Label("Account…", systemImage: "person.crop.circle") }
+                case .pin: pinItem
+                case .master: MasterPinButton(client: client, session: session, onFailure: onFailure)
+                case .fleet: fleetSection
+                case .resources: resourcesItem
+                case .archive:
+                    Divider()
+                    archiveItem
+                }
             }
         } label: {
             Image(systemName: GlassMetrics.moreSymbol)
@@ -77,6 +86,17 @@ struct ThreadMenu: View {
         .accessibilityLabel("More")
         .accessibilityIdentifier("thread-menu")
         .sheet(isPresented: $showResources) { ResourcesSheet(client: client, sessionId: session.id) }
+        .sheet(isPresented: $showAccount) { AccountMenu(client: client, session: session) }
+        .task(id: inShell && routed ? client.status.transport : nil) {
+            // The chip loaded the accounts and the catalog; in the shell the menu row does.
+            guard inShell, routed, client.status.transport == .open else { return }
+            async let catalog = client.loadCatalog()
+            await client.loadAccounts()
+            _ = await catalog
+            #if DEBUG
+            if TestHooks.open == "account" { showAccount = true }
+            #endif
+        }
         .sheet(item: $archiving) { ArchiveWithResourcesSheet(target: $0) }
         .task {
             // DEBUG proof: `TC_TEST_SHEET=resources` opens the sheet; `archive` opens the prompt once the ledger says the thread holds something.

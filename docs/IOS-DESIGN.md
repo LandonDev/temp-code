@@ -234,7 +234,8 @@ status mark), drawn only while it holds a chip and folding in and out on
 the layout spring (a fade under Reduce Motion). At compact width they are a
 Recent button (the clock) at the live row's end: a menu of the settled
 roots freshest first, then "Archived Threads" per host copy that has any,
-pushing the archived list over the shell. A chip's tap selects its thread
+pushing the archived list over the shell; a settled thread on screen keeps
+a chip at the live row's end there, never saved (`StripModel.compact`). A chip's tap selects its thread
 in the shell at once, with no motion; its long press is the thread's menu.
 The drawn order is saved (`ThreadStripStore.save`; the outside chip never
 is). The thread screen keeps its tab bar in the split (hiding it
@@ -505,44 +506,57 @@ with its time, "…" while it is still answering, offline or failed.
 
 ## The thread screen
 
-One header for every type, the way Messages and Notes title a screen: back,
-the title inline, and under it one quiet line read off `ThreadHeaderLine`
-(client package, `Rendering/ThreadFrame.swift`): the status mark, the type
-label tinted (a subagent's role instead; "Master" first on a master), the
-model, and the elapsed ticking once a second in tabular digits while the
-thread is live. The host's name leads that line, in the tertiary step, only
-when more than one host is paired; the line drops the host, then compacts
-to the type and the model (or the one word "Queued" / "Stopped", or a running turn's phase alone), before the title
-truncates. The mark and the words by status:
+The header has two forms. **In a project's shell** (every root of a project
+or of a workspace's loose chats, `ThreadScreen(shellTitle:)` from
+`ProjectShell`), the bar's title is the project's name (the workspace's for
+its loose chats) and there is no line under it
+(`ThreadHeaderLine.subtitle(inShell: true)` is nil): the strip's chip says
+the thread and its state, the composer's row the model, the slot above the
+composer the time, so nothing is said twice. **A subagent's screen and a
+bare chat** (outside every workspace) keep the thread's own header, the way
+Messages and Notes title a screen: back, the title inline, and under it one
+quiet line read off `ThreadHeaderLine` (client package,
+`Rendering/ThreadFrame.swift`): the status mark, the type label tinted (a
+subagent's role instead; "Master" first on a master), the model, the
+account chip, and the elapsed ticking once a second in tabular digits while
+the thread is live. The host's name leads that line, in the tertiary step,
+only when more than one host is paired; the line drops the host, then
+compacts to the type and the model (or the one word "Queued" / "Stopped",
+or a running turn's phase alone), before the title truncates. The line's
+mark and words by status:
 
 | status | mark | after the host |
 | --- | --- | --- |
-| running, starting | spinner | type, model, elapsed, then the turn's phase while it waits before its first content ("Rate limited", "Retry 3 in 32 s" quieter; `StripWords.phase` reads the host's phase line off the activity) |
-| watching | info dot, still live | type, model, elapsed |
-| waiting | warning dot | type, model |
-| error | destructive dot | type, model |
-| paused | pause mark | type, model, the frozen elapsed |
+| running, starting | spinner | type, model, account, elapsed, then the turn's phase while it waits before its first content ("Rate limited", "Retry 3 in 32 s" quieter; `StripWords.phase` reads the host's phase line off the activity) |
+| watching | info dot, still live | type, model, account, elapsed |
+| waiting | warning dot | type, model, account |
+| error | destructive dot | type, model, account |
+| paused | pause mark | type, model, account, the frozen elapsed |
 | queued | quiet dot | "Queued", then the host's reason ("Waiting for X") quieter |
 | stopped | the still square | "Stopped", then "The harness is gone" quieter |
-| idle, done | none (the line stays centered) | type, model |
+| idle, done | none (the line stays centered) | type, model, account |
 
 An idle root whose subagents still work shows the spinner with no elapsed:
-the time is the child's. Long-press on the header, or Rename… in the menu,
-swaps the title for a field in place; Done or losing focus commits a
-changed, non-empty title and anything else reverts; the trailing toolbar
-group hides while the field is up so it gets the width. A key that cannot
-operate never opens the field: it sees the reason in the "Couldn't do that"
-alert. The title and the mark cross-fade when they change; nothing animates
-on the first paint.
+the time is the child's. Rename… in the menu (and, outside the shell, a
+long press on the title) swaps the title for a field in place; Done or
+losing focus commits a changed, non-empty title and anything else reverts;
+the trailing toolbar group hides while the field is up so it gets the
+width. A key that cannot operate never opens the field: it sees the reason
+in the "Couldn't do that" alert. The title and the mark cross-fade when
+they change; nothing animates on the first paint.
 
-The toolbar's trailing group, left to right: **Start** or **Build** on a
-planning root (Build once the host linked a build to the plan), the agent
-glyph `person.2` with the running count beside it (shown when the thread
-has unarchived children and no Fleet segment lists them already; it pushes
-the subagent list), and the ellipsis menu last. The menu, in order: the
-reason a lesser key cannot act (first, when there is one), Rename…, Pin
-(roots), a divider, Archive (roots, destructive). A subagent's menu has the
-reason and Rename only.
+The toolbar's trailing group, left to right. In the shell: the project's
+plan chip (`ProjectPlanChip`, when the project has a plan), the agent glyph
+`person.2` with the running count beside it (the agents cue's place until
+it lands; shown when the thread has unarchived children and no Fleet
+segment lists them already; it pushes the subagent list), Notes (roots),
+and the ellipsis menu last. Outside the shell: Notes (roots), the agent
+glyph, the menu. The menu (`ThreadMenuItem.items`), in order: the reason a
+lesser key cannot act (first, when there is one), Rename…, in the shell
+Account… for a thread that spends from an account (the account chip's
+sheet, "The account chip and menu" below), Pin, the master pin, the fleet
+switches and Resources… (roots), a divider, Archive (roots, destructive). A
+subagent's menu has the reason and Rename only.
 
 Below the header, the type decides the body. The composer (L5) docks at the
 bottom, the desktop's box, with the desktop's slot above it: the turn's
@@ -1062,8 +1076,10 @@ on is `MediaImage.hostOf(_:)` (the media-host thread's seam).
 
 ### The account chip and menu
 
-Every Claude or Codex thread's subtitle ends with the account it spends
-from: a 6 pt dot in the account's own colour (Aliax's `#rrggbb`; tertiary
+Inside a project's shell the thread has no subtitle, so the chip's sheet
+opens from the thread's menu as "Account…". Elsewhere (a subagent's screen,
+a bare chat) every Claude or Codex thread's subtitle ends with the account
+it spends from: a 6 pt dot in the account's own colour (Aliax's `#rrggbb`; tertiary
 when it has none) and the short name (nickname, else the email's local
 part) in `caption` medium secondary, or "Auto" one step dimmer with no dot
 when the host picks. A 44 pt hit area; press dims (`pressableStatic`), no
