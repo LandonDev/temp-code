@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
 import type { toast as Toast, ToasterProps } from "sonner";
-import { Info } from "@renderer/chrome/icons";
+import { Info, X } from "@renderer/chrome/icons";
 import { Spinner } from "./spinner";
 import { StatusMark, type ThreadState } from "./status";
 import { buttonVariants } from "./button";
@@ -119,6 +119,8 @@ export function Toaster(props: ToasterProps) {
           warning: <ToastGlyph state="waiting" />,
           error: <ToastGlyph state="failed" />,
           loading: <Spinner />,
+          // The app's own X (chrome/icons), not sonner's 12px one.
+          close: <X className="size-3.5" />,
         }}
         toastOptions={{
           unstyled: false,
@@ -130,9 +132,11 @@ export function Toaster(props: ToasterProps) {
             description: "!text-xs !leading-4 !text-muted-foreground",
             // The glyph's own box, 8px from the title (the toast's gap), not sonner's 16px box and margins.
             icon: "!h-5 !w-auto !m-0",
-            // A 24px ghost at the top right: no circle, no second focus band, no timing of sonner's.
+            // A 24px ghost at the top right, centred on the title's line (sonner's 16px inset
+            // plus half the 20px line, less half the 24px button: 14px): no circle, no second
+            // focus band, no timing of sonner's.
             closeButton:
-              "!left-auto !right-2 !top-2 !size-6 !transform-none !rounded-md !border-0 !bg-transparent !shadow-none !text-muted-foreground hover:!bg-foreground/7 hover:!text-foreground !transition-none",
+              "!left-auto !right-2 !top-3.5 !size-6 !transform-none !rounded-md !border-0 !bg-transparent !shadow-none !text-muted-foreground hover:!bg-foreground/7 hover:!text-foreground !transition-none",
             // Our raised buttons: sonner's own button paints a background, a 4px radius
             // and its own sizes, so those are reset for the raise's fill layer to show.
             actionButton: cn(buttonVariants({ variant: "default", size: "xs" }), TOAST_BUTTON, "!text-primary-foreground"),

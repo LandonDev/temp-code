@@ -167,8 +167,12 @@ describe("a toast's buttons and motion", () => {
       expect(el).not.toBeNull();
       return el!;
     });
-    for (const cls of ["!right-2", "!top-2", "!size-6", "!transform-none", "!rounded-md", "!bg-transparent", "!shadow-none", "!transition-none"]) expect(close.classList).toContain(cls);
+    for (const cls of ["!right-2", "!top-3.5", "!size-6", "!transform-none", "!rounded-md", "!bg-transparent", "!shadow-none", "!transition-none"]) expect(close.classList).toContain(cls);
     expect(close.closest("[data-sonner-toast]")!.className).toContain("has-[[data-close-button]]:!pe-10");
+    // The app's X, 14px, never sonner's own 12px glyph.
+    const glyph = close.querySelector("svg")!;
+    expect(glyph.getAttribute("class")).toContain("size-3.5");
+    expect(glyph.getAttribute("width")).not.toBe("12");
     const icon = document.querySelector<HTMLElement>("[data-sonner-toast] [data-icon]")!;
     expect(icon.classList).toContain("!m-0");
     expect(icon.classList).toContain("!w-auto");
