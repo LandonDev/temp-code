@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { GateNotice } from "@server/shared/gate";
 import type { Block } from "../lib/session";
+import { CONSOLE } from "../components/ui/console";
 import { GateCard } from "./GateCard";
 
 const block = (gate: GateNotice): Block => ({ id: "n1", role: "system", text: "", gate });
@@ -35,8 +36,19 @@ describe("GateCard", () => {
     const pre = container.querySelector<HTMLElement>('[data-slot="gate-log"]')!;
     const cls = pre.className.split(" ");
     // The table's row body is the frame: no border, fill, radius or inset of the log's own there.
-    for (const c of ["in-data-[table]:border-0", "in-data-[table]:bg-transparent", "in-data-[table]:rounded-none", "in-data-[table]:px-0", "in-data-[table]:py-0", "in-data-[table]:my-0"])
+    for (const c of ["in-data-[table]:bg-transparent", "in-data-[table]:rounded-none", "in-data-[table]:px-0", "in-data-[table]:py-0", "in-data-[table]:my-0", "in-data-[table]:ml-0"])
       expect(cls).toContain(c);
+  });
+
+  it("the log is the one console: reached by the keyboard, no border, starting at the glyph's edge", () => {
+    const { container } = render(<GateCard block={block({ step: "gate", branch: "port", ok: false, log: "✗ vitest 48s", at: 1 })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show the log" }));
+    const pre = container.querySelector<HTMLElement>('[data-slot="gate-log"]')!;
+    expect(pre.tabIndex).toBe(0);
+    const cls = pre.className.split(" ");
+    for (const c of CONSOLE.split(" ")) expect(cls).toContain(c);
+    for (const c of ["overflow-x-auto", "whitespace-pre", "-ml-5.5"]) expect(cls).toContain(c);
+    expect(pre.className).not.toMatch(/(^|\s)border(\s|$)/);
   });
 
   it("a green run is one quiet line with nothing to open", () => {

@@ -2,7 +2,9 @@ import { useState } from "react";
 import type { GateNotice } from "@server/shared/gate";
 import { gateReason, typecheckErrorCount } from "@server/shared/gate";
 import { Collapsible } from "../components/ui/collapsible";
+import { CONSOLE } from "../components/ui/console";
 import { StatusMark } from "../components/ui/status";
+import { cn } from "../lib/cn";
 import type { Block } from "../lib/session";
 import { NoticeLine } from "./transcript/NoticeLine";
 
@@ -29,8 +31,18 @@ export function GateCard({ block }: { block: Block }) {
       fold={foldable ? { open, label: open ? "Hide the log" : "Show the log" } : undefined}
     >
       {foldable ? (
-        // Inside a group's table, or a card, the log draws no card of its own.
-        <pre data-slot="gate-log" className="mt-1 mb-2 min-w-0 overflow-x-auto whitespace-pre rounded-lg [--scrollbar-inset:var(--radius-lg)] border border-border bg-card px-3 py-2 font-mono text-xs leading-5 text-muted-foreground in-[.bg-card]:rounded-none in-[.bg-card]:[--scrollbar-inset:0px] in-[.bg-card]:border-0 in-[.bg-card]:bg-transparent in-[.bg-card]:px-0 in-data-[table]:my-0 in-data-[table]:rounded-none in-data-[table]:[--scrollbar-inset:0px] in-data-[table]:border-0 in-data-[table]:bg-transparent in-data-[table]:px-0 in-data-[table]:py-0">
+        // The one console, starting at the glyph's edge as every opened body
+        // does; inside a group's table, or a card, it draws no card of its own.
+        <pre
+          data-slot="gate-log"
+          tabIndex={0}
+          className={cn(
+            CONSOLE,
+            "mt-1 mb-2 -ml-5.5 min-w-0 overflow-x-auto whitespace-pre",
+            "in-[.bg-card]:ml-0 in-[.bg-card]:rounded-none in-[.bg-card]:[--scrollbar-inset:0px] in-[.bg-card]:bg-transparent in-[.bg-card]:px-0",
+            "in-data-[table]:my-0 in-data-[table]:ml-0 in-data-[table]:rounded-none in-data-[table]:[--scrollbar-inset:0px] in-data-[table]:bg-transparent in-data-[table]:px-0 in-data-[table]:py-0",
+          )}
+        >
           {gate.log}
         </pre>
       ) : null}

@@ -123,8 +123,10 @@ foreground, the same words the group line uses); the components only draw it.
   notice's), so no card sits in the table; a `bg-card` ancestor (the board's
   task card) cancels it. A notice that opens (a red gate's log, a review's
   minor findings) draws that body inside its fold, so a closed one leaves no
-  ruled band under its line, and a gate's log in the table is plain mono
-  text in the row's body, no card of its own. Opening a body inside
+  ruled band under its line. A gate's log is the one console (`CONSOLE`,
+  `tabIndex={0}` with the ring, scrolling sideways), starting at the glyph's
+  edge as every opened body does; in the table it is plain mono text in the
+  row's body, no card of its own. Opening a body inside
   a group is a hand on the group (`transcript/groupHand.ts`), which decides
   it from then on. Hover lifts the verb and the caret to foreground, as the
   group line does.
