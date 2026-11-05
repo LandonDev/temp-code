@@ -186,6 +186,23 @@ describe('AccountsService', () => {
     expect(await svc.pickNext(info)).toBe('b@x.com')
   })
 
+  it('roomElsewhere asks the spawn rule of every account but the refused one, per model', async () => {
+    ;({ cleanup } = fixture())
+    const now = 1_800_000_000_000
+    const headroom = new HeadroomStore({ environmentId: 'test', now: () => now })
+    const { svc } = service({ headroom: () => headroom, now: () => now })
+    // Nothing known yet: the host cannot say.
+    expect(svc.roomElsewhere('claude', 'claude-fable-5-1', 'a@x.com')).toBeNull()
+    await svc.list()
+    expect(svc.roomElsewhere('claude', 'claude-fable-5-1', 'a@x.com')).toBe(true)
+    // The only other account is in a cooldown for Fable: none for Fable, Opus still has b.
+    headroom.observe({ service: 'claude-code', account: 'b@x.com', model: 'claude-fable-5-1', status: 429, headers: new Headers({ 'retry-after': '600' }) })
+    expect(svc.roomElsewhere('claude', 'claude-fable-5-1', 'a@x.com')).toBe(false)
+    expect(svc.roomElsewhere('claude', 'claude-opus-5-5', 'a@x.com')).toBe(true)
+    // Codex has one account: nowhere else to go.
+    expect(svc.roomElsewhere('codex', 'gpt-6.1-sol', 'c@x.com')).toBe(false)
+  })
+
   it('routeFor names the pin, else the sticky account, else the best pick for the model, from the cached snapshot', async () => {
     ;({ cleanup } = fixture())
     const { svc } = service({

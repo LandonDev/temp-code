@@ -564,6 +564,24 @@ export class AccountsService {
     void this.rebuild(true, provider)
   }
 
+  /**
+   * Whether any account but `account` could take the model's next turn now,
+   * by the cached picture and the spawn's own rule (`eligible`: not out,
+   * room in the model's windows, no cooldown). Null while the snapshot knows
+   * no account for the provider. The failure card leads with Route
+   * automatically only when this is not false.
+   */
+  roomElsewhere(provider: AccountProvider, model: string | null, account: string | null): boolean | null {
+    const snap = this.snap.providers[provider]
+    if (!snap?.profiles.length) return null
+    const serviceId = SERVICE_OF[provider]
+    const out = this.outFor(provider)
+    const headroom = this.headroomFor(provider, model)
+    const tiers = tiersFor(serviceId, model)
+    const now = this.deps.now()
+    return snap.profiles.some((p) => p.name !== account && eligible(p.name, { serviceId, out, reports: snap.reports, headroom, tiers, now }))
+  }
+
   failover(
     sessionId: string,
     info: { provider: AccountProvider; model: string | null; window: Limit['window']; account: string | null }

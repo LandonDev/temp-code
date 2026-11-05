@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { FailureKindSchema } from '@shared/events'
 import { fallbackFailure } from '@shared/failureFallback'
 import { UpstreamTimeout } from './upstream'
@@ -258,5 +258,30 @@ describe('networkRefusalOf', () => {
     expect(networkRefusalOf({ ...info, error: 'credential_timeout: host did not reply' })?.refusal.code).toBe('credential_timeout')
     expect(networkRefusalOf({ ...info, error: 'fetch failed' })?.refusal).toEqual({ status: 502, account: 'acct', code: null })
     expect(networkRefusalOf({ ...info, path: '/codex/responses' })).toBeNull()
+  })
+})
+
+describe('a usage cap', () => {
+  const fable = "You've reached your Fable limit. Switch to another model…"
+  const cap = { message: fable, limit: { window: { model: 'Fable' } } } as const
+
+  it('says whether another account has room, on the cap kinds alone', () => {
+    expect(classifyFailure(ctx({ ...cap, roomElsewhere: () => true }))).toMatchObject({ kind: 'rate_limited', roomElsewhere: true })
+    expect(classifyFailure(ctx({ ...cap, roomElsewhere: () => false }))).toMatchObject({ kind: 'rate_limited', roomElsewhere: false })
+    // No answer (no snapshot yet) leaves the field out.
+    expect(classifyFailure(ctx({ ...cap, roomElsewhere: () => null }))).not.toHaveProperty('roomElsewhere')
+    // Another kind never asks.
+    const asked = vi.fn(() => true)
+    expect(classifyFailure(ctx({ message: 'fetch failed', roomElsewhere: asked }))).not.toHaveProperty('roomElsewhere')
+    expect(asked).not.toHaveBeenCalled()
+  })
+
+  it('names the account the provider refused over the one the row shows', () => {
+    const failure = classifyFailure(ctx({ ...cap, account: 'discord@example.com', gateway: { status: 429, code: null, account: 'throwaway@example.com' } }))
+    expect(failure.account).toBe('throwaway@example.com')
+    expect(failure.summary).toContain('throwaway@example.com')
+    expect(failure.summary).not.toContain('discord@example.com')
+    // No refusal seen: the row's account.
+    expect(classifyFailure(ctx({ ...cap, account: 'discord@example.com' })).account).toBe('discord@example.com')
   })
 })

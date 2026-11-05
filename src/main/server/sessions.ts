@@ -526,6 +526,8 @@ export interface AccountRouter {
   observeUsage?(provider: AccountProvider, account: string, windows: UsageWindow[]): void
   /** The provider refused the account until `resetsAt` (Muse's quota stop): keep it out of the picks until then. */
   observeQuota?(provider: AccountProvider, account: string, window: LimitWindow, resetsAt: number): void
+  /** Whether an account other than `account` has room for the model now (eligible()); null when the host cannot say. */
+  roomElsewhere?(provider: AccountProvider, model: string | null, account: string | null): boolean | null
 }
 /** @deprecated use AccountRouter */
 export type LimitFailover = AccountRouter
@@ -1634,16 +1636,20 @@ export class SessionRegistry {
     const account = meta?.account ?? null
     const model = meta?.model ?? null
     const listed = model ? CATALOG[provider]?.models.some((m) => m.id === model) : false
+    const gateway = this.takeRefusal(sessionId)
+    const picked = pickedProviderOf(provider, model)
     return classifyFailure({
       message: event.message,
       provider,
       model,
       account,
-      accountKnown: account && pickedProviderOf(provider, model) ? (this.accountKnown?.(pickedProviderOf(provider, model)!, account) ?? null) : null,
+      accountKnown: account && picked ? (this.accountKnown?.(picked, account) ?? null) : null,
       limit: event.limit ?? null,
       // A row the catalog lists but hides here (minCodexVersion) is unavailable; a model it never listed is not ours to judge.
       modelVisible: !listed || visibleModels(provider).some((m) => m.id === model),
-      gateway: this.takeRefusal(sessionId)
+      gateway,
+      // Asked of the account the provider refused, when the gateway saw it.
+      roomElsewhere: () => (picked ? (this.limits?.roomElsewhere?.(picked, model, gateway?.account ?? account) ?? null) : null)
     })
   }
 

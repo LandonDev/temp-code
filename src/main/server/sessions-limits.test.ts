@@ -309,6 +309,16 @@ it('a limit failover continues a thread that settles watching, on the new accoun
   expect(routes.at(-1)).toEqual({ id, route: { account: 'b@x.com', pin: false } })
 })
 
+it("a cap failure says whether another account had room, asked of the account the provider refused", async () => {
+  const asked: unknown[] = []
+  registry.limits = { ...limits(null), roomElsewhere: (...args) => (asked.push(args), false) }
+  const { id, emit } = await running({ model: 'claude-fable-5-1' })
+  registry.noteRefusal(id, { status: 429, code: null, account: 'refused@x.com' })
+  emit({ type: 'error', message: "You've reached your Fable limit", limit: { window: { model: 'Fable' } } })
+  expect(asked).toEqual([['claude', 'claude-fable-5-1', 'refused@x.com']])
+  expect(registry.get(id)?.failure).toMatchObject({ kind: 'rate_limited', account: 'refused@x.com', roomElsewhere: false })
+})
+
 it('a scope pin change recomputes threads under it; a refresh re-picks threads with no account', async () => {
   registry.limits = byModel()
   const ws = await registry.createWorkspace(root)

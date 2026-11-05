@@ -56,6 +56,8 @@ export interface FailureContext {
   gateway?: GatewayRefusal | null
   /** The provider the thread's accounts come from (`meta` for a Meta row under any harness); derived from provider and model when absent. */
   routed?: RoutedProvider | null
+  /** Whether another account has room for the model now; asked only for a usage cap. */
+  roomElsewhere?: () => boolean | null
 }
 
 const routedOf = (ctx: FailureContext): RoutedProvider | null => (ctx.routed !== undefined ? ctx.routed : routedProviderOf(ctx.provider, ctx.model))
@@ -189,7 +191,7 @@ function oneLine(message: string, max = 160): string {
 
 /** The two lines for a kind: what happened (with the account) and why. */
 export function describeFailure(kind: FailureKind, ctx: FailureContext): { summary: string; cause: string } {
-  const account = ctx.account ?? ctx.gateway?.account ?? null
+  const account = refusedAccount(ctx)
   const provider = PROVIDER_NAME[ctx.provider] ?? ctx.provider
   const harness = HARNESS_NAME[ctx.provider] ?? ctx.provider
   const model = ctx.model ?? 'The model'
@@ -300,7 +302,15 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext): { summa
 export function classifyFailure(ctx: FailureContext): Failure {
   const kind = failureKindOf(ctx)
   const { summary, cause } = describeFailure(kind, ctx)
-  return { kind, account: ctx.account ?? ctx.gateway?.account ?? null, summary, cause }
+  const room = kind === 'rate_limited' || kind === 'quota' ? (ctx.roomElsewhere?.() ?? null) : null
+  return { kind, account: refusedAccount(ctx), summary, cause, ...(room === null ? {} : { roomElsewhere: room }) }
+}
+
+/** The account the failure is about: the one the provider refused when the
+ *  gateway saw the refusal (a live CLI can still spend from an account the
+ *  row has moved off), else the thread's. */
+function refusedAccount(ctx: FailureContext): string | null {
+  return ctx.gateway?.account ?? ctx.account ?? null
 }
 
 /** The error code an upstream refusal's body names, if any (never the body itself). */

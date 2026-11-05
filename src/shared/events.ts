@@ -190,7 +190,11 @@ export const FailureSchema = z.object({
   /** One line: what happened, in plain words, naming the account. */
   summary: z.string(),
   /** One line: the likely cause. */
-  cause: z.string()
+  cause: z.string(),
+  /** A usage cap (`rate_limited`, `quota`) on a picked provider: whether
+   *  another account had room for the model when it landed. Absent on every
+   *  other kind and from an older host. */
+  roomElsewhere: z.boolean().optional()
 })
 export type Failure = z.infer<typeof FailureSchema>
 

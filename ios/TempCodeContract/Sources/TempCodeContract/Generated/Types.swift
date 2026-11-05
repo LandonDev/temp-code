@@ -239,16 +239,18 @@ public struct Failure: Codable, Hashable, Sendable {
     public let account: String?
     public let summary: String
     public let cause: String
+    public let roomElsewhere: Bool?
 
-    public init(kind: FailureKind, account: String?, summary: String, cause: String) {
+    public init(kind: FailureKind, account: String?, summary: String, cause: String, roomElsewhere: Bool? = nil) {
         self.kind = kind
         self.account = account
         self.summary = summary
         self.cause = cause
+        self.roomElsewhere = roomElsewhere
     }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, account, summary, cause
+        case kind, account, summary, cause, roomElsewhere
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -257,6 +259,7 @@ public struct Failure: Codable, Hashable, Sendable {
         try container.encode(account, forKey: .account)
         try container.encode(summary, forKey: .summary)
         try container.encode(cause, forKey: .cause)
+        try container.encodeIfPresent(roomElsewhere, forKey: .roomElsewhere)
     }
 }
 
