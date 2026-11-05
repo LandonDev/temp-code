@@ -157,6 +157,13 @@ import Testing
         #expect(TranscriptReflow.widthChanged(951, 466))
     }
 
+    @Test("the top row starts at or above the top edge and ends below it") func theTopRowStraddlesTheTopEdge() {
+        #expect(TranscriptReflow.atTopEdge(minY: -120, maxY: 40))
+        #expect(TranscriptReflow.atTopEdge(minY: 0, maxY: 60))
+        #expect(!TranscriptReflow.atTopEdge(minY: -60, maxY: 0))
+        #expect(!TranscriptReflow.atTopEdge(minY: 8, maxY: 90))
+    }
+
     @Test("the restore runs at once, then twice more past the fold's steps") func theRestoreRunsAtOnceThenTwiceMore() {
         #expect(TranscriptReflow.restoreDelaysMs == [0, 250, 600])
     }

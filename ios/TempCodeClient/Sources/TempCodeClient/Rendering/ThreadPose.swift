@@ -159,6 +159,14 @@ public enum TranscriptReflow {
         abs(to - from) > 1
     }
 
+    /// Whether a row is the one at the top edge: it starts at or above the
+    /// scroll view's top and ends below it (`frame` in the scroll view's own
+    /// coordinates). A `List` never reports `scrollPosition(id:)`, so each
+    /// row says this of itself and the last to say yes is the top row.
+    public static func atTopEdge(minY: CGFloat, maxY: CGFloat) -> Bool {
+        minY <= 0 && maxY > 0
+    }
+
     /// A fold resizes in steps about 200 ms apart with the rows re-wrapping
     /// between them; the anchor is restored at each of these delays after
     /// the last step and held until the last one. Each new step restarts

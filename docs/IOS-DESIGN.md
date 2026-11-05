@@ -599,6 +599,16 @@ than the window). The rules are the client package's
 | Unfolded landscape | 951×669, regular×regular | 951 less the 84 pt tab rail, or 547 beside the sidebar (iOS keeps it at 320) | Hero and chat side by side from 680 pt, the chat at least 360; the pager beside the sidebar |
 | Unfolded portrait | 669×951, regular×regular | 669 with the sidebar hidden, about 350 with it shown | Side by side at 669; the pager beside the sidebar |
 
+**The sidebar keeps 320 on iOS 27.1, and the desktop's rule stays.** The
+shell asks the split for 260 pt (`SidebarColumn`, 320 at most), but the
+unfolded Duo's `NavigationSplitView` holds the sidebar at 320, which leaves
+the thread 547 of the 867 the tab rail leaves. The chat's 360 and a hero's
+320 do not fit in 547, so a board thread beside the sidebar reads on the
+pager and becomes two panes once the sidebar is hidden. There is no UIKit
+workaround to win back the 60 pt; the proof holds the sidebar's width to
+[260, 320] and the thread's mode to what `ThreadPose` gives the column it
+was actually handed.
+
 **Two panes** when the column is regular width and at least 680 pt
 (`ThreadPose.twoPaneMinWidth`: a 320 pt hero beside a 360 pt chat, the
 desktop's chat floor beside a board), else the pager; size class first, so
@@ -635,7 +645,12 @@ diff stays unified at every width.
 **The fold keeps the reader's place.** A width change (a fold, an unfold,
 the sidebar toggling, the pager becoming two panes) keeps the transcript's
 end when the reader is there and the row at the top edge otherwise
-(`TranscriptReflow.anchor`): the anchor is captured once, `atBottom` is
+(`TranscriptReflow.anchor`). A `List` never reports `scrollPosition(id:)`,
+so each row says whether it straddles the scroll view's top edge
+(`TranscriptReflow.atTopEdge`, read through `onGeometryChange`) and the last
+to say yes is the top row; a row's word counts only while the scroll view
+keeps the list's width and no reflow is open, so a fold's re-wrap never
+replaces the reader's row before it is taken. The anchor is captured once, `atBottom` is
 held while the geometry flickers, and the anchor is restored with no
 animation at 0, 250 and 600 ms after each width step, each new step
 restarting the run. A size change is not an open: `TranscriptLanding` is
@@ -690,24 +705,25 @@ drawn (the fold divides). A horizontal band changes no column: that pose is
 the pager, whose chrome is at the top and the bottom. A hinge move bumps a
 counter the geometry re-reads the band on.
 
-**Proof shots** for the Duo runner (light and dark each; `TC_TEST_OPEN` /
-`TC_TEST_ACTION` as today, the pose set by the runner): folded-portrait ×
-chat, implementation, planning, project plan, orchestration, research,
-master, subagent; folded-landscape × chat, implementation, orchestration,
-plus chat and implementation with `draft:` (keyboard up, the segment bar
-away); unfolded-landscape × all eight types plus the diff, the page, Notes,
-chat with `draft:` (keyboard up, the hero still) and the account menu;
-unfolded-landscape with the sidebar shown × implementation and chat
-(two-pane at about 631); unfolded-portrait × chat, implementation and
-planning with the sidebar hidden (two-pane at 669) and shown (the pager);
-and the transition run on a streaming implementation thread with a draft
-and an undecided approval, folded-portrait → unfolded-landscape →
-folded-portrait → unfolded-portrait → folded-portrait, a shot and the
-`pose-<sessionId>.json` + transcript report at each stop, asserting
-`revealedUnits` never decreases, the draft is unchanged, the approval's
-buttons are present, `reflowAnchor` is the end when started at the bottom
-and the same `topRow` when started scrolled up; the same run partly folded
-at unfolded-landscape asserting `columns.gap` equals the band's width.
+**Proof shots** (`TC_PROOF_SET=duo`, the matrix in scripts/ios-sim-proof.sh
+`duo_shots_shell`, `duo_shots_thread` and `duo_shots_sheets`; "The proof"
+under "iPhone Duo" has the run). One seeded thread per type: chat "Why does
+the gateway refuse http for Codex?", implementation "Add dark mode to the
+settings screen", planning "Move the thread history onto the box", master
+"Ship the stats pipeline", research "SQLite on the phone: bun:sqlite or
+GRDB", orchestration "Ship the iOS thread screens". In `unfolded`,
+`unfolded-portrait` and `half-open` each opens on its hero with the sidebar
+shown (`TC_TEST_SIDEBAR=shown`) light and dark, and hidden light, dark, with
+the keyboard up (on the chat, `draft:`) and at accessibility-large. Each
+shot's `pose-<sessionId>.json` lands beside its layout report and
+`pose_check` holds it to this section: the sidebar's state as asked and,
+beside the thread, its width in [260, 320] (half open, up to the fold), the
+thread's column what the sidebar leaves of the window less its safe area;
+the mode `ThreadPose` gives that column and `TwoPaneColumns`' split; the
+measure (768, 640 for a lone plan, or the column less 32); the composer's box
+on the column's edges; the draft's length when one was typed. The fold run
+is a streaming implementation thread with a draft and an undecided approval,
+started at the bottom and then 700 pt up.
 
 ### The composer, the strip, the cards' actions, the sheets
 
@@ -2710,7 +2726,9 @@ pose's row. `fold <pose>` inside a set moves the device with the app
 running; `duo_shot` is `shot` under the axis, the one helper the plans add
 lines to (`duo_shots_shell`, `duo_shots_thread`, `duo_shots_sheets`, called
 once per pose). `TC_PROOF_SET=duo bun scripts/ios-sim-proof-local.ts` is
-every pose's seed shots and the fold cycle; `TC_DUO_POSE=unfolded
+every pose's seed shots, the thread matrix ("Proof shots" under "The thread
+screen on the iPhone Duo") and the fold cycle, paired with the key that may
+act; `TC_DUO_POSE=unfolded
 TC_PROOF_SET=features …` is any existing set in a pose.
 
 The layout report is `LayoutProbe` (ios/TempCode/Sources/Shell/LayoutProbe.swift,
@@ -2721,23 +2739,38 @@ a change settles, with `window`, `screen`, `scale`, `fps`, `hSize`, `vSize`,
 `classified` (the pose `DuoPose.classify` reads off the window) and `pose`
 (the `TC_DUO_POSE` the app was launched with); `Documents/layout-events.json`
 is the log of every change of `window`, `hSize`, `vSize`, `orientation`,
-`hinge.state` and each notes key (`{ t, key, from, to }`, 500 at most,
+`hinge.state` and each notes key (`{ t, key, from, to }`, 5,000 at most,
 cleared at launch). Any view says `LayoutProbe.note("sidebar", "visible")`;
 a repeated value is not an event. The shell and the thread screen note
 `sidebar.width`, `columns` (hero, gap, chat in two panes, else the mode),
 `measure` (the text column), `composer.frame`, `slot.frame` ("none" while
 the slot takes no room) and `dock.backing`; `pose_check` holds every thread
-shot to the dock's rule: the composer as wide as the column, and a slot
-that ends above the composer on a solid band.
+shot to the dock's rule (the composer as wide as the column, and a slot
+that ends above the composer on a solid band) and, from its
+`pose-<sessionId>.json`, to the pose rules (scripts/lib/duo_pose_check.py).
 
-The fold cycle (`duo_fold_cycle`, the `duo` set's last step) launches the
-2,000-row chat unfolded, folds, unfolds (recorded to `cycle-unfold.mov`) and
-folds again with the app running, four shots, and asserts from the reports
-and the events: the route identical in all four, `transcriptAtBottom` 1
-after every fold, the draft the same in all four (`notes.draftChars`, plan
-2's), exactly one `hSize` flip and one `window` change per step (a second
-flip inside a step is the flicker), and `notes.sidebar` once per step when
-plan 1 reports it. Rotation is the device's (`hinge orient`), never an
+The fold cycle (`duo_fold_cycle`, the `duo` set's last step) runs twice,
+the reader at the bottom and then 700 pt up (`TC_TEST_SCROLL_UP`): one launch
+of "Add dark mode to the settings screen" on its chat, its seeded approval
+undecided, the sidebar hidden and a draft typed (`draft:`), a turn streaming
+into it from the test server (`POST /stream`, 120 characters a second for
+90 s), then folded, unfolded (recorded to `cycle-<run>-unfold.mov`) and
+folded again with the app running, four shots. scripts/lib/duo_fold_check.py
+asserts from the reports, `layout-events.json` (the newest 5,000 changes,
+which must reach back past the first stop), a sample of `revealedUnits` every
+400 ms and `row-inits.json`: the route identical in all four; the draft
+(`notes.draftChars`, the composer's UTF-16 length) the typed length in all
+four; exactly one `hSize` flip, one `window` change and one `sidebar` change
+(`hidden` ⇄ `stack`) per step; `revealedUnits` never decreasing, and growing
+in the bottom run; at the bottom, `transcriptAtBottom` 1 and the reflow
+anchored on the end after every fold; scrolled up, the same `topRow` at all
+four stops with the reflow anchored on that row; no row on screen made its
+state twice (`RowInitLedger`). The shell notes `sidebar` (`stack`,
+`visible`, `overlay` or `hidden`), `sidebar.width` and `split.width` from
+Home's split, the thread screen `body.frame`, and the composer `draftChars`.
+scripts/ios-duo-checks.test.ts runs both checks on hand-made reports.
+`TC_DUO_POSES`, `TC_DUO_KINDS`, `TC_DUO_HALF_OPEN=0` and `TC_FOLD_RUNS`
+narrow a hand run. Rotation is the device's (`hinge orient`), never an
 app-side hook: the app must follow the device as it does for a person.
 
 ### On the device

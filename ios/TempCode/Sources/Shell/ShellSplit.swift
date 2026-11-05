@@ -38,7 +38,7 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
             }
             .navigationSplitViewColumnWidth(min: sidebarColumn.min, ideal: sidebarColumn.ideal, max: sidebarColumn.max)
             #if DEBUG
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { LayoutProbe.note("sidebar.width", String(Int($0.rounded()))) }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { if probed { LayoutProbe.note("sidebar.width", String(Int($0.rounded()))) } }
             #endif
         } detail: {
             NavigationStack(path: $navigator.detailStack) {
@@ -61,13 +61,36 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
         // The fold is the window's centre line; the split may start short of the window's leading edge.
         .onGeometryChange(for: CGFloat.self) { navigator.windowWidth / 2 - $0.frame(in: .global).minX } action: { foldX = $0 }
         .background { HingeWatch(halfOpen: $halfOpen) }
+        #if DEBUG
+        // The Duo proof's notes (Home's split, where every thread shot lands): the split's own
+        // width, the column the sidebar and the detail share, and the sidebar's state.
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { if probed { LayoutProbe.note("split.width", String(Int($0.rounded()))) } }
+        .onChange(of: sidebarWord, initial: true) { if probed { LayoutProbe.note("sidebar", sidebarWord) } }
+        #endif
     }
+
+    #if DEBUG
+    private var probed: Bool { navigator.tab == .home }
+
+    /// `stack` collapsed, `visible` tiled beside the detail, `overlay` over it, `hidden` behind the toggle.
+    private var sidebarWord: String {
+        switch navigator.pose {
+        case .stack: "stack"
+        case .split(let mode): navigator.sidebarShown ? (mode == .tiled ? "visible" : "overlay") : "hidden"
+        }
+    }
+    #endif
 
     /// The expanded preference: the remembered toggle, whatever the collapsed state.
     private var visibility: Binding<NavigationSplitViewVisibility> {
         Binding(
             get: { navigator.sidebarShown ? .all : .detailOnly },
-            set: { navigator.sidebarShown = $0 != .detailOnly }
+            set: { value in
+                #if DEBUG
+                if probed { LayoutProbe.note("sidebar.write", "\(value) \(navigator.pose)") }
+                #endif
+                navigator.sidebarShown = value != .detailOnly
+            }
         )
     }
 

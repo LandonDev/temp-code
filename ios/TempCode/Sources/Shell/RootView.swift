@@ -290,6 +290,7 @@ struct RootView: View {
                 home.open(.thread(environmentId: environmentId, sessionId: session.id, seq: TestHooks.targetSeq))
                 // The sidebar over the detail in the overlay pose, for the shot; `open` just hid it.
                 if TestHooks.open == "sidebar" { home.sidebarShown = true }
+                if let shown = TestHooks.sidebar { home.sidebarShown = shown }
             }
         case "thread-in-project":
             // The thread in its shell with its workspace open in the sidebar: the split's selected card.

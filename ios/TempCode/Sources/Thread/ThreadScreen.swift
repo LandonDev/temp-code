@@ -453,6 +453,8 @@ struct ThreadScreen: View {
             let measure = mode == .single ? min(width - 2 * ReadingMeasure.edge, ReadingMeasure.cap(for: segment)) : (mode == .twoPane ? columns.chat : width) - 2 * ReadingMeasure.edge
             LayoutProbe.note("measure", String(Int(measure.rounded())))
         }
+        // Where the body starts on screen: the composer's edges are checked against the column from here.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("body.frame", LayoutProbe.rect($0)) }
         #endif
     }
 

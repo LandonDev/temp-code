@@ -220,6 +220,8 @@ struct ComposerBar: View {
             text = draft
             focused.wrappedValue = true
         }
+        // The Duo proof's fold run holds the typed draft (UTF-16 units) unchanged through every fold.
+        .onChange(of: text, initial: true) { LayoutProbe.note("draftChars", String(text.utf16.count)) }
         #endif
         .task(id: session.map { "\($0.provider.rawValue)/\($0.model)/\($0.reasoning.rawValue)" }) {
             // The thread's own model lands (or changes under us): the choice follows it unless the person has a pick in hand.

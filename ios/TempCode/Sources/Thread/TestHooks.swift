@@ -34,6 +34,10 @@ enum TestHooks {
     /// portrait pose, `sidebar` shows the overlay sidebar over the thread. On a master's board, `rules`, `add-thread`,
     /// `adopt` and `archive-done` open that sheet once the batch has landed.
     static let open = env["TC_TEST_OPEN"].flatMap { $0.isEmpty ? nil : $0 }
+    /// With `TC_TEST_ROUTE=thread`: `shown` or `hidden`, the split's sidebar
+    /// for the shot (tiled beside the thread unfolded, over it in portrait),
+    /// set after the thread opens whatever the launch memory says.
+    static let sidebar = env["TC_TEST_SIDEBAR"].flatMap { $0 == "shown" ? true : $0 == "hidden" ? false : nil }
     /// Scrolls the whole transcript top and back while a display link
     /// records every frame; the report lands in Documents/scroll-report.json.
     static let scroll = env["TC_TEST_SCROLL"] == "1"
@@ -70,6 +74,7 @@ enum TestHooks {
     #else
     static let segment: ThreadSegment? = nil
     static let open: String? = nil
+    static let sidebar: Bool? = nil
     static let scroll = false
     static let scrollUp = false
     static let stream = false

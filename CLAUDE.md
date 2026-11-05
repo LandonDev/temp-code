@@ -2684,12 +2684,30 @@ proof and the sizing rules; the pieces, by name:
   axis on every proof set (the Duo by default, the lit panel captured, shots
   in `shots/<pose>/`, each shot's layout report in `layout/<pose>/` checked
   against the pose's row by `pose_check`; `fold <pose>` with the app running;
-  `duo_shot` is the helper plans 1-3 add lines to in `duo_shots_shell|thread|
-  sheets`); `TC_PROOF_SET=duo` is every pose's seed shots and the fold cycle
-  (`duo_fold_cycle`, four shots, a .mov, the events asserted). The app writes
-  `Documents/layout-report.json` and `layout-events.json` from
+  `duo_shot` is `shot` under the axis); `TC_PROOF_SET=duo` (paired with the
+  acting key) is every pose's seed shots, the thread matrix of
+  docs/IOS-DESIGN.md "The thread screen on the iPhone Duo" in
+  `duo_shots_shell|thread|sheets` (one seeded thread per type in unfolded,
+  unfolded-portrait and half-open, the sidebar shown and hidden
+  (`TC_TEST_SIDEBAR`), light and dark, the keyboard up, accessibility-large;
+  each shot's `pose-<sessionId>.json` copied beside its report as
+  `<name>.pose.json`) and the fold cycle (`duo_fold_cycle`: a streaming
+  implementation thread with a draft and an undecided approval, run at the
+  bottom and 700 pt up, four shots and a .mov each). `pose_check` is
+  scripts/lib/duo_pose_check.py: the pose's row, the dock's rule, and per
+  thread shot the sidebar (its state as asked; beside the thread 260-320 pt,
+  iOS 27.1 holding it at 320, half open up to the fold; the column what it
+  leaves of the window less its safe area), the mode and columns `ThreadPose`
+  gives that column (a board beside the sidebar is the pager, by the
+  person's choice: no UIKit workaround), the measure (768, or the column
+  less 32) and the composer on the column's edges; scripts/lib/
+  duo_fold_check.py holds the fold run to the route, the draft
+  (`notes.draftChars`), one hSize, window and sidebar change per step,
+  `revealedUnits` never decreasing, the reader's end or `topRow` kept and no
+  row made twice; scripts/ios-duo-checks.test.ts tests both. The app writes
+  `Documents/layout-report.json` and `layout-events.json` (5,000 events) from
   `LayoutProbe` (ios/TempCode/Sources/Shell/LayoutProbe.swift, DEBUG, on
-  RootView's root; `LayoutProbe.note(key, value)` from any view; the shell and thread screen note `sidebar.width`, `columns`, `measure`, `composer.frame`, `slot.frame` and `dock.backing`, which `pose_check` holds to the dock's rule;
+  RootView's root; `LayoutProbe.note(key, value)` from any view; the shell notes `sidebar`, `sidebar.width` and `split.width`, the thread screen `columns`, `measure` and `body.frame`, the dock `composer.frame`, `slot.frame`, `dock.backing` and `draftChars`;
   `LayoutProbe.route` from RootView and ThreadScreen). project.yml allows
   portrait and both landscapes (scripts/ios-project.test.ts pins it); 27.1
   symbols live in the app target under a runtime `#available` only. `bun run

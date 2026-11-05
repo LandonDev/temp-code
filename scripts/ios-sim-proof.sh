@@ -83,15 +83,22 @@
 #           for 60 s and brought back, then killed and cold-launched plainly
 #           so it restores that thread from its saved stack. Each step's
 #           transcript-report.json (atBottom) lands in return-*.json.
-#   duo     The iPhone Duo in every pose (docs/IOS-DESIGN.md "iPhone Duo"): for
-#           folded, unfolded, unfolded-portrait and folded-landscape, light Home,
-#           the thread (TC_TEST_THREAD, chat), Inbox, Search and Settings, dark
-#           Home and the thread, then what plans 1-3 add in duo_shots_shell,
-#           duo_shots_thread and duo_shots_sheets; half-open: the thread; then
-#           duo_fold_cycle (one launch of the 2,000-row chat folded and unfolded
-#           twice with the app running, four shots, a .mov of the unfold, the
-#           layout events asserted). Every shot's layout report must match the
-#           pose's row (pose_check); the set fails on the first that does not.
+#   duo     The iPhone Duo in every pose (docs/IOS-DESIGN.md "iPhone Duo"), paired
+#           with TC_TEST_PAIR_LINK_OPERATE: for folded, unfolded, unfolded-portrait
+#           and folded-landscape, light Home, the thread (TC_TEST_THREAD, chat),
+#           Inbox, Search and Settings, dark Home and the thread, then the thread
+#           matrix (duo_shots_shell, duo_shots_thread: one seeded thread per type
+#           in unfolded, unfolded-portrait and half-open, the sidebar shown and
+#           hidden, light and dark, the keyboard up, accessibility-large) and the
+#           sheets (duo_shots_sheets); half-open: the thread and the matrix; then
+#           duo_fold_cycle (a streaming implementation thread with a draft and an
+#           undecided approval, folded and unfolded twice with the app running,
+#           at the bottom and 700 pt up; four shots and a .mov each;
+#           scripts/lib/duo_fold_check.py). Every shot's layout report and
+#           pose-<sessionId>.json must match the pose's row and the thread
+#           screen's rules (pose_check, scripts/lib/duo_pose_check.py); the set
+#           fails on the first that does not. TC_DUO_POSES, TC_DUO_KINDS,
+#           TC_DUO_HALF_OPEN=0 and TC_FOLD_RUNS narrow a hand run.
 #   all     shell, threads, scroll, actions and push (the default).
 # TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
 # TC_DUO_POSE=<pose> is the iPhone Duo axis for ANY set: the device defaults to
@@ -213,56 +220,10 @@ fold() {
 # The report's window, size classes and classified pose must be the row for $POSE, and the
 # PNG the window times the scale (± 1 px: the inner panel's one-pixel axis difference).
 pose_check() {
-  local png=$1 report=$2 label=$3
-  python3 - "$png" "$report" "$POSE" "$label" <<'CHECK'
-import json, struct, sys
-png, report, pose, label = sys.argv[1:5]
-rows = {
-    'folded': (466, 678, 'compact', 'regular'),
-    'folded-landscape': (678, 466, 'compact', 'compact'),
-    'unfolded': (951, 669, 'regular', 'regular'),
-    'unfolded-portrait': (669, 951, 'regular', 'regular'),
-    'half-open': (951, 669, 'regular', 'regular'),
-}
-w, h, hs, vs = rows[pose]
-try:
-    r = json.load(open(report))
-except Exception as e:
-    print(f'ios-sim-proof: {pose}/{label}: no layout report ({e})', file=sys.stderr); sys.exit(1)
-with open(png, 'rb') as f:
-    f.seek(16); pw, ph = struct.unpack('>II', f.read(8))
-got = (r.get('window', {}).get('w'), r.get('window', {}).get('h'), r.get('hSize'), r.get('vSize'))
-ok = got == (w, h, hs, vs) and r.get('classified') == pose and abs(pw - w * 3) <= 1 and abs(ph - h * 3) <= 1
-line = f"{pose}/{label} {got[0]}×{got[1]} {got[2]}×{got[3]} png {pw}×{ph} classified {r.get('classified')} hinge {(r.get('hinge') or {}).get('state')}"
-if not ok:
-    print(f'ios-sim-proof: POSE MISMATCH {line}', file=sys.stderr)
-    print(f'ios-sim-proof: expected {pose} {w}×{h} {hs}×{vs} png {w*3}×{h*3}', file=sys.stderr)
-    print(json.dumps(r, indent=1, sort_keys=True), file=sys.stderr)
-    sys.exit(1)
-print(f'ios-sim-proof: {line} ok')
-# The dock on a thread shot: a slot that takes room ends above the composer
-# with its own solid band, and the composer's box is the text column's width
-# (C1: the box's edges are the column's).
-notes = r.get('notes') or {}
-if (r.get('route') or {}).get('thread') and 'composer.frame' in notes and 'measure' in notes:
-    cx, cy, cw, ch = map(int, notes['composer.frame'].split(','))
-    measure = int(notes['measure'])
-    problems = []
-    if abs(cw - measure) > 1:
-        problems.append(f'composer {cw} wide, column {measure}')
-    slot = notes.get('slot.frame', 'none')
-    if slot != 'none':
-        sx, sy, sw, sh = map(int, slot.split(','))
-        if sy + sh > cy:
-            problems.append(f'slot ends at {sy + sh}, composer starts at {cy}')
-        if notes.get('dock.backing') != 'solid':
-            problems.append(f"slot over a {notes.get('dock.backing')} backing")
-    dock = f"{pose}/{label} dock: composer {cw} column {measure} slot {slot} backing {notes.get('dock.backing')} columns {notes.get('columns')} sidebar {notes.get('sidebar.width')}"
-    if problems:
-        print(f'ios-sim-proof: DOCK MISMATCH {dock}: ' + '; '.join(problems), file=sys.stderr)
-        sys.exit(1)
-    print(f'ios-sim-proof: {dock} ok')
-CHECK
+  local png=$1 report=$2 label=$3 posefile=${4:-}
+  # The thread shot's axis rides the environment: SHOT_KIND, SHOT_SIDEBAR, SHOT_DRAFT (scripts/lib/duo_pose_check.py).
+  SHOT_KIND="${SHOT_KIND:-}" SHOT_SIDEBAR="${SHOT_SIDEBAR:-}" SHOT_DRAFT="${SHOT_DRAFT:-}" \
+    python3 "$here/lib/duo_pose_check.py" "$png" "$report" "$POSE" "$label" "$posefile"
 }
 # A capture with no launch: the shot and the report go under the pose's directories.
 snap() {
@@ -273,7 +234,15 @@ snap() {
     local container
     container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
     [ -n "$container" ] && cp "$container/Documents/layout-report.json" "$OUT/layout/$POSE/$name.json" 2>/dev/null || true
-    pose_check "$OUT/shots/$POSE/$name.png" "$OUT/layout/$POSE/$name.json" "$name"
+    # The thread screen's own pose record and the transcript's report, beside the layout report.
+    local sid
+    sid=$(python3 -c 'import json,sys; print((json.load(open(sys.argv[1])).get("route") or {}).get("thread", ""))' "$OUT/layout/$POSE/$name.json" 2>/dev/null || true)
+    rm -f "$OUT/layout/$POSE/$name.pose.json" "$OUT/layout/$POSE/$name.transcript.json"
+    if [ -n "$container" ] && [ -n "$sid" ]; then
+      cp "$container/Documents/pose-$sid.json" "$OUT/layout/$POSE/$name.pose.json" 2>/dev/null || true
+      cp "$container/Documents/transcript-report.json" "$OUT/layout/$POSE/$name.transcript.json" 2>/dev/null || true
+    fi
+    pose_check "$OUT/shots/$POSE/$name.png" "$OUT/layout/$POSE/$name.json" "$name" "$OUT/layout/$POSE/$name.pose.json"
   else
     xcrun simctl io "$TC_SIM_UDID" screenshot --type png "$OUT/shots/$name.png" >/dev/null 2>&1
     echo "ios-sim-proof: $name"
@@ -286,6 +255,12 @@ duo_shot() { shot "$@"; }
 #   shot <name> <route> [thread part] [segment] [open] [settle]
 shot() {
   local name=$1 route=$2 thread=${3:-${TC_TEST_THREAD:-}} segment=${4:-} open=${5:-} settle=${6:-$SETTLE}
+  if [ -n "$POSE" ]; then
+    # The last launch's records never stand in for this one's.
+    local docs
+    docs=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+    [ -n "$docs" ] && rm -f "$docs"/Documents/pose-*.json "$docs/Documents/transcript-report.json" "$docs/Documents/layout-report.json"
+  fi
   launch_app "$route" "$thread" "$segment" "$open"
   if [ "${TC_PROOF_PROFILE:-}" = 1 ] && [ "$name" = long-scrolled ]; then
     proof_pid=$(pgrep -f "/CoreSimulator/Devices/$TC_SIM_UDID/data/Containers/Bundle/Application/.*/TempCode.app/TempCode" | head -1)
@@ -312,6 +287,7 @@ launch_app() {
   SIMCTL_CHILD_TC_TEST_SEARCH_SCOPE="${TC_TEST_SEARCH_SCOPE:-}" \
   SIMCTL_CHILD_TC_TEST_SEGMENT="$segment" \
   SIMCTL_CHILD_TC_TEST_OPEN="$open" \
+  SIMCTL_CHILD_TC_TEST_SIDEBAR="${TC_SIDEBAR:-}" \
   SIMCTL_CHILD_TC_TEST_TARGET_SEQ="${TC_TARGET_SEQ:-}" \
   SIMCTL_CHILD_TC_TEST_HISTORY="${TC_HISTORY_RUN:-}" \
   SIMCTL_CHILD_TC_TEST_SCROLL="${TC_SCROLL_RUN:-}" \
@@ -352,6 +328,8 @@ pair() {
   done
   return 3
 }
+# The Duo set types into the composer (the keyboard shots, the fold run's draft): it pairs with the key that may act.
+if [ "$SET" = duo ] && [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_OPERATE; fi
 if [ -n "${TC_TEST_PAIR_LINK:-}" ]; then
   pair || { echo "ios-sim-proof: the app did not pair" >&2; exit 3; }
   rm -f "$OUT/shots/00-pairing.png" "$OUT/shots/$POSE/00-pairing.png" "$OUT/layout/$POSE/00-pairing.json"
@@ -850,15 +828,74 @@ return_set() {
   transcript_report return-cold
 }
 
-# The iPhone Duo set. Plans 1-3 add their shots inside the three functions
-# (called once per pose with the pose in $POSE); the seed list is this file's.
-duo_shots_shell() { :; }   # plan 1: the shell in every pose
-duo_shots_thread() { :; }  # plan 2: the thread screen in every pose
-duo_shots_sheets() { :; }  # plan 3: sheets, Settings, Inbox, Search and the bars
+# The iPhone Duo set. The seed list is this file's; the matrix of
+# docs/IOS-DESIGN.md "The thread screen on the iPhone Duo" is the three
+# functions below (called once per pose with the pose in $POSE): every thread
+# type in unfolded, unfolded-portrait and half-open with the sidebar shown and
+# hidden, light and dark, the keyboard up and at the accessibility size, each
+# shot's pose-<sessionId>.json beside its layout report and held by pose_check
+# to the rules for the column it was given. The set pairs with the key that
+# may act (the keyboard shots and the fold run type a draft).
+# One seeded thread per type: kind|title part|hero segment.
+DUO_TYPES=(
+  "chat|Why does the gateway refuse|chat"
+  "implementation|Add dark mode to the settings|board"
+  "planning|Move the thread history onto the box|plan"
+  "master|Ship the stats pipeline|board"
+  "research|SQLite on the phone|sources"
+  "orchestration|Ship the iOS thread screens|fleet"
+)
+DUO_DRAFT="Keep the toggle in the header, then rerun the settings tests"
+duo_regular() { case "$POSE" in unfolded|unfolded-portrait|half-open) return 0 ;; *) return 1 ;; esac; }
+# One thread shot of the matrix: duo_tshot <name> <kind> <title part> <segment> <shown|hidden> [draft]
+duo_tshot() {
+  local name=$1 kind=$2 part=$3 segment=$4 side=$5 draft=${6:-}
+  SHOT_KIND=$kind SHOT_SIDEBAR=$side TC_SIDEBAR=$side SHOT_DRAFT=${draft:+${#draft}} TC_ACTION=${draft:+draft:$draft} \
+    duo_shot "$name" thread "$part" "$segment"
+}
+# Each type's shot over the matrix's axis: duo_types <suffix> <shown|hidden> [keyboard]
+duo_types() {
+  local suffix=$1 side=$2 keyboard=${3:-} entry kind part segment
+  for entry in "${DUO_TYPES[@]}"; do
+    IFS='|' read -r kind part segment <<< "$entry"
+    # TC_DUO_KINDS="chat implementation" narrows the matrix for a hand run.
+    case " ${TC_DUO_KINDS:-$kind} " in *" $kind "*) ;; *) continue ;; esac
+    if [ -n "$keyboard" ]; then
+      duo_tshot "t-$kind-$suffix" "$kind" "$part" chat "$side" "$DUO_DRAFT"
+    else
+      duo_tshot "t-$kind-$suffix" "$kind" "$part" "$segment" "$side"
+    fi
+  done
+}
+# Plan 1: the shell, the thread in its project's shell beside (or under) the sidebar.
+duo_shots_shell() {
+  duo_regular || return 0
+  appearance light; duo_types light-sidebar shown
+  appearance dark; duo_types dark-sidebar shown
+  appearance light
+}
+# Plan 2: the thread screen with the sidebar hidden, light and dark, the keyboard up, the accessibility size.
+duo_shots_thread() {
+  duo_regular || return 0
+  appearance light; duo_types light hidden; duo_types keyboard hidden keyboard
+  appearance dark; duo_types dark hidden
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  duo_types a11y hidden
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+}
+# Plan 3: the sheets in their pose's shape (SheetRules): Notes, project settings, rename.
+duo_shots_sheets() {
+  appearance light
+  TC_SHEET=notes duo_shot sheet-notes thread "Why does the gateway refuse" chat
+  TC_SHEET=project-settings duo_shot sheet-project-settings home
+  TC_SHEET=rename duo_shot sheet-rename archived
+}
 duo_set() {
+  [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ] && [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the duo set needs TC_TEST_PAIR_LINK_OPERATE and TC_TEST_CONTROL_URL (bun scripts/ios-sim-proof-local.ts)" >&2; return 2; }
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
   local pose
-  for pose in folded unfolded unfolded-portrait folded-landscape; do
+  for pose in ${TC_DUO_POSES:-folded unfolded unfolded-portrait folded-landscape}; do
     fold "$pose"
     appearance light
     duo_shot home-light home
@@ -874,70 +911,76 @@ duo_set() {
     duo_shots_thread
     duo_shots_sheets
   done
-  fold half-open
-  duo_shot thread-light thread "" chat
-  duo_shots_thread
+  if [ "${TC_DUO_HALF_OPEN:-1}" = 1 ]; then
+    fold half-open
+    duo_shot thread-light thread "" chat
+    duo_shots_shell
+    duo_shots_thread
+  fi
   duo_fold_cycle
-  echo "ios-sim-proof: duo set PASS ($(find "$OUT/layout" -name '*.json' | wc -l | tr -d ' ') pose checks); shots in $OUT/shots/<pose>/, reports in $OUT/layout/<pose>/"
+  echo "ios-sim-proof: duo set PASS ($(find "$OUT/layout" -name '*.json' ! -name '*.pose.json' ! -name '*.transcript.json' | wc -l | tr -d ' ') pose checks); shots in $OUT/shots/<pose>/, reports in $OUT/layout/<pose>/"
 }
 
-# The fold cycle: one launch of the 2,000-row chat, folded and unfolded twice
-# with the app running, four shots, the unfold recorded, the layout events
-# asserted. The draft step (TC_TEST_ACTION=draft:<text>) is plan 2's: until
-# it lands the cycle runs with an empty composer and says so.
+# The fold cycle, run twice (the reader at the bottom, then 700 pt up): one
+# launch of the implementation thread "Add dark mode to the settings screen"
+# (its seeded approval undecided) on its chat with a draft typed, a turn
+# streaming into it from the test server (POST /stream), folded and unfolded
+# twice with the app running, four shots, the unfold recorded. Asserted: the
+# route kept; the draft (notes.draftChars) the typed length in all four
+# reports; one hSize flip, one window change and one sidebar change per step;
+# the streaming reveal's revealedUnits (UTF-16, sampled every 400 ms) never
+# decreasing, and growing at the bottom; the reader at the bottom after every
+# fold, or, started scrolled up, the same top row (transcript-report topRow,
+# reflowAnchor 2) at every stop; no row on screen made its state twice
+# (row-inits.json, RowInitLedger).
 duo_fold_cycle() {
+  local run
+  for run in ${TC_FOLD_RUNS:-bottom scrolled-up}; do duo_fold_run "$run"; done
+  echo "ios-sim-proof: the unfolds are recorded in $OUT/cycle-*-unfold.mov"
+}
+duo_fold_run() {
+  local run=$1 part="Add dark mode to the settings" container sampler recorder
+  local dir="$OUT/layout/cycle-$run"
+  rm -rf "$dir"; mkdir -p "$dir"
   appearance light
   fold ul
-  echo "ios-sim-proof: fold cycle (draft step: not yet, plan 2's draft: action)"
-  shot cycle-1-unfolded thread "2,000 rows" chat
-  local container
   container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
-  fold fp live; sleep 3; snap cycle-2-folded
-  xcrun simctl io "$TC_SIM_UDID" recordVideo --display=LCD-1 --codec h264 --force "$OUT/cycle-unfold.mov" >/dev/null 2>"$OUT/record.err" &
-  local recorder=$!
+  rm -f "$container"/Documents/pose-*.json "$container/Documents/transcript-report.json" "$container/Documents/layout-report.json" "$container/Documents/scroll-hold.json"
+  echo "ios-sim-proof: fold cycle ($run): draft ${#DUO_DRAFT} chars, a turn streaming, the approval undecided"
+  if [ "$run" = scrolled-up ]; then TC_SCROLL_UP_RUN=1; else TC_SCROLL_UP_RUN=""; fi
+  TC_SCROLL_UP_RUN=$TC_SCROLL_UP_RUN TC_SIDEBAR=hidden TC_ACTION="draft:$DUO_DRAFT" launch_app thread "$part" chat
+  wait_for "$container/Documents/transcript-report.json" 60 || echo "ios-sim-proof: fold cycle ($run): no landing report" >&2
+  # The scrolled-up run leaves the bottom 2 s after landing; the turn starts once the reader is where they will stay.
+  sleep 4
+  control /stream '{"sessionId":"ios-impl","cps":120,"seconds":90}' >/dev/null
+  ( while :; do
+      python3 -c 'import json,sys; n=json.load(open(sys.argv[1])).get("notes",{}); print(n.get("revealedUnits",""), n.get("draftChars",""))' "$container/Documents/layout-report.json" 2>/dev/null || true
+      sleep 0.4
+    done ) > "$dir/samples.txt" &
+  sampler=$!
+  sleep 6
+  # A stop that fails its check keeps the run's events and row counts for the reading.
+  cycle_snap() {
+    snap "$1" || { cp "$container/Documents/layout-events.json" "$dir/events.json" 2>/dev/null; cp "$container/Documents/row-inits.json" "$dir/row-inits.json" 2>/dev/null; kill "$sampler" 2>/dev/null; return 1; }
+  }
+  export SHOT_KIND=implementation SHOT_DRAFT=${#DUO_DRAFT}
+  SHOT_SIDEBAR=hidden cycle_snap "cycle-$run-1-unfolded"
+  fold fp live; sleep 3; cycle_snap "cycle-$run-2-folded"
+  xcrun simctl io "$TC_SIM_UDID" recordVideo --display=LCD-1 --codec h264 --force "$OUT/cycle-$run-unfold.mov" >/dev/null 2>"$OUT/record.err" &
+  recorder=$!
   sleep 1
-  fold ul live; sleep 3; snap cycle-3-unfolded
+  fold ul live; sleep 3; SHOT_SIDEBAR=hidden cycle_snap "cycle-$run-3-unfolded"
   kill -INT "$recorder" 2>/dev/null; wait "$recorder" 2>/dev/null || true
   rm -f "$OUT/record.err"
-  fold fp live; sleep 3; snap cycle-4-folded
-  cp "$container/Documents/layout-events.json" "$OUT/layout/cycle-events.json"
-  python3 - "$OUT/layout" <<'CHECK'
-import json, pathlib, sys
-out = pathlib.Path(sys.argv[1])
-A = json.loads((out / 'unfolded' / 'cycle-1-unfolded.json').read_text())
-B = json.loads((out / 'folded' / 'cycle-2-folded.json').read_text())
-C = json.loads((out / 'unfolded' / 'cycle-3-unfolded.json').read_text())
-D = json.loads((out / 'folded' / 'cycle-4-folded.json').read_text())
-events = json.loads((out / 'cycle-events.json').read_text())
-# The stack and the thread survived every change.
-routes = [r['route'] for r in (A, B, C, D)]
-assert all(r == routes[0] for r in routes), routes
-assert routes[0].get('thread') and routes[0].get('segment') == 'chat', routes[0]
-# A thread comes back at its bottom; a width change is a come-back.
-for name, r in (('B', B), ('C', C), ('D', D)):
-    assert r.get('transcriptAtBottom') == 1, (name, r.get('transcriptAtBottom'))
-# The draft survives (plan 2 writes notes.draftChars).
-drafts = {r.get('notes', {}).get('draftChars') for r in (A, B, C, D)}
-assert len(drafts) == 1, drafts
-# Each step is exactly one hSize flip and one window change; a second flip inside a step is the flicker.
-steps = [(A['t'], B['t'], 'regular', 'compact', '466x678'), (B['t'], C['t'], 'compact', 'regular', '951x669'), (C['t'], D['t'], 'regular', 'compact', '466x678')]
-for start, end, frm, to, window in steps:
-    inside = [e for e in events if start < e['t'] <= end]
-    flips = [e for e in inside if e['key'] == 'hSize']
-    assert len(flips) == 1 and flips[0]['from'] == frm and flips[0]['to'] == to, (start, end, flips)
-    windows = [e for e in inside if e['key'] == 'window']
-    assert len(windows) == 1 and windows[0]['to'] == window, (start, end, windows)
-# The sidebar (plan 1 writes notes.sidebar): never a frame without it.
-sidebar = [e for e in events if e['key'] == 'sidebar']
-if sidebar:
-    for start, end, frm, to in ((A['t'], B['t'], 'visible', 'hidden'), (B['t'], C['t'], 'hidden', 'visible'), (C['t'], D['t'], 'visible', 'hidden')):
-        inside = [e for e in sidebar if start < e['t'] <= end]
-        assert len(inside) == 1 and inside[0]['from'] == frm and inside[0]['to'] == to, (start, end, inside)
-    print('ios-sim-proof: fold cycle PASS (route kept, at bottom after every fold, one flip per step, sidebar once per step)')
-else:
-    print('ios-sim-proof: fold cycle PASS (route kept, at bottom after every fold, one flip per step; sidebar: not reported)')
-CHECK
-  echo "ios-sim-proof: the unfold is recorded in $OUT/cycle-unfold.mov"
+  fold fp live; sleep 3; cycle_snap "cycle-$run-4-folded"
+  unset SHOT_KIND SHOT_DRAFT
+  sleep 1
+  kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null || true
+  cp "$container/Documents/layout-events.json" "$dir/events.json"
+  cp "$container/Documents/row-inits.json" "$dir/row-inits.json" 2>/dev/null || echo '{}' > "$dir/row-inits.json"
+  control /finish '{"sessionId":"ios-impl"}' >/dev/null
+  sleep 1
+  python3 "$here/lib/duo_fold_check.py" "$OUT/layout" "$run" "${#DUO_DRAFT}"
 }
 
 # The transcript proof (slice A3 of "The phone reads like the desktop"): the
