@@ -134,7 +134,9 @@ grows its mark in from a quarter on the layout spring's curve; one that
 leaves goes at once, and the control never remounts. The
 tooltip and the accessible name are one line, "Agents: 1 needs you, 2
 working on Claude Code and Codex". A click opens the right panel on Agents and the chip takes the
-panel toggle's pressed fill; a second click closes the panel. With no room
+panel toggle's pressed fill, which it wears whenever the open panel shows
+Agents, by name or as its default (the panel reports the section it draws,
+`useShownSection` in lib/rightPanel.ts); a click then closes the panel. With no room
 for the panel it is disabled like the toggle, its tooltip "No room for the
 panel". It shows in every view (chat, board, plan, research,
 orchestration) with the panel open or closed, never on a subagent's tab,

@@ -1746,7 +1746,9 @@ names the far child).
   in amber while one waits; its line "Agents: 1 needs you, 2 working on
   Claude Code and Codex"; working is the still dot while the thread's own
   turn runs; a new count morphs (`MorphText`); a click opens
-  or closes the right panel on Agents (`useAgentsCue` in
+  or closes the right panel on Agents, pressed whenever the open panel
+  draws Agents, by name or as its default (RightPanel reports the section
+  it draws, `useShownSection` in lib/rightPanel.ts; `useAgentsCue` in
   lib/threads/agents.ts, woken only for a change in that thread's tree).
   The Agents rows end with a model line: logo, model, effort and context
   window (`ModelLine`, surfaces/threads/ModelMark.tsx).

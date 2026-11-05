@@ -133,6 +133,8 @@ let focusedId: string | null = null;
 const visibleIds = new Set<string>();
 /** Threads whose row is too narrow for the panel right now (never persisted). */
 const noRoom = new Set<string>();
+/** The section each drawn panel shows (RightPanel's `shownSection`), never persisted. */
+const shown = new Map<string, Section>();
 
 function save(): void {
   const ids = Object.keys(data.threads);
@@ -207,6 +209,13 @@ export const rightPanel = {
   hasRoom(id: string): boolean {
     return !noRoom.has(id);
   },
+  /** RightPanel's report of the section it draws (null once it stops drawing one). */
+  setShown(id: string, section: Section | null): void {
+    if ((shown.get(id) ?? null) === section) return;
+    if (section) shown.set(id, section);
+    else shown.delete(id);
+    emit();
+  },
   setWidth(id: string, width: number): void {
     write(id, { width });
   },
@@ -244,6 +253,7 @@ export const rightPanel = {
     focusedId = null;
     visibleIds.clear();
     noRoom.clear();
+    shown.clear();
     try {
       localStorage.removeItem(KEY);
     } catch {
@@ -266,6 +276,15 @@ export function usePanelRoom(id: string): boolean {
     subscribe,
     () => !noRoom.has(id),
     () => !noRoom.has(id),
+  );
+}
+
+/** The section the thread's open panel shows, however it got there (asked by name or the default); null while no panel is drawn. */
+export function useShownSection(id: string): Section | null {
+  return useSyncExternalStore(
+    subscribe,
+    () => shown.get(id) ?? null,
+    () => shown.get(id) ?? null,
   );
 }
 

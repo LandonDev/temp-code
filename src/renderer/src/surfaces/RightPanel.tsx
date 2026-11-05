@@ -1,4 +1,4 @@
-import { lazy, Suspense, useContext, useMemo } from "react";
+import { lazy, Suspense, useContext, useEffect, useMemo } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { cn } from "@renderer/lib/cn";
 import { Spinner } from "@renderer/components/ui/spinner";
@@ -152,6 +152,10 @@ export function RightPanel(props: RightPanelProps) {
   const facts = usePanelFacts(session, state);
   const available = useMemo(() => sectionsFor(facts.facts), [facts.facts]);
   const section = shownSection(state.section, available);
+  // The title bar's agents cue reads what is drawn, not what was asked for.
+  const drawn = state.open && props.motion !== "leave" ? section : null;
+  useEffect(() => rightPanel.setShown(session.id, drawn), [session.id, drawn]);
+  useEffect(() => () => rightPanel.setShown(session.id, null), [session.id]);
 
   const resize = useDragResize({
     edge: "left",

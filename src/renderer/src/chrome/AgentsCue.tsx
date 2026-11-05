@@ -2,7 +2,7 @@ import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { StatusMark } from "../components/ui/status";
 import { MorphText } from "../motion/MorphText";
-import { NO_ROOM_LABEL, rightPanel, useRightPanel } from "../lib/rightPanel";
+import { NO_ROOM_LABEL, rightPanel, useRightPanel, useShownSection } from "../lib/rightPanel";
 import { useAgentsCue, type AgentsCue as Cue } from "../lib/threads/agents";
 import { ROW_CONTROL } from "./composerRow";
 import { HarnessIcon } from "./HarnessIcon";
@@ -84,8 +84,10 @@ const MARK = "transition-[opacity,scale] duration-(--dur-layout) ease-(--ease-la
 export function AgentsCue({ threadId, room }: { threadId: string | null; room?: boolean }) {
   const cue = useAgentsCue(threadId);
   const panel = useRightPanel(threadId ?? "");
+  const shown = useShownSection(threadId ?? "");
   if (!cue || !threadId) return null;
-  const pressed = panel.open && panel.section === "agents";
+  // The section the open panel draws, by name or by default; what was asked for until it reports.
+  const pressed = panel.open && (shown ?? panel.section) === "agents";
   return (
     <AgentsCueView
       cue={cue}

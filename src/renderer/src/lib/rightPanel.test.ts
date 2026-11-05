@@ -132,6 +132,21 @@ describe("the store", () => {
     expect(saved.threads.t1).toEqual({ open: false, section: null, width: 400 });
   });
 
+  it("keeps the section a drawn panel reports, telling listeners only of a change; reset forgets it", () => {
+    let n = 0;
+    const off = rightPanel.subscribe(() => (n += 1));
+    rightPanel.setShown("t1", "agents");
+    rightPanel.setShown("t1", "agents");
+    expect(n).toBe(1);
+    rightPanel.setShown("t1", null);
+    expect(n).toBe(2);
+    rightPanel.setShown("t1", "notes");
+    off();
+    rightPanel.reset();
+    rightPanel.setShown("t1", null);
+    expect(n).toBe(3);
+  });
+
   it("a write with nothing new emits nothing", () => {
     let n = 0;
     rightPanel.open("t1", "notes");

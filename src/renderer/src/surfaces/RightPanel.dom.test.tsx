@@ -36,7 +36,7 @@ vi.mock("../chrome/FileTree", () => ({
   ),
 }));
 
-import { rightPanel } from "../lib/rightPanel";
+import { rightPanel, useShownSection } from "../lib/rightPanel";
 import type { Session } from "../lib/session";
 import { RightPanel } from "./RightPanel";
 import { SessionActionsContext, type SessionActions } from "./threadChat";
@@ -118,6 +118,32 @@ describe("RightPanel", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
     expect(screen.getByTestId("notes-body")).toBeTruthy();
     expect(rightPanel.get("s1").section).toBe("notes");
+  });
+
+  it("reports the section it draws, default or by name, and none once it closes or leaves the screen", () => {
+    state.agents = [agent("a1", "running")];
+    rightPanel.open("s1");
+    const { unmount, rerender } = render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    let shown: string | null = null;
+    const read = () => {
+      const probe = render(<Probe />);
+      probe.unmount();
+      return shown;
+    };
+    function Probe() {
+      shown = useShownSection("s1");
+      return null;
+    }
+    expect(rightPanel.get("s1").section).toBeNull();
+    expect(read()).toBe("agents");
+    fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
+    expect(read()).toBe("notes");
+    rerender(<RightPanel session={session} motion="leave" onOpenFile={noop} onOpenDiff={noop} />);
+    expect(read()).toBeNull();
+    rerender(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(read()).toBe("notes");
+    unmount();
+    expect(read()).toBeNull();
   });
 
   it("subagents beside a background task still open on Agents; Activity sits second", () => {

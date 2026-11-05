@@ -178,6 +178,39 @@ describe("AgentsCue", () => {
     expect(rightPanel.get("root").open).toBe(false);
   });
 
+  it("reads pressed when the open panel shows Agents by default, and a click then closes it", async () => {
+    // Opened by the panel toggle: no section asked for; the panel draws its default and says so.
+    act(() => {
+      rightPanel.open("root");
+      rightPanel.setShown("root", "agents");
+    });
+    render(<AgentsCue threadId="root" />);
+    await flush();
+    expect(rightPanel.get("root").section).toBeNull();
+    expect(button()!.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(button()!);
+    expect(rightPanel.get("root").open).toBe(false);
+    expect(button()!.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("reads what the panel draws over what was asked: Agents by name, and not pressed while it draws another", async () => {
+    act(() => {
+      rightPanel.open("root", "agents");
+      rightPanel.setShown("root", "agents");
+    });
+    render(<AgentsCue threadId="root" />);
+    await flush();
+    expect(button()!.getAttribute("aria-pressed")).toBe("true");
+    // A remembered section the panel can't draw falls back to Agents: still pressed.
+    act(() => {
+      rightPanel.set("root", { section: "files" });
+      rightPanel.setShown("root", "agents");
+    });
+    expect(button()!.getAttribute("aria-pressed")).toBe("true");
+    act(() => rightPanel.setShown("root", "notes"));
+    expect(button()!.getAttribute("aria-pressed")).toBe("false");
+  });
+
   it("leaves at once when the last agent settles", async () => {
     render(<AgentsCue threadId="root" />);
     await flush();
