@@ -101,8 +101,41 @@ function typing(): boolean {
   return !!active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || (active as HTMLElement).isContentEditable);
 }
 
+/** A pointer pressed: a swap now would replace the trigger under its click
+ *  (the mousedown on the old node, the click on nothing). The mark clears a
+ *  macrotask after the release, once the click has dispatched. */
+let pressed = false;
+let presses = 0;
+let heldWake = false;
+if (typeof document !== "undefined") {
+  document.addEventListener(
+    "pointerdown",
+    () => {
+      pressed = true;
+      presses++;
+    },
+    true,
+  );
+  const release = () => {
+    const at = presses;
+    setTimeout(() => {
+      if (at !== presses) return;
+      pressed = false;
+      if (!heldWake) return;
+      heldWake = false;
+      wake();
+    }, 0);
+  };
+  document.addEventListener("pointerup", release, true);
+  document.addEventListener("pointercancel", release, true);
+}
+
 function wake(): void {
   if (published) return;
+  if (pressed) {
+    heldWake = true;
+    return;
+  }
   if (typing()) {
     document.addEventListener("focusout", () => queueMicrotask(wake), { once: true });
     return;
@@ -118,13 +151,30 @@ export function warmMenus(): void {
   else menuChunk.load().then(wake, () => {});
 }
 
-/** Test seam: forget the published body. */
+/** Test seam: forget the published body and any press. */
 export function resetMenus(): void {
   published = null;
+  pressed = false;
+  heldWake = false;
 }
 
 function useBody(): typeof Body | null {
   return useSyncExternalStore(subscribe, read, read);
+}
+
+/** The published body, for components/ui/lazy-menus.tsx: null until a menu
+ *  woke it, the same moment for every menu on screen. */
+export const useMenuBody = useBody;
+
+/** Loads the body if needed and swaps every cold menu now (a click on a cold
+ *  trigger), then runs `then` with the body published. */
+export function openMenus(then?: () => void): void {
+  const run = () => {
+    wakeNow();
+    then?.();
+  };
+  if (menuChunk.loaded()) run();
+  else menuChunk.load().then(run, () => {});
 }
 
 type Handlers = Record<string, ((event: SyntheticEvent) => void) | undefined>;

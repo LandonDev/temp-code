@@ -1,6 +1,6 @@
 import { registry } from "../lib/connection";
 import { Button } from "../components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/lazy-menus";
 import { Progress } from "../components/ui/progress";
 import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY } from "../components/ui/tooltip";
 import { HarnessIcon } from "./HarnessIcon";

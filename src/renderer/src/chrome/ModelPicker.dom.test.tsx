@@ -12,11 +12,18 @@ import { agentModelsFor } from "../lib/tcserver/catalog";
 import type { ModelInfo, ProviderInfo } from "../lib/tcserver/types";
 import { ModelPicker } from "./ModelPicker";
 import type { HarnessId } from "../lib/session";
-import { selectChunk } from "../surfaces/chunks";
+import { menuChunk, selectChunk } from "../surfaces/chunks";
 import { accountsStore } from "../stores/accounts";
 import { emptyAccounts, type AccountsSnapshot } from "@server/shared/accounts";
 import type { Link } from "../lib/connection/types";
 import type { ServerPush } from "@server/shared/contract";
+import { warmMenus } from "./menuRows";
+
+// The menus here are drawn by their parts (components/ui/lazy-menus.tsx): warm their body first.
+beforeAll(async () => {
+  await menuChunk.load();
+  warmMenus();
+});
 
 vi.mock("../lib/harness/availability", () => ({
   harnessUnavailableHint: () => "Not installed",

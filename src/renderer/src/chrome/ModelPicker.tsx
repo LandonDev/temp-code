@@ -12,7 +12,7 @@ import {
 import { Button } from "../components/ui/button";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { Kbd } from "../components/ui/kbd";
-import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/lazy-menus";
 import { Separator } from "../components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";

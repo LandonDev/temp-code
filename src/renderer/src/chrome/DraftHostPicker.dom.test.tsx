@@ -6,7 +6,7 @@
  * on pick, and one with no checkout is disabled with the host's note
  * under its name.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 
@@ -45,6 +45,14 @@ vi.mock("../lib/projectHostChoice", async (importOriginal) => ({
 
 import { DraftHostPicker } from "./DraftHostPicker";
 import { loadLinkHosts } from "../lib/projectHostChoice";
+import { menuChunk } from "../surfaces/chunks";
+import { warmMenus } from "./menuRows";
+
+// The menus here are drawn by their parts (components/ui/lazy-menus.tsx): warm their body first.
+beforeAll(async () => {
+  await menuChunk.load();
+  warmMenus();
+});
 
 const ws = (over: Partial<WorkspaceMeta>): WorkspaceMeta =>
   ({ id: "w", environmentId: "local", name: "temp-code", path: "/Users/me/temp-code", git: true, linkId: "wl_a", createdAt: 1, ...over }) as WorkspaceMeta;

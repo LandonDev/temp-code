@@ -1,7 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { STATUS_WORD, StatusMark } from "../components/ui/status";
 import { Button } from "../components/ui/button";
-import { Popover, PopoverTrigger } from "../components/ui/popover";
+import { Popover, PopoverTrigger } from "../components/ui/lazy-menus";
 import { cn } from "../lib/cn";
 import { aliasKeys } from "../lib/linkedRail";
 import { loadLastSeen, seenFloor, subscribeLastSeen, type SeenMap } from "../lib/sessionSeen";

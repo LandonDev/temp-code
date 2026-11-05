@@ -35,6 +35,8 @@ import { entryChunk, loadBundleMap, staticClosure } from './bundle-map'
 // menuChunk, every select selectChunk (components/lazy-select.tsx), sonner the
 // toaster's, the right panel its own. Measured 5,643.9 kB with everything in the entry.
 // 2026-11-02: UI-13 took the entry to 5,140.8 kB; the select leaving it brought it to 5,062.2 kB.
+// 2026-11-05: the menus and popovers drawn by their parts (components/ui/lazy-menus.tsx) took
+// Base UI's menu and popover out of it: 5,135.3 kB to 4,891.7 kB.
 export const BUDGET_BYTES = 5 * 1024 * 1024 + 16 * 1024
 
 /** Module ids (suffixes, matched against the end of the id) that must never
@@ -74,8 +76,13 @@ export const NEVER_IN_ENTRY = [
   'src/renderer/src/chrome/CommandPopover.tsx',
   // A review's notice rides reviewChunk (transcript/NoticeRow.tsx), warmed with the first thread's.
   'src/renderer/src/surfaces/ReviewCard.tsx',
-  // Every menu, context menu and popover body rides menuChunk (chrome/menuRows.tsx).
+  // Every menu, context menu and popover body rides menuChunk (chrome/menuRows.tsx); the
+  // first paint draws a menu by its parts through components/ui/lazy-menus.tsx.
   'src/renderer/src/chrome/menuBody.tsx',
+  'node_modules/@base-ui/react/menu/root/MenuRoot.mjs',
+  'node_modules/@base-ui/react/popover/root/PopoverRoot.mjs',
+  'src/renderer/src/components/ui/dropdown-menu.tsx',
+  'src/renderer/src/components/ui/popover.tsx',
   'src/renderer/src/chrome/CustomizeGroupDialog.tsx',
   // The action-opened dialogs ride dialogsChunk (chrome/dialogs.ts), the changelog parser releaseNotesChunk.
   'src/renderer/src/chrome/ProjectDialogs.tsx',

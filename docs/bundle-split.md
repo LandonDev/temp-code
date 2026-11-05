@@ -48,6 +48,7 @@ on intent so the skeleton is rarely seen.
 | select | Base UI's select and every picker on it (`components/select-body.ts`): `ChoiceSelect` for the dialogs and settings, and the composer's permission mode (`AccessPickerSelect`), thread type (`ThreadTypeSelect`) and the model menu's setting rows (`SettingSelect`, chrome/composerSelects.tsx) | choice-select.tsx; AccessPicker.tsx, ThreadTypeChip.tsx and ModelSettings.tsx through `components/lazy-select.tsx` | the pointer entering a cold picker; the first thread on screen, after idle |
 | review | a review's notice (`ReviewCard`): its line, or the held review's card | transcript/NoticeRow.tsx, with a 28px skeleton line in the notice's shape | the first thread on screen, after idle |
 | awayReturn | the return from Away (`chrome/AwayReturn.tsx`): the listener on every host's `away` push, its toast and the Review list's mount | App.tsx, at boot with nothing to draw until it loads | its own mount, after the first paint |
+| menus | Base UI's menu, context menu and popover with their floating stack (`chrome/menuBody.tsx`): the `MenuRow` renderer behind `RowsMenu`, `RowsContextMenu` and `LazyPopover` (chrome/menuRows.tsx), and the primitives behind `components/ui/lazy-menus.tsx` (`DropdownParts`, `PopoverParts`) | menuRows.tsx; lazy-menus.tsx: the composer's add menu, model picker and host picker, the queue's model, the rail's Hosts row, usage meters and workspace marks, the strip's New thread and the plan chip | the pointer entering any menu trigger; a click on a cold one loads it and opens |
 | virtual | `@tanstack/react-virtual` and the rail's virtual rows (`chrome/railVirtualRows.tsx`); until it lands the rail lists its cards plainly (`chrome/railRows.tsx`) | WorkspaceSessions.tsx | an idle slot, or at once past 200 rows |
 | messageList | the transcript's message list rows (`surfaces/TranscriptOutlineList.tsx`, `chrome/JumpList.tsx`); the first paint draws the chevron alone, and a list folded from launch loads nothing | TranscriptOutline.tsx | the first thread's idle slot, or the chevron's hover |
 
@@ -83,6 +84,27 @@ slot after the first thread opens loads it) is the real one at once. That
 took Base UI's select (63.5 kB) and `ui/select.tsx` (11.2 kB) out of the
 entry, 78.6 kB with the pickers' bodies.
 
+The first paint still drew ten menus and popovers by their parts (the
+composer's add menu, model picker and host picker, the queue's model, the
+rail's Hosts row, usage meters and workspace marks, the strip's New thread,
+the plan chip), and their imports of `ui/dropdown-menu.tsx` and
+`ui/popover.tsx` kept Base UI's menu, popover and most of floating-ui in the
+entry. They import the same parts from `components/ui/lazy-menus.tsx` now,
+which renders the real ones from `menuChunk`'s published body (chrome/menuRows.tsx
+`useMenuBody`, the same moment as every `RowsMenu`). Until it lands a root
+is its children, a trigger is the element the real one renders (Base UI's
+`useRender` and `mergeProps`, the same classes, slot and ARIA, closed), and
+every other part is nothing. The pointer entering a trigger swaps every menu
+on screen, never while a field is typed in or a pointer is pressed (the
+swap waits for the release, as the tooltip's does); a click on a cold
+trigger loads the body, publishes it, then opens, so an `open && <Content />`
+the caller draws mounts under the real root; a root given `open` loads it at
+once. That took the entry from 5,135.3 kB to 4,891.7 kB (243.6 kB): Base UI's
+menu (77 kB of source), popover (20 kB), `floating-ui-react` from 154 to 81 kB
+(the dialog keeps the rest) and `@floating-ui/dom` and `core`. The cold and
+warm composer, usage meter and title bar strip render the same pixels as
+before in both themes.
+
 Shared code between lazy chunks (the fleet rows, the markdown stack where it
 is not already in the main chunk) is hoisted by Rollup into chunks of its own
 and fetched once.
@@ -98,7 +120,8 @@ lazy chunks and the top contributors. `bun run check:bundle`
 passes 5 MiB + 16 KiB, 5,136.0 kB (measured 5,000.1 kB after A26's sweep, from
 5,287.9 kB over budget before it; UI-13's build took it to 5,140.8 kB, and
 the select leaving the first paint brought it to 5,062.2 kB; the Away row
-and master's growth took it to 5,136.9 kB until the return from Away took a chunk of its own, 5,134.4 kB; the budget leaves room for the
+and master's growth took it to 5,136.9 kB until the return from Away took a chunk of its own, 5,134.4 kB, and Base UI's menu
+and popover leaving it brought it from 5,135.3 kB to 4,891.7 kB; the budget leaves room for the
 surfaces that belong in the first paint, not a chunk's worth: xterm alone is
 0.3 MiB, CodeMirror 0.8, recharts 0.9) or when any module of
 `NEVER_IN_ENTRY` (the packages and surfaces above) is in that closure — a

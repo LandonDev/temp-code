@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { PopoverContent } from "../components/ui/popover";
+import { PopoverContent } from "../components/ui/lazy-menus";
 import type { ThreadState } from "../components/ui/status";
 import { ThreadRowView } from "./WorkspaceSessions";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";

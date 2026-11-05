@@ -32,6 +32,11 @@ import { Kbd } from "../components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import type { LazyPopoverProps, MenuAt, MenuRow, MenuRowsKind, RowsContextMenuProps, RowsMenuProps } from "./menuRows";
 
+/** The primitives behind components/ui/lazy-menus.tsx, the menus and
+ *  popovers the first paint draws by their parts. */
+export * as DropdownParts from "../components/ui/dropdown-menu";
+export * as PopoverParts from "../components/ui/popover";
+
 /**
  * The menus' body, in its own chunk (`menuChunk`): the Base UI menu, context
  * menu and popover with the one renderer for `MenuRow`s. Nothing outside

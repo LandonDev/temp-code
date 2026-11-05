@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ProjectPlanState } from "@server/shared/contract-projectplan";
 import { Button } from "../components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/lazy-menus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { usePlanFile } from "../hooks/usePlanFile";
 import { useProjectPlan } from "../lib/projectPlan";

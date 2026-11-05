@@ -1,6 +1,6 @@
 import type { HTMLAttributes, MouseEvent, ReactNode, Ref } from "react";
 import { Button } from "../components/ui/button";
-import { DropdownMenuTrigger } from "../components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "../components/ui/lazy-menus";
 import { useTruncated } from "../components/tip";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";

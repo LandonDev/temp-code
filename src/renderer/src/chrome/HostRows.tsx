@@ -26,7 +26,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
-} from "../components/ui/dropdown-menu";
+} from "../components/ui/lazy-menus";
 import { Spinner } from "../components/ui/spinner";
 import { DeployDriftMark } from "./DeployDrift";
 import { HostGlyph } from "./HostGlyph";

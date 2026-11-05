@@ -10,7 +10,7 @@ import { HarnessIcon } from './HarnessIcon'
 import { Button } from '../components/ui/button'
 import { Textarea } from '../components/ui/textarea'
 import { ChoiceSelect } from '../components/choice-select'
-import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/lazy-menus'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { ArrowUp, GripVertical, SlidersHorizontal, X } from './icons'
 

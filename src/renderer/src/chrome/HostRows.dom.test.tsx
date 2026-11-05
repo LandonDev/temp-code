@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registry, type Environment, type EnvironmentStatus, type Link } from "../lib/connection";
 import { noteBootResume, resetBootResume } from "../lib/bootResume";
 import { sessionStore } from "../lib/tcserver/store";
@@ -9,6 +9,14 @@ import { resetThreadBatchForTests, useBatchPending } from "../lib/threadBatch";
 import { shell } from "../stores/shell";
 import { subscribeEnvironmentSwitch } from "../lib/environmentSwitch";
 import { HostsRow, useBootResumeToasts, toneOf } from "./HostRows";
+import { menuChunk } from "../surfaces/chunks";
+import { warmMenus } from "./menuRows";
+
+// The menus here are drawn by their parts (components/ui/lazy-menus.tsx): warm their body first.
+beforeAll(async () => {
+  await menuChunk.load();
+  warmMenus();
+});
 
 const toastMock = vi.hoisted(() => vi.fn());
 vi.mock("sonner", () => ({ toast: toastMock }));

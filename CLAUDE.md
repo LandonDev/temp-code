@@ -380,9 +380,9 @@ app replaces itself from the feed, and only from the feed.
   checks literal renderer colours against the token layer and counted
   palette exceptions; the counts only shrink.
 - The renderer is split (docs/bundle-split.md): the index chunk carries
-  only the first paint (rail, transcript, composer, thread header; 5,134.4
-  kB on 2026-11-05, once the Away row came in and the return from Away
-  left for its own chunk, under the 5,136.0 kB budget)
+  only the first paint (rail, transcript, composer, thread header; 4,891.7
+  kB on 2026-11-05, once Base UI's menu and popover left it, under the
+  5,136.0 kB budget)
   and every other surface is a
   lazy chunk behind
   `defineChunk` (src/renderer/src/lib/lazyChunk.tsx), listed in
@@ -425,8 +425,11 @@ app replaces itself from the feed, and only from the feed.
   build` and the release gate) fails when the index chunk's static closure
   passes 5 MiB + 16 KiB or holds one of the lazy modules (the Base UI primitives
   stay out of the entry: the tooltip defers its primitive, the menus and
-  popovers ride menuChunk, the branch picker's list with them
-  (chrome/BranchRows.tsx), every select rides selectChunk: the composer's
+  popovers ride menuChunk (a first-paint surface that draws a menu or a
+  popover by its parts imports them from components/ui/lazy-menus.tsx: a cold
+  trigger of the same element until the chunk lands, no content), the branch
+  picker's list with them (chrome/BranchRows.tsx), every select rides
+  selectChunk: the composer's
   permission, thread type and model setting pickers draw a cold trigger of
   the same classes until it lands, components/lazy-select.tsx; only the dialog is in the first paint). It also fails when a chunk renders a string tag that is no HTML, SVG or custom element: the React Compiler inlines a lowercase component alias into the JSX tag (`jsx("current")`, an empty element), which only the built bundle shows.
   `/ui` serves the chunks

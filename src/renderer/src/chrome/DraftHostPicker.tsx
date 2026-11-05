@@ -6,7 +6,7 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu";
+} from "../components/ui/lazy-menus";
 import { Spinner } from "../components/ui/spinner";
 import { ChevronDown } from "./icons";
 import { HostGlyph } from "./HostGlyph";

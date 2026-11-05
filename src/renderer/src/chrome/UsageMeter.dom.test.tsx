@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import type { ProfileView, UsageReport } from 'aliax-core/shared/types'
 import { emptyAccounts, type AccountsSnapshot } from '@server/shared/accounts'
@@ -10,6 +10,14 @@ import { sessionStore } from '../lib/tcserver/store'
 import { workspaceStore } from '../lib/tcserver/workspaces'
 import { mountProbe } from '../test/renderProbe'
 import { UsageMeter } from './UsageMeter'
+import { menuChunk } from '../surfaces/chunks'
+import { warmMenus } from './menuRows'
+
+// The menus here are drawn by their parts (components/ui/lazy-menus.tsx): warm their body first.
+beforeAll(async () => {
+  await menuChunk.load()
+  warmMenus()
+})
 
 const HOUR = 3_600_000
 const now = Date.now()

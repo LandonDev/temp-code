@@ -5,7 +5,7 @@
  * account or goal control for anyone); the box's `+` menu with its three
  * rows; the send button speaking the intent Enter would carry out.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 
@@ -25,6 +25,14 @@ vi.mock("../lib/contextCache", () => ({ useContextReading: () => null }));
 import { AddMenu, ComposerBar, SendButton, useDraftRow } from "./ComposerBar";
 import { ContextMeter } from "./ContextMeter";
 import type { HarnessId } from "../lib/session";
+import { menuChunk } from "../surfaces/chunks";
+import { warmMenus } from "./menuRows";
+
+// The menus here are drawn by their parts (components/ui/lazy-menus.tsx): warm their body first.
+beforeAll(async () => {
+  await menuChunk.load();
+  warmMenus();
+});
 
 function bar(harness: HarnessId, context?: ReactNode) {
   return render(

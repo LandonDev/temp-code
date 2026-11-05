@@ -6,7 +6,7 @@ import type { ThreadType } from "../lib/tcserver/types";
 import { ChevronLeft, Plus, SlidersHorizontal } from "./icons";
 import { Button } from "../components/ui/button";
 import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
-import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/lazy-menus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
 import { ThreadTune, normalizeTune } from "./ThreadTune";
