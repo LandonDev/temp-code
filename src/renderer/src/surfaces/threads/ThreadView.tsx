@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { DUR } from "../../lib/ease";
-import type { PanelMotion } from "../RightPanel";
+import type { PanelMotion, RightPanelProps } from "../RightPanel";
 import type { OpenFileFn } from "../../lib/search";
 import type { Session } from "../../lib/session";
 import type { ChatSource } from "./chatSlots";
@@ -19,8 +19,9 @@ const PlanView = threadViewsChunk.surface("PlanView", skeleton);
 const ResearchView = threadViewsChunk.surface("ResearchView", skeleton);
 // The panel rides its own chunk and mounts only while open, so a closed panel costs nothing.
 const RightPanel = rightPanelChunk.surface("RightPanel", <SurfaceSkeleton kind="pane" label="Loading panel" />);
-import { panelFit, rightPanel, THREAD_MIN, useRightPanel } from "../../lib/rightPanel";
+import { panelFit, rightPanel, THREAD_MIN, useRightPanel, useShownThread } from "../../lib/rightPanel";
 import { rightPanelChunk } from "../chunks";
+import { useSessionById } from "../../lib/threads/agents";
 
 export type { ChatOpts } from "./chatSlots";
 
@@ -33,6 +34,9 @@ export type ThreadViewProps = ChatSource & {
   onOpenDiff: (path?: string) => void;
   onShowSourceControl?: () => void;
   onOpenSession?: (sessionId: string) => void;
+  /** The view alone: a thread shown inside another pane (a master's open
+   *  child), whose pane's panel follows it (`rightPanel.showThread`). */
+  bare?: boolean;
 };
 
 /** The switch on a session's thread type; null and chat fall through to
@@ -44,7 +48,9 @@ export type ThreadViewProps = ChatSource & {
  *  open state stays, so it returns when the row widens). A toggle in place
  *  moves it (`usePaneMotion`): the thread takes its new width at once and
  *  the pane slides in from the row's edge, or slides back out over the
- *  thread; a pane that mounts open (a tab switch, a launch) is just there. */
+ *  thread; a pane that mounts open (a tab switch, a launch) is just there.
+ *  The panel draws the thread the pane SHOWS (`PaneRightPanel`): a master's
+ *  open child or subagent, else the tab's; that thread's view is `bare`. */
 export function ThreadView(props: ThreadViewProps) {
   const { session } = props;
   const master = isMasterThread(session);
@@ -53,7 +59,7 @@ export function ThreadView(props: ThreadViewProps) {
   const rowWidth = useRowWidth(row);
   // Measured on the row, never the thread column, so the panel's width cannot feed its own measure.
   const fit = rowWidth === null ? panel.width : panelFit(rowWidth, panel.width);
-  const root = !session.parentId;
+  const root = !session.parentId && !props.bare;
   useEffect(() => {
     if (!root) return;
     rightPanel.setRoom(session.id, fit !== null);
@@ -67,8 +73,8 @@ export function ThreadView(props: ThreadViewProps) {
     <div ref={setRow} className="relative flex min-h-0 min-w-0 flex-1 overflow-x-clip">
       {view}
       {pane.drawn ? (
-        <RightPanel
-          session={session}
+        <PaneRightPanel
+          pane={session}
           width={pane.width ?? undefined}
           maxWidth={rowWidth === null ? undefined : rowWidth - THREAD_MIN}
           motion={pane.motion}
@@ -80,6 +86,27 @@ export function ThreadView(props: ThreadViewProps) {
       ) : null}
     </div>
   );
+}
+
+/**
+ * The pane's panel on the thread the pane shows: the tab's session, or the
+ * child a master's board opened (`useShownThread`), read from the store on
+ * the child's own host. Until that thread's session is in the store, or
+ * while the store's thread of that id is another host's, the panel's place
+ * holds its skeleton rather than draw the wrong thread.
+ */
+function PaneRightPanel({ pane, ...props }: Omit<RightPanelProps, "session" | "paneId"> & { pane: Session }) {
+  const shown = useShownThread(pane.id);
+  const child = useSessionById(shown?.id ?? null);
+  if (!shown) return <RightPanel session={pane} paneId={pane.id} {...props} />;
+  if (!child || child.environmentId !== shown.environmentId) {
+    return (
+      <aside aria-label="Thread panel" className="flex shrink-0 flex-col border-l border-border bg-sidebar" style={{ width: props.width ?? rightPanel.get(pane.id).width }}>
+        <SurfaceSkeleton kind="pane" label="Loading panel" />
+      </aside>
+    );
+  }
+  return <RightPanel session={child} paneId={pane.id} {...props} />;
 }
 
 /**

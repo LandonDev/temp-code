@@ -1,6 +1,6 @@
 import { Fragment, useMemo, type ReactNode } from "react";
 import { AnimatePresence } from "motion/react";
-import { Empty, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import type { OpenFileFn } from "../../../lib/search";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { agentSections, type AgentSection } from "../../../lib/threads/agents";
@@ -39,6 +39,8 @@ const storeRow = (row: SectionRow) => (
  * column 12px from the panel's edge, as the Activity section's. Nothing
  * here moves (docs/DESIGN.md: list rows animate nothing). `row` draws one
  * row; by default from the store (`AgentRow`), a fixture passes its own.
+ * `emptyLine` is the empty state's second line (a master's: its batch
+ * threads are on the board, never here).
  */
 export function FleetSectionsView({
   sections,
@@ -46,8 +48,10 @@ export function FleetSectionsView({
   onOpen,
   onOpenSession,
   row = storeRow,
+  emptyLine,
 }: {
   sections: readonly AgentSection[];
+  emptyLine?: string;
   selectedId?: string | null;
   onOpen: (id: string) => void;
   onOpenSession?: (sessionId: string) => void;
@@ -58,6 +62,7 @@ export function FleetSectionsView({
       <Empty className="p-6">
         <EmptyHeader>
           <EmptyTitle>No subagents</EmptyTitle>
+          {emptyLine ? <EmptyDescription>{emptyLine}</EmptyDescription> : null}
         </EmptyHeader>
       </Empty>
     );
@@ -99,9 +104,12 @@ export function FleetList({
   onOpenSession,
   onOpenFile,
   onOpenDiff,
+  emptyLine,
 }: {
   sessionId: string;
   parentCwd: string;
+  /** The empty state's second line (FleetSectionsView). */
+  emptyLine?: string;
   onOpenSession?: (sessionId: string) => void;
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path?: string) => void;
@@ -113,7 +121,7 @@ export function FleetList({
   return (
     <>
       {sections.length === 0 ? (
-        <FleetSectionsView sections={sections} onOpen={fleet.setDetailId} />
+        <FleetSectionsView sections={sections} onOpen={fleet.setDetailId} emptyLine={emptyLine} />
       ) : (
         <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
           <FleetSectionsView sections={sections} selectedId={detailId} onOpen={fleet.setDetailId} onOpenSession={onOpenSession} />

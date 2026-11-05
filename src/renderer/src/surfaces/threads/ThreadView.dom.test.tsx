@@ -12,13 +12,24 @@ import type { Session } from "../../lib/session";
 vi.mock("../chunks", () => ({
   threadViewsChunk: { surface: () => () => null },
   rightPanelChunk: {
-    surface: () => (props: { width?: number; motion?: string; onLeft?: () => void }) => (
-      <aside aria-label="Thread panel" data-width={props.width} data-motion={props.motion ?? ""} onTransitionEnd={props.onLeft} />
+    surface: () => (props: { width?: number; motion?: string; onLeft?: () => void; session: Session; paneId?: string }) => (
+      <aside
+        aria-label="Thread panel"
+        data-width={props.width}
+        data-motion={props.motion ?? ""}
+        data-session={props.session.id}
+        data-host={props.session.environmentId}
+        data-pane={props.paneId}
+        onTransitionEnd={props.onLeft}
+      />
     ),
   },
 }));
 vi.mock("./ChatView", () => ({ ChatView: () => <div data-chat /> }));
 vi.mock("../../lib/masterThread", () => ({ isMasterThread: () => false }));
+// The store's sessions by id, as useSessionById reads them.
+const store = vi.hoisted(() => new Map<string, unknown>());
+vi.mock("../../lib/threads/agents", () => ({ useSessionById: (id: string | null) => (id ? store.get(id) : undefined) }));
 
 import { ThreadView } from "./ThreadView";
 
@@ -34,6 +45,7 @@ class FakeResizeObserver {
 
 beforeEach(() => {
   rightPanel.reset();
+  store.clear();
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
 });
 afterEach(() => {
@@ -117,5 +129,42 @@ describe("ThreadView's panel", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("the panel follows the thread the pane shows", () => {
+  it("draws the pane's own thread, then a shown child on its host, then the tab's again", () => {
+    rightPanel.open("t1");
+    store.set("kid", { id: "kid", environmentId: "env_box", parentId: null });
+    view();
+    act(() => resize(1200));
+    expect(panel()?.getAttribute("data-session")).toBe("t1");
+    act(() => rightPanel.showThread("t1", { id: "kid", environmentId: "env_box" }));
+    expect(panel()?.getAttribute("data-session")).toBe("kid");
+    expect(panel()?.getAttribute("data-host")).toBe("env_box");
+    expect(panel()?.getAttribute("data-pane")).toBe("t1");
+    act(() => rightPanel.showThread("t1", null));
+    expect(panel()?.getAttribute("data-session")).toBe("t1");
+  });
+
+  it("holds a skeleton, never another host's thread of that id, until the shown thread's session is in the store", () => {
+    rightPanel.open("t1");
+    store.set("kid", { id: "kid", environmentId: "local", parentId: null });
+    view();
+    act(() => resize(1200));
+    act(() => rightPanel.showThread("t1", { id: "kid", environmentId: "env_box" }));
+    const aside = panel();
+    expect(aside?.getAttribute("data-session")).toBeNull();
+    expect(aside?.querySelector("[role='status']")?.getAttribute("aria-label")).toBe("Loading panel");
+  });
+
+  it("a bare view draws no panel of its own and leaves the room alone", () => {
+    rightPanel.open("t1");
+    render(
+      <ThreadView session={session} composing={false} onArmNewPass={() => {}} onOpenFile={() => {}} onOpenDiff={() => {}} bare {...({} as never)} />,
+    );
+    act(() => resize(100));
+    expect(panel()).toBeNull();
+    expect(rightPanel.hasRoom("t1")).toBe(true);
   });
 });

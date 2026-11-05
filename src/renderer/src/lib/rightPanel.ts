@@ -8,6 +8,13 @@ import { useSyncExternalStore } from "react";
  * section and width are per thread id and persist across launches; a
  * thread opens on the section it last showed, a new thread on the width
  * the last panel was dragged to.
+ *
+ * The panel follows the thread its pane SHOWS (`showThread`): a master's
+ * pane that opened a batch child or a subagent from its board shows that
+ * thread, and the panel's sections, its section memory and the agents cue
+ * read it; open and width stay the pane's, so the panel neither closes nor
+ * jumps when the pane moves between the board and a child. Every write
+ * names a pane or a shown thread and lands on the right one (`paneOf`).
  */
 
 export type Section = "activity" | "agents" | "changes" | "notes" | "files" | "build" | "debug";
@@ -47,8 +54,10 @@ export const NO_ROOM_LABEL = "No room for the panel";
 
 /** What the thread's state says about it; `sectionsFor` reads nothing else. */
 export type PanelFacts = {
-  /** A root thread (a subagent has no panel). */
+  /** The thread has a panel: a root, or a subagent a pane shows (a subagent's own tab has none). */
   root: boolean;
+  /** A root thread: only a root keeps notes. */
+  notes: boolean;
   /** A thread of a project (it has a projectId) whose project has a checkout; never a loose chat, even in a project's folder. */
   project: boolean;
   /** A git checkout to show: the project's, or a loose chat's git workspace. */
@@ -73,19 +82,21 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
   if (facts.agents > 0) sections.push("agents");
   if (activity) sections.push("activity");
   if (facts.checkout) sections.push("changes");
-  sections.push("notes");
+  if (facts.notes) sections.push("notes");
   if (facts.checkout) sections.push("files");
   if (facts.project) sections.push("build");
   if (facts.project && facts.debug) sections.push("debug");
   // Subagents first: what a thread watches is its agents far more often than a shell.
-  const defaultSection: Section = facts.agents > 0
+  const defaultSection: Section | null = facts.agents > 0
     ? "agents"
     : activity
       ? "activity"
       : facts.checkout
         ? "changes"
-        : "notes";
-  return { sections, defaultSection };
+        : facts.notes
+          ? "notes"
+          : null;
+  return { sections, defaultSection: defaultSection ?? sections[0] ?? null };
 }
 
 /** The section a thread's Watching line opens: its subagents when it waits on any, else its Activity. */
@@ -135,6 +146,65 @@ const visibleIds = new Set<string>();
 const noRoom = new Set<string>();
 /** The section each drawn panel shows (RightPanel's `shownSection`), never persisted. */
 const shown = new Map<string, Section>();
+/** The thread a pane shows in place of its tab's (a master's open child), by the pane's tab id; never persisted. */
+const shownThreads = new Map<string, ShownThread>();
+/** A pane's merged state while it shows another thread, kept while its parts are the same objects. */
+const merged = new Map<string, { pane: PanelState; thread: PanelState; state: PanelState }>();
+
+/** A thread a pane shows, with the host it lives on. */
+export type ShownThread = { id: string; environmentId: string };
+
+/** The thread a pane shows, followed through a shown master that shows a
+ *  child of its own; null when the pane shows its tab's thread. */
+function resolveShown(pane: string): ShownThread | null {
+  let thread = shownThreads.get(pane) ?? null;
+  for (let hops = 0; thread && hops < 4; hops += 1) {
+    const next = shownThreads.get(thread.id);
+    if (!next || next.id === pane) break;
+    thread = next;
+  }
+  return thread;
+}
+
+/** The thread whose sections a pane's panel draws: the one it shows, else its tab's. */
+function threadOf(pane: string): string {
+  return resolveShown(pane)?.id ?? pane;
+}
+
+/** The pane that draws a thread's panel: the thread's own when it is a tab on
+ *  screen, else the pane showing it, else the id itself (a tab not on screen). */
+function paneOf(id: string): string {
+  if (visibleIds.has(id)) return id;
+  for (const pane of shownThreads.keys()) if (visibleIds.has(pane) && threadOf(pane) === id) return pane;
+  for (const pane of shownThreads.keys()) if (threadOf(pane) === id) return pane;
+  return id;
+}
+
+/** Open and width from the pane, the section memory from the thread it shows. */
+function paneState(pane: string): PanelState {
+  const thread = threadOf(pane);
+  if (thread === pane) return stateOf(pane);
+  const own = stateOf(pane);
+  const theirs = stateOf(thread);
+  const hit = merged.get(pane);
+  if (hit && hit.pane === own && hit.thread === theirs) return hit.state;
+  const state: PanelState = { open: own.open, width: own.width, section: theirs.section, debug: theirs.debug };
+  merged.set(pane, { pane: own, thread: theirs, state });
+  return state;
+}
+
+/** A write through a pane: open and width to the pane, section and debug to the thread it shows. */
+function writePane(id: string, patch: Partial<PanelState>): void {
+  const pane = paneOf(id);
+  const thread = threadOf(pane);
+  if (thread === pane) return write(pane, patch);
+  const { section, debug, ...rest } = patch;
+  const memory: Partial<PanelState> = {};
+  if (section !== undefined) memory.section = section;
+  if (debug !== undefined) memory.debug = debug;
+  if (Object.keys(memory).length) write(thread, memory);
+  if (Object.keys(rest).length) write(pane, rest);
+}
 
 function save(): void {
   const ids = Object.keys(data.threads);
@@ -186,18 +256,36 @@ function write(id: string, patch: Partial<PanelState>): void {
 }
 
 export const rightPanel = {
-  get: stateOf,
-  set: write,
+  /** The panel of the pane `id` names (a tab, or a thread a pane shows). */
+  get(id: string): PanelState {
+    return paneState(paneOf(id));
+  },
+  set: writePane,
   open(id: string, section?: Section): void {
-    write(id, { open: true, ...(section ? { section } : {}) });
+    writePane(id, { open: true, ...(section ? { section } : {}) });
   },
   close(id: string): void {
-    write(id, { open: false });
+    writePane(id, { open: false });
   },
   /** Does nothing while the thread's row has no room for the panel. */
   toggle(id: string): void {
-    if (noRoom.has(id)) return;
-    write(id, { open: !stateOf(id).open });
+    const pane = paneOf(id);
+    if (noRoom.has(pane)) return;
+    write(pane, { open: !stateOf(pane).open });
+  },
+  /** A pane shows `thread` in place of its tab's (a master's open child), or its own again with null. */
+  showThread(pane: string, thread: ShownThread | null): void {
+    const prev = shownThreads.get(pane);
+    if (thread && prev?.id === thread.id && prev.environmentId === thread.environmentId) return;
+    if (!thread && !prev) return;
+    if (thread && thread.id !== pane) shownThreads.set(pane, thread);
+    else shownThreads.delete(pane);
+    merged.clear();
+    emit();
+  },
+  /** The thread a pane shows in place of its tab's, or null. */
+  shownThread(pane: string): ShownThread | null {
+    return resolveShown(pane);
   },
   /** ThreadView's measure: whether the thread's row fits the panel now. */
   setRoom(id: string, fits: boolean): void {
@@ -217,7 +305,7 @@ export const rightPanel = {
     emit();
   },
   setWidth(id: string, width: number): void {
-    write(id, { width });
+    writePane(id, { width });
   },
   /** The thread whose panel is on screen; `show` with no id reaches it. */
   focus(id: string | null): void {
@@ -237,7 +325,7 @@ export const rightPanel = {
   },
   /** Open a section on the thread on screen (⌃D's Debug, the Dev Server button). */
   show(section: Section, id: string | null = focusedId): void {
-    if (id) write(id, { open: true, section, ...(section === "debug" ? { debug: true } : {}) });
+    if (id) writePane(id, { open: true, section, ...(section === "debug" ? { debug: true } : {}) });
   },
   focused(): string | null {
     return focusedId;
@@ -254,6 +342,8 @@ export const rightPanel = {
     visibleIds.clear();
     noRoom.clear();
     shown.clear();
+    shownThreads.clear();
+    merged.clear();
     try {
       localStorage.removeItem(KEY);
     } catch {
@@ -288,10 +378,26 @@ export function useShownSection(id: string): Section | null {
   );
 }
 
+/** The panel of the pane `id` names: open and width the pane's, the section memory the shown thread's. */
 export function useRightPanel(id: string): PanelState {
   return useSyncExternalStore(
     subscribe,
-    () => stateOf(id),
-    () => stateOf(id),
+    () => rightPanel.get(id),
+    () => rightPanel.get(id),
   );
+}
+
+/** The thread a pane shows in place of its tab's (`showThread`), or null. */
+export function useShownThread(pane: string): ShownThread | null {
+  return useSyncExternalStore(
+    subscribe,
+    () => resolveShown(pane),
+    () => resolveShown(pane),
+  );
+}
+
+/** The id whose subagents and activity a pane's panel and agents cue read: the shown thread's, else the tab's. */
+export function useShownThreadId(pane: string | null): string | null {
+  const shown = useShownThread(pane ?? "");
+  return pane ? (shown?.id ?? pane) : null;
 }

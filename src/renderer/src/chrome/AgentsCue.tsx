@@ -2,7 +2,7 @@ import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { StatusMark } from "../components/ui/status";
 import { MorphText } from "../motion/MorphText";
-import { NO_ROOM_LABEL, rightPanel, useRightPanel, useShownSection } from "../lib/rightPanel";
+import { NO_ROOM_LABEL, rightPanel, useRightPanel, useShownSection, useShownThreadId } from "../lib/rightPanel";
 import { useAgentsCue, type AgentsCue as Cue } from "../lib/threads/agents";
 import { ROW_CONTROL } from "./composerRow";
 import { HarnessIcon } from "./HarnessIcon";
@@ -80,9 +80,11 @@ const CUE = `${ROW_CONTROL} gap-1.5 transition-opacity duration-(--dur-fast) eas
  *  the cue does. Reduced motion fades. */
 const MARK = "transition-[opacity,scale] duration-(--dur-layout) ease-(--ease-layout) starting:scale-25 starting:opacity-0 motion-reduce:transition-opacity";
 
-/** The cue for one thread: nothing while none of its subagents is live. */
+/** The cue for one tab: the subagents of the thread its pane shows (a
+ *  master's open child, else the tab's own); nothing while none is live. */
 export function AgentsCue({ threadId, room }: { threadId: string | null; room?: boolean }) {
-  const cue = useAgentsCue(threadId);
+  const shownId = useShownThreadId(threadId);
+  const cue = useAgentsCue(shownId, shownId !== threadId);
   const panel = useRightPanel(threadId ?? "");
   const shown = useShownSection(threadId ?? "");
   if (!cue || !threadId) return null;

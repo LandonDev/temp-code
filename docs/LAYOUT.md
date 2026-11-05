@@ -311,7 +311,10 @@ does not hold that count.
 ### The right side
 
 One panel per root thread at its pane's right edge (`surfaces/RightPanel.tsx`
-on `lib/rightPanel.ts`; a subagent has none). The six owners it replaced
+on `lib/rightPanel.ts`; a subagent's own tab has none). The panel follows
+the thread its pane SHOWS: a master's pane that opened a batch child or a
+subagent line from its board shows that thread, and so do the panel's
+sections, its section memory and the title bar's agents cue (below). The six owners it replaced
 (the project rail and its tab, the fleet drawer's override, the notes
 drawer's map, the orchestrator log's state, the classic diff pane) are gone.
 
@@ -321,6 +324,24 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   write it; `rightPanel.show(section)` opens a section on the thread on
   screen (⌃D's Debug); `useRightPanel(id)`
   reads it.
+- **The shown thread.** `rightPanel.showThread(pane, { id, environmentId })`
+  names the thread a pane shows in place of its tab's (MasterView, while a
+  child or a subagent line is open in the board's place; null on Back and
+  when the view unmounts). Open and width stay the pane's, so the panel
+  neither closes nor moves between the board and a child; the section and
+  Debug memory are the shown thread's, so a child opens on its own last
+  section and Back returns the master's. Every write names a pane or a
+  thread a pane shows and lands on the right one (`paneOf`: a thread that is
+  a tab on screen keeps its own panel), so the child's Watching line opens
+  the pane's panel. ThreadView's `PaneRightPanel` hands RightPanel the
+  shown thread's session, read on its own host (another host's thread of
+  that id holds the panel's skeleton), and the child's own view is `bare`:
+  it draws no second panel. A subagent shown this way has Agents, Activity
+  and the checkout sections, never Notes (only a root keeps notes). An
+  agent's detail opened inside the Agents section (`AgentDetail`) moves
+  nothing: the pane still shows its thread, so the other sections stay on
+  it. The agents cue counts the shown thread's subagents
+  (`useShownThreadId`).
 - **Sections.** `sectionsFor(facts)` is pure, one line per section, in the
   header's order: Agents when the thread has subagents of its own (a
   master's batch lives on its board, never here); Activity when it has
@@ -383,7 +404,8 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     master board's sections (Needs you, Working, Queued, Done,
     lib/threadGroups.ts), each top agent by its own state with its
     descendants indented 16px a level under it (three levels drawn), in a
-    native scroller; none is one Empty, "No subagents". A row's line one
+    native scroller; none is one Empty, "No subagents", on a master with
+    "Batch threads are on the board" under it (`MASTER_AGENTS_EMPTY`). A row's line one
     is its state's glyph, its title across the whole line and the host
     glyph at its right edge; the model is the row's last line, the
     provider's logo, the model, its effort and its context window ("Opus
@@ -1419,6 +1441,10 @@ brought into view even when it moved section meanwhile.
   header is 36px: Back (a ghost button whose tooltip says "Back to the
   board" with Esc) and the thread's title; Escape, or ⌘↩ outside the composer (inside it ⌘↩ is the composer's
   own), goes back, and the board returns at the scroll it was left at.
+  The pane's right panel and the title bar's agents cue follow the child
+  while it shows (its subagents, its Activity, its Notes, on its host;
+  "The right side" above), and Back hands them back to the master; a
+  subagent line opened the same way hands them to that subagent.
   Nothing opens a tab; the strip never lists a child while its master is
   a master (`batchHome` in lib/threadStripModel.ts).
 - **Right-click** on a row, or on a subagent line under it, or the row's

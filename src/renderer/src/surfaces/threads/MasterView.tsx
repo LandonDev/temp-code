@@ -12,6 +12,7 @@ import type { SessionMeta } from "../../lib/tcserver/types";
 import { resourcesHeldBy } from "../../lib/threadBatch";
 import { useProjects, useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useMetaById } from "../../lib/threads/agents";
+import { rightPanel } from "../../lib/rightPanel";
 import { sessionStore, useSessionMetasWhen } from "../../lib/tcserver/store";
 import { chatOf, heldRowOf } from "./chatSlots";
 import { ArchiveBatchDialog } from "./master/ArchiveBatchDialog";
@@ -334,6 +335,14 @@ function MasterBoardView(props: ThreadViewProps) {
   };
   const open = useCallback((id: string, focus?: boolean) => openRef.current(id, focus), []);
 
+  // The pane's right panel and agents cue follow the thread the pane shows:
+  // the open child or subagent, on its own host; Back hands them back.
+  const shownHost = openId ? (layout.rows.find((r) => r.id === openId)?.environmentId ?? openMeta?.environmentId) : undefined;
+  useEffect(() => {
+    rightPanel.showThread(session.id, openId && shownHost ? { id: openId, environmentId: shownHost } : null);
+  }, [openId, session.id, shownHost]);
+  useEffect(() => () => rightPanel.showThread(session.id, null), [session.id]);
+
   const byHost = (list: readonly { meta: SessionMeta }[], action: "pause" | "resume") => {
     const map = new Map<string, string[]>();
     for (const { meta: c } of list) (map.get(c.environmentId) ?? map.set(c.environmentId, []).get(c.environmentId)!).push(c.id);
@@ -395,7 +404,7 @@ function MasterBoardView(props: ThreadViewProps) {
   );
 
   // A row, or a subagent opened from a row's agent lines (it lives on its own host).
-  const openHost = openId ? (layout.rows.find((r) => r.id === openId)?.environmentId ?? openMeta?.environmentId) : undefined;
+  const openHost = shownHost;
   if (openId && openHost) {
     return (
       <div className="relative flex min-h-0 min-w-0 flex-1">

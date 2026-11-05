@@ -15,6 +15,7 @@ import {
 
 const quiet: PanelFacts = {
   root: true,
+  notes: true,
   project: false,
   checkout: false,
   agents: 0,
@@ -25,6 +26,13 @@ const quiet: PanelFacts = {
 describe("sectionsFor", () => {
   it("a subagent has no panel", () => {
     expect(sectionsFor({ ...quiet, root: false })).toEqual({ sections: [], defaultSection: null });
+  });
+
+  it("a subagent a pane shows has its agents and activity, never notes", () => {
+    const agent = { ...quiet, notes: false };
+    expect(sectionsFor(agent)).toEqual({ sections: [], defaultSection: null });
+    expect(sectionsFor({ ...agent, agents: 2, activity: 1 })).toEqual({ sections: ["agents", "activity"], defaultSection: "agents" });
+    expect(sectionsFor({ ...agent, checkout: true })).toEqual({ sections: ["changes", "files"], defaultSection: "changes" });
   });
 
   it("a chat with nothing running has notes alone", () => {
@@ -190,5 +198,66 @@ describe("no room", () => {
     rightPanel.setRoom("t1", true);
     rightPanel.toggle("t1");
     expect(rightPanel.get("t1").open).toBe(false);
+  });
+});
+
+describe("the shown thread", () => {
+  beforeEach(() => rightPanel.reset());
+
+  it("a pane showing a child keeps its own open and width, and reads the child's section memory", () => {
+    rightPanel.open("master", "notes");
+    rightPanel.setWidth("master", 400);
+    rightPanel.set("child", { section: "agents" });
+    rightPanel.showThread("master", { id: "child", environmentId: "env_box" });
+    expect(rightPanel.shownThread("master")).toEqual({ id: "child", environmentId: "env_box" });
+    expect(rightPanel.get("master")).toEqual({ open: true, width: 400, section: "agents", debug: false });
+    // Back to the board: the master's own memory again.
+    rightPanel.showThread("master", null);
+    expect(rightPanel.get("master")).toMatchObject({ open: true, section: "notes" });
+  });
+
+  it("a section picked while the child shows is the child's, never the master's", () => {
+    rightPanel.open("master", "notes");
+    rightPanel.showThread("master", { id: "child", environmentId: "env_mac" });
+    rightPanel.set("master", { section: "activity" });
+    expect(rightPanel.get("child").section).toBe("activity");
+    rightPanel.showThread("master", null);
+    expect(rightPanel.get("master").section).toBe("notes");
+    // A second child remembers its own.
+    rightPanel.showThread("master", { id: "other", environmentId: "env_mac" });
+    expect(rightPanel.get("master").section).toBeNull();
+  });
+
+  it("a write naming the shown thread lands on the pane that shows it", () => {
+    rightPanel.visible("master", true);
+    rightPanel.showThread("master", { id: "child", environmentId: "env_mac" });
+    // The child's Watching line opens Activity: the pane's panel opens on the child's section.
+    rightPanel.open("child", "activity");
+    expect(rightPanel.get("master")).toMatchObject({ open: true, section: "activity" });
+    expect(rightPanel.get("child")).toMatchObject({ open: true, section: "activity" });
+    rightPanel.toggle("child");
+    expect(rightPanel.get("master").open).toBe(false);
+  });
+
+  it("a thread that is a tab on screen keeps its own panel, wherever else it shows", () => {
+    rightPanel.visible("master", true);
+    rightPanel.visible("child", true);
+    rightPanel.showThread("master", { id: "child", environmentId: "env_mac" });
+    rightPanel.open("child", "agents");
+    expect(rightPanel.get("child").open).toBe(true);
+    expect(rightPanel.get("master").open).toBe(false);
+  });
+
+  it("the merged state is one object until a part changes, and a repeat show emits nothing", () => {
+    rightPanel.showThread("master", { id: "child", environmentId: "env_mac" });
+    expect(rightPanel.get("master")).toBe(rightPanel.get("master"));
+    let n = 0;
+    const off = rightPanel.subscribe(() => (n += 1));
+    rightPanel.showThread("master", { id: "child", environmentId: "env_mac" });
+    expect(n).toBe(0);
+    const before = rightPanel.get("master");
+    rightPanel.open("master");
+    expect(rightPanel.get("master")).not.toBe(before);
+    off();
   });
 });

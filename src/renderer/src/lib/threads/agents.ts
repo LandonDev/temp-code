@@ -525,8 +525,9 @@ function sameCue(a: AgentsCue | null, b: AgentsCue | null): boolean {
  *  It wakes React only for a meta change in that thread's tree (the store
  *  puts every ancestor of a changed meta in `affected`), and an equal
  *  answer is the same object. Null for no id, an unknown id, or a
- *  subagent (its tab has no panel). */
-export function useAgentsCue(rootId: string | null): AgentsCue | null {
+ *  subagent (its tab has no panel) unless `agent` says a pane shows it in
+ *  place of its tab's thread, where the pane's panel follows it. */
+export function useAgentsCue(rootId: string | null, agent = false): AgentsCue | null {
   const cache = useRef<AgentsCue | null>(null);
   const subscribe = useCallback(
     (listener: () => void) =>
@@ -538,7 +539,7 @@ export function useAgentsCue(rootId: string | null): AgentsCue | null {
   return useSyncExternalStore(subscribe, () => {
     const root = rootId ? sessionStore.metaOf(rootId) : null;
     const next =
-      root && !root.parentId ? agentsCue(liveAgentCounts(sessionStore.childrenOf, root.id), threadStateOf(root.status) === "working") : null;
+      root && (agent || !root.parentId) ? agentsCue(liveAgentCounts(sessionStore.childrenOf, root.id), threadStateOf(root.status) === "working") : null;
     if (!sameCue(cache.current, next)) cache.current = next;
     return cache.current;
   });

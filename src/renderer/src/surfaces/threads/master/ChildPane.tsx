@@ -26,7 +26,9 @@ import { ThreadView } from "../ThreadView";
  * control to the board; Escape and ⌘↩ outside the composer go back too
  * (inside it ⌘↩ is the composer's own). The header shows at once, titled
  * from the board's row until the meta lands; the body is the transcript's
- * skeleton until the thread's rows do.
+ * skeleton until the thread's rows do. The thread's view is `bare`: the
+ * master's pane keeps the one right panel, which follows this thread while
+ * it shows (MasterView's `rightPanel.showThread`).
  */
 
 export function ChildPane({
@@ -159,6 +161,7 @@ function ChildThread({
       onOpenFile={onOpenFile}
       onOpenDiff={onOpenDiff}
       onOpenSession={onOpenSession}
+      bare
     />
   );
 }

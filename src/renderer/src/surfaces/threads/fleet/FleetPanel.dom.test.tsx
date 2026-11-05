@@ -74,6 +74,12 @@ describe("FleetSectionsView", () => {
     render(<FleetSectionsView sections={[]} onOpen={() => {}} />);
     expect(screen.getByText("No subagents")).toBeTruthy();
   });
+
+  it("says the empty state's second line when given one (a master's board note)", () => {
+    render(<FleetSectionsView sections={[]} onOpen={() => {}} emptyLine="Batch threads are on the board" />);
+    expect(screen.getByText("No subagents")).toBeTruthy();
+    expect(screen.getByText("Batch threads are on the board")).toBeTruthy();
+  });
 });
 
 describe("FleetList", () => {

@@ -26,6 +26,7 @@ import {
 } from "../lib/rightPanel";
 import type { OpenFileFn } from "../lib/search";
 import type { Session } from "../lib/session";
+import { isMasterThread } from "../lib/masterThread";
 import { projectForCwd } from "../lib/tcserver/projects";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
@@ -40,6 +41,9 @@ import { SessionActionsContext } from "./threadChat";
 const DebugPanel = lazy(() => import("../chrome/rail/DebugPanel"));
 // Listed for a dev build, and for any thread that asked for it ("Debug this file").
 const DEBUG_SECTION = import.meta.env.DEV;
+
+/** A master's Agents section lists its own subagents; its batch is on the board. */
+export const MASTER_AGENTS_EMPTY = "Batch threads are on the board";
 
 /** Each section's segment glyph; its name is the segment's label and tooltip. */
 const SECTION_ICON: Record<Section, IconComponent> = {
@@ -108,7 +112,10 @@ export function PanelHeader({ sections, value, onChange, onClose }: { sections: 
 }
 
 export type RightPanelProps = {
+  /** The thread the sections draw: the one the pane shows. */
   session: Session;
+  /** The tab whose panel this is (open, width, room); the session's own id by default. */
+  paneId?: string;
   onOpenFile: OpenFileFn;
   onOpenDiff: (path?: string) => void;
   onOpenSession?: (sessionId: string) => void;
@@ -148,14 +155,16 @@ export const PANE_LEAVE =
  */
 export function RightPanel(props: RightPanelProps) {
   const { session } = props;
-  const state = useRightPanel(session.id);
-  const facts = usePanelFacts(session, state);
+  const pane = props.paneId ?? session.id;
+  // Open and width are the pane's; the section memory is the shown thread's (lib/rightPanel.ts).
+  const state = useRightPanel(pane);
+  const facts = usePanelFacts(session, state, pane !== session.id);
   const available = useMemo(() => sectionsFor(facts.facts), [facts.facts]);
   const section = shownSection(state.section, available);
   // The title bar's agents cue reads what is drawn, not what was asked for.
   const drawn = state.open && props.motion !== "leave" ? section : null;
-  useEffect(() => rightPanel.setShown(session.id, drawn), [session.id, drawn]);
-  useEffect(() => () => rightPanel.setShown(session.id, null), [session.id]);
+  useEffect(() => rightPanel.setShown(pane, drawn), [pane, drawn]);
+  useEffect(() => () => rightPanel.setShown(pane, null), [pane]);
 
   const resize = useDragResize({
     edge: "left",
@@ -163,7 +172,7 @@ export function RightPanel(props: RightPanelProps) {
     max: () => Math.min(PANEL_MAX, props.maxWidth ?? Math.floor(window.innerWidth * 0.5)),
     defaultWidth: PANEL_WIDTH,
     initial: state.width,
-    onCommit: (next) => rightPanel.setWidth(session.id, next),
+    onCommit: (next) => rightPanel.setWidth(pane, next),
   });
   // Taken apart at once: the pane's ref callback goes to a `ref` prop, which
   // would make the React Compiler read the whole object as a ref.
@@ -196,7 +205,7 @@ export function RightPanel(props: RightPanelProps) {
       className={cn("relative flex shrink-0 flex-col border-l border-border bg-sidebar", PANE_MOTION, props.motion === "arrive" && PANE_ARRIVE, leaving && PANE_LEAVE)}
       style={{ width: props.width ?? state.width, contain: "strict" }}
     >
-      <PanelHeader sections={available.sections} value={section} onChange={(next) => rightPanel.set(session.id, { section: next })} onClose={() => rightPanel.close(session.id)} />
+      <PanelHeader sections={available.sections} value={section} onChange={(next) => rightPanel.set(pane, { section: next })} onClose={() => rightPanel.close(pane)} />
       <div
         key={section}
         className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-(--dur-fast) flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -216,8 +225,8 @@ export function RightPanel(props: RightPanelProps) {
 
 type PanelPlace = { facts: PanelFacts; project: ProjectMeta | undefined; workspace: WorkspaceMeta | undefined };
 
-/** The thread's state as the facts `sectionsFor` reads, and the project (or a loose chat's git workspace) the sections key by. */
-function usePanelFacts(session: Session, state: PanelState): PanelPlace {
+/** The thread's state as the facts `sectionsFor` reads, and the project (or a loose chat's git workspace) the sections key by. `inPane`: another tab's pane shows the thread, so a subagent has a panel there. */
+function usePanelFacts(session: Session, state: PanelState, inPane: boolean): PanelPlace {
   const agents = useAgents(session.id);
   const projects = useProjects();
   const workspaces = useWorkspaces();
@@ -228,7 +237,8 @@ function usePanelFacts(session: Session, state: PanelState): PanelPlace {
   const activity = useActivity(session.id).rows;
   const facts = useMemo<PanelFacts>(
     () => ({
-      root: !session.parentId,
+      root: !session.parentId || inPane,
+      notes: !session.parentId,
       project: !!session.projectId && !!project?.cwd,
       checkout: !!project?.cwd || !!workspace,
       agents: agents.length,
@@ -236,7 +246,7 @@ function usePanelFacts(session: Session, state: PanelState): PanelPlace {
       activity: activity.length,
       debug: DEBUG_SECTION || state.debug,
     }),
-    [session, project, workspace, agents.length, activity.length, state.debug],
+    [session, project, workspace, agents.length, activity.length, state.debug, inPane],
   );
   return { facts, project, workspace };
 }
@@ -271,6 +281,7 @@ function SectionBody({
         <FleetList
           sessionId={session.id}
           parentCwd={session.cwd}
+          emptyLine={isMasterThread(session) ? MASTER_AGENTS_EMPTY : undefined}
           onOpenSession={onOpenSession}
           onOpenFile={onOpenFile}
           onOpenDiff={onOpenDiff}

@@ -326,7 +326,13 @@ app replaces itself from the feed, and only from the feed.
 - The right side of a thread is one panel (`lib/rightPanel.ts`,
   `surfaces/RightPanel.tsx`; docs/LAYOUT.md "The right side"): Agents first
   and its default whenever the thread has subagents, Activity only with rows
-  of the thread's own; a toggle in place slides it in from the edge or back
+  of the thread's own; it follows the thread its pane SHOWS
+  (`rightPanel.showThread`, set by MasterView while a batch child or a
+  subagent line is open in the board's place: that thread's sections and
+  section memory on the pane's open state and width, read on its own host,
+  the child's own view `bare`; Back hands it back to the master; an
+  `AgentDetail` inside Agents moves nothing), and a master's empty Agents
+  says "Batch threads are on the board"; a toggle in place slides it in from the edge or back
   out over the thread on transform and opacity (`usePaneMotion` in
   surfaces/threads/ThreadView.tsx), the thread taking its width at once;
   the composer's slash menu moves on the popup recipe (`POPUP_MOTION`,
@@ -1805,7 +1811,8 @@ names the far child).
   rail's `rowState` decides (`settledWithAgents`, lib/threadStripModel.ts),
   and the fleet header counts watching on its own ("1 watching, 1 done").
 - The title bar's agents cue (chrome/AgentsCue.tsx, left of ⋯): while any
-  subagent of the thread on screen works, watches, waits or is queued (by
+  subagent of the thread on screen (the one its pane shows,
+  `useShownThreadId`: a master's open child) works, watches, waits or is queued (by
   `parentId`, any depth; a master's batch is its board's), a quiet 24px
   control (`ROW_CONTROL`): the loudest state's glyph, one 12px provider mark
   per distinct provider of the live agents (`HarnessIcon`, a Meta model's

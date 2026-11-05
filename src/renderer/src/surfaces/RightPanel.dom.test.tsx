@@ -22,8 +22,14 @@ vi.mock("../lib/activity", () => ({
   useActivity: () => ({ rows: (state.meta?.background?.tasks ?? []).map((task) => ({ id: task.id, kind: task.kind, label: task.label })), meta: state.meta }),
 }));
 vi.mock("../hooks/useGitFileStatuses", () => ({ useGitFileStatuses: () => ({}) }));
-vi.mock("./threads/fleet/FleetPanel", () => ({ FleetList: () => <div data-testid="agents-body">agents</div> }));
-vi.mock("./threads/ActivitySection", () => ({ ActivitySection: () => <div data-testid="activity-body">activity</div> }));
+vi.mock("./threads/fleet/FleetPanel", () => ({
+  FleetList: (p: { sessionId: string; emptyLine?: string }) => (
+    <div data-testid="agents-body" data-thread={p.sessionId} data-empty-line={p.emptyLine}>
+      agents
+    </div>
+  ),
+}));
+vi.mock("./threads/ActivitySection", () => ({ ActivitySection: (p: { threadId: string }) => <div data-testid="activity-body" data-thread={p.threadId}>activity</div> }));
 vi.mock("./threads/NotesPanel", () => ({ NotesBody: () => <div data-testid="notes-body">notes</div> }));
 vi.mock("../chrome/rail/ChangesPanel", () => ({ ChangesPanel: () => <div data-testid="changes-body">changes</div> }));
 vi.mock("../chrome/rail/BuildPanel", () => ({ BuildPanel: () => <div>build</div> }));
@@ -38,7 +44,7 @@ vi.mock("../chrome/FileTree", () => ({
 
 import { rightPanel, useShownSection } from "../lib/rightPanel";
 import type { Session } from "../lib/session";
-import { RightPanel } from "./RightPanel";
+import { MASTER_AGENTS_EMPTY, RightPanel } from "./RightPanel";
 import { SessionActionsContext, type SessionActions } from "./threadChat";
 
 const session = { id: "s1", environmentId: "local", title: "T", cwd: "/p", projectId: "p1", status: "idle", blocks: [] } as unknown as Session;
@@ -268,5 +274,68 @@ describe("RightPanel", () => {
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     expect(screen.getAllByRole("tab")[0].getAttribute("aria-label")).toBe("Activity");
     expect(screen.getByTestId("activity-body")).toBeTruthy();
+  });
+});
+
+describe("RightPanel on the thread a pane shows", () => {
+  // A master's pane showing a batch child on the box: the sections read the child.
+  const child = { ...session, id: "kid", environmentId: "env_box", cwd: "/srv/kid" } as unknown as Session;
+
+  it("draws the shown thread's sections on the pane's open state and width, its section remembered for the shown thread", () => {
+    state.agents = [{ id: "k1", status: "running", parentId: "kid" } as unknown as SessionMeta];
+    rightPanel.open("master", "notes");
+    rightPanel.setWidth("master", 360);
+    rightPanel.showThread("master", { id: "kid", environmentId: "env_box" });
+    const { container } = render(<RightPanel session={child} paneId="master" onOpenFile={noop} onOpenDiff={noop} />);
+    expect((container.querySelector("aside") as HTMLElement).style.width).toBe("360px");
+    expect(screen.getByTestId("agents-body").getAttribute("data-thread")).toBe("kid");
+    fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
+    expect(rightPanel.get("kid").section).toBe("notes");
+    fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
+    expect(rightPanel.get("kid").section).toBe("agents");
+    // The master's own memory is untouched; Back shows it again.
+    rightPanel.showThread("master", null);
+    expect(rightPanel.get("master").section).toBe("notes");
+  });
+
+  it("reports what it draws on the pane, and closes the pane's panel", () => {
+    state.agents = [{ id: "k1", status: "running", parentId: "kid" } as unknown as SessionMeta];
+    rightPanel.open("master");
+    rightPanel.showThread("master", { id: "kid", environmentId: "env_box" });
+    let seen: string | null = null;
+    function Probe() {
+      seen = useShownSection("master");
+      return null;
+    }
+    render(
+      <>
+        <RightPanel session={child} paneId="master" onOpenFile={noop} onOpenDiff={noop} />
+        <Probe />
+      </>,
+    );
+    expect(seen).toBe("agents");
+    fireEvent.click(screen.getByRole("button", { name: "Hide panel" }));
+    expect(rightPanel.get("master").open).toBe(false);
+  });
+
+  it("a subagent a pane shows gets its agents and activity, never notes", () => {
+    state.agents = [{ id: "g1", status: "running", parentId: "sub" } as unknown as SessionMeta];
+    rightPanel.open("master");
+    const sub = { ...session, id: "sub", parentId: "kid", cwd: "~", projectId: undefined } as unknown as Session;
+    rightPanel.showThread("master", { id: "sub", environmentId: "local" });
+    render(<RightPanel session={sub} paneId="master" onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"))).toEqual(["Agents"]);
+    expect(screen.getByTestId("agents-body").getAttribute("data-thread")).toBe("sub");
+  });
+
+  it("a master's own Agents section says its batch threads are on the board", () => {
+    state.agents = [{ id: "a1", status: "done", parentId: "s1" } as unknown as SessionMeta];
+    rightPanel.open("s1", "agents");
+    const master = { ...session, isMaster: true } as unknown as Session;
+    render(<RightPanel session={master} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getByTestId("agents-body").getAttribute("data-empty-line")).toBe(MASTER_AGENTS_EMPTY);
+    cleanup();
+    render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getByTestId("agents-body").getAttribute("data-empty-line")).toBeNull();
   });
 });

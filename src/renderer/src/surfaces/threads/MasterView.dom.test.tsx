@@ -249,6 +249,8 @@ import { resetNotesStore } from "../../lib/threadNotes";
 import { resetChatFolds } from "../../lib/chatFold";
 import { SessionActionsContext, type SessionActions } from "../threadChat";
 import { MasterView } from "./MasterView";
+import { AgentsCue } from "../../chrome/AgentsCue";
+import { rightPanel } from "../../lib/rightPanel";
 import { BoardPreview } from "./master/board.preview";
 import { clockTime } from "../../lib/duration";
 import { rendererErrorLine } from "../../lib/rendererErrors";
@@ -1665,6 +1667,75 @@ describe("Stop, archive and delete a batch thread from the board", () => {
     fireEvent.click(within(await screen.findByRole("menu", { name: "Thread actions" })).getByText("Stop"));
     await flush();
     expect(link.calls.filter((c) => c.method === "session.interrupt").map((c) => c.params)).toEqual([{ sessionId: "a1", subtree: true }]);
+  });
+});
+
+describe("the right panel follows the thread the pane shows", () => {
+  beforeEach(() => rightPanel.reset());
+  const renderWithCue = () =>
+    render(
+      <SessionActionsContext.Provider value={actions}>
+        <AgentsCue threadId="m" />
+        <MasterView {...props} />
+      </SessionActionsContext.Provider>,
+    );
+  // The cue's line (its words morph on screen; the line is the count at once).
+  const cue = () => document.querySelector("[aria-label^='Agents']")?.getAttribute("aria-label") ?? null;
+
+  it("a child opened from the board hands the pane's panel and agents cue to the child; Back gives them back to the master", async () => {
+    seed([
+      meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 }),
+      meta({ id: "k1", title: "Rail rows", status: "running", busySince: 1, parentId: "c-run", masterId: null as unknown as string, createdAt: 2 }),
+      meta({ id: "k2", title: "Inbox rows", status: "running", busySince: 1, parentId: "c-run", masterId: null as unknown as string, createdAt: 3 }),
+      meta({ id: "own", title: "Survey", status: "running", busySince: 1, parentId: "m", masterId: null as unknown as string, createdAt: 4 }),
+    ]);
+    rightPanel.open("m", "notes");
+    renderWithCue();
+    await flush();
+    expect(rightPanel.shownThread("m")).toBeNull();
+    expect(cue()).toBe("Agents: 1 working on Claude Code");
+    fireEvent.click(screen.getByRole("button", { name: /Home/ }));
+    await flush();
+    expect(rightPanel.shownThread("m")).toEqual({ id: "c-run", environmentId: "local" });
+    // The child's two subagents, never the master's own one.
+    expect(cue()).toBe("Agents: 2 working on Claude Code");
+    // The panel stays open; its section memory is the child's.
+    expect(rightPanel.get("m")).toMatchObject({ open: true, section: null });
+    rightPanel.set("m", { section: "activity" });
+    expect(rightPanel.get("c-run").section).toBe("activity");
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    await flush();
+    expect(rightPanel.shownThread("m")).toBeNull();
+    expect(rightPanel.get("m")).toMatchObject({ open: true, section: "notes" });
+    expect(cue()).toBe("Agents: 1 working on Claude Code");
+  });
+
+  it("a subagent line under a row hands the panel to that subagent, on its host", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 })]);
+    seedBox([
+      boxMeta({ id: "a1", title: "Rail rows", status: "running", busySince: 1, parentId: "c-run", masterId: null as unknown as string, createdAt: 2 }),
+      boxMeta({ id: "g1", title: "Grandchild", status: "running", busySince: 1, parentId: "a1", masterId: null as unknown as string, createdAt: 3 }),
+    ], true);
+    renderWithCue();
+    await flush();
+    fireEvent.click(document.querySelector("[data-agent='a1']")!);
+    await flush();
+    expect(rightPanel.shownThread("m")).toEqual({ id: "a1", environmentId: "box" });
+    expect(cue()).toBe("Agents: 1 working on Claude Code");
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    await flush();
+    expect(rightPanel.shownThread("m")).toBeNull();
+  });
+
+  it("leaving the master's view forgets the shown thread", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 })]);
+    const { unmount } = renderView();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Home/ }));
+    await flush();
+    expect(rightPanel.shownThread("m")?.id).toBe("c-run");
+    unmount();
+    expect(rightPanel.shownThread("m")).toBeNull();
   });
 });
 
