@@ -89,7 +89,7 @@ export function NoticeLine({
               strong ? "text-foreground" : "text-muted-foreground",
               // The weight parts a lead from its details; a lone lead or a sentence stays regular.
               !step && run.length > 0 && "font-medium",
-              fold && "group-hover/notice:text-foreground",
+              fold && NOTICE_LIFT,
               wrap ? "min-w-0 whitespace-pre-wrap break-words" : "shrink-0",
             )}
           >
@@ -113,7 +113,8 @@ export function NoticeLine({
             <ChevronRight
               aria-hidden
               className={cn(
-                "ms-1 size-3 shrink-0 text-muted-foreground group-hover/notice:text-foreground",
+                "ms-1 size-3 shrink-0 text-muted-foreground",
+                NOTICE_LIFT,
                 DISCLOSURE_CHEVRON,
                 fold.open && "rotate-90",
               )}
@@ -134,6 +135,9 @@ export function NoticeLine({
   );
 }
 
+
+/** A line that opens lifts its lead and chevron at once, on hover and on its trigger's keyboard focus alike. */
+const NOTICE_LIFT = "group-hover/notice:text-foreground group-has-focus-visible/notice:text-foreground";
 
 /** A comma between details, unless the one before already ends its phrase ("Backfill the old rows? Yes"). */
 function joiner(before: ReactNode): string {

@@ -224,7 +224,7 @@ export function WatchingLine({
   const said = plainStatus(STATUS_WORD.watching, subject ?? null);
   const body = (
     <>
-      <StatusMark state="watching" detail={subject} className="min-w-0 text-[13px]" />
+      <StatusMark state="watching" detail={subject} className={cn("min-w-0 text-[13px]", onOpen && WATCH_LIFT)} />
       {since != null && now > 0 ? (
         <span aria-hidden className={cn(stale && "text-warning")}>
           {duration(Math.max(0, now - since))}
@@ -240,7 +240,7 @@ export function WatchingLine({
           size="xs"
           onClick={onOpen}
           aria-label={`${said}, open Activity`}
-          className="-ml-2 min-w-0 shrink gap-1 text-[13px] font-normal text-muted-foreground hover:text-foreground"
+          className="-ml-2 min-w-0 shrink gap-1 text-[13px] font-normal text-muted-foreground transition-none hover:bg-transparent hover:text-foreground focus-visible:text-foreground active:bg-transparent"
         >
           {body}
         </Button>
@@ -250,6 +250,12 @@ export function WatchingLine({
     </div>
   );
 }
+
+/** The Watching line as a button: hover and keyboard focus lift the mark, its
+ *  detail and the age to foreground at once, with no fill, as every
+ *  transcript line lifts (StatusMark sets its own muted tones). */
+const WATCH_LIFT =
+  "group-hover/button:text-foreground group-hover/button:*:text-foreground group-focus-visible/button:text-foreground group-focus-visible/button:*:text-foreground";
 
 /**
  * A turn's closing line. Settled: "Worked for 2m 4s", or "Stopped" for a

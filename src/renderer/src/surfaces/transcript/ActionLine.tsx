@@ -114,7 +114,8 @@ export function ActionLine({
         <ChevronRight
           aria-hidden
           className={cn(
-            "pointer-events-none ms-1 size-3 shrink-0 text-muted-foreground group-hover/action:text-foreground",
+            "pointer-events-none ms-1 size-3 shrink-0 text-muted-foreground",
+            LIFT,
             DISCLOSURE_CHEVRON,
             opens && open && "rotate-90",
           )}

@@ -9,6 +9,7 @@ import { ActionGroup } from "./ActionGroup";
 import { ActionLine } from "./ActionLine";
 import { NoticeLine } from "./NoticeLine";
 import { ActivityThinkingRow } from "./ThinkingRow";
+import { WatchingLine } from "./TurnEnd";
 
 /* TRANSCRIPT.md: hover lifts a line's verb and chevron to foreground at
    once; only the chevron's turn animates, and that turn is the one
@@ -37,6 +38,9 @@ describe("a transcript line lifts at once", () => {
     for (; el && el !== container; el = el.parentElement) expect(el.className).not.toMatch(/transition-\[color\]|transition-colors/);
     const chevron = chevronOf(container);
     noOwnTiming(chevron);
+    // Keyboard focus lifts the verb and the chevron, as hover does.
+    expect(verb.closest("[class*='group-has-focus-visible/action:text-foreground']")).not.toBeNull();
+    for (const c of ["group-hover/action:text-foreground", "group-has-focus-visible/action:text-foreground"]) expect(chevron).toContain(c);
     expect(chevron).not.toContain("rotate-90");
     fireEvent.click(screen.getByRole("button", { name: "Ran bun test" }));
     expect(chevronOf(container)).toContain("rotate-90");
@@ -58,6 +62,9 @@ describe("a transcript line lifts at once", () => {
     expect(lead.className).toContain("group-hover/notice:text-foreground");
     expect(lead.className).not.toMatch(/transition/);
     noOwnTiming(chevronOf(container));
+    // Keyboard focus on the line's trigger lifts the lead and the chevron, as hover does.
+    expect(lead.className).toContain("group-has-focus-visible/notice:text-foreground");
+    expect(chevronOf(container)).toContain("group-has-focus-visible/notice:text-foreground");
   });
 
   it("ThinkingRow: the Thought chevron is the one disclosure", () => {
@@ -80,5 +87,18 @@ describe("a transcript line lifts at once", () => {
     expect(line.className).toContain("transition-none");
     expect(line.className).not.toMatch(/transition-\[/);
     noOwnTiming(chevronOf(line));
+    // Its words and chevron (which takes the line's colour) lift on keyboard focus too.
+    for (const c of ["hover:text-foreground", "focus-visible:text-foreground"]) expect(line.className.split(" ")).toContain(c);
+  });
+
+  it("WatchingLine: no fill, its mark, detail and age lift at once on hover and focus", () => {
+    render(<WatchingLine since={Date.now() - 60_000} subject="3 subagents" onOpen={() => {}} />);
+    const button = screen.getByRole("button");
+    const cls = button.className.split(" ");
+    for (const c of ["transition-none", "hover:bg-transparent", "active:bg-transparent", "hover:text-foreground", "focus-visible:text-foreground"])
+      expect(cls).toContain(c);
+    const mark = button.querySelector<HTMLElement>('[data-slot="status-mark"]')!;
+    // StatusMark sets its own muted tones, so the lift reaches its children too.
+    for (const c of ["group-hover/button:*:text-foreground", "group-focus-visible/button:*:text-foreground"]) expect(mark.className).toContain(c);
   });
 });
