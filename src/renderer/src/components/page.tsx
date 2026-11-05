@@ -266,7 +266,23 @@ function PageEmpty({ className, children, ...rest }: ComponentPropsWithoutRef<"p
  *  not answer, a save refused for the whole section): one red 12px line in
  *  a row's place, beside `PageEmpty`. An error a row owns is that row's
  *  `error`. Pre-wrapped, so a multi-line reason keeps its lines. */
-function PageError({ className, children, ...rest }: ComponentPropsWithoutRef<"p">) {
+/**
+ * A section's failure, one red 12px line. `action` (its Retry) sits at the
+ * line's end: a section with no title has no heading line to hold it, and a
+ * Retry alone on a blank heading reads as a stray control.
+ */
+function PageError({ className, children, action, ...rest }: ComponentPropsWithoutRef<"p"> & { action?: ReactNode }) {
+  if (action) {
+    return (
+      <div data-slot="page-error-line" className="flex items-start gap-3 py-3">
+        <p role="alert" {...rest} data-slot="page-error" className={cn("min-w-0 flex-1 text-xs whitespace-pre-wrap text-destructive", className)}>
+          {children}
+        </p>
+        {/* The 28px button overhangs the 16px line evenly. */}
+        <span className="-my-1.5 shrink-0">{action}</span>
+      </div>
+    );
+  }
   return (
     <p
       role="alert"

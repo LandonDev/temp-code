@@ -36,17 +36,17 @@ export function ProvidersPage() {
   };
 
   return (
-    <PageSection
-      action={
-        doctor.error && !doctor.value ? (
-          <Button variant="ghost" size="sm" onClick={doctor.retry}>
-            Retry
-          </Button>
-        ) : null
-      }
-    >
+    <PageSection>
       {doctor.error && !doctor.value ? (
-        <PageError>{doctor.error}</PageError>
+        <PageError
+          action={
+            <Button variant="ghost" size="sm" onClick={doctor.retry}>
+              Retry
+            </Button>
+          }
+        >
+          {doctor.error}
+        </PageError>
       ) : (
         HARNESSES.map((harness) => (
           <ProviderRow

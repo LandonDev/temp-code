@@ -159,6 +159,32 @@ describe("PageError and PageEmpty", () => {
     for (const c of ["py-3", "text-xs", "text-destructive", "whitespace-pre-wrap"]) expect(line.className).toContain(c);
   });
 
+  it("ends its line with an untitled section's Retry, so no blank heading line holds the button", () => {
+    const retry = vi.fn();
+    const { container } = render(
+      <PageSection>
+        <PageError
+          action={
+            <Button variant="ghost" size="sm" onClick={retry}>
+              Retry
+            </Button>
+          }
+        >
+          The host did not answer
+        </PageError>
+      </PageSection>,
+    );
+    // No heading line at all.
+    expect(container.querySelector("section > .h-5")).toBeNull();
+    const line = container.querySelector<HTMLElement>("[data-slot=page-error-line]")!;
+    expect(line.className).toContain("py-3");
+    expect(screen.getByRole("alert").textContent).toBe("The host did not answer");
+    // Error first, Retry at the line's end.
+    expect(line.lastElementChild!.textContent).toBe("Retry");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
   it("sits on the same 12px inset as the muted empty line", () => {
     render(<PageEmpty>No rules</PageEmpty>);
     const empty = screen.getByText("No rules");

@@ -60,15 +60,7 @@ export function AppshotsPage() {
 
   return (
     <>
-      <PageSection
-        action={
-          !loaded && loadError ? (
-            <Button variant="ghost" size="sm" onClick={() => void loadAppshotSettings()}>
-              Retry
-            </Button>
-          ) : null
-        }
-      >
+      <PageSection>
         {loaded ? (
           <>
             <PageRow title="Double-⌘ capture" error={errorOf("enabled")}>
@@ -96,7 +88,15 @@ export function AppshotsPage() {
             </PageRow>
           </>
         ) : loadError ? (
-          <PageError>{loadError}</PageError>
+          <PageError
+            action={
+              <Button variant="ghost" size="sm" onClick={() => void loadAppshotSettings()}>
+                Retry
+              </Button>
+            }
+          >
+            {loadError}
+          </PageError>
         ) : (
           <PageRowsSkeleton rows={[{ control: "switch" }, { description: true }, { control: "switch" }]} />
         )}

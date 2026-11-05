@@ -156,14 +156,16 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
   if (!remote.data) {
     // The poll asks again every 5 s; Retry asks now.
     return remote.error ? (
-      <PageSection
-        action={
-          <Button variant="ghost" size="sm" onClick={() => void remote.refresh()}>
-            Retry
-          </Button>
-        }
-      >
-        <PageError>{remote.error}</PageError>
+      <PageSection>
+        <PageError
+          action={
+            <Button variant="ghost" size="sm" onClick={() => void remote.refresh()}>
+              Retry
+            </Button>
+          }
+        >
+          {remote.error}
+        </PageError>
       </PageSection>
     ) : (
       <PageSkeleton />

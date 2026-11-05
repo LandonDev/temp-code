@@ -23,17 +23,21 @@ export function ReviewsPage() {
   };
 
   return (
-    <PageSection
-      action={
-        !scope && error ? (
-          <Button variant="ghost" size="sm" onClick={retry}>
-            Retry
-          </Button>
-        ) : null
-      }
-    >
+    <PageSection>
       {scope ? <ReviewFields value={scope.settings} onChange={change} environmentId={environmentId} /> : error ? null : <ReviewSkeleton />}
-      {error ? <PageError>{error}</PageError> : null}
+      {error ? (
+        <PageError
+          action={
+            !scope ? (
+              <Button variant="ghost" size="sm" onClick={retry}>
+                Retry
+              </Button>
+            ) : null
+          }
+        >
+          {error}
+        </PageError>
+      ) : null}
     </PageSection>
   );
 }

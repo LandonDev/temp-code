@@ -538,7 +538,9 @@ words never thin to a word a line;
 a loading value is a `Skeleton` in its shape, an error a red 12px line
 under its row. A section loaded from a host waits for the socket to open,
 asks again on every new socket until it has answered, and past 10 s says
-"The host did not answer" with Retry (lib/connection/openRead.ts; a page's
+"The host did not answer" with Retry (on the section's heading line, or at
+the end of the error line itself, `PageError`'s `action`, in a section with
+no title, never alone on a blank heading; lib/connection/openRead.ts; a page's
 own read is `useHostRead`, lib/connection/hostRead.ts, and a store's scopes
 keep the same rule: plans, rules, thread defaults); a late answer still
 lands. A failure never stands in as a value: no "Not installed", "No JDK

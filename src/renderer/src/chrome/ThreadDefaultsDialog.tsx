@@ -156,7 +156,7 @@ function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string;
           <Button variant="ghost" size="sm" onClick={() => save(null)} disabled={blocked}>
             {workspaceId === null ? "Reset" : "Remove override"}
           </Button>
-        ) : !scope && failure ? (
+        ) : !scope && failure && workspaceId !== null ? (
           <Button variant="ghost" size="sm" onClick={failure.retry}>
             Retry
           </Button>
@@ -166,7 +166,18 @@ function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string;
       {scope ? (
         <ThreadDefaultsFields value={scope.defaults} onChange={save} environmentId={environmentId} disabled={blocked} />
       ) : failure ? (
-        <PageError>{failure.error}</PageError>
+        // The global page's section has no title, so no heading line: its Retry ends the error line.
+        <PageError
+          action={
+            workspaceId === null ? (
+              <Button variant="ghost" size="sm" onClick={failure.retry}>
+                Retry
+              </Button>
+            ) : null
+          }
+        >
+          {failure.error}
+        </PageError>
       ) : (
         <PageRowsSkeleton rows={DEFAULTS_SKELETON} />
       )}

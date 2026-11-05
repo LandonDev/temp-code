@@ -44,7 +44,7 @@ const NEUTRAL_SHARE = 60;
 /**
  * One series that counts both providers (Top projects, Tools used, Cache hit
  * rate, Busiest hours): no provider's colour, so it never reads as Claude's
- * alone. The foreground mixed into the page, a gray step apart from Other.
+ * alone. The foreground mixed into the page.
  */
 export const NEUTRAL_SERIES = `color-mix(in oklab, var(--foreground) ${NEUTRAL_SHARE}%, var(--background))`;
 
