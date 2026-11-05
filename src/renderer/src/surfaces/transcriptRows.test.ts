@@ -210,3 +210,52 @@ describe("sameRow", () => {
     expect(sameRow(live!, flattenTurns([[user("u0"), tool("t0")]], false).rows[1]!)).toBe(false);
   });
 });
+
+describe("a send rebuilds the last turn's rows alone", () => {
+  const turnOf = (n: number): Block[] => [user(`u${n}`), reply(`a${n}`)];
+  /** The same rows a flatten with no kept rows gives: a fresh copy of every turn. */
+  const fresh = (turns: Block[][], busy: boolean, opts?: { loadEarlier?: boolean }) => flattenTurns(turns.map((t) => [...t]), busy, opts).rows;
+
+  it("a settled turn keeps its row objects while its blocks, index and the row above stay; the last turn is built anew", () => {
+    const history = Array.from({ length: 200 }, (_, n) => turnOf(n));
+    const before = flattenTurns(history, false).rows;
+    // A send: the same settled turns, one new last turn, the thread running.
+    const sent = [...history, [user("u200")]];
+    const after = flattenTurns(sent, true).rows;
+    expect(after.slice(0, before.length - 3)).toEqual(before.slice(0, before.length - 3));
+    for (let i = 0; i < before.length - 3; i++) expect(after[i]).toBe(before[i]);
+    // The turn that was last is a settled turn now, and the new one is live: both read as a full flatten has them.
+    expect(after).toEqual(fresh(sent, true));
+  });
+
+  it("a page loaded above moves every turn's index: the rows are built again and read as a full flatten has them", () => {
+    const history = Array.from({ length: 20 }, (_, n) => turnOf(n + 10));
+    const before = flattenTurns(history, false, { loadEarlier: true }).rows;
+    const older = Array.from({ length: 10 }, (_, n) => turnOf(n));
+    const after = flattenTurns([...older, ...history], false, { loadEarlier: false }).rows;
+    expect(after).toEqual(fresh([...older, ...history], false));
+    expect(after.find((r) => r.key === before[1]!.key)).not.toBe(before[1]);
+    // The first turn under "Load earlier" and the same turn first with nothing above take different gaps.
+    const top = flattenTurns(history, false).rows;
+    expect(top[0]).toMatchObject({ gap: ROW_GAP.first });
+    expect(before[1]).toMatchObject({ gap: ROW_GAP.more });
+  });
+
+  it("a send reads the text of the turn it built alone: a settled row keeps its estimate", () => {
+    let reads = 0;
+    const counted = (id: string): Block => {
+      const block = reply(id, "a long answer\nover two lines");
+      return Object.defineProperty(block, "text", { get: () => (reads++, "a long answer\nover two lines"), enumerable: true });
+    };
+    const history = Array.from({ length: 50 }, (_, n) => [user(`u${n}`), counted(`a${n}`)]);
+    const estimate = (turns: Block[][], busy: boolean) => flattenTurns(turns, busy).rows.map(estimateRowHeight);
+    const first = estimate(history, false);
+    expect(reads).toBeGreaterThan(0);
+    reads = 0;
+    const sent = estimate([...history, [user("u50")]], true);
+    // The turn that was last is rebuilt as a settled turn; every other row keeps what it read.
+    expect(reads).toBe(1);
+    expect(sent.slice(0, first.length - 2)).toEqual(first.slice(0, first.length - 2));
+    expect(sent).toEqual(flattenTurns([...history.map((t) => [...t]), [user("u50")]], true).rows.map(estimateRowHeight));
+  });
+});

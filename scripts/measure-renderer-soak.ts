@@ -84,9 +84,9 @@ import { summarizeTrace, TRACE_CATEGORIES, traceMarkdown, type TraceEvent, type 
 import { REVEAL_OBSERVER, revealLine, summarizeReveal, type RevealRecord } from './lib/revealReport'
 import { HEIGHT_OBSERVER, heightLine, summarizeHeights, type HeightRecord } from './lib/heightReport'
 import { REVEAL } from '../src/renderer/src/lib/ease'
-import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSoak, judgeSwitch, judgeTyping, parseSoakArgs, REACT_MEASURE_PREFIX, SWITCH_RULE, TYPING_RULE, type BuildStamp, type GateScene, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSend, judgeSoak, judgeSwitch, judgeTyping, parseSoakArgs, REACT_MEASURE_PREFIX, SEND_RULE, SWITCH_RULE, TYPING_RULE, type BuildStamp, type GateScene, type SoakSample } from './lib/soakJudge'
 import { scenarioLength, questionClicks } from './lib/soakScenarios'
-import { summarizePhase, typingGaps, typingMarkdown, typingPhases, typingProse, type PhaseSummary, type TypingRecords } from './lib/soakTyping'
+import { spread, summarizePhase, typingGaps, typingMarkdown, typingPhases, typingProse, type PhaseSummary, type TypingRecords } from './lib/soakTyping'
 import { summarizeSwitch, switchMarkdown, type SwitchClick, type SwitchView } from './lib/soakSwitch'
 
 const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
@@ -420,7 +420,8 @@ type Shown = { environmentId: string; masterId: string; threadId: string }
  *  node:sqlite (scripts/ios-client-test.ts runs its server the same way). */
 function hostCommand(): [string, string[]] {
   const burst = args.burstMs ? ['--burst', String(args.burstMs)] : []
-  if (!mac) return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts', '--scene', args.scene, ...burst]]
+  const history = args.scene === 'send' ? ['--history', String(args.history)] : []
+  if (!mac) return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts', '--scene', args.scene, ...burst, ...history]]
   const out = join(REPO, 'scripts', '.out', 'soak-host.mjs')
   execFileSync(
     join(REPO, 'node_modules', '.bin', 'esbuild'),
@@ -438,13 +439,14 @@ function hostCommand(): [string, string[]] {
     ],
     { cwd: REPO, stdio: ['ignore', 'ignore', 'inherit'] }
   )
-  return ['node', [out, '--scene', args.scene, ...burst]]
+  return ['node', [out, '--scene', args.scene, ...burst, ...history]]
 }
 
 async function startSynthetic(c: Cdp): Promise<Shown> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith('TEMP_CODE_') && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v
   env.NODE_ENV = 'production'
+  if (args.peerDelayMs) env.TEMP_CODE_PEER_DELAY_MS = String(args.peerDelayMs)
   const hostLog = join(ROOT, `${args.label}.host.log`)
   soakHost = spawn(...hostCommand(), {
     cwd: REPO,
@@ -684,6 +686,10 @@ async function main(): Promise<void> {
   }
   if (args.scene === 'switch') {
     await recordSwitch(c)
+    return
+  }
+  if (args.scene === 'send') {
+    await recordSend(c, shown)
     return
   }
 
@@ -1191,6 +1197,173 @@ async function recordSwitch(c: Cdp): Promise<void> {
     ...(profile ? ['', 'The measured clicks, profiled:', '', '```', profile, '```'] : []),
     ...(rendered.ms.size
       ? ['', `What the ${args.clicks} clicks rendered from press to pane (dev build, inclusive ms):`, '', '| component | renders | ms |', '|---|---|---|', ...[...rendered.ms].sort((x, y) => y[1] - x[1]).slice(0, 45).map(([n, ms]) => `| ${n} | ${rendered.renders.get(n) ?? 0} | ${Math.round(ms)} |`)]
+      : [])
+  ].join('\n')
+  writeFileSync(join(ROOT, `${args.label}.md`), md + '\n')
+  for (const v of verdict.verdicts) console.log(`${v.ok ? '✓' : '✗'} ${v.what}: ${v.got} (limit ${v.limit})`)
+  console.log(`${verdict.ok ? 'passed' : 'FAILED'}: ${ROOT}/${args.label}.md`)
+  process.exitCode = verdict.ok ? 0 : 1
+}
+
+// ── a send into a long thread, measured ─────────────────────────────────
+/** The page side of a send: long tasks, long animation frames, and arm(text),
+ *  which follows each frame until the person's row with that text is in the
+ *  transcript and the composer is empty. */
+const SEND_OBSERVERS = `(() => {
+  if (window.__send) return true
+  const s = (window.__send = { tasks: [], frames: [], keys: [] })
+  new PerformanceObserver((list) => { for (const e of list.getEntries()) s.tasks.push({ start: e.startTime, duration: e.duration }) }).observe({ type: 'longtask' })
+  // The Enter's own handler: the send's work on the main thread, apart from the wait for a frame.
+  new PerformanceObserver((list) => { for (const e of list.getEntries()) if (e.name === 'keydown') s.keys.push({ start: e.startTime, processing: e.processingEnd - e.processingStart }) }).observe({ type: 'event', durationThreshold: 16 })
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        if (e.duration <= 50) continue
+        const scripts = [...(e.scripts || [])].sort((a, b) => b.duration - a.duration).slice(0, 3)
+        s.frames.push({ start: e.startTime, duration: e.duration, scripts: scripts.map((x) => (x.sourceFunctionName || x.invoker || '?') + ' ' + Math.round(x.duration) + ' ms') })
+      }
+    }).observe({ type: 'long-animation-frame' })
+  } catch {}
+  const field = window.__typingField
+  s.arm = (text) => {
+    const run = (s.run = { t0: performance.now(), row: null, cleared: null })
+    const ch = new MessageChannel()
+    ch.port1.onmessage = (e) => { if (run[e.data] === null) run[e.data] = performance.now() }
+    const tick = () => {
+      if (s.run !== run || performance.now() - run.t0 > 5000) return
+      const cleared = field.textContent === ''
+      const pane = field.closest('[data-session-drop]')
+      // On screen: a row mounted in the overscan below the viewport is not seen yet.
+      const view = pane?.querySelector('.agent-transcript')?.getBoundingClientRect()
+      const row = !!view && [...pane.querySelectorAll('[data-row]')].some((r) => {
+        if (!r.textContent.includes(text)) return false
+        const box = r.getBoundingClientRect()
+        return box.bottom > view.top && box.top < view.bottom
+      })
+      if (cleared) ch.port2.postMessage('cleared')
+      if (row) ch.port2.postMessage('row')
+      if (!cleared || !row) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+    return run.t0
+  }
+  return true
+})()`
+
+/**
+ * `--scene send`: messages sent into the master's long thread from its
+ * composer (typed in at once, then Enter), each timed to the end of the
+ * first frame showing the person's row with its text, and to the composer
+ * emptying; the host's answer to the send, off the window's socket, is
+ * reported beside them. The synthetic host runs no harness: the row stays the
+ * window's own until the host echoes it.
+ */
+async function recordSend(c: Cdp, shown: Shown): Promise<void> {
+  const until = Date.now() + 30_000
+  let field = { count: 0, x: 0, y: 0, width: 0, text: '' }
+  let focused = false
+  await sleep(3_000)
+  while (!focused && Date.now() < until) {
+    field = await c.eval(TYPING_FIELD)
+    if (field.count === 1) {
+      for (const type of ['mousePressed', 'mouseReleased'] as const) await c.send('Input.dispatchMouseEvent', { type, x: field.x, y: field.y, button: 'left', clickCount: 1 })
+      focused = await c.eval<boolean>('document.activeElement === window.__typingField')
+    }
+    if (!focused) await sleep(500)
+  }
+  if (!focused) throw new Error(`the master's composer did not take focus (${field.count} composers on screen)`)
+  await c.eval(SEND_OBSERVERS)
+  if (args.loadAll) {
+    // The whole history paged in, as a reader who scrolled back through it would have it.
+    const pages = await c.eval<number>(`(async () => { const s = window.__monocode.sessionStore; let n = 0; while (n < 200 && (await s.loadOlder(${JSON.stringify(shown.masterId)}))) n++; return n })()`)
+    log(`paged in ${pages} earlier pages`)
+    await sleep(2_000)
+  }
+  const held = await c.eval<{ blocks: number; rows: number }>(`(() => ({ blocks: window.__monocode.sessionStore.get(${JSON.stringify(shown.masterId)})?.blocks.length ?? 0, rows: window.__typingField.closest('[data-session-drop]').querySelectorAll('[data-row]').length }))()`)
+  log(`the master's transcript holds ${held.blocks} blocks, ${held.rows} rows mounted`)
+  // The send's request and its answer, off the window's sockets.
+  const frames: { at: number; dir: 'sent' | 'received'; id: string; method?: string }[] = []
+  await c.send('Network.enable')
+  const note = (dir: 'sent' | 'received') => (p: unknown) => {
+    try {
+      const frame = JSON.parse((p as { response: { payloadData: string } }).response.payloadData) as { id?: string | number; method?: string }
+      if (frame.id !== undefined) frames.push({ at: Date.now(), dir, id: String(frame.id), method: frame.method })
+    } catch {
+      /* not JSON */
+    }
+  }
+  c.on('Network.webSocketFrameSent', note('sent'))
+  c.on('Network.webSocketFrameReceived', note('received'))
+  const tracing = args.traceS ? traceFrames(c, args.traceS) : null
+  if (args.profile) {
+    await c.send('Profiler.enable')
+    await c.send('Profiler.setSamplingInterval', { interval: 200 })
+    await c.send('Profiler.start')
+  }
+  type Sent = { text: string; wall: number; rowMs: number | null; clearedMs: number | null; handlerMs: number | null; answerMs: number | null; longTasks: { start: number; duration: number }[]; frames: { duration: number; scripts: string[] }[] }
+  const sent: Sent[] = []
+  const rendered = new Map<string, [number, number]>()
+  for (let i = 0; i < args.sends; i++) {
+    if (args.build === 'dev') await c.eval('window.__soakDrain()')
+    const text = `Send probe ${i + 1}: what landed since the last report?`
+    await c.send('Input.insertText', { text })
+    await sleep(400)
+    const t0 = await c.eval<number>(`window.__send.arm(${JSON.stringify(text)})`)
+    const wall = Date.now()
+    for (const type of ['keyDown', 'keyUp'] as const) await c.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) })
+    const done = Date.now() + 5_000
+    while (Date.now() < done && (await c.eval<boolean>('(() => { const r = window.__send.run; return r.row === null || r.cleared === null })()'))) await sleep(50)
+    await sleep(300)
+    const got = await c.eval<{ row: number | null; cleared: number | null; handler: number | null; tasks: { start: number; duration: number }[]; frames: { start: number; duration: number; scripts: string[] }[] }>(
+      `(() => { const s = window.__send, r = s.run, end = r.t0 + 5000; return { row: r.row, cleared: r.cleared, handler: s.keys.find((k) => k.start >= r.t0 && k.start < end)?.processing ?? null, tasks: s.tasks.filter((t) => t.start >= r.t0 && t.start < end), frames: s.frames.filter((f) => f.start >= r.t0 && f.start < end) } })()`
+    )
+    if (args.build === 'dev') {
+      const d = await c.eval<{ renders: [string, number][]; renderMs: [string, number][] }>('window.__soakDrain()')
+      for (const [n, ms] of d.renderMs) {
+        const had = rendered.get(n) ?? [0, 0]
+        rendered.set(n, [had[0] + (d.renders.find(([m]) => m === n)?.[1] ?? 0), had[1] + ms])
+      }
+    }
+    const one: Sent = { text, wall, rowMs: got.row === null ? null : got.row - t0, clearedMs: got.cleared === null ? null : got.cleared - t0, handlerMs: got.handler, answerMs: null, longTasks: got.tasks, frames: got.frames.map((f) => ({ duration: f.duration, scripts: f.scripts })) }
+    sent.push(one)
+    log(`send ${i + 1}: row ${one.rowMs === null ? 'never' : `${one.rowMs.toFixed(1)} ms`}, composer clear ${one.clearedMs === null ? 'never' : `${one.clearedMs.toFixed(1)} ms`}, Enter's handler ${one.handlerMs === null ? '–' : `${one.handlerMs.toFixed(1)} ms`}, long tasks ${got.tasks.length}`)
+    await sleep(1_500)
+  }
+  // The host's answers, read once the last could have come (a held one lands after its send's row).
+  await sleep(args.peerDelayMs)
+  for (const one of sent) {
+    const request = frames.find((f) => f.dir === 'sent' && f.at >= one.wall && (f.method === 'session.send' || f.method === 'queue.add'))
+    const answer = request ? frames.find((f) => f.dir === 'received' && f.id === request.id && f.at >= request.at) : undefined
+    one.answerMs = answer ? answer.at - one.wall : null
+  }
+  const trace = tracing ? await tracing : null
+  let profile: string | null = null
+  if (args.profile) {
+    const { profile: cpuProfile } = (await c.send('Profiler.stop')) as { profile: CpuProfile }
+    writeFileSync(join(ROOT, `${args.label}.cpuprofile`), JSON.stringify(cpuProfile))
+    profile = profileSummary(cpuProfile)
+  }
+  const times = (key: 'rowMs' | 'clearedMs' | 'handlerMs' | 'answerMs'): number[] => sent.flatMap((x) => (x[key] === null ? [] : [x[key]!]))
+  const summary = { sends: sent.length, row: spread(times('rowMs')), cleared: spread(times('clearedMs')), handler: spread(times('handlerMs')), answer: spread(times('answerMs')), missed: sent.filter((x) => x.rowMs === null).length }
+  const verdict = judgeSend(summary)
+  const ms = (n: number | null): string => (n === null ? '–' : String(Math.round(n * 10) / 10))
+  writeFileSync(join(ROOT, `${args.label}.json`), JSON.stringify({ label: args.label, args, tree, platform: process.platform, held, rule: SEND_RULE, verdict, sent, summary, trace }, null, 1))
+  const md = [
+    `# ${args.label}: synthetic host, send scene, ${args.build} build (${process.platform}, load ${loadavg()[0]!.toFixed(1)}), the master's ${args.history}-row history: ${held.blocks} blocks held, ${held.rows} rows mounted`,
+    '',
+    "| send | → the person's row ms | → composer clear ms | Enter's handler ms | → host's answer ms | long tasks (worst ms) | long frames |",
+    '|---|---|---|---|---|---|---|',
+    ...sent.map((x, i) => `| ${i + 1} | ${ms(x.rowMs)} | ${ms(x.clearedMs)} | ${ms(x.handlerMs)} | ${ms(x.answerMs)} | ${x.longTasks.length}${x.longTasks.length ? ` (${Math.round(Math.max(...x.longTasks.map((t) => t.duration)))})` : ''} | ${x.frames.map((f) => `${Math.round(f.duration)} ms: ${f.scripts.join('; ') || 'no script named'}`).join(' / ') || 'none'} |`),
+    '',
+    `Row p50 / p95 / max ${ms(summary.row.p50)} / ${ms(summary.row.p95)} / ${ms(summary.row.max)} ms; composer clear ${ms(summary.cleared.p50)} / ${ms(summary.cleared.p95)} / ${ms(summary.cleared.max)} ms; Enter's handler ${ms(summary.handler.p50)} / ${ms(summary.handler.p95)} / ${ms(summary.handler.max)} ms; the host's answer ${ms(summary.answer.p50)} / ${ms(summary.answer.p95)} / ${ms(summary.answer.max)} ms.`,
+    '',
+    '| reading | got | limit | |',
+    '|---|---|---|---|',
+    ...verdict.verdicts.map((v) => `| ${v.what} | ${v.got} | ${v.limit} | ${v.ok ? 'pass' : 'FAIL'} |`),
+    ...(trace ? ['', ...traceMarkdown(trace)] : []),
+    ...(profile ? ['', 'The sends, profiled:', '', '```', profile, '```'] : []),
+    ...(rendered.size
+      ? ['', `What the ${args.sends} sends rendered (dev build, inclusive ms):`, '', '| component | renders | ms |', '|---|---|---|', ...[...rendered].sort((x, y) => y[1][1] - x[1][1]).slice(0, 40).map(([n, [k, ms]]) => `| ${n} | ${k} | ${Math.round(ms)} |`)]
       : [])
   ].join('\n')
   writeFileSync(join(ROOT, `${args.label}.md`), md + '\n')

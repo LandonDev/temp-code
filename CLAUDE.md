@@ -2094,10 +2094,15 @@ names the far child).
 - `bun scripts/measure-renderer-soak.ts` soaks a built tree's window
   (`--build prod|dev`, `--host synthetic|box`, `--view board|stream|split`,
   `--minutes`, `--every`, `--label`, `--tree`, `--gate`, `--scene
-  board|chat|typing|switch|scenarios` (switch: the rail's two workspaces
+  board|chat|typing|switch|send|scenarios` (switch: the rail's two workspaces
   clicked in turn, each click timed to its column and strip and to its
   landing thread's rows, `--workspaces a,b`, `--clicks`, scripts/lib/soakSwitch.ts,
-  a hand-run scene; docs/box.md "Switching workspaces"; typing: the master's composer typed into
+  a hand-run scene; docs/box.md "Switching workspaces"; send: messages sent
+  from the master's composer into its 5,000-row history (`--history`,
+  `--sends`, `--load-all` pages it all in, `--peer-delay <ms>` slows the
+  synthetic host's answers), each timed to its row's first frame, to the
+  composer emptying and to the host's answer, judged by `SEND_RULE`, a
+  synthetic hand-run scene; docs/box.md "Sending into a long thread"; typing: the master's composer typed into
   beside its board in phases under the board's load, the master's churn and
   a 3,000-edit live-edit flood every 10 s, scripts/lib/soakTyping.ts, judged
   by `TYPING_RULE`; docs/box.md "Typing on a busy master"; scenarios: the no-jerk timeline of
@@ -2186,7 +2191,11 @@ names the far child).
   reaches a `ref` prop (`useDragResize` gives `attachPane`). In the
   transcript a delta re-renders the row it changed and the closing row:
   `RowView` compares its row by what it draws (`sameRow` in
-  transcriptRows.ts), since every flatten builds new row objects, and only
+  transcriptRows.ts), since the live turn's rows are new objects at every
+  flatten; a settled turn keeps its row objects and their height estimates
+  while its blocks array, its index and the row above it stay
+  (`settledRows`, `estimateRowHeight`), so a send builds and measures the
+  last turn's rows alone, however long the thread; and only
   the live turn's closing row is handed the session (`rowTurnState`; a
   notice reads it from context). Chrome that reads a thread's status, host
   or model never subscribes to its streamed text: the composer and the

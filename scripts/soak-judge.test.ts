@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildIsCurrent, FAMILY, GATE_CPU_PCT, GATE_RULE, gateRule, handRule, judgeSoak, judgeTyping, parseSoakArgs, TYPING_RULE, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_CPU_PCT, GATE_RULE, gateRule, handRule, judgeSend, judgeSoak, judgeTyping, parseSoakArgs, SEND_RULE, TYPING_RULE, type SoakSample } from './lib/soakJudge'
 import type { PhaseSummary } from './lib/soakTyping'
 
 const sample = (t: number, over: Partial<SoakSample> = {}): SoakSample => ({ t, heapMb: 40, rssMb: 200, cpuS: 0.5, wallS: 10, longTasks: [], ...over })
@@ -221,5 +221,26 @@ describe('the typing scene', () => {
     expect(verdict.ok).toBe(true)
     expect(verdict.verdicts.some((v) => v.what.startsWith('idle'))).toBe(false)
     expect(TYPING_RULE.p95Ms).toEqual({ idle: 16, busy: 33, fast: 33 })
+  })
+})
+
+describe('the send scene', () => {
+  it("sends into the synthetic master's 5,000-row thread, never the box's, by hand or on the gate", () => {
+    expect(parseSoakArgs(['--scene', 'send'])).toMatchObject({ scene: 'send', host: 'synthetic', view: 'board', history: 5000, sends: 16, loadAll: false, peerDelayMs: 0, label: 'synthetic-prod-send' })
+    expect(parseSoakArgs(['--gate', '--scene', 'send'])).toMatchObject({ gate: true, sends: 10, label: 'gate-send' })
+    expect(parseSoakArgs(['--scene', 'send', '--history', '200', '--sends', '4', '--load-all', '--peer-delay', '300'])).toMatchObject({ history: 200, sends: 4, loadAll: true, peerDelayMs: 300 })
+    expect(() => parseSoakArgs(['--scene', 'send', '--host', 'box'])).toThrow('is a synthetic host')
+    expect(() => parseSoakArgs(['--gate', '--scene', 'send', '--peer-delay', '300'])).toThrow('on a hand run')
+    expect(() => parseSoakArgs(['--scene', 'typing', '--history', '200'])).toThrow('belong to --scene send')
+    expect(() => parseSoakArgs(['--scene', 'send', '--sends', '0'])).toThrow('whole number')
+    expect(() => parseSoakArgs(['--scene', 'send', '--minutes', '2'])).toThrow('runs its own steps')
+  })
+
+  it("passes a p95 inside 50 ms with every row painted, and fails a slow send or one whose row never came", () => {
+    expect(judgeSend({ row: { p95: 49.2 }, missed: 0 }).ok).toBe(true)
+    expect(judgeSend({ row: { p95: 51.7 }, missed: 0 }).verdicts.map((v) => v.ok)).toEqual([false, true])
+    expect(judgeSend({ row: { p95: 30 }, missed: 1 }).verdicts.map((v) => v.ok)).toEqual([true, false])
+    expect(judgeSend({ row: { p95: null }, missed: 10 }).ok).toBe(false)
+    expect(SEND_RULE.rowP95Ms).toBe(50)
   })
 })

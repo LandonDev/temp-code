@@ -3194,6 +3194,56 @@ bun scripts/measure-renderer-soak.ts --scene switch --host box --workspaces temp
 bun scripts/measure-renderer-soak.ts --scene switch --build dev --no-profile --label <name>   # what each click rendered
 ```
 
+### Sending into a long thread
+
+The user, 2026-11-05: "There is also some delay/lag sending a message in
+this thread, as it has gotten kind of big." `--scene send` sends messages
+from the master's composer into its history (5,000 rows by default,
+`--history`: a prompt, a reply, a Read call, its result and the turn's end
+per turn, seeded before the batch's turn). Each message is typed in at once
+and sent with Enter, then timed to the end of the first frame that shows the
+person's row with its text, to the composer emptying, and to the host's
+answer to `session.send` read off the window's socket; the Enter's own
+handler time comes from Event Timing (soakJudge.ts `SEND_RULE`: the row at
+most 50 ms at p95, every row painted). `--load-all` pages the whole history
+in first, as a reader who scrolled back through it has it; `--peer-delay
+<ms>` holds every request the window makes on the synthetic host
+(TEMP_CODE_PEER_DELAY_MS), as a far host would. The scene sends, so it runs
+on the synthetic host only.
+
+The row never waited for the host: with every request held 300 ms the row
+painted at p50 30 ms and p95 40 ms while the answer came at 325 to 347 ms
+(eight sends, load 18). What grew with the thread was the window's own
+pass over its rows: every send flattened every turn into new row objects
+and estimated every row's height from its text, the whole history each
+time. A settled turn now keeps its rows while its blocks array, its index
+and the row above it stay (transcriptRows.ts `settledRows`), and a row keeps
+its estimate (`estimateRowHeight` by row), so a send builds and measures the
+last turn's rows alone.
+
+The rows pass for one send, 5,000 rows, flatten plus estimates plus the
+layout's `setRows`, timed by itself (vitest, 40 sends):
+
+| Replies | master (eb0201cb) median / p95 | this change |
+|---|---|---|
+| 350 B (the scene's) | 3.6 / 15.4 ms | 1.2 / 4.1 ms |
+| 9 KB | 10.5 / 19.6 ms | 1.1 / 4.9 ms |
+
+On the box with the whole history paged in (3,002 blocks) and the 300 ms
+hold, the row read p50 35 ms, p95 52 ms on master at load 15 and 39 / 49 ms
+with the rows kept (load 16, traced). Two interleaved pairs at loads 63 to
+68, 16 sends each, took the Enter's handler from 37.6 and 37.0 ms to 34.8
+and 33.9 ms at p50; the row's frame waited on the loaded machine either
+way (p50 78 to 79 ms on both). It is a hand-run scene; its gate form (`--gate
+--scene send`, 10 sends) fits the 90 s budget and joins the gate once a run
+on the Mac sizes it.
+
+```bash
+bun scripts/measure-renderer-soak.ts --scene send --label <name>                 # 16 sends, the tail loaded
+bun scripts/measure-renderer-soak.ts --scene send --load-all --peer-delay 300 --label <name>
+bun scripts/measure-renderer-soak.ts --scene send --build dev --no-profile --label <name>   # what each send rendered
+```
+
 ## Profiling the host
 
 On the box, run `tc-local doctor.profile '{"seconds":15}'` (the local

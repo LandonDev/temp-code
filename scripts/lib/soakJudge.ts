@@ -30,7 +30,7 @@ import type { SwitchSummary } from './soakSwitch'
 export type SoakHostKind = 'synthetic' | 'box'
 export type SoakBuild = 'prod' | 'dev'
 export type SoakView = 'board' | 'stream' | 'split'
-export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'scenarios'
+export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scenarios'
 
 export interface SoakArgs {
   host: SoakHostKind
@@ -71,6 +71,13 @@ export interface SoakArgs {
   /** --scene switch: the clicks, alternating between the two workspaces --workspaces names (the box's temp-code and CosmicClient by default) */
   clicks: number
   workspaces: [string, string]
+  /** --scene send: the master's history in rows, and the messages sent into it */
+  history: number
+  sends: number
+  /** --load-all: the window pages the whole history in before the first send */
+  loadAll: boolean
+  /** --peer-delay <ms>: the synthetic host holds every request the window makes this long (TEMP_CODE_PEER_DELAY_MS), as a far host would */
+  peerDelayMs: number
 }
 
 /** The gate's run: 20 s to launch, pair and open, 10 s to warm up, a 50 s window, then teardown, inside 90 s. */
@@ -88,13 +95,14 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const host = (flag('--host') ?? 'synthetic') as SoakHostKind
   const build = (flag('--build') ?? 'prod') as SoakBuild
   const scene = (flag('--scene') ?? 'board') as SoakScene
-  if (!['board', 'chat', 'typing', 'switch', 'scenarios'].includes(scene)) throw new Error('--scene is board, chat, typing, switch or scenarios')
-  if ((scene === 'chat' || scene === 'scenarios') && host !== 'synthetic') throw new Error(`--scene ${scene} is a synthetic host`)
+  if (!['board', 'chat', 'typing', 'switch', 'send', 'scenarios'].includes(scene)) throw new Error('--scene is board, chat, typing, switch, send or scenarios')
+  // The send scene sends: never into the box's own threads.
+  if ((scene === 'chat' || scene === 'scenarios' || scene === 'send') && host !== 'synthetic') throw new Error(`--scene ${scene} is a synthetic host`)
   if (scene === 'scenarios' && gate) throw new Error('--scene scenarios is a recording, never the gate')
-  const view = (flag('--view') ?? (scene === 'board' ? (gate ? 'split' : 'board') : scene === 'typing' || scene === 'switch' ? 'board' : 'stream')) as SoakView
+  const view = (flag('--view') ?? (scene === 'board' ? (gate ? 'split' : 'board') : scene === 'typing' || scene === 'switch' || scene === 'send' ? 'board' : 'stream')) as SoakView
   if (scene === 'typing' && view !== 'board') throw new Error("--scene typing types into the master's composer beside its board: its view is board")
   if ((scene === 'chat' || scene === 'scenarios') && view !== 'stream') throw new Error(`--scene ${scene} has one thread: its view is stream`)
-  if ((scene === 'typing' || scene === 'switch') && (argv.includes('--minutes') || argv.includes('--every'))) throw new Error(`--scene ${scene} runs its own steps, not a window: drop --minutes and --every`)
+  if ((scene === 'typing' || scene === 'switch' || scene === 'send') && (argv.includes('--minutes') || argv.includes('--every'))) throw new Error(`--scene ${scene} runs its own steps, not a window: drop --minutes and --every`)
   if (scene === 'switch' && argv.includes('--view')) throw new Error('--scene switch clicks the rail: it opens no view of its own')
   if (scene !== 'switch' && (argv.includes('--clicks') || argv.includes('--workspaces'))) throw new Error('--clicks and --workspaces belong to --scene switch')
   const clicks = Number(flag('--clicks') ?? (gate ? '12' : '20'))
@@ -102,7 +110,15 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const named = (flag('--workspaces') ?? (host === 'box' ? 'temp-code,CosmicClient' : 'soak,client')).split(',').map((w) => w.trim())
   if (named.length !== 2 || !named.every(Boolean)) throw new Error('--workspaces takes two names: a,b')
   const workspaces = named as [string, string]
-  if ((scene === 'typing' || scene === 'switch') && argv.includes('--cpu-report-only')) throw new Error(`--scene ${scene} reports CPU and never judges it: drop --cpu-report-only`)
+  if (scene !== 'send' && (argv.includes('--history') || argv.includes('--sends') || argv.includes('--load-all'))) throw new Error('--history, --sends and --load-all belong to --scene send')
+  const history = Number(flag('--history') ?? '5000')
+  const sends = Number(flag('--sends') ?? (gate ? '10' : '16'))
+  if (!Number.isInteger(history) || history < 0) throw new Error('--history takes a row count')
+  if (!Number.isInteger(sends) || sends < 1) throw new Error('--sends takes a whole number')
+  const peerDelayMs = Number(flag('--peer-delay') ?? '0')
+  if (!(peerDelayMs >= 0 && peerDelayMs <= 5_000)) throw new Error('--peer-delay takes ms, 0 to 5000')
+  if (peerDelayMs && (host !== 'synthetic' || gate)) throw new Error('--peer-delay slows the synthetic host on a hand run')
+  if ((scene === 'typing' || scene === 'switch' || scene === 'send') && argv.includes('--cpu-report-only')) throw new Error(`--scene ${scene} reports CPU and never judges it: drop --cpu-report-only`)
   const screencast = flag('--screencast') ?? null
   const scrolledUp = argv.includes('--scrolled-up')
   if (scrolledUp && scene !== 'scenarios') throw new Error('--scrolled-up belongs to --scene scenarios')
@@ -158,7 +174,11 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
     scrolledUp,
     heightReport,
     clicks,
-    workspaces
+    workspaces,
+    history,
+    sends,
+    loadAll: argv.includes('--load-all'),
+    peerDelayMs
   }
 }
 
@@ -204,7 +224,7 @@ export interface SoakRule {
  * a run pass.
  */
 /** The scenes the gate judges by its window's rule; `typing` has TYPING_RULE, `switch` SWITCH_RULE, and `scenarios` is a recording, judged by eye. */
-export type GateScene = Exclude<SoakScene, 'scenarios' | 'typing' | 'switch'>
+export type GateScene = Exclude<SoakScene, 'scenarios' | 'typing' | 'switch' | 'send'>
 
 export const GATE_CPU_PCT: Record<GateScene, number> = { board: 33, chat: 22 }
 
@@ -276,6 +296,22 @@ export function judgeSwitch(summary: SwitchSummary, rule = SWITCH_RULE): { ok: b
   const verdicts: Verdict[] = [
     { what: 'click to column and strip p95, ms', got, limit: rule.readyP95Ms, ok: got <= rule.readyP95Ms },
     { what: 'clicks that never showed their workspace', got: summary.missed, limit: 0, ok: summary.missed === 0 }
+  ]
+  return { ok: verdicts.every((v) => v.ok), verdicts }
+}
+
+/**
+ * The send scene's bound (the user's target, on the box): Send to the
+ * person's row painted within 50 ms at p95 on a thread of 5,000 rows, every
+ * send's row painted, and the host's answer off the paint's path (reported).
+ */
+export const SEND_RULE = { name: 'send', rowP95Ms: 50 }
+
+export function judgeSend(summary: { row: { p95: number | null }; missed: number }, rule = SEND_RULE): { ok: boolean; verdicts: Verdict[] } {
+  const got = summary.row.p95 ?? Number.POSITIVE_INFINITY
+  const verdicts: Verdict[] = [
+    { what: "send to the person's row p95, ms", got, limit: rule.rowP95Ms, ok: got <= rule.rowP95Ms },
+    { what: 'sends whose row never painted', got: summary.missed, limit: 0, ok: summary.missed === 0 }
   ]
   return { ok: verdicts.every((v) => v.ok), verdicts }
 }

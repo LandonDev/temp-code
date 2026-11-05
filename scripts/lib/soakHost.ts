@@ -29,6 +29,11 @@
  *
  * None of the edits settles, so the checkpoint listener reads no file.
  *
+ * The send scene (`startSoakHost('send', { history })`) seeds the board's
+ * batch with the master's history grown to `history` rows before its last
+ * turn (a prompt, a reply, a Read call and its result, the turn's end: five
+ * rows a turn), for the soak to send into.
+ *
  * The switch scene (`startSoakHost('switch')`) seeds the board's batch and
  * its load, and a second workspace beside it (SWITCH_WORKSPACE: two
  * projects, six settled chats with history, one of them 400 rows long), for
@@ -124,7 +129,7 @@ export interface SoakHost {
   close(): Promise<void>
 }
 
-export async function startSoakHost(scene: SoakScene = 'board'): Promise<SoakHost> {
+export async function startSoakHost(scene: SoakScene = 'board', opts: { history?: number } = {}): Promise<SoakHost> {
   const profile = profileOf(scene)
   const root = mkdtempSync(join(tmpdir(), 'tc-soak-host-'))
   process.env.TEMP_CODE_WARM_HARNESS = '0'
@@ -191,6 +196,17 @@ export async function startSoakHost(scene: SoakScene = 'board'): Promise<SoakHos
   } else {
   await registry.create({ ...base, id: SOAK_MASTER, threadType: 'chat', title: 'Ship the soak batch' })
   registry.setMaster(SOAK_MASTER, true)
+  if (scene === 'send') {
+    // A long-lived master: its history before the batch's turn, five rows a turn.
+    for (let turn = 0; turn < Math.ceil((opts.history ?? 5_000) / 5); turn++) {
+      registry.append(SOAK_MASTER, { type: 'user-text', text: `Turn ${turn + 1}: check the batch and say what landed.` })
+      registry.append(SOAK_MASTER, { type: 'assistant-text', text: PROSE, delta: false, msgId: `soak-master-h${turn}`, blockIndex: 0 })
+      const callId = `soak-master-h${turn}-read`
+      registry.append(SOAK_MASTER, { type: 'tool-call', callId, name: 'Read', input: { file_path: `src/billing/export${turn % 12}.ts` } })
+      registry.append(SOAK_MASTER, { type: 'tool-result', callId, output: 'export {}\n', isError: false })
+      registry.append(SOAK_MASTER, { type: 'turn-complete' })
+    }
+  }
   registry.append(SOAK_MASTER, { type: 'user-text', text: 'Run the sixteen threads of the batch and land them as they finish.' })
   registry.append(SOAK_MASTER, { type: 'assistant-text', text: 'Started all sixteen; the steps run once the last one lands.', delta: false, msgId: 'soak-master-m1', blockIndex: 0 })
   registry.append(SOAK_MASTER, { type: 'turn-complete' })

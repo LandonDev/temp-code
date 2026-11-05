@@ -137,10 +137,17 @@ function gapAbove(item: TurnItem, before: TurnItem | null, previousRow: Transcri
  *  renamed it (`Block.rowKey`), else its id. A row on screen never changes key. */
 export const rowKeyOf = (block: Block): string => block.rowKey ?? block.id;
 
+/** A settled turn's rows, by its blocks (the same array while the turn reads
+ *  the same, `stableTurns`), kept with what else they were built from: its
+ *  index and the kind of the row above it. Only the last turn changes as a
+ *  thread runs, so a send or a delta rebuilds that turn's rows alone. */
+const settledRows = new WeakMap<Block[], { index: number; above: TranscriptRow["kind"] | undefined; rows: TranscriptRow[] }>();
+
 /**
  * `busy`: the last turn runs, so its last activity row is live. `paused`
  * (options): it is paused mid-turn, so it stays open, with no closing line
- * until it settles, but nothing in it reads as running.
+ * until it settles, but nothing in it reads as running. Every turn but the
+ * last takes its rows from `settledRows` when nothing they read moved.
  */
 export function flattenTurns(
   turns: Block[][],
@@ -152,6 +159,13 @@ export function flattenTurns(
   if (options.loadEarlier) rows.push({ kind: "more", key: "more", gap: ROW_GAP.first });
   turns.forEach((blocks, index) => {
     const isLast = index === turns.length - 1;
+    const above = rows[rows.length - 1]?.kind;
+    const kept = isLast ? undefined : settledRows.get(blocks);
+    if (kept && kept.index === index && kept.above === above) {
+      for (const row of kept.rows) rows.push(row);
+      return;
+    }
+    const first = rows.length;
     const userBlock = turnUserBlock(blocks);
     // A steered turn closes its earlier sections by doneTs alone.
     const durationMs =
@@ -187,6 +201,7 @@ export function flattenTurns(
       rows.push({ kind: "item", key: rowKeyOf(item.block), turn, item, live: false, working: false, gap });
     });
     rows.push({ kind: "end", key: `${turn.id}:end`, turn, gap: ROW_GAP.end });
+    if (!isLast) settledRows.set(blocks, { index, above, rows: rows.slice(first) });
   });
   let map: Map<string, number> | null = null;
   const rowOfBlock = (): Map<string, number> => {
@@ -266,8 +281,18 @@ export const GROUP_WINDOW = 5;
  * that the scrollbar and the window's reach are right to within a screen,
  * never exact. A row that draws nothing (a closing row with no line, a run
  * of thoughts alone, one call the working line tells) is 0, gap and all.
+ * Kept by row: a settled turn's rows are the same objects from one flatten
+ * to the next (`settledRows`), so a send reads the text of the rows it built.
  */
 export function estimateRowHeight(row: TranscriptRow): number {
+  let height = estimates.get(row);
+  if (height === undefined) estimates.set(row, (height = estimateOf(row)));
+  return height;
+}
+
+const estimates = new WeakMap<TranscriptRow, number>();
+
+function estimateOf(row: TranscriptRow): number {
   if (row.kind === "more") return row.gap + LINE;
   if (row.kind === "end") return row.turn.durationMs != null || row.turn.isLast ? row.gap + LINE : 0;
   const height = itemHeight(row.item, row.working, row.turn.settled);
