@@ -2122,6 +2122,8 @@ keyboard action. Every animated change has a static cue as well.
   once per boot (`bootResume`, deduped by the boot's time in the cache).
 - **Measure.** Scroll a 2,000-row thread at 120 Hz with the Instruments
   animation hitch template; a hitch over 8 ms in the transcript is a bug.
+  The simulator proof's `scroll` and `stream` sets (below) record the same
+  frames from a display link.
 - **Streaming.** The thread screen names its thread to the host while it
   is on screen and the app is active (`session.focus { sessionId, shown }`,
   `FocusSignal`; operate, so a read key sends nothing; null when the app
@@ -2135,6 +2137,50 @@ keyboard action. Every animated change has a static cue as well.
   the thread's state. The list anchors its bottom edge on size changes.
   Budget: no frame over 8 ms at 120 Hz on the 2,000-row chat while a turn
   streams.
+- **The transcript proof** (`TC_PROOF_SET=transcript`, `stream` and
+  `scroll` in scripts/ios-sim-proof.sh, run through
+  `bun scripts/ios-sim-proof-local.ts`). `transcript` plays the no-jerk
+  timeline (scripts/lib/soakScenarios.ts, the test server's `POST
+  /scenario`) on "Streaming on the phone" four times, light, dark, reduce
+  motion (the simulator's own `com.apple.Accessibility
+  ReduceMotionEnabled`, read back from `UIAccessibility` in the report) and
+  scrolled up (`TC_TEST_SCROLL_UP`: 700 pt up before the timeline), each
+  run one launch that starts only once the app reports it landed at the
+  bottom, recorded whole (`transcript/<run>.mov`) and shot 350 ms after the
+  first step of each label (`index.json` keeps the planned and the actual
+  times; a loaded Mac shoots late). It fails when a row on screen made its
+  state twice: `LayoutProbe` counts each row's `@StateObject` inits,
+  appearances and disappearances by row key (`RowInitLedger` in the client
+  package, `rowInitProbe` on every row; `row-inits.json`, and `rowInits` in
+  the layout report), and an init while the row's appearances outnumber its
+  disappearances is a violation; a row that scrolled off may be made again.
+  It also fails when the scrolled-up offset moved while rows arrived below
+  (`scroll-hold.json`). `stream` records every frame with `FrameRecorder`'s
+  `stream` driver while `POST /stream` plays with the reader pinned
+  (`stream-report.json`); pass is no frame later than its expected interval
+  plus 8 ms and the reader at the bottom on every frame. The test server's
+  `TC_TEST_NO_HARNESS=1` keeps its seeded threads from booting CLIs (several
+  GiB, past the host's per-call cap).
+- **Baseline, 2026-11-05**, on the tree before A4's reveal (iPhone 17 Pro simulator on iOS 27.0, 60 Hz; the
+  Mac's load average 100 to 700 from four agents, so frame times are an
+  upper bound, never a budget):
+
+  | Proof | `List` (today) | `ScrollView` + `LazyVStack`, same ids |
+  | --- | --- | --- |
+  | transcript, rows made twice on screen | 0 in all four runs (26 to 34 rows; 2 to 5 rows made again after scrolling off) | not run |
+  | transcript, scrolled-up offset | held exactly (0 offset changes while 12 rows arrived) | not run |
+  | stream, late frames of ~1,370 | 22, worst 71 ms (most while the 420-line Edit grows, 7 to 11 s) | 25, worst 94 ms |
+  | stream, reader at the bottom | lost at 20 s (the turn's settle) and never back, 203 frames | held (3 frames at 2.8 s) |
+  | scroll, 2,000 rows, late frames | 150 of 2,946, worst 2.0 s, mean 18.8 ms | no report: the main thread sat in text sizing inside the stack's layout for over 10 minutes once the window held every row |
+
+  The transcript stays a `List`. A `LazyVStack` keeps the bottom on size
+  changes, but it cannot lay out a long window, and the window grows a page
+  of 75 at every reach of the top; `List` sizes cells as they come. The
+  identity the counter checks already holds under `List`. What the stream
+  report found is the follow rule's, not the container's: a size change at
+  the settle that passes the 64 pt "at the bottom" slack clears `atBottom`
+  before `pinTail` runs, so nothing pins again; the follow slice fixes it
+  and the stream set's unpinned check proves it.
 
 ## Push, the Live Activity and the Dynamic Island
 

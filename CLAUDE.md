@@ -2800,7 +2800,17 @@ proof and the sizing rules; the pieces, by name:
   thread per type with realistic rows and a 2,000-row chat. Simulator proof:
   `bun scripts/ios-sim-proof-local.ts` (every segment of every type, a chip
   opened, the diff, the agent detail, light and dark, then the scroll run
-  whose frame report lands in /tmp/tc-ios-proof/scroll-report.json), or
+  whose frame report lands in /tmp/tc-ios-proof/scroll-report.json;
+  `TC_PROOF_SET=transcript` plays the no-jerk timeline through the test
+  server's `POST /scenario` in four recorded runs (light, dark, reduce
+  motion, scrolled up) and fails when a row on screen made its state twice,
+  LayoutProbe's `rowInits` by row key over `RowInitLedger`, or the
+  scrolled-up offset moved; `TC_PROOF_SET=stream` writes
+  `stream-report.json` from FrameRecorder's `stream` driver while `POST
+  /stream` plays pinned at the bottom; `TC_TEST_NO_HARNESS=1` keeps the
+  test server's seeded threads from booting CLIs; the 2026-11-05 baseline
+  and why the transcript stays a `List` are in docs/IOS-DESIGN.md
+  "Performance"), or
   `TC_PROOF_SET=box TC_TEST_THREADS="a|b" scripts/ios-sim-proof.sh` with
   `TC_TEST_PAIR_LINK` from `tc-local remote.pairings.create` on the box; it
   drives the simulator with `simctl` because XCUITest cannot run while the

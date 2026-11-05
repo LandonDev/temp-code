@@ -400,7 +400,7 @@ scroll_set() {
   [ -n "$container" ] && rm -f "$container/Documents/scroll-report.json"
   # The run takes about 60 s once the pages are in; a loaded Mac takes longer to load them, so wait for the report.
   TC_SCROLL_RUN=1 shot "long-scrolled" thread "2,000 rows" "" "" 62
-  [ -n "$container" ] && { wait_for "$container/Documents/scroll-report.json" 240 || true; }
+  [ -n "$container" ] && { wait_for "$container/Documents/scroll-report.json" "${TC_SCROLL_WAIT:-240}" || true; }
   if [ -n "$container" ] && [ -f "$container/Documents/scroll-report.json" ]; then
     cp "$container/Documents/scroll-report.json" "$OUT/scroll-report.json"
     echo "ios-sim-proof: scroll report $(cat "$OUT/scroll-report.json")"
