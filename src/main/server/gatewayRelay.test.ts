@@ -12,7 +12,8 @@ import { Upstream } from './upstream'
 /**
  * The relay between a CLI and the provider, through the real GatewayCore
  * over an Upstream whose provider is a stream this file writes: how a
- * request ends when its client hangs up.
+ * request ends when its client hangs up, and that each chunk reaches the
+ * client when it arrives.
  */
 const state: AccountsState = { profiles: { 'claude-code': ['a'] }, pinned: { 'claude-code': 'a' }, reports: {}, out: [] }
 const cleanups: (() => Promise<void> | void)[] = []
@@ -76,6 +77,25 @@ function ticking(everyMs: number, count: number | null): { stream: (signal?: Abo
 
 const requestEvents = (events: ChildEvent[], phase: 'start' | 'end'): ChildEvent[] =>
   events.filter((e) => e.e === 'request' && e.phase === phase)
+
+it('20 deltas 50 ms apart reach the client as they arrive, spread over a second, never held and sent together', async () => {
+  const provider = ticking(50, 20)
+  const { core, events } = await gatewayOver(provider.stream)
+  const response = await fetch(`${core.url('claude')}/~t=cadence-test;a=a/v1/messages`, { method: 'POST', body: '{}' })
+  const reader = response.body!.getReader()
+  const arrivals: { at: number; deltas: number }[] = []
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    arrivals.push({ at: Date.now(), deltas: new TextDecoder().decode(value).split('content_block_delta').length - 1 })
+  }
+  expect(arrivals.reduce((n, a) => n + a.deltas, 0)).toBe(20)
+  // One read per delta, give or take a timer that fired late and joined two.
+  expect(arrivals.length).toBeGreaterThanOrEqual(16)
+  expect(Math.max(...arrivals.map((a) => a.deltas))).toBeLessThanOrEqual(2)
+  expect(arrivals.at(-1)!.at - arrivals[0].at).toBeGreaterThanOrEqual(800)
+  expect(requestEvents(events, 'end')).toHaveLength(1)
+})
 
 it('a client that hangs up mid-answer ends its request at once and cancels the upstream, with no network record', async () => {
   const provider = ticking(20, null)

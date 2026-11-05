@@ -3253,6 +3253,30 @@ oldest one still open. Two rules keep that count honest:
   open from before (a stream a dead gateway child cut never reports its
   end), and the ticker re-pushes only a working row.
 
+### How a reply streams: the burst is the provider's
+
+Measured on the box on 2026-11-05 with per-chunk marks at the gateway's
+relay, the claude driver's text deltas and `Sessions.append` (an isolated
+instance, real claude-haiku-5-5 at low effort, about 3,000 characters of
+prose):
+
+| run | text at the host within 10 ms of its first delta | what the relay saw from api.anthropic.com |
+| --- | --- | --- |
+| 1 | 9% | 16 KB in four chunks within 1 ms after 1.3 s of silence, then 1.7 KB batches every ~250 ms |
+| 2 | 24% | 23 KB in four chunks within 1 ms, then one event every 20 ms |
+| 3 | 45% | the same burst, then 20 ms |
+| 4 | 60% | the same burst, then 20 ms |
+| fake provider, one delta every 50 ms | 0%: 40 appends over 1,966 ms | one chunk every 50 ms |
+
+The burst is the provider's: the text the model writes while its thinking
+summary streams (every claude spawn asks for `--thinking-display
+summarized`) arrives at once when the thinking block closes, so a short
+reply can land almost whole. No relay write met backpressure, and the
+driver and append followed the relay within about 5 ms, so nothing of
+ours holds deltas back; the renderer's reveal lead paces what arrives in
+one piece. gatewayRelay.test.ts holds the relay to it: 20 deltas 50 ms
+apart reach the client as 20 reads over a second.
+
 ### Knowing the box is behind: the deploy-drift mark
 
 Nothing deploys the box on its own, so the Mac app marks a host that has
