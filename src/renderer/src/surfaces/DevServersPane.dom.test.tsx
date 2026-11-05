@@ -193,7 +193,7 @@ describe('DevServersPane', () => {
   it('hide closes the pane and the dock under it', async () => {
     terminalsStore.setState(initialTerminalsState([createProjectTerminal(CWD, newTerminalFile(CWD))]), true)
     mount()
-    await probe!.act(async () => (probe!.container.querySelector('[aria-label="Hide panel"]') as HTMLElement).click())
+    await probe!.act(async () => (probe!.container.querySelector('[aria-label="Hide dock"]') as HTMLElement).click())
     expect(devPaneStore.getState().open).toBe(false)
     expect(currentDock(CWD)?.open).toBe(false)
   })

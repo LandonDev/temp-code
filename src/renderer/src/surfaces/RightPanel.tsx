@@ -3,6 +3,7 @@ import { Button } from "@renderer/components/ui/button";
 import { cn } from "@renderer/lib/cn";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "@renderer/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
+import { Kbd } from "@renderer/components/ui/kbd";
 import { Activity, Bug, Folder, GitCompare, Hammer, StickyNote, Users, X, type IconComponent } from "../chrome/icons";
 import { BuildPanel } from "../chrome/rail/BuildPanel";
 import { ChangesPanel } from "../chrome/rail/ChangesPanel";
@@ -36,6 +37,7 @@ import { FleetList } from "./threads/fleet/FleetPanel";
 import { NotesBody } from "./threads/NotesPanel";
 import { SessionActionsContext } from "./threadChat";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
+import { shortcutFor } from "../lib/settings";
 
 // The Debug section drives the editor chunk's DAP session; it loads with it.
 const DebugPanel = lazy(() => import("../chrome/rail/DebugPanel"));
@@ -99,12 +101,14 @@ export function PanelHeader({ sections, value, onChange, onClose }: { sections: 
       <Tooltip>
         <TooltipTrigger
           render={
-            <Button variant="ghost" size="icon-xs" aria-label="Hide panel" className="text-muted-foreground hover:text-foreground" onClick={onClose} />
+            <Button variant="ghost" size="icon-sm" aria-label="Hide panel" className="text-muted-foreground hover:text-foreground" onClick={onClose} />
           }
         >
           <X className="size-3.5" />
         </TooltipTrigger>
-        <TooltipContent>Hide panel ⌘⇧R</TooltipContent>
+        <TooltipContent>
+          Hide panel <Kbd>{shortcutFor("App", "Panel")}</Kbd>
+        </TooltipContent>
       </Tooltip>
       </div>
     </TooltipProvider>

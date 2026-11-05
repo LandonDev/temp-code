@@ -208,7 +208,10 @@ describe("RightPanel", () => {
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     expect(screen.getByTestId("changes-body")).toBeTruthy();
     expect(screen.queryByRole("tab", { name: "Agents" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Hide panel" }));
+    const hide = screen.getByRole("button", { name: "Hide panel" });
+    // 28px, beside the 28px section buttons; its key in a cap, as the dock's.
+    expect(hide.className).toContain("size-7");
+    fireEvent.click(hide);
     expect(rightPanel.get("s1").open).toBe(false);
     expect(screen.queryByRole("tab")).toBeNull();
   });

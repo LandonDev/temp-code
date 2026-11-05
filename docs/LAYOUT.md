@@ -392,8 +392,8 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   ghost icon buttons 2px apart with no track, each named by its aria-label
   and a tooltip, the selected one's `foreground/7` fill gliding between
   them on the layout spring; seven fit on one line at 260px, so nothing
-  wraps or scrolls) from the 12px inset, and Hide at the same inset on the
-  right, under one tooltip provider; the section's body
+  wraps or scrolls) from the 12px inset, and Hide (28px, its ⌘⇧R in a key
+  cap) at the same inset on the right, under one tooltip provider; the section's body
   below (`ActivitySection`, `FleetList`, `NotesBody`, `ChangesPanel`,
   `FileTree`, `BuildPanel`, `DebugPanel`). It never tweens its width: a
   toggle in place gives the thread its new width at once (one layout; the
@@ -832,7 +832,8 @@ under the same 36px bar (chrome/DockBar.tsx): the project's terminals as
 `Tabs variant="line"` (the terminal glyph, the title, the cwd on hover, a
 close on the active or hovered tab, middle click closes, drag to reorder),
 then a "Dev servers" tab with the live count beside it, then New terminal
-(⌘\`) and Hide (⌘J). The Dev servers tab shows only when a host can serve
+(⌘\`) and "Hide dock" (⌘J, the bottom-panel glyph, never the X a tab
+closes with), both 28px. The Dev servers tab shows only when a host can serve
 the project, a server runs or the pane is open. Switching is instant.
 
 - **Terminals** (surfaces/ProjectTerminalDock.tsx): one dock per project,

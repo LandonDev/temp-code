@@ -8,10 +8,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../com
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useSortable } from "../hooks/useSortable";
 import type { FilePaneTab } from "../lib/layout";
-import { MOD } from "../lib/platform";
 import { shortcutFor } from "../lib/settings";
 import { terminalTabLabel } from "../lib/terminalTab";
-import { Plus, Terminal, X } from "./icons";
+import { PanelBottomClose, Plus, Terminal, X } from "./icons";
 
 /** The Dev servers tab's value in the bar. */
 export const DEV_TAB = "dev";
@@ -151,12 +150,13 @@ export function DockBar({ terminals, active, dev, onSelect, onSelectDev, onClose
               </TooltipContent>
             </Tooltip>
           ) : null}
+          {/* The dock's own glyph and name: a tab's close is the X beside it. */}
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Hide panel" onClick={onHide} />}>
-              <X />
+            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Hide dock" onClick={onHide} />}>
+              <PanelBottomClose />
             </TooltipTrigger>
             <TooltipContent>
-              Hide panel <Kbd>{MOD}J</Kbd>
+              Hide dock <Kbd>{shortcutFor("Terminal", "Show or Hide")}</Kbd>
             </TooltipContent>
           </Tooltip>
         </div>

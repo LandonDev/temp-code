@@ -1389,7 +1389,7 @@ mismatch logs one `[muse]` line.
   console the server's log alone under its command (a ledger row's label, else the background task that shares its call); a row leaves the moment its host
   drops it. The dock
   is bottom only and has one bar (chrome/DockBar.tsx: the project's
-  terminals and the Dev servers tab as line tabs, New terminal, Hide); the
+  terminals and the Dev servers tab as line tabs, New terminal, Hide dock); the
   tab shows only when a host can serve the project, a server runs or the
   pane is open. Closed by default and never opened on its own (the Dev
   server row of every thread menu toggles it, lib/threadMenu.ts with

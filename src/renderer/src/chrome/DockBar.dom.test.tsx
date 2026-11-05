@@ -76,9 +76,18 @@ describe('DockBar', () => {
   it('calls onAdd and onHide from the buttons at the end', () => {
     const { props, view } = mount()
     fireEvent.click(view.getByLabelText('New terminal'))
-    fireEvent.click(view.getByLabelText('Hide panel'))
+    fireEvent.click(view.getByLabelText('Hide dock'))
     expect(props.onAdd).toHaveBeenCalledTimes(1)
     expect(props.onHide).toHaveBeenCalledTimes(1)
+  })
+
+  it("names its Hide for the dock with the dock's own glyph, never a tab's X, both 28px", () => {
+    const { view } = mount()
+    const hide = view.getByLabelText('Hide dock')
+    expect(view.queryByLabelText('Hide panel')).toBeNull()
+    expect(hide.querySelector('svg')!.innerHTML).not.toBe(view.getByLabelText('Close build').querySelector('svg')!.innerHTML)
+    expect(hide.className).toContain('size-7')
+    expect(view.getByLabelText('New terminal').className).toContain('size-7')
   })
   it("another tab's close waits on the shared hover reveal; the active tab's stays", () => {
     const { view } = mount()
