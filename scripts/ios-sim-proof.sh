@@ -24,6 +24,7 @@
 #           both segments of each named thread, light only, for a real host.
 #   actions The steering shots: a read key's disabled composer and card, then
 #           the app re-paired with TC_TEST_PAIR_LINK_OPERATE (a key that may act):
+#           the composer's button as Send, steer (a wrapping draft) and Pause,
 #           a send landing as the user row, a message queued for the next turn,
 #           Pause and Stop mid-turn, approve and deny,
 #           a question answered, Start from the plan into a build, a new chat
@@ -472,6 +473,11 @@ actions_set() {
   rm -f "$OUT/shots/00-pairing.png"
   control /actions/clear >/dev/null
   TC_ACTION="send:Hello from the phone" shot "act-send-light" thread "Thread B"
+  # The composer's button in each of its states: Send with a draft, steer
+  # with a draft that wraps (the box grows), Pause on a running empty box.
+  TC_ACTION="draft:Check the totals" shot "act-draft-send-light" thread "gateway refuse"
+  TC_ACTION="draft:Also rerun the suite once the fix lands, then tell me what changed in the totals and why" shot "act-draft-steer-light" thread "Index the archive"
+  shot "act-pause-button-light" thread "Index the archive"
   TC_ACTION="queue:After this turn" shot "act-queue-light" thread "Thread B"
   TC_ACTION="pause" shot "act-pause-light" thread "Thread B"
   TC_ACTION="stop" shot "act-stop-light" thread "Thread B"
@@ -494,6 +500,9 @@ actions_set() {
   shot "act-archived-list-light" archived
   appearance dark
   TC_ACTION="send:And in the dark" shot "act-send-dark" thread "Thread B"
+  TC_ACTION="draft:Check the totals" shot "act-draft-send-dark" thread "gateway refuse"
+  TC_ACTION="draft:Also rerun the suite once the fix lands, then tell me what changed in the totals and why" shot "act-draft-steer-dark" thread "Index the archive"
+  shot "act-pause-button-dark" thread "Index the archive"
   control /ask '{"sessionId":"ios-waiting","kind":"approval"}' >/dev/null
   shot "act-approval-dark" thread "Run the test suite"
   TC_SHEET="start" shot "act-start-sheet-dark" thread "history onto the box"
@@ -738,7 +747,9 @@ glass_set() {
     xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
     xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
     xcrun simctl install "$TC_SIM_UDID" "$APP"
-    TC_TEST_PAIR_LINK="$TC_TEST_PAIR_LINK_OPERATE" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (acting)" pair || { echo "ios-sim-proof: the app did not pair with the acting key" >&2; return 3; }
+    # A code lasts ten minutes from its mint and this set runs longer: ask the control panel for a fresh one.
+    operate_link=$( [ -n "${TC_TEST_CONTROL_URL:-}" ] && control /pairing | python3 -c 'import json,sys; print(json.load(sys.stdin).get("link",""))' 2>/dev/null || true)
+    TC_TEST_PAIR_LINK="${operate_link:-$TC_TEST_PAIR_LINK_OPERATE}" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (acting)" pair || { echo "ios-sim-proof: the app did not pair with the acting key" >&2; return 3; }
     rm -f "$OUT/shots/00-pairing.png"
     for mode in light dark; do
       appearance "$mode"

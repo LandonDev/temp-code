@@ -10,6 +10,7 @@
  *
  * A second loopback http server is the tests' control panel:
  *   GET  /state                 → { sockets: [{ keyId, extensions }], clockOffsetMs }
+ *   POST /pairing               → { link } a fresh pairing link for a key that may act (the glass set pairs late)
  *   POST /drop                  → terminates every live remote socket (a dropped link)
  *   POST /append { sessionId, count, big? }  → appends rows to a thread; answers { appended }
  *   POST /clock  { offsetMs }   → shifts the auth clock (31_000 expires every ticket)
@@ -1717,6 +1718,11 @@ const control = createServer((req, res) => {
     if (req.method !== 'POST') return answer(404, { error: 'not found' })
     const body = await readJson(req)
     switch (url.pathname) {
+      // A fresh acting pairing for a set that pairs late: a code lasts ten minutes from its mint.
+      case '/pairing': {
+        const fresh = server.remoteAuth.createPairing({ name: 'ios-sim-operate', audience: 'client', caps: ['operate', 'approve'], createdBy: 'local' })
+        return answer(200, { link: `http://127.0.0.1:${server.remote?.port}/pair#${fresh.code}` })
+      }
       case '/drop': {
         let count = 0
         for (const set of server.remote?.sockets.values() ?? []) for (const ws of set) {
