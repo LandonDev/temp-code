@@ -58,4 +58,30 @@ export default [
       },
     },
   },
+  {
+    // Four columns and long names: 52.25rem of table, wider than an 800px window, so the popover caps it and the rows stack.
+    name: "Four columns, long names",
+    props: {
+      provider: "claude",
+      now,
+      scope: null,
+      accounts: {
+        pinned: "long",
+        owner: "temp-code",
+        profiles: [
+          { name: "long", email: "a-very-long-sign-in-address-for-the-team@example.com", color: "#60a5fa", active: true },
+          { name: "other", email: "another-quite-long-address@example.com", nickname: "Second team account with a long nickname" },
+        ],
+        reports: ["long", "other"].map((profileName, i) => ({
+          profileName,
+          windows: [
+            { label: "5h", usedPercent: 30 + i * 40, resetsAt: now + 2 * HOUR, periodMs: 5 * HOUR },
+            { label: "week", usedPercent: 50, resetsAt: now + 3 * DAY, periodMs: 7 * DAY },
+            { label: "week (Opus)", usedPercent: 20 + i * 50, resetsAt: now + 4 * DAY, periodMs: 7 * DAY },
+          ],
+        })),
+        headroom: { long: { room: 0.6, ratePerMin: 2, seenAt: now }, other: { room: 0.2, ratePerMin: 8, seenAt: now } },
+      },
+    },
+  },
 ];

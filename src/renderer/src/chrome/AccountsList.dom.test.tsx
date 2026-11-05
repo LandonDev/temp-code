@@ -102,4 +102,31 @@ describe("AccountsList", () => {
     expect(within(work).getByText("Pay as you go")).toBeTruthy();
     expect(within(old).getByText("Key revoked").className).toContain("text-warning");
   });
+
+  it("fits its popover: the table's width at most, a container whose capped rows stack as the page's do", () => {
+    const windows = [
+      { label: "5h", usedPercent: 40, resetsAt: now + 2 * HOUR, periodMs: 5 * HOUR },
+      { label: "week", usedPercent: 20, resetsAt: now + 3 * DAY, periodMs: 7 * DAY },
+      { label: "week (Opus)", usedPercent: 10, resetsAt: now + 3 * DAY, periodMs: 7 * DAY },
+    ];
+    const box = list({
+      ...base,
+      profiles: [{ name: "a-very-long-account-name-that-truncates@example.com" }],
+      reports: [{ profileName: "a-very-long-account-name-that-truncates@example.com", windows }],
+      headroom: { "a-very-long-account-name-that-truncates@example.com": { room: 0.5, ratePerMin: 2, seenAt: now } },
+    } as unknown as ProviderAccounts);
+    // Four columns: 13rem of name, four 8.5rem cells 0.75rem apart, 24px between, 12px insets.
+    expect(box.style.width).toBe("52.25rem");
+    expect(box.className).toContain("max-w-full");
+    expect(box.className).toContain("@container/accounts");
+    const row = within(box).getByRole("option");
+    expect(row.className).toContain("flex-wrap");
+    expect(row.className).toContain("@min-[52.25rem]/accounts:flex-nowrap");
+    const bars = row.querySelector<HTMLElement>("[data-slot=account-bars]")!;
+    // Stacked by default: a line of its own under the name; the table's width only once the list holds it.
+    expect(bars.className).toContain("basis-full");
+    expect(bars.className).toContain("@min-[52.25rem]/accounts:w-(--bars)");
+    expect(bars.style.getPropertyValue("--bars")).toBe("36.25rem");
+    expect(bars.querySelectorAll("[data-slot=usage-cell]")).toHaveLength(4);
+  });
 });
