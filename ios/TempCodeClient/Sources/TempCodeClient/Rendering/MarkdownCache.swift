@@ -161,7 +161,12 @@ public final class MarkdownCache {
     /// the settled `document(...)` for that seq lands. A block over
     /// `streamingBlockLimit` stays a plain paragraph until the next boundary,
     /// so one huge paragraph never re-parses whole on every delta.
-    public func streamingDocument(scope: MarkdownScope = MarkdownScope(), seq: Int, text: String) -> MarkdownDocument {
+    ///
+    /// `settled` drops the plain-paragraph shortcut, so the document equals
+    /// `MarkdownDocument.parse` for the same text: the row that has drained
+    /// draws it while the settled parse is still on its way, and the swap
+    /// changes nothing on screen.
+    public func streamingDocument(scope: MarkdownScope = MarkdownScope(), seq: Int, text: String, settled: Bool = false) -> MarkdownDocument {
         let key = StreamKey(scope: scope, seq: seq)
         let source = MarkdownBlocks.split(text)
         let last = streaming[key]
@@ -169,13 +174,14 @@ public final class MarkdownCache {
         rendered.reserveCapacity(source.count)
         var reused = 0
         if let last {
-            while reused < source.count, reused < last.source.count, source[reused] == last.source[reused] {
+            while reused < source.count, reused < last.source.count, source[reused] == last.source[reused],
+                  !(settled && Self.wasShortcut(source[reused])) {
                 rendered.append(last.rendered[reused])
                 reused += 1
             }
         }
         for block in source[reused...] {
-            if case .paragraph(let p) = block, p.utf8.count > Self.streamingBlockLimit {
+            if !settled, case .paragraph(let p) = block, p.utf8.count > Self.streamingBlockLimit {
                 rendered.append(.paragraph(AttributedString(p)))
             } else {
                 rendered.append(MarkdownDocument.renderBlock(block))
@@ -185,6 +191,12 @@ public final class MarkdownCache {
         if streaming.count >= limit, streaming[key] == nil { streaming = [:] }
         streaming[key] = Streaming(source: source, rendered: rendered)
         return MarkdownDocument(blocks: rendered, textHash: text.hashValue)
+    }
+
+    /// A paragraph the streaming path left plain (over `streamingBlockLimit`).
+    private static func wasShortcut(_ block: MarkdownBlock) -> Bool {
+        if case .paragraph(let p) = block { return p.utf8.count > streamingBlockLimit }
+        return false
     }
 
     /// True while a streaming slot is held for the row (the test's probe).

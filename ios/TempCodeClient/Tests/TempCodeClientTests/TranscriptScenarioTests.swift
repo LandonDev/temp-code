@@ -30,12 +30,14 @@ private func done(_ id: String, _ output: String = "ok") -> AgentEvent {
 
 private let complete = AgentEvent.turnComplete(TurnCompleteEvent())
 
+@MainActor
 private func expectClean(_ scenario: TranscriptScenario) {
     let report = ScenarioRunner.run(scenario)
     #expect(report.violations == [], "\(scenario.name)")
     #expect(report.checked.contains(.keys))
 }
 
+@MainActor
 @Suite struct TranscriptScenarioTests {
     @Test func `a turn from the composer: Sending, the echo, a thought, calls, prose, the close`() {
         expectClean(TranscriptScenario("composer turn", pushes: [
@@ -121,8 +123,8 @@ private func expectClean(_ scenario: TranscriptScenario) {
         ]))
     }
 
-    @Test func `reduced motion: the same keys, the reveal still to come`() {
-        expectClean(TranscriptScenario("reduced motion", awaits: [.reveal, .fade], pushes: [
+    @Test func `reduced motion: the same keys, the word steps, no fade`() {
+        expectClean(TranscriptScenario("reduced motion", reducedMotion: true, pushes: [
             .init(atMs: 0, "send", .send("go")),
             .init(atMs: 10, "echo", .rows([row(1, 10, user("go"))])),
             .init(atMs: 100, "prose", .rows([row(2, 100, prose("One. "))])),
@@ -133,12 +135,17 @@ private func expectClean(_ scenario: TranscriptScenario) {
 
     @Test func `a burst lands whole and the turn ends 30 ms later`() {
         let burst = String(repeating: "word ", count: 326)
-        expectClean(TranscriptScenario("burst then end", awaits: [.reveal, .drain], pushes: [
+        let scenario = TranscriptScenario("burst then end", pushes: [
             .init(atMs: 0, "send", .send("write")),
             .init(atMs: 10, "echo", .rows([row(1, 10, user("write"))])),
             .init(atMs: 500, "1,632 characters at once", .rows([row(2, 500, prose(burst))])),
             .init(atMs: 530, "the close", .rows([row(3, 530, prose(burst, delta: false)), row(4, 530, complete)])),
-        ]))
+        ])
+        expectClean(scenario)
+        // The closing line waits: the burst is paced past the close, then its last fade.
+        let drained = ScenarioRunner.run(scenario).drainedAt.values.max() ?? 0
+        #expect(drained > 530 + StreamRevealLedger.fade * 1_000)
+        #expect(drained < 530 + RevealProbes.deadlineMs)
     }
 
     @Test func `history joining above a group keeps the group's key`() {
@@ -161,8 +168,8 @@ private func expectClean(_ scenario: TranscriptScenario) {
         #expect(ScenarioRunner.keyJerks(from: old, to: new, seen: seen, at: "t").count == 1)
     }
 
-    @Test func `the built checks are the three this slice made`() {
-        #expect(TranscriptScenario.Check.built == [.keys, .endRow, .follow])
+    @Test func `the built checks: keys, the end row, the follow rule, the reveal, the fade and the drain`() {
+        #expect(TranscriptScenario.Check.built == [.keys, .endRow, .follow, .reveal, .fade, .drain])
     }
 }
 

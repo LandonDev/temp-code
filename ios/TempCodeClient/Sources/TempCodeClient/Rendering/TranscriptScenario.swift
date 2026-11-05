@@ -30,8 +30,9 @@ public struct TranscriptScenario: Sendable {
         /// closing line (A6).
         case reveal, fade, hold, morph, drain
 
-        /// The checks `run` implements today.
-        public static let built: Set<Check> = [.keys, .endRow, .follow]
+        /// The checks `run` implements today (the reveal, fade and drain
+        /// in TranscriptScenarioReveal.swift).
+        public static let built: Set<Check> = [.keys, .endRow, .follow, .reveal, .fade, .drain]
     }
 
     public enum Step: Sendable {
@@ -65,10 +66,13 @@ public struct TranscriptScenario: Sendable {
     public var awaits: Set<Check>
     /// Rows the thread already holds before the first push.
     public var history: [EventRow]
+    /// Played as under reduced motion: the word steps stay, nothing fades.
+    public var reducedMotion: Bool
 
-    public init(_ name: String, history: [EventRow] = [], awaits: Set<Check> = [], pushes: [Push]) {
+    public init(_ name: String, history: [EventRow] = [], reducedMotion: Bool = false, awaits: Set<Check> = [], pushes: [Push]) {
         self.name = name
         self.history = history
+        self.reducedMotion = reducedMotion
         self.awaits = awaits
         self.pushes = pushes
     }
@@ -79,6 +83,9 @@ public struct ScenarioReport: Sendable {
     public var violations: [String] = []
     /// The checks that ran, after removing those still awaited.
     public var checked: Set<TranscriptScenario.Check> = []
+    /// When each turn (its message's key) finished revealing its text, ms:
+    /// what the closing line waits for.
+    public var drainedAt: [Int: Double] = [:]
     /// The rows after the last push, for a test that looks further.
     public var rows: [TranscriptRowModel] = []
     public var passed: Bool { violations.isEmpty }
@@ -86,6 +93,7 @@ public struct ScenarioReport: Sendable {
 
 public enum ScenarioRunner {
     /// Plays `scenario` and checks the built checks it does not await.
+    @MainActor
     public static func run(_ scenario: TranscriptScenario) -> ScenarioReport {
         var report = ScenarioReport()
         report.checked = TranscriptScenario.Check.built.subtracting(scenario.awaits)
@@ -97,9 +105,11 @@ public enum ScenarioRunner {
         var endKeys: [Int: TranscriptRowID] = [:]
         var rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: memory)
         remember(rows, into: &seenKeys)
+        let reveals = RevealProbes(history: state.entries, reduced: scenario.reducedMotion)
 
         for push in scenario.pushes.sorted(by: { $0.atMs < $1.atMs }) {
             let at = "\(scenario.name) @\(push.atMs)ms \(push.label)"
+            reveals.advance(to: Double(push.atMs), checks: report.checked, label: at)
             switch push.step {
             case .send(let text):
                 _ = state.addPending(text: text, sentAt: push.atMs)
@@ -124,9 +134,13 @@ public enum ScenarioRunner {
             if report.checked.contains(.follow), readerUp, case let write = FollowRule.write(for: .rowsChanged, atBottom: false), write != .none {
                 report.violations.append("\(at): the follow rule wrote \(write) while the reader was up")
             }
+            reveals.sync(state.entries, checks: report.checked, label: at)
             remember(next, into: &seenKeys)
             rows = next
         }
+        reveals.finish(checks: report.checked, label: "\(scenario.name) after the last push")
+        report.violations += reveals.violations
+        report.drainedAt = reveals.drainedAt
         report.rows = rows
         return report
     }
