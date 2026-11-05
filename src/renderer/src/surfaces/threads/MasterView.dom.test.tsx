@@ -338,6 +338,8 @@ const renderView = () =>
   );
 
 const flush = (): Promise<void> => act(() => new Promise((r) => setTimeout(r, 0)));
+/** The confirm rides the lazy dialogs chunk, whose first load can pass 1 s under the gate's load. */
+const confirmDialog = () => screen.findByRole("alertdialog", undefined, { timeout: 3_000 });
 /** Opens a Select and chooses the option named; Base UI commits a mouse
  *  choice only when the press started on the item. */
 async function pick(trigger: HTMLElement, name: string): Promise<void> {
@@ -1684,7 +1686,7 @@ describe("Stop, archive and delete a batch thread from the board", () => {
     renderView();
     await flush();
     fireEvent.click(within(await rowMenu(/Box build/)).getByText("Delete…"));
-    const dialog = await screen.findByRole("alertdialog");
+    const dialog = await confirmDialog();
     expect(within(dialog).getByText("Delete Box build?")).toBeTruthy();
     expect(within(dialog).getByText("It stops first, and its transcript is gone for good.")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete thread" }));
@@ -1706,7 +1708,7 @@ describe("Stop, archive and delete a batch thread from the board", () => {
     renderView();
     await flush();
     fireEvent.click(within(await rowMenu(/Finished/)).getByText("Delete…"));
-    const dialog = await screen.findByRole("alertdialog");
+    const dialog = await confirmDialog();
     expect(within(dialog).getByText("Its transcript is gone for good.")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete thread" }));
     await flush();

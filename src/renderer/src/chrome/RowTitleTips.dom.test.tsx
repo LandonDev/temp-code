@@ -82,8 +82,10 @@ describe("a clipped title", () => {
     cutEverything();
     const { meta: agent, status } = FLEET_ROWS[0];
     render(<AgentRowView meta={agent} status={status} onOpen={() => {}} />);
-    hover(screen.getByText(agent.title!));
-    await waitFor(() => expect(tipText()).toBe(agent.title), { timeout: 2000 });
+    // The open control lies over the row (press.ts ROW_HOLDS): the pointer over the title is on it.
+    hover(screen.getByText(agent.title!).closest<HTMLElement>("[data-agent-row]")!.querySelector<HTMLElement>("[data-row-open]")!);
+    // Its lines are what the row cuts, then the model: the title leads them.
+    await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"] span > span')?.textContent).toBe(agent.title), { timeout: 2000 });
   });
 });
 

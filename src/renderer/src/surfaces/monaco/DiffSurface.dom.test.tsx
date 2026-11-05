@@ -82,7 +82,7 @@ describe("Monaco review header", () => {
 
   it("shows the folder and base review counts, steps through changes and follows the caret", async () => {
     h.changes = [change(2, 3, 2, 2), change(9, 0, 9, 10), change(15, 15, 14, 0)];
-    const { container, getByRole } = render(<DiffSurface path="/repo/src/file.ts" cwd="/repo" base="review-base" />);
+    const { container, getByRole, queryByRole } = render(<DiffSurface path="/repo/src/file.ts" cwd="/repo" base="review-base" />);
     // The tab opens on the first change.
     await waitFor(() => expect(container.textContent).toContain("1/3"));
     expect(h.setPosition).toHaveBeenCalledWith({ lineNumber: 2, column: 1 });
@@ -104,9 +104,10 @@ describe("Monaco review header", () => {
     act(() => { h.position = 15; h.cursorUpdate(); });
     expect(container.textContent).toContain("3/3");
     expect(getByRole<HTMLButtonElement>("button", { name: "Next change" }).disabled).toBe(true);
+    // Every change reverted: nothing is left to step through, so the stepper leaves.
     act(() => { h.changes = []; h.diffUpdate(); });
-    expect(container.textContent).toContain("0/0");
-    expect(getByRole<HTMLButtonElement>("button", { name: "Previous change" }).disabled).toBe(true);
+    expect(container.textContent).not.toContain("0/0");
+    expect(queryByRole("button", { name: "Previous change" })).toBeNull();
   });
 
   it("a review against a ref offers Revert but no Stage", async () => {

@@ -159,6 +159,8 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
   'session.rowBody': 'link',
   'session.subscribe': 'link',
   'session.unsubscribe': 'link',
+  // the thread the phone shows, so its rows leave the Mac's push coalescer at once
+  'session.focus': 'link',
   'session.context': 'link',
   'session.create': 'link',
   'session.send': 'link',

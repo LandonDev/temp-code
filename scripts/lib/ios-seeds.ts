@@ -125,7 +125,13 @@ export function noticeRows(reviewerId = 'ios-notices-reviewer'): AgentEvent[] {
       account: 'ws@example.com',
       message: 'Account ws@example.com is gone from this host; routing automatically from here (10:42)'
     },
-    { type: 'notice', kind: 'plan-build', message: 'The build did not start: claude-opus-5-5 is not available on this host' }
+    { type: 'notice', kind: 'plan-build', message: 'The build did not start: claude-opus-5-5 is not available on this host' },
+    {
+      type: 'notice',
+      kind: 'away',
+      message: 'Decided without you: kept the old column width',
+      away: { kind: 'decision', text: 'Kept the old column width' }
+    }
   ]
 }
 

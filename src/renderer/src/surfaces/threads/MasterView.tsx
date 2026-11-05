@@ -378,7 +378,8 @@ function MasterBoardView(props: ThreadViewProps) {
   // view and focused. Rows re-sort by state while a child is open, so the raw
   // offset can land elsewhere; a row the board no longer lists leaves the offset.
   // BoardList draws the scroller and attaches its virtualizer in its own
-  // layout effects, which run before this one.
+  // layout effects, which run before this one; its first rows land in the
+  // render that effect asks for, which React finishes before any microtask.
   useLayoutEffect(() => {
     if (openId) return;
     const el = scroller.current;
@@ -396,13 +397,23 @@ function MasterBoardView(props: ThreadViewProps) {
     };
     const row = rowOf();
     if (row) return land(row);
-    // Out of the rendered window: bring it in, and focus it once it is drawn.
-    list.current?.scrollToIndex(index, { align: "auto" });
-    const frame = requestAnimationFrame(() => {
+    let frame = 0;
+    let gone = false;
+    queueMicrotask(() => {
+      if (gone) return;
       const drawn = rowOf();
-      if (drawn) land(drawn);
+      if (drawn) return land(drawn);
+      // Out of the rendered window: bring it in, and focus it once it is drawn.
+      list.current?.scrollToIndex(index, { align: "auto" });
+      frame = requestAnimationFrame(() => {
+        const later = rowOf();
+        if (later) land(later);
+      });
     });
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      gone = true;
+      cancelAnimationFrame(frame);
+    };
     // Only a return from a child decides this; the rows and the virtualizer are read as they stand.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId]);

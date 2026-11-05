@@ -228,7 +228,7 @@ struct FixtureTests {
             guard case .notice(let notice) = row.event else { return nil }
             return notice.kind
         }
-        for kind in [NoticeKind.review, .gate, .batch, .accountGone, .planBuild] { #expect(kinds.contains(kind), "\(kind) missing") }
+        for kind in [NoticeKind.review, .gate, .batch, .accountGone, .planBuild, .away] { #expect(kinds.contains(kind), "\(kind) missing") }
         #expect(!kinds.contains { if case .unknown = $0 { true } else { false } })
         let failures = page.rows.compactMap { row -> FailureKind? in
             guard case .error(let error) = row.event else { return nil }

@@ -164,9 +164,10 @@ describe("outlinePlacement", () => {
     const old = /max-w-4xl|max-w-\[(?:896px|56rem)\]|\b896px\b/;
     const named = files.filter((f) => old.test(readFileSync(join(root, f), "utf8")));
     expect(named).toEqual([]);
-    // The places that sat on it share the column's class instead.
+    // The places that sat on it share the column's class instead, or columnClass(), which is built on it.
+    expect(readFileSync(join(__dirname, "threads/chatSlots.tsx"), "utf8")).toContain("w-full ${COLUMN_MAX_CLASS}");
     for (const f of ["NoRowsLine.tsx", "SessionPane.tsx", "SurfaceSkeleton.tsx", "threads/OrchestrationView.tsx", "threads/WorkingStrip.tsx"]) {
-      expect(readFileSync(join(__dirname, f), "utf8"), f).toContain("COLUMN_MAX_CLASS");
+      expect(readFileSync(join(__dirname, f), "utf8"), f).toMatch(/COLUMN_MAX_CLASS|columnClass\(/);
     }
   });
 });

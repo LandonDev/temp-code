@@ -94,15 +94,11 @@ describe("AgentDetailHeader", () => {
 });
 
 describe("AgentDetailBody", () => {
-  it("Open hands the agent to a pane and closes", () => {
+  it("Open hands the agent to a pane; the sheet around it closes first (AgentDetail)", () => {
     h.metas.set("a1", FLEET[2].meta);
     const onOpenSession = vi.fn();
-    const onClose = vi.fn();
-    const { getByText } = render(
-      <AgentDetailBody agentId="a1" parentCwd="/repo" onOpenSession={onOpenSession} onClose={onClose} />,
-    );
+    const { getByText } = render(<AgentDetailBody agentId="a1" parentCwd="/repo" onOpenSession={onOpenSession} />);
     fireEvent.click(getByText("Open"));
-    expect(onClose).toHaveBeenCalledOnce();
     expect(onOpenSession).toHaveBeenCalledWith("a1");
   });
 
@@ -111,7 +107,7 @@ describe("AgentDetailBody", () => {
     h.steer.mockImplementationOnce(async () => {
       throw new Error("no live harness");
     });
-    const view = render(<AgentDetailBody agentId="live" parentCwd="/repo" onClose={() => {}} />);
+    const view = render(<AgentDetailBody agentId="live" parentCwd="/repo" />);
     const field = view.getByPlaceholderText("Steer this agent…") as HTMLInputElement;
     fireEvent.change(field, { target: { value: "use the cache" } });
     fireEvent.submit(field.closest("form")!);
@@ -127,15 +123,15 @@ describe("AgentDetailBody", () => {
 
   it("holds the transcript's skeleton while its sheet slides in", () => {
     h.metas.set("idle", fixtureMeta("idle", { status: "idle" }));
-    const view = render(<AgentDetailBody agentId="idle" parentCwd="/repo" ready={false} onClose={() => {}} />);
+    const view = render(<AgentDetailBody agentId="idle" parentCwd="/repo" ready={false} />);
     expect(view.container.querySelector('[data-surface-skeleton="transcript"]')).toBeTruthy();
-    view.rerender(<AgentDetailBody agentId="idle" parentCwd="/repo" ready onClose={() => {}} />);
+    view.rerender(<AgentDetailBody agentId="idle" parentCwd="/repo" ready />);
     expect(view.container.querySelector('[data-surface-skeleton="transcript"]')).toBeNull();
   });
 
   it("steers a live agent and messages a settled one", async () => {
     h.metas.set("live", fixtureMeta("live", { status: "running" }));
-    const live = render(<AgentDetailBody agentId="live" parentCwd="/repo" onClose={() => {}} />);
+    const live = render(<AgentDetailBody agentId="live" parentCwd="/repo" />);
     const field = live.getByPlaceholderText("Steer this agent…");
     fireEvent.change(field, { target: { value: "use the cache" } });
     fireEvent.submit(field.closest("form")!);
@@ -144,7 +140,7 @@ describe("AgentDetailBody", () => {
     cleanup();
 
     h.metas.set("idle", fixtureMeta("idle", { status: "idle" }));
-    const idle = render(<AgentDetailBody agentId="idle" parentCwd="/repo" onClose={() => {}} />);
+    const idle = render(<AgentDetailBody agentId="idle" parentCwd="/repo" />);
     const field2 = idle.getByPlaceholderText("Message this agent…");
     fireEvent.change(field2, { target: { value: "one more thing" } });
     fireEvent.submit(field2.closest("form")!);
@@ -153,13 +149,13 @@ describe("AgentDetailBody", () => {
 
   it("the header says no elapsed time: the turn's closing line already does", () => {
     h.metas.set("old", fixtureMeta("old", { status: "running", createdAt: Date.now() - 252_000 }));
-    const { container } = render(<AgentDetailBody agentId="old" parentCwd="/repo" onClose={() => {}} />);
+    const { container } = render(<AgentDetailBody agentId="old" parentCwd="/repo" />);
     expect(container.textContent).not.toMatch(/\d+m \d+s/);
   });
 
   it("hands the agent's session to its transcript, so a paused turn reads Paused, not Worked for", async () => {
     h.metas.set("old", fixtureMeta("old", { status: "paused" }));
-    render(<AgentDetailBody agentId="old" parentCwd="/repo" onClose={() => {}} />);
+    render(<AgentDetailBody agentId="old" parentCwd="/repo" />);
     await waitFor(() => expect(h.transcript).not.toBeNull());
     expect(h.transcript?.turn).toMatchObject({ id: "old" });
     expect(h.transcript?.liveState).toBeUndefined();
@@ -170,7 +166,7 @@ describe("AgentDetailBody", () => {
     const background = { tasks: [{ id: "b1", label: "sleep 90 seconds", kind: "shell", startedAt: 1 }], agents: [], batch: null, watchingSince: Date.now() - 120_000 };
     h.metas.set("w", fixtureMeta("w", { status: "watching" }));
     h.session = { status: "watching", blocks: [user], background };
-    render(<AgentDetailBody agentId="w" parentCwd="/repo" onClose={() => {}} />);
+    render(<AgentDetailBody agentId="w" parentCwd="/repo" />);
     await waitFor(() => expect(h.transcript).not.toBeNull());
     const turn = h.transcript?.turn as TurnSession;
     expect(turn.background).toEqual(background);
@@ -191,7 +187,7 @@ describe("AgentDetailBody", () => {
       { id: "env_box", name: "The box", platform: "linux" },
     ];
     h.metas.set("far", fixtureMeta("far", { environmentId: "env_box", title: "Far" }));
-    const { container } = render(<AgentDetailBody agentId="far" parentCwd="/repo" onClose={() => {}} />);
+    const { container } = render(<AgentDetailBody agentId="far" parentCwd="/repo" />);
     expect(container.querySelector("[data-host-glyph]")?.getAttribute("aria-label")).toBe("The box");
   });
 });

@@ -40,7 +40,7 @@ export const TASK_GAP_PX = 8; // gap-2: 8px from a mark to its first word
 export const TASK_MARK_PX = 14; // size-3.5
 export const TASK_BORDER_PX = 1; // border
 export const TASK_TALLY_GAP_PX = 8; // gap-2: a chevron 8px after the last value
-export const TASK_CHEVRON_PX = 14; // size-3.5
+export const TASK_CHEVRON_PX = 12; // size-3
 
 const CHECK = "M4.8 8.4 7.04 10.8 11.52 6.0";
 const ARROW = "M5.5 8h5M8.6 6.1 10.5 8 8.6 9.9";

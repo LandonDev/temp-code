@@ -52,10 +52,8 @@ export function AgentDetail({
           agentId={agentId}
           parentCwd={parentCwd}
           ready={settled && root.open}
-          // Open closes first: the body calls onClose, then onOpenSession,
-          // and the last closeThen wins, so the parent hears both once the
-          // slide out has played.
-          onClose={() => closeThen(onClose)}
+          // Open closes first: the parent hears onClose, then onOpenSession,
+          // once the slide out has played.
           onOpenSession={
             onOpenSession
               ? (id) =>

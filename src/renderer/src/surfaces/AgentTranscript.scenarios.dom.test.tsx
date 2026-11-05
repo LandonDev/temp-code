@@ -379,7 +379,7 @@ describe("no jerk in any scenario: the question card", () => {
     rules.check("answered");
     expect(view.rows().get(row.dataset.row!)).toBe(row);
     const lines = [...row.querySelectorAll('[data-slot="notice-line"]')].map((l) => l.textContent);
-    expect(lines).toEqual(["AnsweredIndexinbox", "AnsweredBackfill the old rows?Yes"]);
+    expect(lines).toEqual(["AnsweredIndex: inbox", "AnsweredBackfill the old rows? Yes"]);
     expect(row.querySelector('[data-slot="notice-line"]')!.closest('[data-slot="collapsible-content"]')!.className).toContain("collapsible-auto");
   });
 

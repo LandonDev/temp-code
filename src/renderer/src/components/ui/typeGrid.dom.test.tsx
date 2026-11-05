@@ -67,7 +67,7 @@ describe("type on one grid", () => {
     expect(source).toContain('toast: "!items-start !gap-2');
     expect(source).toContain('title: "!font-medium !leading-5"');
     expect(source).toContain('description: "!text-xs !leading-4 !text-muted-foreground"');
-    expect(source).toContain('icon: "!h-5"');
+    expect(source).toContain('icon: "!h-5 !w-auto !m-0"');
   });
 
   it("an attachment has the trigger's one ring, a 12px frame and, inside a card, a muted fill with no hairline", () => {

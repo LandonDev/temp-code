@@ -90,7 +90,6 @@ export function AgentDetailBody({
   onOpenSession,
   onOpenFile,
   onOpenDiff,
-  onClose,
 }: {
   agentId: string;
   parentCwd: string;
@@ -98,7 +97,6 @@ export function AgentDetailBody({
   onOpenSession?: (sessionId: string) => void;
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path?: string) => void;
-  onClose: () => void;
 }) {
   const meta = useMetaById(agentId);
   const session = useSessionById(agentId);
@@ -140,14 +138,8 @@ export function AgentDetailBody({
         status={agentStatus(meta, session?.blocks)}
         parts={parts}
         branch={branch}
-        onOpen={
-          onOpenSession
-            ? () => {
-                onClose();
-                onOpenSession(agentId);
-              }
-            : undefined
-        }
+        // The caller closes with the open (AgentDetail's closeThen).
+        onOpen={onOpenSession ? () => onOpenSession(agentId) : undefined}
       />
       <div className="relative min-h-60 flex-1">
         {/* While the sheet slides in, the transcript's skeleton holds its place. */}

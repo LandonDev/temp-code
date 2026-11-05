@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { reveal } from "../components/ui/reveal";
 
 /* UI-19's details on the thread views and pages, read from the source where a
    render needs a host, a store or a layout jsdom does not have. */
@@ -8,13 +9,19 @@ const read = (file: string) => readFileSync(resolve(__dirname, "..", file), "utf
 
 describe("thread views and pages", () => {
   it("hover reveals wait --delay-hover, show at once on focus or an open menu, and keep their fade under reduced motion", () => {
-    for (const file of ["surfaces/threads/master/MasterRow.tsx", "surfaces/settings/Archive.tsx"]) {
+    // Both rows take the one recipe (components/ui/reveal.ts) rather than a class string of their own.
+    const calls = {
+      "surfaces/threads/master/MasterRow.tsx": ['reveal("", { row: true, overlay: true })', reveal("", { row: true, overlay: true })],
+      "surfaces/settings/Archive.tsx": ['reveal("item", { row: true })', reveal("item", { row: true })],
+    } as const;
+    for (const [file, [call, classes]] of Object.entries(calls)) {
       const text = read(file);
-      const reveal = text.match(/className="[^"]*opacity-0 transition-opacity[^"]*"/)?.[0] ?? "";
-      for (const cls of ["delay-(--delay-hover)", "delay-(--dur-instant)", "ease-(--ease-out)", "motion-reduce:transition-opacity", "has-[[data-popup-open]]:opacity-100"]) {
-        expect(reveal, `${file} ${cls}`).toContain(cls);
+      expect(text, file).toContain(call);
+      expect(text, file).not.toMatch(/className="[^"]*opacity-0 transition-opacity/);
+      for (const cls of ["delay-(--delay-hover)", "delay-(--dur-instant)", "ease-(--ease-out)", "motion-reduce:transition-", "has-[[data-popup-open]]:opacity-100"]) {
+        expect(classes, `${file} ${cls}`).toContain(cls);
       }
-      expect(reveal, file).not.toContain("motion-reduce:transition-none");
+      expect(classes, file).not.toContain("motion-reduce:transition-none");
     }
   });
 

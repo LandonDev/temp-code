@@ -31,11 +31,17 @@ describe("red in rows", () => {
   });
 
   it("Cancel is secondary in every dialog footer", () => {
-    for (const file of ["chrome/SwitchBranchDialog.tsx", "chrome/OrchestrationRules.tsx", "aliax/views/edit-account-dialog.tsx", "aliax/pages.tsx"]) {
-      const text = readFileSync(resolve(src, file), "utf8");
+    // A footer drawn by hand writes its Cancel; the shared DialogFooter draws one for its onCancel.
+    const secondaryCancel = (file: string, text: string) => {
       const at = text.search(/>\s*Cancel\s*<\/Button>/);
       expect(at, file).toBeGreaterThan(0);
       expect(text.slice(text.lastIndexOf("<Button", at), at), file).toContain('variant="secondary"');
+    };
+    secondaryCancel("chrome/ConfirmDialog.tsx", readFileSync(resolve(src, "chrome/ConfirmDialog.tsx"), "utf8"));
+    for (const file of ["chrome/SwitchBranchDialog.tsx", "chrome/OrchestrationRules.tsx", "aliax/views/edit-account-dialog.tsx", "aliax/pages.tsx"]) {
+      const text = readFileSync(resolve(src, file), "utf8");
+      if (/<DialogFooter\b/.test(text) && /\bonCancel=/.test(text) && !/>\s*Cancel\s*<\/Button>/.test(text)) continue;
+      secondaryCancel(file, text);
     }
   });
 });

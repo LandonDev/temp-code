@@ -27,7 +27,7 @@ describe("fitCard", () => {
   it("is never narrower than its header", () => {
     const header = { title: "Tasks", tally: "12/12" };
     // donut and gap, the title, a gap, the tally, 8px, the chevron.
-    const head = 14 + 8 + 5 * 6 + 8 + 5 * 6 + 8 + 14;
+    const head = 14 + 8 + 5 * 6 + 8 + 5 * 6 + 8 + 12;
     expect(fitCard({ labels: ["A"], hasTimes: false, header }, measure)).toBe(2 * (1 + 12) + head);
   });
 
