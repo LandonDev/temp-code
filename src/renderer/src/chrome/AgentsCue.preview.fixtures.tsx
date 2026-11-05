@@ -4,10 +4,30 @@ import { agentsCue } from "../lib/threads/agents";
 
 export default [
   { name: "No live agents: ⋯ and Panel alone", props: { cue: null } },
-  { name: "1 working, the thread watching: the spinner", props: { cue: agentsCue({ working: 1, waiting: 0, queued: 0 }, false) } },
-  { name: "4 live, the thread's own turn running: the still dot", props: { cue: agentsCue({ working: 3, waiting: 0, queued: 1 }, true) } },
-  { name: "1 needs you among 4: amber", props: { cue: agentsCue({ working: 2, waiting: 1, queued: 1 }, true) } },
-  { name: "Queued only", props: { cue: agentsCue({ working: 0, waiting: 0, queued: 2 }, false) } },
-  { name: "Pressed: the panel is open on Agents", props: { cue: agentsCue({ working: 2, waiting: 0, queued: 0 }, false), pressed: true } },
-  { name: "No room for the panel", props: { cue: agentsCue({ working: 2, waiting: 0, queued: 0 }, false), room: false } },
+  {
+    name: "1 working on Claude, the thread watching: the spinner",
+    props: { cue: agentsCue({ working: 1, waiting: 0, queued: 0, providers: ["claude"] }, false) },
+  },
+  {
+    name: "3 live on two providers, the thread's own turn running: the still dot",
+    props: { cue: agentsCue({ working: 2, waiting: 0, queued: 1, providers: ["claude", "codex"] }, true) },
+  },
+  {
+    name: "6 live on three providers",
+    props: { cue: agentsCue({ working: 6, waiting: 0, queued: 0, providers: ["claude", "codex", "muse"] }, false) },
+  },
+  {
+    name: "1 needs you among 4: amber words",
+    props: { cue: agentsCue({ working: 2, waiting: 1, queued: 1, providers: ["claude", "codex"] }, true) },
+  },
+  {
+    name: "Six providers: four marks and +2",
+    props: { cue: agentsCue({ working: 6, waiting: 0, queued: 0, providers: ["claude", "codex", "muse", "cursor", "meta", "grok"] }, false) },
+  },
+  { name: "Queued only", props: { cue: agentsCue({ working: 0, waiting: 0, queued: 2, providers: ["codex"] }, false) } },
+  {
+    name: "Pressed: the panel is open on Agents",
+    props: { cue: agentsCue({ working: 2, waiting: 0, queued: 0, providers: ["claude"] }, false), pressed: true },
+  },
+  { name: "No room for the panel", props: { cue: agentsCue({ working: 2, waiting: 0, queued: 0, providers: ["claude"] }, false), room: false } },
 ];

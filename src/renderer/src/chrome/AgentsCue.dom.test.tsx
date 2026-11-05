@@ -12,11 +12,14 @@ import { NO_ROOM_LABEL, rightPanel } from "../lib/rightPanel";
 import { sessionStore } from "../lib/tcserver/store";
 import { agentsCue } from "../lib/threads/agents";
 import { FakeMetaLink, wireMeta } from "../test/fakeMetaLink";
+import type { MarkId } from "./HarnessIcon";
 import { AgentsCue, AgentsCueView } from "./AgentsCue";
 import { AgentsCueEndGroup } from "./AgentsCue.preview";
 import FIXTURES from "./AgentsCue.preview.fixtures";
 
-const cue = (working: number, waiting = 0, queued = 0, rootRunning = false) => agentsCue({ working, waiting, queued }, rootRunning)!;
+const cue = (working: number, waiting = 0, queued = 0, rootRunning = false, providers: MarkId[] = []) =>
+  agentsCue({ working, waiting, queued, providers }, rootRunning)!;
+const marks = () => [...document.querySelectorAll("[data-agents-cue] [data-mark]")].map((el) => el.getAttribute("data-mark"));
 const flush = () => act(() => new Promise((r) => setTimeout(r, 20)));
 const button = () => document.querySelector<HTMLElement>("[data-agents-cue]");
 
@@ -37,18 +40,65 @@ describe("AgentsCueView", () => {
     const one = render(<AgentsCueView cue={cue(1)} pressed={false} onClick={() => {}} />);
     expect(one.getByRole("button", { name: "Agents: 1 working" }).textContent).toBe("1 agent");
     one.unmount();
-    render(<AgentsCueView cue={cue(2, 1, 1)} pressed={false} onClick={() => {}} />);
-    const el = screen.getByRole("button", { name: "Agents: 1 needs you, 2 working, 1 queued" });
+    render(<AgentsCueView cue={cue(3, 0, 1)} pressed={false} onClick={() => {}} />);
+    const el = screen.getByRole("button", { name: "Agents: 3 working, 1 queued" });
     expect(el.textContent).toBe("4 agents");
     expect(el.querySelector(".tabular-nums")?.textContent).toBe("4 agents");
   });
 
-  it("leads with waiting's amber when one needs you", () => {
+  it("leads with waiting's amber when one needs you, and says so in amber words", () => {
     render(<AgentsCueView cue={cue(2, 1)} pressed={false} onClick={() => {}} />);
     expect(button()!.getAttribute("data-state")).toBe("waiting");
     const mark = button()!.querySelector('[data-slot="status-mark"]')!;
     expect(mark.getAttribute("data-state")).toBe("waiting");
     expect(mark.className).toContain("text-warning");
+    expect(button()!.textContent).toBe("1 needs you");
+    expect(screen.getByText("1 needs you").closest(".text-warning")).not.toBeNull();
+    expect(button()!.getAttribute("aria-label")).toBe("Agents: 1 needs you, 2 working");
+  });
+
+  it("draws one mark per distinct provider after the glyph and before the words", () => {
+    render(<AgentsCueView cue={cue(3, 0, 0, false, ["claude", "codex"])} pressed={false} onClick={() => {}} />);
+    expect(marks()).toEqual(["claude", "codex"]);
+    const kids = [...button()!.children].map((el) => el.getAttribute("data-slot") ?? el.textContent);
+    expect(kids[0]).toBe("status-mark");
+    expect(kids[1]).toBe("cue-marks");
+    expect(button()!.textContent).toBe("3 agents");
+    expect(button()!.getAttribute("aria-label")).toBe("Agents: 3 working on Claude Code and Codex");
+    expect(button()!.querySelector('[data-slot="cue-marks"]')!.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("draws no mark row when no provider is known", () => {
+    render(<AgentsCueView cue={cue(2)} pressed={false} onClick={() => {}} />);
+    expect(button()!.querySelector('[data-slot="cue-marks"]')).toBeNull();
+  });
+
+  it("caps the marks at four and counts the rest as +N", () => {
+    render(<AgentsCueView cue={cue(6, 0, 0, false, ["claude", "codex", "muse", "cursor", "grok", "pi"])} pressed={false} onClick={() => {}} />);
+    expect(marks()).toEqual(["claude", "codex", "muse", "cursor"]);
+    expect(button()!.querySelector('[data-slot="cue-marks"]')!.textContent).toBe("+2");
+    expect(button()!.textContent).toBe("+26 agents");
+  });
+
+  it("keeps the control and its marks when the count or the providers change", () => {
+    const view = render(<AgentsCueView cue={cue(1, 0, 0, false, ["claude"])} pressed={false} onClick={() => {}} />);
+    const el = button()!;
+    const claude = el.querySelector('[data-mark="claude"]');
+    view.rerender(<AgentsCueView cue={cue(3, 0, 0, false, ["claude", "codex"])} pressed={false} onClick={() => {}} />);
+    expect(button()).toBe(el);
+    expect(el.querySelector('[data-mark="claude"]')).toBe(claude);
+    expect(el.querySelector('[data-mark="codex"]')).not.toBeNull();
+  });
+
+  it("is a quiet 24px row control: 12px muted words and the /5 hover fill", () => {
+    render(<AgentsCueView cue={cue(1)} pressed={false} onClick={() => {}} />);
+    const cls = button()!.className;
+    expect(cls).toContain("h-6");
+    expect(cls).toContain("px-2");
+    expect(cls).toContain("text-xs");
+    expect(cls).toContain("text-muted-foreground");
+    expect(cls).toContain("hover:bg-foreground/5");
+    expect(cls).not.toContain("hover:bg-foreground/7");
   });
 
   it("draws the working dot while the thread's own turn runs, the spinner while it watches", () => {

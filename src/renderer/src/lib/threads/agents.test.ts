@@ -453,7 +453,7 @@ describe("the live-agents cue", () => {
       m("e", "r", { status: "queued" }),
       ...(["paused", "error", "stopped", "done", "idle"] as const).map((status) => m(`x-${status}`, "r", { status })),
     ];
-    expect(liveAgentCounts(index(metas), "r")).toEqual({ working: 3, waiting: 1, queued: 1 });
+    expect(liveAgentCounts(index(metas), "r")).toMatchObject({ working: 3, waiting: 1, queued: 1 });
   });
 
   it("walks every depth, skips an archived agent but counts its live child, and ends on a cycle", () => {
@@ -464,14 +464,14 @@ describe("the live-agents cue", () => {
       m("gone", "r", { archived: true }),
       m("gone1", "gone", { status: "running" }),
     ];
-    expect(liveAgentCounts(index(metas), "r")).toEqual({ working: 2, waiting: 1, queued: 0 });
+    expect(liveAgentCounts(index(metas), "r")).toMatchObject({ working: 2, waiting: 1, queued: 0 });
     const loop = [m("p", "q"), m("q", "p")];
-    expect(liveAgentCounts(index(loop), "p")).toEqual({ working: 1, waiting: 0, queued: 0 });
+    expect(liveAgentCounts(index(loop), "p")).toMatchObject({ working: 1, waiting: 0, queued: 0 });
   });
 
   it("does not count a master's batch threads, which carry masterId alone", () => {
     const metas = [m("batch1", null, { masterId: "r" } as Partial<SessionMeta>), m("batch2", null, { masterId: "r" } as Partial<SessionMeta>)];
-    expect(liveAgentCounts(index(metas), "r")).toEqual({ working: 0, waiting: 0, queued: 0 });
+    expect(liveAgentCounts(index(metas), "r")).toEqual({ working: 0, waiting: 0, queued: 0, providers: [] });
   });
 
   it("says nothing at zero, and leads with waiting, then working, then queued", () => {
@@ -490,10 +490,35 @@ describe("the live-agents cue", () => {
 
   it("counts every live agent in its label and names each part in its line", () => {
     expect(agentsCue({ working: 1, waiting: 0, queued: 0 }, false)?.label).toBe("1 agent");
+    expect(agentsCue({ working: 2, waiting: 0, queued: 1 }, false)?.label).toBe("3 agents");
     expect(agentsCue({ working: 2, waiting: 1, queued: 1 }, false)).toMatchObject({
-      label: "4 agents",
+      label: "1 needs you",
       line: "Agents: 1 needs you, 2 working, 1 queued",
     });
     expect(agentsCue({ working: 1, waiting: 0, queued: 0 }, false)?.line).toBe("Agents: 1 working");
+  });
+
+  it("says who needs the person in the label while any agent waits", () => {
+    expect(agentsCue({ working: 3, waiting: 2, queued: 0 }, false)?.label).toBe("2 need you");
+  });
+
+  it("collects each live agent's provider once, in a fixed order, the maker's mark for a Meta model", () => {
+    const metas = [
+      m("a", "r", { provider: "codex", model: "gpt-6.1-sol" }),
+      m("b", "r", { provider: "claude", model: "claude-opus-5-5" }),
+      m("c", "r", { provider: "claude", model: "claude-opus-5-5", status: "waiting" }),
+      m("d", "b", { provider: "claude", model: "muse-spark-1.3" }),
+      m("e", "r", { provider: "cursor", model: "composer-2.5", status: "done" }),
+      m("f", "r", { provider: "grok", model: "x", archived: true }),
+    ];
+    expect(liveAgentCounts(index(metas), "r").providers).toEqual(["claude", "codex", "meta"]);
+  });
+
+  it("draws at most four marks, the rest as more, and names the providers in its line", () => {
+    const five = { working: 5, waiting: 0, queued: 0, providers: ["claude", "codex", "muse", "cursor", "grok"] as const };
+    expect(agentsCue(five, false)).toMatchObject({ marks: ["claude", "codex", "muse", "cursor"], more: 1 });
+    const two = agentsCue({ working: 3, waiting: 0, queued: 0, providers: ["claude", "codex"] }, false)!;
+    expect(two).toMatchObject({ marks: ["claude", "codex"], more: 0, line: "Agents: 3 working on Claude Code and Codex" });
+    expect(agentsCue({ working: 1, waiting: 0, queued: 0, providers: ["meta"] }, false)?.line).toBe("Agents: 1 working on Meta");
   });
 });

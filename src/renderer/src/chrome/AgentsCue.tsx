@@ -1,18 +1,24 @@
 import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { StatusMark } from "../components/ui/status";
+import { MorphText } from "../motion/MorphText";
 import { NO_ROOM_LABEL, rightPanel, useRightPanel } from "../lib/rightPanel";
 import { useAgentsCue, type AgentsCue as Cue } from "../lib/threads/agents";
+import { ROW_CONTROL } from "./composerRow";
+import { HarnessIcon } from "./HarnessIcon";
 
 /**
  * The title bar's live-agents cue (docs/LAYOUT.md "Titlebar"): while a
- * subagent of the thread on screen works, waits or is queued, a quiet chip
- * left of ⋯ with the state's glyph and "3 agents". It opens the right
- * panel on Agents and, pressed, closes it again. The glyph spins only while
- * the thread itself is not running a turn (its tab and working line already
- * spin then, so the cue draws working's still dot), and waiting's amber
- * leads. It fades in on `--dur-fast` and leaves at once, so no dead control
- * stays under the pointer.
+ * subagent of the thread on screen works, waits or is queued, a quiet 24px
+ * control left of ⋯: the state's glyph, one 12px mark per provider the live
+ * agents run on (at most four, then "+N"), and the count's words, "3
+ * agents", or "1 needs you" in amber while one waits on the person. It opens
+ * the right panel on Agents and, pressed, closes it again. The glyph spins
+ * only while the thread itself is not running a turn (its tab and working
+ * line already spin then, so the cue draws working's still dot). It fades in
+ * on `--dur-fast` and leaves at once, so no dead control stays under the
+ * pointer; once there, a new count morphs its words and a provider's mark
+ * grows in or leaves in place, so the control never remounts.
  */
 export function AgentsCueView({
   cue,
@@ -27,12 +33,15 @@ export function AgentsCueView({
   room?: boolean;
   onClick: () => void;
 }) {
+  // Its hook hands one object per change, so the compiler's caches would
+  // only cost first-paint bytes here.
+  "use no memo";
   const noRoom = room === false;
   return (
     <Tip label={noRoom ? NO_ROOM_LABEL : cue.line} side="bottom">
       <Button
         variant="ghost"
-        size="sm"
+        size="xs"
         data-tauri-drag-region="false"
         data-agents-cue
         data-state={cue.state}
@@ -40,14 +49,36 @@ export function AgentsCueView({
         aria-pressed={!noRoom && pressed}
         aria-disabled={noRoom || undefined}
         onClick={noRoom ? undefined : onClick}
-        className="gap-1.5 font-normal text-muted-foreground transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 hover:text-foreground aria-pressed:bg-foreground/7 aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground motion-reduce:transition-opacity"
+        className={CUE}
       >
         <StatusMark state={cue.state} word={false} still={cue.still} aria-hidden />
-        <span className="tabular-nums">{cue.label}</span>
+        {cue.marks.length ? (
+          <span data-slot="cue-marks" aria-hidden className="flex items-center gap-0.5">
+            {cue.marks.map((mark) => (
+              <span key={mark} data-mark={mark} className={MARK}>
+                <HarnessIcon harness={mark} className="size-3" />
+              </span>
+            ))}
+            {cue.more ? <span className="tabular-nums">+{cue.more}</span> : null}
+          </span>
+        ) : null}
+        <MorphText state={cue.label} className={cue.state === "waiting" ? "font-medium text-warning tabular-nums" : "tabular-nums"}>
+          {cue.label}
+        </MorphText>
       </Button>
     </Tip>
   );
 }
+
+/** The quiet row control (`ROW_CONTROL`: 12px muted, the /5 hover fill) at
+ *  24px, pressed like the panel toggle beside it. */
+const CUE = `${ROW_CONTROL} gap-1.5 transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 aria-pressed:bg-foreground/7 aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground motion-reduce:transition-opacity`;
+
+/** A provider's mark, 2px from the next: one that joins grows in from a
+ *  quarter on the layout spring's curve (`@starting-style`, so the first
+ *  marks grow inside the cue's own fade); one that leaves goes at once, as
+ *  the cue does. Reduced motion fades. */
+const MARK = "transition-[opacity,scale] duration-(--dur-layout) ease-(--ease-layout) starting:scale-25 starting:opacity-0 motion-reduce:transition-opacity";
 
 /** The cue for one thread: nothing while none of its subagents is live. */
 export function AgentsCue({ threadId, room }: { threadId: string | null; room?: boolean }) {

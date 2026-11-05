@@ -74,6 +74,13 @@ export function HarnessIcon({
       </MonoIcon>
     );
   }
+  if (harness === "muse") {
+    return (
+      <MonoIcon className={className}>
+        <path d="M2 27V3.5H6.6L14.5 13.3L22.4 3.5H27V27H22.4V10.7L14.5 20.4L6.6 10.7V27H2Z" />
+      </MonoIcon>
+    );
+  }
   if (harness === "cursor") {
     return (
       <MonoIcon className={className}>

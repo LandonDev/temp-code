@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { contextPercent } from "../contextUsage";
 import { STATUS_WORD, statusNeedsYou, statusToneClass, threadStateOf, type ThreadState } from "../../components/ui/status";
 import { findModel } from "../models";
-import type { Block, Session } from "../session";
+import type { MarkId } from "../../chrome/HarnessIcon";
+import { HARNESS_TITLE, type Block, type Session } from "../session";
 import { asHarness, pickerModelId, sessionStore } from "../tcserver/store";
 import { tallyOf } from "../tcserver/todos";
 import type { SessionMeta, SessionStatus } from "../tcserver/types";
@@ -428,13 +429,21 @@ export function useMetaById(id: string | null): SessionMeta | null {
 
 // ── the live-agents cue ───────────────────────────────────────────────
 
-/** How many of a thread's subagents are live, by what the cue says of them. */
-export type LiveAgents = { working: number; waiting: number; queued: number };
+/** How many of a thread's subagents are live, by what the cue says of them,
+ *  and the providers they run on (each once, in `MARK_ORDER`). */
+export type LiveAgents = { working: number; waiting: number; queued: number; providers?: readonly MarkId[] };
+
+/** The order the cue draws provider marks in: fixed, so a mark never moves
+ *  because the agent that brought it settled before another. */
+const MARK_ORDER: readonly MarkId[] = ["claude", "codex", "muse", "cursor", "meta", "grok", "opencode", "pi", "omp", "fx"];
+
+/** The most marks the cue draws; the rest are "+N". */
+export const CUE_MARKS = 4;
 
 /** The live part of a subagent's state: watching counts as working (it
  *  watches its own subagents); paused, failed, stopped, done and idle are
  *  not live. */
-function liveKind(status: SessionStatus | undefined): keyof LiveAgents | null {
+function liveKind(status: SessionStatus | undefined): "working" | "waiting" | "queued" | null {
   const state = threadStateOf(status);
   if (state === "working" || state === "watching") return "working";
   if (state === "waiting") return "waiting";
@@ -447,25 +456,39 @@ function liveKind(status: SessionStatus | undefined): keyof LiveAgents | null {
  *  `masterId`, not `parentId`, so they are not counted: they live on its
  *  board. An archived agent is not counted, but its own children are. */
 export function liveAgentCounts(childrenOf: (id: string) => readonly SessionMeta[], rootId: string): LiveAgents {
-  const counts: LiveAgents = { working: 0, waiting: 0, queued: 0 };
+  const counts = { working: 0, waiting: 0, queued: 0 };
+  const marks = new Set<MarkId>();
   const seen = new Set<string>([rootId]);
   const walk = (id: string): void => {
     for (const child of childrenOf(id)) {
       if (seen.has(child.id)) continue;
       seen.add(child.id);
       const kind = child.archived ? null : liveKind(child.status);
-      if (kind) counts[kind]++;
+      if (kind) {
+        counts[kind]++;
+        // Its maker's mark when the harness serves another's model (Meta's rows).
+        if (child.provider) marks.add(modelVendor(child.provider, child.model) ?? asHarness(child.provider));
+      }
       walk(child.id);
     }
   };
   walk(rootId);
-  return counts;
+  return { ...counts, providers: MARK_ORDER.filter((m) => marks.has(m)) };
 }
 
 /** What the title bar's agents cue says. `still` draws working as the dot
- *  while the thread's own turn spins (one moving mark); `line` is its
- *  tooltip and accessible name. */
-export type AgentsCue = { state: "working" | "waiting" | "queued"; still: boolean; label: string; line: string };
+ *  while the thread's own turn spins (one moving mark); `marks` are the
+ *  live agents' providers, each once, at most `CUE_MARKS`, and `more` the
+ *  providers past them; `label` is the count's words, "3 agents", or while
+ *  one needs you "1 needs you"; `line` is its tooltip and accessible name. */
+export type AgentsCue = {
+  state: "working" | "waiting" | "queued";
+  still: boolean;
+  marks: readonly MarkId[];
+  more: number;
+  label: string;
+  line: string;
+};
 
 /** The cue for these counts, or null when nothing is live. Waiting leads,
  *  then working, then queued. */
@@ -474,15 +497,27 @@ export function agentsCue(counts: LiveAgents, rootRunning: boolean): AgentsCue |
   if (total === 0) return null;
   const state = counts.waiting ? "waiting" : counts.working ? "working" : "queued";
   const parts = (["waiting", "working", "queued"] as const).filter((k) => counts[k] > 0).map((k) => `${counts[k]} ${STATUS_WORD[k].toLowerCase()}`);
+  const providers = counts.providers ?? [];
   return {
     state,
     still: state === "working" && rootRunning,
-    label: total === 1 ? "1 agent" : `${total} agents`,
-    line: plainStatus("Agents", parts.join(", ")),
+    marks: providers.slice(0, CUE_MARKS),
+    more: Math.max(0, providers.length - CUE_MARKS),
+    label: counts.waiting ? `${counts.waiting} ${counts.waiting === 1 ? "needs" : "need"} you` : `${total} ${total === 1 ? "agent" : "agents"}`,
+    line: plainStatus("Agents", parts.join(", ") + onProviders(providers)),
   };
 }
 
+/** " on Claude Code and Codex": the marks in words, for the tooltip and the
+ *  accessible name; nothing when no provider is known. */
+function onProviders(marks: readonly MarkId[]): string {
+  const names = marks.map((m) => (m === "meta" ? "Meta" : HARNESS_TITLE[m]));
+  const last = names.pop();
+  return last ? ` on ${names.length ? `${names.join(", ")} and ${last}` : last}` : "";
+}
+
 function sameCue(a: AgentsCue | null, b: AgentsCue | null): boolean {
+  // The line names every provider, so equal lines mean equal marks.
   return a === b || (!!a && !!b && a.state === b.state && a.still === b.still && a.label === b.label && a.line === b.line);
 }
 

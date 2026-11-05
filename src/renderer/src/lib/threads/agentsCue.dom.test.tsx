@@ -41,7 +41,7 @@ describe("useAgentsCue", () => {
   it("reads the tree, and renders nothing for a push of another thread", async () => {
     render(<Probe id="root" />);
     await flush();
-    expect(renders.at(-1)).toMatchObject({ state: "working", still: false, label: "2 agents", line: "Agents: 1 working, 1 queued" });
+    expect(renders.at(-1)).toMatchObject({ state: "working", still: false, label: "2 agents", line: "Agents: 1 working, 1 queued on Claude Code", marks: ["claude"] });
     const before = renders.length;
     for (let i = 1; i <= 50; i++) link.push({ push: "session", session: wireMeta("elsewhere", { title: `Elsewhere ${i}` }) });
     await flush();
@@ -55,7 +55,17 @@ describe("useAgentsCue", () => {
     link.push({ push: "session", session: wireMeta("kid", { parentId: "root", status: "waiting" }) });
     await flush();
     expect(renders.length).toBe(before + 1);
-    expect(renders.at(-1)).toMatchObject({ state: "waiting", line: "Agents: 1 needs you, 1 queued" });
+    expect(renders.at(-1)).toMatchObject({ state: "waiting", label: "1 needs you", line: "Agents: 1 needs you, 1 queued on Claude Code" });
+  });
+
+  it("renders once when a live agent's provider joins, with its mark", async () => {
+    render(<Probe id="root" />);
+    await flush();
+    const before = renders.length;
+    link.push({ push: "session", session: wireMeta("grandkid", { parentId: "kid", status: "queued", provider: "codex", model: "gpt-6.1-sol" }) });
+    await flush();
+    expect(renders.length).toBe(before + 1);
+    expect(renders.at(-1)?.marks).toEqual(["claude", "codex"]);
   });
 
   it("keeps an equal answer the same object", async () => {

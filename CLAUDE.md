@@ -1729,9 +1729,13 @@ names the far child).
   and the fleet header counts watching on its own ("1 watching, 1 done").
 - The title bar's agents cue (chrome/AgentsCue.tsx, left of ⋯): while any
   subagent of the thread on screen works, watches, waits or is queued (by
-  `parentId`, any depth; a master's batch is its board's), the loudest
-  state's glyph and "3 agents", its line "Agents: 1 needs you, 2 working";
-  working is the still dot while the thread's own turn runs; a click opens
+  `parentId`, any depth; a master's batch is its board's), a quiet 24px
+  control (`ROW_CONTROL`): the loudest state's glyph, one 12px provider mark
+  per distinct provider of the live agents (`HarnessIcon`, a Meta model's
+  maker's mark; at most four, then "+N"), and "3 agents", or "1 needs you"
+  in amber while one waits; its line "Agents: 1 needs you, 2 working on
+  Claude Code and Codex"; working is the still dot while the thread's own
+  turn runs; a new count morphs (`MorphText`); a click opens
   or closes the right panel on Agents (`useAgentsCue` in
   lib/threads/agents.ts, woken only for a change in that thread's tree).
   The Agents rows end with a model line: logo, model, effort and context

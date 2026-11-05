@@ -114,16 +114,26 @@ is open, "Panel ⌘⇧R"; disabled with "No room for the panel" while the
 thread's row is too narrow for it), last because it is nearest the panel
 it opens. The end group is right-aligned, so ⋯ and Panel keep their places
 while the cue comes and goes. The agents cue (chrome/AgentsCue.tsx) is a
-28px ghost chip, the plan chip's size: the state's glyph, then "1 agent"
-or "3 agents" in 13px muted `tabular-nums`, counting every subagent of the
+quiet 24px control, the composer row's (`ROW_CONTROL`: 8px padding, 12px
+muted text, the `foreground/5` hover fill), counting every subagent of the
 thread's tree (by `parentId`, any depth; a master's batch threads are its
-board's) that works, watches, waits or is queued. Its glyph is the
-loudest state's: waiting's amber ring when one needs you, else working,
-else queued's dashed ring. Working spins only while the thread itself is
+board's) that works, watches, waits or is queued. It reads left to right,
+6px apart: the loudest state's glyph (waiting's amber ring when one needs
+you, else working, else queued's dashed ring); one 12px mark for each
+distinct provider those agents run on, 2px apart in a fixed order (Claude,
+Codex, Muse, Cursor, then the rest; a Meta model under any harness draws
+Meta's), the logos the model picker draws, at most four, then "+2"; then
+the words in `tabular-nums`, "1 agent" or "3 agents", or while any waits
+"1 needs you" in amber, medium weight, the loudest fact said in words. One
+mark per provider, not per agent: the count already says how many, so the
+marks say only which. Working spins only while the thread itself is
 not running a turn (watching or idle); while its own turn runs, its tab and
-working line already spin, so the cue draws working's still dot. The
+working line already spin, so the cue draws working's still dot. A new
+count morphs its words in place (`MorphText`) and a provider that joins
+grows its mark in from a quarter on the layout spring's curve; one that
+leaves goes at once, and the control never remounts. The
 tooltip and the accessible name are one line, "Agents: 1 needs you, 2
-working". A click opens the right panel on Agents and the chip takes the
+working on Claude Code and Codex". A click opens the right panel on Agents and the chip takes the
 panel toggle's pressed fill; a second click closes the panel. With no room
 for the panel it is disabled like the toggle, its tooltip "No room for the
 panel". It shows in every view (chat, board, plan, research,

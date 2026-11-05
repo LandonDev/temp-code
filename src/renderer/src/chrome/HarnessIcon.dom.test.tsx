@@ -12,10 +12,11 @@ describe("HarnessIcon", () => {
     expect(HARNESS_TITLE.muse).toBe("Muse Code");
   });
 
-  it("renders the Muse mark", () => {
+  it("draws the Muse mark inline in currentColor, so it follows the text in both themes", () => {
     const { container } = render(<HarnessIcon harness="muse" className="size-3.5" />);
-    const img = container.querySelector("img");
-    expect(img).not.toBeNull();
-    expect(img!.getAttribute("src")).toBe(HARNESS_ICONS.muse);
+    expect(container.querySelector("img")).toBeNull();
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("fill")).toBe("currentColor");
+    expect(svg.getAttribute("class")).toContain("size-3.5");
   });
 });

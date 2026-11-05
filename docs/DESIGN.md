@@ -403,9 +403,11 @@ tooltip is the uncut form ("Claude Opus 5.5, high effort, 1M context"),
 the one home of what a narrow row hides.
 
 While any subagent of the thread on screen is live, the title bar's end
-group holds the agents cue (chrome/AgentsCue.tsx): the loudest state's
-glyph and "3 agents", the line "Agents: 1 needs you, 2 working" as its
-tooltip and name. It keeps the one-moving-mark rule: while the thread's own
+group holds the agents cue (chrome/AgentsCue.tsx), a quiet 24px row
+control: the loudest state's glyph, one 12px mark per distinct provider of
+the live agents (at most four, then "+N"), and "3 agents", or "1 needs you"
+in amber while one waits; the line "Agents: 1 needs you, 2 working on
+Claude Code and Codex" is its tooltip and name. It keeps the one-moving-mark rule: while the thread's own
 turn runs (its tab and working line spin), the cue draws working's still
 dot, and it spins only while the thread watches or idles. It fades in on
 `--dur-fast` `--ease-out` and leaves at once, so no dead control stays
@@ -578,7 +580,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Composer field height | snaps on a keystroke and on the clear after a send; a change of more than one line the person did not type (a paste, a restore, a quote) eases over `--dur-base` | — | snaps |
 | Composer, a new thread's first send | the box keeps its width and moves into its docked place (a FLIP translate, `--dur-slow` `--ease-drawer`) | — | none |
 | Pane switch | opacity, `--dur-fast`; no rise; a switch by a key (⌃Tab, ⌘1–9) at once | — | none |
-| The agents cue arriving in the title bar | fade, `--dur-fast` `--ease-out` (`@starting-style`) | at once | the fade |
+| The agents cue arriving in the title bar | fade, `--dur-fast` `--ease-out` (`@starting-style`); once there, a new count morphs its words (`MorphText`) and a provider's mark that joins grows from 0.25 on `--dur-layout` `--ease-layout` | at once; a mark that leaves goes at once | the fades |
 | The slot above the composer emptying | — | the outgoing row stays, inert, and fades `--dur-fast` `--ease-out`; the 28px stays | at once |
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
 
