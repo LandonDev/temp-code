@@ -125,9 +125,9 @@ host copy. Projects order by latest activity.
 **The project's shell.** `Route.project(key:thread:seq:)` is a project's
 place in the detail column (Shell/ProjectShell.swift): the strip on top,
 then the thread its chip selects (`ThreadScreen`), or the project's draft
-when none is open (until the draft lands, an empty body whose New Thread
-opens the new-thread sheet, with the project's name, plan chip and menu in
-the bar). `key` is the strip scope's key: a project's `ProjectPairs.key`,
+when none is open (an empty body and the draft composer at its foot, with
+the project's name, plan chip and menu in the bar; "The project's draft"
+under the composer). `key` is the strip scope's key: a project's `ProjectPairs.key`,
 or `loose:…` for a workspace's loose chats, which get a shell of their own.
 Every root of a project or of a workspace's loose chats opens in its shell;
 a subagent opens its root's shell and pushes over it; a chat outside every
@@ -262,8 +262,9 @@ and both landscapes; the inner display ignores the key.
 WorkspaceScreen.swift, ProjectCardView.swift (the project card),
 ProjectShell.swift (the project's shell), ShellRows.swift (the rail mark, the working line, the
 thread rows, the project menu, the
-cue loader, `NewThreadPresenter`: the new-thread sheet presents from the
-root so any level can open it), HomeRows.swift (the clients as
+cue loader, `NewThreadPresenter`: New thread from any level focuses the
+project's draft in its shell; the new-thread sheet, kept for a prefilled
+brief, presents from the root), HomeRows.swift (the clients as
 `HomeHostInput` values), HomeSlots.swift (what sibling features plug in),
 ShellSplit.swift, ShellNavigator.swift, ShellPoseEnvironment.swift and
 ThreadStrip.swift (the split, its navigator, the pose seam, the strip).
@@ -755,6 +756,37 @@ the reason in the field in place of the placeholder; the field is off and
 `+` and the button leave. A light impact on send and on a queue, a selection
 tick when the hold turns into a queue, never on typing; the field clears
 without animation. The list behind it dismisses the keyboard interactively.
+
+**The project's draft.** A project keeps one remembered draft, the
+desktop's new-chat screen (lib/projectDrafts.ts), and a workspace's loose
+chats keep one of their own (`loose:<workspace>`): the client's
+`ProjectDraftStore` (Client/ProjectDrafts.swift) keeps, per link key, so a
+linked project's copies share it, the text, the type, the model and
+effort, the permission mode, the Master pick of a chat and the host of a
+linked project, 64 keys for 30 days in UserDefaults (`project.drafts.v1`);
+its photos wait in memory for the run (a draft has no session to upload
+into) and go up once the thread exists. The shell with no thread open
+shows it (Shell/DraftComposer.swift): the strip, an empty body, and at the
+foot on the transcript's column the composer's box (`ComposerBox`, the
+one a thread's composer draws), the row under it with the draft's own
+model, effort and mode, and 4 pt under that the draft row: the type chip
+(its tinted glyph and its name, a menu of the types with their one-line
+hints), "Master thread" after it for a chat (a quiet check; an admin key's
+alone, a lesser key reads "Master threads need an admin key" in its
+place), and at the trailing edge the host of a project linked across hosts
+(every copy with a check on the one the send starts on, then "New copy on
+<host>" for a connected host without one, through `project.ensureLinked`;
+a host with no checkout says why in the line above the box). Nothing
+reaches the host until the first send: `session.create { firstMessage }`
+(`ThreadDraft.firstMessage`, `master`), or with photos the create, the
+uploads into the new thread, then the send, and `session.archive` when the
+send fails (`session.delete` is not the phone's; `DraftSend`). The send
+opens the new thread in the shell and clears the draft; a refusal keeps it
+with the reason above the box. New thread (the strip's button, the card's
+menu, the workspace's bar, Home's long press) opens the shell on its draft
+and focuses it, setting the type when one is asked for and keeping the
+text (`NewThreadPresenter.compose`, `ProjectDraftStore.focus`). The New
+thread sheet stays only for a prefilled brief.
 
 The row under the box (`Thread/ComposerRow.swift` over the client's
 `ComposerRow`, the desktop's row under its box) is 24 pt, 4 pt under the box

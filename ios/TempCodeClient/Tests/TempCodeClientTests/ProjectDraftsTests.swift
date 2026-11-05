@@ -55,7 +55,7 @@ import TempCodeContract
 
     @Test func `Master needs an admin key; a lesser key sees the reason`() {
         #expect(ProjectDrafts.masterBlock(caps: [.read, .operate, .approve, .admin]) == nil)
-        #expect(ProjectDrafts.masterBlock(caps: [.read, .operate]) != nil)
+        #expect(ProjectDrafts.masterBlock(caps: [.read, .operate]) == "Master needs an admin key")
         let draft = ThreadDraft(threadType: .chat, provider: .claude, model: "m", master: true)
         #expect(draft.needs == .admin)
         #expect(draft.params.master == true)

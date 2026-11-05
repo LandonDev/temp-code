@@ -50,6 +50,7 @@ struct ProjectShell: View {
 /// plan chip and menu, an empty body, and the draft composer.
 private struct ShellDraftBody: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.shellPose) private var pose
     @Environment(NewThreadPresenter.self) private var presenter
     let scope: StripScope
     let slots: HomeSlots
@@ -65,6 +66,8 @@ private struct ShellDraftBody: View {
             }
         .navigationTitle(scope.name)
         .navigationBarTitleDisplayMode(.inline)
+        // As on a thread: outside the split the tab bar gives the composer the screen's foot.
+        .toolbar(pose.isSplit ? .automatic : .hidden, for: .tabBar)
         .toolbar {
             if case .project(let project) = scope.kind, let lead {
                 if let trailing = slots.projectTrailing {
