@@ -84,9 +84,10 @@ import { summarizeTrace, TRACE_CATEGORIES, traceMarkdown, type TraceEvent, type 
 import { REVEAL_OBSERVER, revealLine, summarizeReveal, type RevealRecord } from './lib/revealReport'
 import { HEIGHT_OBSERVER, heightLine, summarizeHeights, type HeightRecord } from './lib/heightReport'
 import { REVEAL } from '../src/renderer/src/lib/ease'
-import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSoak, judgeTyping, parseSoakArgs, REACT_MEASURE_PREFIX, TYPING_RULE, type BuildStamp, type GateScene, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSoak, judgeSwitch, judgeTyping, parseSoakArgs, REACT_MEASURE_PREFIX, SWITCH_RULE, TYPING_RULE, type BuildStamp, type GateScene, type SoakSample } from './lib/soakJudge'
 import { scenarioLength, questionClicks } from './lib/soakScenarios'
 import { summarizePhase, typingGaps, typingMarkdown, typingPhases, typingProse, type PhaseSummary, type TypingRecords } from './lib/soakTyping'
+import { summarizeSwitch, switchMarkdown, type SwitchClick, type SwitchView } from './lib/soakSwitch'
 
 const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
 /** Hand runs on a dev build: also tally the props React names as changed, per component. */
@@ -315,7 +316,7 @@ async function waitFor(c: Cdp, expr: string, ms: number, what: string): Promise<
 /** Long tasks and, in a dev build, React's component re-renders, drained at every sample. */
 const OBSERVERS = `(() => {
   if (window.__soak) return true
-  const s = (window.__soak = { tasks: [], renders: new Map() })
+  const s = (window.__soak = { tasks: [], renders: new Map(), renderMs: new Map() })
   new PerformanceObserver((list) => { for (const e of list.getEntries()) s.tasks.push({ start: e.startTime, duration: e.duration }) }).observe({ type: 'longtask' })
   // --why: the props React's diff names as changed, per component (its detail's "+ key" rows at the top level).
   s.why = new Map()
@@ -324,6 +325,7 @@ const OBSERVERS = `(() => {
       if (e.name.charCodeAt(0) !== ${REACT_MEASURE_PREFIX.charCodeAt(0)}) continue
       const n = e.name.slice(1)
       s.renders.set(n, (s.renders.get(n) || 0) + 1)
+      s.renderMs.set(n, (s.renderMs.get(n) || 0) + e.duration)
       if (!window.__soakWhyOn) continue
       const props = e.detail && e.detail.devtools && e.detail.devtools.properties
       if (!Array.isArray(props)) continue
@@ -393,9 +395,10 @@ const OBSERVERS = `(() => {
   }
   window.__soakOwners = () => [...s.owners].sort((a, b) => b[1] - a[1]).slice(0, 40)
   window.__soakDrain = () => {
-    const out = { tasks: s.tasks, renders: [...s.renders] }
+    const out = { tasks: s.tasks, renders: [...s.renders], renderMs: [...s.renderMs] }
     s.tasks = []
     s.renders = new Map()
+    s.renderMs = new Map()
     return out
   }
   return true
@@ -504,7 +507,7 @@ async function pairBox(c: Cdp): Promise<Shown> {
     const roots = metas.filter((k) => !k.parentId && running(k)).sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
     return { masterId: master, threadId: ${JSON.stringify(args.thread)} ?? kids[0]?.id ?? roots[0]?.id ?? null }
   })()`)
-  if (!picked.masterId && args.view !== 'stream') throw new Error('the box has no pinned master to show (name one with --master)')
+  if (!picked.masterId && args.view !== 'stream' && args.scene !== 'switch') throw new Error('the box has no pinned master to show (name one with --master)')
   if (!picked.threadId && args.view !== 'board') throw new Error('the box has no running thread to show (name one with --thread)')
   log(`paired read-only with the box ${environmentId}`)
   return { environmentId, masterId: picked.masterId ?? '', threadId: picked.threadId ?? '' }
@@ -644,7 +647,7 @@ async function main(): Promise<void> {
   const c = cdp
   await waitFor(c, `window.__monocode?.registry?.primary?.()?.connected && typeof window.__monocode.open === 'function'`, 90_000, 'the app (is the tree from this branch on?)')
   const shown = args.host === 'synthetic' ? await startSynthetic(c) : await pairBox(c)
-  await openView(c, shown)
+  if (args.scene !== 'switch') await openView(c, shown)
   await c.eval(OBSERVERS)
   if (args.evalJs) log(`experiment: ${JSON.stringify(await c.eval(args.evalJs))}`)
   if (args.reducedMotion) {
@@ -677,6 +680,10 @@ async function main(): Promise<void> {
   log(`renderer ${renderer.pid}, gpu ${gpu?.pid ?? 'none'} (${procs.length} processes: ${types})`)
   if (args.scene === 'typing') {
     await recordTyping(c, shown, renderer.pid)
+    return
+  }
+  if (args.scene === 'switch') {
+    await recordSwitch(c)
     return
   }
 
@@ -1022,6 +1029,169 @@ async function recordTyping(c: Cdp, shown: Shown, rendererPid: number): Promise<
     ...(renders ? ['', `Re-renders with changed props while typing busy (${renders.ms} ms):`, '', ...renderTable(renders.typing), '', 'And in a quiet window as long, the draft held:', '', ...renderTable(renders.quiet)] : []),
     ...(owners.length ? ['', 'Re-renders by owner chain, the whole run:', '', '| chain | renders |', '|---|---|', ...owners.map(([k, n]) => `| ${k} | ${n} |`)] : []),
     ...(trace ? ['', 'The busy phase, traced:', '', ...traceMarkdown(trace)] : [])
+  ].join('\n')
+  writeFileSync(join(ROOT, `${args.label}.md`), md + '\n')
+  for (const v of verdict.verdicts) console.log(`${v.ok ? '✓' : '✗'} ${v.what}: ${v.got} (limit ${v.limit})`)
+  console.log(`${verdict.ok ? 'passed' : 'FAILED'}: ${ROOT}/${args.label}.md`)
+  process.exitCode = verdict.ok ? 0 : 1
+}
+
+// ── switching workspaces, measured ───────────────────────────────────────
+/** The page side of a switch: long tasks, long animation frames, what the
+ *  window shows (the column's cards, the strip's threads, the pane and its
+ *  rows), and arm(expect), which follows each frame until the column and
+ *  strip read as expected and the pane shows its landing thread's rows. */
+const SWITCH_OBSERVERS = `(() => {
+  if (window.__switch) return true
+  const s = (window.__switch = { tasks: [], frames: [] })
+  new PerformanceObserver((list) => { for (const e of list.getEntries()) s.tasks.push({ start: e.startTime, duration: e.duration }) }).observe({ type: 'longtask' })
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        if (e.duration <= 50) continue
+        const scripts = [...(e.scripts || [])].sort((a, b) => b.duration - a.duration).slice(0, 3)
+        s.frames.push({ start: e.startTime, duration: e.duration, scripts: scripts.map((x) => (x.sourceFunctionName || x.invoker || '?') + ' ' + Math.round(x.duration) + ' ms') })
+      }
+    }).observe({ type: 'long-animation-frame' })
+  } catch {}
+  const shown = (e) => e.getBoundingClientRect().width > 0 && !e.closest('.tab-parked, .board-parked')
+  s.row = (name) => [...document.querySelectorAll('nav[aria-label="Workspaces"] button')].filter(shown).find((e) => { const t = e.getAttribute('aria-label') || e.textContent.trim(); return t === name || t.startsWith(name + ',') })
+  s.read = () => {
+    const pane = [...document.querySelectorAll('[data-session-drop]')].find(shown)
+    return {
+      cards: [...document.querySelectorAll('button[data-project-card]')].filter(shown).map((e) => (e.getAttribute('aria-label') || '').split(',')[0]).sort(),
+      chips: [...document.querySelectorAll('[data-strip="live"] [role="tab"] [data-chip-title]')].filter(shown).map((e) => e.getAttribute('data-text') || e.textContent.trim()),
+      pane: pane ? pane.getAttribute('data-session-drop') : null,
+      rows: pane ? pane.querySelectorAll('[data-row], [data-menu-id]').length : 0,
+    }
+  }
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i])
+  s.arm = (expect) => {
+    const run = (s.run = { t0: performance.now(), ready: null, pane: null, waits: !!expect.pane })
+    const ch = new MessageChannel()
+    ch.port1.onmessage = (e) => { if (run[e.data] === null) run[e.data] = performance.now() }
+    const tick = () => {
+      if (s.run !== run || performance.now() - run.t0 > 5000) return
+      const now = s.read()
+      const ready = same(now.cards, expect.cards) && (expect.chips.length ? now.chips.some((c) => expect.chips.includes(c)) : now.chips.length === 0)
+      if (ready) ch.port2.postMessage('ready')
+      if (expect.pane && now.pane === expect.pane && now.rows > 0) ch.port2.postMessage('pane')
+      if (!ready || (expect.pane && !(now.pane === expect.pane && now.rows > 0))) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+    return run.t0
+  }
+  return true
+})()`
+
+/**
+ * `--scene switch`: the rail's two workspaces clicked in turn. A warm-up
+ * visit to each records what it shows once settled (3 s); then each click is
+ * timed to the end of the first frame showing that view's cards and strip,
+ * and to its landing thread's rows. The requests each click sent are counted
+ * off the window's sockets. `--trace <s>` traces the first measured clicks.
+ */
+async function recordSwitch(c: Cdp): Promise<void> {
+  await c.eval(SWITCH_OBSERVERS)
+  const [a, b] = args.workspaces
+  const until = Date.now() + 60_000
+  while (Date.now() < until && !(await c.eval<boolean>(`!!window.__switch.row(${JSON.stringify(a)}) && !!window.__switch.row(${JSON.stringify(b)})`))) await sleep(500)
+  if (!(await c.eval<boolean>(`!!window.__switch.row(${JSON.stringify(a)}) && !!window.__switch.row(${JSON.stringify(b)})`))) {
+    throw new Error(`the rail has no workspaces named ${a} and ${b}: ${JSON.stringify(await c.eval('[...document.querySelectorAll(\'nav[aria-label="Workspaces"] button\')].map((e) => e.getAttribute("aria-label") || e.textContent.trim())'))}`)
+  }
+  const press = async (name: string): Promise<void> => {
+    // A long rail scrolls: the row comes into view before the press.
+    const at = await c.eval<{ x: number; y: number }>(`(() => { const e = window.__switch.row(${JSON.stringify(name)}); e.scrollIntoView({ block: 'nearest' }); const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })()`)
+    for (const type of ['mousePressed', 'mouseReleased'] as const) await c.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 })
+  }
+  // The requests each click sends, by method, off the window's sockets.
+  const sent: { at: number; method: string }[] = []
+  await c.send('Network.enable')
+  c.on('Network.webSocketFrameSent', (p) => {
+    try {
+      const frame = JSON.parse((p as { response: { payloadData: string } }).response.payloadData) as { method?: string }
+      if (frame.method) sent.push({ at: Date.now(), method: frame.method })
+    } catch {
+      /* not JSON */
+    }
+  })
+  const expect = new Map<string, SwitchView>()
+  for (const name of [a, b, a, b]) {
+    await press(name)
+    // A host's catalog may still be on its way: a workspace shows its cards before it is recorded.
+    const listed = Date.now() + 60_000
+    while (Date.now() < listed && !(await c.eval<number>('window.__switch.read().cards.length'))) await sleep(500)
+    await sleep(3_000)
+    const view = await c.eval<SwitchView & { rows: number }>('window.__switch.read()')
+    if (!view.cards.length) {
+      const shot = (await c.send('Page.captureScreenshot', { format: 'png' })) as { data: string }
+      writeFileSync(join(ROOT, `${args.label}.png`), Buffer.from(shot.data, 'base64'))
+      throw new Error(`${name} shows no project cards (the window: ${ROOT}/${args.label}.png)`)
+    }
+    // A landing on a draft or an empty pane has no rows to wait for.
+    expect.set(name, { cards: view.cards, chips: view.chips, pane: view.rows > 0 ? view.pane : null })
+  }
+  for (const [name, v] of expect) log(`${name}: ${v.cards.length} cards, ${v.chips.length} threads in the strip, landing on ${v.pane ?? 'nothing'}`)
+  const clicks: SwitchClick[] = []
+  // A dev build: what each click rendered, from its press to its pane, by component (React's component track).
+  const rendered = { renders: new Map<string, number>(), ms: new Map<string, number>() }
+  const drain = async (keep: boolean): Promise<void> => {
+    if (args.build !== 'dev') return
+    const d = await c.eval<{ renders: [string, number][]; renderMs: [string, number][] }>('window.__soakDrain()')
+    if (!keep) return
+    for (const [n, k] of d.renders) rendered.renders.set(n, (rendered.renders.get(n) ?? 0) + k)
+    for (const [n, k] of d.renderMs) rendered.ms.set(n, (rendered.ms.get(n) ?? 0) + k)
+  }
+  const tracing = args.traceS ? traceFrames(c, args.traceS) : null
+  // A hand run profiles the measured clicks (not a window after them).
+  if (args.profile) {
+    await c.send('Profiler.enable')
+    await c.send('Profiler.setSamplingInterval', { interval: 200 })
+    await c.send('Profiler.start')
+  }
+  for (let i = 0; i < args.clicks; i++) {
+    const target = i % 2 === 0 ? a : b
+    await drain(false)
+    const t0 = await c.eval<number>(`window.__switch.arm(${JSON.stringify(expect.get(target))})`)
+    const wall = Date.now()
+    await press(target)
+    const done = Date.now() + 5_000
+    while (Date.now() < done && (await c.eval<boolean>('(() => { const r = window.__switch.run; return r.ready === null || (r.waits && r.pane === null && performance.now() - r.t0 < 5000) })()'))) await sleep(50)
+    await drain(true)
+    await sleep(500)
+    const got = await c.eval<{ ready: number | null; pane: number | null; tasks: { start: number; duration: number }[]; frames: { start: number; duration: number; scripts: string[] }[]; panes: string[] }>(
+      `(() => { const s = window.__switch, r = s.run, end = r.t0 + 5000; return { ready: r.ready, pane: r.pane, tasks: s.tasks.filter((t) => t.start >= r.t0 && t.start < end), frames: s.frames.filter((f) => f.start >= r.t0 && f.start < end), panes: [...document.querySelectorAll('[data-session-drop]')].map((e) => e.getAttribute('data-session-drop')) } })()`
+    )
+    const requests: Record<string, number> = {}
+    for (const r of sent) if (r.at >= wall && r.at < wall + 5_000) requests[r.method] = (requests[r.method] ?? 0) + 1
+    const click: SwitchClick = { target, readyMs: got.ready === null ? null : got.ready - t0, paneMs: got.pane === null ? null : got.pane - t0, longTasks: got.tasks, frames: got.frames.map((f) => ({ duration: f.duration, scripts: f.scripts })), requests, panes: got.panes }
+    clicks.push(click)
+    log(`click ${i + 1} ${target}: column and strip ${click.readyMs === null ? 'never' : `${click.readyMs.toFixed(1)} ms`}, pane ${click.paneMs === null ? '–' : `${click.paneMs.toFixed(1)} ms`}, long tasks ${got.tasks.length}, panes ${got.panes.join(' ')}`)
+    await sleep(1_000)
+  }
+  const trace = tracing ? await tracing : null
+  let profile: string | null = null
+  if (args.profile) {
+    const { profile: cpuProfile } = (await c.send('Profiler.stop')) as { profile: CpuProfile }
+    writeFileSync(join(ROOT, `${args.label}.cpuprofile`), JSON.stringify(cpuProfile))
+    profile = profileSummary(cpuProfile)
+  }
+  const summary = summarizeSwitch(clicks)
+  const verdict = judgeSwitch(summary)
+  writeFileSync(join(ROOT, `${args.label}.json`), JSON.stringify({ label: args.label, args, tree, platform: process.platform, rule: SWITCH_RULE, verdict, expect: Object.fromEntries(expect), clicks, summary, trace }, null, 1))
+  const md = [
+    `# ${args.label}: ${args.host} host, switch scene, ${args.build} build (${process.platform}, load ${loadavg()[0]!.toFixed(1)})`,
+    '',
+    ...switchMarkdown(clicks, summary),
+    '',
+    '| reading | got | limit | |',
+    '|---|---|---|---|',
+    ...verdict.verdicts.map((v) => `| ${v.what} | ${v.got} | ${v.limit} | ${v.ok ? 'pass' : 'FAIL'} |`),
+    ...(trace ? ['', ...traceMarkdown(trace)] : []),
+    ...(profile ? ['', 'The measured clicks, profiled:', '', '```', profile, '```'] : []),
+    ...(rendered.ms.size
+      ? ['', `What the ${args.clicks} clicks rendered from press to pane (dev build, inclusive ms):`, '', '| component | renders | ms |', '|---|---|---|', ...[...rendered.ms].sort((x, y) => y[1] - x[1]).slice(0, 45).map(([n, ms]) => `| ${n} | ${rendered.renders.get(n) ?? 0} | ${Math.round(ms)} |`)]
+      : [])
   ].join('\n')
   writeFileSync(join(ROOT, `${args.label}.md`), md + '\n')
   for (const v of verdict.verdicts) console.log(`${v.ok ? '✓' : '✗'} ${v.what}: ${v.got} (limit ${v.limit})`)

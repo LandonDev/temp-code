@@ -278,7 +278,9 @@ export type RowsContextMenuProps = {
   onOpenChange?: (open: boolean, id: string | null) => void;
   disabled?: boolean;
   /** Mount the body only from the first right-click on (a file link: a
-   *  transcript holds hundreds, and few are ever right-clicked). */
+   *  transcript holds hundreds, and few are ever right-clicked; a list's
+   *  wrapper: a mounted body re-renders Base UI's menu tree with every render
+   *  of its list, a workspace switch's every row). */
   lazyMount?: boolean;
   /** Set to a function that opens the menu at a point for an id: a row's
    *  ⋯ and a request from elsewhere open the same menu the right-click does. */

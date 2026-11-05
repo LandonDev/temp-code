@@ -211,6 +211,12 @@ export const AgentTranscript = memo(function AgentTranscript({
   // scroll renders the list alone) and where the list sits.
   const reader = useRef(createReaderStore()).current;
   const paneWidth = useRef(0);
+  /** A resize a parked pane let pass, and the handler that catches it up when the pane shows. */
+  const resizeMissed = useRef(false);
+  const resizeNow = useRef<() => void>(() => {});
+  /** Rows that changed while the pane was parked, and the placement they still owe. */
+  const rowsMissed = useRef(false);
+  const placeRows = useRef<() => void>(() => {});
   const [placement, setPlacement] = useState<OutlinePlacement>("hidden");
   useLayoutEffect(() => {
     onPlacementChange?.(placement);
@@ -757,22 +763,30 @@ export const AgentTranscript = memo(function AgentTranscript({
   // The rows changed under the reader: put their anchor row back where it
   // was (a page landed above, a turn regrouped) unless the transcript is
   // glued to its end, then mount what the viewport needs. First, so the
-  // effects below see the window the rows will have.
+  // effects below see the window the rows will have. A parked pane only
+  // sizes its box: the place waits for it to show (a read there forces the
+  // hidden subtree's layout on every push).
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
     const box = container.current;
     if (box) box.style.height = `${rowLayout.total()}px`;
-    const anchor = anchorRef.current;
-    if (anchor && !(mode.current === "follow" && pinBottom.current)) {
-      const top = rowLayout.scrollTopFor(anchor);
-      if (top != null && Math.abs(top - el.scrollTop) > 0.5) {
-        el.scrollTop = top;
-        expectedTop.current = el.scrollTop;
+    const place = () => {
+      rowsMissed.current = false;
+      const anchor = anchorRef.current;
+      if (anchor && !(mode.current === "follow" && pinBottom.current)) {
+        const top = rowLayout.scrollTopFor(anchor);
+        if (top != null && Math.abs(top - el.scrollTop) > 0.5) {
+          el.scrollTop = top;
+          expectedTop.current = el.scrollTop;
+        }
       }
-    }
-    reconcileWindow(el);
-    syncReader(el);
+      reconcileWindow(el);
+      syncReader(el);
+    };
+    placeRows.current = place;
+    if (visibleRef.current) place();
+    else rowsMissed.current = true;
   }, [rows, rowLayout, reconcileWindow, syncReader]);
 
   // The list's place follows the pane's width and the message count; set
@@ -890,6 +904,8 @@ export const AgentTranscript = memo(function AgentTranscript({
     }
     const el = scroller.current;
     if (!el) return;
+    if (resizeMissed.current) resizeNow.current();
+    if (rowsMissed.current) placeRows.current();
     const saved = takeTranscriptScroll(sessionId ?? "");
     if (shouldRestoreScroll(saved, busy)) {
       // The pane was unmounted while parked and the run is still going: put
@@ -927,10 +943,13 @@ export const AgentTranscript = memo(function AgentTranscript({
     };
   }, [scrollerEl, sessionId, rowLayout]);
 
+  // A parked pane (its tab behind content-visibility: hidden) follows
+  // nothing: a read there forces its whole subtree's style and layout on
+  // every push. Showing it again lands it (the effect above).
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (!el) return;
-    if (mode.current === "follow" && (pinBottom.current || !visible)) {
+    if (!el || !visible) return;
+    if (mode.current === "follow" && pinBottom.current) {
       scrollTo(el, el.scrollHeight);
     } else if (mode.current === "parked") layoutRunway();
     else schedule();
@@ -941,20 +960,33 @@ export const AgentTranscript = memo(function AgentTranscript({
     const el = scrollerEl;
     const content = inner.current;
     if (!el || !content) return;
+    let viewport = "";
     const onResize = () => {
+      // Parked (or a tab leaving): nothing read, nothing written; caught up when it shows.
+      if (!visibleRef.current) {
+        resizeMissed.current = true;
+        return;
+      }
+      resizeMissed.current = false;
       if (el.clientWidth !== paneWidth.current) {
         paneWidth.current = el.clientWidth;
         setPlacement(outlinePlacement(el.clientWidth, entryCountRef.current));
       }
-      // The message list's height cap, without a render.
-      el.style.setProperty("--transcript-viewport", `${el.clientHeight}px`);
+      // The message list's height cap, without a render. A custom property
+      // restyles the whole transcript under it: written only when it moves.
+      const next = `${el.clientHeight}px`;
+      if (next !== viewport) {
+        viewport = next;
+        el.style.setProperty("--transcript-viewport", next);
+      }
       if (mode.current === "parked") layoutRunway();
-      else if (mode.current === "follow" && (pinBottom.current || !visibleRef.current)) {
+      else if (mode.current === "follow" && pinBottom.current) {
         scrollTo(el, el.scrollHeight);
       } else schedule();
       reconcileWindow(el);
       syncPill(el);
     };
+    resizeNow.current = onResize;
     const observer = new ResizeObserver(onResize);
     observer.observe(content);
     observer.observe(el);

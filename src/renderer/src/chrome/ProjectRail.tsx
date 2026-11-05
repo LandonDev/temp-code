@@ -566,6 +566,7 @@ export function ProjectRail({
           >
             <RowsContextMenu
               label="Workspace actions"
+              lazyMount
               rowsFor={projectMenuRows}
               onPick={onProjectMenuPick}
               onOpenChange={(open, path) => {

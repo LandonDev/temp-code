@@ -476,6 +476,7 @@ function MasterBoardView(props: ThreadViewProps) {
           <div ref={scroller} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pt-1 pb-2" data-board-scroller>
             <RowsContextMenu
               label="Thread actions"
+              lazyMount
               rowsFor={(id) => (id ? rowMenu.rowsFor(id) : null)}
               onPick={(pick, id) => id && rowMenu.onPick(id, pick)}
               onOpenChange={(open, id) => id && rowMenu.onOpenChange(id, open)}

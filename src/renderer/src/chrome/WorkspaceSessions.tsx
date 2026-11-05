@@ -1704,6 +1704,7 @@ export default function WorkspaceSessions({
       {/* The menu's trigger is a DOM node: a component would drop its handler. */}
       <RowsContextMenu
         label="Thread actions"
+        lazyMount
         rowsFor={(id) => (id ? railMenu.rowsFor(id) : null)}
         onPick={(pick, id) => id && railMenu.onPick(id, pick)}
         onOpenChange={(open, id) => id && railMenu.onOpenChange(id, open)}

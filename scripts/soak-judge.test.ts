@@ -179,7 +179,7 @@ describe('the typing scene', () => {
     expect(parseSoakArgs(['--scene', 'typing', '--build', 'dev', '--trace', '5'])).toMatchObject({ build: 'dev', traceS: 5 })
     expect(() => parseSoakArgs(['--gate', '--scene', 'typing', '--host', 'box'])).toThrow('synthetic host only')
     expect(() => parseSoakArgs(['--scene', 'typing', '--view', 'split'])).toThrow('its view is board')
-    expect(() => parseSoakArgs(['--scene', 'typing', '--minutes', '5'])).toThrow('runs its phases')
+    expect(() => parseSoakArgs(['--scene', 'typing', '--minutes', '5'])).toThrow('runs its own steps')
     expect(() => parseSoakArgs(['--gate', '--scene', 'typing', '--cpu-report-only'])).toThrow('never judges it')
   })
 

@@ -164,6 +164,7 @@ export function ThreadHeaderStrip({
   return (
     <RowsContextMenu
       label="Thread actions"
+      lazyMount
       rowsFor={events.menu?.rowsFor ?? (() => null)}
       onPick={(pick, id) => events.menu?.onPick(pick, id)}
       onOpenChange={(open, id) => events.menu?.onOpenChange(open, id)}

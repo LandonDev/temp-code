@@ -25,6 +25,7 @@
  * The bounds are never raised to make a run pass.
  */
 import type { PhaseSummary, TypingPhaseName } from './soakTyping'
+import type { SwitchSummary } from './soakSwitch'
 
 export type SoakHostKind = 'synthetic' | 'box'
 export type SoakBuild = 'prod' | 'dev'
@@ -67,6 +68,9 @@ export interface SoakArgs {
   scrolledUp: boolean
   /** --height-report: the scenarios' tool tables and code blocks watched for a height jump (scripts/lib/heightReport.ts) */
   heightReport: boolean
+  /** --scene switch: the clicks, alternating between the two workspaces --workspaces names (the box's temp-code and CosmicClient by default) */
+  clicks: number
+  workspaces: [string, string]
 }
 
 /** The gate's run: 20 s to launch, pair and open, 10 s to warm up, a 50 s window, then teardown, inside 90 s. */
@@ -84,14 +88,21 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const host = (flag('--host') ?? 'synthetic') as SoakHostKind
   const build = (flag('--build') ?? 'prod') as SoakBuild
   const scene = (flag('--scene') ?? 'board') as SoakScene
-  if (!['board', 'chat', 'typing', 'scenarios'].includes(scene)) throw new Error('--scene is board, chat, typing or scenarios')
+  if (!['board', 'chat', 'typing', 'switch', 'scenarios'].includes(scene)) throw new Error('--scene is board, chat, typing, switch or scenarios')
   if ((scene === 'chat' || scene === 'scenarios') && host !== 'synthetic') throw new Error(`--scene ${scene} is a synthetic host`)
   if (scene === 'scenarios' && gate) throw new Error('--scene scenarios is a recording, never the gate')
-  const view = (flag('--view') ?? (scene === 'board' ? (gate ? 'split' : 'board') : scene === 'typing' ? 'board' : 'stream')) as SoakView
+  const view = (flag('--view') ?? (scene === 'board' ? (gate ? 'split' : 'board') : scene === 'typing' || scene === 'switch' ? 'board' : 'stream')) as SoakView
   if (scene === 'typing' && view !== 'board') throw new Error("--scene typing types into the master's composer beside its board: its view is board")
   if ((scene === 'chat' || scene === 'scenarios') && view !== 'stream') throw new Error(`--scene ${scene} has one thread: its view is stream`)
-  if (scene === 'typing' && (argv.includes('--minutes') || argv.includes('--every'))) throw new Error('--scene typing runs its phases, not a window: drop --minutes and --every')
-  if (scene === 'typing' && argv.includes('--cpu-report-only')) throw new Error('--scene typing reports CPU and never judges it: drop --cpu-report-only')
+  if ((scene === 'typing' || scene === 'switch') && (argv.includes('--minutes') || argv.includes('--every'))) throw new Error(`--scene ${scene} runs its own steps, not a window: drop --minutes and --every`)
+  if (scene === 'switch' && argv.includes('--view')) throw new Error('--scene switch clicks the rail: it opens no view of its own')
+  if (scene !== 'switch' && (argv.includes('--clicks') || argv.includes('--workspaces'))) throw new Error('--clicks and --workspaces belong to --scene switch')
+  const clicks = Number(flag('--clicks') ?? (gate ? '12' : '20'))
+  if (!Number.isInteger(clicks) || clicks < 2) throw new Error('--clicks takes a whole number, at least 2')
+  const named = (flag('--workspaces') ?? (host === 'box' ? 'temp-code,CosmicClient' : 'soak,client')).split(',').map((w) => w.trim())
+  if (named.length !== 2 || !named.every(Boolean)) throw new Error('--workspaces takes two names: a,b')
+  const workspaces = named as [string, string]
+  if ((scene === 'typing' || scene === 'switch') && argv.includes('--cpu-report-only')) throw new Error(`--scene ${scene} reports CPU and never judges it: drop --cpu-report-only`)
   const screencast = flag('--screencast') ?? null
   const scrolledUp = argv.includes('--scrolled-up')
   if (scrolledUp && scene !== 'scenarios') throw new Error('--scrolled-up belongs to --scene scenarios')
@@ -145,7 +156,9 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
     screencast,
     reducedMotion: argv.includes('--reduced-motion'),
     scrolledUp,
-    heightReport
+    heightReport,
+    clicks,
+    workspaces
   }
 }
 
@@ -249,6 +262,22 @@ export const TYPING_RULE: { name: string; p95Ms: Partial<Record<TypingPhaseName,
   p95Ms: { idle: 16, busy: 33, fast: 33 },
   longTaskMaxMs: 100,
   longTaskPhases: ['idle', 'busy', 'fast']
+}
+
+/**
+ * The switch scene's bound (the user's target, on the box): a click on a
+ * workspace reaches the first frame of its column and strip within 100 ms at
+ * p95, and every click gets there. The pane's rows are reported, not judged.
+ */
+export const SWITCH_RULE = { name: 'switch', readyP95Ms: 100 }
+
+export function judgeSwitch(summary: SwitchSummary, rule = SWITCH_RULE): { ok: boolean; verdicts: Verdict[] } {
+  const got = summary.ready.p95 ?? Number.POSITIVE_INFINITY
+  const verdicts: Verdict[] = [
+    { what: 'click to column and strip p95, ms', got, limit: rule.readyP95Ms, ok: got <= rule.readyP95Ms },
+    { what: 'clicks that never showed their workspace', got: summary.missed, limit: 0, ok: summary.missed === 0 }
+  ]
+  return { ok: verdicts.every((v) => v.ok), verdicts }
 }
 
 /** Every phase against TYPING_RULE; a phase the run skipped (idle against the box) is not judged. */

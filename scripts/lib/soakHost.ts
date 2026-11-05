@@ -29,6 +29,11 @@
  *
  * None of the edits settles, so the checkpoint listener reads no file.
  *
+ * The switch scene (`startSoakHost('switch')`) seeds the board's batch and
+ * its load, and a second workspace beside it (SWITCH_WORKSPACE: two
+ * projects, six settled chats with history, one of them 400 rows long), for
+ * the soak to switch between in the rail.
+ *
  * No thread has a harness: the registry's boot, send and liveness sweep are
  * stood in for, so nothing spawns a CLI or flips a seeded row to stopped.
  *
@@ -55,6 +60,17 @@ export const SOAK_MASTER = 'soak-master'
 export const SOAK_CHAT = 'soak-chat'
 export const SOAK_SCENARIOS = 'soak-scenarios'
 export const soakChildId = (i: number): string => `soak-child-${String(i).padStart(2, '0')}`
+/** The switch scene's two workspaces, by the names the rail shows. */
+export const SOAK_WORKSPACE = 'soak'
+export const SWITCH_WORKSPACE = 'client'
+const SWITCH_THREADS = [
+  { project: 'client app', title: 'Fix the login redirect', turns: 200 },
+  { project: 'client app', title: 'Tidy the settings form', turns: 20 },
+  { project: 'client app', title: 'Add the invoice export', turns: 20 },
+  { project: 'client app', title: 'Explain the cache headers', turns: 10 },
+  { project: 'client site', title: 'Write the pricing page', turns: 20 },
+  { project: 'client site', title: 'Check the sitemap', turns: 10 }
+]
 
 const TITLES = [
   'Port the billing export to the new shell',
@@ -188,6 +204,27 @@ export async function startSoakHost(scene: SoakScene = 'board'): Promise<SoakHos
   }
   batchRow = batchRowMidRun(SOAK_MASTER, { landed: [], pending: children }, Date.now())
   server.batches.seedRow(batchRow)
+  }
+  if (scene === 'switch') {
+    // A second workspace of settled chats, each turn a question and an answer.
+    const repo2 = join(root, SWITCH_WORKSPACE)
+    mkdirSync(repo2)
+    execFileSync('git', ['-C', repo2, 'init', '-q'])
+    execFileSync('git', ['-C', repo2, '-c', 'user.name=soak', '-c', 'user.email=soak@example.com', 'commit', '-q', '--allow-empty', '-m', 'init'])
+    const ws2 = await registry.createWorkspace(repo2, SWITCH_WORKSPACE)
+    const projects2 = new Map<string, string>()
+    for (const name of new Set(SWITCH_THREADS.map((t) => t.project))) projects2.set(name, (await registry.createProject(ws2.id, name, 'local')).id)
+    for (const [i, t] of SWITCH_THREADS.entries()) {
+      const id = `soak-client-${i}`
+      await registry.create({ ...base, projectId: projects2.get(t.project)!, id, threadType: 'chat', title: t.title })
+      for (let turn = 0; turn < t.turns; turn++) {
+        registry.append(id, { type: 'user-text', text: `${t.title}: step ${turn + 1}.` })
+        registry.append(id, { type: 'status', status: 'running' })
+        registry.append(id, { type: 'assistant-text', text: PROSE, delta: false, msgId: `${id}-a${turn}`, blockIndex: 0 })
+        registry.append(id, { type: 'turn-complete' })
+        registry.append(id, { type: 'status', status: 'idle' })
+      }
+    }
   }
 
   const created = await server.remoteAuth.createKey({ name: 'renderer-soak', audience: 'client', caps: ['operate'], createdBy: 'local' })

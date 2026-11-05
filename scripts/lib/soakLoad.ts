@@ -92,8 +92,9 @@ export const SOAK_PROFILE: SoakProfile = profile()
 
 /** The scenes the soak measures: the master's board beside a streaming child, or one plain chat;
  *  `typing` is the board's with the master's own churn and its live edits, typed into;
+ *  `switch` is the board's load with a second workspace to switch to and from;
  *  `scenarios` plays the no-jerk timeline on one chat instead of a load (scripts/lib/soakScenarios.ts). */
-export type SoakScene = 'board' | 'chat' | 'typing' | 'scenarios'
+export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'scenarios'
 
 export const CHAT_PROFILE: SoakProfile = {
   children: 1,

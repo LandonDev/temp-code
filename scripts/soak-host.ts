@@ -12,6 +12,7 @@ import type { SoakDriver } from './lib/soakLoad'
 
 // `--scene chat`: one plain chat thread instead of the master's batch;
 // `--scene typing`: the batch with the master's own churn and its live edits;
+// `--scene switch`: the batch and a second workspace to switch to;
 // `--burst <ms>`: its deltas leave in bursts (soakLoad.ts BurstCadence).
 // `--scene scenarios`: one quiet chat that plays the no-jerk timeline when a
 // line "go" arrives on stdin, writing `{"step": label, "at": ms, "clicks"?}` per
@@ -20,7 +21,7 @@ import type { SoakDriver } from './lib/soakLoad'
 // answered `{"paused": true}` or `{"resumed": true}` once it holds.
 const argAfter = (name: string): string | undefined => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined)
 const named = argAfter('--scene')
-const host = await startSoakHost(named === 'chat' || named === 'typing' || named === 'scenarios' ? named : 'board')
+const host = await startSoakHost(named === 'chat' || named === 'typing' || named === 'switch' || named === 'scenarios' ? named : 'board')
 const started = Date.now()
 let driver: SoakDriver | null = null
 if (host.scene !== 'scenarios') {

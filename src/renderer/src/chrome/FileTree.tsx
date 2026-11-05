@@ -660,6 +660,7 @@ export function FileTree({
       >
         <RowsContextMenu
           label="File actions"
+          lazyMount
           rowsFor={(id) => explorerItems(targetOf(id), clip, !!onOpenTerminal, editorLabelFor(targetOf(id).path, editorConfig))}
           onPick={(pick, id) => void runAction(pick, targetOf(id))}
           onOpenChange={(open, id) => open && openMenu(targetOf(id))}
