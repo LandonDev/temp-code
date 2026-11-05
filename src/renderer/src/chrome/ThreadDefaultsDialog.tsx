@@ -235,7 +235,7 @@ export function ThreadDefaultsDialog({
                 Remove override
               </Button>
             ) : null}
-            <Button variant="secondary" onClick={() => closeThen(onClose)}>
+            <Button variant="secondary" disabled={pending} onClick={() => closeThen(onClose)}>
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !value}>
