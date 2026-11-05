@@ -108,6 +108,9 @@ public struct ToolItem: Sendable, Hashable {
     public var doneTs: Int? = nil
     /// The host's live diff of the file this edit is changing, while it runs.
     public var live: LiveEditState? = nil
+    /// A spawn_agent call: the children the host said it spawned
+    /// (`agent-spawned`), in order; a child on another host as `<env>:<id>`.
+    public var spawned: [String] = []
 
     /// What the row shows after the name: a command, a path, a query.
     public var detail: String? {
@@ -152,6 +155,9 @@ public struct CompactionItem: Sendable, Hashable {
     public var postTokens: Double?
     public var durationMs: Double?
     public var error: String?
+    /// Its turn ended or paused with the compaction still open: it stopped
+    /// there, at this time ("Compaction stopped" and its span).
+    public var stoppedTs: Int? = nil
 }
 
 public struct SystemLine: Sendable, Hashable {
@@ -175,6 +181,9 @@ public struct SystemLine: Sendable, Hashable {
     public var notice: NoticeEvent? = nil
     /// A held review whose merge was later forced through (a merged-anyway notice with the same runId).
     public var reviewResolved: Bool = false
+    /// `agentReport` rows: the report names this thread itself, a master's
+    /// batch reporting in: it reads "the batch" and opens nothing.
+    public var batch: Bool = false
 }
 
 /// One thing the transcript shows, in order. Rows that are bookkeeping

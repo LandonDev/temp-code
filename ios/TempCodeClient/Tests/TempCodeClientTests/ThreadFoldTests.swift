@@ -4,6 +4,60 @@ import TempCodeContract
 @testable import TempCodeClient
 
 @Suite struct ThreadFoldTests {
+    private func spawned(_ child: String, environmentId: String? = nil) -> AgentEvent {
+        .agentSpawned(AgentSpawnedEvent(childSessionId: child, environmentId: environmentId))
+    }
+
+    @Test func `a spawn lands on its spawn_agent call, the newest with room in the turn`() {
+        let fold = ThreadFold.fold(rows([
+            user("go"),
+            call("s1", "mcp__orchestrator__spawn_agent", ["task": .string("Map the plugin")]),
+            spawned("c1"),
+            call("s2", "mcp__orchestrator__spawn_agent", ["agents": .array([.object(["task": .string("a")]), .object(["task": .string("b")])])]),
+            spawned("c2"),
+            spawned("c3", environmentId: "env_mac"),
+            spawned("c2"),
+        ]))
+        let tools = fold.items.compactMap { entry -> ToolItem? in if case .tool(let tool) = entry.item { tool } else { nil } }
+        #expect(tools.map(\.spawned) == [["c1"], ["c2", "env_mac:c3"]])
+        #expect(fold.items.count == 3)
+        #expect(fold.board.agents == ["c1", "c2", "c3"])
+    }
+
+    @Test func `a spawn with no call of the turn to stand on is a row of its own`() {
+        let fold = ThreadFold.fold(rows([
+            call("s1", "mcp__orchestrator__spawn_agent", ["task": .string("x")]),
+            spawned("c1"),
+            user("again"),
+            spawned("c2"),
+        ]))
+        guard case .system(let line) = fold.items.last?.item else {
+            Issue.record("shape \(fold.items)")
+            return
+        }
+        #expect(line.kind == .agentSpawned)
+        #expect(line.agentId == "c2")
+    }
+
+    @Test func `the batch's own report names this thread; a compaction its turn left open stopped`() {
+        let fold = ThreadFold.fold([
+            EventRow(sessionId: "m", seq: 1, ts: 1_000, event: .agentReport(AgentReportEvent(agentId: "m", title: "Batch", status: "done"))),
+            EventRow(sessionId: "m", seq: 2, ts: 1_100, event: .agentReport(AgentReportEvent(agentId: "c1", title: "Child", status: "idle"))),
+            EventRow(sessionId: "m", seq: 3, ts: 1_200, event: .compaction(CompactionEvent(phase: .start))),
+            EventRow(sessionId: "m", seq: 4, ts: 4_200, event: .status(StatusEvent(status: .idle))),
+            EventRow(sessionId: "m", seq: 5, ts: 4_300, event: .backgroundTasks(BackgroundTasksEvent(tasks: ["lint"]))),
+        ])
+        let lines = fold.items.compactMap { entry -> SystemLine? in if case .system(let line) = entry.item { line } else { nil } }
+        #expect(lines.map(\.batch) == [true, false])
+        guard case .compaction(let compaction) = fold.items.last?.item else {
+            Issue.record("shape \(fold.items)")
+            return
+        }
+        #expect(compaction.stoppedTs == 4_200)
+        #expect(!fold.board.compacting)
+        #expect(fold.items.count == 3)
+    }
+
     @Test func `stamps items with round and todo, and keeps the time`() {
         let fold = ThreadFold.fold(rows([
             user("go"),

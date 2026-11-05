@@ -48,6 +48,11 @@ public enum WaitSteps {
         isWait(tool) && tool.status == .running
     }
 
+    /// A wait is no step while it is open, nor once it returned on nobody.
+    public static func isHidden(_ tool: ToolItem) -> Bool {
+        isWait(tool) && (isOpen(tool) || outcomes(tool).isEmpty)
+    }
+
     /// The agents a wait names, in its own order, once each.
     public static func ids(_ tool: ToolItem) -> [String] {
         guard case .object(let input)? = tool.input else { return [] }
@@ -92,7 +97,7 @@ public enum WaitSteps {
     /// The step's word for an agent's settled status: Finished, Failed, Needs you, Stopped, Paused.
     public static func word(_ status: String) -> String {
         switch status {
-        case "failed", "error": "Failed"
+        case "failed", "error", "blocked": "Failed"
         case "waiting": "Needs you"
         case "stopped": "Stopped"
         case "paused": "Paused"
@@ -151,5 +156,105 @@ public struct AgentsCue: Sendable, Hashable {
         guard counts.waiting + counts.working + counts.queued > 0 else { return nil }
         let state: State = counts.waiting > 0 ? .waiting : counts.working > 0 ? .working : .queued
         return AgentsCue(state: state, still: state == .working && rootRunning, waiting: counts.waiting, working: counts.working, queued: counts.queued)
+    }
+}
+
+/// What a spawn call says about each child it stamped, the desktop's
+/// `spawnedNames`: the title it gave, else its task. A step about an agent
+/// the store has not listed still says the name its spawn gave it.
+public struct SpawnedName: Sendable, Hashable {
+    public var title: String?
+    public var task: String?
+}
+
+/// A row the host wrote that is a step of the agent's work, the desktop's
+/// `isFoldedStep` (transcriptActivity.ts): it folds into the run it sits in.
+/// A subagent spawned or settled, a background task that finished, a gate
+/// or release outcome, a review that merged, the turn pass, the plan's
+/// build hand-off, a merge the batch made, what the host decided while the
+/// person was away. What asks the person something or ends a stretch of
+/// work (a held review, a failure, Stopped, a compaction, Batch done, an
+/// account gone, a plain host line) stays a row of its own.
+public enum FoldedStep {
+    public static func isFolded(_ line: SystemLine) -> Bool {
+        switch line.kind {
+        case .agentReport, .agentSpawned, .planHandoff, .turnPass, .backgroundTask: return true
+        case .status:
+            guard let notice = line.notice else { return false }
+            switch notice.kind {
+            case .gate: return notice.gate != nil
+            case .review: return notice.review.map { $0.outcome != .held } ?? false
+            case .away: return true
+            case .batch: return notice.message.hasPrefix("Merged by the batch")
+            default: return false
+            }
+        default: return false
+        }
+    }
+
+    /// A spawn_agent call that asked for several agents.
+    public static func isBatchSpawn(_ tool: ToolItem) -> Bool {
+        ToolPhrase.shortName(tool.name) == "spawn_agent" && (ToolPhrase.input(tool)["agents"]?.arrayValue?.count ?? 0) > 1
+    }
+
+    /// The rows a step draws, `stepRows`: one per agent a wait returned on,
+    /// one per child a batch spawn stamped, else one.
+    public static func rows(_ entry: ThreadEntry) -> Int {
+        guard case .tool(let tool) = entry.item else { return 1 }
+        if WaitSteps.isWait(tool) { return WaitSteps.outcomes(tool).count }
+        return isBatchSpawn(tool) && tool.spawned.count > 1 ? tool.spawned.count : 1
+    }
+
+    /// How many of a step's parts went wrong, `stepFailures`: a failed call,
+    /// each agent a wait found failed, a red gate, a review that failed to
+    /// run, a report of a failure, a failed task.
+    public static func failures(_ entry: ThreadEntry) -> Int {
+        switch entry.item {
+        case .tool(let tool):
+            if WaitSteps.isWait(tool) { return WaitSteps.outcomes(tool).count { ["failed", "error", "blocked"].contains($0.status) } }
+            return tool.status == .failed ? 1 : 0
+        case .system(let line):
+            return failed(line) ? 1 : 0
+        default:
+            return 0
+        }
+    }
+
+    /// A folded host step that went wrong.
+    public static func failed(_ line: SystemLine) -> Bool {
+        if let gate = line.notice?.gate { return !gate.ok }
+        if let review = line.notice?.review { return review.outcome == .failed }
+        switch line.kind {
+        case .backgroundTask: return line.detail == "failed"
+        case .agentReport: return ["failed", "error", "blocked"].contains(line.detail ?? "")
+        default: return false
+        }
+    }
+
+    /// The child each of a spawn's stamped ids is, by the call's own entry:
+    /// its title, else its task (a batch's entry, else the call's).
+    public static func spawnedNames(_ tool: ToolItem) -> [(id: String, name: SpawnedName)] {
+        let input = ToolPhrase.input(tool)
+        let entries = input["agents"]?.arrayValue
+        func text(_ value: JSONValue?) -> String? {
+            guard let string = value?.stringValue, string.contains(where: { !$0.isWhitespace }) else { return nil }
+            return string
+        }
+        return tool.spawned.enumerated().map { index, id in
+            let entry = entries.flatMap { $0.indices.contains(index) ? $0[index] : nil }
+            let title = entries == nil ? text(input["title"]) : text(entry?["title"])
+            let task = (entries == nil ? nil : text(entry?["task"])) ?? text(input["task"])
+            return (id, SpawnedName(title: title, task: task))
+        }
+    }
+
+    /// The names a run's spawn calls gave, by child id.
+    public static func spawnedNames(_ entries: [ThreadEntry]) -> [String: SpawnedName] {
+        var names: [String: SpawnedName] = [:]
+        for entry in entries {
+            guard case .tool(let tool) = entry.item, ToolPhrase.shortName(tool.name) == "spawn_agent" else { continue }
+            for (id, name) in spawnedNames(tool) { names[id] = name }
+        }
+        return names
     }
 }

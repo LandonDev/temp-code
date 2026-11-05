@@ -1,14 +1,14 @@
 import Foundation
 import TempCodeContract
 
-/// One step of a run, for its phrase: a tool call, or a host step (A8 words those).
+/// One step of a run, for its phrase: a tool call, or a host step the run folded in.
 public enum GroupStep: Hashable, Sendable {
     case tool(ToolItem)
     case system(SystemLine)
 }
 
 public enum GroupPhrase {
-    private enum Stretch: Equatable { case read, edit, run, search, report, app(String), other }
+    private enum Stretch: Equatable { case read, edit, run, search, report, task, app(String), other }
 
     private static let counted: [String: (past: String, live: String)] = [
         "spawn_agent": ("spawned # agents", "spawning # agents"),
@@ -23,8 +23,14 @@ public enum GroupPhrase {
     ]
 
     /// The group line's words. `live` nil = live while any call still runs. `titleOf` names threads by id.
-    public static func of(_ steps: [GroupStep], cwd: String? = nil, live: Bool? = nil, titleOf: (String) -> String? = { _ in nil }) -> String {
+    public static func of(_ steps: [GroupStep], cwd: String? = nil, live: Bool? = nil, titleOf known: (String) -> String? = { _ in nil }) -> String {
         guard !steps.isEmpty else { return "" }
+        // A thread the store has not listed (archived, on a host not connected) is named by the report that came back from it.
+        var reported: [String: String] = [:]
+        for case .system(let line) in steps where line.kind == .agentReport && !line.batch {
+            if let id = line.agentId, !line.text.isEmpty { reported[id] = line.text }
+        }
+        func titleOf(_ id: String) -> String? { known(id) ?? reported[id] }
         let tools = steps.compactMap { step -> ToolItem? in
             if case .tool(let tool) = step { return tool }
             return nil
@@ -85,7 +91,15 @@ public enum GroupPhrase {
     }
 
     private static func stretchOf(_ step: GroupStep) -> Stretch {
-        guard case .tool(let tool) = step else { return .other }
+        guard case .tool(let tool) = step else {
+            guard case .system(let line) = step else { return .other }
+            switch line.kind {
+            case .agentReport: return .report
+            case .agentSpawned: return .app("spawn_agent")
+            case .backgroundTask: return .task
+            default: return .other
+            }
+        }
         let short = ToolPhrase.shortName(tool.name)
         if short == "wait_for_agent" { return .report }
         if counted[short] != nil { return .app(short) }
@@ -125,7 +139,11 @@ public enum GroupPhrase {
         }
     }
 
-    private static func targetsOf(_ tool: ToolItem) -> [String] {
+    private static func targetsOf(_ step: GroupStep) -> [String] {
+        guard case .tool(let tool) = step else {
+            guard case .system(let line) = step else { return [] }
+            return [line.agentId ?? "seq:\(line.seq)"]
+        }
         let short = ToolPhrase.shortName(tool.name)
         if short == "spawn_agent" {
             return (0..<max(1, ToolPhrase.input(tool)["agents"]?.arrayValue?.count ?? 1)).map { "\(tool.callId):\($0)" }
@@ -136,29 +154,87 @@ public enum GroupPhrase {
     }
 
     static func agentId(_ tool: ToolItem) -> String? {
+        if tool.spawned.count == 1 { return tool.spawned[0] }
         if let id = ToolPhrase.input(tool)["agentId"]?.stringValue, !id.isEmpty { return id }
         return ToolPhrase.outputText(tool).firstMatch(of: /"agentId"\s*:\s*"([\w:-]+)"/).map { String($0.1) }
     }
 
-    private static func waitIds(_ tool: ToolItem) -> [String] {
-        guard tool.status != .running, let data = ToolPhrase.outputText(tool).data(using: .utf8), let parsed = try? JSONDecoder().decode(JSONValue.self, from: data) else { return [] }
-        let settled = ["done", "idle", "watching", "waiting", "failed", "error", "stopped", "paused"]
-        return (parsed.arrayValue ?? [parsed]).compactMap {
-            guard let id = $0["agentId"]?.stringValue, !id.isEmpty, let status = $0["status"]?.stringValue, settled.contains(status) else { return nil }
-            return id
+    /// An agent a step heard from: a report's, or one a wait returned on.
+    private struct Heard: Hashable {
+        var id: String
+        var batch: Bool
+    }
+
+    private static func heardOf(_ step: GroupStep) -> [Heard] {
+        switch step {
+        case .tool(let tool): return WaitSteps.outcomes(tool).map { Heard(id: $0.id, batch: false) }
+        case .system(let line):
+            guard line.kind == .agentReport, let id = line.agentId else { return [] }
+            return [Heard(id: id, batch: line.batch)]
         }
     }
 
-    private static func heardPhrase(_ id: String, titleOf: (String) -> String?) -> String {
-        let title = ToolPhrase.firstText(titleOf(WatchWords.bareAgentId(id)), titleOf(id))
+    /// A report's words: the agent by title, the master's batch as the batch.
+    private static func heardPhrase(_ heard: Heard, titleOf: (String) -> String?) -> String {
+        if heard.batch { return "heard from the batch" }
+        let title = ToolPhrase.firstText(titleOf(WatchWords.bareAgentId(heard.id)), titleOf(heard.id))
         return "heard from \(title.isEmpty ? "a subagent" : quoted(title))"
+    }
+
+    private static let reviewWords: [String: String] = [
+        "pass": "review passed",
+        "held": "review held the merge",
+        "timeout": "review timed out",
+        "failed": "review failed to run",
+        "merged-anyway": "merged anyway",
+        "skipped": "merged without review",
+    ]
+
+    private static func taskWord(_ status: String?) -> String {
+        switch status {
+        case "failed": "failed"
+        case "stopped": "stopped"
+        default: "finished"
+        }
+    }
+
+    /// A host step's words on its own: a report, a spawn, a task, a gate, a
+    /// review, the pass, the hand-off, a batch merge, an away decision.
+    private static func hostPhrase(_ line: SystemLine, titleOf: (String) -> String?) -> String {
+        switch line.kind {
+        case .agentReport:
+            return line.agentId.map { heardPhrase(Heard(id: $0, batch: line.batch), titleOf: titleOf) } ?? ""
+        case .agentSpawned:
+            let title = line.agentId.flatMap(titleOf) ?? ""
+            return "spawned \(title.isEmpty ? "a subagent" : quoted(title))"
+        case .backgroundTask:
+            return "\(ToolPhrase.trim(line.text, 24)) \(taskWord(line.detail))"
+        case .planHandoff:
+            return "started the build"
+        case .turnPass:
+            return "ran the pass"
+        default:
+            break
+        }
+        guard let notice = line.notice else { return "" }
+        if let gate = notice.gate { return gate.ok ? "\(gate.step.rawValue) passed" : "\(gate.step.rawValue) failed on \(gate.branch)" }
+        if let review = notice.review { return reviewWords[review.outcome.rawValue] ?? "reviewed" }
+        switch notice.kind {
+        case .batch: return "merged by the batch"
+        case .away:
+            switch notice.away?.kind {
+            case .question?: return "answered for you"
+            case .approval?: return "skipped an approval"
+            default: return "decided without asking"
+            }
+        default: return ""
+        }
     }
 
     private static func stepPhrase(_ step: GroupStep, cwd: String?, live: Bool, titleOf: (String) -> String?) -> String {
         switch step {
-        case .system:
-            // A8: Host reports, tasks, gates, reviews, passes, hand-offs and away steps get their words here.
-            return ""
+        case .system(let line):
+            return hostPhrase(line, titleOf: titleOf)
         case .tool(let tool):
             return appPhrase(tool, live: live, titleOf: titleOf) ?? ToolPhrase.of(tool, live: live, cwd: cwd).line
         }
@@ -179,11 +255,18 @@ public enum GroupPhrase {
             if tools.count == 1 { return [ToolPhrase.of(tools[0], live: live, cwd: cwd).line] }
             return ["\(live ? "Running" : "Ran") \(tools.count) searches"]
         case .report:
-            let ids = unique(tools.flatMap(waitIds))
-            return ids.count > 1 ? ["heard from \(ids.count) agents"] : ids.map { heardPhrase($0, titleOf: titleOf) }
+            let heard = steps.flatMap(heardOf)
+            var out = heard.contains(where: \.batch) ? ["heard from the batch"] : []
+            let agents = unique(heard.filter { !$0.batch }.map(\.id))
+            if agents.count == 1 { out.append(heardPhrase(Heard(id: agents[0], batch: false), titleOf: titleOf)) }
+            if agents.count > 1 { out.append("heard from \(agents.count) agents") }
+            return out
+        case .task:
+            if steps.count == 1 { return [stepPhrase(steps[0], cwd: cwd, live: live, titleOf: titleOf)] }
+            return ["\(steps.count) tasks finished"]
         case .other: return steps.map { stepPhrase($0, cwd: cwd, live: live, titleOf: titleOf) }
         case .app(let name):
-            let targets = unique(tools.flatMap(targetsOf))
+            let targets = unique(steps.flatMap(targetsOf))
             if targets.count > 1, let words = counted[name] { return [(live ? words.live : words.past).replacingOccurrences(of: "#", with: String(targets.count))] }
             return steps.map { stepPhrase($0, cwd: cwd, live: live, titleOf: titleOf) }
         }

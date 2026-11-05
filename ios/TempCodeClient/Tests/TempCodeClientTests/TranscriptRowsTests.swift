@@ -35,6 +35,33 @@ import TempCodeContract
         return group
     }
 
+    private func system(_ seq: Int, _ kind: SystemLine.Kind, agentId: String? = nil, detail: String? = nil) -> ThreadEntry {
+        item(.system(SystemLine(seq: seq, ts: 1_000 + seq, kind: kind, text: "x", detail: detail, stopped: false, agentId: agentId)))
+    }
+
+    private func wait(_ seq: Int, output: String?) -> ThreadEntry {
+        item(.tool(ToolItem(seq: seq, ts: 1_000 + seq, callId: "w\(seq)", name: "mcp__orchestrator__wait_for_agent", display: nil, input: .object(["agentId": .string("a")]), partial: false, preview: nil, parentCallId: nil, inputOmitted: false, output: output.map(BodyState.whole) ?? .none, status: output == nil ? .running : .done, reauth: nil)))
+    }
+
+    @Test func `a report and a finished task fold into the run; a failure breaks it`() {
+        let rows = TranscriptRows.rows([userEntry(1), system(2, .agentReport, agentId: "a", detail: "idle"), system(3, .backgroundTask, detail: "completed"), read(4), item(errorItem(5, "boom")), read(6)], turnOpen: false)
+        #expect(kinds(rows) == ["item 1", "group [2, 3, 4]", "item 5", "group [6]"])
+        let reports = TranscriptRows.rows([system(2, .agentReport, agentId: "a", detail: "idle"), system(3, .agentReport, agentId: "b", detail: "idle")], turnOpen: false)
+        #expect(group(reports, 0)?.kind == .agents)
+    }
+
+    @Test func `a wait is no row while open, and once it returned each agent is a step`() {
+        let open = TranscriptRows.rows([userEntry(1), read(2), wait(3, output: nil)], turnOpen: true)
+        #expect(kinds(open) == ["item 1", "group [2] live", "line 1 last"])
+        let back = TranscriptRows.rows([userEntry(1, completedTs: 2_000), wait(3, output: #"[{"agentId":"a","status":"idle"},{"agentId":"b","status":"failed"}]"#)], turnOpen: false)
+        #expect(kinds(back) == ["item 1", "group [3]", "end 1 last"])
+        #expect(group(back, 1)?.lone == false)
+        #expect(group(back, 1)?.stepRows == 2)
+        #expect(group(back, 1)?.failed == 1)
+        let nobody = TranscriptRows.rows([userEntry(1, completedTs: 2_000), wait(3, output: #"{"status":"timeout"}"#)], turnOpen: false)
+        #expect(kinds(nobody) == ["item 1", "end 1 last"])
+    }
+
     @Test func `everything between two paragraphs is one group`() {
         let rows = TranscriptRows.rows([userEntry(1), read(2), edit(3), run(4), read(5), item(textItem(6, ts: 1_006, "done")), run(7)], turnOpen: false)
         #expect(kinds(rows) == ["item 1", "group [2, 3, 4, 5]", "item 6", "group [7]"])

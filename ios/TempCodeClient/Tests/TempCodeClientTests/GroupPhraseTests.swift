@@ -155,12 +155,75 @@ import TempCodeContract
     }
 
     // Refused-call cases need the approval decision, which ToolItem does not carry.
-    // A8 ports these:
-    // "a report is heard from; the batch's report reads as the batch"
-    // "a wait that returned is heard from the agents it returned on, with the reports" (report rows)
-    // "a master's run reads as one line"
-    // "a thread the store does not know is named by the report in the run"
-    // "a finished background task"
-    // "gate, review, pass, check, hand-off, batch merge" (includes away steps)
-    // "a wake: two reports, a task, then calls"
+    // Host steps (A8): reports, tasks, gates, reviews, the pass, the hand-off, a batch merge, away.
+    private let titles = ["a": "Port the view", "b": "Fix the fold", "c": "Write the docs"]
+    private func sayAll(_ steps: [GroupStep], live: Bool? = nil, titleOf: ((String) -> String?)? = nil) -> String {
+        GroupPhrase.of(steps, cwd: cwd, live: live, titleOf: titleOf ?? { self.titles[$0] })
+    }
+    private func line(_ kind: SystemLine.Kind, _ text: String = "", detail: String? = nil, agentId: String? = nil, notice: NoticeEvent? = nil, batch: Bool = false) -> GroupStep {
+        var line = SystemLine(seq: 9, ts: 0, kind: kind, text: text, detail: detail, stopped: false, agentId: agentId, notice: notice)
+        line.batch = batch
+        return .system(line)
+    }
+    private func report(_ id: String, title: String = "Batch", status: String = "done", batch: Bool = false) -> GroupStep {
+        line(.agentReport, title, detail: status, agentId: id, batch: batch)
+    }
+    private func task(_ label: String, _ status: String = "completed") -> GroupStep { line(.backgroundTask, label, detail: status) }
+    private func notice(_ kind: NoticeKind, _ message: String = "x", gate: GateNotice? = nil, review: ReviewNotice? = nil, away: AwayNotice? = nil) -> GroupStep {
+        line(.status, message, detail: kind.rawValue, notice: NoticeEvent(kind: kind, message: message, review: review, gate: gate, away: away))
+    }
+
+    @Test func `a report is heard from; the batch's report reads as the batch`() {
+        #expect(sayAll([report("a")]) == "Heard from “Port the view”")
+        #expect(sayAll([report("a"), report("b"), report("c")]) == "Heard from 3 agents")
+        #expect(sayAll([report("self", batch: true)]) == "Heard from the batch")
+    }
+
+    @Test func `a wait that returned is heard from the agents it returned on, with the reports`() {
+        #expect(sayAll([.tool(waited(#"{"agentId":"a","status":"idle"}"#)), report("a")]) == "Heard from “Port the view”")
+        #expect(sayAll([.tool(waited(#"{"agentId":"a","status":"idle"}"#)), report("b")]) == "Heard from 2 agents")
+    }
+
+    @Test func `a master's run reads as one line`() {
+        #expect(sayAll([.tool(spawn("a")), .tool(waited(#"{"agentId":"a","status":"idle"}"#)), report("a")]) == "Spawned “Port the view”, heard from “Port the view”")
+    }
+
+    @Test func `a thread the store does not know is named by the report in the run`() {
+        #expect(sayAll([.tool(spawn("x")), report("x", title: "Far child")], titleOf: { _ in nil }) == "Spawned “Far child”, heard from “Far child”")
+    }
+
+    @Test func `a spawn the host stamped is named by its child`() {
+        var stamped = orch("spawn_agent", .object(["task": .string("x")]), id: "s")
+        stamped.spawned = ["b"]
+        #expect(sayAll([.tool(stamped)]) == "Spawned “Fix the fold”")
+        #expect(sayAll([line(.agentSpawned, agentId: "c")]) == "Spawned “Write the docs”")
+    }
+
+    @Test func `a finished background task`() {
+        #expect(sayAll([task("lint")]) == "Lint finished")
+        #expect(sayAll([task("lint", "failed")]) == "Lint failed")
+        #expect(sayAll([task("lint"), task("lint")]) == "2 tasks finished")
+    }
+
+    @Test func `gate, review, pass, hand-off, batch merge, away`() {
+        func gate(_ ok: Bool, _ step: GateStep = .gate) -> GroupStep { notice(.gate, gate: GateNotice(step: step, branch: "ui-3", ok: ok, log: "", at: 0)) }
+        #expect(sayAll([gate(true)]) == "Gate passed")
+        #expect(sayAll([gate(false)]) == "Gate failed on ui-3")
+        #expect(sayAll([gate(true, .release)]) == "Release passed")
+        func review(_ outcome: ReviewOutcome) -> GroupStep {
+            notice(.review, review: ReviewNotice(runId: "r", provider: "codex", model: "m", outcome: outcome, branch: "b", target: "master", blocking: [], minor: [], merged: true, pushed: false))
+        }
+        #expect(sayAll([review(.pass)]) == "Review passed")
+        #expect(sayAll([review(.timeout)]) == "Review timed out")
+        #expect(sayAll([line(.turnPass, "Notes")]) == "Ran the pass")
+        #expect(sayAll([line(.planHandoff, "T", agentId: "x")]) == "Started the build")
+        #expect(sayAll([notice(.batch, "Merged by the batch: ui-3")]) == "Merged by the batch")
+        #expect(sayAll([notice(.away, away: AwayNotice(kind: .decision, text: "x"))]) == "Decided without asking")
+        #expect(sayAll([notice(.away, away: AwayNotice(kind: .question, text: "x"))]) == "Answered for you")
+        #expect(sayAll([notice(.away, away: AwayNotice(kind: .approval, text: "x"))]) == "Skipped an approval")
+    }
+
+    @Test func `a wake: two reports, a task, then calls`() {
+        #expect(sayAll([report("a"), report("b"), task("deploy"), .tool(PhraseFixture.bash("git log"))]) == "Heard from 2 agents, deploy finished, read git history")
+    }
 }

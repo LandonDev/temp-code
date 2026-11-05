@@ -146,9 +146,11 @@ private func expectClean(_ scenario: TranscriptScenario) -> ScenarioReport {
         expectClean(TranscriptScenario("subagent", pushes: [
             .init(atMs: 0, "send", .send("review it")),
             .init(atMs: 20, "echo, the spawn", .rows([row(1, 20, user("review it")), row(2, 40, tool("sp", "mcp__orchestrator__spawn_agent", ["task": .string("Review the payment flow")]))])),
-            .init(atMs: 200, "spawned", .rows([row(3, 200, done("sp", "{\"agentId\":\"c1\"}"))])),
-            .init(atMs: 300, "waiting", .rows([row(4, 300, tool("w", "mcp__orchestrator__wait_for_agent", ["agentId": .string("c1")]))])),
-            .init(atMs: 60_000, "finished", .rows([row(5, 60_000, done("w", "{\"agentId\":\"c1\",\"status\":\"idle\"}")), row(6, 60_100, prose("It is fine.")), row(7, 60_200, complete)])),
+            .init(atMs: 150, "the host stamps the child on its call", .rows([row(3, 150, .agentSpawned(AgentSpawnedEvent(childSessionId: "c1")))])),
+            .init(atMs: 200, "spawned", .rows([row(4, 200, done("sp", "{\"agentId\":\"c1\"}"))])),
+            .init(atMs: 300, "waiting: no row, the line says it", .rows([row(5, 300, tool("w", "mcp__orchestrator__wait_for_agent", ["agentId": .string("c1")]))])),
+            .init(atMs: 60_000, "finished: the wait becomes its step", .rows([row(6, 60_000, done("w", "{\"agentId\":\"c1\",\"status\":\"idle\"}")), row(7, 60_100, prose("It is fine.")), row(8, 60_200, complete)])),
+            .init(atMs: 61_000, "a report wakes the thread: a step of the next run", .rows([row(9, 61_000, .agentReport(AgentReportEvent(agentId: "c1", title: "Review the payment flow", status: "idle"))), row(10, 61_100, tool("r", "Read", ["file_path": .string("/repo/a.ts")])), row(11, 61_200, done("r"))])),
         ]))
     }
 

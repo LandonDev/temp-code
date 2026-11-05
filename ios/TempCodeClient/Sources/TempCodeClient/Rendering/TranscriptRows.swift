@@ -30,7 +30,8 @@ public final class RowKeyMemory: @unchecked Sendable {
 
 /// Everything the agent did between two paragraphs, the desktop's
 /// `ActionGroup` (transcriptRows.ts, transcriptActivity.ts `actionGroupOf`):
-/// calls, settled edits, todo updates and thoughts, in order. One step is
+/// calls, settled edits, todo updates, thoughts and the host's steps that
+/// fold into the run (`FoldedStep`), in order. One step is
 /// its own row at the prose's edge (`lone`); more is one muted line ("Read
 /// 3 files in src/lib, ran a command") that opens onto a table of its rows.
 /// A lone step and a group are one row under one key, so a second call
@@ -83,8 +84,12 @@ public struct ActivityGroup: Hashable, Sendable {
         entries.compactMap { if case .tool(let tool) = $0.item { tool } else { nil } }
     }
 
-    /// At most one step, thoughts aside: no line and no table, the step is its own row.
-    public var lone: Bool { calls.count <= 1 }
+    /// The steps' rows, `stepRows`: a wait draws one per agent it returned
+    /// on, a batch spawn one per child, anything else one.
+    public var stepRows: Int { calls.reduce(0) { $0 + FoldedStep.rows($1) } }
+
+    /// At most one row of steps, thoughts aside: no line and no table, the step is its own row.
+    public var lone: Bool { stepRows <= 1 }
 
     /// The rows it draws: a thought only once a hand opened the group (and
     /// never while it streams), a told call only once its turn is over.
@@ -102,7 +107,13 @@ public struct ActivityGroup: Hashable, Sendable {
     /// one kind, ties to the earlier of edit, run, research, agents, other.
     public var kind: Kind {
         var counts: [Kind: Int] = [:]
-        for tool in tools { counts[TranscriptRows.category(tool), default: 0] += 1 }
+        for entry in calls {
+            switch entry.item {
+            case .tool(let tool): counts[TranscriptRows.category(tool), default: 0] += 1
+            case .system(let line): counts[line.kind == .agentReport || line.kind == .agentSpawned ? .agents : .other, default: 0] += 1
+            default: break
+            }
+        }
         var best: Kind?
         for kind in [Kind.edit, .run, .research, .agents, .other] {
             let count = counts[kind] ?? 0
@@ -115,15 +126,23 @@ public struct ActivityGroup: Hashable, Sendable {
     /// the steps in plain words (`GroupPhrase`), present tense while live.
     public func phrase(cwd: String? = nil, titleOf: (String) -> String? = { _ in nil }) -> String {
         if kind == .think { return live ? "Thinking" : "Thought" }
-        let line = GroupPhrase.of(tools.map(GroupStep.tool), cwd: cwd, live: live, titleOf: titleOf)
+        let steps = calls.compactMap { entry -> GroupStep? in
+            switch entry.item {
+            case .tool(let tool): .tool(tool)
+            case .system(let line): .system(line)
+            default: nil
+            }
+        }
+        let line = GroupPhrase.of(steps, cwd: cwd, live: live, titleOf: titleOf)
         return line.isEmpty ? (live ? "Working" : "Worked") : line
     }
 
     /// Lines added and removed over every edit in the run.
     public var adds: Int { tools.reduce(0) { $0 + (ActionRow.of($1).adds ?? 0) } }
     public var dels: Int { tools.reduce(0) { $0 + (ActionRow.of($1).dels ?? 0) } }
-    /// Steps that failed or were refused: the line's red count, never words.
-    public var failed: Int { tools.filter { $0.status == .failed }.count }
+    /// Steps that failed or were refused, each agent a wait found failed, a
+    /// red gate, a failed report or task: the line's red count, never words.
+    public var failed: Int { calls.reduce(0) { $0 + FoldedStep.failures($1) } }
 }
 
 /// How a group opens and folds, the desktop's ActionGroup with
@@ -259,22 +278,26 @@ public enum TranscriptRowModel: Identifiable, Hashable, Sendable {
 /// for two thousand entries.
 public enum TranscriptRows {
     /// An entry that joins a run, `isActivityBlock`: a thought with words in
-    /// it, or a tool call that is not a published page (a row of its own,
-    /// the page). Edits and todo updates join too. Questions, approvals,
-    /// prose and every host row break the run.
+    /// it, a tool call that is not a published page (a row of its own, the
+    /// page), or a host row that is a step of the work (`FoldedStep`). Edits
+    /// and todo updates join too. Questions, approvals, prose and every other
+    /// host row break the run.
     public static func folds(_ entry: ThreadEntry) -> Bool {
         switch entry.item {
         case .thinking(let block): return hasWords(block.text)
         case .tool(let tool): return tool.htmlRender == nil
+        case .system(let line): return FoldedStep.isFolded(line)
         default: return false
         }
     }
 
-    /// Rows nothing draws, `isIgnoredTurnBlock`: an empty thought, an
-    /// answer with no words yet. They never break a run.
+    /// Rows nothing draws, `isIgnoredTurnBlock` and `isHiddenTool`: an empty
+    /// thought, an answer with no words yet, a wait (a state of the turn,
+    /// never a row: open, or returned on nobody). They never break a run.
     static func ignored(_ entry: ThreadEntry) -> Bool {
         switch entry.item {
         case .thinking(let block), .assistant(let block): !hasWords(block.text)
+        case .tool(let tool): WaitSteps.isHidden(tool)
         default: false
         }
     }

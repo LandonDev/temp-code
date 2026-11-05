@@ -440,19 +440,28 @@ public struct ThreadFold: Sendable, Hashable {
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .turnPass, text: event.actions.joined(separator: ", "), detail: nil, stopped: false)))
             board.inPass = true
         case .agentSpawned(let event):
-            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .agentSpawned, text: "Spawned an agent", detail: event.childSessionId, stopped: false, agentId: event.childSessionId)))
+            // On its call: the spawn_agent row is the spawn's one row. A child
+            // on another host is named as the call's result names it
+            // (`<env>:<id>`); with no call to stand on, a row of its own.
+            let id = event.environmentId.map { "\($0):\(event.childSessionId)" } ?? event.childSessionId
+            if !stampSpawn(id) {
+                append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .agentSpawned, text: "Spawned an agent", detail: event.childSessionId, stopped: false, agentId: event.childSessionId)))
+            }
             if !board.agents.contains(event.childSessionId) { board.agents.append(event.childSessionId) }
         case .agentReport(let event):
-            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .agentReport, text: event.title, detail: event.status, stopped: false, agentId: event.agentId)))
+            // The batch's own report names the master itself: it reads as the batch.
+            var line = SystemLine(seq: row.seq, ts: row.ts, kind: .agentReport, text: event.title, detail: event.status, stopped: false, agentId: event.agentId)
+            line.batch = event.agentId == row.sessionId
+            append(.system(line))
         case .planHandoff(let event):
             // The plan's own record of its build: the title is what the person
             // recognises, the row composes the sentence and links to that thread.
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .planHandoff, text: event.title, detail: event.sessionId, stopped: false, agentId: event.sessionId)))
         case .backgroundTask(let event):
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .backgroundTask, text: event.description, detail: event.status.rawValue, stopped: false)))
-        case .backgroundTasks(let event):
-            guard !event.tasks.isEmpty else { break }
-            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .backgroundTask, text: event.tasks.joined(separator: "\n"), detail: nil, stopped: false)))
+        case .backgroundTasks:
+            // No row: the live set is the thread's activity, a settled task its own step.
+            break
         case .goal(let event):
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .goal, text: event.condition, detail: event.phase.rawValue, stopped: false)))
         case .error(let event):
@@ -463,6 +472,13 @@ public struct ThreadFold: Sendable, Hashable {
             rebuildIndexes()
             board.stopped = false
         case .status(let event):
+            // A turn that ends or pauses with a compaction open: it stopped there.
+            if ![.running, .starting, .waiting].contains(event.status), let index = openCompaction, case .compaction(var compaction) = items[index].item {
+                compaction.stoppedTs = row.ts
+                items[index].item = .compaction(compaction)
+                openCompaction = nil
+                board.compacting = false
+            }
             // Logged end-of-turn signals close the turn even when the
             // turn-complete itself was lost; `watching` ends it too, since
             // the harness is idle behind its background work.
@@ -511,6 +527,25 @@ public struct ThreadFold: Sendable, Hashable {
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .unknown, text: "Something this version of the app does not show", detail: nil, stopped: false)))
         }
         if row.ephemeral != true { lastSeq = max(lastSeq, row.seq) }
+    }
+
+    /// The host spawned a child: the newest spawn_agent call of the turn with
+    /// room left (one child, or one per entry of `agents`) takes the id, so
+    /// the call's row is the spawn's. A repeat changes nothing. False when no
+    /// call of the turn has room.
+    private mutating func stampSpawn(_ id: String) -> Bool {
+        var target: Int?
+        for index in items.indices.reversed() {
+            if case .user = items[index].item { break }
+            guard case .tool(let tool) = items[index].item, ToolPhrase.shortName(tool.name) == "spawn_agent" else { continue }
+            if tool.spawned.contains(id) { return true }
+            let asked = max(1, ToolPhrase.input(tool)["agents"]?.arrayValue?.count ?? 1)
+            if target == nil, tool.spawned.count < asked { target = index }
+        }
+        guard let target, case .tool(var tool) = items[target].item else { return false }
+        tool.spawned.append(id)
+        items[target].item = .tool(tool)
+        return true
     }
 
     /// New items land stamped with the board as it stands now.

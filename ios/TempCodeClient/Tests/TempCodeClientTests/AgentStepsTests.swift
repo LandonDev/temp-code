@@ -93,3 +93,59 @@ import TempCodeContract
         #expect(AgentsCue.of(rootId: "root", metas: [meta("root")], rootRunning: false) == nil)
     }
 }
+
+@Suite struct FoldedStepTests {
+    private func line(_ kind: SystemLine.Kind, _ text: String = "x", detail: String? = nil, notice: NoticeEvent? = nil) -> SystemLine {
+        SystemLine(seq: 1, ts: 0, kind: kind, text: text, detail: detail, stopped: false, notice: notice)
+    }
+    private func notice(_ kind: NoticeKind, _ message: String = "x", gate: GateNotice? = nil, review: ReviewOutcome? = nil) -> SystemLine {
+        let verdict = review.map { ReviewNotice(runId: "r", provider: "codex", model: "m", outcome: $0, branch: "b", target: "master", blocking: [], minor: [], merged: $0 != .held, pushed: false) }
+        return line(.status, message, notice: NoticeEvent(kind: kind, message: message, review: verdict, gate: gate))
+    }
+
+    @Test func `a report, a spawn, a task, the pass and the hand-off fold into the run`() {
+        for kind in [SystemLine.Kind.agentReport, .agentSpawned, .backgroundTask, .turnPass, .planHandoff] {
+            #expect(FoldedStep.isFolded(line(kind)), "\(kind)")
+        }
+        for kind in [SystemLine.Kind.error, .plan, .goal, .unknown] {
+            #expect(!FoldedStep.isFolded(line(kind)), "\(kind)")
+        }
+    }
+
+    @Test func `a gate, a merged review, an away line and a batch merge are steps; a held review and Batch done are rows`() {
+        #expect(FoldedStep.isFolded(notice(.gate, gate: GateNotice(step: .gate, branch: "b", ok: false, log: "", at: 0))))
+        #expect(FoldedStep.isFolded(notice(.review, review: .pass)))
+        #expect(FoldedStep.isFolded(notice(.review, review: .mergedAnyway)))
+        #expect(!FoldedStep.isFolded(notice(.review, review: .held)))
+        #expect(FoldedStep.isFolded(notice(.away)))
+        #expect(FoldedStep.isFolded(notice(.batch, "Merged by the batch: ui-3")))
+        #expect(!FoldedStep.isFolded(notice(.batch, "Batch done: 3 landed")))
+        #expect(!FoldedStep.isFolded(notice(.accountGone)))
+        #expect(!FoldedStep.isFolded(notice(.planBuild)))
+        #expect(!FoldedStep.isFolded(line(.status, "The host restarted during your turn")))
+    }
+
+    @Test func `a wait draws a row per agent it returned on, a batch spawn a row per child`() {
+        let wait = ToolItem(seq: 1, ts: 0, callId: "w", name: "mcp__orchestrator__wait_for_agent", display: nil, input: .object(["agentIds": .array([.string("a"), .string("b")])]), partial: false, preview: nil, parentCallId: nil, inputOmitted: false, output: .whole(#"[{"agentId":"a","status":"idle"},{"agentId":"b","status":"failed"}]"#), status: .done, reauth: nil)
+        #expect(FoldedStep.rows(ThreadEntry(item: .tool(wait))) == 2)
+        #expect(FoldedStep.failures(ThreadEntry(item: .tool(wait))) == 1)
+        var batch = ToolItem(seq: 2, ts: 0, callId: "s", name: "mcp__orchestrator__spawn_agent", display: nil, input: .object(["agents": .array([.object(["title": .string("One"), "task": .string("a")]), .object(["task": .string("Second task\nmore")])])]), partial: false, preview: nil, parentCallId: nil, inputOmitted: false, output: .none, status: .done, reauth: nil)
+        #expect(FoldedStep.rows(ThreadEntry(item: .tool(batch))) == 1)
+        batch.spawned = ["c1", "c2"]
+        #expect(FoldedStep.isBatchSpawn(batch))
+        #expect(FoldedStep.rows(ThreadEntry(item: .tool(batch))) == 2)
+        let names = FoldedStep.spawnedNames(batch)
+        #expect(names.map(\.id) == ["c1", "c2"])
+        #expect(names[0].name == SpawnedName(title: "One", task: "a"))
+        #expect(names[1].name == SpawnedName(title: nil, task: "Second task\nmore"))
+    }
+
+    @Test func `a wait is no step while open or when it returned on nobody`() {
+        func wait(_ output: String?, running: Bool = false) -> ToolItem {
+            ToolItem(seq: 1, ts: 0, callId: "w", name: "app.wait_for_agent", display: nil, input: .object(["agentId": .string("a")]), partial: false, preview: nil, parentCallId: nil, inputOmitted: false, output: output.map(BodyState.whole) ?? .none, status: running ? .running : .done, reauth: nil)
+        }
+        #expect(WaitSteps.isHidden(wait(nil, running: true)))
+        #expect(WaitSteps.isHidden(wait(#"{"status":"steered","message":"hi"}"#)))
+        #expect(!WaitSteps.isHidden(wait(#"{"agentId":"a","status":"done"}"#)))
+    }
+}
