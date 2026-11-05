@@ -67,7 +67,7 @@ DESIGN.md wins.
 
 Hand-made and staying hand-made (they are the product, not a primitive):
 the transcript's rows and its markdown pipeline (streamdown, the worker,
-the Shiki code block, DiffBody), the composer field, the rail, the tab
+the Shiki code block with one element per line, DiffBody), the composer field, the rail, the tab
 strip, the editor (CodeMirror), the terminal (xterm), the charts
 (`aliax/charts`: the grid, axes, marks, legend and tooltip every Stats
 chart shares, on recharts and the `--chart-1..4` tokens). Each is built

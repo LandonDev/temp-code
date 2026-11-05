@@ -224,7 +224,8 @@ working group stays open after its work moved on. The word morph
 (`MorphText`) leaves over `--dur-swap-out` 90ms and arrives over
 `--dur-base`, both on `--ease-swap` (`cubic-bezier(0.2, 0, 0, 1)`,
 `EASE_SWAP`), which also glides its box's width and slides the closing
-line home.
+line home. Rows that land together wait `--stagger-step` (30ms, `STAGGER`)
+apart.
 `lib/motionGuard.test.ts` fails on any literal duration or curve outside
 `lib/ease.ts` and this layer; its script and CSS allow-lists are empty.
 Three things loop, each a Web Animation of `transform` alone that the
@@ -555,7 +556,8 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Hover reveal (a closing line's and a notice's actions, a message's Copy, a code block's and a tool output's Copy and Raw, an Agents row's Open and Stop over its title line's end, a rail row's hover actions and the slot that yields to them, a board row's and an archived row's actions) | waits `--delay-hover`, then fades in `--dur-fast`; keyboard focus (`has-focus-visible`) and an open menu show it at once, a mouse click does not hold it; the fade rides a wrapper, so the button keeps its own hover fill | fades `--dur-fast`, at once | same |
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
 | Fold that opens on its own (`.collapsible-auto`: the transcript's working group, the running task's steps, the title bar's shelf, a master board row's task list and its bar line) | height on the layout spring (`--dur-layout` `--ease-layout`) + opacity `--dur-base` `--ease-out` | the same, so the rows are gone before the box closes | opacity, `--dur-fast` |
-| A step landing in it (`.step-land`) | fade + rise 4px, `--dur-base` `--ease-out`; only a step that lands while the fold is open, never at mount, on a hand open or when a panel unhides | none | none |
+| A step landing in it (`.step-land`) | fade + rise 4px, `--dur-base` `--ease-out`; only a step that lands while the fold is open, never at mount, on a hand open or when a panel unhides; steps that land in one commit wait their place in the batch, `--stagger-step` (30ms, `STAGGER`) apart, the fourth and later at three steps | none | none |
+| The open table growing as rows land (`useHeightGlide`, lib/heightGlide.ts) | its height glides from where it is drawn to the rows it now holds, on the layout spring (`--dur-layout` `--ease-layout`), retargeted from the screen when another lands mid-glide; one row in and one out at the window's cap nets nothing; never at mount, on a fold, on the lone-to-table entry or a hand's decision | — | the height steps |
 | The working group's rows, opening on their own (a lone call becoming a table) | glide 12px from the prose edge to the table's inset (translate), on the layout spring, while the table's frame fades in over `--dur-base` `--ease-out` (`table-frame-in`); never at mount: a settled or reopened table draws its frame at once | — | the frame fades over `--dur-fast`; nothing moves |
 | The working group's window (its newest five rows) | the oldest row leaves the top as the list glides up by its measured height, `--dur-base` `--ease-out` | — | none |
 | The working group's fold, and a board row's task list once its thread is done (`useFoldHold`, lib/foldHold.ts) | waits `FOLD_HOLD_MS` once the work moved on, so the last row's settle shows, then folds on `.collapsible-auto` | — | the same wait, then the fade |
@@ -584,7 +586,8 @@ being produced shimmers (`WorkingText`); nothing else does.
 | The Watching line, the fleet detail's live state | each in a kept fold under the turn: opens and closes on `.collapsible-auto`, mounted once it first opens, never unmounted while on screen | the same fold | opacity, `--dur-fast` |
 | A status glyph changing state (`StatusMark`) | in the box that stays: the new glyph grows from 0.25 on the layout spring (`glyph-in`) while the old shrinks out over `--dur-fast` (`glyph-out`); never at mount | — | both fade, `--dur-fast` |
 | The thought on the working line | each sentence is a phase: it morphs into the next (`MorphText`), held 300ms, a long one cut with an ellipsis | — | the morph's fades |
-| Streaming text | the prose: the jitter buffer (surfaces/smoothText) steps whole words every 100ms (`REVEAL.stepMs`) a lead behind the live end (100ms here, 250ms for another host's thread, grown by an underrun, never slower than the stream, every character within 1.5s), draining at the stream's end instead of snapping and revealing a row born live from its first word, holding a bare block marker and a table's header row until they have content; each step is one span fading in over `--dur-reveal` on `--ease-reveal` (lib/streamReveal.ts, `.stream-step`), and the settle waits for the last fade; the working line's newest sentence of a thought is no stream but a phase of its own, morphing in (`MorphText`) | — | whole-word steps, no fade |
+| Streaming text | the prose: the jitter buffer (surfaces/smoothText) steps whole words every 100ms (`REVEAL.stepMs`) a lead behind the live end (100ms here, 250ms for another host's thread, grown by an underrun, never slower than the stream, every character within 1.5s), draining at the stream's end instead of snapping and revealing a row born live from its first word, holding a bare block marker, a table's header row and a table row with only its pipes until they have content; each step is one span fading in over `--dur-reveal` on `--ease-reveal` (lib/streamReveal.ts, `.stream-step`), and the settle waits for the last fade. Code is not prose: inside an open fence a line shows once its newline arrives (a line held `REVEAL.lineHoldMs`, 600ms, steps by words) and fades in as one element. A list item, a table row, a heading, a quote's line or a fence born mid-stream rises 4px over `--dur-base` `--ease-out` as it fades (`.stream-rise`), a paragraph never; a table's card fades in with its header row. The working line's newest sentence of a thought is no stream but a phase of its own, morphing in (`MorphText`) | — | whole-word and whole-line steps, no fade or rise |
+| A streaming code block growing | its body glides to the new line's height, `--dur-base` `--ease-out` (`useHeightGlide`), while its row's reveal is armed; settled blocks never move | — | the height steps |
 | Composer send | the bubble rides with the content as the prompt parks, rising 16px and fading in, `--dur-slow` `--ease-drawer`; in follow mode it flies from the field only when it lands within 240px of it | — | fade, `--dur-fast` |
 | Composer field height | snaps on a keystroke and on the clear after a send; a change of more than one line the person did not type (a paste, a restore, a quote) eases over `--dur-base` | — | snaps |
 | Composer, a new thread's first send | the box keeps its width and moves into its docked place (a FLIP translate, `--dur-slow` `--ease-drawer`) | — | none |
@@ -594,7 +597,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
 
 Rules: animate `transform` and `opacity` (and height only through the
-collapsible, the question card's frame between its questions, or the slash menu's frame); every animation is interruptible and starts from the current
+collapsible, the question card's frame between its questions, the slash menu's frame, or `useHeightGlide` for a box whose content grows while it is read); every animation is interruptible and starts from the current
 value; nothing animates on a keystroke but the menu it opens; nothing overshoots without a
 gesture; every animated class carries its `motion-reduce:` guard.
 

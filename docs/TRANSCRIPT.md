@@ -408,12 +408,48 @@ foreground, the same words the group line uses); the components only draw it.
   does), smoothText.dom.test.tsx, lib/streamReveal.test.ts,
   AgentMarkdown.reveal.test.tsx, AgentTranscript.born.dom.test.tsx; the
   soak's `--burst` and `--reveal-report` (docs/box.md "A bursty stream").
-- **A streaming code block is coloured.** CodeBlock asks the shiki worker
-  at once and then at most every 150 ms (`HIGHLIGHT_EVERY_MS`, never put
-  off by a delta), and until the newest answer lands it draws the coloured
-  lines that still read the same and the lines past them plain
-  (`colourPrefix`), so a new line never waits and colour never leaves.
-  Test: CodeBlock.stream.dom.test.tsx.
+- **A streaming code block is coloured, a line at a time.** CodeBlock asks
+  the shiki worker at once and then at most every 150 ms
+  (`HIGHLIGHT_EVERY_MS`, never put off by a delta). It draws one
+  `<span class="line">` per line, each line's markup swapped inside its own
+  element (`splitColoured` takes shiki's answer apart: the `pre`'s class,
+  style and tab stop, each line's inner HTML; a real `highlight()` answer
+  pins it), and until the newest answer lands it draws the coloured lines
+  that still read the same and the lines past them plain under the same
+  `pre` (`colourLines`), so a recolour never replaces a line, a new line
+  never waits and colour never leaves. Inside an open fence `revealCut`
+  holds the cut to the start of the unfinished line, so a code line shows
+  once its newline arrives; a line held `REVEAL.lineHoldMs` (600 ms) steps
+  by words, so every character still shows within the 1.5 s promise. While
+  the row streams, AgentMarkdown hands its reveal to the code blocks in it
+  (`StreamRevealContext`, null once settled): `lineTimes` keeps a ledger
+  per fence, keyed by the code's first 32 characters, of when each line
+  first showed, a line younger than `REVEAL.fadeMs` carries `.stream-step`
+  (a new line counts as a step, so the settle waits for its fade), and the
+  body glides to its new height on `--dur-base` (`useHeightGlide`, its
+  vertical overflow hidden so the glide cuts). Tests:
+  CodeBlock.stream.dom.test.tsx, lib/streamReveal.test.ts.
+- **Blocks born mid-stream rise.** After the steps are wrapped,
+  lib/streamReveal.ts walks the block once more: a list item, a table row,
+  a heading or a direct child of a quote whose first prose character is in
+  a step still fading takes `.stream-rise` (the phrase fade on the element
+  plus a 4px rise over `--dur-base` `--ease-out`), and that step's spans
+  inside it drop their own fade; a later step growing it fades as before.
+  One element per branch rises, a paragraph outside a quote never does, a
+  fence rises through CodeBlock when its first line is young, and a
+  table's card fades in with its header row (the table wrapper's
+  `:has(thead tr.stream-rise)` rule). The ledger keys a block by its first
+  32 characters and hast keys children by position, so an item keeps its
+  element and never rises again when the list grows or nests.
+- **The open tool table glides.** When rows land in an open group's table
+  its height glides on the layout spring from where it is drawn to the
+  rows it now shows (`useHeightGlide` in lib/heightGlide.ts, keyed by the
+  shown rows' ids, read after the window's pull-up, so one in and one out
+  at the cap nets nothing), retargeted from the screen when another lands
+  mid-glide; a fold, the lone-to-table entry and a hand's decision glide
+  nothing, having motion of their own. Rows landing in one commit wait
+  their place in the batch, `--stagger-step` (30 ms) apart, the fourth and
+  later at three steps; `@starting-style` holds them unseen meanwhile.
 - **Markdown parses off the main thread.** A settled markdown row asks
   `lib/markdownParse.ts` for its tree; `lib/markdown.worker.ts` runs
   streamdown's own block split and remark → rehype chain (shared through
@@ -451,11 +487,12 @@ foreground, the same words the group line uses); the components only draw it.
 ## No jerk in any scenario
 
 The transcript stays smooth whatever happens: no element on screen unmounts
-and mounts again where its content could change in place; no row changes
-height without a fold on the tokens (`.collapsible-auto`) or a change the
-reader's anchor absorbs; no two states are drawn at once; nothing animates
-on the first paint of settled content; nothing asks for frames it does not
-paint; no long task over 200 ms.
+and mounts again where its content could change in place; no box changes
+height without a fold or a glide on the tokens (`.collapsible-auto`,
+`useHeightGlide`), and the reader's anchor absorbs what grows above it; no
+two states are drawn at once; nothing animates on the first paint of
+settled content; nothing asks for frames it does not paint; no long task
+over 200 ms.
 
 - **The scenarios.** A turn from the composer (Sending, the host's words,
   the thought, calls, prose, the group opening at two calls, the closing
@@ -471,7 +508,9 @@ paint; no long task over 200 ms.
   question card arriving, paged with Next and folded into its answered
   lines, at the bottom and with the reader scrolled up above it (the card
   is the last row, below the reader's anchor, so its height glide moves
-  nothing above it and the scroller is never written).
+  nothing above it and the scroller is never written); ten parallel calls
+  landing in the open table, one every 300 ms then four at once; a 40-line
+  code fence streaming in; a list of 8 items, then a table of 6 rows.
 - **The runner** (src/renderer/src/surfaces/AgentTranscript.scenarios.dom.test.tsx
   on `transcriptScenario.testkit.ts`): each scenario as timed store pushes
   through the whole transcript; after every push, and again once it has
@@ -481,7 +520,20 @@ paint; no long task over 200 ms.
   read off the line as it paints them (`phaseLog`). It found that rows
   landing before the tail pushed the last row, the live turn's line, out of
   the window for one commit, which remounted it: the window grows with the
-  tail in the same render (AgentTranscript.tsx, `tailLength`).
+  tail in the same render (AgentTranscript.tsx, `tailLength`). The
+  streaming motion's element rules run in the same check (`watchMotion`,
+  usable on any container): a tool table's step keeps its element and
+  never lands again, a code line keeps its element by its block and index
+  and never fades again, no block rises twice, and a tool table or a code
+  block's body never changes height by 16 px in a step without a glide
+  unless its group's fold changed. The fence and the list and table run
+  through AgentMarkdown on the real streamdown pipeline
+  (AgentMarkdown.scenarios.test.tsx, since the dom project stubs
+  streamdown). They found that a fence's last line stepped 20 px because
+  the closing fence made the block complete in the same step (the body now
+  glides while its row's reveal is armed, whatever the fence), and that a
+  table row being typed with only its pipes drew as an empty row that then
+  filled and rose (`revealCut` holds such a row).
 - **The recording** (`measure-renderer-soak.ts --scene scenarios`): the
   synthetic host plays the same scenarios as a timeline of the host's own
   events (scripts/lib/soakScenarios.ts) on one chat thread with history
@@ -495,12 +547,21 @@ paint; no long task over 200 ms.
   The frames showed `MorphText`'s width glide ellipsizing the arriving
   words ("E… +3 −1", "Worked…"): while it glides the new words now keep
   their own width and the box clips them (`data-gliding`, components.css),
-  so they unroll left to right.
+  so they unroll left to right. `--height-report` (scripts/lib/heightReport.ts)
+  watches every open tool table and code block with a ResizeObserver the
+  script installs and fails the run on a jump: a change of 16 px or more in
+  one frame with the box still on both sides of it (a glide's frames have
+  motion beside them; a box hidden or shown again, to or from 0, is a fold).
+  Under `--reduced-motion` it reports and never fails; with `--scrolled-up`
+  the reader's top row must hold through turn 6 (each send parks the
+  prompt, by design). On the box (2026-11-05): no jump with motion (the
+  turn-6 table drawn at 65 heights, the fence at 188), and the top row held
+  scrolled up, with motion and without.
 
 ```bash
 bun x electron-vite build   # a hand run reads out/ as it is
-bun scripts/measure-renderer-soak.ts --scene scenarios --screencast /tmp/cast --port 9277
-bun scripts/measure-renderer-soak.ts --scene scenarios --screencast /tmp/cast-rm --reduced-motion --scrolled-up --port 9277
+bun scripts/measure-renderer-soak.ts --scene scenarios --screencast /tmp/cast --height-report --port 9277
+bun scripts/measure-renderer-soak.ts --scene scenarios --screencast /tmp/cast-rm --height-report --reduced-motion --scrolled-up --port 9277
 bun scripts/measure-renderer-soak.ts --scene scenarios --trace 20 --port 9277
 ```
 

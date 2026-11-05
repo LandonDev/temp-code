@@ -401,7 +401,9 @@ app replaces itself from the feed, and only from the feed.
   file and symbol pickers (`pickersChunk`, mounted while open), the
   composer's slash and @ menu (`commandMenuChunk`, mounted from a
   composer's first match on), a box
-  thread's waiting Mac bridge card (`macBridgeChunk`) and the
+  thread's waiting Mac bridge card (`macBridgeChunk`), a review's notice
+  (`reviewChunk`, ReviewCard behind a 28px skeleton line, warmed with the
+  first thread's chunks) and the
   rail's virtualizer (`virtualChunk`; the rail lists its cards plainly until it
   lands, chrome/railRows.tsx). A mount
   point calls `chunk.surface(name, <SurfaceSkeleton kind=… />)`, which
@@ -1880,7 +1882,18 @@ names the far child).
   underrun, decaying back), never runs slower than the stream, shows every
   character within 1.5 s of arriving, drains at the stream's end instead of
   snapping, and reveals a row born live (`RowBornContext`) from its first
-  word (docs/TRANSCRIPT.md "The stream reveals a phrase at a time").
+  word (docs/TRANSCRIPT.md "The stream reveals a phrase at a time"). Inside
+  an open fence a code line shows once its newline arrives (held
+  `REVEAL.lineHoldMs`, then by words) and fades in as its own element
+  (CodeBlock draws a `<span class="line">` per line, `splitColoured`; the
+  row's reveal reaches it through `StreamRevealContext`, `lineTimes`); a
+  list item, table row, heading, quote line or fence born mid-stream rises
+  4px as it fades (`.stream-rise`); and a box that grows while it is read
+  glides to its height (lib/heightGlide.ts `useHeightGlide`: the open tool
+  table on the layout spring, a streaming code block's body on
+  `--dur-base`), rows landing together staggered `--stagger-step` apart.
+  `watchMotion` in the no-jerk runner and the soak's `--height-report`
+  hold it.
 - Settled markdown parses in `lib/markdown.worker.ts` (streamdown's own
   block split and plugin chain, shared through `lib/markdownPipeline.ts`);
   the answer fills the hast cache under each block's text and the row
