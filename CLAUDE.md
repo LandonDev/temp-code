@@ -1734,7 +1734,8 @@ names the far child).
   working is the still dot while the thread's own turn runs; a click opens
   or closes the right panel on Agents (`useAgentsCue` in
   lib/threads/agents.ts, woken only for a change in that thread's tree).
-  The Agents rows end with the model and its effort (`ModelMark effort`).
+  The Agents rows end with a model line: logo, model, effort and context
+  window (`ModelLine`, surfaces/threads/ModelMark.tsx).
 - Renderer: `lib/activity.ts` joins the meta's `background`, the thread's
   dev servers (its tree's ledger rows and the runs the pane started for it,
   `threadServers`) and its running Mac calls into

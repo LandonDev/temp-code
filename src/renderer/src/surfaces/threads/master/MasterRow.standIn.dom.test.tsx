@@ -61,3 +61,12 @@ describe("a board row for a stand-in child", () => {
     expect(modelMarkTip({ reasoning: "high", context1m: true })).toBe("high effort, 1M context");
   });
 });
+
+describe("modelMarkTip's context", () => {
+  it("names the window it is given, else 1M for a thread on the 1M window", () => {
+    expect(modelMarkTip({ provider: "claude", model: "claude-opus-5-5", reasoning: "high" }, "Reviewer", "200k")).toBe(
+      "Reviewer, Claude Opus 5.5, high effort, 200k context",
+    );
+    expect(modelMarkTip({ provider: "claude", model: "claude-opus-5-5", context1m: true })).toBe("Claude Opus 5.5, 1M context");
+  });
+});

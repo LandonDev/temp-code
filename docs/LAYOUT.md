@@ -308,10 +308,10 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     lib/threadGroups.ts), each top agent by its own state with its
     descendants indented 16px a level under it (three levels drawn), in a
     native scroller; none is one Empty, "No subagents". A row's line one
-    ends with the provider's logo, the model and its effort ("Opus 5.5
-    High"); the title gives its width up first, down to 64px, then the
-    model's name truncates, and under 13rem (a deep descendant in a narrow
-    panel) the mark is the logo alone. The rows are "Orchestration" below.
+    is its state's glyph, its title across the whole line and the host
+    glyph at its right edge; the model is the row's last line, the
+    provider's logo, the model, its effort and its context window ("Opus
+    5.5 High 1M"). The rows are "Orchestration" below.
     While any agent is live the title bar's agents cue says so, whatever the
     panel shows.
   - **Changes** (`chrome/rail/ChangesPanel.tsx`): the one place a
@@ -1000,24 +1000,30 @@ favicon, the title, the host, the claim; the address in a tooltip).
   fleet/AgentRow.tsx), on every thread that has subagents, in the board's
   sections with a 12px muted heading only where two meet; the glyph column
   sits 12px from the panel's edge, as the Activity section's. A live agent
-  (working, waiting, failed, watching, paused, queued) is two lines, 44px;
-  a settled one (done, idle, stopped) one 28px line with its title muted.
+  (working, waiting, failed, watching, paused, queued) is three lines,
+  60px; a settled one (done, idle, stopped) two, 44px, its title muted.
+  4px above and below, no gap between the lines: the 13px title on its
+  20px line, the 12px lines on 16px.
   Line one: the state's glyph leading (working's spinner the row's one
   moving mark, done's check the panel's only done cue), the title in 13px
-  medium ("Subagent" when it has none), the host glyph (two or more
-  hosts), and at the end the provider's mark, the short model and its
-  effort in the composer's words ("Opus 5.5 High"; `ModelMark`,
-  surfaces/threads/ModelMark.tsx, the board's; the role first in its
-  tooltip, "Reviewer, Claude Opus 5.5, high effort"; the title gives way
-  first, down to 64px, then the model's name; a row under 13rem keeps the
-  logo alone), then on a settled row how long it ran
-  ("4m 12s", "Finished 2:02 PM" on hover). Line two: the host's phrase while
-  it works, else the state's word where the heading does not say it and
-  what the state is about (a question or a failure in its tone), then the
-  task tally ("3/7") and the time, which ticks only while live
-  (`agentTime`). On hover, after `--delay-hover`, or keyboard focus the
-  model mark gives way to Open (the agent's thread) and, while a turn
-  runs, Stop. Rows read the meta (`agentStatus`); a row loads its
+  medium across the whole line ("Subagent" when it has none; cut only at
+  the row's edge, the whole of it on hover), and the host glyph (two or
+  more hosts) at the line's right edge; nothing else. Line two, live rows
+  only: the host's phrase while it works, else the state's word where the
+  heading does not say it and what the state is about (a question or a
+  failure in its tone), then the task tally ("3/7") and the time, which
+  ticks only while live (`agentTime`). The last line, every row, is the
+  model in 12px muted (`ModelLine`, surfaces/threads/ModelMark.tsx): the
+  provider's logo, the short model, its effort in the composer's words and
+  the context window ("Opus 5.5 High 1M", "Sonnet 5.5 Low 200k"; a Claude
+  model that offers 1M says the thread's choice, any other its catalog
+  window), each 4px from the next, only the model's name truncating; the
+  role first in its tooltip, "Reviewer, Claude Opus 5.5, high effort, 1M
+  context"; and on a settled row how long it ran at the line's end ("4m
+  12s", "Finished 2:02 PM" on hover). On hover, after `--delay-hover`, or
+  keyboard focus Open (the agent's thread) and, while a turn runs, Stop
+  appear at line one's end, the line's last 72px fading out under them
+  (a mask that grows over `--dur-fast`, nothing reflowing). Rows read the meta (`agentStatus`); a row loads its
   transcript only to quote a waiting agent or a failure the meta lacks.
   Nothing in the list moves.
 - **A row opens the agent's detail**, a 672px Sheet from the window's

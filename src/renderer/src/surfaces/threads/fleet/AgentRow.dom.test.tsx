@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 /**
- * The agent row (UI-17): two lines while the agent is live, one settled;
- * the state's glyph leading, the provider's mark and model at line one's
- * end with the role in its tooltip, the word only where the heading does
- * not say it, the tally and a time that ticks only while live, Open and
- * Stop on hover.
+ * The agent row: three lines while the agent is live, two settled; the
+ * state's glyph leading, the title across line one with the host glyph
+ * last, the word only where the heading does not say it, the tally and a
+ * time that ticks only while live, the model line last (logo, model,
+ * effort, context window) with the role in its tooltip, Open and Stop on
+ * hover.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -17,10 +18,12 @@ vi.mock("../../../lib/tcserver/commands", async (importOriginal) => ({
 
 import { tooltipChunk, warmTooltips } from "../../../components/ui/tooltip";
 import { agentStatus } from "../../../lib/threads/agents";
-import { modelMarkName } from "../ModelMark";
+import { modelContextWord, modelMarkName } from "../ModelMark";
 import { AgentRow, AgentRowView } from "./AgentRow";
 import { FLEET_ROWS, fixtureHostGlyph, fixtureMeta } from "./fleetFixture";
 
+/** The window word a fixture row's model line says, if any. */
+const contextOf = (meta: Parameters<typeof modelContextWord>[0]) => (modelContextWord(meta) ? [modelContextWord(meta)] : []);
 const row = (title: string) => FLEET_ROWS.find((r) => r.meta.title === title)!;
 const tipText = () => document.querySelector('[data-slot="tooltip-content"]')?.textContent ?? null;
 const hover = (el: Element) => {
@@ -48,40 +51,76 @@ describe("AgentRowView", () => {
     const { container } = render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);
     const mark = container.querySelector("[data-model]")!;
     expect(mark.querySelector("img, svg")).not.toBeNull();
-    expect(mark.textContent).toBe("Opus 5.5High");
+    expect(mark.textContent).toBe("Opus 5.5High1M");
     hover(mark);
     await waitFor(() => expect(tipText()).toBe("Reviewer, Claude Opus 5.5, high effort, 1M context"), { timeout: 2000 });
   });
 
-  it("ends line one with the logo, the model and its effort, after the title", () => {
+  it("holds line one to the glyph, the title and the host glyph last, with nothing between title and host", () => {
+    const meta = fixtureMeta("far", { title: "A title long enough to need every pixel of the row", status: "running", environmentId: "env_box" });
+    const { container } = render(<AgentRowView meta={meta} status={agentStatus(meta)} hostGlyph={fixtureHostGlyph} onOpen={() => {}} />);
+    const head = container.querySelector("[data-row-head]")!;
+    const kids = [...head.children];
+    expect(kids).toHaveLength(2);
+    expect(kids[0].matches("[data-row-title]")).toBe(true);
+    expect(kids[1].matches("[data-host-glyph]")).toBe(true);
+    expect(head.querySelector("[data-model]")).toBeNull();
+    const title = kids[0].className;
+    expect(title).toContain("flex-1");
+    expect(title).toContain("min-w-0");
+    expect(title).toContain("truncate");
+    expect(title).not.toContain("shrink-[1000]");
+  });
+
+  it("draws the model line last: the logo, the model, the effort, the context window", () => {
     const { meta, status } = row("Review the fold");
     const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    const line = container.querySelector("[data-row-title]")!.parentElement!;
-    const order = [...line.querySelectorAll("[data-row-title], [data-model] :is(img, svg), [data-model-name], [data-model-effort]")].map((el) =>
+    const lines = [...container.querySelector('[role="button"]')!.children].filter((el) => el.matches("[data-row-head], [data-row-status], [data-model-line]"));
+    expect(lines.map((el) => (el as HTMLElement).dataset.rowHead !== undefined ? "head" : (el as HTMLElement).dataset.rowStatus !== undefined ? "status" : "model")).toEqual([
+      "head",
+      "status",
+      "model",
+    ]);
+    const line = container.querySelector("[data-model-line]")!;
+    expect(line.className).toContain("text-xs");
+    expect(line.className).toContain("text-muted-foreground");
+    expect(line.className).toContain("gap-1");
+    const order = [...line.querySelectorAll("[data-model] :is(img, svg), [data-model-name], [data-model-effort], [data-model-context]")].map((el) =>
       el.matches("img, svg") ? "logo" : el.textContent,
     );
-    expect(order).toEqual(["Review the fold", "logo", modelMarkName("codex", "gpt-6-astra"), "Extra high"]);
+    expect(order).toEqual(["logo", modelMarkName("codex", "gpt-6-astra"), "Extra high", ...contextOf(meta)]);
   });
 
-  it("gives the title's width up first and keeps the effort whole", () => {
-    const { meta, status } = row("Build the shell");
-    const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    const title = container.querySelector("[data-row-title]")!.className;
-    expect(title).toContain("shrink-[1000]");
-    expect(title).toContain("min-w-16");
-    const mark = container.querySelector("[data-model]")!.className;
-    expect(mark).not.toContain("shrink-[1000]");
-    expect(mark).not.toContain("shrink-0");
-    expect(container.querySelector("[data-model-name]")!.className).toContain("@max-[13rem]/agent:hidden");
-    expect(container.querySelector("[data-model-effort]")!.className).toContain("@max-[13rem]/agent:hidden");
-    expect(container.innerHTML).not.toContain("18rem");
+  it("truncates only the model's name; the effort and the window stay whole", () => {
+    const meta = fixtureMeta("w", { status: "running", context1m: true });
+    const { container } = render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);
+    expect(container.querySelector("[data-model-name]")!.className).toContain("truncate");
+    expect(container.querySelector("[data-model-effort]")!.className).toContain("shrink-0");
+    expect(container.querySelector("[data-model-context]")!.className).toContain("shrink-0");
+    expect(container.innerHTML).not.toContain("13rem");
   });
 
-  it("keeps a settled row's clock after the mark", () => {
+  it("says the context window in the composer's words", () => {
+    const say = (over: Parameters<typeof fixtureMeta>[1]) => {
+      const meta = fixtureMeta("c", over);
+      const view = render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);
+      const word = view.container.querySelector("[data-model-context]")?.textContent ?? null;
+      view.unmount();
+      return word;
+    };
+    expect(say({ provider: "claude", model: "claude-opus-5-5", context1m: true })).toBe("1M");
+    expect(say({ provider: "claude", model: "claude-opus-5-5", context1m: false })).toBe("200k");
+    expect(say({ provider: "codex", model: "muse-wonder-1.0", reasoning: "high" })).toBe("1M");
+    expect(say({ provider: "codex", model: "gpt-6.1-sol", context: { tokens: 1000, window: 272_000 } })).toBe("272k");
+    expect(say({ provider: "cursor", model: "composer-2.5", reasoning: undefined })).toBeNull();
+  });
+
+  it("ends a settled row's model line with how long it ran", () => {
     const { meta, status } = row("Find the row sizes");
     const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    const mark = container.querySelector("[data-model]")!;
-    const time = container.querySelector("[data-agent-time]")!;
+    const line = container.querySelector("[data-model-line]")!;
+    const mark = line.querySelector("[data-model]")!;
+    const time = line.querySelector("[data-agent-time]")!;
     expect(mark.compareDocumentPosition(time) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(mark.querySelector("[data-model-effort]")?.textContent).toBe("Low");
   });
@@ -101,12 +140,15 @@ describe("AgentRowView", () => {
     }
   });
 
-  it("draws a done row on one line with its check and how long it ran, nothing under it", async () => {
+  it("draws a done row on two lines, its check and title over the model line and how long it ran", async () => {
     const { meta, status } = row("Find the row sizes");
     const { container } = render(<AgentRowView meta={meta} status={status} heading="Done" onOpen={() => {}} />);
     const el = container.querySelector('[role="button"]')!;
-    expect(el.className).toContain("h-7");
+    expect(el.className).toContain("py-1");
+    expect(el.className).not.toContain("h-7");
     expect(container.querySelector("[data-row-status]")).toBeNull();
+    expect(container.querySelector("[data-row-head]")).not.toBeNull();
+    expect(container.querySelector("[data-model-line]")).not.toBeNull();
     expect(container.querySelector('[data-row-glyph] [data-state="done"]')).not.toBeNull();
     expect(container.querySelector("[data-row-title]")?.className).toContain("text-muted-foreground");
     const time = container.querySelector("[data-agent-time]")!;
@@ -115,7 +157,7 @@ describe("AgentRowView", () => {
     await waitFor(() => expect(tipText()).toMatch(/^Finished \d{1,2}:\d\d([ \u202f][AP]M)?$/), { timeout: 2000 });
   });
 
-  it("draws a live row on two lines, the title in the foreground", () => {
+  it("draws a live row on three lines, the title in the foreground", () => {
     const { meta, status } = row("Build the shell");
     const { container } = render(<AgentRowView meta={meta} status={status} heading="Working" onOpen={() => {}} />);
     expect(container.querySelector('[role="button"]')!.className).toContain("py-1");
@@ -211,7 +253,19 @@ describe("AgentRowView", () => {
     expect(actions).toContain("opacity-0");
     expect(actions).toContain("group-hover:delay-(--delay-hover)");
     expect(actions).toContain("group-focus-within:delay-(--dur-instant)");
-    expect(container.querySelector("[data-model]")!.className).toContain("group-hover:delay-(--delay-hover)");
+    // Line one's end gives way under them on the same timing; the model line stays put.
+    const head = container.querySelector("[data-row-head]")!.className;
+    expect(head).toContain("group-hover:[mask-size:100%_100%]");
+    expect(head).toContain("group-hover:delay-(--delay-hover)");
+    expect(head).toContain("group-focus-within:delay-(--dur-instant)");
+    expect(container.querySelector("[data-model-line]")!.className).not.toContain("group-hover");
+    expect(container.querySelector("[data-model]")!.className).not.toContain("opacity-0");
+  });
+
+  it("masks line one only when the row has actions", () => {
+    const { meta, status } = row("Port module 4");
+    const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
+    expect(container.querySelector("[data-row-head]")!.className).not.toContain("mask");
   });
 
   it("opens the detail on click, Enter and Space, and marks the selected row", () => {
@@ -241,7 +295,7 @@ describe("AgentRowView", () => {
     render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);
     expect(
       screen.getByRole("button", {
-        name: "Build the shell, Working: Editing HomeView.swift, 3 of 7 tasks, 2m 31s, Implementer, Claude Opus 5.5, high effort",
+        name: "Build the shell, Working: Editing HomeView.swift, 3 of 7 tasks, 2m 31s, Implementer, Claude Opus 5.5, high effort, 200k context",
       }),
     ).toBeTruthy();
   });

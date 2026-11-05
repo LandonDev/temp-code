@@ -391,13 +391,16 @@ both only fade.
 
 A thread's model at a row's end is `ModelMark` (surfaces/threads/ModelMark.tsx):
 the provider's logo, the short model name and, where the row asks for it
-(the right panel's Agents rows, the master board's thread rows), the
-effort in the composer's words ("Opus 5.5 High", "Sol Extra high"), all
-12px `muted-foreground`, the logo 6px from the name and the effort 4px
-after it, never joined by a dot. In a narrow row the title gives its width
-up first, down to 64px; then the name truncates, and the effort never
-does. Its tooltip is the uncut form ("Claude Opus 5.5, high effort, 1M
-context"), the one home of what a narrow row hides.
+(the master board's thread rows), the effort in the composer's words
+("Opus 5.5 High", "Sol Extra high"), all 12px `muted-foreground`, the logo
+6px from the name and the effort 4px after it, never joined by a dot. In a
+narrow row the title gives its width up first, down to 64px; then the name
+truncates, and the effort never does. A right panel Agents row says its
+model on a line of its own under everything else (`ModelLine`): the logo,
+the name, the effort and the context window ("Opus 5.5 High 1M", "Sonnet
+5.5 Low 200k"), each 4px from the next, only the name truncating. The
+tooltip is the uncut form ("Claude Opus 5.5, high effort, 1M context"),
+the one home of what a narrow row hides.
 
 While any subagent of the thread on screen is live, the title bar's end
 group holds the agents cue (chrome/AgentsCue.tsx): the loudest state's
@@ -542,7 +545,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Press, a raised button (`default`, `secondary`, `destructive`) | its fill layer scales 0.985 (0.997 × 0.985 full width) while the label stays put, `--dur-fast` | release, `--dur-hover` | none |
 | Press, ghost, link, outline and every row (a rail row, an Item, a toggle, a tab, a hover action) | the fill steps to `foreground/12` at once; nothing scales | back over `--dur-hover` | same |
 | Hover fill (a button; a menu row and a rail row highlight at once; a raised button lightens, and secondary lifts its shadow, over `--dur-fast`) | `--dur-hover` | `--dur-hover` | same |
-| Hover reveal (a closing line's and a notice's actions, a message's Copy, a code block's and a tool output's Copy and Raw, an Agents row's Open and Stop over its model mark, a rail row's hover actions and the slot that yields to them, a board row's and an archived row's actions) | waits `--delay-hover`, then fades in `--dur-fast`; keyboard focus (`has-focus-visible`) and an open menu show it at once, a mouse click does not hold it; the fade rides a wrapper, so the button keeps its own hover fill | fades `--dur-fast`, at once | same |
+| Hover reveal (a closing line's and a notice's actions, a message's Copy, a code block's and a tool output's Copy and Raw, an Agents row's Open and Stop over its title line's end, a rail row's hover actions and the slot that yields to them, a board row's and an archived row's actions) | waits `--delay-hover`, then fades in `--dur-fast`; keyboard focus (`has-focus-visible`) and an open menu show it at once, a mouse click does not hold it; the fade rides a wrapper, so the button keeps its own hover fill | fades `--dur-fast`, at once | same |
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
 | Fold that opens on its own (`.collapsible-auto`: the transcript's working group, the running task's steps, the title bar's shelf, a master board row's task list and its bar line) | height on the layout spring (`--dur-layout` `--ease-layout`) + opacity `--dur-base` `--ease-out` | the same, so the rows are gone before the box closes | opacity, `--dur-fast` |
 | A step landing in it (`.step-land`) | fade + rise 4px, `--dur-base` `--ease-out`; only a step that lands while the fold is open, never at mount, on a hand open or when a panel unhides | none | none |

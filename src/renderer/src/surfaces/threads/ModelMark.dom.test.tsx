@@ -7,7 +7,7 @@
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
-import { ModelMark } from "./ModelMark";
+import { ModelMark, contextWindowWord, modelContextWord } from "./ModelMark";
 
 const META_PATH = /^M6\.915 4\.03/;
 const tipText = () => document.querySelector('[data-slot="tooltip-content"]')?.textContent ?? null;
@@ -73,5 +73,25 @@ describe("ModelMark", () => {
     expect(name.className).toContain("n-hide");
     expect(effort.className).toContain("shrink-0");
     expect(effort.className).toContain("e-hide");
+  });
+});
+
+describe("the context word", () => {
+  it("contextWindowWord says a window in the composer's words", () => {
+    expect(contextWindowWord(1_000_000)).toBe("1M");
+    expect(contextWindowWord(1_048_576)).toBe("1M");
+    expect(contextWindowWord(200_000)).toBe("200k");
+    expect(contextWindowWord(272_000)).toBe("272k");
+  });
+
+  it("modelContextWord reads a Claude thread's 1M flag, else the catalog's window, else the harness's report", () => {
+    expect(modelContextWord({ provider: "claude", model: "claude-opus-5-5", context1m: true })).toBe("1M");
+    expect(modelContextWord({ provider: "claude", model: "claude-opus-5-5" })).toBe("200k");
+    // A vendor row's window is native: never the 1M flag's choice.
+    expect(modelContextWord({ provider: "claude", model: "muse-spark-1.3", context1m: false })).toBe("1M");
+    expect(modelContextWord({ provider: "grok", model: "grok-4.6" })).toBe("500k");
+    expect(modelContextWord({ provider: "codex", model: "gpt-6.1-sol", context: { tokens: 10, window: 272_000 } })).toBe("272k");
+    expect(modelContextWord({ provider: "codex", model: "gpt-6.1-sol" })).toBe("");
+    expect(modelContextWord({})).toBe("");
   });
 });
