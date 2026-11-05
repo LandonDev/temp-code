@@ -8,10 +8,9 @@ import {
   type Phone,
   type Simulator,
 } from "@server/shared/contract-hostdevices";
-import { PageEmpty, PageError } from "../../../components/page";
+import { PageEmpty, PageError, PageRowsSkeleton } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { reveal } from "../../../components/ui/reveal";
-import { Skeleton } from "../../../components/ui/skeleton";
 import { ConfirmDialog, errorText } from "../../../chrome/ConfirmDialog";
 import { deleteSimulator, openXcodeDevices, refreshHostDevicesHosts, shutdownSimulator, useHostDevices } from "../../../lib/hostDevices";
 import { isWebMode } from "../../../lib/nativeWeb";
@@ -100,9 +99,8 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
   return (
     <Group title={host.local ? "Devices" : `Devices on ${host.name}`} data-devices={host.environmentId} action={<span data-summary className="min-w-0">{summary}</span>}>
       {!report && !error ? (
-        <div data-looking className="flex flex-col gap-2 py-2" aria-busy="true">
-          <Skeleton className="h-3.5 w-40" />
-          <Skeleton className="h-3.5 w-56" />
+        <div data-looking>
+          <PageRowsSkeleton rows={2} description control="none" />
         </div>
       ) : null}
       {error && !report ? <PageError>{error}</PageError> : null}

@@ -92,6 +92,13 @@ export async function saveTurnPass(
 }
 
 /** Settings-page group for one workspace's pass; saves on every change. */
+/** The three rows TurnPassFields draws, in their shape. */
+const TURN_PASS_SKELETON = [
+  { description: true, control: "switch" },
+  { description: true, control: "switch" },
+  { description: true },
+] as const;
+
 export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
   const [value, setValue] = useState<TurnPass | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +123,7 @@ export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
 
   return (
     <PageSection title="Completed turn">
-      {value ? <TurnPassFields value={value} onChange={change} /> : error ? null : <PageRowsSkeleton rows={3} />}
+      {value ? <TurnPassFields value={value} onChange={change} /> : error ? null : <PageRowsSkeleton rows={TURN_PASS_SKELETON} />}
       {error ? <PageError>{error}</PageError> : null}
     </PageSection>
   );

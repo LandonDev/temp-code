@@ -117,6 +117,9 @@ describe("Orchestration page", () => {
     render(<OrchestrationPage />);
     expect(screen.getByTestId("rules-skeleton")).toBeTruthy();
     expect(screen.getByRole("region", { name: "Conduct" })).toBeTruthy();
+    // The rows in their shape: Delegation's select first, then the switches.
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")];
+    expect(rows.map((r) => r.dataset.control)).toEqual(["select", "switch", "switch", "switch", "switch", "switch", "select", "select"]);
   });
 
   it("is the global rules alone: no scope picker", () => {

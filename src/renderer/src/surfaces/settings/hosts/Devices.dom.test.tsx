@@ -147,7 +147,7 @@ describe("DevicesBlock", () => {
   it("before the first report: skeleton rows; a failure with no report shows it", () => {
     const { root } = mount({ report: null });
     expect(root.querySelector("[data-looking]")).not.toBeNull();
-    expect(root.querySelectorAll("[data-slot=skeleton]")).toHaveLength(2);
+    expect(root.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(2);
     cleanup();
     const failed = mount({ report: null, error: "Landon’s Mac is not linked right now" });
     expect(failed.root.textContent).toContain("Landon’s Mac is not linked right now");

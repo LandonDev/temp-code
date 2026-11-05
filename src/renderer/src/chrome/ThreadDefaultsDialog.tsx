@@ -107,12 +107,15 @@ function scopeHint(workspaceId: string | null, scope: DefaultsScope): string | u
     : "Follows the global defaults.";
 }
 
+/** The four rows ThreadDefaultsFields draws, in their shape. */
+const DEFAULTS_SKELETON = [{}, {}, {}, { description: true }];
+
 /** Self-loading group for one scope; every change saves at once. */
 export function ThreadDefaultsEditor({ workspaceId }: { workspaceId: string | null }) {
   const workspace = useWorkspaceCatalog().workspaces.find((w) => w.id === workspaceId);
   // Global app settings belong to this machine.
   const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
-  if (!environmentId) return <PageRowsSkeleton rows={4} />;
+  if (!environmentId) return <PageRowsSkeleton rows={DEFAULTS_SKELETON} />;
   return <DefaultsEditor key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
 }
 
@@ -156,7 +159,7 @@ function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string;
       {scope ? (
         <ThreadDefaultsFields value={scope.defaults} onChange={save} environmentId={environmentId} disabled={blocked} />
       ) : (
-        <PageRowsSkeleton rows={4} />
+        <PageRowsSkeleton rows={DEFAULTS_SKELETON} />
       )}
       {workspaceId === null ? <OverridingWorkspaces environmentId={environmentId} /> : null}
       {error ? <PageError>{error}</PageError> : null}

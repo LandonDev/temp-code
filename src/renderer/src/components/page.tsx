@@ -133,18 +133,59 @@ function PageRow({
   );
 }
 
-/** Rows in their shape while a section's values load: a title line and a
- *  control. */
-function PageRowsSkeleton({ rows = 2 }: { rows?: number }) {
+/** What sits at a loading row's end, at its real size: a `Switch` (32×18),
+ *  a `ChoiceSelect` (32px, 160px wide), an `Input` (32px, 256px wide), a
+ *  number field (32px, 80px wide), a small `Button` (28px) or nothing. */
+type SkeletonControl = "switch" | "select" | "field" | "number" | "button" | "none";
+const SKELETON_CONTROL: Record<Exclude<SkeletonControl, "none">, string> = {
+  switch: "h-[18px] w-8 rounded-full",
+  select: "h-8 w-40 rounded-lg",
+  field: "h-8 w-64 rounded-lg",
+  number: "h-8 w-20 rounded-lg",
+  button: "h-7 w-20 rounded-md",
+};
+/** One loading row's shape: whether it has a muted description line and a
+ *  16px glyph before its title, and its control. */
+type SkeletonRow = { description?: boolean; media?: boolean; control?: SkeletonControl };
+
+/** Rows in their shape while a section's values load: each is a `PageRow`'s
+ *  box (the 20px title line, 2px, the 16px description line, the control at
+ *  its own size, 12px above and below, the hairline between neighbours), so
+ *  nothing moves when the rows land. `rows` is a count of rows alike (the
+ *  `description`, `media` and `control` given) or each row's own shape. */
+function PageRowsSkeleton({
+  rows = 2,
+  description = false,
+  media = false,
+  control = "select",
+}: { rows?: number | readonly SkeletonRow[] } & SkeletonRow) {
+  const shapes = typeof rows === "number" ? Array.from({ length: rows }, () => ({ description, media, control })) : rows;
   return (
-    <div aria-busy="true" aria-label="Loading">
-      {Array.from({ length: rows }, (_, i) => (
-        <div key={i} data-slot="page-row-skeleton" className="flex items-center gap-3 py-3">
-          <Skeleton className="h-3.5 w-32" />
-          <span className="flex-1" />
-          <Skeleton className="h-8 w-40 rounded-lg" />
-        </div>
-      ))}
+    <div aria-busy="true" aria-label="Loading" className="flex flex-col">
+      {shapes.map((shape, i) => {
+        const end = shape.control ?? control;
+        return (
+          <div
+            key={i}
+            data-slot="page-row-skeleton"
+            data-control={end}
+            className="flex items-center gap-3 border-t border-transparent py-3 [[data-slot=page-row-skeleton]+&]:border-border"
+          >
+            {(shape.media ?? media) ? <Skeleton className="size-4 shrink-0 rounded-sm" /> : null}
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <div className="flex h-5 items-center">
+                <Skeleton className="h-3.5 w-32" />
+              </div>
+              {(shape.description ?? description) ? (
+                <div className="flex h-4 items-center">
+                  <Skeleton className="h-3 w-48" />
+                </div>
+              ) : null}
+            </div>
+            {end === "none" ? null : <Skeleton data-skeleton-control className={cn("shrink-0", SKELETON_CONTROL[end])} />}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -176,4 +217,5 @@ function PageError({ className, children, ...rest }: ComponentPropsWithoutRef<"p
   );
 }
 
+export type { SkeletonControl, SkeletonRow };
 export { Page, PageSection, PageRow, PageRowsSkeleton, PageEmpty, PageError, PAGE_SCROLLER, PAGE_WIDTH };

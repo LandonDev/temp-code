@@ -127,6 +127,28 @@ describe("PageRow", () => {
     expect(screen.getByLabelText("Loading").getAttribute("aria-busy")).toBe("true");
     expect(document.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(3);
   });
+
+  it("draws a loading row in a PageRow's box: 20px title line, 2px, 16px description line, the control at its size", () => {
+    render(<PageRowsSkeleton rows={1} description control="switch" />);
+    const row = document.querySelector<HTMLElement>("[data-slot=page-row-skeleton]")!;
+    expect(row.className).toContain("py-3");
+    expect(row.className).toContain("border-t");
+    const content = row.querySelector<HTMLElement>(".flex-col")!;
+    expect(content.className).toContain("gap-0.5");
+    expect([...content.children].map((c) => c.className.match(/\bh-[45]\b/)?.[0])).toEqual(["h-5", "h-4"]);
+    expect(row.querySelector("[data-skeleton-control]")?.className).toContain("h-[18px] w-8");
+  });
+
+  it("takes each row's own shape, with a hairline between neighbours as PageRow draws", () => {
+    render(<PageRowsSkeleton rows={[{ description: true }, { control: "switch" }, { control: "none", media: true }]} />);
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")];
+    expect(rows.map((r) => r.dataset.control)).toEqual(["select", "switch", "none"]);
+    expect(rows[0].querySelectorAll(".h-4")).toHaveLength(1);
+    expect(rows[1].querySelectorAll(".h-4")).toHaveLength(0);
+    expect(rows[2].querySelector("[data-skeleton-control]")).toBeNull();
+    expect(rows[2].querySelector(".size-4")).toBeTruthy();
+    for (const r of rows) expect(r.className).toContain("[[data-slot=page-row-skeleton]+&]:border-border");
+  });
 });
 
 describe("PageError and PageEmpty", () => {

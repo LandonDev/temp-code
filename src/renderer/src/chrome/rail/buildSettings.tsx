@@ -4,9 +4,8 @@ import { registry } from "../../lib/connection";
 import { OPEN_SETTINGS_EVENT } from "../../lib/monaco/debugTab";
 import { workspaceSettingsSection } from "../../lib/settings";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
-import { PageError, PageRow } from "../../components/page";
+import { PageError, PageRow, PageRowsSkeleton } from "../../components/page";
 import { Input } from "../../components/ui/input";
-import { Skeleton } from "../../components/ui/skeleton";
 
 /**
  * The workspace's build command (Build rail tab, and what the completed-turn
@@ -118,16 +117,8 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
 
   if (config === undefined) {
     return (
-      <div data-testid="build-skeleton" aria-hidden className="flex flex-col">
-        {[0, 1].map((i) => (
-          <div key={i} className="flex items-center gap-3 py-3">
-            <div className="flex flex-1 flex-col gap-1.5">
-              <Skeleton className="h-3.5 w-24" />
-              <Skeleton className="h-3 w-56" />
-            </div>
-            <Skeleton className="h-8 w-64" />
-          </div>
-        ))}
+      <div data-testid="build-skeleton">
+        <PageRowsSkeleton rows={2} description control="field" />
       </div>
     );
   }

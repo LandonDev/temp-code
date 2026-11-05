@@ -63,7 +63,8 @@ for (const [environmentId, host] of Object.entries(HOSTS)) {
 
 export function OrchestrationRulesPreview({ host }: { host: keyof typeof HOSTS }) {
   return (
-    <div className="mx-auto max-w-[672px] p-6">
+    // The page's own column: its sections stack 24px apart, as Page lays them.
+    <div className="mx-auto flex max-w-[672px] flex-col gap-6 p-6">
       <RulesEditor environmentId={host} workspaceId={null} />
     </div>
   );

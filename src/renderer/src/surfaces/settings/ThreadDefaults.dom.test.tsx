@@ -23,10 +23,12 @@ vi.mock("../../lib/settings", () => ({
   loadClaudeHooks: () => false,
   saveClaudeHooks: (on: boolean) => state.hooks(on),
 }));
+const probe = vi.hoisted(() => ({ answered: true }));
 vi.mock("../../lib/harness/availability", () => ({
   getHarnessAvailabilitySnapshot: () => 0,
   subscribeHarnessAvailability: () => () => {},
   probeHarnessAvailability: async () => {},
+  hasProbedHarnessAvailability: () => probe.answered,
   isHarnessAvailable: (id: string) => id === "claude" || id === "codex",
 }));
 vi.mock("../../lib/models", async (original) => ({
@@ -65,6 +67,7 @@ const { ThreadDefaultsPage } = await import("./ThreadDefaults");
 const { ThreadDefaultsDialog } = await import("../../chrome/ThreadDefaultsDialog");
 
 beforeEach(() => {
+  probe.answered = true;
   state.ladder = ["low", "medium", "high"];
   state.overridden = false;
   state.home = undefined;
@@ -166,6 +169,15 @@ describe("Thread defaults", () => {
     expect(switches).toHaveLength(2);
     fireEvent.click(switches[0]);
     expect(state.picker).toHaveBeenCalledWith("claude", false);
+  });
+
+  it("holds the Model picker's rows in their shape until the CLI probe answers", () => {
+    probe.answered = false;
+    render(<ThreadDefaultsPage />);
+    const picker = screen.getByRole("region", { name: "Model picker" });
+    expect(within(picker).queryAllByRole("switch")).toHaveLength(0);
+    const rows = [...picker.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")];
+    expect(rows.map((r) => r.dataset.control)).toEqual(["switch", "switch"]);
   });
 
   it("saves the settings.json hooks switch", () => {

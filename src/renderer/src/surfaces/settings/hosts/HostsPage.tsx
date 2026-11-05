@@ -3,7 +3,7 @@ import type { RemoteKey, RemotePairing, RemoteSession, RemoteStatus, SavedEnviro
 import type { HarnessSyncStatus } from "@server/shared/contract-harness";
 import type { MemorySyncStatus } from "@server/shared/contract-memory";
 import type { AttachmentSettings } from "@server/shared/contract-attachments";
-import { PageError } from "../../../components/page";
+import { PageError, PageRowsSkeleton } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { ConfirmDialog, errorText } from "../../../chrome/ConfirmDialog";
@@ -249,20 +249,25 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
   );
 }
 
-/** The page's shape while the first `remote.status` answers: a header and a few rows. */
+/** This machine's first rows (Remote access, Port, Public origin, Stuck after). */
+const THIS_HOST_SKELETON = [
+  { description: true, control: "switch" },
+  { control: "number" },
+  { description: true, control: "field" },
+  { description: true, control: "number" },
+] as const;
+
+/** The page's shape while the first `remote.status` answers: this machine's
+ *  section, its 12px heading on its 20px line and its first rows. */
 function PageSkeleton({ error }: { error: string | null }) {
   return (
-    <div className="flex flex-col gap-4" data-hosts-loading aria-busy="true">
-      <Skeleton className="h-5 w-32" />
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="flex items-center gap-3 py-2">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Skeleton className="h-3.5 w-28" />
-            <Skeleton className="h-3 w-52" />
-          </div>
-          <Skeleton className="h-7 w-20" />
-        </div>
-      ))}
+    <div className="flex flex-col" data-hosts-loading aria-busy="true">
+      <div className="flex h-5 items-center">
+        <Skeleton className="h-3 w-24" />
+      </div>
+      <div className="mt-2">
+        <PageRowsSkeleton rows={THIS_HOST_SKELETON} />
+      </div>
       {error ? <PageError>{error}</PageError> : null}
     </div>
   );

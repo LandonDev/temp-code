@@ -19,7 +19,7 @@ import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
 import { LoadingLine } from "../SurfaceSkeleton";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageEmpty, PageRow, PageSection } from "../../components/page";
+import { PageEmpty, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -90,14 +90,7 @@ function LanguageServers() {
   return (
     <PageSection title="Language servers">
       {rows === null ? (
-        <div aria-busy="true" aria-label="Loading">
-          {[0, 1].map((i) => (
-            <div key={i} className="flex flex-col gap-1.5 py-3">
-              <Skeleton className="h-3.5 w-24" />
-              <Skeleton className="h-3 w-40" />
-            </div>
-          ))}
-        </div>
+        <PageRowsSkeleton rows={2} description control="none" />
       ) : rows.length === 0 ? (
         <PageEmpty>None running</PageEmpty>
       ) : (

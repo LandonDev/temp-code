@@ -95,12 +95,13 @@ export function probeHarnessAvailability(
       const next = { ...probe.availability };
       for (const id of HARNESSES) next[id] = isLiveHarness(id) && found[id];
       probe.availability = next;
-      emit();
     })
     .catch(() => undefined)
     .finally(() => {
       probe.probedAt = Date.now();
       probe.inflight = null;
+      // After the stamp, so a reader of hasProbedHarnessAvailability sees the answer and the stamp together.
+      emit();
     });
   return probe.inflight;
 }

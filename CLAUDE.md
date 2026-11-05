@@ -462,8 +462,9 @@ app replaces itself from the feed, and only from the feed.
   trigger of the same element until the chunk lands, no content), the branch
   picker's list with them (chrome/BranchRows.tsx), every select rides
   selectChunk: the composer's
-  permission, thread type and model setting pickers draw a cold trigger of
-  the same classes until it lands, components/lazy-select.tsx; only the dialog is in the first paint). It also fails when a chunk renders a string tag that is no HTML, SVG or custom element: the React Compiler inlines a lowercase component alias into the JSX tag (`jsx("current")`, an empty element), which only the built bundle shows.
+  permission, thread type and model setting pickers and every ChoiceSelect
+  (asking for the chunk as it mounts) draw a cold trigger of the same
+  classes, size and width until it lands, components/lazy-select.tsx; only the dialog is in the first paint). It also fails when a chunk renders a string tag that is no HTML, SVG or custom element: the React Compiler inlines a lowercase component alias into the JSX tag (`jsx("current")`, an empty element), which only the built bundle shows.
   `/ui` serves the chunks
   as immutable module scripts behind the cookie (remote/ui.ts).
 - Proof: `bun run script:e2e-launch-timing` (scripts/e2e-launch-timing.ts)

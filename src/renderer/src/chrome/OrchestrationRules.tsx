@@ -6,7 +6,7 @@ import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { ChevronRight, Plus } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
-import { PageEmpty, PageRow, PageSection } from "../components/page";
+import { PageEmpty, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
@@ -14,7 +14,6 @@ import { DialogFooter } from "./ConfirmDialog";
 import { Field, FieldRow } from "./DialogField";
 import { Modal, ModalBody, useModalClose } from "./Modal";
 import { Input } from "../components/ui/input";
-import { Skeleton } from "../components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { cn } from "../lib/cn";
 import { EFFORT_LABELS } from "../lib/tcserver/defaults";
@@ -83,20 +82,24 @@ const ladderOf = (rules: OrchestrationRules, provider: ProviderId, model: ModelI
 const effortChoices = (levels: readonly Reasoning[]): Choice<Reasoning>[] =>
   levels.map((level) => ({ value: level, label: EFFORT_LABELS[level] }));
 
+/** The Conduct section's rows, in their shape: Delegation, five switches, the two caps. */
+const CONDUCT_SKELETON = [
+  { description: true },
+  { description: true, control: "switch" },
+  { description: true, control: "switch" },
+  { control: "switch" },
+  { description: true, control: "switch" },
+  { description: true, control: "switch" },
+  {},
+  { description: true },
+] as const;
+
 /** The Conduct section's rows while the scope loads, under its real heading. */
 export function RulesSkeleton({ workspaceId }: { workspaceId: string | null }) {
   return (
     <PageSection title={titlesFor(workspaceId).conduct}>
-      <div data-testid="rules-skeleton" aria-hidden className="flex flex-col">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="flex items-center gap-3 py-3">
-            <div className="flex flex-1 flex-col gap-1.5">
-              <Skeleton className="h-3.5 w-32" />
-              <Skeleton className="h-3 w-56" />
-            </div>
-            <Skeleton className="h-[18px] w-8 rounded-full" />
-          </div>
-        ))}
+      <div data-testid="rules-skeleton">
+        <PageRowsSkeleton rows={CONDUCT_SKELETON} />
       </div>
     </PageSection>
   );

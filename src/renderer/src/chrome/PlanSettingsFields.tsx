@@ -149,7 +149,15 @@ export function PlanSettingsEditor() {
       {scope ? (
         <PlanSettingsFields value={scope.settings} onChange={save} environmentId={environmentId} />
       ) : failure ? null : (
-        <PageRowsSkeleton rows={5} />
+        <PageRowsSkeleton
+          rows={[
+            { description: true, control: "switch" },
+            { description: true, control: "switch" },
+            {},
+            {},
+            { description: true },
+          ]}
+        />
       )}
       {error || failure ? <PageError>{error ?? failure?.error}</PageError> : null}
     </PageSection>

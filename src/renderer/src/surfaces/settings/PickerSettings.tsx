@@ -1,9 +1,10 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
-import { PageRow, PageSection } from "../../components/page";
+import { PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import {
   getHarnessAvailabilitySnapshot,
+  hasProbedHarnessAvailability,
   isHarnessAvailable,
   probeHarnessAvailability,
   subscribeHarnessAvailability,
@@ -18,6 +19,14 @@ export function PickerSection() {
   useEffect(() => {
     void probeHarnessAvailability();
   }, []);
+  // Its rows in their shape until the probe answers, so the sections under it never move down.
+  if (!hasProbedHarnessAvailability()) {
+    return (
+      <PageSection title="Model picker">
+        <PageRowsSkeleton rows={2} media control="switch" />
+      </PageSection>
+    );
+  }
   const installed = HARNESSES.filter((harness) => isHarnessAvailable(harness));
   if (installed.length === 0) return null;
   return (

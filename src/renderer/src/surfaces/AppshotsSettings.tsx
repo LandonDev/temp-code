@@ -98,7 +98,7 @@ export function AppshotsPage() {
         ) : loadError ? (
           <PageError>{loadError}</PageError>
         ) : (
-          <PageRowsSkeleton rows={3} />
+          <PageRowsSkeleton rows={[{ control: "switch" }, { description: true }, { control: "switch" }]} />
         )}
       </PageSection>
 

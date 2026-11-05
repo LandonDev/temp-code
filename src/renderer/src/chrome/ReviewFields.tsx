@@ -10,10 +10,9 @@ import { parseReviewScope, reviewerModel, reviewerModelOptions, type ReviewScope
 
 export { type ReviewScope } from "../lib/reviewScope";
 import { ChoiceSelect } from "../components/choice-select";
-import { PageRow } from "../components/page";
+import { PageRow, PageRowsSkeleton } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";
 import { Input } from "../components/ui/input";
-import { Skeleton } from "../components/ui/skeleton";
 
 /**
  * Review before merge (shared/review.ts): the fields, shared by the global
@@ -37,19 +36,12 @@ const COPY = {
   minutes: { label: "Time limit", hint: "Past it the merge goes ahead." },
 };
 
-/** Four rows standing in for the fields while `review.get` answers. */
+/** The fields' first row while `review.get` answers: the Before merge
+ *  switch, alone until it is on (the built-in set has it off). */
 export function ReviewSkeleton() {
   return (
-    <div data-testid="review-skeleton" aria-hidden className="flex flex-col">
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="flex items-center gap-3 py-3">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Skeleton className="h-3.5 w-32" />
-            <Skeleton className="h-3 w-48" />
-          </div>
-          <Skeleton className="h-7 w-28" />
-        </div>
-      ))}
+    <div data-testid="review-skeleton">
+      <PageRowsSkeleton rows={1} control="switch" />
     </div>
   );
 }

@@ -227,7 +227,7 @@ function LinearSettings() {
     <>
       <PageSection title="Linear">
         {connected === null ? (
-          <PageRowsSkeleton rows={1} />
+          <PageRowsSkeleton rows={1} media control="button" />
         ) : (
           <PageRow
             media={<InboxProviderMark provider="linear" className="size-4" />}

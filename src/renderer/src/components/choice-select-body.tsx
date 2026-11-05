@@ -19,6 +19,7 @@ export function ChoiceSelect<T extends string>({
   disabled,
   size = "default",
   className,
+  defaultOpen,
 }: {
   label: string;
   value: T;
@@ -27,10 +28,13 @@ export function ChoiceSelect<T extends string>({
   disabled?: boolean;
   size?: "sm" | "default";
   className?: string;
+  /** Opens on mount: a click on the cold trigger (choice-select.tsx) before the chunk landed. */
+  defaultOpen?: boolean;
 }) {
   return (
     <Select
       items={options}
+      defaultOpen={defaultOpen}
       value={value}
       disabled={disabled}
       onValueChange={(next) => {
