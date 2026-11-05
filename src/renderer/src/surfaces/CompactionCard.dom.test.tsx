@@ -30,10 +30,11 @@ describe("CompactionCard", () => {
     expect(clockForTest.listeners()).toBe(1);
   });
 
-  it("running: a spinner and Compacting context, no bar", () => {
+  it("running draws the still working dot, no spinner: the working line holds the one moving mark", () => {
     const { container } = render(<CompactionCard block={block({ phase: "start", startedAt: Date.now() - 3_000 })} />);
     expect(screen.getByRole("status", { name: "Compacting context" })).toBeTruthy();
-    expect(container.querySelector('[data-slot="spinner"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="spinner"]')).toBeNull();
+    expect(container.querySelector('[data-slot="working-dot"]')).not.toBeNull();
     expect(container.textContent).toContain("Compacting context");
   });
 

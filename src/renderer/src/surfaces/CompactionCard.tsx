@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { COMPACTING_WORDS } from "@shared/statusWords";
 import { FoldVertical } from "../chrome/icons";
-import { Spinner } from "../components/ui/spinner";
 import { StatusMark } from "../components/ui/status";
 import { WorkingText } from "../components/ui/working-text";
 import type { Block } from "../lib/session";
@@ -56,7 +55,8 @@ export function CompactionCard({ block }: { block: Block }) {
 type Phase = NonNullable<Block["compaction"]>["phase"];
 
 const GLYPH: Record<Phase, ReactNode> = {
-  start: <Spinner />,
+  // The transcript's one moving mark is the working line's; a running row draws working as the dot.
+  start: <StatusMark state="working" word={false} still />,
   done: <FoldVertical className="size-3.5" />,
   failed: <StatusMark state="failed" word={false} />,
   stopped: <StatusMark state="stopped" word={false} />,

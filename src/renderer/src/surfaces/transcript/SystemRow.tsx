@@ -1,5 +1,5 @@
 // A9 (notices): a system row, and the handoff divider.
-import { Spinner } from "../../components/ui/spinner";
+import { StatusMark } from "../../components/ui/status";
 import { WorkingText } from "../../components/ui/working-text";
 import { HARNESS_TITLE, type Block } from "../../lib/session";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
@@ -23,7 +23,8 @@ export function SystemRow({
 }
 
 /** A handoff to another harness: "Continued with Codex", or the handoff
- *  being prepared. */
+ *  being prepared: working's still dot (the working line holds the
+ *  transcript's one moving mark) and its words in the shimmer. */
 export function HandoffDivider({ block }: { block: Block }) {
   const meta = block.handoff;
   if (!meta) return null;
@@ -33,7 +34,7 @@ export function HandoffDivider({ block }: { block: Block }) {
       <NoticeLine
         role="status"
         aria-label={`Preparing a handoff to ${to}`}
-        glyph={<Spinner />}
+        glyph={<StatusMark state="working" word={false} still />}
         lead={<WorkingText>{`Preparing a handoff to ${to}`}</WorkingText>}
       />
     );
