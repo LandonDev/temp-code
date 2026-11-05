@@ -259,6 +259,10 @@ describe('UsageMeter', () => {
     })
     const body = details()!
     expect([...body.querySelectorAll('[data-window]')].map((w) => w.getAttribute('data-window'))).toEqual(['5h', 'Weekly'])
+    // "5h in 2h": the window's name and its refill 4px apart, one fact.
+    const head = body.querySelector('[data-window="5h"]')!.firstElementChild!
+    expect(head.className.split(/\s+/)).toContain('gap-1')
+    expect(head.className.split(/\s+/)).not.toContain('gap-2')
     expect(body.textContent).toContain('Week')
     expect(body.textContent).toContain('40% left')
     expect(body.textContent).toContain('2 accounts with room')

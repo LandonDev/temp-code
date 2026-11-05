@@ -27,5 +27,8 @@ describe("useOverflowEdges", () => {
     // Each flag fades its own edge 24px; none at rest.
     expect(strip.className).toContain("data-overflow-start:[--fade-start:24px]");
     expect(strip.className).toContain("data-overflow-end:[--fade-end:24px]");
+    // The ramp starts after a clear room each side, 0 unless a strip sets it.
+    expect(OVERFLOW_FADE).toContain("transparent_var(--fade-clear-start,0px)");
+    expect(OVERFLOW_FADE).toContain("transparent_calc(100%_-_var(--fade-clear-end,0px))");
   });
 });

@@ -736,7 +736,8 @@ before the host's meta lands (`chipThreadsOf` in chrome/ShellTitleBar.tsx).
   28px `icon-sm` arrow (the bar's icon buttons' size) on the bar itself, with
   no box behind it, over the row's own box, that scrolls it by most of a
   width; the chips leave under the arrow's 36px and fade over the 24px before
-  it (`liveRowFade`), as the shelf's cut edge does. The shelf scrolls on its own, with no arrows: an edge
+  it (`liveRowEdges`: the shelf's `OVERFLOW_FADE` with the arrow's room as
+  its clear width, `--fade-clear-start`/`--fade-clear-end`). The shelf scrolls on its own, with no arrows: an edge
 that hides chips fades over 24px (`useOverflowEdges`, `OVERFLOW_FADE`).
 - **New thread.** The "+" right after the live row, outside its tablist so
   it never scrolls away (chrome/NewThreadChooser.tsx), is a ghost icon

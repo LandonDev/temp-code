@@ -1,9 +1,12 @@
 import { useCallback, useRef } from "react";
 
 /** The classes that fade a strip's cut edge: 24px of mask on each side that
- *  has more beyond it, none on a side that ends there. */
+ *  has more beyond it, none on a side that ends there. A side that holds a
+ *  control over its edge (the live row's scroll arrows) keeps it clear first:
+ *  `--fade-clear-start` / `--fade-clear-end` are that room, the ramp starting
+ *  after it (0 by default, so the edge itself fades). */
 export const OVERFLOW_FADE =
-  "data-overflow-start:[--fade-start:24px] data-overflow-end:[--fade-end:24px] [mask-image:linear-gradient(90deg,transparent,var(--foreground)_var(--fade-start,0px),var(--foreground)_calc(100%-var(--fade-end,0px)),transparent)]";
+  "data-overflow-start:[--fade-start:24px] data-overflow-end:[--fade-end:24px] [mask-image:linear-gradient(90deg,transparent_var(--fade-clear-start,0px),var(--foreground)_calc(var(--fade-clear-start,0px)_+_var(--fade-start,0px)),var(--foreground)_calc(100%_-_var(--fade-clear-end,0px)_-_var(--fade-end,0px)),transparent_calc(100%_-_var(--fade-clear-end,0px)))]";
 
 /**
  * Marks a horizontal scroller `data-overflow-start` / `data-overflow-end`

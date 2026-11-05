@@ -26,7 +26,7 @@ vi.mock("./HostGlyph", () => ({
 }));
 
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
-import { ChipHoverLabel, ThreadHeaderStrip, chipStatus, chipTitle, liveRowFade, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
+import { ChipHoverLabel, ThreadHeaderStrip, chipStatus, chipTitle, liveRowEdges, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 
 const thread = (id: string, title: string): ChipThread => ({
   id,
@@ -259,12 +259,17 @@ describe("ThreadHeaderStrip rows", () => {
     mount({ overflow: { left: false, right: true }, onScrollBy: vi.fn() });
     const right = screen.getByRole("button", { name: "Scroll threads right" });
     expect(right.parentElement!.parentElement!.className).not.toMatch(/(^|\s)bg-/);
-    const mask = liveRow().style.maskImage;
-    // Clear under the arrow's 36px, then a 24px ramp; the uncut end does not fade.
-    expect(mask).toContain("transparent 0px, var(--foreground) 0px");
-    expect(mask).toContain("calc(100% - 60px), transparent calc(100% - 36px)");
-    expect(liveRowFade(false, false)).toBeUndefined();
-    expect(liveRowFade(true, false)!.maskImage).toContain("transparent 36px, var(--foreground) 60px");
+    const row = liveRow();
+    // The shelf's one fade recipe: the arrow's end is flagged and keeps its
+    // 36px clear before the 24px ramp; the uncut end does not fade.
+    for (const c of OVERFLOW_FADE.split(" ")) expect(row.className).toContain(c);
+    expect(row.hasAttribute("data-overflow-end")).toBe(true);
+    expect(row.hasAttribute("data-overflow-start")).toBe(false);
+    expect(row.style.getPropertyValue("--fade-clear-end")).toBe("36px");
+    expect(row.style.getPropertyValue("--fade-clear-start")).toBe("");
+    expect(row.style.maskImage).toBe("");
+    expect(liveRowEdges(false, false)).toEqual({ "data-overflow-start": undefined, "data-overflow-end": undefined, style: {} });
+    expect(liveRowEdges(true, false).style).toEqual({ "--fade-clear-start": "36px" });
   });
 
   it("tooltips warming keep the scrollers and the end group: each row's provider sits inside its tablist", async () => {

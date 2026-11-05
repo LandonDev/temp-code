@@ -510,8 +510,11 @@ surface (lib/threadMenu.ts). Menus and popovers load with their first use,
 out of the first paint (chrome/menuRows.tsx). A label on hover is `Tip` or
 `TruncateTip`, never a `title=`. `TruncateTip` mounts no tooltip trigger
 while its text fits; it checks the element and any truncating text inside
-it on mount, text changes and resize. Activity labels, Agents status lines,
-fleet goals, home titles and split-view titles all use it. A
+it on mount, text changes and resize. Activity labels, fleet goals, home
+titles and split-view titles all use it. An Agents row's title and status
+line are measured the same way (`useTruncated`) but feed the row's one
+tooltip on its open control, which says what a line cuts with the model and
+its role, never a tooltip of their own (surfaces/threads/fleet/AgentRow.tsx). A
 popover scales from its trigger; a menu scales from its trigger; a context
 menu fades at the pointer; a dialog rises 4px and fades; a sheet slides 16px
 from its edge. Every one of them exits in `--dur-fast`, back a quarter of

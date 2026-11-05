@@ -157,7 +157,7 @@ export function ThreadHeaderStrip({
     "--strip-pad-l": overflow?.left ? `${ARROW_ROOM_PX}px` : undefined,
     "--strip-pad-r": overflow?.right ? `${ARROW_ROOM_PX}px` : undefined,
   } as CSSProperties;
-  const liveFade = liveRowFade(!!overflow?.left && !!onScrollBy, !!overflow?.right && !!onScrollBy);
+  const liveEdges = liveRowEdges(!!overflow?.left && !!onScrollBy, !!overflow?.right && !!onScrollBy);
   // Each row's chips share one TooltipProvider inside its tablist, and the
   // end group has its own (ThreadHeader): a provider swaps from a fragment
   // to the primitive when tooltips warm, remounting what it wraps, so none
@@ -198,8 +198,8 @@ export function ThreadHeaderStrip({
               aria-orientation="horizontal"
               data-strip="live"
               data-tauri-drag-region="false"
-              style={liveFade}
-              className="scrollbar-none flex min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none pl-[var(--strip-pad-l,6px)] pr-[var(--strip-pad-r,6px)]"
+              {...liveEdges}
+              className={`scrollbar-none flex min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none pl-[var(--strip-pad-l,6px)] pr-[var(--strip-pad-r,6px)] ${OVERFLOW_FADE}`}
             >
               <TooltipProvider>
                 <ChipRow chips={live} activeId={activeId} onSelect={onSelect} {...events} />
@@ -285,19 +285,20 @@ function ChipRow({
  *  arrow, 4px. The row pads that end by as much, so no chip sits under it. */
 const ARROW_ROOM_PX = 36;
 
-/** The fade a cut edge of the live row takes (DESIGN "Shadow"), as the shelf's:
- *  the chips leave under an arrow's room and fade over the 24px before it,
- *  so the arrow sits on the title bar itself, never on a box of its own. */
-const EDGE_FADE_PX = 24;
-
-export function liveRowFade(left: boolean, right: boolean): CSSProperties | undefined {
-  if (!left && !right) return undefined;
-  const l = left ? ARROW_ROOM_PX : 0;
-  const r = right ? ARROW_ROOM_PX : 0;
-  const lf = left ? l + EDGE_FADE_PX : 0;
-  const rf = right ? r + EDGE_FADE_PX : 0;
-  const mask = `linear-gradient(90deg, transparent ${l}px, var(--foreground) ${lf}px, var(--foreground) calc(100% - ${rf}px), transparent calc(100% - ${r}px))`;
-  return { maskImage: mask, WebkitMaskImage: mask };
+/** The live row's cut edges, on the shelf's fade (`OVERFLOW_FADE`, DESIGN
+ *  "Shadow"): an end with an arrow is flagged and keeps the arrow's room
+ *  clear, the chips leaving under it and fading over the 24px before it, so
+ *  the arrow sits on the title bar itself, never on a box of its own. */
+export function liveRowEdges(left: boolean, right: boolean) {
+  return {
+    "data-overflow-start": left || undefined,
+    "data-overflow-end": right || undefined,
+    // Plain string keys: a cast inside a computed key stops the React Compiler.
+    style: {
+      "--fade-clear-start": left ? `${ARROW_ROOM_PX}px` : undefined,
+      "--fade-clear-end": right ? `${ARROW_ROOM_PX}px` : undefined,
+    } as CSSProperties,
+  };
 }
 
 /** A scroll arrow over an end of the live row, on the title bar's own tone:

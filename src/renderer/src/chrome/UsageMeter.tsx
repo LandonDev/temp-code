@@ -137,7 +137,8 @@ export function MeterDetails({ provider, meter, now }: MeterProps) {
         <>
           {meter.windows.map((w) => (
             <div key={w.label} data-window={w.label} className="flex flex-col gap-1">
-              <div className="flex items-baseline gap-2">
+              {/* A window's name and when it refills are one fact: 4px apart. */}
+              <div className="flex items-baseline gap-1">
                 <span className="text-[13px] text-foreground">{w.name}</span>
                 {future(w.resetsAt, now) ? (
                   <span className="text-xs text-muted-foreground tabular-nums">in {untilShort(w.resetsAt, now)}</span>
