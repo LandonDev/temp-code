@@ -390,6 +390,9 @@ describe('a project card', () => {
     const more = moreButton(probe.container)!
     expect(more.textContent).toBe('2 more')
     expect(cardOf(probe.container).contains(more)).toBe(false)
+    // A 28px row of 13px words like the rows it windows, the /5 fill at once.
+    for (const c of ['h-7', 'text-[13px]', 'transition-none', 'hover:bg-foreground/5']) expect(more.className.split(/\s+/)).toContain(c)
+    expect(more.className.split(/\s+/)).not.toContain('h-6')
     probe.unmount()
   })
 

@@ -130,14 +130,17 @@ type Dialog =
 
 // --- small parts -----------------------------------------------------------
 
-/** The row behind which a windowed list keeps the rest. */
+/** The row behind which a windowed list keeps the rest: a 28px row of 13px
+ *  words, the label on the rows' 36px, the /5 hover fill at once (as the
+ *  Working section's "N more"). */
 function MoreRow({ hidden, onMore }: { hidden: number; onMore: () => void }) {
   return (
     <Button
       variant="ghost"
-      size="xs"
+      size="sm"
       onClick={onMore}
-      className="w-full justify-start pl-9 font-normal text-muted-foreground hover:text-foreground"
+      data-more-row
+      className="h-7 w-full justify-start gap-2 pl-9 text-[13px] font-normal text-muted-foreground tabular-nums transition-none hover:bg-foreground/5 hover:text-foreground"
     >
       {hidden} more
     </Button>
