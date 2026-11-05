@@ -90,6 +90,9 @@ targets:
       - path: Sources/Design/Tokens.swift
       - path: Sources/Design/Glyphs.swift
     dependencies:
+      # Tokens.swift reads the shared transcript type and lengths.
+      - package: TempCodeClient
+        product: TempCodeClient
       - package: TempCodeContract
         product: TempCodeContract
     info:

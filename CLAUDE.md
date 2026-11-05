@@ -2231,6 +2231,9 @@ proof and the sizing rules; the pieces, by name:
   (Design/TranscriptScale.swift; the desktop's ladder on iOS text styles,
   prose 15/22, lines 13/20, details 12/16), drawn through Tokens.swift's
   `.transcriptType(_:)`, `TranscriptType` and `TranscriptMetrics`; the
+  Live Activity target links `TempCodeClient` too, since it compiles the
+  shared Tokens.swift. The desktop in-out curve is asymmetric; its Swift
+  test checks its Bézier midpoint rather than assuming symmetry. The
   motion numbers are `MotionValues` (Design/MotionValues.swift, the
   desktop's durations, curves, springs, holds and loops exactly), which
   Design/Motion.swift turns into animations. Two vitest guards run on the

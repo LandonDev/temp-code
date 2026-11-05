@@ -84,11 +84,13 @@ import Testing
         }
     }
 
-    @Test func `ease-out is past halfway early and the in-out is symmetric`() {
+    @Test func `ease-out is past halfway early and in-out keeps the desktop curve`() {
         #expect(MotionValues.easeOut.value(at: 0.25) > 0.7)
         let inOut = MotionValues.easeInOut
-        #expect(abs(inOut.value(at: 0.5) - 0.5) < 0.02)
-        #expect(abs(inOut.value(at: 0.2) + inOut.value(at: 0.8) - 1) < 0.02)
+        // At Bézier parameter 0.5, x = 3/8 * (0.77 + 0.175) + 1/8.
+        // The desktop curve is asymmetric: halfway in time is already past halfway.
+        #expect(abs(inOut.value(at: 0.479375) - 0.5) < 0.00001)
+        #expect(abs(inOut.value(at: 0.5) - 0.5959707) < 0.00001)
     }
 
     @Test func `the durations climb in the desktop's order`() {

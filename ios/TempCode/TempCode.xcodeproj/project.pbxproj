@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		005E78F53D8BDD5C36DB40E1 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A97CD0E1CEDE6E34AFBFFEE6 /* RootView.swift */; };
+		01EADB50AA2D4A7CB4448DF3 /* TempCodeContract in Frameworks */ = {isa = PBXBuildFile; productRef = 06BB482460A8D52605811594 /* TempCodeContract */; };
 		04444F5FCB1893DA6FA280B5 /* SectionHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2129548FC89473DA37D3322A /* SectionHeader.swift */; };
 		05AD1E7A94B2823A93AC3F63 /* HostActivitySections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CDDDF2CA8755F715E737220 /* HostActivitySections.swift */; };
 		0A4F0ED169B62DF89431212E /* HostDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01E37D6416D5346B034A4FA1 /* HostDirectory.swift */; };
@@ -89,7 +90,7 @@
 		8D1B4118DABDD309FF348FB3 /* SegmentBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD66D288B479FE8640C9F870 /* SegmentBar.swift */; };
 		91D2B4000D398DFC592AA02F /* ThreadGone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8B110E0CA49C21D1DE3E14 /* ThreadGone.swift */; };
 		92E1C0AAE351969715CD1336 /* ShellNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5775732385A0463A8B6D828C /* ShellNavigator.swift */; };
-		952B0DC236564EB53F4CB4D3 /* TempCodeContract in Frameworks */ = {isa = PBXBuildFile; productRef = 06BB482460A8D52605811594 /* TempCodeContract */; };
+		952B0DC236564EB53F4CB4D3 /* TempCodeClient in Frameworks */ = {isa = PBXBuildFile; productRef = D0F15D178880313D99A561B7 /* TempCodeClient */; };
 		984BC2EE9446E27624C54DA7 /* PlanSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EF16AEF19CC66CBDF931211 /* PlanSettings.swift */; };
 		9B4E14B4A110774EED19F313 /* RulesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19B8C0F88BE12F9DE4E49481 /* RulesSheet.swift */; };
 		9DAB0C369F90C3AE63DE0A1F /* ProjectScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31AE3B91688F10E1A04FDB82 /* ProjectScreen.swift */; };
@@ -339,7 +340,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				952B0DC236564EB53F4CB4D3 /* TempCodeContract in Frameworks */,
+				952B0DC236564EB53F4CB4D3 /* TempCodeClient in Frameworks */,
+				01EADB50AA2D4A7CB4448DF3 /* TempCodeContract in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -637,6 +639,7 @@
 			);
 			name = TempCodeActivity;
 			packageProductDependencies = (
+				D0F15D178880313D99A561B7 /* TempCodeClient */,
 				06BB482460A8D52605811594 /* TempCodeContract */,
 			);
 			productName = TempCodeActivity;
@@ -1278,6 +1281,10 @@
 			productName = TempCodeContract;
 		};
 		56210DA32D24A0E33B6FF70F /* TempCodeClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TempCodeClient;
+		};
+		D0F15D178880313D99A561B7 /* TempCodeClient */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TempCodeClient;
 		};

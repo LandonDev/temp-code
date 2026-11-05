@@ -24,6 +24,12 @@ describe('ios/TempCode/project.yml', () => {
     expect(yml).toContain('TARGETED_DEVICE_FAMILY: "1"')
   })
 
+  it('links the shared tokens to the client package in the Live Activity', () => {
+    const activity = yml.match(/^  TempCodeActivity:\n([\s\S]*?)(?=^  [A-Za-z].*:\n)/m)?.[1] ?? ''
+    expect(activity).toContain('path: Sources/Design/Tokens.swift')
+    expect(activity).toMatch(/dependencies:\n[\s\S]*?- package: TempCodeClient\n\s+product: TempCodeClient/)
+  })
+
   it('never requires full screen', () => {
     expect(yml).not.toContain('UIRequiresFullScreen')
   })

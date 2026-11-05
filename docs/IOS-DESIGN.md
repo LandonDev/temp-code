@@ -1864,6 +1864,9 @@ No shadows except on floating layers (`.raised()` adds two in light mode,
 both with an offset). No glows. No badges with text; dots only, and only when
 they mean something. Nothing is shown twice.
 
+The Live Activity compiles the same `Tokens.swift` and links
+`TempCodeClient` for its transcript type and length values.
+
 ### Liquid Glass
 
 The functional layer that floats over content is Liquid Glass on iOS 26 and
