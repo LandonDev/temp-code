@@ -34,7 +34,7 @@ Home                      Inbox                 Search
 ├ Chats (threads outside every workspace)               ← across all hosts
 └ Workspace rows (logo, name, the rail's one status mark)
    └ Workspace (pushed): the desktop's middle sidebar
-      ├ Project row ▸ its active threads nested under it
+      ├ Project card ▸ the lines of what needs saying
       │   └ Project (pushed): every thread, active then dormant,
       │     "n archived" at the end
       ├ Chats (threads with no project)
@@ -81,23 +81,44 @@ the box's row while the box is in trouble (`HomeHostInput.via`). A host's
 one-off notes ("3 threads resumed after restart") are quiet lines at the
 top. Pairing lives in Settings → Hosts.
 
-**Workspace: projects and their active threads.** The title is the
-workspace's name, New Thread (`square.and.pencil`) in the bar. Each
-project is a section whose first row is the project: the name semibold
-with the worktree mark, the branch as a stamp under it, then the plan
-chip, the plus and the project's menu (New Thread, settings, the fleet
-switches per host copy); the name half pushes the project. Under it, its
-ACTIVE threads (threadStripModel.ts `isLiveThread`, and pinned): not
-settled, or unread, or with live, paused or failed work in its tree;
-pinned first, then newest first, every linked copy's mixed. Under each
-thread, what the desktop rail houses under it, one step in per level:
-its subagents, and for a pinned master its batch (the roots carrying its
-id, each with its own subagents; a plan whose build started gives its row
-to the build), every live or needs-you child, three settled ones, then a
-dim "2 more". Projects order by latest activity. Then the workspace's
-chats (no project), all of them, under a "Chats" header; then one dim
-"n archived projects" row per host copy. A project row carries no mark of
-its own: its threads' dots are its state.
+**Workspace: the project cards.** The title is the workspace's name, New
+Thread (`square.and.pencil`) in the bar. Each project is one card, the
+desktop's project card (`ProjectCardView` on sidebarRows.ts `cardLines`),
+built by the client package's `ProjectCards.card` (Shell/ProjectCard.swift)
+from `ThreadGroups`, every linked copy as one card: one container on the
+group fill (`Surface.group`, `systemGray6`, one step from the background in
+either mode; `.groupPressed` a step further while pressed, at once and never
+animated; `.groupSelected` while its project holds the thread beside it in
+the split), `Radius.row`, 12 × 8 in, 4 pt from the next card, no border or
+shadow (`CardMetrics` in Tokens.swift). The name in 13/20 medium primary at
+every state (an unread thread says so by its own line, never by the name),
+its last-active time in 12 tabular after it, then the ellipsis; the branch
+line 12/16 2 pt under it: the branch glyph and the branch (else "local
+checkout"), then "worktree" or "local". Then lines in 12/16 on 24 pt, in
+this order: needs you and failed roots (their mark, type glyph and title,
+the cue or detail under the title in amber or red: the increased-contrast
+`Tint.warningText` and `Tint.destructiveText` in light mode, 4.7:1 and
+4.8:1 on the fill where the system's read 2:1 and 3:1), master blocks (the
+master's line with the batch's done tally, its working subagents in the
+fleet's words, its marked batch threads one step in with working as a still
+dot, "N queued"; the master's line carries the block's one moving mark,
+`MasterCardBlock.lead`, while anything in it works), working and watching
+roots (the spinner or the watching dot, the type's tinted glyph, the title,
+the host glyph with two or more hosts, the elapsed past 3 s; an
+implementation's "3/7  task" under it), paused roots ("Paused" and the
+frozen elapsed), unread roots (the title in medium, no mark; never the
+thread on screen, `EnvironmentClient.visibleThread`, nor a thread housed in
+a master). One page of 32 lines, then "N more". Last a quiet count line of
+what has no line: "N dormant", "N archived", or "No threads" for a project
+with none; needs you and failed are lines, so they are never counted, and a
+pin earns no line. A tap on a line opens that thread (a needs-you line on
+its card); a tap anywhere else opens the project; a long press and the
+ellipsis open the project's menu (New Thread, settings, Project Plan, the
+fleet switches per host copy). The card's accessible name says what needs
+saying ("Alpha, 1 needs you, 2 working, 3 unread"). Then the workspace's
+chats (no project), all of them, under a "Chats" header 16 pt under the
+cards, each the one `ThreadRow`; then one dim "n archived projects" row per
+host copy. Projects order by latest activity.
 
 **Project: every thread.** The title is the project's name; the bar holds
 the plan chip, New Thread and the project's menu. The active threads
@@ -189,8 +210,9 @@ opens the same place folded or unfolded. The outer display allows portrait
 and both landscapes; the inner display ignores the key.
 
 **Furniture** (ios/TempCode/Sources/Shell/): HomeView.swift (level 1),
-WorkspaceScreen.swift, ProjectScreen.swift, ShellRows.swift (the rail
-mark, the working line, the thread and project rows, the project menu, the
+WorkspaceScreen.swift, ProjectCardView.swift (the project card),
+ProjectScreen.swift, ShellRows.swift (the rail mark, the working line, the
+thread rows, the project menu, the
 cue loader, `NewThreadPresenter`: the new-thread sheet presents from the
 root so any level can open it), HomeRows.swift (the clients as
 `HomeHostInput` values), HomeSlots.swift (what sibling features plug in),
@@ -1721,12 +1743,13 @@ projectLinks.ts). The phone reads `linkId` off `workspace.list` and
 shared link stays two rows, and a row without one is a pair of one. Within
 one host the first row with a link keeps it, so a pair has at most one
 member per host. A linked workspace is one row on Home (above); each linked
-project in it is one project row, led by the first host in registry order
-(its plus and its menu act on that copy; the fleet switches in the menu come
-as one set per host, each acting on that host's copy), with every copy's
-threads under it, pinned first, then newest first, whichever host they run
-on. Each copy's archived threads keep their own "N archived" row, with its
-host's glyph.
+project in it is one project card, led by the first host in registry order
+(its menu acts on that copy; the fleet switches in the menu come as one set
+per host, each acting on that host's copy), with every copy's lines on it,
+newest first in each kind, whichever host they run on, and every copy's
+archived threads in its count line. The project screen lists every copy's
+threads, pinned first, then newest first, and each copy's archived threads
+keep their own "N archived" row, with its host's glyph.
 
 **The host glyph.** With two or more hosts paired, every thread row on Home,
 every fleet row (`AgentRow`) and the agent detail's meta line carry one

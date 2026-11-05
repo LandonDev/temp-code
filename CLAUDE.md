@@ -2322,18 +2322,28 @@ proof and the sizing rules; the pieces, by name:
   architecture"): Home lists the workspaces (linked copies as one row) with
   the rail's one status mark (paused, needs you, working with the running
   thread's title, unread) and a Chats row; `Route.workspace(key:)`
-  (Shell/WorkspaceScreen.swift) is the middle sidebar, each project with its
-  active threads nested under it (subagents and a master's batch housed as
-  the rail houses them) and the stray chats under it; `Route.project(key:)`
-  (Shell/ProjectScreen.swift) is every thread, active then dormant. The
-  rules are the package's `HomeSections` (`home`, `workspace`, `project`,
-  `RailStatus`, `isActive`; ThreadGroups.swift `masters`/`batchHome`), pure
-  over `HomeHostInput` values; the app's `HomeRows` adapts the clients,
+  (Shell/WorkspaceScreen.swift) is the middle sidebar: each project as the
+  desktop's project card (Shell/ProjectCardView.swift on the package's
+  `ProjectCards.card`, Shell/ProjectCard.swift, a port of sidebarRows.ts
+  `cardLines`/`masterBlock`/`cardCounts` and projectCardModel.ts: the name,
+  the branch line and the mode, then needs you and failed roots as lines
+  (never counted), master blocks with `lead`, working and watching, paused,
+  unread (never the thread on screen, `EnvironmentClient.visibleThread`, nor
+  a housed one), a page of 32 then "N more", and "N dormant", "N archived"
+  or "No threads"; a pin earns no line; on the group fill, `Surface.group`
+  and `CardMetrics` in Tokens.swift; a line opens its thread, elsewhere the
+  project, a long press or the ellipsis the project's menu), then the stray
+  chats 16 pt under the cards; `Route.project(key:)`
+  (Shell/ProjectScreen.swift) is every thread, active then dormant, pinned
+  first. The rules are the package's `HomeSections` (`home`, `workspace`,
+  `project`, `RailStatus`, `isActive`; ThreadGroups.swift
+  `masters`/`batchHome`), pure over `HomeHostInput` values (ProjectCardTests
+  holds the card); the app's `HomeRows` adapts the clients,
   Shell/ShellRows.swift holds the shared rows and `NewThreadPresenter` (the
   new-thread sheet presents from the root), and `HomeSlots`
   (Shell/HomeSlots.swift) is where sibling features plug in (host notes,
-  host and project menus, project settings, the plan chip, the host's
-  trailing mark). On the iPhone Duo (plan 1) Home and Search are each one
+  host and project menus, project settings, the plan chip and the menu's
+  Project Plan row, the host's trailing mark). On the iPhone Duo (plan 1) Home and Search are each one
   `NavigationSplitView` on a `ShellNavigator` (Shell/ShellSplit.swift,
   ShellNavigator.swift: the sidebar's routes, the detail's root and stack,
   `open(route)` placing a route by `ShellPaths.column(of:)`), the pose is the
