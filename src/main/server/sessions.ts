@@ -1582,9 +1582,11 @@ export class SessionRegistry {
    *  again — restarted by hand, by its parent, or by a queued message —
    *  never advertises failure, even before its first new event lands. The
    *  stored fold is untouched, so an error nothing superseded comes back
-   *  if the session settles without producing anything. */
+   *  if the session settles without producing anything. A watching thread
+   *  (background tasks, a master's open batch) is between turns: its failed
+   *  last turn can be picked back up. */
   private canContinueError(meta: SessionMeta): boolean {
-    if (LIVE_STATUSES.has(meta.status)) return false
+    if (LIVE_STATUSES.has(meta.status) && meta.status !== 'watching') return false
     return this.storedContinuableError(meta.id)
   }
 
@@ -1648,18 +1650,20 @@ export class SessionRegistry {
   /** The failure card's "Route automatically": forget the thread's sticky
    *  account and the sign-in row's filter, take the best account for its
    *  model now (a dead one is out of routing), and if that is somewhere
-   *  new drop the harness so the next send respawns there. Answers where
-   *  the thread landed and whether it moved. */
+   *  new drop the harness so the next send respawns there (a watching
+   *  thread's at its next turn start, so its background work runs on until
+   *  then). Answers where the thread landed and whether it moved. */
   async reroute(sessionId: string): Promise<{ account: string | null; moved: boolean }> {
     const meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session ${sessionId}`)
-    if (LIVE_STATUSES.has(meta.status) || this.starting.has(sessionId)) throw new Error('the thread is still working')
+    if ((LIVE_STATUSES.has(meta.status) && meta.status !== 'watching') || this.starting.has(sessionId)) throw new Error('the thread is still working')
     const before = meta.account ?? null
     this.signIns.delete(sessionId)
     this.expectAccount(sessionId, { fresh: true })
     const after = this.store.getSession(sessionId)?.account ?? null
     const moved = after !== before
-    if (moved) await this.dropHandle(sessionId)
+    if (moved && meta.status === 'watching') this.pendingReboot.add(sessionId)
+    else if (moved) await this.dropHandle(sessionId)
     return { account: after, moved }
   }
 
@@ -1936,7 +1940,7 @@ export class SessionRegistry {
         return null
       })
     this.limited.set(sessionId, { switching })
-    if (!LIVE_STATUSES.has(meta.status)) this.continueAfterLimit(sessionId)
+    if (!LIVE_STATUSES.has(meta.status) || meta.status === 'watching') this.continueAfterLimit(sessionId)
   }
 
   /** The limited session has settled: once the switch lands, continue its
@@ -4741,7 +4745,7 @@ export class SessionRegistry {
     // A limited session settling lets its pending switch continue the tree;
     // one moving again by other means no longer waits on it.
     if (event.type === 'status' && this.limited.has(sessionId)) {
-      if (event.status === 'idle' || event.status === 'error') this.continueAfterLimit(sessionId)
+      if (event.status === 'idle' || event.status === 'error' || event.status === 'watching') this.continueAfterLimit(sessionId)
       else if (event.status === 'running') this.limited.delete(sessionId)
     }
     // Shared context (M8): a finished turn refreshes the thread's mirror.

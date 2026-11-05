@@ -16,8 +16,13 @@ export type ErrorRow =
   | { stopped: true; message: string; failure: null }
   | { stopped: false; message: string; failure: Failure; canRetry: boolean };
 
-/** `treeCanContinue` is the server's tree-wide verdict; `stopped` on the row is stamped by the fold. */
-export type OutcomeSession = Pick<Session, "blocks" | "status" | "thread"> & { treeCanContinue?: boolean };
+/** `treeCanContinue` is the server's tree-wide verdict and `canContinue` the row's own (a watching
+ *  thread's failed last turn, which the tree's flag leaves out while its work runs); `stopped` on
+ *  the row is stamped by the fold. */
+export type OutcomeSession = Pick<Session, "blocks" | "status" | "thread"> & {
+  treeCanContinue?: boolean;
+  canContinue?: boolean;
+};
 type StoppableBlock = Block & { stopped?: boolean };
 
 export function isErrorBlock(block: Block): boolean {
@@ -73,7 +78,8 @@ export function stopClosesTurn(session: OutcomeSession & { busy?: boolean }, blo
  *  bare "turn ended: …" wind-down settles the thread idle and is never
  *  continuable, so its card offers no Retry and the composer is the way on. */
 export function canRetryFrom(session: OutcomeSession, block: Block): boolean {
-  if (!session.treeCanContinue || session.status === "paused") return false;
+  const can = session.treeCanContinue || (session.status === "watching" && !!session.canContinue);
+  if (!can || session.status === "paused") return false;
   return lastErrorBlock(session.blocks)?.id === block.id;
 }
 

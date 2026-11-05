@@ -56,6 +56,15 @@ describe("errorRowOf", () => {
     expect(errorRowOf(paused, paused.blocks[0])).toMatchObject({ canRetry: false });
   });
 
+  it("offers Retry on a watching thread whose own last turn failed, which the tree's flag leaves out", () => {
+    const watching = session([err(1)], { status: "watching", treeCanContinue: false, canContinue: true });
+    expect(errorRowOf(watching, watching.blocks[0])).toMatchObject({ canRetry: true });
+    const recovered = session([err(1)], { status: "watching", treeCanContinue: false, canContinue: false });
+    expect(errorRowOf(recovered, recovered.blocks[0])).toMatchObject({ canRetry: false });
+    const idle = session([err(1)], { status: "idle", treeCanContinue: false, canContinue: true });
+    expect(errorRowOf(idle, idle.blocks[0])).toMatchObject({ canRetry: false });
+  });
+
   it("keeps the host's verdict when the row carries one", () => {
     const failure = { kind: "network" as const, account: null, summary: "Could not reach Anthropic", cause: "The connection dropped." };
     const s = session([{ ...err(1), failure }]);

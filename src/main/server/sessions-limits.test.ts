@@ -267,6 +267,48 @@ it('a handle that matches its thread is reused at a turn start, and a steer into
   expect(sends.at(-1)).toBe('steer this')
 })
 
+it('a watching thread whose turn failed can continue, and the tree flag the rail reads stays off while its work runs', async () => {
+  registry.limits = limits(null)
+  const { id, emit } = await running()
+  emit({ type: 'status', status: 'running' })
+  emit({ type: 'error', message: 'the stream broke' })
+  emit({ type: 'status', status: 'watching' })
+  expect(registry.get(id)).toMatchObject({ status: 'watching', canContinue: true, treeCanContinue: false })
+  const spawns = spawned.length
+  await registry.continueRun(id)
+  expect(spawned).toHaveLength(spawns + 1)
+  expect(sends.at(-1)).toMatch(/^<continue-run>/)
+  expect(registry.get(id)?.canContinue).toBe(false)
+})
+
+it('Route automatically on a watching thread moves it and boots the new account at its next turn, not at once', async () => {
+  registry.limits = byModel()
+  const { id, emit } = await running({ model: 'claude-fable-5-1' })
+  registry.setAccount(id, 'moved@x.com')
+  emit({ type: 'status', status: 'running' })
+  emit({ type: 'status', status: 'watching' })
+  const spawns = routes.length
+  await expect(registry.reroute(id)).resolves.toEqual({ account: 'f@x.com', moved: true })
+  expect(registry.get(id)?.status).toBe('watching')
+  expect(routes).toHaveLength(spawns)
+  await registry.send(id, 'go')
+  expect(routes.at(-1)).toEqual({ id, route: { account: 'f@x.com', pin: false } })
+  // A turn in progress still refuses.
+  emits.get(id)?.({ type: 'status', status: 'running' })
+  await expect(registry.reroute(id)).rejects.toThrow('still working')
+})
+
+it('a limit failover continues a thread that settles watching, on the new account', async () => {
+  registry.limits = limits({ from: 'a@x.com', to: 'b@x.com' })
+  const { id, emit } = await running()
+  emit({ type: 'status', status: 'running' })
+  emit({ type: 'error', message: "You've hit your limit", limit: { window: '5h' } })
+  emit({ type: 'status', status: 'watching' })
+  await settle()
+  expect(sends.filter((t) => t.startsWith('<continue-run>'))).toHaveLength(1)
+  expect(routes.at(-1)).toEqual({ id, route: { account: 'b@x.com', pin: false } })
+})
+
 it('a scope pin change recomputes threads under it; a refresh re-picks threads with no account', async () => {
   registry.limits = byModel()
   const ws = await registry.createWorkspace(root)

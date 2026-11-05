@@ -76,7 +76,7 @@ export function ErrorRowView({ block }: { block: Block }) {
   // The tree's continue flag lives on the meta until the projection carries it.
   const meta = useSessionMeta(sessionId);
   const outcome = session
-    ? { ...session, treeCanContinue: session.treeCanContinue ?? meta?.treeCanContinue }
+    ? { ...session, treeCanContinue: session.treeCanContinue ?? meta?.treeCanContinue, canContinue: meta?.canContinue }
     : { blocks: [block], status: "idle" as const, thread: undefined };
   // The turn's closing line (TurnEnd) says Stopped; the row stays only while its turn is open.
   if (!sessionId || stopClosesTurn(outcome, block)) return null;
