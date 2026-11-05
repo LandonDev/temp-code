@@ -39,6 +39,11 @@ enum LayoutProbe {
         state.schedule()
     }
 
+    /// A frame in points as the notes carry it: "x,y,width,height", whole points.
+    static func rect(_ frame: CGRect) -> String {
+        [frame.minX, frame.minY, frame.width, frame.height].map { String(Int($0.rounded())) }.joined(separator: ",")
+    }
+
     /// The tab and the focused stack's depth (RootView, on every navigation change).
     static func route(tab: String, depth: Int) {
         guard state.tab != tab || state.depth != depth else { return }

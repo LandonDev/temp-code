@@ -28,7 +28,7 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
     @State private var foldX: CGFloat = 0
 
     /// The desktop's 260 pt workspace column (`SidebarColumn`), the fold's when half open.
-    private var sidebar: SidebarColumn { SidebarColumn.of(halfOpen: halfOpen, foldX: foldX) }
+    private var sidebarColumn: SidebarColumn { SidebarColumn.of(halfOpen: halfOpen, foldX: foldX) }
 
     var body: some View {
         NavigationSplitView(columnVisibility: visibility, preferredCompactColumn: compactColumn) {
@@ -36,7 +36,10 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
                 sidebar()
                     .navigationDestination(for: Route.self, destination: destination)
             }
-            .navigationSplitViewColumnWidth(min: sidebar.min, ideal: sidebar.ideal, max: sidebar.max)
+            .navigationSplitViewColumnWidth(min: sidebarColumn.min, ideal: sidebarColumn.ideal, max: sidebarColumn.max)
+            #if DEBUG
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { LayoutProbe.note("sidebar.width", String(Int($0.rounded()))) }
+            #endif
         } detail: {
             NavigationStack(path: $navigator.detailStack) {
                 Group {

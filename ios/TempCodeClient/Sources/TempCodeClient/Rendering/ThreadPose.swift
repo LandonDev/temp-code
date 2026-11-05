@@ -112,6 +112,13 @@ public enum ReadingMeasure {
     /// The row inset at the screen's edge, as on the phone.
     public static let edge: CGFloat = 16
 
+    /// The column a segment reads at: the plan page (a document, as the
+    /// research report and Notes are) at 640, every transcript at 768. A
+    /// board, the fleet and the sources are lists that fill their pane.
+    public static func cap(for segment: ThreadSegment) -> CGFloat {
+        segment == .plan ? documentCap : cap
+    }
+
     /// The inset from each side to the text column: the edge, or more to
     /// centre a column no wider than `cap`.
     public static func sideInset(width: CGFloat, cap: CGFloat = cap) -> CGFloat {

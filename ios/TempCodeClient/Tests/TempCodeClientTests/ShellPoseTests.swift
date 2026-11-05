@@ -53,3 +53,20 @@ import Testing
         #expect(!ShellPose.split(sidebar: .tiled).isOverlay)
     }
 }
+
+@Suite struct SidebarColumnTests {
+    @Test("the sidebar asks for 260, never past 320; half open it follows the fold") func theSidebarAsksFor260() {
+        #expect(SidebarColumn.of(halfOpen: false, foldX: 475) == SidebarColumn(min: 260, ideal: 260, max: 320))
+        #expect(SidebarColumn.of(halfOpen: true, foldX: 475) == SidebarColumn(min: 260, ideal: 475, max: 475))
+        #expect(SidebarColumn.of(halfOpen: true, foldX: 200) == SidebarColumn(min: 260, ideal: 260, max: 320))
+    }
+
+    @Test("on the unfolded Duo's 951 pt window the 260 pt sidebar leaves a 691 pt detail: two panes, the chat over 360") func theUnfoldedDuoDetail() {
+        let detail: CGFloat = 951 - SidebarColumn.of(halfOpen: false, foldX: 475).ideal
+        #expect(detail == 691)
+        #expect(ThreadPose.mode(segments: 2, regularWidth: true, width: detail) == .twoPane)
+        let columns = ThreadPose.columns(width: detail, hairline: 1, division: nil)
+        #expect(columns.chat >= ThreadPose.minChat)
+        #expect(ReadingMeasure.columnFrame(width: detail) == detail)
+    }
+}

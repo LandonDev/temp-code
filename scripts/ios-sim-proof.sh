@@ -239,6 +239,28 @@ if not ok:
     print(json.dumps(r, indent=1, sort_keys=True), file=sys.stderr)
     sys.exit(1)
 print(f'ios-sim-proof: {line} ok')
+# The dock on a thread shot: a slot that takes room ends above the composer
+# with its own solid band, and the composer's box is the text column's width
+# (C1: the box's edges are the column's).
+notes = r.get('notes') or {}
+if (r.get('route') or {}).get('thread') and 'composer.frame' in notes and 'measure' in notes:
+    cx, cy, cw, ch = map(int, notes['composer.frame'].split(','))
+    measure = int(notes['measure'])
+    problems = []
+    if abs(cw - measure) > 1:
+        problems.append(f'composer {cw} wide, column {measure}')
+    slot = notes.get('slot.frame', 'none')
+    if slot != 'none':
+        sx, sy, sw, sh = map(int, slot.split(','))
+        if sy + sh > cy:
+            problems.append(f'slot ends at {sy + sh}, composer starts at {cy}')
+        if notes.get('dock.backing') != 'solid':
+            problems.append(f"slot over a {notes.get('dock.backing')} backing")
+    dock = f"{pose}/{label} dock: composer {cw} column {measure} slot {slot} backing {notes.get('dock.backing')} columns {notes.get('columns')} sidebar {notes.get('sidebar.width')}"
+    if problems:
+        print(f'ios-sim-proof: DOCK MISMATCH {dock}: ' + '; '.join(problems), file=sys.stderr)
+        sys.exit(1)
+    print(f'ios-sim-proof: {dock} ok')
 CHECK
 }
 # A capture with no launch: the shot and the report go under the pose's directories.

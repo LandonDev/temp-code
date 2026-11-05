@@ -191,7 +191,9 @@ leaves the detail about 690 pt at 951. While the hinge is half open
 (`UIHingeInteraction`, iOS 27.1) the sidebar's ideal width is the window's
 centre line, so the seam sits on the fold.
 
-The sidebar is Home's three levels unchanged; at the workspace level the
+The workspace list is a step back in the sidebar (Back, and the title menu
+below), never a third pane: the split has the sidebar and the detail only.
+The sidebar is Home's two levels; at the workspace level the
 title is a menu (`toolbarTitleMenu`) of every Home entry with the current
 one checked, left out when there is one, and a pick swaps the sidebar's path
 and leaves the detail alone. Its chevron shows on the inline title. In the
@@ -324,6 +326,10 @@ on the Settings row); on the thread screen the subject is "the Mac" for a
 darwin host and the host's name otherwise. Locked keeps Send: the relay
 forwards every method the phone uses on a locked Mac, so the working strip's
 idle slot says "The Mac is locked since 9:14" and the composer stays open.
+Like every slot that takes room, the line has its own band: the dock's
+backing is solid from the slot's top down (`ComposerSlot.backing`, `.solid`;
+`BottomEdgeFade(solid:)`), so a board row scrolling beneath never shows
+through the words. With no slot the composer floats on the soft edge alone.
 Asleep and unreachable block through the composer's own line, Send
 disabled: "The Mac is asleep: reading only until it wakes", "The Mac is
 unreachable since 9:14" (the lane is held by the box's word, the socket's
@@ -611,7 +617,8 @@ agent detail) reads at most 768 pt wide, the desktop's column, centred
 same column and its 16 pt edges (`ReadingMeasure.columnFrame`), so the
 box's edges are the text's; the scroll indicators stay at the screen's
 edge. The plan page, the research report and Notes read at 640
-(`ReadingMeasure.documentCap`); the board, fleet, sources and master lists are rows and
+(`ReadingMeasure.documentCap`; `ReadingMeasure.cap(for:)` is the rule by
+segment); the board, fleet, sources and master lists are rows and
 take the column. An agent page in the transcript is 640 wide in a lone
 transcript and re-measures on a fold; its full screen takes the column. The
 diff stays unified at every width.
@@ -2517,7 +2524,12 @@ a change settles, with `window`, `screen`, `scale`, `fps`, `hSize`, `vSize`,
 is the log of every change of `window`, `hSize`, `vSize`, `orientation`,
 `hinge.state` and each notes key (`{ t, key, from, to }`, 500 at most,
 cleared at launch). Any view says `LayoutProbe.note("sidebar", "visible")`;
-a repeated value is not an event.
+a repeated value is not an event. The shell and the thread screen note
+`sidebar.width`, `columns` (hero, gap, chat in two panes, else the mode),
+`measure` (the text column), `composer.frame`, `slot.frame` ("none" while
+the slot takes no room) and `dock.backing`; `pose_check` holds every thread
+shot to the dock's rule: the composer as wide as the column, and a slot
+that ends above the composer on a solid band.
 
 The fold cycle (`duo_fold_cycle`, the `duo` set's last step) launches the
 2,000-row chat unfolded, folds, unfolds (recorded to `cycle-unfold.mov`) and

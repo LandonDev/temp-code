@@ -76,6 +76,15 @@ private func session(_ id: String, status: SessionStatus, parentId: String? = ni
 }
 
 @Suite struct ComposerSlotTests {
+    @Test func `a slot that takes room has its own solid band; with none the composer floats on the fade`() {
+        #expect(ComposerSlot.backing(occupies: true) == .solid)
+        #expect(ComposerSlot.backing(occupies: false) == .fade)
+        // A locked relayed host's line takes room at compact width even with nothing else in the slot.
+        let occupies = ComposerSlot.occupies(.empty, regularWidth: false, relayLine: true)
+        #expect(ComposerSlot.backing(occupies: occupies) == .solid)
+        #expect(ComposerSlot.backing(occupies: ComposerSlot.occupies(.empty, regularWidth: false)) == .fade)
+    }
+
     @Test func `the slot is the desktop's composerSlotOf: the timer while a turn works or waits, the held rows, nothing else`() {
         #expect(ComposerSlot(status: .running, sending: false) == .timer)
         #expect(ComposerSlot(status: .starting, sending: false) == .timer)

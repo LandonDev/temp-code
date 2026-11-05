@@ -8,7 +8,7 @@ import TempCodeClient
 /// Lives beside the plan screen so the design foundations can lift it.
 enum PlanType {
     /// The widest measure a page takes; on a phone the width is the measure.
-    static let measure = ReadingMeasure.documentCap
+    static let measure = ReadingMeasure.cap(for: .plan)
     /// The page's horizontal inset: the text edge every block aligns to.
     static let inset: CGFloat = 20
     /// Above the first block and below the last.

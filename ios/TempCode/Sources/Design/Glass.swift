@@ -129,17 +129,38 @@ struct TCGlassContainer<Content: View>: View {
 /// the dock sits under.
 struct BottomEdgeFade: View {
     static let lead: CGFloat = 24
+    /// Solid from the bar's top: the soft edge ramps in over `lead` above it
+    /// and the bar's own height is backed whole (`DockBacking.solid`: the
+    /// dock while its slot takes room, so the slot's words have their own band).
+    var solid = false
 
     var body: some View {
-        let fade = LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.45)], startPoint: .top, endPoint: .bottom)
-        ZStack {
-            Rectangle().fill(.ultraThinMaterial).mask(fade)
-            LinearGradient(stops: [.init(color: Surface.background.opacity(0), location: 0), .init(color: Surface.background.opacity(0.85), location: 0.5)], startPoint: .top, endPoint: .bottom)
+        Group {
+            if solid {
+                VStack(spacing: 0) {
+                    ramp(LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom))
+                        .frame(height: Self.lead)
+                    ZStack {
+                        Rectangle().fill(.ultraThinMaterial)
+                        Surface.background.opacity(0.85)
+                    }
+                }
+            } else {
+                ramp(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.45)], startPoint: .top, endPoint: .bottom))
+            }
         }
         .padding(.top, -Self.lead)
         .ignoresSafeArea(edges: .bottom)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    /// The material under `mask` and the background stepping to 85 % with it.
+    private func ramp(_ mask: LinearGradient) -> some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial).mask(mask)
+            Surface.background.opacity(0.85).mask(mask)
+        }
     }
 }
 

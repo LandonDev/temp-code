@@ -45,6 +45,15 @@ public enum ComposerSlot: Hashable, Sendable {
         regularWidth || slot.hasContent || relayLine
     }
 
+    /// What the dock draws behind itself. A slot that takes room has its
+    /// own band: the backing ramps in above the slot and is solid from the
+    /// slot's top down, so its words (the timer, a held row, a relayed
+    /// host's "The Mac is locked") never sit over a row scrolling beneath.
+    /// With no slot the composer floats on the soft edge alone.
+    public static func backing(occupies: Bool) -> DockBacking {
+        occupies ? .solid : .fade
+    }
+
     /// When the open turn's clock started: the click that opened it
     /// (`sentAt`, kept after the host's stamp lands so the timer never steps
     /// back by the round trip), else the host's `busySince`.
@@ -78,4 +87,10 @@ public enum ComposerSlot: Hashable, Sendable {
 
     /// The timer's Stop while its interrupt is out.
     public static let stopping = "Stopping…"
+}
+
+/// The dock's backing: the soft edge, or solid from the dock's top.
+public enum DockBacking: String, Hashable, Sendable {
+    case fade
+    case solid
 }

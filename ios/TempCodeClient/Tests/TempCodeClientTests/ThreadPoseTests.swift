@@ -81,6 +81,14 @@ import Testing
 }
 
 @Suite struct ReadingMeasureTests {
+    @Test("by kind: the plan page at 640, the chat and the log at 768") func byKind() {
+        #expect(ReadingMeasure.cap(for: .plan) == 640)
+        #expect(ReadingMeasure.cap(for: .chat) == 768)
+        #expect(ReadingMeasure.cap(for: .log) == 768)
+        #expect(ReadingMeasure.columnFrame(width: 951 - 260, cap: ReadingMeasure.cap(for: .chat)) == 691)
+        #expect(ReadingMeasure.columnFrame(width: 1200, cap: ReadingMeasure.cap(for: .plan)) == 672)
+    }
+
     @Test("a transcript reads at 768, a document at 640, centred past the column") func aTranscriptReadsAt768ADocumentAt640() {
         #expect(ReadingMeasure.cap == 768)
         #expect(ReadingMeasure.documentCap == 640)
@@ -130,14 +138,6 @@ import Testing
         let columns = ThreadPose.columns(width: 951, hairline: hairline, division: band, fit: 600)
         #expect(columns.gapIsDivision)
         #expect(columns.hero == 470)
-    }
-}
-
-@Suite struct SidebarColumnTests {
-    @Test("the sidebar asks for 260, never past 320; half open it follows the fold") func theSidebarAsksFor260() {
-        #expect(SidebarColumn.of(halfOpen: false, foldX: 475) == SidebarColumn(min: 260, ideal: 260, max: 320))
-        #expect(SidebarColumn.of(halfOpen: true, foldX: 475) == SidebarColumn(min: 260, ideal: 475, max: 475))
-        #expect(SidebarColumn.of(halfOpen: true, foldX: 200) == SidebarColumn(min: 260, ideal: 260, max: 320))
     }
 }
 

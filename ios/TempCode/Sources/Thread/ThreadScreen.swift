@@ -448,6 +448,10 @@ struct ThreadScreen: View {
         #if DEBUG
         .onChange(of: poseRecord(width: width, mode: mode, columns: columns, division: division, barShown: barShown), initial: true) { _, record in
             TestHooks.recordPose(sessionId: sessionId, record)
+            // The Duo proof's notes: the panes, and the transcript's text column.
+            LayoutProbe.note("columns", mode == .twoPane ? "\(Int(columns.hero)),\(Int(columns.gap)),\(Int(columns.chat))" : "\(mode)")
+            let measure = mode == .single ? min(width - 2 * ReadingMeasure.edge, ReadingMeasure.cap(for: segment)) : (mode == .twoPane ? columns.chat : width) - 2 * ReadingMeasure.edge
+            LayoutProbe.note("measure", String(Int(measure.rounded())))
         }
         #endif
     }

@@ -48,17 +48,29 @@ struct BottomDock: View {
     }
 
     var body: some View {
+        let backing = ComposerSlot.backing(occupies: occupies)
         VStack(spacing: ComposerMetrics.slotGap) {
             if occupies {
                 WorkingStripView(client: client, sessionId: sessionId, session: session, thread: thread, slot: slot)
                     .transition(slotTransition)
+                    #if DEBUG
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("slot.frame", LayoutProbe.rect($0)) }
+                    #endif
             }
             ComposerBar(client: client, sessionId: sessionId, session: session, thread: thread, focused: focused, draft: draft)
+                #if DEBUG
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("composer.frame", LayoutProbe.rect($0)) }
+                #endif
         }
         .padding(.horizontal, ComposerBar.edge)
         .padding(.top, 6)
         .padding(.bottom, 6)
-        .background(alignment: .top) { BottomEdgeFade() }
+        // A slot that takes room has its own band, solid from its top (`ComposerSlot.backing`).
+        .background(alignment: .top) { BottomEdgeFade(solid: backing == .solid) }
+        #if DEBUG
+        .onChange(of: backing, initial: true) { LayoutProbe.note("dock.backing", backing.rawValue) }
+        .onChange(of: occupies, initial: true) { if !occupies { LayoutProbe.note("slot.frame", "none") } }
+        #endif
         .animation(reduceMotion ? (occupies ? Motion.fast : nil) : (occupies ? Motion.layout : Motion.fast), value: occupies)
     }
 }

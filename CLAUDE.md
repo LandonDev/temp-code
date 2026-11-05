@@ -2494,13 +2494,15 @@ proof and the sizing rules; the pieces, by name:
   the plan chip, the agents button, Notes and the menu; a subagent's screen
   and a bare chat keep the thread's own header. The screen's pose on the iPhone Duo (the pager or two
   panes by its own size class and width, the columns from the fold's
-  division band, the 640 pt measure, the transcript's reflow) is
+  division band, the 768 pt measure, the transcript's reflow) is
   `Rendering/ThreadPose.swift` (`ThreadPose`, `TwoPaneColumns`: the chat
   keeps 360, the hero yields first, a board fits its widest task within
   320–672 and half; `ReadingMeasure`: the transcript at 768, a document at
-  640, the composer on the column's edges; `TranscriptReflow`; tested in
-  ThreadPoseTests; the sidebar's 260 pt is `SidebarColumn` in
-  Shell/ShellPose.swift), and the
+  640, `cap(for:)` by segment, the composer on the column's edges, and a
+  slot that takes room on its own solid band, `ComposerSlot.backing`;
+  `TranscriptReflow`; tested in ThreadPoseTests and ComposerSlotTests; the
+  sidebar's 260 pt is `SidebarColumn` in Shell/ShellPose.swift, tested in
+  ShellPoseTests), and the
   27.1 reads (`Duo.divisionBand`, `\.tcVerticalBar`, `BarRegionProbe`) are
   `Design/Duo.swift` behind a runtime `#available` (docs/IOS-DESIGN.md "The thread
   screen on the iPhone Duo"). The models they read
@@ -2605,7 +2607,7 @@ proof and the sizing rules; the pieces, by name:
   (`duo_fold_cycle`, four shots, a .mov, the events asserted). The app writes
   `Documents/layout-report.json` and `layout-events.json` from
   `LayoutProbe` (ios/TempCode/Sources/Shell/LayoutProbe.swift, DEBUG, on
-  RootView's root; `LayoutProbe.note(key, value)` from any view;
+  RootView's root; `LayoutProbe.note(key, value)` from any view; the shell and thread screen note `sidebar.width`, `columns`, `measure`, `composer.frame`, `slot.frame` and `dock.backing`, which `pose_check` holds to the dock's rule;
   `LayoutProbe.route` from RootView and ThreadScreen). project.yml allows
   portrait and both landscapes (scripts/ios-project.test.ts pins it); 27.1
   symbols live in the app target under a runtime `#available` only. `bun run
