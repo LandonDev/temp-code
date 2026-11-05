@@ -115,7 +115,10 @@ beside motionGuard and counts each named palette exception.
    - imports: `@/lib/utils` → `@renderer/lib/cn`; `@/components/ui/x` → `./x`;
      `@tabler/icons-react` → `@renderer/chrome/icons` (lucide names: IconX →
      X, IconChevronRight → ChevronRight …); drop `'use client'`.
-   - look: no `t-raise`/`t-push` classes (flat), `bg-accent` hover fills →
+   - look: a library's own `t-raise`/`t-push` classes are never copied into a
+     caller: an action is our `Button`, whose solid variants (default,
+     secondary, destructive) are raised and whose ghost, outline and link
+     variants and every row stay flat; `bg-accent` hover fills →
      `bg-muted` (our `accent` is the blue), `rounded-2xl` cards → `rounded-xl`,
      `text-base` → `text-sm`, `text-[0.9375rem]` → `text-[13px]`,
      `dark:` tweaks dropped where the tokens already differ.
