@@ -195,7 +195,8 @@ struct RootView: View {
     private var homeSlots: HomeSlots {
         var slots = HomeSlots(
             projectSettings: { client, project in AnyView(ProjectSettingsMenuItem(client: client, project: project)) },
-            projectTrailing: { AnyView(ProjectPlanChip(client: $0, project: $1)) }
+            projectTrailing: { AnyView(ProjectPlanChip(client: $0, project: $1)) },
+            projectPlan: { AnyView(ProjectPlanMenuItem(client: $0, project: $1)) }
         )
         let registry = model.registry
         slots.hostTrailing = { AnyView(DriftMark(client: $0)) } // iOS 21: the deploy drift mark (Shell/Hosts)
@@ -292,7 +293,10 @@ struct RootView: View {
             home.open(.thread(environmentId: environmentId, sessionId: session.id, seq: nil))
         case "workspace":
             // The sidebar at the Workspace level with nothing open: the split's empty detail.
-            if let entry = HomeSections.home(hosts: HomeRows.inputs([client])).entries.first {
+            // A workspace, not the Chats entry: the project cards are what the shot shows.
+            let entries = HomeSections.home(hosts: HomeRows.inputs([client])).entries
+            let workspace = entries.first { if case .workspace = $0.kind { true } else { false } }
+            if let entry = workspace ?? entries.first {
                 home.open(.workspace(key: entry.id))
             }
         case "notification":

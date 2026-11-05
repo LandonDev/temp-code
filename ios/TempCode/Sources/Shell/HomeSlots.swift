@@ -24,14 +24,17 @@ struct HomeSlots {
     /// Deploy drift: the "+N" mark, trailing on the host status row and the
     /// host's row at Home's foot.
     var hostTrailing: ((EnvironmentClient) -> AnyView)?
-    /// The project plan: the "Plan" / "3/7" chip before the plus on a
-    /// project row, and in the project screen's bar (ProjectPlanChip.swift).
+    /// The project plan: the "Plan" / "3/7" chip in the project screen's
+    /// bar (ProjectPlanChip.swift).
     var projectTrailing: ((EnvironmentClient, ProjectMeta) -> AnyView)?
+    /// The project plan: its row in the project's menu (the card's ellipsis
+    /// and long press), which opens the plan thread; nothing without a plan.
+    var projectPlan: ((EnvironmentClient, ProjectMeta) -> AnyView)?
     /// Relayed hosts (thread 29): one dim line under a host row's name,
     /// "through box, locked since 9:14" for a host reached through another;
     /// nothing for a paired one.
     var hostSubline: ((EnvironmentClient) -> AnyView)?
 
     /// A project gets a menu only when something fills it.
-    var hasProjectMenu: Bool { projectBatch != nil || projectSettings != nil }
+    var hasProjectMenu: Bool { projectBatch != nil || projectSettings != nil || projectPlan != nil }
 }

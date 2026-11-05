@@ -3,8 +3,8 @@ import TempCodeClient
 import TempCodeContract
 
 /// The rows the three Home levels share: the rail's status mark, the
-/// working line, a thread row at its depth, the project row, and the
-/// project menu. The rules behind them are the client package's
+/// working line, a thread row at its depth, and the project menu (the
+/// workspace screen's project card is ProjectCardView.swift). The rules behind them are the client package's
 /// `HomeSections`; nothing here decides what shows.
 
 /// The desktop rail's one mark per workspace: the pause glyph, a warning
@@ -191,61 +191,7 @@ private struct ListOnScreen: ViewModifier {
     }
 }
 
-/// A project on its workspace's screen: the name with the worktree mark and
-/// the branch under it, which pushes the project's every thread; then the
-/// plan chip, the plus and the menu. One row for every host's copy.
-struct ProjectEntryRow: View {
-    @Environment(AppModel.self) private var model
-    @Environment(ShellNavigator.self) private var navigator
-    let project: HomeProject
-    let slots: HomeSlots
-    let newThread: (EnvironmentClient, WorkspaceMeta, ProjectMeta?) -> Void
-
-    var body: some View {
-        let meta = project.project
-        if let client = model.registry.client(project.environmentId) {
-            let workspace = client.workspaces.first { $0.id == meta.workspaceId }
-            HStack(spacing: 0) {
-                Button { navigator.open(.project(key: project.id)) } label: {
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 6) {
-                            Text(meta.name)
-                                .textStep(.title, weight: .semibold)
-                                .lineLimit(1)
-                            if meta.mode == .worktree {
-                                MetaGlyph("arrow.triangle.pull", weight: .semibold, label: "Worktree")
-                            }
-                        }
-                        if let branch = meta.branch, !branch.isEmpty {
-                            Text(branch)
-                                .textStep(.stamp)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, minHeight: Layout.rowHeight, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.pressable)
-                .accessibilityAddTraits(.isHeader)
-                slots.projectTrailing?(client, meta)
-                if let workspace {
-                    NewThreadButton { newThread(client, workspace, meta) }
-                }
-                if slots.hasProjectMenu {
-                    HeaderMenu(systemImage: "ellipsis", label: "\(meta.name) menu") {
-                        ProjectMenuContent(project: project, slots: slots, newThread: newThread)
-                    }
-                }
-            }
-            .padding(.top, 6)
-            .listRowInsets(EdgeInsets(top: 0, leading: Layout.textEdge, bottom: 0, trailing: 4))
-            .listRowSeparator(.hidden)
-        }
-    }
-}
-
-/// A project's menu: New Thread, its settings, and the fleet switches per
+/// A project's menu: New Thread, its settings, its plan, and the fleet switches per
 /// host copy. The lead copy (the first host in registry order) takes the
 /// plus and the settings entry; the settings find their home themselves.
 struct ProjectMenuContent: View {
@@ -264,6 +210,7 @@ struct ProjectMenuContent: View {
                 Divider()
                 settings(client, meta)
             }
+            slots.projectPlan?(client, meta)
             if let batch = slots.projectBatch {
                 Divider()
                 if project.isLinked {

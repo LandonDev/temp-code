@@ -7,9 +7,9 @@
 #   TC_TEST_PAIR_LINK="https://host/pair#XXXXX-XXXXX" TC_TEST_PAIR_NAME="The box" scripts/ios-sim-proof.sh
 #
 # TC_PROOF_SET picks the shots:
-#   shell   Home, the archived list, Inbox, Search with results, Settings, Hosts
-#           and a thread, in light and dark, Home once more at an accessibility
-#           text size, and Home with the host gone (the status row) when
+#   shell   Home, a workspace's project cards, the archived list, Inbox,
+#           Search with results, Settings, Hosts and a thread, in light and
+#           dark, Home and the workspace once more at an accessibility text size, and Home with the host gone (the status row) when
 #           TC_PROOF_KILL_CMD says how to stop the host.
 #           TC_TEST_THREAD="part of a title" picks the thread shot (else the newest);
 #           TC_TEST_SEARCH="hello" is the query the Search shot runs;
@@ -315,6 +315,7 @@ shell_set() {
   appearance light
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
   shot 01-home-light home
+  shot 01b-workspace-light workspace
   shot 02-archived-light archived
   shot 03-inbox-light inbox
   shot 03b-inbox-item-light inbox "" "" item
@@ -325,6 +326,7 @@ shell_set() {
   shot 07-thread-light thread
   appearance dark
   shot 08-home-dark home
+  shot 08b-workspace-dark workspace
   shot 09-archived-dark archived
   shot 10-inbox-dark inbox
   shot 10b-inbox-item-dark inbox "" "" item
@@ -336,6 +338,7 @@ shell_set() {
   appearance light
   xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
   shot 15-home-a11y home
+  shot 15a-workspace-a11y workspace
   shot 15b-inbox-a11y inbox
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
 }

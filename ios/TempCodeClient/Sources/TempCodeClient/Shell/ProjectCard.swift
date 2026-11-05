@@ -204,6 +204,9 @@ public struct ProjectCard: Sendable, Hashable, Identifiable {
     public var counts: [ProjectCardCount]
     /// The card's accessible name: "Alpha, 1 needs you, 2 working, 3 unread".
     public var accessibilityLabel: String
+    /// The thread on screen is one of its threads (or housed under one): the
+    /// card reads selected beside it.
+    public var holdsShown: Bool
 
     public var id: String { project.id }
     public var name: String { project.project.name }
@@ -275,7 +278,8 @@ public enum ProjectCards {
             lines: Array(all.prefix(page)),
             hidden: max(0, all.count - page),
             counts: counts,
-            accessibilityLabel: accessibilityLabel(meta.name, counted)
+            accessibilityLabel: accessibilityLabel(meta.name, counted),
+            holdsShown: roots.contains { holds($0.item, shown, $0.environmentId) }
         )
     }
 

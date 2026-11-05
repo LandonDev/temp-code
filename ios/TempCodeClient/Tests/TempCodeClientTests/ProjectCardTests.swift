@@ -132,6 +132,8 @@ private func kinds(_ card: ProjectCard) -> [String] {
         // A subagent on screen counts for its root.
         let child = try card(seen: seen, [meta("x", updatedAt: 100), meta("c", projectId: nil, parentId: "x")], shown: ("env_a", "c"))
         #expect(child.lines.isEmpty)
+        #expect(child.holdsShown)
+        #expect(!unread.holdsShown)
         // Housed: a settled, unseen batch thread is its master's tally, never a line of its own.
         let housed = try card([meta("m", status: .watching, isMaster: true), meta("b", status: .done, masterId: "m")])
         guard case .master(let block) = try #require(housed.lines.first) else { Issue.record("no block"); return }

@@ -245,3 +245,30 @@ struct ProjectPlanChip: View {
         }
     }
 }
+
+/// The project plan as a row of the project's menu (the workspace screen's
+/// card): opens the thread that wrote the plan, the milestones done under
+/// its name once the plan is kept as the project's. Nothing until the state
+/// is loaded (the card asks), and nothing for a project with no plan thread.
+struct ProjectPlanMenuItem: View {
+    let client: EnvironmentClient
+    let project: ProjectMeta
+    @Environment(NavigationRouter.self) private var router
+
+    var body: some View {
+        if let state = ThreadCaches.projectPlans.state(client.environment.id, project.id) ?? nil, let sessionId = state.sessionId {
+            let done = state.milestones.filter(\.done).count
+            let total = state.milestones.count
+            Button {
+                router.pending = .thread(environmentId: client.environment.id, sessionId: sessionId, seq: nil)
+            } label: {
+                Label {
+                    Text("Project Plan")
+                    if state.pinned, total > 0 { Text("\(done) of \(total) milestones done") }
+                } icon: {
+                    Image(systemName: "flag.checkered")
+                }
+            }
+        }
+    }
+}

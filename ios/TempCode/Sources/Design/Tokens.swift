@@ -21,6 +21,18 @@ enum Tint {
     static let cyan = Color(.systemCyan)
     /// A state with no urgency: the queued dot, the stopped square.
     static let quiet = Color(.systemGray2)
+    /// Warning and destructive as small text on a group fill: in light mode
+    /// the system's increased-contrast orange and red (4.5:1 on `Surface.group`
+    /// where the plain ones read near 2:1 and 3:1); dark mode keeps the system's.
+    static let warningText = legible(.systemOrange)
+    static let destructiveText = legible(.systemRed)
+
+    private static func legible(_ base: UIColor) -> Color {
+        Color(UIColor { traits in
+            guard traits.userInterfaceStyle != .dark else { return base.resolvedColor(with: traits) }
+            return base.resolvedColor(with: UITraitCollection(traitsFrom: [traits, UITraitCollection(accessibilityContrast: .high)]))
+        })
+    }
 }
 
 enum Surface {
@@ -35,6 +47,12 @@ enum Surface {
     static let needsYou = Tint.warning.opacity(0.08)
     /// What a chip or a pill sits on: one quiet step on either background.
     static let fill = Color(.tertiarySystemFill)
+    /// A container resting on the list (the workspace screen's project card):
+    /// one step from the background in either mode, the pressed step one
+    /// further, the selected step between them. Never animated.
+    static let group = Color(.systemGray6)
+    static let groupPressed = Color(.systemGray4)
+    static let groupSelected = Color(.systemGray5)
 }
 
 /// The radius ladder, and the arithmetic that keeps nested corners
@@ -183,6 +201,36 @@ enum Layout {
     /// A reading measure for a list of hits at regular width (Search): a 951 pt
     /// row would run a snippet across the whole display.
     static let listMeasure: CGFloat = 720
+}
+
+/// The project card's lengths (the desktop's `ProjectCardView`): 12 × 8 in,
+/// 4 pt apart, the branch line 2 pt under the name, 24 pt lines in a 12 pt
+/// mark column, a step of 16 for a batch thread, and the fold under the cards
+/// 16 pt below them. Type is `TranscriptType.line` for the name and
+/// `TranscriptType.detail` for the rest.
+enum CardMetrics {
+    static let padding = EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
+    static let gap: CGFloat = 4
+    static let branchGap: CGFloat = 2
+    /// Above the first line and above the count line.
+    static let linesGap: CGFloat = 4
+    static let line: CGFloat = 24
+    /// The name line's box.
+    static let nameLine: CGFloat = 20
+    /// A line under a line (the tally, the subagents, a needs-you detail).
+    static let subline: CGFloat = 16
+    static let mark: CGFloat = 12
+    static let dot: CGFloat = 6
+    /// Between the mark, the glyph and the words.
+    static let glyphGap: CGFloat = 8
+    /// How far a batch thread steps in under its master.
+    static let step: CGFloat = 16
+    /// Where a line's words begin: the mark, the glyph and the two gaps.
+    static let textEdge: CGFloat = mark + glyphGap + mark + glyphGap
+    /// The fold that follows the cards starts this far below them.
+    static let foldGap: CGFloat = 16
+    /// The ellipsis' hit area grows this far past its glyph on every side.
+    static let menuSlop: CGFloat = 12
 }
 
 /// A one-pixel rule in `separator`: horizontal, inset from the leading edge

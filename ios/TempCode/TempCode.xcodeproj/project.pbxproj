@@ -11,6 +11,7 @@
 		01EADB50AA2D4A7CB4448DF3 /* TempCodeContract in Frameworks */ = {isa = PBXBuildFile; productRef = 06BB482460A8D52605811594 /* TempCodeContract */; };
 		04444F5FCB1893DA6FA280B5 /* SectionHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2129548FC89473DA37D3322A /* SectionHeader.swift */; };
 		05AD1E7A94B2823A93AC3F63 /* HostActivitySections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CDDDF2CA8755F715E737220 /* HostActivitySections.swift */; };
+		096695295BFCB50EF1D4254F /* ProjectCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3D51E34A0EF18DB4998BE0 /* ProjectCardView.swift */; };
 		0A4F0ED169B62DF89431212E /* HostDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01E37D6416D5346B034A4FA1 /* HostDirectory.swift */; };
 		0DBCCA842B8C531ACF33700E /* DeployLogSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF2A213AB83A542936993C6 /* DeployLogSheet.swift */; };
 		0E1E99641BDC5DF10E6B7133 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BBB53D44FB85BE6A24DDD1F /* AppModel.swift */; };
@@ -243,6 +244,7 @@
 		55C87A95828B07727E81E7F3 /* HomeRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeRows.swift; sourceTree = "<group>"; };
 		5775732385A0463A8B6D828C /* ShellNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellNavigator.swift; sourceTree = "<group>"; };
 		58D166A7F8BA1C8BE69233DA /* SettingsStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStyles.swift; sourceTree = "<group>"; };
+		5A3D51E34A0EF18DB4998BE0 /* ProjectCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectCardView.swift; sourceTree = "<group>"; };
 		5C358254B666145347F305AA /* AccountMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountMenu.swift; sourceTree = "<group>"; };
 		5F1571E23DC0A5AF459D1D8F /* HomeSlots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeSlots.swift; sourceTree = "<group>"; };
 		5F5108B96E192F6491699A20 /* RelayedHostRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayedHostRow.swift; sourceTree = "<group>"; };
@@ -572,6 +574,7 @@
 				3E87EC3DF336E9F9C38A9188 /* NeedsYouNotes.swift */,
 				2EF16AEF19CC66CBDF931211 /* PlanSettings.swift */,
 				E49A4F9DB3744F026BF627CC /* PreambleEditor.swift */,
+				5A3D51E34A0EF18DB4998BE0 /* ProjectCardView.swift */,
 				31AE3B91688F10E1A04FDB82 /* ProjectScreen.swift */,
 				709C36838327A4F049A08ECF /* ProjectSettingsSheet.swift */,
 				E36EC9E0F01E8828FCDA4BCB /* ProjectSettingsStyles.swift */,
@@ -863,6 +866,7 @@
 				D53BE8F762F05A72B80A6E43 /* PreambleRow.swift in Sources */,
 				D5D5628E0B7EBD41212C7296 /* PresenceLine.swift in Sources */,
 				6314676328C74CBBC9E337DA /* Pressable.swift in Sources */,
+				096695295BFCB50EF1D4254F /* ProjectCardView.swift in Sources */,
 				FF9653423A10D35225822895 /* ProjectPlanChip.swift in Sources */,
 				5E94305D77CCDC74A173C510 /* ProjectPlanStyles.swift in Sources */,
 				28D82E2D2310815FA5C4B701 /* ProjectPlanView.swift in Sources */,
