@@ -19,7 +19,7 @@ type Props = {
   /** Extra classes on the panel (fixed height, etc). */
   className?: string;
   /** Where focus lands on open (Base UI's popup prop: a ref or a function).
-   *  Default: a field that focused itself, else the close button. */
+   *  Default: `openFocusOf`. */
   initialFocus?: ComponentProps<typeof DialogContent>["initialFocus"];
   children: ReactNode;
 };
@@ -57,13 +57,29 @@ export function useModalClose() {
   return useContext(CloseContext);
 }
 
+/** Where a Modal's focus lands on open: a field that focused itself, else
+ *  the first text field, else the footer's confirm (when it is enabled and
+ *  not destructive, so Enter does what the dialog is for), else its Cancel;
+ *  never the close button, so Enter never quietly closes a dialog. */
+export function openFocusOf(popup: HTMLElement | null): HTMLElement | true {
+  if (!popup) return true;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && popup.contains(active)) return active;
+  const field = popup.querySelector<HTMLElement>(
+    'input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not(:disabled), textarea:not(:disabled)',
+  );
+  if (field) return field;
+  const confirm = popup.querySelector<HTMLButtonElement>("[data-dialog-confirm]");
+  if (confirm && !confirm.disabled && confirm.dataset.variant !== "destructive") return confirm;
+  const cancel = popup.querySelector<HTMLButtonElement>("[data-dialog-cancel]");
+  if (cancel && !cancel.disabled) return cancel;
+  return true;
+}
+
 export function ModalPanel({ busy = false, title, description, size = "md", className, initialFocus, children }: Props) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const popup = useRef<HTMLDivElement>(null);
-  const focusOnOpen = () => {
-    const active = document.activeElement;
-    return active instanceof HTMLElement && popup.current?.contains(active) ? active : true;
-  };
+  const focusOnOpen = () => openFocusOf(popup.current);
   return (
     <DialogContent
       ref={popup}

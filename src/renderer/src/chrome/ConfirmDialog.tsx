@@ -51,10 +51,11 @@ export function DialogFooter({
           {note}
         </span>
       ) : null}
-      <Button variant="secondary" disabled={pending} onClick={() => (close ? close(onCancel) : onCancel())}>
+      <Button data-dialog-cancel variant="secondary" disabled={pending} onClick={() => (close ? close(onCancel) : onCancel())}>
         Cancel
       </Button>
       <Button
+        data-dialog-confirm
         type={onConfirm ? "button" : "submit"}
         variant={danger ? "destructive" : "default"}
         onClick={onConfirm}

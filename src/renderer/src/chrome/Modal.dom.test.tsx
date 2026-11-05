@@ -89,6 +89,45 @@ describe("Modal", () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Name")));
   });
 
+  it("opens on its confirm when it has no field, never on its close", async () => {
+    render(
+      <Modal title="Add workspace" onClose={vi.fn()}>
+        <ModalBody>Body</ModalBody>
+        <DialogFooter onCancel={vi.fn()} confirmLabel="Add" onConfirm={vi.fn()} />
+      </Modal>,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Add" })));
+  });
+
+  it("opens on Cancel when the confirm is destructive or disabled", async () => {
+    render(
+      <Modal title="Delete" onClose={vi.fn()}>
+        <DialogFooter onCancel={vi.fn()} confirmLabel="Delete" danger onConfirm={vi.fn()} />
+      </Modal>,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" })));
+    cleanup();
+    render(
+      <Modal title="Save" onClose={vi.fn()}>
+        <DialogFooter onCancel={vi.fn()} confirmLabel="Save" disabled onConfirm={vi.fn()} />
+      </Modal>,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" })));
+  });
+
+  it("opens on its first text field ahead of the footer", async () => {
+    render(
+      <Modal title="Rename" onClose={vi.fn()}>
+        <ModalBody>
+          <input type="checkbox" aria-label="Also" />
+          <input aria-label="Title" />
+        </ModalBody>
+        <DialogFooter onCancel={vi.fn()} confirmLabel="Save" onConfirm={vi.fn()} />
+      </Modal>,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Title")));
+  });
+
   it("waits while busy", async () => {
     const onClose = vi.fn();
     render(
