@@ -1,14 +1,14 @@
 import { useState } from "react";
 import type { ProjectPlanState } from "@server/shared/contract-projectplan";
 import { Button } from "../components/ui/button";
+import { MENU_ROW } from "../components/ui/menu-row";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/lazy-menus";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { usePlanFile } from "../hooks/usePlanFile";
 import { useProjectPlan } from "../lib/projectPlan";
 import { sessionStore } from "../lib/tcserver/store";
 import { useProject } from "../stores/project";
 import { dialogsChunk } from "../surfaces/chunks";
-import { Milestone } from "./icons";
+import { Maximize2, Milestone } from "./icons";
 
 /** The plan's options ride the dialogs chunk, mounted only while the popover is open (surfaces/threads/ProjectPlanCard.tsx). */
 const ProjectPlanOptions = dialogsChunk.surface("ProjectPlanOptions");
@@ -22,10 +22,11 @@ export function planChipLabel(state: Pick<ProjectPlanState, "pinned" | "mileston
 }
 
 /**
- * The project header's plan (docs/PROJECT-PLAN.md): while the selected
- * project has a project plan, a chip after the new-thread chooser, "Plan",
- * with its milestones' tally once it is kept as the project's plan. Its
- * popover opens the plan and offers the plan's options.
+ * The project's plan in the title bar (docs/PROJECT-PLAN.md): while the
+ * selected project has a project plan, a chip leading the end group, "Plan",
+ * with its milestones' tally once it is kept as the project's plan. Its words
+ * say what it is, so it has no tooltip. Its popover opens the plan and offers
+ * the plan's options.
  */
 export function ProjectPlanChip() {
   const projectId = useProject((s) => s.selectedProjectId);
@@ -42,30 +43,29 @@ export function ProjectPlanChip() {
   };
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  data-tauri-drag-region="false"
-                  className="gap-1.5 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground"
-                  {...dialogsChunk.intent}
-                />
-              }
-            />
-          }
-        >
-          <Milestone className="size-3.5 text-muted-foreground" />
+      {/* The glyph follows the word's ink (currentColor), muted at rest and
+          foreground on hover; the tally stays muted. */}
+      <PopoverTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="sm"
+            data-tauri-drag-region="false"
+            className="gap-2 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground"
+            {...dialogsChunk.intent}
+          />
+        }
+      >
+        <Milestone className="size-3.5" />
+        {/* 8px from the glyph, the tally 4px after the word (DESIGN "Typography"). */}
+        <span className="flex items-baseline gap-1">
           <span>{label}</span>
           {tally ? <span className="tabular-nums text-muted-foreground">{tally}</span> : null}
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{state.pinned ? "The project's plan" : "The project plan"}</TooltipContent>
-      </Tooltip>
+        </span>
+      </PopoverTrigger>
       <PopoverContent side="bottom" align="end" aria-label="Project plan" className="w-80 gap-0 p-1">
-        <Button variant="ghost" size="sm" onClick={openPlan} className="h-8 w-full justify-start rounded-lg font-normal">
+        <Button variant="ghost" size="sm" onClick={openPlan} className={`${MENU_ROW} h-7 w-full justify-start rounded-lg font-normal`} data-plan-open>
+          <Maximize2 />
           Open the plan
         </Button>
         {session && doc ? (

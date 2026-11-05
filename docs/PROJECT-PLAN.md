@@ -69,9 +69,12 @@ project header's plan chip (see below) lists the same actions with the pin:
 
 With every milestone done the two milestone buttons give way to "Every
 milestone is done". **Keep as the project's plan** is the view header's
-"Project's plan" toggle (`projectPlan.pin`): pressed, the project header's
+"Project's plan" toggle (`projectPlan.pin`): pressed, the title bar's
 chip reads "Plan" with the milestones' tally, `3/7` (the phone's chip keeps
-"Plan · 3 of 7 milestones done").
+"Plan · 3 of 7 milestones done"). The desktop chip (chrome/ProjectPlanChip.tsx)
+leads the title bar's end group: the Milestone glyph in the word's ink, 8px
+from "Plan", the tally 4px after it, no tooltip; its popover's first row,
+Open the plan, is a 28px menu row with its glyph.
 
 ## Milestone ticks
 

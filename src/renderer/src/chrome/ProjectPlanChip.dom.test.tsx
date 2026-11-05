@@ -10,6 +10,8 @@ vi.mock("../hooks/usePlanFile", () => ({ usePlanFile: () => null }));
 vi.mock("../lib/tcserver/store", () => ({ sessionStore: { get: () => undefined, requestOpen: vi.fn() } }));
 vi.mock("../surfaces/threads/ProjectPlanCard", () => ({ ProjectPlanOptions: () => null }));
 
+import { MENU_ROW } from "../components/ui/menu-row";
+import { TOOLTIP_DELAY, tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 import { ProjectPlanChip, planChipLabel } from "./ProjectPlanChip";
 
 const base: ProjectPlanState = {
@@ -61,12 +63,35 @@ describe("ProjectPlanChip", () => {
     expect(planChipLabel({ ...base, pinned: true })).toEqual({ label: "Plan", tally: "3/7" });
   });
 
-  it("opens a popover whose first row opens the plan", async () => {
+  it("opens a popover whose first row opens the plan: a menu row with its glyph", async () => {
     planState = base;
     render(<ProjectPlanChip />);
     await act(async () => {
       fireEvent.click(screen.getByRole("button"));
     });
-    expect(await screen.findByText("Open the plan")).toBeTruthy();
+    const open = (await screen.findByText("Open the plan")).closest("button")!;
+    for (const c of [...MENU_ROW.split(" "), "h-7"]) expect(open.className.split(/\s+/)).toContain(c);
+    expect(open.className).not.toContain("h-8");
+    expect(open.querySelector("svg")).toBeTruthy();
+  });
+
+  it("puts 8px between its glyph and word and 4px before the tally, the glyph in the word's ink, and no tooltip", async () => {
+    await tooltipChunk.load();
+    act(() => warmTooltips());
+    planState = { ...base, pinned: true };
+    render(<ProjectPlanChip />);
+    const chip = screen.getByRole("button");
+    expect(chip.className.split(/\s+/)).toContain("gap-2");
+    const glyph = chip.querySelector("svg")!;
+    expect(glyph.getAttribute("class")).not.toContain("text-muted-foreground");
+    const words = screen.getByText("Plan").parentElement!;
+    expect(words.className.split(/\s+/)).toContain("gap-1");
+    expect(words.textContent).toBe("Plan3/7");
+    // Its words say what it is: hovering it opens nothing.
+    fireEvent.pointerEnter(chip, { pointerType: "mouse" });
+    fireEvent.mouseEnter(chip);
+    fireEvent.mouseMove(chip);
+    await act(() => new Promise((r) => setTimeout(r, TOOLTIP_DELAY + 100)));
+    expect(document.querySelector('[data-slot="tooltip-content"]')).toBeNull();
   });
 });
