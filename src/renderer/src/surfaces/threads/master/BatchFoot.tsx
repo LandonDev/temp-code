@@ -228,8 +228,15 @@ const StepRow = memo(function StepRow({ step, detail, now, open, onStop, onFold 
             <BusyLabel busy={stopping} label="Stop" />
           </Button>
         ) : failed && hasConsole(step) ? (
-          // One word whatever the state, so nothing moves under the pointer: the chevron says open or closed.
-          <Button variant="ghost" size="xs" onClick={() => onFold(step.id, open)} aria-expanded={open}>
+          // One word whatever the state, so nothing moves under the pointer: the chevron says open or closed,
+          // and the fill is its hover alone, never a pressed look while open (the one disclosure recipe).
+          <Button
+            variant="ghost"
+            size="xs"
+            className="aria-expanded:bg-transparent aria-expanded:hover:bg-foreground/7"
+            onClick={() => onFold(step.id, open)}
+            aria-expanded={open}
+          >
             Log
             <ChevronRight className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />
           </Button>

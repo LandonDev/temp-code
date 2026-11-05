@@ -50,7 +50,16 @@ describe("BatchFoot", () => {
     expect(panel.querySelector("[data-console]")?.textContent).toContain("vitest 2 failed");
   });
 
-  it("an instant step says no time", () => {
+  it("the Log toggle keeps no fill while its log is open, as every disclosure trigger", () => {
+    render(<BatchFoot batch={failedGate()} titleOf={() => undefined} onSave={noop} onStop={noop} />);
+    const log = screen.getByRole("button", { name: "Log" });
+    expect(log.getAttribute("aria-expanded")).toBe("true");
+    const classes = log.className.split(/\s+/);
+    expect(classes).toEqual(expect.arrayContaining(["aria-expanded:bg-transparent", "aria-expanded:hover:bg-foreground/7"]));
+    expect(classes).not.toContain("aria-expanded:bg-foreground/7");
+  });
+
+    it("an instant step says no time", () => {
     render(<BatchFoot batch={failedGate()} titleOf={() => undefined} onSave={noop} onStop={noop} />);
     expect(document.querySelector('[data-step="land"] [data-step-time]')).toBeNull();
     expect(document.querySelector('[data-step="gate"] [data-step-time]')?.textContent).toBe("1m 9s");
