@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BackgroundWork } from "@server/shared/events";
 import { STALE_WATCH_MS } from "@server/shared/watch";
@@ -21,6 +21,7 @@ vi.mock("../../lib/tcserver/store", () => ({ useSessionMeta: () => null, useSess
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
 import { activityRows } from "../../lib/activity";
+import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { ActivityRows } from "./ActivitySection";
 
 afterEach(() => {
@@ -57,6 +58,12 @@ function mount() {
 const rowOf = (kind: string): HTMLElement => document.querySelector(`[data-kind="${kind}"]`) as HTMLElement;
 
 describe("ActivitySection", () => {
+  it("mounts no tooltip trigger for a label that fits", async () => {
+    await act(async () => { await tooltipChunk.load(); warmTooltips(); });
+    mount();
+    expect(screen.getByText("Serve the app").getAttribute("data-slot")).not.toBe("tooltip-trigger");
+  });
+
   it("lists the thread's own work oldest first, each one plain line, and never a subagents row: Agents lists them", () => {
     mount();
     const kinds = [...document.querySelectorAll("[data-kind]")].map((e) => e.getAttribute("data-kind"));

@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
+import { TruncateTip } from "../../../components/tip";
 import { fleetCounts, fleetSentence } from "../../../lib/threads/agents";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 
@@ -12,10 +12,9 @@ export function FleetHeader({ goal, agents }: { goal: string; agents: Pick<Sessi
   return (
     <div data-slot="fleet-header" className="flex min-w-0 flex-col gap-0.5">
       {goal ? (
-        <Tooltip>
-          <TooltipTrigger render={<p className="truncate text-[15px] font-medium text-foreground" />}>{goal}</TooltipTrigger>
-          <TooltipContent className="max-w-md">{goal}</TooltipContent>
-        </Tooltip>
+        <TruncateTip text={goal}>
+          <p className="truncate text-[15px] font-medium text-foreground">{goal}</p>
+        </TruncateTip>
       ) : null}
       <p className="text-[13px] text-muted-foreground tabular-nums">
         {parts.map((p, i) => (

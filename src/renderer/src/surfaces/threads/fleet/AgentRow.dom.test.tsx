@@ -46,6 +46,12 @@ afterEach(() => {
 });
 
 describe("AgentRowView", () => {
+  it("mounts no tooltip trigger on a status line that fits", () => {
+    const meta = fixtureMeta("fit", { status: "running" });
+    const { container } = render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);
+    expect(container.querySelector('[data-row-status] [data-slot="tooltip-trigger"]')).toBeNull();
+  });
+
   it("carries the provider's mark and the short model, the role first in its tooltip", async () => {
     const meta = fixtureMeta("r", { title: "Review the fold", agentType: "reviewer", status: "running", context1m: true });
     const { container } = render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);

@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { BackgroundWork } from "@server/shared/events";
 import type { ThreadRules } from "@server/shared/rules";
-import { Tip } from "../components/tip";
+import { Tip, TruncateTip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { Input } from "../components/ui/input";
@@ -497,6 +497,7 @@ function HomeHeading({ chip, ...events }: { chip: StripChip } & ChipEvents) {
   const title = chipTitle(chip);
   return (
     <div className="flex min-w-0 pl-1.5">
+      <TruncateTip text={title} side="bottom">
       <h1
         data-home-heading
         data-menu-id={chip.id}
@@ -506,6 +507,7 @@ function HomeHeading({ chip, ...events }: { chip: StripChip } & ChipEvents) {
       >
         {title}
       </h1>
+      </TruncateTip>
     </div>
   );
 }

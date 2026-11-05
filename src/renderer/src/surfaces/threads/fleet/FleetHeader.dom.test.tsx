@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 /** The orchestration header (A18): the goal, then one sentence of counts. */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
 import { tooltipChunk, warmTooltips } from "../../../components/ui/tooltip";
 import { FleetHeader } from "./FleetHeader";
 import { FLEET_METAS } from "./fleetFixture";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("FleetHeader", () => {
   it("says the counts in order, joined with commas, needs you in amber and failed in red", () => {
@@ -35,7 +35,15 @@ describe("FleetHeader", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("puts the whole goal in a tooltip", async () => {
+  it("mounts no tooltip trigger when the goal fits", async () => {
+    await act(async () => { await tooltipChunk.load(); warmTooltips(); });
+    const { container } = render(<FleetHeader goal="Ship it" agents={FLEET_METAS} />);
+    expect(container.querySelector('[data-slot="tooltip-trigger"]')).toBeNull();
+  });
+
+  it("puts the whole cut goal in a tooltip", async () => {
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
     const goal = "Build the shell and the thread screens in parallel, then review both";
     const { container } = render(<FleetHeader goal={goal} agents={FLEET_METAS} />);
     await act(async () => {

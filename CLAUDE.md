@@ -305,6 +305,8 @@ app replaces itself from the feed, and only from the feed.
 - Settings rows and sections use `components/page.tsx` (`PageRow`,
   `PageSection`), which pass native props and data attributes to their roots;
   Hosts exports these as `Row` and `Group` without copying their markup.
+- Cut text uses `TruncateTip`; fitted text mounts no tooltip trigger.
+  It measures truncating text inside a status line too.
 - Agent details use `ModelLine` before their host, branch and numbers.
   Queue effort names use `effortWord` from lib/models.ts.
 - File headers, file previews and implementation tallies use `Counts` from

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { animate } from "motion/react";
+import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { SplitShell } from "./SplitShell";
 
 // A settle lands at once, so a test reads where it ends; the call is kept to read its spring.
@@ -67,6 +68,12 @@ describe("SplitShell's sash", () => {
 });
 
 describe("SplitShell", () => {
+  it("mounts no tooltip trigger on a title that fits", async () => {
+    await act(async () => { await tooltipChunk.load(); warmTooltips(); });
+    const { container } = render(shell());
+    expect(container.querySelector("[data-view-title]")?.getAttribute("data-slot")).not.toBe("tooltip-trigger");
+  });
+
   it("without a board the chat fills the pane: no header, no separator", () => {
     render(shell({ hasBoard: false }));
     expect(screen.getByText("the chat")).toBeTruthy();

@@ -4,6 +4,7 @@ import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
 import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
 import { Spinner } from "@renderer/components/ui/spinner";
+import { TruncateTip } from "@renderer/components/tip";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
 import { Bot, Clock, Eye, Globe, Laptop, Layers, Square, Terminal, Workflow } from "../../chrome/icons";
@@ -146,10 +147,9 @@ function Row({
         <Glyph className="size-3.5 text-muted-foreground" />
       </ItemMedia>
       <ItemContent className="min-w-0">
-        <Tooltip>
-          <TooltipTrigger render={<span className="block truncate text-[13px] leading-5 text-foreground" />}>{row.label}</TooltipTrigger>
-          <TooltipContent>{row.label}</TooltipContent>
-        </Tooltip>
+        <TruncateTip text={row.label}>
+          <span className="block truncate text-[13px] leading-5 text-foreground">{row.label}</span>
+        </TruncateTip>
       </ItemContent>
       <ItemActions className="gap-1">
         {now > 0 ? (

@@ -137,7 +137,7 @@ a surface above `/10`.
 | 11px | a key cap, a group label in a menu |
 | 12px | secondary lines in the chrome, descriptions under a title, status words, a count in a row's status line |
 | 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings, an Item's title, a tooltip (regular, 20px lines); the transcript's action, thinking, notice and closing lines (20px lines in 28px rows, 32px in an open group's table) and their counts (`+46 −3`) |
-| 14px | dialog and panel body text (22px lines); the transcript's prose, the person's bubble, a question's prompt and the composer's field (22px lines) |
+| 14px | a split view's header title (semibold); dialog and panel body text (22px lines); the transcript's prose, the person's bubble, a question's prompt and the composer's field (22px lines) |
 | 15px | an h2 in the model's prose; a document's body (a plan, a board's plan, a report: 15/24, its h3 15/24 medium) |
 | 16px | a title: a dialog's, a sheet's, a page's, an inbox item's, a note's, a report's, an agent's (semibold on 24px lines at -0.01em, one recipe, `lib/typeScaleGuard.test.ts`); an h1 in the model's prose; a document's h2 |
 | 18px | a document's h1 (26px lines, -0.01em) |
@@ -453,7 +453,10 @@ bar alone is words and keys. Menus come in one size: the row of "Spacing",
 in the dropdown and the context menu alike. A thread offers the same rows on every
 surface (lib/threadMenu.ts). Menus and popovers load with their first use,
 out of the first paint (chrome/menuRows.tsx). A label on hover is `Tip` or
-`TruncateTip`, never a `title=`. A
+`TruncateTip`, never a `title=`. `TruncateTip` mounts no tooltip trigger
+while its text fits; it checks the element and any truncating text inside
+it on mount, text changes and resize. Activity labels, Agents status lines,
+fleet goals, home titles and split-view titles all use it. A
 popover scales from its trigger; a menu scales from its trigger; a context
 menu fades at the pointer; a dialog rises 4px and fades; a sheet slides 16px
 from its edge. Every one of them exits in `--dur-fast`, back a quarter of

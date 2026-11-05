@@ -174,8 +174,8 @@ export function AgentRowView({
         <>
           <span />
           <span className="flex h-4 min-w-0 items-center gap-2" data-row-status>
-            <Tooltip>
-              <TooltipTrigger render={<span className="flex min-w-0" />}>
+            <TruncateTip text={statusText}>
+              <span className="flex min-w-0">
                 <StatusMark
                   state={state}
                   glyph={false}
@@ -183,9 +183,8 @@ export function AgentRowView({
                   detail={detail || undefined}
                   className={cn("min-w-0", toned && "**:data-[slot=status-detail]:text-current")}
                 />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-sm">{statusText}</TooltipContent>
-            </Tooltip>
+              </span>
+            </TruncateTip>
             <span className="ms-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground tabular-nums">
               {tally ? <span data-tally>{tally.short}</span> : null}
               <AgentClock meta={meta} state={state} />

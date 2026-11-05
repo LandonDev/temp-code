@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { slotTarget, type HeaderModel } from "../lib/threadHeaderModel";
@@ -22,6 +22,7 @@ vi.mock("./HostGlyph", () => ({
   HostGlyph: ({ environmentId }: { environmentId?: string }) => <span data-host-glyph={environmentId} />,
 }));
 
+import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 import { ChipHoverLabel, ThreadHeaderStrip, chipStatus, chipTitle, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 
 const thread = (id: string, title: string): ChipThread => ({
@@ -90,6 +91,13 @@ afterEach(() => {
 });
 
 describe("ThreadHeaderStrip pointer", () => {
+  it("mounts no tooltip trigger on the home's title when it fits", async () => {
+    await act(async () => { await tooltipChunk.load(); warmTooltips(); });
+    const { container } = mount({ model: { ...model, live: [], dormant: [], heading: chip("home", "A short title") } });
+    expect(container.querySelector("[data-home-heading]")?.textContent).toBe("A short title");
+    expect(container.querySelector("[data-home-heading]")?.getAttribute("data-slot")).not.toBe("tooltip-trigger");
+  });
+
   it("a right press does not select, and the contextmenu that follows opens that chip's menu", async () => {
     const { onSelect, onContextMenu } = mount();
     fireEvent.pointerDown(tab("Beta"), { button: 2 });

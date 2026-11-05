@@ -48,11 +48,12 @@ export function useTruncated(text: string): { ref: (el: HTMLElement | null) => v
       setCut(false);
       return;
     }
-    const measure = () => setCut(el.scrollWidth > el.clientWidth);
+    const targets = [el, ...el.querySelectorAll<HTMLElement>(".truncate")];
+    const measure = () => setCut(targets.some((target) => target.scrollWidth > target.clientWidth));
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
-    observer.observe(el);
+    targets.forEach((target) => observer.observe(target));
     return () => observer.disconnect();
   }, [el, text]);
   return { ref, cut };
@@ -73,8 +74,9 @@ export function TruncateTip({
   children: ReactElement<{ ref?: Ref<HTMLElement> }>;
 }) {
   const { ref, cut } = useTruncated(text);
+  if (!cut) return cloneElement(children, { ref });
   return (
-    <Tooltip disabled={!cut}>
+    <Tooltip>
       <TooltipTrigger render={cloneElement(children, { ref })} />
       <TooltipContent side={side}>{text}</TooltipContent>
     </Tooltip>
