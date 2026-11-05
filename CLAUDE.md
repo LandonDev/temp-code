@@ -931,8 +931,8 @@ mismatch logs one `[muse]` line.
   1.2; the default is `isDefault`); it answers empty with no login, so the
   renderer's static rows stand in until then. Wonder Full
   (`muse-wonder-full-1.0`) is orchestrators-only by default
-  (`defaultApproval` in rules.ts, which `explicitModels` applies to probed
-  rows too); Spark and Wonder are for everyone.
+  (`defaultApproval` in rules.ts, which `withProbedDefaults` gives every
+  probed row the rules never decided); Spark and Wonder are for everyone.
 - Accounts: the login is static (`auth.json`: a device-code `access_token`,
   the minted `api_key` the model traffic presents, `user_email`,
   `subs_active`; no refresh, no expiry), aliax-core's `muse-code` service
@@ -2819,7 +2819,16 @@ this is the short one.
   Orchestrators only / Off, Fable orchestrators-only by default, and a
   model the saved rules do not list is Off: a copy saved before that rule
   is written out once with every catalog model it lacked as Everyone,
-  `explicitModels`) govern `spawn_agent` alone. The rules and the thread
+  `explicitModels`) govern `spawn_agent` alone. The page lists every
+  provider's models from the host's live catalog (`catalog.get`, asked at
+  each mount: the static rows, the probed ones such as Muse Code's, the Meta
+  rows under claude and codex), an empty provider as one muted line, and a
+  model the rules name that the catalog lacks as a muted "not on this host"
+  row that keeps its policy (`staleModels` in lib/tcserver/rules.ts). A
+  probed row the copy never decided reads its `defaultApproval`
+  (`withProbedDefaults`, applied in `rules.get` and `rulesFor`, never
+  written back, so the page and `spawn_agent` agree on each host); the page
+  saves Off as `approved: false` so a decision is never taken for absence. The rules and the thread
   defaults have one copy, on the box: `remote/rulesSync.ts` on the Mac
   seeds each shared scope (global, and every workspace by `linkId`) from the
   Mac once, then follows the box on link-up, its `workspaces` push and

@@ -7,7 +7,7 @@ import {
   patchModelPolicy,
   removeRoutingRule,
   rulesStore,
-  spawnCatalog,
+  staleModels,
   upsertRoutingRule,
   type OrchestrationRules,
   type RoutingRule,
@@ -28,34 +28,45 @@ const provider = (id: string): ProviderInfo =>
   ({ id, label: id, models: [], defaultModel: "", agentTypes: [] }) as unknown as ProviderInfo;
 
 describe("pure helpers", () => {
-  it("keeps only the spawn providers, in order", () => {
-    const catalog = spawnCatalog({
-      grok: provider("grok"),
-      cursor: provider("cursor"),
-      claude: provider("claude"),
-    });
-    expect(Object.keys(catalog)).toEqual(["claude", "cursor"]);
+  it("names the policies the catalog has no row for, under providers it lists", () => {
+    const catalog = {
+      claude: { ...provider("claude"), models: [{ id: "opus", label: "Opus", reasoning: [] }] },
+      muse: provider("muse"),
+    };
+    const rules: OrchestrationRules = {
+      ...DEFAULT_RULES,
+      models: {
+        "claude:opus": { approved: true },
+        "claude:gone": { approved: true },
+        "muse:muse-wonder-1.0": { approved: "orchestrators" },
+        "nobody:x": { approved: true },
+      },
+    };
+    expect(staleModels(rules, catalog)).toEqual([
+      { provider: "claude", id: "gone" },
+      { provider: "muse", id: "muse-wonder-1.0" },
+    ]);
   });
 
-  it("drops a model policy once it is back at its default", () => {
+  it("keeps Off as a decision and drops bounds back at the ladder's ends", () => {
     const denied = patchModelPolicy(DEFAULT_RULES, "claude", "claude-opus-5", { approved: false });
-    // Off is the default: the record goes, and absence reads as off.
-    expect(denied.models["claude:claude-opus-5"]).toBeUndefined();
+    // Off is written out: a probed row the rules lack would take its default.
+    expect(denied.models["claude:claude-opus-5"]).toEqual({ approved: false });
     const bounded = patchModelPolicy(denied, "claude", "claude-opus-5", {
       approved: true,
       maxReasoning: "high",
     });
     expect(bounded.models["claude:claude-opus-5"]).toEqual({ approved: true, maxReasoning: "high" });
     const back = patchModelPolicy(bounded, "claude", "claude-opus-5", { maxReasoning: undefined });
-    expect(back.models).toEqual(DEFAULT_RULES.models);
+    expect(back.models["claude:claude-opus-5"]).toEqual({ approved: true });
     // Orchestrators only is not the default: the record stays.
     const orchestrators = patchModelPolicy(DEFAULT_RULES, "claude", "claude-opus-5", { approved: "orchestrators" });
     expect(orchestrators.models["claude:claude-opus-5"]).toEqual({ approved: "orchestrators" });
-    expect(patchModelPolicy(orchestrators, "claude", "claude-opus-5", { approved: true }).models).toEqual(DEFAULT_RULES.models);
-    // The defaults list every catalog model, Fable orchestrators-only; Off drops a row.
+    expect(patchModelPolicy(orchestrators, "claude", "claude-opus-5", { approved: true }).models["claude:claude-opus-5"]).toEqual({ approved: true });
+    // The defaults list every catalog model, Fable orchestrators-only; Off is a row.
     expect(DEFAULT_RULES.models["claude:claude-fable-5-1"]).toEqual({ approved: "orchestrators" });
     expect(DEFAULT_RULES.models["claude:claude-sonnet-5-5"]).toEqual({ approved: true });
-    expect(patchModelPolicy(DEFAULT_RULES, "claude", "claude-fable-5-1", { approved: false }).models["claude:claude-fable-5-1"]).toBeUndefined();
+    expect(patchModelPolicy(DEFAULT_RULES, "claude", "claude-fable-5-1", { approved: false }).models["claude:claude-fable-5-1"]).toEqual({ approved: false });
   });
 
   it("upserts, removes and reorders routing rules without touching the input", () => {
@@ -98,7 +109,7 @@ class FakeLink implements Link {
       return Promise.resolve(null as T);
     }
     if (method === "catalog.get") {
-      return Promise.resolve({ claude: provider("claude"), pi: provider("pi") } as T);
+      return Promise.resolve({ claude: provider("claude"), muse: provider("muse") } as T);
     }
     return Promise.resolve(null as T);
   }
@@ -161,10 +172,13 @@ describe("rulesStore", () => {
     expect(rulesStore.scope("local", "w1")?.overridden).toBe(false);
   });
 
-  it("keeps only spawn providers from the catalog", async () => {
+  it("keeps every provider of the catalog, asks again only when fresh, and shares one request in flight", async () => {
     const catalog = await rulesStore.loadCatalog("local");
-    expect(Object.keys(catalog)).toEqual(["claude"]);
+    expect(Object.keys(catalog)).toEqual(["claude", "muse"]);
+    expect(rulesStore.getSnapshot().catalogs.get("local")).toBe(catalog);
     await rulesStore.loadCatalog("local");
     expect(link.of("catalog.get")).toHaveLength(1);
+    await Promise.all([rulesStore.loadCatalog("local", true), rulesStore.loadCatalog("local", true)]);
+    expect(link.of("catalog.get")).toHaveLength(2);
   });
 });

@@ -170,7 +170,7 @@ import { LocalPublish, MacPublish, macPublishOffers } from './remote/macPublish'
 import { PeerDeploy } from './remote/peerDeploy'
 import { PeerPublish } from './remote/peerPublish'
 import { ReleaseAnnouncer } from './releaseAnnounce'
-import { DEFAULT_RULES } from '@shared/rules'
+import { DEFAULT_RULES, withProbedDefaults } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
 import { DEFAULT_PLAN_SETTINGS, type PlanScope } from '@shared/plans'
 import type { ReviewScope } from '@shared/review'
@@ -2111,13 +2111,16 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              // rules: what applies here (override → global → defaults);
-              // overridden: whether THIS scope has its own copy.
+              // rules: what applies here (override → global → defaults),
+              // with this host's probed rows at their defaults (the page
+              // and spawn_agent read the same); overridden: whether THIS
+              // scope has its own copy.
               result: {
-                rules:
+                rules: withProbedDefaults(
                   scoped ??
-                  (req.params.workspaceId ? registry.getOrchestrationRules(null) : null) ??
-                  DEFAULT_RULES,
+                    (req.params.workspaceId ? registry.getOrchestrationRules(null) : null) ??
+                    DEFAULT_RULES
+                ),
                 overridden: scoped !== null
               }
             })

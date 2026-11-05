@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CATALOG, REASONING_LEVELS, modelInfo, type ProviderId, type Reasoning } from './catalog'
+import { CATALOG, PROBED_PROVIDERS, REASONING_LEVELS, modelInfo, type ProviderId, type Reasoning } from './catalog'
 
 /**
  * Structured orchestration rules — objective settings, not prose. Two
@@ -14,7 +14,9 @@ const ReasoningEnum = z.enum(REASONING_LEVELS)
 
 /** Per-model spawn policy, keyed `provider:modelId` in rules.models.
  *  A missing entry means OFF: a model the person never allowed is not
- *  spawned (a new catalog model waits for them to turn it on).
+ *  spawned (a new static catalog model waits for them to turn it on). A
+ *  probed row the copy lacks takes its default (`withProbedDefaults`), so
+ *  Off is written as `approved: false`.
  *  `approved`: `true` for every thread, `'orchestrators'` only when an
  *  orchestration thread or an orchestrator agent (a master, from wave 1)
  *  spawns, `false` for none (CLAUDE.md "Master threads"). */
@@ -252,6 +254,29 @@ export function explicitModels(rules: OrchestrationRules): OrchestrationRules {
   return { ...rules, models }
 }
 
+/**
+ * The rules with every probed row (PROBED_PROVIDERS: the Muse Code rows
+ * `model/list` answers at boot, the other probed CLIs') the copy never
+ * decided given its default (`defaultApproval`). Probed rows arrive after a
+ * copy was saved, so neither DEFAULT_RULES nor `explicitModels` could name
+ * them. Applied where the rules are read, `rules.get` and `rulesFor`, never
+ * written back: the page and spawn_agent see the same answer on this host,
+ * the one copy on the box is left as the person saved it, and the next edit
+ * on the page saves the rows it shows. A decision is kept: the page stores
+ * Off as `approved: false`, so only a key the copy lacks takes a default.
+ */
+export function withProbedDefaults(rules: OrchestrationRules): OrchestrationRules {
+  let models: OrchestrationRules['models'] | null = null
+  for (const p of PROBED_PROVIDERS) {
+    for (const m of CATALOG[p].models) {
+      const key = modelKey(p, m.id)
+      if (rules.models[key]) continue
+      ;(models ??= { ...rules.models })[key] = { approved: defaultApproval(p, m.id) }
+    }
+  }
+  return models ? { ...rules, models } : rules
+}
+
 export function modelApproved(
   rules: OrchestrationRules,
   provider: ProviderId,
@@ -271,7 +296,18 @@ export function approvedLadder(
   provider: ProviderId,
   modelId: string
 ): Reasoning[] {
-  const ladder = modelInfo(provider, modelId)?.reasoning ?? []
+  return sliceLadder(rules, provider, modelId, modelInfo(provider, modelId)?.reasoning ?? [])
+}
+
+/** `approvedLadder` over a ladder the caller holds: the renderer reads a
+ *  probed row's ladder from the host's catalog, which its own copy of
+ *  CATALOG never has. */
+export function sliceLadder(
+  rules: OrchestrationRules,
+  provider: ProviderId,
+  modelId: string,
+  ladder: Reasoning[]
+): Reasoning[] {
   const p = rules.models[modelKey(provider, modelId)]
   if (!p || ladder.length === 0) return ladder
   let lo = p.minReasoning ? ladder.indexOf(p.minReasoning) : 0

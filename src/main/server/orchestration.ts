@@ -30,6 +30,7 @@ import {
   policyRoleOf,
   type PolicyRole,
   ruleModel,
+  withProbedDefaults,
   type OrchestrationRules
 } from '@shared/rules'
 import type { EventRow, SessionMeta } from '@shared/events'
@@ -1496,5 +1497,5 @@ export function rulesFor(session: SessionMeta): OrchestrationRules {
     (workspaceId ? registry?.getOrchestrationRules(workspaceId) : null) ??
     registry?.getOrchestrationRules(null) ??
     DEFAULT_RULES
-  return mergeThreadRules(base, session.threadRules)
+  return mergeThreadRules(withProbedDefaults(base), session.threadRules)
 }

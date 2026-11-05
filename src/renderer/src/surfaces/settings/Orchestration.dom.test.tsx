@@ -22,6 +22,8 @@ vi.mock("../../lib/tcserver/rules", async (original) => ({
 }));
 
 const { OrchestrationPage } = await import("./Orchestration");
+const shared = await import("@server/shared/rules");
+const catalogModule = await import("@server/shared/catalog");
 const { OrchestrationRulesEditor } = await import("../../chrome/OrchestrationRules");
 const { openOrchestrationSettings, takeRequestedRulesFocus } = await import("../../lib/tcserver/rules");
 const { OPEN_SETTINGS_EVENT } = await import("../../lib/monaco/debugTab");
@@ -183,7 +185,8 @@ describe("Orchestration page", () => {
     await choose(screen.getByRole("combobox", { name: "Who may spawn Sol" }), "Everyone");
     expect(saved().models["codex:sol"].approved).toBe(true);
     await choose(screen.getByRole("combobox", { name: "Who may spawn Opus" }), "Off");
-    expect(saved().models["claude:opus"]).toBeUndefined();
+    // Off is kept as a decision: a probed row the rules lack takes its default.
+    expect(saved().models["claude:opus"]).toEqual({ approved: false });
   });
 
   it("shows effort selects only for an approved model with a ladder", () => {
@@ -317,5 +320,84 @@ describe("Meta's rows in the subagent models table", () => {
       fireEvent.click(codexLow);
     });
     expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Minimal", "Low", "Medium", "High", "Extra high", "Max"]);
+  });
+});
+
+describe("every provider of the host's catalog", () => {
+  const LIVE: RulesCatalog = {
+    claude: CATALOG.claude,
+    codex: CATALOG.codex,
+    cursor: { id: "cursor", label: "Cursor", defaultModel: "composer", models: [{ id: "composer", label: "Composer", reasoning: [] }] },
+    grok: { id: "grok", label: "Grok Build", defaultModel: "", models: [] },
+    muse: {
+      id: "muse",
+      label: "Muse Code",
+      defaultModel: "muse-spark-1.3",
+      models: [
+        { id: "muse-wonder-1.0", label: "Muse Wonder 1.0", reasoning: ["minimal", "low", "high"] },
+        { id: "muse-wonder-full-1.0", label: "Muse Wonder Full 1.0", reasoning: ["low", "high"] },
+        { id: "muse-spark-1.3", label: "Muse Spark 1.3", reasoning: ["low", "high"] },
+        { id: "muse-spark-1.2", label: "Muse Spark 1.2", reasoning: [] },
+      ],
+    },
+  };
+
+  beforeEach(() => {
+    state.catalog = LIVE;
+    // What rules.get answers once the host has probed: withProbedDefaults
+    // gave each Muse row its default.
+    const { withProbedDefaults } = shared;
+    const { CATALOG: STATIC } = catalogModule;
+    const before = STATIC.muse.models;
+    STATIC.muse.models = LIVE.muse!.models;
+    try {
+      state.scope = { rules: withProbedDefaults(rules({ models: { "claude:opus": { approved: true }, "claude:retired": { approved: "orchestrators" } } })), overridden: false };
+    } finally {
+      STATIC.muse.models = before;
+    }
+  });
+
+  it("heads every provider in the catalog's order, each with its mark", () => {
+    render(<OrchestrationPage />);
+    const groups = [...screen.getByRole("table").querySelectorAll("[data-slot=table-group-row]")];
+    expect(groups.map((g) => g.textContent)).toEqual(["Claude", "Codex", "Cursor", "Grok Build", "Muse Code"]);
+    for (const g of groups) expect(g.querySelector("img, svg")).toBeTruthy();
+  });
+
+  it("lists the probed Muse rows, each with a policy control, Wonder Full for orchestrators only", () => {
+    render(<OrchestrationPage />);
+    for (const label of ["Muse Wonder 1.0", "Muse Wonder Full 1.0", "Muse Spark 1.3", "Muse Spark 1.2"])
+      expect(screen.getByRole("combobox", { name: `Who may spawn ${label}` })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Who may spawn Muse Wonder Full 1.0" }).textContent).toContain("Orchestrators only");
+    expect(screen.getByRole("combobox", { name: "Who may spawn Muse Wonder 1.0" }).textContent).toContain("Everyone");
+    // The ladder is the host's row's, not the renderer's static copy (empty for Muse).
+    expect(screen.getByRole("combobox", { name: "Muse Wonder 1.0 lowest effort" }).textContent).toContain("Minimal");
+  });
+
+  it("says why a provider with no models has none", () => {
+    render(<OrchestrationPage />);
+    const line = screen.getByText("No models until Grok Build is installed and signed in");
+    expect(line.className).toContain("text-muted-foreground");
+    expect(screen.queryByText(/No models until Muse Code/)).toBeNull();
+  });
+
+  it("keeps a saved policy for a model this host lacks, muted, and saves a change to it", async () => {
+    render(<OrchestrationPage />);
+    const row = screen.getByText("not on this host").closest("tr")!;
+    expect(row.textContent).toContain("retired");
+    expect(row.querySelector("td")!.className).toContain("text-muted-foreground");
+    const spawn = within(row).getByRole("combobox", { name: "Who may spawn retired" });
+    expect(spawn.textContent).toContain("Orchestrators only");
+    await choose(spawn, "Everyone");
+    expect(saved().models["claude:retired"]).toEqual({ approved: true });
+  });
+
+  it("offers only providers with models in a rule's dialog", async () => {
+    render(<OrchestrationPage />);
+    const dialog = await openRule("Bulk work");
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("combobox", { name: "Provider" }));
+    });
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Claude", "Codex", "Cursor", "Muse Code"]);
   });
 });

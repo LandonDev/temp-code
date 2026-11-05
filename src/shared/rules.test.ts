@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CATALOG } from './catalog'
-import { DEFAULT_RULES, ModelPolicySchema, OrchestrationRulesSchema, RoutingRuleSchema, ThreadRulesSchema, defaultApproval, explicitModels, fitReasoning, modelApproved, parseRules, policyRoleOf, type OrchestrationRules } from './rules'
+import { DEFAULT_RULES, ModelPolicySchema, OrchestrationRulesSchema, RoutingRuleSchema, ThreadRulesSchema, defaultApproval, explicitModels, fitReasoning, sliceLadder, withProbedDefaults, modelApproved, parseRules, policyRoleOf, type OrchestrationRules } from './rules'
 
 it('maxParallel runs up to 128 in both the rules and a thread tune', () => {
   const at = (maxParallel: number) =>
@@ -78,6 +78,44 @@ describe('model policy by role', () => {
     } finally {
       CATALOG.muse.models = before
     }
+  })
+
+  it('gives a probed row the copy never decided its default where the rules are read, and keeps a decision', () => {
+    const before = CATALOG.muse.models
+    CATALOG.muse.models = [
+      { id: 'muse-wonder-1.0', label: 'Muse Wonder 1.0', reasoning: ['low', 'high'] },
+      { id: 'muse-wonder-full-1.0', label: 'Muse Wonder Full 1.0', reasoning: [] },
+      { id: 'muse-spark-1.3', label: 'Muse Spark 1.3', reasoning: [] }
+    ]
+    try {
+      // DEFAULT_RULES was built before the probe: it names no Muse row.
+      expect(DEFAULT_RULES.models['muse:muse-wonder-1.0']).toBeUndefined()
+      const saved: OrchestrationRules = {
+        ...DEFAULT_RULES,
+        models: { 'muse:muse-spark-1.3': { approved: false }, 'claude:claude-opus-5-5': { approved: true } }
+      }
+      const read = withProbedDefaults(saved)
+      expect(read.models['muse:muse-wonder-1.0']).toEqual({ approved: true })
+      expect(read.models['muse:muse-wonder-full-1.0']).toEqual({ approved: 'orchestrators' })
+      // The person's Off stands, and a static model the copy lacks stays off.
+      expect(read.models['muse:muse-spark-1.3']).toEqual({ approved: false })
+      expect(modelApproved(read, 'claude', 'claude-fable-5-1', 'orchestrator')).toBe(false)
+      // What the page shows is what a spawn reads.
+      expect(modelApproved(read, 'muse', 'muse-wonder-full-1.0', 'thread')).toBe(false)
+      expect(modelApproved(read, 'muse', 'muse-wonder-full-1.0', 'orchestrator')).toBe(true)
+      expect(modelApproved(read, 'muse', 'muse-wonder-1.0', 'thread')).toBe(true)
+      // Nothing to add returns the same object; the saved copy is never written.
+      expect(withProbedDefaults(read)).toBe(read)
+      expect(saved.models['muse:muse-wonder-1.0']).toBeUndefined()
+    } finally {
+      CATALOG.muse.models = before
+    }
+  })
+
+  it('slices a ladder the caller holds by the policy bounds', () => {
+    const rules: OrchestrationRules = { ...DEFAULT_RULES, models: { 'muse:w': { approved: true, minReasoning: 'medium' } } }
+    expect(sliceLadder(rules, 'muse', 'w', ['low', 'medium', 'high'])).toEqual(['medium', 'high'])
+    expect(sliceLadder(rules, 'muse', 'other', ['low', 'high'])).toEqual(['low', 'high'])
   })
 
   it('a saved rules object keeps its own model map; a model it does not mention is off', () => {

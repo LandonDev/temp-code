@@ -238,8 +238,16 @@ line, and Settings… opening the project's settings sheet). There is no
 separate Build page, and the Orchestration page holds the global rules only.
 Orchestration, Reviews, Appshots and Archive are pages on the same frame
 (`Page`, `PageSection`, `PageRow`); Orchestration's models are one flat
-`Table` with a group row per provider. An empty list is one 12px muted line
-in its section.
+`Table` with a group row per provider: every provider of the host's live
+`catalog.get` in its order, under its label and mark, and every model it
+knows, the probed ones (Muse Code's `model/list`) and the Meta rows under
+Claude and Codex included, each with its Spawned by select and, while
+approved, its effort range. The editor asks the catalog again at each mount.
+A provider with no models says so in one 12px muted row ("No models until
+Muse Code is installed and signed in"); a model the rules name that the
+catalog lacks keeps its row, its name muted with "not on this host" 4px
+after it, and its select (`staleModels`). An empty list is one 12px muted
+line in its section.
 
 ### The right side
 

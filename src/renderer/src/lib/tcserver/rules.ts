@@ -5,6 +5,7 @@ import {
   mergeThreadRules,
   modelApproved,
   modelKey,
+  sliceLadder,
   type ModelPolicy,
   type OrchestrationRules,
   type RoutingRule,
@@ -17,8 +18,9 @@ import type { ProviderId, ProviderInfo } from "./types";
 /**
  * Orchestration rules, global with whole-object per-workspace overrides,
  * over the server's `rules.get` / `rules.set`. Every edit persists at once:
- * these are settings, not a document. The spawn catalog rides along so the
- * editor can list the models a rule may approve.
+ * these are settings, not a document. The host's catalog rides along so the
+ * editor lists every provider and every model it knows, the probed ones
+ * included (spawn_agent reaches all of them).
  */
 
 export {
@@ -27,14 +29,12 @@ export {
   mergeThreadRules,
   modelApproved,
   modelKey,
+  sliceLadder,
   type ModelPolicy,
   type OrchestrationRules,
   type RoutingRule,
 };
 
-/** Providers a subagent can be spawned on. The probed five stay out. */
-export const SPAWN_PROVIDERS: ProviderId[] = ["claude", "codex", "cursor"];
-export type SpawnProviderId = "claude" | "codex" | "cursor";
 
 export type RulesScope = {
   /** What applies here: override, else global, else the defaults. */
@@ -43,30 +43,39 @@ export type RulesScope = {
   overridden: boolean;
 };
 
-export type RulesCatalog = Partial<Record<SpawnProviderId, ProviderInfo>>;
+/** A host's `catalog.get`: every provider, in the catalog's order. */
+export type RulesCatalog = Partial<Record<ProviderId, ProviderInfo>>;
 
 export type RulesState = {
   /** Keyed by workspace id, "" for global; absent until loaded. */
   scopes: ReadonlyMap<string, RulesScope>;
-  catalog: RulesCatalog | null;
+  /** Each host's catalog, by environment id; absent until it answers. */
+  catalogs: ReadonlyMap<string, RulesCatalog>;
 };
 
-const EMPTY: RulesState = { scopes: new Map(), catalog: null };
+const EMPTY: RulesState = { scopes: new Map(), catalogs: new Map() };
 
 // ── pure helpers ───────────────────────────────────────────────────────
 
-/** The spawn providers present in a server catalog, in fixed order. */
-export function spawnCatalog(catalog: Partial<Record<string, ProviderInfo>>): RulesCatalog {
-  const out: RulesCatalog = {};
-  for (const id of SPAWN_PROVIDERS) {
-    const info = catalog[id];
-    if (info) out[id as SpawnProviderId] = info;
+/** Every model policy key the rules name that the catalog has no row for,
+ *  under a provider the catalog lists: a saved policy for a model this host
+ *  does not serve (a probed row another host has, a retired model), shown
+ *  muted so it is never dropped unseen. In the rules' own order. */
+export function staleModels(rules: OrchestrationRules, catalog: RulesCatalog): { provider: ProviderId; id: string }[] {
+  const out: { provider: ProviderId; id: string }[] = [];
+  for (const key of Object.keys(rules.models)) {
+    const at = key.indexOf(":");
+    const provider = key.slice(0, at) as ProviderId;
+    const id = key.slice(at + 1);
+    const info = catalog[provider];
+    if (info && !info.models.some((m) => m.id === id)) out.push({ provider, id });
   }
   return out;
 }
 
-/** A policy back at its default (off, unbounded) leaves the record: a model
- *  the rules do not mention is off for subagents. */
+/** A model's policy patched. Off is written as `approved: false`, never
+ *  dropped: a probed row the rules lack takes its default
+ *  (`withProbedDefaults`), so absence would turn it back on. */
 export function patchModelPolicy(
   rules: OrchestrationRules,
   provider: ProviderId,
@@ -76,10 +85,9 @@ export function patchModelPolicy(
   const key = modelKey(provider, modelId);
   const prev: ModelPolicy = rules.models[key] ?? { approved: false };
   const next: ModelPolicy = { ...prev, ...patch };
-  const models = { ...rules.models };
-  if (next.approved === false && !next.minReasoning && !next.maxReasoning) delete models[key];
-  else models[key] = next;
-  return { ...rules, models };
+  if (!next.minReasoning) delete next.minReasoning;
+  if (!next.maxReasoning) delete next.maxReasoning;
+  return { ...rules, models: { ...rules.models, [key]: next } };
 }
 
 export function upsertRoutingRule(rules: OrchestrationRules, rule: RoutingRule): OrchestrationRules {
@@ -117,7 +125,7 @@ class RulesStore {
   private links = new Map<string, Link>();
   private offRegistry: (() => void) | null = null;
   private inflight = new Map<string, Promise<RulesScope>>();
-  private catalogs = new Map<string, RulesCatalog>();
+  private catalogInflight = new Map<string, Promise<RulesCatalog>>();
 
   /** Follow the registry: rules and the spawn catalog are per environment. */
   connect(registry: { onLink(listener: (link: Link, event: "added" | "removed") => void): () => void }): void {
@@ -134,9 +142,10 @@ class RulesStore {
 
   detach(environmentId: string): void {
     this.links.delete(environmentId);
-    this.catalogs.delete(environmentId);
     const scopes = new Map([...this.state.scopes].filter(([key]) => !key.startsWith(`${environmentId}|`)));
-    this.set({ ...this.state, scopes });
+    const catalogs = new Map(this.state.catalogs);
+    catalogs.delete(environmentId);
+    this.set({ scopes, catalogs });
   }
 
   /** Test seam. */
@@ -144,7 +153,7 @@ class RulesStore {
     this.offRegistry?.();
     this.offRegistry = null;
     this.links.clear();
-    this.catalogs.clear();
+    this.catalogInflight.clear();
     this.inflight.clear();
     this.set(EMPTY);
   }
@@ -182,18 +191,28 @@ class RulesStore {
     return request;
   }
 
-  /** One environment's spawn catalog (the models its host offers). */
-  loadCatalog(environmentId: string): Promise<RulesCatalog> {
-    const cached = this.catalogs.get(environmentId);
-    if (cached) return Promise.resolve(cached);
+  /** One environment's catalog, once; `fresh` asks again (the rules editor
+   *  at each mount: the probed rows land after boot, Muse Code's once it is
+   *  signed in) while the last answer stays on screen. Concurrent asks share
+   *  one request. */
+  loadCatalog(environmentId: string, fresh = false): Promise<RulesCatalog> {
+    const cached = this.state.catalogs.get(environmentId);
+    if (cached && !fresh) return Promise.resolve(cached);
+    const pending = this.catalogInflight.get(environmentId);
+    if (pending) return pending;
     const link = this.links.get(environmentId);
-    if (!link) return Promise.resolve({});
-    return link.request<Record<string, ProviderInfo>>("catalog.get").then((raw) => {
-      const catalog = spawnCatalog(raw);
-      this.catalogs.set(environmentId, catalog);
-      this.set({ ...this.state, catalog });
-      return catalog;
-    });
+    if (!link) return Promise.resolve(this.state.catalogs.get(environmentId) ?? {});
+    const request = link
+      .request<RulesCatalog>("catalog.get")
+      .then((catalog) => {
+        const catalogs = new Map(this.state.catalogs);
+        catalogs.set(environmentId, catalog);
+        this.set({ ...this.state, catalogs });
+        return catalog;
+      })
+      .finally(() => this.catalogInflight.delete(environmentId));
+    this.catalogInflight.set(environmentId, request);
+    return request;
   }
 
   /** Persist a scope's rules; the cache updates first so the editor never waits. */
@@ -246,10 +265,12 @@ export function useRulesState(): RulesState {
   return useSyncExternalStore(rulesStore.subscribe, rulesStore.getSnapshot);
 }
 
-/** The scope's rules and the spawn catalog, loading both on first use. */
+/** The scope's rules and its host's catalog, loading both on first use;
+ *  `freshCatalog` asks the host's catalog again at mount. */
 export function useRulesScope(
   environmentId: string,
   workspaceId: string | null,
+  freshCatalog = false,
 ): {
   scope: RulesScope | undefined;
   catalog: RulesCatalog | null;
@@ -257,9 +278,12 @@ export function useRulesScope(
   const state = useRulesState();
   useEffect(() => {
     void rulesStore.load(environmentId, workspaceId);
-    void rulesStore.loadCatalog(environmentId);
-  }, [environmentId, workspaceId]);
-  return { scope: state.scopes.get(scopeKey(environmentId, workspaceId)), catalog: state.catalog };
+    void rulesStore.loadCatalog(environmentId, freshCatalog);
+  }, [environmentId, workspaceId, freshCatalog]);
+  return {
+    scope: state.scopes.get(scopeKey(environmentId, workspaceId)),
+    catalog: state.catalogs.get(environmentId) ?? null,
+  };
 }
 
 // ── deep link from the workspace menu ─────────────────────────────────

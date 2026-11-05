@@ -15,7 +15,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { cn } from "../lib/cn";
 import { EFFORT_LABELS } from "../lib/tcserver/defaults";
 import {
-  approvedLadder,
   modelApproved,
   modelKey,
   moveRoutingRule,
@@ -23,17 +22,17 @@ import {
   patchModelPolicy,
   removeRoutingRule,
   rulesStore,
-  SPAWN_PROVIDERS,
+  sliceLadder,
+  staleModels,
   upsertRoutingRule,
   useRulesScope,
   type ModelPolicy,
   type OrchestrationRules,
   type RoutingRule,
   type RulesCatalog,
-  type SpawnProviderId,
 } from "../lib/tcserver/rules";
 import type { HarnessId } from "../lib/session";
-import type { ModelInfo, Reasoning } from "../lib/tcserver/types";
+import type { ModelInfo, ProviderId, Reasoning } from "../lib/tcserver/types";
 
 /**
  * Structured orchestration rules (server/shared/rules.ts): conduct bounds,
@@ -66,8 +65,12 @@ const APPROVAL_OPTIONS: Choice<Approval>[] = [
   { value: "off", label: "Off" },
 ];
 
-const providersOf = (catalog: RulesCatalog | null): SpawnProviderId[] =>
-  SPAWN_PROVIDERS.filter((p): p is SpawnProviderId => !!catalog?.[p as SpawnProviderId]);
+/** Every provider the host's catalog lists, in its order. */
+const providersOf = (catalog: RulesCatalog | null): ProviderId[] => Object.keys(catalog ?? {}) as ProviderId[];
+
+/** A model's effort ladder as its host serves it, cut to the policy's bounds. */
+const ladderOf = (rules: OrchestrationRules, provider: ProviderId, model: ModelInfo | undefined): Reasoning[] =>
+  model ? sliceLadder(rules, provider, model.id, model.reasoning) : [];
 
 const effortChoices = (levels: readonly Reasoning[]): Choice<Reasoning>[] =>
   levels.map((level) => ({ value: level, label: EFFORT_LABELS[level] }));
@@ -105,13 +108,14 @@ export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string 
   return <RulesEditor key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
 }
 
-function RulesEditor({ environmentId, workspaceId }: { environmentId: string; workspaceId: string | null }) {
-  const { scope, catalog } = useRulesScope(environmentId, workspaceId);
+export function RulesEditor({ environmentId, workspaceId }: { environmentId: string; workspaceId: string | null }) {
+  const { scope, catalog } = useRulesScope(environmentId, workspaceId, true);
   const [editing, setEditing] = useState<RoutingRule | "new" | null>(null);
 
   if (!scope) return <RulesSkeleton workspaceId={workspaceId} />;
   const titles = titlesFor(workspaceId);
   const { rules, overridden } = scope;
+  const stale = catalog ? staleModels(rules, catalog) : [];
 
   // Settings semantics: every change persists immediately.
   const push = (next: OrchestrationRules) => void rulesStore.save(environmentId, workspaceId, next);
@@ -191,27 +195,51 @@ function RulesEditor({ environmentId, workspaceId }: { environmentId: string; wo
             </TableRow>
           </TableHeader>
           <TableBody>
-            {providersOf(catalog).map((p) => (
-              <Fragment key={p}>
-                <TableRow data-slot="table-group-row" className="border-b-0">
-                  <TableCell colSpan={3} className="h-8 pt-2">
-                    <span className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground">
-                      <HarnessIcon harness={p as HarnessId} className="size-3.5 shrink-0" />
-                      {catalog?.[p]?.label ?? p}
-                    </span>
-                  </TableCell>
-                </TableRow>
-                {(catalog?.[p]?.models ?? []).map((m) => (
-                  <ModelRow
-                    key={m.id}
-                    provider={p}
-                    model={m}
-                    rules={rules}
-                    onChange={(patch) => push(patchModelPolicy(rules, p, m.id, patch))}
-                  />
-                ))}
-              </Fragment>
-            ))}
+            {providersOf(catalog).map((p) => {
+              const info = catalog?.[p];
+              const label = info?.label ?? p;
+              const models = info?.models ?? [];
+              return (
+                <Fragment key={p}>
+                  <TableRow data-slot="table-group-row" className="border-b-0">
+                    <TableCell colSpan={3} className="h-8 pt-2">
+                      <span className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground">
+                        <HarnessIcon harness={p as HarnessId} className="size-3.5 shrink-0" />
+                        {label}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                  {models.length === 0 ? (
+                    <TableRow data-slot="table-empty-row">
+                      <TableCell colSpan={3} className="text-[12px] text-muted-foreground">
+                        No models until {label} is installed and signed in
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                  {models.map((m) => (
+                    <ModelRow
+                      key={m.id}
+                      provider={p}
+                      id={m.id}
+                      model={m}
+                      rules={rules}
+                      onChange={(patch) => push(patchModelPolicy(rules, p, m.id, patch))}
+                    />
+                  ))}
+                  {stale
+                    .filter((m) => m.provider === p)
+                    .map((m) => (
+                      <ModelRow
+                        key={`stale:${m.id}`}
+                        provider={p}
+                        id={m.id}
+                        rules={rules}
+                        onChange={(patch) => push(patchModelPolicy(rules, p, m.id, patch))}
+                      />
+                    ))}
+                </Fragment>
+              );
+            })}
           </TableBody>
         </Table>
       </PageSection>
@@ -270,35 +298,42 @@ function CapSelect({
   );
 }
 
+/** One model's policy. With no `model` the rules name a model this host's
+ *  catalog lacks: its row stays, muted and without effort, so the saved
+ *  policy is seen and kept. */
 function ModelRow({
   provider,
+  id,
   model,
   rules,
   onChange,
 }: {
-  provider: SpawnProviderId;
-  model: ModelInfo;
+  provider: ProviderId;
+  id: string;
+  model?: ModelInfo;
   rules: OrchestrationRules;
   onChange: (patch: Partial<ModelPolicy>) => void;
 }) {
   // Everyone / Orchestrators only / Off (CLAUDE.md "Master threads"): an
   // orchestrators-only model keeps its effort bounds, it is approved for
   // someone. A model the saved rules do not list reads Off.
-  const policy = rules.models[modelKey(provider, model.id)]?.approved ?? false;
+  const policy = rules.models[modelKey(provider, id)]?.approved ?? false;
   const approved = policy !== false;
-  const range = approvedLadder(rules, provider, model.id);
-  const ladder = model.reasoning;
+  const name = model?.label ?? id;
+  const range = ladderOf(rules, provider, model);
+  const ladder = model?.reasoning ?? [];
   const min = range[0];
   const max = range[range.length - 1];
   return (
-    <TableRow>
-      <TableCell className={cn("w-full truncate", approved ? "text-foreground" : "text-muted-foreground")}>
-        {model.label}
+    <TableRow data-stale={model ? undefined : ""}>
+      <TableCell className={cn("w-full truncate", approved && model ? "text-foreground" : "text-muted-foreground")}>
+        {name}
+        {model ? null : <span className="ms-1 text-[12px]">not on this host</span>}
       </TableCell>
       <TableCell>
         <ChoiceSelect
           size="sm"
-          label={`Who may spawn ${model.label}`}
+          label={`Who may spawn ${name}`}
           value={policy === true ? "everyone" : policy === false ? "off" : "orchestrators"}
           onChange={(v) => onChange({ approved: v === "everyone" ? true : v === "off" ? false : "orchestrators" })}
           options={APPROVAL_OPTIONS}
@@ -310,7 +345,7 @@ function ModelRow({
           <span className="inline-flex items-center gap-2">
             <ChoiceSelect
               size="sm"
-              label={`${model.label} lowest effort`}
+              label={`${name} lowest effort`}
               value={min}
               options={effortChoices(ladder.slice(0, ladder.indexOf(max) + 1))}
               onChange={(v) => onChange({ minReasoning: v === ladder[0] ? undefined : v })}
@@ -318,7 +353,7 @@ function ModelRow({
             <span className="text-muted-foreground">–</span>
             <ChoiceSelect
               size="sm"
-              label={`${model.label} highest effort`}
+              label={`${name} highest effort`}
               value={max}
               options={effortChoices(ladder.slice(ladder.indexOf(min)))}
               onChange={(v) => onChange({ maxReasoning: v === ladder[ladder.length - 1] ? undefined : v })}
@@ -342,7 +377,7 @@ function RuleRow({
   catalog: RulesCatalog | null;
   onEdit: () => void;
 }) {
-  const provider = catalog?.[rule.provider as SpawnProviderId];
+  const provider = catalog?.[rule.provider];
   const modelId = rule.model || provider?.defaultModel || "";
   const model = provider?.models.find((m) => m.id === modelId);
   const approved = modelApproved(rules, rule.provider, modelId);
@@ -405,14 +440,12 @@ export function RuleDialog({
   onDelete?: () => void;
   onClose: () => void;
 }) {
-  const providers = providersOf(catalog);
+  const providers = providersOf(catalog).filter((p) => (catalog?.[p]?.models.length ?? 0) > 0);
   const index = rule ? rules.routing.findIndex((r) => r.id === rule.id) : -1;
   const [enabled, setEnabled] = useState(rule?.enabled ?? true);
   const [position, setPosition] = useState(Math.max(index, 0));
   const [task, setTask] = useState(rule?.task ?? "");
-  const [provider, setProvider] = useState<SpawnProviderId>(
-    (rule?.provider as SpawnProviderId | undefined) ?? providers[0] ?? "claude",
-  );
+  const [provider, setProvider] = useState<ProviderId>(rule?.provider ?? providers[0] ?? "claude");
   const [model, setModel] = useState(rule?.model ?? "");
   const [reasoning, setReasoning] = useState<Reasoning>(rule?.reasoning ?? "medium");
   const taskRef = useRef<HTMLInputElement>(null);
@@ -424,7 +457,7 @@ export function RuleDialog({
   );
   const effective = model || catalog?.[provider]?.defaultModel || "";
   const ladder = useMemo(
-    () => (models.some((m) => m.id === effective) ? approvedLadder(rules, provider, effective) : []),
+    () => ladderOf(rules, provider, models.find((m) => m.id === effective)),
     [models, effective, rules, provider],
   );
   // Keep effort valid for the picked model (render-time adjust).
