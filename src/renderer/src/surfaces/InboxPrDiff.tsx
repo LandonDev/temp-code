@@ -5,6 +5,8 @@ import {
 } from "../chrome/icons";
 import { Tip, TruncateTip } from "../components/tip";
 import { Button } from "../components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/ui/collapsible";
+import { Counts } from "../chrome/rail/changeRows";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { useMemo, useState } from "react";
 import { FileTypeIcon } from "../chrome/FileTypeIcon";
@@ -95,7 +97,7 @@ export function InboxPrDiff({ diff }: Props) {
     <div className="inbox-pr-diff flex flex-col gap-3">
       <div className="flex items-center gap-3 text-xs">
         <span className="text-muted-foreground">{fileLabel}</span>
-        <DiffCounts additions={diff.additions} deletions={diff.deletions} />
+        <Counts additions={diff.additions} deletions={diff.deletions} className="text-xs" />
         <TooltipProvider>
           <span className="ml-auto flex items-center gap-0.5">
             <Tip label="Expand all files">
@@ -153,23 +155,24 @@ function PrFileCard({
       : file.path;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-expanded={expanded}
-        onClick={onToggle}
-        className="w-full justify-start gap-2 rounded-none px-2.5 text-left font-normal"
+    // The body eases open and shut on the one disclosure (Collapsible), mounted only while open.
+    <Collapsible open={expanded} onOpenChange={onToggle} className="overflow-hidden rounded-lg border border-border">
+      <CollapsibleTrigger
+        // Still the design system's Button, by its slot as by its look.
+        data-slot="button"
+        render={<Button variant="ghost" size="sm" className="w-full justify-start gap-2 rounded-none px-2.5 text-left font-normal" />}
       >
         <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground", DISCLOSURE_CHEVRON, expanded && "rotate-90")} />
         <FileTypeIcon name={name} isDir={false} size={16} />
         <TruncateTip text={label}>
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{label}</span>
         </TruncateTip>
-        <DiffCounts additions={file.additions} deletions={file.deletions} />
-      </Button>
-      {expanded ? <PrFileBody file={file} /> : null}
-    </div>
+        <Counts additions={file.additions} deletions={file.deletions} className="text-xs" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <PrFileBody file={file} />
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -251,22 +254,6 @@ function DiffLineRow({ line }: { line: PrDiffLine }) {
         {highlight(line.text, line.kind === "context")}
       </span>
     </div>
-  );
-}
-
-function DiffCounts({
-  additions,
-  deletions,
-}: {
-  additions: number;
-  deletions: number;
-}) {
-  if (additions <= 0 && deletions <= 0) return null;
-  return (
-    <span className="flex shrink-0 items-center gap-1.5 font-mono text-xs font-semibold tabular-nums">
-      {additions > 0 ? <span className="text-success">+{additions}</span> : null}
-      {deletions > 0 ? <span className="text-destructive">-{deletions}</span> : null}
-    </span>
   );
 }
 
