@@ -9,7 +9,7 @@ import {
   type BatchStepSpec,
 } from "@server/shared/contract-batch";
 import type { ThreadState } from "../../../components/ui/status";
-import { duration } from "../../../lib/duration";
+import { duration, TIME_SHOWN_FROM_MS } from "../../../lib/duration";
 
 /**
  * The batch's steps as the foot reads them (docs/LAYOUT.md "Master"): the
@@ -121,12 +121,13 @@ export function liveSteps(batch: BatchState): LiveStep[] {
 }
 
 /** "4m 12s" for a finished step, the elapsed for a running one at `now`,
- *  null before it started. */
+ *  null before it started and under 1.5s (`TIME_SHOWN_FROM_MS`, as a task's). */
 export function stepTime(step: Pick<LiveStep, "status" | "startedAt" | "endedAt">, now: number): string | null {
   if (step.startedAt === undefined) return null;
-  if (step.status === "running") return duration(Math.max(0, now - step.startedAt));
-  if (step.endedAt === undefined) return null;
-  return duration(Math.max(0, step.endedAt - step.startedAt));
+  const end = step.status === "running" ? now : step.endedAt;
+  if (end === undefined) return null;
+  const ms = Math.max(0, end - step.startedAt);
+  return ms < TIME_SHOWN_FROM_MS ? null : duration(ms);
 }
 
 /** Progress as a count and its label: "3 of 7" and "vitest", set apart by margin. */

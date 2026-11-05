@@ -1531,7 +1531,8 @@ brought into view even when it moved section meanwhile.
   failed step's detail in red; a settled step's detail without the time
   its time column says, and nothing for a bare "passed", which the glyph
   says), its time (12px `tabular-nums`, ticking every
-  second from `startedAt` while it runs), and Stop on the running step
+  second from `startedAt` while it runs, nothing under 1.5 s, as a task's:
+  `TIME_SHOWN_FROM_MS` in lib/duration.ts), and Stop on the running step
   (`batch.stopStep` with the step's id), Hide and Show on a failed one
   whose log says more than its row.
   The running step's console opens under its own row through
@@ -1541,7 +1542,7 @@ brought into view even when it moved section meanwhile.
   bottom, it follows again), "Starting…" before the first line; a shell
   step's command shows once, as its console's first line (`$ <run>`, the
   host writes it). A failed step's console stays open with its last lines
-  until Hide; the failure is said once, red on its row, without a stop
+  until Hide, and keeps them while its fold closes; the failure is said once, red on its row, without a stop
   (`stepDetail`), and the console drops a last line that only
   repeats it (`consoleLines`); a log that is only that line opens no
   console (`hasConsole`). No progress bar: the row's detail

@@ -235,7 +235,10 @@ const StepRow = memo(function StepRow({ step, detail, now, open, onStop, onFold 
         ) : null}
       </div>
       <Collapsible open={open}>
-        <CollapsibleContent>{open ? <Console step={step} /> : null}</CollapsibleContent>
+        {/* The panel unmounts the console once its close has run, so the fold never collapses an empty box. */}
+        <CollapsibleContent>
+          <Console step={step} />
+        </CollapsibleContent>
       </Collapsible>
     </li>
   );

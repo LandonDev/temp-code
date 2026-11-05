@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { ChevronRight } from "@renderer/chrome/icons";
 import { TruncateTip } from "@renderer/components/tip";
 import { cn } from "@renderer/lib/cn";
-import { duration, useNow } from "@renderer/lib/duration";
+import { duration, TIME_SHOWN_FROM_MS, useNow } from "@renderer/lib/duration";
 import { canvasMeasure, cssFont, fitCard, type Measure } from "@renderer/lib/taskListWidth";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "./collapsible";
 import { ROW_PRESS } from "./press";
@@ -58,8 +58,6 @@ const DONUT_C = 2 * Math.PI * DONUT_R;
 
 const DONE_LINE = "All tasks complete";
 
-/** A task's time shows once it says something: under this it is noise. */
-const TIME_SHOWN_FROM_MS = 1500;
 
 /** The row's time, its own leaf so only it re-renders on the clock. A
  *  parked pane's clock reads 0, and the time holds its counted part. A done

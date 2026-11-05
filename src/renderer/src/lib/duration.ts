@@ -11,6 +11,10 @@ export function timeAgo(ts: number): string {
   return `${Math.floor(s / 86400)}d`;
 }
 
+/** A task's or a step's time shows once it says something: under this it
+ *  is noise ("0s" for a step that was skipped at once). */
+export const TIME_SHOWN_FROM_MS = 1500;
+
 export function duration(ms: number): string {
   const s = Math.round(ms / 1000);
   if (s < 60) return `${s}s`;

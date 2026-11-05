@@ -47,6 +47,10 @@ describe("a step as the foot reads it", () => {
     expect(stepTime(live({ status: "running", startedAt: 1_000 }), 66_000)).toBe("1m 5s");
     expect(stepTime(live({ status: "pending" }), 0)).toBeNull();
     expect(stepTime(live({ status: "passed", startedAt: 1_000 }), 0)).toBeNull();
+    // An instant step says no time: "Nothing landed 0s" was noise.
+    expect(stepTime(live({ status: "passed", startedAt: 1_000, endedAt: 1_400 }), 0)).toBeNull();
+    expect(stepTime(live({ status: "running", startedAt: 1_000 }), 2_000)).toBeNull();
+    expect(stepTime(live({ status: "passed", startedAt: 1_000, endedAt: 2_600 }), 0)).toBe("2s");
   });
 
   it("reads progress as a count and a label", () => {
