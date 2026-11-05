@@ -19,7 +19,9 @@ import {
   orchWaitForAgent,
   projectPlanSpawnPrompt,
   orchSpawnAgent,
+  setCrossHostAgents,
   setOrchestrationRegistry,
+  setPeerCatalogs,
   settleTarget,
   SPAWN_BATCH_MAX,
   spawnableModels,
@@ -701,4 +703,118 @@ it('the master block rides the mechanics only for the pinned thread', () => {
   pinParentAsMaster()
   expect(mechanicsFor(parent)).toContain(MASTER_MECHANICS)
   expect(MASTER_MECHANICS).toContain('never edit code yourself')
+})
+
+// ── another host's catalog: the rules are one copy, each host runs its own models ──
+
+const MAC_ID = `env_${'m'.repeat(22)}`
+const MUSE_ROWS = [
+  { id: 'muse-wonder-full-1.0', label: 'Muse Wonder Full 1.0', reasoning: ['low', 'medium', 'high', 'xhigh', 'max'] as const },
+  { id: 'muse-wonder-1.0', label: 'Muse Wonder 1.0', reasoning: ['low', 'medium', 'high', 'xhigh', 'max'] as const },
+  { id: 'muse-spark-1.3', label: 'Muse Spark 1.3', reasoning: ['low', 'medium', 'high'] as const }
+].map((m) => ({ ...m, reasoning: [...m.reasoning] }))
+
+/** This host (the box) with no Muse rows, the Mac reachable as `mac` with three. */
+function withMacCatalog(): { spawned: { host: string; resolved: Record<string, unknown>[] }[]; done: () => void } {
+  const spawned: { host: string; resolved: Record<string, unknown>[] }[] = []
+  setCrossHostAgents({
+    hostsOnline: () => [{ id: MAC_ID, name: "Landon's Mac", alias: 'mac' }],
+    resolveHost: (_sessionId: string, env?: string | null) => {
+      if (env === 'mac' || env === MAC_ID) return MAC_ID
+      throw new Error(`no host named ${env}`)
+    },
+    children: () => [],
+    spawn: async (_parent: SessionMeta, host: string, resolved: Record<string, unknown>[]) => {
+      spawned.push({ host, resolved })
+      return resolved.map((r, i) => ({ agentId: `${MAC_ID}:c${i}`, title: String(r.title ?? 't'), cwd: '/Users/me/x', host: MAC_ID }))
+    }
+  } as never)
+  const catalog = { muse: { id: 'muse' as const, label: 'Muse Code', models: MUSE_ROWS, defaultModel: 'muse-spark-1.3' } }
+  setPeerCatalogs({
+    get: (id: string) => (id === MAC_ID ? catalog : null),
+    probedRows: () => MUSE_ROWS.map((m) => ({ provider: 'muse' as const, id: m.id }))
+  })
+  return {
+    spawned,
+    done: () => {
+      setCrossHostAgents(null)
+      setPeerCatalogs(null)
+    }
+  }
+}
+
+const museRules = (models: OrchestrationRules['models']): OrchestrationRules => ({
+  ...DEFAULT_RULES,
+  models: { ...DEFAULT_RULES.models, ...models }
+})
+
+it("the table lists the Mac's approved Muse rows under the Mac, to spawn there, and never an Off one", () => {
+  expect(CATALOG.muse.models).toEqual([])
+  const mac = withMacCatalog()
+  try {
+    const rules = museRules({
+      'muse:muse-wonder-full-1.0': { approved: true, minReasoning: 'low', maxReasoning: 'xhigh' },
+      'muse:muse-wonder-1.0': { approved: false },
+      'muse:muse-spark-1.3': { approved: 'orchestrators' }
+    })
+    const table = spawnableModels(rules, 'thread')
+    const block = table.split(`- muse on Landon's Mac (environmentId: "mac"):`)[1]
+    expect(block).toBeDefined()
+    expect(block).toContain('muse-wonder-full-1.0 (low|medium|high|xhigh)\n')
+    expect(block).toContain('muse-spark-1.3 (low|medium|high) (orchestrators only)')
+    expect(block).not.toContain('muse-wonder-1.0')
+    expect(table).toContain('A model listed under another host runs only there: pass that environmentId')
+    // Without the Mac's rows the box lists no Muse model at all (the bug).
+    setPeerCatalogs(null)
+    expect(spawnableModels(rules, 'thread')).not.toContain('muse-wonder-full-1.0')
+  } finally {
+    mac.done()
+  }
+})
+
+it('spawn_agent with environmentId "mac" runs a model only the Mac serves there, its effort fitted to the bounds', async () => {
+  const mac = withMacCatalog()
+  rules = museRules({ 'muse:muse-wonder-full-1.0': { approved: true, minReasoning: 'low', maxReasoning: 'xhigh' } })
+  try {
+    const reply = await orchSpawnAgent(parent, { model: 'muse-wonder-full-1.0', reasoning: 'max', environmentId: 'mac', task: 'review the diff' })
+    expect(reply).not.toMatch(/^refused/)
+    expect(mac.spawned).toHaveLength(1)
+    expect(mac.spawned[0].host).toBe('mac')
+    expect(mac.spawned[0].resolved[0]).toMatchObject({ provider: 'muse', model: 'muse-wonder-full-1.0', reasoning: 'xhigh', context1m: false })
+    expect(created).toHaveLength(0)
+  } finally {
+    mac.done()
+  }
+})
+
+it('spawn_agent without a host names the host that serves the model; an orchestrators-only row says so first', async () => {
+  const mac = withMacCatalog()
+  rules = museRules({ 'muse:muse-wonder-full-1.0': { approved: true }, 'muse:muse-spark-1.3': { approved: 'orchestrators' } })
+  try {
+    const here = await orchSpawnAgent(parent, { model: 'muse-wonder-full-1.0', task: 'review the diff' })
+    expect(here).toMatch(/^refused: muse-wonder-full-1\.0 runs on Landon's Mac, not on this host: pass environmentId: "mac" to spawn it there\./)
+    const only = await orchSpawnAgent(parent, { model: 'muse-spark-1.3', environmentId: 'mac', task: 'review the diff' })
+    expect(only).toMatch(/^refused: muse-spark-1\.3 is approved for orchestrators only/)
+    const unknown = await orchSpawnAgent(parent, { model: 'muse-wonder-full-1.0', environmentId: 'box2', task: 'x' })
+    expect(unknown).toBe('refused: no host named box2')
+    expect(mac.spawned).toHaveLength(0)
+    expect(created).toHaveLength(0)
+  } finally {
+    mac.done()
+  }
+})
+
+it("an undecided Mac row reads its default on the box too, as it does on the Mac", async () => {
+  const mac = withMacCatalog()
+  // The copy names no Muse row: the Mac reads Muse Wonder at its default (on).
+  rules = DEFAULT_RULES
+  try {
+    const reply = await orchSpawnAgent(parent, { model: 'muse-wonder-1.0', provider: 'muse', environmentId: 'mac', task: 'x' })
+    expect(reply).not.toMatch(/^refused/)
+    expect(mac.spawned[0].resolved[0]).toMatchObject({ provider: 'muse', model: 'muse-wonder-1.0' })
+    const full = await orchSpawnAgent(parent, { model: 'muse-wonder-full-1.0', environmentId: 'mac', task: 'x' })
+    expect(full).toMatch(/^refused: muse-wonder-full-1\.0 is approved for orchestrators only/)
+  } finally {
+    mac.done()
+  }
 })

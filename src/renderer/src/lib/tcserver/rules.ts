@@ -14,6 +14,7 @@ import { OPEN_SETTINGS_EVENT } from "../monaco/debugTab";
 import type { Link } from "../connection";
 import { scopeKey } from "./workspaces";
 import type { ProviderId, ProviderInfo } from "./types";
+import type { SettingsHome } from "../settingsHome";
 
 /**
  * Orchestration rules, global with whole-object per-workspace overrides,
@@ -21,6 +22,11 @@ import type { ProviderId, ProviderInfo } from "./types";
  * these are settings, not a document. The host's catalog rides along so the
  * editor lists every provider and every model it knows, the probed ones
  * included (spawn_agent reaches all of them).
+ *
+ * A shared scope's one copy lives on the box (remote/rulesSync.ts): the
+ * answer names that host (`home`), a write the host refuses (the box out of
+ * reach) rolls back to what stood, and a `workspaces` push from the host
+ * (the box's edit followed here) reads every loaded scope again.
  */
 
 export {
@@ -41,6 +47,8 @@ export type RulesScope = {
   rules: OrchestrationRules;
   /** Whether this scope holds its own copy. */
   overridden: boolean;
+  /** Where the one copy lives when another host holds it; absent when it is this host's own. */
+  home?: SettingsHome | null;
 };
 
 /** A host's `catalog.get`: every provider, in the catalog's order. */
@@ -126,6 +134,9 @@ class RulesStore {
   private offRegistry: (() => void) | null = null;
   private inflight = new Map<string, Promise<RulesScope>>();
   private catalogInflight = new Map<string, Promise<RulesCatalog>>();
+  private offPush = new Map<string, () => void>();
+  /** Writes started per scope: a read sent before one never lands over it. */
+  private writes = new Map<string, number>();
 
   /** Follow the registry: rules and the spawn catalog are per environment. */
   connect(registry: { onLink(listener: (link: Link, event: "added" | "removed") => void): () => void }): void {
@@ -138,10 +149,18 @@ class RulesStore {
 
   attach(link: Link): void {
     this.links.set(link.environmentId, link);
+    this.offPush.get(link.environmentId)?.();
+    // The host re-sends its workspaces when a rule or default changes there.
+    const off = link.onPush?.((push) => {
+      if (push.push === "workspaces") this.reload(link.environmentId);
+    });
+    if (off) this.offPush.set(link.environmentId, off);
   }
 
   detach(environmentId: string): void {
     this.links.delete(environmentId);
+    this.offPush.get(environmentId)?.();
+    this.offPush.delete(environmentId);
     const scopes = new Map([...this.state.scopes].filter(([key]) => !key.startsWith(`${environmentId}|`)));
     const catalogs = new Map(this.state.catalogs);
     catalogs.delete(environmentId);
@@ -152,6 +171,9 @@ class RulesStore {
   reset(): void {
     this.offRegistry?.();
     this.offRegistry = null;
+    for (const off of this.offPush.values()) off();
+    this.offPush.clear();
+    this.writes.clear();
     this.links.clear();
     this.catalogInflight.clear();
     this.inflight.clear();
@@ -171,18 +193,23 @@ class RulesStore {
     return this.state.scopes.get(scopeKey(environmentId, workspaceId));
   }
 
-  /** Read a scope from its host once; later reads come from the cache. */
-  load(environmentId: string, workspaceId: string | null): Promise<RulesScope> {
+  /** Read a scope from its host once; later reads come from the cache.
+   *  `fresh` asks again (the editor at each mount and when a host's link
+   *  changes) while the last answer stays on screen. */
+  load(environmentId: string, workspaceId: string | null, fresh = false): Promise<RulesScope> {
     const key = scopeKey(environmentId, workspaceId);
     const cached = this.state.scopes.get(key);
-    if (cached) return Promise.resolve(cached);
+    if (cached && !fresh) return Promise.resolve(cached);
     const pending = this.inflight.get(key);
     if (pending) return pending;
     const link = this.links.get(environmentId);
-    if (!link) return Promise.resolve({ rules: DEFAULT_RULES, overridden: false });
+    if (!link) return Promise.resolve(cached ?? { rules: DEFAULT_RULES, overridden: false });
+    const before = this.writes.get(key) ?? 0;
     const request = link
       .request<RulesScope>("rules.get", { workspaceId })
       .then((scope) => {
+        // A write went out after this read: its answer is older than the write.
+        if ((this.writes.get(key) ?? 0) !== before) return this.state.scopes.get(key) ?? scope;
         this.setScope(key, scope);
         return scope;
       })
@@ -215,15 +242,40 @@ class RulesStore {
     return request;
   }
 
-  /** Persist a scope's rules; the cache updates first so the editor never waits. */
-  save(environmentId: string, workspaceId: string | null, rules: OrchestrationRules): Promise<void> {
+  /** Persist a scope's rules; the cache updates first so the editor never
+   *  waits. A write the host refuses puts back what stood and rejects with
+   *  the host's reason. */
+  async save(environmentId: string, workspaceId: string | null, rules: OrchestrationRules): Promise<void> {
     const key = scopeKey(environmentId, workspaceId);
-    this.setScope(key, { rules, overridden: true });
+    const prev = this.state.scopes.get(key);
+    const next: RulesScope = { rules, overridden: true, home: prev?.home };
+    this.writes.set(key, (this.writes.get(key) ?? 0) + 1);
+    this.setScope(key, next);
+    const link = this.links.get(environmentId);
+    if (!link) return;
+    try {
+      await link.request("rules.set", { workspaceId, rules });
+    } catch (err) {
+      if (this.state.scopes.get(key) === next) {
+        const scopes = new Map(this.state.scopes);
+        if (prev) scopes.set(key, prev);
+        else scopes.delete(key);
+        this.set({ ...this.state, scopes });
+      }
+      // The answer says where the copy lives and whether it answers now.
+      void this.load(environmentId, workspaceId, true).catch(() => undefined);
+      throw err;
+    }
     if (workspaceId === null) this.dropInherited(environmentId);
-    return (
-      this.links.get(environmentId)?.request("rules.set", { workspaceId, rules }).then(() => undefined) ??
-      Promise.resolve()
-    );
+  }
+
+  /** Every loaded scope of a host, read again (its rules changed there). */
+  private reload(environmentId: string): void {
+    for (const key of this.state.scopes.keys()) {
+      if (!key.startsWith(`${environmentId}|`)) continue;
+      const workspaceId = key.slice(environmentId.length + 1) || null;
+      void this.load(environmentId, workspaceId, true).catch(() => undefined);
+    }
   }
 
   /** Clear a scope: global goes back to the defaults, an override goes away. */
@@ -277,7 +329,7 @@ export function useRulesScope(
 } {
   const state = useRulesState();
   useEffect(() => {
-    void rulesStore.load(environmentId, workspaceId);
+    void rulesStore.load(environmentId, workspaceId, freshCatalog).catch(() => undefined);
     void rulesStore.loadCatalog(environmentId, freshCatalog);
   }, [environmentId, workspaceId, freshCatalog]);
   return {

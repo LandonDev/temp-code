@@ -4,6 +4,7 @@ import { HARNESSES, HARNESS_TITLE, RUNTIME_MODE_HINT, RUNTIME_MODE_LABEL, type H
 import { modelsFor, resolveModel, type AgentModel } from "../models";
 import { modeForPolicy } from "./access";
 import type { ThreadDefaults, ThreadType } from "./types";
+import { readHome, type SettingsHome } from "../settingsHome";
 
 /**
  * Thread defaults: what a NEW thread starts with when nobody picks
@@ -23,6 +24,8 @@ export type DefaultsScope = {
   /** Whether this scope stores its own set. For the global scope: whether
    *  the user changed it from the built-in. */
   overridden: boolean;
+  /** Where the one copy lives when another host holds it (lib/settingsHome.ts). */
+  home?: SettingsHome | null;
 };
 
 export const REASONING_LEVELS: readonly Reasoning[] = LEVELS;
@@ -75,7 +78,8 @@ export function coerceDefaults(raw: unknown): ThreadDefaults {
 export function parseDefaultsScope(raw: unknown): DefaultsScope {
   if (raw == null) return BUILT_IN_SCOPE;
   if (isRecord(raw) && "defaults" in raw) {
-    return { defaults: coerceDefaults(raw.defaults), overridden: raw.overridden === true };
+    const home = readHome(raw.home);
+    return { defaults: coerceDefaults(raw.defaults), overridden: raw.overridden === true, ...(home ? { home } : {}) };
   }
   return { defaults: coerceDefaults(raw), overridden: true };
 }

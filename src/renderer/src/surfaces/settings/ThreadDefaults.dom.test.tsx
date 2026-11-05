@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   ladder: ["low", "medium", "high"] as string[],
   overridden: false,
+  home: undefined as { name: string; online: boolean } | undefined,
   workspaces: [] as { id: string; name: string; environmentId: string }[],
   overriding: new Set<string>(),
   save: vi.fn(async () => {}),
@@ -50,6 +51,7 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
   useThreadDefaults: () => ({
     defaults: { provider: "claude", model: "", reasoning: "medium", permission: "edits" },
     overridden: state.overridden,
+    home: state.home,
   }),
   useWorkspaceCatalog: () => ({
     workspaces: state.workspaces,
@@ -64,6 +66,7 @@ const { ThreadDefaultsDialog } = await import("../../chrome/ThreadDefaultsDialog
 beforeEach(() => {
   state.ladder = ["low", "medium", "high"];
   state.overridden = false;
+  state.home = undefined;
   state.workspaces = [];
   state.overriding = new Set();
   state.save.mockClear();
@@ -72,6 +75,21 @@ beforeEach(() => {
   state.hooks.mockClear();
 });
 afterEach(cleanup);
+
+describe("Thread defaults kept on the box", () => {
+  it("says where the set lives, and turns its pickers off while that host is offline", () => {
+    state.home = { name: "box", online: true };
+    const { unmount } = render(<ThreadDefaultsPage />);
+    expect(screen.getByText("Saved on box")).toBeTruthy();
+    expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLButtonElement).disabled).toBe(false);
+    unmount();
+    state.home = { name: "box", online: false };
+    render(<ThreadDefaultsPage />);
+    expect(screen.getByText("box is offline")).toBeTruthy();
+    expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("combobox", { name: "Permission mode" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
 
 describe("Thread defaults", () => {
   it("has a picker each for provider, model, reasoning and security, under no heading of its own", () => {

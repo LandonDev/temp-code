@@ -249,6 +249,8 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // admin
   'rules.set': 'admin',
   'defaults.set': 'admin',
+  // the peer leg of the hosts' catalogs (server/peerCatalogs.ts)
+  'catalog.exchange': 'admin',
   'plans.set': 'admin',
   'plan.implement': 'operate',
   'turnpass.set': 'admin',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CATALOG } from './catalog'
+import { CATALOG, type Reasoning } from './catalog'
 import { DEFAULT_RULES, ModelPolicySchema, OrchestrationRulesSchema, RoutingRuleSchema, ThreadRulesSchema, defaultApproval, explicitModels, fitReasoning, sliceLadder, withProbedDefaults, modelApproved, parseRules, policyRoleOf, type OrchestrationRules } from './rules'
 
 it('maxParallel runs up to 128 in both the rules and a thread tune', () => {
@@ -110,6 +110,33 @@ describe('model policy by role', () => {
     } finally {
       CATALOG.muse.models = before
     }
+  })
+
+  it("reads another host's probed rows the same way: the box answers an undecided Muse row as the Mac does", () => {
+    // The box serves no Muse row of its own.
+    expect(CATALOG.muse.models).toEqual([])
+    const saved: OrchestrationRules = { ...DEFAULT_RULES, models: { 'muse:muse-spark-1.3': { approved: false } } }
+    const elsewhere = [
+      { provider: 'muse' as const, id: 'muse-wonder-1.0' },
+      { provider: 'muse' as const, id: 'muse-wonder-full-1.0' },
+      { provider: 'muse' as const, id: 'muse-spark-1.3' },
+      { provider: 'muse' as const, id: 'muse-wonder-1.0' }
+    ]
+    const read = withProbedDefaults(saved, elsewhere)
+    expect(read.models['muse:muse-wonder-1.0']).toEqual({ approved: true })
+    expect(read.models['muse:muse-wonder-full-1.0']).toEqual({ approved: 'orchestrators' })
+    expect(read.models['muse:muse-spark-1.3']).toEqual({ approved: false })
+    expect(withProbedDefaults(saved)).toBe(saved)
+  })
+
+  it("fits an effort to the row of the host that runs it, which this host's catalog may lack", () => {
+    const rules: OrchestrationRules = { ...DEFAULT_RULES, models: { 'muse:muse-wonder-full-1.0': { approved: true, minReasoning: 'low', maxReasoning: 'xhigh' } } }
+    const row = { id: 'muse-wonder-full-1.0', label: 'Muse Wonder Full 1.0', reasoning: ['low', 'medium', 'high', 'xhigh', 'max'] as Reasoning[], defaultReasoning: 'max' as const }
+    expect(fitReasoning(rules, 'muse', 'muse-wonder-full-1.0', 'max', row)).toBe('xhigh')
+    expect(fitReasoning(rules, 'muse', 'muse-wonder-full-1.0', undefined, row)).toBe('xhigh')
+    expect(fitReasoning(rules, 'muse', 'muse-wonder-full-1.0', 'medium', row)).toBe('medium')
+    // Read off this host's catalog alone, the model has no ladder at all.
+    expect(fitReasoning(rules, 'muse', 'muse-wonder-full-1.0', 'max')).toBe('medium')
   })
 
   it('slices a ladder the caller holds by the policy bounds', () => {

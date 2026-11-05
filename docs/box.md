@@ -3762,6 +3762,63 @@ Tests: `remote/projectSettingsSync.test.ts` (the pull, an older stamp, a
 rename and an archive following, the forwarded write, the refusal, the cold
 refusal) and the linked-project case in `projectPreamble.test.ts`.
 
+### Orchestration rules and thread defaults: one copy, on the box
+
+The orchestration rules (`orchestration-rules`, and `orchestration-rules:<the
+host's own workspace id>` for an override) and the thread defaults
+(`thread-defaults`, `thread-defaults:<id>`) have one copy, on the same home
+(`src/main/server/remote/rulesSync.ts`). The Mac follows it on link-up, on the
+box's `workspaces` push and every 5 minutes; it seeds each shared scope (the
+global set, and each workspace both hosts hold, met by its `linkId`) from its
+own value once (`rules-sync:seeded:<envId>`), and sends every `rules.set` /
+`defaults.set` of a shared scope to the box, writing the box's answer back. A
+pull whose read went out before such a write never writes its older answer
+over it. The box keeps a rule for a model it cannot run: Muse Wonder Full's
+policy is stored there although its own Muse list is empty.
+
+One copy is not enough on its own, because each host runs only what its CLIs
+serve. On 2026-11-05 the two copies were byte-identical, Muse Wonder Full
+approved for everyone from Low to Extra high, and still a box thread's table
+listed no Muse model, and `spawn_agent { model: "muse-wonder-full-1.0",
+environmentId: "mac" }` from the box was refused ("no provider serves an
+approved model"): the spawn and the table read the box's own catalog, where
+Meta answers no Muse row. So the hosts exchange catalogs too
+(`src/main/server/peerCatalogs.ts`): on every pull the Mac sends its visible
+catalog with `catalog.exchange` (admin) and keeps the box's from the answer,
+each host keeping the other's under `catalog:peer:<envId>` so a restart knows
+it. Then:
+
+- a thread's spawnable table lists another reachable host's approved rows this
+  host lacks under it: `- muse on <Mac> (environmentId: "mac"):`;
+- `spawn_agent` and `app_start_thread` that name a host check the model, its
+  effort ladder and the 1M window against that host's rows, and one that names
+  no host is refused with the environmentId that reaches the model
+  (`hostCatalogView`, `hostServing` in orchestration.ts);
+- `withProbedDefaults` reads every host's probed rows, so an undecided Muse
+  model reads its default on the box as it does on the Mac.
+
+A Mac whose catalog changes (a probe landing after boot, `catalog.get
+{refresh}`) syncs again at once. A host that predates the exchange answers it
+with an unknown method; the rules still sync, and the log says so once.
+
+`rules.get` and `defaults.get` answer `home: { name, online }` when the copy is
+another host's. Settings → Orchestration and Thread defaults print it under
+their first section ("Saved on box"); while the box is out of reach they say
+"box is offline" and every control is off. A write refused anyway
+(`refused: orchestration rules and thread defaults live on box; it is
+offline`) rolls back on the page, a switch slides back, and a toast says why;
+the page reads the rules again at each mount, when a host's link comes or
+goes, and on the host's `workspaces` push.
+
+Tests: `remote/rulesSync.test.ts` (the seed, the follow, the rule for a model
+only the Mac runs, the key per workspace, the race, the refusal, the home, the
+exchange and an older box), `peerCatalogs.test.ts`, the peer-catalog cases in
+`orchestration.test.ts` and `apptools.test.ts`, `shared/rules.test.ts`, and the
+renderer's `lib/tcserver/rules.test.ts`, `Orchestration.dom.test.tsx` and
+`ThreadDefaults.dom.test.tsx`. Proof: `bun run script:e2e-rules-sync` (two
+headless instances; only the one playing the Mac serves Muse rows, through
+`TEMP_CODE_PROBED_CATALOG`; build first).
+
 ## One project across hosts: a far start lands in the linked project
 
 A thread one host starts on another (`app_start_thread` or `spawn_agent`

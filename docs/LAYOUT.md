@@ -274,7 +274,12 @@ A provider with no models says so in one 12px muted row ("No models until
 Muse Code is installed and signed in"); a model the rules name that the
 catalog lacks keeps its row, its name muted with "not on this host" 4px
 after it, and its select (`staleModels`). An empty list is one 12px muted
-line in its section.
+line in its section. When the rules live on another host (`rules.get`'s
+`home`, docs/box.md "Orchestration rules and thread defaults: one copy, on
+the box") the first section's description says "Saved on box", 4px under a
+workspace's "Follows the global rules."; while that host is offline it says
+"box is offline" and every control is disabled. Thread defaults says the
+same under its section.
 
 ### The Accounts page
 

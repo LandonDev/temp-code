@@ -3062,13 +3062,30 @@ this is the short one.
   defaults have one copy, on the box: `remote/rulesSync.ts` on the Mac
   seeds each shared scope (global, and every workspace by `linkId`) from the
   Mac once, then follows the box on link-up, its `workspaces` push and
-  every 5 minutes, and sends `rules.set`/`defaults.set` there (refused while
-  it is offline). `app_start_thread`, the cross-host `thread.start`
-  and `session.create` check the catalog only: the model exists for some
-  provider, the effort is on its ladder (else refused, never clamped),
-  `context1m` where offered. `spawn_agent`'s refusal of an
-  orchestrators-only model and the approved table point a thread at
-  `app_start_thread` for the same model as a thread.
+  every 5 minutes (a read sent before a forwarded write never lands over
+  it), and sends `rules.set`/`defaults.set` there (refused while it is
+  offline; the box stores a rule for a model it cannot run). `rules.get` and
+  `defaults.get` answer `home { name, online }` when the copy is another
+  host's: the Orchestration and Thread defaults pages print "Saved on box",
+  or "box is offline" with every control off, and a refused write rolls
+  back with a toast. Each host also knows what the others run
+  (`peerCatalogs.ts`: `catalog.exchange`, admin, on every rules sync; kept
+  under `catalog:peer:<envId>`), since one copy of the rules cannot make the
+  box run Muse Code: the spawnable table lists another reachable host's
+  approved rows this one lacks under that host (`- muse on <Mac>
+  (environmentId: "mac"):`), `spawn_agent` and `app_start_thread` that name
+  a host check the model against that host's rows (`hostCatalogView`), one
+  that names none is refused with the environmentId that reaches it
+  (`hostServing`), and `withProbedDefaults` reads every host's probed rows.
+  Proof: `bun run script:e2e-rules-sync` (`TEMP_CODE_PROBED_CATALOG=<file>`
+  answers an isolated instance's probes; docs/box.md "Orchestration rules
+  and thread defaults: one copy, on the box"). `app_start_thread`, the
+  cross-host `thread.start` and `session.create` check the catalog only (the
+  named host's for a start there): the model exists for some provider, the
+  effort is on its ladder (else refused, never clamped), `context1m` where
+  offered. `spawn_agent`'s refusal of an orchestrators-only model and the
+  approved table point a thread at `app_start_thread` for the same model as
+  a thread.
 - **The queue: `after` and the running cap.**
   `ThreadScheduler` (src/main/server/scheduler.ts) creates a thread
   `queued` (SessionStatusSchema: not live, never counted, never resumed by

@@ -508,3 +508,44 @@ it('note_decision writes one away row on the caller, one line', () => {
   expect(awayNotice).toHaveBeenCalledTimes(1)
   expect(APP_TOOLS).toContain('mcp__app__note_decision')
 })
+
+// ── app_start_thread on another host checks that host's catalog ──
+
+it("starts a thread on the Mac for a model only the Mac serves, and points a start here at the Mac", async () => {
+  const { setAppCrossHost } = await import('./apptools')
+  const { setCrossHostAgents, setPeerCatalogs } = await import('./orchestration')
+  const MAC_ID = `env_${'m'.repeat(22)}`
+  const asked: Record<string, unknown>[] = []
+  const far = {
+    hostsOnline: () => [{ id: MAC_ID, name: "Landon's Mac", alias: 'mac' }],
+    resolveHost: (_s: string, env?: string | null) => (env === 'mac' ? MAC_ID : env ?? MAC_ID),
+    startThread: async (_caller: SessionMeta, host: string, args: Record<string, unknown>) => {
+      asked.push({ host, ...args })
+      return { threadId: `${MAC_ID}:t1`, title: 't', host: MAC_ID }
+    }
+  }
+  setAppCrossHost(far as never)
+  setCrossHostAgents(far as never)
+  setPeerCatalogs({
+    get: (id: string) =>
+      id === MAC_ID
+        ? { muse: { id: 'muse', label: 'Muse Code', defaultModel: 'muse-spark-1.3', models: [{ id: 'muse-wonder-full-1.0', label: 'Muse Wonder Full 1.0', reasoning: ['low', 'high', 'xhigh'] }] } }
+        : null,
+    probedRows: () => []
+  })
+  try {
+    expect(CATALOG.muse.models).toEqual([])
+    const here = await appStartThread(fakeRegistry as unknown as SessionRegistry, caller, { threadType: 'chat', provider: 'muse', model: 'muse-wonder-full-1.0', firstMessage: 'go' })
+    expect(here).toBe(`refused: muse-wonder-full-1.0 runs on Landon's Mac, not on this host: pass environmentId: "mac" to start the thread there.`)
+    const there = await appStartThread(fakeRegistry as unknown as SessionRegistry, caller, { threadType: 'chat', provider: 'muse', model: 'muse-wonder-full-1.0', reasoning: 'xhigh', firstMessage: 'go', environmentId: 'mac' })
+    expect(there).toMatchObject({ threadId: `${MAC_ID}:t1` })
+    expect(asked[0]).toMatchObject({ host: 'mac', provider: 'muse', model: 'muse-wonder-full-1.0', reasoning: 'xhigh' })
+    // The Mac's ladder decides: a rung it lacks is refused with its ladder.
+    const rung = await appStartThread(fakeRegistry as unknown as SessionRegistry, caller, { threadType: 'chat', provider: 'muse', model: 'muse-wonder-full-1.0', reasoning: 'max', firstMessage: 'go', environmentId: 'mac' })
+    expect(rung).toBe('refused: muse-wonder-full-1.0 supports reasoning low|high|xhigh, not "max".')
+  } finally {
+    setAppCrossHost(null)
+    setCrossHostAgents(null)
+    setPeerCatalogs(null)
+  }
+})

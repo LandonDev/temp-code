@@ -70,6 +70,8 @@ describe('METHOD_CAPABILITY', () => {
         'doctor.profile',
         'rules.set',
         'defaults.set',
+        // What each host runs crosses only between the hosts' main processes.
+        'catalog.exchange',
         // What happens when a plan completes (plans.ts): a settings write.
         'plans.set',
         'turnpass.set',

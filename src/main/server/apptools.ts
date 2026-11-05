@@ -8,8 +8,6 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import {
   CATALOG,
-  visibleCatalog,
-  modelInfo,
   resolveModel,
   supportsContext1m,
   REASONING_LEVELS,
@@ -71,7 +69,7 @@ import type { SessionRegistry } from './sessions'
 import { macToolsHooks } from './macTools'
 import type { CrossHostAgents } from './crossHostAgents'
 import type { ProjectPlans } from './projectPlan'
-import { batchMembershipOf, hostParamDescription, isMasterSession, toolLine } from './orchestration'
+import { batchMembershipOf, hostCatalogView, hostParamDescription, hostServing, isMasterSession, toolLine } from './orchestration'
 import { CROSS_HOST_EVENTS_MAX, type ThreadEventsResult } from '@shared/contract-crosshost'
 
 /**
@@ -274,19 +272,25 @@ export async function appStartThread(
   // catalog: the model exists for some provider (a gpt model requested under
   // provider "claude" routes to codex; only a model NO provider serves is
   // refused), the reasoning is on its ladder, context1m where it is offered.
-  const requested = args.model || CATALOG[args.provider].defaultModel
-  const { provider, model } = resolveModel(args.provider, requested)
-  if (!modelInfo(provider, model)) {
-    const visible = visibleCatalog()
-    return `refused: no provider serves model "${requested}". Valid: ${(Object.keys(visible) as ProviderId[]).map((p) => `${p}: ${visible[p].models.map((m) => m.id).join(', ')}`).join('; ')}`
+  // On another host it is that host's catalog (peerCatalogs.ts): the box
+  // serves no Muse Code rows, the Mac does.
+  const view = hostCatalogView(caller.id, args.environmentId)
+  if (typeof view === 'string') return view
+  const requested = args.model || view.providers[args.provider]?.defaultModel || CATALOG[args.provider].defaultModel
+  const { provider, model } = resolveModel(args.provider, requested, (p, id) => !!view.info(p, id))
+  const info = view.info(provider, model)
+  if (!info) {
+    const far = args.environmentId?.trim() ? null : hostServing(requested)
+    if (far) return `refused: ${requested} runs on ${far.name}, not on this host: pass environmentId: "${far.host}" to start the thread there.`
+    const offered = view.providers
+    return `refused: no provider serves model "${requested}". Valid: ${(Object.keys(offered) as ProviderId[]).map((p) => `${p}: ${offered[p]!.models.map((m) => m.id).join(', ')}`).join('; ')}`
   }
-  const info = modelInfo(provider, model)!
   const asked = args.reasoning ?? info.defaultReasoning ?? 'medium'
   if (info.reasoning.length && !info.reasoning.includes(asked as (typeof info.reasoning)[number])) {
     return `refused: ${model} supports reasoning ${info.reasoning.join('|')}, not "${asked}".`
   }
   const reasoning = asked as SessionMeta['reasoning']
-  if (args.context1m && !supportsContext1m(provider, model)) {
+  if (args.context1m && !supportsContext1m(provider, model, info)) {
     return `refused: ${model} does not offer the 1M context window — only Claude models do. Start the thread without context1m, or pick a Claude model.`
   }
   const projectId = args.projectId ?? caller.projectId

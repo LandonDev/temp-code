@@ -150,8 +150,10 @@ import {
   orchSpawnAgent,
   orchWaitForAgent,
   setCrossHostAgents,
-  setOrchestrationRegistry
+  setOrchestrationRegistry,
+  setPeerCatalogs
 } from './orchestration'
+import { PeerCatalogs } from './peerCatalogs'
 import {
   appHtmlPreview,
   appHtmlRender,
@@ -651,8 +653,19 @@ export async function startServer(
   const projectSettings = new ProjectSettingsSync({ environmentId, platform: hostPlatform(), registry, store, peers })
   projectSettings.start()
   // Orchestration rules and thread defaults: one copy, on the same home
-  // (remote/rulesSync.ts).
-  const rulesSync = new RulesSync({ environmentId, platform: hostPlatform(), registry, store, peers })
+  // (remote/rulesSync.ts); and what each linked host runs, which a spawn
+  // there is checked against (peerCatalogs.ts).
+  const peerCatalogs = new PeerCatalogs(store)
+  setPeerCatalogs(peerCatalogs)
+  const rulesSync = new RulesSync({
+    environmentId,
+    platform: hostPlatform(),
+    registry,
+    store,
+    peers,
+    catalog: visibleCatalog,
+    peerCatalogs
+  })
   rulesSync.start()
   // Away from computer: one state on every host, newest wins (remote/awaySync.ts).
   const awaySync = new AwaySync({ away, peers })
@@ -1331,7 +1344,8 @@ export async function startServer(
   setOrchestrationRegistry(registry)
   setAppToolsRegistry(registry)
   void runDoctor() // warm the cache so the new-session modal opens ready
-  void probeCatalogs() // the five probed harnesses ask their CLIs for models
+  // the probed harnesses ask their CLIs for models; the linked hosts hear the rows
+  void probeCatalogs().then(() => rulesSync.catalogChanged())
   void startCodexTiers(store) // which service tiers the codex account has, per model
   startClaudeTiers(store) // which claude models serve fast mode, cached from the last probe
   void installedCodexVersion() // hides catalog rows the installed codex cannot run
@@ -1794,8 +1808,13 @@ export async function startServer(
               forgetCodexVersion()
               forgetClaudeTiers()
               await Promise.all([probeCatalogs(true), probeCodexTiers(store), installedCodexVersion()])
+              rulesSync.catalogChanged()
             } else await Promise.all([codexTiersReady(), installedCodexVersion()])
             sendFrame({ id: req.id, ok: true, result: visibleCatalog() })
+            break
+          case 'catalog.exchange':
+            peerCatalogs.set(req.params.from, req.params.catalog)
+            sendFrame({ id: req.id, ok: true, result: { catalog: visibleCatalog() } })
             break
           case 'doctor.get':
             sendFrame({
@@ -2138,16 +2157,19 @@ export async function startServer(
               id: req.id,
               ok: true,
               // rules: what applies here (override → global → defaults),
-              // with this host's probed rows at their defaults (the page
-              // and spawn_agent read the same); overridden: whether THIS
-              // scope has its own copy.
+              // with the probed rows of this host and of every linked one
+              // at their defaults (the page and spawn_agent read the same);
+              // overridden: whether THIS scope has its own copy; home: the
+              // host whose copy this one follows, when it is another.
               result: {
                 rules: withProbedDefaults(
                   scoped ??
                     (req.params.workspaceId ? registry.getOrchestrationRules(null) : null) ??
-                    DEFAULT_RULES
+                    DEFAULT_RULES,
+                  peerCatalogs.probedRows()
                 ),
-                overridden: scoped !== null
+                overridden: scoped !== null,
+                home: rulesSync.homeFor(req.params.workspaceId)
               }
             })
             break
@@ -2167,7 +2189,8 @@ export async function startServer(
                   scoped ??
                   (req.params.workspaceId ? registry.getThreadDefaults(null) : null) ??
                   DEFAULT_THREAD_DEFAULTS,
-                overridden: scoped !== null
+                overridden: scoped !== null,
+                home: rulesSync.homeFor(req.params.workspaceId)
               }
             })
             break

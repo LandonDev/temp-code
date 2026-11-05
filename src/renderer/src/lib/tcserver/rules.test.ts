@@ -92,7 +92,13 @@ class FakeLink implements Link {
   connected = true;
   calls: { method: string; params: unknown }[] = [];
   stored = new Map<string, OrchestrationRules>();
-  request<T>(method: string, params?: unknown): Promise<T> {
+  /** rules.set refuses with this, as a host whose box is out of reach does. */
+  refuse: string | null = null;
+  home: RulesScope["home"] = undefined;
+  /** The next rules.get is read now and answered once this resolves. */
+  hold: Promise<void> | null = null;
+  pushes = new Set<(push: ServerPush) => void>();
+  async request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params });
     const p = params as { workspaceId: string | null; rules?: OrchestrationRules | null };
     if (method === "rules.get") {
@@ -100,9 +106,14 @@ class FakeLink implements Link {
       const scope: RulesScope = {
         rules: own ?? (p.workspaceId ? this.stored.get("") : undefined) ?? DEFAULT_RULES,
         overridden: own !== undefined,
+        ...(this.home !== undefined ? { home: this.home } : {}),
       };
-      return Promise.resolve(scope as T);
+      const held = this.hold;
+      this.hold = null;
+      if (held) await held;
+      return scope as T;
     }
+    if (method === "rules.set" && this.refuse) throw new Error(this.refuse);
     if (method === "rules.set") {
       if (p.rules) this.stored.set(p.workspaceId ?? "", p.rules);
       else this.stored.delete(p.workspaceId ?? "");
@@ -113,8 +124,12 @@ class FakeLink implements Link {
     }
     return Promise.resolve(null as T);
   }
-  onPush(_l: (push: ServerPush) => void) {
-    return () => {};
+  onPush(l: (push: ServerPush) => void) {
+    this.pushes.add(l);
+    return () => void this.pushes.delete(l);
+  }
+  push(push: ServerPush) {
+    for (const l of this.pushes) l(push);
   }
   onOpen(_l: () => void) {
     return () => {};
@@ -170,6 +185,41 @@ describe("rulesStore", () => {
     expect(sets[sets.length - 1]?.params).toEqual({ workspaceId: "w1", rules: null });
     expect(scope.overridden).toBe(false);
     expect(rulesStore.scope("local", "w1")?.overridden).toBe(false);
+  });
+
+  it("a refused save puts back what stood, rejects with the host's reason and reads the home again", async () => {
+    const before = await rulesStore.load("local", null);
+    link.refuse = "refused: orchestration rules and thread defaults live on box; it is offline";
+    link.home = { name: "box", online: false };
+    const next = { ...DEFAULT_RULES, conduct: { ...DEFAULT_RULES.conduct, selfEdit: true } };
+    const done = rulesStore.save("local", null, next);
+    expect(rulesStore.scope("local", null)?.rules).toBe(next);
+    await expect(done).rejects.toThrow("live on box");
+    expect(rulesStore.scope("local", null)?.rules).toBe(before.rules);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(rulesStore.scope("local", null)?.home).toEqual({ name: "box", online: false });
+  });
+
+  it("a read sent before a write never lands over it", async () => {
+    await rulesStore.load("local", null);
+    let release!: () => void;
+    link.hold = new Promise<void>((r) => (release = r));
+    const stale = rulesStore.load("local", null, true);
+    const next = { ...DEFAULT_RULES, conduct: { ...DEFAULT_RULES.conduct, maxParallel: 16 } };
+    await rulesStore.save("local", null, next);
+    release();
+    await stale;
+    expect(rulesStore.scope("local", null)?.rules.conduct.maxParallel).toBe(16);
+  });
+
+  it("a workspaces push from the host reads every loaded scope again", async () => {
+    await Promise.all([rulesStore.load("local", null), rulesStore.load("local", "w1")]);
+    link.stored.set("", { ...DEFAULT_RULES, conduct: { ...DEFAULT_RULES.conduct, escalate: false } });
+    link.push({ push: "workspaces", workspaces: [] } as unknown as ServerPush);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(link.of("rules.get")).toHaveLength(4);
+    expect(rulesStore.scope("local", null)?.rules.conduct.escalate).toBe(false);
+    expect(rulesStore.scope("local", "w1")?.rules.conduct.escalate).toBe(false);
   });
 
   it("keeps every provider of the catalog, asks again only when fresh, and shares one request in flight", async () => {

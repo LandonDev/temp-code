@@ -305,18 +305,24 @@ class WorkspaceStore {
     await link.request("defaults.set", { workspaceId, defaults });
     const next = new Map<string, DefaultsScope>();
     const globalKey = scopeKey(environmentId, null);
+    // Where the copy lives does not move with a write.
+    const homeOf = (key: string): Pick<DefaultsScope, "home"> => {
+      const home = this.state.defaults.get(key)?.home;
+      return home ? { home } : {};
+    };
     if (workspaceId) {
+      const key = scopeKey(environmentId, workspaceId);
       const inherited = this.state.defaults.get(globalKey)?.defaults ?? BUILT_IN_SCOPE.defaults;
       next.set(
-        scopeKey(environmentId, workspaceId),
-        defaults ? { defaults, overridden: true } : { defaults: inherited, overridden: false },
+        key,
+        defaults ? { defaults, overridden: true, ...homeOf(key) } : { defaults: inherited, overridden: false, ...homeOf(key) },
       );
     } else {
       const global = defaults ? { defaults, overridden: true } : BUILT_IN_SCOPE;
-      next.set(globalKey, global);
+      next.set(globalKey, { ...global, ...homeOf(globalKey) });
       for (const [key, scope] of this.state.defaults) {
         if (key !== globalKey && key.startsWith(`${environmentId}|`) && !scope.overridden)
-          next.set(key, { defaults: global.defaults, overridden: false });
+          next.set(key, { defaults: global.defaults, overridden: false, ...homeOf(key) });
       }
     }
     this.setDefaults(next);

@@ -19,12 +19,14 @@ import {
   modelInfo,
   supportsContext1m,
   visibleCatalog,
-  type ProviderId
+  type ModelInfo,
+  type ProviderId,
+  type ProviderInfo
 } from '@shared/catalog'
 import {
   DEFAULT_RULES,
-  approvedLadder,
   fitReasoning,
+  sliceLadder,
   mergeThreadRules,
   modelApproved,
   modelKey,
@@ -38,6 +40,7 @@ import type { EventRow, SessionMeta } from '@shared/events'
 import { watchPhrase } from '@shared/watch'
 import type { SessionRegistry } from './sessions'
 import type { CrossHostAgents } from './crossHostAgents'
+import type { HostCatalog, PeerCatalogs } from './peerCatalogs'
 import { encodeAgentId } from '@shared/contract-crosshost'
 import { foldTodo, newTodoFold, tallyOf } from './todos'
 
@@ -63,6 +66,58 @@ export function setOrchestrationRegistry(r: SessionRegistry): void {
 let crossHost: CrossHostAgents | null = null
 export function setCrossHostAgents(c: CrossHostAgents | null): void {
   crossHost = c
+}
+// What the other hosts can run (peerCatalogs.ts): the table lists their
+// approved rows, and a spawn there is checked against them.
+let peerCatalogs: Pick<PeerCatalogs, 'get' | 'probedRows'> | null = null
+export function setPeerCatalogs(p: Pick<PeerCatalogs, 'get' | 'probedRows'> | null): void {
+  peerCatalogs = p
+}
+
+/** A host's catalog as spawn resolution reads it: this host's, or the one another host last sent. */
+export interface CatalogView {
+  providers: HostCatalog
+  info(provider: ProviderId, modelId: string): ModelInfo | undefined
+}
+
+const LOCAL_VIEW: CatalogView = {
+  get providers() {
+    return visibleCatalog()
+  },
+  info: modelInfo
+}
+
+function viewOf(catalog: HostCatalog): CatalogView {
+  return { providers: catalog, info: (p, id) => catalog[p]?.models.find((m) => m.id === id) }
+}
+
+/**
+ * The catalog of the host `environmentId` names, for a spawn or a thread
+ * start there: the rows that host last sent, else this host's (a host that
+ * never sent any is judged as before). A host that cannot be named is the
+ * refusal string.
+ */
+export function hostCatalogView(sessionId: string, environmentId: string | undefined): CatalogView | string {
+  if (!environmentId?.trim() || !crossHost) return LOCAL_VIEW
+  try {
+    const far = peerCatalogs?.get(crossHost.resolveHost(sessionId, environmentId))
+    return far ? viewOf(far) : LOCAL_VIEW
+  } catch (err) {
+    return `refused: ${err instanceof Error ? err.message : String(err)}`
+  }
+}
+
+/** The reachable host that serves a model this one does not, with the providers that serve it there. */
+export function hostServing(modelId: string): { name: string; host: string; providers: ProviderId[] } | null {
+  if (!crossHost || !peerCatalogs) return null
+  for (const h of crossHost.hostsOnline()) {
+    const catalog = peerCatalogs.get(h.id)
+    if (!catalog) continue
+    const view = viewOf(catalog)
+    const providers = (Object.keys(catalog) as ProviderId[]).filter((p) => view.info(p, modelId))
+    if (providers.length) return { name: h.name, host: h.alias ?? h.id, providers }
+  }
+  return null
 }
 
 const providerIds = Object.keys(CATALOG) as [ProviderId, ...ProviderId[]]
@@ -471,27 +526,43 @@ export function spawnableModels(rules: OrchestrationRules, role: PolicyRole = 't
   // orchestration or master thread, rather than taking a missing row for
   // a missing model.
   let marked = 0
-  const blocks = Object.values(visibleCatalog())
-    .map((p) => {
-      const models = p.models.filter((m) => modelApproved(rules, p.id, m.id, 'orchestrator'))
-      if (models.length === 0) return null
-      return `- ${p.id}:\n${models
-        .map((m) => {
-          const ladder = approvedLadder(rules, p.id, m.id)
-          const suffix = supportsContext1m(p.id, m.id) ? ' +1m' : ''
-          const own = modelApproved(rules, p.id, m.id, role)
-          if (!own) marked++
-          const only = own ? '' : ' (orchestrators only)'
-          return `    ${m.id}${ladder.length ? ` (${ladder.join('|')})` : ' (no effort control)'}${suffix}${only}`
-        })
-        .join('\n')}`
-    })
-    .filter(Boolean)
-  if (blocks.length === 0) return '(none — the user has approved no subagent models)'
+  const block = (p: ProviderInfo, heading: string, models: ModelInfo[]): string | null => {
+    const approved = models.filter((m) => modelApproved(rules, p.id, m.id, 'orchestrator'))
+    if (approved.length === 0) return null
+    return `- ${heading}:\n${approved
+      .map((m) => {
+        const ladder = sliceLadder(rules, p.id, m.id, m.reasoning)
+        const suffix = supportsContext1m(p.id, m.id, m) ? ' +1m' : ''
+        const own = modelApproved(rules, p.id, m.id, role)
+        if (!own) marked++
+        const only = own ? '' : ' (orchestrators only)'
+        return `    ${m.id}${ladder.length ? ` (${ladder.join('|')})` : ' (no effort control)'}${suffix}${only}`
+      })
+      .join('\n')}`
+  }
+  const blocks = Object.values(visibleCatalog()).map((p) => block(p, p.id, p.models))
+  // The rules are one copy on every host, but each host runs only what its
+  // own CLIs serve: a reachable host's approved rows this one lacks (the
+  // Mac's Muse Code rows on the box) are listed under it, to spawn there.
+  let elsewhere = 0
+  for (const h of crossHost?.hostsOnline() ?? []) {
+    const catalog = peerCatalogs?.get(h.id)
+    for (const p of Object.values(catalog ?? {})) {
+      const theirs = p.models.filter((m) => !modelInfo(p.id, m.id))
+      const b = block(p, `${p.id} on ${h.name} (environmentId: "${h.alias ?? h.id}")`, theirs)
+      if (b) elsewhere++
+      blocks.push(b)
+    }
+  }
+  const listed = blocks.filter(Boolean)
+  if (listed.length === 0) return '(none — the user has approved no subagent models)'
   const note = marked
     ? '\n  Models marked orchestrators-only cannot be spawned as subagents from here; app_start_thread may still start them as threads (a thread is the person\'s choice and follows no model policy), or ask the user for an orchestration or master thread.'
     : ''
-  return `${blocks.join('\n')}\n  +1m: spawn_agent runs that model with the 1M context window unless you pass context1m: false; app_start_thread only with context1m: true.${note}`
+  const there = elsewhere
+    ? '\n  A model listed under another host runs only there: pass that environmentId to spawn_agent or app_start_thread.'
+    : ''
+  return `${listed.join('\n')}\n  +1m: spawn_agent runs that model with the 1M context window unless you pass context1m: false; app_start_thread only with context1m: true.${note}${there}`
 }
 
 /** The role a session spawns or starts threads under: an orchestration
@@ -506,9 +577,15 @@ export const approvedTable = (rules: OrchestrationRules, role: PolicyRole): stri
 
 /** A provider's spawn default under the policy: the catalog default when
  *  approved, else its first approved model. */
-export function approvedDefault(rules: OrchestrationRules, provider: ProviderId, role: PolicyRole): string | null {
-  const p = visibleCatalog()[provider]
-  if (modelApproved(rules, provider, p.defaultModel, role)) return p.defaultModel
+export function approvedDefault(
+  rules: OrchestrationRules,
+  provider: ProviderId,
+  role: PolicyRole,
+  view: CatalogView = LOCAL_VIEW
+): string | null {
+  const p = view.providers[provider]
+  if (!p) return null
+  if (view.info(provider, p.defaultModel) && modelApproved(rules, provider, p.defaultModel, role)) return p.defaultModel
   return p.models.find((m) => modelApproved(rules, provider, m.id, role))?.id ?? null
 }
 
@@ -529,29 +606,40 @@ const canon = (s: string): string => s.toLowerCase().replace(/[^a-z0-9.]/g, '')
  * exactly anywhere in the catalog, then loosely by id/label substring
  * ("opus" → claude-opus-5) — considering only models the user approved.
  * A miss is refused with the approved table, so the caller can
- * self-correct.
+ * self-correct. `view` is the catalog of the host the agent will run on;
+ * with this host's, a model only another reachable host serves is refused
+ * with the environmentId that reaches it.
  */
 function resolveSpawnTarget(
   rawProvider: string | undefined,
   rawModel: string | undefined,
   fallback: ProviderId,
   rules: OrchestrationRules,
-  role: PolicyRole
+  role: PolicyRole,
+  view: CatalogView = LOCAL_VIEW
 ): { provider: ProviderId; model: string } | { error: string } {
   const table = (): string => approvedTable(rules, role)
   const provider = rawProvider ? PROVIDER_ALIASES[rawProvider.toLowerCase().trim()] : undefined
   if (!rawModel) {
     const p = provider ?? fallback
-    const model = approvedDefault(rules, p, role)
+    const model = approvedDefault(rules, p, role, view)
     return model
       ? { provider: p, model }
       : { error: `refused: the user has approved no ${p} models for subagents. ${table()}` }
   }
-  const exactIn = (Object.keys(CATALOG) as ProviderId[]).filter((p) => modelInfo(p, rawModel))
+  const local = view === LOCAL_VIEW
+  const exactHere = (Object.keys(view.providers) as ProviderId[]).filter((p) => view.info(p, rawModel))
+  const far = exactHere.length === 0 && local ? hostServing(rawModel) : null
+  const exactIn = far?.providers ?? exactHere
   if (exactIn.length > 0) {
     const serving =
       provider && exactIn.includes(provider) ? [provider, ...exactIn] : exactIn
     const ok = serving.find((p) => modelApproved(rules, p, rawModel, role))
+    if (ok && far) {
+      return {
+        error: `refused: ${rawModel} runs on ${far.name}, not on this host: pass environmentId: "${far.host}" to spawn it there. ${table()}`
+      }
+    }
     if (ok) return { provider: ok, model: rawModel }
     // A model kept for orchestrators is named as such, so a thread knows
     // the way round: a thread is the person's choice and follows no policy,
@@ -568,9 +656,8 @@ function resolveSpawnTarget(
   }
   const q = canon(rawModel)
   const order = [...(provider ? [provider] : []), ...(Object.keys(CATALOG) as ProviderId[])]
-  const visible = visibleCatalog()
   for (const p of order) {
-    const hit = visible[p].models.find(
+    const hit = view.providers[p]?.models.find(
       (m) =>
         modelApproved(rules, p, m.id, role) && (canon(m.id).includes(q) || canon(m.label).includes(q))
     )
@@ -697,6 +784,9 @@ export function resolveSpawnSpecs(
   // A research tree's children investigate; they never edit the repo, so
   // an untyped spawn is an explorer and nobody gets a worktree.
   const researchRoot = registry.researchRootOf(parent.id)
+  // A spawn on another host is checked against what that host serves.
+  const view = hostCatalogView(parentNow.id, args.environmentId)
+  if (typeof view === 'string') return view
   const resolved: ResolvedSpawn[] = []
   const where = (i: number) => (specs.length > 1 ? `agents[${i}]: ` : '')
   for (const [i, spec] of specs.entries()) {
@@ -704,9 +794,10 @@ export function resolveSpawnSpecs(
     if (!task) {
       return `refused: ${where(i)}task is empty. Pass \`task\` for one agent, or \`agents\` (each with its own task) for a batch of up to ${SPAWN_BATCH_MAX}.`
     }
-    const target = resolveSpawnTarget(spec.provider, spec.model, parent.provider, rules, role)
+    const target = resolveSpawnTarget(spec.provider, spec.model, parent.provider, rules, role, view)
     if ('error' in target) return target.error.replace(/^refused: /, `refused: ${where(i)}`)
-    if (spec.context1m && !supportsContext1m(target.provider, target.model)) {
+    const info = view.info(target.provider, target.model)
+    if (spec.context1m && !supportsContext1m(target.provider, target.model, info)) {
       return `refused: ${where(i)}${target.model} does not offer the 1M context window — only Claude models do. Spawn it without context1m, or pick a model marked +1m. ${approvedTable(rules, role)}`
     }
     resolved.push({
@@ -716,9 +807,10 @@ export function resolveSpawnSpecs(
         rules,
         target.provider,
         target.model,
-        spec.reasoning
+        spec.reasoning,
+        info
       ) as SessionMeta['reasoning'],
-      context1m: spec.context1m ?? supportsContext1m(target.provider, target.model),
+      context1m: spec.context1m ?? supportsContext1m(target.provider, target.model, info),
       agentType: (AGENT_TYPES as readonly string[]).includes(spec.agentType ?? '')
         ? (spec.agentType as (typeof AGENT_TYPES)[number])
         : researchRoot
@@ -1554,5 +1646,5 @@ export function rulesFor(session: SessionMeta): OrchestrationRules {
     (workspaceId ? registry?.getOrchestrationRules(workspaceId) : null) ??
     registry?.getOrchestrationRules(null) ??
     DEFAULT_RULES
-  return mergeThreadRules(withProbedDefaults(base), session.threadRules)
+  return mergeThreadRules(withProbedDefaults(base, peerCatalogs?.probedRows() ?? []), session.threadRules)
 }

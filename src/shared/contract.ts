@@ -170,6 +170,14 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('catalog.get'),
     params: z.object({ refresh: z.boolean().optional() }).optional()
   }),
+  // The peer leg of what each host runs (server/peerCatalogs.ts): the
+  // caller's visible catalog, answered `{ catalog }` with this host's. Each
+  // entry is read on its own, so a provider one build lacks is skipped.
+  z.object({
+    id: z.string(),
+    method: z.literal('catalog.exchange'),
+    params: z.object({ from: z.string(), catalog: z.record(z.string(), z.unknown()) })
+  }),
   // Per-provider health: binary found on the login-shell PATH, version.
   z.object({ id: z.string(), method: z.literal('doctor.get') }),
   z.object({

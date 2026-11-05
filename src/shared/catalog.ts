@@ -362,11 +362,15 @@ export function isMetaModel(provider: ProviderId, modelId: string): boolean {
  * harness honours `context1m` (drivers/claude.ts appends `[1m]`), and only
  * models the catalog says serve a million tokens; a vendor row's window is
  * native and never takes `[1m]`. One predicate so the picker, the spawn
- * tools and their refusals can never disagree.
+ * tools and their refusals can never disagree. `info` is the row of the
+ * host that runs it (another host's for a spawn there), this one's by default.
  */
-export function supportsContext1m(provider: ProviderId, modelId: string): boolean {
+export function supportsContext1m(
+  provider: ProviderId,
+  modelId: string,
+  info: ModelInfo | undefined = modelInfo(provider, modelId)
+): boolean {
   if (provider !== 'claude') return false
-  const info = modelInfo(provider, modelId)
   return !info?.vendor && (info?.context ?? 0) >= 1_000_000
 }
 
@@ -375,19 +379,22 @@ export function supportsContext1m(provider: ProviderId, modelId: string): boolea
  * the model, route to the one that does (claude asked to run gpt-5.6-sol
  * → codex) instead of handing a foreign id to a harness that will error.
  * A model no provider knows stays as asked, under the requested provider.
+ * `serves` is the catalog of the host that runs it, this one's by default
+ * (another host's for a thread started there).
  */
 export function resolveModel(
   provider: ProviderId,
-  model: string
+  model: string,
+  serves: (provider: ProviderId, modelId: string) => boolean = (p, id) => !!modelInfo(p, id)
 ): { provider: ProviderId; model: string } {
   if (!model) return { provider, model: CATALOG[provider].defaultModel }
-  if (modelInfo(provider, model)) return { provider, model }
+  if (serves(provider, model)) return { provider, model }
   // A Muse id asked of the Muse harness stays there, probed or not: the
   // same `muse-wonder-*` id is also a row under claude and codex (the Meta
   // Model API), and only `muse serve` reaches Wonder Full.
   if (provider === 'muse' && model.startsWith('muse-')) return { provider, model }
   for (const p of Object.keys(CATALOG) as ProviderId[]) {
-    if (modelInfo(p, model)) return { provider: p, model }
+    if (serves(p, model)) return { provider: p, model }
   }
   // A bare display slug (fable-5.1, opus-5.5): the renderer's built-in
   // picker ids are `claude:fable-5.1` and a stripped one once reached the
@@ -396,7 +403,7 @@ export function resolveModel(
   // gpt-5.5 / cursor-grok-4.6 cannot be mis-hit.
   const slug = model.toLowerCase().replace(/\./g, '-')
   for (const p of [provider, ...(Object.keys(CATALOG) as ProviderId[])]) {
-    if (modelInfo(p, `${p}-${slug}`)) return { provider: p, model: `${p}-${slug}` }
+    if (serves(p, `${p}-${slug}`)) return { provider: p, model: `${p}-${slug}` }
   }
   // Unknown to the catalog (a model newer than this file, or a typo): keep
   // it under the provider asked for and let the harness judge it. Swapping

@@ -21,7 +21,15 @@ import type { Peers } from './peers'
  *  - routes writes (`forward`): `rules.set` / `defaults.set` for a shared
  *    scope goes to the home and the home's value is written back here; a home
  *    out of reach refuses with nothing written. A workspace with no copy on
- *    the home stays this host's own.
+ *    the home stays this host's own. A pull whose read started before a
+ *    forward never writes its older answer over the forward's (`writes`).
+ *  - exchanges catalogs: on every pull, with every linked host, this host's
+ *    visible catalog for the peer's (`catalog.exchange`, peerCatalogs.ts).
+ *    One copy of the rules is not enough on its own: each host runs only
+ *    what its own CLIs serve (the box has no Muse Code rows), so a host
+ *    spawns and lists another's approved models only once it knows them.
+ *  - says where a scope lives (`homeFor`): rules.get and defaults.get
+ *    answer it, and the settings pages print it.
  */
 
 export const RULES_SYNC_PERIOD_MS = 5 * 60_000
@@ -48,7 +56,16 @@ export interface RulesSyncDeps {
   }
   store: { getSetting(key: string): string | null; setSetting(key: string, value: string | null): void }
   peers: Pick<Peers, 'get' | 'all'>
+  /** This host's visible catalog, and where the peers' land (peerCatalogs.ts). */
+  catalog?: () => unknown
+  peerCatalogs?: { set(environmentId: string, catalog: unknown): boolean }
   log?: (line: string) => void
+}
+
+/** Where a shared scope's one copy lives, for the settings pages: absent when it is this host's own. */
+export interface RulesHome {
+  name: string
+  online: boolean
 }
 
 /** One synced setting: its RPCs, the field it rides in and this host's store. */
@@ -75,6 +92,9 @@ export class RulesSync {
   private readonly again = new Set<string>()
   private period: NodeJS.Timeout | null = null
   private closed = false
+  /** Forwards started: a follow whose read began before one never writes. */
+  private writes = 0
+  private readonly unexchanged = new Set<string>()
 
   constructor(private readonly deps: RulesSyncDeps) {
     const r = deps.registry
@@ -128,6 +148,11 @@ export class RulesSync {
     return false
   }
 
+  /** This host's catalog moved (a probe landed): every linked host hears it. */
+  catalogChanged(): void {
+    for (const link of this.deps.peers.all()) this.schedule(link.id)
+  }
+
   schedule(id: string): void {
     if (this.closed) return
     const t = this.timers.get(id)
@@ -166,6 +191,7 @@ export class RulesSync {
     const link = this.deps.peers.get(id)
     if (!link?.connected) return
     this.remember(id, await link.request<WorkspaceMeta[]>('workspace.list'))
+    await this.exchangeCatalogs(link)
     if (this.homeOf() !== id) return
     const seeded = new Set(this.seeded(id))
     for (const scope of this.scopes(id)) {
@@ -182,13 +208,31 @@ export class RulesSync {
     }
   }
 
-  /** The home's value of one scope, written here when it differs. */
+  /** The home's value of one scope, written here when it differs. An answer
+   *  read before a forward went out is older than what the forward wrote. */
   private async follow(link: Link, kind: Kind, scope: Scope): Promise<void> {
+    const before = this.writes
     const res = await link.request<Record<string, unknown> & { overridden: boolean }>(kind.get, { workspaceId: scope.peer })
+    if (this.writes !== before) return
     const theirs = kind.parse(res.overridden ? res[kind.field] : null)
     if (JSON.stringify(theirs) === JSON.stringify(kind.read(scope.local))) return
     kind.write(scope.local, theirs)
     this.log(`${link.env.name}: followed ${kind.field} for ${scope.key}`)
+  }
+
+  /** This host's catalog for the peer's; a peer that predates the exchange keeps none. */
+  private async exchangeCatalogs(link: Link): Promise<void> {
+    const { catalog, peerCatalogs } = this.deps
+    if (!catalog || !peerCatalogs) return
+    try {
+      const res = await link.request<{ catalog: unknown }>('catalog.exchange', { from: this.deps.environmentId, catalog: catalog() })
+      if (peerCatalogs.set(link.id, res.catalog)) this.log(`${link.env.name}: its catalog changed`)
+    } catch (err) {
+      // Said once per host and boot: an older build answers every pull the same.
+      if (this.unexchanged.has(link.id)) return
+      this.unexchanged.add(link.id)
+      this.log(`${link.env.name}: no catalog exchange (${err instanceof Error ? err.message : String(err)})`)
+    }
   }
 
   // ── the home ────────────────────────────────────────────────────────
@@ -256,6 +300,7 @@ export class RulesSync {
     if (!scope) return false
     const kind = this.kinds.find((k) => k.set === method)!
     if (!link.connected) throw new Error(refusal(link.env.name))
+    this.writes++
     try {
       await link.request(method, { workspaceId: scope.peer, [kind.field]: value })
     } catch (err) {
@@ -271,6 +316,16 @@ export class RulesSync {
     }
     return true
   }
+
+  /** Where a scope's one copy lives when another host holds it: that host's
+   *  name and whether it answers now. Null when this host's copy is the one. */
+  homeFor(workspaceId: string | null): RulesHome | null {
+    const home = this.homeOf()
+    if (home === this.deps.environmentId) return null
+    const link = this.deps.peers.get(home)
+    if (!link || !this.scopes(home).some((s) => s.local === workspaceId)) return null
+    return { name: link.env.name, online: link.connected }
+  }
 }
 
-export const refusal = (host: string): string => `refused: orchestration rules and thread defaults live on ${host}; it is offline`
+export const refusal =(host: string): string => `refused: orchestration rules and thread defaults live on ${host}; it is offline`

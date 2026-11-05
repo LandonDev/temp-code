@@ -8,8 +8,9 @@ import { RulesEditor } from "./OrchestrationRules";
  * The global rules editor over two fixed hosts, for `bun run ui:preview
  * src/renderer/src/chrome/OrchestrationRules.preview.tsx#OrchestrationRulesPreview`:
  * a Mac whose Muse Code probe answered four rows, and a box whose probe
- * answered none while the rules it holds name them. Rendered by nothing in
- * the app.
+ * answered none while the rules it holds name them; then the Mac as it is
+ * paired, its rules kept on the box (`macShared`), and the same while the
+ * box is out of reach (`macOffline`). Rendered by nothing in the app.
  */
 
 const MUSE_ROWS: ProviderInfo["models"] = [
@@ -36,16 +37,24 @@ function rulesWith(muse: ProviderInfo["models"]): OrchestrationRules {
   }
 }
 
-const HOSTS: Record<string, { catalog: RulesCatalog; rules: OrchestrationRules }> = {
+const HOSTS: Record<string, { catalog: RulesCatalog; rules: OrchestrationRules; home?: { name: string; online: boolean } }> = {
   mac: { catalog: catalogWith(MUSE_ROWS), rules: rulesWith(MUSE_ROWS) },
   box: { catalog: catalogWith([]), rules: rulesWith(MUSE_ROWS) },
+  macShared: { catalog: catalogWith(MUSE_ROWS), rules: rulesWith(MUSE_ROWS), home: { name: "box", online: true } },
+  macOffline: { catalog: catalogWith(MUSE_ROWS), rules: rulesWith(MUSE_ROWS), home: { name: "box", online: false } },
 };
 
 for (const [environmentId, host] of Object.entries(HOSTS)) {
   const link = {
     environmentId,
     request: (method: string) =>
-      Promise.resolve(method === "catalog.get" ? host.catalog : method === "rules.get" ? { rules: host.rules, overridden: true } : null),
+      Promise.resolve(
+        method === "catalog.get"
+          ? host.catalog
+          : method === "rules.get"
+            ? { rules: host.rules, overridden: true, home: host.home ?? null }
+            : null,
+      ),
   } as unknown as Link;
   rulesStore.attach(link);
   await rulesStore.load(environmentId, null);

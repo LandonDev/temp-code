@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CATALOG, PROBED_PROVIDERS, REASONING_LEVELS, modelInfo, type ProviderId, type Reasoning } from './catalog'
+import { CATALOG, PROBED_PROVIDERS, REASONING_LEVELS, modelInfo, type ModelInfo, type ProviderId, type Reasoning } from './catalog'
 
 /**
  * Structured orchestration rules — objective settings, not prose. Two
@@ -264,17 +264,30 @@ export function explicitModels(rules: OrchestrationRules): OrchestrationRules {
  * the one copy on the box is left as the person saved it, and the next edit
  * on the page saves the rows it shows. A decision is kept: the page stores
  * Off as `approved: false`, so only a key the copy lacks takes a default.
+ *
+ * `elsewhere` is the probed rows of the other hosts this one reaches
+ * (server/peerCatalogs.ts): the box serves no Muse Code rows, so without
+ * the Mac's it would read an undecided Muse model as Off where the Mac
+ * reads its default, and the two hosts would answer one copy differently.
  */
-export function withProbedDefaults(rules: OrchestrationRules): OrchestrationRules {
+export function withProbedDefaults(
+  rules: OrchestrationRules,
+  elsewhere: readonly ProbedRow[] = []
+): OrchestrationRules {
   let models: OrchestrationRules['models'] | null = null
-  for (const p of PROBED_PROVIDERS) {
-    for (const m of CATALOG[p].models) {
-      const key = modelKey(p, m.id)
-      if (rules.models[key]) continue
-      ;(models ??= { ...rules.models })[key] = { approved: defaultApproval(p, m.id) }
-    }
+  const rows = [...PROBED_PROVIDERS.flatMap((p) => CATALOG[p].models.map((m) => ({ provider: p, id: m.id }))), ...elsewhere]
+  for (const { provider, id } of rows) {
+    const key = modelKey(provider, id)
+    if (rules.models[key] || models?.[key]) continue
+    ;(models ??= { ...rules.models })[key] = { approved: defaultApproval(provider, id) }
   }
   return models ? { ...rules, models } : rules
+}
+
+/** A probed provider's model, by its provider and id. */
+export interface ProbedRow {
+  provider: ProviderId
+  id: string
 }
 
 export function modelApproved(
@@ -335,19 +348,22 @@ function nearestRung(ladder: Reasoning[], requested: string): Reasoning | null {
  *  moved to the model's nearest rung when the model lacks it (a thread
  *  moved off a ladder with `minimal` lands on `low`), clamped to the
  *  nearer bound when the model serves it outside the approved range,
- *  else the default (itself fitted). */
+ *  else the default (itself fitted). `info` is the row of the host that
+ *  runs it, this one's by default (another host's for a spawn there,
+ *  server/peerCatalogs.ts). */
 export function fitReasoning(
   rules: OrchestrationRules,
   provider: ProviderId,
   modelId: string,
-  requested: string | undefined
+  requested: string | undefined,
+  info: ModelInfo | undefined = modelInfo(provider, modelId)
 ): Reasoning {
-  const ladder = approvedLadder(rules, provider, modelId)
+  const full = info?.reasoning ?? []
+  const ladder = sliceLadder(rules, provider, modelId, full)
   if (ladder.length === 0) return 'medium'
   if (requested && ladder.includes(requested as Reasoning)) return requested as Reasoning
-  const full = modelInfo(provider, modelId)?.reasoning ?? []
   const want = requested ? nearestRung(full, requested) : null
-  const pick = want ?? modelInfo(provider, modelId)?.defaultReasoning ?? ladder[0]
+  const pick = want ?? info?.defaultReasoning ?? ladder[0]
   const ix = full.indexOf(pick)
   if (ix >= 0 && ix < full.indexOf(ladder[0])) return ladder[0]
   if (ix > full.indexOf(ladder[ladder.length - 1])) return ladder[ladder.length - 1]

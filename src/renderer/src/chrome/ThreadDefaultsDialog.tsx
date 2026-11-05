@@ -1,6 +1,7 @@
 import { registry } from "../lib/connection";
 import { useEffect, useState } from "react";
 import { ErrorLine } from "./ConfirmDialog";
+import { homeNote } from "../lib/settingsHome";
 import { FieldRow } from "./DialogField";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
@@ -66,23 +67,33 @@ function useDefaultsRows(value: ThreadDefaults, onChange: Change, environmentId?
 }
 
 /** Settings-page rows; the Reasoning row only when the model has a ladder. */
-export function ThreadDefaultsFields({ value, onChange, environmentId }: { value: ThreadDefaults; onChange: Change; environmentId?: string }) {
+export function ThreadDefaultsFields({
+  value,
+  onChange,
+  environmentId,
+  disabled,
+}: {
+  value: ThreadDefaults;
+  onChange: Change;
+  environmentId?: string;
+  disabled?: boolean;
+}) {
   const rows = useDefaultsRows(value, onChange, environmentId);
   return (
     <>
       <PageRow title="Provider">
-        <ChoiceSelect label="Provider" {...rows.provider} />
+        <ChoiceSelect label="Provider" disabled={disabled} {...rows.provider} />
       </PageRow>
       <PageRow title="Model">
-        <ChoiceSelect label="Model" {...rows.model} />
+        <ChoiceSelect label="Model" disabled={disabled} {...rows.model} />
       </PageRow>
       {rows.ladder.length > 1 ? (
         <PageRow title="Reasoning">
-          <ChoiceSelect label="Reasoning" {...rows.reasoning} />
+          <ChoiceSelect label="Reasoning" disabled={disabled} {...rows.reasoning} />
         </PageRow>
       ) : null}
       <PageRow title="Permission mode" description={PERMISSION_HINTS[value.permission]}>
-        <ChoiceSelect label="Permission mode" {...rows.permission} />
+        <ChoiceSelect label="Permission mode" disabled={disabled} {...rows.permission} />
       </PageRow>
     </>
   );
@@ -117,20 +128,36 @@ function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string;
   // Reset and Remove override show only when something differs from what
   // this scope would otherwise use.
   const resettable = scope?.overridden === true;
+  // The set lives on the box with the orchestration rules (remote/rulesSync.ts).
+  const { note, blocked } = homeNote(scope?.home);
+  const hint = scopeHint(workspaceId, scope ?? BUILT_IN_SCOPE);
   return (
     <PageSection
       // The global page's own title says what this is; a workspace page names it.
       title={workspaceId === null ? undefined : "New threads"}
-      description={scopeHint(workspaceId, scope ?? BUILT_IN_SCOPE)}
+      description={
+        hint && note ? (
+          <>
+            {hint}
+            <span className="mt-1 block">{note}</span>
+          </>
+        ) : (
+          (hint ?? note)
+        )
+      }
       action={
         resettable ? (
-          <Button variant="ghost" size="sm" onClick={() => save(null)}>
+          <Button variant="ghost" size="sm" onClick={() => save(null)} disabled={blocked}>
             {workspaceId === null ? "Reset" : "Remove override"}
           </Button>
         ) : null
       }
     >
-      {scope ? <ThreadDefaultsFields value={scope.defaults} onChange={save} environmentId={environmentId} /> : <PageRowsSkeleton rows={4} />}
+      {scope ? (
+        <ThreadDefaultsFields value={scope.defaults} onChange={save} environmentId={environmentId} disabled={blocked} />
+      ) : (
+        <PageRowsSkeleton rows={4} />
+      )}
       {workspaceId === null ? <OverridingWorkspaces environmentId={environmentId} /> : null}
       {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
     </PageSection>

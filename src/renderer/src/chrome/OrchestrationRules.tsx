@@ -1,6 +1,8 @@
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { registry } from "../lib/connection";
-import { Fragment, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEnvironmentStatuses } from "../lib/connection/status";
+import { loadToast } from "../components/ui/toaster";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronRight, Plus } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
@@ -31,6 +33,7 @@ import {
   type RoutingRule,
   type RulesCatalog,
 } from "../lib/tcserver/rules";
+import { homeNote } from "../lib/settingsHome";
 import type { HarnessId } from "../lib/session";
 import type { ModelInfo, ProviderId, Reasoning } from "../lib/tcserver/types";
 
@@ -40,7 +43,10 @@ import type { ModelInfo, ProviderId, Reasoning } from "../lib/tcserver/types";
  * of work to an exact provider/model/effort. Changes save immediately: these
  * are settings, not a document. Global scope is the Orchestration page; a
  * workspace override (whole-object) is the same page with that workspace
- * picked as the scope.
+ * picked as the scope. The rules have one copy, on the box
+ * (remote/rulesSync.ts): the first section says so ("Saved on box"), and
+ * while that host is out of reach every control is off under "box is
+ * offline"; a write it refuses anyway rolls back and says why in a toast.
  */
 
 type Delegation = OrchestrationRules["conduct"]["delegation"];
@@ -108,20 +114,41 @@ export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string 
   return <RulesEditor key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
 }
 
+/** The host's refusal as a toast says it: "Orchestration rules … live on box; it is offline". */
+function refusalWords(err: unknown): string {
+  const raw = (err instanceof Error ? err.message : String(err ?? "")).trim().replace(/^refused:\s*/i, "");
+  return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "";
+}
+
+function saveFailed(err: unknown): false {
+  const description = refusalWords(err);
+  void loadToast().then((toast) => toast.error("Couldn't save the rules", description ? { description } : undefined));
+  return false;
+}
+
 export function RulesEditor({ environmentId, workspaceId }: { environmentId: string; workspaceId: string | null }) {
   const { scope, catalog } = useRulesScope(environmentId, workspaceId, true);
   const [editing, setEditing] = useState<RoutingRule | "new" | null>(null);
+  // A host's link coming or going may move where the copy can be written:
+  // the answer says so again.
+  const statuses = useEnvironmentStatuses();
+  const linkStates = [...statuses.values()].map((s) => s.transport).join();
+  useEffect(() => {
+    void rulesStore.load(environmentId, workspaceId, true).catch(() => undefined);
+  }, [environmentId, workspaceId, linkStates]);
 
   if (!scope) return <RulesSkeleton workspaceId={workspaceId} />;
   const titles = titlesFor(workspaceId);
   const { rules, overridden } = scope;
   const stale = catalog ? staleModels(rules, catalog) : [];
+  const { note, blocked } = homeNote(scope.home);
 
-  // Settings semantics: every change persists immediately.
-  const push = (next: OrchestrationRules) => void rulesStore.save(environmentId, workspaceId, next);
+  // Settings semantics: every change persists immediately; a refused one rolls back.
+  const push = (next: OrchestrationRules): Promise<unknown> =>
+    rulesStore.save(environmentId, workspaceId, next).catch(saveFailed);
   const patchConduct = (patch: Partial<OrchestrationRules["conduct"]>) =>
     push({ ...rules, conduct: { ...rules.conduct, ...patch } });
-  const clearScope = () => void rulesStore.clear(environmentId, workspaceId);
+  const clearScope = () => void rulesStore.clear(environmentId, workspaceId).catch(saveFailed);
   const saveRule = (rule: RoutingRule, position?: number) => {
     const next = upsertRoutingRule(rules, rule);
     const at = next.routing.findIndex((r) => r.id === rule.id);
@@ -133,21 +160,36 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
     setEditing(null);
   };
 
-  const conductState = workspaceId
+  const scopeState = workspaceId
     ? overridden
       ? "Overrides the global rules."
       : "Follows the global rules."
     : undefined;
+  // One line each: whose rules these are, then where they live, 4px under it.
+  const conductState =
+    scopeState && note ? (
+      <>
+        {scopeState}
+        <span className="mt-1 block">{note}</span>
+      </>
+    ) : (
+      (scopeState ?? note)
+    );
   const conductAction =
     !workspaceId || overridden ? (
-      <Button variant="ghost" size="sm" onClick={clearScope}>
+      <Button variant="ghost" size="sm" onClick={clearScope} disabled={blocked}>
         {workspaceId ? "Remove override" : "Reset"}
       </Button>
     ) : null;
 
   const switchRow = (title: string, description: string | undefined, key: "selfEdit" | "selfShell" | "verifyResults" | "escalate" | "useWorktrees") => (
     <PageRow title={title} description={description}>
-      <SettingSwitch label={title} on={rules.conduct[key]} onChange={(on) => patchConduct({ [key]: on } as Partial<OrchestrationRules["conduct"]>)} />
+      <SettingSwitch
+        label={title}
+        on={rules.conduct[key]}
+        disabled={blocked}
+        onChange={(on) => patchConduct({ [key]: on } as Partial<OrchestrationRules["conduct"]>)}
+      />
     </PageRow>
   );
 
@@ -159,6 +201,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
             label="Delegation"
             value={rules.conduct.delegation}
             options={DELEGATION_OPTIONS}
+            disabled={blocked}
             onChange={(delegation) => patchConduct({ delegation })}
           />
         </PageRow>
@@ -172,6 +215,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
             label="Parallel agents"
             value={rules.conduct.maxParallel}
             options={[0, 2, 4, 8, 16, 32, 64, 128]}
+            disabled={blocked}
             onChange={(maxParallel) => patchConduct({ maxParallel })}
           />
         </PageRow>
@@ -180,6 +224,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
             label="Total per thread"
             value={rules.conduct.maxAgents}
             options={[0, 10, 20, 50]}
+            disabled={blocked}
             onChange={(maxAgents) => patchConduct({ maxAgents })}
           />
         </PageRow>
@@ -223,6 +268,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
                       id={m.id}
                       model={m}
                       rules={rules}
+                      disabled={blocked}
                       onChange={(patch) => push(patchModelPolicy(rules, p, m.id, patch))}
                     />
                   ))}
@@ -234,6 +280,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
                         provider={p}
                         id={m.id}
                         rules={rules}
+                        disabled={blocked}
                         onChange={(patch) => push(patchModelPolicy(rules, p, m.id, patch))}
                       />
                     ))}
@@ -248,14 +295,14 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         title={titles.routing}
         description="The first rule that matches decides provider, model and effort."
         action={
-          <Button variant="ghost" size="sm" onClick={() => setEditing("new")}>
+          <Button variant="ghost" size="sm" onClick={() => setEditing("new")} disabled={blocked}>
             <Plus />
             Add rule
           </Button>
         }
       >
         {rules.routing.map((r) => (
-          <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} onEdit={() => setEditing(r)} />
+          <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} disabled={blocked} onEdit={() => setEditing(r)} />
         ))}
         {rules.routing.length === 0 ? (
           <p className="py-3 text-xs text-muted-foreground">No rules. Subagents use each provider's default model.</p>
@@ -280,11 +327,13 @@ function CapSelect({
   label,
   value,
   options,
+  disabled,
   onChange,
 }: {
   label: string;
   value: number;
   options: number[];
+  disabled?: boolean;
   onChange: (v: number) => void;
 }) {
   const values = options.includes(value) ? options : [...options, value].sort((a, b) => a - b);
@@ -293,6 +342,7 @@ function CapSelect({
       label={label}
       value={String(value)}
       onChange={(v) => onChange(Number(v))}
+      disabled={disabled}
       options={values.map((o) => ({ value: String(o), label: o === 0 ? "Unlimited" : String(o) }))}
     />
   );
@@ -306,12 +356,14 @@ function ModelRow({
   id,
   model,
   rules,
+  disabled,
   onChange,
 }: {
   provider: ProviderId;
   id: string;
   model?: ModelInfo;
   rules: OrchestrationRules;
+  disabled?: boolean;
   onChange: (patch: Partial<ModelPolicy>) => void;
 }) {
   // Everyone / Orchestrators only / Off (CLAUDE.md "Master threads"): an
@@ -337,6 +389,7 @@ function ModelRow({
           value={policy === true ? "everyone" : policy === false ? "off" : "orchestrators"}
           onChange={(v) => onChange({ approved: v === "everyone" ? true : v === "off" ? false : "orchestrators" })}
           options={APPROVAL_OPTIONS}
+          disabled={disabled}
           className="w-44"
         />
       </TableCell>
@@ -347,6 +400,7 @@ function ModelRow({
               size="sm"
               label={`${name} lowest effort`}
               value={min}
+              disabled={disabled}
               options={effortChoices(ladder.slice(0, ladder.indexOf(max) + 1))}
               onChange={(v) => onChange({ minReasoning: v === ladder[0] ? undefined : v })}
             />
@@ -355,6 +409,7 @@ function ModelRow({
               size="sm"
               label={`${name} highest effort`}
               value={max}
+              disabled={disabled}
               options={effortChoices(ladder.slice(ladder.indexOf(min)))}
               onChange={(v) => onChange({ maxReasoning: v === ladder[ladder.length - 1] ? undefined : v })}
             />
@@ -370,11 +425,13 @@ function RuleRow({
   rule,
   rules,
   catalog,
+  disabled,
   onEdit,
 }: {
   rule: RoutingRule;
   rules: OrchestrationRules;
   catalog: RulesCatalog | null;
+  disabled?: boolean;
   onEdit: () => void;
 }) {
   const provider = catalog?.[rule.provider];
@@ -390,6 +447,7 @@ function RuleRow({
         aria-label={`Edit rule: ${rule.task}`}
         aria-describedby={factsId}
         onClick={onEdit}
+        disabled={disabled}
         className="-mx-2 w-[calc(100%+1rem)] rounded-md px-2 py-2 hover:bg-foreground/5"
       >
         <ItemMedia>

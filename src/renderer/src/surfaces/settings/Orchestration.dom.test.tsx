@@ -7,18 +7,26 @@ const state = vi.hoisted(() => ({
   scope: undefined as RulesScope | undefined,
   catalog: null as RulesCatalog | null,
   workspaces: [] as { id: string; name: string; environmentId: string }[],
-  save: vi.fn(async () => {}),
+  save: vi.fn(async (..._a: unknown[]): Promise<void> => {}),
   clear: vi.fn(async () => {}),
+  load: vi.fn(async () => {}),
+  toastError: vi.fn(),
 }));
 
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
 vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
+vi.mock("../../lib/connection/status", () => ({ useEnvironmentStatuses: () => new Map() }));
+vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ error: state.toastError }) }));
 vi.mock("../../lib/tcserver/workspaces", () => ({ useWorkspaces: () => state.workspaces }));
 vi.mock("../../lib/tcserver/rules", async (original) => ({
   ...(await original<typeof import("../../lib/tcserver/rules")>()),
   useRulesScope: () => ({ scope: state.scope, catalog: state.catalog }),
-  rulesStore: { save: (...a: unknown[]) => state.save(...(a as [])), clear: (...a: unknown[]) => state.clear(...(a as [])) },
+  rulesStore: {
+    save: (...a: unknown[]) => state.save(...a),
+    clear: (...a: unknown[]) => state.clear(...(a as [])),
+    load: (...a: unknown[]) => state.load(...(a as [])),
+  },
 }));
 
 const { OrchestrationPage } = await import("./Orchestration");
@@ -94,8 +102,11 @@ beforeEach(() => {
   state.scope = { rules: rules(), overridden: false };
   state.catalog = CATALOG;
   state.workspaces = [];
-  state.save.mockClear();
+  state.save.mockReset();
+  state.save.mockImplementation(async () => {});
   state.clear.mockClear();
+  state.load.mockClear();
+  state.toastError.mockClear();
 });
 afterEach(cleanup);
 
@@ -289,6 +300,63 @@ describe("Orchestration page", () => {
     expect(takeRequestedRulesFocus()).toBe(false);
     window.removeEventListener(OPEN_SETTINGS_EVENT, listen);
     expect(seen).toEqual(["ws:w1", "orchestration"]);
+  });
+});
+
+describe("where the rules live", () => {
+  it("says the rules are saved on the box, under the first section", () => {
+    state.scope = { rules: rules(), overridden: true, home: { name: "box", online: true } };
+    render(<OrchestrationPage />);
+    const conduct = screen.getByRole("region", { name: "Conduct" });
+    expect(within(conduct).getByText("Saved on box")).toBeTruthy();
+    expect((within(conduct).getByRole("switch", { name: "File edits" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("names nothing when this host holds the copy", () => {
+    render(<OrchestrationPage />);
+    expect(screen.queryByText(/Saved on/)).toBeNull();
+  });
+
+  it("keeps a workspace's own line and puts the home under it", () => {
+    state.workspaces = [{ id: "w1", name: "Alpha", environmentId: "local" }];
+    state.scope = { rules: rules(), overridden: false, home: { name: "box", online: true } };
+    render(<OrchestrationRulesEditor workspaceId="w1" />);
+    const section = screen.getByRole("region", { name: "Orchestration" });
+    expect(within(section).getByText("Follows the global rules.")).toBeTruthy();
+    expect(within(section).getByText("Saved on box")).toBeTruthy();
+  });
+
+  it("turns every control off while the box is offline, and says so", () => {
+    state.scope = { rules: rules(), overridden: true, home: { name: "box", online: false } };
+    render(<OrchestrationPage />);
+    expect(screen.getByText("box is offline")).toBeTruthy();
+    expect((screen.getByRole("switch", { name: "File edits" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("combobox", { name: "Delegation" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("combobox", { name: "Who may spawn Opus" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Add rule" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Edit rule: Bulk work" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("a write the box refuses slides the switch back and says why", async () => {
+    state.scope = { rules: rules(), overridden: true, home: { name: "box", online: true } };
+    state.save.mockImplementation(async () => {
+      throw new Error("refused: orchestration rules and thread defaults live on box; it is offline");
+    });
+    render(<OrchestrationPage />);
+    const edits = screen.getByRole("switch", { name: "File edits" });
+    await act(async () => {
+      fireEvent.click(edits);
+    });
+    expect(edits.getAttribute("aria-checked")).toBe("false");
+    expect(state.toastError).toHaveBeenCalledWith("Couldn't save the rules", {
+      description: "Orchestration rules and thread defaults live on box; it is offline",
+    });
+  });
+
+  it("reads the scope again at mount, so a follow on this host shows", () => {
+    render(<OrchestrationPage />);
+    expect(state.load).toHaveBeenCalledWith("local", null, true);
   });
 });
 
