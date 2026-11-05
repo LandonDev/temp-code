@@ -9,6 +9,11 @@ vi.mock("motion/react", async (importOriginal) => {
 });
 
 const { MessageQueue, mergeOrder, visibleQueue } = await import("./MessageQueue");
+// The tune button's popover is drawn by its parts (components/ui/lazy-menus.tsx): warm its body first.
+const { menuChunk } = await import("../surfaces/chunks");
+const { warmMenus } = await import("./menuRows");
+await menuChunk.load();
+warmMenus();
 
 const item = (id: string, text: string, stored?: boolean): QueuedMessage => ({ id, text, ts: 1, ...(stored ? { stored } : {}) });
 const noop = () => {};

@@ -79,6 +79,7 @@ describe("a board row's model mark", () => {
       [expect.any(String), "Extra high"],
       ["Opus 5.5", "Low"],
       [expect.any(String), null],
+      ["Opus 5.5", "High"],
     ]);
   });
 
