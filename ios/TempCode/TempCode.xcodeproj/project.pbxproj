@@ -143,6 +143,7 @@
 		E59F34661230DFB6F9AF889E /* AccountMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C358254B666145347F305AA /* AccountMenu.swift */; };
 		E90BD8473502D7E0EC4F1FAF /* InboxScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFDB7AC9309717C07EABDB37 /* InboxScreen.swift */; };
 		EC96C9DFAC6EABD68408E2AB /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA468614B495BE8F5F2C9223 /* PlanView.swift */; };
+		EEF0FF5133467713DD83F7BA /* ComposerRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59DDF3AA9FAB80F6DB1520ED /* ComposerRow.swift */; };
 		EFFE7512408C0161A6092B96 /* ThreadActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF1E10EC23A743EAD9AFEB3D /* ThreadActivityViews.swift */; };
 		F0AA1E81A6C34F6010913756 /* ComposerAttachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C576CE99A5E45548F2435C /* ComposerAttachments.swift */; };
 		F0D86D4E99DD372A7AD2A990 /* SearchNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1835920C905E1E4E65A27975 /* SearchNoteRow.swift */; };
@@ -244,6 +245,7 @@
 		55C87A95828B07727E81E7F3 /* HomeRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeRows.swift; sourceTree = "<group>"; };
 		5775732385A0463A8B6D828C /* ShellNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellNavigator.swift; sourceTree = "<group>"; };
 		58D166A7F8BA1C8BE69233DA /* SettingsStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStyles.swift; sourceTree = "<group>"; };
+		59DDF3AA9FAB80F6DB1520ED /* ComposerRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerRow.swift; sourceTree = "<group>"; };
 		5A3D51E34A0EF18DB4998BE0 /* ProjectCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectCardView.swift; sourceTree = "<group>"; };
 		5C358254B666145347F305AA /* AccountMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountMenu.swift; sourceTree = "<group>"; };
 		5F1571E23DC0A5AF459D1D8F /* HomeSlots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeSlots.swift; sourceTree = "<group>"; };
@@ -503,6 +505,7 @@
 				AEC75CE0966D46F74C89225D /* CardActions.swift */,
 				69573CE7C7981881C3FB4335 /* Composer.swift */,
 				23C576CE99A5E45548F2435C /* ComposerAttachments.swift */,
+				59DDF3AA9FAB80F6DB1520ED /* ComposerRow.swift */,
 				69317F13ABC0E0662B2E960E /* ComposerStyles.swift */,
 				A24AC0457A2C05A169F1C11C /* DiffScreen.swift */,
 				392202499D6444F9BD27112A /* DiffStyles.swift */,
@@ -813,6 +816,7 @@
 				ABE8A480B719413FE7E8060D /* CardActions.swift in Sources */,
 				310D7C54D685A1D9905AE410 /* Composer.swift in Sources */,
 				F0AA1E81A6C34F6010913756 /* ComposerAttachments.swift in Sources */,
+				EEF0FF5133467713DD83F7BA /* ComposerRow.swift in Sources */,
 				A11DD08A3B1135C82F6F1D78 /* ComposerStyles.swift in Sources */,
 				0DBCCA842B8C531ACF33700E /* DeployLogSheet.swift in Sources */,
 				23614D8185C5D979DC52454E /* DiffScreen.swift in Sources */,

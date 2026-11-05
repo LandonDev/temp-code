@@ -413,6 +413,12 @@ extension EnvironmentClient {
         }
     }
 
+    /// The thread's permission mode (`session.permission`, approve): the row
+    /// under the composer; the `sessions` push carries the new mode back.
+    public func setPermission(_ sessionId: String, _ permission: PermissionPolicy) async throws {
+        try await act(.approve) { try await self.request(Methods.SessionPermission.self, .init(sessionId: sessionId, permission: permission)) }
+    }
+
     /// Pause the running turn (the composer's button while its box is empty
     /// mid-turn); Continue in the slot resumes it.
     public func pause(_ sessionId: String) async throws {

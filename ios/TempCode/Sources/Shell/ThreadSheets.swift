@@ -68,16 +68,20 @@ private struct ValueChevron: View {
 }
 
 extension PermissionPolicy {
-    nonisolated var label: String {
+    /// The desktop's words, shared with the row under the composer.
+    nonisolated var label: String { PermissionWords.label(self) }
+
+    static let choices = PermissionWords.choices
+
+    /// The mode's glyph, the desktop's AccessPicker icons.
+    nonisolated var symbol: String {
         switch self {
-        case .safe: "Ask for everything"
-        case .edits: "Edits without asking"
-        case .auto: "Full access"
-        case .unknown(let value): value
+        case .safe: "lock"
+        case .edits: "pencil"
+        case .auto: "lock.open"
+        case .unknown: "lock"
         }
     }
-
-    static let choices: [PermissionPolicy] = [.safe, .edits, .auto]
 }
 
 /// One thread type as a row of the grouped list: the glyph tinted and

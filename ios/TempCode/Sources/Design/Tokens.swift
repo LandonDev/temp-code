@@ -411,6 +411,15 @@ enum ComposerMetrics {
     static let slot = TranscriptMetrics.slot
     /// Between the slot and the box.
     static let slotGap = TranscriptMetrics.Gap.line
+    /// The row under the box: 24 pt, 4 pt under it (`ComposerRow`), its
+    /// controls' touch reaching 44 pt; the context meter's ring.
+    static let row = CGFloat(ComposerRow.height)
+    static let rowGap = CGFloat(ComposerRow.gap)
+    static let rowHitOutset = (TranscriptMetrics.hitArea - CGFloat(ComposerRow.height)) / 2
+    static let ring = TranscriptMetrics.glyphSlot
+    static let ringStroke: CGFloat = 2
+    /// The ring's track under its arc.
+    static let ringTrack = 0.25
 }
 
 extension TypeSpec.Style {

@@ -76,10 +76,10 @@ struct BottomDock: View {
 }
 
 /// The composer, the desktop's box drawn as one Liquid Glass shape at the
-/// field radius (`ComposerMetrics`): `+` at the left (a menu: Photos, then
-/// the model and the reasoning the next turn runs with, until the row under
-/// the box takes those), the field in the prose type, and the one button at
-/// the right, on the bottom line as the text grows. The field grows upward
+/// field radius (`ComposerMetrics`): `+` at the left (Photos), the field in
+/// the prose type, and the one button at the right, on the bottom line as
+/// the text grows; under it the row (`ComposerRowView`: the model and its
+/// effort, the context meter, the permission mode). The field grows upward
 /// 22 pt a line to six lines and scrolls past that; a keystroke snaps the
 /// height and a paste of more than one line eases it over `base`
 /// (`ComposerHeight`). The button is the desktop's `SendButton`
@@ -87,9 +87,8 @@ struct BottomDock: View {
 /// mid-turn with the box empty; a paused thread's text queues. A long press
 /// mid-turn with text offers "Queue for the next turn" (`queue.add`) and
 /// shows the queue glyph until release; the glyphs trade on the icon swap.
-/// Stop lives in the slot above. A pick of model that differs from the
-/// thread's shows as one line above the box until it goes out with the
-/// turn. Photos go up to the host as they are picked
+/// Stop lives in the slot above. A model or effort picked in the row rides
+/// the next send (`TurnModel`). Photos go up to the host as they are picked
 /// (ComposerAttachments.swift). While the host is degraded or the key
 /// cannot act, the field carries the reason in place of its placeholder,
 /// `+` and the button leave and nothing sends. A light tap on send and on a
@@ -150,13 +149,6 @@ struct ComposerBar: View {
 
     private var enabled: Bool { block == nil && ComposerRules.enabled(intent, hasText: hasText, photosSettled: photosSettled, inFlight: busy) }
 
-    /// A model or a level the person picked that differs from the thread's
-    /// own: the line above the box names it until it goes out.
-    private var pickShown: Bool {
-        guard block == nil, choice.picked, let session else { return false }
-        return choice.key.provider != session.provider || choice.key.model != session.model || choice.reasoning != session.reasoning
-    }
-
     /// `+`: the key operates and the host is reachable.
     private var canAttach: Bool { block == nil && client.environment.allows(.operate) }
 
@@ -185,19 +177,17 @@ struct ComposerBar: View {
                 QuietLine(symbol: ComposerButton.symbol(.queue), text: "Queued for the next turn")
                     .transition(.opacity)
             }
-            if pickShown {
-                pickLine
-                    .transition(Motion.appear(reduced: reduceMotion))
-            }
             if !uploads.isEmpty {
                 AttachmentStrip(uploads: uploads, onRemove: remove, onRetry: retry)
                     .transition(Motion.appear(reduced: reduceMotion))
             }
-            TCGlassContainer {
-                box
+            VStack(spacing: ComposerMetrics.rowGap) {
+                TCGlassContainer {
+                    box
+                }
+                ComposerRowView(client: client, session: session, thread: thread, choice: choice)
             }
         }
-        .animation(reduceMotion ? nil : Motion.collapse, value: pickShown)
         .animation(reduceMotion ? nil : Motion.collapse, value: uploads.isEmpty)
         .animation(Motion.crossFade, value: failure)
         .animation(Motion.crossFade, value: holding)
@@ -216,8 +206,8 @@ struct ComposerBar: View {
         // A hold whose text went (or whose turn ended) is no hold.
         .onChange(of: offersQueue) { _, offers in if !offers { holding = false } }
         .task(id: client.operateBlock) { await settleBlock() }
-        // `+` offers the catalog: load it once the key may act.
-        .task(id: canAttach) { if canAttach { await choice.load(client) } }
+        // The row under the box names the catalog's models, for every key.
+        .task { await choice.load(client) }
         #if DEBUG
         .task {
             guard TestHooks.open == "composer", block == nil else { return }
@@ -272,88 +262,24 @@ struct ComposerBar: View {
         .onTapGesture { if block == nil { focused.wrappedValue = true } }
     }
 
-    /// `+`: Photos, then the model and the reasoning of the next turn, each
-    /// a submenu with the current value as its subtitle (until A11's row
-    /// under the box takes those). A bare 28 pt glyph inside the box's glass
-    /// (never glass on glass), its touch reaching 44 pt.
+    /// `+`: Photos (the model and its effort are the row under the box). A
+    /// bare 28 pt glyph inside the box's glass (never glass on glass), its
+    /// touch reaching 44 pt; off once the turn holds four photos.
     private var attachMenu: some View {
-        Menu {
-            Button {
-                picking = true
-            } label: {
-                Label("Photos", systemImage: "photo.on.rectangle")
-            }
-            .disabled(uploads.count >= Self.maxPhotos)
-            if session != nil, choice.catalog != nil {
-                Section {
-                    ModelMenu(choice: choice) {
-                        Label {
-                            Text("Model")
-                            Text(choice.modelLabel)
-                        } icon: {
-                            Image(systemName: "cpu")
-                        }
-                    }
-                    if choice.levels.count > 1, let level = choice.reasoning {
-                        ReasoningMenu(choice: choice) {
-                            Label {
-                                Text("Reasoning")
-                                Text(level.label)
-                            } icon: {
-                                Image(systemName: "gauge.with.dots.needle.50percent")
-                            }
-                        }
-                    }
-                }
-            }
+        Button {
+            picking = true
         } label: {
             Image(systemName: "plus")
                 .font(.body.weight(.medium))
-                .foregroundStyle(Color.primary)
+                .foregroundStyle(uploads.count < Self.maxPhotos ? Color.primary : Color(.tertiaryLabel))
                 .frame(width: ComposerMetrics.control, height: ComposerMetrics.control)
                 .padding(ComposerMetrics.hitOutset)
                 .contentShape(Rectangle())
                 .padding(-ComposerMetrics.hitOutset)
         }
-        .menuOrder(.fixed)
-        .accessibilityLabel("Add")
-        .accessibilityHint("Photos, the model and the reasoning")
-    }
-
-    /// The pick that rides on the next turn: the model in the label color,
-    /// its level after it in secondary, and a clear control that hands the
-    /// choice back to the thread.
-    private var pickLine: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "cpu")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text(choice.modelLabel)
-                .font(.footnote.weight(.medium))
-                .lineLimit(1)
-            if choice.levels.count > 1, let level = choice.reasoning {
-                Text(level.label)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            Button {
-                if let session { choice.follow(session) }
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.body)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.secondary)
-                    .frame(width: TranscriptMetrics.hitArea, height: TranscriptMetrics.composerControl)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.pressable)
-            .accessibilityLabel("Use the thread's model")
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Next turn runs on \(choice.modelLabel)")
+        .buttonStyle(.pressable)
+        .disabled(uploads.count >= Self.maxPhotos)
+        .accessibilityLabel("Add photos")
     }
 
     private var placeholder: String {

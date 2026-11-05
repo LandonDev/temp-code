@@ -96,9 +96,12 @@ final class CatalogChoice {
 }
 
 /// The model menu: one section per provider, the models as items, a check
-/// on the current one. The label is the caller's (a chip, a row's value).
+/// on the current one; with `effort`, then an Effort section with the
+/// chosen model's ladder (the row under the composer). The label is the
+/// caller's (a chip, a row's value).
 struct ModelMenu<Content: View>: View {
     @Bindable var choice: CatalogChoice
+    var effort = false
     @ViewBuilder let label: Content
 
     var body: some View {
@@ -114,6 +117,21 @@ struct ModelMenu<Content: View>: View {
                                 Label(model.label, systemImage: "checkmark")
                             } else {
                                 Text(model.label)
+                            }
+                        }
+                    }
+                }
+            }
+            if effort, choice.levels.count > 1 {
+                Section("Effort") {
+                    ForEach(choice.levels, id: \.rawValue) { level in
+                        Button {
+                            choice.pick(level)
+                        } label: {
+                            if level == choice.reasoning {
+                                Label(level.label, systemImage: "checkmark")
+                            } else {
+                                Text(level.label)
                             }
                         }
                     }
