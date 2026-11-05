@@ -73,6 +73,7 @@
     "script:e2e-supervision": "esbuild scripts/e2e-orchestrator-supervision.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-supervision.mjs && node scripts/.out/e2e-supervision.mjs",
     "script:e2e-shared-context": "esbuild scripts/e2e-shared-context.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-shared-context.mjs && node scripts/.out/e2e-shared-context.mjs",
     "script:e2e-plan-auto-implement": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-plan-auto-implement.ts",
+    "script:e2e-away": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-away.ts",
     "script:e2e-steer-ack": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-steer-ack.ts",
     "script:e2e-muse": "esbuild scripts/e2e-muse.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:aliax-core=./node_modules/aliax-core/src --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-muse.mjs && node scripts/.out/e2e-muse.mjs",
     "script:e2e-queue": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-queue.ts",
