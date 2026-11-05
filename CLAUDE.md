@@ -3092,7 +3092,11 @@ this is the short one.
   Done with no counts. An implementation or orchestration row with tasks
   is 64px until it is done (a finished one is 48px, its tally back at the
   end of line two, none once every task is ticked): a third line holds the task bar (`Progress`, foreground while
-  working, muted otherwise), the tally said there alone and a chevron,
+  working, muted otherwise), the tally said there alone and a chevron
+  right after it; every bar on the board is one width, the folded list's
+  widest row over all the board's task lists (master/taskBarWidth.ts on
+  taskListWidth.ts's canvas, the `--task-bar` variable on the list, 160px
+  floor, the column less 64px its cap),
   the whole line folding the task list open under it (`TaskRows` compact,
   closed by default, remembered per row for the window's life in
   master/taskFold.ts; `taskBar` in master/rowBody.ts).

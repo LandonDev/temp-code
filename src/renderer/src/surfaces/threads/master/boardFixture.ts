@@ -117,6 +117,27 @@ export const TASK_BAR_ROWS: FixtureRow[] = [
   { meta: base({ id: "icons", title: "Icon set", status: "stopped", createdAt: 0 }), digest: { todos: todos(5, 7, SEVEN) }, agents: null, landed: false },
 ];
 
+/** Three implementation rows whose task lists differ in width
+ *  (board.preview.tsx `TaskBarWidthPreview`): every bar takes the widest
+ *  list's width, the tally follows each bar, and the open list ends there. */
+export const TASK_BAR_WIDTH_ROWS: FixtureRow[] = [
+  { meta: base({ id: "short", title: "Icons", status: "running", activity: "Editing icons.ts", createdAt: 1 }), digest: { todos: todos(1, 3, ["Read", "Draw", "Docs"]) }, agents: null, landed: false },
+  {
+    meta: base({ id: "mid", title: "Rail rows", status: "running", activity: "Editing Rail.tsx", createdAt: 2 }),
+    digest: { todos: todos(4, 12, ["Read the brief", "Rail rows", "Section headings", "Host glyph", "Hover actions", "Tests", "Docs", "Fixtures", "Light theme", "Dark theme", "Bundle check", "Land"]) },
+    agents: null,
+    landed: false,
+    tasksOpen: true,
+  },
+  {
+    meta: base({ id: "long", title: "Project headers", status: "paused", activity: "Running bun test", createdAt: 3 }),
+    digest: { todos: todos(2, 5, ["Read the brief", "Write the project header rows with their host glyphs", "Tests", "Docs", "Land"]) },
+    agents: null,
+    landed: false,
+    tasksOpen: true,
+  },
+];
+
 /** The fixture's rows in their sections, in the board's order. */
 export function fixtureGroups(rows: readonly FixtureRow[] = FIXTURE_ROWS): { id: MasterGroupId; label: string; rows: FixtureRow[] }[] {
   return GROUP_ORDER.map((id) => ({ id, label: GROUP_LABEL[id], rows: rows.filter((r) => groupOf(r.meta) === id) })).filter((g) => g.rows.length > 0);

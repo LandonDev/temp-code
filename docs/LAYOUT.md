@@ -1002,7 +1002,7 @@ brought into view even when it moved section meanwhile.
 │ Working                                                                │
 │  ☷  Home: Needs you, Working, Workspaces            ✺ Fable 5.1      │
 │  ⠿  Write the project header rows                                     │
-│     ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   3/7  ⌄ │
+│     ██████████░░░░░░░░░░░░░░░░░░  3/7  ⌄                             │
 │     ✓ Read the brief                                                   │
 │     ✓ Rail rows                                                        │
 │     ✓ Section headings                                                 │
@@ -1137,13 +1137,24 @@ brought into view even when it moved section meanwhile.
   `groupOf`) the line goes and the row is 48px again, like every settled
   row: its tally back at the end of line two, or none when every task is
   ticked, since Done already says so; a fold remembered open stays in
-  taskFold.ts and is simply not drawn. The line: the 4px `Progress`
-  bar across the column, then the tally (`3/7`, 12px muted, said here and
-  nowhere else on the row) and a 12px chevron, the right edge where the
-  model mark ends. The fill is foreground while the row's state is
+  taskFold.ts and is simply not drawn. The line, from the column's start:
+  the 4px `Progress` bar, then 8px on the tally (`3/7`, 12px muted, said
+  here and nowhere else on the row) and a 12px chevron, one group. Every
+  bar on the board is one width, the width the folded list takes: the
+  compact row's 12px mark, its 6px gap and the widest task label among
+  the tasks of every implementation and orchestration row on the board,
+  measured on taskListWidth.ts's offscreen canvas in the compact label's
+  face (master/taskBarWidth.ts), never under 160px and never over the
+  title column less 64px, the room the widest tally and the chevron take
+  (a `cqw` cap on the line, so a narrow column caps every bar alike). The
+  board measures it once, before paint, again when the set of task labels
+  changes (a tick or a reorder measures nothing) and once the fonts load,
+  and hands it to the rows as the `--task-bar` variable on the list, so a
+  re-measure re-renders no row; the open list ends where its bar ends.
+  The fill is foreground while the row's state is
   working and muted in every other state, so it never competes with an
   amber or red detail and Done stays quiet; it moves only when a task
-  ticks, on Progress's own `--dur-slow` `--ease-out` scaleX, so working's
+  ticks, on Progress's own `--dur-slow` `--ease-out` slide, so working's
   spinner stays the row's one moving mark. Line two keeps the task in
   hand, said once, right above the bar. The whole line is one button
   ("Tasks: 3 of 7 done", `aria-expanded`), hover `foreground/5`; its click

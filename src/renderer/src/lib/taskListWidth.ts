@@ -50,7 +50,12 @@ const widths = new Map<string, number>();
 /** Measures with one shared offscreen canvas in the given CSS fonts,
  *  cached per font and text; null where there is no canvas (jsdom). */
 export function canvasMeasure(fonts: Record<"label" | "time", string>): Measure | null {
-  if (context === undefined) context = typeof OffscreenCanvas === "undefined" ? null : new OffscreenCanvas(1, 1).getContext("2d");
+  if (context === undefined) {
+    context = typeof OffscreenCanvas === "undefined" ? null : new OffscreenCanvas(1, 1).getContext("2d");
+    // Widths taken in a fallback face are wrong once the real one loads;
+    // this runs ahead of a caller's own re-measure on the same promise.
+    if (context) void document.fonts?.ready.then(() => widths.clear());
+  }
   const ctx = context;
   if (!ctx) return null;
   return (text, font) => {

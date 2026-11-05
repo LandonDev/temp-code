@@ -621,7 +621,9 @@ rows, the foot and the add sheet are the UI thread's
 - **Left out on purpose.** No cost column, no counts, no badges on the
   title. Progress bars and task lists are on implementation and
   orchestration rows only, and only until the row is done: the task bar
-  on a third line with `3/7`, folding open to the task list
+  on a third line with `3/7` and the chevron right after it, every bar on
+  the board one width (the folded list's widest row over all the board's
+  task lists, master/taskBarWidth.ts), folding open to the task list
   (docs/LAYOUT.md "Master"); a finished one is 48px again with its tally
   at the end of line two, none once every task is ticked; every other
   row says the task in hand or its state and `3/7` at its line's end. The

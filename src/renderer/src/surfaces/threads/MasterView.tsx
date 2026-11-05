@@ -1,5 +1,5 @@
 import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { RowsContextMenu, RowsMenu } from "../../chrome/menuRows";
 import { useThreadMenu } from "../../chrome/useThreadMenu";
@@ -22,6 +22,7 @@ import { ChildPane } from "./master/ChildPane";
 import { MasterRow, type RowMenu } from "./master/MasterRow";
 import { RowBoundary } from "./master/RowBoundary";
 import { taskBar } from "./master/rowBody";
+import { boardTaskLabels, taskBarStyle, useTaskBarWidth } from "./master/taskBarWidth";
 import { NewPassDialog } from "./master/NewPassDialog";
 import { AgentSummaryContext } from "./master/agentSummary";
 import {
@@ -204,6 +205,11 @@ export function MasterView(props: ThreadViewProps) {
     },
     [items, digests],
   );
+  // Every bar on the board is one width: the folded list's widest row over
+  // all the board's task lists, re-measured only when that set of labels changes.
+  const barRows = useMemo(() => layout.rows.map((row) => ({ id: row.id, threadType: (sessionStore.metaOf(row.id) ?? row.fallback)?.threadType })), [layout]);
+  const barLabels = useSyncExternalStore(digests.subscribe, () => boardTaskLabels(barRows, digests.get));
+  const barWidth = useTaskBarWidth(barLabels);
   const getItemKey = useCallback((i: number) => items[i]?.key ?? i, [items]);
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -375,7 +381,7 @@ export function MasterView(props: ThreadViewProps) {
               onPick={(pick, id) => id && rowMenu.onPick(id, pick)}
               onOpenChange={(open, id) => id && rowMenu.onOpenChange(id, open)}
             >
-            <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+            <div className="relative w-full" style={{ height: virtualizer.getTotalSize(), ...taskBarStyle(barWidth) }} data-task-bar-width={barWidth ?? undefined}>
               {virtualizer.getVirtualItems().map((v) => {
                 const item = items[v.index];
                 if (!item) return null;

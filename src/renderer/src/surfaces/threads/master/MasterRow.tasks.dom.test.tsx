@@ -195,3 +195,41 @@ describe("the task bar's preview fixture", () => {
     expect(bars.map((b) => b.querySelector("[data-slot='collapsible-trigger']")?.getAttribute("aria-expanded"))).toEqual(["false", "true", "false"]);
   });
 });
+
+describe("the bar's one width", () => {
+  it("reads the board's width, capped at the column less the tally and chevron, and the open list ends where it does", () => {
+    const { container } = view(meta(), { todos: seven(3) }, { tasksOpen: true });
+    const bar = container.querySelector("[data-task-bar] [data-bar]")!;
+    expect(bar.className).toContain("w-[min(var(--task-bar,160px),calc(100cqw-64px))]");
+    expect(bar.className.split(" ")).toContain("shrink");
+    expect(container.querySelector("[data-task-bar]")!.className.split(" ")).toContain("@container");
+    expect(bar.className).toContain("min-w-0");
+    const line = trigger(container)!;
+    expect(line.className).toContain("w-fit");
+    expect(line.className).toContain("max-w-[calc(100%+8px)]");
+    expect(line.className.split(" ")).not.toContain("w-[calc(100%+8px)]");
+    expect(line.querySelector("[data-bar-tally]")!.className).toContain("shrink-0");
+    expect(container.querySelector("[data-task-fold] ul")!.className).toContain("w-[min(var(--task-bar,160px),calc(100cqw-64px))]");
+  });
+
+  it("puts the tally and the chevron right after the bar, one group at the column's start", () => {
+    const { container } = view(meta(), { todos: seven(3) });
+    const parts = [...trigger(container)!.children];
+    expect(parts.map((el) => (el.hasAttribute("data-bar") ? "bar" : el.hasAttribute("data-bar-tally") ? "tally" : el.tagName.toLowerCase()))).toEqual(["bar", "tally", "svg"]);
+    expect(parts[1]!.className).not.toContain("ml-auto");
+  });
+
+  it("is one width on every row of a board whose lists differ, the widest list's", async () => {
+    const { TaskBarWidthPreview } = await import("./board.preview");
+    const { fitTaskBar } = await import("./taskBarWidth");
+    render(<TaskBarWidthPreview />);
+    const holder = document.querySelector<HTMLElement>("[data-group]")!.parentElement!;
+    const widest = fitTaskBar(["Write the project header rows with their host glyphs"], (t) => t.length * 6.4);
+    expect(holder.style.getPropertyValue("--task-bar")).toBe(`${String(widest)}px`);
+    const bars = [...document.querySelectorAll("[data-task-bar] [data-bar]")];
+    expect(bars).toHaveLength(3);
+    expect(new Set(bars.map((b) => b.className)).size).toBe(1);
+    expect(bars.every((b) => holder.contains(b))).toBe(true);
+    expect([...document.querySelectorAll("[data-bar-tally]")].map((t) => t.textContent)).toEqual(["1/3", "4/12", "2/5"]);
+  });
+});
