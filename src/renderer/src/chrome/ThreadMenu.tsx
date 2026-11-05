@@ -77,7 +77,11 @@ export function ThreadMenu({
         <>
           {host ? (
             <span className="flex min-w-0 items-center gap-2" data-thread-host={host.environmentId}>
-              <HostGlyph environmentId={host.environmentId} />
+              {/* The line names the host: the glyph is bare (no tooltip, no
+                  name of its own), centred in the menu's 14px glyph column. */}
+              <span aria-hidden className="grid size-3.5 shrink-0 place-items-center">
+                <HostGlyph environmentId={host.environmentId} bare />
+              </span>
               <span className="truncate">{host.name}</span>
             </span>
           ) : null}

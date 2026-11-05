@@ -14,7 +14,9 @@ import { dialogsChunk } from "../surfaces/chunks";
 // The Recent and Archived lists ride the dialogs chunk; load it once so a list paints with its popover.
 beforeAll(() => dialogsChunk.load());
 
-vi.mock("./HostGlyph", () => ({ HostGlyph: () => <span data-host-glyph /> }));
+vi.mock("./HostGlyph", () => ({
+  HostGlyph: ({ bare }: { bare?: boolean }) => <span data-host-glyph data-bare={bare ? "" : undefined} />,
+}));
 
 const facts = (over: Partial<ThreadMenuFacts> = {}): ThreadMenuFacts => ({
   status: "idle",
@@ -106,6 +108,13 @@ describe("ThreadMenu", () => {
     expect(list.querySelector("[data-menu-note='line']")?.textContent).toBe("box");
     // The host's glyph sits 8px from its name.
     expect(list.querySelector("[data-thread-host]")!.className.split(/\s+/)).toContain("gap-2");
+    // Bare, in the menu's 14px glyph column: the name is said once, and it
+    // starts on the labels' column.
+    const glyph = list.querySelector("[data-thread-host] [data-host-glyph]")!;
+    expect(glyph.hasAttribute("data-bare")).toBe(true);
+    const box = glyph.parentElement!;
+    expect(box.getAttribute("aria-hidden")).toBe("true");
+    expect(box.className.split(/\s+/)).toEqual(expect.arrayContaining(["grid", "size-3.5", "shrink-0", "place-items-center"]));
     expect(within(list).getByText("Move to This Mac…")).toBeTruthy();
     expect(within(list).getByRole("menuitem", { name: "Move to This Mac…" }).getAttribute("aria-description")).toBe("The thread is running");
   });
