@@ -10,6 +10,7 @@ import { useEnvironments, useEnvironmentStatuses } from "../../lib/connection/st
 import * as commands from "../../lib/tcserver/commands";
 import type { SessionMeta } from "../../lib/tcserver/types";
 import { resourcesHeldBy } from "../../lib/threadBatch";
+import { actionFailed } from "../../lib/threadActionToast";
 import { useProjects, useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useMetaById } from "../../lib/threads/agents";
 import { rightPanel } from "../../lib/rightPanel";
@@ -364,10 +365,22 @@ function MasterBoardView(props: ThreadViewProps) {
   }, [openId, session.id, shownHost]);
   useEffect(() => () => rightPanel.showThread(session.id, null), [session.id]);
 
-  const byHost = (list: readonly { meta: SessionMeta }[], action: "pause" | "resume") => {
+  // Pause all and Resume all, one session.batch per host; what a host
+  // refused (or never got) is said in one toast, never dropped.
+  const byHost = async (list: readonly { meta: SessionMeta }[], action: "pause" | "resume") => {
     const map = new Map<string, string[]>();
     for (const { meta: c } of list) (map.get(c.environmentId) ?? map.set(c.environmentId, []).get(c.environmentId)!).push(c.id);
-    return Promise.allSettled([...map].map(([env, ids]) => commands.sessionBatch(env, action, ids)));
+    const hosts = [...map];
+    const results = await Promise.allSettled(hosts.map(([env, ids]) => commands.sessionBatch(env, action, ids)));
+    const failed: { id: string; error: unknown }[] = [];
+    results.forEach((r, i) => {
+      if (r.status === "rejected") for (const id of hosts[i][1]) failed.push({ id, error: r.reason });
+      else for (const f of r.value?.failed ?? []) failed.push({ id: f.sessionId, error: f.error });
+    });
+    if (failed.length === 0) return;
+    const titleOf = (id: string) => list.find(({ meta: c }) => c.id === id)?.meta.title || "Untitled";
+    if (failed.length === 1) actionFailed(`${action} it`, titleOf(failed[0].id), failed[0].error);
+    else actionFailed(`${action} ${failed.length} threads`, session.title || "The batch", failed[0].error);
   };
 
   const onMenuPick = (id: string) => {

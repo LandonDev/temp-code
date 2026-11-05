@@ -1650,6 +1650,20 @@ describe("Stop, archive and delete a batch thread from the board", () => {
     expect(link.calls.some((c) => c.method === "session.archive")).toBe(false);
   });
 
+  it("Pause all that a host refuses for a thread says which and why, never in silence", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 })]);
+    link.answers.set("session.batch", { attempted: ["c-run"], succeeded: [], failed: [{ sessionId: "c-run", error: "this thread is moving to another host; try again once it lands" }] });
+    renderView();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Pause all" }));
+    await flush();
+    await waitFor(() =>
+      expect(toasts).toEqual([{ message: "Couldn't pause it", description: "Home: This thread is moving to another host; try again once it lands" }]),
+    );
+  });
+
   it("Archive all that leaves a thread behind keeps its dialog open, naming the thread and why", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 }), meta({ id: "c-done", title: "Done one", status: "idle", createdAt: 2 })]);
     link.answers.set("batch.archive", { attempted: ["c-run", "c-done"], succeeded: ["c-done"], failed: [{ sessionId: "c-run", error: "this thread is moving to another host; try again once it lands" }] });

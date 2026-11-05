@@ -18,6 +18,7 @@ import { useSessionMeta } from "../../../lib/tcserver/store";
 import type { BoardDigest } from "@server/shared/contract-batch";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
+import { actionFailed } from "../../../lib/threadActionToast";
 import { marksAtRest } from "../../../lib/threadStripModel";
 import { plainStatus } from "@shared/statusWords";
 import { ModelMark, modelMarkName, modelMarkTip, storeHostGlyph, type HostGlyphOf } from "../ModelMark";
@@ -249,11 +250,11 @@ export function MasterRowView({
   };
   const verb =
     meta.status === "queued"
-      ? { label: "Start now", icon: Play, run: () => commands.startNow(meta.id) }
+      ? { label: "Start now", icon: Play, failed: "start it now", run: () => commands.startNow(meta.id) }
       : hasRunningTurn(meta)
-        ? { label: "Pause", icon: Pause, run: () => commands.pause(meta.id) }
+        ? { label: "Pause", icon: Pause, failed: "pause it", run: () => commands.pause(meta.id) }
         : meta.status === "paused" || meta.status === "stopped"
-          ? { label: "Resume", icon: Play, run: () => commands.resume(meta.id) }
+          ? { label: "Resume", icon: Play, failed: "resume it", run: () => commands.resume(meta.id) }
           : null;
 
   return (
@@ -348,7 +349,7 @@ export function MasterRowView({
           <MessageSquare />
         </RowAction>
         {verb ? (
-          <RowAction label={verb.label} onClick={() => void verb.run().catch(() => undefined)}>
+          <RowAction label={verb.label} onClick={() => void verb.run().catch((err: unknown) => actionFailed(verb.failed, meta.title || "Untitled", err))}>
             <verb.icon />
           </RowAction>
         ) : null}

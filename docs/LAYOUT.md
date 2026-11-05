@@ -1471,7 +1471,9 @@ brought into view even when it moved section meanwhile.
   queued, which is `session.start` past `after`; nothing otherwise), and ⋯,
   the row's menu at the button. Stop, Archive and Remove from queue live in
   that menu. Every action goes to the row's own host: the commands route
-  by the thread's id through the store's link for it.
+  by the thread's id through the store's link for it, and a refusal, the
+  verb's or Pause all's and Resume all's, is one toast ("Couldn't pause
+  it" over the thread and the host's reason, lib/threadActionToast.ts).
 - **Click** opens the thread's full view in the board's place
   (`master/ChildPane.tsx`, given the row's `environmentId`): the whole
   pane, board and master chat gone, becomes the thread's own view (its
