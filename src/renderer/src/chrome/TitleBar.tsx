@@ -317,8 +317,9 @@ function TitleBarComponent({
   // gone, so the picker stays here.
   const showProjectButton =
     railClosed && Boolean(onSelectProject) && !showCurrentProject;
-  // The rail's stand-ins while it is closed, 2px after the end group like
-  // the rest of it. The strip's + opens the type chooser, so a project's
+  // The rail's stand-ins while it is closed: they lead the end group, 2px
+  // apart like the rest of it, so Panel stays last whether the rail is open
+  // or not. The strip's + opens the type chooser, so a project's
   // view drops the ⌘N stand-in: one control, one name. The home draws no +.
   const showInbox = projectless && railClosed && !!onOpenInbox;
   const showNotes = projectless && railClosed && !!onOpenNotes;
@@ -327,8 +328,7 @@ function TitleBarComponent({
   const showSettings = projectless && railClosed && !!onOpenSettings;
   const standIns =
     showInbox || showNotes || showFind || showSettings ? (
-      <div className="flex h-10 shrink-0 items-center gap-0.5 ps-0.5" data-stand-ins>
-        <TooltipProvider>
+      <div className="flex shrink-0 items-center gap-0.5" data-stand-ins>
           {showInbox ? (
             <IconButton label="Inbox" onClick={onOpenInbox}>
               <Inbox className="size-3.5" />
@@ -354,7 +354,6 @@ function TitleBarComponent({
               <Settings className="size-3.5" />
             </IconButton>
           ) : null}
-        </TooltipProvider>
       </div>
     ) : null;
 
@@ -417,9 +416,9 @@ function TitleBarComponent({
             activeRef={(el) => {
               activeTabRef.current = el;
             }}
+            standIns={standIns}
           />
         </div>
-        {standIns}
       </div>
       {!IS_MAC ? <WindowControls /> : null}
     </header>

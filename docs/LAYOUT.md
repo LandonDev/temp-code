@@ -150,8 +150,9 @@ share one 40px row box, so all of them sit on one 28px line at y 6. The
 scroll arrows belong to the live row: they sit over its own box, never over
 the end group. The bar's content ends 12px from the window's edge, the right
 panel's inset, so Panel sits over the panel's last button. The rail-closed
-stand-ins (Inbox, Notes, Go to File, New Thread, Settings) follow Panel 2px
-after it, as the end group's controls sit, each named on hover with its key
+stand-ins (Inbox, Notes, Go to File, New Thread, Settings) lead the end
+group, ahead of the plan chip, 2px apart as its controls sit, so Panel stays
+last whether the rail is open or not, each named on hover with its key
 by a `Tip`, and are drawn only when there is one; the New Thread stand-in
 only on the home, since everywhere else the strip's + is the bar's one New
 thread. The Windows controls sit flush at the bar's end, after the inset.

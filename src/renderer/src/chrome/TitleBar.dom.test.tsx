@@ -265,13 +265,20 @@ describe("TitleBar's controls", () => {
     });
   });
 
-  it("with the rail closed in a project, the stand-ins follow Panel 2px apart and drop New thread for the strip's +", () => {
+  it("with the rail closed in a project, the stand-ins lead the end group 2px apart, Panel last, and drop New thread for the strip's +", () => {
     withRail(false, () => {
       bar();
       const group = document.querySelector<HTMLElement>("[data-stand-ins]")!;
-      expect(group.className).toContain("ps-0.5");
       expect(group.className).toContain("gap-0.5");
       expect(group.className).not.toMatch(/(^|\s)px-/);
+      // In the end group, ahead of the plan chip and the cue: Panel stays the last control.
+      const end = group.parentElement!;
+      expect(end.className).toContain("gap-0.5");
+      const panel = screen.getByRole("button", { name: "Panel" });
+      expect(end.contains(panel)).toBe(true);
+      const buttons = [...end.querySelectorAll("button")];
+      expect(buttons[buttons.length - 1]).toBe(panel);
+      expect(buttons[0]).toBe(screen.getByRole("button", { name: "Go to file" }));
       expect(screen.getByRole("button", { name: "Go to file" })).toBeTruthy();
       // One control named New thread: the strip's, which opens the type chooser.
       const plus = screen.getAllByRole("button", { name: /New thread/ });

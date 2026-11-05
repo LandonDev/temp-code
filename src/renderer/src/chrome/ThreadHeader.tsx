@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
@@ -78,6 +78,7 @@ export function ThreadHeader({
   onShowTerminal,
   onNewTerminal,
   projectTerminalActive = false,
+  standIns,
   stripRef,
   overflow,
   onScrollBy,
@@ -92,6 +93,9 @@ export function ThreadHeader({
   onShowTerminal?: () => void;
   onNewTerminal?: () => void;
   projectTerminalActive?: boolean;
+  /** The rail's stand-ins while it is closed (chrome/TitleBar.tsx): they
+   *  lead the end group, so Panel stays last. */
+  standIns?: ReactNode;
 }) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const menu = useThreadMenu({
@@ -144,6 +148,7 @@ export function ThreadHeader({
           // provider sits around a scroller (the lazy one remounts what it wraps).
           <TooltipProvider>
             <div className="flex shrink-0 items-center gap-0.5">
+              {standIns}
               <ProjectPlanChip />
               <AgentsCue threadId={model.activeId} room={panelRoom} />
               <ThreadMenu
