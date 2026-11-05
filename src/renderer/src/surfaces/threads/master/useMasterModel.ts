@@ -60,9 +60,13 @@ export function masterChildrenOf(metas: readonly SessionMeta[], masterId: string
 /**
  * The children as rows. A build whose `planThreadId` names a thread of
  * the same batch takes that plan's row (its key and title); the plan,
- * archived after the start or not, is never a second row. `metas` finds a
- * plan by id (the whole store, or a lookup into it) so an archived plan
- * still lends its title.
+ * archived after the start or not, is never a second row. A plan that
+ * started several builds lends its row to the first (children come oldest
+ * first) and each later build is a row of its own, so no two rows share a
+ * key: a repeated key never lets the layout settle (`boardLayout`), and the
+ * board's snapshot looped (React #185). `metas` finds a plan by id (the
+ * whole store, or a lookup into it) so an archived plan still lends its
+ * title.
  */
 export function foldRows(
   children: readonly SessionMeta[],
@@ -78,7 +82,8 @@ export function foldRows(
   const taken = new Set<string>();
   const rows: MasterRowModel[] = [];
   for (const child of children) {
-    const plan = planOf(child);
+    const lent = planOf(child);
+    const plan = lent && !taken.has(lent.id) ? lent : null;
     if (plan) taken.add(plan.id);
     rows.push({ key: plan?.id ?? child.id, meta: child, plan, title: plan?.title || child.title });
   }

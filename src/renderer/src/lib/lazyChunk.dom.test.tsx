@@ -1,7 +1,7 @@
 import React from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defineChunk, preloadWhenIdle } from "./lazyChunk";
+import { ChunkBoundary, defineChunk, preloadWhenIdle } from "./lazyChunk";
 
 type Mod = { Thing: (props: { label: string }) => React.JSX.Element };
 
@@ -164,6 +164,25 @@ describe("a surface that fails", () => {
     await tick();
     expect(container.querySelector("[data-rail]")).not.toBeNull();
     expect(screen.getByRole("alert").textContent).toContain("Couldn't load");
+  });
+
+  it("a boundary with its own failed view draws that alone, and its retry remounts the children", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let broken = true;
+    const Flaky = (): React.JSX.Element => {
+      if (broken) throw new Error("render broke");
+      return <div data-thing>back</div>;
+    };
+    const { container } = render(
+      <ChunkBoundary name="own" fallback={<div data-fallback />} onRetry={() => {}} failed={(retry) => <button type="button" onClick={retry}>Again</button>}>
+        <Flaky />
+      </ChunkBoundary>,
+    );
+    expect(container.querySelector("[data-fallback]")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    broken = false;
+    fireEvent.click(screen.getByRole("button", { name: "Again" }));
+    expect(container.querySelector("[data-thing]")?.textContent).toBe("back");
   });
 });
 

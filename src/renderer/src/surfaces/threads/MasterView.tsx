@@ -41,6 +41,9 @@ import {
 import { SplitShell, useSplit } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 import { useChatFold } from "../../lib/chatFold";
+import { ChunkBoundary } from "../../lib/lazyChunk";
+import { tagRendererError } from "../../lib/rendererErrors";
+import { COLUMN_MAX_CLASS } from "../transcriptOutlineModel";
 import { blockedReason } from "@shared/batchWords";
 
 /**
@@ -111,7 +114,44 @@ function reportBoardPaint(masterId: string, rows: number, ms: number): void {
   }
 }
 
+/**
+ * The board in its own boundary: a board that throws (its model, a row
+ * outside its RowBoundary, the foot) leaves the master as its transcript
+ * alone under one line with Retry, so the chat, its composer and the rail
+ * stay usable; the error's stalls.log line ends `thread=<id> view=master`.
+ * Retry mounts the board afresh.
+ */
 export function MasterView(props: ThreadViewProps) {
+  const id = props.session.id;
+  return (
+    <ChunkBoundary
+      name={`master-board.${id}`}
+      fallback={null}
+      onRetry={() => {}}
+      onError={(error) => tagRendererError(error, { thread: id, view: "master" })}
+      failed={(retry) => <BoardFailed renderChat={props.renderChat} onRetry={retry} />}
+    >
+      <MasterBoardView {...props} />
+    </ChunkBoundary>
+  );
+}
+
+/** The master as ChatView draws a thread, under the load line's grid: the line, then Retry. */
+export function BoardFailed({ renderChat, onRetry }: Pick<ThreadViewProps, "renderChat"> & { onRetry: () => void }) {
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col [contain:layout_style]" data-board-failed>
+      <div role="alert" className={`mx-auto mt-2 flex h-6 w-full ${COLUMN_MAX_CLASS} shrink-0 items-center gap-2 px-4 text-[12px] text-muted-foreground`}>
+        <span className="min-w-0 flex-1 truncate">Couldn't load the board</span>
+        <Button variant="ghost" size="xs" className="shrink-0" onClick={onRetry}>
+          Retry
+        </Button>
+      </div>
+      {renderChat()}
+    </div>
+  );
+}
+
+function MasterBoardView(props: ThreadViewProps) {
   const { session } = props;
   const meta = useMetaById(session.id);
   const model = useMasterModel(session);

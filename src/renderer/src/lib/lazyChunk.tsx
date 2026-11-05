@@ -151,13 +151,16 @@ interface BoundaryProps {
   onRetry: () => void;
   /** The error held, as React hands it to componentDidCatch (a board row tags it with its place). */
   onError?: (error: unknown) => void;
+  /** Drawn in the fallback's place, overlay and all, when the surface has its own (the master view's board). */
+  failed?: (retry: () => void) => ReactNode;
   children: ReactNode;
 }
 
 /**
  * One surface's error boundary: on a throw, the surface's fallback held
- * still (no pulse: nothing is loading) with one line and Retry over it.
- * Retry asks the owner to replace the lazy, then remounts the children.
+ * still (no pulse: nothing is loading) with one line and Retry over it, or
+ * what `failed` draws. Retry asks the owner to replace the lazy, then
+ * remounts the children.
  */
 export class ChunkBoundary extends Component<BoundaryProps, { failed: boolean; attempt: number }> {
   state = { failed: false, attempt: 0 };
@@ -177,6 +180,7 @@ export class ChunkBoundary extends Component<BoundaryProps, { failed: boolean; a
 
   render(): ReactNode {
     if (!this.state.failed) return <ChunkAttempt key={this.state.attempt}>{this.props.children}</ChunkAttempt>;
+    if (this.props.failed) return this.props.failed(this.retry);
     return (
       <div
         data-chunk-failed={this.props.name}

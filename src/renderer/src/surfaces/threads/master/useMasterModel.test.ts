@@ -206,6 +206,31 @@ describe("a plan and its build are one row", () => {
     expect(rows[1].plan).toBeNull();
   });
 
+  it("a plan that started several builds: the first takes the plan's row, each later build is a row of its own, every key once", () => {
+    const plan = meta("idle", { threadType: "planning", title: "Bots", implementationId: "b3" });
+    const b1 = meta("idle", { id: "b1", title: "Bots: first pass", planThreadId: plan.id });
+    const b2 = meta("idle", { id: "b2", title: "Bots: second pass", planThreadId: plan.id });
+    const b3 = meta("running", { id: "b3", title: "Bots: third pass", planThreadId: plan.id });
+    const metas = [plan, b1, b2, b3];
+    const rows = foldRows(masterChildrenOf(metas, "m"), metas, "m");
+    expect(rows.map((r) => r.key)).toEqual([plan.id, "b2", "b3"]);
+    expect(rows.map((r) => r.title)).toEqual(["Bots", "Bots: second pass", "Bots: third pass"]);
+    expect(rows.map((r) => r.plan?.id ?? null)).toEqual([plan.id, null, null]);
+  });
+
+  it("the layout of a plan with several builds is the same object when read again: the board's snapshot settles", () => {
+    const plans = [0, 1, 2].map((i) => meta("idle", { threadType: "planning", title: `Plan ${i}` }));
+    const builds = [3, 2, 1].flatMap((count, i) =>
+      Array.from({ length: count }, (_, j) => meta(j === count - 1 ? "running" : "idle", { title: `Build ${i}.${j}`, planThreadId: plans[i]!.id })),
+    );
+    const metas = [...plans, ...builds];
+    const of = (id: string) => metas.find((m) => m.id === id) ?? null;
+    const first = boardLayout("m", metas, of, [], []);
+    expect(new Set(first.rows.map((r) => r.key)).size).toBe(first.rows.length);
+    expect(first.rows).toHaveLength(6);
+    expect(boardLayout("m", metas, of, [], [], first)).toBe(first);
+  });
+
   it("never folds against a plan outside the batch", () => {
     const foreign = meta("idle", { threadType: "planning", masterId: "other", title: "Elsewhere" });
     const build = meta("running", { title: "Build", planThreadId: foreign.id });

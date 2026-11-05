@@ -3076,7 +3076,14 @@ this is the short one.
   ChunkBoundary pattern): a row that throws paints "Couldn't load" and
   Retry at its height, its siblings, the board, the rail and the
   transcript stay, and stalls.log's `[renderer] caught` line ends
-  `thread=<master> row=<child>` (`tagRendererError`). A row is 48px, two
+  `thread=<master> row=<child>` (`tagRendererError`). The board sits in
+  one more boundary (`MasterView`'s, `failed` on ChunkBoundary): a board
+  that throws outside a row leaves the master as its transcript alone
+  under "Couldn't load the board" and Retry (`BoardFailed`), tagged
+  `thread=<master> view=master`. A plan that started several builds lends
+  its row to the first and each later build is its own row (`foldRows`):
+  rows never share a key, which kept `useBoardLayout`'s snapshot from
+  settling (React #185 on "Update 35 more"). A row is 48px, two
   lines on `Item` with every left edge of the board 12px in
   (master/MasterRow.tsx, the rule `rowStatus` in master/rowBody.ts):
   the type glyph (its word in a tooltip), the title, the host glyph and the

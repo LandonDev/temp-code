@@ -1206,7 +1206,15 @@ brought into view even when it moved section meanwhile.
   row, keyed by the plan's id and titled with the plan's title, so the row
   stays in place when the build starts and the type glyph turns from the
   plan's to the implementation's; the plan, archived after the start or not, is never a
-  second row.
+  second row. A plan that started several builds lends its row to the
+  first; each later build is a row of its own under its own title, so no
+  two rows share a key (a shared key kept the board's layout from
+  settling, React #185, the board never painting).
+- **A board that throws** outside a row (its model, the foot) is held by
+  the view's own boundary: the master shows as its transcript alone, the
+  chat and its composer usable, under one 24px line on the load line's
+  grid, "Couldn't load the board" in 12px muted and a ghost Retry at the
+  column's end, which mounts the board afresh.
 - **Hover** (and focus inside the row) fades the model mark out and the
   row's actions in where it sat, three 24px ghost icon buttons 2px apart,
   centred on line one with the last 12px in, with tooltips and no box

@@ -239,6 +239,7 @@ import { SessionActionsContext, type SessionActions } from "../threadChat";
 import { MasterView } from "./MasterView";
 import { BoardPreview } from "./master/board.preview";
 import { clockTime } from "../../lib/duration";
+import { rendererErrorLine } from "../../lib/rendererErrors";
 
 // 12:08 on the fixtures' day, in the app's one clock (lib/duration.ts).
 const LANDED = clockTime(new Date(2026, 9, 21, 12, 8).getTime());
@@ -884,6 +885,55 @@ describe("the master view", () => {
     const row = screen.getByRole("button", { name: /Search screen/ }).closest("[data-plan]");
     expect(row?.getAttribute("data-plan")).toBe("c-plan");
     expect(row?.getAttribute("data-type")).toBe("implementation");
+  });
+
+  it("a finished batch whose plans started several builds each opens: a row per build, the subagents under them, nothing loops", async () => {
+    // "Update 35 more" on the box: 30 finished plans, 34 builds (one plan
+    // started three, two started two), about seven settled subagents per
+    // build, the master watching, the project's archived threads beside it.
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const plans = Array.from({ length: 30 }, (_, i) =>
+      meta({ id: `p${i}`, title: `Lane ${i}`, status: "idle", threadType: "planning", implementationId: `b${i}`, planCompletedAt: 10 + i, createdAt: 10 + i }),
+    );
+    const buildsOf = (i: number) => (i === 0 ? 3 : i === 1 || i === 2 ? 2 : 1);
+    const builds = plans.flatMap((plan, i) =>
+      Array.from({ length: buildsOf(i) }, (_, j) => meta({ id: j === 0 ? `b${i}` : `b${i}-${j}`, title: `Lane ${i} build ${j}`, status: "idle", planThreadId: plan.id, createdAt: 100 + i * 3 + j })),
+    );
+    const agents = builds.flatMap((b) =>
+      Array.from({ length: 7 }, (_, k) => meta({ id: `${b.id}-a${k}`, parentId: b.id, masterId: null as unknown as string, status: "idle", threadType: null as unknown as SessionMeta["threadType"], title: `Agent ${k}` })),
+    );
+    const archived = Array.from({ length: 20 }, (_, i) => meta({ id: `old${i}`, title: `Old ${i}`, status: "idle", archived: true, masterId: null as unknown as string }));
+    seed([...plans, ...builds, ...agents, ...archived]);
+    renderView();
+    await flush();
+    const said = errors.mock.calls.map((c) => String(c[0]));
+    errors.mockRestore();
+    expect(said.filter((s) => /getSnapshot should be cached|Maximum update depth|same key/.test(s))).toEqual([]);
+    expect(builds).toHaveLength(34);
+    expect(document.querySelector("[data-view-detail]")?.textContent).toBe("34/34");
+    expect(header("done").textContent).toBe("Done");
+  });
+
+  it("a board that throws leaves the master's chat under one line with Retry, tagged with the thread, and Retry brings the board back", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    const broke = new Error("board broke");
+    const metas = vi.spyOn(sessionStore, "metas").mockImplementation(() => {
+      throw broke;
+    });
+    renderView();
+    await flush();
+    expect(document.querySelector("[data-board]")).toBeNull();
+    expect(screen.getByTestId("chat")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("Couldn't load the board");
+    expect(rendererErrorLine("caught", broke)).toMatch(/ thread=m view=master$/);
+    metas.mockRestore();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await flush();
+    errors.mockRestore();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(document.querySelector("[data-board]")).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Home/ })).toBeTruthy();
   });
 
   it("a row opens its thread's full view in the board's place, and Back or Escape returns to the board where it was", async () => {
