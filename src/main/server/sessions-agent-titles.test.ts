@@ -96,3 +96,16 @@ it('a turn held by a wait says the agents it waits on, by title, until the wait 
   registry.setAwaiting(parent, [a, b], false)
   expect(registry.get(parent)?.statusDetail ?? '').not.toMatch(/^Waiting on/)
 })
+
+it('a thread created with a title keeps it through its first message and turn', async () => {
+  const named = await registry.startWith({ cwd: root, provider: 'claude', threadType: 'chat', title: 'Gateway audit' }, 'Look at every forward path')
+  registry.append(named.id, { type: 'turn-complete' })
+  await settle()
+  expect(registry.get(named.id)?.title).toBe('Gateway audit')
+  expect(titles).toEqual([])
+  // Without one the message names it, then the written title replaces that.
+  const plain = await registry.startWith({ cwd: root, provider: 'claude', threadType: 'chat' }, 'Look at every forward path')
+  expect(registry.get(plain.id)?.title).toBe('Look at every forward path')
+  registry.append(plain.id, { type: 'turn-complete' })
+  expect(titles.map((t) => t.text)).toEqual(['Look at every forward path'])
+})

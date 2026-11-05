@@ -39,4 +39,12 @@ export default [
     name: "Chat draft, master thread",
     props: { ...base, sessionId: undefined, shell: true, hideProjectPicker: true, threadType: "chat", onThreadTypeChange: noop, master: true, onMasterChange: noop },
   },
+  {
+    name: "Chat draft, unnamed",
+    props: { ...base, sessionId: undefined, shell: true, hideProjectPicker: true, threadType: "chat", onThreadTypeChange: noop, master: false, onMasterChange: noop, draftTitle: "", onDraftTitleChange: noop },
+  },
+  {
+    name: "Chat draft, named",
+    props: { ...base, sessionId: undefined, shell: true, hideProjectPicker: true, threadType: "chat", onThreadTypeChange: noop, master: false, onMasterChange: noop, draftTitle: "Gateway deadline audit", onDraftTitleChange: noop },
+  },
 ];

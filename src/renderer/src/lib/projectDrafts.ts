@@ -34,6 +34,8 @@ export type DraftRecord = DraftPlace & {
   threadRules: ThreadRules | null;
   /** A chat draft's "Master thread" pick (Session.draftMaster). */
   master?: boolean;
+  /** The name typed in the draft row (Session.draftTitle); the first send makes it the thread's title. */
+  title?: string;
   segments: ComposerSegment[];
   attachments: Attachment[];
   seenAt: number;
@@ -207,6 +209,7 @@ export function draftPicks(session: Session): DraftPatch {
     threadType: session.threadType ?? "chat",
     threadRules: session.threadRules ?? null,
     master: !!session.draftMaster,
+    title: session.draftTitle ?? "",
   };
 }
 
@@ -227,6 +230,7 @@ export function sessionFromDraft(record: DraftRecord, place: DraftPlace | null, 
     threadType: record.threadType,
     ...(record.threadRules ? { threadRules: record.threadRules } : {}),
     ...(record.master ? { draftMaster: true } : {}),
+    ...(record.title ? { draftTitle: record.title } : {}),
     createdAt: now,
     blocks: [],
   };

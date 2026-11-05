@@ -2100,6 +2100,12 @@ proof and the sizing rules; the pieces, by name:
   and Open archived (`SessionGone`); the new-chat screen is a project's one
   remembered draft (lib/projectDrafts.ts, keyed like the strip order, never
   a chip, opened by every New thread path through App's `openProjectDraft`;
+  its draft row's "Name this thread" field (chrome/DraftTitleField.tsx, 80
+  characters, kept on the record as `title`) is the thread's title from the
+  first send, `session.create { title }`: a title that is no placeholder
+  (src/shared/placeholderTitles.ts) is never sliced from the message nor
+  replaced by the generated one, and an empty field leaves both as before;
+  the phone's New thread sheet has the same row;
   coming back to a project, a workspace or the home opens its most recent
   active thread first, a batch thread's master on its board, then the
   remembered thread or draft: `activeLanding` in lib/projectLanding.ts),

@@ -190,6 +190,24 @@ describe("thread commands", () => {
     expect(link.of("session.create")[0]).toMatchObject({ threadType: "chat", master: true, firstMessage: "lead the batch" });
   });
 
+  it("a draft's typed name is the thread's title, one trimmed line of at most 80", async () => {
+    const named = { ...newSession("local", "claude", "/repo"), draftTitle: "  Gateway   audit \n" };
+    const long = { ...newSession("local", "claude", "/repo"), draftTitle: "x".repeat(100) };
+    const blank = { ...newSession("local", "claude", "/repo"), draftTitle: "   " };
+    sessionStore.mutate([named, long, blank]);
+    await send(named, "look at the forward paths", [], undefined, undefined);
+    await send(long, "go", [], undefined, undefined);
+    await send(blank, "hello", [], undefined, undefined);
+    expect(link.of("session.create")[0]).toMatchObject({ title: "Gateway audit" });
+    expect(link.of("session.create")[1]).toMatchObject({ title: "x".repeat(80) });
+    expect(link.of("session.create")[2]).not.toHaveProperty("title");
+  });
+
+  it("startThread passes the title through to session.create", async () => {
+    await startThread({ environmentId: "local", threadType: "chat", provider: "claude", title: "Gateway audit" }, "go");
+    expect(link.of("session.create")[0]).toMatchObject({ title: "Gateway audit", firstMessage: "go" });
+  });
+
   it("create carries the thread type and its agent type", async () => {
     const draft = newSession("local", "claude", "/repo", undefined, undefined, undefined, { threadType: "orchestration" });
     sessionStore.mutate([draft]);

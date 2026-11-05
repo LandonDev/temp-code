@@ -168,6 +168,13 @@ describe("planProjectDraft", () => {
     expect(draftPicks({ ...session, draftMaster: true }).master).toBe(true);
     expect(draftPicks(session).master).toBe(false);
   });
+  it("keeps a draft's typed name both ways", () => {
+    expect(sessionFromDraft({ ...base, title: "Gateway audit" }, null, 5).draftTitle).toBe("Gateway audit");
+    expect(sessionFromDraft(base, null, 5)).not.toHaveProperty("draftTitle");
+    const session = sessionFromDraft(base, null, 5);
+    expect(draftPicks({ ...session, draftTitle: "Gateway audit" }).title).toBe("Gateway audit");
+    expect(draftPicks(session).title).toBe("");
+  });
   it("keeps the record's text and picks in the rebuilt session", () => {
     const session = sessionFromDraft({ ...base, threadType: "planning" }, null, 5);
     expect(session).toMatchObject({ id: "d1", cwd: "/work/alpha", threadType: "planning", blocks: [], createdAt: 5 });

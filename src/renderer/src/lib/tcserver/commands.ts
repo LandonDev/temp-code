@@ -1,7 +1,7 @@
 import { REASONING_LEVELS } from "@server/shared/catalog";
 import { nativeModelId } from "../models";
 import { bridgeNewThread, bridgesNewThreads } from "../macBridge";
-import type { Attachment, Block, RuntimeMode, Session } from "../session";
+import { DRAFT_TITLE_MAX, type Attachment, type Block, type RuntimeMode, type Session } from "../session";
 import { policyForMode } from "./access";
 import { needsUpload, uploadAttachment } from "../attachmentUpload";
 import { registry, type Link } from "../connection";
@@ -112,6 +112,11 @@ export async function toServerAttachments(
   return out.filter((a): a is ServerAttachment => a !== null);
 }
 
+/** The draft row's name as the host stores it: one trimmed line, at most `DRAFT_TITLE_MAX`. */
+export function draftTitleOf(session: Pick<Session, "draftTitle">): string {
+  return (session.draftTitle ?? "").replace(/\s+/g, " ").trim().slice(0, DRAFT_TITLE_MAX);
+}
+
 /** Create the draft on the server if needed; returns its meta. */
 export async function ensureCreated(session: Session): Promise<SessionMeta> {
   const existing = sessionStore.metaOf(session.id);
@@ -134,6 +139,8 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
     ...(session.threadRules ? { threadRules: session.threadRules } : {}),
     // A chat draft ticked "Master thread" is born pinned, so its first spawn is a master's.
     ...(session.draftMaster && (session.threadType ?? "chat") === "chat" ? { master: true } : {}),
+    // A name typed in the draft row is the thread's title, kept over the generated one.
+    ...(draftTitleOf(session) ? { title: draftTitleOf(session) } : {}),
     projectId: session.projectId ?? null,
     // A draft minted before the catalog loaded still lands in its folder's workspace.
     workspaceId:

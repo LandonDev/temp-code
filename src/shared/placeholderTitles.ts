@@ -4,8 +4,10 @@
  * thread), the `provider · agentType` fallback, and the desktop's draft
  * label (the harness id). The first send replaces the title with a slice of
  * the message, so a placeholder title on a thread with no rows means no
- * message ever went in. The host's empty-thread sweep and the desktop's
- * restore both read it.
+ * message ever went in. A title the person gave at create (the draft row's
+ * name, `session.create { title }`) is no placeholder, so the host keeps it:
+ * no slice, no generated title. The host's empty-thread sweep and the
+ * desktop's restore both read it.
  */
 export const THREAD_TITLES = {
   chat: 'New chat',

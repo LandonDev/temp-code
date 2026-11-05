@@ -687,7 +687,17 @@ adds "Master thread" after the type (chrome/MasterCheck.tsx: a 14px
 checkbox and its 12px muted words, the label the hit area with the type
 chip's hover fill), whose tick creates the thread pinned as a master
 (`session.create { master: true }`) and lives on the draft's record;
-another type, or a thread that exists, has none;
+another type, or a thread that exists, has none. Last in the row, on a
+draft of any type, "Name this thread" (chrome/DraftTitleField.tsx): one
+line of at most 80 characters in the row's 12px, muted with the row's
+hover fill and no border at rest, the field's ring on focus, the typed name
+in the foreground, as wide as its words and the first to give way; Enter
+or Escape go back to the message. The name lives on the draft's record and
+the first send makes it the title (`session.create { title }`), which the
+host keeps over the title it would write from the message; left empty, the
+thread is named from its message as before. The field sits in the row, not
+the title bar, because a workspace's strip never draws an unsent draft, so
+the bar has no title there to edit;
 the project picker ends in "Choose folder…", the folder dialog whose pick
 becomes the draft's project. After the first message the row is gone: the
 branch is changed in the Changes section's head and the type is the thread

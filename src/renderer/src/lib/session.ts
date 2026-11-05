@@ -362,6 +362,8 @@ export type Session = {
   isMaster?: boolean;
   /** An unsent chat draft's "Master thread" pick: its first send creates it pinned (`session.create { master }`). */
   draftMaster?: boolean;
+  /** An unsent draft's name, typed in the draft row: its first send creates the thread with it as the title (`session.create { title }`), which the host keeps over its generated one. */
+  draftTitle?: string;
   /** A queued thread's sibling: the session it waits for before it boots. */
   after?: string | null;
   /** Parent session for subagent children. */
@@ -427,6 +429,9 @@ export type PendingHarnessSwitch = {
   fromSettings: Record<string, string>;
   fromProviderSessionId?: string;
 };
+
+/** The longest name the draft row takes for a new thread. */
+export const DRAFT_TITLE_MAX = 80;
 
 export const HARNESS_LABEL: Record<HarnessId, string> = {
   claude: "claude",

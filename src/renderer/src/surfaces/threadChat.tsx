@@ -210,6 +210,8 @@ export const ThreadComposer = memo(function ThreadComposer({
       threadType={session.parentId ? null : (session.threadType ?? "chat")}
       master={sessionStore.isDraft(id) ? !!session.draftMaster : undefined}
       onMasterChange={(on) => setDraftMaster(id, on)}
+      draftTitle={sessionStore.isDraft(id) ? (session.draftTitle ?? "") : undefined}
+      onDraftTitleChange={(title) => setDraftTitle(id, title)}
       onSubmit={submit}
       busy={!!session.busy}
       paused={paused}
@@ -232,6 +234,11 @@ export const ThreadComposer = memo(function ThreadComposer({
 /** An unsent draft's "Master thread" pick; the project's draft record follows it. */
 function setDraftMaster(id: string, on: boolean): void {
   sessionStore.mutate((prev) => prev.map((s) => (s.id === id ? { ...s, draftMaster: on } : s)));
+}
+
+/** An unsent draft's name; the project's draft record follows it. */
+function setDraftTitle(id: string, title: string): void {
+  sessionStore.mutate((prev) => prev.map((s) => (s.id === id ? { ...s, draftTitle: title } : s)));
 }
 
 /** App's handlers bound to one thread, under the composer's own names. */

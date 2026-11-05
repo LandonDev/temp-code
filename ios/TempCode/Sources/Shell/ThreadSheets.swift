@@ -220,8 +220,9 @@ struct StartBuildSheet: View {
 /// and the access policy when the key may grant it. Created, then pushed.
 /// Opened prefilled (the Inbox's "Start a thread from an issue": the
 /// item's repository as the project, its title, a one-line reference as
-/// the first message) it shows the title and the message as rows the
-/// person can still edit, and sends the message right after the create.
+/// the first message) it fills the name and shows the message as a row the
+/// person can still edit, and sends the message right after the create. The
+/// name row is always there, as the desktop draft row's is.
 struct NewThreadSheet: View {
     let client: EnvironmentClient
     let workspace: WorkspaceMeta
@@ -235,7 +236,7 @@ struct NewThreadSheet: View {
     @State private var message: String
     @State private var busy = false
     @State private var error: String?
-    /// The sheet opened with a title or a message: their rows show.
+    /// The sheet opened with a title or a message: the message row shows.
     private let prefilled: Bool
 
     init(client: EnvironmentClient, workspace: WorkspaceMeta, project: ProjectMeta? = nil, title: String? = nil, message: String? = nil, onCreated: @escaping (SessionMeta) -> Void) {
@@ -255,6 +256,8 @@ struct NewThreadSheet: View {
     }
 
     static let types: [ThreadType] = [.chat, .planning, .projectPlan, .implementation, .orchestration, .research]
+    /// The desktop's DRAFT_TITLE_MAX.
+    static let titleMax = 80
 
     var body: some View {
         NavigationStack {
@@ -280,9 +283,11 @@ struct NewThreadSheet: View {
                 } footer: {
                     SheetFooter(error: error, hint: projectId == nil ? "With no project the thread lives in \(workspace.name)." : nil)
                 }
-                if prefilled {
-                    Section {
-                        TextField("Title", text: $title)
+                Section {
+                    // The desktop draft row's name, in step: empty leaves the host to name it.
+                    TextField("Name this thread", text: $title)
+                        .onChange(of: title) { if title.count > Self.titleMax { title = String(title.prefix(Self.titleMax)) } }
+                    if prefilled {
                         TextField("First message", text: $message, axis: .vertical)
                             .lineLimit(1...4)
                     }
@@ -316,7 +321,7 @@ struct NewThreadSheet: View {
         error = nil
         defer { busy = false }
         let policy: PermissionPolicy? = client.environment.allows(.approve) ? permission : nil
-        let draft = ThreadDraft.thread(type: type, workspaceId: workspace.id, projectId: projectId, provider: choice.key.provider, model: choice.key.model, reasoning: choice.reasoning, permission: policy, title: prefilled ? title : nil, brief: prefilled ? message : nil)
+        let draft = ThreadDraft.thread(type: type, workspaceId: workspace.id, projectId: projectId, provider: choice.key.provider, model: choice.key.model, reasoning: choice.reasoning, permission: policy, title: title, brief: prefilled ? message : nil)
         do {
             let created = try await client.createThread(draft)
             dismiss()
