@@ -2281,6 +2281,27 @@ keyboard action. Every animated change has a static cue as well.
   growing Edit and one at its end; at 120 Hz on a quiet Mac they are the
   next thing the stream set measures.
 
+- **The phrase fade, 2026-11-05** (A5; the same simulator, 60 Hz, the Mac's
+  load average 30 to 160). The stream set with the fade against the same
+  run under reduce motion, the fade off, at matched load: drawn at every
+  display frame the fade cost 80 late frames of ~1,300 (worst 290 ms)
+  against 48 (worst 123 ms); with the timeline capped at 30 Hz (a 0.4 s
+  linear fade in 12 steps, `StreamFadeText`) 74 against 65 (worst 386 ms
+  against 118, single frames). The reader stayed at the bottom on every
+  frame in all four runs; 172 to 174 draws carried a young run with the
+  fade, none under reduce motion. So the fade stays at every width, capped
+  at 30 Hz; the plan's fallback (no fade at compact width) was not taken,
+  and a quiet Mac at 120 Hz has to say whether the worst frame is the
+  fade's. Text selection under the renderer is not verified by touch (no
+  long-press driver on this Mac); the renderer draws only while a run is
+  young, and a settled reply is plain `Text`. The transcript set found a
+  jerk older than A5: the list leaves the bottom on its own during the
+  timeline and stays off it (light at 19 s and 48 s in two runs, dark and
+  reduce motion at 51 s in one; the same with the pre-A5 views), which
+  the set now fails on; a revealing row asks the follow rule to pin at
+  each shown step (`TranscriptFollow`), which keeps the stream set pinned
+  but has not cured the timeline's case.
+
 ## Push, the Live Activity and the Dynamic Island
 
 The lock screen and the island show the desktop's running row, nothing

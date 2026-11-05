@@ -44,6 +44,8 @@ struct TranscriptView: View {
     @Environment(\.scenePhase) private var scenePhase
     /// Which turns still reveal text (A6's closing line waits on it).
     @State private var revealDrain = RevealDrain()
+    /// The pin a revealing row asks for at each step (one reference; set in the body, read by rows).
+    @State private var follow = TranscriptFollow()
 
     /// Each row's turn: the key of the message it follows.
     static func turnKeys(_ rows: [TranscriptRowModel]) -> [TranscriptRowID: Int] {
@@ -67,6 +69,7 @@ struct TranscriptView: View {
         let _ = bornRows.open(thread: client.threads[sessionId])
         let _ = LayoutProbe.note("bornOpenedAt", bornRows.openedAt.map(String.init) ?? "waiting")
         ScrollViewReader { proxy in
+            let _ = follow.pin = { pinTail(proxy: proxy) }
             List {
                 if moreAbove {
                     TopSentinel(loading: thread.isLoadingOlder) {
@@ -112,6 +115,7 @@ struct TranscriptView: View {
             .environment(\.defaultMinListRowHeight, 0)
             .environment(scrollState)
             .environment(\.revealDrain, revealDrain)
+            .environment(\.transcriptFollow, follow)
             .environment(\.transcriptCwd, cwd)
             .task(id: sessionId) { cwd = client.session(sessionId)?.cwd }
             .contentMargins(.vertical, 8, for: .scrollContent)
@@ -137,6 +141,10 @@ struct TranscriptView: View {
                 // Held at the captured value while a reflow is open: the geometry flickers mid-fold.
                 guard !scrollState.reflowHeld else { return }
                 scrollState.atBottom = now
+                #if DEBUG
+                // The transcript proof: the reader leaving the bottom on its own is a jerk.
+                LayoutProbe.note("atBottom", now ? "1" : "0")
+                #endif
             }
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
                 recorder?.noteOffset(y)

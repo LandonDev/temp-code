@@ -59,7 +59,8 @@ public struct StreamRevealLedger: Sendable {
         ledger.text = text
         ledgers[String(text.prefix(Self.keyChars))] = ledger
         if reduced { return [RevealSegment(from: 0, to: count, bornAt: nil)] }
-        let young = ledger.steps.filter { now - $0.at < Self.fade }.suffix(Self.maxYoung)
+        // Only steps inside this text: a ledger reached through a shorter text under the same key holds longer steps.
+        let young = ledger.steps.filter { now - $0.at < Self.fade && $0.from < count }.suffix(Self.maxYoung)
         guard let first = young.first else { return [RevealSegment(from: 0, to: count, bornAt: nil)] }
         var runs: [RevealSegment] = []
         if first.from > 0 { runs.append(RevealSegment(from: 0, to: first.from, bornAt: nil)) }

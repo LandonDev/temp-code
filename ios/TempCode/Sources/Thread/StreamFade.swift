@@ -41,6 +41,11 @@ final class StreamFadeState {
     private(set) var ledger = StreamRevealLedger()
     var reduced = false
 
+    /// `armed`: a row born live mounts empty, so its very first words fade too.
+    init(armed: Bool = false) {
+        if armed { ledger.arm() }
+    }
+
     static var now: Double { Date().timeIntervalSinceReferenceDate }
 
     func arm() { if !ledger.armed { ledger.arm() } }
@@ -61,6 +66,17 @@ extension EnvironmentValues {
     @Entry var revealTurn: Int? = nil
     /// The thread's drain: which turns still reveal text.
     @Entry var revealDrain: RevealDrain? = nil
+    /// The transcript's follow: a revealing row grew (a step shown), pin if the reader is at the bottom.
+    @Entry var transcriptFollow: TranscriptFollow? = nil
+}
+
+/// The transcript's pin, handed to its rows by one stable reference so a
+/// step re-renders no row: a row's reveal grows the row without a new row
+/// landing, and a `List` keeps no bottom on size changes, so each shown
+/// step asks the follow rule to pin.
+@MainActor
+final class TranscriptFollow {
+    var pin: () -> Void = {}
 }
 
 enum FadedText {
@@ -93,7 +109,8 @@ struct StreamFadeText: View {
         // The transcript proof reads these: young runs drawn under full motion, none under reduced.
         let _ = LayoutProbe.count(young ? "streamFadeYoung" : "streamFadeSettled")
         #endif
-        TimelineView(.animation(paused: !young)) { context in
+        // A 0.4 s linear fade reads the same at a 30 Hz redraw (12 steps of opacity), at half the work of every display frame.
+        TimelineView(.animation(minimumInterval: StreamRevealLedger.fade / 12, paused: !young)) { context in
             text
                 .transcriptType(type)
                 .textRenderer(StreamFadeRenderer(now: context.date.timeIntervalSinceReferenceDate))

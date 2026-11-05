@@ -58,6 +58,16 @@ import Testing
         #expect(runs == [RevealSegment(from: 0, to: 5, bornAt: nil), RevealSegment(from: 5, to: 47, bornAt: 1)])
     }
 
+    @Test func `runs never pass the text they are drawn on`() {
+        var ledger = armed()
+        let long = "Two blocks that share their first 32 characters, the longer one"
+        _ = ledger.segments(for: String(long.prefix(40)), at: 0)
+        _ = ledger.segments(for: long, at: 0.1)
+        // A shorter text under the same key: every run inside its 40 characters.
+        let runs = ledger.segments(for: String(long.prefix(40)), at: 0.15)
+        #expect(runs.allSatisfy { $0.from >= 0 && $0.to <= 40 && $0.from < $0.to })
+    }
+
     @Test func `reduced motion builds no young runs, the steps are still noted`() {
         var ledger = armed()
         #expect(ledger.segments(for: "One ", at: 0, reduced: true) == [RevealSegment(from: 0, to: 4, bornAt: nil)])

@@ -32,10 +32,13 @@ struct StreamingAssistantRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.revealTurn) private var revealTurn
     @Environment(\.revealDrain) private var revealDrain
+    @Environment(\.transcriptFollow) private var follow
 
     init(block: TextBlock, born: Bool = false) {
         self.block = block
         _reveal = State(initialValue: block.streaming || born ? SmoothTextReveal(text: block.text, streaming: block.streaming, fromStart: born) : nil)
+        // Born live, the row reveals from its first word: armed from the start, so that word fades too.
+        _fade = State(initialValue: StreamFadeState(armed: born))
     }
 
     /// Still on the streaming render: the stream runs, the reveal holds text back, or a step is still fading.
@@ -75,7 +78,11 @@ struct StreamingAssistantRow: View {
                 try? await Task.sleep(for: .seconds(StreamRevealLedger.fade))
                 if !Task.isCancelled { fadeEnded += 1 }
             }
-            .onChange(of: reveal.revealedUnits, initial: true) { LayoutProbe.note("revealedUnits", String(reveal.revealedUnits)) }
+            .onChange(of: reveal.revealedUnits, initial: true) {
+                LayoutProbe.note("revealedUnits", String(reveal.revealedUnits))
+                // The step grew the row: the reader at the bottom stays there through the drain.
+                follow?.pin()
+            }
             .onChange(of: revealing, initial: true) { report() }
             .onDisappear { revealDrain?.report(turn: revealTurn ?? -1, row: block.seq, on: false) }
         } else {

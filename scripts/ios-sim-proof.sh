@@ -969,9 +969,21 @@ for (const s of scenarioTimeline()) { if (seen.has(s.label)) continue; seen.add(
     container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
     rm -f "$container/Documents/transcript-report.json" "$container/Documents/scroll-hold.json"
     mkdir -p "$dir/$run"
-    if [ "$run" = scrolled-up ]; then TC_SCROLL_UP_RUN=1 launch_app thread "$thread" chat; else launch_app thread "$thread" chat; fi
     # Played only once the app says the thread landed (and, scrolled up, that the reader is up): a loaded Mac lands late.
-    wait_for "$container/Documents/transcript-report.json" 120 || echo "ios-sim-proof: transcript $run: no landing report" >&2
+    # The landing report can say "at the bottom" before the rows are laid out (short content counts as the bottom),
+    # and a loaded launch has left the list at its top; the layout report's live position 3 s on decides, one relaunch.
+    for attempt in 1 2; do
+      rm -f "$container/Documents/transcript-report.json"
+      if [ "$run" = scrolled-up ]; then TC_SCROLL_UP_RUN=1 launch_app thread "$thread" chat; else launch_app thread "$thread" chat; fi
+      wait_for "$container/Documents/transcript-report.json" 120 || echo "ios-sim-proof: transcript $run: no landing report" >&2
+      # The scrolled-up run leaves the bottom on purpose 2 s after landing; its hold report is its proof.
+      if [ "$run" = scrolled-up ]; then live=1; break; fi
+      sleep 3
+      live=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("transcriptAtBottom", -1))' "$container/Documents/layout-report.json" 2>/dev/null || echo -1)
+      [ "$live" = 1 ] && break
+      echo "ios-sim-proof: transcript $run: landed off the bottom (attempt $attempt)" >&2
+    done
+    echo "{\"atBottom\": $live}" > "$dir/$run-live.json"
     [ "$run" = scrolled-up ] && { wait_for "$container/Documents/scroll-hold.json" 30 || echo "ios-sim-proof: transcript $run: the reader was not scrolled up" >&2; }
     cp "$container/Documents/transcript-report.json" "$dir/$run-landing.json" 2>/dev/null || echo '{}' > "$dir/$run-landing.json"
     sysctl -n vm.loadavg > "$dir/$run-load.txt"
@@ -1007,6 +1019,7 @@ PLAY
     sleep 1
     cp "$container/Documents/row-inits.json" "$dir/$run-row-inits.json" 2>/dev/null || echo '{}' > "$dir/$run-row-inits.json"
     cp "$container/Documents/layout-report.json" "$dir/$run-layout.json" 2>/dev/null || true
+    cp "$container/Documents/layout-events.json" "$dir/$run-events.json" 2>/dev/null || echo '[]' > "$dir/$run-events.json"
     if [ "$run" = scrolled-up ]; then
       cp "$container/Documents/scroll-hold.json" "$dir/scroll-hold.json" 2>/dev/null || echo '{}' > "$dir/scroll-hold.json"
     fi
@@ -1026,7 +1039,9 @@ for run in runs:
     landing = json.loads((out / f'{run}-landing.json').read_text())
     summary[run]['landedAtBottom'] = landing.get('atBottom')
     summary[run]['load'] = (out / f'{run}-load.txt').read_text().strip()
-    if landing.get('atBottom') != 1: failures.append(f'{run}: the thread did not open at its bottom ({landing})')
+    live = json.loads((out / f'{run}-live.json').read_text()).get('atBottom')
+    summary[run]['liveAtBottom'] = live
+    if landing.get('atBottom') != 1 or live != 1: failures.append(f'{run}: the thread did not open at its bottom ({landing}, live {live})')
     if not rows: failures.append(f'{run}: no row-inits report')
     if v: failures.append(f'{run}: {len(v)} rows on screen made their state again: ' + ', '.join(f"{x['key']}×{x['inits']}@{x['t']}ms" for x in v[:12]))
     if run == 'reduced' and r.get('reduceMotion') != 1: failures.append('reduced: reduce motion was off in the app')
@@ -1035,8 +1050,15 @@ for run in runs:
     fades = layout.get('counts', {}).get('streamFadeYoung', 0)
     summary[run]['fades'] = fades
     summary[run]['counts'] = layout.get('counts', {})
+    # A reader at the bottom must stay there while the turn streams in below (the scrolled-up run leaves on purpose).
+    events = json.loads((out / f'{run}-events.json').read_text())
+    left = [e['t'] for e in events if e.get('key') == 'atBottom' and e.get('to') == '0']
+    stayed = run == 'scrolled-up' or layout.get('notes', {}).get('atBottom', '1') == '1'
+    summary[run]['leftBottomAtMs'] = left[:3]
+    if not stayed: failures.append(f'{run}: the list left the bottom on its own at {left[:3]} ms and stayed off it')
     if run == 'reduced' and fades: failures.append(f'reduced: {fades} fades drawn under reduced motion')
-    if run in ('light', 'dark') and not fades: failures.append(f'{run}: no step faded in')
+    # The fade is judged where its rows were on screen: a list that left the bottom streamed below the fold.
+    if run in ('light', 'dark') and stayed and not fades: failures.append(f'{run}: no step faded in')
     if run != 'reduced' and r.get('reduceMotion') == 1: failures.append(f'{run}: reduce motion was on')
 hold = json.loads((out / 'scroll-hold.json').read_text()) if 'scrolled-up' in runs else {'skipped': True}
 summary['scrolledUp'] = hold
@@ -1065,6 +1087,8 @@ CHECK
 stream_set() {
   [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the stream set needs TC_TEST_CONTROL_URL" >&2; return 2; }
   appearance light
+  # TC_STREAM_REDUCED=1: the same run under reduce motion, so the fade's cost reads as the difference.
+  if [ "${TC_STREAM_REDUCED:-}" = 1 ]; then reduce_motion true; sleep 8; fi
   container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
   rm -f "$container/Documents/transcript-report.json" "$container/Documents/stream-report.json"
   TC_STREAM_RUN=1 launch_app thread "Streaming on the phone" chat
@@ -1075,6 +1099,8 @@ stream_set() {
   control /stream '{}' >/dev/null
   wait_for "$container/Documents/stream-report.json" 40 || true
   cp "$container/Documents/stream-report.json" "$OUT/stream-report.json" 2>/dev/null || { echo "ios-sim-proof: no stream report" >&2; return 5; }
+  [ "${TC_STREAM_REDUCED:-}" = 1 ] && { reduce_motion false; python3 -c 'import json,sys; p=sys.argv[1]; r=json.load(open(p)); r["reduced"]=1; json.dump(r, open(p, "w"))' "$OUT/stream-report.json"; }
+  cp "$container/Documents/layout-report.json" "$OUT/stream-layout.json" 2>/dev/null || echo '{}' > "$OUT/stream-layout.json"
   snap "stream-end"
   python3 - "$OUT/stream-report.json" <<'CHECK'
 import json, sys
@@ -1083,6 +1109,12 @@ print('ios-sim-proof: stream load ' + open(sys.argv[1].replace('stream-report.js
 print('ios-sim-proof: stream ' + json.dumps({k: r[k] for k in ('frames', 'maxFramesPerSecond', 'expectedMs', 'hitches', 'worstMs', 'meanMs', 'over16Ms', 'unpinnedFrames', 'firstUnpinnedAtS', 'repinnedAtS', 'seqStart', 'seqEnd', 'hitchAtS')}))
 failures = []
 if r['seqEnd'] <= r['seqStart']: failures.append('no streamed rows landed inside the recording')
+layout = json.load(open(sys.argv[1].replace('stream-report.json', 'stream-layout.json')))
+fades = layout.get('counts', {}).get('streamFadeYoung', 0)
+print(f'ios-sim-proof: stream faded draws {fades}')
+reduced = r.get('reduced', 0)
+if not fades and not reduced: failures.append('no step of the streamed answer faded in')
+if fades and reduced: failures.append(f'{fades} faded draws under reduced motion')
 if r['frames'] < r['seconds'] * 50: failures.append(f"only {r['frames']} frames in {r['seconds']:.1f} s")
 if r['unpinnedFrames']: failures.append(f"the reader left the bottom on {r['unpinnedFrames']} frames")
 if r['hitches'] or r['worstMs'] > r['expectedMs'] + 8: failures.append(f"{r['hitches']} frames later than {r['expectedMs']:.1f} + 8 ms, worst {r['worstMs']:.1f} ms")
