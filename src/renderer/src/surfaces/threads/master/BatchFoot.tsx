@@ -2,12 +2,12 @@ import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { tallyRender } from "../../../lib/devRenders";
 import { registerToastAnchor } from "../../../lib/toastAnchor";
 import type { BatchState } from "@server/shared/contract-batch";
-import { Button } from "../../../components/ui/button";
+import { BusyLabel, Button } from "../../../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../../../components/ui/collapsible";
 import { DISCLOSURE_CHEVRON } from "../../../components/ui/disclosure";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { StatusMark } from "../../../components/ui/status";
-import { ChevronRight, Square } from "../../../chrome/icons";
+import { ChevronRight } from "../../../chrome/icons";
 import { cn } from "../../../lib/cn";
 import { useNow } from "../../../lib/duration";
 import { RulesDialog } from "./RulesDialog";
@@ -223,13 +223,14 @@ const StepRow = memo(function StepRow({ step, detail, now, open, onStop, onFold 
           ) : null}
         </span>
         {step.status === "running" ? (
-          <Button variant="ghost" size="xs" onClick={() => void stop()} disabled={stopping}>
-            <Square className="size-3" />
-            Stop
+          // The word alone, as every Stop; the spinner joins it in its reserved slot while the stop runs.
+          <Button variant="ghost" size="xs" onClick={() => void stop()} disabled={stopping} aria-busy={stopping || undefined}>
+            <BusyLabel busy={stopping} label="Stop" />
           </Button>
         ) : failed && hasConsole(step) ? (
+          // One word whatever the state, so nothing moves under the pointer: the chevron says open or closed.
           <Button variant="ghost" size="xs" onClick={() => onFold(step.id, open)} aria-expanded={open}>
-            {open ? "Hide" : "Show"}
+            Log
             <ChevronRight className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />
           </Button>
         ) : null}

@@ -1362,7 +1362,7 @@ describe("the master view", () => {
     expect(link.calls.find((c) => c.method === "batch.stopStep")?.params).toEqual({ masterId: "m", stepId: "build" });
   });
 
-  it("a failed step stays open with its last lines, the failure said once in red on its row, until Hide, and Show opens it again", async () => {
+  it("a failed step stays open with its last lines, the failure said once in red on its row, until Log folds it, and Log opens it again", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     renderView();
     await flush();
@@ -1396,10 +1396,15 @@ describe("the master view", () => {
     expect((foot.textContent ?? "").toLowerCase().split("gate failed at vitest")).toHaveLength(2);
     expect(within(foot as HTMLElement).queryByRole("button", { name: "Stop" })).toBeNull();
     expect(foot.querySelector("[data-step='release']")?.textContent).toBe("ReleaseSkipped");
-    fireEvent.click(within(gate).getByRole("button", { name: /Hide/ }));
+    // One word, Log, whatever the state: the chevron and aria-expanded say open or closed.
+    const toggle = within(gate).getByRole("button", { name: "Log" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(toggle);
     expect(foot.getAttribute("data-foot-mode")).toBe("idle");
     expect(gate.getAttribute("data-step-status")).toBe("failed");
-    fireEvent.click(within(gate).getByRole("button", { name: /Show/ }));
+    expect(within(gate).getByRole("button", { name: "Log" })).toBe(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
     expect(foot.getAttribute("data-foot-mode")).toBe("console");
   });
 
@@ -1427,7 +1432,7 @@ describe("the master view", () => {
     expect(gate.querySelector("[data-step-detail]")?.textContent).toBe(missing);
     expect(foot.getAttribute("data-foot-mode")).toBe("idle");
     expect(foot.querySelector("[data-console]")).toBeNull();
-    expect(within(gate).queryByRole("button", { name: /Show|Hide/ })).toBeNull();
+    expect(within(gate).queryByRole("button", { name: "Log" })).toBeNull();
     expect((foot.textContent ?? "").split(missing)).toHaveLength(2);
   });
 
