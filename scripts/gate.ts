@@ -118,6 +118,16 @@ export const STEPS: Step[] = [
     mac: true
   },
   {
+    name: 'renderer-soak-typing',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['scripts/measure-renderer-soak.ts', '--gate', '--scene', 'typing'],
+    // The same lane, after the chat scene: one instance at a time.
+    lane: 'build',
+    why: "the master's composer typed into beside its board under the board's load, the master's churn and a 3,000-edit flood every 10 s: keystroke to frame p95 within 16 ms idle and 33 ms busy, no long task over 100 ms while typing, every character in order (scripts/measure-renderer-soak.ts --gate --scene typing, 90 s at most)",
+    mac: true
+  },
+  {
     name: 'e2e-remote-fence',
     tier: 'publish',
     cmd: 'bun',
