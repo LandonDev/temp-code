@@ -1,5 +1,5 @@
 // A7 (turn structure): one run of actions, a line that opens onto its rows.
-import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useReducedMotion } from "motion/react";
 import { Bot, ChevronRight, Sparkles, type IconComponent } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
@@ -9,7 +9,8 @@ import type { Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { useLiveEdits } from "../../lib/tcserver/store";
 import { useTitlesOf } from "../../lib/threadMentions";
-import { DUR, SPRING_LAYOUT_CSS } from "../../lib/ease";
+import { DUR, SPRING_LAYOUT_CSS, STAGGER } from "../../lib/ease";
+import { useHeightGlide } from "../../lib/heightGlide";
 import { useFoldHold } from "../../lib/foldHold";
 import { SwapIcon } from "../../motion/IconSwap";
 import { MorphText } from "../../motion/MorphText";
@@ -156,11 +157,39 @@ export function ActionGroup({
   const from = auto && !lone ? Math.max(0, shown.length - GROUP_WINDOW) : 0;
   const shownFrom = useWindowGlide(listRef, shown, from, reduce);
   const framing = useTableEntry(listRef, lone, auto && open, reduce);
+  const visible = shown.slice(shownFrom);
+
+  // The open table glides to its new height when the rows it shows change
+  // (after the window's pull-up, so one row in and one out nets nothing). A
+  // commit that also folds it, turns a lone call into a table, gives an
+  // empty table its first row or is a hand's decision glides nothing: those
+  // have motion of their own.
+  const tableRef = useRef<HTMLDivElement>(null);
+  useHeightGlide(tableRef, visible.map((b) => b.id).join("|"), {
+    enabled: open && !lone,
+    curve: "layout",
+    hold: `${lone}|${open}|${saved}|${visible.length === 0}`,
+  });
+
+  // Rows that land in one commit fade in one after another, STAGGER.stepMs
+  // apart, the fourth and later together. A row keeps its place in its batch.
+  const [stagger, setStagger] = useState<ReadonlyMap<string, number>>(() => new Map(shown.map((b) => [b.id, 0])));
+  const landing = visible.filter((b) => !stagger.has(b.id));
+  if (landing.length > 0) {
+    const next = new Map(stagger);
+    landing.forEach((b, i) => next.set(b.id, Math.min(i, STAGGER.max)));
+    setStagger(next);
+  }
 
   if (lone && shown.length === 0) return null;
 
-  const rows = shown.slice(shownFrom).map((block) => (
-    <div key={block.id} data-step={block.id} className={seen.has(block.id) ? "min-w-0" : "step-land min-w-0"}>
+  const rows = visible.map((block) => (
+    <div
+      key={block.id}
+      data-step={block.id}
+      className={seen.has(block.id) ? "min-w-0" : "step-land min-w-0"}
+      style={seen.has(block.id) ? undefined : ({ "--stagger": stagger.get(block.id) ?? 0 } as CSSProperties)}
+    >
       <ActivityRow
         block={block}
         cwd={cwd}
@@ -220,7 +249,7 @@ export function ActionGroup({
             which stays put and clips them. A lone call is a bare row. */}
         <Collapsible open={open}>
           <CollapsibleContent id={panelId} className={auto ? "collapsible-auto" : undefined}>
-            <div data-table={lone ? undefined : ""} className={lone ? "flex min-w-0 flex-col" : "relative flex min-w-0 flex-col overflow-clip rounded-xl"}>
+            <div ref={tableRef} data-table={lone ? undefined : ""} className={lone ? "flex min-w-0 flex-col" : "relative flex min-w-0 flex-col overflow-clip rounded-xl"}>
               <div ref={listRef} data-group-rows className={lone ? "flex min-w-0 flex-col" : "flex min-w-0 flex-col divide-y divide-border"}>
                 {rows}
               </div>

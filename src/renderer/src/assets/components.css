@@ -189,11 +189,15 @@
   text-overflow: clip;
 }
 
-/* A step landing in an open fold: it fades in and rises 4px. */
+/* A step landing in an open fold: it fades in and rises 4px. Steps that land
+   together wait their place in the batch (--stagger, 0 to 3, set by
+   ActionGroup) times --stagger-step; @starting-style holds them unseen until
+   then. */
 .step-land {
   transition-property: opacity, translate;
   transition-duration: var(--dur-base);
   transition-timing-function: var(--ease-out);
+  transition-delay: calc(var(--stagger-step) * var(--stagger, 0));
 }
 
 @starting-style {

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { cubicBezier, DUR, EASE_DRAWER, EASE_EXIT, EASE_IN_OUT, EASE_OUT, EASE_SWAP, EASE_SWAP_CSS, MARK, REVEAL, SHIMMER, SPRING_LAYOUT, SPRING_LAYOUT_CSS, springEasing } from "./ease";
+import { cubicBezier, DUR, EASE_DRAWER, EASE_EXIT, EASE_IN_OUT, EASE_OUT, EASE_SWAP, EASE_SWAP_CSS, MARK, REVEAL, SHIMMER, STAGGER, SPRING_LAYOUT, SPRING_LAYOUT_CSS, springEasing } from "./ease";
 import * as ease from "./ease";
 
 const css = readFileSync(resolve(__dirname, "../index.css"), "utf8");
@@ -43,6 +43,7 @@ describe("the motion tokens", () => {
 
   it("hold the reveal's fade to --dur-reveal", () => {
     expect(token("dur-reveal")).toBe(`${REVEAL.fadeMs}ms`);
+    expect(token("stagger-step")).toBe(`${STAGGER.stepMs}ms`);
     expect(token("ease-reveal")).toBe("linear");
   });
 

@@ -49,8 +49,17 @@ export const SPINNER_TURN: { keyframes: Keyframe[]; timing: KeyframeAnimationOpt
  * of whole words about every `stepMs`, each step fading in over `fadeMs`
  * (CSS `--dur-reveal`, held equal by ease.test.ts), and a token longer than
  * `longTokenChars` with no word boundary in it cut where the pace reaches.
+ * Inside an open code fence a line shows once its newline arrives; a line
+ * held open `lineHoldMs` falls back to word steps.
  */
-export const REVEAL = { stepMs: 100, fadeMs: 400, longTokenChars: 24 } as const;
+export const REVEAL = { stepMs: 100, fadeMs: 400, longTokenChars: 24, lineHoldMs: 600 } as const;
+
+/**
+ * Rows that land together in an open tool table fade in one after another:
+ * `stepMs` apart (CSS `--stagger-step`, held equal by ease.test.ts), the
+ * fourth and later at `max` steps (transcript/ActionGroup.tsx).
+ */
+export const STAGGER = { stepMs: 30, max: 3 } as const;
 
 /** A released drag settling: a sash let go, a reordered row dropping home. */
 export const SPRING_GLIDE = {
