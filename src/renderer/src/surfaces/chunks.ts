@@ -71,6 +71,8 @@ export const virtualChunk = defineChunk("virtual", () => import("../chrome/railV
 
 /** The transcript's message list rows under their chevron (TranscriptOutlineList.tsx). */
 export const messageListChunk = defineChunk("messageList", () => import("./TranscriptOutlineList"));
+/** A review's notice in the transcript: its line, or the held review's card (ReviewCard). */
+export const reviewChunk = defineChunk("review", () => import("./ReviewCard"));
 
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
@@ -99,4 +101,5 @@ export const allChunks = {
   macBridgeChunk,
   virtualChunk,
   messageListChunk,
+  reviewChunk,
 };

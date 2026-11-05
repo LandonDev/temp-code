@@ -19,7 +19,7 @@ import { sessionStore } from "../lib/tcserver/store";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
 import { sessionDisplayTitle, type LoadState, type Session } from "../lib/session";
 import { rightPanel } from "../lib/rightPanel";
-import { commandMenuChunk, dialogsChunk, diffChunk, inboxChunk, messageListChunk, notesChunk, pickersChunk, rightPanelChunk, searchChunk, selectChunk, threadViewsChunk } from "./chunks";
+import { commandMenuChunk, dialogsChunk, diffChunk, inboxChunk, messageListChunk, notesChunk, pickersChunk, reviewChunk, rightPanelChunk, searchChunk, selectChunk, threadViewsChunk } from "./chunks";
 import { tooltipChunk } from "../components/ui/tooltip";
 import { preloadWhenIdle } from "../lib/lazyChunk";
 import { Button } from "../components/ui/button";
@@ -91,6 +91,7 @@ export const SessionPane = memo(function SessionPane({
   // its chrome opens next: the changes pane and the other thread views.
   useEffect(() => {
     preloadWhenIdle(diffChunk);
+    preloadWhenIdle(reviewChunk);
     preloadWhenIdle(threadViewsChunk);
     preloadWhenIdle(rightPanelChunk);
     preloadWhenIdle(tooltipChunk);
