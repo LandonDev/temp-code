@@ -22,7 +22,6 @@ const ALLOWED: Record<string, number> = {
   "Shell/InboxStore.swift": 1,
   "Shell/InboxView.swift": 1,
   "Shell/SearchRowViews.swift": 2,
-  "Shell/ThreadStrip.swift": 4,
   "Thread/AccountChip.swift": 1,
   "Thread/AccountMenu.swift": 5,
   "Thread/AgentDetailScreen.swift": 2,

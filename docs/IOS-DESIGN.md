@@ -215,11 +215,29 @@ child, another scope's root) is a temporary chip at the live row's end,
 never saved. `ProjectLanding.active` is the desktop's `activeLanding`: the
 scope's most recent active root by its last event, a batch thread standing
 in for its master, none when the thread on screen is already in the scope.
-Until the strip is drawn whole (B3b), the shell shows the live row alone,
-then `+`. A chip is the type glyph, the title
-(semibold while unseen), the host glyph with two or more hosts and the
-spinner while running, on the fill when selected; its long press is the
-row's menu. The thread screen keeps its tab bar in the split (hiding it
+The strip (`StripMetrics` in Tokens.swift) is a 40 pt live row: the live
+chips 2 pt apart in a horizontal scroll with 16 pt of fade at each edge,
+then New Thread outside the scroll (its glyph, or the words "New Thread"
+while the row holds no chip). A live chip is 28 pt with 12 pt of padding on
+`Radius.row`: one 14 pt glyph slot holding the type's tinted glyph at rest
+and the status mark in its place while the thread has a state worth one
+(`StripChip.look`, the desktop's `marksAtRest`: working, waiting, failed,
+paused, queued, watching, stopped, plan ready), as a browser tab's favicon
+turns into a spinner; the title in 13/20, secondary at rest, medium and
+primary while unread (never on the selected chip), its medium width always
+held by a hidden copy so a chip never widens; "Master" in tertiary after a
+pinned master's title; the host glyph with two or more hosts; 224 pt at
+most. The selected chip sits on `Surface.fill` with its title in primary.
+At regular width the settled roots are a 32 pt shelf row under it (24 pt
+chips, 8 pt of padding, a 12 pt type glyph, 12/16 titles to 160 pt, no
+status mark), drawn only while it holds a chip and folding in and out on
+the layout spring (a fade under Reduce Motion). At compact width they are a
+Recent button (the clock) at the live row's end: a menu of the settled
+roots freshest first, then "Archived Threads" per host copy that has any,
+pushing the archived list over the shell. A chip's tap selects its thread
+in the shell at once, with no motion; its long press is the thread's menu.
+The drawn order is saved (`ThreadStripStore.save`; the outside chip never
+is). The thread screen keeps its tab bar in the split (hiding it
 would hide the vertical rail for every tab) and hides it in compact as
 before.
 
@@ -2349,8 +2367,9 @@ tap pushes the shell over the workspace.
 
 **The thread strip.** At the shell's top in every pose, one row of chips
 lists the project's live roots in their saved order (`ThreadStrip.model`,
-above), then `+`: the desktop's strip, which is the project's threads and
-not a set of open tabs.
+above), then New Thread: the desktop's strip, which is the project's threads
+and not a set of open tabs. Unfolded, the shelf row of settled roots sits
+under it; folded, the Recent menu at the row's end holds them.
 
 **Memory.** `navigation.memory.v3` keeps, per tab, the sidebar path, the
 detail root and the detail stack, plus the overlay toggle; one snapshot

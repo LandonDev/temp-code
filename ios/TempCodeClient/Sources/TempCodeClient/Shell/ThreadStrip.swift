@@ -38,6 +38,14 @@ public struct StripScope: Sendable, Hashable {
     /// linked project's copies share their link id.
     public var key: String
 
+    /// Each host copy's archived roots, for the Recent menu's foot; none for loose chats.
+    public var archived: [HomeSections.ArchivedThreads] {
+        guard case .project(let project) = kind else { return [] }
+        return project.members.filter { $0.group.archivedCount > 0 }.map {
+            HomeSections.ArchivedThreads(environmentId: $0.environmentId, projectId: $0.group.id, count: $0.group.archivedCount)
+        }
+    }
+
     /// What the shell's bar says: the project's name, or the workspace's for its loose chats.
     public var name: String {
         switch kind {
@@ -63,6 +71,42 @@ public struct StripChip: Sendable, Hashable, Identifiable {
     public var id: String { "\(environmentId):\(meta.id)" }
 }
 
+/// What a chip's one glyph slot holds: the type glyph at rest, the status
+/// mark while the thread has a state worth a mark (`marksAtRest`: working,
+/// waiting, failed, paused, queued, watching, stopped, plan ready), as a
+/// browser tab's favicon turns into a spinner. A shelf chip never marks.
+public enum StripGlyph: Sendable, Hashable {
+    case type(ThreadType)
+    case status(CardState)
+}
+
+/// How a chip draws (ThreadHeaderStrip.tsx `StripChip`), pure.
+public struct StripChipLook: Sendable, Hashable {
+    public var glyph: StripGlyph
+    /// The title in medium and primary: unread on the live row, never the
+    /// selected chip (the fill already says it is on screen) nor the shelf.
+    public var medium: Bool
+    /// The muted "Master" after the title, on the live row.
+    public var master: Bool
+    /// The title always reserves its medium width, so a chip never widens
+    /// when it turns unread or read.
+    public var reservesMediumWidth: Bool { true }
+}
+
+extension StripChip {
+    /// The row state the mark draws (`rowState`).
+    public var state: CardState { CardState.row(meta) }
+
+    public func look(onShelf: Bool) -> StripChipLook {
+        let state = state
+        return StripChipLook(
+            glyph: !onShelf && state.marksAtRest ? .status(state) : .type(meta.threadType ?? .chat),
+            medium: !onShelf && !selected && unseen,
+            master: !onShelf && meta.isMaster == true
+        )
+    }
+}
+
 /// The strip as drawn: the live row in its stable order with the outside
 /// chip last, then the shelf, freshest first.
 public struct StripModel: Sendable, Hashable {
@@ -72,6 +116,18 @@ public struct StripModel: Sendable, Hashable {
     public var selected: StripChip? { (live + shelf).first(where: \.selected) }
     /// What the order may keep: the live row less the outside chip.
     public var saveIds: [String] { live.filter { !$0.outside }.map(\.id) }
+
+    /// Compact width, where the shelf is the Recent menu: the thread on
+    /// screen keeps a chip even when it is settled, at the live row's end
+    /// like an outside chip and never saved; the menu lists the rest.
+    public var compact: StripModel {
+        guard let index = shelf.firstIndex(where: \.selected) else { return self }
+        var chip = shelf[index]
+        chip.outside = true
+        var rest = shelf
+        rest.remove(at: index)
+        return StripModel(live: live + [chip], shelf: rest)
+    }
 }
 
 /// The desktop's thread strip rules (lib/threadStripModel.ts,
@@ -252,6 +308,7 @@ public struct StripOrders: Codable, Sendable, Hashable {
 @MainActor
 public final class ThreadStripStore {
     public static let defaultsKey = "strip.order.v1"
+    public static let shared = ThreadStripStore()
     private let defaults: UserDefaults
     public private(set) var orders: StripOrders
 

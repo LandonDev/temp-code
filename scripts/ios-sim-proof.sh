@@ -365,6 +365,7 @@ shell_set() {
   shot 15-home-a11y home
   shot 15a-workspace-a11y workspace
   shot 15b-inbox-a11y inbox
+  shot 15c-project-a11y project
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
 }
 

@@ -233,6 +233,28 @@ enum CardMetrics {
     static let menuSlop: CGFloat = 12
 }
 
+/// The project shell's thread strip, the desktop's title-bar strip
+/// (ThreadHeaderStrip.tsx): a 40 pt live row of 28 pt chips, 2 pt apart, and
+/// at regular width a 32 pt shelf row of 24 pt chips.
+enum StripMetrics {
+    static let row: CGFloat = 40
+    static let shelfRow: CGFloat = 32
+    static let chip: CGFloat = 28
+    static let shelfChip: CGFloat = 24
+    static let chipPadding: CGFloat = 12
+    static let shelfPadding: CGFloat = 8
+    static let chipGap: CGFloat = 2
+    /// The one glyph slot: the type glyph at rest, the status mark in its place.
+    static let glyph: CGFloat = 14
+    static let shelfGlyph: CGFloat = 12
+    static let glyphGap: CGFloat = 8
+    static let shelfGlyphGap: CGFloat = 6
+    static let chipMax: CGFloat = 224
+    static let shelfTitleMax: CGFloat = 160
+    /// A status dot inside the 14 pt slot.
+    static let dot: CGFloat = 7
+}
+
 /// A one-pixel rule in `separator`: horizontal, inset from the leading edge
 /// to the text edge; or vertical (`axis: .vertical`), the full height, between
 /// two panes side by side.

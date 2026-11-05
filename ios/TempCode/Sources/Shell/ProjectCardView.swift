@@ -294,8 +294,19 @@ extension CardThreadLine where Trailing == EmptyView {
 struct CardMark: View {
     let state: CardState?
     var still = false
-    @ScaledMetric(relativeTo: .caption) private var column = CardMetrics.mark
-    @ScaledMetric(relativeTo: .caption) private var dot = CardMetrics.dot
+    @ScaledMetric private var column: CGFloat
+    @ScaledMetric private var dot: CGFloat
+    private let type: TypeSpec
+
+    /// `column` and `dot` at the default text size, scaled with `type`: the
+    /// card's 12 pt column, or a strip chip's 14 pt slot.
+    init(state: CardState?, still: Bool = false, column: CGFloat = CardMetrics.mark, dot: CGFloat = CardMetrics.dot, type: TypeSpec = TranscriptType.detail) {
+        self.state = state
+        self.still = still
+        self.type = type
+        _column = ScaledMetric(wrappedValue: column, relativeTo: type.style.textStyle)
+        _dot = ScaledMetric(wrappedValue: dot, relativeTo: type.style.textStyle)
+    }
 
     var body: some View {
         ZStack {
@@ -313,7 +324,7 @@ struct CardMark: View {
             case .planReady?: Circle().fill(Tint.violet).frame(width: dot, height: dot)
             case .paused?:
                 Image(systemName: "pause.fill")
-                    .transcriptFont(TranscriptType.detail)
+                    .transcriptFont(type)
                     .imageScale(.small)
                     .foregroundStyle(Tint.warning)
             case .stopped?:

@@ -2467,8 +2467,11 @@ proof and the sizing rules; the pieces, by name:
   search hit the same shell in Search's detail), the pose is the
   client package's `ShellPose` published as `\.shellPose` (read it, never
   `horizontalSizeClass`, for a shell decision), the thread strip
-  (Shell/ThreadStrip.swift over the package's `ThreadStrip`) sits at the
-  project shell's top in every pose, and the place is remembered under
+  (Shell/ThreadStrip.swift over the package's `ThreadStrip` and
+  `StripChip.look`, `StripMetrics` in Tokens.swift) sits at the project
+  shell's top in every pose (a 40 pt live row, the status mark in the chip's
+  one glyph slot, New Thread after it; regular width adds the 32 pt shelf,
+  compact width the Recent menu with Archived Threads at its foot), and the place is remembered under
   `navigation.memory.v3` (`NavigationSnapshot`; a v2 snapshot gives back its
   tab alone, `NavigationSnapshot.restore`; the Inbox's path has its own
   key); docs/IOS-DESIGN.md "Information architecture" and "iPhone Duo".
