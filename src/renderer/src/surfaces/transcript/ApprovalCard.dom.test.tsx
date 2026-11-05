@@ -91,6 +91,8 @@ describe("ApprovalCard", () => {
     expect(mark.className).toContain("w-3.5");
     expect(mark.querySelector('[data-state="waiting"]')).not.toBeNull();
     expect(mark.nextElementSibling?.textContent).toBe("Allow");
+    // In a table the waiting row is 40px, 6px round the raised buttons, so their drop clears the frame's clip.
+    expect(waiting.className.split(" ")).toEqual(expect.arrayContaining(["in-data-[table]:min-h-8", "in-data-[table]:py-1.5"]));
     // Decided on screen: the verdict at the words, 13px muted, fading in.
     rerender(<ApprovalCard block={approval("Bash", { command: "ls" }, "allow")} />);
     const decided = container.querySelector<HTMLElement>('[data-slot="approval"]')!;

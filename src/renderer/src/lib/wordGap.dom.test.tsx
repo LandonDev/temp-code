@@ -68,7 +68,7 @@ describe("a line's words sit 4px apart, its glyph and chevron 8px", () => {
     expect(space(text("Working"), text("1m 5s"))).toBe(4);
   });
 
-  it("a notice: lead and details 4px apart, the glyph 8px before, the chevron 8px after", () => {
+  it("a notice: lead and its details' run 4px apart, the glyph 8px before, the chevron 8px after", () => {
     const { container } = render(
       <Collapsible>
         <NoticeLine glyph={<svg data-testid="glyph" />} lead="Context compacted" details={["414K → 3.6K", "1m 29s"]} fold={{ open: false, label: "Compaction" }} />
@@ -77,9 +77,8 @@ describe("a line's words sit 4px apart, its glyph and chevron 8px", () => {
     const glyph = screen.getByTestId("glyph").parentElement!;
     const chevron = container.querySelector("[data-slot=notice-line] svg:not([data-testid])")!;
     expect(space(glyph, text("Context compacted"))).toBe(8);
-    expect(space(text("Context compacted"), text("414K → 3.6K"))).toBe(4);
-    expect(space(text("414K → 3.6K"), text("1m 29s"))).toBe(4);
-    expect(space(text("1m 29s"), chevron)).toBe(8);
+    expect(space(text("Context compacted"), text("414K → 3.6K, 1m 29s"))).toBe(4);
+    expect(space(text("414K → 3.6K, 1m 29s"), chevron)).toBe(8);
   });
 
   it("a step: glyph 8px to the verb, verb 4px to the target, the counts 4px after, the caret 8px after them", () => {

@@ -47,7 +47,8 @@ export const GLYPH: Record<GlyphKey, IconComponent> = {
 };
 
 /**
- * The row's glyph, in order: the waiting, working or failed StatusMark
+ * The row's glyph, in order: the working or failed StatusMark (a call
+ * waiting on the person keeps its icon; the approval line draws the mark)
  * (the one status map), the connector's or the subagent's mark, else the
  * kind's icon. Always one 14px box, so the verbs line up; a change between
  * them (a call settling: the arc to its icon) swaps in place through the
@@ -66,15 +67,14 @@ export function ToolGlyph({ action, block }: { action: Action; block: Block }) {
 }
 
 /** Which of the glyph's faces shows: the key its swap turns on. */
-export function glyphState(action: Action): "waiting" | "working" | "failed" | "icon" {
-  if (action.pending) return "waiting";
+export function glyphState(action: Action): "working" | "failed" | "icon" {
+  // A call waiting on the person keeps its tool icon: the approval line under it carries the amber mark.
   if (action.running) return "working";
   if (action.failed) return "failed";
   return "icon";
 }
 
 function GlyphBody({ action, block }: { action: Action; block: Block }) {
-  if (action.pending) return <StatusMark state="waiting" word={false} />;
   if (action.running) return <StatusMark state="working" word={false} still />;
   if (action.failed) return <StatusMark state="failed" word={false} />;
   if (action.connector) return <ConnectorMark app={action.connector} />;

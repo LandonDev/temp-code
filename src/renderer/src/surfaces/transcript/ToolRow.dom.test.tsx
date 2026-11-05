@@ -217,7 +217,10 @@ describe("ActionRow", () => {
     const block = call("Bash", { command: "git push", description: "Push master" }, { status: "pending", approval: { requestId: 7 } });
     const { container, getAllByRole, getByRole, queryByRole } = render(<ActionRow block={block} onApproval={onApproval} />);
     expect(container.textContent).toContain("Pushing");
-    expect(container.querySelector('[data-glyph] [data-state="waiting"]')).not.toBeNull();
+    // One amber mark, the approval line's: the row keeps its tool icon.
+    expect(container.querySelector('[data-glyph] [data-state="waiting"]')).toBeNull();
+    expect(container.querySelectorAll('[data-state="waiting"]')).toHaveLength(1);
+    expect(container.querySelector('[data-approval-mark] [data-state="waiting"]')).not.toBeNull();
     expect(queryByRole("button", { expanded: false })).toBeNull();
     expect(queryByRole("button", { expanded: true })).toBeNull();
     const pre = container.querySelector("pre")!;
@@ -243,7 +246,8 @@ describe("ActionRow", () => {
       await diffChunk.load();
     });
     expect(container.textContent).toContain("Editing");
-    expect(container.querySelector('[data-glyph] [data-state="waiting"]')).not.toBeNull();
+    expect(container.querySelector('[data-glyph] [data-state="waiting"]')).toBeNull();
+    expect(container.querySelectorAll('[data-state="waiting"]')).toHaveLength(1);
     expect(container.textContent).toMatch(/−\s*a/);
     expect(container.textContent).toMatch(/\+\s*b/);
     expect(getAllByRole("button", { name: "Allow" })).toHaveLength(1);

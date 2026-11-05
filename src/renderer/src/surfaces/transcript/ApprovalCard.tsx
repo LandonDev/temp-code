@@ -20,7 +20,10 @@ export function decidedLine(approval: NonNullable<Block["approval"]>): string {
  * glyph column and Allow and Deny where the row's words start. Decided: the
  * verdict, one muted line at the words, fading in when the decision lands on
  * screen (a verdict that mounts decided just shows). Not a bordered card.
- * In a table: a 32px row, the mark at its 12px inset, the verdict at 34px.
+ * In a table: the waiting row is 40px, 6px round the buttons, so their drop
+ * clears the table's clipped frame; the mark at its 12px inset; the verdict
+ * a 32px row at 34px. The amber mark is drawn here alone: the call's row
+ * above keeps its tool icon while this line asks.
  * A click draws the verdict at once, before the host's decided row comes
  * back, so a second click can send nothing more; a decision the host never
  * took puts the buttons back and says so in a toast.
@@ -60,7 +63,7 @@ export function ApprovalCard({
     );
   }
   return (
-    <div data-slot="approval" className="flex min-h-7 in-data-[table]:min-h-8 min-w-0 items-center gap-2 in-data-[table]:px-3 font-sans">
+    <div data-slot="approval" className="flex min-h-7 in-data-[table]:min-h-8 min-w-0 items-center gap-2 in-data-[table]:px-3 in-data-[table]:py-1.5 font-sans">
       <span data-approval-mark className="flex w-3.5 shrink-0 justify-center">
         <StatusMark state="waiting" word={false} />
       </span>

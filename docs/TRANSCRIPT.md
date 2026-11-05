@@ -55,9 +55,10 @@ foreground, the same words the group line uses); the components only draw it.
 
 - **The glyph** (`transcript/ToolGlyph.tsx`): one 14 px box, the kind's
   icon from the `GLYPH` record, the connector's mark or the subagent's
-  provider in its place, and while the call runs, fails (or was denied) or
-  asks for approval the `StatusMark` of working, failed or waiting with no
-  word (nothing else on the line turns red; working is a dot, since
+  provider in its place, and while the call runs or fails (or was denied)
+  the `StatusMark` of working or failed with no word (a call that asks for
+  approval keeps its icon: the approval line under it carries the one amber
+  mark) (nothing else on the line turns red; working is a dot, since
   the working line under the turn is the one moving mark); a change of face
   (the call settling: dot to icon) swaps in the box through the keyed
   `SwapIcon`, and the verb changes tense in place through `MorphText` (the
@@ -97,13 +98,14 @@ foreground, the same words the group line uses); the components only draw it.
   opens the list. The body opens in place under
   the line through `Collapsible`.
 - **Approvals.** A call waiting on the person draws its line in the live
-  tense with the waiting mark and no caret, its own body open under it (the
+  tense with its tool icon and no caret, its own body open under it (the
   command card, the details, an edit's diff per file) so what it asks is
   read once, and A9's `ApprovalCard` (Allow and Deny) under that; once
   decided the card is its one verdict line and the row an ordinary row
   again. Inside an open group's table it keeps the table's grid: the amber
-  mark under the row glyph, 12px in, and the verdict under the row's words,
-  34px in. An edit's bookkeeping row leaves the card to its parent
+  mark under the row glyph, 12px in, in a 40px row (6px round the raised
+  buttons, so their drop clears the frame's clip), and the verdict under the
+  row's words, 34px in. An edit's bookkeeping row leaves the card to its parent
   (`ActionRow approval={false}`), so one call has one card.
 - **One frame, never two.** An open group's rows sit in a table, as
   Claude's: under the line, one hairline frame with a 12px radius from the
