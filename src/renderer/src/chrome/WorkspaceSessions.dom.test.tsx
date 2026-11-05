@@ -12,6 +12,8 @@ import { screen, within } from '@testing-library/react'
 import { resetMenus } from './menuRows'
 import { subagentRowsStore } from '../stores/subagentRows'
 import { registry } from '../lib/connection'
+import { devRenders } from '../lib/devRenders'
+import { clockForTest } from '../lib/turnClock'
 
 /** The hosts the window knows; none by default, two for the host glyph. */
 const hosts = vi.hoisted(() => ({ environments: [] as { id: string; name: string; platform?: string }[] }))
@@ -291,6 +293,30 @@ describe('a project card', () => {
     const turning = lineOf(probe.container, 'Release train').querySelectorAll('[data-slot="spinner"][data-turning]')
     expect(turning).toHaveLength(1)
     probe.unmount()
+  })
+
+  it("the second hand moves a working line's elapsed alone: 10 ticks render no card, master block, agents line or button", () => {
+    const start = Date.now()
+    const at = vi.spyOn(Date, 'now').mockReturnValue(start)
+    const master: ThreadRow = {
+      ...threadRow(meta('m', { title: 'Release train', status: 'watching', isMaster: true }), {}),
+      batch: [threadRow(meta('b1', { title: 'Card view', masterId: 'm', status: 'running', busySince: start - 60_000 }), {}, 0, true)]
+    }
+    const solo = threadRow(meta('r', { title: 'Solo', status: 'running', busySince: start - 125_000 }), {})
+    const probe = mountProbe(projectCard([master, solo]))
+    expect(lineOf(probe.container, 'Card view').textContent).toContain('1m')
+    expect(lineOf(probe.container, 'Solo').textContent).toContain('2m 5s')
+    const before = { card: devRenders.projectCard ?? 0, master: devRenders.masterLines ?? 0, agents: devRenders.agentsLine ?? 0 }
+    for (let i = 1; i <= 10; i++) {
+      at.mockReturnValue(start + i * 1_000)
+      act(() => clockForTest.tick())
+    }
+    // The spans read the new time; the card (its buttons, menus and lines with it) drew nothing.
+    expect(lineOf(probe.container, 'Card view').textContent).toContain('1m 10s')
+    expect(lineOf(probe.container, 'Solo').textContent).toContain('2m 15s')
+    expect({ card: devRenders.projectCard ?? 0, master: devRenders.masterLines ?? 0, agents: devRenders.agentsLine ?? 0 }).toEqual(before)
+    probe.unmount()
+    at.mockRestore()
   })
 
   it('its accessible name says what needs saying', () => {

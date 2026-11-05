@@ -1,4 +1,5 @@
 import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { tallyRender } from "../../../lib/devRenders";
 import { registerToastAnchor } from "../../../lib/toastAnchor";
 import type { BatchState } from "@server/shared/contract-batch";
 import { Button } from "../../../components/ui/button";
@@ -53,6 +54,7 @@ export function BatchFoot({
   /** The master's chat is folded: the toast stack sits above this foot, not over it. */
   toastAnchor?: boolean;
 }) {
+  tallyRender("batchFoot");
   const rules = batch.rules;
   const [editing, setEditing] = useState(false);
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());

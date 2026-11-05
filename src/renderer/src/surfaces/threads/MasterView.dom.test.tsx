@@ -1775,6 +1775,8 @@ describe("the board's static preview", () => {
 describe("the board's first paint", () => {
   it("is reported once per open as board-paint with the row count, a trip into a child and back not counting", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 }), meta({ id: "c-two", title: "Inbox", status: "running", createdAt: 2 })]);
+    // The store holds the batch's rows before a board opens, as the rail has listed them; the board answers in the same render it lands.
+    await sessionStore.ready();
     renderView();
     await act(() => new Promise((r) => setTimeout(r, 50)));
     const reports = () => link.calls.filter((c) => c.method === "stall.report").map((c) => (c.params as { line: string }).line);
@@ -2115,5 +2117,65 @@ describe("the batch across hosts", () => {
       { action: "stop", ids: ["b-run"] },
       { action: "archive", ids: ["b-run", "b-done"] },
     ]);
+  });
+});
+
+describe("a board push re-renders what it changed", () => {
+  it("50 step-log pushes re-render the foot alone: no row, boundary, chat footer, transcript or composer; one child's meta its row alone", async () => {
+    const { devRenders } = await import("../../lib/devRenders");
+    seed([meta({ id: "c-a", title: "Home screen", status: "running", createdAt: 1 }), meta({ id: "c-b", title: "Inbox", status: "running", createdAt: 2 })]);
+    const drew = { transcript: 0, composer: 0 };
+    const Transcript = () => (drew.transcript++, <div data-probe-transcript />);
+    const ComposerProbe = () => (drew.composer++, <div data-probe-composer />);
+    // The pane's render functions are stable across a board push, as SessionPane keeps them.
+    const slots = { transcript: <Transcript />, strip: null, composer: <ComposerProbe /> };
+    const renderSlots = () => slots;
+    render(
+      <SessionActionsContext.Provider value={actions}>
+        <MasterView {...props} renderSlots={renderSlots} />
+      </SessionActionsContext.Provider>,
+    );
+    await flush();
+    expect(document.querySelector("[data-batch-foot]")).toBeTruthy();
+    const before = { foot: devRenders.batchFoot ?? 0, boundary: devRenders.rowBoundary ?? 0, footer: devRenders.chatFooter ?? 0, ...drew };
+    expect(before.boundary).toBeGreaterThan(0);
+    expect(before.footer).toBeGreaterThan(0);
+    rowReads.length = 0;
+    // The gate's console: four pushes a second, each two lines more, as the host's batch-delta.
+    const gate = RUNNING_STEPS.find((s) => s.status === "running")!;
+    for (let i = 0; i < 50; i++) {
+      act(() =>
+        link.push({
+          push: "batch-delta",
+          state: { ...batch, steps: batch.steps.map((s) => (s.id === gate.id ? { ...s, log: { from: 2 + i * 2, lines: [`vitest: file ${i}a`, `vitest: file ${i}b`] } } : s)) },
+        } as unknown as ServerPush),
+      );
+    }
+    await flush();
+    expect(document.querySelector("[data-batch-foot]")!.textContent).toContain("vitest: file 49b");
+    expect((devRenders.batchFoot ?? 0) - before.foot).toBeGreaterThanOrEqual(1);
+    expect((devRenders.rowBoundary ?? 0) - before.boundary).toBe(0);
+    expect((devRenders.chatFooter ?? 0) - before.footer).toBe(0);
+    expect(drew).toEqual({ transcript: before.transcript, composer: before.composer });
+    expect(rowReads.filter(Boolean)).toEqual([]);
+
+    // One child's meta moves its row alone: the view and the other row stay.
+    const { environmentId: _e, ...wire } = meta({ id: "c-a", title: "Home screen", status: "running", createdAt: 1, activity: "Running lint" });
+    act(() => link.push({ push: "session", session: wire } as unknown as ServerPush));
+    // The store tells meta listeners once per frame.
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.getByText("Running lint")).toBeTruthy();
+    expect(new Set(rowReads.filter(Boolean))).toEqual(new Set(["c-a"]));
+    expect((devRenders.rowBoundary ?? 0) - before.boundary).toBe(0);
+    expect((devRenders.chatFooter ?? 0) - before.footer).toBe(0);
+  });
+
+  it("a change the board does draw still lands: a child that blocks the batch says so on its row", async () => {
+    seed([meta({ id: "c-a", title: "Home screen", status: "idle", createdAt: 1 })]);
+    renderView();
+    await flush();
+    act(() => link.push({ push: "batch-delta", state: { ...batch, blocked: { sessionId: "c-a", why: "no-turn" } } } as unknown as ServerPush));
+    await flush();
+    expect(screen.getByRole("button", { name: /Home screen/ }).textContent).toContain("Ended its turn without completing");
   });
 });

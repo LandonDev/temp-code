@@ -9,7 +9,7 @@ import type { SessionMeta } from "../lib/tcserver/types";
 import { cardThreads, threadRow, type ThreadRow } from "../lib/workspaceSessions";
 import { Button } from "../components/ui/button";
 import { Plus } from "./icons";
-import { ProjectCardView, SectionHeading, ThreadRowView } from "./WorkspaceSessions";
+import { CardNowContext, ProjectCardView, SectionHeading, ThreadRowView } from "./WorkspaceSessions";
 
 const NOW = Date.now();
 const noop = () => {};
@@ -56,20 +56,21 @@ function Card({
 }) {
   const status = projectCardStatus(cardThreads(threads), null, {}, SEEN);
   return (
-    <ProjectCardView
-      name={name}
-      branch={branch}
-      mode={mode}
-      latest={threads.length ? NOW - minutesAgo * 60_000 : 0}
-      now={NOW}
-      lines={cardLines(threads, status)}
-      hidden={0}
-      counts={cardCounts(status, archived)}
-      ariaLabel={projectCardAriaLabel(name, status)}
-      selected={selected}
-      onSelect={noop}
-      menu={{ rows: () => [], onPick: noop }}
-    />
+    <CardNowContext.Provider value={NOW}>
+      <ProjectCardView
+        name={name}
+        branch={branch}
+        mode={mode}
+        latest={threads.length ? NOW - minutesAgo * 60_000 : 0}
+        lines={cardLines(threads, status)}
+        hidden={0}
+        counts={cardCounts(status, archived)}
+        ariaLabel={projectCardAriaLabel(name, status)}
+        selected={selected}
+        onSelect={noop}
+        menu={{ rows: () => [], onPick: noop }}
+      />
+    </CardNowContext.Provider>
   );
 }
 

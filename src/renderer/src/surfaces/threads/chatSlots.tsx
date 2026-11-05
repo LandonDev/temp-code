@@ -1,5 +1,6 @@
 import { useCallback, type ReactNode } from "react";
 import { registerToastAnchor } from "../../lib/toastAnchor";
+import { tallyRender } from "../../lib/devRenders";
 import { COLUMN_MAX_CLASS, LIST_SPACE, type OutlinePlacement } from "../transcriptOutlineModel";
 
 /**
@@ -78,6 +79,7 @@ export function ChatFooter({
   className?: string;
   placement?: OutlinePlacement;
 }) {
+  tallyRender("chatFooter");
   const where = placement ?? slots.placement ?? "hidden";
   const anchored = !!slots.anchor;
   const ref = useCallback(

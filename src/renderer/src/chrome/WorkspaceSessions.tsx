@@ -72,6 +72,7 @@ import {
 import { duration } from "../lib/duration";
 import { timeAgo } from "../lib/format";
 import { useClock, useSlowClock } from "../lib/turnClock";
+import { tallyRender } from "../lib/devRenders";
 import { interrupt, pause, resume } from "../lib/tcserver/commands";
 import { archiveDormantThreads } from "../lib/archiveDormantThreads";
 import { dormantByType, dormantThreads, focusedTree, marksAtRest, threadStatus } from "../lib/threadStripModel";
@@ -754,6 +755,29 @@ const LINE_TIME = "shrink-0 tabular-nums text-muted-foreground";
 /** Elapsed shows from three seconds in, as at 303: a turn that ends at once never flashes a clock. */
 const SHOWS_ELAPSED_MS = 3000;
 
+/** A fixed time for a card's clocks (a fixture, a test); null reads the live tickers. */
+export const CardNowContext = createContext<number | null>(null);
+
+/** A working line's elapsed: the one part of a card the second hand moves.
+ *  It reads the shared second ticker while its thread runs (the half-minute
+ *  one otherwise), so a tick renders this span alone, never the card. */
+function LineElapsed({ thread }: { thread: ThreadRow }) {
+  const fixed = useContext(CardNowContext);
+  const fast = useClock(fixed === null && thread.running);
+  const slow = useSlowClock(fixed === null && !thread.running);
+  const now = fixed ?? (fast || slow);
+  const ms = runningElapsed(thread, now);
+  return now > 0 && ms >= SHOWS_ELAPSED_MS ? <span className={LINE_TIME}>{duration(ms)}</span> : null;
+}
+
+/** The card's last-active time ("3m"), on the half-minute ticker. */
+function CardAgo({ latest, yields }: { latest: number; yields: boolean }) {
+  const fixed = useContext(CardNowContext);
+  const live = useSlowClock(fixed === null && latest > 0);
+  const ago = latest > 0 ? timeAgo(latest, fixed ?? (live || Date.now())) : "";
+  return ago ? <span className={cn("shrink-0 tabular-nums text-muted-foreground", yields && YIELDS)}>{ago}</span> : null;
+}
+
 /** An implementation thread's tally and current task, under its title. */
 function TaskLine({ tasks, indent }: { tasks: NonNullable<ThreadRow["tasks"]>; indent: string }) {
   return (
@@ -767,7 +791,8 @@ function TaskLine({ tasks, indent }: { tasks: NonNullable<ThreadRow["tasks"]>; i
 }
 
 /** A thread's working subagents in the fleet's words, two spaces apart. */
-function AgentsLine({ summary, indent }: { summary: AgentSummary; indent: string }) {
+const AgentsLine = memo(function AgentsLine({ summary, indent }: { summary: AgentSummary; indent: string }) {
+  tallyRender("agentsLine");
   return (
     <span className={cn("flex h-4 min-w-0 items-center gap-2 text-muted-foreground", indent)}>
       {agentSummaryParts(summary).map((part) => (
@@ -777,13 +802,12 @@ function AgentsLine({ summary, indent }: { summary: AgentSummary; indent: string
       ))}
     </span>
   );
-}
+});
 
 /** One root's line: its mark, type glyph, title and host; at the end the
  *  elapsed while it works, Paused and the frozen elapsed while paused. */
-function ThreadLine({ kind, thread, now }: { kind: "working" | "paused" | "unread"; thread: ThreadRow; now: number }) {
+function ThreadLine({ kind, thread }: { kind: "working" | "paused" | "unread"; thread: ThreadRow }) {
   const tasks = kind === "unread" ? null : cardTasks(thread);
-  const ms = kind === "working" ? runningElapsed(thread, now) : 0;
   return (
     <span className="flex min-w-0 flex-col" data-card-line={kind}>
       <span className={LINE}>
@@ -793,7 +817,7 @@ function ThreadLine({ kind, thread, now }: { kind: "working" | "paused" | "unrea
           {thread.title || "Untitled"}
         </span>
         <HostGlyph environmentId={thread.environmentId} />
-        {kind === "working" && now > 0 && ms >= SHOWS_ELAPSED_MS ? <span className={LINE_TIME}>{duration(ms)}</span> : null}
+        {kind === "working" ? <LineElapsed thread={thread} /> : null}
         {kind === "paused" ? (
           <span className="flex shrink-0 gap-2 text-muted-foreground">
             <span>Paused</span>
@@ -812,7 +836,8 @@ function ThreadLine({ kind, thread, now }: { kind: "working" | "paused" | "unrea
  *  The block has one moving mark, at its head: the master's line spins while
  *  anything in the block works (`block.lead`), whatever the master's own
  *  state, and a working batch thread under it draws a dot. */
-function MasterLines({ block, now }: { block: MasterBlock; now: number }) {
+const MasterLines = memo(function MasterLines({ block }: { block: MasterBlock }) {
+  tallyRender("masterLines");
   const { master, unread, done, total } = block;
   return (
     <span className="flex min-w-0 flex-col" data-card-line="master">
@@ -828,28 +853,9 @@ function MasterLines({ block, now }: { block: MasterBlock; now: number }) {
         </span>
       </span>
       {block.agents ? <AgentsLine summary={block.agents} indent="pl-10" /> : null}
-      {block.lines.map(({ thread, state, agents }) => {
-        const tasks = state === "working" ? cardTasks(thread) : null;
-        const ms = state === "working" ? runningElapsed(thread, now) : 0;
-        return (
-          <span key={thread.id} className="flex min-w-0 flex-col pl-4">
-            <span className={LINE}>
-              <LineMark state={state} still />
-              <LineGlyph thread={thread} />
-              <span className="min-w-0 flex-1 truncate text-muted-foreground">{thread.title || "Untitled"}</span>
-              <HostGlyph environmentId={thread.environmentId} />
-              {tasks ? (
-                <span className={cn(LINE_TIME, tasks.done === tasks.total && "text-success")}>
-                  {tasks.done}/{tasks.total}
-                </span>
-              ) : state === "working" && now > 0 && ms >= SHOWS_ELAPSED_MS ? (
-                <span className={LINE_TIME}>{duration(ms)}</span>
-              ) : null}
-            </span>
-            {agents ? <AgentsLine summary={agents} indent="pl-10" /> : null}
-          </span>
-        );
-      })}
+      {block.lines.map(({ thread, state, agents }) => (
+        <BatchLine key={thread.id} thread={thread} state={state} agents={agents} />
+      ))}
       {block.queued > 0 ? (
         <span className={cn(LINE, "pl-4 text-muted-foreground")}>
           <LineMark state="queued" />
@@ -858,7 +864,31 @@ function MasterLines({ block, now }: { block: MasterBlock; now: number }) {
       ) : null}
     </span>
   );
-}
+});
+
+/** A batch thread's line one step in, memoized on its row (kept while it
+ *  reads the same): one child settling renders its line, not the block's. */
+const BatchLine = memo(function BatchLine({ thread, state, agents }: MasterBlock["lines"][number]) {
+  const tasks = state === "working" ? cardTasks(thread) : null;
+  return (
+    <span className="flex min-w-0 flex-col pl-4">
+      <span className={LINE}>
+        <LineMark state={state} still />
+        <LineGlyph thread={thread} />
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">{thread.title || "Untitled"}</span>
+        <HostGlyph environmentId={thread.environmentId} />
+        {tasks ? (
+          <span className={cn(LINE_TIME, tasks.done === tasks.total && "text-success")}>
+            {tasks.done}/{tasks.total}
+          </span>
+        ) : state === "working" ? (
+          <LineElapsed thread={thread} />
+        ) : null}
+      </span>
+      {agents ? <AgentsLine summary={agents} indent="pl-10" /> : null}
+    </span>
+  );
+});
 
 /** The count line's facts, two spaces apart: needs you in amber and failed
  *  in red with their glyphs, the rest muted. */
@@ -882,10 +912,8 @@ export type ProjectCardViewProps = {
   name: string;
   branch: string | null | undefined;
   mode: ProjectMeta["mode"];
-  /** Newest activity; 0 shows no time. */
+  /** Newest activity; 0 shows no time. Its clock, and the working lines' elapsed, are leaves of their own (CardNowContext fixes them). */
   latest: number;
-  /** The clock the time and the elapsed read; 0 before it has ticked. */
-  now: number;
   lines: readonly CardLine[];
   /** Lines behind "N more". */
   hidden: number;
@@ -915,7 +943,6 @@ export function ProjectCardView({
   branch,
   mode,
   latest,
-  now,
   lines,
   hidden,
   counts,
@@ -928,8 +955,8 @@ export function ProjectCardView({
   onMore,
   menu,
 }: ProjectCardViewProps) {
+  tallyRender("projectCard");
   const editing = title != null;
-  const ago = latest > 0 ? timeAgo(latest, now || Date.now()) : "";
   const body = (
     <>
       <span className="flex h-5 min-w-0 items-center gap-2">
@@ -938,7 +965,7 @@ export function ProjectCardView({
         ) : (
           <>
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{name}</span>
-            {ago ? <span className={cn("shrink-0 tabular-nums text-muted-foreground", menu && YIELDS)}>{ago}</span> : null}
+            <CardAgo latest={latest} yields={!!menu} />
           </>
         )}
       </span>
@@ -953,9 +980,9 @@ export function ProjectCardView({
         <span className="mt-1 flex min-w-0 flex-col">
           {lines.map((line) =>
             line.kind === "master" ? (
-              <MasterLines key={line.id} block={line.block} now={now} />
+              <MasterLines key={line.id} block={line.block} />
             ) : (
-              <ThreadLine key={line.id} kind={line.kind} thread={line.thread} now={now} />
+              <ThreadLine key={line.id} kind={line.kind} thread={line.thread} />
             ),
           )}
         </span>
@@ -1064,12 +1091,6 @@ export const ProjectCard = memo(function ProjectCard({
   const status = projectCardStatus(cardThreads(threads), rows.activeSessionId ?? null, lastSeen, seenFloor);
   const all = cardLines(threads, status);
   const { shown, hidden } = windowRows(all, requested, null);
-  // The second hand only while a shown line counts one; the time-ago on the half minute.
-  const ticking = shown.some(
-    (l) => (l.kind === "working" && l.thread.running) || (l.kind === "master" && l.block.lines.some((b) => b.state === "working")),
-  );
-  const fast = useClock(ticking);
-  const slow = useSlowClock(!ticking && latest > 0);
   const runAction = projectRunAction(status);
   const stoppable = stoppableThreads(status);
   const teardown = project.mode === "worktree" && Boolean(project.branch);
@@ -1124,7 +1145,6 @@ export const ProjectCard = memo(function ProjectCard({
       branch={project.branch}
       mode={project.mode}
       latest={latest}
-      now={fast || slow}
       lines={shown}
       hidden={hidden}
       counts={cardCounts(status, archivedCount)}

@@ -22,6 +22,7 @@ import { sessionStore, useSessionMeta } from "../../../lib/tcserver/store";
 import type { SessionMeta, SessionStatus, ThreadType } from "../../../lib/tcserver/types";
 import { REASONING_LEVELS, type ProviderId, type Reasoning } from "@server/shared/catalog";
 import { usePaneVisible } from "../../../hooks/paneVisibility";
+import { sameData } from "../../../lib/keptValue";
 
 /**
  * The master's batch as one model (CLAUDE.md "Master threads"): one
@@ -503,8 +504,75 @@ export function foldBatchPush(prev: BatchState, next: BatchState): { state: Batc
  *  (BOARD_WATCH_MS), and the answer settles anything a push missed. */
 export const BOARD_RENEW_MS = 45_000;
 
+/**
+ * The batch's state as the host's answers and pushes leave it, held outside
+ * React: the running step's log (four `batch-delta` pushes a second) moves
+ * only what reads the whole state, the foot (`useBatchState`); the board
+ * reads `useBatchView`, which keeps its object while what it draws reads the
+ * same. The menus and dialogs read `get()` when they open. The answer's
+ * children and whether it is in ride here too, so a reader of the holder
+ * sees the state and the answer of one moment in one render.
+ */
+export class BatchHolder {
+  private state: BatchState;
+  private answer: BoardAnswer = { children: NO_METAS, loaded: false };
+  private readonly listeners = new Set<() => void>();
+  constructor(masterId: string) {
+    this.state = emptyBatch(masterId);
+  }
+  readonly get = (): BatchState => this.state;
+  readonly answered = (): BoardAnswer => this.answer;
+  /** A new state; with `answer`, the answer's children (when it names them) and that it is in. */
+  set(state: BatchState, answer?: { children?: SessionMeta[]; loaded?: boolean }): void {
+    let moved = state !== this.state;
+    this.state = state;
+    if (answer) {
+      const children = answer.children ?? this.answer.children;
+      const loaded = this.answer.loaded || !!answer.loaded;
+      if (children !== this.answer.children || loaded !== this.answer.loaded) {
+        this.answer = { children, loaded };
+        moved = true;
+      }
+    }
+    if (moved) for (const listener of this.listeners) listener();
+  }
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+}
+
+/** The answer's rows for children the store does not hold yet, and whether the first answer is in. */
+export type BoardAnswer = { children: SessionMeta[]; loaded: boolean };
+
+/** The whole state, followed: the foot's. */
+export function useBatchState(holder: BatchHolder): BatchState {
+  return useSyncExternalStore(holder.subscribe, holder.get);
+}
+
+/** Whether a step of the batch is running. */
+export function stepRunning(batch: Pick<BatchState, "steps">): boolean {
+  return batch.steps.some((s) => s.status === "running");
+}
+
+/** What the board itself draws from the batch: its list of children, the
+ *  landed, the host's done list, the child that blocks the end, and whether a step runs. */
+export type BatchView = Pick<BatchState, "landed" | "blocked" | "children" | "done"> & { running: boolean };
+
+const viewOf = (state: BatchState): BatchView => ({ landed: state.landed, blocked: state.blocked, children: state.children, done: state.done, running: stepRunning(state) });
+
+/** The board's projection of the batch, the same object while it reads alike: a step's log line renders no row. */
+export function useBatchView(holder: BatchHolder): BatchView {
+  const kept = useRef<BatchView | null>(null);
+  return useSyncExternalStore(holder.subscribe, () => {
+    const next = viewOf(holder.get());
+    if (!kept.current || !sameData(kept.current, next)) kept.current = next;
+    return kept.current;
+  });
+}
+
 export type Board = {
-  state: BatchState;
+  batch: BatchHolder;
   /** The master's children on its host, as the answer had them: rows for ids the store does not hold yet. */
   children: SessionMeta[];
   digests: BoardDigests;
@@ -516,26 +584,19 @@ export type Board = {
  * The board from the master's host: `batch.board` on mount, on every new
  * socket and every BOARD_RENEW_MS while the pane shows; then the `board`
  * push (one child's digest) and the `batch` push (the state, logs as
- * deltas). A host without `batch.board` answers `batch.get` alone.
+ * deltas), into the holder. A host without `batch.board` answers `batch.get` alone.
  */
 export function useBoard(masterId: string, environmentId: string): Board {
   const digests = useMemo(() => new BoardDigests(), [masterId, environmentId]);
-  const [data, setData] = useState<{ state: BatchState; children: SessionMeta[]; loaded: boolean }>(() => ({
-    state: emptyBatch(masterId),
-    children: NO_METAS,
-    loaded: false,
-  }));
-  const held = useRef(data.state);
+  const holder = useMemo(() => new BatchHolder(masterId), [masterId, environmentId]);
+  const answer = useSyncExternalStore(holder.subscribe, holder.answered);
   const visible = usePaneVisible();
   useEffect(() => {
     let alive = true;
     const link = registry.link(environmentId);
     if (!link) return;
     // An answer marks the board loaded; a push only moves the state it holds.
-    const take = (state: BatchState, children?: SessionMeta[], answer = true) => {
-      held.current = state;
-      setData((d) => ({ state, children: children ?? d.children, loaded: d.loaded || answer }));
-    };
+    const take = (state: BatchState, children?: SessionMeta[], answer = true) => holder.set(state, answer ? { children, loaded: true } : undefined);
     const readState = () =>
       link
         .request<BatchState>("batch.get", { masterId })
@@ -543,7 +604,7 @@ export function useBoard(masterId: string, environmentId: string): Board {
           if (alive && state && Array.isArray(state.steps)) take(state);
         })
         .catch(() => {
-          if (alive) setData((d) => (d.loaded ? d : { ...d, loaded: true }));
+          if (alive) holder.set(holder.get(), { loaded: true });
         });
     const read = () => {
       link.request<BatchBoard>("batch.board", { masterId }).then(
@@ -568,19 +629,15 @@ export function useBoard(masterId: string, environmentId: string): Board {
       // A child gone from its host leaves the answer's rows with it.
       if (push.push === "session-removed") {
         const gone = new Set(push.sessionIds);
-        setData((d) => {
-          const children = d.children.some((c) => gone.has(c.id)) ? d.children.filter((c) => !gone.has(c.id)) : d.children;
-          const listed = d.state.children?.some((c) => gone.has(c.sessionId)) ? d.state.children.filter((c) => !gone.has(c.sessionId)) : d.state.children;
-          if (children === d.children && listed === d.state.children) return d;
-          const state = listed === d.state.children ? d.state : { ...d.state, children: listed };
-          held.current = state;
-          return { ...d, children, state };
-        });
+        const held = holder.get();
+        const listed = held.children?.some((c) => gone.has(c.sessionId)) ? { ...held, children: held.children.filter((c) => !gone.has(c.sessionId)) } : held;
+        const { children } = holder.answered();
+        holder.set(listed, children.some((c) => gone.has(c.id)) ? { children: children.filter((c) => !gone.has(c.id)) } : undefined);
         return;
       }
       const next = batchFromPush(push, masterId);
       if (!next) return;
-      const folded = foldBatchPush(held.current, next);
+      const folded = foldBatchPush(holder.get(), next);
       take(folded.state, undefined, false);
       if (folded.gap) void readState();
     });
@@ -590,8 +647,8 @@ export function useBoard(masterId: string, environmentId: string): Board {
       offOpen();
       offPush();
     };
-  }, [masterId, environmentId, visible, digests]);
-  return { ...data, digests };
+  }, [masterId, environmentId, visible, digests, holder]);
+  return { ...answer, batch: holder, digests };
 }
 
 /**
@@ -807,15 +864,18 @@ export function underRow(id: string, rows: readonly Pick<BoardRowRef, "id">[]): 
 /** The board shows while the batch has a row, or a step still runs (a batch
  *  archived by `then` keeps its board until its last step ends); otherwise
  *  the master is its transcript alone. */
-export function boardShown(layout: Pick<BoardLayout, "rows">, batch: Pick<BatchState, "steps">): boolean {
-  return layout.rows.length > 0 || batch.steps.some((s) => s.status === "running");
+export function boardShown(layout: Pick<BoardLayout, "rows">, running: boolean): boolean {
+  return layout.rows.length > 0 || running;
 }
 
 // ── the model ───────────────────────────────────────────────────────────
 
 export type MasterModel = {
   layout: BoardLayout;
-  batch: BatchState;
+  /** The batch's whole state, outside React: the foot follows it, a menu reads it when it opens. */
+  batch: BatchHolder;
+  /** What the board draws from it (`useBatchView`). */
+  view: BatchView;
   /** `boardShown` for this layout and batch. */
   showBoard: boolean;
   digests: BoardDigests;
@@ -831,7 +891,8 @@ export type MasterModel = {
 
 export function useMasterModel(master: Pick<SessionMeta, "id" | "environmentId">): MasterModel {
   const board = useBoard(master.id, master.environmentId);
-  const listed = useMemo(() => batchChildrenOf(board.state), [board.state]);
+  const view = useBatchView(board.batch);
+  const listed = useMemo(() => batchChildrenOf(view), [view]);
   const statuses = useEnvironmentStatuses();
   const live = useCallback((environmentId: string) => statuses.get(environmentId)?.transport === "open", [statuses]);
   const layout = useBoardLayout(master.id, board.children, listed, live);
@@ -845,12 +906,12 @@ export function useMasterModel(master: Pick<SessionMeta, "id" | "environmentId">
   useLayoutEffect(() => {
     board.digests.retain(new Set(layout.rows.map((r) => r.id)));
   }, [layout, board.digests]);
-  const landed = useMemo(() => new Set(board.state.landed), [board.state.landed]);
+  const landed = useMemo(() => new Set(view.landed), [view.landed]);
   const [openId, setOpenId] = useState<string | null>(null);
   // A child that left the batch (archived, removed) closes its view, and
   // so does an agent of one (a row's agent lines open in the same place).
   useEffect(() => {
     if (openId && !underRow(openId, layout.rows)) setOpenId(null);
   }, [layout, openId]);
-  return { layout, batch: board.state, showBoard: boardShown(layout, board.state), digests: board.digests, summaries, loaded: board.loaded, landed, openId, setOpenId };
+  return { layout, batch: board.batch, view, showBoard: boardShown(layout, view.running), digests: board.digests, summaries, loaded: board.loaded, landed, openId, setOpenId };
 }

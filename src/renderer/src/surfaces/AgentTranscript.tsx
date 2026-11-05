@@ -142,7 +142,9 @@ type Props = {
   onOpenActivity?: () => void;
 };
 
-export function AgentTranscript({
+/** Memoized: a view that rebuilds its slots for a push of its own (a board,
+ *  a fleet) renders no transcript unless the transcript's own props moved. */
+export const AgentTranscript = memo(function AgentTranscript({
   blocks,
   sessionId,
   turn: turnState,
@@ -1108,7 +1110,7 @@ export function AgentTranscript({
     </TranscriptSessionContext.Provider>
     </SelectSessionContext.Provider>
   );
-}
+});
 
 /**
  * Re-uses the previous array for every turn whose blocks are the same

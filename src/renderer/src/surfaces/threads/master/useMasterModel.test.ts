@@ -9,6 +9,7 @@ import {
   blockedLine,
   boardLayout,
   boardShown,
+  stepRunning,
   BoardDigests,
   doneTally,
   foldBatchPush,
@@ -460,20 +461,20 @@ describe("boardShown", () => {
   const of = (metas: SessionMeta[]) => (id: string) => metas.find((m) => m.id === id) ?? null;
 
   it("is off with no rows and no running step", () => {
-    expect(boardShown({ rows: [] }, { steps: steps() })).toBe(false);
-    expect(boardShown({ rows: [] }, emptyBatch("m"))).toBe(false);
+    expect(boardShown({ rows: [] }, stepRunning({ steps: steps() }))).toBe(false);
+    expect(boardShown({ rows: [] }, stepRunning(emptyBatch("m")))).toBe(false);
   });
 
   it("is on with one row", () => {
     const a = meta("running");
-    expect(boardShown(boardLayout("m", [a], of([a]), [], []), emptyBatch("m"))).toBe(true);
+    expect(boardShown(boardLayout("m", [a], of([a]), [], []), stepRunning(emptyBatch("m")))).toBe(true);
   });
 
   it("is on with no rows while a step runs", () => {
-    expect(boardShown({ rows: [] }, { steps: steps("passed", "running", "pending") })).toBe(true);
+    expect(boardShown({ rows: [] }, stepRunning({ steps: steps("passed", "running", "pending") }))).toBe(true);
   });
 
   it("is off with no rows once every step settled", () => {
-    expect(boardShown({ rows: [] }, { steps: steps("passed", "failed", "skipped") })).toBe(false);
+    expect(boardShown({ rows: [] }, stepRunning({ steps: steps("passed", "failed", "skipped") }))).toBe(false);
   });
 });

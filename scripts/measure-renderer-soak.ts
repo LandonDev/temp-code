@@ -1002,8 +1002,11 @@ async function recordTyping(c: Cdp, shown: Shown, rendererPid: number): Promise<
     }
   })()
   const owners = why ? await c.eval<[string, number][]>('window.__soakOwners ? window.__soakOwners() : []') : []
-  writeFileSync(join(ROOT, `${args.label}.json`), JSON.stringify({ label: args.label, args, tree, sha, platform: process.platform, shown, rule: TYPING_RULE, verdict, phases: summaries, usage, trace, renders, owners }, null, 1))
-  const renderTable = (rows: [string, number][]): string[] => ['| component | renders |', '|---|---|', ...rows.map(([n, k]) => `| ${n} | ${k} |`)]
+  // The props React's diff named as changed, per component, the whole run.
+  const whyRows = why ? await c.eval<[string, [string, number][]][]>('window.__soakWhy()') : []
+  writeFileSync(join(ROOT, `${args.label}.json`), JSON.stringify({ label: args.label, args, tree, sha, platform: process.platform, shown, rule: TYPING_RULE, verdict, phases: summaries, usage, trace, renders, owners, why: whyRows }, null, 1))
+  const propsOf = (n: string): string => (whyRows.find(([m]) => m === n)?.[1] ?? []).map(([p, x]) => `${p} ${x}`).join(', ')
+  const renderTable = (rows: [string, number][]): string[] => ['| component | renders | changed props, the whole run |', '|---|---|---|', ...rows.map(([n, k]) => `| ${n} | ${k} | ${propsOf(n)} |`)]
   const md = [
     `# ${args.label}: ${args.host} host, typing scene, ${args.build} build (${sha ?? 'no git'}, ${process.platform}, load ${loadavg()[0]!.toFixed(1)})`,
     '',

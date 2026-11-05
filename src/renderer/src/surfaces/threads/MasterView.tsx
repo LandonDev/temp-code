@@ -1,5 +1,5 @@
 import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { RowsContextMenu, RowsMenu } from "../../chrome/menuRows";
 import { useThreadMenu } from "../../chrome/useThreadMenu";
@@ -35,7 +35,9 @@ import {
   rowModels,
   setBatchRules,
   stopBatchStep,
+  useBatchState,
   useMasterModel,
+  type BatchHolder,
   type BoardGroup,
   type BoardRowRef,
   type RowHost,
@@ -86,6 +88,25 @@ export function pausable(children: readonly SessionMeta[]): SessionMeta[] {
 
 
 type BoardItem = { kind: "header"; key: string; group: BoardGroup } | { kind: "row"; key: string; row: BoardRowRef };
+
+/** One board row in its boundary, memoized on its own data: a board render
+ *  (a row joining, a menu opening) leaves an unchanged row, its boundary
+ *  and its chunk attempt alone. */
+const BoardRow = memo(function BoardRow({
+  masterId,
+  ...row
+}: { masterId: string } & Omit<ComponentProps<typeof MasterRow>, "masterId">) {
+  return (
+    <RowBoundary threadId={masterId} rowId={row.rowRef.id}>
+      <MasterRow masterId={masterId} {...row} />
+    </RowBoundary>
+  );
+});
+
+/** The foot on the batch's whole state: the one part of the view a step's log line renders. */
+const LiveBatchFoot = memo(function LiveBatchFoot({ holder, ...foot }: { holder: BatchHolder } & Omit<ComponentProps<typeof BatchFoot>, "batch">) {
+  return <BatchFoot batch={useBatchState(holder)} {...foot} />;
+});
 
 /** A section heading is 32px, its words on the last 16px with 4px under
  *  them; the first one 24px. A row is 48px (MasterRow), 64px with its task
@@ -160,7 +181,7 @@ function MasterBoardView(props: ThreadViewProps) {
   const { session } = props;
   const meta = useMetaById(session.id);
   const model = useMasterModel(session);
-  const { layout, batch, showBoard, digests, summaries, loaded, landed, openId, setOpenId } = model;
+  const { layout, batch, view, showBoard, digests, summaries, loaded, landed, openId, setOpenId } = model;
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const openMeta = useMetaById(openId);
@@ -219,7 +240,7 @@ function MasterBoardView(props: ThreadViewProps) {
   const toPause = pausableRows(rows);
   const paused = pausedRows(rows);
   // The host's own rule, so the count and what leaves agree.
-  const done = doneRows(rows, batch);
+  const done = doneRows(rows, view);
   const workspaces = useWorkspaces();
   const projects = useProjects();
   const paired = useMemo(() => (meta ? pairedProjectIds(meta, workspaces, projects) : new Set<string>()), [meta, workspaces, projects]);
@@ -321,7 +342,7 @@ function MasterBoardView(props: ThreadViewProps) {
   // The child that blocks the batch's end says why on its own row (a far
   // child is named `<env>:<session>`); every other row gets null.
   const blockedOf = (row: BoardRowRef): string | null => {
-    const b = batch.blocked;
+    const b = view.blocked;
     if (!b || (b.sessionId !== row.id && b.sessionId !== `${row.environmentId}:${row.id}`)) return null;
     return blockedReason(b.why, b.environmentId ? hostNames.get(b.environmentId) : null);
   };
@@ -403,6 +424,17 @@ function MasterBoardView(props: ThreadViewProps) {
     [candidateCount, doneCount, pausableCount, pausedCount, pick, rowCount],
   );
 
+  // The foot's callbacks, stable across board renders: it re-renders for the batch alone.
+  const titleOf = useCallback((id: string) => rowModels(layoutRef.current).find((r) => r.meta.id === id)?.title, []);
+  const hostName = useCallback((id: string) => hostNames.get(id), [hostNames]);
+  const masterEnv = session.environmentId;
+  const masterId = session.id;
+  const saveRules = useCallback((next: Parameters<typeof setBatchRules>[2]) => setBatchRules(masterEnv, masterId, next), [masterEnv, masterId]);
+  const stopStep = useCallback((stepId: string) => stopBatchStep(masterEnv, masterId, stepId), [masterEnv, masterId]);
+  // The chat's slots only when the pane hands new render functions: a board push renders no chat column, footer, transcript or composer.
+  const { renderSlots, renderChat } = props;
+  const chat = useMemo(() => chatOf({ renderSlots, renderChat }), [renderSlots, renderChat]);
+
   // A row, or a subagent opened from a row's agent lines (it lives on its own host).
   const openHost = shownHost;
   if (openId && openHost) {
@@ -457,9 +489,7 @@ function MasterBoardView(props: ThreadViewProps) {
                         {item.group.label}
                       </h3>
                     ) : (
-                      <RowBoundary threadId={session.id} rowId={item.row.id}>
-                        <MasterRow masterId={session.id} rowRef={item.row} landed={landed.has(item.row.id)} blocked={blockedOf(item.row)} host={hostOf(item.row.environmentId)} onOpen={open} menu={rowMenu} />
-                      </RowBoundary>
+                      <BoardRow masterId={session.id} rowRef={item.row} landed={landed.has(item.row.id)} blocked={blockedOf(item.row)} host={hostOf(item.row.environmentId)} onOpen={open} menu={rowMenu} />
                     )}
                   </div>
                 );
@@ -469,19 +499,9 @@ function MasterBoardView(props: ThreadViewProps) {
           </div>
         </AgentSummaryContext.Provider>
       </BoardDigestContext.Provider>
-      <BatchFoot
-          batch={batch}
-          loaded={loaded}
-          titleOf={(id) => rowModels(layout).find((r) => r.meta.id === id)?.title}
-          hostName={(id) => hostNames.get(id)}
-          onSave={(next) => setBatchRules(session.environmentId, session.id, next)}
-          onStop={(stepId) => stopBatchStep(session.environmentId, session.id, stepId)}
-          toastAnchor={!chatOpen}
-        />
+      <LiveBatchFoot holder={batch} loaded={loaded} titleOf={titleOf} hostName={hostName} onSave={saveRules} onStop={stopStep} toastAnchor={!chatOpen} />
     </div>
   );
-
-  const chat = chatOf(props);
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1">
@@ -504,7 +524,7 @@ function MasterBoardView(props: ThreadViewProps) {
           count={archiving === "done" ? done.length : layout.rows.length}
           resources={resourcesHeldBy((archiving === "done" ? done : rows).map((r) => r.meta.id))}
           onCancel={() => setArchiving(null)}
-          onConfirm={(removeResources) => archiveBatch(session, rows, archiving, removeResources, batch)}
+          onConfirm={(removeResources) => archiveBatch(session, rows, archiving, removeResources, batch.get())}
         />
       ) : null}
       {threadMenu.dialogs}

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { ChunkBoundary } from "../../../lib/lazyChunk";
 import { tagRendererError } from "../../../lib/rendererErrors";
+import { tallyRender } from "../../../lib/devRenders";
 
 /**
  * One board row's error boundary (the ChunkBoundary pattern, lib/lazyChunk.tsx):
@@ -12,6 +13,7 @@ import { tagRendererError } from "../../../lib/rendererErrors";
  * thread and the row's session id (lib/rendererErrors.ts).
  */
 export function RowBoundary({ threadId, rowId, children }: { threadId: string; rowId: string; children: ReactNode }) {
+  tallyRender("rowBoundary");
   return (
     <ChunkBoundary
       name={`board-row.${rowId}`}
