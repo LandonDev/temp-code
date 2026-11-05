@@ -95,6 +95,9 @@ describe("AgentsCueView", () => {
     const cls = button()!.className;
     expect(cls).toContain("h-6");
     expect(cls).toContain("px-2");
+    // A glyph sits 8px from the first word, as on the plan chip beside it.
+    expect(cls.split(/\s+/)).toContain("gap-2");
+    expect(cls.split(/\s+/)).not.toContain("gap-1.5");
     expect(cls).toContain("text-xs");
     expect(cls).toContain("text-muted-foreground");
     expect(cls).toContain("hover:bg-foreground/5");

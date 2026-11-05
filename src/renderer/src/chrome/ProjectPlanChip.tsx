@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ProjectPlanState } from "@server/shared/contract-projectplan";
+import { ROW_CONTROL } from "./composerRow";
 import { Button } from "../components/ui/button";
 import { MENU_ROW } from "../components/ui/menu-row";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/lazy-menus";
@@ -47,11 +48,12 @@ export function ProjectPlanChip() {
           foreground on hover; the tally stays muted. */}
       <PopoverTrigger
         render={
+          // The agents cue's size beside it: the quiet 24px row control.
           <Button
             variant="ghost"
-            size="sm"
+            size="xs"
             data-tauri-drag-region="false"
-            className="gap-2 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground"
+            className={`${ROW_CONTROL} gap-2`}
             {...dialogsChunk.intent}
           />
         }

@@ -82,6 +82,9 @@ describe("ProjectPlanChip", () => {
     render(<ProjectPlanChip />);
     const chip = screen.getByRole("button");
     expect(chip.className.split(/\s+/)).toContain("gap-2");
+    // The agents cue's size: the quiet 24px row control with 12px words.
+    for (const c of ["h-6", "text-xs", "hover:bg-foreground/5"]) expect(chip.className.split(/\s+/)).toContain(c);
+    expect(chip.className.split(/\s+/)).not.toContain("h-7");
     const glyph = chip.querySelector("svg")!;
     expect(glyph.getAttribute("class")).not.toContain("text-muted-foreground");
     const words = screen.getByText("Plan").parentElement!;

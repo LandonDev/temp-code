@@ -75,8 +75,9 @@ export function AgentsCueView({
 }
 
 /** The quiet row control (`ROW_CONTROL`: 12px muted, the /5 hover fill) at
- *  24px, pressed like the panel toggle beside it. */
-const CUE = `${ROW_CONTROL} gap-1.5 aria-pressed:bg-muted aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground`;
+ *  24px, the plan chip's size, its parts 8px apart (a glyph sits 8px from
+ *  the first word), pressed like the panel toggle beside it. */
+const CUE = `${ROW_CONTROL} gap-2 aria-pressed:bg-muted aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground`;
 
 /** A provider's mark, 2px from the next: one that joins grows in from a
  *  quarter on the layout spring's curve (`@starting-style`, so the first

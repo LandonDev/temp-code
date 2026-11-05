@@ -112,7 +112,8 @@ home (`heading` on the header model, `HomeHeading` in
 chrome/ThreadHeaderStrip.tsx).
 The live row's right end is the end group: the project plan's chip when
 the project has one, the agents cue while a subagent of the thread on
-screen is live, then two ghost icon buttons, each with a `Tooltip`: the ⋯
+screen is live (the two are one control size: the quiet 24px
+`ROW_CONTROL`, 12px words, the glyph 8px from them), then two ghost icon buttons, each with a `Tooltip`: the ⋯
 thread menu, then the panel toggle (`aria-pressed` while the right panel
 is open, "Panel ⌘⇧R"; disabled with "No room for the panel" while the
 thread's row is too narrow for it), last because it is nearest the panel
@@ -122,7 +123,7 @@ quiet 24px control, the composer row's (`ROW_CONTROL`: 8px padding, 12px
 muted text, the `foreground/5` hover fill), counting every subagent of the
 thread's tree (by `parentId`, any depth; a master's batch threads are its
 board's) that works, watches, waits or is queued. It reads left to right,
-6px apart: the loudest state's glyph (waiting's amber ring when one needs
+8px apart: the loudest state's glyph (waiting's amber ring when one needs
 you, else working, else queued's dashed ring); one 12px mark for each
 distinct provider those agents run on, 2px apart in a fixed order (Claude,
 Codex, Muse, Cursor, then the rest; a Meta model under any harness draws
