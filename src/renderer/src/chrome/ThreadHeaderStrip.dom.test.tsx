@@ -26,7 +26,7 @@ vi.mock("./HostGlyph", () => ({
 }));
 
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
-import { ChipHoverLabel, ThreadHeaderStrip, chipStatus, chipTitle, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
+import { ChipHoverLabel, ThreadHeaderStrip, chipStatus, chipTitle, liveRowFade, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 
 const thread = (id: string, title: string): ChipThread => ({
   id,
@@ -253,6 +253,18 @@ describe("ThreadHeaderStrip rows", () => {
     // 28px arrows beside the 28px chips, and the row pads each end by the arrow's room.
     expect(right.className).toContain("size-7");
     expect((box as HTMLElement).style.getPropertyValue("--strip-pad-r")).toBe("36px");
+  });
+
+  it("the arrows sit on the title bar with no box of their own, the chips fading over the 24px before each", () => {
+    mount({ overflow: { left: false, right: true }, onScrollBy: vi.fn() });
+    const right = screen.getByRole("button", { name: "Scroll threads right" });
+    expect(right.parentElement!.parentElement!.className).not.toMatch(/(^|\s)bg-/);
+    const mask = liveRow().style.maskImage;
+    // Clear under the arrow's 36px, then a 24px ramp; the uncut end does not fade.
+    expect(mask).toContain("transparent 0px, var(--foreground) 0px");
+    expect(mask).toContain("calc(100% - 60px), transparent calc(100% - 36px)");
+    expect(liveRowFade(false, false)).toBeUndefined();
+    expect(liveRowFade(true, false)!.maskImage).toContain("transparent 36px, var(--foreground) 60px");
   });
 
   it("tooltips warming keep the scrollers and the end group: each row's provider sits inside its tablist", async () => {

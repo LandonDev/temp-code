@@ -1,4 +1,4 @@
-// Fixtures for `bun run ui:preview src/renderer/src/chrome/ThreadHeaderStrip.tsx#ThreadHeaderStrip`.
+// Fixtures for `bun run ui:preview src/renderer/src/chrome/ThreadHeaderStrip.preview.tsx#ThreadHeaderStripOnBar`.
 import { registry } from "../lib/connection/registry";
 import type { EnvironmentStatus } from "../lib/connection/types";
 import { NewThreadChooser } from "./NewThreadChooser";
