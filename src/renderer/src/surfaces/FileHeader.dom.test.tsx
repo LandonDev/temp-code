@@ -105,10 +105,10 @@ describe("FileHeader", () => {
     rerender(<FileHeader folder={null} save={{ status: "error", message: "EACCES" }} />);
     expect(container.textContent).toBe("Save failed: EACCES");
     const word = container.querySelector<HTMLElement>(".text-destructive")!;
-    expect(word.tabIndex).toBe(0);
-    // The one focus ring, never a hand-drawn underline.
-    expect(word.className).toContain("focus-ring");
-    expect(word.className).not.toContain("focus-visible:underline");
+    // A word that fits is no Tab stop and mounts no tooltip that repeats it (TruncateTip).
+    expect(word.hasAttribute("tabindex")).toBe(false);
+    expect(word.getAttribute("data-slot")).not.toBe("tooltip-trigger");
+    expect(word.className).toContain("truncate");
     rerender(<FileHeader folder={null} save={{ status: "saved" }} />);
     expect(container.textContent).toBe("");
     rerender(<FileHeader folder={null} save={{ status: "idle" }} />);
@@ -142,5 +142,11 @@ describe("FileHeader", () => {
   it("finds the folder the header shows, null at the project root", () => {
     expect(fileFolder("/repo/img/shot.png", "/repo")).toBe("img");
     expect(fileFolder("/repo/a.png", "/repo")).toBeNull();
+  });
+  it("draws the stepper's tally in sans tabular numbers, as the Counts beside it", () => {
+    const { getByText } = render(<FileHeader folder={null} diff={diff({ index: 1, total: 5 })} save={{ status: "idle" }} />);
+    const tally = getByText("2/5");
+    expect(tally.className).toContain("tabular-nums");
+    expect(tally.className).not.toContain("font-mono");
   });
 });

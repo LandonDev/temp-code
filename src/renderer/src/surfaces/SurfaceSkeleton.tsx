@@ -130,8 +130,9 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
               </div>
               {listOf(8, lines)}
             </div>
-            <div data-skeleton-detail className="min-w-0 flex-1 px-8 pt-8">
-              <div className="mx-auto w-full max-w-5xl">
+            {/* Padded inside the detail's 1,024px column, as the Inbox's and Notes' details are. */}
+            <div data-skeleton-detail className="min-w-0 flex-1">
+              <div className="mx-auto w-full max-w-5xl px-8 pt-8">
                 <TextLine size={12} className="w-32" />
                 <span className="mt-2 flex h-6 items-center">
                   <Skeleton className="h-4 w-64 max-w-full" />

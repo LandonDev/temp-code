@@ -82,8 +82,10 @@ describe("SurfaceSkeleton", () => {
     expect(rows.length).toBe(8);
     expect(rows[0]!.parentElement!.className).toContain("p-1");
     expect(rows[0]!.className).toContain("px-2");
-    expect(container.querySelector("[data-skeleton-detail]")!.className).toContain("px-8");
-    expect(container.querySelector("[data-skeleton-detail] > div")!.className).toContain("max-w-5xl");
+    // The padding sits inside the 1,024px column, as the Inbox's and Notes' details: past it the lines start where the text does.
+    expect(container.querySelector("[data-skeleton-detail]")!.className).not.toContain("px-8");
+    const column = container.querySelector("[data-skeleton-detail] > div")!.className;
+    for (const cls of ["mx-auto", "max-w-5xl", "px-8", "pt-8"]) expect(column).toContain(cls);
   });
 
   it("rows: the Inbox's row line for line, a 14px glyph on a 20px line over a 16px line", () => {

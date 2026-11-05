@@ -2,6 +2,7 @@ import type { MouseEvent, ReactNode } from "react";
 import type { MarkdownViewMode } from "../chrome/MarkdownModeToggle";
 import { ChevronDown, ChevronUp, Plus, Undo2 } from "../chrome/icons";
 import { Counts } from "../chrome/rail/changeRows";
+import { TruncateTip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
@@ -101,13 +102,12 @@ export function FileHeader({ folder, diff, markdown, save = IDLE, children }: Fi
 function SaveWord({ save }: { save: SaveState }) {
   if (save.status === "saving") return <span className="shrink-0 text-muted-foreground">Saving…</span>;
   if (save.status !== "error") return null;
+  // The whole of it on hover only while it is cut: a word that fits mounts no tooltip.
+  const text = `Save failed: ${save.message}`;
   return (
-    <Tooltip>
-      <TooltipTrigger render={<span tabIndex={0} className="focus-ring min-w-0 max-w-64 truncate rounded-sm text-destructive" />}>
-        Save failed: {save.message}
-      </TooltipTrigger>
-      <TooltipContent>{save.message}</TooltipContent>
-    </Tooltip>
+    <TruncateTip text={text}>
+      <span className="min-w-0 max-w-64 truncate text-destructive">{text}</span>
+    </TruncateTip>
   );
 }
 
@@ -138,7 +138,8 @@ function Stepper({ diff }: { diff: FileHeaderDiff }) {
       <StepButton label="Previous change" disabled={total === 0 || index <= 0} onClick={diff.onPrev}>
         <ChevronUp />
       </StepButton>
-      <span className="min-w-[4ch] select-none px-0.5 text-center font-mono tabular-nums text-muted-foreground">
+      {/* Sans tabular numbers, as the Counts beside it. */}
+      <span className="min-w-[4ch] select-none px-0.5 text-center tabular-nums text-muted-foreground">
         {total === 0 ? "0/0" : `${index + 1}/${total}`}
       </span>
       <StepButton label="Next change" disabled={total === 0 || index >= total - 1} onClick={diff.onNext}>
