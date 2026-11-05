@@ -158,8 +158,8 @@ describe("HostsRow", () => {
     render(<HostsRow onAddWorkspace={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: /^Hosts:/ }));
     await act(flush);
-    const triggers = [...document.querySelectorAll("[data-host-menu]")];
-    expect(triggers.map((t) => t.getAttribute("data-host-menu"))).toEqual(["local", "env_box"]);
+    const triggers = [...document.querySelectorAll('[data-menu-row^="host:"]')];
+    expect(triggers.map((t) => t.getAttribute("data-menu-row"))).toEqual(["host:local", "host:env_box"]);
     expect(triggers[1].textContent).toContain("box");
     expect(triggers[1].textContent).toContain("offline");
     expect(triggers.map((t) => t.querySelector("[data-host-glyph]")?.getAttribute("data-host-kind"))).toEqual(["mac", "server"]);

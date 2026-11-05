@@ -78,6 +78,10 @@ export type MenuRow =
       disabled?: boolean;
       /** Why a disabled submenu is disabled: its tooltip and accessible description, as an item's. */
       reason?: string;
+      /** A quiet state at the trigger's end, before its chevron (a host's word and drift). */
+      trailing?: ReactNode;
+      /** The submenu's accessible name ("box actions"). */
+      contentLabel?: string;
     };
 
 /** No separator first, last or twice in a row, and none under a label. */

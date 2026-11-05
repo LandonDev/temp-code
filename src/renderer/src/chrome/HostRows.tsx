@@ -10,28 +10,21 @@ import { bootResumeLine, dismissBootResume, useBootResumeNotices } from "../lib/
 import { requestEnvironmentSwitch } from "../lib/environmentSwitch";
 import { statusText } from "../lib/hostConnection";
 import { threadsToMarkReadOnHost } from "../lib/markRead";
-import { markSessionsSeen, useLastSeen, useSeenFloor } from "../lib/sessionSeen";
-import { useSessionMetas } from "../lib/tcserver/store";
-import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
-import { BATCH_ACTIONS, BATCH_LABEL, hostScope, requestThreadBatch } from "../lib/threadBatch";
-import { batchCounts } from "../lib/threadBatchMenu";
+import { loadLastSeen, markSessionsSeen, seenFloor } from "../lib/sessionSeen";
+import { sessionStore } from "../lib/tcserver/store";
+import { workspaceStore } from "../lib/tcserver/workspaces";
+import { hostScope, requestThreadBatch } from "../lib/threadBatch";
+import { batchActionOfMenuId, batchCounts, batchMenuRows } from "../lib/threadBatchMenu";
 import { selectionFor } from "../lib/threadBatchSelection";
 import { useCurrentEnvironmentId } from "../stores/environment";
 import { shell } from "../stores/shell";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-} from "../components/ui/lazy-menus";
+import { DropdownMenu, DropdownMenuContent } from "../components/ui/lazy-menus";
 import { Spinner } from "../components/ui/spinner";
 import { DeployDriftMark } from "./DeployDrift";
 import { HostGlyph } from "./HostGlyph";
 import { loadToast } from "./toastSync";
-import { Server } from "./icons";
+import { FolderPlus, LogIn, Server, Settings } from "./icons";
+import { tidy, useMenuBody, type MenuRow } from "./menuRows";
 import { RailRow } from "./RailRow";
 
 /** A host's connection dot: quiet while open, amber while it tries or is slow, red refused. */
@@ -99,88 +92,80 @@ export function HostsRow({ onAddWorkspace }: { onAddWorkspace: (environmentId: s
         }
       />
       <DropdownMenuContent side="right" align="end" aria-label="Hosts">
-        {environments.map((environment) => (
-          <HostSubmenu
-            key={environment.id}
-            environment={environment}
-            word={statuses.get(environment.id) ? statusText(statuses.get(environment.id)!, now, slow.has(environment.id)) : "not connected"}
-            onAddWorkspace={onAddWorkspace}
-          />
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => shell.openSettings("remote")}>Host settings</DropdownMenuItem>
+        <HostsMenuRows
+          environments={environments}
+          words={new Map(environments.map((e) => [e.id, statuses.get(e.id) ? statusText(statuses.get(e.id)!, now, slow.has(e.id)) : "not connected"]))}
+          onAddWorkspace={onAddWorkspace}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-function HostSubmenu({
-  environment,
-  word,
+/** The Hosts menu as `MenuRow` data (DESIGN.md "Panels, modals, menus"):
+ *  a submenu per host, its glyph, name, state and deploy drift, with Switch
+ *  to, Add workspace here and the fleet switches (counted when the menu
+ *  opens), then Host settings. Drawn by the menu body, which an open menu
+ *  has always loaded. */
+function HostsMenuRows({
+  environments,
+  words,
   onAddWorkspace,
 }: {
-  environment: Environment;
-  word: string;
+  environments: readonly Environment[];
+  words: ReadonlyMap<string, string>;
   onAddWorkspace: (environmentId: string) => void;
 }) {
-  const { id, name } = environment;
-  return (
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger data-host-menu={id}>
-        <HostGlyph environmentId={id} />
-        <span className="min-w-0 truncate">{name}</span>
-        <span className="ms-auto flex shrink-0 items-center gap-2 ps-4 text-xs text-muted-foreground">
-          {word}
-          <DeployDriftMark environmentId={id} />
-        </span>
-      </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent aria-label={`${name} actions`}>
-        <HostActions environmentId={id} name={name} onAddWorkspace={onAddWorkspace} />
-      </DropdownMenuSubContent>
-    </DropdownMenuSub>
-  );
-}
-
-/** A host's verbs; counted only while its submenu is open. */
-function HostActions({
-  environmentId,
-  name,
-  onAddWorkspace,
-}: {
-  environmentId: string;
-  name: string;
-  onAddWorkspace: (environmentId: string) => void;
-}) {
+  const Body = useMenuBody();
   const currentId = useCurrentEnvironmentId();
-  const metas = useSessionMetas();
-  const catalog = useWorkspaceCatalog();
-  const lastSeen = useLastSeen();
-  const floor = useSeenFloor();
-  const scope = hostScope(environmentId);
-  const counts = batchCounts(metas, { catalog, lastSeen, floor, scope });
-  const unread = threadsToMarkReadOnHost(metas, environmentId);
-  return (
-    <>
-      {environmentId !== currentId ? (
-        <DropdownMenuItem onClick={() => requestEnvironmentSwitch(environmentId)}>Switch to {name}</DropdownMenuItem>
-      ) : null}
-      <DropdownMenuItem onClick={() => onAddWorkspace(environmentId)}>Add workspace here…</DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem disabled={unread.ids.length === 0} onClick={() => markSessionsSeen(unread.ids, unread.at)}>
-        Mark all read
-      </DropdownMenuItem>
-      {BATCH_ACTIONS.map((action) => (
-        <DropdownMenuItem
-          key={action}
-          disabled={counts[action] === 0}
-          variant={action === "stop" ? "destructive" : "default"}
-          onClick={() => void requestThreadBatch(action, scope, () => selectionFor(scope))}
-        >
-          {BATCH_LABEL[action]}
-        </DropdownMenuItem>
-      ))}
-    </>
-  );
+  if (!Body) return null;
+  const metas = sessionStore.metas();
+  const sel = { catalog: workspaceStore.getSnapshot(), lastSeen: loadLastSeen(), floor: seenFloor() };
+  const rows: MenuRow[] = [
+    ...environments.map((environment): MenuRow => {
+      const { id, name } = environment;
+      const unread = threadsToMarkReadOnHost(metas, id);
+      return {
+        kind: "sub",
+        id: `host:${id}`,
+        label: name,
+        icon: () => <HostGlyph environmentId={id} />,
+        contentLabel: `${name} actions`,
+        trailing: (
+          <>
+            {words.get(id)}
+            <DeployDriftMark environmentId={id} />
+          </>
+        ),
+        items: tidy([
+          ...(id !== currentId ? [{ kind: "item", id: `switch:${id}`, label: `Switch to ${name}`, icon: LogIn } as const] : []),
+          { kind: "item", id: `add:${id}`, label: "Add workspace here…", icon: FolderPlus },
+          { kind: "sep" },
+          ...batchMenuRows(batchCounts(metas, { ...sel, scope: hostScope(id) }), unread.ids.length).map((row) =>
+            row.kind === "item" ? { ...row, id: `${row.id}:${id}` } : row,
+          ),
+        ]),
+      };
+    }),
+    { kind: "sep" },
+    { kind: "item", id: "settings", label: "Host settings", icon: Settings },
+  ];
+  const onPick = (pick: string) => {
+    if (pick === "settings") return shell.openSettings("remote");
+    const at = pick.lastIndexOf(":");
+    const verb = pick.slice(0, at);
+    const id = pick.slice(at + 1);
+    if (verb === "switch") requestEnvironmentSwitch(id);
+    else if (verb === "add") onAddWorkspace(id);
+    else if (verb === "read") {
+      const unread = threadsToMarkReadOnHost(sessionStore.metas(), id);
+      markSessionsSeen(unread.ids, unread.at);
+    } else if (batchActionOfMenuId(verb)) {
+      const scope = hostScope(id);
+      void requestThreadBatch(batchActionOfMenuId(verb)!, scope, () => selectionFor(scope));
+    }
+  };
+  return <Body.MenuRows items={rows} onPick={onPick} kind="dropdown" />;
 }
 
 /**

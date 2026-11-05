@@ -148,9 +148,14 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
       <Sub>
         <SubTrigger disabled={item.disabled} data-menu-row={item.id} aria-description={item.reason}>
           {Icon ? <Icon /> : null}
-          {item.label}
+          {item.trailing ? <span className="min-w-0 truncate">{item.label}</span> : item.label}
+          {item.trailing ? (
+            <span data-menu-trailing className="ms-auto flex shrink-0 items-center gap-1 ps-4 text-xs text-muted-foreground">
+              {item.trailing}
+            </span>
+          ) : null}
         </SubTrigger>
-        <SubContent>
+        <SubContent aria-label={item.contentLabel}>
           <MenuRows items={item.items} onPick={onPick} kind={kind} />
         </SubContent>
       </Sub>
