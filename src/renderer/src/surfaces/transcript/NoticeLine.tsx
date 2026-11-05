@@ -19,9 +19,8 @@ import { STEP_NOTICE, StepRowContext, TABLE_BODY } from "./stepLine";
  * never under the glyph. A line that opens (`fold`, inside a Collapsible)
  * is its own trigger, as an action row is: the whole line, a bare chevron
  * at its end, the lead lifting on hover. `children` is what opens under
- * the line (a log, findings), indented to the lead; with a `fold` it sits in
- * the fold's content, so a closed fold draws nothing under the line (in a
- * table, no blank ruled band).
+ * the line (a log, findings), indented to the lead; with a `fold`, inside
+ * the fold's content.
  *
  * Folded into a run as one of its steps (`StepRowContext`), the line reads
  * verb then target like a call: the lead muted whatever `tone` says (a
@@ -61,6 +60,12 @@ export function NoticeLine({
   const shown = details.filter((d) => d != null && d !== false && d !== "");
   const step = useContext(StepRowContext);
   const strong = tone === "strong" && !step;
+  // What opens under the line is no step: its own lines read as notices.
+  const body = children ? (
+    <div data-slot="notice-body" className={cn("min-w-0 pl-5.5", TABLE_BODY)}>
+      <StepRowContext.Provider value={false}>{children}</StepRowContext.Provider>
+    </div>
+  ) : null;
   return (
     <div data-slot="notice-line" className={cn("group/notice flex min-w-0 flex-col font-sans text-[13px] leading-5", className)} {...rest}>
       <div className={cn("relative flex min-w-0 items-start gap-2", STEP_NOTICE)}>
@@ -115,24 +120,8 @@ export function NoticeLine({
           ) : null}
         </div>
       </div>
-      {children ? (
-        fold ? (
-          <CollapsibleContent>
-            <NoticeBody>{children}</NoticeBody>
-          </CollapsibleContent>
-        ) : (
-          <NoticeBody>{children}</NoticeBody>
-        )
-      ) : null}
+      {body && fold ? <CollapsibleContent>{body}</CollapsibleContent> : body}
     </div>
   );
 }
 
-/** What opens under a notice's line is no step: its own lines read as notices. */
-function NoticeBody({ children }: { children: ReactNode }) {
-  return (
-    <div data-slot="notice-body" className={cn("min-w-0 pl-5.5", TABLE_BODY)}>
-      <StepRowContext.Provider value={false}>{children}</StepRowContext.Provider>
-    </div>
-  );
-}

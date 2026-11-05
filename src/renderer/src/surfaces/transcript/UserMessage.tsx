@@ -169,7 +169,6 @@ export function UserMessageBlock({
           </pre>
         ) : null}
         {overflows || expanded ? (
-          // A 24px target whose words sit where a 20px line 4px under the text would: the extra 2px a side reaches into the bubble's padding.
           <Button variant="link" size="xs" aria-expanded={expanded} className="-mb-0.5 mt-0.5 h-6 px-0 text-muted-foreground" onClick={toggle}>
             {expanded ? "Show less" : "Show more"}
           </Button>

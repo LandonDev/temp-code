@@ -55,7 +55,6 @@ export function CompactionCard({ block }: { block: Block }) {
 type Phase = NonNullable<Block["compaction"]>["phase"];
 
 const GLYPH: Record<Phase, ReactNode> = {
-  // The transcript's one moving mark is the working line's; a running row draws working as the dot.
   start: <StatusMark state="working" word={false} still />,
   done: <FoldVertical className="size-3.5" />,
   failed: <StatusMark state="failed" word={false} />,

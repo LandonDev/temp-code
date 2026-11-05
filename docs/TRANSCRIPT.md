@@ -126,7 +126,7 @@ foreground, the same words the group line uses); the components only draw it.
   a group is a hand on the group (`transcript/groupHand.ts`), which decides
   it from then on. Hover lifts the verb and the caret to foreground, as the
   group line does.
-- `transcript/ActionRow.fixtures.tsx` holds one of each row for a static
+- `transcript/ActivityRow.fixtures.tsx` holds one of each row (`ActivityRow.tsx#ActivityRow`) for a static
   look and `ActionGroup.fixtures.tsx` a working group at 2, 5 and 9
   rows; `ToolRow.dom.test.tsx`, `EditRow.dom.test.tsx` and
   `ActionGroup.working.dom.test.tsx` prove the behaviour.

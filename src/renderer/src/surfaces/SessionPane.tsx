@@ -283,22 +283,22 @@ export function LoadLine({ name, load, onRetry }: { name: string; load: LoadStat
   if (!parts) return null;
   return (
     <div className={`${COLUMN_GUTTER_CLASS} mt-2 shrink-0`}>
-    <div
-      role="status"
-      data-load-line={load.phase}
-      className={`${columnClass()} flex h-6 items-center gap-2 text-xs text-muted-foreground`}
-    >
-      <span className="flex min-w-0 flex-1 items-center gap-2">
-        {parts.map((part, i) => (
-          <span key={i} className={i === 0 ? "min-w-0 truncate" : "shrink-0 tabular-nums"}>
-            {part}
-          </span>
-        ))}
-      </span>
-      <Button variant="ghost" size="xs" className="shrink-0" onClick={onRetry}>
-        {load.phase === "failed" ? "Retry now" : "Retry"}
-      </Button>
-    </div>
+      <div
+        role="status"
+        data-load-line={load.phase}
+        className={`${columnClass()} flex h-6 items-center gap-2 text-xs text-muted-foreground`}
+      >
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          {parts.map((part, i) => (
+            <span key={i} className={i === 0 ? "min-w-0 truncate" : "shrink-0 tabular-nums"}>
+              {part}
+            </span>
+          ))}
+        </span>
+        <Button variant="ghost" size="xs" className="shrink-0" onClick={onRetry}>
+          {load.phase === "failed" ? "Retry now" : "Retry"}
+        </Button>
+      </div>
     </div>
   );
 }

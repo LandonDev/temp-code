@@ -1,4 +1,5 @@
-// A8 (action rows): one of each row, for a static look at the standard.
+// A8 (action rows): one of each row, for a static look at the standard:
+// `bun run ui:preview src/renderer/src/surfaces/transcript/ActivityRow.tsx#ActivityRow`.
 import type { ComponentProps } from "react";
 import type { Block } from "../../lib/session";
 import type { ActivityRow } from "./ActivityRow";

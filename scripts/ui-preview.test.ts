@@ -116,7 +116,7 @@ describe('ui-preview', () => {
   it('renders the transcript fixture files, named exports included, in both themes', () => {
     for (const [target, name, exported] of [
       ['src/renderer/src/surfaces/transcript/ActionGroup.tsx#ActionGroup', 'ActionGroup', 'fixtures'],
-      ['src/renderer/src/surfaces/transcript/ActionRow.tsx#ActionRow', 'ActionRow', 'ACTION_FIXTURES'],
+      ['src/renderer/src/surfaces/transcript/ActivityRow.tsx#ActivityRow', 'ActivityRow', 'ACTION_FIXTURES'],
     ] as const) {
       const result = run([target])
       expect(result.status, `${exported}: ${result.stderr}`).toBe(0)

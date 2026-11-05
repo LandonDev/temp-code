@@ -83,7 +83,8 @@ describe("ApprovalCard", () => {
     const { container, rerender } = render(<ApprovalCard block={approval("Bash", { command: "ls" })} />);
     const waiting = container.querySelector<HTMLElement>('[data-slot="approval"]')!;
     expect(waiting.className).toContain("min-h-7");
-    expect(waiting.className).not.toMatch(/\b(min-h-8|pb-1|pl-5\.5)\b/);
+    expect(waiting.className.split(" ")).not.toEqual(expect.arrayContaining(["min-h-8"]));
+    expect(waiting.className).not.toMatch(/(?:^|\s)(pb-1|pl-5\.5)(?:\s|$)/);
     expect(waiting.className).toContain("gap-2");
     const mark = waiting.firstElementChild as HTMLElement;
     expect(mark.hasAttribute("data-approval-mark")).toBe(true);
@@ -104,7 +105,10 @@ describe("ApprovalCard", () => {
       </div>,
     );
     // The table's rows inset their words 12px (STEP_LINE's in-data-[table]:px-3); the approval keeps that grid.
-    expect(container.querySelector<HTMLElement>('[data-slot="approval"]')!.className).toContain("in-data-[table]:px-3");
+    const waiting = container.querySelector<HTMLElement>('[data-slot="approval"]')!;
+    expect(waiting.className).toContain("in-data-[table]:px-3");
+    // The table's 32px row, so the buttons clear its rule.
+    expect(waiting.className).toContain("in-data-[table]:min-h-8");
     rerender(
       <div data-table="">
         <ApprovalCard block={approval("Bash", { command: "ls" }, "allow")} />
@@ -114,6 +118,7 @@ describe("ApprovalCard", () => {
     // 12px inset + the 22px the words start at.
     expect(decided.className).toContain("pl-5.5");
     expect(decided.className).toContain("in-data-[table]:pl-8.5");
+    expect(decided.className).toContain("in-data-[table]:min-h-8");
   });
 
   it("a verdict that mounts decided just shows, with no fade to replay", () => {

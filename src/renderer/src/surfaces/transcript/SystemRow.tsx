@@ -23,8 +23,7 @@ export function SystemRow({
 }
 
 /** A handoff to another harness: "Continued with Codex", or the handoff
- *  being prepared: working's still dot (the working line holds the
- *  transcript's one moving mark) and its words in the shimmer. */
+ *  being prepared. */
 export function HandoffDivider({ block }: { block: Block }) {
   const meta = block.handoff;
   if (!meta) return null;

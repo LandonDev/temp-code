@@ -5,14 +5,14 @@ const at = new Date(2026, 10, 1, 14, 2).getTime();
 const steered = (steer: object) => ({ ...base, block: { id: "st", role: "user", text: "Use the other table instead.", steerId: "s1", steer: { ts: at, ...steer } } });
 
 const long = [
-  "Pick up the toast inset from @thread:t-strip where it left off, then:",
+  "Pick up the toast inset from @thread:strip-pass-1 where it left off, then:",
   ...Array.from({ length: 13 }, (_, i) => `${i + 1}. Step ${i + 1} of the pass, one line each so the bubble clamps at twelve.`),
 ].join("\n");
 
 export default [
   {
     // A brief with its project rules folded above, two files, a thread chip and more than twelve lines (T-A10).
-    name: "a brief: project rules, attachments, a thread chip, past twelve lines",
+    name: "a brief: project rules, attachments, a @thread mention (a chip once its title is known), past twelve lines",
     props: {
       ...base,
       block: {
