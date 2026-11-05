@@ -136,32 +136,54 @@ export function ModelMark({
  *  under the row's hover actions. Its tooltip is `modelMarkTip` with the
  *  role first and the window's word. `trailing` ends the line (a settled
  *  row's time). */
-export function ModelLine({ meta, lead, trailing }: { meta: ModelMeta; lead?: string; trailing?: ReactNode }) {
+export function ModelLine({
+  meta,
+  lead,
+  trailing,
+  tip = true,
+  className,
+}: {
+  meta: ModelMeta;
+  lead?: string;
+  trailing?: ReactNode;
+  /** The mark's own tooltip; false where the row's tooltip says the model (an Agents row). */
+  tip?: boolean;
+  className?: string;
+}) {
   const known = !!meta.provider && !!meta.model;
   if (!known && !trailing) return null;
   const context = modelContextWord(meta);
+  const mark = known ? (
+    <>
+      <HarnessIcon harness={modelVendor(meta.provider, meta.model) ?? asHarness(meta.provider!)} className="size-3 shrink-0" />
+      <span className="min-w-0 truncate" data-model-name>
+        {modelMarkName(meta.provider, meta.model)}
+      </span>
+      {meta.reasoning ? (
+        <span className="shrink-0" data-model-effort>
+          {effortWord(meta.reasoning)}
+        </span>
+      ) : null}
+      {context ? (
+        <span className="shrink-0 tabular-nums" data-model-context>
+          {context}
+        </span>
+      ) : null}
+    </>
+  ) : null;
   return (
-    <span className="flex h-4 min-w-0 items-center gap-1 text-xs leading-4 whitespace-nowrap text-muted-foreground" data-model-line>
+    <span className={cn("flex h-4 min-w-0 items-center gap-1 text-xs leading-4 whitespace-nowrap text-muted-foreground", className)} data-model-line>
       {known ? (
-        <Tooltip>
-          <TooltipTrigger render={<span className="flex min-w-0 items-center gap-1" data-model />}>
-            <HarnessIcon harness={modelVendor(meta.provider, meta.model) ?? asHarness(meta.provider!)} className="size-3 shrink-0" />
-            <span className="min-w-0 truncate" data-model-name>
-              {modelMarkName(meta.provider, meta.model)}
-            </span>
-            {meta.reasoning ? (
-              <span className="shrink-0" data-model-effort>
-                {effortWord(meta.reasoning)}
-              </span>
-            ) : null}
-            {context ? (
-              <span className="shrink-0 tabular-nums" data-model-context>
-                {context}
-              </span>
-            ) : null}
-          </TooltipTrigger>
-          <TooltipContent>{modelMarkTip(meta, lead, context)}</TooltipContent>
-        </Tooltip>
+        tip ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="flex min-w-0 items-center gap-1" data-model />}>{mark}</TooltipTrigger>
+            <TooltipContent>{modelMarkTip(meta, lead, context)}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="flex min-w-0 items-center gap-1" data-model>
+            {mark}
+          </span>
+        )
       ) : null}
       {trailing ? <span className="ms-auto shrink-0 tabular-nums">{trailing}</span> : null}
     </span>

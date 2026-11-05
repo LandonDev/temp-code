@@ -2,10 +2,11 @@ import { memo, useEffect, useRef, useState, type ComponentType } from "react";
 import { loadToast } from "../../components/ui/toaster";
 import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
-import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
+import { Item, ItemActions, ItemButton, ItemContent, ItemMedia } from "@renderer/components/ui/item";
+import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "@renderer/components/ui/press";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { CONSOLE } from "@renderer/components/ui/console";
-import { TruncateTip } from "@renderer/components/tip";
+import { TruncateTip, useTruncated } from "@renderer/components/tip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
 import { Bot, Clock, Eye, Globe, Laptop, Layers, Square, Terminal, Workflow } from "../../chrome/icons";
@@ -126,36 +127,44 @@ function Row({
       .catch(() => loadToast().then((toast) => toast.error("Couldn't stop it", { description: row.label })))
       .finally(() => setStopping(false));
   };
+  // A row that opens (a shell's log, a dev server's pane) is a plain
+  // container with its open control laid over it and Stop beside it, so no
+  // button holds a button (press.ts ROW_HOLDS).
+  const opens = !!onActivate;
+  const { ref: labelRef, cut } = useTruncated(row.label);
+  const label = (
+    <span ref={opens ? labelRef : undefined} className="block truncate text-[13px] leading-5 text-foreground">
+      {row.label}
+    </span>
+  );
   const item = (
-    <Item
-      size="xs"
-      data-kind={row.kind}
-      role={onActivate ? "button" : undefined}
-      tabIndex={onActivate ? 0 : undefined}
-      aria-expanded={row.open === "log" ? expanded : undefined}
-      onClick={onActivate}
-      onKeyDown={
-        onActivate
-          ? (e) => {
-              if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
-              e.preventDefault();
-              onActivate();
+    <Item size="xs" data-kind={row.kind} className={cn("min-h-7 flex-nowrap py-0", opens && ROW_HOLDS, expanded && "bg-muted hover:bg-muted")}>
+      {opens ? (
+        // Always the same tree, the tooltip off while the label fits.
+        <Tooltip disabled={!cut}>
+          <TooltipTrigger
+            render={
+              <ItemButton
+                data-row-open
+                aria-label={row.label}
+                aria-expanded={row.open === "log" ? expanded : undefined}
+                onClick={onActivate}
+                className={ROW_OPEN}
+              />
             }
-          : undefined
-      }
-      className={cn("min-h-7 flex-nowrap py-0", onActivate && "hover:bg-foreground/5", expanded && "bg-muted")}
-    >
-      <ItemMedia>
+          />
+          {cut ? <TooltipContent>{row.label}</TooltipContent> : null}
+        </Tooltip>
+      ) : null}
+      <ItemMedia className={cn(opens && ROW_SHOWS)}>
         <Glyph className="size-3.5 text-muted-foreground" />
       </ItemMedia>
-      <ItemContent className="min-w-0">
-        <TruncateTip text={row.label}>
-          <span className="block truncate text-[13px] leading-5 text-foreground">{row.label}</span>
-        </TruncateTip>
+      <ItemContent className={cn("min-w-0", opens && ROW_SHOWS)}>
+        {opens ? label : <TruncateTip text={row.label}>{label}</TruncateTip>}
       </ItemContent>
-      <ItemActions className="gap-1">
+      <ItemActions className={cn("gap-1", opens && ROW_CONTROLS)}>
         {now > 0 ? (
-          <span className={cn("text-xs leading-5 tabular-nums", stale ? "text-warning" : "text-muted-foreground")}>{minuteAge(now - row.since)}</span>
+          <span className={cn("pointer-events-none text-xs leading-5 tabular-nums", stale ? "text-warning" : "text-muted-foreground")}>{minuteAge(now - row.since)}</span>
         ) : null}
         {row.stop ? (
           <Tooltip>
@@ -167,10 +176,7 @@ function Row({
                   className="text-muted-foreground hover:text-foreground"
                   aria-label="Stop"
                   disabled={stopping}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    stop();
-                  }}
+                  onClick={stop}
                 />
               }
             >

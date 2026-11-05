@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useStore } from "zustand";
 import { Tip } from "../components/tip";
 import { BusyLabel, Button } from "../components/ui/button";
-import { Item, ItemActions, ItemContent, ItemTitle } from "../components/ui/item";
+import { Item, ItemActions, ItemButton, ItemContent, ItemTitle } from "../components/ui/item";
+import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "../components/ui/press";
+import { cn } from "../lib/cn";
 import { openUrl, portOpen } from "../lib/devPorts";
 import { stopLiveServer, type LiveServer } from "../lib/devServers";
 import { macBridgeStore } from "../lib/macBridge";
@@ -37,32 +39,31 @@ export function DevServerRow({ server, picked = false, onPick }: { server: LiveS
       variant="link"
       size="xs"
       aria-label={name}
-      className="h-auto px-0 text-xs font-normal tabular-nums text-muted-foreground hover:text-foreground"
-      onClick={(event) => {
-        event.stopPropagation();
-        openUrl(url);
-      }}
+      className="pointer-events-auto h-auto px-0 text-xs font-normal tabular-nums text-muted-foreground hover:text-foreground"
+      onClick={() => openUrl(url)}
     >
       {text}
     </Button>
   );
+  // A row that picks its console is a container with its open control laid
+  // over it (press.ts ROW_HOLDS): the address links and Stop are its own
+  // buttons above it, never inside it.
+  const picks = !!onPick;
   return (
     <Item
       size="xs"
       role="listitem"
-      tabIndex={onPick ? 0 : undefined}
       data-dev-server={server.key}
-      aria-current={picked || undefined}
-      className={`flex-nowrap rounded-md ${picked ? "bg-muted" : onPick ? "hover:bg-foreground/5" : ""}`}
-      onClick={onPick}
-      onKeyDown={(event) => {
-        if (onPick && event.key === "Enter" && event.target === event.currentTarget) onPick();
-      }}
+      className={cn("flex-nowrap rounded-md", picks && ROW_HOLDS, picked && "bg-muted hover:bg-muted")}
     >
-      <ItemContent className="min-w-0 gap-0.5">
+      {picks ? <ItemButton data-row-open aria-label={server.title} aria-current={picked || undefined} onClick={onPick} className={ROW_OPEN} /> : null}
+      <ItemContent className={cn("min-w-0 gap-0.5", picks && ROW_SHOWS)}>
         <ItemTitle className="min-w-0 max-w-full">
           <span className="min-w-0 truncate">{server.title}</span>
-          <HostGlyph environmentId={port?.environmentId ?? server.environmentId} />
+          {/* Its host's name on hover. */}
+          <span className="pointer-events-auto inline-flex">
+            <HostGlyph environmentId={port?.environmentId ?? server.environmentId} />
+          </span>
         </ItemTitle>
         {port ? (
           <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground tabular-nums">
@@ -78,7 +79,7 @@ export function DevServerRow({ server, picked = false, onPick }: { server: LiveS
           <div className={`truncate text-xs ${error ? "text-destructive" : "text-muted-foreground"}`}>{error ?? server.stopping}</div>
         ) : null}
       </ItemContent>
-      <ItemActions>
+      <ItemActions className={cn(picks && ROW_CONTROLS)}>
         {/* The word says what it does: no tooltip. */}
         <Button
           variant="ghost"
@@ -86,10 +87,7 @@ export function DevServerRow({ server, picked = false, onPick }: { server: LiveS
           disabled={pending}
           aria-busy={pending || undefined}
           className="text-muted-foreground hover:text-foreground"
-          onClick={(event) => {
-            event.stopPropagation();
-            stop();
-          }}
+          onClick={stop}
         >
           <BusyLabel busy={pending} label="Stop" />
         </Button>

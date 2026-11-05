@@ -922,7 +922,9 @@ the project, a server runs or the pane is open. Switching is instant.
   threads (a 12px muted heading per thread), and the picked one's console
   filling the rest. A row (chrome/DevServerRow.tsx) is what it is in plain
   words with the host glyph, its address and "Open on the Mac :5174" under
-  it, Stop at its end. The address is the row's Open control ("Open
+  it, Stop at its end. In the pane the row picks its console through an
+  open control laid over it (`ROW_HOLDS`: Enter or Space picks too), the
+  address and Stop its own buttons above it. The address is the row's Open control ("Open
   localhost:5199", "Open in browser" on hover); a server on another host
   opens from "Open on the Mac :5174" and its own address stays plain text. It lists only what a host still lists; a row the
   host drops leaves at once, nothing animates in or out. With nothing live
@@ -1269,13 +1271,18 @@ favicon, the title, the host, the claim; the address in a tooltip).
   the context window ("Opus 5.5 High 1M", "Sonnet 5.5 Low 200k"; a Claude
   model that offers 1M says the thread's choice, any other its catalog
   window), each 4px from the next, only the model's name truncating; the
-  role first in its tooltip, "Reviewer, Claude Opus 5.5, high effort, 1M
-  context"; and on a settled row how long it ran at the line's end ("4m
-  12s", "Finished 2:02 PM" on hover). On hover, after `--delay-hover`, or
-  keyboard focus Open (the agent's thread) and, while a turn runs, Stop
-  appear at line one's end, in a place the line keeps for them at rest
-  (24px, or 50px with Stop; the title truncates before it), the host glyph
-  there fading out under them (`yields`, nothing reflowing). Rows read the meta (`agentStatus`); a row loads its
+  and on a settled row how long it ran at the line's end ("4m 12s"). The
+  row is a container with its open control laid over it (an `ItemButton`,
+  `ROW_HOLDS` in components/ui/press.ts: a click, Enter or Space opens the
+  detail, the row hovers at /5 and presses to /12), and its one tooltip, on
+  that control, says what a line cuts, then the model with its role first
+  ("Reviewer, Claude Opus 5.5, high effort, 1M context") and when a settled
+  agent finished ("Finished 2:02 PM"). On hover, after `--delay-hover`, or
+  keyboard focus Open (the agent's thread) and, while a turn runs, Stop,
+  its own buttons above the open control, appear at line one's end, in a
+  place the line keeps for them at rest (24px, or 50px with Stop; the title
+  truncates before it), the host glyph there fading out under them
+  (`yields`, nothing reflowing). Rows read the meta (`agentStatus`); a row loads its
   transcript only to quote a waiting agent or a failure the meta lacks.
   Nothing in the list moves.
 - **A row opens the agent's detail**, a 672px Sheet from the window's

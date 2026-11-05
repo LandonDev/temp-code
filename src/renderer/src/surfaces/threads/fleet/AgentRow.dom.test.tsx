@@ -25,6 +25,7 @@ import { FLEET_ROWS, fixtureHostGlyph, fixtureMeta } from "./fleetFixture";
 /** The window word a fixture row's model line says, if any. */
 const contextOf = (meta: Parameters<typeof modelContextWord>[0]) => (modelContextWord(meta) ? [modelContextWord(meta)] : []);
 const row = (title: string) => FLEET_ROWS.find((r) => r.meta.title === title)!;
+const openOf = (container: Element) => container.querySelector<HTMLButtonElement>("[data-row-open]")!;
 const tipText = () => document.querySelector('[data-slot="tooltip-content"]')?.textContent ?? null;
 const hover = (el: Element) => {
   fireEvent.pointerEnter(el);
@@ -52,13 +53,15 @@ describe("AgentRowView", () => {
     expect(container.querySelector('[data-row-status] [data-slot="tooltip-trigger"]')).toBeNull();
   });
 
-  it("carries the provider's mark and the short model, the role first in its tooltip", async () => {
+  it("carries the provider's mark and the short model, the role first in the row's tooltip", async () => {
     const meta = fixtureMeta("r", { title: "Review the fold", agentType: "reviewer", status: "running", context1m: true });
     const { container } = render(<AgentRowView meta={meta} status={agentStatus(meta)} onOpen={() => {}} />);
     const mark = container.querySelector("[data-model]")!;
     expect(mark.querySelector("img, svg")).not.toBeNull();
     expect(mark.textContent).toBe("Opus 5.5High1M");
-    hover(mark);
+    // The mark mounts no tooltip of its own: it takes no pointer, the row's open control does.
+    expect(mark.getAttribute("data-slot")).not.toBe("tooltip-trigger");
+    hover(openOf(container));
     await waitFor(() => expect(tipText()).toBe("Reviewer, Claude Opus 5.5, high effort, 1M context"), { timeout: 2000 });
   });
 
@@ -81,7 +84,7 @@ describe("AgentRowView", () => {
   it("draws the model line last: the logo, the model, the effort, the context window", () => {
     const { meta, status } = row("Review the fold");
     const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    const lines = [...container.querySelector('[role="button"]')!.children].filter((el) => el.matches("[data-row-head], [data-row-status], [data-model-line]"));
+    const lines = [...container.querySelector("[data-agent-row]")!.children].filter((el) => el.matches("[data-row-head], [data-row-status], [data-model-line]"));
     expect(lines.map((el) => (el as HTMLElement).dataset.rowHead !== undefined ? "head" : (el as HTMLElement).dataset.rowStatus !== undefined ? "status" : "model")).toEqual([
       "head",
       "status",
@@ -149,7 +152,7 @@ describe("AgentRowView", () => {
   it("draws a done row on two lines, its check and title over the model line and how long it ran", async () => {
     const { meta, status } = row("Find the row sizes");
     const { container } = render(<AgentRowView meta={meta} status={status} heading="Done" onOpen={() => {}} />);
-    const el = container.querySelector('[role="button"]')!;
+    const el = container.querySelector("[data-agent-row]")!;
     expect(el.className).toContain("py-1");
     expect(el.className).not.toContain("h-7");
     expect(container.querySelector("[data-row-status]")).toBeNull();
@@ -159,14 +162,14 @@ describe("AgentRowView", () => {
     expect(container.querySelector("[data-row-title]")?.className).toContain("text-muted-foreground");
     const time = container.querySelector("[data-agent-time]")!;
     expect(time.textContent).toBe("1m 14s");
-    hover(time);
-    await waitFor(() => expect(tipText()).toMatch(/^Finished \d{1,2}:\d\d([ \u202f][AP]M)?$/), { timeout: 2000 });
+    hover(openOf(container));
+    await waitFor(() => expect(tipText()).toMatch(/Finished \d{1,2}:\d\d([ \u202f][AP]M)?$/), { timeout: 2000 });
   });
 
   it("draws a live row on three lines, the title in the foreground", () => {
     const { meta, status } = row("Build the shell");
     const { container } = render(<AgentRowView meta={meta} status={status} heading="Working" onOpen={() => {}} />);
-    expect(container.querySelector('[role="button"]')!.className).toContain("py-1");
+    expect(container.querySelector("[data-agent-row]")!.className).toContain("py-1");
     expect(container.querySelector("[data-row-title]")?.className).toContain("text-foreground");
     const line = container.querySelector("[data-row-status]")!;
     expect(line.querySelector('[data-slot="status-word"]')).toBeNull();
@@ -286,18 +289,28 @@ describe("AgentRowView", () => {
     expect(both.container.querySelector("[data-row-end]")!.className).toContain("min-w-12.5");
   });
 
-  it("opens the detail on click, Enter and Space, and marks the selected row", () => {
+  it("is a container with its open control laid over it: a native button for click, Enter and Space, pressing the row to /12", () => {
     const onOpen = vi.fn();
-    const { meta, status } = row("Port module 4");
-    const { container, rerender } = render(<AgentRowView meta={meta} status={status} onOpen={onOpen} />);
-    const el = container.querySelector<HTMLElement>('[role="button"]')!;
-    expect(el.hasAttribute("aria-current")).toBe(false);
-    fireEvent.click(el);
-    fireEvent.keyDown(el, { key: "Enter" });
-    fireEvent.keyDown(el, { key: " " });
-    expect(onOpen).toHaveBeenCalledTimes(3);
+    const { meta, status } = row("Build the shell");
+    const { container, rerender } = render(<AgentRowView meta={meta} status={status} onOpen={onOpen} onOpenSession={() => {}} onStop={() => {}} />);
+    const el = container.querySelector<HTMLElement>("[data-agent-row]")!;
+    const open = openOf(container);
+    expect(el.getAttribute("role")).toBeNull();
+    expect(el.hasAttribute("tabindex")).toBe(false);
+    expect(open.tagName).toBe("BUTTON");
+    expect(open.getAttribute("type")).toBe("button");
+    expect(open.className.split(/\s+/)).toEqual(expect.arrayContaining(["absolute", "inset-0"]));
+    expect(el.className).toContain("hover:bg-foreground/5");
+    expect(el.className).toContain("has-[>[data-row-open]:active]:bg-foreground/12");
+    // Open and Stop are the row's own buttons, beside its open control, never inside it.
+    for (const name of ["Open", "Stop"]) expect(open.contains(screen.getByRole("button", { name }))).toBe(false);
+    // What the row shows takes no pointer, so a click anywhere on it reaches the open control.
+    for (const part of ["[data-row-head]", "[data-row-status]", "[data-model-line]"]) expect(el.querySelector(part)!.className).toContain("pointer-events-none");
+    expect(open.hasAttribute("aria-current")).toBe(false);
+    fireEvent.click(open);
+    expect(onOpen).toHaveBeenCalledTimes(1);
     rerender(<AgentRowView meta={meta} status={status} selected onOpen={onOpen} />);
-    expect(el.getAttribute("aria-current")).toBe("true");
+    expect(openOf(container).getAttribute("aria-current")).toBe("true");
   });
 
   it("is named by its title, state, tally, time, role and model", () => {
@@ -321,7 +334,7 @@ describe("AgentRowView", () => {
   it("indents a descendant 16px a level", () => {
     const { meta, status } = row("Port module 4");
     const { container } = render(<AgentRowView meta={meta} status={status} depth={2} onOpen={() => {}} />);
-    expect(container.querySelector('[role="button"]')!.className).toContain("ms-8");
+    expect(container.querySelector("[data-agent-row]")!.className).toContain("ms-8");
   });
 });
 

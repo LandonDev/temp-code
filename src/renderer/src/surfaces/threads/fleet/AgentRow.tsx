@@ -1,8 +1,9 @@
-import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ExternalLink, Square } from "../../../chrome/icons";
-import { TruncateTip } from "../../../components/tip";
+import { useTruncated } from "../../../components/tip";
 import { Button } from "../../../components/ui/button";
-import { Item } from "../../../components/ui/item";
+import { Item, ItemButton } from "../../../components/ui/item";
+import { ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "../../../components/ui/press";
 import { reveal, yields } from "../../../components/ui/reveal";
 import { STATUS_WORD, StatusMark, type ThreadState } from "../../../components/ui/status";
 import { actionFailed } from "../../../lib/threadActionToast";
@@ -40,8 +41,11 @@ import { useAgentStatus } from "./useFleetModel";
  *
  * On hover (after `--delay-hover`) or keyboard focus Open (the agent's own
  * thread) and, while a turn runs, Stop appear at line one's end, the line's
- * place kept for them at rest, its host glyph fading out under them. A click or Enter opens the agent's
- * detail. `AgentRowView` draws from props alone; `AgentRow` reads the
+ * place kept for them at rest, its host glyph fading out under them. The row is a container with its open
+ * control laid over it (press.ts `ROW_HOLDS`), Open and Stop its own
+ * buttons above it: a click, Enter or Space opens the agent's detail, and
+ * the row's one tooltip says what a line cuts, the model with its role
+ * first, and when a settled agent finished. `AgentRowView` draws from props alone; `AgentRow` reads the
  * status and the store's host glyph.
  */
 
@@ -72,18 +76,12 @@ function tallyOf(meta: Pick<SessionMeta, "tasks">): { short: string; spoken: str
 
 /** The row's time: live states tick on the shared second hand, settled ones say how long they ran. */
 function AgentClock({ meta, state }: { meta: SessionMeta; state: ThreadState }) {
+  // When it finished is the row's tooltip (AgentRowView), never one of its own.
   const live = state === "working" || state === "waiting" || state === "watching";
   const now = useNow(live);
   const time = agentTime(meta, live ? now : Date.now());
   if (!time) return null;
-  const text = <span data-agent-time>{duration(time.ms)}</span>;
-  if (!time.finishedAt) return text;
-  return (
-    <Tooltip>
-      <TooltipTrigger render={text} />
-      <TooltipContent>Finished {clockTime(time.finishedAt)}</TooltipContent>
-    </Tooltip>
-  );
+  return <span data-agent-time>{duration(time.ms)}</span>;
 }
 
 export function AgentRowView({
@@ -127,44 +125,52 @@ export function AgentRowView({
   const stoppable = !!onStop && hasRunningTurn(meta);
   const actionCount = (onOpenSession ? 1 : 0) + (stoppable ? 1 : 0);
 
-  const own = (e: { currentTarget: EventTarget; target: EventTarget }) => (e.currentTarget as Node).contains(e.target as Node);
-  const onKey = (e: KeyboardEvent) => {
-    if (e.target !== e.currentTarget) return;
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      onOpen();
-    }
-  };
+  // The row's one tooltip, on its open control: what a line cuts, the model
+  // with the role first, and when a settled agent finished.
+  const { ref: titleRef, cut: titleCut } = useTruncated(title);
+  const { ref: statusRef, cut: statusCut } = useTruncated(statusText);
+  const model = meta.provider && meta.model ? modelMarkTip(meta, role, modelContextWord(meta)) : null;
+  const finished = settled && time?.finishedAt ? `Finished ${clockTime(time.finishedAt)}` : null;
+  const tip = [titleCut ? title : null, !settled && statusCut ? statusText : null, model, finished].filter((line): line is string => !!line);
 
+  // A container with its open control laid over it (press.ts ROW_HOLDS):
+  // Open and Stop are its own buttons above it, never inside it.
   return (
     <Item
       size="xs"
-      role="button"
-      tabIndex={0}
-      aria-label={name}
-      aria-current={selected || undefined}
-      onClick={(e) => {
-        if (own(e)) onOpen();
-      }}
-      onKeyDown={onKey}
+      data-agent-row
       data-status={meta.status}
       data-depth={depth || undefined}
       className={cn(
-        "group relative grid cursor-default grid-cols-[16px_1fr] items-start gap-x-2 gap-y-0 rounded-md px-2 py-1 text-left hover:bg-foreground/5",
+        "group grid cursor-default grid-cols-[16px_1fr] items-start gap-x-2 gap-y-0 rounded-md px-2 py-1 text-left",
+        ROW_HOLDS,
         DEPTH_CLASS[Math.min(depth, 3)],
         selected && "bg-muted hover:bg-muted",
       )}
     >
+      <Tooltip disabled={tip.length === 0}>
+        <TooltipTrigger render={<ItemButton data-row-open aria-label={name} aria-current={selected || undefined} onClick={onOpen} className={ROW_OPEN} />} />
+        {tip.length > 0 ? (
+          <TooltipContent side="left">
+            <span className="flex flex-col text-left">
+              {tip.map((line, i) => (
+                <span key={line} className={cn(i > 0 && "text-background/70")}>
+                  {line}
+                </span>
+              ))}
+            </span>
+          </TooltipContent>
+        ) : null}
+      </Tooltip>
+
       {/* Line one: the state's glyph, the title, the host at the right edge. */}
-      <span className="flex h-5 items-center justify-center" data-row-glyph>
+      <span className={cn(ROW_SHOWS, "flex h-5 items-center justify-center")} data-row-glyph>
         <StatusMark state={state} word={false} aria-hidden />
       </span>
-      <span className="flex h-5 min-w-0 items-center gap-2" data-row-head>
-        <TruncateTip text={title}>
-          <span className={cn("min-w-0 flex-1 truncate text-[13px] leading-5 font-medium", settled ? "text-muted-foreground" : "text-foreground")} data-row-title>
-            {title}
-          </span>
-        </TruncateTip>
+      <span className={cn(ROW_SHOWS, "flex h-5 min-w-0 items-center gap-2")} data-row-head>
+        <span ref={titleRef} className={cn("min-w-0 flex-1 truncate text-[13px] leading-5 font-medium", settled ? "text-muted-foreground" : "text-foreground")} data-row-title>
+          {title}
+        </span>
         {actionCount > 0 ? (
           <span data-row-end className={cn("flex shrink-0 justify-end", RESERVE[actionCount])}>
             <span className={cn("flex", YIELDS)}>{hostGlyph(meta.environmentId)}</span>
@@ -178,18 +184,16 @@ export function AgentRowView({
       {settled ? null : (
         <>
           <span />
-          <span className="flex h-4 min-w-0 items-center gap-2" data-row-status>
-            <TruncateTip text={statusText}>
-              <span className="flex min-w-0">
-                <StatusMark
-                  state={state}
-                  glyph={false}
-                  word={ownWord}
-                  detail={detail || undefined}
-                  className={cn("min-w-0", toned && "**:data-[slot=status-detail]:text-current")}
-                />
-              </span>
-            </TruncateTip>
+          <span className={cn(ROW_SHOWS, "flex h-4 min-w-0 items-center gap-2")} data-row-status>
+            <span ref={statusRef} className="flex min-w-0">
+              <StatusMark
+                state={state}
+                glyph={false}
+                word={ownWord}
+                detail={detail || undefined}
+                className={cn("min-w-0", toned && "**:data-[slot=status-detail]:text-current")}
+              />
+            </span>
             <span className="ms-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground tabular-nums">
               {tally ? <span data-tally>{tally.short}</span> : null}
               <AgentClock meta={meta} state={state} />
@@ -200,7 +204,7 @@ export function AgentRowView({
 
       {/* The last line: the model, its effort and window; a settled row's time at its end. */}
       <span />
-      <ModelLine meta={meta} lead={role} trailing={settled ? <AgentClock meta={meta} state={state} /> : undefined} />
+      <ModelLine meta={meta} lead={role} tip={false} className={ROW_SHOWS} trailing={settled ? <AgentClock meta={meta} state={state} /> : undefined} />
 
       <span data-actions className={cn("absolute top-0.5 right-2 flex gap-0.5", REVEALS)}>
         {onOpenSession ? (
@@ -227,11 +231,7 @@ function RowAction({ label, onClick, children }: { label: string; onClick: () =>
             variant="ghost"
             size="icon-xs"
             aria-label={label}
-            onClick={(e: MouseEvent<HTMLButtonElement>) => {
-              e.stopPropagation();
-              onClick();
-            }}
-            onKeyDown={(e: KeyboardEvent) => e.stopPropagation()}
+            onClick={onClick}
           />
         }
       >

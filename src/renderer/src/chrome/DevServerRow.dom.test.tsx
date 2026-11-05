@@ -65,4 +65,31 @@ describe("DevServerRow", () => {
     expect((stop as HTMLButtonElement).disabled).toBe(true);
     expect(stop.querySelector('[role="status"], [data-slot="spinner"], svg')).not.toBeNull();
   });
+  it("a row that picks its console is a container with its open control laid over it: Space and Enter pick, the links and Stop beside it", () => {
+    macBridgeStore.setState({ localId: "env_mac" });
+    const onPick = vi.fn();
+    const local = { ...server, environmentId: "env_mac", port: { number: 5199, environmentId: "env_mac", forwards: undefined } };
+    const { container, rerender } = render(<DevServerRow server={local} onPick={onPick} />);
+    const row = container.querySelector<HTMLElement>("[data-dev-server]")!;
+    const open = screen.getByRole("button", { name: "Vite dev server" });
+    // A native button over the whole row: Enter and Space pick it, and no button holds a button.
+    expect(open.tagName).toBe("BUTTON");
+    expect(open.getAttribute("type")).toBe("button");
+    expect(open.hasAttribute("data-row-open")).toBe(true);
+    expect(open.className.split(/\s+/)).toEqual(expect.arrayContaining(["absolute", "inset-0"]));
+    expect(row.hasAttribute("tabindex")).toBe(false);
+    expect(row.className).toContain("hover:bg-foreground/5");
+    expect(row.className).toContain("has-[>[data-row-open]:active]:bg-foreground/12");
+    for (const name of ["Stop", "Open localhost:5199"]) expect(open.contains(screen.getByRole("button", { name }))).toBe(false);
+    // The address link takes the pointer above the row's open control; the rest of what it shows takes none.
+    expect(row.querySelector('[data-slot="item-content"]')!.className).toContain("pointer-events-none");
+    expect(screen.getByRole("button", { name: "Open localhost:5199" }).className).toContain("pointer-events-auto");
+    fireEvent.click(open);
+    expect(onPick).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Open localhost:5199" }));
+    expect(onPick).toHaveBeenCalledOnce();
+    rerender(<DevServerRow server={local} picked onPick={onPick} />);
+    expect(open.getAttribute("aria-current")).toBe("true");
+    expect(row.className).toContain("bg-muted");
+  });
 });

@@ -37,6 +37,7 @@ import { plainStatus } from "@shared/statusWords";
 import { reveal, yields } from "../components/ui/reveal";
 import { Button } from "../components/ui/button";
 import { ItemButton } from "../components/ui/item";
+import { ROW_OPEN, ROW_SHOWS } from "../components/ui/press";
 import { Input } from "../components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { useTruncated } from "../components/tip";
@@ -324,14 +325,9 @@ export function batchTally(row: ThreadRow): { done: number; total: number } | nu
 const ROW =
   "group/row relative flex w-full cursor-default items-center gap-2 rounded-md px-3 text-left text-[13px] has-[>[data-row-open]:active]:bg-foreground/12";
 
-/** A row's open control, laid over the whole row (the stretched pattern): the
- *  row is a plain container whose fold and ⋯ are buttons of their own beside
- *  it, never inside it; the one focus ring draws round the whole row, and a
- *  press steps the row's fill to /12 (ROW). What the row shows sits above it,
- *  clicks passing through. */
-const ROW_OPEN = "absolute inset-0 h-auto w-auto rounded-[inherit] border-0 p-0 hover:bg-transparent active:bg-transparent";
-/** What the row shows, over its open control: no pointer of its own. */
-const ROW_SHOWS = "pointer-events-none relative";
+// The open control laid over the row and what the row shows above it: the
+// shared recipe (components/ui/press.ts), whose fold and ⋯ are buttons of
+// their own beside it, never inside it.
 
 /**
  * A thread row, presentational: a root in the workspace column (32px, its

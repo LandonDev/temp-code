@@ -432,7 +432,8 @@ panel Agents row says its model on a line of its own under everything else (`Mod
 the name, the effort and the context window ("Opus 5.5 High 1M", "Sonnet
 5.5 Low 200k"), each 4px from the next, only the name truncating. The
 tooltip is the uncut form ("Claude Opus 5.5, high effort, 1M context"),
-the one home of what a narrow row hides.
+the one home of what a narrow row hides; on an Agents row it is the row's
+own tooltip, since the row's open control lies over the line.
 
 While any subagent of the thread on screen is live, the title bar's end
 group holds the agents cue (chrome/AgentsCue.tsx), a quiet 24px row
@@ -452,7 +453,9 @@ sections that exist only when they have content (Agents, Activity, Changes,
 Notes) and a 40px header of flat icon buttons, the selected one filled, that
 lists only those sections, each named on hover and by its accessible name;
 its default section follows the thread's state, Agents first. An Activity row, folded, is one 28px line
-of plain words (glyph, label, age, Stop); a shell's command shows only in
+of plain words (glyph, label, age, Stop); one that opens (a shell's log, a
+dev server's pane) has its open control laid over it with Stop beside it,
+as every row with controls of its own; a shell's command shows only in
 its fold, as the first line of its output, one `CONSOLE` capped at 240px
 whose first read draws skeleton lines in the same box. The panel's other
 logs (Build, the Debug console) keep the console's 20px lines. It yields to the thread, which never

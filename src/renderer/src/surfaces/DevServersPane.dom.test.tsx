@@ -160,9 +160,10 @@ describe('DevServersPane', () => {
     expect(list.className).toContain('gap-4')
     expect(probe!.container.querySelector('[data-dev-server="env_box/run1"]')!.textContent).toContain('Vite dev server')
     expect(shown()).toBe('res1')
-    await probe!.act(async () => (probe!.container.querySelector('[data-dev-server="env_box/run1"]') as HTMLElement).click())
+    const pick = () => probe!.container.querySelector('[data-dev-server="env_box/run1"] [data-row-open]') as HTMLElement
+    await probe!.act(async () => pick().click())
     expect(shown()).toBe('run1')
-    expect(probe!.container.querySelector('[data-dev-server="env_box/run1"]')!.getAttribute('aria-current')).toBe('true')
+    expect(pick().getAttribute('aria-current')).toBe('true')
   })
 
   it('opens the forwarded URL from a link reading "Open on the Mac :5174"', async () => {

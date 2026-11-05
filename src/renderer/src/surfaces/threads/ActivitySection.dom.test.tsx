@@ -56,6 +56,8 @@ function mount() {
   render(<ActivityRows threadId="s1" rows={rows} meta={meta} />);
 }
 const rowOf = (kind: string): HTMLElement => document.querySelector(`[data-kind="${kind}"]`) as HTMLElement;
+/** A row's open control, laid over the row. */
+const openOf = (kind: string): HTMLButtonElement => rowOf(kind).querySelector("[data-row-open]") as HTMLButtonElement;
 
 describe("ActivitySection", () => {
   it("mounts no tooltip trigger for a label that fits", async () => {
@@ -93,18 +95,18 @@ describe("ActivitySection", () => {
 
   it("clicking the shell row opens its log from session.taskLog", async () => {
     mount();
-    expect(rowOf("shell").getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(rowOf("shell"));
-    expect(rowOf("shell").getAttribute("aria-expanded")).toBe("true");
+    expect(openOf("shell").getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(openOf("shell"));
+    expect(openOf("shell").getAttribute("aria-expanded")).toBe("true");
     expect(await screen.findByText(/listening on :5173/)).toBeTruthy();
     expect(taskLog).toHaveBeenCalledWith("s1", "t1", undefined);
   });
 
-  it("Enter on the shell row opens its fold: the command first as $ <command>, then the output", async () => {
+  it("the shell row's open control opens its fold: the command first as $ <command>, then the output", async () => {
     mount();
-    rowOf("shell").focus();
-    fireEvent.keyDown(rowOf("shell"), { key: "Enter" });
-    expect(rowOf("shell").getAttribute("aria-expanded")).toBe("true");
+    openOf("shell").focus();
+    fireEvent.click(openOf("shell"));
+    expect(openOf("shell").getAttribute("aria-expanded")).toBe("true");
     // While the first read is out: the console's box with skeleton lines, not a spinner.
     const loading = document.querySelector('[data-slot="task-log"]')!;
     expect(loading.getAttribute("aria-busy")).toBe("true");
@@ -123,10 +125,36 @@ describe("ActivitySection", () => {
     expect(output.textContent).toMatch(/listening on :5173/);
   });
 
+  it("a row that opens is a container with its open control laid over it, Stop beside it, pressing to /12", () => {
+    mount();
+    for (const kind of ["shell", "dev"]) {
+      const row = rowOf(kind);
+      const open = openOf(kind);
+      // A native button over the whole row: Enter and Space open it, and no button holds a button.
+      expect(open.tagName).toBe("BUTTON");
+      expect(open.getAttribute("type")).toBe("button");
+      expect(open.className.split(/\s+/)).toEqual(expect.arrayContaining(["absolute", "inset-0"]));
+      expect(row.getAttribute("role")).toBeNull();
+      expect(row.hasAttribute("tabindex")).toBe(false);
+      const stop = row.querySelector('[aria-label="Stop"]')!;
+      expect(open.contains(stop)).toBe(false);
+      expect(stop.closest("button")!.querySelector("button")).toBeNull();
+      expect(row.className).toContain("hover:bg-foreground/5");
+      expect(row.className).toContain("has-[>[data-row-open]:active]:bg-foreground/12");
+      // What the row shows takes no pointer, so a click anywhere on it reaches the open control.
+      expect(row.querySelector('[data-slot="item-content"]')!.className).toContain("pointer-events-none");
+    }
+    expect(openOf("shell").getAttribute("aria-label")).toBe("Serve the app");
+    // A row with nothing to open is a plain line.
+    expect(openOf("monitor")).toBeNull();
+    fireEvent.click(rowOf("dev").querySelector('[aria-label="Stop"]')!);
+    expect(openOf("shell").getAttribute("aria-expanded")).toBe("false");
+  });
+
   it("a shell row whose command is its label opens on the output alone", async () => {
     const plain = { ...meta, background: { ...background, agents: [], tasks: [{ id: "t2", label: "sleep 90", kind: "shell" as const, startedAt: now, command: "sleep 90" }] } };
     render(<ActivityRows threadId="s1" rows={activityRows({ meta: plain, devServers: [], macCalls: [] })} meta={plain} />);
-    fireEvent.click(rowOf("shell"));
+    fireEvent.click(openOf("shell"));
     expect(await screen.findByText(/listening on :5173/)).toBeTruthy();
     expect(document.querySelector('[data-slot="task-command"]')).toBeNull();
   });
@@ -142,7 +170,7 @@ describe("ActivitySection", () => {
     taskLog.mockImplementationOnce(() => Promise.reject(new Error("linkDown")));
     stopTask.mockImplementationOnce(() => Promise.reject(new Error("no live harness")));
     mount();
-    fireEvent.click(rowOf("shell"));
+    fireEvent.click(openOf("shell"));
     expect(await screen.findByText("Couldn't read the output")).toBeTruthy();
     fireEvent.click(rowOf("shell").querySelector('[aria-label="Stop"]')!);
     await vi.waitFor(() => expect(toastError).toHaveBeenCalledWith("Couldn't stop it", { description: "Serve the app" }));
@@ -150,7 +178,7 @@ describe("ActivitySection", () => {
   it("tooltips warming keep the scroller and an open log: no provider sits round them", async () => {
     resetTooltips();
     mount();
-    fireEvent.click(rowOf("shell"));
+    fireEvent.click(openOf("shell"));
     await screen.findByText(/listening on :5173/);
     const scroller = document.querySelector<HTMLElement>('[data-slot="activity-scroller"]')!;
     const log = document.querySelector<HTMLElement>('[data-slot="task-log"]')!;
@@ -195,13 +223,13 @@ describe("ActivitySection", () => {
     });
     try {
       mount();
-      fireEvent.click(rowOf("shell"));
+      fireEvent.click(openOf("shell"));
       await screen.findByText(/listening on :5173/);
       // The close's height animation is still running.
       flags.BASE_UI_ANIMATIONS_DISABLED = false;
       Element.prototype.getAnimations = () => [running];
-      fireEvent.click(rowOf("shell"));
-      expect(rowOf("shell").getAttribute("aria-expanded")).toBe("false");
+      fireEvent.click(openOf("shell"));
+      expect(openOf("shell").getAttribute("aria-expanded")).toBe("false");
       const asked = taskLog.mock.calls.length;
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5_000);
