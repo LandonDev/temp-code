@@ -652,7 +652,8 @@ list hangs its text at 22px, like a row's words.
 The lines that remain: the hairline of one card (a row's opened body, a code
 block, a table, a question, failure or held-review card, the composer), the
 rules between a table's rows and the title bar's bottom border. None between
-turns, none between rows, none inside an open group. A blockquote is a 2px
+turns and none between rows; inside an open group a hairline parts two
+table rows and nothing else. A blockquote is a 2px
 `border` line with muted, upright text; a table's header has no fill.
 
 The person's message is a right-aligned bubble (`card`, `rounded-xl`, 12/8
@@ -661,7 +662,7 @@ preamble line 4px above it. A message the person sent into a running
 turn (a steer) carries one 12px `muted-foreground` word under the bubble at
 its right edge, Sent, Received or Queued for the next turn, or Not
 delivered in the red tone; its time is in the word's tooltip, never in the
-flow, and a word that changes on screen fades in on `--dur-fast`
+flow, and a word that changes on screen morphs (`MorphText`)
 (transcript/UserMessage.tsx `SteerLine`). The model's prose is plain text.
 Between paragraphs, the actions since the last paragraph are one muted line
 ("Created diag.ts, ran a command +46 ▾") that opens into a table under it, as
@@ -675,7 +676,8 @@ something: the glyph 8px from the verb, verb, target and counts 4px apart,
 the extras and the caret 8px after the last value, 32px a row in the table; a call that names nothing reads its
 verb alone ("Ran a command"), a connector's call names the connector
 ("Cosmic Admin  Build get"), a todo update's tally sits muted in the counts
-slot, and a host step folded in reads verb then target like a call. A row's opened body is one card (a hairline, `rounded-lg`,
+slot, and a host step folded in reads verb then target like a call. A row's opened body is the row's lower part under one hairline inside an
+open group's table; a lone row's is one card (a hairline, `rounded-lg`,
 `bg-card`, 12px inset, from the row's glyph to the column's end); an edit's
 diff takes the same card with its tints running to its edges. A lone command
 opens a card headed by its tool name with the command in mono and its output
@@ -736,7 +738,7 @@ finished task, the check on idle tasks, a gate or release outcome, a review
 that merged, the turn pass, the plan's build hand-off, a merge the batch
 made. A held review, a failure, Stopped, compaction, "Batch done" and
 account-gone stay lines of their own. Every agent row names its agent by
-title, the one bright text on its 28px line, and an open wait is no row:
+title, the one bright text on its line (28px alone, 32px in a table), and an open wait is no row:
 the working line says "Waiting on <title>". A handoff keeps its bubble: its text is the person's brief. The
 left side, where the column leaves room, lists the person's own messages,
 one line and a clock time each, the one being read in foreground

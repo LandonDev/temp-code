@@ -1805,7 +1805,8 @@ it in its own area on these names.
 | Cyan | `systemCyan` | research type | `Tint.cyan` |
 | Quiet | `systemGray2` | a state with no urgency: the queued dot, the stopped square | `Tint.quiet` |
 | Radius | the ladder: four chosen steps, 4 pt an inline token, 8 pt chips and rows, 12 pt fields and cards, 16 pt sheets; derived: 10 pt a transcript block (row + 2), 6 pt a wash or icon box inside one (block − 4), a quarter of the side for an icon tile, half the one-line height for the chat bar; a real `Capsule` for anything round at both ends; on iOS 26 the full-width buttons at a sheet's foot are concentric with the sheet (`ConcentricRectangle`, never tighter than 12 pt) | outer = inner + padding, always; no literal radius outside Tokens.swift | `Radius.inline / .row / .field / .sheet / .block / .inner / .mark`, `Radius.tile(side)`, `Radius.capsuleEnds(height)`, `Radius.around(inner, padding:)`, `Radius.inside(outer, padding:)`, `.rowCorner / .fieldCorner / .sheetCorner / .blockCorner / .inlineCorner` (continuous), `.concentric(minimum:)` |
-| Type | `subheadline` rows, `body` transcript, `footnote` meta, `caption2` timestamps; mono one step down | Dynamic Type honored up to accessibility sizes | `TextStep.title` (subheadline, label), `.meta` (footnote, secondary), `.stamp` (caption2, tertiary, tabular) |
+| Type | lists: `subheadline` rows, `footnote` meta, `caption2` timestamps. The transcript: the desktop's ladder on iOS text styles, prose 15 on 22 (`subheadline`), lines 13 on 20 (`footnote`: actions, the working and closing line, notices, a group's line and cells), details 12 on 16 (`caption`: the steer word, the slot, the composer's row, a card's lines), code 14 on 20 and a command or diff 12 on 20 in mono, headings 17/24 semibold −0.01em, 16/22 and 15/22 semibold, a document (plan, report, notes) 16 on 24 (`callout`) with headings 20/26, 17/24 and 16/24 medium; each size scales relative to its style and its line box keeps its ratio, so a row height is a minimum and never a clip | Dynamic Type honored up to accessibility sizes; no view writes a font size (scripts/ios-literal-guard.test.ts counts what is left, and the count only shrinks) | `TextStep.title` (subheadline, label), `.meta` (footnote, secondary), `.stamp` (caption2, tertiary, tabular); `.transcriptType(TranscriptType.prose / .line / .detail / .code / .rowCode / .proseH1–3 / .document / .documentH1–3, weight:)`, `.transcriptFont(_:)` for a glyph beside the text; the numbers are the client package's `TranscriptScale` |
+| Transcript lengths | a lone row 28 pt, a table row 32; the glyph slot 14, 8 to the words, 4 between words, 8 after a value, a table's words 12 in; radii 12 a table, 8 a body, 12 a bubble; gaps 16 first, 32 between turns, 16 bubble to reply, 12 between blocks, 4 between lines, 8 to the closing line, 16 under the last; a bubble at most 85 % of the column, 12 × 8 in; the column 768, a document 640; the slot 28, the composer's row 24, its controls 28 (44 hit), the empty box 46 | the desktop's numbers; a full-width row is its own hit area | `TranscriptMetrics` (`Gap.*`), over the client package's `TranscriptLengths` |
 | Numbers | `monospacedDigit()` on every elapsed, count and cost | nothing jitters as it ticks | `.numeric(value)`, `CountText`, `ElapsedText`, `AgoText` |
 | Lengths | 16 pt text edge, 44 pt rows with 6 pt vertical padding, 10 pt gaps, 14 pt mark, 7 pt dot, 20 pt glyph, 16 pt subagent indent, 6 pt before a title's tag | rows, headers and separators meet on the same edges | `Layout.textEdge / .rowHeight / .rowVertical / .rowGap / .markWidth / .dotSize / .glyphWidth / .indent / .tagGap / .rowTextEdge / .rowInsets` |
 
@@ -1917,11 +1918,27 @@ tasks, `bubble.left.and.bubble.right` for a thread with no messages).
 
 ## Motion
 
-Values are exact, and each row has a name in `Motion` (Design/Motion.swift)
-so a screen references the name, never the number. Every "ease-out" below
-is the desktop's `EASE_OUT` (lib/ease.ts), `cubic-bezier(0.16, 1, 0.3, 1)`,
-behind one private `Motion.out(seconds)`; SwiftUI's `.easeOut` is never
-used.
+Values are the desktop's, exactly, held once in the client package's
+`MotionValues` (Sources/TempCodeClient/Design/MotionValues.swift): the
+durations of index.css (`swapOut` 0.09, `fast` 0.12, `base` 0.18, `slow`
+0.24, `drawer` 0.30, `layout` 0.37), the curves and springs of lib/ease.ts
+(ease-out `(0.16, 1, 0.3, 1)`, swap `(0.2, 0, 0, 1)`, drawer `(0.32, 0.72,
+0, 1)`, exit, in-out, breathe; the layout spring 360/32/0.6 settling in
+0.37 s, the glide 700/50/0.5), the stream's step 0.1 and fade 0.4, the word
+hold 0.3, the fold hold 0.6, the Copy check 1.2 and the stale watch 30
+minutes, and the loops (the shimmer's 3 s band, the working mark's 1.6 s
+dots, the spinner's 0.9 s turn). scripts/ios-motion-parity.test.ts reads the
+file and fails when one differs from the desktop's sources. The phone's own
+are the touch press (scale 0.96 over 0.16 s, a dim to 60 % under reduced
+motion) and the glyph swap's 0.3 s spring. `Motion` (Design/Motion.swift)
+turns them into animations and each row below has a name there, so a screen
+references the name, never the number: `Motion.fast`, `.base`, `.layout`,
+`.glide`, `.swapOut`, `.swapIn`, `.rise`, and the older names on them
+(`crossFade`, `numeric`, `jump` and `rowLeave` are `fast`; `rowAppear`,
+`stepIn` and `collapse` are `base`; `expand` is `layout`; `drawer` is the
+drawer curve over 0.30 s). SwiftUI's `.easeOut` is never used, and
+scripts/ios-literal-guard.test.ts counts every literal duration or curve
+left in a view.
 
 | Interaction | Motion | Name |
 | --- | --- | --- |
@@ -1929,14 +1946,14 @@ used.
 | Push and pop | the system navigation transition, untouched | |
 | Sheets | the system sheet, 16 pt radius, detents and sizing by `SheetRules` ("iPhone Duo") | `Radius.sheet`, `tcSheet` |
 | Segment swipe | interactive, follows the finger, settles with the drawer curve `cubic-bezier(0.32, 0.72, 0, 1)` | `Motion.drawer` |
-| Row expand (todo trace, tool body) | spring `duration 0.35, bounce 0`; content fades in 150 ms after the height starts; collapse 200 ms ease-out | `Motion.expand`, `Motion.expandContent`, `Motion.collapse` |
-| Preamble fold | 150 ms cross-fade, no height spring | `Motion.crossFade` |
-| Needs-you row appearing | 200 ms ease-out, opacity and 8 pt translateY; removal 150 ms opacity only | `.rowAppearTransition()` (`Motion.appear(reduced:)`, `Motion.rowAppear`, `Motion.rowLeave`, `Motion.travel`) |
-| Last-activity line changing | 150 ms cross-fade with 2 pt blur; the row never changes height | `SwapText`, `.swapTransition()` (`Motion.swap(reduced:)`, `Motion.crossFade`, `Motion.crossFadeBlur`) |
-| Counts and elapsed | `contentTransition(.numericText())` on 150 ms | `.numeric(value)` (`Motion.numeric`), `CountText`, `ElapsedText`, `AgoText` |
+| Row expand (todo trace, tool body) | the layout spring; content fades in over `fast` after the height starts; collapse `base` ease-out | `Motion.expand`, `Motion.expandContent`, `Motion.collapse` |
+| Preamble fold | `fast` cross-fade, no height spring | `Motion.crossFade` |
+| Needs-you row appearing | `base` ease-out, opacity and 4 pt translateY; removal `fast`, opacity only | `.rowAppearTransition()` (`Motion.appear(reduced:)`, `Motion.rowAppear`, `Motion.rowLeave`, `Motion.travel`) |
+| Last-activity line changing | `fast` cross-fade with 2 pt blur; the row never changes height | `SwapText`, `.swapTransition()` (`Motion.swap(reduced:)`, `Motion.crossFade`, `Motion.crossFadeBlur`) |
+| Counts and elapsed | `contentTransition(.numericText())` on `fast` | `.numeric(value)` (`Motion.numeric`), `CountText`, `ElapsedText`, `AgoText` |
 | Streaming text | the jitter-buffer reveal (`SmoothText`): paced at the measured arrival rate behind a 120–500 ms playout lag, painted every 33 ms, no fade and no translate; a chip's target types in and cross-fades 150 ms with 2 pt blur when replaced; edit counts tick with `numericText`; reduced motion reveals per batch | `SmoothTextReveal`, `StreamingAssistantRow`, `LiveChipLabel` (`Motion.swap`, `Motion.crossFade`) |
-| Status dot to spinner | cross-fade 150 ms | `StatusDot` (`Motion.crossFade`) |
-| A glyph trading state (Send ↔ Stop, outline ↔ fill, pin ↔ unpin) | scale 0.25 → 1, opacity 0 → 1, blur 4 → 0, spring `duration 0.3, bounce 0`; reduced motion: opacity on `cubic-bezier(0.2, 0, 0, 1)` 150 ms | `.iconSwapTransition()` with `.id(symbol)` in a `ZStack` (`Motion.iconSwap(reduced:)`, `Motion.iconSwap`, `Motion.iconSwapScale`, `Motion.iconSwapBlur`, `Motion.iconFade`); `TypeGlyph(active:)` uses the symbol replace effect instead, since Glyphs builds without Motion |
+| Status dot to spinner | cross-fade over `fast` | `StatusDot` (`Motion.crossFade`) |
+| A glyph trading state (Send ↔ Stop, outline ↔ fill, pin ↔ unpin) | scale 0.25 → 1, opacity 0 → 1, blur 4 → 0, spring `duration 0.3, bounce 0`; reduced motion: opacity on the swap curve over `fast` | `.iconSwapTransition()` with `.id(symbol)` in a `ZStack` (`Motion.iconSwap(reduced:)`, `Motion.iconSwap`, `Motion.iconSwapScale`, `Motion.iconSwapBlur`, `Motion.iconFade`); `TypeGlyph(active:)` uses the symbol replace effect instead, since Glyphs builds without Motion |
 | Send button filling | fill and glyph color 150 ms ease-out when text arrives or leaves; the arrow ↔ stop square is the glyph-trading row above, the circle never moves | `Motion.crossFade` on the fill; `.id(stops)` with `Motion.iconSwap(reduced:)` on the glyph |
 | Composer chip row | appears on focus: 200 ms ease-out, opacity and 8 pt translateY; leaves 150 ms opacity only; the dock's height follows on the collapse curve | `Motion.appear(reduced:)`, `Motion.collapse` |
 | Working strip state | 120 ms ease-out, opacity only; the row never changes height | `WorkingStripView.fade` (the one 120 ms curve; the kit has none) |
@@ -1944,7 +1961,7 @@ used.
 | Upload bar | width on the 150 ms numeric curve; hidden once the host has the file | `Motion.numeric` |
 | Card decided | buttons fade, card settles 200 ms ease-out; a refusal's quiet line cross-fades in 150 ms | `Motion.collapse`, `Motion.crossFade` |
 | Haptics | light impact on send and on a decision; nothing on keyboard input | `.sensoryFeedback(.impact(weight: .light), trigger:)` |
-| Jump-to-latest pill | 150 ms opacity and 8 pt translateY, both directions | `.jumpTransition()` (`Motion.jump(reduced:)`) |
+| Jump-to-latest pill | `fast` opacity and 4 pt translateY, both directions | `.jumpTransition()` (`Motion.jump(reduced:)`) |
 | Diff hunk sideways | follows the finger through an interactive spring, momentum from the release velocity, rubber band at both ends, settles with spring `duration min(0.6, 0.35 + travel × 0.0004), bounce 0`; next and previous hunk scroll 250 ms on `timingCurve(0.23, 1, 0.32, 1)` to the header's exact offset | `DiffMotion.track`, `DiffMotion.settle(travel:)`, `DiffMotion.jump` (Thread/DiffStyles.swift); `DiffLayout.hunkStarts` for the offsets |
 | Diff lines landing | 150 ms cross-fade over the shimmer; nothing when the lines were in hand | `Motion.crossFade`; the counter rolls with `.numeric(current)` |
 | Fleet toast | 150 ms opacity, both directions; a clean result leaves after 4 s | `FleetToastLine` (`Motion.crossFade`) |

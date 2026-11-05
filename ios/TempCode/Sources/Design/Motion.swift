@@ -1,73 +1,97 @@
 import SwiftUI
+import TempCodeClient
 
-/// The motion table of docs/IOS-DESIGN.md, one name per row. Values are
-/// exact; nothing in the app inlines a duration, a curve or a travel. Every
-/// ease-out is the desktop's `EASE_OUT` (lib/ease.ts), so a press, a row
-/// and a cross-fade feel the same on both apps. Every transition here has a
-/// reduced-motion form: cross-fades replace every translate and spring.
-/// The modifiers at the bottom read that setting themselves, so a sibling
-/// applies `.rowAppearTransition()` and is done.
+/// The motion table of docs/IOS-DESIGN.md, one name per row. The numbers
+/// are the desktop's, held once in the client package's `MotionValues`
+/// (scripts/ios-motion-parity.test.ts compares them with index.css and
+/// lib/ease.ts); this file only turns them into SwiftUI animations. Nothing
+/// in the app inlines a duration, a curve or a travel. Every transition here
+/// has a reduced-motion form: cross-fades replace every translate and
+/// spring. The modifiers at the bottom read that setting themselves, so a
+/// sibling applies `.rowAppearTransition()` and is done.
 enum Motion {
-    /// The desktop's EASE_OUT (lib/ease.ts), `cubic-bezier(0.16, 1, 0.3, 1)`:
-    /// fast out of the gate, a long settle. SwiftUI's `.easeOut` is CSS's
+    /// A `MotionValues` curve over `seconds`. SwiftUI's `.easeOut` is CSS's
     /// weaker `(0, 0, 0.58, 1)` and is never used here.
-    private static func out(_ seconds: Double) -> Animation {
-        .timingCurve(0.16, 1, 0.3, 1, duration: seconds)
+    static func curve(_ curve: MotionValues.Curve, _ seconds: Double) -> Animation {
+        .timingCurve(curve.x1, curve.y1, curve.x2, curve.y2, duration: seconds)
     }
+
+    /// The desktop's ease-out over `seconds`: fast out of the gate, a long settle.
+    static func out(_ seconds: Double) -> Animation {
+        curve(MotionValues.easeOut, seconds)
+    }
+
+    static func spring(_ values: MotionValues.Spring) -> Animation {
+        .spring(Spring(mass: values.mass, stiffness: values.stiffness, damping: values.damping))
+    }
+
+    // MARK: The desktop's steps
+
+    /// `--dur-fast` on ease-out: a fade, a first appearance.
+    static let fast: Animation = out(MotionValues.fast)
+    /// `--dur-base` on ease-out: a step landing, a chevron turning.
+    static let base: Animation = out(MotionValues.base)
+    /// `SPRING_LAYOUT`: a row gliding into place, a fold opening, a slot rising.
+    static let layout: Animation = spring(MotionValues.springLayout)
+    /// `SPRING_GLIDE`: a released drag settling.
+    static let glide: Animation = spring(MotionValues.springGlide)
+    /// The morph's two halves on the swap curve.
+    static let swapOut: Animation = curve(MotionValues.easeSwap, MotionValues.swapOut)
+    static let swapIn: Animation = curve(MotionValues.easeSwap, MotionValues.base)
+    /// A newly sent bubble rising.
+    static let rise: Animation = curve(MotionValues.easeDrawer, MotionValues.slow)
 
     // MARK: Press
 
-    /// Press on any row or button: scale 0.96, 160 ms ease-out, from the touch down.
-    static let pressScale: CGFloat = 0.96
-    static let press: Animation = out(0.16)
+    /// Press on any row or button: scale 0.96 on ease-out, from the touch down.
+    static let pressScale = CGFloat(MotionValues.pressScale)
+    static let press: Animation = out(MotionValues.press)
     /// Under reduced motion the pressed control dims to this instead of scaling.
-    static let pressDim: Double = 0.6
+    static let pressDim = MotionValues.pressDim
 
     // MARK: Segments and sheets
 
-    /// Segment swipes settle with the drawer curve, `cubic-bezier(0.32, 0.72, 0, 1)`.
-    static let drawer: Animation = .timingCurve(0.32, 0.72, 0, 1, duration: 0.5)
+    /// Segment swipes settle on the drawer curve.
+    static let drawer: Animation = curve(MotionValues.easeDrawer, MotionValues.drawer)
 
     // MARK: Expand and collapse
 
-    /// Row expand (todo trace, tool body): a spring with no bounce; the content
-    /// fades in over 150 ms once the height starts; collapse is 200 ms ease-out.
-    static let expand: Animation = .spring(duration: 0.35, bounce: 0)
-    static let expandContent: Animation = out(0.15).delay(0.05)
-    static let collapse: Animation = out(0.2)
-    /// A step landing in a live phase: 150 ms of opacity where it lands, no travel.
-    static let stepIn: Animation = out(0.15)
+    /// Row expand (todo trace, tool body): the layout spring; the content
+    /// fades in once the height starts; collapse is `base` on ease-out.
+    static let expand: Animation = layout
+    static let expandContent: Animation = out(MotionValues.fast).delay(MotionValues.swapOut)
+    static let collapse: Animation = base
+    /// A step landing where it lands.
+    static let stepIn: Animation = base
 
     // MARK: Rows and lines
 
-    /// A needs-you row appearing: 200 ms ease-out, opacity and 8 pt of travel;
-    /// leaving: 150 ms, opacity only.
-    static let rowAppear: Animation = out(0.2)
-    static let rowLeave: Animation = out(0.15)
-    static let travel: CGFloat = 8
+    /// A row appearing: `base`, opacity and a short travel; leaving: `fast`, opacity only.
+    static let rowAppear: Animation = base
+    static let rowLeave: Animation = fast
+    static let travel: CGFloat = 4
 
-    /// The last-activity line, the dot becoming a spinner, the jump pill:
-    /// 150 ms cross-fades; the activity line adds 2 pt of blur.
-    static let crossFade: Animation = out(0.15)
+    /// A cross-fade: the dot becoming a spinner, a line replaced in place.
+    static let crossFade: Animation = fast
     static let crossFadeBlur: CGFloat = 2
 
     /// Counts and elapsed roll their digits (`contentTransition(.numericText())`)
-    /// on the same 150 ms, so a ticking row never jitters.
-    static let numeric: Animation = out(0.15)
+    /// on the same fade, so a ticking row never jitters.
+    static let numeric: Animation = fast
 
-    /// The jump-to-latest pill: 150 ms opacity and 8 pt of travel, both directions.
-    static let jump: Animation = out(0.15)
+    /// The jump-to-latest pill.
+    static let jump: Animation = fast
 
     // MARK: A glyph trading state
 
     /// Send ↔ Stop, outline ↔ fill, pin ↔ unpin: the new glyph grows from a
-    /// quarter of its size, fading and unblurring, on a 300 ms spring with no
+    /// quarter of its size, fading and unblurring, on a spring with no
     /// bounce. Under reduced motion it cross-fades on `iconFade`.
-    static let iconSwap: Animation = .spring(duration: 0.3, bounce: 0)
+    static let iconSwap: Animation = .spring(duration: MotionValues.iconSwap, bounce: 0)
     static let iconSwapScale: CGFloat = 0.25
     static let iconSwapBlur: CGFloat = 4
-    /// The cross-fade curve for the reduced-motion icon path, `cubic-bezier(0.2, 0, 0, 1)`.
-    static let iconFade: Animation = .timingCurve(0.2, 0, 0, 1, duration: 0.15)
+    /// The cross-fade for the reduced-motion icon path, on the swap curve.
+    static let iconFade: Animation = curve(MotionValues.easeSwap, MotionValues.fast)
 
     // MARK: Transitions
 

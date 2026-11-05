@@ -64,17 +64,17 @@ struct ReviewCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: symbol)
-                    .font(held ? .footnote.weight(.medium) : .footnote)
+                    .transcriptFont(TranscriptType.line, weight: held ? .medium : .regular)
                     .foregroundStyle(tint)
                     .frame(width: 16)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(ReviewText.lead(review, label: ModelName.short(review.model)))
-                        .font(.subheadline.weight(.medium))
+                        .transcriptType(TranscriptType.prose, weight: .medium)
                         .foregroundStyle(held ? Color.primary : Color.secondary)
                     let detail = ReviewText.detail(review, resolved: resolved)
                     if !detail.isEmpty {
                         Text(detail)
-                            .font(.footnote)
+                            .transcriptType(TranscriptType.line)
                             .foregroundStyle(held ? Color.secondary : Color(.tertiaryLabel))
                             .lineLimit(2)
                     }
@@ -99,7 +99,7 @@ struct ReviewCard: View {
             if held {
                 if let block, !block.isTransient {
                     Text(block.text(now: Date().timeIntervalSince1970 * 1000))
-                        .font(.footnote)
+                        .transcriptType(TranscriptType.line)
                         .foregroundStyle(.secondary)
                 } else {
                     Button { confirming = true } label: {
@@ -113,15 +113,15 @@ struct ReviewCard: View {
                     }
                     if let failure {
                         Text(failure)
-                            .font(.footnote)
+                            .transcriptType(TranscriptType.line)
                             .foregroundStyle(Tint.destructive)
                     } else if let block {
                         Text(block.text(now: Date().timeIntervalSince1970 * 1000))
-                            .font(.footnote)
+                            .transcriptType(TranscriptType.line)
                             .foregroundStyle(.secondary)
                     } else {
                         Text("Address the findings and merge again, or merge past them.")
-                            .font(.footnote)
+                            .transcriptType(TranscriptType.line)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -183,30 +183,30 @@ struct ReviewFindingRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(ReviewText.location(finding))
-                        .font(.system(.caption, design: .monospaced))
+                        .transcriptType(TranscriptType.rowCode)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(Surface.fill, in: RoundedRectangle.inlineCorner)
                     if finding.verdict == .plausible {
                         Text("plausible")
-                            .font(.caption)
+                            .transcriptType(TranscriptType.detail)
                             .foregroundStyle(.tertiary)
                     }
                     Text(finding.summary)
-                        .font(.subheadline)
+                        .transcriptType(TranscriptType.prose)
                         .foregroundStyle(strong ? .primary : .secondary)
                     Spacer(minLength: 0)
                     if hasScenario {
                         Image(systemName: "chevron.right")
-                            .font(.caption2.weight(.semibold))
+                            .transcriptFont(TranscriptType.detail, weight: .semibold)
                             .foregroundStyle(.tertiary)
                             .rotationEffect(.degrees(open ? 90 : 0))
                     }
                 }
                 if open {
                     Text(finding.failure_scenario)
-                        .font(.footnote)
+                        .transcriptType(TranscriptType.line)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                         .transition(.asymmetric(insertion: .opacity.animation(Motion.expandContent), removal: .opacity.animation(Motion.collapse)))
@@ -214,7 +214,7 @@ struct ReviewFindingRow: View {
             }
             .padding(.leading, 10)
             .overlay(alignment: .leading) { Rectangle().fill(Surface.hairline).frame(width: 1 / scale) }
-            .frame(minHeight: 28)
+            .frame(minHeight: TranscriptMetrics.line)
             .contentShape(Rectangle())
         }
         .buttonStyle(.pressable)
@@ -231,7 +231,7 @@ struct ReviewerChip: View {
     var body: some View {
         NavigationLink(value: ThreadScreenRoute(sessionId: reviewerId)) {
             Text("Review thread")
-                .font(.footnote)
+                .transcriptType(TranscriptType.line)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -254,14 +254,14 @@ private struct FoldLine: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
+                    .transcriptFont(TranscriptType.detail, weight: .semibold)
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(open ? 90 : 0))
                 Text(label)
-                    .font(.footnote)
+                    .transcriptType(TranscriptType.line)
                     .foregroundStyle(.tertiary)
             }
-            .frame(minHeight: 28)
+            .frame(minHeight: TranscriptMetrics.line)
             .contentShape(Rectangle())
         }
         .buttonStyle(.pressable)
@@ -284,12 +284,12 @@ struct GateCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: gate.ok ? "checkmark" : "exclamationmark.triangle")
-                    .font(gate.ok ? .footnote : .footnote.weight(.medium))
+                    .transcriptFont(TranscriptType.line, weight: gate.ok ? .regular : .medium)
                     .foregroundStyle(gate.ok ? Tint.success : Tint.destructive)
                     .frame(width: 16)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(GateText.lead(gate))
-                        .font(.subheadline.weight(.medium))
+                        .transcriptType(TranscriptType.prose, weight: .medium)
                         .foregroundStyle(gate.ok ? Color.secondary : Color.primary)
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         MetaGlyph("arrow.triangle.branch", label: "Branch")
@@ -301,7 +301,7 @@ struct GateCard: View {
                                 .padding(.leading, 4)
                         }
                     }
-                    .font(.footnote)
+                    .transcriptType(TranscriptType.line)
                     .lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -311,7 +311,7 @@ struct GateCard: View {
                 if open {
                     ScrollView(.horizontal, showsIndicators: false) {
                         Text(gate.log.trimmingCharacters(in: .whitespacesAndNewlines))
-                            .font(.system(.caption, design: .monospaced))
+                            .transcriptType(TranscriptType.rowCode)
                             .foregroundStyle(.secondary)
                             .lineSpacing(2)
                             .textSelection(.enabled)
@@ -362,16 +362,16 @@ struct PlanHandoffRow: View {
                     AgentGlyph(type: build.agentType)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(build.title.isEmpty ? line.text : build.title)
-                            .font(.subheadline)
+                            .transcriptType(TranscriptType.prose)
                             .lineLimit(1)
                         Text(ModelName.short(build.model))
-                            .font(.footnote)
+                            .transcriptType(TranscriptType.line)
                             .foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 8)
                 }
                 .padding(.horizontal, 8)
-                .frame(minHeight: 44)
+                .frame(minHeight: TranscriptMetrics.hitArea)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.pressable)
