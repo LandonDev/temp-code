@@ -177,10 +177,11 @@ can start its first child. Then the project: Pause all with the running count (o
 something runs; a failure is a toast), Show terminal while the project
 has one, else New terminal with ⌃\`, Recent threads… and Archived threads…: each a `Popover` from
 the ⋯ button over one list body (`ThreadListPopover`, in the dialogs chunk, mounted only while a list is open), freshest first, a
-row the tinted type glyph, the title and the age, a filter past six and one muted
+row one 28px line of the tinted type glyph, the title and its age at the
+end in 12px muted `tabular-nums`, a filter past six and one muted
 "No matches" row; Recent threads… lists every settled root of the strip's
-scope and a row opens it, Archived threads… restores one (Restore on
-hover); Escape gives focus back to ⋯. A menu row that names a type (the
+scope and a row opens it, Archived threads… restores one (Restore takes
+the age's place on hover, in the same cell, so nothing moves); Escape gives focus back to ⋯. A menu row that names a type (the
 thread's Type submenu, the workspace's Archive dormant rows) draws
 `THREAD_MENU_ICONS`: its type's glyph in its tint. The branch is the top row
 of the right panel's Changes section, not the header's.
