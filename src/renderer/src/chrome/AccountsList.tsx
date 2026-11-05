@@ -6,14 +6,14 @@ import { HeadroomLine } from "./HeadroomLine";
 import {
   cycleMs,
   displayName,
-  fillFor,
   onPaceLeft,
   percentLeft,
   reportOf,
   resetLabel,
-  toneFor,
   untilLabel,
 } from "../lib/accounts";
+import { fillFor, toneFor } from "../aliax/lib/accounts";
+import type { ProgressFill } from "../components/ui/progress";
 import { sourceLine, type AccountScope } from "../lib/accountScope";
 import type { AccountHeadroom, AccountProvider, ProviderAccounts } from "@server/shared/accounts";
 
@@ -338,6 +338,8 @@ function CycleRing({ fraction }: { fraction: number }) {
   );
 }
 
+const FILL_CLASS: Record<ProgressFill, string> = { foreground: "bg-primary", muted: "bg-muted-foreground", warning: "bg-warning" };
+
 /** A fill of what is left, with a tick where an even burn would sit. */
 export function Bar({ w, now, height }: { w: UsageWindow; now: number; height: string }) {
   const left = percentLeft(w);
@@ -353,7 +355,7 @@ export function Bar({ w, now, height }: { w: UsageWindow; now: number; height: s
       className={`relative block w-full overflow-visible rounded-full bg-foreground/10 ${height}`}
     >
       <span
-        className={`block h-full rounded-full ${fillFor(w, now)}`}
+        className={`block h-full rounded-full ${FILL_CLASS[fillFor(w, now)]}`}
         style={{ width: `${left}%` }}
       />
       {budget !== null && budget > 2 && budget < 98 ? (

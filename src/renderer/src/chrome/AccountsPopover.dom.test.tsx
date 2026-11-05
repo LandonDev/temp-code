@@ -136,3 +136,24 @@ describe("a Meta thread's keys", () => {
   });
 });
 
+
+describe("a window's colour", () => {
+  it("is the Accounts page's: room muted, running low amber, never green or red", async () => {
+    const HOUR = 3_600_000;
+    const list = {
+      ...accounts,
+      reports: [
+        { profileName: "a", windows: [{ label: "5h", usedPercent: 97, resetsAt: 4 * HOUR, periodMs: 5 * HOUR }] },
+        { profileName: "b", windows: [{ label: "5h", usedPercent: 10, resetsAt: 4 * HOUR, periodMs: 5 * HOUR }] },
+      ],
+    } as unknown as ProviderAccounts;
+    render(<Harness onOpenChange={() => {}} list={list} />);
+    fireEvent.click(screen.getByRole("button", { name: "Pick another account" }));
+    const listbox = await screen.findByRole("listbox", { name: "claude accounts" });
+    const picker = listbox.closest("[data-account-picker]") ?? listbox;
+    expect(picker.querySelector(".text-danger, .bg-danger, .text-success, .bg-success, .text-destructive, .bg-destructive")).toBeNull();
+    const [low, roomy] = within(listbox).getAllByRole("option");
+    expect(within(low).getByText("3%").className).toContain("text-warning");
+    expect(within(roomy).getByText("90%").className).toContain("text-muted-foreground");
+  });
+});

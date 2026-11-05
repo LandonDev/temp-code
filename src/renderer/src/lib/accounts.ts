@@ -1,23 +1,11 @@
-import type { ProfileView, UsageReport, UsageWindow } from "aliax-core/shared/types";
+import type { ProfileView, UsageReport } from "aliax-core/shared/types";
 import { cycleMs, healthOf, onPaceLeft, percentLeft, type Health } from "aliax-core/shared/health";
 
+// A window's colour is the Accounts page's (aliax/lib/accounts `toneFor`,
+// `fillFor`): room is muted, running low is amber, never green or red.
 export { cycleMs, healthOf, onPaceLeft, percentLeft, type Health };
 
 export const displayName = (p: ProfileView): string => p.nickname ?? p.email ?? p.name;
-
-const TONE: Record<Health, string> = {
-  good: "text-success",
-  warning: "text-warning",
-  critical: "text-danger",
-};
-const FILL: Record<Health, string> = {
-  good: "bg-success",
-  warning: "bg-warning",
-  critical: "bg-danger",
-};
-
-export const toneFor = (w: UsageWindow, now: number): string => TONE[healthOf(w, now)];
-export const fillFor = (w: UsageWindow, now: number): string => FILL[healthOf(w, now)];
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
