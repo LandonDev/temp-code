@@ -23,3 +23,5 @@ export { SwitchBranchDialog } from "./SwitchBranchDialog";
 export { ThreadListPopover } from "./ThreadListPopover";
 // The project plan chip's popover options (chrome/ProjectPlanChip.tsx), mounted only while it is open.
 export { ProjectPlanOptions } from "../surfaces/threads/ProjectPlanCard";
+// The thread menu's Goal… (chrome/GoalDialog.tsx hosts it once).
+export { GoalDialog } from "./GoalDialogBody";

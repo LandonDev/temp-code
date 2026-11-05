@@ -150,6 +150,7 @@ import {
   resolveWorkspacePath,
 } from "./lib/paths";
 import { removeProjectData } from "./lib/projectData";
+import { activeLanding } from "./lib/projectLanding";
 import {
   contextForCwd,
   contextOfSession,
@@ -816,19 +817,21 @@ export default function App() {
       // A full-screen view (inbox, notes, search) would otherwise stay on top
       // of the pane, most visibly when that project's tab is already active.
       shell.closeViews();
-      const target = projectTabTarget(
-        workspaceTabsStore.getState(),
-        sessionStore.getSnapshot(),
-        projectId,
-      );
+      const tabs = workspaceTabsStore.getState();
+      const target = projectTabTarget(tabs, sessionStore.getSnapshot(), projectId);
       if (target.action === "stay") return;
+      const metas = sessionStore.metas();
+      const catalog = workspaceStore.getSnapshot();
+      // Coming back from elsewhere: the most recent active thread first.
+      const shown = tabs.tabs.find((tab) => tab.id === tabs.activeTabId)?.focusedId;
+      const active = activeLanding({ projectId }, metas, catalog, shown)?.id;
       // Left on its draft: the draft comes back, even with a thread tab open.
-      const landing = resolveLanding({ projectId }, sessionStore.metas(), workspaceStore.getSnapshot());
+      const landing = active ?? resolveLanding({ projectId }, metas, catalog);
       if (landing === DRAFT_LANDING) {
         openProjectDraft({ projectId }, { placement: "tab" });
         return;
       }
-      if (target.action === "activate") {
+      if (target.action === "activate" && !active) {
         activateTab(target.tabId);
         return;
       }
@@ -2048,13 +2051,13 @@ export default function App() {
         (activeWorkspace ? focusedFileTab(activeWorkspace)?.cwd : undefined);
       if (project.alreadyIn(currentCwd, normalized)) return;
 
-      // The thread this workspace was last on comes back before any other
-      // open tab of it, and an open tab before a blank one.
-      const landing = resolveLanding(
-        { workspacePath: normalized },
-        sessionStore.metas(),
-        workspaceStore.getSnapshot(),
-      );
+      // Its most recent active thread, else the thread this workspace was
+      // last on, comes back before any other open tab of it, and an open
+      // tab before a blank one.
+      const active = activeLanding({ workspacePath: normalized }, sessionStore.metas(), workspaceStore.getSnapshot())?.id;
+      const landing =
+        active ??
+        resolveLanding({ workspacePath: normalized }, sessionStore.metas(), workspaceStore.getSnapshot());
       if (landing === DRAFT_LANDING) {
         project.enterWorkspace(normalized);
         openProjectDraft({ cwd: normalized }, { placement: "tab" });
@@ -2066,7 +2069,7 @@ export default function App() {
         normalized,
         landing,
       );
-      if (match) {
+      if (match && !active) {
         project.enterWorkspace(normalized);
         if (landing && leafIds(match.layout).includes(landing)) focusOpenSession(landing);
         else activateTab(match.id);
@@ -2092,21 +2095,23 @@ export default function App() {
     project.setProjectCwd("~");
     const state = workspaceTabsStore.getState();
     const catalog = workspaceStore.getSnapshot();
-    const landing = resolveLanding({ workspacePath: "~" }, sessionStore.metas(), catalog);
+    const open = filterTabsForWorkspace(state.tabs, sessionStore.getSnapshot(), catalog, null);
+    const inHome = open.some((tab) => tab.id === state.activeTabId);
+    const active = inHome ? null : activeLanding({ workspacePath: "~" }, sessionStore.metas(), catalog)?.id;
+    const landing = active ?? resolveLanding({ workspacePath: "~" }, sessionStore.metas(), catalog);
     if (landing === DRAFT_LANDING) {
       project.selectProject(null);
       openProjectDraft({ projectId: null }, { placement: "tab" });
       return;
     }
     if (landing && focusOpenSession(landing)) return;
-    const open = filterTabsForWorkspace(state.tabs, sessionStore.getSnapshot(), catalog, null);
-    if (open.some((tab) => tab.id === state.activeTabId)) return;
+    if (inHome) return;
     const recent = [...state.visits.back]
       .reverse()
       .map((id) => open.find((tab) => tab.id === id))
       .find((tab) => tab !== undefined);
     const target = recent ?? open[0];
-    if (target) {
+    if (target && !active) {
       activateTab(target.id);
       return;
     }

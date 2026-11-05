@@ -191,11 +191,21 @@ column, its title regular and muted unless unread, and no resting fill; it
 is never set like a container. A Working row ends in its state's glyph.
 
 **The project's home.** A project card's click selects the project
-(`onSelectProjectCard` in App.tsx): any full-window view closes, its open
-tab comes forward, else the thread it was last on, else the project's draft.
-A project left while its draft was on screen comes back on the draft with
-its text, even when one of its thread tabs is still open (`DRAFT_LANDING`,
-lib/projectContext.ts; saved for every linked copy and the workspace). The
+(`onSelectProjectCard` in App.tsx): any full-window view closes. Coming from elsewhere, the project's most
+recent active thread comes forward first (`activeLanding`,
+lib/projectLanding.ts): a root on any linked copy that is working, waiting,
+paused, queued or watching, newest by its last event, on the host it lives
+on; a batch thread stands in for its master, which opens on its board, and
+a subagent never counts. With nothing active, a project left while its
+draft was on screen comes back on the draft with its text, even when one of
+its thread tabs is still open (`DRAFT_LANDING`, lib/projectContext.ts;
+saved for every linked copy and the workspace), else its open tab comes
+forward, else the thread it was last on, else the project's draft. A click
+while the person is already in the project (its tab on screen, or a linked
+copy's thread) moves nothing, so a thread turning active never takes their
+place. The workspace row (and the title bar's project button) and the
+Chats row take the same active thread first; a restored window comes back
+on its saved tabs, not a landing. The
 project's threads are then the title bar's strip ("Thread strip" below) and
 the ⋯ menu's Recent threads…, which lists every one that has settled. There
 is no project page in the pane.

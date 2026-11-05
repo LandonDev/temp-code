@@ -79,6 +79,7 @@ export const NEVER_IN_ENTRY = [
   'src/renderer/src/chrome/RemoteFolderDialog.tsx',
   'src/renderer/src/chrome/WhatsNewDialog.tsx',
   'src/renderer/src/chrome/ThreadBatchDialog.tsx',
+  'src/renderer/src/chrome/GoalDialogBody.tsx',
   'src/renderer/src/lib/releaseNotesParse.ts',
   // The rail's virtualizer rides virtualChunk; the rail lists its cards plainly until it lands.
   'src/renderer/src/chrome/railVirtualRows.tsx',

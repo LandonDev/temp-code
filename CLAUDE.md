@@ -387,7 +387,7 @@ app replaces itself from the feed, and only from the feed.
   frame, the media viewer, the lightbox, the release notes with the
   changelog parser, the action-opened dialogs (`dialogsChunk` over
   chrome/dialogs.ts, each mounted only while open, the thread menu's
-  Resources, Archive, Mac bridge and Rename, its Recent and Archived lists
+  Resources, Archive, Mac bridge, Rename and Goal, its Recent and Archived lists
   (`ThreadListPopover`), the plan chip's options and the branch picker's
   switch confirm among them), the failure card's account list (`accountsChunk`),
   a workspace's threads beside the rail (`workspaceThreadsChunk`), the
@@ -2086,7 +2086,10 @@ proof and the sizing rules; the pieces, by name:
   a pane whose thread is gone shows "No longer on <host>" with Close tab
   and Open archived (`SessionGone`); the new-chat screen is a project's one
   remembered draft (lib/projectDrafts.ts, keyed like the strip order, never
-  a chip, opened by every New thread path through App's `openProjectDraft`),
+  a chip, opened by every New thread path through App's `openProjectDraft`;
+  coming back to a project, a workspace or the home opens its most recent
+  active thread first, a batch thread's master on its board, then the
+  remembered thread or draft: `activeLanding` in lib/projectLanding.ts),
   and the host archives empty placeholder threads a day old at boot
   (`archiveEmptyThreads`); the board under Search, Inbox, Notes,
   Accounts or Settings is parked (`.board-parked`), never display:none.

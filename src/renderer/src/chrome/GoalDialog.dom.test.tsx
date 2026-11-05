@@ -2,7 +2,8 @@
 /**
  * The goal dialog: the thread menu's Goal… opens it for its own thread
  * only; Set and Update call setGoal, Clear shows only while a goal runs,
- * Enter sets and Shift+Enter does not.
+ * Enter sets and Shift+Enter does not. The host mounts the body from the
+ * dialogs chunk.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -18,7 +19,8 @@ vi.mock("../lib/tcserver/store", () => ({
   useSessionMeta: (id: string | null) => (id === "off-screen" ? { id, goal: { condition: "the rail is fixed", iterations: 1, setAt: 1 } } : null),
 }));
 
-import { GoalDialog, GoalDialogHost, goalDialog } from "./GoalDialog";
+import { GoalDialogHost, goalDialog } from "./GoalDialog";
+import { GoalDialog } from "./GoalDialogBody";
 
 afterEach(() => {
   act(() => goalDialog.close());
@@ -76,6 +78,8 @@ describe("GoalDialog", () => {
     render(<GoalDialogHost />);
     expect(screen.queryByRole("dialog")).toBeNull();
     act(() => goalDialog.open("off-screen"));
+    // The body rides the dialogs chunk: the first open waits for it.
+    await screen.findByRole("textbox", { name: "Goal" }, { timeout: 10_000 });
     expect((screen.getByRole("textbox", { name: "Goal" }) as HTMLTextAreaElement).value).toBe("the rail is fixed");
     expect(screen.getByText("Checked once")).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Clear" })));
