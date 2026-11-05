@@ -2090,7 +2090,10 @@ names the far child).
 - `bun scripts/measure-renderer-soak.ts` soaks a built tree's window
   (`--build prod|dev`, `--host synthetic|box`, `--view board|stream|split`,
   `--minutes`, `--every`, `--label`, `--tree`, `--gate`, `--scene
-  board|chat|typing|scenarios` (typing: the master's composer typed into
+  board|chat|typing|switch|scenarios` (switch: the rail's two workspaces
+  clicked in turn, each click timed to its column and strip and to its
+  landing thread's rows, `--workspaces a,b`, `--clicks`, scripts/lib/soakSwitch.ts,
+  a hand-run scene; docs/box.md "Switching workspaces"; typing: the master's composer typed into
   beside its board in phases under the board's load, the master's churn and
   a 3,000-edit live-edit flood every 10 s, scripts/lib/soakTyping.ts, judged
   by `TYPING_RULE`; docs/box.md "Typing on a busy master"; scenarios: the no-jerk timeline of
@@ -2164,7 +2167,12 @@ names the far child).
   memoized. The composer keeps its session by `sameComposerChrome`
   (lib/session.ts `COMPOSER_FIELDS`, a proxy test fails on a read outside
   it) and reads its meta through `useSessionMetaValue`, one primitive at a
-  time, so a busy master's activity renders no composer. A component that only needs the metas when a
+  time, so a busy master's activity renders no composer. A parked
+  transcript (its tab behind `content-visibility: hidden`) reads and writes
+  nothing on a resize or a push and catches up when it shows; its
+  `--transcript-viewport` is written only when it moves (a custom property
+  restyles every row under it). Every `RowsContextMenu` mounts its body on
+  the first right-click (`lazyMount`, lib/lazyMenuGuard.test.ts). A component that only needs the metas when a
   menu opens or a click lands reads `sessionStore.metas()` then, never
   `useSessionMetas()`: a hook subscribed to the metas renders its component
   on every push, whatever it returns. Keep the hot parents compilable by

@@ -3139,6 +3139,61 @@ reserve (deferring the store's flush while a key is fresh) for a busy p95
 still over 33 ms on the Mac; at 9.5 ms it was not built. The reports are in
 `.temp-code/perf3/mac/`.
 
+### Switching workspaces
+
+The user, 2026-11-05: "There is a little bit of lag switching between the
+CosmicClient workspace and the temp-code workspace." `--scene switch`
+clicks the rail's two workspaces in turn. A warm-up visit to each records
+what it shows once settled (its project cards, the threads in the title
+bar's strip, its landing thread); then each click is timed to the end of
+the first frame whose column holds those cards and whose strip holds one of
+those threads, and to the first frame its landing thread's pane shows rows.
+Each click also reads its long tasks, its long animation frames, the
+requests it sent and the panes mounted after it (a switch back to a parked
+tab finds its pane there), and a dev build tallies what each click rendered
+by component (scripts/lib/soakSwitch.ts; soakJudge.ts `SWITCH_RULE`: p95 at
+most 100 ms to the column and strip, every click arriving). The synthetic
+host's `switch` scene seeds a second workspace (two projects, six settled
+chats) beside the master's batch under the board's load; `--host box
+--workspaces a,b` clicks two of the box's own, read-only.
+
+On the box, temp-code (its master with 90-odd threads) against cosmicweb
+(seven projects, landing on a draft), every click was one long task: its
+handler ran 60 to 107 ms, 23 to 46 ms of it style forced inside script over
+2,200 to 4,000 elements. The master's tab stays mounted while the other
+workspace shows, parked behind `content-visibility: hidden`, and its
+transcript kept working for it: its resize observer wrote
+`--transcript-viewport` on every tick, and a custom property restyles every
+row under it, then read `scrollHeight`, which forced that restyle and a
+layout of the hidden subtree, on every park and every unpark; the rows'
+placement and the follow scroll read layout on every push while parked
+too. Now a parked transcript reads and writes nothing and catches up when
+it shows, and the property is written only when its value moves
+(AgentTranscript.tsx). The rail, the column's list, the strip, the board
+and the file tree mounted their right-click menu's body at rest, which
+re-rendered Base UI's menu tree with every render of their lists; every
+`RowsContextMenu` now mounts it on the first right-click
+(lib/lazyMenuGuard.test.ts).
+
+Traced back to back on the box, 8 clicks each:
+
+| Tree | Load | Elements restyled a click | Style a click | The click's handler | Column and strip p50 / p95 |
+|---|---|---|---|---|---|
+| master (ebdbbcca) | 32 | 2,239-3,981 | 23-46 ms | 59-94 ms | 111 / 166 ms |
+| this change | 25 | 1,362-1,498 | 17-18 ms | 49-66 ms | 67 / 104 ms |
+
+The element counts do not depend on the load; the wall-clock times do,
+and four interleaved untraced pairs at loads of 14 to 41 could not resolve
+the difference. The synthetic scene's gate form (12 clicks, 37 s from
+launch to teardown) read p95 109 ms on the box at load 16. It is a hand-run
+scene until a run on the Mac sizes its bound for the gate.
+
+```bash
+bun scripts/measure-renderer-soak.ts --scene switch --label <name>   # synthetic, 20 clicks
+bun scripts/measure-renderer-soak.ts --scene switch --host box --workspaces temp-code,cosmicweb --trace 14 --no-profile --label <name>
+bun scripts/measure-renderer-soak.ts --scene switch --build dev --no-profile --label <name>   # what each click rendered
+```
+
 ## Profiling the host
 
 On the box, run `tc-local doctor.profile '{"seconds":15}'` (the local
