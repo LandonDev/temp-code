@@ -2,7 +2,7 @@ import { PROVIDER_OF, type AccountHeadroom, type AccountProvider, type MintProgr
 import type { ProfileView, ServiceId, ServiceView, UsageReport } from "aliax-core/shared/types";
 import { HarnessIcon, type MarkId } from "@renderer/chrome/HarnessIcon";
 import { MoreHorizontal } from "@renderer/chrome/icons";
-import { PageSection } from "@renderer/components/page";
+import { PageEmpty, PageSection } from "@renderer/components/page";
 import { Alert, AlertDescription } from "@renderer/components/ui/alert";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -16,7 +16,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
-import { Empty, EmptyTitle } from "@renderer/components/ui/empty";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
@@ -176,9 +175,7 @@ function ProviderSection({ service, props, now, columns }: { service: ServiceVie
         </Alert>
       ) : null}
       {!service.installed ? null : service.profiles.length === 0 ? (
-        <Empty className="py-6">
-          <EmptyTitle>{keyed ? "No keys saved" : "No accounts saved"}</EmptyTitle>
-        </Empty>
+        <PageEmpty>{keyed ? "No keys saved" : "No accounts saved"}</PageEmpty>
       ) : (
         service.profiles.map((p) => (
           <AccountRow

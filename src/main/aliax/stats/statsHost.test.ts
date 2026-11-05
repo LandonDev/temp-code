@@ -131,4 +131,18 @@ describe('StatsHost', () => {
     fresh.worker().emit('exit', 0)
     expect(fresh.workers).toHaveLength(1)
   })
+
+  it('Reindex starts a worker that was left down, and Stats reads available again', async () => {
+    const r = rig()
+    r.worker().emit('exit', 1)
+    r.worker().emit('exit', 1)
+    expect(r.host.status()).toMatchObject({ unavailable: 'exited (1)' })
+    expect(await r.host.reindex()).toMatchObject({ filesDone: 2 })
+    expect(r.workers).toHaveLength(3)
+    expect(r.host.status()).toMatchObject({ restarts: 0, unavailable: null })
+    expect((await r.host.bundle()).unavailable).toBeUndefined()
+    const stopped = rig()
+    await stopped.host.stop()
+    await expect(stopped.host.reindex()).rejects.toThrow()
+  })
 })

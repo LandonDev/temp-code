@@ -136,7 +136,15 @@ export class StatsHost {
     return this.ask<IndexProgress>({ type: 'index' })
   }
 
+  /** Index everything again. A worker that was left down is started first,
+   *  with its restart allowance back: Reindex is the page's one way out of
+   *  Stats reading unavailable. */
   reindex(): Promise<IndexProgress> {
+    if (!this.worker && !this.stopped) {
+      this.restarts = 0
+      this.unavailable = null
+      this.start()
+    }
     return this.ask<IndexProgress>({ type: 'reindex' })
   }
 

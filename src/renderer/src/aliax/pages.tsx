@@ -248,7 +248,9 @@ export function StatsPage(): React.JSX.Element {
     }
   };
 
-  const description = status?.indexing
+  const description = data?.unavailable ? (
+    <span className="text-destructive">Couldn't load the stats: {data.unavailable}</span>
+  ) : status?.indexing
     ? `Indexing ${status.filesDone.toLocaleString()} of ${status.filesTotal.toLocaleString()} session logs`
     : data && data.totals.turns > 0
       ? `From ${compact(data.totals.turns)} turns in your local session logs, updated ${localDayTime(data.generatedAt)}`

@@ -29,7 +29,16 @@ describe("Stats", () => {
   it("keeps the empty pace inside the same section", () => {
     render(<StatsView data={{ ...STATS, pace: [] }} status={null} />);
     expect(headings()).toEqual(ORDER);
-    expect(screen.getByRole("region", { name: "Pace" }).textContent).toContain("Needs three finished cycles");
+    const pace = screen.getByRole("region", { name: "Pace" });
+    expect(screen.getByText("Needs three finished cycles").getAttribute("data-slot")).toBe("page-empty");
+    expect(pace.querySelector("[data-slot=empty]")).toBeNull();
+  });
+
+  it("says an empty section as the page's one muted line", () => {
+    render(<StatsView data={{ ...STATS, daily: [] }} status={null} />);
+    const daily = screen.getByRole("region", { name: "Daily output" });
+    expect(daily.querySelector("[data-slot=page-empty]")!.textContent).toBe("Nothing in the last 30 days");
+    expect(daily.querySelector("[data-slot=empty]")).toBeNull();
   });
 
   it("loads under the same seven headings", () => {

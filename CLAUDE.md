@@ -2287,7 +2287,8 @@ proof and the sizing rules; the pieces, by name:
   `statsHost.ts` is main's side (one bundle ask in flight shared by every
   caller, the progress mirrored, the samples and app events forwarded, one
   restart, then `unavailable`: the last bundle it gave, else an empty one,
-  with the reason on `StatsBundle.unavailable`); the pages' three handlers
+  with the reason on `StatsBundle.unavailable`, which the Stats page says as
+  one red line under its title; Reindex starts a worker left down again); the pages' three handlers
   and aliax.ts's usage sample and app event hooks go through the host, and
   main never opens stats.db. Proof `bun run script:e2e-stats-loop` (the
   box's real logs indexed twice, on the loop and through the worker, the

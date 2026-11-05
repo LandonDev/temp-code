@@ -259,11 +259,27 @@ describe('StatsPage', () => {
     render(<StatsPage />)
     await act(flush)
     await act(flush)
-    expect(screen.getByText('Indexing 120 of 3,400 session logs', { selector: 'p' })).toBeTruthy()
+    // The page's line alone says the progress; a first index is a load, not an empty page.
+    expect(screen.getAllByText('Indexing 120 of 3,400 session logs')).toHaveLength(1)
+    expect(document.querySelector('[aria-busy=true]')).toBeTruthy()
+    expect(screen.queryByText('Nothing to show yet')).toBeNull()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Reindex' }))
     })
     expect(aliax.statsReindex).toHaveBeenCalledTimes(1)
+  })
+
+  it('says a stats worker that is gone in one red line, never that there are no session logs', async () => {
+    aliax.stats.mockResolvedValue({ ...emptyBundle(), unavailable: 'exited (1)' })
+    render(<StatsPage />)
+    await act(flush)
+    await act(flush)
+    const line = screen.getByText(/exited \(1\)/)
+    expect(line.className).toContain('text-destructive')
+    expect(line.closest('p')!.className).toContain('text-xs')
+    expect(screen.queryByText('No Claude Code or Codex session logs on this machine.')).toBeNull()
+    expect(screen.queryByText('Nothing to show yet')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Reindex' })).toBeTruthy()
   })
 
   it('renders every chart from a populated bundle', async () => {

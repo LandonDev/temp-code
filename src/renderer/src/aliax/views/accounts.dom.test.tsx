@@ -158,7 +158,8 @@ describe("AccountsView", () => {
     expect(within(cursor).getByText("Not installed")).toBeTruthy();
     expect(within(cursor).queryByRole("button")).toBeNull();
     const codex = screen.getByRole("region", { name: "Codex" });
-    expect(within(codex).getByText("No accounts saved")).toBeTruthy();
+    expect(within(codex).getByText("No accounts saved").getAttribute("data-slot")).toBe("page-empty");
+    expect(codex.querySelector("[data-slot=empty]")).toBeNull();
   });
 
   it("says how far a convert run has got", () => {
@@ -223,7 +224,8 @@ describe("AccountsView", () => {
     it("offers no refreshing host, and an empty one says No keys saved", () => {
       keyed({ views: [{ ...meta, profiles: [] }] });
       const section = screen.getByRole("region", { name: "Meta Model API" });
-      expect(within(section).getByText("No keys saved")).toBeTruthy();
+      expect(within(section).getByText("No keys saved").getAttribute("data-slot")).toBe("page-empty");
+      expect(section.querySelector("[data-slot=empty]")).toBeNull();
       expect(within(section).queryByRole("button", { name: "Meta Model API actions" })).toBeNull();
     });
   });

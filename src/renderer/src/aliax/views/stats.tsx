@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ComposedChart, Line, LineChart, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import type { PaceSeries, StatsBundle, StatsStatus } from "@shared/aliaxStats";
-import { PageSection } from "@renderer/components/page";
+import { PageEmpty, PageSection } from "@renderer/components/page";
 import { Empty, EmptyDescription, EmptyTitle } from "@renderer/components/ui/empty";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { AXIS, BAR, BAR_CURSOR, ChartFrame, GRID, HBAR, LINE, LINE_CURSOR } from "@aliax/charts/chart";
@@ -53,7 +53,7 @@ function Section({ title, description, children }: { title: string; description?
 }
 
 function NoData() {
-  return <p className="py-6 text-xs text-muted-foreground">Nothing in the last 30 days</p>;
+  return <PageEmpty>Nothing in the last 30 days</PageEmpty>;
 }
 
 function PaceChart({ series }: { series: PaceSeries }) {
@@ -112,16 +112,16 @@ function RankedBars({ label, data, unit }: { label: string; data: { name: string
   );
 }
 
-/** The skeleton while the bundle loads: each section's heading over a 200px block. */
+/** The skeleton while the bundle loads or a first index runs: each section's heading over a 200px block. */
 function StatsSkeleton() {
   return (
-    <>
+    <div aria-busy="true" aria-label="Loading" className="contents">
       {HEADINGS.map((h) => (
         <Section key={h} title={h}>
           <Skeleton aria-hidden className="h-[200px] w-full rounded-lg" />
         </Section>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -149,15 +149,16 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
     return { rows, models };
   }, [data]);
 
-  if (!data) return <StatsSkeleton />;
-
-  if (data.totals.turns === 0 && data.pace.length === 0) {
+  const nothing = data !== null && data.totals.turns === 0 && data.pace.length === 0;
+  // A first index is a load: the page's line says how far it has got.
+  if (!data || (nothing && status?.indexing)) return <StatsSkeleton />;
+  // A worker that is gone is the page's red line; its empty bundle states nothing.
+  if (nothing && data.unavailable) return null;
+  if (nothing) {
     return (
       <Empty>
         <EmptyTitle>Nothing to show yet</EmptyTitle>
-        <EmptyDescription>
-          {status?.indexing ? `Indexing ${status.filesDone.toLocaleString()} of ${status.filesTotal.toLocaleString()} session logs` : "No Claude Code or Codex session logs on this machine."}
-        </EmptyDescription>
+        <EmptyDescription>No Claude Code or Codex session logs on this machine.</EmptyDescription>
       </Empty>
     );
   }
@@ -170,9 +171,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
     <>
       <Section title="Pace">
         {data.pace.length === 0 ? (
-          <Empty>
-            <EmptyTitle>Needs three finished cycles</EmptyTitle>
-          </Empty>
+          <PageEmpty>Needs three finished cycles</PageEmpty>
         ) : (
           <div className="flex flex-col gap-4">
             {data.pace.map((p) => {
