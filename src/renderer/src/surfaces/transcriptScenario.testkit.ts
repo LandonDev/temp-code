@@ -103,17 +103,80 @@ export async function settleUntil(done: () => boolean, ms = 4_000): Promise<void
   for (let waited = 0; waited < ms && !done(); waited += 200) await settle(200);
 }
 
+/** Elements that rise when born mid-stream (lib/streamReveal.ts, CodeBlock). */
+const RISERS = 'li, tr, h1, h2, h3, h4, h5, h6, blockquote > *, [data-streamdown="code-block"]';
+/** Boxes that glide to their height (lib/heightGlide.ts). */
+const GLIDERS = '[data-table], [data-streamdown="code-block-body"]';
+/** A height change this large in one step with no glide is a jump. */
+const JUMP_PX = 16;
+
+/**
+ * The element rules of streaming motion, on any container: a tool table's
+ * step keeps its element and never takes `.step-land` once seen without it;
+ * a code line keeps its element (by its block and index) and never takes
+ * `.stream-step` again; no element seen without `.stream-rise` takes it; and
+ * a table or a code block's body never changes height by JUMP_PX or more
+ * without a glide (`data-height-glide`), unless its group's fold changed in
+ * the same step (the fold carries that). jsdom lays nothing out, so the
+ * height rule bites only where a test stubs the heights.
+ */
+export function watchMotion(container: HTMLElement, { heights = true }: { heights?: boolean } = {}) {
+  const steps = new Map<string, HTMLElement>();
+  const quietSteps = new WeakSet<Element>();
+  const quietLines = new WeakSet<Element>();
+  const quietRises = new WeakSet<Element>();
+  const bodies = new Map<Element, Element[]>();
+  const drawn = new Map<Element, { height: number; fold: string | null }>();
+  return (label: string): void => {
+    for (const el of container.querySelectorAll<HTMLElement>("[data-step]")) {
+      const id = el.dataset.step!;
+      const before = steps.get(id);
+      if (before?.isConnected) expect(el, `${label}: step ${id} remounted`).toBe(before);
+      if (quietSteps.has(el)) expect(el.className, `${label}: step ${id} landed again`).not.toContain("step-land");
+      else if (!el.classList.contains("step-land")) quietSteps.add(el);
+      steps.set(id, el);
+    }
+    for (const body of container.querySelectorAll('[data-streamdown="code-block-body"]')) {
+      const lines = [...body.querySelectorAll("code > .line")];
+      const before = bodies.get(body) ?? [];
+      for (let i = 0; i < Math.min(before.length, lines.length); i++) expect(lines[i], `${label}: code line ${i} remounted`).toBe(before[i]);
+      for (const line of lines) {
+        if (quietLines.has(line)) expect(line.className, `${label}: a code line faded again`).not.toContain("stream-step");
+        else if (!line.classList.contains("stream-step")) quietLines.add(line);
+      }
+      bodies.set(body, lines);
+    }
+    for (const el of container.querySelectorAll(RISERS)) {
+      if (quietRises.has(el)) expect(el.className, `${label}: a ${el.tagName.toLowerCase()} rose again`).not.toContain("stream-rise");
+      else if (!el.classList.contains("stream-rise")) quietRises.add(el);
+    }
+    if (!heights) return;
+    for (const el of container.querySelectorAll<HTMLElement>(GLIDERS)) {
+      const fold = el.closest("[data-action-group]")?.querySelector("[data-group-line]")?.getAttribute("aria-expanded") ?? null;
+      const now = { height: el.offsetHeight, fold };
+      const before = drawn.get(el);
+      if (before && before.fold === fold && Math.abs(now.height - before.height) >= JUMP_PX) {
+        expect(el.dataset.heightGlide, `${label}: a box jumped ${before.height} -> ${now.height}px`).toBeDefined();
+      }
+      drawn.set(el, now);
+    }
+  };
+}
+
 /**
  * The no-jerk rules, checked after every step of a scenario (docs/TRANSCRIPT.md
  * "No jerk in any scenario"): a row still on screen is the same element and
  * never takes a fade it did not have; the turn's line, once live, is the
- * same element; a morph settles to one set of words.
+ * same element; a morph settles to one set of words; and the streaming
+ * motion's element rules (`watchMotion`).
  */
 export function watch(view: Scene) {
   let rows = view.rows();
   let line: HTMLElement | null = null;
+  const motion = watchMotion(view.container);
   return {
     check(label: string): void {
+      motion(label);
       const now = view.rows();
       for (const [key, el] of rows) {
         const again = now.get(key);

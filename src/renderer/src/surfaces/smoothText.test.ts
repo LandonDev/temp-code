@@ -408,6 +408,13 @@ describe("revealCut", () => {
     expect(shown(table, table.length)).toBe(table);
   });
 
+  it("holds a table row being typed until a cell has content", () => {
+    const head = "| a | b |\n|---|---|\n| 1 | 2 |\n";
+    expect(shown(`${head}| `, `${head}| `.length)).toBe(head);
+    expect(shown(`${head}| | `, `${head}| | `.length)).toBe(head);
+    expect(shown(`${head}| 3 | `, `${head}| 3 | `.length)).toBe(`${head}| 3 | `);
+  });
+
   it("holds nothing inside an open code fence", () => {
     const code = "```sh\nls\n| grep x\n- \n";
     expect(shown(code, code.length)).toBe(code);

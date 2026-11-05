@@ -189,7 +189,7 @@ describe("lines as elements", () => {
     expect(reduced.container.querySelector(".stream-step, .stream-rise")).toBeNull();
   });
 
-  it("glides its body by the line while it streams, and not once settled", () => {
+  it("glides its body by the line while its row streams, the closing line too, and not once settled", () => {
     const proto = HTMLElement.prototype;
     const height = Object.getOwnPropertyDescriptor(proto, "offsetHeight")!;
     const parent = Object.getOwnPropertyDescriptor(proto, "offsetParent")!;
@@ -209,9 +209,17 @@ describe("lines as elements", () => {
       expect(body.dataset.heightGlide).toBe("");
       expect(body.style.transition).toBe("height var(--dur-base) var(--ease-out)");
       expect(body.style.height).toBe("40px");
+      // The fence closing while the row still streams keeps the glide: its last line lands with it.
       view.rerender(
         <StreamRevealContext.Provider value={reveal}>
-          <CodeBlock code={"a\nb"} language="ts" />
+          <CodeBlock code={"a\nb\nc"} language="ts" />
+        </StreamRevealContext.Provider>,
+      );
+      expect(body.style.height).toBe("60px");
+      // The row settled: no reveal, no glide.
+      view.rerender(
+        <StreamRevealContext.Provider value={null}>
+          <CodeBlock code={"a\nb\nc"} language="ts" />
         </StreamRevealContext.Provider>,
       );
       expect(body.dataset.heightGlide).toBeUndefined();

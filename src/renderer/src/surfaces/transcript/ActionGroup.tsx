@@ -160,15 +160,15 @@ export function ActionGroup({
   const visible = shown.slice(shownFrom);
 
   // The open table glides to its new height when the rows it shows change
-  // (after the window's pull-up, so one row in and one out nets nothing). A
-  // commit that also folds it, turns a lone call into a table, gives an
-  // empty table its first row or is a hand's decision glides nothing: those
-  // have motion of their own.
+  // (after the window's pull-up, so one row in and one out nets nothing),
+  // its first row into a table of running calls included. A commit that also
+  // folds it, turns a lone call into a table or is a hand's decision glides
+  // nothing: those have motion of their own.
   const tableRef = useRef<HTMLDivElement>(null);
   useHeightGlide(tableRef, visible.map((b) => b.id).join("|"), {
     enabled: open && !lone,
     curve: "layout",
-    hold: `${lone}|${open}|${saved}|${visible.length === 0}`,
+    hold: `${lone}|${open}|${saved}`,
   });
 
   // Rows that land in one commit fade in one after another, STAGGER.stepMs
@@ -205,7 +205,7 @@ export function ActionGroup({
   return (
     <GroupHandContext.Provider value={decide}>
       <SpawnedNamesContext.Provider value={names}>
-      <div className="flex min-w-0 flex-col">
+      <div data-action-group className="flex min-w-0 flex-col">
         {/* The line: folded away while the run holds one call. */}
         <Collapsible open={!lone}>
           <CollapsibleContent keepMounted className="collapsible-auto">

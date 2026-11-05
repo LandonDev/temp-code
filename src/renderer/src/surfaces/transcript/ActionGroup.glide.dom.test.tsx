@@ -107,6 +107,15 @@ describe("the open table's height", () => {
     expect(table(container).style.height).toBe(`${5 * ROW}px`);
   });
 
+  it("glides the first row into a table of running calls", () => {
+    const calls = [call("c0", "running"), call("c1", "running"), call("c2", "running")];
+    const { container, update } = mount(calls, true);
+    expect(container.querySelectorAll("[data-step]")).toHaveLength(0);
+    update([call("c0"), call("c1", "running"), call("c2", "running")], true);
+    expect(gliding(container)).toBe(true);
+    expect(table(container).style.height).toBe(`${ROW}px`);
+  });
+
   it("glides nothing when a hand opens the group: the fold carries that", () => {
     const { container, update } = mount(done(2), false);
     update(done(4), false);

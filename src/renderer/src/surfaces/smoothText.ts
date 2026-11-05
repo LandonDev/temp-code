@@ -112,7 +112,8 @@ const FENCE = /^[ \t]{0,3}(?:```|~~~)/;
  * is only a block marker (`#`, `-`, `1.`, `- [ ]`, under any `>`) is held to
  * its line start until it has content, and a trailing table (lines that
  * start with `|`) is held to its first line until its delimiter row is
- * whole; neither inside an open code fence. Inside one a code line shows
+ * whole, and a row being typed to its line start until a cell has content;
+ * neither inside an open code fence. Inside one a code line shows
  * whole once its newline arrives: the cut is held to the line's start, unless
  * `holdOpenLine` is false (the line has been held REVEAL.lineHoldMs), when it
  * steps by words like prose. Once nothing is left to reveal (the stream
@@ -134,6 +135,8 @@ function isHighSurrogate(code: number): boolean {
 }
 
 const TABLE_LINE = /^[ \t]*\|/;
+/** A table row with nothing but its pipes yet. */
+const BARE_ROW = /^[ \t]*\|[ \t|]*$/;
 
 /** The cut pulled back to the start of a trailing bare marker, an
  *  unfinished table or, with `holdOpenLine`, an open fence's unfinished line. */
@@ -163,7 +166,9 @@ function holdBlockStart(text: string, cut: number, holdOpenLine: boolean): numbe
   while (first > 0 && TABLE_LINE.test(lines[first - 1])) first--;
   // A line is whole once a newline follows it.
   const delimiterWhole = first + 1 < lastIndex && TABLE_DELIMITER.test(lines[first + 1]);
-  return delimiterWhole ? cut : starts[first];
+  if (!delimiterWhole) return starts[first];
+  // A row being typed with no cell content yet would draw as an empty row.
+  return end === lastIndex && BARE_ROW.test(last) ? starts[lastIndex] : cut;
 }
 
 /** True when the already-revealed prefix changed under us (a rewrite, not an append). */

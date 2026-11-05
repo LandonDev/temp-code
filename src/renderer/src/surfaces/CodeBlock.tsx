@@ -189,7 +189,7 @@ export const CodeBlock = memo(function CodeBlock({
   const reveal = useContext(StreamRevealContext);
   const fresh = reveal ? reveal.freshLines(clean, view.lines.length) : null;
   const bodyRef = useRef<HTMLDivElement>(null);
-  useHeightGlide(bodyRef, view.lines.length, { enabled: incomplete && !!reveal?.isArmed(), curve: "base" });
+  useHeightGlide(bodyRef, view.lines.length, { enabled: !!reveal?.isArmed(), curve: "base" });
 
   const copy = () => {
     playCue("copy");

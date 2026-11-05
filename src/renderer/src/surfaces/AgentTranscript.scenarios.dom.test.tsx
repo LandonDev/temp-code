@@ -217,15 +217,66 @@ describe("no jerk in any scenario", () => {
     expect(top).toBe(120);
   });
 
+  it("ten parallel calls land in the open table, one every 300 ms then four at once: the table glides, never jumps", async () => {
+    // jsdom lays nothing out: a tool row is 32px and the table the rows it
+    // holds less the window's pull-up, so the height rule in `watch` bites.
+    const proto = HTMLElement.prototype;
+    const height = Object.getOwnPropertyDescriptor(proto, "offsetHeight")!;
+    const parent = Object.getOwnPropertyDescriptor(proto, "offsetParent")!;
+    const rect = proto.getBoundingClientRect;
+    const natural = (el: HTMLElement): number => {
+      if (el.matches("[data-step]")) return 32;
+      if (!el.matches("[data-table]")) return height.get!.call(el) as number;
+      const list = el.querySelector<HTMLElement>("[data-group-rows]")!;
+      return list.querySelectorAll(":scope > [data-step]").length * 32 + (parseFloat(list.style.marginTop) || 0);
+    };
+    Object.defineProperty(proto, "offsetHeight", { configurable: true, get: function (this: HTMLElement) { return natural(this); } });
+    Object.defineProperty(proto, "offsetParent", { configurable: true, get: () => document.body });
+    proto.getBoundingClientRect = function (this: HTMLElement) {
+      const inline = parseFloat(this.style.height);
+      return (this.matches("[data-table]") ? { height: Number.isFinite(inline) ? inline : natural(this) } : rect.call(this)) as DOMRect;
+    };
+    try {
+      const calls = (settledCount: number) => Array.from({ length: 10 }, (_, i) => bash(`c${i}`, i < settledCount ? "completed" : "running"));
+      const view = scene("s", [echoed(), ...calls(0)], true);
+      const table = () => view.container.querySelector<HTMLElement>("[data-table]")!;
+      const glides: boolean[] = [];
+      const rules = watch(view);
+      const land = async (label: string, count: number) => {
+        view.show([echoed(), ...calls(count)], true);
+        glides.push(table().dataset.heightGlide !== undefined);
+        rules.check(`${label} (at once)`);
+        await settle(300);
+        rules.check(label);
+      };
+      // One every 300 ms into a table of running calls: each grows it by a glide.
+      for (let n = 1; n <= 4; n++) await land(`landing ${n}`, n);
+      expect(glides).toEqual([true, true, true, true]);
+      // Four at once: the table grows once, to the window's five rows, and the rows fade in staggered.
+      await land("four at once", 8);
+      expect(glides[4]).toBe(true);
+      const stagger = (id: string) => view.container.querySelector<HTMLElement>(`[data-step=${id}]`)?.style.getPropertyValue("--stagger");
+      expect(["c4", "c5", "c6", "c7"].map(stagger)).toEqual(["0", "1", "2", "3"]);
+      // At the window's cap one row in and one out: the height holds, nothing to glide.
+      await land("landing 9", 9);
+      await land("landing 10", 10);
+      expect(view.container.querySelectorAll("[data-step]").length).toBeLessThanOrEqual(6);
+    } finally {
+      Object.defineProperty(proto, "offsetHeight", height);
+      Object.defineProperty(proto, "offsetParent", parent);
+      proto.getBoundingClientRect = rect;
+    }
+  });
+
   it("a resync replaying the same rows, and the pane remounted: no settled row animates again", async () => {
     const blocks = [done(9_000), read("a", "completed"), bash("b", "completed"), prose("p", "Done.")];
     const view = scene("s", blocks, false);
     // The same rows again as new objects: a resync's replay.
     await play(view, [["resync", blocks.map((b) => ({ ...b }) as Block), false]]);
-    expect(view.container.querySelector(".z-fade-in, .step-land, .stream-step, .glyph-in, .table-frame-in")).toBeNull();
+    expect(view.container.querySelector(".z-fade-in, .step-land, .stream-step, .stream-rise, .glyph-in, .table-frame-in, [data-height-glide]")).toBeNull();
     view.unmount();
     const again = scene("s", blocks, false);
-    expect(again.container.querySelector(".z-fade-in, .step-land, .stream-step, .glyph-in, .table-frame-in")).toBeNull();
+    expect(again.container.querySelector(".z-fade-in, .step-land, .stream-step, .stream-rise, .glyph-in, .table-frame-in, [data-height-glide]")).toBeNull();
   });
 
   it("reduced motion: the closing line settles with no slide, and nothing glides", async () => {
