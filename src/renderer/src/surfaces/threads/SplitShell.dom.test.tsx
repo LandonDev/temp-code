@@ -111,6 +111,9 @@ describe("SplitShell", () => {
     expect(detail.className).toContain("text-xs");
     expect(detail.className).toContain("text-muted-foreground");
     expect(detail.className).toContain("tabular-nums");
+    // The detail can give way in a narrow header too: it truncates, never holds its width.
+    expect(detail.className.split(/\s+/)).toContain("truncate");
+    expect(detail.className.split(/\s+/)).not.toContain("shrink-0");
     expect(title.parentElement?.className).toContain("gap-2");
     const actions = document.querySelector("[data-view-actions]") as HTMLElement;
     expect(actions.className).toContain("gap-0.5");

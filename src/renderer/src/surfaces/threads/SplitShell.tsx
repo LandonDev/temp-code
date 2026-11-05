@@ -244,7 +244,7 @@ function ViewHeader({
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
         {typeof title === "string" ? <TruncateTip text={title}>{heading}</TruncateTip> : heading}
         {detail ? (
-          <span data-view-detail className="shrink-0 truncate text-xs text-muted-foreground tabular-nums">
+          <span data-view-detail className="truncate text-xs text-muted-foreground tabular-nums">
             {detail}
           </span>
         ) : null}
