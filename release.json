@@ -1,5 +1,5 @@
 {
-  "n": 316,
-  "notes": "UI and stability round 5: Agents rows, project landing, task bar, agents cue, question cards, message list fold, slash menu and right pane, draft naming, Accounts resets, Away from computer, batch child actions, first-paint bundle, right panel follows the shown thread, workspace logos, rules sync, UI-26 whole-app pass, P-3 typing/switch/send/scroll performance, gate and release fixes.",
-  "ts": 1793906664576
+  "n": 317,
+  "notes": "UI pass rounds 4-5 (council 9/9/9), Away from Computer, batch child stop/archive, Muse Code mark, perf sweep, cap card continues on another model",
+  "ts": 1793912444975
 }
