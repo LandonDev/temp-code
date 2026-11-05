@@ -791,8 +791,8 @@ routed to (aliax-core's `forward`). Two listeners:
   ("Resets 4:15 PM" today, "Resets Thu 9:00 AM" past it, `resetWords`; how
   long until then on hover), the columns shared by the whole page, and an
   account out of room says "Limited" in amber with its reset (`limitOf`);
-  under 48rem the columns stack under the name (docs/LAYOUT.md "The
-  Accounts page"). The rail's foot
+  under 48rem the columns stack under the name, two to a line in a narrow
+  window (docs/LAYOUT.md "The Accounts page"). The rail's foot
   names no account: each provider's row is the pooled share from
   `src/shared/usageMeter.ts` (`meterFor`: the mean room over routable
   accounts, each its tighter of 5h and week) with the next refill, or

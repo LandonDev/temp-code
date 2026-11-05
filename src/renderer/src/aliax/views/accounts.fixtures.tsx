@@ -93,5 +93,5 @@ export default [
   { name: 'Three providers: a mint, a lapsing token, a copy the box refreshes, a limited account, one not installed', props: base },
   { name: 'Meta keys: one paying as it goes with its rate bar, one revoked', props: { ...base, views: views.filter((v) => v.id === 'meta') } },
   { name: 'Meta with no keys', props: { ...base, views: [{ ...views[3], profiles: [] }] } },
-  { name: 'Loading usage after Refresh', props: { ...base, usage: {}, mint: { rows: {}, run: { total: 3, done: 1 } } } }
+  { name: 'Loading usage after Refresh', props: { ...base, usage: {}, layout: base.usage, mint: { rows: {}, run: { total: 3, done: 1 } } } }
 ]

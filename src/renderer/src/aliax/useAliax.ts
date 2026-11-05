@@ -22,14 +22,22 @@ export function useAliax() {
   // visible; the background snapshot updates in place without the flash.
   const [masked, setMasked] = useState<ReadonlySet<ServiceId>>(NONE)
 
+  // Every report the snapshot holds, masked or not: the page lays its usage
+  // columns out from these, so a Refresh's skeletons keep the columns that land.
+  const layout = useMemo(() => {
+    const out: Usage = {}
+    for (const p of ACCOUNT_PROVIDERS) out[SERVICE_OF[p]] = snapshot.providers[p].reports
+    return out
+  }, [snapshot])
+
   const usage = useMemo(() => {
     const out: Usage = {}
     for (const p of ACCOUNT_PROVIDERS) {
       const id = SERVICE_OF[p]
-      if (!masked.has(id)) out[id] = snapshot.providers[p].reports
+      if (!masked.has(id)) out[id] = layout[id]
     }
     return out
-  }, [snapshot, masked])
+  }, [layout, masked])
 
   // The gateways' rate-limit picture rides the same snapshot; a refresh never masks it.
   const headroom = useMemo(() => {
@@ -120,5 +128,5 @@ export function useAliax() {
     if (!refreshing.current) void loadViews()
   }, [identity, loadViews])
 
-  return { views, usage, headroom, refresh, snapshot }
+  return { views, usage, layout, headroom, refresh, snapshot }
 }

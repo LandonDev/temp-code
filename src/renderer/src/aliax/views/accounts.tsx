@@ -50,6 +50,9 @@ export interface AccountsActions {
 export interface AccountsViewProps extends AccountsActions {
   views: ServiceView[];
   usage: Partial<Record<ServiceId, UsageReport[]>>;
+  /** The reports the usage columns are laid out from: the last ones seen, kept
+   *  while a Refresh masks `usage` to skeletons, so the columns stay put. */
+  layout?: Partial<Record<ServiceId, UsageReport[]>>;
   /** Per service, per account, the gateways' rate-limit picture. */
   headroom: Partial<Record<ServiceId, Record<string, AccountHeadroom>>>;
   /** The action under way, as `use:<service>:<name>` or `capture:<service>`. */
@@ -212,10 +215,11 @@ function ProviderSection({ service, props, now, columns }: { service: ServiceVie
 export function AccountsView(props: AccountsViewProps) {
   const live = useNow();
   const now = props.now ?? live;
+  const reports = props.layout ?? props.usage;
   const columns = barColumns(
     props.views
       .filter((s) => s.installed)
-      .flatMap((s) => s.profiles.map((p) => ({ report: props.usage[s.id]?.find((r) => r.profileName === p.name), headroom: props.headroom[s.id]?.[p.name] }))),
+      .flatMap((s) => s.profiles.map((p) => ({ report: reports[s.id]?.find((r) => r.profileName === p.name), headroom: props.headroom[s.id]?.[p.name] }))),
   );
   return (
     <div data-slot="accounts" className="@container/accounts flex flex-col gap-6">

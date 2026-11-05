@@ -29,7 +29,7 @@ type Removing = { serviceId: ServiceId; name: string; label: string; keyed: bool
 type Login = { serviceId: ServiceId; hint?: string; error: string | null };
 
 export function AccountsPage(): React.JSX.Element {
-  const { views, usage, headroom, refresh, snapshot } = useAliax();
+  const { views, usage, layout, headroom, refresh, snapshot } = useAliax();
   const [busy, setBusy] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [login, setLogin] = useState<Login | null>(null);
@@ -163,6 +163,7 @@ export function AccountsPage(): React.JSX.Element {
         <AccountsView
           views={views}
           usage={usage}
+          layout={layout}
           headroom={headroom}
           busy={busy}
           homes={snapshot.homes ?? {}}

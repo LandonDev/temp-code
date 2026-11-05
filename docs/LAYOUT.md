@@ -323,8 +323,15 @@ window columns from the left, keeps Rate last and holds an empty column for
 what it lacks, a key keeps its switch's place, so the 5h, Week and Rate
 columns run straight down the page. A key's Pay as you go or Key revoked
 stands across the window columns it has none of. Under 48rem the row stacks:
-the name and its controls on the first line, the columns on their own line
-under the name, sharing its width.
+the name and its controls on the first line, the columns under the name,
+as many to a line as hold a whole 136px column (two in a 400px window), so
+a label and its reset are never cut to a letter; the failure card's account
+picker stacks the same way once its popover is capped. While usage loads
+each column is its skeleton, and through a Refresh the columns stay those
+of the last reports (`useAliax`'s `layout`), so nothing moves when they
+land; a key's row waits as one 16px line over the window columns, where its
+words land. A reset that is still cut says its whole time on hover before
+how long until then ("Resets Thu 9:00 AM, in 2d").
 
 A window's column is its label and the share left (amber when low), the 4px
 bar with the even-burn tick, then when it refills, 12px muted and tabular:

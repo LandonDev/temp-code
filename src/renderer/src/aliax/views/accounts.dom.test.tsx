@@ -409,4 +409,71 @@ describe("a row's bars while its report loads", () => {
     expect(loading.className).toContain("py-1.5");
     expect(loading.querySelector("[data-slot=usage-cell]")!.children).toHaveLength(3);
   });
+
+  it("keep the columns of the last reports through a Refresh: two windows and Rate, skeletons in each", () => {
+    // Refresh masks every report; `layout` keeps the ones the columns came from.
+    render(<AccountsView {...props} usage={{}} layout={{ "claude-code": [report] }} />);
+    const main = screen.getByText("Main").closest('[data-slot="page-row"]') as HTMLElement;
+    const loading = main.querySelector<HTMLElement>('[data-slot="usage-cells"][aria-busy="true"]')!;
+    expect(loading.querySelectorAll("[data-slot=usage-cell]")).toHaveLength(3);
+    cleanup();
+    // With no layout, nothing to keep: one window column and Rate's.
+    render(<AccountsView {...props} usage={{}} />);
+    const bare = screen.getByText("Main").closest('[data-slot="page-row"]') as HTMLElement;
+    expect(bare.querySelectorAll('[data-slot="usage-cells"][aria-busy="true"] [data-slot=usage-cell]')).toHaveLength(2);
+  });
+
+  it("is one 16px line over the window columns for a key, the shape its words land in", () => {
+    const meta: ServiceView = {
+      id: "meta",
+      name: "Meta Model API",
+      installed: true,
+      canAddAccount: false,
+      canSaveCurrent: false,
+      switchTargets: [],
+      profiles: [{ name: "Work", createdAt: 1, active: false, static: true, kind: "key", accountId: "1607339912" } as KeyProfileView],
+    };
+    render(<AccountsView {...props} views={[...services(), meta]} usage={{}} layout={{ "claude-code": [report] }} />);
+    const work = screen.getByText("Work").closest('[data-slot="page-row"]') as HTMLElement;
+    const loading = work.querySelector<HTMLElement>('[data-slot="usage-cells"][aria-busy="true"]')!;
+    const line = loading.querySelector<HTMLElement>("[data-slot=usage-words-skeleton]")!;
+    expect(line.className).toContain("h-4");
+    expect(line.style.getPropertyValue("--span")).toBe("2");
+    // No three-line cell, only Rate's empty column beside it.
+    expect(loading.querySelectorAll("[data-slot=usage-cell]")).toHaveLength(1);
+    expect(loading.querySelector("[data-slot=usage-cell]")!.children).toHaveLength(0);
+    expect(loading.className).toContain("py-1.5");
+  });
+
+  it("stack two to a line under the name: each a whole column wide, never cut to a letter", () => {
+    render(<AccountsView {...props} />);
+    const details = screen.getByRole("button", { name: "Usage details for Main" });
+    expect(details.className).toContain("grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]");
+    // From 48rem, the table's one line again.
+    expect(details.className).toContain("@3xl/accounts:flex");
+  });
+});
+
+describe("a reset cut short", () => {
+  it("says the whole time on hover, then how long until then", async () => {
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    const now = new Date(2026, 10, 5, 10, 0).getTime();
+    const at = now + 2 * HOUR + 10 * 60_000;
+    const width = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(200);
+    const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(40);
+    try {
+      render(<AccountsView {...props} now={now} usage={{ "claude-code": [{ profileName: "a@x.com", windows: [{ label: "5h", usedPercent: 30, resetsAt: at, periodMs: 5 * HOUR }] }] }} />);
+      const el = document.querySelector('[data-slot="reset-time"]')!;
+      fireEvent.pointerEnter(el);
+      fireEvent.mouseEnter(el);
+      fireEvent.focus(el);
+      await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe(`Resets ${clockTime(at)}, in 2h 10m`), { timeout: 2000 });
+    } finally {
+      width.mockRestore();
+      client.mockRestore();
+    }
+  });
 });

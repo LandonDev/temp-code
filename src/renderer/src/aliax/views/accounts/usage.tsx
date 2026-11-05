@@ -2,7 +2,7 @@ import { Fragment, type CSSProperties, type ReactNode } from "react";
 import type { AccountHeadroom } from "@shared/accounts";
 import { windowName } from "@shared/usageMeter";
 import type { PlanInfo, UsageReport, UsageWindow } from "aliax-core/shared/types";
-import { Tip } from "@renderer/components/tip";
+import { Tip, useTruncated } from "@renderer/components/tip";
 import { StatusMark } from "@renderer/components/ui/status";
 import { Button } from "@renderer/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@renderer/components/ui/popover";
@@ -31,9 +31,16 @@ export const MAX_BARS = 4;
  * under the name across the row's width.
  */
 const CELL = "flex min-w-0 flex-1 basis-0 flex-col gap-1 @3xl/accounts:w-34 @3xl/accounts:flex-none";
-/** The status words of a row with no windows, over the window columns it stands in for (`--span`). */
+/**
+ * The cells' box. Stacked under the name, the cells wrap as many to a line as
+ * hold a whole column (8.5rem: two in a 400px window), so a label and its
+ * reset are never cut to "We…" and "Resets 1…"; from 48rem they are the
+ * table's fixed columns in one line.
+ */
+const CELLS = "grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-3 @3xl/accounts:flex";
 /** The bars' box: the window columns and Rate, growing by how many it holds under 48rem. */
 const GROW = "min-w-0 flex-[var(--grow)_1_0%] @3xl/accounts:flex-none";
+/** The status words of a row with no windows, over the window columns it stands in for (`--span`). */
 const SPAN = "min-w-0 flex-[var(--span)_1_0%] @3xl/accounts:flex-none @3xl/accounts:w-[calc(var(--span)*8.5rem+(var(--span)-1)*0.75rem)]";
 
 const RATE_FILL: Record<HeadroomLook["tone"], ProgressFill> = { muted: "muted", ok: "muted", low: "warning", limited: "warning" };
@@ -53,12 +60,15 @@ export function barColumns(rows: { report: UsageReport | undefined; headroom: Ac
   return { windows, rate };
 }
 
-/** When a window refills, its clock time on the row and how long until then on hover. */
+/** When a window refills, its clock time on the row and how long until then on hover; cut, the hover says the whole time first. */
 export function ResetTime({ at, now }: { at: number; now: number }) {
+  const words = resetWords(at, now);
+  const until = `in ${untilLabel(at, now)}`;
+  const { ref, cut } = useTruncated(words);
   return (
-    <Tip label={`in ${untilLabel(at, now)}`}>
-      <span data-slot="reset-time" className="truncate text-xs leading-4 text-muted-foreground tabular-nums">
-        {resetWords(at, now)}
+    <Tip label={cut ? `${words}, ${until}` : until}>
+      <span ref={ref} data-slot="reset-time" className="truncate text-xs leading-4 text-muted-foreground tabular-nums">
+        {words}
       </span>
     </Tip>
   );
@@ -119,12 +129,35 @@ const spacer = (key: string) => <span key={key} aria-hidden data-slot="usage-cel
 /**
  * The bars while their report loads, in the shape that lands: each cell its
  * 16px label line, the 4px bar and its 16px reset line, 4px apart, inside the
- * button's 6px above and below, so a row neither shrinks on Refresh nor
- * grows when the report arrives.
+ * button's 6px above and below (none when `readOnly`: the picker's bars sit in
+ * no button), so a row neither shrinks on Refresh nor grows when the report
+ * arrives. A key's row lands as one line of words over the window columns
+ * (Pay as you go, Key revoked), so its skeleton is that one 16px line.
  */
-export function UsageCellsSkeleton({ cells, className }: { cells: number; className?: string }) {
+export function UsageCellsSkeleton({
+  cells,
+  keyed,
+  readOnly = false,
+  className,
+}: {
+  cells: number;
+  /** A key's row: one line over `keyed.span` window columns, then Rate's column when the page has one. */
+  keyed?: { span: number; rate: boolean };
+  readOnly?: boolean;
+  className?: string;
+}) {
+  if (keyed) {
+    return (
+      <span data-slot="usage-cells" className={cn("flex items-start gap-3", readOnly ? null : "py-1.5", className)} aria-busy="true">
+        <span data-slot="usage-words-skeleton" className={cn(SPAN, "flex h-4 items-center")} style={{ "--span": keyed.span } as CSSProperties}>
+          <Skeleton className="h-3 w-24 max-w-full" />
+        </span>
+        {keyed.rate ? spacer("rate") : null}
+      </span>
+    );
+  }
   return (
-    <span data-slot="usage-cells" className={cn("flex items-start gap-3 py-1.5", className)} aria-busy="true">
+    <span data-slot="usage-cells" className={cn(CELLS, readOnly ? null : "py-1.5", className)} aria-busy="true">
       {Array.from({ length: cells }, (_, i) => (
         <span key={i} data-slot="usage-cell" className={CELL}>
           <span className="flex h-4 items-center">
@@ -170,7 +203,8 @@ export function UsageBars({
   readOnly?: boolean;
 }) {
   const span = Math.max(1, columns.windows);
-  if (report === undefined) return <UsageCellsSkeleton cells={keyed ? 1 : span + (columns.rate ? 1 : 0)} className={className} />;
+  if (report === undefined)
+    return <UsageCellsSkeleton cells={span + (columns.rate ? 1 : 0)} keyed={keyed ? { span, rate: columns.rate } : undefined} readOnly={readOnly} className={className} />;
   const windows = report.windows.slice(0, columns.windows);
   const rate = headroom ? headroomLook(headroom, now) : null;
   const count = windows.length + (rate ? 1 : 0);
@@ -225,7 +259,7 @@ export function UsageBars({
       ) : null}
       {count > 0 ? (
         readOnly ? (
-          <span className={cn(GROW, "flex items-start gap-3")} style={grow}>
+          <span className={cn(GROW, CELLS)} style={grow}>
             {cells}
           </span>
         ) : (
@@ -236,7 +270,7 @@ export function UsageBars({
                   variant="ghost"
                   aria-label={`Usage details for ${name}`}
                   aria-haspopup="dialog"
-                  className={cn(GROW, "-mx-2 h-auto items-start justify-start gap-3 px-2 py-1.5 text-start font-normal")}
+                  className={cn(GROW, CELLS, "-mx-2 h-auto items-start justify-start px-2 py-1.5 text-start font-normal")}
                   style={grow}
                 />
               }

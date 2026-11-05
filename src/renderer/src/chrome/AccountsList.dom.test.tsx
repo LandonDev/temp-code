@@ -128,5 +128,25 @@ describe("AccountsList", () => {
     expect(bars.className).toContain("@min-[52.25rem]/accounts:w-(--bars)");
     expect(bars.style.getPropertyValue("--bars")).toBe("36.25rem");
     expect(bars.querySelectorAll("[data-slot=usage-cell]")).toHaveLength(4);
+    // Stacked, the cells wrap as many to a line as hold a whole column (two in a 400px window).
+    const cells = bars.querySelector<HTMLElement>("[data-slot=usage-cell]")!.parentElement!;
+    expect(cells.className).toContain("grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]");
+  });
+
+  it("waits in the bars' own height: no button inset, and a key's one line", () => {
+    const box = list(
+      {
+        ...base,
+        profiles: [{ name: "a@x.com" }, { name: "Work", createdAt: 1, active: false, static: true, kind: "key" }],
+        reports: [],
+      } as unknown as ProviderAccounts,
+      "meta",
+    );
+    const [account, key] = within(box).getAllByRole("option");
+    const waiting = account.querySelector<HTMLElement>('[data-slot="usage-cells"][aria-busy="true"]')!;
+    expect(waiting.className).not.toContain("py-1.5");
+    const keyWaiting = key.querySelector<HTMLElement>('[data-slot="usage-cells"][aria-busy="true"]')!;
+    expect(keyWaiting.className).not.toContain("py-1.5");
+    expect(keyWaiting.querySelector("[data-slot=usage-words-skeleton]")!.className).toContain("h-4");
   });
 });
