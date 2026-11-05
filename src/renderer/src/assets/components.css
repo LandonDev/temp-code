@@ -299,7 +299,7 @@
   }
 }
 
-/* TaskList: marks, the cursor, the strike-through, the chevron. */
+/* TaskList: marks, the cursor, the strike-through. */
 :root {
   --task-morph: var(--dur-base);
   --task-slide: var(--dur-slow);
@@ -399,17 +399,8 @@
   transition: transform var(--dur-drawer) var(--ease-out) var(--dur-fast);
 }
 
-.task-chevron {
-  transition: rotate var(--task-morph) var(--ease-out);
-}
-
-.task-chevron[data-open] {
-  rotate: 180deg;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .task-check,
-  .task-chevron,
   .task-fill,
   .task-cursor,
   .task-mark,

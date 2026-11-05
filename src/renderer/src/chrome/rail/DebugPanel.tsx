@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@renderer/components/ui/button";
+import { DISCLOSURE_CHEVRON } from "@renderer/components/ui/disclosure";
 import { Input } from "@renderer/components/ui/input";
 import { ItemButton, ItemActions, ItemContent } from "@renderer/components/ui/item";
 import { StatusMark } from "@renderer/components/ui/status";
@@ -8,7 +9,7 @@ import { cn } from "@renderer/lib/cn";
 import { useEditorState, type DebugFrame, type DebugPhase, type DebugVariable } from "../../lib/monaco/editorState";
 import { openFileAt } from "../../lib/monaco/opener";
 import { debugController } from "../../surfaces/monaco/debug/session";
-import { ArrowDownLong, ArrowTurnForward, ArrowUpLong, Play, Square, type IconComponent } from "../icons";
+import { ArrowDownLong, ArrowTurnForward, ArrowUpLong, ChevronRight, Play, Square, type IconComponent } from "../icons";
 
 /** The four ways a paused session moves on (DAP request names). */
 export type DebugStep = "continue" | "next" | "stepIn" | "stepOut";
@@ -160,7 +161,7 @@ export function DebugView({
             <div className="max-h-48 overflow-x-hidden overflow-y-auto">
               <div className="flex flex-col px-1 font-mono text-xs">
                 {variables.map((v, i) => (
-                  <VariableRow key={`${v.name}:${i}`} variable={v} onExpand={onExpand} />
+                  <VariableRow key={`${v.name}:${i}`} variable={v} open={(variables[i + 1]?.depth ?? -1) > v.depth} onExpand={onExpand} />
                 ))}
               </div>
             </div>
@@ -201,9 +202,16 @@ function Group({ heading, fill, children }: { heading: string | null; fill?: boo
   );
 }
 
-function VariableRow({ variable: v, onExpand }: { variable: DebugVariable; onExpand: (v: DebugVariable) => void }) {
+/** A variable; one that expands leads with the disclosure chevron, turned
+ *  while its children show under it, and a leaf keeps the chevron's place. */
+function VariableRow({ variable: v, open, onExpand }: { variable: DebugVariable; open: boolean; onExpand: (v: DebugVariable) => void }) {
   const body = (
     <>
+      {v.ref ? (
+        <ChevronRight aria-hidden data-slot="variable-chevron" className={cn("size-3 shrink-0 text-muted-foreground", DISCLOSURE_CHEVRON, open && "rotate-90")} />
+      ) : (
+        <span aria-hidden className="size-3 shrink-0" />
+      )}
       <span className="shrink-0 text-info">{v.name}</span>
       <span className="truncate text-muted-foreground">{v.value}</span>
     </>

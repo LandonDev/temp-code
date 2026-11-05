@@ -309,14 +309,19 @@ app replaces itself from the feed, and only from the feed.
   destructive) are raised, Kobra's `t-raise` on the `--raise-*` tokens in
   index.css (a shadowed fill layer behind the label, pressing in to 0.985);
   ghost, outline, link and every row are flat and press by stepping their
-  fill to `foreground/12` at once, never by scaling. There is one focus
+  fill to `foreground/12` at once, never by scaling (a row drawn by hand
+  takes `ROW_PRESS`, components/ui/press.ts: `/5` on hover over
+  `--dur-hover`, `/12` on a press; the composer's quiet controls and every
+  draft-row picker `ROW_CONTROL`; a pressed toggle is `muted`). There is one focus
   ring, index.css's inset outline, which an element outside its selector
   list joins with `focus-ring`; `lib/focusGuard.test.ts` refuses any
   `focus-visible:ring`. Neighbouring tooltips share one `TooltipProvider`
   (delays in `TOOLTIP`, lib/ease.ts), never around a scroller, the rail's
   nav or a virtual list (the lazy provider remounts what it wraps). A
-  disclosure chevron turns on `DISCLOSURE_CHEVRON` (components/ui/
-  disclosure.ts), a bounded log is a `pre` on `CONSOLE` (components/ui/
+  disclosure chevron is a ChevronRight turning `rotate-90` on
+  `DISCLOSURE_CHEVRON` (components/ui/disclosure.ts), with no timing of its
+  own beside it and never a 180° turn (`lib/disclosureGuard.test.ts`; a menu
+  trigger's chevron is a still `ChevronDown`), a bounded log is a `pre` on `CONSOLE` (components/ui/
   console.ts), no icon takes a `strokeWidth` prop, and a solid red button
   never sits in a list row (a row's remove is a ghost that turns red on hover).
 - Every resize handle uses `hooks/useSashKeys.ts` for focus,

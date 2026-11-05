@@ -56,7 +56,7 @@ describe("the constants are the list's classes", () => {
     const header = card.querySelector<HTMLElement>("[data-slot='collapsible-trigger']")!;
     const row = card.querySelector("li > div")!;
     const mark = row.querySelector(".task-mark")!;
-    const chevron = header.querySelector(".task-chevron")!;
+    const chevron = header.querySelector("[data-slot=task-chevron]")!;
     const cls = (px: number) => String(px / 4);
     expect(card.className).toContain(TASK_BORDER_PX === 1 ? "border " : "unreachable");
     expect(card.querySelector("ul")!.className).toContain(`px-${cls(TASK_INSET_PX)}`);

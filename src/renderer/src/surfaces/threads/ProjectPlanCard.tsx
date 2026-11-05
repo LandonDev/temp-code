@@ -243,7 +243,7 @@ export function ProjectPlanOptions({
             key={r.key}
             size="xs"
             disabled={r.disabled || busy !== null} onClick={r.onClick}
-            className="text-left hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+            className="text-left hover:bg-foreground/5 disabled:pointer-events-none disabled:opacity-50"
           >
             <ItemContent>
               <ItemTitle className="font-normal">{r.label}</ItemTitle>

@@ -104,7 +104,11 @@ describe("DebugPanel", () => {
     fireEvent.click(top);
     expect(openFileAt).toHaveBeenCalledWith("/repo/src/Main.java", 42, 1);
 
-    // Variables: an expandable one loads its children one level deeper; a leaf is not a button.
+    // Variables: an expandable one leads with the disclosure chevron; a leaf keeps its place.
+    const chevron = screen.getByText("this").closest("button")!.querySelector("[data-slot=variable-chevron]")!;
+    expect(chevron.getAttribute("class")).toContain("duration-(--dur-base)");
+    expect(screen.getByText("count").parentElement!.querySelector("[data-slot=variable-chevron]")).toBeNull();
+    // It loads its children one level deeper; a leaf is not a button.
     fireEvent.click(screen.getByText("this").closest("button")!);
     expect(controller.loadVariables).toHaveBeenLastCalledWith(1, 7, 1);
     expect(screen.getByText("count").closest("button")).toBeNull();

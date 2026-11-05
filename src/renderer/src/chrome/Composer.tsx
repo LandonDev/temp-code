@@ -1160,6 +1160,7 @@ export function DraftRow({
               onChooseFolder={onChooseFolder}
               onNewTerminal={onNewTerminal}
               onClose={onClose}
+              chevron
             />
           )}
           {sessionId && enabled ? <DraftHostPicker sessionId={sessionId} onClose={onClose} /> : null}

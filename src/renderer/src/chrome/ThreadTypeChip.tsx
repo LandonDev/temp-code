@@ -1,3 +1,4 @@
+import { ROW_CONTROL } from "./composerRow";
 import type { ThreadType } from "../lib/tcserver/types";
 import { ColdSelectTrigger, usePendingOpen, useSelectBody } from "../components/lazy-select";
 import { THREAD_LABELS } from "../surfaces/threads/threadTypes";
@@ -9,8 +10,7 @@ export type ThreadTypeChipProps = {
   onClose?: () => void;
 };
 
-export const THREAD_TYPE_TRIGGER =
-  "shrink-0 border-transparent px-1.5 text-xs text-muted-foreground hover:bg-foreground/7 hover:text-foreground data-popup-open:text-foreground [&>svg]:size-3";
+export const THREAD_TYPE_TRIGGER = `${ROW_CONTROL} shrink-0 border-transparent px-1.5 [&>svg]:size-3`;
 
 /** The trigger's value: the type's glyph and name. */
 export function ThreadTypeValue({ value }: { value: ThreadType }) {

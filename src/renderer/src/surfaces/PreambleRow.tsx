@@ -1,6 +1,6 @@
 import { useState, type MouseEvent } from "react";
 import { ChevronRight } from "../chrome/icons";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "../components/ui/collapsible";
 import { cn } from "../lib/cn";
 
 /**
@@ -17,18 +17,13 @@ export function PreambleRow({ text, words }: { text: string; words: number }) {
     <Collapsible open={open} onOpenChange={setOpen} className="mb-1 flex flex-col" data-preamble-row>
       <CollapsibleTrigger
         onClick={stop}
-        className="-ml-2 flex h-6 w-fit items-center gap-2 rounded-md px-2 text-xs text-muted-foreground transition-colors duration-(--dur-fast) ease-(--ease-out) hover:text-foreground motion-reduce:transition-none"
+        className="-ml-2 flex h-6 w-fit items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:text-foreground"
       >
-        <ChevronRight
-          className={cn(
-            "size-3 shrink-0 transition-transform duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
-            open && "rotate-90",
-          )}
-        />
         <span>Project rules</span>
         <span className="tabular-nums">
           {words} word{words === 1 ? "" : "s"}
         </span>
+        <ChevronRight aria-hidden className={cn("ms-1 size-3 shrink-0", DISCLOSURE_CHEVRON, open && "rotate-90")} />
       </CollapsibleTrigger>
       <CollapsibleContent>
         <pre onClick={stop} className="min-w-0 whitespace-pre-wrap break-words pt-1 font-sans text-[13px] leading-5 text-muted-foreground">

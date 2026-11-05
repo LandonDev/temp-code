@@ -188,3 +188,15 @@ describe("MilestoneList", () => {
     expect(actions.tickMilestone).toHaveBeenLastCalledWith("p1", 1, false);
   });
 });
+
+describe("press and hover", () => {
+  it("each compact option row hovers at /5 (never muted, which means selected) and presses to /12, at once as a menu row does", () => {
+    render(<ProjectPlanOptions session={session} doc={DOC} state={state()} compact />);
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-project-plan-options] button")];
+    expect(rows.length).toBe(4);
+    for (const row of rows) {
+      for (const c of ["hover:bg-foreground/5", "active:bg-foreground/12"]) expect(row.className).toContain(c);
+      expect(row.className).not.toMatch(/(?:^|\s)hover:bg-muted/);
+    }
+  });
+});

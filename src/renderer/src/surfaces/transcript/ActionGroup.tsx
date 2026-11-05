@@ -4,6 +4,7 @@ import { useReducedMotion } from "motion/react";
 import { Bot, ChevronRight, Sparkles, type IconComponent } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
+import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { cn } from "../../lib/cn";
 import type { Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
@@ -216,7 +217,7 @@ export function ActionGroup({
                 aria-expanded={open}
                 aria-controls={panelId}
                 onClick={toggle}
-                className="group/line h-7 w-fit min-w-0 justify-start gap-1 rounded-md px-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent aria-expanded:bg-transparent motion-reduce:transition-none"
+                className="group/line h-7 w-fit min-w-0 justify-start gap-1 rounded-md px-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground transition-none hover:bg-transparent hover:text-foreground active:bg-transparent aria-expanded:bg-transparent"
               >
                 <span data-kind={group.kind} className="me-1 flex shrink-0">
                   {/* The glyph of the run's main kind; it swaps in place when that kind changes. */}
@@ -233,7 +234,7 @@ export function ActionGroup({
                 <Counts added={adds} removed={dels} failed={group.failed} />
                 <ChevronRight
                   aria-hidden
-                  className={`ms-1 size-3 shrink-0 transition-transform duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
+                  className={cn("ms-1 size-3 shrink-0", DISCLOSURE_CHEVRON, open && "rotate-90")}
                 />
               </Button>
               {reauth ? <ReconnectChip reauth={reauth} /> : null}

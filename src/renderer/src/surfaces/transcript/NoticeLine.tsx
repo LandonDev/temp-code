@@ -3,6 +3,7 @@ import { useContext, type ReactNode } from "react";
 import { ChevronRight } from "../../chrome/icons";
 import { CollapsibleTrigger } from "../../components/ui/collapsible";
 import { TooltipProvider } from "../../components/ui/tooltip";
+import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { cn } from "../../lib/cn";
 import { STEP_NOTICE, StepRowContext, TABLE_BODY } from "./stepLine";
 
@@ -73,7 +74,7 @@ export function NoticeLine({
           <span
             className={cn(
               strong ? "text-foreground" : "text-muted-foreground",
-              fold && "transition-colors duration-(--dur-fast) ease-(--ease-out) group-hover/notice:text-foreground motion-reduce:transition-none",
+              fold && "group-hover/notice:text-foreground",
               wrap ? "min-w-0 whitespace-pre-wrap break-words" : "shrink-0",
             )}
           >
@@ -95,7 +96,8 @@ export function NoticeLine({
             <ChevronRight
               aria-hidden
               className={cn(
-                "ms-1 size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/notice:text-foreground motion-reduce:transition-none",
+                "ms-1 size-3 shrink-0 text-muted-foreground group-hover/notice:text-foreground",
+                DISCLOSURE_CHEVRON,
                 fold.open && "rotate-90",
               )}
             />

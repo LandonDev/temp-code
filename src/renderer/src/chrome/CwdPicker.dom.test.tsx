@@ -91,3 +91,15 @@ describe("CwdPicker", () => {
     expect((screen.getByRole("button", { name: /^Project / }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe("CwdPicker in the draft row", () => {
+  it("is a row control (hover /5, press /12) whose chevron stays still while the menu opens", async () => {
+    mount({ chevron: true });
+    const trigger = screen.getByRole("button", { name: /^Project / });
+    for (const c of ["hover:bg-foreground/5", "active:bg-foreground/12", "active:transition-none", "duration-(--dur-hover)"]) expect(trigger.className).toContain(c);
+    const chevron = () => trigger.querySelector("svg:last-of-type")!.getAttribute("class")!;
+    expect(chevron()).toContain("size-3");
+    await open();
+    expect(chevron()).not.toMatch(/rotate|transition|duration/);
+  });
+});

@@ -339,7 +339,7 @@ function AngleGroup({
       {self ? (
         <Item size="xs">{head}</Item>
       ) : (
-        <ItemButton size="xs" onClick={onOpen} className="text-left hover:bg-muted">
+        <ItemButton size="xs" onClick={onOpen} className="text-left hover:bg-foreground/5">
           {head}
         </ItemButton>
       )}

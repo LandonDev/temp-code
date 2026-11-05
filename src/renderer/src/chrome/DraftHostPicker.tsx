@@ -9,6 +9,8 @@ import {
 } from "../components/ui/lazy-menus";
 import { Spinner } from "../components/ui/spinner";
 import { ChevronDown } from "./icons";
+import { ROW_CONTROL } from "./composerRow";
+import { cn } from "../lib/cn";
 import { HostGlyph } from "./HostGlyph";
 import { useEnvironmentStatuses, useEnvironments } from "../lib/connection/status";
 import { copiesOf, ensureLinkedArgs, ensureLinkedOn, probeOf, rememberLinkHost, type CopyProbe } from "../lib/projectHostChoice";
@@ -108,11 +110,11 @@ export function DraftHostPicker({ sessionId, onClose }: { sessionId: string; onC
       <DropdownMenuTrigger
         data-draft-host-picker={current.id}
         aria-label={`Start on ${current.name}`}
-        render={<Button variant="ghost" size="xs" className="min-w-0 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground" />}
+        render={<Button variant="ghost" size="xs" className={cn("min-w-0", ROW_CONTROL)} />}
       >
         <HostGlyph environmentId={current.id} />
         <span className="max-w-32 truncate">{current.name}</span>
-        <ChevronDown />
+        <ChevronDown aria-hidden className="size-3" />
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" finalFocus={onClose ? false : undefined} className="w-64" aria-label="Start this thread on">
         <DropdownMenuRadioGroup value={current.id}>

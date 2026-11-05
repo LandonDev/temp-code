@@ -5,6 +5,7 @@ import { GroupInput, InputGroup } from "../components/ui/input";
 import { Kbd } from "../components/ui/kbd";
 import { Toggle } from "../components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
+import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
 import { cn } from "../lib/cn";
 import { ALT, MOD, SHIFT } from "../lib/platform";
 
@@ -90,10 +91,7 @@ export function FindBar(props: FindBarProps) {
           keys={`${MOD}${ALT}F`}
           face={
             <ChevronRight
-              className={cn(
-                "transition-[rotate] duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
-                replaceVisible && "rotate-90",
-              )}
+              className={cn(DISCLOSURE_CHEVRON, replaceVisible && "rotate-90")}
             />
           }
           control={

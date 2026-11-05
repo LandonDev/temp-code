@@ -163,3 +163,14 @@ describe("DraftHostPicker", () => {
     expect(loadLinkHosts()).toEqual({ pl_a: "mini" });
   });
 });
+
+describe("DraftHostPicker in the draft row", () => {
+  it("is a row control (hover /5, press /12) with a still 12px chevron", () => {
+    render(<DraftHostPicker sessionId="d" />);
+    const trigger = screen.getByRole("button", { name: "Start on This Mac" });
+    for (const c of ["hover:bg-foreground/5", "active:bg-foreground/12", "active:transition-none"]) expect(trigger.className).toContain(c);
+    const chevron = trigger.lastElementChild!.getAttribute("class")!;
+    expect(chevron).toContain("size-3");
+    expect(chevron).not.toMatch(/rotate|transition/);
+  });
+});

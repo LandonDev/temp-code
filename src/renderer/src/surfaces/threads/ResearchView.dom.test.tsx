@@ -148,3 +148,13 @@ describe("the research view", () => {
     expect(screen.getByText("Direct research").closest("button")).toBeNull();
   });
 });
+
+describe("press and hover", () => {
+  it("an angle's row hovers at /5 (never muted, which means selected) and presses to /12, at once as an ItemButton does", () => {
+    seed();
+    render(<ResearchView {...props(session())} />);
+    const angle = screen.getByRole("button", { name: /Bundler angle/ });
+    for (const c of ["hover:bg-foreground/5", "active:bg-foreground/12"]) expect(angle.className).toContain(c);
+    expect(angle.className).not.toMatch(/(?:^|\s)hover:bg-muted/);
+  });
+});

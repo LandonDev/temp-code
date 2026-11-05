@@ -345,3 +345,21 @@ describe("the fold following the thread", () => {
     expect(container.querySelector("[data-task-fold]")?.className).toContain("collapsible-auto");
   });
 });
+
+describe("press and hover", () => {
+  it("the row hovers at /5 over --dur-hover and presses to /12 at once, but not for a press on a control inside it", () => {
+    const { container } = view(meta(), { todos: seven(3) });
+    const cls = row(container).className;
+    for (const c of ["hover:bg-foreground/5", "duration-(--dur-hover)", "active:bg-foreground/12", "active:transition-none", "[&:has(button:active)]:bg-foreground/5"])
+      expect(cls).toContain(c);
+  });
+
+  it("the task bar presses as a row too, and its chevron is the one disclosure", () => {
+    const { container } = view(meta(), { todos: seven(3) });
+    const bar = trigger(container)!;
+    expect(bar.className).toContain("active:bg-foreground/12");
+    const chevron = bar.querySelector("svg")!.getAttribute("class")!;
+    expect(chevron).toContain("duration-(--dur-base)");
+    expect(chevron).not.toMatch(/transition-\[rotate\]/);
+  });
+});

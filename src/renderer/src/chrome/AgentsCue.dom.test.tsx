@@ -117,7 +117,10 @@ describe("AgentsCueView", () => {
     expect(cls).toContain("starting:opacity-0");
     expect(cls).toContain("duration-(--dur-fast)");
     expect(cls).toContain("motion-reduce:transition-opacity");
-    expect(cls).toContain("aria-pressed:bg-foreground/7");
+    // Pressed as Toggle is (muted, foreground text), and pressed down to /12 as every row is.
+    expect(cls).toContain("aria-pressed:bg-muted");
+    expect(cls).not.toContain("aria-pressed:bg-foreground/7");
+    expect(cls).toContain("active:bg-foreground/12");
     expect(button()!.getAttribute("aria-pressed")).toBe("true");
   });
 

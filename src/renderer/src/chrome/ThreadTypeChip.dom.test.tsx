@@ -77,3 +77,12 @@ describe("ThreadTypeChip", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe("ThreadTypeChip in the draft row", () => {
+  it("is a row control: hover /5 over --dur-hover, press /12 at once", () => {
+    render(<ThreadTypeChip value="chat" onChange={() => {}} />);
+    const trigger = screen.getByRole("combobox", { name: "Thread type" });
+    for (const c of ["hover:bg-foreground/5", "duration-(--dur-hover)", "active:bg-foreground/12", "active:transition-none"]) expect(trigger.className).toContain(c);
+    expect(trigger.className).not.toContain("hover:bg-foreground/7");
+  });
+});

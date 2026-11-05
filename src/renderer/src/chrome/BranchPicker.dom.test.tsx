@@ -99,3 +99,15 @@ describe("BranchPicker", () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe("BranchPicker in the draft row", () => {
+  it("is a row control (hover /5, press /12) ending in a menu trigger's still chevron; the head form has none", () => {
+    render(<BranchPicker cwd="/u/me/app" />);
+    const trigger = screen.getByRole("button", { name: "Branch main" });
+    for (const c of ["hover:bg-foreground/5", "active:bg-foreground/12", "active:transition-none"]) expect(trigger.className).toContain(c);
+    const chevron = trigger.lastElementChild!;
+    expect(chevron.tagName.toLowerCase()).toBe("svg");
+    expect(chevron.getAttribute("class")).toContain("size-3");
+    expect(chevron.getAttribute("class")).not.toMatch(/rotate|transition/);
+  });
+});

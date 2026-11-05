@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
 import { WorkingMark } from "../../components/ui/working-mark";
 import { WorkingText } from "../../components/ui/working-text";
+import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { cn } from "../../lib/cn";
 import { DUR, EASE_SWAP_CSS, FADE_OUT, SPRING_LAYOUT } from "../../lib/ease";
 import { useHeldPhase, useHeldWord } from "../../lib/heldWord";
@@ -194,7 +195,8 @@ export function TurnLine({
                   <ChevronRight
                     aria-hidden
                     className={cn(
-                      "ms-1 size-3 shrink-0 transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/turnend:text-foreground motion-reduce:transition-none",
+                      "ms-1 size-3 shrink-0 group-hover/turnend:text-foreground",
+                      DISCLOSURE_CHEVRON,
                       bodyOpen && "rotate-90",
                     )}
                   />

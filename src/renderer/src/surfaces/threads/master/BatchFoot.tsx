@@ -6,7 +6,7 @@ import { Collapsible, CollapsibleContent } from "../../../components/ui/collapsi
 import { DISCLOSURE_CHEVRON } from "../../../components/ui/disclosure";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { StatusMark } from "../../../components/ui/status";
-import { ChevronDown, Square } from "../../../chrome/icons";
+import { ChevronRight, Square } from "../../../chrome/icons";
 import { cn } from "../../../lib/cn";
 import { useNow } from "../../../lib/duration";
 import { RulesDialog } from "./RulesDialog";
@@ -228,7 +228,7 @@ const StepRow = memo(function StepRow({ step, detail, now, open, onStop, onFold 
         ) : failed && hasConsole(step) ? (
           <Button variant="ghost" size="xs" onClick={() => onFold(step.id, open)} aria-expanded={open}>
             {open ? "Hide" : "Show"}
-            <ChevronDown className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-180")} />
+            <ChevronRight className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />
           </Button>
         ) : null}
       </div>

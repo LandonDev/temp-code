@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight } from "@renderer/chrome/icons";
+import { ChevronRight } from "@renderer/chrome/icons";
 import { TruncateTip } from "@renderer/components/tip";
 import { cn } from "@renderer/lib/cn";
 import { duration, useNow } from "@renderer/lib/duration";
 import { canvasMeasure, cssFont, fitCard, type Measure } from "@renderer/lib/taskListWidth";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "./collapsible";
+import { ROW_PRESS } from "./press";
 
 /**
  * A task list an agent works through: a header with a donut of done over
@@ -140,15 +141,19 @@ function TaskRow({ task }: { task: Task }) {
       <div className="flex items-baseline gap-2.5">
         <TaskMark state={task.state} className="mt-[3px] self-start" />
         {has ? (
-          <CollapsibleTrigger className="group/steps -mx-1 flex min-w-0 items-start gap-1 rounded-md px-1 text-start transition-[background-color] duration-(--dur-fast) hover:bg-foreground/5 motion-reduce:transition-none">
+          <CollapsibleTrigger className={cn("group/steps -mx-1 flex min-w-0 items-start gap-1 rounded-md px-1 text-start", ROW_PRESS)}>
             {label}
-            <ChevronRight
+            {/* An open row's chevron rests hidden and shows on hover; the fade
+                rides this wrapper, so the chevron keeps the one turn. */}
+            <span
               aria-hidden
               className={cn(
-                "mt-1 size-3 shrink-0 text-muted-foreground transition-[rotate,opacity] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
-                open && "rotate-90 opacity-0 group-hover/steps:opacity-100 group-focus-visible/steps:opacity-100",
+                "mt-1 flex shrink-0 transition-opacity duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
+                open && "opacity-0 group-hover/steps:opacity-100 group-focus-visible/steps:opacity-100",
               )}
-            />
+            >
+              <ChevronRight className={cn("size-3 text-muted-foreground", DISCLOSURE_CHEVRON, open && "rotate-90")} />
+            </span>
           </CollapsibleTrigger>
         ) : (
           label
@@ -273,7 +278,7 @@ export function TaskList({
 
   return (
     <Collapsible ref={card} data-slot="task-list" open={open} onOpenChange={setOpen} className={cn("w-full rounded-xl border border-border bg-card text-card-foreground", className)}>
-      <CollapsibleTrigger className="group/task-header flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-start transition-[background-color] duration-(--dur-fast)">
+      <CollapsibleTrigger className={cn("group/task-header flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-start data-panel-open:rounded-b-none", ROW_PRESS)}>
         <span className="relative mt-[3px] block size-3.5 shrink-0">
           {complete ? <TaskMark state="done" /> : <TaskDonut done={done} total={tasks.length} />}
         </span>
@@ -284,7 +289,7 @@ export function TaskList({
           <span dir="ltr">
             {done}/{tasks.length}
           </span>
-          <ChevronDown aria-hidden data-open={open || undefined} className="task-chevron size-3.5" />
+          <ChevronRight aria-hidden data-slot="task-chevron" className={cn("size-3.5", DISCLOSURE_CHEVRON, open && "rotate-90")} />
         </span>
       </CollapsibleTrigger>
 

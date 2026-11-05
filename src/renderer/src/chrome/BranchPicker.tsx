@@ -1,6 +1,7 @@
 import { registry } from "../lib/connection";
 import { environmentOfCwd } from "../lib/tcserver/projects";
-import { GitBranch, Search } from "./icons";
+import { ChevronDown, GitBranch, Search } from "./icons";
+import { ROW_CONTROL } from "./composerRow";
 import {
   useEffect,
   useMemo,
@@ -265,7 +266,7 @@ export function BranchPicker({
       className={cn(
         head
           ? "h-7 min-w-0 max-w-full justify-start px-1.5 text-[13px] font-medium text-foreground"
-          : "min-w-0 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground",
+          : cn("min-w-0", ROW_CONTROL),
         missingGit && "disabled:opacity-100",
       )}
     >
@@ -288,6 +289,8 @@ export function BranchPicker({
           <span className="truncate font-mono text-[12px]">{label}</span>
         </TruncateTip>
       )}
+      {/* A menu trigger's still chevron, as every picker in the draft row has. */}
+      {head || missingGit ? null : <ChevronDown aria-hidden className="size-3 shrink-0" />}
     </Button>
   );
 

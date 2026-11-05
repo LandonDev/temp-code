@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(cleanup)
+import { DISCLOSURE_CHEVRON } from '../components/ui/disclosure'
 import { PreambleRow } from './PreambleRow'
 
 describe('PreambleRow', () => {
@@ -13,12 +14,14 @@ describe('PreambleRow', () => {
     const button = getByRole('button')
     expect(button.textContent).toBe('Project rules212 words')
     expect(button.textContent).not.toContain('·')
-    // A fixed 24px trigger whose colour eases on hover; its chevron turns with the fold.
-    for (const c of ['h-6', 'px-2', 'transition-colors', 'duration-(--dur-fast)', 'ease-(--ease-out)', 'motion-reduce:transition-none'])
-      expect(button.className).toContain(c)
-    expect(button.className).not.toContain('py-1')
+    // A fixed 24px trigger whose words lift at once on hover; the one
+    // disclosure chevron trails the count, 8px after it, and only it turns.
+    for (const c of ['h-6', 'px-2', 'gap-1', 'hover:text-foreground']) expect(button.className).toContain(c)
+    expect(button.className).not.toMatch(/py-1|transition|duration-/)
+    expect(button.lastElementChild?.tagName.toLowerCase()).toBe('svg')
     const chevron = button.querySelector('svg')!.getAttribute('class')!
-    expect(chevron).toContain('duration-(--dur-base)')
+    expect(chevron).toContain(DISCLOSURE_CHEVRON)
+    expect(chevron).toContain('ms-1')
     expect(chevron).not.toContain('rotate-90')
     expect(button.getAttribute('aria-expanded')).toBe('false')
     expect(queryByText(/Never touch prod/)).toBeNull()

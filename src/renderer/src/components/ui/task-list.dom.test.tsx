@@ -290,3 +290,30 @@ describe("the compact rows", () => {
     expect(container.querySelector(".task-share")?.textContent).toBe("40%");
   });
 });
+
+describe("press and hover", () => {
+  const press = ["hover:bg-foreground/5", "duration-(--dur-hover)", "active:bg-foreground/12", "active:transition-none", "motion-reduce:transition-none"];
+
+  it("the header and a row with steps hover at /5 over --dur-hover and press to /12 at once", () => {
+    const tasks = TASKS.map((t) => (t.state === "active" ? { ...t, detail: <p>Edited a.ts</p> } : t));
+    const { container } = render(<TaskList tasks={tasks} />);
+    const header = container.querySelector<HTMLElement>("[data-slot='task-list'] > [data-slot='collapsible-trigger']")!;
+    const row = container.querySelector<HTMLElement>("li [data-slot='collapsible-trigger']")!;
+    for (const c of press) {
+      expect(header.className).toContain(c);
+      expect(row.className).toContain(c);
+    }
+    expect(row.className).not.toContain("duration-(--dur-fast)");
+  });
+
+  it("the header's chevron is the one disclosure: a ChevronRight turning 90° with the list", () => {
+    const { container } = render(<TaskList tasks={TASKS} />);
+    const header = container.querySelector<HTMLElement>("[data-slot='task-list'] > [data-slot='collapsible-trigger']")!;
+    const chevron = () => header.querySelector("[data-slot='task-chevron']")!.getAttribute("class")!;
+    expect(chevron()).toContain("rotate-90");
+    expect(chevron()).toContain("duration-(--dur-base)");
+    expect(header.className).toContain("data-panel-open:rounded-b-none");
+    fireEvent.click(header);
+    expect(chevron()).not.toContain("rotate-90");
+  });
+});

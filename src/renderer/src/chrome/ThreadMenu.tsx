@@ -136,7 +136,7 @@ export function ThreadMenu({
           aria-pressed={panel.room !== false && panel.open}
           aria-disabled={panel.room === false || undefined}
           onClick={panel.room === false ? undefined : panel.onToggle}
-          className="text-muted-foreground hover:text-foreground aria-pressed:bg-foreground/7 aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground"
+          className="text-muted-foreground hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground"
         >
           <PanelRight />
         </Button>

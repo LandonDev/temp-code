@@ -1,7 +1,8 @@
 import { memo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Button } from "../../../components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "../../../components/ui/collapsible";
 import { Item } from "../../../components/ui/item";
+import { ROW_PRESS } from "../../../components/ui/press";
 import { Progress } from "../../../components/ui/progress";
 import { STATUS_WORD, StatusMark, statusToneClass } from "../../../components/ui/status";
 import { TaskRows } from "../../../components/ui/task-list";
@@ -260,7 +261,11 @@ export function MasterRowView({
       onKeyDown={onKey}
       data-menu-id={meta.id}
       className={cn(
-        "group relative grid cursor-default grid-cols-[16px_1fr] items-start gap-x-2 gap-y-0 rounded-md px-2 py-1.5 hover:bg-foreground/5",
+        "group relative grid cursor-default grid-cols-[16px_1fr] items-start gap-x-2 gap-y-0 rounded-md px-2 py-1.5",
+        ROW_PRESS,
+        // A press on a control inside the row (its actions, the task bar) is
+        // that control's: the row keeps its hover fill.
+        "[&:has(button:active)]:bg-foreground/5",
         host?.offline && "opacity-50",
       )}
       data-status={meta.status}
@@ -399,13 +404,13 @@ function TaskBar({
         aria-label={`Tasks: ${String(bar.done)} of ${String(bar.total)} done`}
         onClick={stop}
         onKeyDown={stop}
-        className="relative -mx-1 flex h-4 w-fit max-w-[calc(100%+8px)] items-center gap-2 rounded-sm px-1 after:absolute after:inset-x-0 after:-inset-y-1 after:content-[''] transition-[background-color] duration-(--dur-hover) hover:bg-foreground/5 motion-reduce:transition-none"
+        className={cn("relative -mx-1 flex h-4 w-fit max-w-[calc(100%+8px)] items-center gap-2 rounded-sm px-1 after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']", ROW_PRESS)}
       >
         <Progress value={bar.done} max={bar.total} fill={working ? "foreground" : "muted"} aria-hidden data-bar className={TASK_BAR_CLASS} />
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums" dir="ltr" data-bar-tally>
           {bar.done}/{bar.total}
         </span>
-        <ChevronRight aria-hidden className={cn("size-3 shrink-0 text-muted-foreground transition-[rotate] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none", open && "rotate-90")} />
+        <ChevronRight aria-hidden className={cn("size-3 shrink-0 text-muted-foreground", DISCLOSURE_CHEVRON, open && "rotate-90")} />
       </CollapsibleTrigger>
       <CollapsibleContent data-task-fold data-auto={auto || undefined} className={auto ? "collapsible-auto" : undefined}>
         <TaskRows size="compact" tasks={tasksOf(todos, 0, working)} className={TASK_FOLD_CLASS} />

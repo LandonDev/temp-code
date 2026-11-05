@@ -4,6 +4,7 @@ import { ChevronRight, FileText } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
 import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
+import { ROW_PRESS } from "../../components/ui/press";
 import { Spinner } from "../../components/ui/spinner";
 import { StatusMark } from "../../components/ui/status";
 import { TaskList } from "../../components/ui/task-list";
@@ -436,7 +437,7 @@ function PastPass({
   const tasks = useMemo(() => tasksOf(data.todos, round, false, data.blocks), [data, round]);
   return (
     <Collapsible data-pass={passNum}>
-      <CollapsibleTrigger className="group/pass flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-foreground/5">
+      <CollapsibleTrigger className={cn("group/pass flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left", ROW_PRESS)}>
         <span className="flex w-full items-baseline gap-2">
           <span className="shrink-0 text-[13px] font-medium text-foreground">Pass {passNum}</span>
           <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{firstLine(data.header)}</span>

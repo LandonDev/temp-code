@@ -438,6 +438,8 @@ export function useThreadChat({
               animate={JUMP_AT}
               exit={FADE_OUT}
             >
+              {/* It floats over the transcript, so its fills stay opaque: muted
+                  on hover, and a press lays foreground/12 over that fill. */}
               <Tip label="Jump to latest">
                 <Button
                   variant="ghost"
@@ -446,7 +448,7 @@ export function useThreadChat({
                   aria-label="Jump to latest"
                   data-jump-to-bottom
                   onClick={() => jumpToBottomRef.current?.()}
-                  className="pointer-events-auto border border-border bg-popover text-muted-foreground shadow-overlay hover:bg-popover hover:text-foreground active:bg-muted data-pressed:bg-muted"
+                  className="pointer-events-auto border border-border bg-popover text-muted-foreground shadow-overlay hover:bg-muted hover:text-foreground active:bg-muted active:bg-linear-to-b active:from-foreground/12 active:to-foreground/12 data-pressed:bg-muted"
                 >
                   <ChevronDown className="size-4" />
                 </Button>

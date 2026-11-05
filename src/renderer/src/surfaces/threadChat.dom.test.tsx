@@ -5,7 +5,7 @@
  * it, and the transcript's watching line opens what the thread watches:
  * Agents for its subagents, else Activity.
  */
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRef } from "react";
 
@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
   stripProps: [] as Record<string, unknown>[],
   panelOpen: [] as unknown[][],
   metas: {} as Record<string, { background: unknown }>,
+  jump: null as ((show: boolean) => void) | null,
 }));
 vi.mock("../lib/rightPanel", async (importOriginal) => ({
   watchSection: (await importOriginal<typeof import("../lib/rightPanel")>()).watchSection,
@@ -43,7 +44,8 @@ vi.mock("../chrome/MessageQueue", () => ({ MessageQueue: () => null, visibleQueu
 vi.mock("../chrome/SessionReview", () => ({ SessionReview: () => null }));
 vi.mock("./DeferredMount", () => ({ DeferredMount: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("./AgentTranscript", () => ({
-  AgentTranscript: ({ liveState, onOpenActivity }: { liveState?: boolean; onOpenActivity?: () => void }) => {
+  AgentTranscript: ({ liveState, onOpenActivity, onJumpToBottomChange }: { liveState?: boolean; onOpenActivity?: () => void; onJumpToBottomChange?: (show: boolean) => void }) => {
+    h.jump = onJumpToBottomChange ?? null;
     h.liveState.push(liveState);
     h.openActivity.push(onOpenActivity);
     return <div data-testid="transcript" />;
@@ -135,5 +137,20 @@ describe("useThreadChat", () => {
     render(<Chat session={thread({ threadType: "chat", status: "running", busy: true, busySince: Date.now() })} />);
     expect(h.liveState.length).toBeGreaterThan(0);
     expect(h.liveState.every((v) => v === false)).toBe(true);
+  });
+});
+
+describe("jump to latest", () => {
+  it("floats on opaque fills: muted on hover, and a press lays foreground/12 over it at once", async () => {
+    const { container } = render(<Chat session={thread({ threadType: "chat", status: "idle" })} />);
+    act(() => h.jump?.(true));
+    const button = await new Promise<HTMLElement>((resolve) => {
+      const find = () => container.querySelector<HTMLElement>("[data-jump-to-bottom]");
+      const poll = () => (find() ? resolve(find()!) : setTimeout(poll, 5));
+      poll();
+    });
+    const cls = button.className;
+    for (const c of ["bg-popover", "hover:bg-muted", "active:bg-muted", "active:from-foreground/12", "active:transition-none"]) expect(cls).toContain(c);
+    expect(cls).not.toMatch(/hover:bg-popover|active:bg-foreground\/12/);
   });
 });

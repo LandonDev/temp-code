@@ -3,6 +3,7 @@ import { cloneElement, type ReactNode } from "react";
 import { ChevronRight } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
+import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { cn } from "../../lib/cn";
 import { MorphText, useCountUp } from "../../motion";
 import { Counts } from "./Counts";
@@ -113,7 +114,8 @@ export function ActionLine({
         <ChevronRight
           aria-hidden
           className={cn(
-            "pointer-events-none ms-1 size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/action:text-foreground motion-reduce:transition-none",
+            "pointer-events-none ms-1 size-3 shrink-0 text-muted-foreground group-hover/action:text-foreground",
+            DISCLOSURE_CHEVRON,
             opens && open && "rotate-90",
           )}
         />
@@ -122,9 +124,9 @@ export function ActionLine({
   );
 }
 
-/** Hover and keyboard focus on the line lift its muted words. */
-const LIFT =
-  "transition-[color] duration-(--dur-fast) group-hover/action:text-foreground group-has-focus-visible/action:text-foreground motion-reduce:transition-none";
+/** Hover and keyboard focus on the line lift its muted words, at once: only
+ *  the chevron's turn animates on a line. */
+const LIFT = "group-hover/action:text-foreground group-has-focus-visible/action:text-foreground";
 
 /** The object in foreground: plain text, or a link; its full form in a tooltip. */
 function ObjectText({

@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { ChevronRight, Sparkles } from "../../chrome/icons";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
+import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { cn } from "../../lib/cn";
 import { type Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
@@ -52,7 +53,8 @@ export function ActivityThinkingRow({
           {expandable ? (
             <ChevronRight
               className={cn(
-                "ms-1 size-3 shrink-0 transition-transform duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
+                "ms-1 size-3 shrink-0",
+                DISCLOSURE_CHEVRON,
                 open && "rotate-90",
               )}
             />

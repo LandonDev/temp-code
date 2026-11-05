@@ -1,5 +1,5 @@
 import { ChevronDown, Folder, FolderOpen, MoreHorizontal, Terminal } from "./icons";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/cn";
 import { basename } from "../lib/fs";
@@ -8,7 +8,7 @@ import { looksLikeProject, sameProjectPath, type RecentProject } from "../lib/re
 import { shortcutFor } from "../lib/settings";
 import { FolderGlyph } from "./WorkspaceGlyph";
 import { RowsMenu, tidy, type MenuRow } from "./menuRows";
-import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
+import { ROW_CONTROL } from "./composerRow";
 
 type Props = {
   cwd: string;
@@ -17,7 +17,7 @@ type Props = {
   placement?: "above" | "below";
   className?: string;
   buttonClassName?: string;
-  /** Chevron on the trailing edge; flips when the menu is open. */
+  /** A still chevron on the trailing edge: a menu trigger, not a fold. */
   chevron?: boolean;
   children?: ReactNode;
   onCwdChange: (path: string) => void;
@@ -60,7 +60,6 @@ export function CwdPicker({
   onChooseFolder,
   onClose,
 }: Props) {
-  const [open, setOpen] = useState(false);
   const inProject = looksLikeProject(cwd);
   const label = prettyCwd(cwd);
 
@@ -103,7 +102,7 @@ export function CwdPicker({
       className={
         buttonClassName
           ? cn("justify-start rounded-none", buttonClassName)
-          : "min-w-0 shrink font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground"
+          : cn("min-w-0 shrink", ROW_CONTROL)
       }
     >
       {children ?? (
@@ -113,9 +112,7 @@ export function CwdPicker({
         </>
       )}
       {chevron ? (
-        <ChevronDown
-          className={cn("size-3 shrink-0 text-muted-foreground", DISCLOSURE_CHEVRON, open && "rotate-180")}
-        />
+        <ChevronDown aria-hidden className="size-3 shrink-0" />
       ) : null}
     </Button>
   );
@@ -128,7 +125,6 @@ export function CwdPicker({
         rows={rows}
         onPick={pick}
         onOpenChange={(next) => {
-          setOpen(next);
           if (!next) onClose?.();
         }}
         finalFocus={onClose ? false : undefined}

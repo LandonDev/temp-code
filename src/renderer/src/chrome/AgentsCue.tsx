@@ -72,7 +72,7 @@ export function AgentsCueView({
 
 /** The quiet row control (`ROW_CONTROL`: 12px muted, the /5 hover fill) at
  *  24px, pressed like the panel toggle beside it. */
-const CUE = `${ROW_CONTROL} gap-1.5 transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 aria-pressed:bg-foreground/7 aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground motion-reduce:transition-opacity`;
+const CUE = `${ROW_CONTROL} gap-1.5 transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 aria-pressed:bg-muted aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground motion-reduce:transition-opacity`;
 
 /** A provider's mark, 2px from the next: one that joins grows in from a
  *  quarter on the layout spring's curve (`@starting-style`, so the first
