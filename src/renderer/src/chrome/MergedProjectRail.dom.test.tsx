@@ -420,7 +420,7 @@ describe("the rail", () => {
     const pin = other.querySelector<HTMLButtonElement>('[aria-label="Pin workspace"]')!;
     const options = other.querySelector<HTMLButtonElement>('[aria-label="Workspace options"]')!;
     expect(pin.compareDocumentPosition(options) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    for (const action of [pin, options]) expect(action.className).toContain("group-hover/row:inline-flex");
+    for (const action of [pin, options]) expect(action.closest("[data-rail-reveal]")!.className).toContain("group-hover/row:inline-flex");
     fireEvent.click(pin);
     expect(onSelect).not.toHaveBeenCalled();
     expect(headers(root)).toContain("Pinned");

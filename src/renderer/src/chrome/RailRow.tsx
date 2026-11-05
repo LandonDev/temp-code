@@ -64,14 +64,35 @@ const TRAILING =
 /** With hover actions over it, the trailing slot reserves their place and
  *  fades: one 24px action, or two. */
 const YIELDS =
-  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-focus-within/row:opacity-0 group-hover/row:opacity-0 group-hover/row:delay-(--delay-hover) group-focus-within/row:delay-(--dur-instant) motion-reduce:transition-opacity";
+  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/row:opacity-0 group-hover/row:delay-(--delay-hover) group-has-focus-visible/row:opacity-0 group-has-focus-visible/row:delay-(--dur-instant) group-has-[[data-rail-action][aria-expanded=true]]/row:opacity-0 group-has-[[data-rail-action][aria-expanded=true]]/row:delay-(--dur-instant) motion-reduce:transition-opacity";
 const RESERVE = ["", "min-w-5", "min-w-11"] as const;
 /** A plain mark beside an interactive trailing control that gives its place
- *  to the hover actions (the selected workspace's diff). Spread on the mark. */
+ *  to the hover actions (the selected workspace's diff). Spread on the mark:
+ *  it leaves the line the moment they take their place in it, so the two
+ *  never share it. */
 export const RAIL_YIELD = {
   "data-rail-yield": "",
-  className: "group-focus-within/row:hidden group-hover/row:hidden",
+  className:
+    "group-hover/row:hidden group-has-focus-visible/row:hidden group-has-[[data-rail-action][aria-expanded=true]]/row:hidden",
 } as const;
+/** Hover actions over the row's end: they wait `--delay-hover` and fade in;
+ *  keyboard focus and an open menu show them at once, a mouse click does not
+ *  hold them. The fade rides this wrapper, so the button keeps its own hover
+ *  fill. */
+const REVEAL = [
+  "pointer-events-none inline-flex opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-opacity",
+  "group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-hover/row:delay-(--delay-hover) motion-reduce:transition-opacity",
+  "group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100 group-has-focus-visible/row:delay-(--dur-instant)",
+].join(" ");
+/** Inline after an interactive trailing node, the actions take their place in
+ *  the line on hover (the mark they replace leaves in the same frame) and
+ *  fade in after the same wait; `starting:` fades them in from `display:
+ *  none`. */
+const REVEAL_INLINE = [
+  "hidden opacity-0 starting:opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-opacity",
+  "group-hover/row:inline-flex group-hover/row:opacity-100 group-hover/row:delay-(--delay-hover) motion-reduce:transition-opacity",
+  "group-has-focus-visible/row:inline-flex group-has-focus-visible/row:opacity-100 group-has-focus-visible/row:delay-(--dur-instant)",
+].join(" ");
 
 /**
  * A rail row: 28px, a 16px glyph when it has one, a 13px label, at most one
@@ -123,7 +144,13 @@ export function RailRow({
       )}
     >
       {trailing}
-      {trailingInteractive ? actions.map((action) => <HoverAction key={action.label} action={action} inline />) : null}
+      {trailingInteractive && actions.length > 0 ? (
+        <TooltipProvider>
+          {actions.map((action) => (
+            <HoverAction key={action.label} action={action} inline />
+          ))}
+        </TooltipProvider>
+      ) : null}
     </span>
   ) : null;
   const hasGlyph = glyph != null || !!Icon;
@@ -210,39 +237,38 @@ export function RailRow({
 function HoverAction({ action, inline = false }: { action: RailRowAction; inline?: boolean }) {
   const { icon: Icon } = action;
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            data-no-drag
-            aria-label={action.label}
-            aria-haspopup={action.menu ? "menu" : undefined}
-            aria-expanded={action.menu ? !!action.expanded : undefined}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              action.onClick(event);
-            }}
-            className={cn(
-              "text-muted-foreground hover:text-foreground",
-              inline
-                ? ["hidden group-focus-within/row:inline-flex group-hover/row:inline-flex", action.expanded && "inline-flex"]
-                : [
-                    "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-opacity",
-                    // A pointer sweeping down the rail does not flash every row's actions: hover waits, focus does not.
-                    "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-hover/row:delay-(--delay-hover) group-focus-within/row:delay-(--dur-instant) motion-reduce:transition-opacity",
-                    action.expanded && "pointer-events-auto opacity-100 delay-(--dur-instant)",
-                  ],
-            )}
-          />
-        }
-      >
-        <Icon className="size-3.5" />
-      </TooltipTrigger>
-      <TooltipContent side="right">{action.label}</TooltipContent>
-    </Tooltip>
+    <span
+      data-rail-reveal
+      className={cn(
+        inline ? REVEAL_INLINE : REVEAL,
+        action.expanded && (inline ? "inline-flex opacity-100 delay-(--dur-instant)" : "pointer-events-auto opacity-100 delay-(--dur-instant)"),
+      )}
+    >
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              data-no-drag
+              data-rail-action
+              aria-label={action.label}
+              aria-haspopup={action.menu ? "menu" : undefined}
+              aria-expanded={action.menu ? !!action.expanded : undefined}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                action.onClick(event);
+              }}
+              className="text-muted-foreground hover:text-foreground"
+            />
+          }
+        >
+          <Icon className="size-3.5" />
+        </TooltipTrigger>
+        <TooltipContent side="right">{action.label}</TooltipContent>
+      </Tooltip>
+    </span>
   );
 }
 

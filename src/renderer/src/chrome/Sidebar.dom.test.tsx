@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
 
 const ws = { id: "w1", name: "alpha", path: "/w/alpha", environmentId: "local", createdAt: 1 } as WorkspaceMeta;
-const where = vi.hoisted(() => ({ cwd: "/w/alpha", workspaceId: "w1" as string | null, columns: [] as (string | null)[] }));
+const where = vi.hoisted(() => ({ cwd: "/w/alpha", workspaceId: "w1" as string | null, columns: [] as (string | null)[], loaded: true }));
 
 vi.mock("../stores/project", () => ({
   useProject: (pick: (s: { projectCwd: string; selectedProjectId: null }) => unknown) =>
@@ -16,7 +16,7 @@ vi.mock("../stores/project", () => ({
 }));
 vi.mock("../lib/tcserver/workspaces", () => ({
   useWorkspaces: () => [ws],
-  useWorkspaceCatalog: () => ({ projects: [], workspaces: [ws] }),
+  useWorkspaceCatalog: () => ({ projects: [], workspaces: [ws], loaded: where.loaded }),
   workspaceStore: { getSnapshot: () => ({ projects: [], workspaces: [ws] }) },
   workspaceIdOf: () => "w1",
   workspaceLabelKey: (_: unknown, __: string, fallback: string) => fallback,
@@ -131,7 +131,30 @@ describe("the workspace column", () => {
     }
   });
 
-  it("mounts one column per scope, so a switch never carries one workspace's folds and pages into another", () => {
+  it("waits for the catalog before it says a folder is outside every workspace", () => {
+    where.cwd = "/w/elsewhere";
+    where.workspaceId = null;
+    where.loaded = false;
+    try {
+      const view = mount();
+      expect(screen.getByRole("status").textContent).toBe("Loading…");
+      expect(screen.queryByText("No project folder")).toBeNull();
+      where.loaded = true;
+      view.rerender(
+        <div className="app-shell">
+          <Sidebar onSelectSession={() => {}} onOpenFile={() => {}} onSelectProject={() => {}} onOpenProject={() => {}} onSelectProjectCard={() => {}} onNewChat={() => {}} onNew={() => {}} />
+        </div>,
+      );
+      expect(screen.getByText("No project folder")).toBeTruthy();
+      expect(screen.queryByRole("status")).toBeNull();
+    } finally {
+      where.cwd = "/w/alpha";
+      where.workspaceId = "w1";
+      where.loaded = true;
+    }
+  });
+
+    it("mounts one column per scope, so a switch never carries one workspace's folds and pages into another", () => {
     where.columns = [];
     const view = mount();
     where.cwd = "~";

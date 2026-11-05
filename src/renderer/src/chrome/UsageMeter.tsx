@@ -31,7 +31,7 @@ export function UsageMeter({ sessionId }: { sessionId?: string }) {
   });
   if (rows.length === 0) return null;
   return (
-    <div aria-label="Usage" className="flex shrink-0 flex-col px-2 pb-2">
+    <div role="group" aria-label="Usage" className="flex shrink-0 flex-col px-2 pb-2">
       {rows.map(({ provider, meter }) => (
         <MeterRow key={provider} provider={provider} meter={meter} now={now} />
       ))}
@@ -101,9 +101,9 @@ export function MeterRowView({ provider, meter, now, ...trigger }: MeterProps & 
         />
       )}
       {meter.limited ? (
-        <span data-meter-limited className="flex min-w-0 gap-2 text-xs whitespace-nowrap text-warning tabular-nums">
-          <span>Limited</span>
-          {future(meter.limited.until, now) ? <span>{untilShort(meter.limited.until, now)}</span> : null}
+        <span data-meter-limited className="flex min-w-0 gap-1 text-xs whitespace-nowrap tabular-nums">
+          <span className="font-medium text-warning">Limited</span>
+          {future(meter.limited.until, now) ? <span className="text-muted-foreground">{untilShort(meter.limited.until, now)}</span> : null}
         </span>
       ) : future(meter.resetsAt, now) ? (
         <span className="min-w-0 truncate text-xs whitespace-nowrap text-muted-foreground tabular-nums">

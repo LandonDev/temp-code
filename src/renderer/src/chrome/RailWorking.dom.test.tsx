@@ -70,7 +70,12 @@ describe("the rail's Working section", () => {
     const { container } = mount(["a", "b", "c", "d", "e", "f"].map((id) => row(id, "working")));
     expect(screen.getByText("Working")).toBeTruthy();
     expect(rowsShown(container)).toEqual(["a", "b", "c", "d"]);
-    expect(screen.getByRole("button", { name: "2 more" }).getAttribute("aria-expanded")).toBe("false");
+    const more = screen.getByRole("button", { name: "2 more" });
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    // A rail row's box: its label 8px past the 16px lead column, the rows' /5 hover at once.
+    expect(more.className).toContain("gap-2");
+    expect(more.className).toContain("hover:bg-foreground/5");
+    expect(more.className).toContain("transition-none");
   });
 
   it("opening it shows every row in a scroller, and Show less closes it", () => {

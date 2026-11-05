@@ -129,13 +129,13 @@ describe("HostsRow", () => {
   });
 
   it("toneOf: quiet when well, amber while it tries or is slow, red refused", () => {
-    expect(toneOf(status("open"), false)).toBe("bg-muted-foreground");
-    expect(toneOf({ ...status("open"), fresh: false }, false)).toBe("bg-muted-foreground/50");
-    expect(toneOf(status("open"), false, true)).toBe("bg-warning");
-    expect(toneOf(status("connecting"), true)).toBe("bg-warning");
-    expect(toneOf(status("reconnecting"), true)).toBe("bg-warning");
-    expect(toneOf(status("unauthorized"), true)).toBe("bg-destructive");
-    expect(toneOf(status("offline"), true)).toBe("bg-muted-foreground/30");
+    expect(toneOf(status("open"))).toBe("bg-muted-foreground");
+    expect(toneOf({ ...status("open"), fresh: false })).toBe("bg-muted-foreground/50");
+    expect(toneOf(status("open"), true)).toBe("bg-warning");
+    expect(toneOf(status("connecting"))).toBe("bg-warning");
+    expect(toneOf(status("reconnecting"))).toBe("bg-warning");
+    expect(toneOf(status("unauthorized"))).toBe("bg-destructive");
+    expect(toneOf(status("offline"))).toBe("bg-muted-foreground/30");
   });
 
   it("spins an amber spinner in the dot's place while a host reconnects, never a pulse", () => {
@@ -146,6 +146,11 @@ describe("HostsRow", () => {
     expect(spinner.getAttribute("data-slot")).toBe("spinner");
     expect(spinner.getAttribute("class")).toContain("text-warning");
     expect(row.innerHTML).not.toMatch(/animate-(pulse|spin)\b/);
+    // The spinner and the dot share one 10px box per host, so no other dot moves.
+    const boxes = [...row.querySelectorAll("[data-host-dot]")];
+    expect(boxes).toHaveLength(2);
+    for (const box of boxes) expect(box.className).toContain("size-2.5");
+    expect(boxes[1].contains(spinner)).toBe(true);
   });
 
   it("lists a submenu per host, with the glyph, the name and the state, then Host settings", async () => {

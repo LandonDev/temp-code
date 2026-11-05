@@ -32,7 +32,7 @@ import {
   Trash2,
 } from "./icons";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { agentSummaryParts, modelLabel, type AgentSummary } from "../lib/threads/agents";
+import { agentSummaryParts, leadStripped, modelLabel, type AgentSummary } from "../lib/threads/agents";
 import { AGENT_GLYPHS, THREAD_MENU_ICONS } from "../surfaces/threads/threadTypes";
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 import { STATUS_ON_TIP, STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/status";
@@ -144,9 +144,11 @@ function MoreRow({ hidden, onMore }: { hidden: number; onMore: () => void }) {
   );
 }
 
-/** A row's one hover action: ⋯, the same menu a right-click opens. It
- *  takes the trailing slot's place by opacity, as the rail's rows do. */
-/** The ⋯ a row shows on hover and focus, as a menu's trigger. */
+/** A row's one hover action: ⋯, the same menu a right-click opens, as the
+ *  menu's trigger. It takes the trailing slot's place by opacity, as the
+ *  rail's rows do: hover waits, so a pointer crossing the column flashes
+ *  nothing; keyboard focus and an open menu show it at once, and a mouse
+ *  click does not hold it. */
 function moreTrigger(className?: string) {
   return (
     <Button
@@ -159,9 +161,8 @@ function moreTrigger(className?: string) {
       className={cn(
         "text-muted-foreground hover:text-foreground",
         "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-opacity",
-        "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100 data-popup-open:pointer-events-auto data-popup-open:opacity-100",
-        // Hover waits, so a pointer crossing the column flashes nothing; focus and an open menu show it at once.
-        "group-hover/row:delay-(--delay-hover) group-focus-within/row:delay-(--dur-instant) data-popup-open:delay-(--dur-instant) motion-reduce:transition-opacity",
+        "group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100 data-popup-open:pointer-events-auto data-popup-open:opacity-100",
+        "group-hover/row:delay-(--delay-hover) group-has-focus-visible/row:delay-(--dur-instant) data-popup-open:delay-(--dur-instant) motion-reduce:transition-opacity",
         className,
       )}
     >
@@ -171,9 +172,11 @@ function moreTrigger(className?: string) {
 }
 
 
-/** The trailing slot fades while the row's hover action shows. */
+/** The trailing slot fades while the row's hover action shows, and stays
+ *  away while its menu is open (the pointer has gone into the menu), so the
+ *  two never draw over each other. */
 const YIELDS =
-  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-focus-within/row:opacity-0 group-hover/row:opacity-0 group-hover/row:delay-(--delay-hover) group-focus-within/row:delay-(--dur-instant) motion-reduce:transition-opacity";
+  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/row:opacity-0 group-hover/row:delay-(--delay-hover) group-has-focus-visible/row:opacity-0 group-has-focus-visible/row:delay-(--dur-instant) group-has-[[data-popup-open]]/row:opacity-0 group-has-[[data-popup-open]]/row:delay-(--dur-instant) motion-reduce:transition-opacity";
 
 function InlineRename({
   value,
@@ -361,7 +364,8 @@ export function ThreadRowView({
 }) {
   const tally = batchTally(row);
   const RoleGlyph = child && row.agentType ? AGENT_GLYPHS[row.agentType] : null;
-  const live = child && row.running ? row.activity?.trim() : "";
+  // What a running subagent does: the host's detail, else an old host's activity.
+  const live = child && row.running ? leadStripped(row.activity ?? "", "working", row.statusDetail) : "";
   const editing = title != null;
   const planReady = !!useContext(PlanReadyContext)[row.id];
   const verdict = word && row.failure && rowState(row) === "failed" ? row.failure : null;
@@ -406,7 +410,11 @@ export function ThreadRowView({
       onPointerEnter={() => sessionPrefetch.enter(row.id)}
       onPointerLeave={() => sessionPrefetch.leave(row.id)}
       onDoubleClick={onRename}
-      onKeyDown={(e) => e.key === "Enter" && !editing && onOpen?.()}
+      onKeyDown={(e) => {
+        if (editing || e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        onOpen?.();
+      }}
       data-menu-id={menuId}
       className={cn(
         ROW,
@@ -697,7 +705,11 @@ export function ProjectRowView({
       data-project-row
       onClick={() => !editing && onClick?.()}
       onDoubleClick={onRename}
-      onKeyDown={(e) => e.key === "Enter" && !editing && onClick?.()}
+      onKeyDown={(e) => {
+        if (editing || e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        onClick?.();
+      }}
       className={cn(ROW, "h-8 hover:bg-foreground/5", selected || unread ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
     >
       <span aria-hidden className="grid size-4 shrink-0 place-items-center">
@@ -781,7 +793,7 @@ function CardAgo({ latest, yields }: { latest: number; yields: boolean }) {
 /** An implementation thread's tally and current task, under its title. */
 function TaskLine({ tasks, indent }: { tasks: NonNullable<ThreadRow["tasks"]>; indent: string }) {
   return (
-    <span className={cn("flex h-4 min-w-0 items-center gap-2 text-muted-foreground", indent)}>
+    <span className={cn("flex h-4 min-w-0 items-center gap-1 text-muted-foreground", indent)}>
       <span className={cn("shrink-0 tabular-nums", tasks.done === tasks.total && "text-success")}>
         {tasks.done}/{tasks.total}
       </span>
@@ -790,13 +802,14 @@ function TaskLine({ tasks, indent }: { tasks: NonNullable<ThreadRow["tasks"]>; i
   );
 }
 
-/** A thread's working subagents in the fleet's words, two spaces apart. */
+/** A thread's working subagents in the fleet's words: the count in medium
+ *  weight, then each live state 4px on, needs you and failed in their tone. */
 const AgentsLine = memo(function AgentsLine({ summary, indent }: { summary: AgentSummary; indent: string }) {
   tallyRender("agentsLine");
   return (
-    <span className={cn("flex h-4 min-w-0 items-center gap-2 text-muted-foreground", indent)}>
-      {agentSummaryParts(summary).map((part) => (
-        <span key={part.text} className={cn("shrink-0 truncate", part.tone)}>
+    <span className={cn("flex h-4 min-w-0 items-center gap-1 text-muted-foreground", indent)} data-agents-line>
+      {agentSummaryParts(summary).map((part, i) => (
+        <span key={part.text} className={cn("shrink-0 truncate", i === 0 && "font-medium", part.tone)}>
           {part.text}
         </span>
       ))}
@@ -819,10 +832,7 @@ function ThreadLine({ kind, thread }: { kind: "working" | "paused" | "unread"; t
         <HostGlyph environmentId={thread.environmentId} />
         {kind === "working" ? <LineElapsed thread={thread} /> : null}
         {kind === "paused" ? (
-          <span className="flex shrink-0 gap-2 text-muted-foreground">
-            <span>Paused</span>
-            <span className="tabular-nums">{duration(pausedElapsed(thread))}</span>
-          </span>
+          <StatusMark state="paused" glyph={false} detail={duration(pausedElapsed(thread))} className="shrink-0 text-[12px]" />
         ) : null}
       </span>
       {tasks ? <TaskLine tasks={tasks} indent="pl-10" /> : null}
@@ -894,10 +904,11 @@ const BatchLine = memo(function BatchLine({ thread, state, agents }: MasterBlock
  *  in red with their glyphs, the rest muted. */
 function CountLine({ counts }: { counts: readonly CardCount[] }) {
   return (
-    <span className="mt-1 flex h-4 min-w-0 items-center gap-2 tabular-nums text-muted-foreground" data-card-counts>
+    <span className="mt-1 flex h-4 min-w-0 items-center gap-1 tabular-nums text-muted-foreground" data-card-counts>
       {counts.map((c) =>
         c.kind === "waiting" || c.kind === "failed" ? (
-          <StatusMark key={c.kind} state={c.kind} word={c.text} className="shrink-0 font-normal [&_svg]:size-3" />
+          // A glyph keeps 8px from the count before it, as from its own word.
+          <StatusMark key={c.kind} state={c.kind} word={c.text} className="shrink-0 font-normal not-first:ms-1 [&_svg]:size-3" />
         ) : (
           <span key={c.kind} className="min-w-0 truncate">
             {c.text}
@@ -959,12 +970,13 @@ export function ProjectCardView({
   const editing = title != null;
   const body = (
     <>
-      <span className="flex h-5 min-w-0 items-center gap-2">
+      {/* The 13px name and the 12px time share a baseline. */}
+      <span className={cn("flex h-5 min-w-0 gap-2", editing ? "items-center" : "items-baseline")}>
         {editing ? (
           title
         ) : (
           <>
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{name}</span>
+            <span className="min-w-0 flex-1 truncate text-[13px] leading-5 font-medium text-foreground">{name}</span>
             <CardAgo latest={latest} yields={!!menu} />
           </>
         )}
@@ -1259,7 +1271,8 @@ const ArchivedProjects = memo(function ArchivedProjects({
                 actions={rows}
                 requested={pageOf(pages, `archived:${project.id}`)}
                 onMore={() => onMore(`archived:${project.id}`)}
-                className="flex flex-col"
+                // One step in, under the project's name: its rows' glyphs never share the chevron's column.
+                className="flex flex-col pl-4"
               />
             </CollapsibleContent>
           </Collapsible>
@@ -1340,7 +1353,7 @@ const estimateItem = (item: SidebarItem): number => {
     case "project":
       return estimateCard(item.group);
     case "chats":
-      return (item.spaced ? FOLD_GAP_PX : 0) + HEADING_PX + ROW_PX * Math.min(item.threads.length, SESSION_LIST_PAGE);
+      return (item.spaced ? FOLD_GAP_PX : 0) + (item.headed ? HEADING_PX : 0) + ROW_PX * Math.min(item.threads.length, SESSION_LIST_PAGE);
     case "archived":
       return (item.spaced ? FOLD_GAP_PX : 0) + HEADING_PX;
     case "empty":
@@ -1629,15 +1642,20 @@ export default function WorkspaceSessions({
       case "chats":
         return (
           <SectionGroup spaced={item.spaced}>
-            <ChatsSection
-              threads={item.threads}
-              rows={rows}
-              open={chatsOpen}
-              requested={pageOf(pages, "chats")}
-              onMore={moreChats}
-              onToggle={toggleChats}
-              onNewChat={newChat}
-            />
+            {item.headed ? (
+              <ChatsSection
+                threads={item.threads}
+                rows={rows}
+                open={chatsOpen}
+                requested={pageOf(pages, "chats")}
+                onMore={moreChats}
+                onToggle={toggleChats}
+                onNewChat={newChat}
+              />
+            ) : (
+              // The home: the column's header says Chats and holds New thread.
+              <ThreadList threads={item.threads} actions={rows} requested={pageOf(pages, "chats")} onMore={moreChats} className="flex flex-col" />
+            )}
           </SectionGroup>
         );
       case "archived":

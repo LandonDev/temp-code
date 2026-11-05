@@ -89,6 +89,10 @@ describe("sidebarItems", () => {
   it("an empty home shows nothing, one chat brings its section, never the empty hint", () => {
     expect(sidebarItems(groups(), true)).toEqual([]);
     expect(sidebarItems(groups({ chats: rows(1) }), true).map((i) => i.kind)).toEqual(["chats"]);
+    // The column's header says Chats at the home; a workspace's loose chats keep their fold.
+    const headed = (items: ReturnType<typeof sidebarItems>) => items.map((i) => (i.kind === "chats" ? i.headed : null));
+    expect(headed(sidebarItems(groups({ chats: rows(1) }), true))).toEqual([false]);
+    expect(headed(sidebarItems(groups({ chats: rows(1) })))).toEqual([true]);
     expect(sidebarItems(groups()).map((i) => i.kind)).toEqual(["empty"]);
   });
 

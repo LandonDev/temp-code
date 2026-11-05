@@ -86,6 +86,7 @@ function Column({ shown, scope = null, active }: { shown: boolean; scope?: strin
 }
 
 const shownChats = () => screen.queryAllByText(/^Chat \d+$/).length;
+const workspace = (id: string) => ({ environmentId: "local", id, name: id, path: `/${id}`, createdAt: 1 }) as WorkspaceMeta;
 
 let restore: (() => void)[] = [];
 beforeEach(() => {
@@ -279,7 +280,9 @@ describe("the workspace column across a workspace switch", () => {
   });
 
   it("each scope comes back at its own offset, a fresh one at the top, and keeps its own Chats fold", () => {
-    const view = render(<Column shown />);
+    h.catalog = { projects: [], workspaces: [workspace("w1"), workspace("w2")] };
+    h.metas = Array.from({ length: 40 }, (_, i) => ({ ...chat(i), workspaceId: "w1" }));
+    const view = render(<Column shown scope="w1" />);
     const scroller = screen.getByTestId("scroller");
     fireEvent.click(screen.getByRole("button", { name: "Chats" }));
     expect(shownChats()).toBe(0);
@@ -287,11 +290,11 @@ describe("the workspace column across a workspace switch", () => {
     act(() => {
       scroller.dispatchEvent(new Event("scroll"));
     });
-    view.rerender(<Column shown scope="w1" />);
+    view.rerender(<Column shown scope="w2" />);
     // The sidebar's scroller stays; the new scope starts where it was, at the top.
     expect(screen.getByTestId("scroller")).toBe(scroller);
     expect(scroller.scrollTop).toBe(0);
-    view.rerender(<Column shown />);
+    view.rerender(<Column shown scope="w1" />);
     expect(scroller.scrollTop).toBe(248);
     expect(shownChats()).toBe(0);
   });
@@ -336,7 +339,9 @@ describe("the Chats fold", () => {
   });
 
   it("its heading has no fill, open or folded: only a card sits on one", () => {
-    const view = render(<Column shown />);
+    h.catalog = { projects: [], workspaces: [workspace("w1")] };
+    h.metas = Array.from({ length: 3 }, (_, i) => ({ ...chat(i), workspaceId: "w1" }));
+    const view = render(<Column shown scope="w1" />);
     const heading = screen.getByRole("button", { name: /^Chats/ });
     expect(heading.getAttribute("aria-expanded")).toBe("true");
     expect(heading.className).toContain("aria-expanded:bg-transparent");
@@ -349,5 +354,12 @@ describe("the Chats fold", () => {
     expect(view.container.querySelector("[data-project-card]")).toBeNull();
     expect(view.container.querySelector("[data-fold-spaced]")).toBeNull();
     expect(view.container.querySelector(".pt-3")).toBeNull();
+  });
+
+  it("is no fold at the home: the column's header says Chats and holds New thread", () => {
+    render(<Column shown />);
+    expect(screen.queryByText("Chats")).toBeNull();
+    expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
+    expect(shownChats()).toBe(32);
   });
 });

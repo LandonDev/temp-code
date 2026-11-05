@@ -140,7 +140,7 @@ export function Column({ width = 260 }: { width?: number }) {
       <div className="box-content flex h-10 shrink-0 items-center gap-0.5 border-b border-border pr-1.5 pl-3">
         <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">temp-code</h2>
         <Button variant="ghost" size="icon-sm" aria-label="New thread" className="text-muted-foreground hover:text-foreground">
-          <Plus className="size-4" />
+          <Plus className="size-3.5" />
         </Button>
       </div>
       <div className="flex flex-col gap-1 px-2 pt-2 pb-2">

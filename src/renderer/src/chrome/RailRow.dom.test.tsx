@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Inbox, MoreHorizontal, Pin, Plus } from "./icons";
-import { RailHeading, RailRow } from "./RailRow";
+import { RAIL_YIELD, RailHeading, RailRow } from "./RailRow";
 
 afterEach(cleanup);
 
@@ -104,17 +104,22 @@ describe("RailRow", () => {
     expect(trailing.className).toContain("min-w-11");
     // A pointer sweeping down the rail flashes nothing: hover waits, focus does not.
     expect(trailing.className).toContain("group-hover/row:delay-(--delay-hover)");
-    expect(trailing.className).toContain("group-focus-within/row:delay-(--dur-instant)");
+    // Keyboard focus shows them at once; a mouse click does not hold them.
+    expect(trailing.className).toContain("group-has-focus-visible/row:delay-(--dur-instant)");
+    expect(trailing.className).not.toContain("focus-within");
     const pin = screen.getByRole("button", { name: "Pin workspace" });
     const menu = screen.getByRole("button", { name: "Workspace options" });
     expect(pin.compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(menu.getAttribute("aria-haspopup")).toBe("menu");
     for (const action of [pin, menu]) {
       expect(action.hasAttribute("data-no-drag")).toBe(true);
-      expect(action.className).toContain("group-hover/row:opacity-100");
-      expect(action.className).toContain("group-focus-within/row:opacity-100");
-      expect(action.className).toContain("group-hover/row:delay-(--delay-hover)");
-      expect(action.className).toContain("group-focus-within/row:delay-(--dur-instant)");
+      // The fade rides a wrapper, so the button keeps its own hover fill.
+      const reveal = action.closest("[data-rail-reveal]")!;
+      expect(reveal.className).toContain("group-hover/row:opacity-100");
+      expect(reveal.className).toContain("group-has-focus-visible/row:opacity-100");
+      expect(reveal.className).toContain("group-hover/row:delay-(--delay-hover)");
+      expect(reveal.className).toContain("group-has-focus-visible/row:delay-(--dur-instant)");
+      expect(action.className).not.toContain("transition-opacity");
       expect(action.className).toContain("size-6");
       fireEvent.pointerDown(action, { button: 0 });
       fireEvent.click(action);
@@ -154,9 +159,31 @@ describe("RailRow", () => {
     expect(slot.className).not.toContain("group-hover/row:opacity-0");
     const action = screen.getByRole("button", { name: "Workspace options" });
     expect(slot.contains(action)).toBe(true);
-    expect(action.className).toContain("hidden");
-    expect(action.className).toContain("group-hover/row:inline-flex");
+    const reveal = action.closest("[data-rail-reveal]")!;
+    expect(reveal.className).toMatch(/(^| )hidden( |$)/);
+    expect(reveal.className).toContain("group-hover/row:inline-flex");
+    // It waits like every hover reveal, and fades in from display: none.
+    expect(reveal.className).toContain("group-hover/row:delay-(--delay-hover)");
+    expect(reveal.className).toContain("starting:opacity-0");
+    expect(reveal.className).toContain("group-has-focus-visible/row:inline-flex");
     expect(screen.getByRole("button", { name: "chip" }).compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("an open action menu keeps the mark under it hidden, so the two never draw over each other", () => {
+    const { container } = render(
+      <RailRow
+        label="alpha"
+        trailing={<span>mark</span>}
+        hoverActions={[{ label: "Workspace options", icon: MoreHorizontal, onClick: () => {}, menu: true, expanded: true }]}
+      />,
+    );
+    const trailing = container.querySelector("[data-rail-trailing]")!;
+    expect(trailing.className).toContain("group-has-[[data-rail-action][aria-expanded=true]]/row:opacity-0");
+    const action = screen.getByRole("button", { name: "Workspace options" });
+    expect(action.hasAttribute("data-rail-action")).toBe(true);
+    expect(action.getAttribute("aria-expanded")).toBe("true");
+    expect(action.closest("[data-rail-reveal]")!.className).toContain("opacity-100");
+    expect(RAIL_YIELD.className).toContain("group-has-[[data-rail-action][aria-expanded=true]]/row:hidden");
   });
 
   it("keeps an interactive trailing control outside the row's button", () => {

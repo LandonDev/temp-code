@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { STATUS_WORD, StatusMark } from "../components/ui/status";
 import { Button } from "../components/ui/button";
+import { Tip } from "../components/tip";
 import { Popover, PopoverTrigger } from "../components/ui/lazy-menus";
 import { cn } from "../lib/cn";
 import { aliasKeys } from "../lib/linkedRail";
@@ -74,13 +75,17 @@ const threadCount = (n: number) => `${n} ${n === 1 ? "thread" : "threads"}`;
 
 /** The state's glyph alone, in a 24px ghost button named with its word and
  *  count ("Needs you, 4 threads"); never a word, at any width. */
+export function workspaceMarkLabel(mark: GroupMark<ThreadRow>): string {
+  return `${STATUS_WORD[mark.state]}, ${threadCount(mark.more + 1)}`;
+}
+
 export function WorkspaceMarkView({ mark, ...props }: { mark: GroupMark<ThreadRow> } & React.ComponentProps<typeof Button>) {
   return (
     <Button
       variant="ghost"
       size="icon-xs"
       data-no-drag
-      aria-label={`${STATUS_WORD[mark.state]}, ${threadCount(mark.more + 1)}`}
+      aria-label={workspaceMarkLabel(mark)}
       {...props}
       className={cn("hover:bg-foreground/7 aria-expanded:bg-foreground/7", props.className)}
     >
@@ -106,16 +111,19 @@ export function WorkspaceMarkTrigger({
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <WorkspaceMarkView
-            mark={mark}
-            {...workspaceThreadsChunk.intent}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-          />
-        }
-      />
+      {/* An icon-only control is named on hover, with the words its button is named by. */}
+      <Tip label={workspaceMarkLabel(mark)} side="right" disabled={open}>
+        <PopoverTrigger
+          render={
+            <WorkspaceMarkView
+              mark={mark}
+              {...workspaceThreadsChunk.intent}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+            />
+          }
+        />
+      </Tip>
       {open && workspaceIds.length > 0 ? (
         <WorkspaceThreadsPopover
           workspaceIds={workspaceIds}

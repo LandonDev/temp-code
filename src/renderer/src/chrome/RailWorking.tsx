@@ -132,7 +132,9 @@ export function RailWorkingView({
           size="sm"
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
-          className="h-7 w-full justify-start px-3 text-[13px] font-normal text-muted-foreground tabular-nums hover:text-foreground"
+          data-working-more
+          // A rail row's box: the label at the rows' 36px, the /5 hover fill at once.
+          className="h-7 w-full justify-start gap-2 px-3 text-[13px] font-normal text-muted-foreground tabular-nums transition-none hover:bg-foreground/5 hover:text-foreground"
         >
           <span aria-hidden className="size-4 shrink-0" />
           {open ? "Show less" : `${extra} more`}

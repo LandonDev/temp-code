@@ -379,10 +379,11 @@ renderer never changes a detail's case; only a detail read from an old
 host's legacy `activity` takes a capital (`legacyDetail`).
 
 At rest a row draws no mark for idle and done (`marksAtRest`): a mark that
-would only say "nothing is happening" is noise. The one exception is the
-right panel's Agents rows, where done's check leads a finished agent: the
+would only say "nothing is happening" is noise. Two places draw done's
+check: the right panel's Agents rows, where it leads a finished agent (the
 panel has no other cue for what is done, and seeing it at a glance is the
-section's job. A tab is the glyph alone, in the type glyph's place while it
+section's job), and the rail's Working section, whose rows include a thread
+that finished while the window looked elsewhere until it is looked at. A tab is the glyph alone, in the type glyph's place while it
 works, waits or fails (the type glyph comes back at rest), so a tab's width
 never moves with its state; its hover line and the transcript's working
 line say the word and the rest.

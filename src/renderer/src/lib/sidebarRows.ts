@@ -21,7 +21,9 @@ import {
 
 export type SidebarItem =
   | { kind: "project"; key: string; group: ProjectGroup }
-  | { kind: "chats"; key: "chats"; threads: ThreadRow[]; spaced: boolean }
+  /** `headed` false at the home: the column's header already says Chats and
+   *  holds its New thread, so the list stands under it with no fold. */
+  | { kind: "chats"; key: "chats"; threads: ThreadRow[]; spaced: boolean; headed: boolean }
   | { kind: "archived"; key: "archived"; groups: ProjectGroup[]; spaced: boolean }
   | { kind: "empty"; key: "empty" };
 
@@ -41,7 +43,7 @@ export function sidebarItems(
   }));
   const spaced = groups.projects.length > 0;
   if (groups.chats.length)
-    items.push({ kind: "chats", key: "chats", threads: groups.chats, spaced });
+    items.push({ kind: "chats", key: "chats", threads: groups.chats, spaced, headed: !home });
   if (groups.archived.length)
     items.push({ kind: "archived", key: "archived", groups: groups.archived, spaced });
   if (!items.length && !home) items.push({ kind: "empty", key: "empty" });

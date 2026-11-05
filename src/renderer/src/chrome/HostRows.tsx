@@ -35,10 +35,9 @@ import { Server } from "./icons";
 import { RailRow } from "./RailRow";
 
 /** A host's connection dot: quiet while open, amber while it tries or is slow, red refused. */
-export function toneOf(status: EnvironmentStatus, degraded: boolean, slow = false): string {
+export function toneOf(status: EnvironmentStatus, slow = false): string {
   // A host that is well needs no colour: the dot is quiet, and only trouble tints it.
   if (status.transport === "open") return slow ? "bg-warning" : status.fresh ? "bg-muted-foreground" : "bg-muted-foreground/50";
-  if (!degraded) return "bg-muted-foreground";
   switch (status.transport) {
     case "connecting":
     case "reconnecting":
@@ -77,20 +76,23 @@ export function HostsRow({ onAddWorkspace }: { onAddWorkspace: (environmentId: s
         ariaLabel={label}
         menuTrigger
         trailing={
-          <span className="flex items-center gap-1">
+          <span className="flex items-center">
+            {/* Each host keeps one 10px box (the 6px dots 4px apart), so a dot
+                turning into the spinner moves no other dot. */}
             {environments.map((environment) => {
               const status = statuses.get(environment.id);
-              if (status && (status.transport === "connecting" || status.transport === "reconnecting")) {
-                return <Spinner key={environment.id} aria-hidden data-host-status={status.transport} className="size-2.5 text-warning" />;
-              }
+              const trying = !!status && (status.transport === "connecting" || status.transport === "reconnecting");
               return (
-                <span
-                  key={environment.id}
-                  data-host-status={status?.transport ?? "none"}
-                  className={`size-1.5 rounded-full ${
-                    status ? toneOf(status, status.transport !== "open", slow.has(environment.id)) : "bg-muted-foreground/30"
-                  }`}
-                />
+                <span key={environment.id} data-host-dot className="grid size-2.5 place-items-center">
+                  {trying ? (
+                    <Spinner aria-hidden data-host-status={status.transport} className="size-2.5 text-warning" />
+                  ) : (
+                    <span
+                      data-host-status={status?.transport ?? "none"}
+                      className={`size-1.5 rounded-full ${status ? toneOf(status, slow.has(environment.id)) : "bg-muted-foreground/30"}`}
+                    />
+                  )}
+                </span>
               );
             })}
           </span>

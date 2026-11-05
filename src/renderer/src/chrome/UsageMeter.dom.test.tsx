@@ -223,8 +223,14 @@ describe('UsageMeter', () => {
     await probe!.act(async () => {
       for (const l of link.listeners) l({ push: 'accounts', snapshot: s } as ServerPush)
     })
-    const limited = row(root, 'codex').querySelector('.text-warning') as HTMLElement
+    const limited = row(root, 'codex').querySelector('[data-meter-limited]') as HTMLElement
     expect(limited.textContent).toBe('Limited3m')
+    // The word in amber and medium weight, the time muted 4px after it.
+    const [word, time] = [...limited.children] as HTMLElement[]
+    expect(word.className).toContain('text-warning')
+    expect(word.className).toContain('font-medium')
+    expect(time.className).toContain('text-muted-foreground')
+    expect(limited.className).toContain('gap-1')
     // One line at 200px: "Limited" and its time never wrap.
     expect(limited.hasAttribute('data-meter-limited')).toBe(true)
     expect(limited.className).toContain('whitespace-nowrap')
@@ -242,7 +248,7 @@ describe('UsageMeter', () => {
     await probe!.act(async () => {
       for (const l of link.listeners) l({ push: 'accounts', snapshot: s } as ServerPush)
     })
-    expect((row(root, 'codex').querySelector('.text-warning') as HTMLElement).textContent).toBe('Limited<1m')
+    expect((row(root, 'codex').querySelector('[data-meter-limited]') as HTMLElement).textContent).toBe('Limited<1m')
     expect(row(root, 'codex').getAttribute('aria-label')).toMatch(/limited for under a minute$/)
   })
 

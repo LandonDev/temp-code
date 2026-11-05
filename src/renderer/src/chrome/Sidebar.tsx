@@ -6,7 +6,7 @@ import {
   useState,
 } from "react";
 import { warmProjectForCwd } from "../lib/monaco/focusBoot";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { DUR, EASE_OUT } from "../lib/ease";
 import { IS_MAC, MOD } from "../lib/platform";
 import { basename } from "../lib/fs";
@@ -14,6 +14,7 @@ import { projectName } from "../lib/paths";
 import { loadTabGroupLabels, resolveTabGroupLabel, TAB_GROUP_LABELS_CHANGED } from "../lib/tabGroups";
 import type { ProjectMeta } from "../lib/tcserver/types";
 import {
+  useWorkspaceCatalog,
   useWorkspaces,
   workspaceIdOf,
   workspaceLabelKey,
@@ -53,6 +54,7 @@ import { Kbd } from "../components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import type { OpenFileFn } from "../lib/search";
 import { dialogsChunk } from "../surfaces/chunks";
+import { LoadingLine } from "../surfaces/SurfaceSkeleton";
 
 // Opened from the workspace menu; mounted only while open (chrome/dialogs.ts).
 const NewProjectDialog = dialogsChunk.surface("NewProjectDialog");
@@ -135,7 +137,6 @@ function SidebarComponent({
   const { busy: busyProjectPaths, needsYou: needsYouProjectPaths } =
     useProjectSignals();
   useBootResumeToasts();
-  const reduceMotion = useReducedMotion();
   const gitRoot = gitCwd || cwd;
   // Focus boot: start the JVM engine for a build-file project as soon as
   // it is selected, so the first Java tab opens warm.
@@ -202,6 +203,7 @@ function SidebarComponent({
     return () => window.removeEventListener(TAB_GROUP_LABELS_CHANGED, refresh);
   }, []);
   const workspaces = useWorkspaces();
+  const catalogLoaded = useWorkspaceCatalog().loaded;
   const title = atHome
     ? "Chats"
     : resolveTabGroupLabel(
@@ -346,11 +348,15 @@ function SidebarComponent({
         ref={sessionsScrollRef}
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
       >
-        {workspaceSessions ?? (
-          <p className="px-3 py-2 text-xs text-muted-foreground">
-            No project folder
-          </p>
-        )}
+        {/* Until the catalog names the workspace, the column waits; only then is a folder outside every workspace said. */}
+        {workspaceSessions ??
+          (catalogLoaded ? (
+            <p className="px-3 py-2 text-xs text-muted-foreground">
+              No project folder
+            </p>
+          ) : (
+            <LoadingLine label="Loading…" />
+          ))}
       </div>
       {showSidebarFooter && onOpenProject ? (
         <RailFoot
@@ -424,7 +430,8 @@ function SidebarComponent({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={reduceMotion ? { duration: 0 } : { duration: DUR.fast, ease: EASE_OUT }}
+            // A fade, never a move, so reduced motion keeps it (DESIGN.md: Right panel, rail).
+            transition={{ duration: DUR.fast, ease: EASE_OUT }}
             className="flex h-full shrink-0"
           >
             {sidebarContent}

@@ -72,13 +72,13 @@ export function sectionEntries(roots: readonly ThreadRow[]): Entry[] {
   return out.sort((a, b) => a.rank - b.rank);
 }
 
-/** A thread's working subagents in the fleet's words, two spaces apart,
- *  aligned with its title. */
+/** A thread's working subagents in the fleet's words, aligned with its
+ *  title: the count in medium weight, then each live state 4px on. */
 function AgentsLine({ summary, className }: { summary: AgentSummary; className: string }) {
   return (
-    <div className={cn("flex min-w-0 items-center gap-2 pb-1 text-xs text-muted-foreground", className)}>
-      {agentSummaryParts(summary).map((part) => (
-        <span key={part.text} className={cn("shrink-0 truncate", part.tone)}>
+    <div className={cn("flex min-w-0 items-center gap-1 pb-1 text-xs text-muted-foreground", className)} data-agents-line>
+      {agentSummaryParts(summary).map((part, i) => (
+        <span key={part.text} className={cn("shrink-0 truncate", i === 0 && "font-medium", part.tone)}>
           {part.text}
         </span>
       ))}

@@ -173,7 +173,7 @@ function Foot({ working, rows, meters = true }: { working?: readonly WorkingRow[
       {working ? <RailWorkingView rows={working} now={NOW} activeSessionId="w2" projectOf={() => "temp-code"} /> : null}
       <div className="flex flex-col p-2">{rows}</div>
       {meters ? (
-        <div aria-label="Usage" className="flex shrink-0 flex-col gap-px px-2 pb-2">
+        <div role="group" aria-label="Usage" className="flex shrink-0 flex-col px-2 pb-2">
           <MeterRowView provider="claude" meter={pooled} now={NOW} />
           <MeterRowView provider="codex" meter={limited} now={NOW} />
         </div>

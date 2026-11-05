@@ -108,6 +108,9 @@ describe('a project card', () => {
     expect(card.textContent).toContain('3m')
     expect(card.textContent).toContain('main')
     expect(card.textContent).toContain('local')
+    // The 13px name and the 12px time share a baseline.
+    const nameLine = Array.from(card.querySelectorAll<HTMLElement>('span')).find((el) => el.textContent?.startsWith('Project p1') && el.className.includes('h-5'))!
+    expect(nameLine.className).toContain('items-baseline')
     probe.unmount()
   })
 
@@ -163,7 +166,7 @@ describe('a project card', () => {
     probe.unmount()
   })
 
-  it('counts who needs you, what is dormant and archived, two spaces apart with no dots', () => {
+  it('counts who needs you, what is dormant and archived, 4px apart with no dots', () => {
     const probe = mountProbe(
       projectCard(
         [
@@ -176,6 +179,10 @@ describe('a project card', () => {
     const counts = probe.container.querySelector<HTMLElement>('[data-card-counts]')!
     expect(Array.from(counts.children).map((c) => c.textContent)).toEqual(['1 needs you', '4 dormant', '2 archived'])
     expect(counts.querySelector('[data-state="waiting"]')).not.toBeNull()
+    expect(counts.className).toContain('gap-1')
+    expect(counts.className).not.toContain('gap-2')
+    // A glyph-led count keeps 8px from a count before it, as from its own word.
+    expect(counts.querySelector('[data-state="waiting"]')!.className).toContain('not-first:ms-1')
     expect(probe.container.textContent).not.toMatch(/ · |•/)
     probe.unmount()
   })
@@ -185,7 +192,24 @@ describe('a project card', () => {
     const line = lineOf(probe.container, 'Docs pass')
     expect(line.getAttribute('data-card-line')).toBe('paused')
     expect(line.textContent).toContain('Paused')
+    // The state's word and its frozen time are two spans: the word medium, the time muted.
+    const mark = line.querySelector('[data-slot="status-word"]')!.closest('[data-slot="status-mark"]')!
+    expect(mark.getAttribute('data-state')).toBe('paused')
+    expect(mark.querySelector('[data-slot="status-word"]')?.textContent).toBe('Paused')
+    expect(mark.querySelector('[data-slot="status-detail"]')?.textContent).toBe('6m')
     expect(probe.container.querySelector('[data-card-counts]')?.textContent ?? '').not.toContain('paused')
+    probe.unmount()
+  })
+
+  it('a thread row opens on Enter and on Space, never on a key its own controls take', () => {
+    const onOpen = vi.fn()
+    const probe = mountProbe(<ThreadList threads={[threadRow(meta('t1', { title: 'One' }), {})]} actions={{ ...actions, onOpen }} className="" />)
+    const row = probe.container.querySelector<HTMLElement>('[data-thread-row]')!
+    fireEvent.keyDown(row, { key: 'Enter' })
+    fireEvent.keyDown(row, { key: ' ' })
+    expect(onOpen).toHaveBeenCalledTimes(2)
+    fireEvent.keyDown(row, { key: 'a' })
+    expect(onOpen).toHaveBeenCalledTimes(2)
     probe.unmount()
   })
 
@@ -222,7 +246,7 @@ describe('a project card', () => {
   it('an unread thread weights its own line and the accessible name says so; the name is set as always, with no dot', () => {
     const probe = mountProbe(projectCard([threadRow(meta('d', { title: 'Fix login', status: 'done', updatedAt: 200 }), { d: 100 })]))
     const name = Array.from(cardOf(probe.container).querySelectorAll('span')).find((s) => s.textContent === 'Project p1')!
-    expect(name.className).toBe('min-w-0 flex-1 truncate text-[13px] font-medium text-foreground')
+    expect(name.className).toBe('min-w-0 flex-1 truncate text-[13px] leading-5 font-medium text-foreground')
     const line = lineOf(probe.container, 'Fix login')
     expect(line.getAttribute('data-card-line')).toBe('unread')
     expect(line.querySelector('.font-medium')?.textContent).toBe('Fix login')
@@ -454,6 +478,16 @@ describe('ThreadRows fold', () => {
     expect(kids[0].querySelector('[data-activity]')?.textContent).toBe('Writing the view')
     expect(kids[0].textContent).toContain('b1')
     expect(kids[1].querySelector('[data-activity]')).toBeNull()
+    // The host's own detail wins over the legacy activity string.
+    probe.unmount()
+    const detailed: ThreadRow = {
+      ...master,
+      batch: [threadRow(meta('b1', { masterId: 'master', status: 'running', busySince: 5, activity: 'Working  old words', statusDetail: 'Reading format.ts' }), {})]
+    }
+    const second = mountProbe(<ThreadList threads={[detailed]} actions={actions} className="" />)
+    expect(second.container.querySelector('[data-activity]')?.textContent).toBe('Reading format.ts')
+    second.unmount()
+    return
     // The model is on the hover line, never at the row's end.
     expect(kids[1].textContent).not.toContain('Claude Opus 5.5')
     expect(kids[1].querySelector('svg')).not.toBeNull()

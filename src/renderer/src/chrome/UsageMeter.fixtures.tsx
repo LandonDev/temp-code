@@ -37,7 +37,7 @@ const metaLimited: UsageMeter = { share: null, resetsAt: null, limited: { until:
 
 function Rows({ claude, codex, meta }: { claude: UsageMeter; codex: UsageMeter; meta?: UsageMeter }) {
   return (
-    <div className="flex w-[260px] flex-col gap-px bg-sidebar px-2 py-2">
+    <div className="flex w-[260px] flex-col bg-sidebar px-2 py-2">
       <MeterRowView provider="claude" meter={claude} now={NOW} />
       <MeterRowView provider="codex" meter={codex} now={NOW} />
       {meta ? <MeterRowView provider="meta" meter={meta} now={NOW} /> : null}
