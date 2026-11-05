@@ -39,6 +39,8 @@ export interface UpstreamTrace {
   pool: string | null
   /** The request waited in the pool's queue for a busy socket (every socket of the cap was running). */
   queued: boolean
+  /** The gateway's client hung up (gatewayCore.ts `handle`): aborted, it cancels the upstream fetch too. */
+  hangup?: AbortSignal
 }
 
 export const newTrace = (): UpstreamTrace => ({ reused: null, protocol: null, pool: null, queued: false })
@@ -203,6 +205,9 @@ export class Upstream {
 
   /** The configured fetch aliax-core forwards through. */
   fetch: Fetch = (input, init) => {
+    // The client behind the gateway's request gone, nothing reads the answer: cut it upstream as well.
+    const hangup = upstreamTrace.getStore()?.hangup
+    if (hangup) init = { ...init, signal: init?.signal ? AbortSignal.any([init.signal, hangup]) : hangup }
     const origin = originOf(input)
     const target = this.rewrite(input)
     if (!origin || !this.pooled(origin)) return this.withDeadlines(this.options.chromiumFetch, target, init)

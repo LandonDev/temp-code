@@ -3225,6 +3225,34 @@ found the boot still in flight read `warm` or `cold`), so older spans
 count some new threads as live; the first send after a boot now reports
 how its handle came up.
 
+### The provider wait, and a client that hangs up
+
+The working line says "Waiting for the provider, 25 s" when a request of
+the thread has been out at the provider 15 s with nothing finer known
+(sessions.ts `providerRequest`, `PROVIDER_WAIT_MS`). The gateway reports
+each forwarded request's start and end (`onRequestStart`/`onRequestEnd`,
+from the utility process over the port), and the seconds count from the
+oldest one still open. Two rules keep that count honest:
+
+- **A request ends when its client hangs up.** Codex closes its
+  `/codex/responses` stream as soon as `response.completed` arrives, before
+  the upstream body has ended (each of three plain turns measured on
+  2026-11-05), and any CLI's Stop does the same mid-answer. aliax-core's
+  relay then wrote the next chunk to a closed socket and waited for a
+  `drain` that never came, so the request never ended, and the thread's
+  next send read "Waiting for the provider" at once with the seconds since
+  that old request: 29 s on an isolated box instance after a stop and a
+  send 20 s later, and the whole idle stretch on a thread left a while.
+  Claude's CLI reads its stream to the end, which is why Fable threads
+  never showed it. Now the gateway ends the request the moment the
+  client's socket closes, cuts the upstream fetch (the hang-up signal on
+  the trace record, upstream.ts) and drops what is left (`RelayResponse`,
+  gatewayCore.ts); the trace line ends `client hung up`.
+- **A turn counts only its own requests.** A thread whose status moves
+  into starting or running from anything else forgets the requests still
+  open from before (a stream a dead gateway child cut never reports its
+  end), and the ticker re-pushes only a working row.
+
 ### Knowing the box is behind: the deploy-drift mark
 
 Nothing deploys the box on its own, so the Mac app marks a host that has

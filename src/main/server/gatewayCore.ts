@@ -121,13 +121,13 @@ export interface TraceStart {
 }
 
 export function traceLine(label: string, stage: 'start', rec: TraceStart): string
-export function traceLine(label: string, stage: 'finish', rec: TraceStart & { status: number | null; reused: string; protocol: string | null; ms: number }): string
-export function traceLine(label: string, stage: 'start' | 'finish', rec: TraceStart & { status?: number | null; reused?: string; protocol?: string | null; ms?: number }): string {
+export function traceLine(label: string, stage: 'finish', rec: TraceStart & { status: number | null; reused: string; protocol: string | null; ms: number; hungUp?: boolean }): string
+export function traceLine(label: string, stage: 'start' | 'finish', rec: TraceStart & { status?: number | null; reused?: string; protocol?: string | null; ms?: number; hungUp?: boolean }): string {
   const head = `${label} #${rec.id} ${rec.method} ${rec.url}`
   if (stage === 'start') {
     return `${head} start thread=${rec.thread ?? '-'} account=${rec.account ? shortHash(rec.account) : '-'} model=${rec.model ?? '-'}${rec.service ? ` service=${rec.service}` : ''}`
   }
-  return `${head} → ${rec.status ?? 'no upstream'} reused=${rec.reused}${rec.protocol ? ` ${rec.protocol}` : ''} ${rec.ms}ms`
+  return `${head} → ${rec.status ?? 'no upstream'} reused=${rec.reused}${rec.protocol ? ` ${rec.protocol}` : ''} ${rec.ms}ms${rec.hungUp ? ' client hung up' : ''}`
 }
 
 /** Core's word on one upstream answer, before its body streams back, plus the vault service the answering account belongs to. */
@@ -378,20 +378,41 @@ export class GatewayCore {
     if (this.trace) console.log(traceLine(this.label, 'start', rec))
     const request: RequestInfo = { id: rec.id, thread: rec.thread, ts: startedAt }
     c.onRequestStart?.(request)
+    let ended = false
+    const end = (): void => {
+      if (ended) return
+      ended = true
+      c.onRequestEnd?.(request)
+    }
+    // A client that hangs up before its answer is whole (a CLI's Stop, a
+    // stream it gives up on and retries) ends the request then: the host's
+    // provider wait stops counting it and the upstream is cut. Core's relay
+    // once waited for a 'drain' that never came, so such a request never
+    // ended and the thread's next turn read "Waiting for the provider" from
+    // its start.
+    const hangup = new AbortController()
+    const onClose = (): void => {
+      if (res.writableEnded) return
+      hangup.abort(new Error('the client hung up'))
+      end()
+    }
+    res.once('close', onClose)
     // The upstream fetch fills the trace record in: whether the request rode
     // a socket that had carried one before, and over which protocol.
-    const trace = newTrace()
+    const trace = { ...newTrace(), hangup: hangup.signal }
+    const relay = new RelayResponse(res) as unknown as ServerResponse
     let out: Awaited<ReturnType<typeof forward>>
     try {
       out = await upstreamTrace.run(trace, () =>
-        parsed.scope && serviceId ? this.forwardScoped(req, res, parsed.service, serviceId, parsed.scope) : this.forward(req, res)
+        parsed.scope && serviceId ? this.forwardScoped(req, relay, parsed.service, serviceId, parsed.scope) : this.forward(req, relay)
       )
     } finally {
-      c.onRequestEnd?.(request)
+      res.off('close', onClose)
+      end()
     }
     if (this.trace) {
       const reused = trace.reused === null ? 'n/a' : trace.queued ? 'true (queued)' : String(trace.reused)
-      console.log(traceLine(this.label, 'finish', { ...rec, status: out.status, reused, protocol: trace.protocol, ms: Date.now() - startedAt }))
+      console.log(traceLine(this.label, 'finish', { ...rec, status: out.status, reused, protocol: trace.protocol, ms: Date.now() - startedAt, hungUp: hangup.signal.aborted }))
     }
     if (out.status !== null) {
       this.routed[out.service] = (this.routed[out.service] ?? 0) + 1
@@ -416,6 +437,8 @@ export class GatewayCore {
           c.onResponse({ ...info, serviceId: splitPath(url).scope?.service ?? serviceIdOf(info.service) })
         },
         onError: (m) => {
+          // The client hung up and the cut upstream threw: nothing failed at the provider.
+          if (upstreamTrace.getStore()?.hangup?.aborted) return
           this.noteError(m)
           c.onError(m)
           // No upstream answer at all: the host's limits log keeps the record.
@@ -544,6 +567,64 @@ export class HeldResponse {
     this.through = true
     this.res.writeHead(401, headers)
     this.res.end(Buffer.concat(chunks))
+  }
+}
+
+/**
+ * The client's response as core's relay writes it. The relay writes each
+ * upstream chunk as it arrives and, when a write says the buffer is full,
+ * waits for 'drain'; a client that hung up never drains, so that wait was
+ * forever. Once the client is gone a write is dropped (and reports room),
+ * and a wait for 'drain' ends at once or the moment the client goes.
+ */
+export class RelayResponse {
+  private closed = false
+
+  constructor(private readonly res: ServerResponse) {
+    res.once('close', () => {
+      this.closed = true
+    })
+  }
+
+  private get gone(): boolean {
+    return this.closed || this.res.destroyed
+  }
+
+  get headersSent(): boolean {
+    return this.res.headersSent
+  }
+
+  writeHead(status: number, headers: Record<string, string> = {}): this {
+    if (!this.gone) this.res.writeHead(status, headers)
+    return this
+  }
+
+  write(chunk: Buffer | string): boolean {
+    return this.gone ? true : this.res.write(chunk)
+  }
+
+  once(event: string, fn: () => void): this {
+    if (event !== 'drain') {
+      this.res.once(event, fn)
+      return this
+    }
+    if (this.gone) {
+      fn()
+      return this
+    }
+    const settle = (): void => {
+      this.res.off('drain', settle)
+      this.res.off('close', settle)
+      fn()
+    }
+    this.res.once('drain', settle)
+    this.res.once('close', settle)
+    return this
+  }
+
+  end(data?: Buffer | string): this {
+    if (!this.gone) this.res.end(data)
+    return this
   }
 }
 

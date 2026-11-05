@@ -500,7 +500,8 @@ routed to (aliax-core's `forward`). Two listeners:
   ~/.aliax/tls when present, else an app-owned CA + leaf under
   `<userData>/tls` (src/main/server/tls.ts); children trust it through
   `CODEX_CA_CERTIFICATE` (harnessEnv), so no Keychain step is needed.
-  `TEMP_CODE_GATEWAY_TRACE=1` logs one line per forwarded request.
+  `TEMP_CODE_GATEWAY_TRACE=1` logs one line per forwarded request (its
+  finish ends `client hung up` when the CLI left before the answer was whole).
 - **The byte path runs in its own process.** On the Mac and the box the
   listeners, the forward, the SSE relay and the upstream pools run in an
   Electron utility process (`out/main/gateway.js`: src/main/gatewayProcess.ts
@@ -787,7 +788,12 @@ routed to (aliax-core's `forward`). Two listeners:
   meta like `context` (`phaseLine`). A provider request open past 15 s with
   nothing finer known (Thinking or the driver's own provider word) reads
   "Waiting for the provider, 25 s", re-pushed every 5 s (`providerRequest`,
-  `PROVIDER_WAIT_MS`). The place these words show is the transcript's
+  `PROVIDER_WAIT_MS`); only the turn's own requests count (a turn starting
+  forgets those still open), and the gateway ends a request the moment its
+  client hangs up, cutting the upstream (`RelayResponse` in gatewayCore.ts:
+  codex closes its stream at `response.completed`, and core's relay once
+  waited for a `drain` that never came; docs/box.md "The provider wait, and a
+  client that hangs up"). The place these words show is the transcript's
   working line (`TurnLine` in surfaces/transcript/WorkingLine.tsx on
   `workingPhase` in workingPhase.ts): Sending while the person's row is
   still `pending` (not yet echoed), the meta's activity while the turn has

@@ -19,6 +19,8 @@ describe('the gateway trace lines', () => {
   it('the finish line carries the same number, the status, the socket reuse and the duration', () => {
     expect(traceLine('[gateway]', 'finish', { ...rec, status: 200, reused: 'true', protocol: 'h2', ms: 1234 })).toBe('[gateway] #12 POST /~t=T1;a=work/v1/messages → 200 reused=true h2 1234ms')
     expect(traceLine('[gateway]', 'finish', { ...rec, status: null, reused: 'n/a', protocol: null, ms: 7 })).toBe('[gateway] #12 POST /~t=T1;a=work/v1/messages → no upstream reused=n/a 7ms')
+    // A client that left before its answer was whole says so.
+    expect(traceLine('[gateway]', 'finish', { ...rec, status: 200, reused: 'n/a', protocol: null, ms: 9100, hungUp: true })).toBe('[gateway] #12 POST /~t=T1;a=work/v1/messages → 200 reused=n/a 9100ms client hung up')
   })
 
   it('shortHash is stable, six hex digits, and never the name', () => {

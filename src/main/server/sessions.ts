@@ -566,6 +566,8 @@ export function isSettleReport(from: SessionMeta['status'] | undefined, to: Sess
 
 /** A request at the provider this long with nothing back reads "Waiting for the provider" on the row. */
 export const PROVIDER_WAIT_MS = 15_000
+/** A turn at work: the only rows the provider wait is said on. */
+const isWorking = (status: SessionMeta['status'] | undefined): boolean => status === 'running' || status === 'starting'
 /** At most one focus boot per thread in this window (focusBoot), kept on the host so a reload or a second window cannot double it. */
 export const FOCUS_BOOT_EVERY_MS = 30_000
 /** Every foreign thread reference of one send resolves inside this, together. */
@@ -4381,6 +4383,10 @@ export class SessionRegistry {
       if (STOP_CLEARING_STATUSES.has(event.status)) this.stopping.delete(sessionId)
       // A settle ends the turn's phase with it.
       if (!PHASE_STATUSES.has(event.status)) this.phases.delete(sessionId)
+      // A turn starting: a request still open from before it is none of
+      // this turn's (one a CLI abandoned, a stream a dead gateway child
+      // cut), so the provider wait counts only requests sent from here on.
+      if (isWorking(event.status) && !isWorking(this.row(sessionId)?.status)) this.providerOpen.delete(sessionId)
       // A tune saved mid-turn waits here: the turn has settled, so the
       // harness can now reboot with the new rules (resume keeps the
       // conversation).
@@ -4985,14 +4991,14 @@ export class SessionRegistry {
       if (open.size === 0) this.providerOpen.delete(sessionId)
     }
     const meta = this.row(sessionId)
-    if (meta) this.notifyMeta(meta)
+    if (meta && isWorking(meta.status)) this.notifyMeta(meta)
     if (this.providerOpen.size > 0 && !this.providerTicker) {
       this.providerTicker = setInterval(() => {
         const now = Date.now()
         for (const [id, requests] of this.providerOpen) {
           if (![...requests.values()].some((t) => now - t >= PROVIDER_WAIT_MS)) continue
           const row = this.row(id)
-          if (row) this.notifyMeta(row)
+          if (row && isWorking(row.status)) this.notifyMeta(row)
         }
         if (this.providerOpen.size === 0 && this.providerTicker) {
           clearInterval(this.providerTicker)

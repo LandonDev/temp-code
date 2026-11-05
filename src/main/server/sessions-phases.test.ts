@@ -163,6 +163,48 @@ it('a request out at the provider past the threshold reads Waiting for the provi
   expect(registry.get(id)?.statusDetail).toBe('Reading b.ts')
 })
 
+it("a request still open from an earlier turn never counts: the next turn's first push says nothing of it, and a real wait counts from the send", async () => {
+  const id = await live()
+  vi.useFakeTimers()
+  const t0 = Date.now()
+  // Turn one's request, abandoned by its CLI (a Stop mid-answer) with no end ever heard.
+  registry.providerRequest(id, 4, t0)
+  emit(id, { type: 'status', status: 'idle' })
+  vi.setSystemTime(t0 + 600_000)
+  const pushed: (string | null | undefined)[] = []
+  registry.onMeta((m) => {
+    if (m.id === id) pushed.push(m.statusDetail)
+  })
+  emit(id, { type: 'status', status: 'running' })
+  expect(pushed[0]).toBe('Thinking')
+  expect(registry.get(id)?.statusDetail).toBe('Thinking')
+  // The turn's own request, 16 s without an answer: the seconds count from it.
+  const sent = Date.now()
+  registry.providerRequest(id, 9, sent)
+  vi.setSystemTime(sent + PROVIDER_WAIT_MS + 1_000)
+  expect(registry.get(id)?.statusDetail).toBe('Waiting for the provider, 16 s')
+  // The old request's late end changes nothing; the turn's own end clears the line.
+  registry.providerRequest(id, 4, null)
+  expect(registry.get(id)?.statusDetail).toBe('Waiting for the provider, 16 s')
+  registry.providerRequest(id, 9, null)
+  expect(registry.get(id)?.statusDetail).toBe('Thinking')
+})
+
+it('the provider ticker pushes only a working row past the threshold, never an idle one holding a request', async () => {
+  const id = await live()
+  vi.useFakeTimers()
+  const t0 = Date.now()
+  registry.providerRequest(id, 5, t0)
+  emit(id, { type: 'status', status: 'idle' })
+  const pushed: string[] = []
+  registry.onMeta((m) => {
+    if (m.id === id) pushed.push(m.status)
+  })
+  vi.setSystemTime(t0 + PROVIDER_WAIT_MS + 30_000)
+  await vi.advanceTimersByTimeAsync(15_000)
+  expect(pushed).toEqual([])
+})
+
 it('a compaction reads Compacting context from its start to its outcome, through a running status and a long provider request', async () => {
   const id = await live()
   vi.useFakeTimers()
