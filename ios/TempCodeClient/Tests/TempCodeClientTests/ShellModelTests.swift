@@ -4,7 +4,8 @@ import TempCodeContract
 @testable import TempCodeClient
 
 /// The desktop's grouping cases (src/renderer/src/lib/workspaceSessions.test.ts)
-/// ported, plus the phone's pinned-first rule and Home's derivations.
+/// ported, plus the phone's pinned-first rule (the project screen and the
+/// chats; a project card gives a pin nothing) and Home's derivations.
 private func ws(_ id: String, _ path: String) -> WorkspaceMeta {
     WorkspaceMeta(id: id, name: id, path: path, git: true, accountPins: nil, githubRepo: nil, githubRepoCheckedAt: nil, createdAt: 1)
 }
@@ -89,7 +90,7 @@ private let projects = [project("p1", "wa"), project("p2", "wa"), project("pb", 
         #expect(out.projects[0].latest == 500)
     }
 
-    @Test func `pinned threads sort first within their project and among chats`() {
+    @Test func `pinned threads sort first on the project screen and among chats`() throws {
         let metas = [
             meta("a", projectId: "p1", updatedAt: 300),
             meta("b", projectId: "p1", pinned: true, updatedAt: 100),
@@ -97,10 +98,12 @@ private let projects = [project("p1", "wa"), project("p2", "wa"), project("pb", 
             meta("x", workspaceId: "wa", updatedAt: 3),
             meta("y", workspaceId: "wa", pinned: true, updatedAt: 1)
         ]
-        let out = ThreadGroups.group(metas, projects: projects, workspaces: workspaces, workspaceId: "wa")
-        #expect(out.projects.first { $0.id == "p1" }?.threads.map(\.id) == ["b", "a", "c"])
-        #expect(out.projects.first { $0.id == "p1" }?.latest == 300)
-        #expect(out.chats.map(\.id) == ["y", "x"])
+        let hosts = [HomeHostInput(environmentId: "e", name: "e", workspaces: workspaces, projects: projects, sessions: metas)]
+        let screen = try #require(HomeSections.project("e:p1", hosts: hosts))
+        #expect((screen.active + screen.dormant).map(\.id) == ["thread:e:b", "thread:e:a", "thread:e:c"])
+        #expect(screen.project.latest == 300)
+        let workspace = try #require(HomeSections.workspace("e:wa", hosts: hosts))
+        #expect(workspace.chats.map(\.id) == ["thread:e:y", "thread:e:x"])
     }
 
     @Test func `splits archived projects out with their threads and counts archived threads`() {

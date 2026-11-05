@@ -196,8 +196,8 @@ public enum ShellRow: Sendable, Hashable, Identifiable {
 }
 
 /// Home's three levels, shaped like the desktop's sidebar: the workspaces
-/// with their state (the far-left column), one workspace's projects with
-/// their active threads and its stray chats (the middle sidebar), and one
+/// with their state (the far-left column), one workspace's project cards
+/// and its stray chats (the middle sidebar), and one
 /// project's every thread. Pure over value inputs, so each screen's body is
 /// one ForEach over stable ids.
 public enum HomeSections {
@@ -282,16 +282,7 @@ public enum HomeSections {
         return Home(entries: entries, hosts: lines)
     }
 
-    // MARK: Level 2, a workspace: projects with their active threads, then the stray chats
-
-    /// A project row on the workspace screen: the project and the rows of its
-    /// active threads nested under it (their own marks are its state).
-    public struct ProjectEntry: Sendable, Hashable, Identifiable {
-        public var project: HomeProject
-        public var rows: [ShellRow]
-
-        public var id: String { project.id }
-    }
+    // MARK: Level 2, a workspace: its project cards, then the stray chats
 
     /// The "n archived projects" row of one host's copy.
     public struct ArchivedProjects: Sendable, Hashable, Identifiable {
@@ -305,7 +296,8 @@ public enum HomeSections {
     public struct WorkspaceScreen: Sendable, Hashable {
         /// Nil for the Chats entry.
         public var workspace: HomeWorkspace?
-        public var projects: [ProjectEntry]
+        /// Each project as its card (`ProjectCards.card`), latest activity first.
+        public var projects: [ProjectCard]
         /// The threads with no project, every one of them, newest first.
         public var chats: [ShellRow]
         public var archivedProjects: [ArchivedProjects]
@@ -314,7 +306,8 @@ public enum HomeSections {
     }
 
     /// The workspace screen for an entry's key; nil when no host lists it.
-    public nonisolated static func workspace(_ key: String, hosts: [HomeHostInput]) -> WorkspaceScreen? {
+    /// `shown` is the thread on screen, which no card reads as unread.
+    public nonisolated static func workspace(_ key: String, hosts: [HomeHostInput], shown: (environmentId: String, sessionId: String)? = nil) -> WorkspaceScreen? {
         if key == chatsKey {
             let chats = hosts.map { host in
                 (host.environmentId, ThreadGroups.group(host.sessions, projects: host.projects, workspaces: host.workspaces, workspaceId: nil, seen: host.seen, floor: host.floor).chats)
@@ -336,10 +329,8 @@ public enum HomeSections {
             HomeProject(id: key, members: members.map { HomeProject.Member(environmentId: $0.0, group: $0.1) })
         }
         .sorted { ($0.latest, $0.id) > ($1.latest, $1.id) }
-        let entries = linked.map { project in
-            ProjectEntry(project: project, rows: rows(project.threads.filter { isActive($0.item) }))
-        }
-        return WorkspaceScreen(workspace: workspace, projects: entries, chats: rows(mixed(chats)), archivedProjects: archived)
+        let cards = linked.map { ProjectCards.card($0, shown: shown) }
+        return WorkspaceScreen(workspace: workspace, projects: cards, chats: rows(mixed(chats)), archivedProjects: archived)
     }
 
     // MARK: Level 3, a project: every thread
@@ -355,7 +346,7 @@ public enum HomeSections {
 
     public struct ProjectScreen: Sendable, Hashable {
         public var project: HomeProject
-        /// The threads the workspace screen shows under the project.
+        /// The live threads (`isActive`), pinned first.
         public var active: [ShellRow]
         /// Settled and seen: the rest, newest first.
         public var dormant: [ShellRow]
