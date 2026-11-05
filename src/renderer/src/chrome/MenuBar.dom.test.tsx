@@ -120,6 +120,41 @@ describe("MenuBar from the keyboard", () => {
   });
 });
 
+describe("MenuBar while a menu is open", () => {
+  it("opens the neighbour menu with Left and Right, wrapping, from inside the open menu", async () => {
+    render(<MenuBar onCommand={() => {}} />);
+    tapAlt();
+    fireEvent.click(menuButton("File"));
+    const file = await screen.findByRole("menu");
+    fireEvent.keyDown(within(file).getAllByRole("menuitem")[0], { key: "ArrowRight" });
+    expect(menuButton("Edit").getAttribute("aria-expanded")).toBe("true");
+    expect(menuButton("File").getAttribute("aria-expanded")).not.toBe("true");
+    expect(menuButton("Edit").tabIndex).toBe(0);
+    const edit = await screen.findByRole("menu", { name: "Edit menu" });
+    fireEvent.keyDown(within(edit).getAllByRole("menuitem")[0], { key: "ArrowLeft" });
+    fireEvent.keyDown(screen.getByRole("menu", { name: "File menu" }), { key: "ArrowLeft" });
+    expect(menuButton("Threads").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("gives the focus back to where it was before a pick's command runs", async () => {
+    let focusedAtCommand: Element | null = null;
+    render(
+      <>
+        <input aria-label="Field" />
+        <MenuBar onCommand={() => (focusedAtCommand = document.activeElement)} />
+      </>,
+    );
+    const field = screen.getByRole("textbox", { name: "Field" });
+    field.focus();
+    tapAlt();
+    fireEvent.click(menuButton("Threads"));
+    fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: /Mark All Read/ }));
+    expect(focusedAtCommand).toBe(field);
+    expect(screen.queryByRole("menubar")).toBeNull();
+    expect(document.activeElement).toBe(field);
+  });
+});
+
 describe("rowsOf", () => {
   it("ticks Away from Computer as a checkbox row, and nothing else", () => {
     const threads = inAppMenus(MENU_TREE).find((m) => m.label === "Threads")!;

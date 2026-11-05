@@ -11,8 +11,10 @@ import { ALT, IS_MAC, MOD, SHIFT } from "../lib/platform";
  * native menu's rows (src/shared/menuTree.ts `inAppMenus`), each with its
  * key. A pick goes to the app command map. It is a `menubar`: a lone Alt
  * focuses its first title, Left and Right (Home and End) move between the
- * titles, which share one tab stop, and Escape with no menu open, or Alt
- * again, closes it and gives the focus back to where it was.
+ * titles, which share one tab stop, and while a menu is open Left and Right
+ * open its neighbour instead; Escape with no menu open, or Alt again,
+ * closes it and gives the focus back to where it was, and so does a pick,
+ * before its command runs.
  */
 
 const KEY_NAMES: Record<string, string> = { Left: "←", Right: "→", Up: "↑", Down: "↓", Plus: "+" };
@@ -129,7 +131,17 @@ export function MenuBar({ onCommand, disabled }: Props) {
   }, [open]);
 
   const onBarKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    // An open menu's keys bubble here through React's tree: those are the menu's.
+    // While a menu is open, Left and Right open its neighbour (the menus
+    // hold no submenus, so the two keys are the bar's).
+    if (activeMenu && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      const at = menus.findIndex((menu) => menu.label === activeMenu);
+      const next = (at + (event.key === "ArrowRight" ? 1 : -1) + menus.length) % menus.length;
+      event.preventDefault();
+      setFocusIndex(next);
+      setActiveMenu(menus[next].label);
+      return;
+    }
+    // An open menu's other keys bubble here through React's tree: those are the menu's.
     const title = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-menubar-title]") : null;
     if (!title) return;
     const all = titles();
@@ -146,15 +158,27 @@ export function MenuBar({ onCommand, disabled }: Props) {
     }
   };
 
+  // A pick closes the bar, whose titles leave with it: once they are gone
+  // the focus goes back to where it was, then the command runs (so one that
+  // acts on the focused field has it, and one that moves the focus, a
+  // dialog, still takes it), never from the page's body.
+  const pendingPick = useRef<{ id: string; back: HTMLElement | null } | null>(null);
   const handlePick = useCallback(
     (id: string) => {
+      pendingPick.current = { id, back: returnFocus.current };
+      returnFocus.current = null;
       closeMenu();
       setOpen(false);
-      returnFocus.current = null;
-      onCommand(id);
     },
-    [closeMenu, onCommand],
+    [closeMenu],
   );
+  useLayoutEffect(() => {
+    const pick = pendingPick.current;
+    if (!pick || open || activeMenu) return;
+    pendingPick.current = null;
+    if (pick.back?.isConnected) pick.back.focus();
+    onCommand(pick.id);
+  }, [open, activeMenu, onCommand]);
 
   if (!open && !activeMenu) {
     return null;
@@ -179,6 +203,9 @@ export function MenuBar({ onCommand, disabled }: Props) {
             label={`${key} menu`}
             open={isActive}
             modal={false}
+            // Left by a move to another menu (a key, the pointer), the menu
+            // gives no focus back to its title: the focus is in the next.
+            finalFocus={activeMenu !== null && !isActive ? false : undefined}
             align="start"
             trigger={
               <Button
