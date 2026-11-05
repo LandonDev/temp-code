@@ -67,11 +67,7 @@ export function ReviewCard({
           ) : undefined
         }
       >
-        {minor ? (
-          <CollapsibleContent>
-            <FindingList findings={review.minor} cwd={cwd} onOpenFile={onOpenFile} />
-          </CollapsibleContent>
-        ) : null}
+        {minor ? <FindingList findings={review.minor} cwd={cwd} onOpenFile={onOpenFile} /> : null}
       </NoticeLine>
     </Collapsible>
   );

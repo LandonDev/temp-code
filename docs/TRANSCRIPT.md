@@ -119,7 +119,10 @@ foreground, the same words the group line uses); the components only draw it.
   lower part, across its width under one hairline, its content 12px in with
   8px above and below (`TABLE_BODY` in stepLine.ts for a thought's and a
   notice's), so no card sits in the table; a `bg-card` ancestor (the board's
-  task card) cancels it. Opening a body inside
+  task card) cancels it. A notice that opens (a red gate's log, a review's
+  minor findings) draws that body inside its fold, so a closed one leaves no
+  ruled band under its line, and a gate's log in the table is plain mono
+  text in the row's body, no card of its own. Opening a body inside
   a group is a hand on the group (`transcript/groupHand.ts`), which decides
   it from then on. Hover lifts the verb and the caret to foreground, as the
   group line does.

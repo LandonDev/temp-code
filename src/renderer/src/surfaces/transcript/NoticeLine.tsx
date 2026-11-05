@@ -1,7 +1,7 @@
 // A9 (notices): the one line every transcript notice is drawn on.
 import { useContext, type ReactNode } from "react";
 import { ChevronRight } from "../../chrome/icons";
-import { CollapsibleTrigger } from "../../components/ui/collapsible";
+import { CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
 import { reveal } from "../../components/ui/reveal";
 import { TooltipProvider } from "../../components/ui/tooltip";
 import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
@@ -19,7 +19,9 @@ import { STEP_NOTICE, StepRowContext, TABLE_BODY } from "./stepLine";
  * never under the glyph. A line that opens (`fold`, inside a Collapsible)
  * is its own trigger, as an action row is: the whole line, a bare chevron
  * at its end, the lead lifting on hover. `children` is what opens under
- * the line (a log, findings), indented to the lead.
+ * the line (a log, findings), indented to the lead; with a `fold` it sits in
+ * the fold's content, so a closed fold draws nothing under the line (in a
+ * table, no blank ruled band).
  *
  * Folded into a run as one of its steps (`StepRowContext`), the line reads
  * verb then target like a call: the lead muted whatever `tone` says (a
@@ -113,12 +115,24 @@ export function NoticeLine({
           ) : null}
         </div>
       </div>
-      {/* What opens under the line is no step: its own lines read as notices. */}
       {children ? (
-        <div className={cn("min-w-0 pl-5.5", TABLE_BODY)}>
-          <StepRowContext.Provider value={false}>{children}</StepRowContext.Provider>
-        </div>
+        fold ? (
+          <CollapsibleContent>
+            <NoticeBody>{children}</NoticeBody>
+          </CollapsibleContent>
+        ) : (
+          <NoticeBody>{children}</NoticeBody>
+        )
       ) : null}
+    </div>
+  );
+}
+
+/** What opens under a notice's line is no step: its own lines read as notices. */
+function NoticeBody({ children }: { children: ReactNode }) {
+  return (
+    <div data-slot="notice-body" className={cn("min-w-0 pl-5.5", TABLE_BODY)}>
+      <StepRowContext.Provider value={false}>{children}</StepRowContext.Provider>
     </div>
   );
 }

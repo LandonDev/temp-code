@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
+import { Collapsible } from "../../components/ui/collapsible";
 import { afterEach, describe, expect, it } from "vitest";
 import { Button } from "../../components/ui/button";
 import type { Block } from "../../lib/session";
@@ -33,7 +33,7 @@ describe("NoticeLine", () => {
       return (
         <Collapsible open={open} onOpenChange={setOpen}>
           <NoticeLine lead="Typecheck failed" fold={{ open, label: open ? "Hide the log" : "Show the log" }}>
-            <CollapsibleContent>the log</CollapsibleContent>
+            the log
           </NoticeLine>
         </Collapsible>
       );
@@ -98,6 +98,29 @@ describe("NoticeLine as a step of a run", () => {
     const { container } = render(<NoticeLine lead="Pass" />);
     const line = container.querySelector('[data-slot="notice-line"]')!.firstElementChild!;
     for (const c of STEP_NOTICE.split(" ")) expect(line.className.split(" ")).toContain(c);
+  });
+
+  it("a closed fold draws nothing under its line", () => {
+    const Fold = ({ start }: { start: boolean }) => {
+      const [open, setOpen] = useState(start);
+      return (
+        <div data-table="">
+          <Collapsible open={open} onOpenChange={setOpen}>
+            <NoticeLine lead="Gate failed" fold={{ open, label: open ? "Hide the log" : "Show the log" }}>
+              the log
+            </NoticeLine>
+          </Collapsible>
+        </div>
+      );
+    };
+    const { container } = render(<Fold start={false} />);
+    // No wrapper while closed: in a table its hairline and padding would draw a blank ruled band.
+    expect(container.querySelector('[data-slot="notice-body"]')).toBeNull();
+    expect(container.querySelector('[data-slot="notice-line"]')!.children).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Show the log" }));
+    const body = container.querySelector<HTMLElement>('[data-slot="notice-body"]')!;
+    expect(body.textContent).toBe("the log");
+    expect(body.className).toContain("in-data-[table]:border-t");
   });
 
   it("what opens under a step's line reads as a notice again", () => {

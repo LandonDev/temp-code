@@ -24,6 +24,21 @@ describe("GateCard", () => {
     expect(container.querySelector("pre")?.textContent).toBe(log);
   });
 
+  it("in a table the log draws no card", () => {
+    const { container } = render(
+      <div data-table="">
+        <GateCard block={block({ step: "gate", branch: "port", ok: false, log: "› vitest\n✗ vitest 48s", at: 1 })} />
+      </div>,
+    );
+    expect(container.querySelector('[data-slot="notice-body"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show the log" }));
+    const pre = container.querySelector<HTMLElement>('[data-slot="gate-log"]')!;
+    const cls = pre.className.split(" ");
+    // The table's row body is the frame: no border, fill, radius or inset of the log's own there.
+    for (const c of ["in-data-[table]:border-0", "in-data-[table]:bg-transparent", "in-data-[table]:rounded-none", "in-data-[table]:px-0", "in-data-[table]:py-0", "in-data-[table]:my-0"])
+      expect(cls).toContain(c);
+  });
+
   it("a green run is one quiet line with nothing to open", () => {
     const { container } = render(<GateCard block={block({ step: "gate", branch: "master", ok: true, log: "✓ build 20s", at: 1 })} />);
     expect(parts(container)).toEqual(["Gate passed", "master"]);
