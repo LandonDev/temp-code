@@ -2760,8 +2760,18 @@ proof and the sizing rules; the pieces, by name:
   watching, failed, idle or done, and no flavour words; 28 pt kept at
   regular width, at compact width it rises in on the layout spring and
   leaves inert on a `fast` fade); `CardActions.swift` (Allow,
-  Deny and Answer under the live cards in `TranscriptRows.swift`, the
-  optimistic decision and the one quiet rollback line);
+  Deny and Answer under the live cards in `TranscriptRows.swift`: the
+  decision shows on the tap as Allowed or Denied and goes once, a refusal
+  puts the buttons back with its line, the client's `CardDecision`,
+  `ThreadState.deciding` and `refusals`; the question card in the desktop's
+  proportions, option rows of 28 pt; `FailureCard.swift` on the desktop's
+  recipe, radius 8, 12 in, at most three actions, Retry last); the person's
+  turn is the desktop's bubble (`UserTurnRow`: trailing, the chrome fill at
+  radius 12, 12 × 8, at most 85 % of the column, `UserTurnLayout`; a sent
+  bubble rises 16 pt over `Motion.rise` once, other born rows fade over
+  `fast`, `BornMotion` in TranscriptView.swift; the steer word morphs,
+  `MorphWord` over `MorphModel`, its time in `TimeFormat.clock`, the
+  desktop's `clockTime`, and the runner's `.steer` check holds it forward);
   `Shell/ThreadSheets.swift` (Start a build from a plan, the New thread
   sheet for a prefilled brief, both over the host's `catalog.get`;
   Rename); `Design/ThreadRowActions.swift` (swipe to pin and archive,
@@ -3495,7 +3505,7 @@ this is the short one.
   prompt). Under the bubble the transcript says one 12px word, Sent,
   Received, Queued for the next turn or Not delivered, its time and how in
   a tooltip (transcript/UserMessage.tsx `SteerLine`, lib/steerWords.ts);
-  the phone the same (`SteerStamp`, TranscriptRows.swift). Proof: `bun run
+  the phone the same (`SteerStamp`, TranscriptRows.swift; its time is the locale's clock, `TimeFormat.clock`). Proof: `bun run
   script:e2e-steer-ack` (docs/box.md "A steer says it was received"). And a send releases the
   thread's pending `wait_for_agent` as the steer does
   (`resolveSteerWaiters`): a master's wait in flight returns

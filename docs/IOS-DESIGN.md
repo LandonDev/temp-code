@@ -22,7 +22,7 @@ no workspace, no thread type, no status, generic chevrons.
 | Thread row: title, "now", chevron | Status dot, type glyph tinted, title, project, elapsed or relative time, tasks `3/7`; no chevron | The row must say what the thread is and whether it needs you |
 | No thread type anywhere | Type glyph and tint on every row and header; type decides the thread screen | Five thread types are the product |
 | Transcript opens at the top, blank until scrolled | Opens at the latest row, paints from cache before the socket, "jump to latest" pill when scrolled up | Bottom is where the work is |
-| User turn: 16 pt radius filled bubble, 14 pt padding | Bordered field: hairline, 12 pt radius, 12 pt padding, `secondarySystemBackground` | Desktop rule: fields, not colored bubbles; concentric radius with 8 pt inner elements |
+| User turn: 16 pt radius filled bubble, 14 pt padding | The desktop's bubble: trailing edge, chrome fill, 12 pt radius, 12 × 8 padding, at most 85 % of the column, no outline | The desktop's UserMessage, in step |
 | Tool row: inline label only | One-line chip: glyph, verb, target in mono, duration right-aligned in tabular digits; tap expands in place | Desktop Tool Chips; the mobile line has no room for more and needs no more |
 | `.secondary` for every quiet text | Two steps: `secondary` for meta, `tertiary` for timestamps and dim halves of a phrase | Hierarchy by weight and color, not size |
 | Default SwiftUI push for everything | Push only between levels; sheets for add, pair, new thread; context menus and swipe for row actions | Spatial consistency; CRUD never inline |
@@ -855,10 +855,23 @@ card's bottom, at the row radius (the recorded exception to outer = inner +
 padding: the card's 12 less its 12 of padding leaves no room, so the next
 step down is the row): Allow prominent in the accent with a white semibold
 label, Deny quiet on the fill step; Answer prominent, at half opacity until
-every question has a choice. A decision shows the moment it is tapped (the
-client records it before the wire), the buttons fade as the card settles
-in 200 ms ease-out, and a refusal rolls the decision back with one quiet
-secondary line ("Not allowed: …") that the next decision clears. A key
+every question has a choice. A decision shows the moment it is tapped:
+the heading reads Allowed or Denied before the host answers (the client
+records it before the wire, `CardDecision`), it goes once (a second tap
+while it is out, or after this device decided, sends nothing:
+`ThreadState.deciding`), the buttons fade as the card settles in 200 ms
+ease-out, and a refusal puts the buttons back with one quiet secondary
+line ("Not allowed: …", kept on the thread as `ThreadState.refusals`, so
+the buttons coming back still say it) that the next decision clears. The
+question card takes the desktop's proportions (components/ui/
+question-card.tsx): the amber glyph beside the title (the question's
+header, else "Question") in 15 medium, each prompt in the prose type, its
+options as 28 pt rows with their description line under the label, the
+picked one on the fill step; the desktop's key tiles stay on the desktop.
+The failure card follows the desktop's recipe (surfaces/FailureCard.tsx):
+a card at radius 8 with 12 in, the summary in the line type at medium
+beside the red glyph, the cause muted 2 pt under it, everything under the
+summary on its text edge, at most three actions, Retry last. A key
 that cannot approve sees the reason in the buttons' place; a link down for
 a moment sees them at half opacity with the reason under them.
 
@@ -973,20 +986,32 @@ clock and asserts all three after every push; the checks later work builds
 there and a scenario lists the ones it awaits. The plain-words tool lines are
 the package's `ToolPhrase` (tested). Row kinds and their mobile form:
 
-- **User turn**: bordered field, 12 pt radius, hairline border, 12 pt
-  padding on the chrome step; attachments above the text as thumbnails
-  (images, decoded at display size, a 1 px outline at 10 %) or a wash chip
-  with a glyph (documents, threads); six lines, then "Show more" on tap;
-  Copy Message in the context menu. No stamp under the field (the
-  desktop's shows on hover only): the turn's closing line carries the
-  time. The project rules the host put ahead of the first message fold
-  inside the field above the brief (`PreambleRow`, the host rows thread's).
-  A steer (a message sent into a running turn) carries one word under the
-  field at its trailing edge, `caption` in the secondary colour: Sent,
-  Received, Queued for the next turn, or Not delivered in red; the time
-  and how it went in ("Received at 14:02, as its own turn") are its
-  accessibility value, and a changed word cross-fades on `Motion.crossFade`
-  (`SteerStamp` in the client package, folded by `ThreadFold`).
+- **User turn**: the desktop's bubble (transcript/UserMessage.tsx): at
+  the column's trailing edge on the chrome fill, radius 12, padded 12 × 8,
+  no outline, in the prose type, as wide as its text and never past 85 %
+  of the column (`UserTurnLayout` in the client package, a `Layout` in
+  TranscriptRows.swift); attachments above the text as thumbnails (images,
+  decoded at display size, a 1 px outline at 10 %) or a wash chip with a
+  glyph (documents, threads); six lines, then "Show more" on tap; Copy
+  Message in the context menu. No stamp under it (the desktop's shows on
+  hover only): the turn's closing line carries the time. The project rules
+  the host put ahead of the first message fold 4 pt above the bubble
+  (`PreambleRow`). A bubble sent from here rises 16 pt and fades in over
+  `Motion.rise` (0.24 s on the drawer curve), once: the host's echo keeps
+  the optimistic row's key and TranscriptView's `BornRows` has claimed it;
+  any other row born after the transcript opened fades in over `fast`
+  once; under reduced motion both fade over `fast`; nothing moves on the
+  first paint or on scroll back (`BornMotion`). A steer (a message sent
+  into a running turn) carries one word under the bubble at its trailing
+  edge in the detail type (12 on 16, its row 16 pt) in secondary: Sent,
+  Received, Queued for the next turn, or Not delivered in red; a change
+  morphs (`MorphWord` over the client's `MorphModel`, until a shared
+  `MorphText`); the time in the locale's clock ("2:02 PM", or "14:02"
+  where the locale writes 24-hour: `TimeFormat.clock`, the desktop's
+  `clockTime`) and how it went in ("Received at 2:02 PM, as its own
+  turn") are its accessibility value (`SteerStamp` in the client package,
+  folded by `ThreadFold`). The scenario runner's `.steer` check holds the
+  word to moving only forward.
 - **Assistant**: markdown as the page, `body` size, no container, a
   generous measure, selectable, Copy Message in the context menu. Code
   blocks: the desktop's bordered block (10 pt radius, the content wash, a
