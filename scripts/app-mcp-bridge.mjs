@@ -386,6 +386,20 @@ export const TOOLS = [
     }
   },
   {
+    // A copy of src/shared/away.ts's NOTE_DECISION_DESCRIPTION and
+    // NOTE_DECISION_PARAMS; app-bridge.test.ts keeps them equal.
+    name: 'note_decision',
+    description:
+      "Record one decision you made without asking the person, while they are away from the computer: what you chose and why, in one line. It shows as a quiet row in the thread and counts toward what the person reviews when they come back.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        decision: { type: 'string', description: 'One line: what you chose and why.' }
+      },
+      required: ['decision']
+    }
+  },
+  {
     name: 'html_preview',
     description: HTML_PREVIEW_TOOL_DESCRIPTION,
     inputSchema: {
@@ -727,6 +741,7 @@ const METHOD_FOR = {
   html_render: 'app.htmlRender',
   cite_source: 'app.citeSource',
   update_notes: 'app.updateNotes',
+  note_decision: 'app.noteDecision',
   merge_branch: 'app.mergeBranch',
   report_findings: 'app.reportFindings',
   batch_gate: 'app.batchGate',

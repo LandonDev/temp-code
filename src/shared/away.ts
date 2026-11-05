@@ -25,6 +25,15 @@ export const AWAY_OFF_STATE: AwayState = { enabled: false, at: 0, by: '' }
 /** A state from elsewhere wins only when it is newer; equal times keep what is here. */
 export const isNewerAway = (incoming: AwayState, current: AwayState): boolean => incoming.at > current.at
 
+/** note_decision (apptools.ts, the codex bridge's copy in scripts/app-mcp-bridge.mjs): one decision the thread made without the person. */
+export const NOTE_DECISION_TOOL_NAME = 'note_decision'
+export const NOTE_DECISION_DESCRIPTION =
+  "Record one decision you made without asking the person, while they are away from the computer: what you chose and why, in one line. It shows as a quiet row in the thread and counts toward what the person reviews when they come back."
+export const NOTE_DECISION_PARAMS = {
+  decision: 'One line: what you chose and why.'
+} as const
+export const NOTE_DECISION_MAX_CHARS = 500
+
 /** How many decisions a tally holds. */
 export const decidedTotal = (decided: AwayDecided): number =>
   decided.threads.reduce((sum, t) => sum + t.count, 0)

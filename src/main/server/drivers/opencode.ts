@@ -105,9 +105,10 @@ export const opencodeDriver: HarnessDriver = {
         dismissQuestions()
         void engine.cancelTurn()
       },
-      approve(requestId: string, allow: boolean): boolean {
+      approve(requestId: string, allow: boolean, _reason?: string): boolean {
         const id = translator.approvalNumber(requestId)
         if (id === undefined) return false
+        // The reject wire carries no text, so a denial reason cannot be sent.
         return engine.respondApproval(id, allow ? 'allow' : 'deny')
       },
       answer(requestId: string, answers: string[][] | null): boolean {

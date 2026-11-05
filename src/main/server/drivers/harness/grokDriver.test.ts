@@ -165,6 +165,48 @@ describe('grok driver', () => {
     await handle.dispose()
   })
 
+  it('denies an approval with a reason using only the reject option', async () => {
+    const { events, ctx } = harness('deny-reason')
+    const handle = await grokDriver.start(ctx)
+    const turn = handle.send('run it')
+    const promptId = await handshake()
+    frame({
+      id: 70, method: 'session/request_permission', params: {
+        sessionId: 'S1', toolCall: { toolCallId: 'call-deny', kind: 'execute', title: 'Run command' },
+        options: [{ optionId: 'allow-once' }, { optionId: 'reject-once' }]
+      }
+    })
+    await waitFor(() => of(events, 'approval-request').length === 1, 'approval-request')
+    const approval = of(events, 'approval-request')[0]
+    expect(handle.approve!(approval.requestId, false, 'The person is away. Decide yourself.')).toBe(true)
+    await waitFor(() => response(70) !== undefined, 'deny response')
+    expect(response(70)).toEqual({ outcome: { outcome: 'selected', optionId: 'reject-once' } })
+    expect(handle.approve!(approval.requestId, false)).toBe(false)
+    reply(promptId, { stopReason: 'end_turn' })
+    await turn
+    await handle.dispose()
+  })
+
+  it('sends free text through the ask_user_question answer wire', async () => {
+    const { events, ctx } = harness('free-text')
+    const handle = await grokDriver.start(ctx)
+    const turn = handle.send('pick')
+    const promptId = await handshake()
+    frame({
+      id: 90, method: '_x.ai/ask_user_question',
+      params: { questions: [{ question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }] }
+    })
+    await waitFor(() => of(events, 'question-request').length === 1, 'question-request')
+    const question = of(events, 'question-request')[0]
+    const text = 'The person is away. Decide yourself.'
+    expect(handle.answer!(question.requestId, [[text]])).toBe(true)
+    await waitFor(() => response(90) !== undefined, 'free-text response')
+    expect(response(90)).toEqual({ outcome: 'accepted', answers: { 'Which one?': text } })
+    reply(promptId, { stopReason: 'end_turn' })
+    await turn
+    await handle.dispose()
+  })
+
   it('a dismissed question tells grok to skip; interrupt cancels the turn', async () => {
     const { events, ctx } = harness('d3')
     const handle = await grokDriver.start(ctx)

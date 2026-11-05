@@ -161,6 +161,14 @@ describe("fx driver", () => {
     expect(killed).toEqual(["d1"]);
   });
 
+  it("accepts a denial reason for a stale approval without writing to the wire", async () => {
+    const { ctx } = ctxFor("deny-reason");
+    const handle = await fxDriver.start(ctx);
+    expect(handle.approve!("nope", false, "The person is away. Decide yourself.")).toBe(false);
+    expect(sent).toEqual([]);
+    await handle.dispose();
+  });
+
   it("interrupt cancels the ACP turn and settles it", async () => {
     const { ctx, events } = ctxFor("d2");
     const handle = await fxDriver.start(ctx);

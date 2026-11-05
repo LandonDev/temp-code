@@ -1874,6 +1874,25 @@ export class Store {
 
   /** The newest `limit` rows of a session, oldest first: the window a
    *  pending prompt or the last words sit in (remote/facade.ts). */
+  /** The question and approval requests among a thread's newest `limit`
+   *  rows that no resolved row answers (sessions.ts: the flip to away
+   *  answers the cards already waiting). Never a whole-transcript scan. */
+  unresolvedRequests(
+    sessionId: string,
+    limit: number
+  ): Extract<AgentEvent, { type: 'question-request' | 'approval-request' }>[] {
+    const rows = this.lastEvents(sessionId, limit)
+    const resolved = new Set<string>()
+    for (const { event } of rows) {
+      if (event.type === 'question-resolved' || event.type === 'approval-resolved') resolved.add(event.requestId)
+    }
+    const open: Extract<AgentEvent, { type: 'question-request' | 'approval-request' }>[] = []
+    for (const { event } of rows) {
+      if ((event.type === 'question-request' || event.type === 'approval-request') && !resolved.has(event.requestId)) open.push(event)
+    }
+    return open
+  }
+
   lastEvents(sessionId: string, limit: number): EventRow[] {
     this.flushEvents()
     const rows = this

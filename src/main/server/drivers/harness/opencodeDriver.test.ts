@@ -189,6 +189,37 @@ describe('opencode driver', () => {
     await handle.dispose()
   })
 
+  it('denies an approval with a reason using only the reject wire', async () => {
+    const { events, handle, turn } = await startTurn('deny-reason')
+    sse('permission.asked', {
+      id: 'perm-deny', sessionID: 'ses_1', permission: 'bash', patterns: ['rm -rf build'],
+      metadata: { input: { command: 'rm -rf build' } }
+    })
+    const request = of(events, 'approval-request')[0]
+    expect(handle.approve!(request.requestId, false, 'The person is away. Decide yourself.')).toBe(true)
+    await waitFor(() => posted('/permission/perm-deny/reply') !== undefined, 'deny reply')
+    expect(posted('/permission/perm-deny/reply')?.body).toEqual({ reply: 'reject' })
+    expect(handle.approve!(request.requestId, false)).toBe(false)
+    idle()
+    await turn
+    await handle.dispose()
+  })
+
+  it('sends free text through the question reply wire', async () => {
+    const { events, handle, turn } = await startTurn('free-text')
+    sse('question.asked', {
+      id: 'q-free', sessionID: 'ses_1', questions: [{ question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }]
+    })
+    const question = of(events, 'question-request')[0]
+    const text = 'The person is away. Decide yourself.'
+    expect(handle.answer!(question.requestId, [[text]])).toBe(true)
+    await waitFor(() => posted('/question/q-free/reply') !== undefined, 'free-text reply')
+    expect(posted('/question/q-free/reply')?.body).toEqual({ answers: [[text]] })
+    idle()
+    await turn
+    await handle.dispose()
+  })
+
   it('round-trips a question through answer(); null rejects it', async () => {
     const { events, handle, turn } = await startTurn('d3')
     sse('question.asked', {

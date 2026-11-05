@@ -1,11 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 import { DEFAULT_RULES, type OrchestrationRules } from '@shared/rules'
 import { CATALOG } from '@shared/catalog'
-import { appStartThread, bridgeMcpConfig, remoteDigest, setAppBridge, writtenPathOf } from './apptools'
+import { APP_TOOLS, appNoteDecision, appStartThread, bridgeMcpConfig, remoteDigest, setAppBridge, writtenPathOf } from './apptools'
 import { setOrchestrationRegistry } from './orchestration'
 
 afterEach(() => {
@@ -496,4 +496,15 @@ it('an unknown projectId is refused for a local start and admitted with environm
   } finally {
     setAppCrossHost(null)
   }
+})
+
+it('note_decision writes one away row on the caller, one line', () => {
+  const awayNotice = vi.fn()
+  const caller = { id: 's1' } as SessionMeta
+  expect(appNoteDecision({ awayNotice }, caller, { decision: 'Used tabs,\n  the repo\'s style.' })).toBe('noted')
+  expect(awayNotice).toHaveBeenCalledWith('s1', 'decision', "Used tabs, the repo's style.")
+  expect(appNoteDecision({ awayNotice }, caller, { decision: '   ' })).toMatch(/^refused/)
+  expect(appNoteDecision({ awayNotice }, caller, { decision: 'x'.repeat(501) })).toMatch(/^refused/)
+  expect(awayNotice).toHaveBeenCalledTimes(1)
+  expect(APP_TOOLS).toContain('mcp__app__note_decision')
 })

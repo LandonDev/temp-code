@@ -8,6 +8,7 @@ import {
 import { CITE_TOOL_DESCRIPTION, CITE_TOOL_PARAMS } from '@shared/research'
 import { UPDATE_NOTES_DESCRIPTION, UPDATE_NOTES_PARAMS, UPDATE_NOTES_TOOL_NAME } from '@shared/notes'
 import { ThreadTypeSchema } from '@shared/domain'
+import { NOTE_DECISION_DESCRIPTION, NOTE_DECISION_PARAMS, NOTE_DECISION_TOOL_NAME } from '@shared/away'
 import {
   ADOPT_THREAD_PARAMS,
   ADOPT_THREAD_TOOL_DESCRIPTION,
@@ -19,7 +20,7 @@ import {
   BATCH_RULES_TOOL_DESCRIPTION,
   BATCH_RULES_TOOL_NAME
 } from '@shared/gate'
-import { ADOPT_THREAD_SHAPE, BATCH_GATE_SHAPE, BATCH_RULES_SHAPE, CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE, MERGE_BRANCH_SHAPE, REPORT_FINDINGS_SHAPE } from './apptools'
+import { NOTE_DECISION_SHAPE, ADOPT_THREAD_SHAPE, BATCH_GATE_SHAPE, BATCH_RULES_SHAPE, CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE, MERGE_BRANCH_SHAPE, REPORT_FINDINGS_SHAPE } from './apptools'
 import {
   MERGE_BRANCH_PARAMS,
   MERGE_BRANCH_TOOL_DESCRIPTION,
@@ -79,6 +80,16 @@ describe('app-mcp-bridge update_notes', () => {
     expect(props.mode.enum).toEqual(['replace', 'append'])
     expect(props.content.description).toBe(UPDATE_NOTES_PARAMS.content)
     expect(tool.inputSchema.required).toEqual(['section', 'content'])
+  })
+})
+
+describe('app-mcp-bridge note_decision', () => {
+  it('carries the shared description and parameter text', () => {
+    const tool = bridge.TOOLS.find((t) => t.name === NOTE_DECISION_TOOL_NAME)!
+    expect(tool.description).toBe(NOTE_DECISION_DESCRIPTION)
+    expect(Object.keys(tool.inputSchema.properties)).toEqual(Object.keys(NOTE_DECISION_SHAPE))
+    expect(tool.inputSchema.properties.decision.description).toBe(NOTE_DECISION_PARAMS.decision)
+    expect(tool.inputSchema.required).toEqual(['decision'])
   })
 })
 

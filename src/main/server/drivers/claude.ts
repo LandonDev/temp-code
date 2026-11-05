@@ -1417,7 +1417,7 @@ export const claudeDriver: HarnessDriver = {
     state.sendCheck = (text) => {
       if (!dead && !disposed) input.push(text)
     }
-    const pendingApprovals = new Map<string, (allow: boolean, auto?: boolean) => void>()
+    const pendingApprovals = new Map<string, (allow: boolean, auto?: boolean, reason?: string) => void>()
     const pendingQuestions = new Map<string, (answers: string[][] | null) => void>()
 
     // AskUserQuestion is a question, not a permission — it must reach the
@@ -1561,13 +1561,13 @@ export const claudeDriver: HarnessDriver = {
       })
       emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
       return new Promise((resolve) => {
-        const finish = (allow: boolean, auto = false): void => {
+        const finish = (allow: boolean, auto = false, reason?: string): void => {
           if (!pendingApprovals.delete(requestId)) return
           clearTimeout(timer)
           emit({ type: 'approval-resolved', requestId, allow, auto })
           emit({ type: 'status', status: 'running' })
           resolve(
-            allow ? { behavior: 'allow' } : { behavior: 'deny', message: 'Denied in temp-code' }
+            allow ? { behavior: 'allow' } : { behavior: 'deny', message: reason ?? 'Denied in temp-code' }
           )
         }
         const timer = setTimeout(() => finish(false, true), APPROVAL_TIMEOUT_MS)
@@ -1919,9 +1919,9 @@ export const claudeDriver: HarnessDriver = {
         // The CLI's stopped notification retires the task (retireTask).
         await q.stopTask(taskId)
       },
-      approve(requestId: string, allow: boolean): boolean {
+      approve(requestId: string, allow: boolean, reason?: string): boolean {
         const finish = pendingApprovals.get(requestId)
-        finish?.(allow)
+        finish?.(allow, false, reason)
         return !!finish
       },
       answer(requestId: string, answers: string[][] | null): boolean {

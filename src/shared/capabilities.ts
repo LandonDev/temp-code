@@ -33,6 +33,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'app.interruptAgent': 'local',
   'app.listAgents': 'local',
   'app.updateNotes': 'local',
+  'app.noteDecision': 'local',
   'app.mergeBranch': 'local',
   'app.reportFindings': 'local',
   'app.batchGate': 'local',

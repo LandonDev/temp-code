@@ -157,6 +157,7 @@ import {
   appHtmlRender,
   appListThreads,
   appReadThread,
+  appNoteDecision,
   appUpdateNotes,
   appStartThread,
   setAppBridge,
@@ -2536,6 +2537,12 @@ export async function startServer(
           case 'session.notes.set': {
             if (!registry.get(req.params.sessionId)) throw new Error(`unknown session: ${req.params.sessionId}`)
             sendFrame({ id: req.id, ok: true, result: registry.notes.write(req.params.sessionId, req.params.text) })
+            break
+          }
+          case 'app.noteDecision': {
+            const caller = registry.get(req.params.sessionId)
+            if (!caller) throw new Error(`unknown session: ${req.params.sessionId}`)
+            sendFrame({ id: req.id, ok: true, result: appNoteDecision(registry, caller, req.params) })
             break
           }
           case 'app.updateNotes': {

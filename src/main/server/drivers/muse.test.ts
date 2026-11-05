@@ -2,6 +2,7 @@ import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Connection } from '@muse-code/sdk'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 import type { DriverCtx, DriverHandle } from './types'
 
@@ -138,6 +139,55 @@ describe('the muse driver over the fake host', () => {
     expect(h.answer?.(of(t.events, 'question-request')[1].requestId, null)).toBe(true)
     await waitFor(() => settled(t.events) === 2, 'the dismissed turn')
     expect(of(t.events, 'assistant-text').filter((e) => !e.delta).at(-1)?.text).toBe('dismissed ')
+  })
+
+  it.each([
+    ['approve', 'c-deny'],
+    ['approve abort', 'c-abort']
+  ])('denies %s through approval/decide without text', async (prompt, choiceId) => {
+    const commands = vi.spyOn(Connection.prototype, 'command')
+    try {
+      const t = ctxFor()
+      const requests = vi.spyOn(t.ctx, 'requestApproval')
+      const h = await museDriver.start(t.ctx)
+      handles.push(h)
+      await h.send(prompt)
+      await waitFor(() => requests.mock.calls.length === 1, 'the approval')
+      const approvalId = requests.mock.calls[0][0].requestId!
+      // The host settles its promise before trying the driver's stale-request path.
+      t.decide(false)
+      await waitFor(() => commands.mock.calls.some(([method]) => method === 'approval/decide'), 'the deny command')
+      h.approve!(approvalId, false, 'The person is away. Decide yourself.')
+      expect(commands.mock.calls.filter(([method]) => method === 'approval/decide')).toEqual([
+        ['approval/decide', { sessionId: 'sess-1', approvalId, choiceId, requirementId: { approvalId, sourceIndex: 0 } }, undefined]
+      ])
+      await waitFor(() => settled(t.events) === 1, 'the denied turn')
+      expect(of(t.events, 'assistant-text').filter((e) => !e.delta).at(-1)?.text).toBe('left it alone ')
+    } finally {
+      commands.mockRestore()
+    }
+  })
+
+  it('sends a free-text question answer in freeText', async () => {
+    const commands = vi.spyOn(Connection.prototype, 'command')
+    try {
+      const t = ctxFor()
+      const h = await museDriver.start(t.ctx)
+      handles.push(h)
+      await h.send('ask')
+      await waitFor(() => of(t.events, 'question-request').length === 1, 'the question')
+      const question = of(t.events, 'question-request')[0]
+      const text = 'The person is away. Decide yourself.'
+      expect(h.answer!(question.requestId, [[text]])).toBe(true)
+      const answer = commands.mock.calls.find(([method]) => method === 'userInput/answer')
+      expect(answer).toEqual(['userInput/answer', {
+        sessionId: 'sess-1', userInputId: expect.any(String), answers: [{ questionId: 'q1', freeText: text }]
+      }, undefined])
+      await waitFor(() => settled(t.events) === 1, 'the answered turn')
+      expect(of(t.events, 'assistant-text').filter((e) => !e.delta).at(-1)?.text).toBe(`chose ${text} `)
+    } finally {
+      commands.mockRestore()
+    }
   })
 
   it('a steer mid-turn is received when its user message lands; a cancel ends the turn quietly', async () => {

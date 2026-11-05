@@ -98,8 +98,9 @@ export interface DriverHandle {
   stopTask?: (taskId: string) => Promise<void>
   /** Answer a pending approval-request. Returns whether the request was
    *  still pending here — false lets the registry handle a stale one
-   *  (asked by a previous process of this harness). */
-  approve?: (requestId: string, allow: boolean) => boolean
+   *  (asked by a previous process of this harness). A denial reason reaches
+   *  the model when the harness wire supports text; other wires omit it. */
+  approve?: (requestId: string, allow: boolean, reason?: string) => boolean
   /** Answer a pending question-request; null = dismissed without
    *  answering. Returns whether the request was still pending here. */
   answer?: (requestId: string, answers: string[][] | null) => boolean

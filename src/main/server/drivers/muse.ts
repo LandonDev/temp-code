@@ -231,6 +231,7 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
       return
     }
     try {
+      // The deny/abort choice wire carries no text, so a denial reason cannot be sent.
       await command('approval/decide', { sessionId: nativeId, approvalId, choiceId: choice.choiceId, requirementId: requirement })
     } catch (err) {
       if (!(err instanceof MspError && (err.kind === 'approvalAlreadyResolved' || err.kind === 'approvalNotFound'))) {
@@ -427,7 +428,7 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
       if (!nativeId) return
       void command('turn/cancel', { sessionId: nativeId, ...(currentTurnId ? { turnId: currentTurnId } : {}) }).catch(() => undefined)
     },
-    approve(requestId: string, allow: boolean): boolean {
+    approve(requestId: string, allow: boolean, _reason?: string): boolean {
       // The registry answered through requestApproval's promise; this is
       // the stale path (a request from a previous process of this harness).
       return approvals.has(requestId) && allow === approvals.get(requestId)?.allow

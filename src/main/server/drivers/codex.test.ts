@@ -15,7 +15,7 @@ import type { DriverCtx } from './types'
  * and the boot retry.
  */
 
-type Frame = { id?: number; method?: string; params?: Record<string, unknown> }
+type Frame = { id?: number; method?: string; params?: Record<string, unknown>; result?: unknown }
 type Script = (proc: FakeProc, frame: Frame) => void
 
 class FakeProc extends EventEmitter {
@@ -372,5 +372,61 @@ describe('withoutImageBytes', () => {
     expect(withoutImageBytes('plain')).toBe('plain')
     expect(withoutImageBytes(null)).toBeNull()
     expect(withoutImageBytes({ htmlRender: {} })).toEqual({ htmlRender: {} })
+  })
+})
+
+
+describe('codex approval and question replies', () => {
+  async function boot() {
+    vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
+    const responses: Frame[] = []
+    scripts.push((proc, frame) => {
+      if (frame.method) healthy(proc, frame)
+      else responses.push(frame)
+    })
+    const handle = await codexDriver.start({ ...ctx(), session: { ...session, permission: 'safe' } })
+    const request = (method: string, params: Record<string, unknown>) => {
+      spawned[0].stdout.write(JSON.stringify({ jsonrpc: '2.0', id: 900, method, params: { threadId: 't1', ...params } }) + '\n')
+    }
+    return { handle, responses, request }
+  }
+
+  it.each([
+    ['item/commandExecution/requestApproval', { decision: 'decline' }],
+    ['item/fileChange/requestApproval', { decision: 'decline' }],
+    ['execCommandApproval', { decision: 'denied' }],
+    ['applyPatchApproval', { decision: 'denied' }],
+    ['mcpServer/elicitation/request', { action: 'decline' }]
+  ])('denies %s without adding text to its wire', async (method, result) => {
+    const { handle, responses, request } = await boot()
+    try {
+      request(method, { itemId: 'call-1', serverName: 'external' })
+      await vi.waitFor(() => expect(events.some((event) => event.type === 'approval-request')).toBe(true))
+      const approval = events.find((event) => event.type === 'approval-request')!
+      expect(handle.approve!(approval.requestId, false, 'The person is away. Decide yourself.')).toBe(true)
+      await vi.waitFor(() => expect(responses).toEqual([{ jsonrpc: '2.0', id: 900, result }]))
+      expect(handle.approve!(approval.requestId, false)).toBe(false)
+    } finally {
+      await handle.dispose()
+    }
+  })
+
+  it('sends free text in the question answers wire', async () => {
+    const { handle, responses, request } = await boot()
+    try {
+      request('item/tool/requestUserInput', {
+        itemId: 'call-q', questions: [{ id: 'q1', question: 'Which one?', isOther: true, options: [{ label: 'A' }, { label: 'B' }] }]
+      })
+      await vi.waitFor(() => expect(events.some((event) => event.type === 'question-request')).toBe(true))
+      const question = events.find((event) => event.type === 'question-request')!
+      const text = 'The person is away. Decide yourself.'
+      expect(handle.answer!(question.requestId, [[text]])).toBe(true)
+      await vi.waitFor(() => expect(responses).toEqual([{
+        jsonrpc: '2.0', id: 900, result: { answers: { q1: { answers: [text] } } }
+      }]))
+      expect(handle.answer!(question.requestId, [[text]])).toBe(false)
+    } finally {
+      await handle.dispose()
+    }
   })
 })

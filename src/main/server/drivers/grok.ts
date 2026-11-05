@@ -123,9 +123,10 @@ export const grokDriver: HarnessDriver = {
         dismissQuestions()
         void cancelGrokTurn(session.id)
       },
-      approve(requestId: string, allow: boolean): boolean {
+      approve(requestId: string, allow: boolean, _reason?: string): boolean {
         const id = translator.approvalNumber(requestId)
         if (id === undefined) return false
+        // The ACP option wire carries no text, so a denial reason cannot be sent.
         return respondGrokApproval(session.id, id, allow ? 'allow' : 'deny')
       },
       answer(requestId: string, answers: string[][] | null): boolean {

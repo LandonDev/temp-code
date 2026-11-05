@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
-import { AWAY_MECHANICS, AWAY_OFF, AWAY_ON } from './awayPrompts'
+import { AWAY_APPROVAL_REPLY, AWAY_MECHANICS, AWAY_OFF, AWAY_ON, AWAY_QUESTION_REPLY } from './awayPrompts'
 import { implementerSpawnPrompt, MASTER_MECHANICS, setOrchestrationRegistry } from './orchestration'
 import { setAppBridge } from './apptools'
 import { cancelMirrors } from './mirror'
@@ -18,12 +18,14 @@ import { cancelMirrors } from './mirror'
 interface Captured {
   emit: (e: AgentEvent) => void
   session: SessionMeta
-  requestApproval: (req: { requestId?: string; tool: string; input: unknown; title?: string }) => Promise<boolean>
+  requestApproval: (req: { requestId?: string; toolName: string; input: unknown; title?: string }) => Promise<boolean>
 }
 const sends = new Map<string, string[]>()
 const ctxs = new Map<string, Captured>()
 const answers: { sessionId: string; requestId: string; answers: string[][] | null }[] = []
 const approvals: { sessionId: string; requestId: string; allow: boolean; reason?: string }[] = []
+/** false: the driver has no resolver for the request (registered too late). */
+const knobs = { resolves: true }
 
 vi.mock('./drivers', () => {
   const driver = (id: string) => ({
@@ -36,10 +38,12 @@ vi.mock('./drivers', () => {
           sends.set(sid, [...(sends.get(sid) ?? []), text])
         },
         answer: (requestId: string, a: string[][] | null) => {
+          if (!knobs.resolves) return false
           answers.push({ sessionId: sid, requestId, answers: a })
           return true
         },
         approve: (requestId: string, allow: boolean, reason?: string) => {
+          if (!knobs.resolves) return false
           approvals.push({ sessionId: sid, requestId, allow, reason })
           return true
         },
@@ -62,6 +66,7 @@ beforeEach(async () => {
   ctxs.clear()
   answers.length = 0
   approvals.length = 0
+  knobs.resolves = true
   away.enabled = false
   away.count.mockClear()
   root = await mkdtemp(join(tmpdir(), 'tc-away-reg-'))
@@ -217,5 +222,129 @@ describe('a flip', () => {
     await flush()
     expect(sent(id).at(-1)!.startsWith(AWAY_ON)).toBe(true)
     expect(sent(id).at(-1)).toContain('<subagent-report>')
+  })
+})
+
+const rows = (id: string): AgentEvent[] => store.eventsAfter(id, 0).map((r) => r.event)
+const statuses = (): Map<string, string[]> => {
+  const seen = new Map<string, string[]>()
+  registry.onMeta((m) => seen.set(m.id, [...(seen.get(m.id) ?? []), m.status]))
+  return seen
+}
+const question = (requestId: string): AgentEvent => ({
+  type: 'question-request',
+  requestId,
+  questions: [
+    { question: 'Tabs or spaces?\nPick one.', options: [{ label: 'Tabs' }, { label: 'Spaces' }] },
+    { question: 'Which port?', options: [{ label: '3000' }] }
+  ]
+})
+const approval = (requestId: string): AgentEvent => ({
+  type: 'approval-request',
+  requestId,
+  toolName: 'Bash',
+  input: { command: 'rm -rf build' }
+})
+
+describe('the host answers for an away person', () => {
+  it('answers a question with the away line, writes one notice and never waits', async () => {
+    const id = await startThread()
+    running(id)
+    const seen = statuses()
+    away.enabled = true
+    ctx(id).emit(question('q1'))
+    ctx(id).emit({ type: 'status', status: 'waiting', detail: 'awaiting answer' })
+    await flush()
+    expect(answers).toEqual([{ sessionId: id, requestId: 'q1', answers: [[AWAY_QUESTION_REPLY], [AWAY_QUESTION_REPLY]] }])
+    ctx(id).emit({ type: 'question-resolved', requestId: 'q1', answers: [[AWAY_QUESTION_REPLY], [AWAY_QUESTION_REPLY]] })
+    ctx(id).emit({ type: 'status', status: 'running' })
+    const written = rows(id)
+    expect(written.some((e) => e.type === 'question-request' || e.type === 'question-resolved')).toBe(false)
+    const notices = written.filter((e) => e.type === 'notice')
+    expect(notices).toEqual([
+      { type: 'notice', kind: 'away', message: 'Decided without asking: Tabs or spaces?', away: { kind: 'question', text: 'Tabs or spaces?' } }
+    ])
+    expect(seen.get(id) ?? []).not.toContain('waiting')
+    expect(store.getSession(id)!.status).toBe('running')
+    expect(away.count).toHaveBeenCalledWith(id)
+  })
+
+  it('denies an approval with the reason and says what was skipped', async () => {
+    const id = await startThread()
+    running(id)
+    away.enabled = true
+    ctx(id).emit(approval('a1'))
+    ctx(id).emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
+    await flush()
+    expect(approvals).toEqual([{ sessionId: id, requestId: 'a1', allow: false, reason: AWAY_APPROVAL_REPLY }])
+    ctx(id).emit({ type: 'approval-resolved', requestId: 'a1', allow: false })
+    const written = rows(id)
+    expect(written.some((e) => e.type === 'approval-request' || e.type === 'approval-resolved')).toBe(false)
+    expect(written.filter((e) => e.type === 'notice').map((e) => (e as { message: string }).message)).toEqual([
+      'Skipped while away: Run rm -rf build?'
+    ])
+    expect(store.getSession(id)!.status).toBe('running')
+  })
+
+  it("denies a requestApproval card at once, with no card", async () => {
+    const id = await startThread()
+    running(id)
+    away.enabled = true
+    await expect(ctx(id).requestApproval({ toolName: 'mcp__linear__save', input: {} })).resolves.toBe(false)
+    const written = rows(id)
+    expect(written.some((e) => e.type === 'approval-request')).toBe(false)
+    expect(written.filter((e) => e.type === 'notice').map((e) => (e as { message: string }).message)).toEqual(['Skipped while away: Use linear?'])
+  })
+
+  it('intercepts nothing while the person is here', async () => {
+    const id = await startThread()
+    running(id)
+    ctx(id).emit(question('q1'))
+    ctx(id).emit({ type: 'status', status: 'waiting', detail: 'awaiting answer' })
+    await flush()
+    expect(answers).toEqual([])
+    expect(rows(id).some((e) => e.type === 'question-request')).toBe(true)
+    expect(store.getSession(id)!.status).toBe('waiting')
+  })
+
+  it('writes the card as usual when the driver has no resolver for it', async () => {
+    const id = await startThread()
+    running(id)
+    away.enabled = true
+    knobs.resolves = false
+    ctx(id).emit(question('q1'))
+    ctx(id).emit({ type: 'status', status: 'waiting', detail: 'awaiting answer' })
+    await flush()
+    expect(rows(id).some((e) => e.type === 'question-request')).toBe(true)
+    expect(store.getSession(id)!.status).toBe('waiting')
+  })
+
+  it('answers the cards already waiting when away turns on', async () => {
+    const q = await startThread()
+    const a = await startThread()
+    running(q)
+    running(a)
+    ctx(q).emit(question('q1'))
+    ctx(q).emit({ type: 'status', status: 'waiting', detail: 'awaiting answer' })
+    ctx(a).emit(approval('a1'))
+    ctx(a).emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
+    away.enabled = true
+    registry.awayChanged(true)
+    await flush()
+    expect(answers).toEqual([{ sessionId: q, requestId: 'q1', answers: [[AWAY_QUESTION_REPLY], [AWAY_QUESTION_REPLY]] }])
+    expect(approvals).toEqual([{ sessionId: a, requestId: 'a1', allow: false, reason: AWAY_APPROVAL_REPLY }])
+    expect(rows(q).filter((e) => e.type === 'notice')).toHaveLength(1)
+    expect(rows(a).filter((e) => e.type === 'notice')).toHaveLength(1)
+  })
+})
+
+describe('a noted decision', () => {
+  it('is one away row that counts toward the tally, away or not', async () => {
+    const id = await startThread()
+    registry.awayNotice(id, 'decision', 'Chose port 3000: the README names it')
+    expect(rows(id).filter((e) => e.type === 'notice')).toEqual([
+      { type: 'notice', kind: 'away', message: 'Chose port 3000: the README names it', away: { kind: 'decision', text: 'Chose port 3000: the README names it' } }
+    ])
+    expect(away.count).toHaveBeenCalledWith(id)
   })
 })

@@ -837,6 +837,7 @@ export const codexDriver: HarnessDriver = {
           pendingApprovals.delete(requestId)
           emit({ type: 'approval-resolved', requestId, allow })
           emit({ type: 'status', status: 'running' })
+          // The decline wire carries no text, so a denial reason cannot be sent.
           conn.respond(id, { action: allow ? 'accept' : 'decline' })
         })
         return
@@ -868,6 +869,7 @@ export const codexDriver: HarnessDriver = {
         pendingApprovals.delete(requestId)
         emit({ type: 'approval-resolved', requestId, allow })
         emit({ type: 'status', status: 'running' })
+        // The decline/denied wire carries no text, so a denial reason cannot be sent.
         conn.respond(id, {
           decision: legacy ? (allow ? 'approved' : 'denied') : allow ? 'accept' : 'decline'
         })
@@ -1098,7 +1100,7 @@ export const codexDriver: HarnessDriver = {
           setStatus('idle')
         }
       },
-      approve(requestId: string, allow: boolean): boolean {
+      approve(requestId: string, allow: boolean, _reason?: string): boolean {
         const finish = pendingApprovals.get(requestId)
         finish?.(allow)
         return !!finish

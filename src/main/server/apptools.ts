@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { BatchStepSpecSchema } from '@shared/contract-batch'
+import { NOTE_DECISION_DESCRIPTION, NOTE_DECISION_MAX_CHARS, NOTE_DECISION_PARAMS, NOTE_DECISION_TOOL_NAME } from '@shared/away'
 import {
   createSdkMcpServer,
   tool,
@@ -402,6 +403,19 @@ export function appUpdateNotes(reg: SessionRegistry, caller: SessionMeta, args: 
   return `notes updated: ${section} ${mode === 'append' ? 'appended' : 'replaced'}, now ${lines} line${lines === 1 ? '' : 's'}${known}.${doc.path ? ` File: ${doc.path}` : ''}`
 }
 
+/** note_decision: one away row on the caller (sessions.ts awayNotice), counted toward the return toast. */
+export function appNoteDecision(reg: Pick<SessionRegistry, 'awayNotice'>, caller: SessionMeta, args: { decision: string }): string {
+  const decision = args.decision.replace(/\s+/g, ' ').trim()
+  if (!decision) return 'refused: say what you decided.'
+  if (decision.length > NOTE_DECISION_MAX_CHARS) return `refused: one line of at most ${NOTE_DECISION_MAX_CHARS} characters.`
+  reg.awayNotice(caller.id, 'decision', decision)
+  return 'noted'
+}
+
+export const NOTE_DECISION_SHAPE = {
+  decision: z.string().min(1).describe(NOTE_DECISION_PARAMS.decision)
+}
+
 export const UPDATE_NOTES_SHAPE = {
   section: z.string().min(1).max(80).describe(UPDATE_NOTES_PARAMS.section),
   mode: z.enum(['replace', 'append']).optional().describe(UPDATE_NOTES_PARAMS.mode),
@@ -676,6 +690,10 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
       tool(UPDATE_NOTES_TOOL_NAME, UPDATE_NOTES_DESCRIPTION, UPDATE_NOTES_SHAPE, async (args) =>
         text(registry ? appUpdateNotes(registry, session, args) : 'app registry not ready')
       ),
+      // note_decision on every thread: the record of a choice made while the person is away.
+      tool(NOTE_DECISION_TOOL_NAME, NOTE_DECISION_DESCRIPTION, NOTE_DECISION_SHAPE, async (args) =>
+        text(registry ? appNoteDecision(registry, session, args) : 'app registry not ready')
+      ),
       // merge_branch on every thread: the merge itself, with the project's
       // review in front of it when that is on (mergeReview.ts).
       tool(MERGE_BRANCH_TOOL_NAME, MERGE_BRANCH_TOOL_DESCRIPTION, MERGE_BRANCH_SHAPE, async (args) => {
@@ -730,6 +748,7 @@ export const APP_TOOLS = [
   'mcp__app__app_read_thread',
   'mcp__app__app_start_thread',
   `mcp__app__${UPDATE_NOTES_TOOL_NAME}`,
+  `mcp__app__${NOTE_DECISION_TOOL_NAME}`,
   `mcp__app__${HTML_PREVIEW_TOOL_NAME}`,
   `mcp__app__${HTML_RENDER_TOOL_NAME}`,
   `mcp__app__${CITE_TOOL_NAME}`,

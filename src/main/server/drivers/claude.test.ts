@@ -1,13 +1,22 @@
-import { beforeEach, expect, it, vi } from 'vitest'
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 import { CATALOG } from '@shared/catalog'
 import type { SendPhase } from '../sendSpans'
-import type { DriverCtx } from './types'
+import type { DriverCtx, DriverHandle } from './types'
 
 vi.mock('electron', () => ({ nativeImage: {} }))
+vi.mock('@anthropic-ai/claude-agent-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@anthropic-ai/claude-agent-sdk')>()),
+  query: vi.fn()
+}))
+vi.mock('./binaries', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./binaries')>()),
+  resolveClaude: async () => ({ path: null })
+}))
+vi.mock('../endpoint', () => ({ routedEndpointFor: async () => ({ url: null }) }))
 
-const { cacheNote, claudeExtraArgs, handleMessage, metaClaudeEnv, newStreamState, noteSend, phaseAfterInit, THINKING_DISPLAY } = await import('./claude')
+const { claudeDriver, cacheNote, claudeExtraArgs, handleMessage, metaClaudeEnv, newStreamState, noteSend, phaseAfterInit, THINKING_DISPLAY } = await import('./claude')
 
 /**
  * The first response: thinking streams as a summary, the wait before it is
@@ -127,4 +136,57 @@ it('cacheNote: hit when the read covers the prompt, miss with the uncached thous
   expect(cacheNote({ input_tokens: 400, cache_creation_input_tokens: 151_600 })).toBe('miss 152k')
   expect(cacheNote({ input_tokens: 0 })).toBeUndefined()
   expect(cacheNote(undefined)).toBeUndefined()
+})
+
+// Capture the SDK callbacks; closing its input ends the fake stream on dispose.
+const handles: DriverHandle[] = []
+afterEach(async () => {
+  for (const handle of handles.splice(0)) await handle.dispose()
+})
+
+async function startDriver() {
+  vi.mocked(query).mockImplementation(({ prompt }) => (async function* () {
+    if (typeof prompt !== 'string') for await (const _message of prompt) { /* No CLI output. */ }
+  })() as ReturnType<typeof query>)
+  const handle = await claudeDriver.start({
+    ...ctx,
+    session: { id: 'claude-replies', provider: 'claude', cwd: '/repo', model: 'claude-opus-5-5', reasoning: 'high', permission: 'safe', context1m: false, nativeId: null } as SessionMeta
+  })
+  handles.push(handle)
+  return { handle, options: vi.mocked(query).mock.calls.at(-1)![0].options! }
+}
+
+it.each([
+  ['The person is away. Decide yourself.', 'The person is away. Decide yourself.'],
+  [undefined, 'Denied in temp-code']
+])('a denied approval sends the reason %s or the default message to Claude', async (reason, message) => {
+  const { handle, options } = await startDriver()
+  const pending = options.canUseTool!('Bash', { command: 'rm -rf build' }, {
+    requestId: 'approval-1', toolUseID: 'call-1', signal: new AbortController().signal
+  })
+  expect(handle.approve!('unknown', false, reason)).toBe(false)
+  expect(handle.approve!('approval-1', false, reason)).toBe(true)
+  await expect(pending).resolves.toEqual({ behavior: 'deny', message })
+  expect(handle.approve!('approval-1', false, reason)).toBe(false)
+})
+
+it('a question sends free text to Claude through updatedInput.answers', async () => {
+  const { handle, options } = await startDriver()
+  const hook = options.hooks!.PreToolUse!.find((entry) => entry.matcher === 'AskUserQuestion')!.hooks[0]
+  const toolInput = { questions: [{ question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }] }
+  const pending = hook({
+    hook_event_name: 'PreToolUse', session_id: 'native-1', transcript_path: '/fake/transcript', cwd: '/repo',
+    tool_name: 'AskUserQuestion', tool_input: toolInput, tool_use_id: 'call-q'
+  }, 'call-q', { signal: new AbortController().signal })
+  const request = events.find((event) => event.type === 'question-request')!
+  const text = 'The person is away. Decide yourself.'
+  expect(handle.answer!(request.requestId, [[text]])).toBe(true)
+  await expect(pending).resolves.toEqual({
+    continue: true,
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse', permissionDecision: 'allow',
+      updatedInput: { ...toolInput, answers: { 'Which one?': text } }
+    }
+  })
+  expect(handle.answer!(request.requestId, [[text]])).toBe(false)
 })

@@ -887,6 +887,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       content: z.string().max(NOTES_MAX_CHARS)
     })
   }),
+  // The codex bridge's note_decision (scripts/app-mcp-bridge.mjs): one away row on the caller.
+  z.object({
+    id: z.string(),
+    method: z.literal('app.noteDecision'),
+    params: z.object({ sessionId: z.string(), decision: z.string() })
+  }),
   z.object({
     id: z.string(),
     method: z.literal('session.archive'),

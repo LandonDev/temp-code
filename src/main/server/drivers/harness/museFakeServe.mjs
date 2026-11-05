@@ -111,7 +111,7 @@ async function runTurn(sid, turnId, text) {
       availableChoices: [
         { choiceId: 'c-once', decision: 'approved', label: 'Allow once', scope: 'once' },
         { choiceId: 'c-session', decision: 'approvedForSession', label: 'Allow for this session', scope: 'session' },
-        { choiceId: 'c-deny', decision: 'denied', label: 'Deny', scope: 'once', acceptsFeedback: true }
+        { choiceId: text === 'approve abort' ? 'c-abort' : 'c-deny', decision: text === 'approve abort' ? 'abort' : 'denied', label: 'Deny', scope: 'once', acceptsFeedback: true }
       ]
     }
     notify('approval/requested', params)

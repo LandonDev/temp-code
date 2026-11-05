@@ -83,9 +83,10 @@ export const fxDriver: HarnessDriver = {
       interrupt(): void {
         void cancelFxTurn(session.id)
       },
-      approve(requestId: string, allow: boolean): boolean {
+      approve(requestId: string, allow: boolean, _reason?: string): boolean {
         const number = translator.approvalNumber(requestId)
         if (number === undefined) return false
+        // The ACP option wire carries no text; fx also has no pending approvals.
         respondFxApproval(session.id, number, allow ? 'allow' : 'deny')
         return true
       },

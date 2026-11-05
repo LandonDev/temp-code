@@ -1,3 +1,5 @@
+import { NOTE_DECISION_TOOL_NAME } from '@shared/away'
+
 /**
  * What a harness is told about Away from computer (away.ts): the mechanics
  * every thread carries (claude's system prompt through mechanicsFor, other
@@ -6,8 +8,6 @@
  * (sessions.ts awayChanged, takeNotices), and the host's own answers to a
  * question or an approval while the person is away (sessions.ts interceptAway).
  */
-
-export const NOTE_DECISION_TOOL_NAME = 'note_decision'
 
 export const AWAY_ON = `<away state="on">
 The person is away from the computer until further notice and wants the work finished without them.
