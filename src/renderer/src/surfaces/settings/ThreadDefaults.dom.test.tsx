@@ -185,6 +185,21 @@ describe("Thread defaults", () => {
     await act(async () => land());
   });
 
+  it("a workspace's dialog whose host never answers says so in the rows' place, Retry at the footer's start, Save off", async () => {
+    state.failed = true;
+    render(<ThreadDefaultsDialog workspace={{ id: "w1", name: "Alpha", environmentId: "local" } as never} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("alert").textContent).toBe("The host did not answer");
+    expect(dialog.querySelector("[data-slot=page-row-skeleton]")).toBeNull();
+    const start = dialog.querySelector('[data-slot="dialog-footer"] [data-footer-start]') as HTMLElement;
+    const retry = within(start).getByRole("button", { name: "Retry" });
+    expect(retry.getAttribute("data-variant")).toBe("ghost");
+    expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(retry);
+    expect(state.retry).toHaveBeenCalledOnce();
+    expectModalShape(dialog);
+  });
+
   it("says a workspace follows or overrides the global set only once its host has said", () => {
     state.workspaces = [{ id: "w1", name: "Alpha", environmentId: "local" }];
     state.failed = true;

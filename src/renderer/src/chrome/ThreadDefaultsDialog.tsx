@@ -205,6 +205,8 @@ export function ThreadDefaultsDialog({
   onClose: () => void;
 }) {
   const scope = useThreadDefaults(workspace.environmentId, workspace.id);
+  // A host that never answers says so in the rows' place, with Retry, as the page editor does.
+  const failure = useThreadDefaultsError(workspace.environmentId, workspace.id);
   const [value, setValue] = useState<ThreadDefaults | null>(scope?.defaults ?? null);
   // Which verb runs: Save, or Remove override; the one clicked spins.
   const [running, setRunning] = useState<"save" | "remove" | null>(null);
@@ -240,6 +242,8 @@ export function ThreadDefaultsDialog({
           <div className="flex flex-col gap-4 px-5 py-4">
             {value ? (
               <DialogFields value={value} onChange={setValue} environmentId={workspace.environmentId} hint={scope ? scopeHint(workspace.id, scope) : undefined} />
+            ) : failure ? (
+              <PageError>{failure.error}</PageError>
             ) : (
               <PageRowsSkeleton rows={4} />
             )}
@@ -250,6 +254,10 @@ export function ThreadDefaultsDialog({
               scope?.overridden ? (
                 <Button variant="ghost" disabled={pending} onClick={() => void save(null)}>
                   <BusyLabel busy={running === "remove"} label="Remove override" />
+                </Button>
+              ) : !value && failure ? (
+                <Button variant="ghost" onClick={failure.retry}>
+                  Retry
                 </Button>
               ) : null
             }
