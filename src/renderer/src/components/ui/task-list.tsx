@@ -148,8 +148,10 @@ function TaskRow({ task }: { task: Task }) {
             <span
               aria-hidden
               className={cn(
-                "mt-1 flex shrink-0 transition-opacity duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
-                open && "opacity-0 group-hover/steps:opacity-100 group-focus-visible/steps:opacity-100",
+                "mt-1 flex shrink-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-opacity",
+                // The one reveal's timing (reveal.ts): hover waits, keyboard focus shows it at once.
+                open &&
+                  "opacity-0 group-hover/steps:opacity-100 group-hover/steps:delay-(--delay-hover) group-focus-visible/steps:opacity-100 group-focus-visible/steps:delay-(--dur-instant) motion-reduce:transition-opacity",
               )}
             >
               <ChevronRight className={cn("size-3 text-muted-foreground", DISCLOSURE_CHEVRON, open && "rotate-90")} />
