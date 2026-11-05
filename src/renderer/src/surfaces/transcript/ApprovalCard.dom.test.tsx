@@ -97,6 +97,25 @@ describe("ApprovalCard", () => {
       expect(decided.className).toContain(c);
   });
 
+  it("inside a data-table the mark sits under the row glyph and the verdict under its words", () => {
+    const { container, rerender } = render(
+      <div data-table="">
+        <ApprovalCard block={approval("Bash", { command: "ls" })} />
+      </div>,
+    );
+    // The table's rows inset their words 12px (STEP_LINE's in-data-[table]:px-3); the approval keeps that grid.
+    expect(container.querySelector<HTMLElement>('[data-slot="approval"]')!.className).toContain("in-data-[table]:px-3");
+    rerender(
+      <div data-table="">
+        <ApprovalCard block={approval("Bash", { command: "ls" }, "allow")} />
+      </div>,
+    );
+    const decided = container.querySelector<HTMLElement>('[data-slot="approval"]')!;
+    // 12px inset + the 22px the words start at.
+    expect(decided.className).toContain("pl-5.5");
+    expect(decided.className).toContain("in-data-[table]:pl-8.5");
+  });
+
   it("a verdict that mounts decided just shows, with no fade to replay", () => {
     const { container } = render(<ApprovalCard block={approval("Bash", { command: "ls" }, "deny")} />);
     const decided = container.querySelector<HTMLElement>('[data-slot="approval"]')!;

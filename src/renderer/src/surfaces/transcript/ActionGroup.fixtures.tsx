@@ -149,6 +149,7 @@ setEditOpen(":a:mixed1", true);
 setEditOpen(":a:agentsOpen1", true);
 setEditOpen(":a:cmds1", true);
 setEditOpen(":a:body1", true);
+setEditOpen(":a:dec1", true);
 // The table's command with its body open (a row opened from the working line lands open).
 setOpenedLive("body3", true);
 
@@ -230,6 +231,30 @@ export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; li
         call("body2", "Edit", "edit", { file_path: `${CWD}/convex/schema.ts`, old_string: "a", new_string: lines(3) }),
         { ...call("body3", "Bash", "execute", { command: "npm test" }), tool: { callId: "body3", name: "Bash", kind: "execute", title: "Bash", status: "completed", input: { command: "npm test" }, detail: "✓ 42 tests passed in 1.8s" } },
         call("body4", "Grep", "search", { pattern: "index", path: `${CWD}/convex` }),
+      ],
+      cwd: CWD,
+    },
+  },
+  {
+    // A step waiting on the person keeps its group open; the approval keeps the table's grid (T-A1).
+    name: "Opened, a call waiting on approval",
+    props: {
+      blocks: [
+        call("appr1", "Read", "read", { file_path: `${CWD}/convex/types.ts` }),
+        { ...call("appr2", "Bash", "execute", { command: "rm -rf build && bun run build" }, "pending"), approval: { requestId: 7 } },
+      ],
+      cwd: CWD,
+      live: true,
+      settled: false,
+    },
+  },
+  {
+    name: "Opened, an approval decided in the table",
+    props: {
+      blocks: [
+        call("dec1", "Read", "read", { file_path: `${CWD}/convex/types.ts` }),
+        { ...call("dec2", "Bash", "execute", { command: "rm -rf build && bun run build" }), approval: { requestId: 8, decided: "allow" } },
+        call("dec3", "Edit", "edit", { file_path: `${CWD}/convex/schema.ts`, old_string: "a", new_string: lines(3) }),
       ],
       cwd: CWD,
     },

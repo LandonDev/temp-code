@@ -20,6 +20,8 @@ export function decidedLine(approval: NonNullable<Block["approval"]>): string {
  * glyph column and Allow and Deny where the row's words start. Decided: the
  * verdict, one muted line at the words, fading in when the decision lands on
  * screen (a verdict that mounts decided just shows). Not a bordered card.
+ * Inside an open group's table it keeps the table's grid: the mark under the
+ * row glyph (12px in) and the verdict under the row's words (12 + 22px).
  * A click draws the verdict at once, before the host's decided row comes
  * back, so a second click can send nothing more; a decision the host never
  * took puts the buttons back and says so in a toast.
@@ -50,7 +52,7 @@ export function ApprovalCard({
       <div
         data-slot="approval"
         className={cn(
-          "flex min-h-7 items-center pl-5.5 font-sans text-[13px] leading-5 text-muted-foreground",
+          "flex min-h-7 items-center pl-5.5 in-data-[table]:pl-8.5 font-sans text-[13px] leading-5 text-muted-foreground",
           sawWaiting.current && "animate-in fade-in-0 duration-(--dur-fast) ease-(--ease-out) motion-reduce:animate-none",
         )}
       >
@@ -59,7 +61,7 @@ export function ApprovalCard({
     );
   }
   return (
-    <div data-slot="approval" className="flex min-h-7 min-w-0 items-center gap-2 font-sans">
+    <div data-slot="approval" className="flex min-h-7 min-w-0 items-center gap-2 in-data-[table]:px-3 font-sans">
       <span data-approval-mark className="flex w-3.5 shrink-0 justify-center">
         <StatusMark state="waiting" word={false} />
       </span>

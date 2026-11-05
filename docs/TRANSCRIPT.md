@@ -101,7 +101,9 @@ foreground, the same words the group line uses); the components only draw it.
   command card, the details, an edit's diff per file) so what it asks is
   read once, and A9's `ApprovalCard` (Allow and Deny) under that; once
   decided the card is its one verdict line and the row an ordinary row
-  again. An edit's bookkeeping row leaves the card to its parent
+  again. Inside an open group's table it keeps the table's grid: the amber
+  mark under the row glyph, 12px in, and the verdict under the row's words,
+  34px in. An edit's bookkeeping row leaves the card to its parent
   (`ActionRow approval={false}`), so one call has one card.
 - **One frame, never two.** An open group's rows sit in a table, as
   Claude's: under the line, one hairline frame with a 12px radius from the
