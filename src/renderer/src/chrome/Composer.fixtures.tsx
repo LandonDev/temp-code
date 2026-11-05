@@ -1,6 +1,9 @@
 // Fixtures for `bun run ui:preview src/renderer/src/chrome/Composer.tsx#Composer`:
-// the docked box at rest, three lines in the field, the meter amber, and a
-// draft with its row under the box, and a chat draft ticked Master thread.
+// the box before a first message (its draft row open), three lines in the
+// field, the meter amber, a draft with its row under the box, and chat
+// drafts with Master thread and the name field. The docked footer of a
+// thread with messages (the slot, the queue, attachments) is
+// Composer.preview.tsx#DockedComposerPreview.
 import type { ComponentProps } from "react";
 import type { Composer } from "./Composer";
 
@@ -23,7 +26,7 @@ export const composerFixtureBase: ComponentProps<typeof Composer> = {
 const base = composerFixtureBase;
 
 export default [
-  { name: "Docked", props: { ...base, context: { used: 84_000, window: 200_000 } } },
+  { name: "At rest, before the first message", props: { ...base, context: { used: 84_000, window: 200_000 } } },
   {
     name: "Three lines",
     props: {
