@@ -241,6 +241,19 @@ describe("Orchestration page", () => {
     expect(screen.queryByRole("combobox", { name: "Sol lowest effort" })).toBeNull();
   });
 
+  it("holds every effort select at one width, and lays a model on two lines on a narrow page", () => {
+    render(<OrchestrationPage />);
+    const low = screen.getByRole("combobox", { name: "Opus lowest effort" });
+    const high = screen.getByRole("combobox", { name: "Opus highest effort" });
+    expect(low.className).toContain("w-28");
+    expect(high.className).toContain("w-28");
+    const row = low.closest("tr")!;
+    expect(row.className).toContain("@max-[36rem]/page:flex-wrap");
+    // The name takes a line of its own; the policy and the pair share the next.
+    expect((row.firstElementChild as HTMLElement).className).toContain("@max-[36rem]/page:basis-full");
+    expect(screen.getByRole("table").querySelector("thead")!.className).toContain("@max-[36rem]/page:hidden");
+  });
+
   it("says Not approved on a rule whose model is off", () => {
     render(<OrchestrationPage />);
     const row = ruleRow("Bulk work");
@@ -499,6 +512,8 @@ describe("every provider of the host's catalog", () => {
     render(<OrchestrationPage />);
     const line = screen.getByText("No models until Grok Build is installed and signed in");
     expect(line.className).toContain("text-muted-foreground");
+    // It wraps on a narrow page instead of being cut mid-word at the table's edge.
+    expect(line.className).toContain("whitespace-normal");
     expect(screen.queryByText(/No models until Muse Code/)).toBeNull();
   });
 

@@ -293,9 +293,12 @@ Orchestration, Reviews, Appshots and Archive are pages on the same frame
 `catalog.get` in its order, under its label and mark, and every model it
 knows, the probed ones (Muse Code's `model/list`) and the Meta rows under
 Claude and Codex included, each with its Spawned by select and, while
-approved, its effort range. The editor asks the catalog again at each mount.
-A provider with no models says so in one 12px muted row ("No models until
-Muse Code is installed and signed in"); a model the rules name that the
+approved, its effort range: two selects of one width (`w-28`, the widest
+rung), so the pairs line up down the table. Under 36rem of page the column
+heads go and each model takes two lines, its name, then the select and the
+pair. The editor asks the catalog again at each mount. A provider with no
+models says so in one 12px muted row that wraps ("No models until Muse Code
+is installed and signed in"); a model the rules name that the
 catalog lacks keeps its row, its name muted with "not on this host" 4px
 after it, and its select (`staleModels`). An empty list is one 12px muted
 line in its section. When the rules live on another host (`rules.get`'s

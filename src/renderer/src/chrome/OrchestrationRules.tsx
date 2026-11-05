@@ -268,7 +268,8 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
 
       <PageSection title={titles.models} description="A thread may run any model.">
         <Table>
-          <TableHeader>
+          {/* A narrow page lays each model on two lines (MODEL_ROW), where the column heads would name nothing. */}
+          <TableHeader className="@max-[36rem]/page:hidden">
             <TableRow>
               <TableHead>Model</TableHead>
               <TableHead>Spawned by</TableHead>
@@ -292,7 +293,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
                   </TableRow>
                   {models.length === 0 ? (
                     <TableRow data-slot="table-empty-row">
-                      <TableCell colSpan={3} className="text-xs text-muted-foreground">
+                      <TableCell colSpan={3} className="h-auto min-h-10 py-3 text-xs whitespace-normal text-muted-foreground">
                         No models until {label} is installed and signed in
                       </TableCell>
                     </TableRow>
@@ -384,6 +385,16 @@ function CapSelect({
   );
 }
 
+/**
+ * A model's row under 36rem of page: the name on a line of its own, then who
+ * may spawn it and its effort pair on the next, so the Effort column never
+ * runs past the table's edge. The effort selects are one width (w-28, the
+ * widest rung, "Extra high"), so the pairs line up down the table.
+ */
+const MODEL_ROW = "@max-[36rem]/page:flex @max-[36rem]/page:flex-wrap @max-[36rem]/page:items-center @max-[36rem]/page:gap-x-3 @max-[36rem]/page:gap-y-1 @max-[36rem]/page:py-2";
+const MODEL_NAME = "@max-[36rem]/page:h-5 @max-[36rem]/page:basis-full @max-[36rem]/page:px-0";
+const MODEL_CONTROL = "@max-[36rem]/page:h-auto @max-[36rem]/page:px-0";
+
 /** One model's policy. With no `model` the rules name a model this host's
  *  catalog lacks: its row stays, muted and without effort, so the saved
  *  policy is seen and kept. */
@@ -413,12 +424,12 @@ function ModelRow({
   const min = range[0];
   const max = range[range.length - 1];
   return (
-    <TableRow data-stale={model ? undefined : ""}>
-      <TableCell className={cn("w-full truncate", approved && model ? "text-foreground" : "text-muted-foreground")}>
+    <TableRow data-stale={model ? undefined : ""} className={MODEL_ROW}>
+      <TableCell className={cn("w-full truncate", MODEL_NAME, approved && model ? "text-foreground" : "text-muted-foreground")}>
         {name}
         {model ? null : <span className="ms-1 text-xs">not on this host</span>}
       </TableCell>
-      <TableCell>
+      <TableCell className={MODEL_CONTROL}>
         <ChoiceSelect
           size="sm"
           label={`Who may spawn ${name}`}
@@ -429,7 +440,7 @@ function ModelRow({
           className="w-44"
         />
       </TableCell>
-      <TableCell className="text-end">
+      <TableCell className={cn("text-end", MODEL_CONTROL)}>
         {approved && ladder.length > 1 ? (
           <span className="inline-flex items-center gap-2">
             <ChoiceSelect
@@ -439,6 +450,7 @@ function ModelRow({
               disabled={disabled}
               options={effortChoices(ladder.slice(0, ladder.indexOf(max) + 1))}
               onChange={(v) => onChange({ minReasoning: v === ladder[0] ? undefined : v })}
+              className="w-28"
             />
             <span className="text-muted-foreground">–</span>
             <ChoiceSelect
@@ -448,6 +460,7 @@ function ModelRow({
               disabled={disabled}
               options={effortChoices(ladder.slice(ladder.indexOf(min)))}
               onChange={(v) => onChange({ maxReasoning: v === ladder[ladder.length - 1] ? undefined : v })}
+              className="w-28"
             />
           </span>
         ) : null}
