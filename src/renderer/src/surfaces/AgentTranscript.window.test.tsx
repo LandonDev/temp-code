@@ -6,7 +6,7 @@
  * and reduced motion turns every glide into a plain scroll write.
  */
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/highlight", () => ({ highlightCode: () => Promise.resolve(null) }));
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
@@ -87,6 +87,7 @@ Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
 });
 
 import { AgentTranscript, shouldRestoreScroll } from "./AgentTranscript";
+import { messageListChunk } from "./chunks";
 import type { Block } from "../lib/session";
 import { requestTranscriptJump } from "../lib/transcriptJump";
 import type { TranscriptScrollMemory } from "../lib/transcriptScrollMemory";
@@ -305,6 +306,8 @@ describe("AgentTranscript viewport window", () => {
 });
 
 describe("AgentTranscript message list", () => {
+  // The rows ride their own chunk; loaded, they mount with the transcript.
+  beforeAll(() => messageListChunk.load());
   const listOf = (container: HTMLElement) =>
     container.querySelector<HTMLElement>('nav[aria-label="Your messages"]');
   const entries = (container: HTMLElement) => [...listOf(container)!.querySelectorAll<HTMLButtonElement>("button")];
@@ -364,7 +367,7 @@ describe("AgentTranscript message list", () => {
     paneWidth = 1400;
     const { container } = render(<AgentTranscript sessionId="m5" blocks={chat(30)} busy={false} visible />);
     const el = scrollerOf(container);
-    const wrapper = listOf(container)!.parentElement!;
+    const wrapper = listOf(container)!.closest<HTMLElement>("[data-transcript-outline]")!;
     expect(wrapper.parentElement).toBe(el);
     expect(wrapper.className).toContain("sticky");
     expect(wrapper.className).toContain("h-0");

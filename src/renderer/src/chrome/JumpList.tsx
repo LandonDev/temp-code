@@ -33,6 +33,7 @@ export type JumpGroup = {
 export type JumpHow = "key" | "pointer";
 
 export function JumpList({
+  id,
   label,
   groups,
   active,
@@ -41,6 +42,7 @@ export function JumpList({
   className,
   head,
 }: {
+  id?: string;
   /** The nav's accessible name. */
   label: string;
   groups: readonly JumpGroup[];
@@ -110,6 +112,7 @@ export function JumpList({
   return (
     <nav
       ref={nav}
+      id={id}
       aria-label={label}
       className={cn("flex flex-col overflow-y-auto overscroll-contain", className)}
       onPointerEnter={() => (hovered.current = true)}

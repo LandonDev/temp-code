@@ -390,6 +390,7 @@ app replaces itself from the feed, and only from the feed.
   Resources, Archive, Mac bridge, Rename and Goal, its Recent and Archived lists
   (`ThreadListPopover`), the plan chip's options and the branch picker's
   switch confirm among them), the failure card's account list (`accountsChunk`),
+  the transcript's message list rows under their chevron (`messageListChunk`),
   a workspace's threads beside the rail (`workspaceThreadsChunk`), the
   file and symbol pickers (`pickersChunk`, mounted while open), a box
   thread's waiting Mac bridge card (`macBridgeChunk`) and the
@@ -2638,14 +2639,16 @@ proof and the sizing rules; the pieces, by name:
 
 ## The menu bar: one table
 src/shared/menuTree.ts is the menu as data, read by main (src/main/menu.ts),
-the in-app bar and the tests: TempCode, File, Edit, View (Force Reload,
+the in-app bar and the tests: TempCode, File, Edit, View (Show/Hide
+Message List, ⌘⇧M, folds the transcript's message list in every thread of
+the window, lib/messageListFold.ts; Force Reload,
 keyless, reloads the focused window past its cache from main), Go
 (navigation), Threads (Switch Model, Mark All Read, the fleet switches),
 Window and Help (What's New opens the running build's notes, Show Logs opens
 `<userData>/logs`, the host profile, Developer Tools). Ids
 are command ids of lib/appCommands.ts; `MAIN_MENU_IDS` act in main. Each
 window sends what it shows over `menu:state` (lib/nativeMenuState.ts:
-Show/Hide on the three toggles, ⌘W's Close Tab or Close Pane while the
+Show/Hide on the four toggles, ⌘W's Close Tab or Close Pane while the
 focused tab is split, idle rows greyed) and main rebuilds the menu
 from the focused window's state when it changes. A `pageKey` row (New
 Terminal, ⌃`) shows its key but leaves it to the page. The in-app bar

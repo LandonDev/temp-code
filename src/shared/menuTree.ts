@@ -122,6 +122,7 @@ export const MENU_TREE: MenuSection[] = [
       toggle('toggle_sidebar', 'Sidebar', 'CmdOrCtrl+B'),
       toggle('toggle_panel', 'Panel', 'CmdOrCtrl+Shift+R'),
       toggle('toggle_terminal', 'Terminal', 'CmdOrCtrl+J', { desktopOnly: true }),
+      toggle('toggle_message_list', 'Message List', 'CmdOrCtrl+Shift+M'),
       sep,
       cmd('split_right', 'Split Right', 'CmdOrCtrl+D'),
       cmd('split_down', 'Split Down', 'CmdOrCtrl+Shift+D'),

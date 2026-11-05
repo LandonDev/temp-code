@@ -118,6 +118,7 @@ describe('menu tree', () => {
       ['Show Sidebar', 'Cmd+B'],
       ['Show Panel', 'Shift+Cmd+R'],
       ['Show Terminal', 'Cmd+J'],
+      ['Show Message List', 'Shift+Cmd+M'],
       '—',
       ['Split Right', 'Cmd+D'],
       ['Split Down', 'Shift+Cmd+D'],
@@ -199,7 +200,7 @@ describe('menu tree', () => {
 
   it('gives every toggle both labels, and ⌘W its Tab and Pane', () => {
     const toggles = MENU_COMMANDS.filter((c) => c.toggle && c.id !== 'close_tab')
-    expect(toggles.map((c) => c.id)).toEqual(['toggle_sidebar', 'toggle_panel', 'toggle_terminal'])
+    expect(toggles.map((c) => c.id)).toEqual(['toggle_sidebar', 'toggle_panel', 'toggle_terminal', 'toggle_message_list'])
     expect(MENU_COMMANDS.find((c) => c.id === 'close_tab')!.toggle).toEqual({ show: 'Close Tab', hide: 'Close Pane' })
     for (const c of toggles) {
       expect(c.toggle!.show).toMatch(/^Show /)

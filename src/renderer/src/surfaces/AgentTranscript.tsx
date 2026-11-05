@@ -1041,7 +1041,7 @@ export function AgentTranscript({
         // transcript; zero height, so no offset or scroll height moves.
         <div data-transcript-outline className="sticky top-0 z-10 h-0">
           <TranscriptOutline
-            className="absolute top-6 left-4 w-52 max-h-[calc(var(--transcript-viewport)-40px)] font-sans"
+            className="absolute top-4 left-4 w-52 max-h-[calc(var(--transcript-viewport)-32px)] font-sans"
             turns={turns}
             reader={reader}
             onJump={scrollToBlock}

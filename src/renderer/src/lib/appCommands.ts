@@ -29,6 +29,7 @@
  *   ⌘S                    save_all          ⌘N        new_tab
  *   ⌘K open_search  ⌘B toggle_sidebar  ⌘⇧R toggle_panel  ⌘, open_settings
  *   ⌘⇧F find_in_project  ⌘⇧N new_window  ⌘⇧O go_to_symbol  ⌘= / ⌘- / ⌘0 zoom
+ *   ⌘⇧M toggle_message_list
  *   ⌘⌥] next_environment  ⌘⌥[ prev_environment  ⌘⌥1–9 activate_environment
  *   Tab and pane chords: lib/tabKeys.ts (⌘W ⌘D ⌘⇧D ⌘J ⌘[ ⌘] ⌘1–9 ⌃` …)
  */
@@ -55,6 +56,7 @@ export const APP_COMMANDS = [
   "focus_down",
   "toggle_sidebar",
   "toggle_panel",
+  "toggle_message_list",
   "open_project",
   "go_to_file",
   "go_to_symbol",
@@ -256,6 +258,7 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
       if (key === "n") return { id: "new_window" };
       if (key === "r") return { id: "toggle_panel" };
       if (key === "o") return { id: "go_to_symbol" };
+      if (key === "m") return { id: "toggle_message_list" };
       return null;
     }
 

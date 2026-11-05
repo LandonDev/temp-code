@@ -1,24 +1,26 @@
-import { memo, useMemo, useSyncExternalStore } from "react";
+import { memo, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "../components/ui/button";
-import { JumpList, type JumpGroup, type JumpHow } from "../chrome/JumpList";
-import { clockTime } from "../lib/duration";
+import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+import { ChevronRight } from "../chrome/icons";
+import type { JumpHow } from "../chrome/JumpList";
+import { cn } from "../lib/cn";
+import { messageListFold } from "../lib/messageListFold";
 import type { Block } from "../lib/session";
-import { threadMentionsInText, useThreadTitles } from "../lib/threadMentions";
-import {
-  currentEntry,
-  dayGroups,
-  entryLine,
-  entryTime,
-  outlineEntries,
-  type ReaderStore,
-} from "./transcriptOutlineModel";
+import { messageListChunk } from "./chunks";
+import type { ReaderStore } from "./transcriptOutlineModel";
 
-const NO_STORE = (): (() => void) => () => {};
+const List = messageListChunk.surface("TranscriptOutlineList");
 
 /**
  * The transcript's left side: the person's own messages, one line each with
  * its clock time, the one being read marked, a click or Enter landing on it
  * (transcriptOutlineModel.ts has the rules; AgentTranscript places it).
+ * The chevron above it folds the list away to the chevron alone and back
+ * (lib/messageListFold.ts keeps the window's choice); the list fades and
+ * slides 4px toward the chevron, and nothing else on the page moves. The
+ * rows ride `messageListChunk` (TranscriptOutlineList.tsx), mounted once the
+ * list is first open and kept through a fold so it can fade.
  */
 export const TranscriptOutline = memo(function TranscriptOutline({
   turns,
@@ -29,6 +31,7 @@ export const TranscriptOutline = memo(function TranscriptOutline({
   onLoadEarlier,
   now,
   locale,
+  folded: foldedProp,
   className,
 }: {
   turns: Block[][];
@@ -44,60 +47,77 @@ export const TranscriptOutline = memo(function TranscriptOutline({
   /** Today, for the day labels; defaults to now. */
   now?: number;
   locale?: string;
+  /** Folded or open, for a static render; the window's choice otherwise. */
+  folded?: boolean;
+  /** Placement and size of the list with its chevron. */
   className?: string;
 }) {
-  const entries = useMemo(() => outlineEntries(turns), [turns]);
-  const turn = useSyncExternalStore(
-    reader?.subscribe ?? NO_STORE,
-    reader ? reader.get : () => readerTurn,
-    reader ? reader.get : () => readerTurn,
-  );
-  const mentions = useMemo(
-    () => entries.map((entry) => (entry.block.text.includes("@thread:") ? entry.block.text : "")).join("\n"),
-    [entries],
-  );
-  const titleOf = useThreadTitles(mentions);
-  // The titles the lines read, so a renamed thread re-reads them.
-  const titles = threadMentionsInText(mentions).map((id) => titleOf(id) ?? "").join("\n");
-  const groups = useMemo<JumpGroup[]>(
-    () =>
-      dayGroups(entries, now ?? Date.now(), locale).map((group) => ({
-        label: group.label,
-        items: group.entries.map((entry) => {
-          const line = entryLine(entry.block.text, entry.block.attachments, titleOf) || "Message";
-          const time = entryTime(entry.block);
-          const clock = time === undefined ? undefined : clockTime(time, locale);
-          return {
-            key: entry.id,
-            label: line,
-            name: clock ? `${line}, ${clock}` : line,
-            trailing: clock,
-          };
-        }),
-      })),
-    // `titles` stands for what titleOf (the store's reader) answers.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [entries, now, locale, titles],
-  );
+  const listId = useId();
+  const storedFold = useSyncExternalStore(messageListFold.subscribe, messageListFold.get, messageListFold.get);
+  const folded = foldedProp ?? storedFold;
+  // The rows mount the first time the list is open and stay; mounted by an
+  // unfold rather than with the transcript, they come in on the fold's motion.
+  const [mounted, setMounted] = useState<"no" | "at-mount" | "by-unfold">(folded ? "no" : "at-mount");
+  if (!folded && mounted === "no") setMounted("by-unfold");
+  const chevron = useRef<HTMLButtonElement>(null);
+  // Folded by ⌘⇧M from inside the list: the focus goes to the chevron, never
+  // to a row about to be hidden.
+  useEffect(() => {
+    const list = document.getElementById(listId);
+    if (folded && list?.contains(document.activeElement)) chevron.current?.focus();
+  }, [folded, listId]);
+  const verb = folded ? "Show message list" : "Hide message list";
   return (
-    <JumpList
-      label="Your messages"
-      className={className}
-      groups={groups}
-      active={currentEntry(entries, turn)}
-      onJump={onJump}
-      head={
-        hasOlder && onLoadEarlier ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start font-normal text-muted-foreground"
-            onClick={onLoadEarlier}
-          >
-            Earlier messages
-          </Button>
-        ) : undefined
-      }
-    />
+    // The box catches no pointer itself: folded, the room under the chevron
+    // is the transcript's again.
+    <div className={cn("pointer-events-none flex flex-col *:pointer-events-auto", className)}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              ref={chevron}
+              variant="ghost"
+              size="icon-xs"
+              aria-label={verb}
+              aria-expanded={!folded}
+              aria-controls={listId}
+              // An open list is the default state, not a pressed one: no
+              // expanded fill, only the hover's.
+              className="shrink-0 text-muted-foreground hover:text-foreground aria-expanded:bg-transparent aria-expanded:hover:bg-foreground/7"
+              onClick={() => messageListFold.set(!folded)}
+              {...messageListChunk.intent}
+            />
+          }
+        >
+          <ChevronRight className={cn("size-3.5", DISCLOSURE_CHEVRON, !folded && "rotate-90")} />
+        </TooltipTrigger>
+        <TooltipContent side="right">{verb} ⌘⇧M</TooltipContent>
+      </Tooltip>
+      {mounted !== "no" ? (
+        <List
+          id={listId}
+          turns={turns}
+          reader={reader}
+          readerTurn={readerTurn}
+          onJump={onJump}
+          now={now}
+          locale={locale}
+          folded={folded}
+          enter={mounted === "by-unfold"}
+          head={
+            hasOlder && onLoadEarlier ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start font-normal text-muted-foreground"
+                onClick={onLoadEarlier}
+              >
+                Earlier messages
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : null}
+    </div>
   );
 });

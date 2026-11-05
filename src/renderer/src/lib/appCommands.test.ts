@@ -59,6 +59,7 @@ describe("command map: chords", () => {
     expect(resolve(key("n", { meta: true, shift: true }), ctx)).toEqual({ id: "new_window" });
     expect(resolve(key("r", { meta: true, shift: true }), ctx)).toEqual({ id: "toggle_panel" });
     expect(resolve(key("o", { meta: true, shift: true }), ctx)).toEqual({ id: "go_to_symbol" });
+    expect(resolve(key("m", { meta: true, shift: true }), ctx)).toEqual({ id: "toggle_message_list" });
     expect(resolve(key("1", { meta: true }), ctx)).toEqual({ id: "activate_tab", index: 0 });
   });
 

@@ -1,8 +1,13 @@
 // Fixtures for `bun run ui:preview src/renderer/src/surfaces/TranscriptOutline.tsx#TranscriptOutline`:
 // the message list at its 208px width, one day and several, the entry being
 // read mid-list, a long line, a mention (no store here, so it reads "a
-// thread"), a message that is only an attachment, and Earlier messages.
+// thread"), a message that is only an attachment, and Earlier messages; and
+// the fold, open and folded to its chevron.
 import type { Block } from "../lib/session";
+import { messageListChunk } from "./chunks";
+
+// The rows ride their own chunk; start it before the first fixture renders.
+messageListChunk.preload();
 
 const NOW = new Date(2026, 10, 1, 18, 0).getTime();
 /** A day of Oct 30 to Nov 1, 2026 (months count from 0). */
@@ -33,7 +38,7 @@ const threeDays: Block[][] = [
   turn(user("d5", "Good, land it", at(1, 8, 45))),
 ];
 
-const props = { onJump: "fn", now: NOW, locale: "en-US", className: "w-52" };
+const props = { onJump: "fn", now: NOW, locale: "en-US", className: "w-52", folded: false };
 
 export default [
   { name: "One day: no labels, the third message being read", props: { ...props, turns: oneDay, readerTurn: 2 } },
@@ -43,4 +48,5 @@ export default [
     name: "Older history left: Earlier messages",
     props: { ...props, turns: oneDay, readerTurn: 0, hasOlder: true, onLoadEarlier: "fn" },
   },
+  { name: "Folded: the chevron alone", props: { ...props, turns: oneDay, readerTurn: 2, folded: true } },
 ];

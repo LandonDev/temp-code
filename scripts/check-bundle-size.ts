@@ -83,6 +83,9 @@ export const NEVER_IN_ENTRY = [
   'src/renderer/src/lib/releaseNotesParse.ts',
   // The rail's virtualizer rides virtualChunk; the rail lists its cards plainly until it lands.
   'src/renderer/src/chrome/railVirtualRows.tsx',
+  // The message list's rows ride messageListChunk; the first paint carries its chevron alone.
+  'src/renderer/src/surfaces/TranscriptOutlineList.tsx',
+  'src/renderer/src/chrome/JumpList.tsx',
   'src/renderer/src/aliax/pages.tsx'
 ]
 

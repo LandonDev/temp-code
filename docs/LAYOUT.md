@@ -842,7 +842,22 @@ mounts inside the scroller as a zero-height sticky child, so a wheel over
 it scrolls the thread, and caps at the viewport less 40px with its own
 scroll. One tab stop; arrows and Home/End move, Enter or Space lands at
 once, a click glides; "Earlier messages" heads it while older history
-remains. Nothing in it animates.
+remains. Nothing in it animates but its fold: a 24px ghost chevron
+(`DISCLOSURE_CHEVRON`, pointing down while open) sits above the rows, its
+glyph on the rows' text edge, and folds the list to the chevron alone and
+back; the chevron's tooltip, View → Hide Message List and ⌘⇧M do the same
+in every thread of the window, which remembers the choice under one
+localStorage key (lib/messageListFold.ts). The rows fade and slide 4px
+toward the chevron (opacity and translate, `--dur-fast` going, `--dur-base`
+coming back, a fade alone under reduced motion), then leave the tab order;
+the rows ride their own chunk (`messageListChunk`,
+surfaces/TranscriptOutlineList.tsx), so a list folded from launch loads
+nothing until it opens, and an open one draws with the transcript, no
+entry motion.
+Nothing else moves: in the gutter the column is centred either way, and
+beside the list the column keeps its place, so a fold never reflows the
+transcript. Folded it is the chevron and nothing else: a rail of dots
+would say the list a second time in a form that names nothing.
 
 While the thread has changes nobody kept, the checkpoint strip sits on the
 composer's top edge (chrome/SessionReview.tsx): one 32px row with the file's

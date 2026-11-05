@@ -11,6 +11,7 @@ import {
   type DraftRetype,
 } from "./lib/projectDrafts";
 import { invoke, listen, getCurrentWindow, isWebMode, message } from "./lib/native";
+import { messageListFold } from "./lib/messageListFold";
 import {
   useCallback,
   useEffect,
@@ -3211,6 +3212,7 @@ export default function App() {
             const id = rightPanel.focused();
             if (id) rightPanel.toggle(id);
           });
+        case "toggle_message_list": return go(messageListFold.toggle);
         case "open_project": return go(() => void a.pickProject());
         case "go_to_file": return go(a.onGoToFile);
         case "go_to_symbol": return go(a.onGoToSymbol);

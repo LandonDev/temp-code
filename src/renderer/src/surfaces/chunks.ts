@@ -66,6 +66,9 @@ export const macBridgeChunk = defineChunk("macBridge", () => import("../chrome/M
 /** The rail's virtualizer (@tanstack/react-virtual); the rail lists its cards plainly until it lands. */
 export const virtualChunk = defineChunk("virtual", () => import("../chrome/railVirtualRows"));
 
+/** The transcript's message list rows under their chevron (TranscriptOutlineList.tsx). */
+export const messageListChunk = defineChunk("messageList", () => import("./TranscriptOutlineList"));
+
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
   settingsChunk,
@@ -91,4 +94,5 @@ export const allChunks = {
   pickersChunk,
   macBridgeChunk,
   virtualChunk,
+  messageListChunk,
 };

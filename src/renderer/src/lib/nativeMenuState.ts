@@ -4,6 +4,7 @@ import { shellStore } from "../stores/shell";
 import { workspaceTabsStore } from "../stores/workspace";
 import { leafIds } from "./layout";
 import { threadsToMarkRead } from "./markRead";
+import { messageListFold } from "./messageListFold";
 import { menuStateSender } from "./native";
 import { rightPanel } from "./rightPanel";
 import { loadLastSeen, seenFloor, subscribeLastSeen } from "./sessionSeen";
@@ -15,7 +16,7 @@ import { isUnread } from "./threadStripModel";
 
 /**
  * What the native menu bar shows for this window (src/shared/menuTree.ts):
- * Show or Hide on the three toggles, and the rows that would do nothing
+ * Show or Hide on the four toggles, and the rows that would do nothing
  * greyed. Sent to main over `menu:state` when it changes; a no-op at /ui.
  */
 
@@ -24,6 +25,8 @@ export type MenuFacts = {
   /** The focused root thread's panel, or `none` with no root thread on screen or no room for it. */
   panel: "open" | "closed" | "none";
   dockOpen: boolean;
+  /** The transcript's message list is open (lib/messageListFold.ts). */
+  messageList: boolean;
   /** The active tab holds more than one pane: ⌘W reads Close Pane, else Close Tab. */
   split: boolean;
   /** The dock's cwd is a project: Show Terminal has somewhere to open. */
@@ -46,6 +49,7 @@ export function menuStateOf(f: MenuFacts): MenuState {
   if (f.panel === "open") open.push("toggle_panel");
   if (f.panel === "none") disabled.push("toggle_panel");
   if (f.dockOpen) open.push("toggle_terminal");
+  if (f.messageList) open.push("toggle_message_list");
   if (f.split) open.push("close_tab");
   if (!f.dockUsable) disabled.push("toggle_terminal");
   if (f.unread === 0) disabled.push("mark_all_read");
@@ -74,6 +78,7 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }): MenuFacts 
     sidebarOpen: shellStore.getState().projectRailOpen,
     panel: !focused || !rightPanel.hasRoom(focused) ? "none" : rightPanel.get(focused).open ? "open" : "closed",
     ...dock,
+    messageList: !messageListFold.get(),
     split: !!active && leafIds(active.layout).length > 1,
     unread,
     counts: batchCounts(metas, { catalog, lastSeen, floor, scope: EVERYWHERE, now: Date.now() }),
@@ -114,6 +119,7 @@ export function publishMenuState(
     rightPanel.subscribe(schedule),
     shellStore.subscribe(schedule),
     workspaceTabsStore.subscribe(schedule),
+    messageListFold.subscribe(schedule),
   ];
   const clock = setInterval(schedule, MENU_STATE_CLOCK_MS);
   flush();

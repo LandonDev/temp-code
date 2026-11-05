@@ -320,7 +320,9 @@ foreground, the same words the group line uses); the components only draw it.
   rest, and lands exactly once the row is mounted and measured
   (`landing`). A keyboard jump from the message list (Enter or Space,
   `scrollToRow(index, { instant: true })`) writes the offset at once and
-  lands the same way: a key is never animated. The parked prompt of an own
+  lands the same way: a key is never animated. Folding the list
+  (its chevron, ⌘⇧M) touches no row, offset or column: the list is a
+  zero-height sticky child, and beside it the column keeps its place. The parked prompt of an own
   send waits for its row to mount (`pendingPark`), then the runway is laid
   and the transcript glides there (`DUR.drawer` on `EASE_DRAWER`; in one
   write under reduced motion); a prompt whose row is not mounted (the

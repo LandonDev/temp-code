@@ -19,7 +19,7 @@ import { sessionStore } from "../lib/tcserver/store";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
 import { sessionDisplayTitle, type LoadState, type Session } from "../lib/session";
 import { rightPanel } from "../lib/rightPanel";
-import { dialogsChunk, diffChunk, inboxChunk, notesChunk, pickersChunk, rightPanelChunk, searchChunk, selectChunk, threadViewsChunk } from "./chunks";
+import { dialogsChunk, diffChunk, inboxChunk, messageListChunk, notesChunk, pickersChunk, rightPanelChunk, searchChunk, selectChunk, threadViewsChunk } from "./chunks";
 import { tooltipChunk } from "../components/ui/tooltip";
 import { preloadWhenIdle } from "../lib/lazyChunk";
 import { Button } from "../components/ui/button";
@@ -100,6 +100,7 @@ export const SessionPane = memo(function SessionPane({
     preloadWhenIdle(selectChunk);
     preloadWhenIdle(pickersChunk);
     preloadWhenIdle(dialogsChunk);
+    preloadWhenIdle(messageListChunk);
   }, []);
 
   // A thread is empty only when its host answered with no rows (a draft has

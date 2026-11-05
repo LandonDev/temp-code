@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shellStore } from "../stores/shell";
+import { messageListFold } from "./messageListFold";
 import { MENU_STATE_CLOCK_MS, MENU_STATE_THROTTLE_MS, menuStateOf, publishMenuState, type MenuFacts } from "./nativeMenuState";
 import { rightPanel } from "./rightPanel";
 import { sessionStore } from "./tcserver/store";
@@ -12,6 +13,7 @@ const facts = (over: Partial<MenuFacts> = {}): MenuFacts => ({
   sidebarOpen: false,
   panel: "closed",
   dockOpen: false,
+  messageList: false,
   split: false,
   dockUsable: true,
   unread: 1,
@@ -21,8 +23,8 @@ const facts = (over: Partial<MenuFacts> = {}): MenuFacts => ({
 
 describe("menuStateOf", () => {
   it("opens each toggle the window shows", () => {
-    expect(menuStateOf(facts({ sidebarOpen: true, panel: "open", dockOpen: true }))).toEqual({
-      open: ["toggle_sidebar", "toggle_panel", "toggle_terminal"],
+    expect(menuStateOf(facts({ sidebarOpen: true, panel: "open", dockOpen: true, messageList: true }))).toEqual({
+      open: ["toggle_sidebar", "toggle_panel", "toggle_terminal", "toggle_message_list"],
       disabled: [],
     });
     expect(menuStateOf(facts())).toEqual({ open: [], disabled: [] });
@@ -107,6 +109,20 @@ describe("publishMenuState", () => {
     vi.advanceTimersByTime(MENU_STATE_THROTTLE_MS);
     expect(send).toHaveBeenCalledTimes(4);
     publisher.stop();
+  });
+
+  it("says Hide Message List while the list is open, Show once it folds", () => {
+    messageListFold.set(false);
+    const send = vi.fn();
+    const publisher = publishMenuState(() => ({ dockOpen: false, dockUsable: true }), send);
+    expect(send.mock.calls[0][0].open).toContain("toggle_message_list");
+    messageListFold.toggle();
+    vi.advanceTimersByTime(MENU_STATE_THROTTLE_MS);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1][0].open).not.toContain("toggle_message_list");
+    expect(send.mock.calls[1][0].disabled).not.toContain("toggle_message_list");
+    publisher.stop();
+    messageListFold.set(false);
   });
 
   it("greys Show Panel for a subagent on screen: its view has no panel", () => {
