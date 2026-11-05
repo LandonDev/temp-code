@@ -1548,7 +1548,7 @@ slashes stripped. Once at boot (`workspaces-folded:v1`), old duplicates fold
 into the oldest row with all project and session references and its link id
 (or the oldest linked duplicate's id).
 
-docs/box.md "One project across hosts" (four sections) and
+docs/box.md "One project across hosts" (five sections) and
 docs/LAYOUT.md's sidebar rows are the long account; the proof is
 `bun run script:e2e-linked-projects` (scripts/e2e-linked-projects.ts: two
 headless instances; the linker stamps both copies, a far start into a
@@ -1608,7 +1608,14 @@ names the far child).
   `folderKey`/`sameFolder`: a box copy's path reads and writes the
   leader's entry) keep theirs; one "Workspaces" section, no host headers, every copy's threads by
   recency, unread sums, Mark all read and the fleet switches over every
-  copy, a down host's rows under the offline tint. Host status is one Hosts
+  copy, a down host's rows under the offline tint. A project card and the
+  title bar's strip list the same roots of every copy: a thread is housed
+  in a batch only under an unarchived pinned master the window knows
+  (`batchHome` over `railMasters`, lib/threadStripModel.ts), and Archive
+  dormant takes each master it archives with its settled batch
+  (lib/archiveDormant.ts, loaded by `archiveDormantThreads` when the row
+  is picked); docs/box.md "the card and the strip list the same threads".
+  Host status is one Hosts
   row at the rail's foot (`HostsRow` in chrome/HostRows.tsx, two or more
   hosts only): a connection dot per host, coloured only in trouble, and a
   menu with a submenu per
@@ -3278,7 +3285,8 @@ this is the short one.
   first, then the subagents, folded behind "N threads"), each with its own
   subagents under it; a plan whose build has started takes no row
   (`startedPlan`), an archived thread never does, and a batch whose master
-  is archived or unpinned shows as plain roots. In the workspace column a
+  is archived or unpinned shows as plain roots, in the strip as on the
+  rail (`batchHome`, lib/threadStripModel.ts). In the workspace column a
   project's card draws a master's batch as one block under the master's
   line, which ends in the batch's done tally (`3/7`; `cardLines` in
   lib/sidebarRows.ts, `MasterLines` in chrome/WorkspaceSessions.tsx; a

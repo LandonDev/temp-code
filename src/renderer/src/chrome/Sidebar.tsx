@@ -20,9 +20,9 @@ import {
   workspaceStore,
 } from "../lib/tcserver/workspaces";
 import { sessionStore } from "../lib/tcserver/store";
-import { archive } from "../lib/tcserver/commands";
 import { loadLastSeen, seenFloor } from "../lib/sessionSeen";
-import { dormantByType, dormantThreads, focusedTree } from "../lib/threadStripModel";
+import { archiveDormantThreads } from "../lib/archiveDormantThreads";
+import { batchHome, dormantByType, dormantThreads, focusedTree, railMasters } from "../lib/threadStripModel";
 import { scopeTest } from "../lib/workspaceSessions";
 import { openWorkspaceSettings } from "../lib/settings";
 import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
@@ -216,7 +216,8 @@ function SidebarComponent({
   const [preambleOpen, setPreambleOpen] = useState(false);
   // The workspace menu's "Archive dormant threads": every settled, seen,
   // unpinned root the Sessions list shows for this workspace, project
-  // threads and loose chats alike, sparing the focused session's tree.
+  // threads and loose chats alike, never one housed in a batch (archiving
+  // a master takes its settled batch with it), sparing the focused tree.
   // Read from the stores when the menu opens or acts, never subscribed: the
   // list changes with every meta push, and subscribing re-rendered the rail.
   const dormantNow = () => {
@@ -224,7 +225,10 @@ function SidebarComponent({
     const metas = sessionStore.metas();
     const { projects, workspaces } = workspaceStore.getSnapshot();
     const inScope = scopeTest(workspaceIds && workspaceIds.length > 1 ? workspaceIds : sessionsScope);
-    const roots = metas.filter((m) => !m.parentId && !m.archived && inScope(workspaceIdOf(m, projects, workspaces)));
+    const masters = railMasters(metas);
+    const roots = metas.filter(
+      (m) => !m.parentId && !m.archived && !batchHome(m, masters) && inScope(workspaceIdOf(m, projects, workspaces)),
+    );
     return dormantThreads(roots, loadLastSeen(), seenFloor(), focusedTree(metas, activeSessionId));
   };
   const workspaceSessions =
@@ -325,9 +329,9 @@ function SidebarComponent({
                 const all = dormantNow();
                 return { count: all.length, groups: dormantByType(all) };
               }}
-              onArchiveDormant={() => void Promise.allSettled(dormantNow().map((t) => archive(t.id, true)))}
+              onArchiveDormant={() => archiveDormantThreads(dormantNow(), activeSessionId)}
               onArchiveDormantType={(type) =>
-                void Promise.allSettled((dormantByType(dormantNow()).find((g) => g.type === type)?.threads ?? []).map((t) => archive(t.id, true)))
+                archiveDormantThreads(dormantByType(dormantNow()).find((g) => g.type === type)?.threads ?? [], activeSessionId)
               }
               onThreadDefaults={workspace ? () => setThreadDefaultsOpen(true) : undefined}
               onOrchestration={workspace ? () => openOrchestrationSettings(workspace.id) : undefined}

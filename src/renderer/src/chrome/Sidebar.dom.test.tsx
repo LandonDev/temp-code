@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { WorkspaceMeta } from "../lib/tcserver/types";
+import type { SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
 
 const ws = { id: "w1", name: "alpha", path: "/w/alpha", environmentId: "local", createdAt: 1 } as WorkspaceMeta;
 const where = vi.hoisted(() => ({ cwd: "/w/alpha", workspaceId: "w1" as string | null, columns: [] as (string | null)[] }));
@@ -33,12 +33,26 @@ vi.mock("./WorkspaceSessions", async () => {
   };
 });
 vi.mock("../lib/monaco/focusBoot", () => ({ warmProjectForCwd: () => Promise.resolve() }));
+const { archive } = vi.hoisted(() => ({ archive: vi.fn(async (_id: string, _archived: boolean) => {}) }));
+vi.mock("../lib/tcserver/commands", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/tcserver/commands")>()),
+  archive,
+}));
+// Every thread counts as seen.
+vi.mock("../lib/sessionSeen", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/sessionSeen")>()),
+  loadLastSeen: () => ({}),
+  seenFloor: () => Number.POSITIVE_INFINITY,
+}));
 
+import { sessionStore } from "../lib/tcserver/store";
 import { Sidebar } from "./Sidebar";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  archive.mockClear();
+  sessionStore.reset();
 });
 
 const mount = (onNew = vi.fn()) =>
@@ -133,5 +147,26 @@ describe("the workspace column", () => {
       where.cwd = "/w/alpha";
       where.workspaceId = "w1";
     }
+  });
+});
+
+describe("the workspace menu's Archive dormant", () => {
+  const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
+    ({ environmentId: "local", id, parentId: null, projectId: "p1", workspaceId: "w1", threadType: "chat", title: id, cwd: "/w/alpha", status: "idle", archived: false, pinned: false, busySince: null, createdAt: 1, updatedAt: 100, ...extra }) as SessionMeta;
+
+  it("counts the roots, never a thread housed in a batch, and archives a master's settled batch with it", async () => {
+    const metas = [
+      meta("master", { isMaster: true }),
+      meta("b-done", { threadType: "implementation", masterId: "master", status: "done" }),
+      meta("b-busy", { threadType: "implementation", masterId: "master", status: "running" }),
+      meta("plain"),
+    ];
+    for (const m of metas) sessionStore.injectPush({ push: "session", session: m }, "local");
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace options" }));
+    const list = await screen.findByRole("menu", { name: "Workspace actions" });
+    fireEvent.click(within(list).getByRole("menuitem", { name: "Archive 2 dormant threads" }));
+    await waitFor(() => expect(archive).toHaveBeenCalledTimes(3));
+    expect(archive.mock.calls.map(([id]) => id)).toEqual(["b-done", "master", "plain"]);
   });
 });

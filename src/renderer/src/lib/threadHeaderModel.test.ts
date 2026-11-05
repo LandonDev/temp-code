@@ -129,6 +129,7 @@ describe("buildHeaderModel: the loose scope", () => {
     thread("chat-home", { projectId: null, workspaceId: null, cwd: "/tmp", status: "running" }),
     thread("chat-sub", { projectId: null, workspaceId: "w1", cwd: "/w1", parentId: "chat-w1" }),
     thread("chat-batch", { projectId: null, workspaceId: "w1", cwd: "/w1", masterId: "m" }),
+    thread("m", { projectId: "p9", workspaceId: "w1", cwd: "/w1", isMaster: true }),
     thread("chat-gone", { projectId: null, workspaceId: "w1", cwd: "/w1", archived: true }),
     thread("proj", { workspaceId: "w1", cwd: "/w1", status: "running" }),
   ];
@@ -362,7 +363,7 @@ describe("the two rows", () => {
     thread("a", { status: "running", updatedAt: 40 }),
     thread("b", { updatedAt: 90 }),
     thread("c", { updatedAt: 60 }),
-    thread("d", { status: "waiting", updatedAt: 20 }),
+    thread("d", { status: "waiting", updatedAt: 20, isMaster: true }),
     thread("e", { updatedAt: 10 }),
     thread("C", { parentId: "c", status: "running" }),
     thread("batch", { masterId: "d", status: "running" }),

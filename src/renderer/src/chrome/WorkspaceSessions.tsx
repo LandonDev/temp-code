@@ -72,7 +72,8 @@ import {
 import { duration } from "../lib/duration";
 import { timeAgo } from "../lib/format";
 import { useClock, useSlowClock } from "../lib/turnClock";
-import { archive as archiveThread, interrupt, pause, resume } from "../lib/tcserver/commands";
+import { interrupt, pause, resume } from "../lib/tcserver/commands";
+import { archiveDormantThreads } from "../lib/archiveDormantThreads";
 import { dormantByType, dormantThreads, focusedTree, marksAtRest, threadStatus } from "../lib/threadStripModel";
 import { sameSet, useKept } from "../lib/keptValue";
 import { deleteProject } from "../lib/tcserver/projects";
@@ -1110,11 +1111,9 @@ export const ProjectCard = memo(function ProjectCard({
     else if (id === "resume") void Promise.allSettled(status.paused.map((t) => resume(t.id)));
     else if (id === "pause") void Promise.allSettled(status.running.map((t) => pause(t.id)));
     else if (id === "stop") void Promise.allSettled(stoppable.map((t) => interrupt(t.id)));
-    else if (id === "archive-dormant") void Promise.allSettled(dormant().map((t) => archiveThread(t.id, true)));
+    else if (id === "archive-dormant") archiveDormantThreads(dormant(), rows.activeSessionId);
     else if (id.startsWith("archive-dormant:"))
-      void Promise.allSettled(
-        (dormantByType(dormant()).find((g) => g.type === id.slice("archive-dormant:".length))?.threads ?? []).map((t) => archiveThread(t.id, true)),
-      );
+      archiveDormantThreads(dormantByType(dormant()).find((g) => g.type === id.slice("archive-dormant:".length))?.threads ?? [], rows.activeSessionId);
     else if (id === "archive") archive(project);
     else if (id === "delete") remove(project);
   };

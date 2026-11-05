@@ -3808,3 +3808,35 @@ Proof: sessions-mentions.test.ts (a far digest in the refs file, inline,
 unreachable, a token naming this host), crossHostAgents.test.ts and
 crossHostThreads.test.ts (`thread.read`), threadMentions.test.ts,
 mentionAttachments.test.ts and agents.test.ts.
+
+### One project across hosts: the card and the strip list the same threads
+
+A linked project's card in the workspace column and its strip in the title
+bar hold every copy's root threads, and they decide where a master's batch
+lives by one rule: a root carrying a `masterId` is housed only under an
+unarchived pinned master the window knows, on any host (`batchHome` over
+`railMasters` in src/renderer/src/lib/threadStripModel.ts). While it is
+housed the master's line and chip stand for it; once the master is archived
+or unpinned it is a root of both, with its host's glyph.
+
+The two once disagreed. On 2026-11-05 the person ran the project card's
+Archive dormant on Alpha; its master (a Mac thread) went, and its two
+implementation threads on the Mac, "Muse Wonder over the Meta Model API"
+and "Muse Code as a harness" (both idle after a finished turn, no
+subagents or background work left), stayed, since the menu read the
+card's roots and they sat inside the master. Unread (nobody opens a batch
+thread), they came back as lines on the card, while the strip still hid
+every root with a `masterId`. The host was not the cause: a box master's
+batch would have done the same. Now the strip reads the card's rule, and
+Archive dormant, on a card or the workspace, takes each master it archives
+with its settled batch (src/renderer/src/lib/archiveDormant.ts, loaded
+when the row is picked), as a root takes its subagents; a batch thread
+that still works stays, a root of both. The menus count the roots alone,
+as they never counted a root's subagents.
+
+Proof: chrome/LinkedProjectStrip.dom.test.tsx (a project on two hosts, the
+batch on the Mac: the card's roots and lines against the strip's chips
+before and after the card's own Archive dormant, with the master live,
+archived, and over a thread that still works), the workspace menu's case
+in Sidebar.dom.test.tsx, archiveDormant.test.ts, threadStripModel.test.ts
+and threadHeaderModel.test.ts.

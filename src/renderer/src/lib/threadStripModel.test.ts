@@ -2,6 +2,7 @@ import type { BackgroundWork } from "@shared/events";
 import { describe, expect, it } from "vitest";
 import {
   archivedRootThreads,
+  batchHome,
   composerSlotOf,
   hasPendingQuestion,
   marksAtRest,
@@ -11,6 +12,7 @@ import {
   focusedTree,
   isLiveThread,
   projectRootThreads,
+  railMasters,
   runningRoots,
   splitThreads,
   type StripThread,
@@ -41,13 +43,30 @@ describe("projectRootThreads", () => {
 
   it("keeps a master's batch children off the strip: they live on the board", () => {
     const all = [
-      thread("master", { updatedAt: 5 }),
+      thread("master", { isMaster: true, updatedAt: 5 }),
       thread("child", { masterId: "master", updatedAt: 9 }),
-      thread("gone-child", { masterId: "master", archived: true }),
+      thread("gone-child", { masterId: "master", archived: true, updatedAt: 3 }),
       thread("plain", { updatedAt: 1 }),
     ];
     expect(projectRootThreads(all, "p1").map((t) => t.id)).toEqual(["master", "plain"]);
-    expect(archivedRootThreads(all, "p1").map((t) => t.id)).toEqual([]);
+    // An archived batch thread is an archived root, as the rail's count has it.
+    expect(archivedRootThreads(all, "p1").map((t) => t.id)).toEqual(["gone-child"]);
+  });
+
+  it("gives a batch thread its own chip once its master is archived, unpinned or unknown, as the rail does", () => {
+    const orphans = [
+      thread("of-archived", { masterId: "gone", updatedAt: 9 }),
+      thread("of-unpinned", { masterId: "ex", updatedAt: 8 }),
+      thread("of-unknown", { masterId: "elsewhere", updatedAt: 7 }),
+    ];
+    const all = [
+      thread("gone", { isMaster: true, archived: true }),
+      thread("ex", { isMaster: false, updatedAt: 1 }),
+      ...orphans,
+    ];
+    expect(projectRootThreads(all, "p1").map((t) => t.id)).toEqual(["of-archived", "of-unpinned", "of-unknown", "ex"]);
+    const masters = railMasters(all);
+    expect(orphans.map((t) => batchHome(t, masters))).toEqual([null, null, null]);
   });
 
   it("holds nothing without a project: the loose scope is stripRootThreads's", () => {

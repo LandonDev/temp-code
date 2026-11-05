@@ -2,6 +2,10 @@ import type { AgentType, ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcser
 import { workspaceIdOf } from "./tcserver/workspaces";
 import { sortAgents } from "./threads/agents";
 import { projectLeaders } from "./linkedRail";
+import { batchHome, railMasters } from "./threadStripModel";
+
+// The one rule for where a batch thread lives, which the strip reads too.
+export { batchHome, railMasters };
 
 /**
  * What the Sessions tab shows for one workspace: its project cards, its
@@ -212,26 +216,6 @@ export function threadRow(
         ? { masterId: meta.masterId, provider: meta.provider, model: meta.model }
         : {}),
   };
-}
-
-/** The ids of the unarchived roots pinned as masters. */
-export function railMasters(metas: readonly SessionMeta[]): Set<string> {
-  const out = new Set<string>();
-  for (const m of metas) if (m.isMaster && !m.parentId && !m.archived) out.add(m.id);
-  return out;
-}
-
-/** The master a batch child belongs under in the rail, else null: a root
- *  carrying the id of an unarchived master that is one. Such a thread is
- *  never a root row; it is housed under the master, unless it is a plan
- *  whose build has started (`startedPlan`: the build is the row).
- *  An archived thread is neither. */
-export function batchHome(
-  meta: Pick<SessionMeta, "parentId" | "masterId" | "archived">,
-  masters: ReadonlySet<string>,
-): string | null {
-  if (meta.parentId || meta.archived || !meta.masterId || !masters.has(meta.masterId)) return null;
-  return meta.masterId;
 }
 
 /** A plan whose build has started: the build takes its place in the batch. */

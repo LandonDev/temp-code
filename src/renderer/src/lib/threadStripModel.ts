@@ -25,7 +25,13 @@ export type StripThread = Pick<
   Partial<
     Pick<
       SessionMeta,
-      "treeHasLiveWork" | "treeHasPaused" | "treeCanContinue" | "masterId" | "workspaceId" | "cwd"
+      | "treeHasLiveWork"
+      | "treeHasPaused"
+      | "treeCanContinue"
+      | "masterId"
+      | "isMaster"
+      | "workspaceId"
+      | "cwd"
     >
   > & {
     /** Sent, its create still in flight (an unsent draft is never a chip); always live. */
@@ -35,13 +41,31 @@ export type StripThread = Pick<
 export type SeenMap = Record<string, number>;
 export type ReadyMap = Record<string, boolean>;
 
-/** A root thread of a master's batch (CLAUDE.md "Master threads"): it
- *  lives on the master's board, and the master's chip stands for it. The
- *  one exception is a batch child on screen: it keeps a chip while it is
- *  (the thread menu acts on it), at the live row's end and never saved
- *  into the strip's order (`buildHeaderModel`'s outside chip). */
-export function isBatchChild(thread: Pick<StripThread, "parentId" | "masterId">): boolean {
-  return !thread.parentId && !!thread.masterId;
+/** The ids of the unarchived roots pinned as masters. */
+export function railMasters(
+  threads: readonly Pick<StripThread, "id" | "parentId" | "archived" | "isMaster">[],
+): Set<string> {
+  const out = new Set<string>();
+  for (const t of threads) if (t.isMaster && !t.parentId && !t.archived) out.add(t.id);
+  return out;
+}
+
+/** The master a batch thread lives under, else null (CLAUDE.md "Master
+ *  threads"): a root carrying the id of an unarchived master that is one
+ *  (`railMasters`). The rail houses it under the master's row and the
+ *  strip leaves it to the master's chip; one whose master is archived,
+ *  unpinned or unknown here is an ordinary root on both. An archived
+ *  thread is neither. In the rail a plan whose build has started takes no
+ *  row (`startedPlan`: the build is the row). A batch thread on screen
+ *  still keeps a chip (the
+ *  thread menu acts on it), at the live row's end and never saved into
+ *  the strip's order (`buildHeaderModel`'s outside chip). */
+export function batchHome(
+  thread: Pick<StripThread, "parentId" | "masterId" | "archived">,
+  masters: ReadonlySet<string>,
+): string | null {
+  if (thread.parentId || thread.archived || !thread.masterId || !masters.has(thread.masterId)) return null;
+  return thread.masterId;
 }
 
 /** A project id, or every copy of a linked project (CLAUDE.md "One project across hosts"). */
@@ -53,15 +77,12 @@ export function inProjectScope(projectId: string | null | undefined, scope: Proj
 }
 
 /** Root, unarchived threads of `projectId` (or of every copy in the set), freshest first.
- *  No project → nothing (the loose scope is `stripRootThreads`'s); a batch child never sits here. */
+ *  No project → nothing (the loose scope is `stripRootThreads`'s). */
 export function projectRootThreads<T extends StripThread>(
   threads: readonly T[],
   projectId: ProjectScope,
 ): T[] {
-  if (!projectId) return [];
-  return threads
-    .filter((t) => inProjectScope(t.projectId, projectId) && !t.parentId && !t.archived && !isBatchChild(t))
-    .sort(freshestFirst);
+  return stripRootThreads(threads, { project: projectId });
 }
 
 /** What a strip holds: a project's roots (every copy of a linked one), or
@@ -80,27 +101,31 @@ export function looseScopeOf(workspaceId: string | null, catalog: Catalog): Read
   return new Set([workspaceId, ...copies]);
 }
 
-/** The scope's root, unarchived threads, freshest first; never a batch child. */
+/** The scope's root, unarchived threads, freshest first; never one housed
+ *  in a master's batch (`batchHome` over `threads`). */
 export function stripRootThreads<T extends StripThread>(threads: readonly T[], scope: StripScope): T[] {
-  if ("project" in scope) return projectRootThreads(threads, scope.project);
-  const { catalog, loose } = scope;
+  const masters = railMasters(threads);
   return threads
     .filter((t) => {
-      if (t.projectId || t.parentId || t.archived || isBatchChild(t)) return false;
+      if (t.parentId || t.archived || batchHome(t, masters)) return false;
+      if ("project" in scope) return inProjectScope(t.projectId, scope.project);
+      if (t.projectId) return false;
+      const { catalog, loose } = scope;
       const workspaceId = workspaceIdOf({ ...t, cwd: t.cwd ?? "" }, catalog.projects, catalog.workspaces);
       return loose ? !!workspaceId && loose.has(workspaceId) : workspaceId === null;
     })
     .sort(freshestFirst);
 }
 
-/** Archived roots of `projectId`, freshest first, for the shelf. */
+/** Archived roots of `projectId`, freshest first, for the shelf: an
+ *  archived batch thread among them, as the rail's archived count has it. */
 export function archivedRootThreads<T extends StripThread>(
   threads: readonly T[],
   projectId: ProjectScope,
 ): T[] {
   if (!projectId) return [];
   return threads
-    .filter((t) => inProjectScope(t.projectId, projectId) && !t.parentId && t.archived && !isBatchChild(t))
+    .filter((t) => inProjectScope(t.projectId, projectId) && !t.parentId && t.archived)
     .sort(freshestFirst);
 }
 
