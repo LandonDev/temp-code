@@ -12,7 +12,7 @@ import {
   RefreshCw,
   Search,
 } from "../chrome/icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { InboxFiltersMenu } from "../chrome/InboxFiltersMenu";
 import { HostGlyph } from "../chrome/HostGlyph";
 import { InboxProviderMark } from "../chrome/InboxProviderMark";
@@ -22,6 +22,7 @@ import { WindowControls } from "../chrome/WindowControls";
 import { useDragResize } from "../hooks/useDragResize";
 import { useSashKeys } from "../hooks/useSashKeys";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { useRovingList } from "../hooks/useRovingList";
 import { BusyLabel, Button } from "../components/ui/button";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { ItemButton } from "../components/ui/item";
@@ -411,6 +412,21 @@ export function InboxView({
     setInboxSelection(selected);
   }, [selected]);
 
+  const selectItem = (item: InboxItem) => {
+    const key = inboxItemKey(item);
+    markInboxItemSeen({ key, updatedAt: item.updatedAt });
+    setSelectedKey(key);
+  };
+  const visibleKeys = useMemo(() => visibleItems.map(inboxItemKey), [visibleItems]);
+  const roving = useRovingList({
+    keys: visibleKeys,
+    selected: selected ? inboxItemKey(selected) : null,
+    onSelect: (key) => {
+      const item = visibleItems.find((candidate) => inboxItemKey(candidate) === key);
+      if (item) selectItem(item);
+    },
+  });
+
   const onFiltersChange = (next: InboxFilters) => {
     const pruned = pruneInboxFilters(
       next,
@@ -452,6 +468,7 @@ export function InboxView({
             <GroupInput
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
+              onKeyDown={roving.onFieldKeyDown}
               placeholder="Filter inbox"
               aria-label="Filter inbox"
               spellCheck={false}
@@ -512,7 +529,7 @@ export function InboxView({
             }}
           />
         ) : (
-          <ul className="flex flex-col gap-0.5 p-1">
+          <ul ref={roving.listRef} aria-label="Inbox items" className="flex flex-col gap-0.5 p-1">
             {visibleItems.map((item) => {
               const key = inboxItemKey(item);
               return (
@@ -522,13 +539,10 @@ export function InboxView({
                     active={selected != null && key === inboxItemKey(selected)}
                     environmentId={item.environmentId ?? null}
                     showSource={showSource}
-                    onSelect={() => {
-                      markInboxItemSeen({
-                        key,
-                        updatedAt: item.updatedAt,
-                      });
-                      setSelectedKey(key);
-                    }}
+                    rovingKey={key}
+                    tabIndex={roving.tabIndexOf(key)}
+                    onKeyDown={roving.onRowKeyDown}
+                    onSelect={() => selectItem(item)}
                   />
                 </li>
               );
@@ -723,10 +737,17 @@ export function InboxRow({
   active,
   environmentId,
   showSource,
+  rovingKey,
+  tabIndex,
+  onKeyDown,
   onSelect,
 }: {
   item: InboxItem;
   active: boolean;
+  /** The list's one tab stop and arrows (useRovingList). */
+  rovingKey?: string;
+  tabIndex?: number;
+  onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void;
   /** The host the row came from; its glyph shows when more than one is paired. */
   environmentId?: string | null;
   showSource: boolean;
@@ -741,6 +762,9 @@ export function InboxRow({
       size="sm"
       aria-current={active ? "true" : undefined}
       aria-label={unseen ? `${item.title}, new` : undefined}
+      data-roving-key={rovingKey}
+      tabIndex={tabIndex}
+      onKeyDown={onKeyDown}
       onClick={onSelect}
       className={cn(
         "flex-col flex-nowrap items-stretch gap-0.5 rounded-md px-2 py-2 text-left transition-none",

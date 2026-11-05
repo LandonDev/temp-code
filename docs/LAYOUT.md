@@ -498,6 +498,35 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     are 28px rows, a name in foreground and its value muted, an expandable
     one led by the disclosure chevron, each level 16px in.
 
+### Inbox, Notes and Search
+
+Three full surfaces opened from the rail, each under the one 40px title
+strip (the page's glyph and its name in 13px medium; Search's strip is its
+field) and each closed by Escape through `usePageEscape`. Inbox
+(surfaces/InboxView.tsx) and Notes (surfaces/NotesView.tsx) share one
+frame: a resizable list column (280px by default) whose head is `p-2` (the
+Inbox's GitHub and Linear tabs over its filter field, its filter menu and
+Refresh; Notes' field and New note), its rows `ItemButton sm` in `p-1`,
+2px apart, glyphs 12px in, a selected row `muted`; then the detail, a
+`max-w-5xl` column on a 32px inset with 24px between its sections (the meta
+line, the 16px title 8px under it, its facts 8px under that, the actions
+16px under them). An inbox row is two lines (20px over 16px, 54px); a note's
+three (its project and time, its title, its first words). The list is one
+tab stop: the selected row takes Tab, and ↑↓ in the field or on a row
+select the next row as a click would (`useRovingList`, hooks/useRovingList.ts),
+Home and End on a row. Nothing selected draws no detail, since the list
+already says why: its skeleton while it loads (`SurfaceSkeleton` kind
+`rows`, the row's own shape), else its one `EmptyState`, which says "No
+matching …" with Clear filters when the person narrowed it.
+
+Search (surfaces/SearchView.tsx) is the field and the results under it:
+28px one-line rows in `p-1`, glyphs 12px in, the highlight following ↑↓ and
+the pointer only once it moves (`usePointerHighlight`), and its filters in
+the field's menu (chrome/SearchFiltersMenu.tsx: Type, Host and Project as
+checked `RowsMenu` rows that rewrite the typed tokens). With two or more
+hosts a foot says what each took. Go to File and Go to Symbol are the same
+list in a picker dialog (chrome/PickerDialog.tsx) whose rows are menu rows.
+
 ### The viewers
 
 An image (chrome/Lightbox.tsx) and an agent's HTML page

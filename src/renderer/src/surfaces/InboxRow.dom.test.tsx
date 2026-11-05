@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -115,5 +115,15 @@ describe("InboxRow", () => {
     const view = render(<InboxRow item={pr()} active={false} showSource={false} onSelect={() => {}} />);
     expect(title(view.container).className).toContain("leading-5");
     expect(view.container.querySelector("[data-row-line]")?.className).toContain("leading-4");
+  });
+
+  it("takes the list's roving tab stop and keys", () => {
+    const onKeyDown = vi.fn();
+    const view = render(<InboxRow item={pr()} active={false} showSource={false} rovingKey="k1" tabIndex={-1} onKeyDown={onKeyDown} onSelect={() => {}} />);
+    const row = view.getByRole("button");
+    expect(row.getAttribute("data-roving-key")).toBe("k1");
+    expect(row.tabIndex).toBe(-1);
+    fireEvent.keyDown(row, { key: "ArrowDown" });
+    expect(onKeyDown).toHaveBeenCalled();
   });
 });

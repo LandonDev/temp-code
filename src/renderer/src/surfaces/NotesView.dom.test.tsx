@@ -151,4 +151,32 @@ describe("the notes view", () => {
     expect(filter.value).toBe("");
     expect(view.getByRole("button", { name: /Deploy/ })).toBeTruthy();
   });
+
+  it("moves through the list with the arrows from the field, and the list is one tab stop", async () => {
+    Element.prototype.scrollIntoView = () => {};
+    const view = await mount();
+    const rows = () => view.getAllByRole("button").filter((el) => el.hasAttribute("data-roving-key"));
+    fireEvent.click(rows()[0]!);
+    expect(rows().filter((row) => row.tabIndex === 0)).toHaveLength(1);
+    const filter = view.getByLabelText("Filter notes");
+    filter.focus();
+    await act(async () => {
+      fireEvent.keyDown(filter, { key: "ArrowDown" });
+    });
+    expect(rows()[1]!.getAttribute("aria-current")).toBe("true");
+    expect(rows()[1]!.tabIndex).toBe(0);
+    expect(rows()[0]!.tabIndex).toBe(-1);
+    expect(document.activeElement).toBe(filter);
+    // On a row, the arrows move focus with the selection; the ends hold.
+    rows()[1]!.focus();
+    await act(async () => {
+      fireEvent.keyDown(rows()[1]!, { key: "ArrowDown" });
+    });
+    expect(rows()[1]!.getAttribute("aria-current")).toBe("true");
+    await act(async () => {
+      fireEvent.keyDown(rows()[1]!, { key: "ArrowUp" });
+    });
+    expect(rows()[0]!.getAttribute("aria-current")).toBe("true");
+    expect(document.activeElement).toBe(rows()[0]);
+  });
 });

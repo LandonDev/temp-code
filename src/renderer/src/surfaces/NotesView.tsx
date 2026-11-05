@@ -25,6 +25,7 @@ import { WindowControls } from "../chrome/WindowControls";
 import { useDragResize } from "../hooks/useDragResize";
 import { useSashKeys } from "../hooks/useSashKeys";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { useRovingList } from "../hooks/useRovingList";
 import { useTabGroupLogos } from "../hooks/useTabGroupLogos";
 import { formatRelativeTime } from "../lib/githubTasks";
 import { usePageEscape } from "../lib/pageEscape";
@@ -169,6 +170,13 @@ export function NotesView({
     notes.find((note) => note.id === selectedId) ??
     null;
 
+  const visibleIds = useMemo(() => visible.map((note) => note.id), [visible]);
+  const roving = useRovingList({
+    keys: visibleIds,
+    selected: selected?.id ?? null,
+    onSelect: setSelectedId,
+  });
+
   const onCreate = async () => {
     if (creating) return;
     setCreating(true);
@@ -227,6 +235,7 @@ export function NotesView({
           <GroupInput
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={roving.onFieldKeyDown}
             placeholder="Filter notes"
             aria-label="Filter notes"
             spellCheck={false}
@@ -269,12 +278,14 @@ export function NotesView({
             <EmptyState title="No notes yet" action={{ label: "New note", onClick: () => void onCreate() }} />
           )
         ) : (
-          <ul className="flex flex-col gap-0.5 p-1">
+          <ul ref={roving.listRef} aria-label="Notes" className="flex flex-col gap-0.5 p-1">
             {visible.map((note) => (
               <li key={note.id}>
                 <NoteCard
                   note={note}
                   active={selected?.id === note.id}
+                  tabIndex={roving.tabIndexOf(note.id)}
+                  onKeyDown={roving.onRowKeyDown}
                   logos={logos}
                   mascots={groupMascots}
                   colors={groupColors}
@@ -380,10 +391,15 @@ function NoteCard({
   mascots,
   colors,
   customColors,
+  tabIndex,
+  onKeyDown,
   onSelect,
 }: {
   note: Note;
   active: boolean;
+  /** The list's one tab stop and arrows (useRovingList). */
+  tabIndex: number;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
   onSelect: () => void;
 } & ProjectMarks) {
   const preview = notePreview(note.body, note.title);
@@ -393,6 +409,9 @@ function NoteCard({
     <ItemButton
       size="sm"
       aria-current={active ? "true" : undefined}
+      data-roving-key={note.id}
+      tabIndex={tabIndex}
+      onKeyDown={onKeyDown}
       onClick={onSelect}
       className={cn(
         "flex-col flex-nowrap items-stretch gap-0 rounded-md px-2 py-2 text-left transition-none",
