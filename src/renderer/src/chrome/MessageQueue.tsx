@@ -143,12 +143,13 @@ export function MessageQueue({
                     className={`pointer-events-none absolute inset-x-2 z-20 h-0.5 rounded-full bg-accent ${sortable.toIndex! < sortable.fromIndex! ? 'top-0' : 'bottom-0'}`}
                   />
                 ) : null}
-                <div className="flex items-start gap-1.5 rounded-lg border border-border bg-card py-1.5 pr-1.5 pl-1">
+                <div className="flex items-start gap-1.5 rounded-lg border border-border bg-card py-1.5 pr-1.5 pl-1.5">
                   <span
                     data-queue-grip
                     aria-hidden
                     onPointerDown={(event) => sortable.onItemPointerDown(m.id, event)}
-                    className="-my-1.5 -ms-1 flex shrink-0 cursor-grab touch-none self-stretch py-1.5 ps-1 text-muted-foreground/60 active:cursor-grabbing"
+                    // The `+` button's 28px box, so the grip centres on `+`'s axis.
+                    className="-my-1.5 flex w-7 shrink-0 cursor-grab touch-none justify-center self-stretch py-1.5 text-muted-foreground/60 active:cursor-grabbing"
                   >
                     <GripVertical className="mt-[3px] size-3.5" />
                   </span>

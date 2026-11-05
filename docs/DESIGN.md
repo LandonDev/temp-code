@@ -359,7 +359,11 @@ every line, as a banner's and the checkpoint strip's are) holds the open turn's
 elapsed time and Stop, nothing else, and the held states with their
 actions: Paused with Stop and Continue, Stopped with Resume (the harness is
 gone), Queued with Start now; a held row's way on (Continue, Resume, Start
-now) is the raised `secondary`, Stop the ghost beside it. What the thread does is the transcript's
+now) is the raised `secondary`, Stop the ghost beside it. Every Stop there
+spins in place while it lands (`BusyLabel`, keeping its word), the timer's
+set at its width's end (`align="end"`) so the word stands over Send; a held
+row's glyph sits in the `+` button's 28px box, on `+`'s axis, its word 8px
+after that box, and the queue's grip sits in the same box. What the thread does is the transcript's
 working line, a pending approval or question is its card, and a watching
 thread's state is the transcript's closing line (Watching then its age,
 ticking every second, amber past 30 minutes, opening the Activity section; an

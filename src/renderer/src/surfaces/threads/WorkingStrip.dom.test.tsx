@@ -72,15 +72,20 @@ describe('WorkingStrip: the timer while a turn is open', () => {
     probe.unmount()
   })
 
-  it('Stop calls back once and holds Stopping… while it lands', async () => {
+  it('Stop calls back once and spins while it lands, its word standing over Send', async () => {
     const onStop = vi.fn()
     const probe = mount(session({ status: 'running', busySince: Date.now() - 5_000 }), { onStop })
     const [stop] = buttons(probe)
     expect(buttons(probe).map((b) => b.textContent)).toEqual(['Stop'])
+    // The word sits at the end of its reserved width, which holds only the spinner's slot.
+    const label = stop!.querySelector<HTMLElement>('[data-slot="busy-label"]')!
+    expect(label.dataset.busyText).toBe('Stop')
+    expect(label.firstElementChild!.className).toContain('justify-end')
     await probe.act(async () => stop!.click())
     await probe.act(async () => stop!.click())
     expect(onStop).toHaveBeenCalledTimes(1)
-    expect(stop!.textContent).toBe('Stopping…')
+    expect(stop!.textContent).toBe('Stop')
+    expect(stop!.querySelector('[data-slot="spinner"]')).not.toBeNull()
     expect(stop!.disabled).toBe(true)
     probe.unmount()
   })
@@ -188,10 +193,16 @@ describe('WorkingStrip: the held rows', () => {
     const probe = mount(session({ status: 'paused', frozenActiveElapsed: 250_000 }), { onStop, onResume })
     expect(rowText(probe)).toBe('Paused4m 10sStopContinue')
     expect(probe.container.innerHTML).not.toMatch(/bg-warning|border-warning|rounded-lg/)
+    // The glyph sits in the `+` button's 28px box, on its axis.
+    expect(row(probe).querySelector('[data-slot="status-mark"]')!.className).toContain('*:data-[slot=status-glyph]:w-7')
     const [stop, cont] = buttons(probe)
+    await probe.act(async () => stop!.click())
     await probe.act(async () => stop!.click())
     await probe.act(async () => cont!.click())
     expect(onStop).toHaveBeenCalledTimes(1)
+    // Stop here spins as the timer's does, and takes no second click.
+    expect(stop!.querySelector('[data-slot="spinner"]')).not.toBeNull()
+    expect(stop!.disabled).toBe(true)
     expect(onResume).toHaveBeenCalledTimes(1)
     probe.unmount()
   })

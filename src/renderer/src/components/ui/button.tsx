@@ -71,12 +71,24 @@ const BUSY_WIDTHS =
  * unseen busy copy reserves the spinner's place as padding (`--busy-space`,
  * set by the button's size), never a spinner, so nothing turns at rest.
  * `busyLabel` defaults to `label`: a confirm keeps its verb and reserves only
- * the spinner's slot.
+ * the spinner's slot. `align="end"` sets the words at the reserved width's
+ * end, for a button at a row's end whose word stands over something (the
+ * slot's Stop over Send); the spinner then appears before them.
  */
-function BusyLabel({ busy, label, busyLabel = label }: { busy: boolean; label: string; busyLabel?: string }) {
+function BusyLabel({
+  busy,
+  label,
+  busyLabel = label,
+  align = "center",
+}: {
+  busy: boolean;
+  label: string;
+  busyLabel?: string;
+  align?: "center" | "end";
+}) {
   return (
     <span data-slot="busy-label" data-busy={busy || undefined} data-idle={label} data-busy-text={busyLabel} className={BUSY_WIDTHS}>
-      <span className="inline-flex items-center justify-center gap-1">
+      <span className={cn("inline-flex items-center gap-1", align === "end" ? "justify-end" : "justify-center")}>
         {busy ? (
           <>
             <Spinner aria-hidden style={{ width: "var(--busy-space, 1rem)", height: "var(--busy-space, 1rem)" }} />

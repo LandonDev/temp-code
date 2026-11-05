@@ -183,6 +183,14 @@ describe("MessageQueue reorder", () => {
     expect(order()).toEqual(["a", "b", "c"]);
   });
 
+  it("the grip sits in the `+` button's 28px box, 6px in from the row's edge, on `+`'s axis", () => {
+    render(<MessageQueue items={three} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
+    const g = grip("a");
+    expect(g.className.split(" ")).toEqual(expect.arrayContaining(["w-7", "justify-center"]));
+    expect(g.className).not.toMatch(/(^|\s)-?ms-/);
+    expect(g.parentElement!.className.split(" ")).toContain("pl-1.5");
+  });
+
   it("a press on the text edits it; only the grip drags", () => {
     render(<MessageQueue items={three} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
     fireEvent.click(screen.getByRole("button", { name: "Edit: B" }));

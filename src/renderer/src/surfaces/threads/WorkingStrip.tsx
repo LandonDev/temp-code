@@ -106,7 +106,7 @@ export const WorkingStrip = memo(function WorkingStrip({
     setStartBusy(true);
     Promise.resolve(onStart()).finally(() => setStartBusy(false));
   };
-  // Stop on the timer holds "Stopping…" until the row leaves the timer.
+  // Stop spins until the row leaves its slot (the timer, or Paused).
   const [stopping, setStopping] = useState(false);
   const [stoppingSlot, setStoppingSlot] = useState(slot);
   if (stoppingSlot !== slot) {
@@ -153,26 +153,29 @@ export const WorkingStrip = memo(function WorkingStrip({
           {elapsed >= 1000 ? time(elapsed, "timer") : null}
           <Actions>
             <Button variant="ghost" size="xs" onClick={stopTurn} disabled={stopping}>
-              <BusyLabel busy={stopping} label="Stop" busyLabel="Stopping…" />
+              <BusyLabel busy={stopping} label="Stop" align="end" />
             </Button>
           </Actions>
         </>
       );
     }
-    const mark = <ThreadStatusMark status={shownStatus} />;
+    const mark = <ThreadStatusMark status={shownStatus} className={ON_PLUS_AXIS} />;
     switch (state) {
       case "paused":
         return (
           <>
             {batchPaused > 0 ? (
-              <ThreadStatusMark status={{ ...shownStatus, detail: `and ${batchPaused} batch thread${batchPaused === 1 ? "" : "s"} with it` }} />
+              <ThreadStatusMark
+                status={{ ...shownStatus, detail: `and ${batchPaused} batch thread${batchPaused === 1 ? "" : "s"} with it` }}
+                className={ON_PLUS_AXIS}
+              />
             ) : (
               mark
             )}
             {elapsed > 0 ? time(elapsed) : null}
             <Actions>
-              <Button variant="ghost" size="xs" onClick={onStop}>
-                Stop
+              <Button variant="ghost" size="xs" onClick={stopTurn} disabled={stopping}>
+                <BusyLabel busy={stopping} label="Stop" />
               </Button>
               <Button variant="secondary" size="xs" onClick={resume} disabled={resumeBusy}>
                 <BusyLabel busy={resumeBusy} label="Continue" busyLabel="Continuing…" />
@@ -237,6 +240,10 @@ function useBatchPaused(masterId: string, on: boolean): number {
   if (!on) return 0;
   return metas.filter((m) => m.masterId === masterId && !m.archived && !m.parentId && (m.status === "paused" || m.treeHasPaused)).length;
 }
+
+/** A held row's glyph sits in the `+` button's 28px box, so it centres on
+ *  `+`'s axis under the box; the word follows it 8px after that box. */
+const ON_PLUS_AXIS = "*:data-[slot=status-glyph]:w-7";
 
 /** The row's actions, at its end. */
 function Actions({ children }: { children: ReactNode }) {

@@ -46,6 +46,15 @@ describe("BusyLabel", () => {
     expect(container.textContent).toBe("Delete");
     expect(container.querySelector("[data-slot=busy-label]")!.getAttribute("data-busy-text")).toBe("Delete");
   });
+
+  it("centres its words by default; align end sets them at the reserved width's end", () => {
+    const { container, rerender } = render(<BusyLabel busy={false} label="Stop" />);
+    const inner = () => container.querySelector("[data-slot=busy-label]")!.firstElementChild!.className;
+    expect(inner()).toContain("justify-center");
+    rerender(<BusyLabel busy={false} label="Stop" align="end" />);
+    expect(inner()).toContain("justify-end");
+    expect(inner()).not.toContain("justify-center");
+  });
 });
 describe("spinners in buttons", () => {
   it("take the size of the icon they replace: 12px in xs buttons, 14px in sm", () => {
