@@ -3,7 +3,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
 import { Item, ItemActions, ItemButton, ItemContent, ItemMedia } from "@renderer/components/ui/item";
-import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "@renderer/components/ui/press";
+import { ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "@renderer/components/ui/press";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { CONSOLE } from "@renderer/components/ui/console";
 import { TruncateTip, useTruncated } from "@renderer/components/tip";
@@ -162,7 +162,7 @@ function Row({
       <ItemContent className={cn("min-w-0", opens && ROW_SHOWS)}>
         {opens ? label : <TruncateTip text={row.label}>{label}</TruncateTip>}
       </ItemContent>
-      <ItemActions className={cn("gap-1", opens && ROW_CONTROLS)}>
+      <ItemActions className={cn("gap-1", opens && ROW_SHOWS)}>
         {now > 0 ? (
           <span className={cn("pointer-events-none text-xs leading-5 tabular-nums", stale ? "text-warning" : "text-muted-foreground")}>{minuteAge(now - row.since)}</span>
         ) : null}
@@ -173,7 +173,7 @@ function Row({
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  className="text-muted-foreground hover:text-foreground"
+                  className="pointer-events-auto text-muted-foreground hover:text-foreground"
                   aria-label="Stop"
                   disabled={stopping}
                   onClick={stop}

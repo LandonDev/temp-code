@@ -151,6 +151,19 @@ describe("ActivitySection", () => {
     expect(openOf("shell").getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("the age and the spacer at a row's end take no pointer, Stop alone does: a click there reaches the open control", () => {
+    mount();
+    for (const kind of ["shell", "dev"]) {
+      const row = rowOf(kind);
+      const actions = row.querySelector('[data-slot="item-actions"]')!;
+      expect(actions.className.split(/\s+/)).toEqual(expect.arrayContaining(["pointer-events-none", "relative"]));
+      const stop = row.querySelector('[aria-label="Stop"]')!;
+      expect(stop.className.split(/\s+/)).toContain("pointer-events-auto");
+    }
+    // A plain line has no open control, so its actions keep their own pointer.
+    expect(rowOf("monitor").querySelector('[data-slot="item-actions"]')!.className).not.toContain("pointer-events-none");
+  });
+
   it("a shell row whose command is its label opens on the output alone", async () => {
     const plain = { ...meta, background: { ...background, agents: [], tasks: [{ id: "t2", label: "sleep 90", kind: "shell" as const, startedAt: now, command: "sleep 90" }] } };
     render(<ActivityRows threadId="s1" rows={activityRows({ meta: plain, devServers: [], macCalls: [] })} meta={plain} />);
