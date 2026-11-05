@@ -84,6 +84,7 @@ vi.mock("../BranchPicker", () => ({
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
 import { ChangesPanel, changesRules, fileMenuRows } from "./ChangesPanel";
+import { resetTooltips, tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import type { AgainstModel } from "./ChangesAgainst";
 import { SessionActionsContext, type SessionActions } from "../../surfaces/threadChat";
 
@@ -545,6 +546,30 @@ describe("ChangesPanel's virtual list", () => {
     expect(rowOf("u:notes/00000.md")).toBeFalsy();
     expect(rowOf("u:notes/05005.md")?.style.transform).toBe(`translateY(${28 * 5_005}px)`);
     expect(rowsMounted()).toBeLessThan(60);
+  });
+
+  it("tooltips warming keep the scroller and its virtual list: the providers sit round the toolbars alone", async () => {
+    resetTooltips();
+    h.index = indexOf({ files: many(10_000) });
+    mount();
+    await flush();
+    const scroller = viewport();
+    const list = rowOf("u:notes/00000.md")!.parentElement!;
+    act(() => {
+      scroller.scrollTop = 28 * 5_000;
+      scroller.dispatchEvent(new Event("scroll"));
+    });
+    await flush();
+    const row = rowOf("u:notes/05005.md")!;
+    await tooltipChunk.load();
+    act(() => warmTooltips());
+    await flush();
+    // The head's tooltips are the primitive's now; the scroller, the list and its rows are the same nodes, still scrolled.
+    expect(viewport()).toBe(scroller);
+    expect(scroller.scrollTop).toBe(28 * 5_000);
+    expect(rowOf("u:notes/05005.md")).toBe(row);
+    expect(row.parentElement).toBe(list);
+    resetTooltips();
   });
 
   it("a focused row stays mounted, and focused, when the list scrolls it out of the window", async () => {

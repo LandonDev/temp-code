@@ -428,7 +428,12 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   below (`ActivitySection`, `FleetList`, `NotesBody`, `ChangesPanel`,
   `FileTree`, `BuildPanel`, `DebugPanel`), whose first row (Changes' branch,
   Build's target, Notes' state, Files' buttons) is one 36px row on the 12px
-  inset in every section. It never tweens its width: a
+  inset in every section. A tooltip provider in a body wraps its toolbars
+  alone (Changes' top row and its commit footer each have one, Activity
+  none): the lazy provider remounts what it wraps when tooltips warm, so
+  none sits round a scroller, the Changes list or an open log. An Activity
+  shell row's log stays in its fold while the fold closes and stops asking
+  for output as the close starts. It never tweens its width: a
   toggle in place gives the thread its new width at once (one layout; the
   transcript's anchor row holds it) and moves the pane on transform and
   opacity alone (`usePaneMotion` in ThreadView, `PANE_MOTION`): opening, it

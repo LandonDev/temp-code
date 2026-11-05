@@ -546,42 +546,51 @@ export function ChangesView({
     return item.gap ? <div className="pt-4">{body}</div> : body;
   };
 
+  // Each toolbar has its own TooltipProvider, never one round the scroller:
+  // the lazy provider is a fragment until tooltips warm, and the change of
+  // element would remount the scroller and its virtual list.
   return (
-    <TooltipProvider>
-      <div className="flex min-h-0 flex-1 flex-col" data-slot="changes-section">
-        {index ? <TopRow index={index} pr={pr} rules={rules} busy={busy} actions={actions} branchPicker={branchPicker} /> : <TopRowSkeleton />}
-        {error ? (
-          <p role="alert" className="shrink-0 px-3 pb-2 text-xs break-words text-destructive">
-            {error}
-          </p>
-        ) : null}
-        {/* A native scroller, as the rail's and the board's virtual lists have. */}
-        <div ref={setScroller} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto" data-slot="changes-scroller">
-          <RowsContextMenu label="File actions" lazyMount rowsFor={rowsFor} onPick={pick}>
-            <div className="px-1 pb-3">
-              {rowsInFlow ? (
-                items.map((item) => <div key={item.key}>{renderItem(item)}</div>)
-              ) : (
-                <VirtualRows
-                  count={items.length}
-                  scroller={scroller}
-                  scrollMargin={0}
-                  gap={0}
-                  estimateSize={(i) => estimateItem(items[i]!)}
-                  getItemKey={(i) => items[i]!.key}
-                  render={(i) => renderItem(items[i]!)}
-                  reveal={null}
-                  sizeKey="changes"
-                />
-              )}
-            </div>
-          </RowsContextMenu>
-        </div>
-        {index && files.length > 0 ? (
-          <CommitFooter staged={hasStaged} message={message} onMessage={onMessage} rules={rules} busy={busy} actions={actions} />
-        ) : null}
+    <div className="flex min-h-0 flex-1 flex-col" data-slot="changes-section">
+      {index ? (
+        <TooltipProvider>
+          <TopRow index={index} pr={pr} rules={rules} busy={busy} actions={actions} branchPicker={branchPicker} />
+        </TooltipProvider>
+      ) : (
+        <TopRowSkeleton />
+      )}
+      {error ? (
+        <p role="alert" className="shrink-0 px-3 pb-2 text-xs break-words text-destructive">
+          {error}
+        </p>
+      ) : null}
+      {/* A native scroller, as the rail's and the board's virtual lists have. */}
+      <div ref={setScroller} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto" data-slot="changes-scroller">
+        <RowsContextMenu label="File actions" lazyMount rowsFor={rowsFor} onPick={pick}>
+          <div className="px-1 pb-3">
+            {rowsInFlow ? (
+              items.map((item) => <div key={item.key}>{renderItem(item)}</div>)
+            ) : (
+              <VirtualRows
+                count={items.length}
+                scroller={scroller}
+                scrollMargin={0}
+                gap={0}
+                estimateSize={(i) => estimateItem(items[i]!)}
+                getItemKey={(i) => items[i]!.key}
+                render={(i) => renderItem(items[i]!)}
+                reveal={null}
+                sizeKey="changes"
+              />
+            )}
+          </div>
+        </RowsContextMenu>
       </div>
-    </TooltipProvider>
+      {index && files.length > 0 ? (
+        <TooltipProvider>
+          <CommitFooter staged={hasStaged} message={message} onMessage={onMessage} rules={rules} busy={busy} actions={actions} />
+        </TooltipProvider>
+      ) : null}
+    </div>
   );
 }
 

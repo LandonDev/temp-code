@@ -21,7 +21,7 @@ vi.mock("../../lib/tcserver/store", () => ({ useSessionMeta: () => null, useSess
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
 import { activityRows } from "../../lib/activity";
-import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
+import { resetTooltips, tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { ActivityRows } from "./ActivitySection";
 
 afterEach(() => {
@@ -146,5 +146,81 @@ describe("ActivitySection", () => {
     expect(await screen.findByText("Couldn't read the output")).toBeTruthy();
     fireEvent.click(rowOf("shell").querySelector('[aria-label="Stop"]')!);
     await vi.waitFor(() => expect(toastError).toHaveBeenCalledWith("Couldn't stop it", { description: "Serve the app" }));
+  });
+  it("tooltips warming keep the scroller and an open log: no provider sits round them", async () => {
+    resetTooltips();
+    mount();
+    fireEvent.click(rowOf("shell"));
+    await screen.findByText(/listening on :5173/);
+    const scroller = document.querySelector<HTMLElement>('[data-slot="activity-scroller"]')!;
+    const log = document.querySelector<HTMLElement>('[data-slot="task-log"]')!;
+    scroller.scrollTop = 30;
+    log.scrollTop = 12;
+    await tooltipChunk.load();
+    act(() => warmTooltips());
+    // The Stops are the primitive's tooltips now; the scroller and the log are the same nodes, still scrolled.
+    expect(document.querySelector('[data-slot="activity-scroller"]')).toBe(scroller);
+    expect(document.querySelector('[data-slot="task-log"]')).toBe(log);
+    expect(scroller.scrollTop).toBe(30);
+    expect(log.scrollTop).toBe(12);
+    resetTooltips();
+  });
+
+  it("a closing log keeps its command and output until its close has run, and stops asking as the close starts", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // The dom setup turns Base UI's animation wait off; this test needs it on.
+    const flags = globalThis as { BASE_UI_ANIMATIONS_DISABLED?: boolean };
+    let finished = false;
+    let finish: () => void = () => {};
+    const done = new Promise<void>((resolve) => (finish = () => ((finished = true), resolve())));
+    const running = {
+      finished: done,
+      pending: false,
+      get playState() {
+        return finished ? "finished" : "running";
+      },
+      effect: { getTiming: () => ({ duration: 150, iterations: 1 }) },
+    } as unknown as Animation;
+    const getAnimations = Element.prototype.getAnimations;
+    // The panel's height transition (`.collapsible-resize`), which jsdom reads from the sheet.
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = '[data-slot="collapsible-content"] { transition-duration: 150ms; }';
+    // jsdom lays nothing out: the open panel measures 120px, so the close has a height to run from.
+    const scrollHeight = Object.getOwnPropertyDescriptor(Element.prototype, "scrollHeight")!;
+    Object.defineProperty(Element.prototype, "scrollHeight", {
+      configurable: true,
+      get(this: Element) {
+        return this.matches('[data-slot="collapsible-content"]') ? 120 : 0;
+      },
+    });
+    try {
+      mount();
+      fireEvent.click(rowOf("shell"));
+      await screen.findByText(/listening on :5173/);
+      // The close's height animation is still running.
+      flags.BASE_UI_ANIMATIONS_DISABLED = false;
+      Element.prototype.getAnimations = () => [running];
+      fireEvent.click(rowOf("shell"));
+      expect(rowOf("shell").getAttribute("aria-expanded")).toBe("false");
+      const asked = taskLog.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(taskLog.mock.calls.length).toBe(asked);
+      expect(document.querySelector('[data-slot="task-command"]')?.textContent).toBe("$ bun run dev --port 5173");
+      expect(document.body.textContent).toContain("listening on :5173");
+      await act(async () => {
+        finish();
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(document.querySelector('[data-slot="task-log"]')).toBeNull();
+      expect(document.querySelector('[data-slot="task-command"]')).toBeNull();
+    } finally {
+      Element.prototype.getAnimations = getAnimations;
+      flags.BASE_UI_ANIMATIONS_DISABLED = true;
+      sheet.remove();
+      Object.defineProperty(Element.prototype, "scrollHeight", scrollHeight);
+      vi.useRealTimers();
+    }
   });
 });

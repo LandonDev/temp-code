@@ -6,7 +6,7 @@ import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { CONSOLE } from "@renderer/components/ui/console";
 import { TruncateTip } from "@renderer/components/tip";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
 import { Bot, Clock, Eye, Globe, Laptop, Layers, Square, Terminal, Workflow } from "../../chrome/icons";
 import { usePaneVisible } from "../../hooks/paneVisibility";
@@ -77,25 +77,26 @@ export const ActivityRows = memo(function ActivityRows({
     else if (row.open === "dev") devPane.open(row.devKey);
   };
 
+  // No TooltipProvider round the scroller: the lazy provider is a fragment
+  // until tooltips warm, and the change of element would remount the
+  // scroller and an open log. Each row's one Stop keeps its own delay.
   return (
-    <TooltipProvider>
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        <div className="flex flex-col px-1 py-3" data-slot="activity-section">
-          {rows.map((row) => (
-            <Row
-              key={row.key}
-              threadId={threadId}
-              row={row}
-              now={now}
-              stale={now > 0 && rowStale(row, meta, now)}
-              expanded={open === row.key}
-              onActivate={row.open ? () => activate(row) : undefined}
-              live={shown}
-            />
-          ))}
-        </div>
+    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto" data-slot="activity-scroller">
+      <div className="flex flex-col px-1 py-3" data-slot="activity-section">
+        {rows.map((row) => (
+          <Row
+            key={row.key}
+            threadId={threadId}
+            row={row}
+            now={now}
+            stale={now > 0 && rowStale(row, meta, now)}
+            expanded={open === row.key}
+            onActivate={row.open ? () => activate(row) : undefined}
+            live={shown}
+          />
+        ))}
       </div>
-    </TooltipProvider>
+    </div>
   );
 });
 
@@ -187,8 +188,10 @@ function Row({
   return (
     <Collapsible open={expanded}>
       {item}
+      {/* The panel drops the log once its close has run, so the fold never
+          closes an emptied box; the polling stops as the close starts. */}
       <CollapsibleContent>
-        {expanded ? <TaskLogFold threadId={threadId} taskId={row.taskId} command={row.detail} live={live} /> : null}
+        <TaskLogFold threadId={threadId} taskId={row.taskId} command={row.detail} live={live && expanded} />
       </CollapsibleContent>
     </Collapsible>
   );
