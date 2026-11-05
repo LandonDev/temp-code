@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { scenarioTimeline, uniqueScenarioIds } from './soakScenarios'
+import { scenarioTimeline, uniqueScenarioIds } from './lib/soakScenarios'
 
 describe('uniqueScenarioIds', () => {
   const events = scenarioTimeline().flatMap((step) => step.events)
