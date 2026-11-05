@@ -233,6 +233,17 @@ describe('WorkingStrip: the held rows', () => {
   })
 })
 
+describe('WorkingStrip: the row shares the box and the line rule', () => {
+  it("is inset 6px, the composer row's own, and puts 4px between its facts", () => {
+    const probe = mount(session({ status: 'paused', busySince: Date.now() - 60_000, pausedAt: Date.now(), frozenActiveElapsed: 60_000 }))
+    const classes = row(probe).className.split(' ')
+    expect(classes).toEqual(expect.arrayContaining(['px-1.5', 'gap-1']))
+    expect(classes).not.toContain('px-4')
+    expect(classes).not.toContain('gap-2')
+    probe.unmount()
+  })
+})
+
 describe('WorkingStrip: the slot empties with a fade', () => {
   const working = session({ status: 'running', busySince: Date.now() - 5_000 })
   const idle = { ...working, status: 'idle' as const, busy: false, busySince: null }

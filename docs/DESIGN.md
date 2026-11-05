@@ -340,7 +340,9 @@ pass" or "Waiting on 2 subagents" (`waitLine`), on the transcript's working
 line and in the host's detail alike.
 
 The slot above the composer (surfaces/threads/WorkingStrip.tsx, reserved
-at 28px so nothing moves when a turn starts or ends) holds the open turn's
+at 28px so nothing moves when a turn starts or ends, inset 6px as the
+composer's row is, so Stop stands over Send, its facts 4px apart as on
+every line, as a banner's and the checkpoint strip's are) holds the open turn's
 elapsed time and Stop, nothing else, and the held states with their
 actions: Paused with Stop and Continue, Stopped with Resume (the harness is
 gone), Queued with Start now. What the thread does is the transcript's

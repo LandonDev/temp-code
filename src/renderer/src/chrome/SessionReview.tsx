@@ -191,12 +191,12 @@ export function SessionReviewView({
           size="xs"
           aria-label={`Review changes: ${label}`}
           onClick={() => (one ? onReview(first.path) : onReview())}
-          className="min-w-0 flex-1 justify-start gap-1.5 font-normal"
+          className="min-w-0 flex-1 justify-start gap-1 font-normal"
         >
           {one ? (
             <>
               {/* The icon pack writes its own `title`; no tooltip here. */}
-              <span aria-hidden className="pointer-events-none flex">
+              <span aria-hidden className="pointer-events-none me-1 flex">
                 <FileTypeIcon name={name} isDir={false} size={14} />
               </span>
               <span className="min-w-0 truncate font-mono text-xs text-foreground">
@@ -209,7 +209,7 @@ export function SessionReviewView({
             </span>
           )}
           <Counts added={adds} removed={dels} className="text-xs" />
-          <ChevronRight className="size-3 text-muted-foreground" />
+          <ChevronRight className="ms-1 size-3 text-muted-foreground" />
         </Button>
         <StripAction
           word="Undo"

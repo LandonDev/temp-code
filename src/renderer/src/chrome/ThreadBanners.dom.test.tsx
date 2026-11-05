@@ -92,6 +92,9 @@ describe("the paused and recovery banners", () => {
     const banner = screen.getByRole("status");
     expect(banner.textContent).toBe("PausedMasterand 1 batch thread with itStopContinue");
     expect(banner.className).not.toMatch(/bg-|text-warning/);
+    // Its facts sit 4px apart; the glyph keeps its 8px inside the mark.
+    expect(banner.className.split(" ")).toContain("gap-1");
+    expect(banner.className.split(" ")).not.toContain("gap-2");
   });
 
   it("says Failed with the thread and offers Continue beside the model chevron", () => {

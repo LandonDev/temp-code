@@ -220,7 +220,7 @@ export const WorkingStrip = memo(function WorkingStrip({
         inert={!visible}
         data-leaving={!visible && leaving ? "" : undefined}
         className={cn(
-          "flex h-full items-center gap-2 px-4 text-xs transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
+          "flex h-full items-center gap-1 px-1.5 text-xs transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
           visible ? "opacity-100" : "opacity-0",
         )}
       >

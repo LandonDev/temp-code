@@ -144,6 +144,15 @@ describe('SessionReview strip', () => {
     status.mockImplementation(() => Promise.resolve({ files: [] }))
   })
 
+  it('the summary keeps the line rule: 8px after the icon, 4px between facts, 8px before the chevron', () => {
+    render(view([file('src/a.ts', 3, 1)]))
+    const summary = screen.getByRole('button', { name: 'Review changes: a.ts' })
+    expect(summary.className.split(' ')).toContain('gap-1')
+    expect(summary.className.split(' ')).not.toContain('gap-1.5')
+    expect(summary.firstElementChild!.className.split(' ')).toContain('me-1')
+    expect(summary.lastElementChild!.getAttribute('class')!.split(' ')).toContain('ms-1')
+  })
+
   it('one file shows its name and counts, and opens that file’s diff', async () => {
     vi.useFakeTimers()
     status.mockImplementation(() => Promise.resolve({ files: [file('src/chrome/SessionReview.tsx', 46, 12)] }))

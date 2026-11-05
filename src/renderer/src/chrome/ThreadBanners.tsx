@@ -360,7 +360,7 @@ function Banner({
   return (
     <div
       role={kind === "paused" || kind === "watching" ? "status" : "alert"}
-      className="flex h-8 items-center gap-2 border-b border-border px-3 text-xs"
+      className="flex h-8 items-center gap-1 border-b border-border px-3 text-xs"
     >
       <StatusMark state={BANNER_STATE[kind]} className="shrink-0" />
       <span className="min-w-0 truncate font-medium text-foreground">{line.subject}</span>
