@@ -81,7 +81,7 @@ private func expectClean(_ scenario: TranscriptScenario) {
     }
 
     @Test func `a steer, a compaction mid-turn and a Stop each change in place`() {
-        expectClean(TranscriptScenario("steer pause stop", pushes: [
+        expectClean(TranscriptScenario("steer pause stop", awaits: [.morph], pushes: [
             .init(atMs: 0, "send", .send("start")),
             .init(atMs: 20, "echo, a call", .rows([row(1, 20, user("start")), row(2, 40, tool("a", "Bash"))])),
             .init(atMs: 500, "the person steers", .send("also check the docs")),
@@ -180,8 +180,8 @@ private func expectClean(_ scenario: TranscriptScenario) {
         #expect(ScenarioRunner.keyJerks(from: old, to: new, seen: seen, at: "t").count == 1)
     }
 
-    @Test func `the built checks: keys, the end row, the follow rule, the reveal, the fade, the drain and the steer word's morph`() {
-        #expect(TranscriptScenario.Check.built == [.keys, .endRow, .follow, .reveal, .fade, .drain, .morph])
+    @Test func `the built checks: keys, the end row, the follow rule, the reveal, the fade, the drain and the steer word`() {
+        #expect(TranscriptScenario.Check.built == [.keys, .endRow, .follow, .reveal, .fade, .drain, .steer])
     }
 }
 

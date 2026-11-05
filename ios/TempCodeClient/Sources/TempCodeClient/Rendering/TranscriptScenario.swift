@@ -29,11 +29,13 @@ public struct TranscriptScenario: Sendable {
         /// the phase hold and the word morph (A6), the drain before the
         /// closing line (A6).
         case reveal, fade, hold, morph, drain
+        /// Built: the steer word under its bubble moves only forward (A9).
+        case steer
 
         /// The checks `run` implements today (the reveal, fade and drain
-        /// in TranscriptScenarioReveal.swift; the steer word's morph in
+        /// in TranscriptScenarioReveal.swift, the steer word in
         /// TranscriptScenarioSteer.swift).
-        public static let built: Set<Check> = [.keys, .endRow, .follow, .reveal, .fade, .drain, .morph]
+        public static let built: Set<Check> = [.keys, .endRow, .follow, .reveal, .fade, .drain, .steer]
     }
 
     public enum Step: Sendable {
@@ -133,7 +135,7 @@ public enum ScenarioRunner {
             if report.checked.contains(.endRow) {
                 report.violations += endJerks(next, ends: &endKeys, at: at)
             }
-            if report.checked.contains(.morph) {
+            if report.checked.contains(.steer) {
                 report.violations += steerJerks(next, last: &steers, at: at)
             }
             if report.checked.contains(.follow), readerUp, case let write = FollowRule.write(for: .rowsChanged, atBottom: false), write != .none {

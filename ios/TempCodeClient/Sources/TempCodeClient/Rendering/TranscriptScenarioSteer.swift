@@ -1,7 +1,7 @@
 import Foundation
 import TempCodeContract
 
-/// The steer word's part of the `.morph` check: under its bubble the word
+/// The `.steer` check: under its bubble the steer word
 /// changes in place and only forward (Sent, then Queued for the next turn
 /// or Received; Not delivered ends it), and once shown it never leaves.
 extension ScenarioRunner {
