@@ -12,7 +12,7 @@ import { COPIED_MS, copyText } from "../../lib/clipboard";
 import { playCue } from "../../lib/sounds";
 import { type TurnInfo } from "../transcriptRows";
 import { type Block, type HarnessId } from "../../lib/session";
-import { bareAgentId, isStaleWatch, waitLine, watchSubject } from "@server/shared/watch";
+import { bareAgentId, isStaleWatch, waitSubject, watchSubject } from "@server/shared/watch";
 import { plainStatus } from "@shared/statusWords";
 import { Button } from "../../components/ui/button";
 import { TooltipProvider } from "../../components/ui/tooltip";
@@ -101,7 +101,7 @@ export function TurnEnd({
         turn={turn.blocks}
         activity={turnState?.activity}
         cwd={cwd}
-        waitWords={wait ? waitLine(ids, titleOf) : null}
+        waitOn={wait ? waitSubject(ids, titleOf) : null}
         closing={
           closes
             ? {

@@ -446,11 +446,16 @@ describe("TurnEnd while the turn waits on its agents", () => {
       await new Promise((r) => setTimeout(r, 400));
     });
     expect(said(view.container)).toBe("Waiting on Review the perf pass");
+    // Drawn like a call: the verb muted, the agent's title the bright text on its line.
+    expect(view.container.querySelector('[data-slot="turn-line"] [data-slot="working-text"] .text-foreground')?.textContent).toBe(
+      "Review the perf pass",
+    );
   });
 
   it("counts several agents", () => {
     const view = live([user, reply, wait({ agentIds: ["c1", "c2"] })]);
     expect(said(view.container)).toBe("Waiting on 2 subagents");
+    expect(view.container.querySelector('[data-slot="turn-line"] [data-slot="working-text"] .text-foreground')?.textContent).toBe("2 subagents");
   });
 
   it("stops saying the wait once prose follows it", () => {

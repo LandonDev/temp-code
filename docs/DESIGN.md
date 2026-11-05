@@ -819,7 +819,8 @@ glyph and an approval with its lock, both in the muted tone, and a decision
 has no glyph. A held review, a failure, Stopped, compaction, "Batch done" and
 account-gone stay lines of their own. Every agent row names its agent by
 title, the one bright text on its line (28px alone, 32px in a table), and an open wait is no row:
-the working line says "Waiting on <title>". A handoff keeps its bubble: its text is the person's brief. The
+the working line says "Waiting on <title>", drawn like a call: "Waiting on"
+muted, the title (or "2 subagents") in foreground. A handoff keeps its bubble: its text is the person's brief. The
 left side, where the column leaves room, lists the person's own messages,
 one line and a clock time each, the one being read in foreground
 (`TranscriptOutline` on `JumpList`; docs/LAYOUT.md "Chat"). A

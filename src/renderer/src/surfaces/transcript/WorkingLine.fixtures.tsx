@@ -53,7 +53,7 @@ export default [
   { name: "One command, which opens", props: live([user, call("b1", "Bash", "execute", { command: "bun test convex" })]) },
   {
     name: "The wait on a subagent",
-    props: { ...live([user]), waitWords: "Waiting on Review the perf pass" },
+    props: { ...live([user]), waitOn: "Review the perf pass" },
   },
   { name: "Writing (the mark alone)", props: live([user, { id: "p", role: "assistant", text: "Here is the index", streaming: true }]) },
   {

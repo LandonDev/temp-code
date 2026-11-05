@@ -22,9 +22,14 @@ export type WorkingPhase = {
   spoken?: string;
   /** One call the line tells: its verb muted, its object in foreground. */
   call?: { block: Block; verb: string; object: string };
+  /** The wait on agents, drawn like a call: "Waiting on" muted, what it waits on in foreground. */
+  wait?: { verb: string; object: string };
   /** A thought streaming: its newest sentence and that sentence's ordinal. */
   thought?: { line: string; key: number };
 };
+
+/** The wait's verb, as `waitLine` (shared/watch.ts) words it. */
+const WAIT_VERB = "Waiting on";
 
 /** Something of the turn's own has come: anything but the person's row and an empty thought or reply. */
 function started(turn: Block[]): boolean {
@@ -36,7 +41,8 @@ function started(turn: Block[]): boolean {
  * message is not yet echoed; the host's word for the wait (Starting the CLI,
  * Waiting for the provider, a retry) while nothing of the turn's own has
  * come, keyed by its words up to the first comma so "25 s" becoming "30 s"
- * is drawn in place; the wait on agents (`waitWords`, UI-15's words);
+ * is drawn in place; the wait on agents (`waitOn`, `waitSubject`'s words:
+ * an agent's title or "2 subagents"), said as "Waiting on" and its object;
  * the running calls (`toldByWorkingLine`), one by its verb and object
  * ("Reading format.ts"), several by the group's present-tense phrase; a
  * thought streaming, as its newest sentence in place of the word (Thinking
@@ -46,12 +52,12 @@ function started(turn: Block[]): boolean {
 export function workingPhase(
   turn: Block[],
   activity: string | null | undefined,
-  { cwd, titleOf, waitWords }: { cwd?: string; titleOf?: TitleOf; waitWords?: string | null } = {},
+  { cwd, titleOf, waitOn }: { cwd?: string; titleOf?: TitleOf; waitOn?: string | null } = {},
 ): WorkingPhase {
   const last = turn[turn.length - 1];
   if (last?.role === "user" && last.pending) return { key: "sending", words: "Sending" };
   if (!started(turn) && activity) return { key: `host:${activity.split(",")[0]}`, words: activity };
-  if (waitWords) return { key: "wait", words: waitWords };
+  if (waitOn) return { key: "wait", words: `${WAIT_VERB} ${waitOn}`, wait: { verb: WAIT_VERB, object: waitOn } };
   const calls = turn.filter(toldByWorkingLine);
   if (calls.length === 1) {
     const { verb, object } = actionOf(calls[0], cwd, null, true);

@@ -151,7 +151,8 @@ foreground, the same words the group line uses); the components only draw it.
   echoes the message; the host's words for the wait while nothing of the
   turn's own has come (keyed up to the first comma, so "25 s" becoming
   "30 s" is drawn in place); an open wait on agents, "Waiting on <title>"
-  (UI-15's `openWaitOf`, `waitIds` and `waitLine`); the running calls, one
+  (UI-15's `openWaitOf`, `waitIds` and `waitSubject`), drawn like a call,
+  the verb muted and the title in foreground; the running calls, one
   by its verb and object ("Reading format.ts"), several by the group's
   present-tense phrase; while a thought streams, its newest sentence in the
   word's place (Thinking until the first), each sentence its own phase

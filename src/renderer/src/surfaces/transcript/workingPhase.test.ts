@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Block } from "../../lib/session";
-import { waitLine } from "@server/shared/watch";
+import { waitLine, waitSubject } from "@server/shared/watch";
 import { workingPhase } from "./workingPhase";
 
 const CWD = "/r";
@@ -73,18 +73,22 @@ describe("workingPhase", () => {
 
   it("puts the wait on agents ahead of the calls and the thought", () => {
     const turn = [user(), bash("s", "ls"), thought("Waiting.")];
-    expect(workingPhase(turn, null, { waitWords: "Waiting on Review the perf pass" })).toEqual({
+    expect(workingPhase(turn, null, { waitOn: "Review the perf pass" })).toEqual({
       key: "wait",
       words: "Waiting on Review the perf pass",
+      // Drawn like a call: the verb muted, the agent's title in foreground.
+      wait: { verb: "Waiting on", object: "Review the perf pass" },
     });
   });
 
   it("says UI-15's wait words, with the title once it is known and without it before", () => {
     const turn = [user()];
-    const titled = workingPhase(turn, null, { waitWords: waitLine(["c1"], (id) => (id === "c1" ? "Review the perf pass" : undefined)) });
+    const titled = workingPhase(turn, null, { waitOn: waitSubject(["c1"], (id) => (id === "c1" ? "Review the perf pass" : undefined)) });
     expect(titled.words).toBe("Waiting on Review the perf pass");
-    const untitled = workingPhase(turn, null, { waitWords: waitLine(["c1"]) });
-    expect(untitled).toEqual({ key: "wait", words: "Waiting on a subagent" });
+    const untitled = workingPhase(turn, null, { waitOn: waitSubject(["c1"]) });
+    expect(untitled).toEqual({ key: "wait", words: "Waiting on a subagent", wait: { verb: "Waiting on", object: "a subagent" } });
+    // The words are UI-15's, as the host says them.
+    expect(titled.words).toBe(waitLine(["c1"], (id) => (id === "c1" ? "Review the perf pass" : undefined)));
     // The title landing keeps the key: the words change in place, no morph.
     expect(titled.key).toBe(untitled.key);
   });

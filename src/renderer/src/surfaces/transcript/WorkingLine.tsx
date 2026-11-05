@@ -81,7 +81,7 @@ export function TurnLine({
   activity,
   cwd,
   titleOf,
-  waitWords,
+  waitOn,
   closing,
 }: {
   live: boolean;
@@ -93,14 +93,14 @@ export function TurnLine({
   activity?: string | null;
   cwd?: string;
   titleOf?: TitleOf;
-  waitWords?: string | null;
+  waitOn?: string | null;
   closing: Closing | null;
 }) {
   const reduce = useReducedMotion() === true;
   const sessionId = useTranscriptSession() ?? "";
   const next = useMemo(
-    () => (draining ? DRAINING : workingPhase(turn, activity, { cwd, titleOf, waitWords })),
-    [draining, turn, activity, cwd, titleOf, waitWords],
+    () => (draining ? DRAINING : workingPhase(turn, activity, { cwd, titleOf, waitOn })),
+    [draining, turn, activity, cwd, titleOf, waitOn],
   );
   const phase = useHeldPhase(next, samePhase);
   // Live once in this mount: the line stays, and a pending closing ("Worked") is drawn.
@@ -225,17 +225,18 @@ export function TurnLine({
   );
 }
 
-/** The phase's words in the shimmer: one call's verb muted and object in foreground. */
+/** The phase's words in the shimmer: one call's (or the wait's) verb muted and object in foreground. */
 function PhaseWords({ phase }: { phase: WorkingPhase }) {
   if (!phase.words) return null;
-  if (phase.call) {
+  const told = phase.call ?? phase.wait;
+  if (told) {
     return (
       <WorkingText words={phase.words}>
-        {phase.call.verb}
-        {phase.call.object ? (
+        {told.verb}
+        {told.object ? (
           <>
             {" "}
-            <span className="text-foreground">{phase.call.object}</span>
+            <span className="text-foreground">{told.object}</span>
           </>
         ) : null}
       </WorkingText>
