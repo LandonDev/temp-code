@@ -36,6 +36,10 @@ public struct ThreadState: Sendable, Hashable {
     public var sentAt: Int?
     /// Approval decisions this device gave that the host has not confirmed yet, by request id.
     public var decisions: [String: Bool] = [:]
+    /// Approvals whose decision is on the wire, by request id: a second tap sends nothing.
+    public var deciding: Set<String> = []
+    /// The line a refused decision left, by request id, until the next decision.
+    public var refusals: [String: String] = [:]
     /// Question answers this device gave that the host has not confirmed yet, by request id.
     public var answers: [String: [[String]]] = [:]
 

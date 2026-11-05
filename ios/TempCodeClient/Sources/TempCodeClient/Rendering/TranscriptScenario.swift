@@ -31,8 +31,9 @@ public struct TranscriptScenario: Sendable {
         case reveal, fade, hold, morph, drain
 
         /// The checks `run` implements today (the reveal, fade and drain
-        /// in TranscriptScenarioReveal.swift).
-        public static let built: Set<Check> = [.keys, .endRow, .follow, .reveal, .fade, .drain]
+        /// in TranscriptScenarioReveal.swift; the steer word's morph in
+        /// TranscriptScenarioSteer.swift).
+        public static let built: Set<Check> = [.keys, .endRow, .follow, .reveal, .fade, .drain, .morph]
     }
 
     public enum Step: Sendable {
@@ -103,6 +104,7 @@ public enum ScenarioRunner {
         var readerUp = false
         var seenKeys: [String: TranscriptRowID] = [:]
         var endKeys: [Int: TranscriptRowID] = [:]
+        var steers: [Int: SteerEvent.State] = [:]
         var rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: memory)
         remember(rows, into: &seenKeys)
         let reveals = RevealProbes(history: state.entries, reduced: scenario.reducedMotion)
@@ -130,6 +132,9 @@ public enum ScenarioRunner {
             }
             if report.checked.contains(.endRow) {
                 report.violations += endJerks(next, ends: &endKeys, at: at)
+            }
+            if report.checked.contains(.morph) {
+                report.violations += steerJerks(next, last: &steers, at: at)
             }
             if report.checked.contains(.follow), readerUp, case let write = FollowRule.write(for: .rowsChanged, atBottom: false), write != .none {
                 report.violations.append("\(at): the follow rule wrote \(write) while the reader was up")

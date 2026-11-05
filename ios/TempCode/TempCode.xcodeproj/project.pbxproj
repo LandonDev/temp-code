@@ -22,6 +22,7 @@
 		1B397DAFBA99F301139211C4 /* WorkingStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECE31D51E7B8B8D6510DE175 /* WorkingStrip.swift */; };
 		1F2C61F70507AF0AA3EFE904 /* ThreadStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE7A6B9BA6DC1DC9FD59EA66 /* ThreadStrip.swift */; };
 		1FB0FF3F2BA329BD97D44344 /* TranscriptRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67182306E6D12A2B115CC644 /* TranscriptRows.swift */; };
+		219FE17E331380B1AB575DAD /* MorphWord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C101715834513D41BDDBBB /* MorphWord.swift */; };
 		223FC5CC35CD814B2FBC0E89 /* ActivityCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 387DBAC71502B6ED41C9A864 /* ActivityCoordinator.swift */; };
 		23614D8185C5D979DC52454E /* DiffScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A24AC0457A2C05A169F1C11C /* DiffScreen.swift */; };
 		24AC734036A7AFF3146054A5 /* HostBuildRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5540D24130B97B147B763D83 /* HostBuildRow.swift */; };
@@ -278,6 +279,7 @@
 		8F8B110E0CA49C21D1DE3E14 /* ThreadGone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadGone.swift; sourceTree = "<group>"; };
 		959A8761ECA42FCB61231272 /* ProjectPlanChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectPlanChip.swift; sourceTree = "<group>"; };
 		97A3930E0CEF933EAC509B6D /* FleetStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetStyles.swift; sourceTree = "<group>"; };
+		97C101715834513D41BDDBBB /* MorphWord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MorphWord.swift; sourceTree = "<group>"; };
 		985EEA459AFD5430EB39D3AB /* ArchiveBatchSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveBatchSheet.swift; sourceTree = "<group>"; };
 		9928DD8D2A8C384DA346B273 /* HostDot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostDot.swift; sourceTree = "<group>"; };
 		9929B736C3C28B124C2DB5D1 /* Tokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tokens.swift; sourceTree = "<group>"; };
@@ -414,6 +416,7 @@
 				71FD17E331D1A7892718F0B3 /* Glyphs.swift */,
 				641553FAFC34373347B4887C /* HostMark.swift */,
 				F7058E3A970F021E13295DB8 /* LiveText.swift */,
+				97C101715834513D41BDDBBB /* MorphWord.swift */,
 				002DFE88A99F9FF59FF9A750 /* Motion.swift */,
 				458CA933FF6A32D8B310B3D6 /* Pressable.swift */,
 				2129548FC89473DA37D3322A /* SectionHeader.swift */,
@@ -865,6 +868,7 @@
 				A21764429AA3AF04E3B7992A /* MasterStyles.swift in Sources */,
 				D05AE2AB15DC533D0C27C491 /* MasterView.swift in Sources */,
 				4B09811F9A81080EAED4CCCA /* MediaImage.swift in Sources */,
+				219FE17E331380B1AB575DAD /* MorphWord.swift in Sources */,
 				B699A65B99A5636451EF8703 /* Motion.swift in Sources */,
 				DA4F42DBD8ECA9A7D9D9CD2F /* Navigation.swift in Sources */,
 				31957CC6CAE40CD4147ACC8D /* NavigationRouter.swift in Sources */,

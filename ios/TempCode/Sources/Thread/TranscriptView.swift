@@ -89,6 +89,7 @@ struct TranscriptView: View {
                         TranscriptRow(row: row, client: client, sessionId: sessionId, forceOpen: openGroups.contains(row.id), born: bornRows.isUnclaimed(row))
                             .equatable()
                     }
+                    .modifier(BornMotion(born: bornRows.isUnclaimed(row), rises: row.isUserTurn))
                     .id(row.id)
                     .onAppear { bornRows.claim(row) }
                     .environment(\.revealTurn, turns[row.id])
@@ -676,5 +677,43 @@ extension View {
         #else
         self
         #endif
+    }
+}
+
+/// A row born after the transcript opened arrives once: the person's
+/// bubble rises 16 pt and fades in over `Motion.rise` (the drawer curve,
+/// 0.24 s), any other row fades in over `fast`; under reduced motion both
+/// fade over `fast`. A row seen before (first paint, scroll back, a remount
+/// after its claim) is simply there.
+private struct BornMotion: ViewModifier {
+    let born: Bool
+    let rises: Bool
+    @State private var arrived: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    static let rise: CGFloat = 16
+
+    init(born: Bool, rises: Bool) {
+        self.born = born
+        self.rises = rises
+        _arrived = State(initialValue: !born)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(arrived ? 1 : 0)
+            .offset(y: arrived || reduceMotion || !rises ? 0 : Self.rise)
+            .onAppear {
+                guard !arrived else { return }
+                withAnimation(rises && !reduceMotion ? Motion.rise : Motion.fast) { arrived = true }
+            }
+    }
+}
+
+private extension TranscriptRowModel {
+    /// The person's own message.
+    var isUserTurn: Bool {
+        if case .item(let entry) = self, case .user = entry.item { return true }
+        return false
     }
 }

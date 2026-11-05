@@ -456,14 +456,23 @@ extension EnvironmentClient {
     }
 
     /// Decide an approval. The card shows the decision at once and reverts if the host refuses.
+    /// The decision shows on the tap and goes once: a second tap while one is
+    /// out, or after this device decided, sends nothing. A refusal puts the
+    /// card back undecided with its line (`CardDecision.refusalLine`).
     public func approve(_ sessionId: String, requestId: String, allow: Bool) async throws {
         if let block = approveBlock { throw ActionError.blocked(block) }
+        guard threads[sessionId]?.deciding.contains(requestId) != true, threads[sessionId]?.decisions[requestId] == nil else { return }
+        threads[sessionId]?.deciding.insert(requestId)
         threads[sessionId]?.decisions[requestId] = allow
+        threads[sessionId]?.refusals[requestId] = nil
+        defer { threads[sessionId]?.deciding.remove(requestId) }
         do {
             try await request(Methods.SessionApprove.self, .init(sessionId: sessionId, requestId: requestId, allow: allow))
         } catch {
+            let wrapped = ActionError.wrap(error)
             threads[sessionId]?.decisions[requestId] = nil
-            throw ActionError.wrap(error)
+            threads[sessionId]?.refusals[requestId] = CardDecision.refusalLine(allow: allow, reason: wrapped.message)
+            throw wrapped
         }
     }
 

@@ -2,9 +2,11 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// The row a failed turn ends on, with the host's verdict: what happened,
-/// the likely cause, the note naming what only the desktop can do, and the
-/// actions this key can take, Retry last. The words are the host's
+/// The row a failed turn ends on, the desktop's FailureCard recipe: a card
+/// at radius 8, 12 in, the summary in the line type at medium beside the red
+/// glyph, the likely cause muted 2 pt under it, the note naming what only
+/// the desktop can do, and at most three actions this key can take, Retry
+/// last, everything under the summary on its text edge. The words are the host's
 /// (failureKind.ts); nothing here reads the error text.
 struct FailureCard: View {
     let line: SystemLine
@@ -14,6 +16,8 @@ struct FailureCard: View {
     @State private var pending: FailureAction.ID?
     @State private var outcome: String?
     @State private var outcomeIsError = false
+    /// The cause sits 2 pt under the summary (the desktop's `mt-0.5`).
+    private static let causeGap: CGFloat = 2
 
     /// Where the thread's accounts come from: Meta's keys for a Meta row. A
     /// thread this client cannot see is unrouted: Retry alone, no account note.
@@ -27,49 +31,62 @@ struct FailureCard: View {
         let busy = busy
         let block = client.operateBlock
         let actions = FailureActions.actions(kind: failure.kind, routed: routed, roomElsewhere: failure.roomElsewhere)
-        ThreadCard(tinted: !busy) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .transcriptFont(TranscriptType.line, weight: .medium)
-                        .foregroundStyle(Tint.destructive)
-                    Text(failure.summary)
-                        .transcriptType(TranscriptType.prose, weight: .medium)
-                        .lineLimit(3)
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: TranscriptMetrics.glyphGap) {
+                Image(systemName: "exclamationmark.triangle")
+                    .transcriptFont(TranscriptType.line, weight: .medium)
+                    .foregroundStyle(Tint.destructive)
+                    .frame(width: TranscriptMetrics.glyphSlot)
+                Text(failure.summary)
+                    .transcriptType(TranscriptType.line, weight: .medium)
+                    .lineLimit(3)
+            }
+            // Everything under the summary hangs on its text edge, as the desktop's `pl-5.5`.
+            VStack(alignment: .leading, spacing: 0) {
                 Text(failure.cause)
                     .transcriptType(TranscriptType.line)
                     .foregroundStyle(.secondary)
+                    .padding(.top, Self.causeGap)
                 if let note = FailureActions.note(kind: failure.kind, routed: routed, roomElsewhere: failure.roomElsewhere) {
                     Text(note)
-                        .transcriptType(TranscriptType.line)
+                        .transcriptType(TranscriptType.detail)
                         .foregroundStyle(.secondary)
+                        .padding(.top, TranscriptMetrics.wordGap)
                 }
-                if let block, !block.isTransient {
-                    Text(block.text(now: Date().timeIntervalSince1970 * 1000))
-                        .transcriptType(TranscriptType.line)
-                        .foregroundStyle(.secondary)
-                } else {
-                    // Side by side while every label fits on one line, else stacked full width.
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 8) { actionButtons(actions) }
-                        VStack(spacing: 8) { actionButtons(actions) }
-                    }
-                    .controlSize(.regular)
-                    .disabled(busy || pending != nil || block != nil)
-                    if let block {
+                Group {
+                    if let block, !block.isTransient {
                         Text(block.text(now: Date().timeIntervalSince1970 * 1000))
                             .transcriptType(TranscriptType.line)
                             .foregroundStyle(.secondary)
+                    } else {
+                        // Side by side while every label fits on one line, else stacked full width.
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: TranscriptMetrics.glyphGap) { actionButtons(actions) }
+                            VStack(spacing: TranscriptMetrics.glyphGap) { actionButtons(actions) }
+                        }
+                        .controlSize(.small)
+                        .disabled(busy || pending != nil || block != nil)
+                        if let block {
+                            Text(block.text(now: Date().timeIntervalSince1970 * 1000))
+                                .transcriptType(TranscriptType.line)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
+                .padding(.top, TranscriptMetrics.Gap.block)
                 if let outcome {
                     Text(outcome)
-                        .transcriptType(TranscriptType.line)
+                        .transcriptType(TranscriptType.detail)
                         .foregroundStyle(outcomeIsError ? Tint.destructive : Color.secondary)
+                        .padding(.top, TranscriptMetrics.glyphGap)
                 }
             }
+            .padding(.leading, TranscriptMetrics.glyphSlot + TranscriptMetrics.glyphGap)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(TranscriptMetrics.tableInset)
+        .background(Surface.chrome, in: .rowCorner)
+        .hairlineBorder(RoundedRectangle.rowCorner)
         .animation(Motion.crossFade, value: outcome)
         .onChange(of: busy) { _, now in
             if now { pending = nil }

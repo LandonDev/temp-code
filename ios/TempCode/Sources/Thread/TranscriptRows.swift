@@ -110,18 +110,20 @@ struct TurnEndRow: View {
 
 // MARK: - user
 
-/// A bordered field, not a bubble: hairline, 12 pt radius, 12 pt padding,
-/// attachments above the text as thumbnails with a 1 px outline or a
-/// document chip. A long prompt folds at six lines and opens on tap. Copy
-/// from the context menu, as the desktop's corner button does. The time it
-/// was sent is the turn's closing line (the desktop's stamp shows on hover
-/// only). The project rules the host put ahead of the first message fold
-/// inside the field above the brief (`PreambleRow`, the host rows thread's).
+/// The person's words as the desktop draws them (transcript/UserMessage.tsx):
+/// a bubble at the column's trailing edge on the chrome fill, radius 12,
+/// padded 12 × 8, at most 85 % of the column (`UserTurnLayout`), no
+/// outline, in the prose type; attachments above the text. A long prompt
+/// folds at six lines and opens on tap; Copy is in the context menu. The
+/// project rules the host put ahead of the first message fold 4 pt above
+/// the bubble (`PreambleRow`). Under it, where a steer stands: one word in
+/// the detail type, red when it never arrived, morphing as it moves on;
+/// its time and how in the accessibility value. A bubble sent from here
+/// rises in once (TranscriptView's born rows).
 struct UserTurnRow: View {
     let turn: UserTurn
     let client: EnvironmentClient
     @State private var expanded = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let foldLines = 6
 
@@ -131,54 +133,74 @@ struct UserTurnRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            VStack(alignment: .leading, spacing: 10) {
-                if let stamp = turn.preamble { PreambleRow(stamp: stamp) }
-                if !turn.attachments.isEmpty {
-                    AttachmentWrap(attachments: turn.attachments, client: client)
-                }
-                if !turn.text.isEmpty {
-                    Text(turn.text)
-                        .transcriptType(TranscriptType.prose)
-                        .textSelection(.enabled)
-                        .lineLimit(folds && !expanded ? Self.foldLines : nil)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    if folds {
-                        Text(expanded ? "Show less" : "Show more")
-                            .transcriptType(TranscriptType.line, weight: .medium)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+        VStack(alignment: .trailing, spacing: TranscriptMetrics.Gap.line) {
+            if let stamp = turn.preamble {
+                PreambleRow(stamp: stamp)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(Surface.chrome, in: .fieldCorner)
-            .hairlineBorder(RoundedRectangle.fieldCorner)
-            .contentShape(.fieldCorner)
-            .onTapGesture {
-                guard folds else { return }
-                withAnimation(expanded ? Motion.collapse : Motion.expand) { expanded.toggle() }
-            }
-            .contextMenu {
-                if !turn.text.isEmpty {
-                    Button("Copy Message", systemImage: "doc.on.doc") { UIPasteboard.general.string = turn.text }
-                }
+            BubbleLayout {
+                bubble
             }
             if let stamp = turn.steer, let word = stamp.word {
-                // Where a steer stands, one quiet word under its field at the
-                // trailing edge; the time is the desktop's tooltip, here the
-                // accessibility value.
-                Text(word)
+                MorphWord(text: word)
                     .transcriptType(TranscriptType.detail)
                     .foregroundStyle(stamp.state == .failed ? AnyShapeStyle(Tint.destructive) : AnyShapeStyle(.secondary))
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .contentTransition(.opacity)
-                    .animation(reduceMotion ? nil : Motion.crossFade, value: word)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(word)
                     .accessibilityValue(stamp.detail() ?? "")
             }
         }
-        .padding(.top, 6)
+        .frame(maxWidth: .infinity, alignment: .trailing)
         .accessibilityElement(children: .contain)
+    }
+
+    private var bubble: some View {
+        VStack(alignment: .leading, spacing: TranscriptMetrics.Gap.block) {
+            if !turn.attachments.isEmpty {
+                AttachmentWrap(attachments: turn.attachments, client: client)
+            }
+            if !turn.text.isEmpty {
+                Text(turn.text)
+                    .transcriptType(TranscriptType.prose)
+                    .textSelection(.enabled)
+                    .lineLimit(folds && !expanded ? Self.foldLines : nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                if folds {
+                    Text(expanded ? "Show less" : "Show more")
+                        .transcriptType(TranscriptType.line, weight: .medium)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(TranscriptMetrics.bubblePadding)
+        .background(Surface.chrome, in: RoundedRectangle.corner(TranscriptMetrics.bubbleRadius))
+        .contentShape(RoundedRectangle.corner(TranscriptMetrics.bubbleRadius))
+        .onTapGesture {
+            guard folds else { return }
+            withAnimation(expanded ? Motion.collapse : Motion.expand) { expanded.toggle() }
+        }
+        .contextMenu {
+            if !turn.text.isEmpty {
+                Button("Copy Message", systemImage: "doc.on.doc") { UIPasteboard.general.string = turn.text }
+            }
+        }
+    }
+}
+
+/// The bubble's place in the column: as wide as its text wants, never past
+/// 85 % of the column (`UserTurnLayout.maxWidth`), at the trailing edge.
+private struct BubbleLayout: SwiftUI.Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let bubble = subviews.first else { return .zero }
+        let column = proposal.width ?? .infinity
+        let size = bubble.sizeThatFits(ProposedViewSize(width: UserTurnLayout.maxWidth(column: column), height: nil))
+        return CGSize(width: proposal.width ?? size.width, height: size.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let bubble = subviews.first else { return }
+        let size = bubble.sizeThatFits(ProposedViewSize(width: UserTurnLayout.maxWidth(column: bounds.width), height: nil))
+        let x = bounds.minX + UserTurnLayout.leadingInset(bubble: size.width, column: bounds.width)
+        bubble.place(at: CGPoint(x: x, y: bounds.minY), proposal: ProposedViewSize(width: size.width, height: size.height))
     }
 }
 
@@ -499,11 +521,7 @@ struct ApprovalCard: View {
     }
 
     private func heading(_ decided: Bool?) -> String {
-        switch decided {
-        case nil: "Approve"
-        case true?: "Approved"
-        case false?: approval.auto ? "Denied (timed out)" : "Denied"
-        }
+        CardDecision.heading(allowed: decided, auto: approval.auto)
     }
 
     private func symbol(_ decided: Bool?) -> String {
@@ -523,12 +541,14 @@ struct ApprovalCard: View {
     }
 }
 
-/// A question with its options as chips, the desktop's `QuestionCard`: the
-/// header small and dim, the question, the options as wash chips (the
-/// picked one near-black), an Other field when the question takes free
-/// text, then Answer sends the whole set. Once answered, the chosen chips
-/// stay on and the rest fall away. A key that cannot act sees the card
-/// read-only with one line saying why.
+/// A question, the desktop's `QuestionCard` in its proportions: the amber
+/// glyph beside the title (the question's header, else "Question") in 15
+/// medium, each prompt in the prose type, its options as 28 pt rows with
+/// their description line (the picked one on the fill step), an Other field
+/// when the question takes free text, then Answer sends the whole set. The
+/// key tiles are the desktop's keyboard and stay there. Once answered, the
+/// chosen rows stay and the rest fall away. A key that cannot act sees the
+/// card read-only with one line saying why.
 struct QuestionCard: View {
     let question: QuestionItem
     let client: EnvironmentClient
@@ -551,38 +571,49 @@ struct QuestionCard: View {
         let readOnly = resolved || block != nil
         let specs = question.request.questions
         ThreadCard(tinted: !resolved) {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: TranscriptMetrics.Gap.block) {
+                HStack(alignment: .firstTextBaseline, spacing: TranscriptMetrics.glyphGap) {
+                    Image(systemName: "questionmark.circle")
+                        .transcriptFont(TranscriptType.prose, weight: .medium)
+                        .foregroundStyle(resolved ? Color(.secondaryLabel) : Tint.warning)
+                        .accessibilityHidden(true)
+                    Text(specs.first?.header.flatMap { $0.isEmpty ? nil : $0 } ?? "Question")
+                        .transcriptType(TranscriptType.prose, weight: .medium)
+                        .foregroundStyle(resolved ? .secondary : .primary)
+                        .lineLimit(1)
+                }
                 ForEach(Array(specs.enumerated()), id: \.offset) { index, spec in
                     let chosen = Set(answers?[safe: index] ?? picks[index] ?? [])
-                    VStack(alignment: .leading, spacing: 8) {
-                        if let header = spec.header, !header.isEmpty {
-                            Text(header.uppercased())
-                                .font(.caption2.weight(.semibold))
-                                .tracking(0.6)
-                                .foregroundStyle(.tertiary)
+                    VStack(alignment: .leading, spacing: TranscriptMetrics.Gap.line) {
+                        if index > 0, let header = spec.header, !header.isEmpty {
+                            Text(header)
+                                .transcriptType(TranscriptType.line, weight: .medium)
+                                .foregroundStyle(.secondary)
                         }
                         Text(spec.question)
-                            .font(.subheadline.weight(resolved ? .regular : .medium))
+                            .transcriptType(TranscriptType.prose)
                             .foregroundStyle(resolved ? .secondary : .primary)
-                        FlowLayout(spacing: 6) {
+                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: TranscriptMetrics.wordGap) {
                             ForEach(Array(spec.options.enumerated()), id: \.offset) { _, option in
                                 let picked = chosen.contains(option.label)
                                 if !resolved || picked {
-                                    OptionChip(label: option.label, description: option.description, picked: picked, enabled: !readOnly) {
+                                    OptionRow(label: option.label, description: option.description, picked: picked, enabled: !readOnly) {
                                         pick(option.label, in: index, multi: spec.multiSelect == true)
                                     }
                                 }
                             }
                             if resolved, let free = answers?[safe: index]?.first(where: { label in !spec.options.contains { $0.label == label } }) {
-                                OptionChip(label: free, description: nil, picked: true, enabled: false) {}
+                                OptionRow(label: free, description: nil, picked: true, enabled: false) {}
                             }
                         }
+                        .padding(.top, TranscriptMetrics.Gap.line)
                         if spec.allowFreeform != false, !resolved {
                             TextField("Other", text: Binding(get: { typed[index] ?? "" }, set: { typed[index] = $0 }), axis: .vertical)
-                                .font(.subheadline)
+                                .transcriptType(TranscriptType.prose)
                                 .lineLimit(1...4)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
+                                .padding(.horizontal, TranscriptMetrics.glyphGap)
+                                .frame(minHeight: TranscriptMetrics.composerControl)
                                 .background(Surface.background, in: .rowCorner)
                                 .disabled(readOnly)
                         }
@@ -627,9 +658,10 @@ struct QuestionCard: View {
 
 }
 
-/// One option: the desktop's `CHIP` at rest, `CHIP_ON` when picked. The
-/// description, when the option has one, rides under the label.
-private struct OptionChip: View {
+/// One option, the desktop's option row: at least 28 pt, the label in the
+/// prose type and its description muted under it, on the fill step when
+/// picked; a full-width target.
+private struct OptionRow: View {
     let label: String
     let description: String?
     let picked: Bool
@@ -638,20 +670,20 @@ private struct OptionChip: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 0) {
                 Text(label)
-                    .font(.subheadline.weight(.medium))
+                    .transcriptType(TranscriptType.prose)
+                    .foregroundStyle(.primary)
                 if let description, !description.isEmpty {
                     Text(description)
-                        .font(.caption)
-                        .opacity(0.75)
+                        .transcriptType(TranscriptType.line)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .foregroundStyle(picked ? Surface.background : .primary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(minHeight: 32)
-            .background(picked ? Color.primary : TranscriptStyle.control, in: .rowCorner)
+            .padding(.horizontal, TranscriptMetrics.glyphGap)
+            .padding(.vertical, TranscriptMetrics.wordGap)
+            .frame(maxWidth: .infinity, minHeight: TranscriptMetrics.composerControl, alignment: .leading)
+            .background(picked ? Surface.fill : Color.clear, in: .rowCorner)
             .contentShape(.rowCorner)
         }
         .buttonStyle(.pressable)

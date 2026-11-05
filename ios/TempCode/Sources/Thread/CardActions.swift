@@ -20,8 +20,10 @@ struct ApprovalActions: View {
     let client: EnvironmentClient
     let sessionId: String
     @State private var busy: Bool? = nil
-    @State private var failure: String?
     @State private var decidedCount = 0
+
+    /// The line a refused decision left (kept on the thread, so the buttons coming back keep it too).
+    private var failure: String? { client.threads[sessionId]?.refusals[approval.request.requestId] }
 
     var body: some View {
         let block = client.approveBlock
@@ -58,19 +60,14 @@ struct ApprovalActions: View {
             .padding(.horizontal, 4)
     }
 
+    /// The decision shows on the tap and goes once (`EnvironmentClient.approve`); a refusal's line is the client's.
     private func decide(_ allow: Bool) {
         guard busy == nil else { return }
         busy = allow
-        failure = nil
         decidedCount += 1
         Task {
             defer { busy = nil }
-            do {
-                try await client.approve(sessionId, requestId: approval.request.requestId, allow: allow)
-            } catch {
-                let reason = (error as? ActionError)?.message ?? String(describing: error)
-                failure = "\(allow ? "Not allowed" : "Not denied"): \(reason)"
-            }
+            try? await client.approve(sessionId, requestId: approval.request.requestId, allow: allow)
         }
     }
 }

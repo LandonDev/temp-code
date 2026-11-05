@@ -81,7 +81,7 @@ private func expectClean(_ scenario: TranscriptScenario) {
     }
 
     @Test func `a steer, a compaction mid-turn and a Stop each change in place`() {
-        expectClean(TranscriptScenario("steer pause stop", awaits: [.morph], pushes: [
+        expectClean(TranscriptScenario("steer pause stop", pushes: [
             .init(atMs: 0, "send", .send("start")),
             .init(atMs: 20, "echo, a call", .rows([row(1, 20, user("start")), row(2, 40, tool("a", "Bash"))])),
             .init(atMs: 500, "the person steers", .send("also check the docs")),
@@ -92,6 +92,18 @@ private func expectClean(_ scenario: TranscriptScenario) {
             .init(atMs: 40_000, "compaction done", .rows([row(7, 40_000, .compaction(CompactionEvent(phase: .done, preTokens: 100_000, postTokens: 20_000)))])),
             .init(atMs: 41_000, "Stop", .rows([row(8, 41_000, .error(ErrorEvent(message: "stopped", stopped: true))), row(9, 41_010, complete)])),
         ]))
+    }
+
+    @Test func `a steer word that goes back or goes away is a jerk`() {
+        let report = ScenarioRunner.run(TranscriptScenario("steer back", pushes: [
+            .init(atMs: 0, "send", .send("start")),
+            .init(atMs: 20, "echo", .rows([row(1, 20, user("start")), row(2, 40, tool("a", "Bash"))])),
+            .init(atMs: 500, "the person steers", .send("and the docs")),
+            .init(atMs: 540, "echo", .rows([row(3, 540, user("and the docs", steerId: "s1"))])),
+            .init(atMs: 600, "received", .rows([row(4, 600, .steer(SteerEvent(steerId: "s1", state: .received)))])),
+            .init(atMs: 700, "sent again", .rows([row(5, 700, .steer(SteerEvent(steerId: "s1", state: .sent)))])),
+        ]))
+        #expect(report.violations.contains { $0.contains("went from received back to sent") })
     }
 
     @Test func `a subagent spawned, waited on and finished`() {
@@ -168,8 +180,8 @@ private func expectClean(_ scenario: TranscriptScenario) {
         #expect(ScenarioRunner.keyJerks(from: old, to: new, seen: seen, at: "t").count == 1)
     }
 
-    @Test func `the built checks: keys, the end row, the follow rule, the reveal, the fade and the drain`() {
-        #expect(TranscriptScenario.Check.built == [.keys, .endRow, .follow, .reveal, .fade, .drain])
+    @Test func `the built checks: keys, the end row, the follow rule, the reveal, the fade, the drain and the steer word's morph`() {
+        #expect(TranscriptScenario.Check.built == [.keys, .endRow, .follow, .reveal, .fade, .drain, .morph])
     }
 }
 

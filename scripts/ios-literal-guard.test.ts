@@ -44,7 +44,7 @@ const ALLOWED: Record<string, number> = {
   "Thread/SourcesView.swift": 2,
   "Thread/ThreadScreen.swift": 1,
   "Thread/ToolChip.swift": 2,
-  "Thread/TranscriptRows.swift": 6,
+  "Thread/TranscriptRows.swift": 5,
   "Thread/TranscriptView.swift": 3,
 };
 
