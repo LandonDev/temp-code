@@ -570,3 +570,67 @@ final class ActingRig {
         await rig.client.stop()
     }
 }
+
+@MainActor
+@Suite struct ComposerActionTests {
+    @Test func `Pause is session.pause and a queue is queue.add, both gated like every operate action`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let pausing = Task { try await rig.client.pause("s1") }
+        let pause = try #require(await rig.request(fake, "session.pause"))
+        #expect(pause.params == .object(["sessionId": .string("s1")]))
+        fake.answer(id: pause.id, result: "null")
+        try await pausing.value
+        let queueing = Task { try await rig.client.queue("s1", text: "after this one") }
+        let queue = try #require(await rig.request(fake, "queue.add"))
+        #expect(queue.params == .object(["sessionId": .string("s1"), "text": .string("after this one")]))
+        fake.answer(id: queue.id, result: #"{"kind":"queued","item":{"id":"q1","text":"after this one","ts":5}}"#)
+        let answer = try await queueing.value
+        if case .queued(let item) = answer { #expect(item.item.id == "q1") } else { Issue.record("not queued: \(answer)") }
+        #expect(rig.client.threads["s1"]?.pending.isEmpty == true, "a queued message is no pending turn")
+        await rig.client.stop()
+        let readOnly = try ActingRig(caps: [.read])
+        _ = try await readOnly.open()
+        await #expect(throws: ActionError.blocked(.readOnly)) { try await readOnly.client.pause("s1") }
+        await #expect(throws: ActionError.blocked(.readOnly)) { try await readOnly.client.queue("s1", text: "x") }
+        await readOnly.client.stop()
+    }
+
+    @Test func `a send into an idle thread stamps the click, the host's start keeps it, the settle clears it`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let sending = Task { try await rig.client.send("s1", text: "go") }
+        let request = try #require(await rig.request(fake, "session.send"))
+        let clicked = try #require(rig.client.threads["s1"]?.sentAt)
+        fake.answer(id: request.id, result: "null")
+        try await sending.value
+        fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [sampleSession("s1", updatedAt: 3, status: .running, busySince: clicked + 400)]))))
+        #expect(await rig.wait { rig.client.sessions.first?.status == .running })
+        #expect(rig.client.threads["s1"]?.sentAt == clicked, "the host's later busySince never moves the clock")
+        // A steer mid-turn is no new click.
+        let steering = Task { try await rig.client.send("s1", text: "and this") }
+        let steer = try #require(await rig.request(fake, "session.send", count: 2))
+        #expect(rig.client.threads["s1"]?.sentAt == clicked)
+        fake.answer(id: steer.id, result: "null")
+        try await steering.value
+        let echo = { (seq: Int, text: String) in EventRow(sessionId: "s1", seq: seq, ts: seq, event: .userText(UserTextEvent(text: text, attachments: nil, model: nil, reasoning: nil, context1m: nil, fast: nil, ultrafast: nil, newPass: nil))) }
+        rig.push(fake, rows: [echo(2, "go"), echo(3, "and this")])
+        #expect(await rig.wait { rig.client.threads["s1"]?.sending == false })
+        fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [sampleSession("s1", updatedAt: 4, status: .idle)]))))
+        #expect(await rig.wait { rig.client.sessions.first?.status == .idle })
+        #expect(rig.client.threads["s1"]?.sentAt == nil)
+        await rig.client.stop()
+    }
+
+    @Test func `a refused send takes its click back`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let sending = Task { try await rig.client.send("s1", text: "try") }
+        let request = try #require(await rig.request(fake, "session.send"))
+        #expect(rig.client.threads["s1"]?.sentAt != nil)
+        fake.refuse(id: request.id, error: "no")
+        await #expect(throws: ActionError.self) { try await sending.value }
+        #expect(rig.client.threads["s1"]?.sentAt == nil)
+        await rig.client.stop()
+    }
+}

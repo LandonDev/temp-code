@@ -369,6 +369,28 @@ enum TranscriptMetrics {
     static let hitArea = CGFloat(TranscriptLengths.hitArea)
 }
 
+/// The composer's box, the desktop's (`ComposerHeight` in the client
+/// package): one glass shape at the field radius, `+` and the button as
+/// 28 pt controls 6 pt from its sides and 8 pt from its top and bottom
+/// inside a 1 pt ring (counted on iOS 26 too, so the empty box is 46 pt
+/// on either side of the availability check), the field in the prose type
+/// 3 pt inside its line. The slot above it is 28 pt.
+enum ComposerMetrics {
+    static let radius = CGFloat(ComposerHeight.radius)
+    /// From the box's outer edge to a control: the gap and the ring.
+    static let side = CGFloat(ComposerHeight.side + ComposerHeight.ring)
+    static let edge = CGFloat(ComposerHeight.edge + ComposerHeight.ring)
+    static let fieldPad = CGFloat(ComposerHeight.fieldPad)
+    static let gap = CGFloat(ComposerHeight.gap)
+    static let control = TranscriptMetrics.composerControl
+    /// What a control's touch reaches beyond its 28 pt on each side, to 44.
+    static let hitOutset = (TranscriptMetrics.hitArea - TranscriptMetrics.composerControl) / 2
+    static let maxLines = ComposerHeight.maxLines
+    static let slot = TranscriptMetrics.slot
+    /// Between the slot and the box.
+    static let slotGap = TranscriptMetrics.Gap.line
+}
+
 extension TypeSpec.Style {
     var textStyle: Font.TextStyle {
         switch self {

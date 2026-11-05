@@ -336,6 +336,10 @@ struct ThreadScreen: View {
             try? await client.send(sessionId, text: argument)
         case "stop":
             try? await client.stop(sessionId)
+        case "pause":
+            try? await client.pause(sessionId)
+        case "queue":
+            _ = try? await client.queue(sessionId, text: argument)
         case "start-now":
             try? await client.start(sessionId)
         case "resume":
@@ -441,7 +445,7 @@ struct ThreadScreen: View {
                     .frame(width: columns.hero + columns.gap, height: 1)
                     .allowsHitTesting(false)
             }
-            BottomDock(client: client, sessionId: sessionId, session: session, thread: thread, focused: $composerFocused, draft: draftSeed)
+            BottomDock(client: client, sessionId: sessionId, session: session, thread: thread, focused: $composerFocused, regularWidth: regularWidth, draft: draftSeed)
                 .frame(maxWidth: mode == .single ? ReadingMeasure.dockWidth(width: width) : .infinity)
                 #if DEBUG
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { TestHooks.recordDock(height: $0, focused: TestHooks.open == "composer") }

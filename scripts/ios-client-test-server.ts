@@ -1292,6 +1292,11 @@ stub('send', async (sessionId, text, opts) => {
   registry.append(sessionId, { type: 'user-text', text, model: opts?.model, reasoning: opts?.reasoning, newPass: opts?.newPass })
   registry.append(sessionId, { type: 'status', status: 'running' })
 })
+// The composer's long press (and a paused thread's tap): the message waits for the next turn.
+stub('queueAdd', (sessionId, text) => {
+  record('queue', sessionId, { text })
+  return { kind: 'queued', item: { id: `q${actions.length}`, text, ts: Date.now() } }
+})
 stub('stopRun', async (sessionId) => {
   record('stop', sessionId)
   registry.append(sessionId, { type: 'error', message: 'Stopped', stopped: true })

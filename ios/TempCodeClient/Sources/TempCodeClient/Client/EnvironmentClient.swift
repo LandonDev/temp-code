@@ -29,6 +29,11 @@ public struct ThreadState: Sendable, Hashable {
     public var nextPendingKey = -100_000
     /// A send is on its way: from the call until the host starts the turn or echoes the text.
     public var sending = false
+    /// When the person's click opened the turn the slot is timing (the
+    /// desktop's `sentAt`): stamped by a send into a thread with no turn
+    /// open, kept after the host's `busySince` lands so the timer never
+    /// steps back by the round trip, cleared once the turn settles.
+    public var sentAt: Int?
     /// Approval decisions this device gave that the host has not confirmed yet, by request id.
     public var decisions: [String: Bool] = [:]
     /// Question answers this device gave that the host has not confirmed yet, by request id.
@@ -838,6 +843,8 @@ public final class EnvironmentClient {
             byId[meta.id] = meta
             // The host started the turn: the strip moves from Sending… to the spinner.
             if meta.status == .starting || meta.status == .running { threads[meta.id]?.sending = false }
+            // The turn settled (or paused, or never started): the click's clock goes with it.
+            if !ComposerSlot.turnOpen(meta.status), threads[meta.id]?.sending == false { threads[meta.id]?.sentAt = nil }
         }
         let sorted = byId.values.sorted { ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id) }
         // A list that did not change in order or membership is not republished:

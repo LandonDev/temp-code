@@ -2,116 +2,105 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// The chat bar's status line, above the capsule only while there is
-/// something to say (BottomDock decides). It sits on the capsule's text
-/// edge, one footnote line at 32 pt that scales with the text size, its
-/// actions as small glass buttons at the trailing edge. Five states
-/// (WorkingPhase): Sending… bridging a send to the turn's start; the
-/// spinner, a flavour word turning every seven seconds and the elapsed in
-/// tabular digits; Paused in the warning tint with the frozen elapsed (on a
-/// master, how many batch threads paused with it), Stop and Continue; Stopped
-/// when the harness is gone, with Resume; Queued with the host's reason and
-/// Start now. While idle, a locked relayed host's one line. The words are
-/// the client package's `StripWords`: a title, then a quieter detail as its
-/// own text, never joined with a dot. Only opacity animates between states.
+/// The slot above the composer, the desktop's (surfaces/threads/
+/// WorkingStrip.tsx over `composerSlotOf`): while a turn works or waits,
+/// the turn's elapsed time counted from the click (`ThreadState.sentAt`,
+/// never stepped back by the host's `busySince`) and Stop, which says
+/// Stopping… while its interrupt is out; Paused in the warning tint with
+/// its frozen time (on a master, how many batch threads paused with it),
+/// Stop and Continue; Stopped when the harness is gone, with Resume;
+/// Queued with the host's reason and Start now. Nothing else: what the
+/// thread does is the transcript's working line. While empty, a locked
+/// relayed host's one line. One 28 pt row in the detail type on the
+/// transcript's column edges, its actions small glass capsules at the
+/// trailing edge. Between states and as it empties only opacity moves, over
+/// `fast` (at once under reduced motion); the outgoing row stays inert
+/// while it fades. BottomDock decides whether the slot takes room.
 struct WorkingStripView: View {
     let client: EnvironmentClient
     let sessionId: String
     let session: SessionMeta?
     let thread: ThreadState
-    /// The strip action out on the wire, so only its control says so.
+    let slot: ComposerSlot
+    /// The slot action out on the wire, so only its control says so.
     @State private var acting: Acting?
-    @ScaledMetric(relativeTo: .footnote) private var height: CGFloat = 32
-
-    /// High frequency, so opacity alone and under 150 ms.
-    static let fade: Animation = .easeOut(duration: 0.12)
-
-    private var phase: WorkingPhase { WorkingPhase(status: session?.status, sending: thread.sending) }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Acting {
         case stop, resume, start
     }
 
-    /// How many of a paused master's batch threads are paused with it (the
-    /// desktop's `pausedText` rule); 0 for anything but a master.
-    static func batchPaused(of id: String, in sessions: [SessionMeta]) -> Int {
-        WorkingPhase.batchPaused(of: id, in: sessions)
+    private var fade: AnyTransition {
+        reduceMotion ? .identity : .opacity.animation(Motion.fast)
     }
 
     var body: some View {
-        let phase = phase
         ZStack {
-            switch phase {
-            case .idle:
+            switch slot {
+            case .empty:
                 // Thread 29: a locked relayed host's one line.
                 RelayStripLine(client: client)
-                    .padding(.horizontal, ComposerBar.textInset - 4)
-            case .sending:
-                line {
-                    ProgressView()
-                        .controlSize(.mini)
-                    Text("Sending…")
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                }
-            case .working:
-                line {
-                    ProgressView()
-                        .controlSize(.mini)
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        let elapsed = TimeFormat.elapsed(since: session?.busySince ?? session?.updatedAt ?? 0, now: context.date)
-                        HStack(spacing: 8) {
-                            SwapText(Self.flavour(seed: sessionId, now: context.date.timeIntervalSince1970), step: .meta)
-                            Text(elapsed)
-                                .font(.footnote)
-                                .foregroundStyle(.tertiary)
-                                .numeric(elapsed)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
+                    .transition(fade)
+            case .timer:
+                timerRow
+                    .transition(fade)
             case .paused:
                 pausedRow
+                    .transition(fade)
             case .stopped:
                 stoppedRow
+                    .transition(fade)
             case .queued:
                 queuedRow
+                    .transition(fade)
             }
         }
-        .frame(minHeight: height)
+        .frame(height: ComposerMetrics.slot)
         .frame(maxWidth: .infinity)
-        .animation(Self.fade, value: phase)
+        .animation(reduceMotion ? nil : Motion.fast, value: slot)
         .accessibilityElement(children: .contain)
     }
 
-    /// A line on the capsule's text edge.
-    private func line<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        HStack(spacing: 8, content: content)
-            .font(.footnote)
-            .padding(.horizontal, ComposerBar.textInset)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .transition(.opacity)
+    /// The open turn's time from the click, then Stop.
+    private var timerRow: some View {
+        row {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let now = Int(context.date.timeIntervalSince1970 * 1000)
+                if let ms = ComposerSlot.elapsedMs(.timer, sentAt: thread.sentAt, busySince: session?.busySince, frozen: nil, now: now) {
+                    let shown = TimeFormat.duration(ms: ms)
+                    Text(shown)
+                        .transcriptType(TranscriptType.detail)
+                        .foregroundStyle(.secondary)
+                        .numeric(shown)
+                        .accessibilityLabel("Working for \(shown)")
+                }
+            }
+        } actions: {
+            StripButton(acting == .stop ? ComposerSlot.stopping : "Stop", systemImage: "stop.fill") {
+                run(.stop) { try await client.stop(sessionId) }
+            }
+        }
     }
 
-    /// The words of a state: its glyph, the title at medium weight, an
+    /// The words of a held state: its glyph, the title at medium weight, an
     /// optional stamp in tertiary tabular digits, the detail in secondary.
     private func words(_ words: StripWords, symbol: String, tint: Color, stamp: String? = nil) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: TranscriptMetrics.wordGap) {
             Image(systemName: symbol)
-                .font(.caption.weight(.medium))
+                .transcriptFont(TranscriptType.detail, weight: .medium)
                 .foregroundStyle(tint)
                 .accessibilityHidden(true)
             Text(words.title)
-                .font(.footnote.weight(.medium))
+                .transcriptType(TranscriptType.detail, weight: .medium)
             if let stamp {
                 Text(stamp)
-                    .font(.footnote)
+                    .transcriptType(TranscriptType.detail)
                     .monospacedDigit()
                     .foregroundStyle(.tertiary)
             }
             if let detail = words.detail {
                 Text(detail)
-                    .font(.footnote)
+                    .transcriptType(TranscriptType.detail)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -120,12 +109,16 @@ struct WorkingStripView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Paused: the glyph in the warning tint, the frozen elapsed, the batch
+    private var frozen: String? {
+        ComposerSlot.elapsedMs(slot, sentAt: nil, busySince: nil, frozen: session?.frozenActiveElapsed, now: 0).map { TimeFormat.duration(ms: $0) }
+    }
+
+    /// Paused: the glyph in the warning tint, the frozen time, the batch
     /// on a master, then Stop and Continue.
     private var pausedRow: some View {
-        let batch = session?.isMaster == true ? Self.batchPaused(of: sessionId, in: client.sessions) : 0
+        let batch = session?.isMaster == true ? ComposerSlot.batchPaused(of: sessionId, in: client.sessions) : 0
         return row {
-            words(.paused(batch: batch), symbol: "pause.fill", tint: Tint.warning, stamp: TimeFormat.duration(ms: max(0, session?.frozenActiveElapsed ?? 0)))
+            words(.paused(batch: batch), symbol: "pause.fill", tint: Tint.warning, stamp: frozen)
         } actions: {
             StripButton("Stop", systemImage: "stop.fill") {
                 run(.stop) { try await client.stop(sessionId) }
@@ -139,9 +132,8 @@ struct WorkingStripView: View {
     /// Stopped: the harness is gone and Resume brings it back on the same
     /// transcript (the host's one resume path for a dead harness).
     private var stoppedRow: some View {
-        let frozen = session?.frozenActiveElapsed ?? 0
-        return row {
-            words(.stopped, symbol: "stop.fill", tint: Color.secondary, stamp: frozen > 0 ? TimeFormat.duration(ms: frozen) : nil)
+        row {
+            words(.stopped, symbol: "stop.fill", tint: Color.secondary, stamp: frozen)
         } actions: {
             StripButton(acting == .resume ? "Resuming…" : "Resume", systemImage: "arrow.clockwise", tint: Color.accentColor) {
                 run(.resume) { try await client.resume(sessionId) }
@@ -161,18 +153,16 @@ struct WorkingStripView: View {
         }
     }
 
-    /// The words on the text edge, the actions at the trailing edge; the
-    /// whole row dims and stops answering while the key cannot act.
+    /// The words on the column's leading edge, the actions at its trailing
+    /// edge; the whole row dims and stops answering while the key cannot act.
     private func row<Words: View, Actions: View>(@ViewBuilder _ words: () -> Words, @ViewBuilder actions: () -> Actions) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: TranscriptMetrics.glyphGap) {
             words()
             Spacer(minLength: 0)
             actions()
         }
-        .padding(.leading, ComposerBar.textInset)
         .disabled(acting != nil || client.operateBlock != nil)
-        .opacity(client.operateBlock == nil ? 1 : 0.6)
-        .transition(.opacity)
+        .opacity(client.operateBlock == nil ? 1 : Motion.pressDim)
     }
 
     /// A refused action re-enables the control and is otherwise silent: the
@@ -185,9 +175,6 @@ struct WorkingStripView: View {
             try? await body()
         }
     }
-
-    /// The word for this second (Flavour.word, shared with the Live Activity).
-    static func flavour(seed id: String, now: TimeInterval) -> String { Flavour.word(seed: id, now: now) }
 }
 
 /// A small glass button in the status line: a glyph and a word on the
@@ -209,7 +196,7 @@ private struct StripButton: View {
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.footnote.weight(.semibold))
+                .transcriptFont(TranscriptType.detail, weight: .semibold)
                 .labelStyle(StripLabelStyle())
         }
         .tcGlassButton(prominent: tint != nil)

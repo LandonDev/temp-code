@@ -3,42 +3,55 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// The bottom of every thread screen: the chat bar, floating over the
-/// transcript the way Messages' does on iOS 26 (the content scrolls under
-/// it behind the scroll edge effect; ThreadScreen hangs it with
-/// `.tcBottomBar`). At rest it is the glass capsule and the attach circle
-/// and nothing else; a status line rises above them only while there is
-/// something to say (sending, working, paused, stopped, queued, a locked
-/// relayed host), and the photos of the next turn and a picked model sit
-/// above the capsule while there are any. The soft edge under the bar
-/// (`BottomEdgeFade`) is the dock's own background, so in two-pane it spans
-/// the chat column the dock sits under and nothing else. The screen owns
-/// the composer's focus (`focused`) for the segment bar rule, and `draft`
-/// is the proof's `draft:` text, typed into the field once.
+/// The bottom of every thread screen: the slot above the composer and the
+/// composer's box, floating over the transcript (the content scrolls under
+/// them behind the scroll edge effect; ThreadScreen hangs them with
+/// `.tcBottomBar`). Both share the transcript's column and edges. The slot
+/// (`ComposerSlot`) keeps its 28 pt at regular width whatever it holds; at
+/// compact width it rises in on the layout spring when it has something and
+/// leaves on a fade, the box gliding down after it. The photos of the next
+/// turn and a picked model sit above the box while there are any. The soft
+/// edge under the bar (`BottomEdgeFade`) is the dock's own background, so in
+/// two-pane it spans the chat column the dock sits under and nothing else.
+/// The screen owns the composer's focus (`focused`) for the segment bar
+/// rule, and `draft` is the proof's `draft:` text, typed into the field once.
 struct BottomDock: View {
     let client: EnvironmentClient
     let sessionId: String
     let session: SessionMeta?
     let thread: ThreadState
     let focused: FocusState<Bool>.Binding
+    /// The screen's width class: regular keeps the slot's room reserved.
+    var regularWidth = false
     var draft: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var phase: WorkingPhase { WorkingPhase(status: session?.status, sending: thread.sending) }
+    private var slot: ComposerSlot { ComposerSlot(status: session?.status, sending: thread.sending) }
 
-    /// A relayed host that is locked or asleep says so on the status line while idle.
+    /// A relayed host that is locked or asleep says so in the slot while it is empty.
     private var relayLine: Bool {
         guard client.environment.isRelayed, let presence = client.presence else { return false }
         return RelayWords.stripLine(presence, lockedSince: client.stateSince, now: Date()) != nil
     }
 
-    private var statusShown: Bool { phase != .idle || relayLine }
+    private var occupies: Bool { ComposerSlot.occupies(slot, regularWidth: regularWidth, relayLine: relayLine) }
+
+    /// Rising in on the layout spring (a fade under reduced motion); leaving
+    /// inert on a fade over `fast`, at once under reduced motion.
+    private var slotTransition: AnyTransition {
+        reduceMotion
+            ? .asymmetric(insertion: .opacity.animation(Motion.fast), removal: .identity)
+            : .asymmetric(
+                insertion: .opacity.combined(with: .offset(y: Motion.travel)).animation(Motion.layout),
+                removal: .opacity.animation(Motion.fast)
+            )
+    }
 
     var body: some View {
-        VStack(spacing: 6) {
-            if statusShown {
-                WorkingStripView(client: client, sessionId: sessionId, session: session, thread: thread)
-                    .transition(Motion.appear(reduced: reduceMotion))
+        VStack(spacing: ComposerMetrics.slotGap) {
+            if occupies {
+                WorkingStripView(client: client, sessionId: sessionId, session: session, thread: thread, slot: slot)
+                    .transition(slotTransition)
             }
             ComposerBar(client: client, sessionId: sessionId, session: session, thread: thread, focused: focused, draft: draft)
         }
@@ -46,25 +59,29 @@ struct BottomDock: View {
         .padding(.top, 6)
         .padding(.bottom, 6)
         .background(alignment: .top) { BottomEdgeFade() }
-        .animation(reduceMotion ? Motion.crossFade : Motion.expand, value: statusShown)
+        .animation(reduceMotion ? (occupies ? Motion.fast : nil) : (occupies ? Motion.layout : Motion.fast), value: occupies)
     }
 }
 
-/// The composer, the way Messages draws it on iOS 26: one glass capsule
-/// holding the field, and one glass circle beside it. The field grows with
-/// the text to five lines and scrolls past that; the capsule keeps its
-/// round ends as it grows (its corner is half its one-line height). The
-/// send button lives inside the capsule at the trailing edge and shows only
-/// once there is text; while a turn runs and the box is empty it is Stop,
-/// and the glyphs trade places with the kit's icon swap. A master mid-turn
-/// with text sends, and the host steers the live turn with it. The circle
-/// is a menu: Photos, then the model and the reasoning the next turn runs
-/// with (the host's catalog, the same one the desktop's picker shows); a
-/// pick that differs from the thread's shows as one line above the capsule
-/// until it goes out with the turn. Photos go up to the host as they are
-/// picked (ComposerAttachments.swift). While the host is degraded or the
-/// key cannot act, the field carries the reason in place of its placeholder,
-/// the circle leaves and nothing sends. A light tap on send, never on typing.
+/// The composer, the desktop's box drawn as one Liquid Glass shape at the
+/// field radius (`ComposerMetrics`): `+` at the left (a menu: Photos, then
+/// the model and the reasoning the next turn runs with, until the row under
+/// the box takes those), the field in the prose type, and the one button at
+/// the right, on the bottom line as the text grows. The field grows upward
+/// 22 pt a line to six lines and scrolls past that; a keystroke snaps the
+/// height and a paste of more than one line eases it over `base`
+/// (`ComposerHeight`). The button is the desktop's `SendButton`
+/// (`ComposerRules`): Send; the steer glyph mid-turn with text; Pause
+/// mid-turn with the box empty; a paused thread's text queues. A long press
+/// mid-turn with text offers "Queue for the next turn" (`queue.add`) and
+/// shows the queue glyph until release; the glyphs trade on the icon swap.
+/// Stop lives in the slot above. A pick of model that differs from the
+/// thread's shows as one line above the box until it goes out with the
+/// turn. Photos go up to the host as they are picked
+/// (ComposerAttachments.swift). While the host is degraded or the key
+/// cannot act, the field carries the reason in place of its placeholder,
+/// `+` and the button leave and nothing sends. A light tap on send and on a
+/// queue, a selection tick when the hold turns into a queue, never on typing.
 struct ComposerBar: View {
     let client: EnvironmentClient
     let sessionId: String
@@ -76,8 +93,12 @@ struct ComposerBar: View {
     var draft: String?
     @State private var text = ""
     @State private var busy = false
-    /// The host's refusal, shown above the capsule until the next edit.
+    /// The host's refusal, shown above the box until the next edit.
     @State private var failure: String?
+    /// A message that went to the host's queue, said once above the box until the next edit or the turn's end.
+    @State private var queuedNote = false
+    /// The long press holds: the button shows the queue glyph until release.
+    @State private var holding = false
     /// The block after its grace: a short drop never flashes the field.
     @State private var block: ActionBlock?
     @State private var sentCount = 0
@@ -89,54 +110,67 @@ struct ComposerBar: View {
     @State private var picking = false
     @State private var picked: [PhotosPickerItem] = []
     @State private var photoCount = 0
-    @Namespace private var glass
     @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The capsule at one line of body text, and the send circle inside it;
-    /// both follow the text size, so the 5 pt between them holds.
-    @ScaledMetric(relativeTo: .body) private var fieldHeight: CGFloat = 40
-    @ScaledMetric(relativeTo: .body) private var buttonSize: CGFloat = 30
 
     /// A drop that comes back inside this never shows (the desktop's grace).
     static let blockGraceMs = 1_500
-    /// From the screen edge to the capsule, and from the capsule's edge to its text.
-    static let edge: CGFloat = 12
-    static let textInset: CGFloat = 16
+    /// From the screen edge to the box: the transcript's text edge, so both share one column.
+    static let edge = ReadingMeasure.edge
     /// Photos per turn.
     static let maxPhotos = 4
-
-    /// The host says a turn runs, or this device just sent one. A watching
-    /// master is not running: its button is Send.
-    private var running: Bool { ComposerRules.running(status: session?.status, sending: thread.sending) }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var hasText: Bool { !trimmed.isEmpty }
 
-    /// What the button does: Stop while a turn runs and the box is empty, Send otherwise.
-    private var stops: Bool { ComposerRules.stops(running: running, hasText: hasText) }
+    /// A turn is open (a watching master's is not): the button pauses or steers.
+    private var turnOpen: Bool { ComposerRules.busy(status: session?.status, sending: thread.sending) }
 
-    /// Every photo is on the host; one still going up or failed holds the send (never Stop).
+    /// What the button does now.
+    private var intent: ComposerIntent {
+        ComposerRules.intent(status: session?.status, sending: thread.sending, hasText: hasText, holding: holding)
+    }
+
+    private var offersQueue: Bool { ComposerRules.offersQueue(status: session?.status, sending: thread.sending, hasText: hasText) }
+
+    /// Every photo is on the host; one still going up or failed holds the send (never Pause).
     private var photosSettled: Bool { uploads.allSatisfy { $0.committed != nil } }
 
-    private var enabled: Bool { block == nil && !busy && (stops || (hasText && photosSettled)) }
-
-    /// The send circle: there is text to send, or a turn to stop.
-    private var actionShown: Bool { block == nil && (stops || hasText) }
+    private var enabled: Bool { block == nil && ComposerRules.enabled(intent, hasText: hasText, photosSettled: photosSettled, inFlight: busy) }
 
     /// A model or a level the person picked that differs from the thread's
-    /// own: the line above the capsule names it until it goes out.
+    /// own: the line above the box names it until it goes out.
     private var pickShown: Bool {
         guard block == nil, choice.picked, let session else { return false }
         return choice.key.provider != session.provider || choice.key.model != session.model || choice.reasoning != session.reasoning
     }
 
-    /// The photo button: the key operates and the host is reachable.
+    /// `+`: the key operates and the host is reachable.
     private var canAttach: Bool { block == nil && client.environment.allows(.operate) }
+
+    /// The text as the field writes it: a paste of more than one line eases the height, a keystroke snaps it.
+    private var field: Binding<String> {
+        Binding {
+            text
+        } set: { new in
+            if ComposerHeight.eases(from: text, to: new), !reduceMotion {
+                withAnimation(Motion.base) { text = new }
+            } else {
+                Motion.withoutAnimation { text = new }
+            }
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let failure {
                 QuietLine(symbol: "exclamationmark.circle", text: failure, tint: Tint.destructive)
+                    .transition(.opacity)
+            } else if holding {
+                QuietLine(symbol: ComposerButton.symbol(.queue), text: ComposerIntent.queue.label)
+                    .transition(.opacity)
+            } else if queuedNote {
+                QuietLine(symbol: ComposerButton.symbol(.queue), text: "Queued for the next turn")
                     .transition(.opacity)
             }
             if pickShown {
@@ -148,30 +182,29 @@ struct ComposerBar: View {
                     .transition(Motion.appear(reduced: reduceMotion))
             }
             TCGlassContainer {
-                HStack(alignment: .bottom, spacing: GlassMetrics.mergeSpacing) {
-                    if canAttach {
-                        attachMenu
-                            .tcGlassID("attach", in: glass)
-                            .transition(.opacity)
-                    }
-                    capsule
-                        .tcGlassID("field", in: glass)
-                }
+                box
             }
         }
         .animation(reduceMotion ? nil : Motion.collapse, value: pickShown)
         .animation(reduceMotion ? nil : Motion.collapse, value: uploads.isEmpty)
         .animation(Motion.crossFade, value: failure)
+        .animation(Motion.crossFade, value: holding)
+        .animation(Motion.crossFade, value: queuedNote)
         .animation(Motion.crossFade, value: canAttach)
         .sensoryFeedback(.impact(weight: .light), trigger: sentCount)
+        .sensoryFeedback(.selection, trigger: holding) { _, now in now }
         .photosPicker(isPresented: $picking, selection: $picked, maxSelectionCount: max(1, Self.maxPhotos - uploads.count), matching: .images)
         .onChange(of: picked) { _, items in
             guard !items.isEmpty else { return }
             add(items)
             picked = []
         }
+        // The note says what happened to the last message; the turn ending says the rest.
+        .onChange(of: turnOpen) { _, open in if !open { queuedNote = false } }
+        // A hold whose text went (or whose turn ended) is no hold.
+        .onChange(of: offersQueue) { _, offers in if !offers { holding = false } }
         .task(id: client.operateBlock) { await settleBlock() }
-        // The circle's menu offers the catalog: load it once the key may act.
+        // `+` offers the catalog: load it once the key may act.
         .task(id: canAttach) { if canAttach { await choice.load(client) } }
         #if DEBUG
         .task {
@@ -193,10 +226,44 @@ struct ComposerBar: View {
         }
     }
 
-    /// The glass circle beside the capsule: Photos, then the model and the
-    /// reasoning of the next turn, each a submenu with the current value
-    /// as its subtitle. The circle is the capsule's height, so the two sit
-    /// on one line and merge into one surface as they meet.
+    /// The box: one glass shape, `+`, the field and the button on one row
+    /// whose controls stay on the bottom line as the field grows.
+    private var box: some View {
+        HStack(alignment: .bottom, spacing: ComposerMetrics.gap) {
+            if canAttach {
+                attachMenu
+                    .transition(.opacity)
+            }
+            TextField(placeholder, text: field, axis: .vertical)
+                .transcriptType(TranscriptType.prose)
+                .lineLimit(1...ComposerMetrics.maxLines)
+                .focused(focused)
+                .disabled(block != nil)
+                .padding(.vertical, ComposerMetrics.fieldPad)
+                .padding(.leading, canAttach ? 0 : ComposerMetrics.gap)
+                .frame(minHeight: ComposerMetrics.control)
+                .onChange(of: text) {
+                    failure = nil
+                    queuedNote = false
+                }
+                .accessibilityLabel(block == nil ? "Message" : block!.text(now: Date().timeIntervalSince1970 * 1000))
+            if block == nil {
+                ComposerButton(intent: intent, enabled: enabled, offersQueue: offersQueue, holding: $holding, reduced: reduceMotion, onTap: act, onQueue: queue)
+                    .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, ComposerMetrics.side)
+        .padding(.vertical, ComposerMetrics.edge)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .tcGlass(in: RoundedRectangle.corner(ComposerMetrics.radius))
+        .contentShape(RoundedRectangle.corner(ComposerMetrics.radius))
+        .onTapGesture { if block == nil { focused.wrappedValue = true } }
+    }
+
+    /// `+`: Photos, then the model and the reasoning of the next turn, each
+    /// a submenu with the current value as its subtitle (until A11's row
+    /// under the box takes those). A bare 28 pt glyph inside the box's glass
+    /// (never glass on glass), its touch reaching 44 pt.
     private var attachMenu: some View {
         Menu {
             Button {
@@ -231,9 +298,10 @@ struct ComposerBar: View {
             Image(systemName: "plus")
                 .font(.body.weight(.medium))
                 .foregroundStyle(Color.primary)
-                .frame(width: fieldHeight, height: fieldHeight)
-                .tcGlass(in: Circle(), interactive: true)
-                .contentShape(Circle())
+                .frame(width: ComposerMetrics.control, height: ComposerMetrics.control)
+                .padding(ComposerMetrics.hitOutset)
+                .contentShape(Rectangle())
+                .padding(-ComposerMetrics.hitOutset)
         }
         .menuOrder(.fixed)
         .accessibilityLabel("Add")
@@ -266,43 +334,14 @@ struct ComposerBar: View {
                     .font(.body)
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.secondary)
-                    .frame(width: 44, height: 28)
+                    .frame(width: TranscriptMetrics.hitArea, height: TranscriptMetrics.composerControl)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.pressable)
             .accessibilityLabel("Use the thread's model")
         }
-        .padding(.leading, Self.textInset)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Next turn runs on \(choice.modelLabel)")
-    }
-
-    /// The glass capsule: the field, and the send circle inside it on the
-    /// last line while the text grows.
-    private var capsule: some View {
-        HStack(alignment: .bottom, spacing: 0) {
-            TextField(placeholder, text: $text, axis: .vertical)
-                .font(.body)
-                .lineLimit(1...5)
-                .focused(focused)
-                .disabled(block != nil)
-                .padding(.leading, Self.textInset)
-                .padding(.trailing, actionShown ? 0 : Self.textInset)
-                .padding(.vertical, 8)
-                .frame(minHeight: fieldHeight)
-                .onChange(of: text) { failure = nil }
-                .accessibilityLabel(block == nil ? "Message" : block!.text(now: Date().timeIntervalSince1970 * 1000))
-            if actionShown {
-                ActionSwap(stops: stops, enabled: enabled, size: buttonSize, frame: fieldHeight, reduced: reduceMotion) {
-                    if stops { stop() } else { send() }
-                }
-                .transition(Motion.iconSwap(reduced: reduceMotion))
-            }
-        }
-        .animation(Motion.iconSwap, value: actionShown)
-        .tcGlass(in: RoundedRectangle.corner(Radius.capsuleEnds(fieldHeight)))
-        .contentShape(RoundedRectangle.corner(Radius.capsuleEnds(fieldHeight)))
-        .onTapGesture { if block == nil { focused.wrappedValue = true } }
     }
 
     private var placeholder: String {
@@ -352,9 +391,38 @@ struct ComposerBar: View {
         upload.start(client, sessionId: sessionId)
     }
 
-    // MARK: send and stop
+    // MARK: send, steer, queue and pause
 
+    /// The button's tap: what its glyph says.
+    private func act() {
+        switch intent {
+        case .send, .steer: send()
+        case .queue: queue()
+        case .pause: pause()
+        }
+    }
+
+    /// A turn, or a steer into the live one (the host decides by the turn).
     private func send() {
+        submit { body, settings, attachments in
+            try await client.send(sessionId, text: body, model: settings, attachments: attachments)
+            // The person started this turn: it goes on the lock screen.
+            if let session, session.parentId == nil { app.activities.sent(client, session, registry: app.registry) }
+        }
+    }
+
+    /// For the next turn: the host's queue, the desktop's ⌘-click.
+    private func queue() {
+        submit { body, settings, attachments in
+            if case .queued = try await client.queue(sessionId, text: body, model: settings, attachments: attachments) {
+                queuedNote = true
+            }
+        }
+    }
+
+    /// The text, the pick and the photos go out together; a refusal gives
+    /// all three back (photos picked meanwhile stay).
+    private func submit(_ deliver: @escaping (String, TurnModel?, [Attachment]) async throws -> Void) {
         let body = trimmed
         guard !body.isEmpty, !busy, photosSettled else { return }
         busy = true
@@ -369,13 +437,10 @@ struct ComposerBar: View {
         Task {
             defer { busy = false }
             do {
-                try await client.send(sessionId, text: body, model: settings, attachments: attachments)
+                try await deliver(body, settings, attachments)
                 // The pick went with the turn; the chips follow the thread's model again once its push lands.
                 choice.release()
-                // The person started this turn: it goes on the lock screen.
-                if let session, session.parentId == nil { app.activities.sent(client, session, registry: app.registry) }
             } catch {
-                // The text and the photos come back so nothing is lost (photos picked meanwhile stay).
                 text = body
                 uploads = photos + uploads
                 failure = (error as? ActionError)?.message ?? String(describing: error)
@@ -383,13 +448,13 @@ struct ComposerBar: View {
         }
     }
 
-    private func stop() {
+    private func pause() {
         guard !busy else { return }
         busy = true
         Task {
             defer { busy = false }
             do {
-                try await client.stop(sessionId)
+                try await client.pause(sessionId)
             } catch {
                 failure = (error as? ActionError)?.message ?? String(describing: error)
             }
@@ -397,41 +462,106 @@ struct ComposerBar: View {
     }
 }
 
-/// The capsule's one button: the accent circle with the arrow while there
-/// is text, the label-colored circle with the stop square while a turn runs
-/// and the box is empty. The glyphs trade places with the kit's icon swap
-/// inside the same frame, so the swap moves nothing around it. A send held
-/// back (a photo still going up) dims. The button's square is the capsule's
-/// whole end, so the hit area is the end and the circle is concentric in it.
-private struct ActionSwap: View {
-    let stops: Bool
+/// The box's one button, the desktop's `SendButton`: a 28 pt circle on
+/// prominent glass (the accent; the label color for Pause), the glyph what
+/// a tap does, trading on the icon swap in the same frame so nothing moves
+/// around it. Off, it is plain glass with a quiet glyph. Mid-turn with
+/// text a press held past the system's long press turns the steer into a
+/// queue: the queue glyph shows until release, and release queues; a
+/// finger that slides away lets go of both. Its touch reaches 44 pt.
+struct ComposerButton: View {
+    let intent: ComposerIntent
     let enabled: Bool
-    let size: CGFloat
-    /// The square the button takes: the capsule's one-line height, so the circle sits concentric in its end.
-    let frame: CGFloat
+    let offersQueue: Bool
+    @Binding var holding: Bool
     let reduced: Bool
-    let action: () -> Void
+    let onTap: () -> Void
+    let onQueue: () -> Void
+    @State private var pressed = false
+    @State private var inside = true
+    @State private var hold: Task<Void, Never>?
+
+    /// The glyph for an intent: the desktop's arrow, corner, list-plus and pause.
+    static func symbol(_ intent: ComposerIntent) -> String {
+        switch intent {
+        case .send: "arrow.up"
+        case .steer: "arrow.turn.down.right"
+        case .queue: "text.badge.plus"
+        case .pause: "pause.fill"
+        }
+    }
+
+    private var tint: Color? {
+        guard enabled else { return nil }
+        return intent == .pause ? Color(.label) : Color.accentColor
+    }
+
+    private var glyphColor: Color {
+        guard enabled else { return Color(.tertiaryLabel) }
+        return intent == .pause ? Color(.systemBackground) : Color.white
+    }
 
     var body: some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(stops ? Color(.label) : Color.accentColor)
-                Image(systemName: stops ? "stop.fill" : "arrow.up")
-                    .font(.system(size: size * (stops ? 0.38 : 0.5), weight: .semibold))
-                    .foregroundStyle(stops ? Color(.systemBackground) : Color.white)
-                    .id(stops)
-                    .transition(Motion.iconSwap(reduced: reduced))
-            }
-            .frame(width: size, height: size)
-            .opacity(enabled ? 1 : 0.4)
-            .animation(Motion.iconSwap, value: stops)
-            .animation(Motion.crossFade, value: enabled)
-            .frame(width: frame, height: frame)
-            .contentShape(Rectangle())
+        ZStack {
+            Image(systemName: Self.symbol(intent))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(glyphColor)
+                .id(intent)
+                .transition(Motion.iconSwap(reduced: reduced))
         }
-        .buttonStyle(.pressable)
-        .disabled(!enabled)
-        .accessibilityLabel(stops ? "Stop" : "Send")
+        .frame(width: ComposerMetrics.control, height: ComposerMetrics.control)
+        .tcGlass(in: Circle(), tint: tint)
+        .animation(reduced ? Motion.iconFade : Motion.iconSwap, value: intent)
+        .animation(Motion.crossFade, value: enabled)
+        .scaleEffect(pressed && !reduced ? Motion.pressScale : 1)
+        .opacity(pressed && reduced ? Motion.pressDim : 1)
+        .animation(Motion.press, value: pressed)
+        .padding(ComposerMetrics.hitOutset)
+        .contentShape(Rectangle())
+        .gesture(press)
+        .padding(-ComposerMetrics.hitOutset)
+        .accessibilityElement()
+        .accessibilityLabel(intent.label)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { if enabled { onTap() } }
+        .accessibilityActions {
+            if offersQueue { Button(ComposerIntent.queue.label, action: onQueue) }
+        }
+    }
+
+    /// One touch from down to up, in the 44 pt square it draws in.
+    private var press: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                let square = CGRect(origin: .zero, size: CGSize(width: TranscriptMetrics.hitArea, height: TranscriptMetrics.hitArea))
+                inside = square.insetBy(dx: -ComposerMetrics.hitOutset, dy: -ComposerMetrics.hitOutset).contains(value.location)
+                if !pressed {
+                    pressed = true
+                    startHold()
+                }
+                if !inside {
+                    hold?.cancel()
+                    holding = false
+                }
+                pressed = inside
+            }
+            .onEnded { _ in
+                hold?.cancel()
+                let queues = holding
+                pressed = false
+                holding = false
+                guard inside else { inside = true; return }
+                if queues { onQueue() } else if enabled { onTap() }
+            }
+    }
+
+    private func startHold() {
+        hold?.cancel()
+        guard offersQueue, enabled else { return }
+        hold = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(ComposerRules.queueHold))
+            guard !Task.isCancelled, pressed, inside, offersQueue else { return }
+            holding = true
+        }
     }
 }

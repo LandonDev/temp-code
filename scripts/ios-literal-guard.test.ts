@@ -28,7 +28,6 @@ const ALLOWED: Record<string, number> = {
   "Thread/AgentDetailScreen.swift": 2,
   "Thread/BoardOutcomes.swift": 2,
   "Thread/BoardStyles.swift": 1,
-  "Thread/Composer.swift": 2,
   "Thread/ComposerAttachments.swift": 2,
   "Thread/ComposerStyles.swift": 2,
   "Thread/DiffScreen.swift": 1,
@@ -48,7 +47,6 @@ const ALLOWED: Record<string, number> = {
   "Thread/ToolChip.swift": 2,
   "Thread/TranscriptRows.swift": 6,
   "Thread/TranscriptView.swift": 3,
-  "Thread/WorkingStrip.swift": 2,
 };
 
 // A literal font size, a duration or curve written in place, a fixed row height.

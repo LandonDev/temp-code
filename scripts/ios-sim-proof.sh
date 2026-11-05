@@ -24,7 +24,8 @@
 #           both segments of each named thread, light only, for a real host.
 #   actions The steering shots: a read key's disabled composer and card, then
 #           the app re-paired with TC_TEST_PAIR_LINK_OPERATE (a key that may act):
-#           a send landing as the user row, Stop mid-turn, approve and deny,
+#           a send landing as the user row, a message queued for the next turn,
+#           Pause and Stop mid-turn, approve and deny,
 #           a question answered, Start from the plan into a build, a new chat
 #           from the workspace, a message to an agent, pin, archive and rename;
 #           the key shots in dark too. TC_TEST_CONTROL_URL is the test server's
@@ -471,6 +472,8 @@ actions_set() {
   rm -f "$OUT/shots/00-pairing.png"
   control /actions/clear >/dev/null
   TC_ACTION="send:Hello from the phone" shot "act-send-light" thread "Thread B"
+  TC_ACTION="queue:After this turn" shot "act-queue-light" thread "Thread B"
+  TC_ACTION="pause" shot "act-pause-light" thread "Thread B"
   TC_ACTION="stop" shot "act-stop-light" thread "Thread B"
   TC_ACTION="approve" shot "act-approve-light" thread "Run the test suite"
   control /ask '{"sessionId":"ios-waiting","kind":"approval"}' >/dev/null
@@ -500,7 +503,7 @@ actions_set() {
   python3 - "$(control /actions)" <<'PY'
 import json, sys
 kinds = [a["kind"] for a in json.loads(sys.argv[1])["actions"]]
-want = {"send": 4, "stop": 1, "approve": 2, "answer": 1, "create": 2, "pin": 1, "rename": 1, "archive": 1}
+want = {"send": 4, "queue": 1, "pause": 1, "stop": 1, "approve": 2, "answer": 1, "create": 2, "pin": 1, "rename": 1, "archive": 1}
 counts = {k: kinds.count(k) for k in want}
 missing = {k: v for k, v in want.items() if counts[k] < v}
 print("ios-sim-proof: actions landed " + json.dumps(counts))

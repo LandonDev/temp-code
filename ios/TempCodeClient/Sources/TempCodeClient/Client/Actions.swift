@@ -382,16 +382,41 @@ extension EnvironmentClient {
     public func send(_ sessionId: String, text: String, model: TurnModel? = nil, attachments: [Attachment]? = nil, newPass: Bool? = nil) async throws {
         if let block = operateBlock { throw ActionError.blocked(block) }
         let sentAt = Int(Date().timeIntervalSince1970 * 1000)
+        // A send into a thread with no turn open starts the slot's clock at the click.
+        let opens = threads[sessionId]?.sentAt == nil && !ComposerSlot.turnOpen(sessions.first { $0.id == sessionId }?.status)
         let turn = threads[sessionId]?.addPending(text: text, sentAt: sentAt) ?? PendingTurn(text: text, sentAt: sentAt)
         threads[sessionId]?.sending = true
+        if opens { threads[sessionId]?.sentAt = turn.sentAt }
         let named = attachments.flatMap { $0.isEmpty ? nil : $0 }
         do {
             try await request(Methods.SessionSend.self, .init(sessionId: sessionId, text: text, provider: model?.provider, model: model?.model, reasoning: model?.reasoning, attachments: named, newPass: newPass))
         } catch {
             threads[sessionId]?.pending.removeAll { $0.id == turn.id }
-            if threads[sessionId]?.pending.isEmpty == true { threads[sessionId]?.sending = false }
+            if threads[sessionId]?.pending.isEmpty == true {
+                threads[sessionId]?.sending = false
+                if opens { threads[sessionId]?.sentAt = nil }
+            }
             throw ActionError.wrap(error)
         }
+    }
+
+    /// A message for the next turn, the desktop's ⌘-click (`queue.add`): it
+    /// waits in the thread's queue on the host and goes as the turn settles
+    /// (a master's goes into its live turn, the host's rule). The answer
+    /// says whether it queued or was steered; nothing shows as pending,
+    /// since the transcript gets its row when it goes.
+    @discardableResult
+    public func queue(_ sessionId: String, text: String, model: TurnModel? = nil, attachments: [Attachment]? = nil) async throws -> Methods.QueueAdd.Output {
+        let named = attachments.flatMap { $0.isEmpty ? nil : $0 }
+        return try await acting(.operate) {
+            try await self.request(Methods.QueueAdd.self, .init(sessionId: sessionId, text: text, provider: model?.provider, model: model?.model, reasoning: model?.reasoning, attachments: named))
+        }
+    }
+
+    /// Pause the running turn (the composer's button while its box is empty
+    /// mid-turn); Continue in the slot resumes it.
+    public func pause(_ sessionId: String) async throws {
+        try await act(.operate) { try await self.request(Methods.SessionPause.self, .init(sessionId: sessionId)) }
     }
 
     /// Stop the running turn; the host's `error { stopped: true }` row is what the transcript shows afterwards.
