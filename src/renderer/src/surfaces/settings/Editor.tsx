@@ -166,6 +166,9 @@ export function EditorPage() {
   const [eula, setEula] = useState<{ build: string; text: string } | null>(null);
   const [gateOpen, setGateOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // The EULA dialog's own failure (reading or accepting it), said inside the
+  // dialog: the row's note sits behind the scrim.
+  const [eulaError, setEulaError] = useState<string | null>(null);
 
   const refreshEngine = useCallback(() => {
     void registry.primary()
@@ -192,19 +195,20 @@ export function EditorPage() {
 
   const openGate = () => {
     setGateOpen(true);
-    setNote(null);
+    setEulaError(null);
     if (eula) return;
     // The first open downloads the dist to read its license.
     void registry.primary()
       .request<{ build: string; text: string }>("idea.eula")
       .then(setEula)
-      .catch((error) => setNote(error instanceof Error ? error.message : String(error)));
+      .catch((error) => setEulaError(error instanceof Error ? error.message : String(error)));
   };
 
   const [accepting, setAccepting] = useState(false);
   const accept = () => {
     if (accepting) return;
     setAccepting(true);
+    setEulaError(null);
     void registry.primary()
       .request("idea.acceptEula")
       .then(() => {
@@ -212,7 +216,7 @@ export function EditorPage() {
         retryBlockedEnsures();
         refreshEngine();
       })
-      .catch((error) => setNote(error instanceof Error ? error.message : String(error)))
+      .catch((error) => setEulaError(error instanceof Error ? error.message : String(error)))
       .finally(() => setAccepting(false));
   };
 
@@ -328,11 +332,10 @@ export function EditorPage() {
               <pre tabIndex={0} className={cn(CONSOLE, "max-h-80 overflow-x-hidden overflow-y-auto whitespace-pre-wrap")}>
                 {eula.text}
               </pre>
-            ) : note ? (
-              <ErrorLine error={note} />
-            ) : (
+            ) : eulaError ? null : (
               <LoadingLine label="Downloading the engine to read its license…" />
             )}
+            <ErrorLine error={eulaError} />
           </ModalBody>
           <DialogFooter onCancel={() => setGateOpen(false)} confirmLabel="Accept and enable" pending={accepting} disabled={!eula} onConfirm={accept} />
         </ModalPanel>

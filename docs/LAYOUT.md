@@ -533,9 +533,10 @@ never shows the old values:
 - **Archive** (and restore) takes every copy, the home first; a home that
   is offline opens the archive dialog with Archive off and the reason. The
   worktree and branch clean-up apply to the copy it was opened on.
-- **Delete** is an alert (`AlertDialog`, Cancel and the red verb): it
-  deletes this copy and asks "Also delete the copy on box", off by default,
-  one checkbox per other copy, off while that host is offline.
+- **Delete** deletes this copy. With nothing to choose it is a confirm
+  (`ConfirmDialog`, Cancel and the red verb); with other copies it is a form
+  dialog that asks "Also delete the copy on box", off by default, one
+  checkbox per other copy, off while that host is offline.
 
 An unlinked project's dialogs act on the project itself, with no footer
 note.

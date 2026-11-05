@@ -327,6 +327,19 @@ describe('ProjectTeardownDialog on a linked project', () => {
     expect(screen.queryByRole('checkbox')).toBeNull()
     expect(footerNote()).toBeNull()
   })
+
+  it('its confirm is ConfirmDialog: the verb holds its width, and Done runs after the exit', async () => {
+    const done = vi.fn()
+    render(<ProjectTeardownDialog project={SOLO} action="delete" onClose={() => {}} onDone={done} />)
+    const verb = screen.getByRole('button', { name: 'Delete project' })
+    expect(verb.querySelector('[data-slot=busy-label]')).not.toBeNull()
+    expect(verb.getAttribute('data-variant')).toBe('destructive')
+    await act(async () => {
+      fireEvent.click(verb)
+    })
+    await waitFor(() => expect(done).toHaveBeenCalledTimes(1))
+    expect(writes().map((c) => [c.slot, c.method, c.params.projectId])).toEqual([[LOCAL_ENVIRONMENT_ID, 'project.delete', 'p_solo']])
+  })
 })
 
 describe('NewProjectDialog', () => {

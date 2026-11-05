@@ -5,6 +5,7 @@ import { expectModalShape } from "../../chrome/modalShape.testkit";
 
 const host = vi.hoisted(() => ({
   accept: null as null | (() => void),
+  refuse: null as null | ((e: Error) => void),
   acceptCalls: 0,
   lsp: null as null | ((rows: unknown[]) => void),
   eula: null as null | ((eula: { build: string; text: string }) => void),
@@ -18,7 +19,7 @@ vi.mock("../../lib/connection", () => ({
     primary: () => ({
       request: (method: string) =>
         method === "idea.acceptEula"
-          ? new Promise<void>((resolve) => { host.accept = resolve; host.acceptCalls++; })
+          ? new Promise<void>((resolve, reject) => { host.accept = resolve; host.refuse = reject; host.acceptCalls++; })
           : method === "lsp.status"
           ? new Promise((resolve) => (host.lsp = resolve))
           : method === "idea.eula"
@@ -128,6 +129,22 @@ describe("Editor", () => {
     expect(accept.querySelector("[data-slot=busy-label]")!.className).toBe(widths);
     expect(accept.querySelector("[data-slot=busy-label]")!.getAttribute("data-busy")).toBe("true");
     await act(async () => host.accept?.());
+    host.engine = undefined;
+  });
+
+  it("says a refused acceptance inside the dialog, not on the row behind it", async () => {
+    host.engine = { dist: true, accepted: false, build: "263.1" };
+    render(<EditorPage />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Accept EULA" }));
+    await act(async () => host.eula?.({ build: "263.1", text: "You may use it." }));
+    fireEvent.click(screen.getByRole("button", { name: "Accept and enable" }));
+    await act(async () => host.refuse?.(new Error("disk full")));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toContain("disk full");
+    expect(screen.getByText("disk full").className).toContain("text-destructive");
+    // The license stays readable above the error.
+    expect(dialog.textContent).toContain("You may use it.");
     host.engine = undefined;
   });
 

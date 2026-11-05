@@ -11,6 +11,7 @@ import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
 import { DialogFooter } from "./ConfirmDialog";
+import { Field, FieldRow } from "./DialogField";
 import { Modal, ModalBody, useModalClose } from "./Modal";
 import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
@@ -471,18 +472,6 @@ function RuleRow({
   );
 }
 
-/** A dialog field: a 12px medium label over its control. */
-function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-xs font-medium text-muted-foreground">
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
 type RuleDialogProps = {
   rule: RoutingRule | null;
   rules: OrchestrationRules;
@@ -513,7 +502,6 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
   const [provider, setProvider] = useState<ProviderId>(rule?.provider ?? providers[0] ?? "claude");
   const [model, setModel] = useState(rule?.model ?? "");
   const [reasoning, setReasoning] = useState<Reasoning>(rule?.reasoning ?? "medium");
-  const taskId = useId();
 
   const models = useMemo(
     () => (catalog?.[provider]?.models ?? []).filter((m) => modelApproved(rules, provider, m.id)),
@@ -541,20 +529,14 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
       }}
     >
       <ModalBody>
-        <Field label="When the task is" htmlFor={taskId}>
-          <Input
-            id={taskId}
-            autoFocus
-            value={task}
-            onChange={(e) => setTask(e.target.value)}
-            placeholder="Bulk or mechanical work with a clear spec"
-          />
+        <Field label="When the task is">
+          <Input autoFocus value={task} onChange={(e) => setTask(e.target.value)} placeholder="Bulk or mechanical work with a clear spec" />
         </Field>
-        <div className="flex gap-3">
-          <Field label="Provider">
+        <div className="flex flex-col">
+          <FieldRow label="Provider">
             <ChoiceSelect
               label="Provider"
-              className="w-full"
+              size="sm"
               value={provider}
               onChange={(v) => {
                 setProvider(v);
@@ -562,40 +544,38 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
               }}
               options={providers.map((p) => ({ value: p, label: catalog?.[p]?.label ?? p }))}
             />
-          </Field>
-          <Field label="Model">
+          </FieldRow>
+          <FieldRow label="Model">
             <ChoiceSelect
               label="Model"
-              className="w-full"
+              size="sm"
               value={model}
               onChange={setModel}
               options={[{ value: "", label: "Provider default" }, ...models.map((m) => ({ value: m.id, label: m.label }))]}
             />
-          </Field>
+          </FieldRow>
           {ladder.length > 1 ? (
-            <Field label="Effort">
-              <ChoiceSelect label="Effort" className="w-full" value={reasoning} onChange={setReasoning} options={effortChoices(ladder)} />
-            </Field>
+            <FieldRow label="Effort">
+              <ChoiceSelect label="Effort" size="sm" value={reasoning} onChange={setReasoning} options={effortChoices(ladder)} />
+            </FieldRow>
+          ) : null}
+          {index >= 0 ? (
+            <>
+              <FieldRow label="Position">
+                <ChoiceSelect
+                  label="Position"
+                  size="sm"
+                  value={String(position)}
+                  onChange={(v) => setPosition(Number(v))}
+                  options={rules.routing.map((_, i) => ({ value: String(i), label: String(i + 1) }))}
+                />
+              </FieldRow>
+              <FieldRow label="Enabled">
+                <SettingSwitch label="Enabled" on={enabled} onChange={setEnabled} />
+              </FieldRow>
+            </>
           ) : null}
         </div>
-        {index >= 0 ? (
-          <div className="flex gap-3">
-            <Field label="Position">
-              <ChoiceSelect
-                label="Position"
-                className="w-full"
-                value={String(position)}
-                onChange={(v) => setPosition(Number(v))}
-                options={rules.routing.map((_, i) => ({ value: String(i), label: String(i + 1) }))}
-              />
-            </Field>
-            <Field label="Enabled">
-              <span className="flex h-8 items-center">
-                <SettingSwitch label="Enabled" on={enabled} onChange={setEnabled} />
-              </span>
-            </Field>
-          </div>
-        ) : null}
       </ModalBody>
       <DialogFooter
         start={

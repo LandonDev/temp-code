@@ -109,6 +109,7 @@ export function ConfirmDialog({
   danger,
   onCancel,
   onConfirm,
+  onDone,
 }: {
   title: string;
   body?: string;
@@ -118,15 +119,22 @@ export function ConfirmDialog({
   danger?: boolean;
   onCancel: () => void;
   onConfirm: () => void | Promise<void>;
+  /** The confirm landed: the dialog plays its exit, then this runs. Without
+   *  it the parent unmounts the dialog itself once `onConfirm` resolves. */
+  onDone?: () => void;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { root } = useClosingDialog(onCancel, pending);
+  const { root, closeThen } = useClosingDialog(onCancel, pending);
   const confirm = async () => {
     setPending(true);
     setError(null);
     try {
       await onConfirm();
+      if (onDone) {
+        setPending(false);
+        closeThen(onDone);
+      }
     } catch (err) {
       setError(errorText(err));
       setPending(false);

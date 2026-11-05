@@ -258,6 +258,16 @@ describe("Orchestration page", () => {
     expect(del.getAttribute("data-variant")).toBe("ghost");
   });
 
+  it("lays the rule's fields on Field and FieldRow: the task over its field, each choice a row", async () => {
+    render(<OrchestrationPage />);
+    const dialog = await openRule("Reviews");
+    expect(dialog.querySelectorAll('[data-slot="dialog-field"]')).toHaveLength(1);
+    const rows = [...dialog.querySelectorAll('[data-slot="dialog-field-row"]')].map((r) => r.querySelector('[data-slot="item-title"]')?.textContent);
+    expect(rows).toContain("Enabled");
+    const enabled = within(dialog).getByRole("switch", { name: "Enabled" });
+    expect(enabled.closest('[data-slot="dialog-field-row"]')).not.toBeNull();
+  });
+
   it("deletes a rule from its dialog", async () => {
     render(<OrchestrationPage />);
     const dialog = await openRule("Reviews");
