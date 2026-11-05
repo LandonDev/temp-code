@@ -21,7 +21,7 @@ describe('the step list', () => {
     expect(size.lane).toBe(build.lane)
     expect(STEPS.indexOf(size)).toBeGreaterThan(STEPS.indexOf(build))
     const publish = STEPS.filter((s) => s.tier === 'publish').map((s) => s.name)
-    expect(publish).toEqual(expect.arrayContaining(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'e2e-remote-fence', 'hub', 'ios', 'ios-client']))
+    expect(publish).toEqual(expect.arrayContaining(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'e2e-remote-fence', 'hub', 'ios', 'ios-client']))
     // The soaks read out/ too: in the build lane after the build and its size check, so they never race them,
     // one scene after the other, each failing on its CPU bound (no report-only flag).
     const soak = STEPS.find((s) => s.name === 'renderer-soak')!
@@ -34,12 +34,16 @@ describe('the step list', () => {
     // The typing scene last in the lane, on its own rule (no CPU bound to report).
     expect(typing).toMatchObject({ tier: 'publish', lane: build.lane, mac: true, cmd: 'bun', args: ['scripts/measure-renderer-soak.ts', '--gate', '--scene', 'typing'] })
     expect(STEPS.indexOf(typing)).toBeGreaterThan(STEPS.indexOf(chat))
+    // The scroll scene after it, the same lane.
+    const scroll = STEPS.find((s) => s.name === 'renderer-soak-scroll')!
+    expect(scroll).toMatchObject({ tier: 'publish', lane: build.lane, mac: true, cmd: 'bun', args: ['scripts/measure-renderer-soak.ts', '--gate', '--scene', 'scroll'] })
+    expect(STEPS.indexOf(scroll)).toBeGreaterThan(STEPS.indexOf(typing))
     expect(STEPS.filter((s) => s.hashSkip).map((s) => s.name)).toEqual(['typecheck'])
   })
 
   it('selects by tier, honours --only and --skip, and refuses an unknown name', () => {
     expect(selectSteps({ tiers: new Set(['commit']) }).map((s) => s.name)).toEqual(['typecheck', 'vitest', 'build', 'bundle-size'])
-    expect(selectSteps({ tiers: new Set(['publish']) }).map((s) => s.name)).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'e2e-remote-fence', 'hub', 'ios', 'ios-client'])
+    expect(selectSteps({ tiers: new Set(['publish']) }).map((s) => s.name)).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'e2e-remote-fence', 'hub', 'ios', 'ios-client'])
     expect(selectSteps({ tiers: new Set(['commit', 'publish']) }).length).toBe(STEPS.length)
     expect(selectSteps({ tiers: new Set(['commit']), only: ['vitest'] }).map((s) => s.name)).toEqual(['vitest'])
     expect(selectSteps({ tiers: new Set(['commit']), skip: ['vitest'] }).map((s) => s.name)).toEqual(['typecheck', 'build', 'bundle-size'])
@@ -63,7 +67,7 @@ describe('the step list', () => {
 
 describe('the Mac-only steps', () => {
   it('skips the renderer soak, hub, ios and ios-client off macOS with a note, and nothing on it', () => {
-    expect([...macOnlySkips(STEPS, 'linux').keys()]).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'hub', 'ios', 'ios-client'])
+    expect([...macOnlySkips(STEPS, 'linux').keys()]).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'hub', 'ios', 'ios-client'])
     expect(macOnlySkips(STEPS, 'linux').get('ios')).toBe('needs the Mac; release:publish runs it there')
     expect(macOnlySkips(STEPS, 'darwin').size).toBe(0)
     expect(STEPS.filter((s) => s.mac).every((s) => s.tier === 'publish')).toBe(true)

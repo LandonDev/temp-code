@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildIsCurrent, FAMILY, GATE_CPU_PCT, GATE_RULE, gateRule, handRule, judgeSend, judgeSoak, judgeTyping, parseSoakArgs, SEND_RULE, TYPING_RULE, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_CPU_PCT, GATE_RULE, gateRule, handRule, judgeScroll, judgeSend, judgeSoak, judgeTyping, parseSoakArgs, SCROLL_RULE, SEND_RULE, TYPING_RULE, type SoakSample } from './lib/soakJudge'
 import type { PhaseSummary } from './lib/soakTyping'
 
 const sample = (t: number, over: Partial<SoakSample> = {}): SoakSample => ({ t, heapMb: 40, rssMb: 200, cpuS: 0.5, wallS: 10, longTasks: [], ...over })
@@ -231,7 +231,8 @@ describe('the send scene', () => {
     expect(parseSoakArgs(['--scene', 'send', '--history', '200', '--sends', '4', '--load-all', '--peer-delay', '300'])).toMatchObject({ history: 200, sends: 4, loadAll: true, peerDelayMs: 300 })
     expect(() => parseSoakArgs(['--scene', 'send', '--host', 'box'])).toThrow('is a synthetic host')
     expect(() => parseSoakArgs(['--gate', '--scene', 'send', '--peer-delay', '300'])).toThrow('on a hand run')
-    expect(() => parseSoakArgs(['--scene', 'typing', '--history', '200'])).toThrow('belong to --scene send')
+    expect(() => parseSoakArgs(['--scene', 'typing', '--history', '200'])).toThrow('--history belongs to --scene send and --scene scroll')
+    expect(() => parseSoakArgs(['--scene', 'scroll', '--sends', '4'])).toThrow('belong to --scene send')
     expect(() => parseSoakArgs(['--scene', 'send', '--sends', '0'])).toThrow('whole number')
     expect(() => parseSoakArgs(['--scene', 'send', '--minutes', '2'])).toThrow('runs its own steps')
   })
@@ -242,5 +243,42 @@ describe('the send scene', () => {
     expect(judgeSend({ row: { p95: 30 }, missed: 1 }).verdicts.map((v) => v.ok)).toEqual([true, false])
     expect(judgeSend({ row: { p95: null }, missed: 10 }).ok).toBe(false)
     expect(SEND_RULE.rowP95Ms).toBe(50)
+  })
+})
+
+describe('the scroll scene', () => {
+  it('scrolls the four surfaces by hand for 10 s each, 4 s on the gate, the box read-only included', () => {
+    expect(parseSoakArgs(['--scene', 'scroll'])).toMatchObject({ scene: 'scroll', host: 'synthetic', view: 'board', wheelS: 10, surfaces: ['transcript', 'board', 'rail', 'column'], history: 5000, label: 'synthetic-prod-scroll' })
+    expect(parseSoakArgs(['--gate', '--scene', 'scroll'])).toMatchObject({ gate: true, wheelS: 4, label: 'gate-scroll', profile: false })
+    expect(parseSoakArgs(['--scene', 'scroll', '--host', 'box'])).toMatchObject({ host: 'box', label: 'box-prod-scroll' })
+    expect(parseSoakArgs(['--scene', 'scroll', '--surfaces', 'board', '--wheel', '4'])).toMatchObject({ surfaces: ['board'], wheelS: 4 })
+    expect(() => parseSoakArgs(['--scene', 'scroll', '--surfaces', 'tabs'])).toThrow('--surfaces takes some of')
+    expect(() => parseSoakArgs(['--gate', '--scene', 'scroll', '--surfaces', 'board'])).toThrow('the gate scrolls them all')
+    expect(() => parseSoakArgs(['--scene', 'typing', '--wheel', '4'])).toThrow('belongs to --scene scroll')
+    expect(() => parseSoakArgs(['--scene', 'scroll', '--host', 'box', '--history', '200'])).toThrow("synthetic master's thread")
+    expect(() => parseSoakArgs(['--scene', 'scroll', '--minutes', '2'])).toThrow('runs its own steps')
+  })
+
+  it("holds the display's rate, no frame past 32 ms and no long task on every surface, and fails a surface the synthetic scene did not scroll", () => {
+    const ok = { fps: 59, longestMs: 16.8, longTasks: { count: 0 }, scrolledPx: 2400 }
+    const run = (surface: string, summary: typeof ok | null) => ({ surface, mode: 'wheel', summary, skipped: summary ? null : 'does not overflow (0 px)' })
+    expect(judgeScroll([run('board', ok)], 1000 / 60, { allSurfaces: true }).ok).toBe(true)
+    // 120 Hz: 104 fps is under 90% of it.
+    expect(judgeScroll([run('board', { ...ok, fps: 104 })], 1000 / 120, { allSurfaces: true }).verdicts[1]).toMatchObject({ limit: 108, ok: false })
+    expect(judgeScroll([run('board', { ...ok, longestMs: 33.4 })], 1000 / 60, { allSurfaces: true }).verdicts.map((v) => v.ok)).toEqual([true, true, false, true])
+    // Smooth frames over a list that never moved fail.
+    expect(judgeScroll([run('board', { ...ok, scrolledPx: 0 })], 1000 / 60, { allSurfaces: true }).verdicts.map((v) => v.ok)).toEqual([false, true, true, true])
+    expect(judgeScroll([run('board', { ...ok, longTasks: { count: 1 } })], 1000 / 60, { allSurfaces: true }).ok).toBe(false)
+    expect(judgeScroll([run('board', ok), run('rail', null)], 1000 / 60, { allSurfaces: true }).ok).toBe(false)
+    // The box has what it has: a surface it lacks is said, not failed.
+    expect(judgeScroll([run('board', ok), run('rail', null)], 1000 / 60, { allSurfaces: false }).ok).toBe(true)
+    // The gate's form reports the frame bounds and still fails a long task or a list that never moved.
+    const slow = { ...ok, fps: 37, longestMs: 66.7 }
+    const gate = judgeScroll([run('board', slow)], 1000 / 60, { allSurfaces: true, framesReportOnly: true })
+    expect(gate.ok).toBe(true)
+    expect(gate.verdicts.filter((v) => v.reportOnly).map((v) => v.ok)).toEqual([false, false])
+    expect(judgeScroll([run('board', { ...slow, longTasks: { count: 1 } })], 1000 / 60, { allSurfaces: true, framesReportOnly: true }).ok).toBe(false)
+    expect(judgeScroll([run('board', { ...slow, scrolledPx: 0 })], 1000 / 60, { allSurfaces: true, framesReportOnly: true }).ok).toBe(false)
+    expect(SCROLL_RULE).toMatchObject({ fpsShare: 0.9, longestFrameMs: 32, longTasks: 0 })
   })
 })

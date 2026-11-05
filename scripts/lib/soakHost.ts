@@ -32,7 +32,10 @@
  * The send scene (`startSoakHost('send', { history })`) seeds the board's
  * batch with the master's history grown to `history` rows before its last
  * turn (a prompt, a reply, a Read call and its result, the turn's end: five
- * rows a turn), for the soak to send into.
+ * rows a turn), for the soak to send into. The scroll scene seeds the same
+ * history, and grows the rail and the workspace column past a screen
+ * (SCROLL_WORKSPACES more workspaces, SCROLL_PROJECTS more projects of two
+ * settled chats each in the master's), for the soak to scroll.
  *
  * The switch scene (`startSoakHost('switch')`) seeds the board's batch and
  * its load, and a second workspace beside it (SWITCH_WORKSPACE: two
@@ -65,6 +68,9 @@ export const SOAK_MASTER = 'soak-master'
 export const SOAK_CHAT = 'soak-chat'
 export const SOAK_SCENARIOS = 'soak-scenarios'
 export const soakChildId = (i: number): string => `soak-child-${String(i).padStart(2, '0')}`
+/** The scroll scene's rail and column: workspaces and projects past a screen of each. */
+const SCROLL_WORKSPACES = 30
+const SCROLL_PROJECTS = 24
 /** The switch scene's two workspaces, by the names the rail shows. */
 export const SOAK_WORKSPACE = 'soak'
 export const SWITCH_WORKSPACE = 'client'
@@ -196,7 +202,7 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
   } else {
   await registry.create({ ...base, id: SOAK_MASTER, threadType: 'chat', title: 'Ship the soak batch' })
   registry.setMaster(SOAK_MASTER, true)
-  if (scene === 'send') {
+  if (scene === 'send' || scene === 'scroll') {
     // A long-lived master: its history before the batch's turn, five rows a turn.
     for (let turn = 0; turn < Math.ceil((opts.history ?? 5_000) / 5); turn++) {
       registry.append(SOAK_MASTER, { type: 'user-text', text: `Turn ${turn + 1}: check the batch and say what landed.` })
@@ -220,6 +226,26 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
   }
   batchRow = batchRowMidRun(SOAK_MASTER, { landed: [], pending: children }, Date.now())
   server.batches.seedRow(batchRow)
+  }
+  if (scene === 'scroll') {
+    // The rail's workspaces and the master's column of projects, each past a screen.
+    for (let i = 0; i < SCROLL_WORKSPACES; i++) {
+      const dir = join(root, `ws-${i}`)
+      mkdirSync(dir)
+      await registry.createWorkspace(dir, `${TITLES[i % TITLES.length]!.split(' ').slice(-1)[0]} ${i + 1}`)
+    }
+    for (let i = 0; i < SCROLL_PROJECTS; i++) {
+      const projectId = (await registry.createProject(workspace.id, `project ${i + 1}`, 'local')).id
+      for (let j = 0; j < 2; j++) {
+        const id = `soak-scroll-${i}-${j}`
+        await registry.create({ ...base, projectId, id, threadType: 'chat', title: TITLES[(i * 2 + j) % TITLES.length]! })
+        registry.append(id, { type: 'user-text', text: `${TITLES[(i * 2 + j) % TITLES.length]}.` })
+        registry.append(id, { type: 'status', status: 'running' })
+        registry.append(id, { type: 'assistant-text', text: PROSE, delta: false, msgId: `${id}-a`, blockIndex: 0 })
+        registry.append(id, { type: 'turn-complete' })
+        registry.append(id, { type: 'status', status: 'idle' })
+      }
+    }
   }
   if (scene === 'switch') {
     // A second workspace of settled chats, each turn a question and an answer.

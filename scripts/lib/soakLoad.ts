@@ -94,8 +94,9 @@ export const SOAK_PROFILE: SoakProfile = profile()
  *  `typing` is the board's with the master's own churn and its live edits, typed into;
  *  `switch` is the board's load with a second workspace to switch to and from;
  *  `send` is the board's load with the master's history grown long, sent into;
+ *  `scroll` is the same with the rail and the workspace column grown past a screen, scrolled;
  *  `scenarios` plays the no-jerk timeline on one chat instead of a load (scripts/lib/soakScenarios.ts). */
-export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scenarios'
+export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scroll' | 'scenarios'
 
 export const CHAT_PROFILE: SoakProfile = {
   children: 1,

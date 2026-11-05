@@ -84,10 +84,11 @@ import { summarizeTrace, TRACE_CATEGORIES, traceMarkdown, type TraceEvent, type 
 import { REVEAL_OBSERVER, revealLine, summarizeReveal, type RevealRecord } from './lib/revealReport'
 import { HEIGHT_OBSERVER, heightLine, summarizeHeights, type HeightRecord } from './lib/heightReport'
 import { REVEAL } from '../src/renderer/src/lib/ease'
-import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSend, judgeSoak, judgeSwitch, judgeTyping, parseSoakArgs, REACT_MEASURE_PREFIX, SEND_RULE, SWITCH_RULE, TYPING_RULE, type BuildStamp, type GateScene, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeScroll, judgeSend, judgeSoak, judgeSwitch, judgeTyping, parseSoakArgs, REACT_MEASURE_PREFIX, SCROLL_RULE, SEND_RULE, SWITCH_RULE, TYPING_RULE, type BuildStamp, type GateScene, type SoakSample } from './lib/soakJudge'
 import { scenarioLength, questionClicks } from './lib/soakScenarios'
 import { spread, summarizePhase, typingGaps, typingMarkdown, typingPhases, typingProse, type PhaseSummary, type TypingRecords } from './lib/soakTyping'
 import { summarizeSwitch, switchMarkdown, type SwitchClick, type SwitchView } from './lib/soakSwitch'
+import { displayInterval, scrollMarkdown, summarizeFrames, wheelPlan, type FrameRun, type ScrollResult, type ScrollSurface } from './lib/soakScroll'
 
 const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
 /** Hand runs on a dev build: also tally the props React names as changed, per component. */
@@ -420,7 +421,7 @@ type Shown = { environmentId: string; masterId: string; threadId: string }
  *  node:sqlite (scripts/ios-client-test.ts runs its server the same way). */
 function hostCommand(): [string, string[]] {
   const burst = args.burstMs ? ['--burst', String(args.burstMs)] : []
-  const history = args.scene === 'send' ? ['--history', String(args.history)] : []
+  const history = args.scene === 'send' || args.scene === 'scroll' ? ['--history', String(args.history)] : []
   if (!mac) return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts', '--scene', args.scene, ...burst, ...history]]
   const out = join(REPO, 'scripts', '.out', 'soak-host.mjs')
   execFileSync(
@@ -690,6 +691,10 @@ async function main(): Promise<void> {
   }
   if (args.scene === 'send') {
     await recordSend(c, shown)
+    return
+  }
+  if (args.scene === 'scroll') {
+    await recordScroll(c)
     return
   }
 
@@ -1368,6 +1373,152 @@ async function recordSend(c: Cdp, shown: Shown): Promise<void> {
   ].join('\n')
   writeFileSync(join(ROOT, `${args.label}.md`), md + '\n')
   for (const v of verdict.verdicts) console.log(`${v.ok ? '✓' : '✗'} ${v.what}: ${v.got} (limit ${v.limit})`)
+  console.log(`${verdict.ok ? 'passed' : 'FAILED'}: ${ROOT}/${args.label}.md`)
+  process.exitCode = verdict.ok ? 0 : 1
+}
+
+// ── scrolling while the board works, measured ───────────────────────────
+/** The page side of the scroll scene: long tasks, long animation frames,
+ *  `find(surface)` (the scroller on screen, its centre and range), and a
+ *  run that keeps every animation frame's interval and the pixels scrolled. */
+const SCROLL_OBSERVERS = `(() => {
+  if (window.__scroll) return true
+  const s = (window.__scroll = { tasks: [], frames: [], run: null, el: null })
+  new PerformanceObserver((list) => { for (const e of list.getEntries()) s.tasks.push({ start: e.startTime, duration: e.duration }) }).observe({ type: 'longtask' })
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        if (e.duration <= 50) continue
+        const scripts = [...(e.scripts || [])].sort((a, b) => b.duration - a.duration).slice(0, 3)
+        s.frames.push({ start: e.startTime, duration: e.duration, scripts: scripts.map((x) => (x.sourceFunctionName || x.invoker || '?') + ' ' + Math.round(x.duration) + ' ms') })
+      }
+    }).observe({ type: 'long-animation-frame' })
+  } catch {}
+  const shown = (e) => e.getBoundingClientRect().width > 0 && !e.closest('.tab-parked, .board-parked')
+  const scrollerOf = (e) => {
+    for (let n = e.parentElement; n; n = n.parentElement) {
+      const y = getComputedStyle(n).overflowY
+      if (y === 'auto' || y === 'scroll') return n
+    }
+    return null
+  }
+  const pick = {
+    transcript: () => [...document.querySelectorAll('.agent-transcript')].find(shown),
+    board: () => [...document.querySelectorAll('[data-board-scroller]')].find(shown),
+    rail: () => [...document.querySelectorAll('nav[aria-label="Workspaces"] .overflow-y-auto')].find(shown),
+    column: () => { const row = [...document.querySelectorAll('[data-project-row]')].find(shown); return row ? scrollerOf(row) : null }
+  }
+  s.find = (surface) => {
+    const el = pick[surface]() ?? null
+    s.el = el
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), range: el.scrollHeight - el.clientHeight, top: el.scrollTop }
+  }
+  s.idle = (ms) => new Promise((done) => {
+    const out = []
+    let last = null
+    const t0 = performance.now()
+    const frame = (t) => { if (last !== null) out.push(t - last); last = t; if (t - t0 < ms) requestAnimationFrame(frame); else done(out) }
+    requestAnimationFrame(frame)
+  })
+  s.start = () => {
+    const el = s.el
+    const run = (s.run = { t0: performance.now(), last: null, intervals: [], top: el.scrollTop, px: 0 })
+    const onScroll = () => { run.px += Math.abs(el.scrollTop - run.top); run.top = el.scrollTop }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    run.off = () => el.removeEventListener('scroll', onScroll)
+    const frame = (t) => { if (s.run !== run) return; if (run.last !== null) run.intervals.push(t - run.last); run.last = t; requestAnimationFrame(frame) }
+    requestAnimationFrame(frame)
+    return true
+  }
+  s.stop = () => {
+    const run = s.run
+    s.run = null
+    run.off()
+    const end = performance.now()
+    return { intervals: run.intervals, ms: end - run.t0, scrolledPx: run.px, longTasks: s.tasks.filter((t) => t.start >= run.t0 && t.start < end), frames: s.frames.filter((f) => f.start >= run.t0 && f.start < end).map((f) => ({ duration: f.duration, scripts: f.scripts })) }
+  }
+  return true
+})()`
+
+/**
+ * `--scene scroll`: each surface of SCROLL_SURFACES, or those `--surfaces` names (the master's
+ * transcript, its board, the rail's workspaces, the workspace column)
+ * turned by the wheel at 60 Hz for `--wheel` seconds, 40 px a tick, back at
+ * either end, then flung once (`Input.synthesizeScrollGesture`), under the
+ * board's load; every animation frame's interval kept while it moves.
+ * Judged by SCROLL_RULE; a surface that is not on screen or does not
+ * overflow is said so, and fails the synthetic scene.
+ */
+async function recordScroll(c: Cdp): Promise<void> {
+  await sleep(3_000)
+  await c.eval(SCROLL_OBSERVERS)
+  const displayMs = displayInterval(await c.eval<number[]>('window.__scroll.idle(1000)'))
+  log(`the display draws every ${displayMs.toFixed(1)} ms; scrolling ${args.surfaces.join(', ')}`)
+  const tracing = args.traceS ? traceFrames(c, args.traceS) : null
+  if (args.profile) {
+    await c.send('Profiler.enable')
+    await c.send('Profiler.setSamplingInterval', { interval: 200 })
+    await c.send('Profiler.start')
+  }
+  const results: ScrollResult[] = []
+  const where = (surface: ScrollSurface) => c.eval<{ x: number; y: number; range: number; top: number } | null>(`window.__scroll.find(${JSON.stringify(surface)})`)
+  for (const surface of args.surfaces) {
+    const at = await where(surface)
+    const skipped = !at ? 'not on screen' : at.range < 200 ? `does not overflow (${Math.max(0, at.range)} px)` : null
+    if (skipped || !at) {
+      for (const mode of ['wheel', 'fling'] as const) results.push({ surface, mode, summary: null, skipped, frames: [] })
+      log(`${surface}: ${skipped}`)
+      continue
+    }
+    // The wheel: ticks on the clock, each sent without waiting on the one before.
+    const ticks = wheelPlan(args.wheelS * 1000, 60, 40, at.range, at.top)
+    await c.eval('window.__scroll.start()')
+    const t0 = Date.now()
+    const sent: Promise<unknown>[] = []
+    for (const tick of ticks) {
+      const wait = t0 + tick.at - Date.now()
+      if (wait > 0) await sleep(wait)
+      sent.push(c.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: at.x, y: at.y, deltaX: 0, deltaY: tick.deltaY }))
+    }
+    await Promise.all(sent)
+    await sleep(300)
+    const wheel = await c.eval<FrameRun>('window.__scroll.stop()')
+    results.push({ surface, mode: 'wheel', summary: summarizeFrames(wheel, displayMs), skipped: null, frames: wheel.frames })
+    // The fling: as far as the range allows, toward the far end (a positive distance scrolls up).
+    const now = (await where(surface))!
+    const yDistance = now.top > now.range / 2 ? Math.min(3_000, now.top) : -Math.min(3_000, now.range - now.top)
+    await c.eval('window.__scroll.start()')
+    await c.send('Input.synthesizeScrollGesture', { x: now.x, y: now.y, yDistance, speed: 4_000, preventFling: false })
+    await sleep(600)
+    const fling = await c.eval<FrameRun>('window.__scroll.stop()')
+    results.push({ surface, mode: 'fling', summary: summarizeFrames(fling, displayMs), skipped: null, frames: fling.frames })
+    for (const r of results.slice(-2)) log(`${surface} ${r.mode}: ${r.summary!.fps} fps, ${r.summary!.dropped} dropped, longest ${r.summary!.longestMs} ms, ${r.summary!.longTasks.count} long tasks, ${r.summary!.scrolledPx} px`)
+  }
+  const trace = tracing ? await tracing : null
+  let profile: string | null = null
+  if (args.profile) {
+    const { profile: cpuProfile } = (await c.send('Profiler.stop')) as { profile: CpuProfile }
+    writeFileSync(join(ROOT, `${args.label}.cpuprofile`), JSON.stringify(cpuProfile))
+    profile = profileSummary(cpuProfile)
+  }
+  // The gate reports the frame bounds until a run on the Mac sizes them there (docs/box.md "Scrolling while threads work").
+  const verdict = judgeScroll(results, displayMs, { allSurfaces: args.host === 'synthetic', framesReportOnly: args.gate })
+  writeFileSync(join(ROOT, `${args.label}.json`), JSON.stringify({ label: args.label, args, tree, platform: process.platform, displayMs, rule: SCROLL_RULE, verdict, results, trace }, null, 1))
+  const md = [
+    `# ${args.label}: ${args.host} host, scroll scene, ${args.build} build (${process.platform}, load ${loadavg()[0]!.toFixed(1)}), the wheel ${args.wheelS} s a surface`,
+    '',
+    ...scrollMarkdown(results, displayMs),
+    '',
+    '| reading | got | limit | |',
+    '|---|---|---|---|',
+    ...verdict.verdicts.map((v) => `| ${v.what} | ${v.got} | ${v.limit} | ${v.ok ? 'pass' : v.reportOnly ? 'over, reported' : 'FAIL'} |`),
+    ...(trace ? ['', ...traceMarkdown(trace)] : []),
+    ...(profile ? ['', 'The scrolling, profiled:', '', '```', profile, '```'] : [])
+  ].join('\n')
+  writeFileSync(join(ROOT, `${args.label}.md`), md + '\n')
+  for (const v of verdict.verdicts) console.log(`${v.ok ? '✓' : v.reportOnly ? '!' : '✗'} ${v.what}: ${v.got} (limit ${v.limit}${v.reportOnly ? ', reported only' : ''})`)
   console.log(`${verdict.ok ? 'passed' : 'FAILED'}: ${ROOT}/${args.label}.md`)
   process.exitCode = verdict.ok ? 0 : 1
 }

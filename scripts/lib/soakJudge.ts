@@ -26,11 +26,12 @@
  */
 import type { PhaseSummary, TypingPhaseName } from './soakTyping'
 import type { SwitchSummary } from './soakSwitch'
+import { SCROLL_SURFACES, type ScrollSurface } from './soakScroll'
 
 export type SoakHostKind = 'synthetic' | 'box'
 export type SoakBuild = 'prod' | 'dev'
 export type SoakView = 'board' | 'stream' | 'split'
-export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scenarios'
+export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scroll' | 'scenarios'
 
 export interface SoakArgs {
   host: SoakHostKind
@@ -78,6 +79,9 @@ export interface SoakArgs {
   loadAll: boolean
   /** --peer-delay <ms>: the synthetic host holds every request the window makes this long (TEMP_CODE_PEER_DELAY_MS), as a far host would */
   peerDelayMs: number
+  /** --scene scroll: seconds of wheel on each surface, and the surfaces (--surfaces, a hand run's pick) */
+  wheelS: number
+  surfaces: ScrollSurface[]
 }
 
 /** The gate's run: 20 s to launch, pair and open, 10 s to warm up, a 50 s window, then teardown, inside 90 s. */
@@ -95,14 +99,14 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const host = (flag('--host') ?? 'synthetic') as SoakHostKind
   const build = (flag('--build') ?? 'prod') as SoakBuild
   const scene = (flag('--scene') ?? 'board') as SoakScene
-  if (!['board', 'chat', 'typing', 'switch', 'send', 'scenarios'].includes(scene)) throw new Error('--scene is board, chat, typing, switch, send or scenarios')
+  if (!['board', 'chat', 'typing', 'switch', 'send', 'scroll', 'scenarios'].includes(scene)) throw new Error('--scene is board, chat, typing, switch, send, scroll or scenarios')
   // The send scene sends: never into the box's own threads.
   if ((scene === 'chat' || scene === 'scenarios' || scene === 'send') && host !== 'synthetic') throw new Error(`--scene ${scene} is a synthetic host`)
   if (scene === 'scenarios' && gate) throw new Error('--scene scenarios is a recording, never the gate')
-  const view = (flag('--view') ?? (scene === 'board' ? (gate ? 'split' : 'board') : scene === 'typing' || scene === 'switch' || scene === 'send' ? 'board' : 'stream')) as SoakView
+  const view = (flag('--view') ?? (scene === 'board' ? (gate ? 'split' : 'board') : scene === 'typing' || scene === 'switch' || scene === 'send' || scene === 'scroll' ? 'board' : 'stream')) as SoakView
   if (scene === 'typing' && view !== 'board') throw new Error("--scene typing types into the master's composer beside its board: its view is board")
   if ((scene === 'chat' || scene === 'scenarios') && view !== 'stream') throw new Error(`--scene ${scene} has one thread: its view is stream`)
-  if ((scene === 'typing' || scene === 'switch' || scene === 'send') && (argv.includes('--minutes') || argv.includes('--every'))) throw new Error(`--scene ${scene} runs its own steps, not a window: drop --minutes and --every`)
+  if ((scene === 'typing' || scene === 'switch' || scene === 'send' || scene === 'scroll') && (argv.includes('--minutes') || argv.includes('--every'))) throw new Error(`--scene ${scene} runs its own steps, not a window: drop --minutes and --every`)
   if (scene === 'switch' && argv.includes('--view')) throw new Error('--scene switch clicks the rail: it opens no view of its own')
   if (scene !== 'switch' && (argv.includes('--clicks') || argv.includes('--workspaces'))) throw new Error('--clicks and --workspaces belong to --scene switch')
   const clicks = Number(flag('--clicks') ?? (gate ? '12' : '20'))
@@ -110,7 +114,16 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const named = (flag('--workspaces') ?? (host === 'box' ? 'temp-code,CosmicClient' : 'soak,client')).split(',').map((w) => w.trim())
   if (named.length !== 2 || !named.every(Boolean)) throw new Error('--workspaces takes two names: a,b')
   const workspaces = named as [string, string]
-  if (scene !== 'send' && (argv.includes('--history') || argv.includes('--sends') || argv.includes('--load-all'))) throw new Error('--history, --sends and --load-all belong to --scene send')
+  if (scene !== 'send' && (argv.includes('--sends') || argv.includes('--load-all'))) throw new Error('--sends and --load-all belong to --scene send')
+  if (scene !== 'send' && scene !== 'scroll' && argv.includes('--history')) throw new Error('--history belongs to --scene send and --scene scroll')
+  if (scene === 'scroll' && host !== 'synthetic' && argv.includes('--history')) throw new Error("--history grows the synthetic master's thread")
+  if (scene !== 'scroll' && argv.includes('--wheel')) throw new Error('--wheel belongs to --scene scroll')
+  const wheelS = Number(flag('--wheel') ?? (gate ? '4' : '10'))
+  if (!(wheelS >= 1 && wheelS <= 60)) throw new Error('--wheel takes seconds, 1 to 60')
+  if (scene !== 'scroll' && argv.includes('--surfaces')) throw new Error('--surfaces belongs to --scene scroll')
+  if (gate && argv.includes('--surfaces')) throw new Error('--surfaces picks surfaces for a hand run: the gate scrolls them all')
+  const surfaces = (flag('--surfaces')?.split(',').map((x) => x.trim()) ?? [...SCROLL_SURFACES]) as ScrollSurface[]
+  if (!surfaces.length || surfaces.some((x) => !SCROLL_SURFACES.includes(x))) throw new Error(`--surfaces takes some of ${SCROLL_SURFACES.join(', ')}`)
   const history = Number(flag('--history') ?? '5000')
   const sends = Number(flag('--sends') ?? (gate ? '10' : '16'))
   if (!Number.isInteger(history) || history < 0) throw new Error('--history takes a row count')
@@ -118,7 +131,7 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const peerDelayMs = Number(flag('--peer-delay') ?? '0')
   if (!(peerDelayMs >= 0 && peerDelayMs <= 5_000)) throw new Error('--peer-delay takes ms, 0 to 5000')
   if (peerDelayMs && (host !== 'synthetic' || gate)) throw new Error('--peer-delay slows the synthetic host on a hand run')
-  if ((scene === 'typing' || scene === 'switch' || scene === 'send') && argv.includes('--cpu-report-only')) throw new Error(`--scene ${scene} reports CPU and never judges it: drop --cpu-report-only`)
+  if ((scene === 'typing' || scene === 'switch' || scene === 'send' || scene === 'scroll') && argv.includes('--cpu-report-only')) throw new Error(`--scene ${scene} reports CPU and never judges it: drop --cpu-report-only`)
   const screencast = flag('--screencast') ?? null
   const scrolledUp = argv.includes('--scrolled-up')
   if (scrolledUp && scene !== 'scenarios') throw new Error('--scrolled-up belongs to --scene scenarios')
@@ -178,7 +191,9 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
     history,
     sends,
     loadAll: argv.includes('--load-all'),
-    peerDelayMs
+    peerDelayMs,
+    wheelS,
+    surfaces
   }
 }
 
@@ -223,8 +238,8 @@ export interface SoakRule {
  * board's ratio (docs/box.md "The soak's two scenes"). Never raised to make
  * a run pass.
  */
-/** The scenes the gate judges by its window's rule; `typing` has TYPING_RULE, `switch` SWITCH_RULE, and `scenarios` is a recording, judged by eye. */
-export type GateScene = Exclude<SoakScene, 'scenarios' | 'typing' | 'switch' | 'send'>
+/** The scenes the gate judges by its window's rule; `typing` has TYPING_RULE, `switch` SWITCH_RULE, `send` SEND_RULE, `scroll` SCROLL_RULE, and `scenarios` is a recording, judged by eye. */
+export type GateScene = Exclude<SoakScene, 'scenarios' | 'typing' | 'switch' | 'send' | 'scroll'>
 
 export const GATE_CPU_PCT: Record<GateScene, number> = { board: 33, chat: 22 }
 
@@ -314,6 +329,44 @@ export function judgeSend(summary: { row: { p95: number | null }; missed: number
     { what: 'sends whose row never painted', got: summary.missed, limit: 0, ok: summary.missed === 0 }
   ]
   return { ok: verdicts.every((v) => v.ok), verdicts }
+}
+
+/**
+ * The scroll scene's bound (the user's target, on the Mac): while each
+ * surface scrolls under the board's load, the display's frame rate held (at
+ * least 90% of it), no frame slower than 32 ms and no long task. A surface
+ * the synthetic scene seeded that did not scroll fails too; a box run judges
+ * the surfaces it found. `framesReportOnly` (the gate's form, until a run on
+ * the Mac sizes the frame bounds there) shows the rate and the longest frame
+ * against their limits without failing on them; what moved and the long
+ * tasks still decide.
+ */
+export const SCROLL_RULE = { name: 'scroll', fpsShare: 0.9, longestFrameMs: 32, longTasks: 0 }
+
+export function judgeScroll(
+  results: readonly { surface: string; mode: string; summary: { fps: number; longestMs: number; longTasks: { count: number }; scrolledPx: number } | null; skipped: string | null }[],
+  displayMs: number,
+  opts: { allSurfaces: boolean; framesReportOnly?: boolean },
+  rule = SCROLL_RULE
+): { ok: boolean; verdicts: Verdict[] } {
+  const frames = opts.framesReportOnly ? { reportOnly: true } : {}
+  const hz = Math.round(1000 / displayMs)
+  const verdicts: Verdict[] = []
+  for (const r of results) {
+    const s = r.summary
+    if (!s) {
+      if (opts.allSurfaces) verdicts.push({ what: `${r.surface} ${r.mode}: scrolled`, got: 0, limit: 1, ok: false })
+      continue
+    }
+    verdicts.push(
+      // Frames read while nothing moved say nothing of a scroll.
+      { what: `${r.surface} ${r.mode}: scrolled px`, got: s.scrolledPx, limit: 1, ok: s.scrolledPx >= 1 },
+      { what: `${r.surface} ${r.mode}: fps (display ${hz} Hz)`, got: s.fps, limit: Math.round(hz * rule.fpsShare * 10) / 10, ok: s.fps >= hz * rule.fpsShare, ...frames },
+      { what: `${r.surface} ${r.mode}: longest frame, ms`, got: s.longestMs, limit: rule.longestFrameMs, ok: s.longestMs <= rule.longestFrameMs, ...frames },
+      { what: `${r.surface} ${r.mode}: long tasks`, got: s.longTasks.count, limit: rule.longTasks, ok: s.longTasks.count <= rule.longTasks }
+    )
+  }
+  return { ok: verdicts.length > 0 && verdicts.every((v) => v.ok || v.reportOnly), verdicts }
 }
 
 /** Every phase against TYPING_RULE; a phase the run skipped (idle against the box) is not judged. */

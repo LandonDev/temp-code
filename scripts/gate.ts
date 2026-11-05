@@ -128,6 +128,16 @@ export const STEPS: Step[] = [
     mac: true
   },
   {
+    name: 'renderer-soak-scroll',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['scripts/measure-renderer-soak.ts', '--gate', '--scene', 'scroll'],
+    // The same lane, after the typing scene: one instance at a time.
+    lane: 'build',
+    why: "the master's transcript, its board, the rail and the workspace column each turned by the wheel at 60 Hz for 4 s and flung under the board's load: every one moves and no long task runs while it does; the frame rate and the longest frame are reported against the target until a run on the Mac sizes them (scripts/measure-renderer-soak.ts --gate --scene scroll, 90 s at most)",
+    mac: true
+  },
+  {
     name: 'e2e-remote-fence',
     tier: 'publish',
     cmd: 'bun',
