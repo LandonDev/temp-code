@@ -26,7 +26,7 @@ struct FailureCard: View {
     var body: some View {
         let busy = busy
         let block = client.operateBlock
-        let actions = FailureActions.actions(kind: failure.kind, routed: routed)
+        let actions = FailureActions.actions(kind: failure.kind, routed: routed, roomElsewhere: failure.roomElsewhere)
         ThreadCard(tinted: !busy) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -40,7 +40,7 @@ struct FailureCard: View {
                 Text(failure.cause)
                     .transcriptType(TranscriptType.line)
                     .foregroundStyle(.secondary)
-                if let note = FailureActions.note(kind: failure.kind, routed: routed) {
+                if let note = FailureActions.note(kind: failure.kind, routed: routed, roomElsewhere: failure.roomElsewhere) {
                     Text(note)
                         .transcriptType(TranscriptType.line)
                         .foregroundStyle(.secondary)

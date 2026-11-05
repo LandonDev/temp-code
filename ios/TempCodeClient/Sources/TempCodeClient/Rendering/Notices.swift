@@ -166,14 +166,18 @@ public struct FailureAction: Sendable, Hashable, Identifiable {
 /// retry; signing in, adding a key, picking an account or a model are
 /// desktop work, so the note names them instead. `routed` is the provider
 /// the thread's accounts come from (`RoutedProvider(provider:model:catalog:)`),
-/// nil for a thread no account routes.
+/// nil for a thread no account routes. `roomElsewhere` is a cap's verdict
+/// (`Failure.roomElsewhere`): false means no other account has room for the
+/// model, so Route is left out and another model is the way on.
 public enum FailureActions {
     public static let maxActions = 3
 
-    public static func actions(kind: FailureKind, routed: RoutedProvider?) -> [FailureAction] {
+    public static func actions(kind: FailureKind, routed: RoutedProvider?, roomElsewhere: Bool? = nil) -> [FailureAction] {
         let ids: [FailureAction.ID] = switch kind {
         case .accountUnknown where routed == .meta:
             // A Meta thread with no key on the host: the fix is a key, not a route.
+            [.retry]
+        case .rateLimited where routed != .meta && roomElsewhere == false, .quota where routed != .meta && roomElsewhere == false:
             [.retry]
         case .oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota:
             routed != nil ? [.route, .retry] : [.retry]
@@ -189,8 +193,11 @@ public enum FailureActions {
     }
 
     /// The desktop actions the phone lacks, named in one line; nil when none apply.
-    public static func note(kind: FailureKind, routed: RoutedProvider?) -> String? {
+    public static func note(kind: FailureKind, routed: RoutedProvider?, roomElsewhere: Bool? = nil) -> String? {
         switch kind {
+        case .rateLimited where routed != .meta, .quota where routed != .meta:
+            // A cap is per account and model: another account while one has room, else another model.
+            routed != nil && roomElsewhere != false ? "Pick another account or model on the desktop." : "Pick another model on the desktop."
         case .keyInvalid:
             "Add a new key on the desktop."
         case .accountUnknown where routed == .meta:
