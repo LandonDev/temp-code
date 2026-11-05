@@ -38,8 +38,11 @@ import { NotesView } from "./NotesView";
 
 afterEach(cleanup);
 
+const onClose = vi.fn();
+
 async function mount() {
-  const view = render(<NotesView besideRail onClose={() => {}} />);
+  onClose.mockClear();
+  const view = render(<NotesView besideRail onClose={onClose} />);
   await act(async () => {});
   return view;
 }
@@ -80,5 +83,27 @@ describe("the notes view", () => {
       fireEvent.click(del);
     });
     expect(view.getByText("Delete note?")).toBeTruthy();
+  });
+
+  it("leaves Escape inside the Delete confirm to the confirm, and closes from the page", async () => {
+    const view = await mount();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Delete" }));
+    });
+    const cancel = view.getByRole("button", { name: "Cancel" });
+    expect(cancel.closest('[role="alertdialog"]')).not.toBeNull();
+    fireEvent.keyDown(cancel, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("lets a focused field go on Escape and keeps its text", async () => {
+    const view = await mount();
+    const title = view.getByLabelText("Note title") as HTMLInputElement;
+    title.focus();
+    fireEvent.keyDown(title, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(title);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

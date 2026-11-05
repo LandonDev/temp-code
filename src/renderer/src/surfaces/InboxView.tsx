@@ -1,4 +1,5 @@
 import { useEnvironments } from "../lib/connection";
+import { usePageEscape } from "../lib/pageEscape";
 import { hostOfCwd } from "../lib/tcserver/projects";
 import { openUrl } from "../lib/native";
 import {
@@ -336,18 +337,8 @@ export function InboxView({
     onReset: resize.reset,
   });
 
-  useEffect(() => {
-    if (sidebar) return;
-    const onKey = (event: KeyboardEvent) => {
-      // The filter menu closes itself on Escape; the inbox stays.
-      if (event.key !== "Escape" || filterMenu) return;
-      event.preventDefault();
-      event.stopPropagation();
-      onCloseRef.current?.();
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [filterMenu, sidebar]);
+  // The filter menu closes itself on Escape; the inbox stays.
+  usePageEscape(() => onCloseRef.current?.(), { enabled: !sidebar && !filterMenu, fields: "blur" });
 
   useEffect(() => {
     const onChange = () => {

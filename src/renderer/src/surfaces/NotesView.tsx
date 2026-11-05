@@ -25,6 +25,7 @@ import { useSashKeys } from "../hooks/useSashKeys";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useTabGroupLogos } from "../hooks/useTabGroupLogos";
 import { formatRelativeTime } from "../lib/githubTasks";
+import { usePageEscape } from "../lib/pageEscape";
 import {
   createNote,
   deleteNote,
@@ -145,16 +146,7 @@ export function NotesView({
     rememberedNoteId = selectedId;
   }, [selectedId]);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, []);
+  usePageEscape(() => onCloseRef.current(), { fields: "blur" });
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();

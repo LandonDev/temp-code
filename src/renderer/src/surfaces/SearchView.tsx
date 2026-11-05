@@ -33,6 +33,7 @@ import {
   type AppSearchHit,
 } from "../lib/appSearch";
 import { registry, useEnvironmentStatuses, useEnvironments } from "../lib/connection";
+import { usePageEscape } from "../lib/pageEscape";
 import type { Environment, EnvironmentStatus } from "../lib/connection/types";
 import {
   browseHits,
@@ -179,19 +180,8 @@ export function SearchView({
     return () => window.cancelAnimationFrame(frame);
   }, [open, focusToken, seed]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      // An open menu (the filters) takes its own Escape first.
-      if (event.target instanceof Element && event.target.closest('[role="menu"]')) return;
-      event.preventDefault();
-      event.stopPropagation();
-      onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [open]);
+  // Its one field is the page: Escape there closes Search.
+  usePageEscape(() => onCloseRef.current(), { enabled: open, fields: "close" });
 
   useEffect(() => {
     if (!open) return;

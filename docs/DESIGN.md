@@ -489,6 +489,13 @@ answer still lands. A row with a second action gives it its own row or
 opens a dialog: Linear's key field sits behind Connect…, and the release
 notes are a row under Release, whose one button is the updater's. Switching pages does not animate.
 
+Escape belongs to the innermost layer. A page (Settings, Notes, Inbox,
+Search) closes on Escape only through `usePageEscape` (lib/pageEscape.ts):
+a dialog, a confirm, a menu, a select or a popover above it takes the key
+first, and a focused field lets go before the page closes (Settings puts
+the field's value back, Notes and Inbox keep the text; Search's one field
+is the page, so Escape there closes it).
+
 ## Scrolling
 
 Every scroller is a native element with `overflow-*-auto`, and one rule in
