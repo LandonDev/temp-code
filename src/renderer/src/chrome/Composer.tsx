@@ -299,7 +299,7 @@ export function Composer({
   const rowOpen = draft || (!!arrival && !rowFolded)
   const projects = useProjects()
   const environmentId = (sessionId ? sessionStore.environmentOf(sessionId) : undefined) ?? metaEnvironmentId ?? projects.find((p) => p.id === projectId)?.environmentId ?? environmentOfCwd(executionCwd) ?? registry.primary().environmentId
-  const commands = useSlashCommands(environmentId, harness, executionCwd, commandOpen)
+  const { commands, loaded: commandsLoaded, failed: commandsFailed } = useSlashCommands(environmentId, harness, executionCwd, commandOpen)
   const attachmentsSupported = harnessSupportsAttachments(harness)
   const commandsByName = useMemo(
     () => new Map(commands.map((c) => [c.name, c] as const)),
@@ -361,7 +361,7 @@ export function Composer({
   const matches = useMemo<PopoverMatches | null>(() => {
     if (!live) return null
     if (live.mode === 'command') {
-      return { mode: 'command', rows: matchCommands(commands, live.query) }
+      return { mode: 'command', rows: matchCommands(commands, live.query), loading: !commandsLoaded, failed: commandsFailed }
     }
     const fileHits: AtMatch[] = looksLikeProject(executionCwd)
       ? rankFiles(mentionable, live.query).map((file) => ({ kind: 'file', file }))
@@ -372,7 +372,7 @@ export function Composer({
     const noteHits: AtMatch[] = rankNoteFiles(notes, live.query).map((file) => ({ kind: 'note', file }))
     const loading = looksLikeProject(executionCwd) && filesFor !== executionCwd
     return { mode: 'file', rows: [...fileHits, ...threadHits, ...noteHits], loading }
-  }, [commands, executionCwd, filesFor, live, mentionable, metas, notes, projectId, sessionId])
+  }, [commands, commandsFailed, commandsLoaded, executionCwd, filesFor, live, mentionable, metas, notes, projectId, sessionId])
   const rows = matches?.rows.length ?? 0
   // Mounted from the first `/` or `@` on, so its close keeps its fade.
   const [menuUsed, setMenuUsed] = useState(false)

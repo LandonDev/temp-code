@@ -35,7 +35,14 @@ export type AtMatch =
   | { kind: "note"; file: ProjectFile };
 
 export type PopoverMatches =
-  | { mode: "command"; rows: SlashCommand[] }
+  | {
+      mode: "command";
+      rows: SlashCommand[];
+      /** The host has not answered with its commands yet. */
+      loading?: boolean;
+      /** The host's last answer was no list: said, never "No matches". */
+      failed?: boolean;
+    }
   | { mode: "file"; rows: AtMatch[]; /** The project's files are still being read. */ loading?: boolean };
 
 /** A menu's row (MENU_ROW), its 8px radius concentric in the 12px popover's 4px inset. */
@@ -128,8 +135,14 @@ export function CommandPopover({
       >
         {rows.rows.length === 0 ? (
           // A picker's no match is one muted row (DESIGN.md "Loading and empty states").
-          <div data-command-empty role="option" aria-selected={false} aria-disabled className={`${ROW} text-muted-foreground`}>
-            {rows.mode === "file" && rows.loading ? "Loading…" : "No matches"}
+          <div
+            data-command-empty
+            role="option"
+            aria-selected={false}
+            aria-disabled
+            className={`${ROW} ${!rows.loading && rows.mode === "command" && rows.failed ? "text-destructive" : "text-muted-foreground"}`}
+          >
+            {rows.loading ? "Loading…" : rows.mode === "command" && rows.failed ? "Couldn't load commands" : "No matches"}
           </div>
         ) : rows.mode === "command"
           ? rows.rows.map((c, n) => (

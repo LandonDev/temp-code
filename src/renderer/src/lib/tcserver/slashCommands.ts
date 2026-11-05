@@ -7,10 +7,11 @@ import type { ProviderId, SlashCommand } from "./types";
  * skills, commands, prompts, plugins and MCP servers as the harness itself
  * would resolve them. Entries are refetched when they are older than the
  * server's own 30 s cache, so a skill created outside the app shows on the
- * next `/`. A failed list is an empty list, never an error in the composer.
+ * next `/`. A failed list is an empty list marked `failed`, so the menu
+ * says it could not load them rather than "No matches".
  */
 
-export type CommandEntry = { at: number; commands: SlashCommand[] };
+export type CommandEntry = { at: number; commands: SlashCommand[]; failed?: boolean };
 
 export const COMMANDS_STALE_MS = 30_000;
 const EMPTY: SlashCommand[] = [];
@@ -89,24 +90,27 @@ class SlashCommandStore {
     const pending = this.inflight.get(key);
     if (pending) return pending;
     const link = this.links.get(environmentId)?.link;
-    if (!link) return Promise.resolve(this.peek(environmentId, provider, cwd) ?? EMPTY);
+    if (!link) {
+      // No host to ask: say so once rather than load forever; its link opening refreshes the entry.
+      const known = this.state.get(key);
+      if (!known) this.store(key, { at: Date.now(), commands: EMPTY, failed: true });
+      return Promise.resolve(known?.commands ?? EMPTY);
+    }
     const request = link
       .request<SlashCommand[]>("commands.list", { provider: provider as ProviderId, cwd })
-      .then((commands) => (Array.isArray(commands) ? commands : EMPTY))
-      .catch((error: unknown) => {
+      .then((commands): Omit<CommandEntry, "at"> => ({ commands: Array.isArray(commands) ? commands : EMPTY }))
+      .catch((error: unknown): Omit<CommandEntry, "at"> => {
         // Still an empty menu, but a refusal (e.g. the path fence) must be
         // tellable apart from a host that simply has no commands.
         console.debug(
           `[slash] commands.list failed for ${provider} on ${environmentId}:`,
           error instanceof Error ? error.message : error,
         );
-        return EMPTY;
+        return { commands: EMPTY, failed: true };
       })
-      .then((commands) => {
-        const next = new Map(this.state);
-        next.set(key, { at: Date.now(), commands });
-        this.set(next);
-        return commands;
+      .then((entry) => {
+        this.store(key, { at: Date.now(), ...entry });
+        return entry.commands;
       })
       .finally(() => {
         if (this.inflight.get(key) === request) this.inflight.delete(key);
@@ -123,6 +127,12 @@ class SlashCommandStore {
     }
   }
 
+  private store(key: string, entry: CommandEntry): void {
+    const next = new Map(this.state);
+    next.set(key, entry);
+    this.set(next);
+  }
+
   private set(next: ReadonlyMap<string, CommandEntry>): void {
     this.state = next;
     for (const l of this.listeners) l();
@@ -134,18 +144,25 @@ export const slashCommandStore = new SlashCommandStore();
 /**
  * The commands for a composer. Fetched only when the `/` trigger opens over
  * a stale entry: a mounted composer costs the server nothing on its own.
+ * `loaded` is false until the first answer for this host, provider and
+ * folder lands (a stale entry stays loaded while it refreshes); `failed`
+ * says the last ask got no list.
  */
 export function useSlashCommands(
   environmentId: string,
   provider: string,
   cwd: string,
   open: boolean,
-): SlashCommand[] {
+): SlashCommandsState {
   const state = useSyncExternalStore(slashCommandStore.subscribe, slashCommandStore.getSnapshot);
   useEffect(() => {
     if (open && slashCommandStore.isStale(environmentId, provider, cwd)) {
       void slashCommandStore.refresh(environmentId, provider, cwd);
     }
   }, [open, environmentId, provider, cwd]);
-  return state.get(commandKey(environmentId, provider, cwd))?.commands ?? EMPTY;
+  const entry = state.get(commandKey(environmentId, provider, cwd));
+  return entry ? { commands: entry.commands, loaded: true, failed: !!entry.failed } : NOT_LOADED;
 }
+
+export type SlashCommandsState = { commands: SlashCommand[]; loaded: boolean; failed: boolean };
+const NOT_LOADED: SlashCommandsState = { commands: EMPTY, loaded: false, failed: false };

@@ -75,10 +75,19 @@ describe("slashCommandStore", () => {
     expect(link.calls).toHaveLength(1);
   });
 
-  it("turns a failed list into an empty one", async () => {
+  it("turns a failed list into an empty one, marked failed", async () => {
     link.fail = true;
     await expect(slashCommandStore.refresh("local", "claude", "/repo")).resolves.toEqual([]);
     expect(slashCommandStore.peek("local", "claude", "/repo")).toEqual([]);
+    expect(slashCommandStore.getSnapshot().get(commandKey("local", "claude", "/repo"))?.failed).toBe(true);
+    link.fail = false;
+    await slashCommandStore.refresh("local", "claude", "/repo");
+    expect(slashCommandStore.getSnapshot().get(commandKey("local", "claude", "/repo"))?.failed).toBeFalsy();
+  });
+
+  it("a host with no link is a failed entry, not a load that never ends", async () => {
+    await expect(slashCommandStore.refresh("elsewhere", "claude", "/repo")).resolves.toEqual([]);
+    expect(slashCommandStore.getSnapshot().get(commandKey("elsewhere", "claude", "/repo"))?.failed).toBe(true);
   });
 
   it("is stale before the first load and again after the server's TTL", async () => {

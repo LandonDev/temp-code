@@ -101,4 +101,14 @@ describe("useSlashCommands", () => {
       { method: "commands.list", params: { provider: "claude", cwd: "/repo-d" } },
     ]);
   });
+
+  it("is not loaded until the host answers, then loaded", async () => {
+    const link = new FakeLink();
+    slashCommandStore.attach(link);
+    const { result } = renderHook(() => useSlashCommands("local", "claude", "/repo-e", true));
+    expect(result.current).toEqual({ commands: [], loaded: false, failed: false });
+    await settle();
+    expect(result.current.loaded).toBe(true);
+    expect(result.current.failed).toBe(false);
+  });
 });

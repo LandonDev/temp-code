@@ -50,6 +50,18 @@ describe("CommandPopover", () => {
     for (const c of [...MENU_ROW.split(" "), "text-muted-foreground"]) expect(empty.className.split(" ")).toContain(c);
   });
 
+  it("the `/` menu reads Loading… until the host's commands land, and says a failed list rather than No matches", () => {
+    const { container, rerender } = render(<CommandPopover matches={{ mode: "command", rows: [], loading: true }} {...props} />);
+    const empty = () => container.querySelector<HTMLElement>("[data-command-empty]")!;
+    expect(empty().textContent).toBe("Loading…");
+    expect(empty().className).toContain("text-muted-foreground");
+    rerender(<CommandPopover matches={{ mode: "command", rows: [], loading: false }} {...props} />);
+    expect(empty().textContent).toBe("No matches");
+    rerender(<CommandPopover matches={{ mode: "command", rows: [], loading: false, failed: true }} {...props} />);
+    expect(empty().textContent).toBe("Couldn't load commands");
+    expect(empty().className).toContain("text-destructive");
+  });
+
   it("reads Loading… while the project's files are on their way and nothing else matches", () => {
     const { container, rerender } = render(<CommandPopover matches={{ mode: "file", rows: [], loading: true }} {...props} />);
     expect(container.querySelector("[data-command-empty]")!.textContent).toBe("Loading…");

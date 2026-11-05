@@ -13,7 +13,7 @@ vi.mock("./ComposerBar", async (importOriginal) => ({
   useDraftRow: () => false,
 }));
 vi.mock("../lib/contextCache", () => ({ useContextReading: () => null }));
-vi.mock("../lib/tcserver/slashCommands", () => ({ useSlashCommands: () => [] }));
+vi.mock("../lib/tcserver/slashCommands", () => ({ useSlashCommands: () => ({ commands: [], loaded: true, failed: false }) }));
 
 import { Composer } from "./Composer";
 import { commandMenuChunk } from "../surfaces/chunks";
