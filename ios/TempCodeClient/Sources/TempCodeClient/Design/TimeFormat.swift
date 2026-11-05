@@ -34,6 +34,15 @@ public enum TimeFormat {
         duration(ms: Int(now.timeIntervalSince1970 * 1000) - ms)
     }
 
+    /// The app's one clock time, the desktop's `clockTime`: the locale's
+    /// hour and minute, 12-hour with AM/PM where the locale writes it.
+    public static func clock(_ ms: Int, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
+        var style = Date.FormatStyle.dateTime.hour().minute()
+        style.locale = locale
+        style.timeZone = timeZone
+        return Date(timeIntervalSince1970: Double(ms) / 1000).formatted(style)
+    }
+
     /// A moment as a transcript stamp reads it: "9:41 AM" today, "Mon 9:41 AM"
     /// within six days, "Oct 3, 9:41 AM" before that; the year only when it
     /// differs. `calendar` carries the time zone and locale a test fixes.

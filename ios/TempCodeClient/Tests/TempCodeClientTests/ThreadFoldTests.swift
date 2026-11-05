@@ -375,15 +375,20 @@ import TempCodeContract
 
     @Test func `a steer's word and its detail say what the desktop says`() {
         let utc = TimeZone(identifier: "UTC")!
+        let gb = Locale(identifier: "en_GB")
         let at = 1_793_574_120_000 // 23:02 UTC
         #expect(SteerStamp(state: .sent, ts: at).word == "Sent")
-        #expect(SteerStamp(state: .sent, ts: at).detail(timeZone: utc) == "Sent at 23:02")
-        #expect(SteerStamp(state: .received, how: .inTurn, ts: at).detail(timeZone: utc) == "Received at 23:02")
-        #expect(SteerStamp(state: .received, how: .nextTurn, ts: at).detail(timeZone: utc) == "Received at 23:02, as its own turn")
+        #expect(SteerStamp(state: .sent, ts: at).detail(timeZone: utc, locale: gb) == "Sent at 23:02")
+        #expect(SteerStamp(state: .received, how: .inTurn, ts: at).detail(timeZone: utc, locale: gb) == "Received at 23:02")
+        #expect(SteerStamp(state: .received, how: .nextTurn, ts: at).detail(timeZone: utc, locale: gb) == "Received at 23:02, as its own turn")
         #expect(SteerStamp(state: .queued, ts: at).word == "Queued for the next turn")
-        #expect(SteerStamp(state: .queued, ts: at).detail(timeZone: utc) == "Queued at 23:02")
+        #expect(SteerStamp(state: .queued, ts: at).detail(timeZone: utc, locale: gb) == "Queued at 23:02")
         #expect(SteerStamp(state: .failed, reason: "the harness did not start", ts: at).word == "Not delivered")
-        #expect(SteerStamp(state: .failed, reason: "the harness did not start", ts: at).detail(timeZone: utc) == "Not delivered: the harness did not start")
+        #expect(SteerStamp(state: .failed, reason: "the harness did not start", ts: at).detail(timeZone: utc, locale: gb) == "Not delivered: the harness did not start")
         #expect(SteerStamp(state: .unknown("read"), ts: at).word == nil)
+        // The clock is the locale's: 12-hour with AM/PM where the locale writes it.
+        let us = SteerStamp(state: .sent, ts: at).detail(timeZone: utc, locale: Locale(identifier: "en_US")) ?? ""
+        #expect(us.hasPrefix("Sent at 11:02"))
+        #expect(us.hasSuffix("PM"))
     }
 }

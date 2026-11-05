@@ -59,14 +59,11 @@ public struct SteerStamp: Sendable, Hashable {
         }
     }
 
-    /// What the desktop's tooltip says: when, and how it went in.
-    public func detail(timeZone: TimeZone = .current) -> String? {
+    /// What the desktop's tooltip says: when (the locale's clock time), and how it went in.
+    public func detail(timeZone: TimeZone = .current, locale: Locale = .current) -> String? {
         guard let word else { return nil }
         if state == .failed, let reason { return "Not delivered: \(reason)" }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = timeZone
-        let at = calendar.dateComponents([.hour, .minute], from: Date(timeIntervalSince1970: Double(ts) / 1000))
-        let clock = String(format: "%02d:%02d", at.hour ?? 0, at.minute ?? 0)
+        let clock = TimeFormat.clock(ts, locale: locale, timeZone: timeZone)
         let lead = state == .queued ? "Queued" : word
         return "\(lead) at \(clock)\(state == .received && how == .nextTurn ? ", as its own turn" : "")"
     }
