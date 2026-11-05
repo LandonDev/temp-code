@@ -18,7 +18,6 @@ import { FolderGlyph } from "../chrome/WorkspaceGlyph";
 import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { ItemButton } from "../components/ui/item";
 import { Spinner } from "../components/ui/spinner";
@@ -519,20 +518,15 @@ export function SearchView({
         className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none px-1.5 py-1.5"
       >
         {empty ? null : noHost ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>No host named {parsed.hosts?.join(",")}</EmptyTitle>
-            </EmptyHeader>
-          </Empty>
+          <EmptyState
+            title={`No host named ${parsed.hosts?.join(", ") ?? ""}`}
+            action={{ label: "Clear filters", onClick: clearFilters }}
+          />
         ) : failed && hits.length === 0 ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>Nothing could be searched</EmptyTitle>
-              <EmptyDescription>
-                {progress.find((row) => row.state === "failed" || row.state === "skipped")?.detail}
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
+          <EmptyState
+            title="Nothing could be searched"
+            line={progress.find((row) => row.state === "failed" || row.state === "skipped")?.detail}
+          />
         ) : noResults ? (
           <EmptyState
             title="No results"

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  */
 
 const h = vi.hoisted(() => ({
+  pending: null as Promise<unknown> | null,
   notes: [
     { id: "n1", slug: "gate-notes", title: "Gate notes", body: "The gate holds a merge.", createdAt: 1, updatedAt: 2 },
     { id: "n2", slug: "deploy", title: "Deploy", body: "Ship on green.", createdAt: 1, updatedAt: 1 },
@@ -17,10 +18,10 @@ const h = vi.hoisted(() => ({
 
 vi.mock("../lib/notes", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/notes")>()),
-  loadNotes: () => Promise.resolve(h.notes),
+  loadNotes: () => h.pending ?? Promise.resolve(h.notes),
   upsertNote: vi.fn((_env: string, note: { id: string }) => Promise.resolve({ ...h.notes[0], ...note })),
   deleteNote: vi.fn(() => Promise.resolve()),
-  createNote: vi.fn(),
+  createNote: vi.fn((_env: string, note: object) => Promise.resolve({ id: "n3", slug: "untitled", createdAt: 3, updatedAt: 3, ...note })),
 }));
 vi.mock("../lib/connection", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/connection")>()),
@@ -35,6 +36,7 @@ vi.mock("../chrome/TitleBar", () => ({ OverlayNav: () => null }));
 vi.mock("../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
 import { NotesView } from "./NotesView";
+import { createNote } from "../lib/notes";
 
 afterEach(cleanup);
 
@@ -105,5 +107,45 @@ describe("the notes view", () => {
     expect(document.activeElement).not.toBe(title);
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws the list's skeleton alone while the notes load: the detail says nothing", async () => {
+    h.pending = new Promise(() => {});
+    try {
+      const view = await mount();
+      expect(view.getAllByRole("status")).toHaveLength(1);
+      expect(view.queryByText("Select a note")).toBeNull();
+    } finally {
+      h.pending = null;
+    }
+  });
+
+  it("with no notes says so once and offers New note", async () => {
+    const saved = h.notes;
+    h.notes = [];
+    try {
+      const view = await mount();
+      expect(view.getAllByText("No notes yet")).toHaveLength(1);
+      expect(view.queryByText("Select a note")).toBeNull();
+      const action = view.getAllByRole("button", { name: "New note" }).find((el) => el.closest('[data-slot="empty"]'));
+      expect(action).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(action!);
+      });
+      expect(createNote).toHaveBeenCalled();
+    } finally {
+      h.notes = saved;
+    }
+  });
+
+  it("a filter that matches nothing says so and Clear filter lists the notes again", async () => {
+    const view = await mount();
+    const filter = view.getByLabelText("Filter notes") as HTMLInputElement;
+    fireEvent.change(filter, { target: { value: "zzz" } });
+    expect(view.getByText("No matching notes")).toBeTruthy();
+    expect(view.getByText("The filter is narrowing this list")).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "Clear filter" }));
+    expect(filter.value).toBe("");
+    expect(view.getByRole("button", { name: /Deploy/ })).toBeTruthy();
   });
 });

@@ -427,7 +427,11 @@ describe("SearchView across hosts", () => {
     const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
     await search(view, "gateway host:zzz");
     expect(rows(view)).toHaveLength(0);
-    expect(view.getByText("No host named zzz")).toBeTruthy();
+    expect(view.getByText("No host named zzz").closest('[data-slot="empty"]')).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Clear filters" }));
+    });
+    expect((view.container.querySelector("input") as HTMLInputElement).value).toBe("gateway");
     view.unmount();
   });
 

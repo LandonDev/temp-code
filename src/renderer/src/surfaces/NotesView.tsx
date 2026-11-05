@@ -257,7 +257,15 @@ export function NotesView({
         ) : loading && notes.length === 0 ? (
           <SurfaceSkeleton kind="rows" lines={3} count={6} label="Loading notes" />
         ) : visible.length === 0 ? (
-          <EmptyState title={query.trim() ? "No matching notes" : "No notes yet"} />
+          query.trim() ? (
+            <EmptyState
+              title="No matching notes"
+              line="The filter is narrowing this list"
+              action={{ label: "Clear filter", onClick: () => setQuery("") }}
+            />
+          ) : (
+            <EmptyState title="No notes yet" action={{ label: "New note", onClick: () => void onCreate() }} />
+          )
         ) : (
           <ul className="flex flex-col gap-0.5 p-1">
             {visible.map((note) => (
@@ -437,13 +445,10 @@ function NoteDetail({
   onDelete: (id: string) => void | Promise<void>;
   onAddToChat: (note: Note) => void;
 } & ProjectMarks) {
-  if (!note) {
-    return (
-      <div className="flex h-full min-w-0 flex-1 flex-col">
-        <EmptyState title="Select a note" />
-      </div>
-    );
-  }
+  // Nothing selected draws nothing, as the Inbox's detail: the list's
+  // skeleton or its empty state already says why, and a note is selected
+  // by itself whenever one exists.
+  if (!note) return <div className="flex h-full min-w-0 flex-1 flex-col" />;
   return (
     <NoteEditor
       key={`${environmentId}:${note.id}`}
