@@ -106,6 +106,7 @@ import {
   type InboxReplyTarget,
 } from "./InboxComments";
 import { InboxPrDiff } from "./InboxPrDiff";
+import { Facts } from "./settings/hosts/Facts";
 import { EmptyState, PAGE_LIST_WIDTH, SurfaceSkeleton } from "./SurfaceSkeleton";
 
 const MIN_WIDTH = 240;
@@ -784,11 +785,11 @@ export function InboxRow({
         ) : null}
       </span>
       <span data-row-line className="flex min-w-0 items-center gap-3 ps-[22px] text-xs leading-4 text-muted-foreground">
-        {row.line.map((fact, index) => (
-          <span key={index} className={index === 0 ? "shrink-0 tabular-nums" : "min-w-0 truncate"}>
-            {fact}
-          </span>
-        ))}
+        {/* One comma run on one line: the ref keeps its width, the rest truncate. */}
+        <Facts
+          parts={row.line}
+          className="flex-nowrap overflow-hidden [&>span]:min-w-0 [&>span]:truncate [&>span:first-child]:shrink-0"
+        />
         <HostGlyph environmentId={environmentId} />
         {row.status ? (
           <StatusMark state={row.status.state} detail={row.status.detail} className="ms-auto shrink-0" />
@@ -1066,16 +1067,11 @@ function InboxDetail({
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-8">
       <header className="flex flex-col">
         <div className="flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
-          <span className="flex shrink-0 items-center gap-2">
-            <InboxProviderMark provider={item.provider} className="size-3.5" />
-            <span className="tabular-nums">{inboxItemRef(item)}</span>
+          {/* The mark 8px from the ref; the ref, its states and source one comma run. */}
+          <span className="flex min-w-0 items-center gap-2">
+            <InboxProviderMark provider={item.provider} className="size-3.5 shrink-0" />
+            <Facts parts={[inboxItemRef(item), ...stateWords, source]} className="[&>span]:min-w-0 [&>span]:truncate" />
           </span>
-          {stateWords.map((word) => (
-            <span key={word} className="shrink-0">
-              {word}
-            </span>
-          ))}
-          {source ? <span className="min-w-0 truncate">{source}</span> : null}
           {checksFailed(item) ? <StatusMark state="failed" detail="checks" className="ms-auto shrink-0" /> : null}
         </div>
         <h1 className="mt-2 text-base font-semibold leading-6 tracking-[-0.01em] text-balance text-foreground">

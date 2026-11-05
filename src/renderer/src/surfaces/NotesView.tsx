@@ -7,6 +7,7 @@ import { GroupInput, Input, InputGroup } from "../components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
 import { EmptyState, PAGE_LIST_WIDTH, SurfaceSkeleton } from "./SurfaceSkeleton";
+import { Facts } from "./settings/hosts/Facts";
 import { ConfirmDialog } from "../chrome/ConfirmDialog";
 import {
   Fragment,
@@ -581,18 +582,22 @@ function NoteEditor({
         <header className="flex flex-col">
           {note.slug || project ? (
             <div className="flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
-              {note.slug ? (
-                <span className="min-w-0 truncate">{note.slug}</span>
-              ) : null}
-              {project ? (
-                <NoteProjectMark
-                  project={project}
-                  logos={logos}
-                  mascots={mascots}
-                  colors={colors}
-                  customColors={customColors}
-                />
-              ) : null}
+              {/* The slug and the project, one comma run. */}
+              <Facts
+                className="[&>span]:min-w-0 [&>span]:truncate"
+                parts={[
+                  note.slug,
+                  project ? (
+                    <NoteProjectMark
+                      project={project}
+                      logos={logos}
+                      mascots={mascots}
+                      colors={colors}
+                      customColors={customColors}
+                    />
+                  ) : null,
+                ]}
+              />
             </div>
           ) : null}
           <Input

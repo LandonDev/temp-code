@@ -79,6 +79,13 @@ describe("the notes view", () => {
     }
   });
 
+  it("says a note's slug through Facts, one comma run with its project", async () => {
+    const view = await mount();
+    fireEvent.click(view.getByRole("button", { name: /Deploy/ }));
+    const facts = view.container.querySelector("[data-note-detail] header [data-slot=facts]") as HTMLElement;
+    expect(facts.textContent).toContain("deploy");
+  });
+
   it("switches Preview and Source with line tabs, the source a Textarea", async () => {
     const view = await mount();
     // The view remembers the last note across showings; pick the first.

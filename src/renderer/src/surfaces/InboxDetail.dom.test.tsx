@@ -80,6 +80,10 @@ describe("the inbox detail", () => {
     const approved = view.getByText("Approved");
     expect(approved.className).not.toMatch(/text-success|text-destructive/);
     expect(header.textContent).toContain("Open");
+    // The ref, its states and the source are one comma run.
+    const facts = header.querySelector("[data-slot=facts]") as HTMLElement;
+    expect(facts.textContent).toContain("Open");
+    expect(facts.children.length).toBeGreaterThan(1);
     expect(view.getByRole("heading", { name: "Fix the gate" }).className).toContain("text-base");
     // The description is panel prose, not the transcript's.
     expect(view.getByText("The gate holds a merge.").getAttribute("data-markdown-size")).toBe("compact");

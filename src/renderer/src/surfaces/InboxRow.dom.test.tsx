@@ -66,6 +66,13 @@ describe("InboxRow", () => {
     expect(seen.getByRole("button").getAttribute("aria-label")).toBeNull();
   });
 
+  it("says its line as one comma run, never facts apart by space alone", () => {
+    const view = render(<InboxRow item={pr()} active={false} showSource={false} onSelect={() => {}} />);
+    const facts = view.container.querySelector("[data-row-line] [data-slot=facts]") as HTMLElement;
+    expect([...facts.children].map((el) => el.textContent)).toEqual(["#7", "ana"]);
+    expect(facts.className).toContain("flex-nowrap");
+  });
+
   it("marks failed checks with the status mark and approved with nothing", () => {
     const failed = render(<InboxRow item={pr({ checks: "FAILURE" })} active={false} showSource={false} onSelect={() => {}} />);
     const mark = failed.container.querySelector('[data-slot="status-mark"]');

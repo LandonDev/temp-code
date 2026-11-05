@@ -547,7 +547,10 @@ Refresh; Notes' field and New note), its rows `ItemButton sm` in `p-1`,
 `max-w-5xl` column on a 32px inset with 24px between its sections (the meta
 line, the 16px title 8px under it, its facts 8px under that, the actions
 16px under them). An inbox row is two lines (20px over 16px, 54px); a note's
-three (its project and time, its title, its first words). The list is one
+three (its project and time, its title, its first words). The facts of a
+line (an inbox row's #7 and author, the detail's ref, states and source, a
+note's slug and project) are one comma run through `Facts`; on a row it
+stays one line, the ref whole and the rest truncating. The list is one
 tab stop: the selected row takes Tab, and ↑↓ in the field or on a row
 select the next row as a click would (`useRovingList`, hooks/useRovingList.ts),
 Home and End on a row. Nothing selected draws no detail, since the list
