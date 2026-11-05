@@ -35,7 +35,7 @@ export type Task = {
 /** The px each class below stands for, read by the width arithmetic
  *  (lib/taskListWidth.ts); a test holds them to the classes. */
 export const TASK_INSET_PX = 12; // px-3
-export const TASK_GAP_PX = 10; // gap-2.5
+export const TASK_GAP_PX = 8; // gap-2: 8px from a mark to its first word
 export const TASK_MARK_PX = 14; // size-3.5
 export const TASK_BORDER_PX = 1; // border
 export const TASK_TALLY_GAP_PX = 4; // gap-1
@@ -106,7 +106,7 @@ const shareText = (value: number) => `${String(Math.round(Math.min(1, Math.max(0
  *  its whole text on hover, no time, detail or share. */
 function CompactTaskRow({ task }: { task: Task }) {
   return (
-    <li className="flex min-h-5 items-start gap-1.5">
+    <li className="flex min-h-5 items-start gap-2">
       <TaskMark state={task.state} className="mt-1 size-3" />
       <TruncateTip text={task.label}>
         <span data-state={task.state} className={cn("task-label relative min-w-0 truncate text-xs leading-5", task.state === "active" ? "text-foreground" : task.state === "done" ? "text-(--task-done)" : "text-muted-foreground")}>
@@ -136,7 +136,7 @@ function TaskRow({ task }: { task: Task }) {
   );
   return (
     <Collapsible open={open} onOpenChange={(next) => task.onDetailOpenChange?.(next)} render={<li />} className="flex min-h-7 flex-col py-1">
-      <div className="flex items-baseline gap-2.5">
+      <div className="flex items-baseline gap-2">
         <TaskMark state={task.state} className="mt-[3px] self-start" />
         {has ? (
           <CollapsibleTrigger className={cn("group/steps -mx-1 flex min-w-0 items-start gap-1 rounded-md px-1 text-start", ROW_PRESS)}>
@@ -278,7 +278,7 @@ export function TaskList({
 
   return (
     <Collapsible ref={card} data-slot="task-list" open={open} onOpenChange={setOpen} className={cn("w-full rounded-xl border border-border bg-card text-card-foreground", className)}>
-      <CollapsibleTrigger className={cn("group/task-header flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-start data-panel-open:rounded-b-none", ROW_PRESS)}>
+      <CollapsibleTrigger className={cn("group/task-header flex w-full items-start gap-2 rounded-xl px-3 py-2.5 text-start data-panel-open:rounded-b-none", ROW_PRESS)}>
         <span className="relative mt-[3px] block size-3.5 shrink-0">
           {complete ? <TaskMark state="done" /> : <TaskDonut done={done} total={tasks.length} />}
         </span>

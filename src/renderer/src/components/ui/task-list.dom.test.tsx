@@ -197,7 +197,7 @@ describe("its fitted width", () => {
     const { rerender } = render(<TaskList tasks={tasks} onFitWidth={onFitWidth} measureText={measure} />);
     expect(onFitWidth).toHaveBeenCalledTimes(1);
     // The widest row (border, inset, mark, gap, label, gap, the widest time) beats the header.
-    expect(onFitWidth).toHaveBeenLastCalledWith(2 * 13 + 24 + 18 * 6 + 10 + 7 * 6);
+    expect(onFitWidth).toHaveBeenLastCalledWith(2 * 13 + 22 + 18 * 6 + 8 + 7 * 6);
     rerender(<TaskList tasks={tasks.map((t) => ({ ...t, state: "done" as const }))} onFitWidth={onFitWidth} measureText={measure} />);
     expect(onFitWidth).toHaveBeenCalledTimes(1);
     rerender(<TaskList tasks={[...tasks, { id: "3", label: "A much longer task label than before", state: "pending" }]} onFitWidth={onFitWidth} measureText={measure} />);
@@ -238,7 +238,7 @@ describe("the compact rows", () => {
     expect(rows.map((row) => row.querySelector(".task-mark")?.getAttribute("data-state"))).toEqual(["done", "active", "pending"]);
     for (const row of rows) {
       expect(row.className).toContain("min-h-5");
-      expect(row.className).toContain("gap-1.5");
+      expect(row.className).toContain("gap-2");
       expect(row.className).not.toContain("min-h-7");
       const mark = row.querySelector(".task-mark")!;
       expect(mark.getAttribute("class")).toContain("size-3");

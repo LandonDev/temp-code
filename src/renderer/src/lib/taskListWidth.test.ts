@@ -8,7 +8,7 @@ import { canvasMeasure, FIT_MIN_PX, fitCard, fitColumn, type Measure } from "./t
 /** 6px a character for a label, 5px for a time: easy sums. */
 const measure: Measure = (text, font) => text.length * (font === "label" ? 6 : 5);
 /** The fixed part of a row: border and inset each side, the mark and its gap. */
-const FRAME = 2 * (1 + 12) + 14 + 10;
+const FRAME = 2 * (1 + 12) + 14 + 8;
 
 afterEach(cleanup);
 
@@ -19,15 +19,15 @@ describe("fitCard", () => {
 
   it("keeps a slot for the widest time only when a task has a time", () => {
     const labels = ["Measure the labels"];
-    // "59m 59s" is seven characters, after its 10px gap.
-    expect(fitCard({ labels, hasTimes: true }, measure)).toBe(FRAME + 18 * 6 + 10 + 7 * 5);
+    // "59m 59s" is seven characters, after its 8px gap.
+    expect(fitCard({ labels, hasTimes: true }, measure)).toBe(FRAME + 18 * 6 + 8 + 7 * 5);
     expect(fitCard({ labels, hasTimes: false }, measure)).toBe(FRAME + 18 * 6);
   });
 
   it("is never narrower than its header", () => {
     const header = { title: "Tasks", tally: "12/12" };
     // donut and gap, the title, a gap, the tally, 4px, the chevron.
-    const head = 14 + 10 + 5 * 6 + 10 + 5 * 6 + 4 + 14;
+    const head = 14 + 8 + 5 * 6 + 8 + 5 * 6 + 4 + 14;
     expect(fitCard({ labels: ["A"], hasTimes: false, header }, measure)).toBe(2 * (1 + 12) + head);
   });
 
@@ -63,6 +63,8 @@ describe("the constants are the list's classes", () => {
     expect(header.className).toContain(`px-${cls(TASK_INSET_PX)}`);
     expect(row.className).toContain(`gap-${cls(TASK_GAP_PX)}`);
     expect(header.className).toContain(`gap-${cls(TASK_GAP_PX)}`);
+    // 8px from a mark to its first word, on the 4px grid, at both sizes.
+    expect(TASK_GAP_PX).toBe(8);
     expect(mark.getAttribute("class")).toContain(`size-${cls(TASK_MARK_PX)}`);
     expect(chevron.getAttribute("class")).toContain(`size-${cls(TASK_CHEVRON_PX)}`);
     expect(chevron.parentElement!.className).toContain(`gap-${cls(TASK_TALLY_GAP_PX)}`);
