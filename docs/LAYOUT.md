@@ -455,9 +455,10 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     was): a `Select` of the target, a ⋯ menu with Update from, Rebase
     onto and Merge into (a local target only), the files changed since the
     merge base opening the diff against it ("No file differs" when none
-    does but commits do; nothing at all when even), and one fold line,
-    "3 commits ahead  1 behind", over the commits, the one place ahead and
-    behind are said. With no branch but the current one there is no
+    does but commits do; nothing at all when even; a deleted file keeps
+    its focus and hover with its name muted, as in the index groups), and
+    one fold line, "3 commits ahead, 1 behind", a pressable row over the
+    commits, the one place ahead and behind are said. With no branch but the current one there is no
     default target: the `Select` stands alone on "Choose a branch", and a
     picked branch that is gone reads "<branch> no longer exists". A landed
     move is a toast, conflicts one `Alert` with nothing changed. The commit field is

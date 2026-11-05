@@ -107,11 +107,25 @@ describe("ChangesAgainst", () => {
     expect(onOpenDiff).toHaveBeenCalledWith("/p/src/a.ts");
   });
 
+  it("a deleted file keeps its focus and hover with only its name muted, and opens nothing", () => {
+    const onOpen = vi.fn();
+    render(<AgainstFileRow file={{ path: "src/gone.ts", adds: 0, dels: 12, status: "deleted" }} target="master" onOpen={onOpen} />);
+    const row = screen.getByRole("button", { name: "src/gone.ts, deleted" }) as HTMLButtonElement;
+    expect(row.disabled).toBe(false);
+    expect(row.getAttribute("aria-disabled")).toBe("true");
+    expect(row.className).toContain("hover:bg-foreground/5");
+    fireEvent.click(row);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
   it("folds the commits on each side behind one line", async () => {
     mount();
     await flush();
     const fold = screen.getByRole("button", { name: /2 commits ahead/ });
-    expect(fold.textContent).toBe("2 commits ahead1 behind");
+    expect(fold.textContent).toBe("2 commits ahead, 1 behind");
+    // A row like the index's: it fills on hover and steps to /12 on a press.
+    expect(fold.className).toContain("hover:bg-foreground/5");
+    expect(fold.className).toContain("active:bg-foreground/12");
     expect(screen.queryByText("Fold Branch into Changes")).toBeNull();
     fireEvent.click(fold);
     expect(screen.getByText("Fold Branch into Changes")).toBeTruthy();

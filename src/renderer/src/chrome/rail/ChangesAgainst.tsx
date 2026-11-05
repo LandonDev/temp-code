@@ -9,6 +9,7 @@ import { ItemButton, ItemActions, ItemContent, ItemMedia } from "@renderer/compo
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
+import { ROW_PRESS } from "@renderer/components/ui/press";
 import { cn } from "@renderer/lib/cn";
 import { timeAgo } from "../../lib/format";
 import { notifyGitChanged } from "../../lib/fs";
@@ -337,18 +338,23 @@ export function AgainstHead({ model }: { model: AgainstModel }) {
   );
 }
 
-/** One file this branch changed since the merge base; opens its diff against it. */
+/** One file this branch changed since the merge base; opens its diff against it.
+ *  A deleted one behaves as the index groups' does: it keeps its focus and
+ *  hover with only its name muted, and opens nothing. */
 export function AgainstFileRow({ file, target, selectedPath, onOpen }: { file: FileChange; target: string; selectedPath?: string; onOpen: (path: string) => void }) {
   const deleted = file.status === "deleted";
   const active = selectedPath === file.path;
   return (
     <ItemButton
       size="xs"
-      disabled={deleted}
-      onClick={() => onOpen(file.path)}
+      aria-disabled={deleted || undefined}
+      onClick={deleted ? undefined : () => onOpen(file.path)}
       aria-current={active || undefined}
       aria-label={deleted ? `${file.path}, deleted` : `Open the diff of ${file.path} against ${target}`}
-      className={cn("min-h-7 flex-nowrap gap-2 py-0 text-left", !deleted && "hover:bg-foreground/5", active && "bg-muted hover:bg-muted")}
+      className={cn(
+        "min-h-7 flex-nowrap gap-2 py-0 text-left hover:bg-foreground/5 aria-disabled:cursor-default aria-disabled:active:bg-foreground/5",
+        active && "bg-muted hover:bg-muted",
+      )}
     >
       <ItemMedia className="size-4">
         <FileTypeIcon name={file.path} isDir={false} size={16} />
@@ -368,19 +374,15 @@ export function AgainstCommits({ compare, open, onOpenChange }: { compare: Compa
   const { ours, theirs, ahead, behind } = compare;
   const both = ours.length > 0 && theirs.length > 0;
   const commits = (n: number) => `${n} ${n === 1 ? "commit" : "commits"}`;
-  // "3 commits ahead  1 behind": the noun once, on the first fact.
+  // "3 commits ahead, 1 behind": the noun once, on the first fact, one comma run.
   const words = ahead > 0 ? [`${commits(ahead)} ahead`, behind > 0 ? `${behind} behind` : ""] : [`${commits(behind)} behind`];
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger
-        className="flex h-7 w-full items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground"
+        className={cn("flex h-7 w-full items-center gap-2 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground", ROW_PRESS)}
       >
         <ChevronRight className={cn("size-3 shrink-0", DISCLOSURE_CHEVRON, open && "rotate-90")} />
-        {words.filter(Boolean).map((w, i) => (
-          <span key={w} className={cn("tabular-nums", i > 0 && "ml-2")}>
-            {w}
-          </span>
-        ))}
+        <span className="tabular-nums">{words.filter(Boolean).join(", ")}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="flex flex-col gap-4 pt-1">
