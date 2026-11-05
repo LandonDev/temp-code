@@ -33,6 +33,12 @@
  *   POST /presence { environmentId, screen?, power? }  → flips a relayed host's screen or power (the relay seed)
  *   POST /quit                  → closes everything
  *
+ * TC_TEST_NO_HARNESS=1 swaps every built-in driver for an idle in-process
+ * handle (no CLI is spawned at a create's eager boot or a send), for a run
+ * that only reads what the seeds and the control panel write: the
+ * transcript, stream and scroll sets. Without it each seeded thread boots
+ * a real CLI, several GiB together.
+ *
  * The seeds of the 2026-10-21/22 features (a master's batch mid-run, the
  * queued and stopped rows, a paused master, the project plan, notes, the
  * host's own rows, resources, a pinned account, a cross-host child, media,
@@ -60,6 +66,8 @@ import { dirname, join } from 'node:path'
 import { deflateSync } from 'node:zlib'
 import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
+import { BUILT_IN_DRIVERS } from '../src/main/server/drivers'
+import type { DriverHandle } from '../src/main/server/drivers/types'
 import { emitLiveEdit } from '../src/main/server/livediff'
 import { playScenarios, scenarioLength } from './lib/soakScenarios'
 import { MacDevices } from '../src/main/server/devices/hostDevices'
@@ -156,6 +164,14 @@ writeFileSync(
 writeFileSync(join(deployDir, 'exit'), '0\n')
 process.env.TEMP_CODE_DEPLOY_DIR = deployDir
 process.env.TEMP_CODE_E2E_SEED = '1'
+if (process.env.TC_TEST_NO_HARNESS === '1') {
+  process.env.TEMP_CODE_WARM_HARNESS = '0'
+  // An idle handle per thread: sends are stored by the registry and go nowhere.
+  const idle = async (): Promise<DriverHandle> => ({ send: async () => {}, interrupt: () => {}, alive: () => true, dispose: async () => {} })
+  for (const id of Object.keys(BUILT_IN_DRIVERS) as (keyof typeof BUILT_IN_DRIVERS)[]) {
+    BUILT_IN_DRIVERS[id] = { ...BUILT_IN_DRIVERS[id], start: idle }
+  }
+}
 // The host's id is made in its data dir before the boot, so the fake devices gatherer can carry it.
 const environmentId = loadEnvironmentId(root)
 const server = await startServer(dbPath, {

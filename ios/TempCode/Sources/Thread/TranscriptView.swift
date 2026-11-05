@@ -74,6 +74,7 @@ struct TranscriptView: View {
                     }
                     .id(row.id)
                     .onAppear { bornRows.claim(row) }
+                    .rowInitProbe(row.id)
                     .accessibilityIdentifier("transcript-item")
                 }
                 .listRowInsets(rowInsets)
@@ -83,7 +84,7 @@ struct TranscriptView: View {
                     .frame(height: 1)
                     .id(TranscriptAnchor.bottom)
                     .background {
-                        if TestHooks.scroll {
+                        if TestHooks.scroll || TestHooks.scrollUp || TestHooks.stream {
                             ScrollProofProbe { scroll in if proofScrollView !== scroll { proofScrollView = scroll } }
                         }
                     }
@@ -123,6 +124,7 @@ struct TranscriptView: View {
             }
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
                 recorder?.noteOffset(y)
+                noteHold(y)
             }
             .overlay(alignment: .bottom) {
                 TranscriptScrollControls(state: scrollState) {
@@ -139,7 +141,10 @@ struct TranscriptView: View {
                         .accessibilityIdentifier("search-target-status")
                 }
             }
-            .onChange(of: thread.fold.lastSeq) { pinTail(proxy: proxy) }
+            .onChange(of: thread.fold.lastSeq) {
+                pinTail(proxy: proxy)
+                if hold != nil { noteHold(nil) }
+            }
             // Leaving the app scrolled up puts the transcript back at the bottom before the
             // system takes its snapshot, so the return shows the newest rows with no scroll.
             .onChange(of: scenePhase) { _, phase in
@@ -173,6 +178,11 @@ struct TranscriptView: View {
                 scrollRan = true
                 await scrollProof(proxy: proxy)
             }
+            .task(id: TestHooks.scrollUp || TestHooks.stream ? "\(thread.isLoading)|\(rows.isEmpty)" : "") {
+                guard TestHooks.scrollUp || TestHooks.stream, !thread.isLoading, !rows.isEmpty, !scrollRan else { return }
+                scrollRan = true
+                if TestHooks.scrollUp { await scrollUpProof() } else { await streamProof() }
+            }
         }
     }
 
@@ -183,6 +193,12 @@ struct TranscriptView: View {
     @State private var proofScrollView: UIScrollView?
     @State private var scrollRan = false
     @State private var recorder: FrameRecorder?
+    /// The scrolled-up run's held offsets (DEBUG proof only), outside observation so a sample re-renders nothing.
+    @State private var holdBox = HoldBox()
+    private var hold: TestHooks.ScrollHold? {
+        get { holdBox.hold }
+        nonmutating set { holdBox.hold = newValue }
+    }
     @State private var proofGroupOpened = false
     /// The list's own width, for the measure.
     @State private var listWidth: CGFloat = 0
@@ -287,6 +303,70 @@ struct TranscriptView: View {
         self.recorder = nil
     }
 
+    /// DEBUG proof (`TC_TEST_SCROLL_UP`): 700 pt up from the bottom once the
+    /// thread has landed, then every offset is held against the one left.
+    private func scrollUpProof() async {
+        try? await Task.sleep(for: .seconds(2))
+        guard let proofScrollView = await proofScroller() else { return }
+        let top = -proofScrollView.adjustedContentInset.top
+        proofScrollView.setContentOffset(CGPoint(x: proofScrollView.contentOffset.x, y: max(top, proofScrollView.contentOffset.y - 700)), animated: false)
+        try? await Task.sleep(for: .milliseconds(500))
+        let y = Double(proofScrollView.contentOffset.y)
+        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory).count
+        #if DEBUG
+        LayoutProbe.note("proof", "scrolled-up")
+        #endif
+        hold = TestHooks.ScrollHold(startOffset: y, minOffset: y, maxOffset: y, samples: 0, rowsAtStart: rows, rows: rows,
+                                    seqAtStart: thread.fold.lastSeq, seq: thread.fold.lastSeq, atBottom: scrollState.atBottom)
+        noteHold(nil)
+    }
+
+    /// The list's scroll view once the probe has found it (10 s at most); the proof notes a miss.
+    private func proofScroller() async -> UIScrollView? {
+        for _ in 0..<100 {
+            if let proofScrollView { return proofScrollView }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        #if DEBUG
+        LayoutProbe.note("proof", "no-scroll-view")
+        #endif
+        return nil
+    }
+
+    /// A content offset (or, with nil, a change of rows) during the scrolled-up run.
+    private func noteHold(_ y: CGFloat?) {
+        guard var next = hold else { return }
+        if let y {
+            next.samples += 1
+            next.minOffset = min(next.minOffset, Double(y))
+            next.maxOffset = max(next.maxOffset, Double(y))
+        }
+        next.rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory).count
+        next.seq = thread.fold.lastSeq
+        next.atBottom = scrollState.atBottom
+        hold = next
+        TestHooks.recordScrollHold(next)
+    }
+
+    /// DEBUG proof (`TC_TEST_STREAM`): frames recorded with the reader pinned
+    /// at the bottom while the proof's `POST /stream` plays into the thread.
+    private func streamProof() async {
+        try? await Task.sleep(for: .seconds(2))
+        guard let proofScrollView = await proofScroller() else { return }
+        #if DEBUG
+        LayoutProbe.note("proof", "stream-recording")
+        #endif
+        let recorder = FrameRecorder()
+        self.recorder = recorder
+        let state = scrollState
+        let thread = thread
+        recorder.start(sourceRows: thread.rows.count, items: TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen).count,
+                       scrollView: proofScrollView, driver: .stream(pinned: { state.atBottom }, seq: { thread.fold.lastSeq }))
+        try? await Task.sleep(for: .seconds(TestHooks.streamSeconds))
+        _ = recorder.stop()
+        self.recorder = nil
+    }
+
     /// The bottom, at once and with no motion: the window back to one page
     /// (the rows above are dropped, not scrolled past) and the reader pinned
     /// there as if they had never scrolled up.
@@ -373,6 +453,11 @@ struct TranscriptView: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) { proxy.scrollTo(anchor, anchor: .top) }
     }
+}
+
+/// Plain storage for the scrolled-up proof's samples.
+final class HoldBox {
+    var hold: TestHooks.ScrollHold?
 }
 
 /// Whether the reader is at the bottom. Only the jump pill reads it in a

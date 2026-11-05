@@ -16,6 +16,14 @@ import UIKit
 /// launch). The proof's `pose_check` holds a shot to the row for its pose;
 /// the fold cycle reads the events.
 ///
+/// The transcript's rows are counted by key (`rowInit`, `rowAppeared`,
+/// `rowDisappeared`, from `rowInitProbe` on each row of TranscriptView):
+/// `Documents/row-inits.json` holds every key's inits, appearances and
+/// disappearances, the violations (a row whose state was made again while
+/// it was on screen: an init while its appearances outnumber its
+/// disappearances) and whether reduce motion was on; the layout report
+/// carries the totals as `rowInits { rows, inits, violations }`.
+///
 /// Sibling plans make one call: `LayoutProbe.note("sidebar", "visible")`
 /// from any view, a string key and value; a repeated same value is not an
 /// event. `LayoutProbe.route(...)` is RootView's and ThreadScreen's.
@@ -50,6 +58,22 @@ enum LayoutProbe {
     /// The transcript's position, read live at each write (TestHooks.recordTranscript hands it over).
     static func transcript(atBottom: @escaping @MainActor () -> Bool) {
         state.atBottom = atBottom
+        state.schedule()
+    }
+
+    /// A transcript row's state was made (its `@StateObject` built): one per identity (`RowInitLedger`).
+    static func rowInit(_ key: String) {
+        state.rowLedger.inited(key, at: state.ms)
+        state.schedule()
+    }
+
+    static func rowAppeared(_ key: String) {
+        state.rowLedger.appeared(key)
+        state.schedule()
+    }
+
+    static func rowDisappeared(_ key: String) {
+        state.rowLedger.disappeared(key)
         state.schedule()
     }
 
@@ -123,6 +147,7 @@ enum LayoutProbe {
         var segment: String?
         var atBottom: (@MainActor () -> Bool)?
         var notes: [String: String] = [:]
+        var rowLedger = RowInitLedger()
         var events: [[String: Any]] = []
         var writes = 0
         private var pending: Task<Void, Never>?
@@ -132,6 +157,7 @@ enum LayoutProbe {
         init() {
             // A new launch starts the log afresh.
             try? FileManager.default.removeItem(at: Self.url("layout-events"))
+            try? FileManager.default.removeItem(at: Self.url("row-inits"))
         }
 
         func set<T: Equatable>(_ path: ReferenceWritableKeyPath<State, T?>, _ value: T?, key: String, words: (T) -> String = { "\($0)" }) {
@@ -146,17 +172,24 @@ enum LayoutProbe {
             if events.count > 500 { events.removeFirst(events.count - 500) }
         }
 
-        private var ms: Int { Int(Date().timeIntervalSince(launched) * 1000) }
+        var ms: Int { Int(Date().timeIntervalSince(launched) * 1000) }
 
-        /// One write 250 ms after the last change.
+        /// One write 250 ms after the last change, and at least one a second
+        /// while changes keep coming (a streaming transcript never goes quiet).
         func schedule() {
+            if pending != nil, let since = pendingSince, Date().timeIntervalSince(since) > 1 { return }
             pending?.cancel()
+            if pendingSince == nil { pendingSince = Date() }
             pending = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(250))
-                guard !Task.isCancelled else { return }
-                self?.write()
+                guard !Task.isCancelled, let self else { return }
+                self.pending = nil
+                self.pendingSince = nil
+                self.write()
             }
         }
+
+        private var pendingSince: Date?
 
         private func write() {
             writes += 1
@@ -191,6 +224,16 @@ enum LayoutProbe {
                 "t": ms
             ]
             if let atBottom { report["transcriptAtBottom"] = atBottom() ? 1 : 0 }
+            if !rowLedger.rows.isEmpty {
+                report["rowInits"] = ["rows": rowLedger.rows.count, "inits": rowLedger.inits, "violations": rowLedger.violations.count]
+                let perRow = rowLedger.rows.mapValues { ["inits": $0.inits, "appears": $0.appears, "disappears": $0.disappears] }
+                Self.dump([
+                    "rows": perRow,
+                    "violations": rowLedger.violations.map { ["key": $0.key, "t": $0.at, "inits": $0.inits] as [String: Any] },
+                    "reduceMotion": UIAccessibility.isReduceMotionEnabled ? 1 : 0,
+                    "t": ms
+                ] as [String: Any], to: "row-inits")
+            }
             Self.dump(report, to: "layout-report")
             Self.dump(events, to: "layout-events")
         }

@@ -37,6 +37,15 @@ enum TestHooks {
     /// Scrolls the whole transcript top and back while a display link
     /// records every frame; the report lands in Documents/scroll-report.json.
     static let scroll = env["TC_TEST_SCROLL"] == "1"
+    /// The transcript proof's scrolled-up run: once the thread lands, the
+    /// reader scrolls 700 pt up, and every content offset after that is held
+    /// in Documents/scroll-hold.json (it must never move while rows arrive below).
+    static let scrollUp = env["TC_TEST_SCROLL_UP"] == "1"
+    /// The stream driver: once the thread lands, a display link records
+    /// every frame for `TC_TEST_STREAM_SECONDS` (22) with the reader pinned at
+    /// the bottom while the proof's `POST /stream` plays; Documents/stream-report.json.
+    static let stream = env["TC_TEST_STREAM"] == "1"
+    static let streamSeconds = env["TC_TEST_STREAM_SECONDS"].flatMap(Double.init) ?? 22
     static let targetSeq = env["TC_TEST_TARGET_SEQ"].flatMap(Int.init)
     static let history = env["TC_TEST_HISTORY"] == "1"
     /// An action the thread screen performs once its rows are in, through the
@@ -62,6 +71,9 @@ enum TestHooks {
     static let segment: ThreadSegment? = nil
     static let open: String? = nil
     static let scroll = false
+    static let scrollUp = false
+    static let stream = false
+    static let streamSeconds = 0.0
     static let targetSeq: Int? = nil
     static let history = false
     static let action: String? = nil
@@ -187,6 +199,29 @@ enum TestHooks {
         #endif
     }
 
+    /// The scrolled-up run's offsets (`TC_TEST_SCROLL_UP`): the offset the
+    /// reader was left at, the lowest and highest seen since, how many, and
+    /// the rows and last seq at the start and now. Rewritten on each sample.
+    static func recordScrollHold(_ hold: ScrollHold) {
+        #if DEBUG
+        guard scrollUp, let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+              let data = try? JSONEncoder().encode(hold) else { return }
+        try? data.write(to: documents.appending(path: "scroll-hold.json"), options: .atomic)
+        #endif
+    }
+
+    struct ScrollHold: Codable {
+        var startOffset: Double
+        var minOffset: Double
+        var maxOffset: Double
+        var samples: Int
+        var rowsAtStart: Int
+        var rows: Int
+        var seqAtStart: Int
+        var seq: Int
+        var atBottom: Bool
+    }
+
     #if DEBUG
     private static func writeReport(_ name: String, _ fields: [String: Int]) {
         guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
@@ -198,8 +233,19 @@ enum TestHooks {
 }
 
 /// Frame intervals from a display link while a scroll runs: how many frames
-/// came more than 8 ms late, and the worst one.
+/// came more than 8 ms late, and the worst one. The `scroll` driver moves
+/// the offset itself (two 25 s glides); the `stream` driver moves nothing
+/// and records while a turn streams with the reader pinned at the bottom
+/// (`pinned` is read each frame; `seq` the thread's last seq).
 final class FrameRecorder: NSObject {
+    enum Driver {
+        case scroll
+        case stream(pinned: () -> Bool, seq: () -> Int)
+    }
+
+    private var driver: Driver = .scroll
+    private var unpinnedFrames = 0
+    private var seqStart = 0
     private var link: CADisplayLink?
     private var maxFramesPerSecond = 60
     private var last: CFTimeInterval?
@@ -229,6 +275,11 @@ final class FrameRecorder: NSObject {
         var travelPt: Double
         /// When each late frame landed, in seconds since the run began (the first 20).
         var hitchAtS: [Double]
+        /// The stream driver: frames the reader was not at the bottom, and the thread's last seq at the start and end.
+        var unpinnedFrames = 0
+        var seqStart = 0
+        var seqEnd = 0
+        var seconds = 0.0
     }
 
     struct LateFrame: Codable {
@@ -261,7 +312,9 @@ final class FrameRecorder: NSObject {
         maxOffset = max(maxOffset, y)
     }
 
-    func start(sourceRows: Int, items: Int, scrollView: UIScrollView) {
+    func start(sourceRows: Int, items: Int, scrollView: UIScrollView, driver: Driver = .scroll) {
+        self.driver = driver
+        if case .stream(_, let seq) = driver { seqStart = seq() }
         self.scrollView = scrollView
         // The panel the scroll view sits on (the Duo's inner panel is ProMotion, the outer is not); UIScreen.main is deprecated.
         maxFramesPerSecond = scrollView.window?.screen.maximumFramesPerSecond ?? 60
@@ -292,6 +345,10 @@ final class FrameRecorder: NSObject {
         }
         last = link.timestamp
         lastOffset = offset
+        if case .stream(let pinned, _) = driver {
+            if !pinned() { unpinnedFrames += 1 }
+            return
+        }
         if let scrollView {
             let top = -scrollView.adjustedContentInset.top
             let bottom = max(top, scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom)
@@ -310,10 +367,17 @@ final class FrameRecorder: NSObject {
         let worst = intervals.max() ?? 0
         let mean = intervals.isEmpty ? 0 : intervals.reduce(0, +) / Double(intervals.count)
         let travel = offsetSamples > 0 ? maxOffset - minOffset : 0
-        let report = Report(driver: "native-list-offset", initialOffset: initialOffset, curve: "linear", scrollFrames: movingIntervals.count, scrollHitches: movingIntervals.count { $0 - expectedMs > 8 }, scrollWorstMs: movingIntervals.max() ?? 0, lateFrames: lateFrames, sourceRows: sourceRows, items: items, frames: intervals.count, maxFramesPerSecond: maxFramesPerSecond, expectedMs: expectedMs, hitches: hitches, worstMs: worst, meanMs: mean, over16Ms: intervals.count { $0 > 16.7 }, offsetSamples: offsetSamples, travelPt: travel, hitchAtS: hitchTimes.map { ($0 * 10).rounded() / 10 })
-        log.notice("scroll frames=\(report.frames) hitches=\(report.hitches) worst=\(report.worstMs, format: .fixed(precision: 1))ms mean=\(report.meanMs, format: .fixed(precision: 2))ms travel=\(travel, format: .fixed(precision: 0))pt")
+        let streaming: Bool
+        var seqEnd = 0
+        if case .stream(_, let seq) = driver { streaming = true; seqEnd = seq() } else { streaming = false }
+        var report = Report(driver: streaming ? "stream-pinned" : "native-list-offset", initialOffset: initialOffset, curve: "linear", scrollFrames: movingIntervals.count, scrollHitches: movingIntervals.count { $0 - expectedMs > 8 }, scrollWorstMs: movingIntervals.max() ?? 0, lateFrames: lateFrames, sourceRows: sourceRows, items: items, frames: intervals.count, maxFramesPerSecond: maxFramesPerSecond, expectedMs: expectedMs, hitches: hitches, worstMs: worst, meanMs: mean, over16Ms: intervals.count { $0 > 16.7 }, offsetSamples: offsetSamples, travelPt: travel, hitchAtS: hitchTimes.map { ($0 * 10).rounded() / 10 })
+        report.unpinnedFrames = unpinnedFrames
+        report.seqStart = seqStart
+        report.seqEnd = seqEnd
+        report.seconds = (startedAt.map { (last ?? $0) - $0 } ?? 0)
+        log.notice("\(streaming ? "stream" : "scroll") frames=\(report.frames) hitches=\(report.hitches) worst=\(report.worstMs, format: .fixed(precision: 1))ms mean=\(report.meanMs, format: .fixed(precision: 2))ms travel=\(travel, format: .fixed(precision: 0))pt")
         if let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first, let data = try? JSONEncoder().encode(report) {
-            try? data.write(to: documents.appending(path: "scroll-report.json"))
+            try? data.write(to: documents.appending(path: streaming ? "stream-report.json" : "scroll-report.json"))
         }
         return report
     }

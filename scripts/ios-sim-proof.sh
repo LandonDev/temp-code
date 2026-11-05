@@ -20,6 +20,15 @@
 #           each in light and dark.
 #   scroll  The 2,000-row chat glides top and back while frames are recorded;
 #           the report is copied out as scroll-report.json.
+#   transcript The no-jerk timeline (POST /scenario) on "Streaming on the phone",
+#           four runs (light, dark, reduce motion, scrolled up), each recorded
+#           (transcript/<run>.mov) and shot at every step; fails when a row on
+#           screen made its state twice (row-inits.json), reduce motion was
+#           not on in its run, or the scrolled-up offset moved. Needs
+#           TC_TEST_CONTROL_URL (scripts/ios-sim-proof-local.ts sets it).
+#   stream  POST /stream plays a bursty turn while the reader is pinned at the
+#           bottom and every frame is recorded (stream-report.json); fails on
+#           a frame later than its expected interval plus 8 ms.
 #   box     TC_TEST_THREADS ("title part|title part|…", else TC_TEST_THREAD):
 #           both segments of each named thread, light only, for a real host.
 #   actions The steering shots: a read key's disabled composer and card, then
@@ -253,6 +262,20 @@ duo_shot() { shot "$@"; }
 #   shot <name> <route> [thread part] [segment] [open] [settle]
 shot() {
   local name=$1 route=$2 thread=${3:-${TC_TEST_THREAD:-}} segment=${4:-} open=${5:-} settle=${6:-$SETTLE}
+  launch_app "$route" "$thread" "$segment" "$open"
+  if [ "${TC_PROOF_PROFILE:-}" = 1 ] && [ "$name" = long-scrolled ]; then
+    proof_pid=$(pgrep -f "/CoreSimulator/Devices/$TC_SIM_UDID/data/Containers/Bundle/Application/.*/TempCode.app/TempCode" | head -1)
+    if [ -n "$proof_pid" ]; then
+      sample "$proof_pid" 56 1 -mayDie -file "$OUT/scroll-sample.txt" >/dev/null 2>&1 &
+    fi
+  fi
+  sleep "$settle"
+  snap "$name"
+}
+# The launch alone, for a set that shoots several times in one run (transcript, stream).
+#   launch_app <route> [thread part] [segment] [open]
+launch_app() {
+  local route=$1 thread=${2:-${TC_TEST_THREAD:-}} segment=${3:-} open=${4:-}
   SIMCTL_CHILD_TC_DUO_POSE="$POSE" \
   SIMCTL_CHILD_TC_TEST_PAIR_LINK="${TC_TEST_PAIR_LINK:-}" \
   SIMCTL_CHILD_TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-}" \
@@ -271,15 +294,10 @@ shot() {
   SIMCTL_CHILD_TC_TEST_ACTION="${TC_ACTION:-}" \
   SIMCTL_CHILD_TC_TEST_SHEET="${TC_SHEET:-}" \
   SIMCTL_CHILD_TC_TEST_NOTIFICATION="${TC_NOTIFY:-}" \
+  SIMCTL_CHILD_TC_TEST_SCROLL_UP="${TC_SCROLL_UP_RUN:-}" \
+  SIMCTL_CHILD_TC_TEST_STREAM="${TC_STREAM_RUN:-}" \
+  SIMCTL_CHILD_TC_TEST_STREAM_SECONDS="${TC_STREAM_SECONDS:-}" \
     xcrun simctl launch --terminate-running-process "$TC_SIM_UDID" "$BUNDLE" >/dev/null
-  if [ "${TC_PROOF_PROFILE:-}" = 1 ] && [ "$name" = long-scrolled ]; then
-    proof_pid=$(pgrep -f "/CoreSimulator/Devices/$TC_SIM_UDID/data/Containers/Bundle/Application/.*/TempCode.app/TempCode" | head -1)
-    if [ -n "$proof_pid" ]; then
-      sample "$proof_pid" 56 1 -mayDie -file "$OUT/scroll-sample.txt" >/dev/null 2>&1 &
-    fi
-  fi
-  sleep "$settle"
-  snap "$name"
 }
 appearance() { xcrun simctl ui "$TC_SIM_UDID" appearance "$1" >/dev/null 2>&1 || true; }
 
@@ -883,6 +901,148 @@ CHECK
   echo "ios-sim-proof: the unfold is recorded in $OUT/cycle-unfold.mov"
 }
 
+# The transcript proof (slice A3 of "The phone reads like the desktop"): the
+# no-jerk timeline (scripts/lib/soakScenarios.ts, played by the test server's
+# POST /scenario on "Streaming on the phone") four times, each run one launch
+# opened at the bottom of the chat: light, dark, reduce motion, and scrolled up
+# (TC_TEST_SCROLL_UP: the reader 700 pt up before the timeline starts). Each
+# run is recorded whole (simctl io recordVideo, transcript/<run>.mov) and shot
+# 350 ms after the first step of every label (transcript/<run>/NN-<label>.png,
+# index.json with the planned and the actual times). The checks: no row on
+# screen made its state twice (row-inits.json from LayoutProbe, by row key),
+# reduce motion on in its run, and the scrolled-up offset never moved while
+# rows arrived below. Reduce motion is the simulator's own setting
+# (`defaults write com.apple.Accessibility ReduceMotionEnabled`), read back
+# from UIAccessibility in row-inits.json.
+wait_for() { local i=0; while [ ! -s "$1" ] && [ "$i" -lt "$(( $2 * 2 ))" ]; do sleep 0.5; i=$((i + 1)); done; [ -s "$1" ]; }
+reduce_motion() { xcrun simctl spawn "$TC_SIM_UDID" defaults write com.apple.Accessibility ReduceMotionEnabled -bool "$1" >/dev/null 2>&1 || true; }
+transcript_set() {
+  [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the transcript set needs TC_TEST_CONTROL_URL (bun scripts/ios-sim-proof-local.ts)" >&2; return 2; }
+  local thread="Streaming on the phone" dir="$OUT/transcript" run container recorder bun
+  bun=$(command -v bun || echo "$HOME/.bun/bin/bun")
+  rm -rf "$dir"
+  mkdir -p "$dir"
+  (cd "$here/.." && "$bun" -e 'import { scenarioTimeline } from "./scripts/lib/soakScenarios.ts"
+const seen = new Set<string>()
+for (const s of scenarioTimeline()) { if (seen.has(s.label)) continue; seen.add(s.label); console.log(`${s.at}\t${s.label}`) }') > "$dir/timeline.tsv"
+  for run in light dark reduced scrolled-up; do
+    if [ "$run" = dark ]; then appearance dark; else appearance light; fi
+    if [ "$run" = reduced ]; then reduce_motion true; else reduce_motion false; fi
+    container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
+    rm -f "$container/Documents/transcript-report.json" "$container/Documents/scroll-hold.json"
+    mkdir -p "$dir/$run"
+    if [ "$run" = scrolled-up ]; then TC_SCROLL_UP_RUN=1 launch_app thread "$thread" chat; else launch_app thread "$thread" chat; fi
+    # Played only once the app says the thread landed (and, scrolled up, that the reader is up): a loaded Mac lands late.
+    wait_for "$container/Documents/transcript-report.json" 60 || echo "ios-sim-proof: transcript $run: no landing report" >&2
+    [ "$run" = scrolled-up ] && { wait_for "$container/Documents/scroll-hold.json" 30 || echo "ios-sim-proof: transcript $run: the reader was not scrolled up" >&2; }
+    cp "$container/Documents/transcript-report.json" "$dir/$run-landing.json" 2>/dev/null || echo '{}' > "$dir/$run-landing.json"
+    sysctl -n vm.loadavg > "$dir/$run-load.txt"
+    sleep 2
+    xcrun simctl io "$TC_SIM_UDID" recordVideo --codec h264 --force "$dir/$run.mov" >/dev/null 2>"$dir/record.err" &
+    recorder=$!
+    sleep 1
+    python3 - "$TC_TEST_CONTROL_URL" "$TC_SIM_UDID" "$dir/$run" "$dir/timeline.tsv" <<'PLAY'
+import json, re, subprocess, sys, time, urllib.request
+control, udid, out, tsv = sys.argv[1:5]
+steps = [(int(a), l) for a, l in (line.rstrip('\n').split('\t', 1) for line in open(tsv) if line.strip())]
+req = urllib.request.Request(control + '/scenario', data=b'{}', headers={'Content-Type': 'application/json'}, method='POST')
+ms = json.load(urllib.request.urlopen(req))['ms']
+t0 = time.monotonic()
+index = []
+for i, (at, label) in enumerate(steps):
+    wait = t0 + (at + 350) / 1000 - time.monotonic()
+    if wait > 0: time.sleep(wait)
+    name = f"{i:02d}-{re.sub(r'[^a-z0-9]+', '-', label.lower()).strip('-')}.png"
+    shot_ms = round((time.monotonic() - t0) * 1000)
+    subprocess.run(['xcrun', 'simctl', 'io', udid, 'screenshot', '--type', 'png', f'{out}/{name}'], capture_output=True)
+    index.append({'at': at, 'label': label, 'shotMs': shot_ms, 'file': name})
+wait = t0 + (ms + 1500) / 1000 - time.monotonic()
+if wait > 0: time.sleep(wait)
+json.dump({'ms': ms, 'shots': index}, open(f'{out}/index.json', 'w'), indent=1)
+print(f'ios-sim-proof: transcript {out.rsplit("/", 1)[-1]}: {len(index)} shots over {ms} ms')
+PLAY
+    kill -INT "$recorder" 2>/dev/null; wait "$recorder" 2>/dev/null || true
+    rm -f "$dir/record.err"
+    # The layout report writes 250 ms after the last change.
+    sleep 1
+    cp "$container/Documents/row-inits.json" "$dir/$run-row-inits.json" 2>/dev/null || echo '{}' > "$dir/$run-row-inits.json"
+    cp "$container/Documents/layout-report.json" "$dir/$run-layout.json" 2>/dev/null || true
+    if [ "$run" = scrolled-up ]; then
+      cp "$container/Documents/scroll-hold.json" "$dir/scroll-hold.json" 2>/dev/null || echo '{}' > "$dir/scroll-hold.json"
+    fi
+  done
+  reduce_motion false
+  appearance light
+  python3 - "$dir" <<'CHECK'
+import json, pathlib, sys
+out = pathlib.Path(sys.argv[1])
+failures, summary = [], {}
+for run in ('light', 'dark', 'reduced', 'scrolled-up'):
+    r = json.loads((out / f'{run}-row-inits.json').read_text())
+    rows = r.get('rows', {})
+    v = r.get('violations', [])
+    summary[run] = {'rows': len(rows), 'inits': sum(x['inits'] for x in rows.values()), 'appears': sum(x['appears'] for x in rows.values()), 'violations': len(v), 'reduceMotion': r.get('reduceMotion')}
+    landing = json.loads((out / f'{run}-landing.json').read_text())
+    summary[run]['landedAtBottom'] = landing.get('atBottom')
+    summary[run]['load'] = (out / f'{run}-load.txt').read_text().strip()
+    if landing.get('atBottom') != 1: failures.append(f'{run}: the thread did not open at its bottom ({landing})')
+    if not rows: failures.append(f'{run}: no row-inits report')
+    if v: failures.append(f'{run}: {len(v)} rows on screen made their state again: ' + ', '.join(f"{x['key']}×{x['inits']}@{x['t']}ms" for x in v[:12]))
+    if run == 'reduced' and r.get('reduceMotion') != 1: failures.append('reduced: reduce motion was off in the app')
+    if run != 'reduced' and r.get('reduceMotion') == 1: failures.append(f'{run}: reduce motion was on')
+hold = json.loads((out / 'scroll-hold.json').read_text())
+summary['scrolledUp'] = hold
+if not hold: failures.append('scrolled-up: no scroll-hold report')
+else:
+    moved = hold['maxOffset'] - hold['minOffset']
+    if hold['seq'] <= hold['seqAtStart']: failures.append('scrolled-up: no rows arrived during the run')
+    if hold['atBottom']: failures.append('scrolled-up: the reader ended at the bottom')
+    if moved > 1: failures.append(f"scrolled-up: the offset moved {moved:.1f} pt ({hold['minOffset']:.1f}…{hold['maxOffset']:.1f} from {hold['startOffset']:.1f}) while rows arrived below")
+summary['failures'] = failures
+(out / 'transcript-report.json').write_text(json.dumps(summary, indent=1))
+print('ios-sim-proof: transcript ' + json.dumps({k: v for k, v in summary.items() if k != 'failures'}))
+if failures:
+    for f in failures: print('ios-sim-proof: TRANSCRIPT FAIL ' + f, file=sys.stderr)
+    sys.exit(5)
+print('ios-sim-proof: transcript PASS (no row on screen made its state twice, reduce motion on in its run, the scrolled-up offset held)')
+CHECK
+}
+
+# The stream report: frames recorded (FrameRecorder's stream driver) while
+# POST /stream plays a bursty turn into "Streaming on the phone" with the
+# reader pinned at the bottom. Pass: no frame later than its expected
+# interval plus 8 ms, the reader at the bottom on every frame, the stream's
+# rows landing inside the recording.
+stream_set() {
+  [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the stream set needs TC_TEST_CONTROL_URL" >&2; return 2; }
+  appearance light
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
+  rm -f "$container/Documents/transcript-report.json" "$container/Documents/stream-report.json"
+  TC_STREAM_RUN=1 launch_app thread "Streaming on the phone" chat
+  # The recorder starts 2 s after the landing and runs 22 s; the stream (about 15 s) plays inside it.
+  wait_for "$container/Documents/transcript-report.json" 60 || echo "ios-sim-proof: stream: no landing report" >&2
+  sleep 2
+  sysctl -n vm.loadavg > "$OUT/stream-load.txt"
+  control /stream '{}' >/dev/null
+  wait_for "$container/Documents/stream-report.json" 40 || true
+  cp "$container/Documents/stream-report.json" "$OUT/stream-report.json" 2>/dev/null || { echo "ios-sim-proof: no stream report" >&2; return 5; }
+  snap "stream-end"
+  python3 - "$OUT/stream-report.json" <<'CHECK'
+import json, sys
+r = json.load(open(sys.argv[1]))
+print('ios-sim-proof: stream load ' + open(sys.argv[1].replace('stream-report.json', 'stream-load.txt')).read().strip())
+print('ios-sim-proof: stream ' + json.dumps({k: r[k] for k in ('frames', 'maxFramesPerSecond', 'expectedMs', 'hitches', 'worstMs', 'meanMs', 'over16Ms', 'unpinnedFrames', 'seqStart', 'seqEnd', 'hitchAtS')}))
+failures = []
+if r['seqEnd'] <= r['seqStart']: failures.append('no streamed rows landed inside the recording')
+if r['frames'] < r['seconds'] * 50: failures.append(f"only {r['frames']} frames in {r['seconds']:.1f} s")
+if r['unpinnedFrames']: failures.append(f"the reader left the bottom on {r['unpinnedFrames']} frames")
+if r['hitches'] or r['worstMs'] > r['expectedMs'] + 8: failures.append(f"{r['hitches']} frames later than {r['expectedMs']:.1f} + 8 ms, worst {r['worstMs']:.1f} ms")
+for f in failures: print('ios-sim-proof: STREAM FAIL ' + f, file=sys.stderr)
+sys.exit(5 if failures else 0)
+CHECK
+  echo "ios-sim-proof: stream PASS"
+}
+
 case "$SET" in
   duo) duo_set ;;
   f4) f4_set ;;
@@ -894,6 +1054,8 @@ case "$SET" in
   shell) shell_set; host_gone_set ;;
   threads) threads_set ;;
   scroll) scroll_set ;;
+  transcript) transcript_set ;;
+  stream) stream_set ;;
   box) box_set ;;
   actions) actions_set ;;
   box-actions) box_actions_set ;;

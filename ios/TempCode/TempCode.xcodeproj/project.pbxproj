@@ -72,6 +72,7 @@
 		6A7000A002D9899A1D1A6B75 /* ProjectSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 709C36838327A4F049A08ECF /* ProjectSettingsSheet.swift */; };
 		6ED229D56C1DF4A839C6DE22 /* ThreadToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0127E7DF4D6B47C5BCD88BD /* ThreadToolbar.swift */; };
 		754BF7D8F5794DF8645B0A6C /* NotesStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = B749BB519961CCE1AFC4DE30 /* NotesStyles.swift */; };
+		768210A324FE7DD3E39F647D /* RowInitProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BB0B8E926FF663A28D1AD2E /* RowInitProbe.swift */; };
 		7904C7A1A9BDDACD3EA35658 /* ProofTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7B04777942D936944D56B89 /* ProofTests.swift */; };
 		7A8346F7F523C458D8635A3A /* TempCodeNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A5BDBCF2FD709D21B2A20C30 /* TempCodeNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7B0B0117D929F3ED42CC2B6F /* BatchFoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7AE044D6CB90B7ED7BB42D /* BatchFoot.swift */; };
@@ -255,6 +256,7 @@
 		69317F13ABC0E0662B2E960E /* ComposerStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerStyles.swift; sourceTree = "<group>"; };
 		69573CE7C7981881C3FB4335 /* Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Composer.swift; sourceTree = "<group>"; };
 		6AB775DFEAC401CE7C5E00C6 /* SearchRowViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchRowViews.swift; sourceTree = "<group>"; };
+		6BB0B8E926FF663A28D1AD2E /* RowInitProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RowInitProbe.swift; sourceTree = "<group>"; };
 		6D2535CBE81AC0372C62332F /* TempCodeActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = TempCodeActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		6D36905AD6DB2091BCE8AD3E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		70755BDC0AE581F0B20CD960 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
@@ -523,6 +525,7 @@
 				776798E4452947B1F6C08838 /* ProjectPlanView.swift */,
 				2E26D052890141C9B6BE8485 /* ResearchReportScreen.swift */,
 				B7A8BF53FD7B051E088E2F94 /* ResourcesSheet.swift */,
+				6BB0B8E926FF663A28D1AD2E /* RowInitProbe.swift */,
 				01696E5EC7D43273F8D53DD8 /* SafariView.swift */,
 				B9D87D96C52CCECE5D6915E8 /* SourcesView.swift */,
 				CD04E4D90D38F1E0C5AD715D /* StreamingRow.swift */,
@@ -879,6 +882,7 @@
 				C86B27E2BA346505A4A65F12 /* ResourcesSheet.swift in Sources */,
 				471EF9AA7980D6181DD421D3 /* ReviewSettings.swift in Sources */,
 				005E78F53D8BDD5C36DB40E1 /* RootView.swift in Sources */,
+				768210A324FE7DD3E39F647D /* RowInitProbe.swift in Sources */,
 				9B4E14B4A110774EED19F313 /* RulesSheet.swift in Sources */,
 				5AE0438586CA6E6DD695E45F /* SafariView.swift in Sources */,
 				F0D86D4E99DD372A7AD2A990 /* SearchNoteRow.swift in Sources */,
