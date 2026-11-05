@@ -36,6 +36,7 @@ import { STATUS_ON_TIP, STATUS_WORD, StatusMark, type ThreadState } from "../com
 import { plainStatus } from "@shared/statusWords";
 import { yields } from "../components/ui/reveal";
 import { Button } from "../components/ui/button";
+import { ItemButton } from "../components/ui/item";
 import { Input } from "../components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { useTruncated } from "../components/tip";
@@ -315,7 +316,16 @@ export function batchTally(row: ThreadRow): { done: number; total: number } | nu
 }
 
 const ROW =
-  "group/row relative flex w-full cursor-default items-center gap-2 rounded-md px-3 text-left text-[13px] focus-ring";
+  "group/row relative flex w-full cursor-default items-center gap-2 rounded-md px-3 text-left text-[13px] has-[>[data-row-open]:active]:bg-foreground/12";
+
+/** A row's open control, laid over the whole row (the stretched pattern): the
+ *  row is a plain container whose fold and ⋯ are buttons of their own beside
+ *  it, never inside it; the one focus ring draws round the whole row, and a
+ *  press steps the row's fill to /12 (ROW). What the row shows sits above it,
+ *  clicks passing through. */
+const ROW_OPEN = "absolute inset-0 h-auto w-auto rounded-[inherit] border-0 p-0 hover:bg-transparent active:bg-transparent";
+/** What the row shows, over its open control: no pointer of its own. */
+const ROW_SHOWS = "pointer-events-none relative";
 
 /**
  * A thread row, presentational: a root in the workspace column (32px, its
@@ -397,21 +407,21 @@ export function ThreadRowView({
       detail
     );
   const element = (
-    <div
-      role="button"
-      tabIndex={0}
+    <ItemButton
+      data-row-open
       aria-current={selected || undefined}
+      aria-label={marksAtRest(mark.state) && !word ? `${shownTitle}, ${mark.label}` : shownTitle}
+      onClick={() => onOpen?.()}
+      className={ROW_OPEN}
+    />
+  );
+  const view = (
+    <div
       data-host-offline={offline || undefined}
       data-thread-row
-      onClick={() => !editing && onOpen?.()}
       onPointerEnter={() => sessionPrefetch.enter(row.id)}
       onPointerLeave={() => sessionPrefetch.leave(row.id)}
       onDoubleClick={onRename}
-      onKeyDown={(e) => {
-        if (editing || e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
-        e.preventDefault();
-        onOpen?.();
-      }}
       data-menu-id={menuId}
       className={cn(
         ROW,
@@ -421,38 +431,48 @@ export function ThreadRowView({
         className,
       )}
     >
+      {editing ? null : (
+        // Always the same tree, the tooltip disabled when there is nothing to
+        // say, so a focused row keeps its focus when its thread settles.
+        <Tooltip disabled={!tip}>
+          <TooltipTrigger render={element} />
+          {tip ? <TooltipContent side="right">{tip}</TooltipContent> : null}
+        </Tooltip>
+      )}
       {/* The lead column: a root's type glyph; under it a child's one step in. */}
-      <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+      <span aria-hidden className={cn(ROW_SHOWS, "grid size-4 shrink-0 place-items-center")}>
         {child ? null : <TypeGlyph type={row.threadType} className="size-3" />}
       </span>
       {RoleGlyph ? (
-        <span aria-hidden className="grid size-4 shrink-0 place-items-center text-muted-foreground">
+        <span aria-hidden className={cn(ROW_SHOWS, "grid size-4 shrink-0 place-items-center text-muted-foreground")}>
           <RoleGlyph className="size-3" />
         </span>
       ) : child && row.threadType ? (
-        <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+        <span aria-hidden className={cn(ROW_SHOWS, "grid size-4 shrink-0 place-items-center")}>
           <TypeGlyph type={row.threadType} className="size-3" />
         </span>
       ) : null}
       {editing ? (
         title
       ) : verdict ? (
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span aria-hidden className={cn(ROW_SHOWS, "flex min-w-0 flex-1 flex-col gap-0.5")}>
           <span ref={titleRef} className="truncate">
             {shownTitle}
           </span>
           <span className="truncate text-xs text-muted-foreground">{verdict}</span>
         </span>
       ) : (
-        <span ref={titleRef} className={cn("min-w-0 truncate", live ? "shrink" : "flex-1", row.unread && "font-medium text-foreground")}>
+        <span aria-hidden ref={titleRef} className={cn(ROW_SHOWS, "min-w-0 truncate", live ? "shrink" : "flex-1", row.unread && "font-medium text-foreground")}>
           {shownTitle}
         </span>
       )}
       {!editing ? (
         <>
-          <HostGlyph environmentId={row.environmentId} />
+          <span aria-hidden className={cn(ROW_SHOWS, "flex shrink-0")}>
+            <HostGlyph environmentId={row.environmentId} />
+          </span>
           {live ? (
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" data-activity>
+            <span aria-hidden className={cn(ROW_SHOWS, "min-w-0 flex-1 truncate text-xs text-muted-foreground")} data-activity>
               {live}
             </span>
           ) : null}
@@ -468,7 +488,7 @@ export function ThreadRowView({
               }}
               onDoubleClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
-              className="h-5 gap-0.5 px-1 text-xs font-normal tabular-nums text-muted-foreground after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-[''] hover:text-foreground"
+              className="relative h-5 gap-0.5 px-1 text-xs font-normal tabular-nums text-muted-foreground after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-[''] hover:text-foreground"
             >
               <ChevronRight
                 className={cn(
@@ -480,7 +500,7 @@ export function ThreadRowView({
               {fold.count}
             </Button>
           ) : null}
-          <span className={cn("flex shrink-0 items-center gap-2", more && YIELDS)}>
+          <span aria-hidden className={cn(ROW_SHOWS, "flex shrink-0 items-center gap-2", more && YIELDS)}>
             {tally ? (
               <span className={cn("text-xs tabular-nums", tally.done === tally.total ? "text-success" : "text-muted-foreground")}>
                 {tally.done}/{tally.total}
@@ -495,14 +515,7 @@ export function ThreadRowView({
       ) : null}
     </div>
   );
-  // Always the same tree, the tooltip disabled when there is nothing to say,
-  // so a focused row keeps its focus when its thread settles.
-  return (
-    <Tooltip disabled={!tip}>
-      <TooltipTrigger render={element} />
-      {tip ? <TooltipContent side="right">{tip}</TooltipContent> : null}
-    </Tooltip>
-  );
+  return view;
 }
 
 const ChatRow = memo(function ChatRow({
@@ -695,27 +708,27 @@ export function ProjectRowView({
   const editing = title != null;
   const row = (
     <div
-      role="button"
-      tabIndex={0}
-      aria-expanded={open}
-      aria-current={selected || undefined}
       data-project-row
-      onClick={() => !editing && onClick?.()}
       onDoubleClick={onRename}
-      onKeyDown={(e) => {
-        if (editing || e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
-        e.preventDefault();
-        onClick?.();
-      }}
       className={cn(ROW, "h-8 hover:bg-foreground/5", selected || unread ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
     >
-      <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+      {editing ? null : (
+        <ItemButton
+          data-row-open
+          aria-expanded={open}
+          aria-current={selected || undefined}
+          aria-label={mark ? `${name}, ${STATUS_WORD[mark.state]}` : name}
+          onClick={() => onClick?.()}
+          className={ROW_OPEN}
+        />
+      )}
+      <span aria-hidden className={cn(ROW_SHOWS, "grid size-4 shrink-0 place-items-center")}>
         <FoldChevron open={open} />
       </span>
-      {editing ? title : <span className={cn("min-w-0 flex-1 truncate", unread && "font-medium")}>{name}</span>}
+      {editing ? title : <span aria-hidden className={cn(ROW_SHOWS, "min-w-0 flex-1 truncate", unread && "font-medium")}>{name}</span>}
       {!editing ? (
         <>
-          {mark ? <StatusMark state={mark.state} className={cn("shrink-0", menu && YIELDS)} /> : null}
+          {mark ? <StatusMark aria-hidden state={mark.state} className={cn(ROW_SHOWS, "shrink-0", menu && YIELDS)} /> : null}
           {menu ? (
             <RowsMenu
               label="Project actions"
@@ -999,21 +1012,19 @@ export function ProjectCardView({
       {counts.length ? <CountLine counts={counts} /> : null}
     </>
   );
-  const box = cn(
-    "flex w-full min-w-0 cursor-default flex-col rounded-lg px-3 py-2 text-left text-xs focus-ring",
-    // The card is the column's one container: always on its own fill, a step
-    // further on hover, the farthest step while selected. No transition (list rows never animate).
-    selected ? "bg-sidebar-group-selected" : "bg-sidebar-group hover:bg-sidebar-group-hover",
-  );
+  // The card is the column's one container (ItemButton's group surface):
+  // always on its own fill, a step further on hover, the farthest step while
+  // selected or pressed. No transition (list rows never animate).
+  const box = "min-w-0 cursor-default flex-col px-3 py-2 text-xs";
   const card = (
     <div data-project-row data-host-offline={offline || undefined} className={cn("group/row relative", offline && "opacity-50")}>
       {editing ? (
-        <div aria-current={selected || undefined} className={box}>
+        <div aria-current={selected || undefined} className={cn("flex w-full rounded-lg bg-sidebar-group-selected", box)}>
           {body}
         </div>
       ) : (
-        <button
-          type="button"
+        <ItemButton
+          surface="group"
           aria-current={selected || undefined}
           aria-label={ariaLabel}
           data-project-card
@@ -1022,7 +1033,7 @@ export function ProjectCardView({
           className={box}
         >
           {body}
-        </button>
+        </ItemButton>
       )}
       {menu && !editing ? (
         <RowsMenu

@@ -61,19 +61,19 @@ describe("a clipped title", () => {
     const row = threadRow(meta({ status: "paused" }), {});
     const word = rowMark(row).label;
     render(<ThreadRowView row={row} />);
-    hover(screen.getByText(TITLE).closest<HTMLElement>("[data-thread-row]")!);
+    hover(screen.getByText(TITLE).closest<HTMLElement>("[data-thread-row]")!.querySelector<HTMLElement>("[data-row-open]")!);
     await waitFor(() => expect(tipText()).toBe(`${TITLE}${word}`), { timeout: 2000 });
   });
 
   it("is the whole tooltip of a quiet rail row; a title that fits gives none", async () => {
     cutEverything();
     const quiet = render(<ThreadRowView row={threadRow(meta(), {})} />);
-    hover(screen.getByText(TITLE).closest<HTMLElement>("[data-thread-row]")!);
+    hover(screen.getByText(TITLE).closest<HTMLElement>("[data-thread-row]")!.querySelector<HTMLElement>("[data-row-open]")!);
     await waitFor(() => expect(tipText()).toBe(TITLE), { timeout: 2000 });
     quiet.unmount();
     vi.restoreAllMocks();
     render(<ThreadRowView row={threadRow(meta(), {})} />);
-    hover(screen.getByText(TITLE).closest<HTMLElement>("[data-thread-row]")!);
+    hover(screen.getByText(TITLE).closest<HTMLElement>("[data-thread-row]")!.querySelector<HTMLElement>("[data-row-open]")!);
     await new Promise((resolve) => setTimeout(resolve, 600));
     expect(tipText()).toBeNull();
   });
@@ -93,7 +93,7 @@ describe("a subagent row", () => {
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
     const row = threadRow(meta({ id: "k1", parentId: "t0", title: "Read the docs", provider: "claude", model: "claude-opus-5-5" }), {});
     render(<ThreadRowView row={row} child />);
-    const el = screen.getByText("Read the docs").closest<HTMLElement>("[data-thread-row]")!;
+    const el = screen.getByText("Read the docs").closest<HTMLElement>("[data-thread-row]")!.querySelector<HTMLElement>("[data-row-open]")!;
     expect(el.textContent).not.toContain("Opus");
     hover(el);
     await waitFor(() => expect(tipText()).toContain("Claude Opus 5.5"), { timeout: 2000 });

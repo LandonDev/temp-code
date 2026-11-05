@@ -40,15 +40,33 @@ function Item({ className, variant = "default", size = "default", render, ...pro
 }
 
 /** An `Item` that is one button: a list row the whole of which acts (open,
- *  pick, restore). Flat like the row; the caller names its hover fill. */
-function ItemButton({ className, variant = "default", size = "default", type = "button", ...props }: ComponentProps<"button"> & VariantProps<typeof itemVariants>) {
+ *  pick, restore). Flat like the row; the caller names its hover fill.
+ *  `surface="group"` is a container in the chrome that sits on the
+ *  `sidebar-group` steps (a project card in the workspace column, as
+ *  RailRow's group): its own fill at rest, a step on hover, the farthest
+ *  while pressed or current, and no item padding (the caller lays it out). */
+function ItemButton({
+  className,
+  variant = "default",
+  size = "default",
+  surface = "item",
+  type = "button",
+  ...props
+}: ComponentProps<"button"> & VariantProps<typeof itemVariants> & { surface?: "item" | "group" }) {
   return (
     <button
       type={type}
       data-slot="item"
       data-variant={variant}
       data-size={size}
-      className={cn(itemVariants({ variant, size }), "text-start active:bg-foreground/12 disabled:pointer-events-none disabled:opacity-50", className)}
+      data-surface={surface === "group" ? "group" : undefined}
+      className={cn(
+        surface === "group"
+          ? "group/item flex w-full rounded-lg text-start focus-ring bg-sidebar-group hover:bg-sidebar-group-hover active:bg-sidebar-group-selected aria-[current=true]:bg-sidebar-group-selected aria-[current=true]:hover:bg-sidebar-group-selected"
+          : [itemVariants({ variant, size }), "text-start active:bg-foreground/12"],
+        "disabled:pointer-events-none disabled:opacity-50",
+        className,
+      )}
       {...props}
     />
   );

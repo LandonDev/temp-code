@@ -195,7 +195,7 @@ describe("WorkspaceThreadsList", () => {
     );
     const row = probe.container.querySelector("[data-thread-row]");
     expect(row).not.toBeNull();
-    fireEvent.click(row!);
+    fireEvent.click(row!.querySelector("[data-row-open]")!);
     expect(onSelectThread).toHaveBeenCalledWith("t1");
   });
 
@@ -293,13 +293,13 @@ describe("WorkspaceThreadsList", () => {
     const probe = mountProbe(<WorkspaceThreadsList groups={groups} activeSessionId={null} onSelectThread={() => {}} />);
     const rows = Array.from(probe.container.querySelectorAll<HTMLElement>("[data-thread-row]"));
     const byTitle = (title: string) => rows.find((r) => r.textContent?.includes(title))!;
-    const leadGlyph = (row: HTMLElement) => row.firstElementChild!.querySelector("svg");
+    const leadGlyph = (row: HTMLElement) => Array.from(row.children).filter((c) => !c.hasAttribute("data-row-open"))[0]!.querySelector("svg");
     expect(leadGlyph(byTitle("Batch"))?.getAttribute("class")).toContain("text-type-orchestration");
     expect(leadGlyph(byTitle("Look"))?.getAttribute("class")).toContain("text-type-research");
     // The batch thread: an empty lead column, then its own glyph in the root's title column.
     const child = byTitle("Ask");
     expect(leadGlyph(child)).toBeNull();
-    expect(child.children[1]!.querySelector("svg")?.getAttribute("class")).toContain("text-type-planning");
+    expect(child.children[2]!.querySelector("svg")?.getAttribute("class")).toContain("text-type-planning");
   });
 
   it("shows a failed thread as its own row and jumps to it on click", () => {
@@ -319,7 +319,7 @@ describe("WorkspaceThreadsList", () => {
     expect(probe.container.textContent).toContain("Crashed mid-turn");
     expect(probe.container.textContent).toContain("Failed");
     const row = probe.container.querySelector("[data-thread-row]");
-    fireEvent.click(row!);
+    fireEvent.click(row!.querySelector("[data-row-open]")!);
     expect(onSelectThread).toHaveBeenCalledWith("t1");
   });
 

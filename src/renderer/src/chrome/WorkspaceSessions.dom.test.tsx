@@ -67,7 +67,7 @@ const actions = {
   onStartRename: () => {}
 }
 
-const rowCount = (root: HTMLElement) => root.querySelectorAll('[role="button"]').length
+const rowCount = (root: HTMLElement) => root.querySelectorAll('[data-thread-row]').length
 const moreButton = (root: HTMLElement) =>
   Array.from(root.querySelectorAll('button')).find((b) => /\bmore$/.test(b.textContent ?? ''))
 
@@ -201,15 +201,23 @@ describe('a project card', () => {
     probe.unmount()
   })
 
-  it('a thread row opens on Enter and on Space, never on a key its own controls take', () => {
+  it('a thread row opens through one button laid over it, never a button holding buttons', () => {
     const onOpen = vi.fn()
     const probe = mountProbe(<ThreadList threads={[threadRow(meta('t1', { title: 'One' }), {})]} actions={{ ...actions, onOpen }} className="" />)
     const row = probe.container.querySelector<HTMLElement>('[data-thread-row]')!
-    fireEvent.keyDown(row, { key: 'Enter' })
-    fireEvent.keyDown(row, { key: ' ' })
-    expect(onOpen).toHaveBeenCalledTimes(2)
-    fireEvent.keyDown(row, { key: 'a' })
-    expect(onOpen).toHaveBeenCalledTimes(2)
+    // The row is a plain container; its open control is a native button
+    // (Enter and Space open it), a sibling of the row's other controls.
+    expect(row.getAttribute('role')).toBeNull()
+    expect(row.hasAttribute('tabindex')).toBe(false)
+    const open = row.querySelector<HTMLButtonElement>('[data-row-open]')!
+    expect(open.tagName).toBe('BUTTON')
+    expect(open.getAttribute('aria-label')).toBe('One')
+    expect(open.querySelector('button')).toBeNull()
+    expect(open.className).toContain('absolute inset-0')
+    fireEvent.click(open)
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    // The row's press steps its fill to /12 while the open control is held.
+    expect(row.className).toContain('has-[>[data-row-open]:active]:bg-foreground/12')
     probe.unmount()
   })
 
@@ -224,7 +232,8 @@ describe('a project card', () => {
     const card = cardOf(probe.container)
     expect(card.className).toContain('bg-sidebar-group')
     expect(card.className).toContain('hover:bg-sidebar-group-hover')
-    expect(card.className).not.toContain('bg-sidebar-group-selected')
+    // ItemButton's group surface: the selected step rides aria-current, which is off.
+    expect(card.getAttribute('data-surface')).toBe('group')
     expect(card.getAttribute('aria-current')).toBeNull()
     const name = Array.from(card.querySelectorAll('span')).find((s) => s.textContent === 'Project p1')!
     expect(name.className).toContain('font-medium')
@@ -237,9 +246,9 @@ describe('a project card', () => {
     const probe = mountProbe(projectCard([], { selected: true }))
     const card = cardOf(probe.container)
     expect(card.getAttribute('aria-current')).toBe('true')
-    expect(card.className).toContain('bg-sidebar-group-selected')
+    expect(card.className).toContain('aria-[current=true]:bg-sidebar-group-selected')
+    expect(card.className).toContain('aria-[current=true]:hover:bg-sidebar-group-selected')
     expect(card.className).not.toContain('bg-muted')
-    expect(card.className).not.toContain('hover:bg-sidebar-group-hover')
     probe.unmount()
   })
 
@@ -415,7 +424,7 @@ describe('ThreadList window', () => {
       />
     )
     expect(rowCount(probe.container)).toBe(61)
-    expect(probe.container.querySelector('[aria-current="true"]')?.textContent).toContain('t60')
+    expect(probe.container.querySelector('[aria-current="true"]')?.closest('[data-thread-row]')?.textContent).toContain('t60')
     probe.unmount()
   })
 })
@@ -472,7 +481,7 @@ describe('ThreadRows fold', () => {
     const probe = mountProbe(<ThreadList threads={[master]} actions={actions} className="" />)
     expect(rowCount(probe.container)).toBe(4)
     expect(foldButton(probe.container).getAttribute('aria-label')).toBe('Hide 3 threads')
-    const kids = Array.from(probe.container.querySelectorAll('[role="button"]')).slice(1)
+    const kids = Array.from(probe.container.querySelectorAll('[data-thread-row]')).slice(1)
     // The batch first, the master's own subagent apart after it.
     expect(kids[2].textContent).toContain('own')
     expect(kids[0].querySelector('[data-activity]')?.textContent).toBe('Writing the view')
@@ -501,17 +510,18 @@ describe('ThreadRows fold', () => {
       batch: [threadRow(meta('b1', { masterId: 'master', threadType: 'research', status: 'running', busySince: 5 }), {})]
     }
     const probe = mountProbe(<ThreadList threads={[master]} actions={actions} className="" />)
-    const [root, batch, own] = Array.from(probe.container.querySelectorAll<HTMLElement>('[role="button"]'))
-    // The root's first slot is its lead column, holding its type's glyph.
-    const lead = root.firstElementChild!
+    const [root, batch, own] = Array.from(probe.container.querySelectorAll<HTMLElement>('[data-thread-row]'))
+    // Past the open control laid over the row, the root's first slot is its lead column, holding its type's glyph.
+    const slots = (r: HTMLElement) => Array.from(r.children).filter((c) => !c.hasAttribute('data-row-open'))
+    const lead = slots(root)[0]
     expect(lead.querySelector('svg')?.getAttribute('data-type-glyph')).toBe('orchestration')
     expect(lead.querySelector('svg')?.getAttribute('class')).toContain('text-type-orchestration')
     // A child keeps the lead column empty, then its own glyph: the tree indents one step.
-    expect(batch.firstElementChild!.querySelector('svg')).toBeNull()
+    expect(slots(batch)[0].querySelector('svg')).toBeNull()
     expect(batch.querySelector('svg[data-type-glyph]')?.getAttribute('class')).toContain('text-type-research')
-    expect(own.firstElementChild!.querySelector('svg')).toBeNull()
+    expect(slots(own)[0].querySelector('svg')).toBeNull()
     expect(own.querySelector('svg[data-type-glyph]')).toBeNull()
-    expect(own.children[1]!.querySelector('svg')?.getAttribute('class') ?? '').not.toContain('text-type-')
+    expect(slots(own)[1].querySelector('svg')?.getAttribute('class') ?? '').not.toContain('text-type-')
     probe.unmount()
   })
 
@@ -547,7 +557,7 @@ describe('ThreadRows fold', () => {
       <ThreadList threads={[withKids()]} actions={{ ...actions, activeSessionId: 'kid2' }} className="" />
     )
     expect(rowCount(probe.container)).toBe(3)
-    expect(probe.container.querySelector('[aria-current="true"]')?.textContent).toContain('kid2')
+    expect(probe.container.querySelector('[aria-current="true"]')?.closest('[data-thread-row]')?.textContent).toContain('kid2')
     probe.unmount()
   })
 })
@@ -555,7 +565,7 @@ describe('ThreadRows fold', () => {
 describe('a thread row ends in its mark', () => {
   const one = (extra: Partial<SessionMeta>, seen: Record<string, number> = {}) => {
     const probe = mountProbe(<ThreadList threads={[threadRow(meta('t', extra), seen)]} actions={actions} className="" />)
-    const row = probe.container.querySelector<HTMLElement>('[role="button"]')!
+    const row = probe.container.querySelector<HTMLElement>('[data-thread-row]')!
     return { probe, row, mark: row.querySelector<HTMLElement>('[data-slot="status-mark"]') }
   }
 
@@ -576,8 +586,10 @@ describe('a thread row ends in its mark', () => {
 
   it("the row carries the word in its name, so hover or focus anywhere on it reads it (More covers the glyph)", () => {
     const { probe, row } = one({ status: 'waiting' })
-    // The row is the tooltip's trigger: the word and its detail are in its accessible name.
-    expect(row.getAttribute('role')).toBe('button')
+    // The row's open control is the tooltip's trigger: the word is in its accessible name.
+    const open = row.querySelector<HTMLElement>('[data-row-open]')!
+    expect(open.tagName).toBe('BUTTON')
+    expect(open.getAttribute('aria-label')).toContain('Needs you')
     expect(row.querySelector('[aria-label="Needs you"]')).not.toBeNull()
     expect(row.querySelector('[data-slot="tooltip-trigger"]')).toBeNull()
     probe.unmount()
@@ -588,10 +600,10 @@ describe('a thread row ends in its mark', () => {
       <ThreadList threads={[threadRow(meta('t', { status }), { t: 1000 })]} actions={actions} className="" />
     )
     const probe = mountProbe(list('running'))
-    const row = probe.container.querySelector<HTMLElement>('[role="button"]')!
+    const row = probe.container.querySelector<HTMLElement>('[data-row-open]')!
     act(() => row.focus())
     probe.rerender(list('idle'))
-    expect(probe.container.querySelector('[role="button"]')).toBe(row)
+    expect(probe.container.querySelector('[data-row-open]')).toBe(row)
     expect(document.activeElement).toBe(row)
     probe.unmount()
   })
@@ -738,7 +750,7 @@ describe('the host glyph on rail rows', () => {
       { id: 'env_box', name: 'The box', platform: 'linux' }
     ]
     const probe = mountProbe(<ThreadList threads={[tree()]} actions={actions} className="" />)
-    const [root, kid] = Array.from(probe.container.querySelectorAll('[role="button"]'))
+    const [root, kid] = Array.from(probe.container.querySelectorAll('[data-thread-row]'))
     expect(root.querySelector('[data-host-glyph]')?.getAttribute('aria-label')).toBe('This Mac')
     expect(kid.querySelector('[data-host-glyph]')?.getAttribute('aria-label')).toBe('The box')
     expect(kid.querySelector('[data-host-glyph]')?.getAttribute('data-host-kind')).toBe('server')
