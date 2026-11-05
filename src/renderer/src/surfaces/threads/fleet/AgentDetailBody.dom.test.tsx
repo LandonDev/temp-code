@@ -106,6 +106,33 @@ describe("AgentDetailBody", () => {
     expect(onOpenSession).toHaveBeenCalledWith("a1");
   });
 
+  it("a failed steer keeps the person's words and says why under the field; a sent one clears it", async () => {
+    h.metas.set("live", fixtureMeta("live", { status: "running" }));
+    h.steer.mockImplementationOnce(async () => {
+      throw new Error("no live harness");
+    });
+    const view = render(<AgentDetailBody agentId="live" parentCwd="/repo" onClose={() => {}} />);
+    const field = view.getByPlaceholderText("Steer this agent…") as HTMLInputElement;
+    fireEvent.change(field, { target: { value: "use the cache" } });
+    fireEvent.submit(field.closest("form")!);
+    await waitFor(() => expect(view.getByRole("alert").textContent).toBe("Couldn't steer: no live harness"));
+    expect(field.value).toBe("use the cache");
+    expect(view.getByRole("alert").className).toContain("text-destructive");
+    // Typing again clears the line; a send that lands clears the field.
+    fireEvent.change(field, { target: { value: "use the cache, please" } });
+    expect(view.queryByRole("alert")).toBeNull();
+    fireEvent.submit(field.closest("form")!);
+    await waitFor(() => expect(field.value).toBe(""));
+  });
+
+  it("holds the transcript's skeleton while its sheet slides in", () => {
+    h.metas.set("idle", fixtureMeta("idle", { status: "idle" }));
+    const view = render(<AgentDetailBody agentId="idle" parentCwd="/repo" ready={false} onClose={() => {}} />);
+    expect(view.container.querySelector('[data-surface-skeleton="transcript"]')).toBeTruthy();
+    view.rerender(<AgentDetailBody agentId="idle" parentCwd="/repo" ready onClose={() => {}} />);
+    expect(view.container.querySelector('[data-surface-skeleton="transcript"]')).toBeNull();
+  });
+
   it("steers a live agent and messages a settled one", async () => {
     h.metas.set("live", fixtureMeta("live", { status: "running" }));
     const live = render(<AgentDetailBody agentId="live" parentCwd="/repo" onClose={() => {}} />);

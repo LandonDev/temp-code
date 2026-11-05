@@ -1206,9 +1206,11 @@ favicon, the title, the host, the claim; the address in a tooltip).
 - **A row opens the agent's detail**, a 672px Sheet from the window's
   right edge (fleet/AgentDetail.tsx, its content
   fleet/AgentDetailBody.tsx): the title, the status in full, one muted
-  tabular line (host, model, effort, branch, +a −d, tasks,
-  context, cost, elapsed), the transcript, and a field that steers a live
-  agent and messages a settled one. A spawn row in the transcript opens the
+  tabular line (the model line and host glyph, then one comma run: branch,
+  +a −d, tasks, context, cost), the transcript (its skeleton while the
+  sheet slides in), and a field that steers a live agent and messages a
+  settled one; a send that fails keeps its words in the field and says why
+  in one red 12px line under it. A spawn row in the transcript opens the
   same detail.
 
 ### Master — the project's batch

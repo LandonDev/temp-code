@@ -17,6 +17,7 @@ import {
   type AgentStatus,
 } from "../../../lib/threads/agents";
 import { AgentTranscript } from "../../AgentTranscript";
+import { SurfaceSkeleton } from "../../SurfaceSkeleton";
 import { AGENT_GLYPHS } from "../threadTypes";
 import { useContextReading } from "../../../lib/contextCache";
 import { ModelLine } from "../ModelMark";
@@ -106,6 +107,8 @@ export function AgentDetailBody({
   const stats = useMemo(() => fleetStats(session, reading), [session, reading]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  // A send that failed keeps the person's words in the field and says why under it.
+  const [failure, setFailure] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   if (!meta) return null;
@@ -117,10 +120,13 @@ export function AgentDetailBody({
     const body = text.trim();
     if (!body || !session || sending) return;
     setSending(true);
-    setText("");
+    setFailure(null);
     try {
       if (live) await commands.steer(session, body);
       else await commands.send(session, body);
+      setText((now) => (now.trim() === body ? "" : now));
+    } catch (error) {
+      setFailure(`Couldn't ${live ? "steer" : "send"}: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setSending(false);
       inputRef.current?.focus();
@@ -144,7 +150,12 @@ export function AgentDetailBody({
         }
       />
       <div className="relative min-h-60 flex-1">
-        {ready ? (
+        {/* While the sheet slides in, the transcript's skeleton holds its place. */}
+        {!ready ? (
+          <div className="absolute inset-0" data-agent-loading>
+            <SurfaceSkeleton kind="transcript" label="Loading the agent" />
+          </div>
+        ) : (
           <div className="absolute inset-0">
             <AgentTranscript
               sessionId={agentId}
@@ -159,26 +170,37 @@ export function AgentDetailBody({
               onOpenDiff={onOpenDiff}
             />
           </div>
-        ) : null}
+        )}
       </div>
       <form
-        className="flex shrink-0 items-center gap-2 border-t border-border px-5 py-3"
+        className="flex shrink-0 flex-col gap-1 border-t border-border px-5 py-3"
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
         }}
       >
-        <Input
-          ref={inputRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={live ? "Steer this agent…" : "Message this agent…"}
-          disabled={!session}
-          className="min-w-0 flex-1"
-        />
-        <Button type="submit" size="icon" aria-label="Send" disabled={!text.trim() || !session || sending}>
-          <ArrowUp />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Input
+            ref={inputRef}
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              setFailure(null);
+            }}
+            placeholder={live ? "Steer this agent…" : "Message this agent…"}
+            disabled={!session}
+            aria-invalid={failure ? true : undefined}
+            className="min-w-0 flex-1"
+          />
+          <Button type="submit" size="icon" aria-label="Send" disabled={!text.trim() || !session || sending}>
+            <ArrowUp />
+          </Button>
+        </div>
+        {failure ? (
+          <p role="alert" className="text-xs text-destructive">
+            {failure}
+          </p>
+        ) : null}
       </form>
     </div>
   );
