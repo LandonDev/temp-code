@@ -175,6 +175,20 @@
   }
 }
 
+/* MorphText's width glide: the new words keep their own width and the
+   gliding box clips them, so they unroll instead of showing an ellipsis that
+   moves (a truncated inner span, or WorkingText's, would ellipsize to the box). */
+[data-slot="morph-text"][data-gliding] > [data-morph-key] {
+  flex-shrink: 0;
+  width: max-content;
+  text-overflow: clip;
+}
+
+[data-slot="morph-text"][data-gliding] [data-slot="working-text"] {
+  max-width: none;
+  text-overflow: clip;
+}
+
 /* A step landing in an open fold: it fades in and rises 4px. */
 .step-land {
   transition-property: opacity, translate;

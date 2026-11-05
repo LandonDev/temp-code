@@ -31,11 +31,13 @@ import { join } from 'node:path'
 import { configure } from 'aliax-core'
 import { startServer } from '../../src/main/server/index'
 import type { AgentEvent } from '../../src/shared/events'
+import { playScenarios, type ScenarioStep } from './soakScenarios'
 import { batchRowMidRun, withShellLog } from './ios-seeds'
 import { profileOf, startLoad, type BurstCadence, type SoakClock, type SoakDriver, type SoakEmit, type SoakScene } from './soakLoad'
 
 export const SOAK_MASTER = 'soak-master'
 export const SOAK_CHAT = 'soak-chat'
+export const SOAK_SCENARIOS = 'soak-scenarios'
 export const soakChildId = (i: number): string => `soak-child-${String(i).padStart(2, '0')}`
 
 const TITLES = [
@@ -77,6 +79,8 @@ export interface SoakHost {
   key: string
   /** Starts the profile's load; one driver per host. */
   startLoad(clock?: SoakClock, burst?: BurstCadence | null): SoakDriver
+  /** The scenarios scene: plays the no-jerk timeline once on its chat, from now; returns a stop. */
+  playScenarios(onStep?: (step: ScenarioStep) => void): () => void
   close(): Promise<void>
 }
 
@@ -128,7 +132,18 @@ export async function startSoakHost(scene: SoakScene = 'board'): Promise<SoakHos
   }
   let children: string[]
   let batchRow: ReturnType<typeof batchRowMidRun> | null = null
-  if (scene === 'chat') {
+  if (scene === 'scenarios') {
+    // One quiet chat the timeline plays on once the soak says go (playScenarios).
+    await registry.create({ ...base, id: SOAK_SCENARIOS, threadType: 'chat', title: 'The no-jerk scenarios' })
+    // A settled turn of history, so --scrolled-up has somewhere to scroll to.
+    registry.append(SOAK_SCENARIOS, { type: 'user-text', text: 'Read the inbox code and tell me how it queries.' })
+    for (let i = 0; i < 14; i++) {
+      registry.append(SOAK_SCENARIOS, { type: 'assistant-text', text: `${PROSE} (${i + 1})`, delta: false, msgId: `history-${i}`, blockIndex: 0 })
+    }
+    registry.append(SOAK_SCENARIOS, { type: 'turn-complete' })
+    registry.append(SOAK_SCENARIOS, { type: 'status', status: 'idle' })
+    children = [SOAK_SCENARIOS]
+  } else if (scene === 'chat') {
     await registry.create({ ...base, id: SOAK_CHAT, threadType: 'chat', title: TITLES[0]! })
     registry.append(SOAK_CHAT, { type: 'user-text', text: `${TITLES[0]}.` })
     seedThread(SOAK_CHAT)
@@ -215,6 +230,9 @@ export async function startSoakHost(scene: SoakScene = 'board'): Promise<SoakHos
     workspaceId: workspace.id,
     keyId: created.key.id,
     key: created.token,
+    playScenarios(onStep) {
+      return playScenarios((event) => append(SOAK_SCENARIOS, event), onStep, undefined, () => registry.markStatusForProof(SOAK_SCENARIOS, 'running'))
+    },
     startLoad(clock, burst) {
       if (driver) throw new Error('the load already runs')
       driver = startLoad(apply, clock, profile, burst ?? null)

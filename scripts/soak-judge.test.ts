@@ -15,6 +15,20 @@ describe('the soak arguments', () => {
     expect(() => parseSoakArgs(['--gate', '--cpu-fails'])).toThrow('fails on CPU by default')
     expect(args.minutes * 60).toBeCloseTo(50)
   })
+  it('records the scenarios on the synthetic host, never in the gate, with its screencast and switches', () => {
+    expect(parseSoakArgs(['--scene', 'scenarios'])).toMatchObject({ scene: 'scenarios', view: 'stream', host: 'synthetic', label: 'synthetic-prod-scenarios', screencast: null, reducedMotion: false, scrolledUp: false })
+    expect(parseSoakArgs(['--scene', 'scenarios', '--screencast', '/tmp/cast', '--reduced-motion', '--scrolled-up'])).toMatchObject({ screencast: '/tmp/cast', reducedMotion: true, scrolledUp: true })
+    expect(() => parseSoakArgs(['--gate', '--scene', 'scenarios'])).toThrow('never the gate')
+    expect(() => parseSoakArgs(['--scene', 'scenarios', '--host', 'box'])).toThrow('synthetic host')
+    expect(() => parseSoakArgs(['--scene', 'scenarios', '--view', 'split'])).toThrow('its view is stream')
+    expect(() => parseSoakArgs(['--scrolled-up'])).toThrow('belongs to --scene scenarios')
+    expect(() => parseSoakArgs(['--gate', '--screencast', '/tmp/cast'])).toThrow('never the gate')
+    expect(() => parseSoakArgs(['--scene', 'scenarios', '--screencast'])).toThrow('needs a value')
+    expect(() => parseSoakArgs(['--scene', 'scenarios', '--screencast', '/tmp/cast', '--trace', '10'])).toThrow('run separately')
+    // Reduced motion reads any scene.
+    expect(parseSoakArgs(['--scene', 'chat', '--reduced-motion']).reducedMotion).toBe(true)
+  })
+
   it('shows the chat scene as a stream of its one thread', () => {
     expect(parseSoakArgs(['--gate', '--scene', 'chat'])).toMatchObject({ scene: 'chat', view: 'stream', label: 'gate-chat' })
     expect(parseSoakArgs(['--scene', 'chat'])).toMatchObject({ scene: 'chat', view: 'stream', label: 'synthetic-prod-chat' })

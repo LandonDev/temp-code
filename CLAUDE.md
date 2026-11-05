@@ -1953,7 +1953,10 @@ names the far child).
 - `bun scripts/measure-renderer-soak.ts` soaks a built tree's window
   (`--build prod|dev`, `--host synthetic|box`, `--view board|stream|split`,
   `--minutes`, `--every`, `--label`, `--tree`, `--gate`, `--scene
-  board|chat`, `--trace <s>` (scripts/lib/soakTrace.ts: main-thread frames
+  board|chat|scenarios` (scenarios: the no-jerk timeline of
+  scripts/lib/soakScenarios.ts played once, with `--screencast <dir>`,
+  `--reduced-motion`, `--scrolled-up`; never the gate; docs/TRANSCRIPT.md
+  "No jerk in any scenario"), `--trace <s>` (scripts/lib/soakTrace.ts: main-thread frames
   by what they held, animation-frame and timer callbacks by function, busy
   time per renderer thread, each animation's compositing verdict),
   `--eval <js>` (an experiment run in the page); `--why` on a dev

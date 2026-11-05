@@ -17,7 +17,9 @@ const FADE = { duration: DUR.fast, ease: EASE_OUT };
  * 3px below over --dur-base, both on --ease-swap, so two words are never
  * drawn in one place. While the new words arrive the box glides its width
  * from where it stood to theirs (a Web Animation on the one inline box, from
- * its live width when a glide is cut short), so they unroll left to right.
+ * its live width when a glide is cut short), so they unroll left to right:
+ * laid out at their own width and clipped by the box, never ellipsized
+ * mid-glide (`data-gliding`).
  * Keyed by `state`: text that changes under the same state (a count, a
  * seconds figure, a streamed word) is drawn at once, and nothing moves on
  * mount. Reduced motion fades out, then in, over --dur-fast, with no
@@ -58,9 +60,17 @@ export function MorphText({ state, children, className }: { state: string; child
       easing: EASE_SWAP_CSS,
     });
     glide.current = animation;
-    animation.onfinish = () => {
-      if (glide.current === animation) glide.current = null;
+    // While it glides the new words keep their own width and the box clips
+    // them, so they unroll; truncated to the box they would show an ellipsis
+    // that moves (components.css, [data-gliding]).
+    el.dataset.gliding = "";
+    const done = () => {
+      if (glide.current !== animation) return;
+      glide.current = null;
+      delete el.dataset.gliding;
     };
+    animation.onfinish = done;
+    animation.oncancel = done;
   }, []);
 
   useEffect(() => () => glide.current?.cancel(), []);

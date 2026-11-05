@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, render } from "@testing-library/react";
 import { MotionGlobalConfig } from "motion/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DUR, EASE_SWAP_CSS } from "../lib/ease";
 
@@ -111,5 +113,24 @@ describe("MorphText", () => {
     const entering = view.container.querySelector("[data-morph-key=b]") as HTMLElement;
     expect(entering.style.transform).toBe("");
     expect(animate).not.toHaveBeenCalled();
+  });
+
+  it("lets the new words unroll while the box glides: marked gliding, cleared when the glide ends", async () => {
+    MotionGlobalConfig.skipAnimations = true;
+    const handles: { onfinish: (() => void) | null; oncancel: (() => void) | null; cancel: () => void }[] = [];
+    animate.mockImplementation(() => {
+      const handle = { onfinish: null, oncancel: null, cancel } as (typeof handles)[number];
+      handles.push(handle);
+      return handle as unknown as Animation;
+    });
+    const view = render(<MorphText state="a">Thinking</MorphText>);
+    view.rerender(<MorphText state="b">Editing schema.ts</MorphText>);
+    await settle();
+    expect(box(view.container).hasAttribute("data-gliding")).toBe(true);
+    act(() => handles[handles.length - 1]!.onfinish?.());
+    expect(box(view.container).hasAttribute("data-gliding")).toBe(false);
+    // The rule the attribute switches on: the words keep their own width, clipped, never ellipsized.
+    const css = readFileSync(resolve(__dirname, "../assets/components.css"), "utf8");
+    expect(css).toMatch(/\[data-slot="morph-text"\]\[data-gliding\] > \[data-morph-key\] \{\s*flex-shrink: 0;\s*width: max-content;\s*text-overflow: clip;/);
   });
 });

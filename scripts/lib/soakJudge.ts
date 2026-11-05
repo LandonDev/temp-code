@@ -53,6 +53,12 @@ export interface SoakArgs {
   burstMs: number | null
   /** --reveal-report: the streaming reveal's steps over the window (scripts/lib/revealReport.ts) */
   revealReport: boolean
+  /** --screencast <dir>: every frame the window paints while the scenarios play, as <ms>.png with an index.json */
+  screencast: string | null
+  /** --reduced-motion: the page under prefers-reduced-motion: reduce */
+  reducedMotion: boolean
+  /** --scrolled-up: the scenarios play with the reader scrolled up into the history */
+  scrolledUp: boolean
 }
 
 /** The gate's run: 20 s to launch, pair and open, 10 s to warm up, a 50 s window, then teardown, inside 90 s. */
@@ -70,10 +76,15 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const host = (flag('--host') ?? 'synthetic') as SoakHostKind
   const build = (flag('--build') ?? 'prod') as SoakBuild
   const scene = (flag('--scene') ?? 'board') as SoakScene
-  if (!['board', 'chat'].includes(scene)) throw new Error('--scene is board or chat')
-  if (scene === 'chat' && host !== 'synthetic') throw new Error('--scene chat is a synthetic host')
-  const view = (flag('--view') ?? (scene === 'chat' ? 'stream' : gate ? 'split' : 'board')) as SoakView
-  if (scene === 'chat' && view !== 'stream') throw new Error('--scene chat has one thread: its view is stream')
+  if (!['board', 'chat', 'scenarios'].includes(scene)) throw new Error('--scene is board, chat or scenarios')
+  if (scene !== 'board' && host !== 'synthetic') throw new Error(`--scene ${scene} is a synthetic host`)
+  if (scene === 'scenarios' && gate) throw new Error('--scene scenarios is a recording, never the gate')
+  const view = (flag('--view') ?? (scene === 'board' ? (gate ? 'split' : 'board') : 'stream')) as SoakView
+  if (scene !== 'board' && view !== 'stream') throw new Error(`--scene ${scene} has one thread: its view is stream`)
+  const screencast = flag('--screencast') ?? null
+  const scrolledUp = argv.includes('--scrolled-up')
+  if (scrolledUp && scene !== 'scenarios') throw new Error('--scrolled-up belongs to --scene scenarios')
+  if (screencast && gate) throw new Error('--screencast is for a hand run, never the gate')
   if (!['synthetic', 'box'].includes(host)) throw new Error('--host is synthetic or box')
   if (!['prod', 'dev'].includes(build)) throw new Error('--build is prod or dev')
   if (!['board', 'stream', 'split'].includes(view)) throw new Error('--view is board, stream or split')
@@ -87,7 +98,7 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   if (!(minutes > 0)) throw new Error('--minutes takes a positive number')
   if (!(every >= 1)) throw new Error('--every takes seconds, at least 1')
   if (every > minutes * 60) throw new Error('--every is longer than the run')
-  const label = flag('--label') ?? (gate ? (scene === 'chat' ? 'gate-chat' : 'gate') : `${host}-${build}-${scene === 'chat' ? 'chat' : view}`)
+  const label = flag('--label') ?? (gate ? (scene === 'chat' ? 'gate-chat' : 'gate') : `${host}-${build}-${scene === 'board' ? view : scene}`)
   if (!/^[a-z0-9-]+$/i.test(label)) throw new Error('--label takes letters, digits and dashes')
   const traceS = Number(flag('--trace') ?? '0')
   if (!(traceS >= 0 && traceS <= 30)) throw new Error('--trace takes seconds, 0 to 30')
@@ -96,6 +107,7 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   if (burstMs !== null && !(burstMs >= 10 && burstMs <= 5000)) throw new Error('--burst takes ms between bursts, 10 to 5000')
   if (burstMs !== null && scene !== 'chat') throw new Error('--burst shapes the chat scene\'s stream: add --scene chat')
   if (burstMs !== null && gate) throw new Error('--burst is a hand run, never the gate\'s load')
+  if (traceS && screencast) throw new Error('--trace and --screencast run separately: ending a trace stops the screencast')
   const port = Number(flag('--port') ?? '9251')
   if (!Number.isInteger(port) || port < 1024) throw new Error('--port takes a debug port number')
   return {
@@ -116,7 +128,10 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
     traceS,
     evalJs: flag('--eval') ?? null,
     burstMs,
-    revealReport: argv.includes('--reveal-report')
+    revealReport: argv.includes('--reveal-report'),
+    screencast,
+    reducedMotion: argv.includes('--reduced-motion'),
+    scrolledUp
   }
 }
 
@@ -161,7 +176,10 @@ export interface SoakRule {
  * board's ratio (docs/box.md "The soak's two scenes"). Never raised to make
  * a run pass.
  */
-export const GATE_CPU_PCT: Record<SoakScene, number> = { board: 33, chat: 22 }
+/** The scenes the gate measures; `scenarios` is a recording, judged by eye. */
+export type GateScene = Exclude<SoakScene, 'scenarios'>
+
+export const GATE_CPU_PCT: Record<GateScene, number> = { board: 33, chat: 22 }
 
 export const GATE_RULE: SoakRule = {
   name: 'gate',
@@ -173,7 +191,7 @@ export const GATE_RULE: SoakRule = {
 }
 
 /** The gate's rule for a scene; `reportOnly` (`--cpu-report-only`) shows the CPU bound without failing on it. */
-export function gateRule(scene: SoakScene, reportOnly = false): SoakRule {
+export function gateRule(scene: GateScene, reportOnly = false): SoakRule {
   return { ...GATE_RULE, name: `gate ${scene}`, cpuPct: GATE_CPU_PCT[scene], ...(reportOnly ? { cpuReportOnly: true } : {}) }
 }
 

@@ -2782,7 +2782,14 @@ rule fails (scripts/lib/soakJudge.ts). `--scene chat` swaps the batch for
 one plain chat thread with the focused child's load alone, shown as a
 stream; `--trace 5` reads a trace of the window into who asks for each
 main-thread frame (scripts/lib/soakTrace.ts); `--eval <js>` runs an
-experiment in the page before the warm-up.
+experiment in the page before the warm-up. `--scene scenarios` plays the
+no-jerk timeline (scripts/lib/soakScenarios.ts) once instead of a load,
+with `--screencast <dir>` (every painted frame as `<ms>.png` and an
+`index.json` of the steps), `--reduced-motion` and `--scrolled-up`
+(docs/TRANSCRIPT.md "No jerk in any scenario"); it is never in the gate.
+A hand run does not build: run `bun x electron-vite build` first, and give
+it its own `--port` when another session soaks on the box (two runs on the
+default 9251 kill each other's window).
 
 ```bash
 bun x electron-vite build                     # a production run reads out/

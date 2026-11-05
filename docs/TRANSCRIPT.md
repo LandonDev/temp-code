@@ -441,6 +441,59 @@ foreground, the same words the group line uses); the components only draw it.
   back is history. The fade is 150 ms of opacity, off under reduced
   motion. Jumps glide the scroll offset; under reduced motion they land.
 
+## No jerk in any scenario
+
+The transcript stays smooth whatever happens: no element on screen unmounts
+and mounts again where its content could change in place; no row changes
+height without a fold on the tokens (`.collapsible-auto`) or a change the
+reader's anchor absorbs; no two states are drawn at once; nothing animates
+on the first paint of settled content; nothing asks for frames it does not
+paint; no long task over 200 ms.
+
+- **The scenarios.** A turn from the composer (Sending, the host's words,
+  the thought, calls, prose, the group opening at two calls, the closing
+  line); a fast turn (every phase that paints holds 300 ms, the closing
+  line included: a turn that ends inside the hold waits for it,
+  `useHeldWord` on "closed" in TurnLine); a long call, then a burst;
+  thinking sentences every 100 ms and every 2 s; a steer, a pause and
+  resume, a compaction starting and ending, a Stop; a subagent spawned,
+  waited on and finished, then the thread watching; the reader scrolled up
+  while it all streams; a resync replaying the rows and the pane remounted;
+  reduced motion; a burst that lands whole with the turn ending 30 ms later
+  (the closing line waits for the reveal's drain, revealDrain.ts).
+- **The runner** (src/renderer/src/surfaces/AgentTranscript.scenarios.dom.test.tsx
+  on `transcriptScenario.testkit.ts`): each scenario as timed store pushes
+  through the whole transcript; after every push, and again once it has
+  settled, a row still on screen is the same element and takes no fade it
+  did not have, the turn's line once live is the same element, and every
+  `MorphText` shows one set of words (`watch`); the fast turn's phases are
+  read off the line as it paints them (`phaseLog`). It found that rows
+  landing before the tail pushed the last row, the live turn's line, out of
+  the window for one commit, which remounted it: the window grows with the
+  tail in the same render (AgentTranscript.tsx, `tailLength`).
+- **The recording** (`measure-renderer-soak.ts --scene scenarios`): the
+  synthetic host plays the same scenarios as a timeline of the host's own
+  events (scripts/lib/soakScenarios.ts) on one chat thread with history
+  above it, at real speed, once the window shows it; `--screencast <dir>`
+  writes every painted frame as `<ms>.png` with `index.json` (each step's
+  time and the frames from it to 600 ms after); `--reduced-motion` and
+  `--scrolled-up` are its switches, and `--trace <s>` (in a run of its
+  own: ending a trace stops a screencast) reads who asks for each frame.
+  The frames showed `MorphText`'s width glide ellipsizing the arriving
+  words ("E… +3 −1", "Worked…"): while it glides the new words now keep
+  their own width and the box clips them (`data-gliding`, components.css),
+  so they unroll left to right.
+
+```bash
+bun x electron-vite build   # a hand run reads out/ as it is
+bun scripts/measure-renderer-soak.ts --scene scenarios --screencast /tmp/cast --port 9277
+bun scripts/measure-renderer-soak.ts --scene scenarios --screencast /tmp/cast-rm --reduced-motion --scrolled-up --port 9277
+bun scripts/measure-renderer-soak.ts --scene scenarios --trace 20 --port 9277
+```
+
+Read the frames inside each step's window, not all of them: `index.json`
+names them.
+
 ## A restored tab is the store's thread
 
 At boot the layout restores its tabs before any remote socket is open. The

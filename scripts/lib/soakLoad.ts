@@ -68,8 +68,9 @@ function profile(): SoakProfile {
 
 export const SOAK_PROFILE: SoakProfile = profile()
 
-/** The scenes the soak measures: the master's board beside a streaming child, or one plain chat. */
-export type SoakScene = 'board' | 'chat'
+/** The scenes the soak measures: the master's board beside a streaming child, or one plain chat;
+ *  `scenarios` plays the no-jerk timeline on one chat instead of a load (scripts/lib/soakScenarios.ts). */
+export type SoakScene = 'board' | 'chat' | 'scenarios'
 
 export const CHAT_PROFILE: SoakProfile = {
   children: 1,
@@ -79,7 +80,7 @@ export const CHAT_PROFILE: SoakProfile = {
 }
 
 export function profileOf(scene: SoakScene): SoakProfile {
-  return scene === 'chat' ? CHAT_PROFILE : SOAK_PROFILE
+  return scene === 'chat' || scene === 'scenarios' ? CHAT_PROFILE : SOAK_PROFILE
 }
 
 /** What the profile declares a second, by kind. */

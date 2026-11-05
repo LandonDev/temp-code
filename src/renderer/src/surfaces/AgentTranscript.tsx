@@ -643,6 +643,18 @@ export function AgentTranscript({
   turnsRef.current = turns;
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
+  // The window is by index: rows landing before the tail would push the last
+  // row (the live turn's line) past a window that reached it, and it would
+  // drop out for a commit and mount again. A window that reached the tail
+  // grows with it in the same render.
+  const [tailLength, setTailLength] = useState(rows.length);
+  if (tailLength !== rows.length) {
+    setTailLength(rows.length);
+    if (rows.length > tailLength && mounted.end >= tailLength) setMounted({ start: mounted.start, end: mounted.end + rows.length - tailLength });
+  }
+  useLayoutEffect(() => {
+    mountedRef.current = mounted;
+  }, [mounted]);
   const entryCount = useMemo(() => outlineEntries(turns).length, [turns]);
   const entryCountRef = useRef(entryCount);
   entryCountRef.current = entryCount;

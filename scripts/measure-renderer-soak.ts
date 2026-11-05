@@ -9,6 +9,7 @@
  *   bun scripts/measure-renderer-soak.ts --build dev --label dev-board       # needs port 5173 free
  *   bun scripts/measure-renderer-soak.ts --gate                              # the release gate's board scene, 90 s
  *   bun scripts/measure-renderer-soak.ts --gate --scene chat                 # its chat scene
+ *   bun scripts/measure-renderer-soak.ts --scene scenarios --screencast /tmp/cast   # the no-jerk timeline, every frame
  *   bun scripts/measure-renderer-soak.ts --gate --cpu-report-only --trace 5  # a hand run: CPU read, not failed, and the frames traced
  *
  * --host synthetic (default) boots scripts/soak-host.ts in a child (a
@@ -66,7 +67,8 @@ import { profileSummary, type CpuProfile } from './profile-summary'
 import { summarizeTrace, TRACE_CATEGORIES, traceMarkdown, type TraceEvent, type TraceSummary } from './lib/soakTrace'
 import { REVEAL_OBSERVER, revealLine, summarizeReveal, type RevealRecord } from './lib/revealReport'
 import { REVEAL } from '../src/renderer/src/lib/ease'
-import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSoak, parseSoakArgs, REACT_MEASURE_PREFIX, type BuildStamp, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSoak, parseSoakArgs, REACT_MEASURE_PREFIX, type BuildStamp, type GateScene, type SoakSample } from './lib/soakJudge'
+import { scenarioLength } from './lib/soakScenarios'
 
 const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
 /** Hand runs on a dev build: also tally the props React names as changed, per component. */
@@ -627,6 +629,14 @@ async function main(): Promise<void> {
   await openView(c, shown)
   await c.eval(OBSERVERS)
   if (args.evalJs) log(`experiment: ${JSON.stringify(await c.eval(args.evalJs))}`)
+  if (args.reducedMotion) {
+    await c.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+    log('prefers-reduced-motion: reduce')
+  }
+  if (args.scene === 'scenarios') {
+    await recordScenarios(c)
+    return
+  }
   if (why) await c.eval('window.__soakWhyOn = true')
   await c.send('HeapProfiler.enable')
 
@@ -727,7 +737,7 @@ async function main(): Promise<void> {
     profile = profileSummary(cpuProfile)
   }
 
-  const rule = args.gate ? gateRule(args.scene, args.cpuReportOnly) : handRule(args.build, args.view)
+  const rule = args.gate ? gateRule(args.scene as GateScene, args.cpuReportOnly) : handRule(args.build, args.view)
   const verdict = judgeSoak(rows, rule)
   const sha = (() => {
     try {
@@ -771,6 +781,79 @@ async function main(): Promise<void> {
   for (const v of verdict.verdicts) console.log(`${v.ok ? '✓' : v.reportOnly ? '!' : '✗'} ${v.what}: ${v.got} (limit ${v.limit}${v.reportOnly ? ', reported only' : ''})`)
   console.log(`${verdict.ok ? 'passed' : 'FAILED'}: ${ROOT}/${args.label}.md`)
   process.exitCode = verdict.ok ? 0 : 1
+}
+
+// ── the scenarios, recorded ──────────────────────────────────────────────
+/**
+ * `--scene scenarios`: the synthetic host plays the no-jerk timeline
+ * (scripts/lib/soakScenarios.ts) on the thread on screen, once. With
+ * `--screencast <dir>` every frame the window paints is written as
+ * `<ms>.png` (the frame's own timestamp) with `index.json`: the steps with
+ * their times and, per step, the frames from its time to 600 ms after, the
+ * ones to look at. `--scrolled-up` scrolls the reader up into the history
+ * first; `--trace <s>` traces the same run. Fails on a long task over 200 ms.
+ */
+async function recordScenarios(c: Cdp): Promise<void> {
+  if (!soakHost?.stdin || !soakHost.stdout) throw new Error('the scenarios need the synthetic host')
+  await sleep(1_500)
+  if (args.scrolledUp) {
+    const at = await c.eval<number>(`(() => {
+      const el = document.querySelector('.agent-transcript')
+      if (!el) return -1
+      el.dispatchEvent(new WheelEvent('wheel', { deltaY: -600, bubbles: true }))
+      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - 900)
+      el.dispatchEvent(new Event('scroll'))
+      return el.scrollTop
+    })()`)
+    log(`scrolled up to ${at}`)
+    await sleep(500)
+  }
+  const frames: { file: string; t: number }[] = []
+  const dir = args.screencast ? resolve(args.screencast) : null
+  if (dir) {
+    rmSync(dir, { recursive: true, force: true })
+    mkdirSync(dir, { recursive: true })
+    c.on('Page.screencastFrame', (p) => {
+      const frame = p as { data: string; sessionId: number; metadata: { timestamp?: number } }
+      const t = Math.round((frame.metadata.timestamp ?? Date.now() / 1000) * 1000)
+      const file = `${t}.png`
+      writeFileSync(join(dir, file), Buffer.from(frame.data, 'base64'))
+      frames.push({ file, t })
+      void c.send('Page.screencastFrameAck', { sessionId: frame.sessionId })
+    })
+    await c.send('Page.enable')
+    await c.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 })
+  }
+  await c.eval('window.__soakDrain()')
+  const steps: { label: string; t: number }[] = []
+  const lines = createInterface({ input: soakHost.stdout })
+  lines.on('line', (l) => {
+    if (!l.startsWith('{"step"')) return
+    steps.push({ label: (JSON.parse(l) as { step: string }).step, t: Date.now() })
+  })
+  const length = scenarioLength()
+  soakHost.stdin.write('go\n')
+  log(`playing the scenarios, ${(length / 1000).toFixed(0)} s`)
+  const trace = args.traceS ? traceFrames(c, Math.min(args.traceS, length / 1000)) : null
+  await sleep(length + 1_500)
+  const traced = trace ? await trace : null
+  if (dir) await Promise.race([c.send('Page.stopScreencast'), sleep(5_000)])
+  lines.close()
+  const drained = await c.eval<{ tasks: { start: number; duration: number }[] }>('window.__soakDrain()')
+  const longest = Math.max(0, ...drained.tasks.map((t) => t.duration))
+  const index = {
+    steps: steps.map((s) => ({ ...s, frames: frames.filter((f) => f.t >= s.t - 50 && f.t <= s.t + 600).map((f) => f.file) })),
+    frames: frames.length,
+    reducedMotion: args.reducedMotion,
+    scrolledUp: args.scrolledUp,
+    longestTaskMs: longest,
+    trace: traced,
+  }
+  if (dir) writeFileSync(join(dir, 'index.json'), JSON.stringify(index, null, 1))
+  if (traced) writeFileSync(join(ROOT, `${args.label}.trace.md`), traceMarkdown(traced).join('\n') + '\n')
+  log(`${steps.length} steps, ${frames.length} frames${dir ? ` in ${dir}` : ''}; longest task ${Math.round(longest)} ms`)
+  console.log(`${longest <= 200 ? '✓' : '✗'} longest long task, ms: ${Math.round(longest)} (limit 200)`)
+  process.exitCode = longest <= 200 ? 0 : 1
 }
 
 try {

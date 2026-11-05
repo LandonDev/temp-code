@@ -8,7 +8,7 @@ import { WorkingMark } from "../../components/ui/working-mark";
 import { WorkingText } from "../../components/ui/working-text";
 import { cn } from "../../lib/cn";
 import { DUR, EASE_SWAP_CSS, FADE_OUT, SPRING_LAYOUT } from "../../lib/ease";
-import { useHeldPhase } from "../../lib/heldWord";
+import { useHeldPhase, useHeldWord } from "../../lib/heldWord";
 import type { Block } from "../../lib/session";
 import { useLiveEdits } from "../../lib/tcserver/store";
 import type { TitleOf } from "../../lib/threadMentions";
@@ -102,7 +102,20 @@ export function TurnLine({
     [draining, turn, activity, cwd, titleOf, waitWords],
   );
   const phase = useHeldPhase(next, samePhase);
-  const call = live ? phase.call : undefined;
+  // Live once in this mount: the line stays, and a pending closing ("Worked") is drawn.
+  const [everLive, setEverLive] = useState(live);
+  if (live && !everLive) setEverLive(true);
+  const shownClosing = closing && (!closing.pending || everLive) ? closing : null;
+  // Still saying the phase: live, or held with its words as they were.
+  const phased = live || (held && !shownClosing);
+  // The closing waits for the phase on screen to have shown its 300 ms, as a
+  // new phase would: a turn that ends inside the hold never cuts it short.
+  // Until then the line stays as it was, mark and words.
+  const closedShown = useHeldWord(phased ? phase.key : "closed") === "closed" && !phased;
+  const ending = !phased && !closedShown && everLive;
+  const saying = phased || ending;
+
+  const call = live || ending ? phase.call : undefined;
   const action = call ? actionOf(call.block, cwd, null, true) : undefined;
   // A command or a tool opens its body under the line; an edit ticks its counts instead.
   const hasBody = action?.opens === "command" || action?.opens === "details";
@@ -116,11 +129,8 @@ export function TurnLine({
   const adds = useCountUp(counts?.adds ?? 0, !!edit);
   const dels = useCountUp(counts?.dels ?? 0, !!edit);
 
-  // Live once in this mount: the line stays, and a pending closing ("Worked") is drawn.
-  const [everLive, setEverLive] = useState(live);
-  if (live && !everLive) setEverLive(true);
   // The settle the person watched: the words slide home from the glyph slot.
-  const closed = !live && !held;
+  const closed = closedShown;
   const [wasClosed, setWasClosed] = useState(closed);
   const [slide, setSlide] = useState(false);
   if (wasClosed !== closed) {
@@ -139,10 +149,7 @@ export function TurnLine({
     return () => animation.cancel();
   }, [slide]);
 
-  const shownClosing = closing && (!closing.pending || everLive) ? closing : null;
   if (!everLive && !shownClosing) return null;
-  // Still saying the phase: live, or held with its words as they were.
-  const phased = live || (held && !shownClosing);
 
   const toggle = () => {
     if (!call) return;
@@ -155,10 +162,10 @@ export function TurnLine({
     <Collapsible open={!held && (live || !!shownClosing)} data-slot="turn-line" className="flex min-w-0 flex-col">
       <CollapsibleContent keepMounted className="collapsible-auto">
       <div
-        role={live ? "status" : undefined}
-        aria-label={live ? phase.spoken ?? (phase.words || "Working") : undefined}
+        role={live || ending ? "status" : undefined}
+        aria-label={live || ending ? phase.spoken ?? (phase.words || "Working") : undefined}
         className={cn(LINE, "group/turnend relative min-w-0")}
-        {...(live ? undefined : closing?.intent)}
+        {...(saying ? undefined : closing?.intent)}
       >
         {hasBody ? (
           <Button
@@ -170,16 +177,16 @@ export function TurnLine({
           />
         ) : null}
         <AnimatePresence initial={false}>
-          {live ? (
+          {live || ending ? (
             <motion.span key="mark" className="pointer-events-none absolute inset-y-0 left-0 flex items-center" initial={reduce ? { opacity: 0 } : MARK_IN} animate={reduce ? { opacity: 1 } : MARK_SHOWN} exit={reduce ? FADE_OUT : MARK_OUT}>
               <WorkingMark />
             </motion.span>
           ) : null}
         </AnimatePresence>
-        <div ref={words} data-turn-words className={cn("flex min-w-0 items-center gap-1", hasBody && "pointer-events-none", phased && "pl-5.5")}>
+        <div ref={words} data-turn-words className={cn("flex min-w-0 items-center gap-1", hasBody && "pointer-events-none", saying && "pl-5.5")}>
           {/* A call's counts and chevron are its words': they leave and arrive with them. */}
-          <MorphText state={phased ? phase.key : "closed"} className="min-w-0">
-            {phased ? (
+          <MorphText state={saying ? phase.key : "closed"} className="min-w-0">
+            {saying ? (
               <span className="flex min-w-0 items-center gap-1">
                 <PhaseWords phase={phase} />
                 {edit && (adds || dels) ? <Counts added={adds} removed={dels} /> : null}
@@ -197,7 +204,7 @@ export function TurnLine({
               shownClosing?.words
             )}
           </MorphText>
-          {phased ? null : shownClosing?.actions}
+          {saying ? null : shownClosing?.actions}
         </div>
       </div>
       </CollapsibleContent>
