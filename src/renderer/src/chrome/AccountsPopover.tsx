@@ -55,7 +55,7 @@ export function AccountsPopover({
       side="top"
       align="start"
       label={`${provider} accounts`}
-      className="max-h-(--available-height) w-auto gap-0 overflow-x-hidden overflow-y-auto p-1.5 [--scrollbar-inset:var(--radius-xl)]"
+      className="max-h-(--available-height) w-auto gap-0 overflow-x-hidden overflow-y-auto p-1 [--scrollbar-inset:var(--radius-xl)]"
     >
       <AccountsList provider={provider} accounts={accounts} scope={scope} now={now} />
     </LazyPopover>

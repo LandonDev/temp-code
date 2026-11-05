@@ -1,5 +1,5 @@
 import type { AccountHeadroom } from "@server/shared/accounts";
-import { untilLabel } from "./accounts";
+import { untilLabel } from "../aliax/lib/accounts";
 
 /**
  * One account's headroom as a row shows it: the bar's fill, the word beside
