@@ -63,6 +63,7 @@ export function ThisHost({
       </Row>
       <Row
         title="Public origin"
+        wide
         description={
           status.publicOrigin
             ? "Pairing links start with this."
@@ -74,7 +75,7 @@ export function ThisHost({
           aria-label="Public origin"
           value={status.publicOrigin}
           placeholder="https://tempcode.example.com"
-          className="w-64"
+          className="w-64 @max-[30rem]/page:w-full"
           onCommit={(publicOrigin) => run("publicOrigin", onSettings({ publicOrigin }))}
         />
       </Row>

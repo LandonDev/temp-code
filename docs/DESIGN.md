@@ -518,6 +518,10 @@ semibold title with a 12px muted line under it, sections 24px apart, each
 under a 12px medium muted heading with 8px to its first row, rows 12px top
 and bottom with a hairline between neighbours and never a box. A row's
 control is one `Switch`, one `ChoiceSelect`, one `Input` or one `Button`;
+a row whose control is a wide field (`PageRow wide`, Hosts' Public origin)
+lays it on a full-width line 8px under its words once the page's content is
+under 480px, its error 4px under the field and its skeleton the same, so the
+words never thin to a word a line;
 a loading value is a `Skeleton` in its shape, an error a red 12px line
 under its row. A section loaded from a host waits for the socket to open,
 asks again on every new socket until it has answered, and past 10 s says

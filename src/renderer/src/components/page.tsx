@@ -42,7 +42,8 @@ function Page({
         </div>
         {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
       </header>
-      <div className="mt-6 flex flex-col gap-6">{children}</div>
+      {/* The page's content width is a container, so a row can lay a wide control under its words (`PageRow` `wide`). */}
+      <div className="@container/page mt-6 flex flex-col gap-6">{children}</div>
     </div>
   );
 }
@@ -102,6 +103,7 @@ function PageRow({
   description,
   error,
   media,
+  wide = false,
   className,
   children,
   ...rest
@@ -110,9 +112,13 @@ function PageRow({
   description?: ReactNode;
   error?: ReactNode;
   media?: ReactNode;
+  /** A wide control (a text field): under 480px of page content it takes a
+   *  full-width line under the title and description, its error under it. */
+  wide?: boolean;
   className?: string;
   children?: ReactNode;
 }) {
+  if (wide) return <WidePageRow {...rest} title={title} description={description} error={error} className={className}>{children}</WidePageRow>;
   return (
     <Item
       {...rest}
@@ -133,6 +139,53 @@ function PageRow({
   );
 }
 
+/**
+ * A row whose control is too wide to sit beside a narrow page's words. Wide,
+ * it reads as any row: the words, the error 2px under them, the control at
+ * the end. Under 480px of page content the control drops to a full-width
+ * line 8px under the words, and the error follows it 4px under the field, so
+ * the words never thin to a word a line.
+ */
+function WidePageRow({
+  title,
+  description,
+  error,
+  className,
+  children,
+  ...rest
+}: Omit<ComponentPropsWithoutRef<"div">, "title"> & { title: ReactNode; description?: ReactNode; error?: ReactNode; className?: string; children?: ReactNode }) {
+  return (
+    <Item
+      {...rest}
+      data-slot="page-row"
+      data-wide=""
+      className={cn(
+        "grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 rounded-none border-x-0 border-b-0 border-t-transparent px-0 py-3 @max-[30rem]/page:grid-cols-1 [[data-slot=page-row]+&]:border-t-border",
+        className,
+      )}
+    >
+      <ItemContent className="col-start-1 row-start-1 min-w-0">
+        <ItemTitle>{title}</ItemTitle>
+        {description ? <ItemDescription className="line-clamp-none">{description}</ItemDescription> : null}
+      </ItemContent>
+      {children ? (
+        <ItemActions
+          data-wide-control=""
+          className={cn(
+            "col-start-2 row-start-1 shrink-0 @max-[30rem]/page:col-start-1 @max-[30rem]/page:row-start-2 @max-[30rem]/page:mt-1.5",
+            error ? "row-span-2 @max-[30rem]/page:row-span-1" : null,
+          )}
+        >
+          {children}
+        </ItemActions>
+      ) : null}
+      {error ? (
+        <ItemDescription className="col-start-1 row-start-2 line-clamp-none text-destructive @max-[30rem]/page:row-start-3 @max-[30rem]/page:mt-0.5">{error}</ItemDescription>
+      ) : null}
+    </Item>
+  );
+}
+
 /** What sits at a loading row's end, at its real size: a `Switch` (32×18),
  *  a `ChoiceSelect` (32px, 160px wide), an `Input` (32px, 256px wide), a
  *  number field (32px, 80px wide), a small `Button` (28px) or nothing. */
@@ -145,8 +198,9 @@ const SKELETON_CONTROL: Record<Exclude<SkeletonControl, "none">, string> = {
   button: "h-7 w-20 rounded-md",
 };
 /** One loading row's shape: whether it has a muted description line and a
- *  16px glyph before its title, and its control. */
-type SkeletonRow = { description?: boolean; media?: boolean; control?: SkeletonControl };
+ *  16px glyph before its title, and its control; `wide` lays the control as
+ *  a `wide` row does, on its own line under 480px of page content. */
+type SkeletonRow = { description?: boolean; media?: boolean; control?: SkeletonControl; wide?: boolean };
 
 /** Rows in their shape while a section's values load: each is a `PageRow`'s
  *  box (the 20px title line, 2px, the 16px description line, the control at
@@ -159,7 +213,7 @@ function PageRowsSkeleton({
   media = false,
   control = "select",
 }: { rows?: number | readonly SkeletonRow[] } & SkeletonRow) {
-  const shapes = typeof rows === "number" ? Array.from({ length: rows }, () => ({ description, media, control })) : rows;
+  const shapes: readonly SkeletonRow[] = typeof rows === "number" ? Array.from({ length: rows }, () => ({ description, media, control })) : rows;
   return (
     <div aria-busy="true" aria-label="Loading" className="flex flex-col">
       {shapes.map((shape, i) => {
@@ -169,10 +223,13 @@ function PageRowsSkeleton({
             key={i}
             data-slot="page-row-skeleton"
             data-control={end}
-            className="flex items-center gap-3 border-t border-transparent py-3 [[data-slot=page-row-skeleton]+&]:border-border"
+            className={cn(
+              "flex items-center gap-3 border-t border-transparent py-3 [[data-slot=page-row-skeleton]+&]:border-border",
+              shape.wide ? "@max-[30rem]/page:flex-wrap @max-[30rem]/page:gap-y-2" : null,
+            )}
           >
             {(shape.media ?? media) ? <Skeleton className="size-4 shrink-0 rounded-sm" /> : null}
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <div className={cn("flex min-w-0 flex-1 flex-col gap-0.5", shape.wide ? "@max-[30rem]/page:basis-full" : null)}>
               <div className="flex h-5 items-center">
                 <Skeleton className="h-3.5 w-32" />
               </div>
@@ -182,7 +239,12 @@ function PageRowsSkeleton({
                 </div>
               ) : null}
             </div>
-            {end === "none" ? null : <Skeleton data-skeleton-control className={cn("shrink-0", SKELETON_CONTROL[end])} />}
+            {end === "none" ? null : (
+              <Skeleton
+                data-skeleton-control
+                className={cn("shrink-0", SKELETON_CONTROL[end], shape.wide ? "@max-[30rem]/page:w-full" : null)}
+              />
+            )}
           </div>
         );
       })}

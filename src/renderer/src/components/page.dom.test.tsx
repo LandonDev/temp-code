@@ -166,3 +166,36 @@ describe("PageError and PageEmpty", () => {
     expect(empty.className).toContain("text-muted-foreground");
   });
 });
+
+describe("a wide row", () => {
+  it("puts its control on its own line under the words below 480px of page content, the error under the field", () => {
+    render(
+      <Page title="Hosts">
+        <PageSection title="This Mac">
+          <PageRow title="Public origin" description="Pairing links start with this." error="Not a URL" wide>
+            <input aria-label="Public origin" />
+          </PageRow>
+        </PageSection>
+      </Page>,
+    );
+    // The page's content is the container the row asks.
+    expect(document.querySelector("[data-slot=page] > div.mt-6")!.className).toContain("@container/page");
+    const row = document.querySelector<HTMLElement>("[data-slot=page-row][data-wide]")!;
+    expect(row.className).toContain("@max-[30rem]/page:grid-cols-1");
+    const [content, control, error] = [...row.children] as HTMLElement[];
+    expect(content.textContent).toBe("Public originPairing links start with this.");
+    // The field 8px under the words, the error 4px under the field, in that order.
+    expect(control.className).toContain("@max-[30rem]/page:row-start-2");
+    expect(control.className).toContain("@max-[30rem]/page:mt-1.5");
+    expect(error.textContent).toBe("Not a URL");
+    expect(error.className).toContain("@max-[30rem]/page:row-start-3");
+    expect(error.className).toContain("text-destructive");
+  });
+
+  it("keeps a wide skeleton row in the same arrangement", () => {
+    render(<PageRowsSkeleton rows={[{ description: true, control: "field", wide: true }]} />);
+    const row = document.querySelector<HTMLElement>("[data-slot=page-row-skeleton]")!;
+    expect(row.className).toContain("@max-[30rem]/page:flex-wrap");
+    expect(row.querySelector("[data-skeleton-control]")!.className).toContain("@max-[30rem]/page:w-full");
+  });
+});

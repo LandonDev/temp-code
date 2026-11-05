@@ -270,7 +270,7 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
 const THIS_HOST_SKELETON = [
   { description: true, control: "switch" },
   { control: "number" },
-  { description: true, control: "field" },
+  { description: true, control: "field", wide: true },
   { description: true, control: "number" },
 ] as const;
 
