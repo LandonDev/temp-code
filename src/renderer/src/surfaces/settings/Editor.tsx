@@ -74,11 +74,15 @@ function LanguageServers() {
     () => new Map(projects.map((project) => [project.id, project.name])),
     [projects],
   );
-  // The poll asks again every 5 s; a failed poll keeps the rows it last had.
+  // Once the rows have loaded the poll asks again every 5 s, and a failed
+  // poll keeps the rows it last had. Before that the first read runs to its
+  // deadline, so a slow host still ends in "The host did not answer".
+  const loaded = rows !== undefined;
   useEffect(() => {
+    if (!loaded) return;
     const timer = window.setInterval(retry, 5_000);
     return () => window.clearInterval(timer);
-  }, [retry]);
+  }, [loaded, retry]);
   const failed = !rows && read.error;
   return (
     <PageSection

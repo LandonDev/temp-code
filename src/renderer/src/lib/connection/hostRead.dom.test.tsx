@@ -16,6 +16,7 @@ function fakeLink(connected: boolean) {
   };
   return {
     link: link as unknown as Link,
+    waiters: () => opens.size,
     open: () => {
       link.connected = true;
       for (const fn of [...opens]) fn();
@@ -82,5 +83,27 @@ describe("useHostRead", () => {
     expect(result.current).toMatchObject({ value: "a", error: "busy" });
     rerender({ k: "two" });
     expect(result.current).toMatchObject({ value: undefined, error: null });
+  });
+
+  it("gives the same retry and set on every render, so a poll keeps its timer", async () => {
+    const { link } = fakeLink(true);
+    const { result, rerender } = renderHook(() => useHostRead(link, async () => 1));
+    const { retry, set } = result.current;
+    await act(async () => {});
+    rerender();
+    expect(result.current.retry).toBe(retry);
+    expect(result.current.set).toBe(set);
+  });
+
+  it("drops a superseded read's open waiter, so a reconnect sends only the newest read", async () => {
+    const { link, open, waiters } = fakeLink(false);
+    const read = vi.fn(async () => 1);
+    const { result } = renderHook(() => useHostRead(link, read));
+    await act(async () => {});
+    for (let i = 0; i < 3; i++) await act(async () => result.current.retry());
+    // The hook's own onOpen listener for a missing value, and one waiter for the newest read.
+    expect(waiters()).toBe(2);
+    await act(async () => open());
+    expect(read).toHaveBeenCalledOnce();
   });
 });

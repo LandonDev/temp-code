@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Link } from "./link";
-import { whenOpen, withDeadline } from "./openRead";
+import { withDeadline } from "./openRead";
 
 export type HostRead<T> = {
   /** The host's answer; undefined until it has given one for this key. */
@@ -51,8 +51,19 @@ export function useHostRead<T>(link: Link | null | undefined, read: () => Promis
     let live = true;
     pending.current = true;
     setState((s) => (s.key === key ? (s.error === null ? s : { ...s, error: null }) : { key, value: undefined, error: null }));
-    // Asked at once on an open socket, so the request leaves with this render's effects.
-    const answer = link.connected ? latest.current() : whenOpen(link).then(() => latest.current());
+    // Asked at once on an open socket, so the request leaves with this render's effects;
+    // otherwise at the next open, a waiter the cleanup drops so a superseded
+    // read never sends on reconnect.
+    let off: (() => void) | undefined;
+    const answer = link.connected
+      ? latest.current()
+      : new Promise<void>((resolve) => {
+          off = link.onOpen(() => {
+            off?.();
+            off = undefined;
+            resolve();
+          });
+        }).then(() => latest.current());
     answer
       .then(
         (value) => live && setState({ key, value, error: null }),
@@ -66,13 +77,12 @@ export function useHostRead<T>(link: Link | null | undefined, read: () => Promis
     });
     return () => {
       live = false;
+      off?.();
     };
   }, [link, key, attempt]);
 
-  return {
-    value: current.value,
-    error: current.error,
-    retry: () => setAttempt((n) => n + 1),
-    set: (value) => setState({ key, value, error: null }),
-  };
+  // Stable across renders, so an effect that polls with `retry` keeps its timer.
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const set = useCallback((value: T) => setState({ key, value, error: null }), [key]);
+  return { value: current.value, error: current.error, retry, set };
 }

@@ -95,6 +95,27 @@ describe("Editor", () => {
     expect(within(servers).getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
+  it("polls only once the rows have loaded, so a slow host still ends in its deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<EditorPage />);
+      // Each lsp.status ask replaces the resolver: none past the first for 10 s.
+      const first = host.lsp;
+      await act(async () => vi.advanceTimersByTime(10_000));
+      expect(host.lsp).toBe(first);
+      const servers = screen.getByRole("region", { name: "Language servers" });
+      expect(within(servers).getByRole("alert").textContent).toBe("The host did not answer");
+      // A late answer lands, and from then on the poll runs every 5 s.
+      await act(async () => host.lsp?.([]));
+      expect(screen.getByText("None running")).toBeTruthy();
+      const before = host.lsp;
+      await act(async () => vi.advanceTimersByTime(5_000));
+      expect(host.lsp).not.toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("holds skeletons until the first poll answers", async () => {
     render(<EditorPage />);
     const servers = screen.getByRole("region", { name: "Language servers" });
