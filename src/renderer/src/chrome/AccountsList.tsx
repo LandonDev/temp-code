@@ -116,7 +116,7 @@ function AccountRow({
             {checked ? <Check className="size-3 shrink-0 text-muted-foreground" aria-label="In use" /> : null}
             {inherited ? <Pin className="size-3 shrink-0 text-muted-foreground" aria-label={`Pinned by the ${inherited}`} /> : null}
           </span>
-          {line || plan.length ? (
+          {line || plan.name || plan.detail.length ? (
             <span data-slot="account-facts" className="flex min-w-0 flex-col text-xs leading-4 text-muted-foreground">
               <RowFacts line={line} plan={plan} now={now} />
             </span>

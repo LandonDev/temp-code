@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import type { AccountHeadroom } from "@shared/accounts";
 import { windowName } from "@shared/usageMeter";
 import type { PlanInfo, UsageReport, UsageWindow } from "aliax-core/shared/types";
@@ -261,36 +261,41 @@ export function UsageBars({
 
 /** Plain words for the subscription statuses the providers report; 'lapsed' is ours (Codex, past its paid-through date). */
 const STATUS_TEXT: Record<string, string> = {
-  canceled: "Canceled",
-  cancelled: "Canceled",
-  past_due: "Payment past due",
-  unpaid: "Payment failed",
-  incomplete: "Payment incomplete",
-  incomplete_expired: "Payment expired",
-  paused: "Paused",
-  lapsed: "Ended",
+  canceled: "canceled",
+  cancelled: "canceled",
+  past_due: "payment past due",
+  unpaid: "payment failed",
+  incomplete: "payment incomplete",
+  incomplete_expired: "payment expired",
+  paused: "paused",
+  lapsed: "ended",
 };
 /** Statuses that are fine: nothing to say. */
 const STATUS_OK = new Set(["active", "trialing"]);
 
 export type PlanFact = { text: string; warning?: boolean };
 
-/** The plan line's facts, in order: name, price, renewal or the trouble, banked resets. */
-export function planFacts(plan: PlanInfo | undefined, banked: number | undefined): PlanFact[] {
-  const facts: PlanFact[] = [];
+/** The plan line: its name, then the rest as one detail sentence ("$200/mo, renews Nov 12"). */
+export type PlanLine = { name: string | null; detail: PlanFact[] };
+
+const capital = (f: PlanFact): PlanFact => ({ ...f, text: f.text.charAt(0).toUpperCase() + f.text.slice(1) });
+
+/** The plan line's facts, in order: name, price, renewal or the trouble, banked resets. The detail is one sentence, so only its first word takes a capital. */
+export function planFacts(plan: PlanInfo | undefined, banked: number | undefined): PlanLine {
+  const detail: PlanFact[] = [];
   if (plan) {
-    facts.push({ text: plan.name });
-    if (plan.monthlyUsd !== undefined) facts.push({ text: `$${plan.monthlyUsd}/mo` });
-    if (plan.cancelsAt !== undefined) facts.push({ text: "Canceled", warning: true }, { text: `ends ${shortDay(plan.cancelsAt)}`, warning: true });
-    else if (plan.status && !STATUS_OK.has(plan.status)) {
-      const raw = plan.status.replace(/_/g, " ");
-      facts.push({ text: STATUS_TEXT[plan.status] ?? raw.charAt(0).toUpperCase() + raw.slice(1), warning: true });
-    } else if (plan.renewsAt !== undefined) facts.push({ text: `renews ${shortDay(plan.renewsAt)}` });
+    if (plan.monthlyUsd !== undefined) detail.push({ text: `$${plan.monthlyUsd}/mo` });
+    if (plan.cancelsAt !== undefined) detail.push({ text: "canceled", warning: true }, { text: `ends ${shortDay(plan.cancelsAt)}`, warning: true });
+    else if (plan.status && !STATUS_OK.has(plan.status)) detail.push({ text: STATUS_TEXT[plan.status] ?? plan.status.replace(/_/g, " "), warning: true });
+    else if (plan.renewsAt !== undefined) detail.push({ text: `renews ${shortDay(plan.renewsAt)}` });
   }
-  if (banked && banked > 0) facts.push({ text: `${banked} reset${banked === 1 ? "" : "s"} banked` });
-  return facts;
+  if (banked && banked > 0) detail.push({ text: `${banked} reset${banked === 1 ? "" : "s"} banked` });
+  if (detail.length > 0) detail[0] = capital(detail[0]);
+  return { name: plan?.name ?? null, detail };
 }
 
+/** Whether a plan line has anything to say. */
+const hasPlan = (plan: PlanLine): boolean => plan.name !== null || plan.detail.length > 0;
 
 /**
  * The lines under an account's name: a key's mask, the state line (rowLine:
@@ -305,22 +310,23 @@ export function RowFacts({
   onAction,
 }: {
   line: RowLine | null;
-  plan: PlanFact[];
+  plan: PlanLine;
   mask?: string | null;
   now: number;
   onAction?: (kind: RowAction["kind"]) => void;
 }) {
-  if (!line && plan.length === 0 && !mask) return null;
+  if (!line && !hasPlan(plan) && !mask) return null;
   return (
     <>
       {mask ? <span className="tabular-nums">{mask}</span> : null}
       {line?.limited ? (
         <StatusMark state="waiting" glyph={false} word={line.text} detail={line.limited.resetsAt !== null ? <ResetTime at={line.limited.resetsAt} now={now} /> : undefined} />
       ) : line ? (
-        <span className={cn("flex items-center gap-2", line.tone === "warning" ? "text-warning" : null)}>
-          {line.busy ? <Spinner className="size-3" /> : null}
-          <span>{line.text}</span>
-          {line.detail ? <span>{line.detail}</span> : null}
+        // Two facts, as a status says them: the state in medium weight and its tone, the detail regular and muted 4px after it.
+        <span data-slot="row-line" className="flex flex-wrap items-center gap-x-1">
+          {line.busy ? <Spinner className="me-1 size-3" /> : null}
+          <span className={cn("font-medium", line.tone === "warning" ? "text-warning" : "text-muted-foreground")}>{line.text}</span>
+          {line.detail ? <span className="text-muted-foreground">{line.detail}</span> : null}
           {line.action && onAction ? (
             <Button variant="link" size="xs" className="h-auto px-0 text-xs" onClick={() => onAction(line.action!.kind)}>
               {line.action.label}
@@ -328,13 +334,21 @@ export function RowFacts({
           ) : null}
         </span>
       ) : null}
-      {plan.length ? (
-        <span className="flex flex-wrap gap-x-2">
-          {plan.map((f) => (
-            <span key={f.text} className={f.warning ? "text-warning" : undefined}>
-              {f.text}
+      {hasPlan(plan) ? (
+        // Inline, so a long detail wraps word by word under the name; the space is its 4px.
+        <span data-slot="plan-line" className="block">
+          {plan.name ? <span className="font-medium">{plan.name}</span> : null}
+          {plan.name && plan.detail.length ? " " : null}
+          {plan.detail.length ? (
+            <span>
+              {plan.detail.map((f, i) => (
+                <Fragment key={f.text}>
+                  {i > 0 ? ", " : null}
+                  <span className={f.warning ? "text-warning" : undefined}>{f.text}</span>
+                </Fragment>
+              ))}
             </span>
-          ))}
+          ) : null}
         </span>
       ) : null}
     </>

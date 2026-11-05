@@ -363,3 +363,23 @@ describe("AccountsView", () => {
     }
   });
 });
+
+describe("an account row's two facts on a line", () => {
+  it("tells the state from its detail by weight and colour, 4px apart, and says the plan as its name then one sentence", () => {
+    const DAY = 24 * HOUR;
+    props.views[0].profiles[0] = { ...props.views[0].profiles[0], static: true, expiresAt: NOW + 200 * DAY } as never;
+    props.usage = { "claude-code": [{ ...report, plan: { name: "Max 20x", monthlyUsd: 200, renewsAt: NOW + 7 * DAY } }] };
+    render(<AccountsView {...props} />);
+    const row = screen.getAllByRole("switch")[0].closest("[data-slot=page-row]") as HTMLElement;
+    const state = within(row).getByText("One-year token");
+    expect(state.className).toContain("font-medium");
+    const detail = within(row).getByText(/^lapses /);
+    expect(detail.className).toContain("text-muted-foreground");
+    expect(detail.className).not.toContain("font-medium");
+    expect(state.parentElement!.className).toContain("gap-x-1");
+    expect(within(row).getByText("Max 20x").className).toContain("font-medium");
+    expect(row.querySelector("[data-slot=plan-line]")!.textContent).toMatch(/^Max 20x \$200\/mo, renews /);
+    const description = row.querySelector("[data-slot=item-description]")!;
+    expect(description.querySelector(".gap-2, .gap-x-2")).toBeNull();
+  });
+});

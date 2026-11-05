@@ -41,6 +41,21 @@ describe("Stats", () => {
     expect(daily.querySelector("[data-slot=empty]")).toBeNull();
   });
 
+  it("names each empty section's real window: Busiest hours reads 60 days", () => {
+    render(<StatsView data={{ ...STATS, heatmap: [] }} status={null} />);
+    const busiest = screen.getByRole("region", { name: "Busiest hours" });
+    expect(busiest.querySelector("[data-slot=page-empty]")!.textContent).toContain("60 days");
+    expect(busiest.textContent).not.toContain("30 days");
+  });
+
+  it("says a pace headline as two facts, the title medium, 4px apart", () => {
+    render(<StatsView data={STATS} status={null} />);
+    const headline = screen.getByRole("region", { name: "Pace" }).querySelector("[data-slot=pace-series] p")!;
+    expect(headline.className).toContain("text-xs");
+    expect(headline.className).toContain("gap-x-1");
+    expect(headline.firstElementChild!.className).toContain("font-medium");
+  });
+
   it("loads under the same seven headings", () => {
     render(<StatsView data={null} status={null} />);
     expect(headings()).toEqual(ORDER);

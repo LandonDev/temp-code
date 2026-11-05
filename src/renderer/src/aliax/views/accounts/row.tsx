@@ -23,7 +23,7 @@ import { EditAccountDialog } from "@aliax/views/edit-account-dialog";
 import { limitOf, rowLine, type OwnerView, type RowAction } from "./rowLine";
 import { planFacts, RowFacts, UsageBars, type BarColumns } from "./usage";
 
-export { barColumns, MAX_BARS, planFacts, ResetTime, RowFacts, UsageBars, type BarColumns, type PlanFact } from "./usage";
+export { barColumns, MAX_BARS, planFacts, ResetTime, RowFacts, UsageBars, type BarColumns, type PlanFact, type PlanLine } from "./usage";
 
 export interface AccountRowProps {
   serviceId: ServiceId;
@@ -63,7 +63,7 @@ export function AccountRow({ serviceId, profile, report, headroom, columns, now,
       className="@max-3xl/accounts:gap-y-2 @max-3xl/accounts:[&>[data-slot=item-actions]]:contents [&>[data-slot=item-actions]]:gap-3"
       media={<span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: profile.color ?? DEFAULT_COLOR }} />}
       title={<span className={cn("truncate", profile.active ? null : "font-normal text-muted-foreground")}>{name}</span>}
-      description={plan.length || line || mask ? <RowFacts line={line} plan={plan} mask={mask} now={now} onAction={onAction} /> : undefined}
+      description={plan.name || plan.detail.length || line || mask ? <RowFacts line={line} plan={plan} mask={mask} now={now} onAction={onAction} /> : undefined}
     >
       <UsageBars
         name={name}

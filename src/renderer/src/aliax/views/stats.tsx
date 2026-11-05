@@ -52,8 +52,9 @@ function Section({ title, description, children }: { title: string; description?
   );
 }
 
-function NoData() {
-  return <PageEmpty>Nothing in the last 30 days</PageEmpty>;
+/** A section with no data, naming the window its query reads: 30 days, the heatmap's 60. */
+function NoData({ days = 30 }: { days?: number }) {
+  return <PageEmpty>Nothing in the last {days} days</PageEmpty>;
 }
 
 function PaceChart({ series }: { series: PaceSeries }) {
@@ -178,8 +179,8 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
               const line = paceLine(p);
               return (
                 <div key={`${p.service}-${p.label}`} data-slot="pace-series">
-                  <p className="mb-2 flex flex-wrap gap-x-2 text-xs">
-                    <span className="text-foreground">{paceTitle(p)}</span>
+                  <p className="mb-2 flex flex-wrap gap-x-1 text-xs">
+                    <span className="font-medium text-foreground">{paceTitle(p)}</span>
                     <span className={line.warning ? "text-warning" : "text-muted-foreground"}>{line.text}</span>
                   </p>
                   <PaceChart series={p} />
@@ -261,7 +262,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
       </Section>
 
       <Section title="Busiest hours" description={`Output tokens by weekday and hour, last 60 days, times in ${TIMEZONE}`}>
-        {data.heatmap.length === 0 ? <NoData /> : <Heatmap data={data.heatmap} />}
+        {data.heatmap.length === 0 ? <NoData days={60} /> : <Heatmap data={data.heatmap} />}
       </Section>
 
       <Section title="Tools used">

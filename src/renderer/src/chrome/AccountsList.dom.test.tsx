@@ -53,9 +53,13 @@ describe("AccountsList", () => {
     const plan: PlanInfo = { name: "Max 20x", monthlyUsd: 200, cancelsAt: now + 3 * DAY } as PlanInfo;
     const box = list({ ...base, profiles: [{ name: "a" }], reports: [{ profileName: "a", windows: [], plan, banked: 2 }] } as unknown as ProviderAccounts);
     const facts = box.querySelector("[data-slot=account-facts]")!;
-    for (const f of planFacts(plan, 2)) expect(within(facts as HTMLElement).getByText(f.text)).toBeTruthy();
-    expect(within(facts as HTMLElement).getByText("Canceled").className).toContain("text-warning");
-    expect(facts.textContent).not.toContain("canceled");
+    const line = planFacts(plan, 2);
+    expect(line.name).toBe("Max 20x");
+    expect(within(facts as HTMLElement).getByText("Max 20x").className).toContain("font-medium");
+    for (const f of line.detail) expect(within(facts as HTMLElement).getByText(f.text)).toBeTruthy();
+    expect(within(facts as HTMLElement).getByText("canceled").className).toContain("text-warning");
+    // The detail is one sentence after the name: "$200/mo, canceled, ends Nov 14, 2 resets banked".
+    expect(facts.querySelector("[data-slot=plan-line]")!.textContent).toMatch(/^Max 20x \$200\/mo, canceled, ends .+, 2 resets banked$/);
   });
 
   it("says a rate-limited account as Limited with when it lifts, and an empty one in the page's words", () => {
