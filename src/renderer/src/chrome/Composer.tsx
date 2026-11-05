@@ -63,9 +63,7 @@ import { InboxMiniCard } from './InboxMiniCard'
 import { NoteMiniCard } from './NoteMiniCard'
 import { HandoffMiniCard } from './HandoffMiniCard'
 import { ModelPicker } from './ModelPicker'
-import { projectName } from '../lib/paths'
 import { consumeQuoteRequest, type QuoteRequest } from '../lib/quoteDraft'
-import { useTabGroupLogos } from '../hooks/useTabGroupLogos'
 import { loadMidTurnDefault, subscribeMidTurnDefault } from '../lib/settings'
 import { AddMenu, COMPOSER_SURFACE, ComposerBar, SendButton, useDraftRow } from './ComposerBar'
 import { Button } from '../components/ui/button'
@@ -96,7 +94,6 @@ import {
   type Note,
   type NoteComposerCard
 } from '../lib/notes'
-import { resolveTabGroupLogo } from '../lib/tabGroups'
 import { ThreadTypeChip } from './ThreadTypeChip'
 import { MasterCheck } from './MasterCheck'
 import { DraftTitleField } from './DraftTitleField'
@@ -264,8 +261,6 @@ export function Composer({
   })
   const [files, setFiles] = useState<ProjectFile[]>(() => peekProjectFiles(executionCwd) ?? [])
   const [notes, setNotes] = useState<Note[]>(() => peekNotes(hostOfCwd(executionCwd)) ?? [])
-  const groupLogos = useTabGroupLogos()
-  const projectLogoPath = resolveTabGroupLogo(projectName(cwd), groupLogos)
 
   attachmentsRef.current = attachments
 
@@ -1029,7 +1024,6 @@ export function Composer({
             draft={rowOpen}
             cwd={cwd}
             recents={recents}
-            projectLogoPath={projectLogoPath}
             enabled={enabled}
             busy={busy}
             branch={branch}
@@ -1115,7 +1109,6 @@ export function DraftRow({
   draft,
   cwd,
   recents,
-  projectLogoPath,
   enabled,
   busy,
   branch,
@@ -1137,7 +1130,6 @@ export function DraftRow({
   draft: boolean
   cwd: string
   recents: RecentProject[]
-  projectLogoPath?: string | null
   enabled: boolean
   busy: boolean
   branch?: string
@@ -1163,7 +1155,6 @@ export function DraftRow({
             <CwdPicker
               cwd={cwd}
               recents={recents}
-              projectLogoPath={projectLogoPath}
               enabled={enabled}
               onCwdChange={onCwdChange}
               onChooseFolder={onChooseFolder}

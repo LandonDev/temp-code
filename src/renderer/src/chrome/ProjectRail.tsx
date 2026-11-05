@@ -83,6 +83,7 @@ import {
   workspaceLabelKey,
 } from "../lib/tcserver/workspaces";
 import { RAIL_YIELD, RailHeading, RailRow } from "./RailRow";
+import { WorkspaceGlyph, workspaceLook } from "./WorkspaceGlyph";
 import { diffWords, useWorkspaceMarks, WorkspaceMarkTrigger } from "./WorkspaceRowMarks";
 import type { WorkspaceMark } from "../lib/sidebarRows";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
@@ -249,6 +250,10 @@ export function ProjectRail({
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const scrollRef = useRef<HTMLDivElement>(null);
   const groupLogos = useTabGroupLogos();
+  const groupLooks = useMemo(
+    () => ({ logos: groupLogos, mascots: groupMascots, colors: groupColors, customColors: groupCustomColors }),
+    [groupLogos, groupMascots, groupColors, groupCustomColors],
+  );
   // Workspaces only: a thread's project folder never earns a row of its own.
   const allProjects = useMemo(() => collectRailProjects(recents, null), [recents]);
   const sections = useMemo(
@@ -590,6 +595,7 @@ export function ProjectRail({
                 onTogglePin={onTogglePin}
                 menuPath={menuPath}
                 groupLabels={groupLabels}
+                groupLooks={groupLooks}
               />
             ) : null}
 
@@ -615,6 +621,7 @@ export function ProjectRail({
               onTogglePin={onTogglePin}
               menuPath={menuPath}
               groupLabels={groupLabels}
+              groupLooks={groupLooks}
             />
             </div>
             </RowsContextMenu>
@@ -669,6 +676,8 @@ export function ProjectRail({
 }
 
 type SortableHandle = ReturnType<typeof useSortable>;
+/** The saved logos, mascots and colours every row's glyph reads. */
+type GroupLooks = Parameters<typeof workspaceLook>[1];
 
 function ProjectSection({
   label,
@@ -691,6 +700,7 @@ function ProjectSection({
   onTogglePin,
   menuPath,
   groupLabels,
+  groupLooks,
 }: {
   label: string;
   items: RailItem[];
@@ -717,6 +727,7 @@ function ProjectSection({
   /** The folder whose menu is open: its ⋯ stays shown. */
   menuPath: string | null;
   groupLabels: Record<string, string>;
+  groupLooks: GroupLooks;
 }) {
   return (
     <div className="shrink-0 px-2 pt-4">
@@ -743,6 +754,7 @@ function ProjectSection({
             onTogglePin={onTogglePin}
             menuOpen={menuPath !== null && item.paths.some((p) => sameProjectPath(p, menuPath))}
             groupLabels={groupLabels}
+            groupLooks={groupLooks}
           />
         ))}
       </div>
@@ -751,9 +763,10 @@ function ProjectSection({
 }
 
 /**
- * One workspace, a container on the sidebar-group fill: its alias-resolved
- * name alone (no logo, mascot or colour in the rail; medium while a thread
- * in it is unread), the selected row's uncommitted lines muted and the
+ * One workspace, a container on the sidebar-group fill: its glyph (the
+ * logo, else the repo icon, else the mascot: WorkspaceGlyph, the leader
+ * copy's look), its alias-resolved name (medium while a thread in it is
+ * unread), the selected row's uncommitted lines muted and the
  * state's one glyph as its trailing marks, and Pin or Unpin then ⋯ (the
  * same menu as a right-click) as its hover actions; drag reorders it.
  */
@@ -773,6 +786,7 @@ function WorkspaceRow({
   onTogglePin,
   menuOpen,
   groupLabels,
+  groupLooks,
 }: {
   item: RailItem;
   /** The copy of this row's workspace on screen, when the row is selected:
@@ -791,6 +805,7 @@ function WorkspaceRow({
   onTogglePin: (path: string) => void;
   menuOpen: boolean;
   groupLabels: Record<string, string>;
+  groupLooks: GroupLooks;
 }) {
   const workspaces = useWorkspaces();
   const workspaceId = workspaceByPath(workspaces, item.path)?.id ?? null;
@@ -798,6 +813,7 @@ function WorkspaceRow({
   // Labels, colours and mascots key by the link's leader (lib/linkedRail.ts).
   const projectKey = workspaceLabelKey(workspaces, item.path, projectName(item.path));
   const name = resolveTabGroupLabel(projectKey, groupLabels, basename(item.path));
+  const look = workspaceLook(projectKey, groupLooks);
   const dragging = sortable.draggingId === item.path;
   const dropping = sortable.draggingId && sortable.toIndex === index && sortable.fromIndex !== null;
   const showStart = dropping && sortable.toIndex! < sortable.fromIndex!;
@@ -814,6 +830,15 @@ function WorkspaceRow({
         data-rail-path={item.path}
         className={`@container/railrow touch-none ${dragging ? "relative z-10" : ""} ${offline ? "opacity-50" : ""}`}
         surface="group"
+        glyph={
+          <WorkspaceGlyph
+            logoPath={look.logoPath}
+            mascotName={look.mascotName}
+            color={look.color}
+            projectKey={projectKey}
+            workspaceId={workspaceId}
+          />
+        }
         label={name}
         ariaLabel={workspaceRowAriaLabel(name, busy, needsYou, stats)}
         selected={selected}

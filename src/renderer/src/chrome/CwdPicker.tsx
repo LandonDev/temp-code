@@ -6,14 +6,13 @@ import { basename } from "../lib/fs";
 import { prettyCwd, prettyParent } from "../lib/paths";
 import { looksLikeProject, sameProjectPath, type RecentProject } from "../lib/recents";
 import { shortcutFor } from "../lib/settings";
-import { ProjectLogoIcon } from "./ProjectLogoIcon";
+import { FolderGlyph } from "./WorkspaceGlyph";
 import { RowsMenu, tidy, type MenuRow } from "./menuRows";
 import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
 
 type Props = {
   cwd: string;
   recents: RecentProject[];
-  projectLogoPath?: string | null;
   enabled?: boolean;
   placement?: "above" | "below";
   className?: string;
@@ -50,7 +49,6 @@ const folderRow = (path: string): MenuRow => ({
 export function CwdPicker({
   cwd,
   recents,
-  projectLogoPath,
   enabled = true,
   placement = "above",
   className,
@@ -110,7 +108,7 @@ export function CwdPicker({
     >
       {children ?? (
         <>
-          <ProjectLogoIcon path={projectLogoPath} />
+          {inProject ? <FolderGlyph path={cwd} /> : <Folder className="size-4 shrink-0" />}
           <span className="truncate font-mono text-[12px]">{label}</span>
         </>
       )}

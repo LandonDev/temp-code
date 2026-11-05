@@ -40,7 +40,7 @@ export function ProjectLogoIcon({
         key={`${path ?? ""}:${revision}`}
         src={src}
         alt=""
-        className={cn("rounded-sm object-cover outline outline-1 -outline-offset-1 outline-image-outline", className, imageClassName)}
+        className={cn("rounded-sm object-cover outline -outline-offset-1 outline-image-outline", className, imageClassName)}
       />
     );
   }

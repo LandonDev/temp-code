@@ -17,8 +17,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useMarkdownMode } from "../chrome/MarkdownModeToggle";
-import { ProjectLogoIcon } from "../chrome/ProjectLogoIcon";
-import { ProjectMascot } from "../chrome/ProjectMascot";
+import { WorkspaceGlyph, workspaceLook } from "../chrome/WorkspaceGlyph";
+import { aliasKeys } from "../lib/linkedRail";
 import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useDragResize } from "../hooks/useDragResize";
@@ -45,10 +45,9 @@ import {
   loadTabGroupColors,
   loadTabGroupCustomColors,
   loadTabGroupMascots,
-  resolveTabGroupColor,
-  resolveTabGroupLogo,
-  resolveTabGroupMascot,
 } from "../lib/tabGroups";
+import { useWorkspaces } from "../lib/tcserver/workspaces";
+import { projectName } from "../lib/paths";
 import { AgentMarkdown, MarkdownSourceHighlight } from "./AgentMarkdown";
 
 const MIN_WIDTH = 240;
@@ -351,30 +350,23 @@ function NoteProjectMark({
   colors,
   customColors,
 }: { project: string } & ProjectMarks) {
-  const logoPath = resolveTabGroupLogo(project, logos);
-  const mascotName = resolveTabGroupMascot(project, mascots);
-  const mascotColor = resolveTabGroupColor(
-    project,
-    colors,
-    customColors,
-    project,
-  );
+  // A note names its folder; its look is saved under the workspace's key,
+  // as the rail saves it, when a workspace of that name is known.
+  const workspaces = useWorkspaces();
+  const workspace = workspaces.find((each) => projectName(each.path) === project);
+  const key = workspace ? aliasKeys(workspaces).workspaceId(workspace.id) : project;
+  const look = workspaceLook(key, { logos, mascots, colors, customColors });
   return (
     <span className="flex min-w-0 items-center gap-1.5">
-      {logoPath ? (
-        <ProjectLogoIcon
-          path={logoPath}
-          className="size-3.5 shrink-0 rounded-md"
-          imageClassName="size-3.5"
-        />
-      ) : (
-        <ProjectMascot
-          project={project}
-          color={mascotColor}
-          name={mascotName}
-          className="size-3 shrink-0"
-        />
-      )}
+      <WorkspaceGlyph
+        logoPath={look.logoPath}
+        mascotName={look.mascotName}
+        color={look.color}
+        projectKey={key}
+        workspaceId={workspace?.id ?? null}
+        className="size-3.5 shrink-0"
+        mascotClassName="size-3 shrink-0"
+      />
       <span className="min-w-0 truncate">{project}</span>
     </span>
   );

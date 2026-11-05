@@ -8,6 +8,8 @@ import { RailHeading, RailRow } from "./RailRow";
 import { MoreHorizontal } from "./icons";
 import { ProjectRowView, ThreadRowView } from "./WorkspaceSessions";
 import { WorkspaceMarkView } from "./WorkspaceRowMarks";
+import { WorkspaceGlyphView } from "./WorkspaceGlyph";
+import { tabGroupColor } from "../lib/tabGroups";
 
 const noop = () => {};
 
@@ -39,6 +41,7 @@ function Workspace({ name, mark, unread = false, selected = false }: { name: str
   return (
     <RailRow
       surface="group"
+      glyph={<WorkspaceGlyphView sources={[]} mascot={{ project: name, name: null, color: tabGroupColor(name) }} />}
       label={name}
       selected={selected}
       emphasis={unread}

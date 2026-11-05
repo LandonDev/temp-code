@@ -15,8 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { InboxFiltersMenu } from "../chrome/InboxFiltersMenu";
 import { HostGlyph } from "../chrome/HostGlyph";
 import { InboxProviderMark } from "../chrome/InboxProviderMark";
-import { ProjectLogoIcon } from "../chrome/ProjectLogoIcon";
-import { ProjectMascot } from "../chrome/ProjectMascot";
+import { WorkspaceGlyph, workspaceLook } from "../chrome/WorkspaceGlyph";
 import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useDragResize } from "../hooks/useDragResize";
@@ -64,7 +63,8 @@ import {
   type InboxScope,
   type LinearInboxQuery,
 } from "../lib/inboxStore";
-import { useWorkspaceCatalog, useWorkspaceIcon } from "../lib/tcserver/workspaces";
+import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import { aliasKeys } from "../lib/linkedRail";
 import type { WorkspaceMeta } from "../lib/tcserver/types";
 import {
   applyInboxFilters,
@@ -98,14 +98,6 @@ import {
   peekLinearIssueThread,
   type LinearIssueThread,
 } from "../lib/linear";
-import {
-  loadTabGroupColors,
-  loadTabGroupCustomColors,
-  loadTabGroupMascots,
-  resolveTabGroupColor,
-  resolveTabGroupLogo,
-  resolveTabGroupMascot,
-} from "../lib/tabGroups";
 import { AgentMarkdown } from "./AgentMarkdown";
 import {
   InboxComments,
@@ -130,6 +122,8 @@ type InboxProjectOption = {
   id: string;
   path: string;
   name: string;
+  /** The key its look is saved under (`workspaceLabelKey`). */
+  key: string;
   logoPath: string | null;
   mascotName: string | null;
   mascotColor: string;
@@ -139,54 +133,43 @@ function inboxProjectOptions(
   workspaces: readonly WorkspaceMeta[],
   logos: ReturnType<typeof useTabGroupLogos>,
 ): InboxProjectOption[] {
-  const mascots = loadTabGroupMascots();
-  const colors = loadTabGroupColors();
-  const custom = loadTabGroupCustomColors();
+  // Keyed as the rail keys them: the link leader's id.
+  const keyOf = aliasKeys(workspaces).workspaceId;
   return [...workspaces]
     .map((workspace) => {
-      const key = projectName(workspace.path);
+      const key = keyOf(workspace.id);
+      const look = workspaceLook(key, { logos });
       return {
         id: workspace.id,
         path: workspace.path,
-        name: key,
-        logoPath: resolveTabGroupLogo(key, logos),
-        mascotName: resolveTabGroupMascot(key, mascots),
-        mascotColor: resolveTabGroupColor(key, colors, custom, key),
+        name: projectName(workspace.path),
+        key,
+        logoPath: look.logoPath,
+        mascotName: look.mascotName,
+        mascotColor: look.color,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** The workspace's mark, the same image the rail shows: the logo override,
- *  else the server's repo icon unless a mascot was chosen, else the mascot. */
+/** The workspace's mark, the same glyph the rail shows (WorkspaceGlyph). */
 function InboxProjectMark({
   project,
 }: {
   project: Pick<
     InboxProjectOption,
-    "id" | "name" | "logoPath" | "mascotName" | "mascotColor"
+    "id" | "key" | "logoPath" | "mascotName" | "mascotColor"
   >;
 }) {
-  const serverIcon = useWorkspaceIcon(project.id);
-  const showLogo =
-    !!project.logoPath ||
-    (!project.mascotName && !!(serverIcon?.dataUrl || serverIcon?.host));
-  if (showLogo) {
-    return (
-      <ProjectLogoIcon
-        path={project.logoPath}
-        workspaceId={project.id}
-        className="size-3.5 shrink-0 rounded-md"
-        imageClassName="size-3.5"
-      />
-    );
-  }
   return (
-    <ProjectMascot
-      project={project.name}
+    <WorkspaceGlyph
+      logoPath={project.logoPath}
+      mascotName={project.mascotName}
       color={project.mascotColor}
-      name={project.mascotName}
-      className="size-3 shrink-0"
+      projectKey={project.key}
+      workspaceId={project.id}
+      className="size-3.5 shrink-0"
+      mascotClassName="size-3 shrink-0"
     />
   );
 }

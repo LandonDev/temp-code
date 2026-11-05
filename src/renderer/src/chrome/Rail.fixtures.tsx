@@ -18,10 +18,23 @@ import { SignInRowView } from "./SignInRow";
 import { UpdateRow } from "./UpdateRow";
 import { MeterRowView } from "./UsageMeter";
 import { diffWords, WorkspaceMarkView } from "./WorkspaceRowMarks";
+import { WorkspaceGlyphView } from "./WorkspaceGlyph";
+import { tabGroupColor } from "../lib/tabGroups";
 
 const noop = () => {};
 /** The rail's height in a 900px window. */
 const HEIGHT = 900;
+
+/** A logo set in Customize, drawn as a data URL so the static render has it. */
+const LOGO =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="#2f6fde"/><path d="M4 11.5 8 4l4 7.5H9.6L8 8.4l-1.6 3.1z" fill="#fff"/></svg>',
+  );
+
+/** A workspace's glyph as WorkspaceGlyph resolves it: a logo, the repo
+ *  host's mark, or the mascot (hashed from the name, else picked). */
+type Look = { logo?: string; host?: "github" | "gitlab"; mascot?: string; color?: string };
 
 const markOf = (state: GroupMark<ThreadRow>["state"], title: string, more = 0): GroupMark<ThreadRow> => ({
   state,
@@ -38,8 +51,10 @@ function Workspace({
   pinned = false,
   offline = false,
   diff,
+  look = {},
 }: {
   name: string;
+  look?: Look;
   mark?: GroupMark<ThreadRow>;
   unread?: boolean;
   selected?: boolean;
@@ -52,6 +67,13 @@ function Workspace({
   return (
     <RailRow
       surface="group"
+      glyph={
+        <WorkspaceGlyphView
+          sources={look.logo ? [look.logo] : []}
+          host={look.host}
+          mascot={{ project: name, name: look.mascot ?? null, color: look.color ?? tabGroupColor(name) }}
+        />
+      }
       label={name}
       selected={selected}
       emphasis={unread}
@@ -222,10 +244,10 @@ export function RailSketch({ width = 260, working = false }: { width?: number; w
     >
       <Navigation inboxUnseen chats={<StatusMark state="working" word={false} />} page="stats" />
       <Section label="Pinned">
-        <Workspace name="temp-code" selected pinned diff={[12, 4]} mark={markOf("working", "Restore the cards")} />
+        <Workspace name="temp-code" look={{ logo: LOGO }} selected pinned diff={[12, 4]} mark={markOf("working", "Restore the cards")} />
       </Section>
       <Section label="Workspaces" add>
-        <Workspace name="cosmic-prisons" mark={markOf("working", "Typecheck the rail", 2)} />
+        <Workspace name="cosmic-prisons" look={{ host: "github" }} mark={markOf("working", "Typecheck the rail", 2)} />
         <Workspace name="aliax" mark={markOf("waiting", "Approve Bash on deploy")} />
         <Workspace name="landing-site" unread />
       </Section>
@@ -277,13 +299,13 @@ export function RailRealistic({ width = 200 }: { width?: number }) {
     >
       <Navigation inboxUnseen chats={<StatusMark state="working" word={false} />} />
       <Section label="Pinned">
-        <Workspace name="temp-code" selected pinned diff={[212, 48]} mark={markOf("waiting", "Approve Bash on deploy", 3)} />
+        <Workspace name="temp-code" look={{ logo: LOGO }} selected pinned diff={[212, 48]} mark={markOf("waiting", "Approve Bash on deploy", 3)} />
       </Section>
       <Section label="Workspaces" add>
         <Workspace name="aliax" mark={markOf("working", "iOS batch 2")} />
-        <Workspace name="cosmic-prisons" unread mark={markOf("paused", "Retry the deploy")} />
+        <Workspace name="cosmic-prisons" look={{ host: "github" }} unread mark={markOf("paused", "Retry the deploy")} />
         <Workspace name="landing-site" offline mark={markOf("working", "Probe the gateway")} />
-        <Workspace name="notes-site" />
+        <Workspace name="notes-site" look={{ mascot: "ghost", color: "#e5a50a" }} />
       </Section>
     </Rail>
   );

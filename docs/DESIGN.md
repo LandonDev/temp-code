@@ -514,6 +514,11 @@ Two glyphs carry colour: `StatusMark`'s, for a state, and the type glyph
 uncoloured: a subagent's role glyph (`AGENT_GLYPHS`), a tool's, the host's.
 The host glyph (chrome/HostGlyph.tsx) stays as it is: 12px, uncoloured, the
 name on hover, drawn only with two or more hosts.
+A workspace's glyph is not an icon: `WorkspaceGlyph` (chrome/WorkspaceGlyph.tsx)
+draws the person's logo, the repo's icon or the mascot in the workspace's own
+colour, 16px in a rail row and 14px beside text, an image on the 4px radius,
+never tinted by state; it is the one drawing of it in the rail, Search,
+Inbox, Notes and the folder picker.
 
 ## Loading and empty states
 

@@ -70,7 +70,7 @@ vi.mock("../lib/fileIndex", async (importOriginal) => {
 });
 vi.mock("../lib/session", () => ({ sessionDisplayTitle: (title: string) => title }));
 vi.mock("../lib/projectLogos", () => ({ projectLogoSrc: () => null }));
-vi.mock("../lib/tabGroups", () => ({ TAB_GROUP_LOGOS_CHANGED: "x", tabGroupLogoDisplayRevision: () => 0 }));
+vi.mock("../chrome/WorkspaceGlyph", () => ({ FolderGlyph: () => <span data-icon="workspace" /> }));
 vi.mock("../chrome/TitleBar", () => ({ OverlayNav: () => <span /> }));
 vi.mock("../chrome/WindowControls", () => ({ WindowControls: () => <span /> }));
 vi.mock("../chrome/FileTypeIcon", () => ({ FileTypeIcon: () => <span data-icon="file" /> }));

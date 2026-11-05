@@ -1616,7 +1616,7 @@ names the far child).
 - **One rail.** `lib/linkedRail.ts` (`mergeRailSections`, restored from
   a39cc107 and keyed by `linkId`) joins copies into one row led by this
   machine's copy, the other copies aliased to the leader's keys
-  (`aliasKeys`) so order, pins, recents, labels, colours, mascots, the
+  (`aliasKeys`) so order, pins, recents, labels, logos, colours, mascots, the
   window folder and the selected-project memory (projectContext
   `folderKey`/`sameFolder`: a box copy's path reads and writes the
   leader's entry) keep theirs; one "Workspaces" section, no host headers, every copy's threads by

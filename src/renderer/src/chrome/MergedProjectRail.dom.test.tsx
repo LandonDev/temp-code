@@ -10,6 +10,8 @@ import { groupWorkspaceSessions } from "../lib/workspaceSessions";
 import { mountProbe } from "../test/renderProbe";
 import { ProjectRail } from "./ProjectRail";
 import { ProjectCard, ThreadList } from "./WorkspaceSessions";
+import { PROJECT_MASCOTS, projectMascot } from "../lib/projectMascots";
+import { saveTabGroupCustomColor, saveTabGroupLogo, saveTabGroupMascot } from "../lib/tabGroups";
 import { resetMenus } from "./menuRows";
 import { newSession } from "../lib/session";
 import type { ProjectMeta } from "../lib/tcserver/types";
@@ -185,6 +187,8 @@ describe("the rail", () => {
   }
   const workspaceRows = (root: HTMLElement) => [...root.querySelectorAll('nav[aria-label="Workspaces"] [data-rail-path]')];
   const rowNames = (root: HTMLElement) => workspaceRows(root).map((row) => row.querySelector("button")?.textContent ?? "");
+  /** The row's 16px lead slot, where the workspace's glyph sits. */
+  const glyphOf = (row: Element) => row.querySelector("button > span[aria-hidden]");
   const headers = (root: HTMLElement) => [...root.querySelectorAll("nav [data-rail-heading]")].map((s) => s.textContent?.trim());
 
   it("shows one row for the linked workspace, led by this machine's copy, under one Workspaces header", async () => {
@@ -256,7 +260,7 @@ describe("the rail", () => {
     expect(marks.map((c) => c.getAttribute("aria-label"))).toEqual(["Needs you, 2 threads"]);
   });
 
-  it("a workspace row is a container: the group fill, its name alone with no logo or mascot, no line under it", async () => {
+  it("a workspace row is a container: the group fill, its glyph then its name, no line under it", async () => {
     const root = await mountRail([LOCAL, BOX], {}, undefined, { cwd: MAC_PATH });
     const [selected, other] = workspaceRows(root) as HTMLElement[];
     expect(other.getAttribute("data-surface")).toBe("group");
@@ -265,13 +269,60 @@ describe("the rail", () => {
     expect(selected.className).toMatch(/(^| )bg-sidebar-group-selected( |$)/);
     expect(selected.querySelector("button")!.getAttribute("aria-current")).toBe("true");
     for (const row of [selected, other]) {
-      // The row's own button holds no glyph slot: no logo, mascot or colour.
-      expect(row.querySelector("button")!.querySelector("svg, img")).toBeNull();
+      // Nothing set and no repo icon: the hashed mascot leads, in the 16px slot.
+      expect(glyphOf(row)!.querySelector("svg path")).not.toBeNull();
       expect(row.className).toContain("@container/railrow");
     }
     expect(root.querySelector("[data-workspace-line]")).toBeNull();
     // The rows sit 4px apart, so their fills never touch.
     expect(selected.parentElement!.className).toContain("gap-1");
+  });
+
+  describe("the glyph", () => {
+    const api = window as unknown as { api: { app?: { logoUrl: (path: string) => string } } };
+    afterEach(() => {
+      delete api.api.app;
+      // The saved records are cached per key; a storage event drops them.
+      window.dispatchEvent(new StorageEvent("storage", { key: null }));
+    });
+
+    it("leads with the logo Customize set, keyed by the link leader, drawn once it has loaded", async () => {
+      api.api.app = { logoUrl: (path) => `tempcode-asset://logo/${path.split("/").pop()}` };
+      saveTabGroupLogo("w-mac", "/logos/tc.png");
+      const root = await mountRail([LOCAL, BOX]);
+      const [linked, only] = workspaceRows(root) as HTMLElement[];
+      const img = glyphOf(linked)!.querySelector("img")!;
+      expect(img.getAttribute("src")).toMatch(/^tempcode-asset:\/\/logo\/tc\.png/);
+      expect(img.getAttribute("loading")).toBe("lazy");
+      expect(img.className).toContain("rounded-sm");
+      expect(img.className).toContain("invisible");
+      await act(async () => fireEvent.load(img));
+      expect(glyphOf(linked)!.querySelector("img")!.className).not.toContain("invisible");
+      // The name follows the glyph, at the row's 13px.
+      expect(linked.querySelector("button")!.textContent).toBe("temp-code");
+      expect(glyphOf(only)!.querySelector("img")).toBeNull();
+    });
+
+    it("a logo that fails to load falls back to the mascot", async () => {
+      api.api.app = { logoUrl: () => "tempcode-asset://logo/missing.png" };
+      saveTabGroupLogo("w-mac", "/logos/missing.png");
+      const root = await mountRail([LOCAL, BOX]);
+      const row = workspaceRows(root)[0] as HTMLElement;
+      await act(async () => fireEvent.error(glyphOf(row)!.querySelector("img")!));
+      expect(glyphOf(row)!.querySelector("img")).toBeNull();
+      expect(glyphOf(row)!.querySelector("svg path")).not.toBeNull();
+    });
+
+    it("a mascot alone draws that mascot, a colour alone the mascot in that colour", async () => {
+      // A mascot other than the one hashed from the key, so the pick shows.
+      const picked = PROJECT_MASCOTS.find((each) => each.name !== projectMascot("w-mac").name)!;
+      saveTabGroupMascot("w-mac", picked.name);
+      saveTabGroupCustomColor("w-only", "#123456");
+      const root = await mountRail([LOCAL, BOX]);
+      const [linked, only] = workspaceRows(root) as HTMLElement[];
+      expect(glyphOf(linked)!.querySelector("path")!.getAttribute("d")).toBe(picked.restPath);
+      expect((glyphOf(only)!.querySelector("svg") as SVGElement).style.color).toBe("rgb(18, 52, 86)");
+    });
   });
 
   it("an unread workspace's name is medium, a read one regular", async () => {
