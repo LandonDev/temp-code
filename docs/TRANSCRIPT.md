@@ -231,7 +231,12 @@ foreground, the same words the group line uses); the components only draw it.
   (`components/ui/question-card.tsx`, keys taken only inside the card)
   through `surfaces/QuestionCard.tsx`: an Other field unless the question
   forbids free text, Skip dismisses the set; once answered, one line per
-  question says what was picked.
+  question says what was picked. It enters once (a fade and a 4px rise,
+  never again when the window remounts its row), Next cross-fades the
+  questions in place while the card's height glides, and the answer folds
+  the card closed on `.collapsible-auto` as its lines open, at the click:
+  an answer the host refuses opens the card again with its picks and a
+  toast.
 - **Prose and code** (`AgentMarkdown.tsx`, `CodeBlock.tsx`,
   `transcript/markdown.css`): 14/22 prose (`size="compact"` is 14/24 for
   panels) whose blocks set their own rhythm under streamdown's (every gap a
@@ -460,7 +465,11 @@ paint; no long task over 200 ms.
   waited on and finished, then the thread watching; the reader scrolled up
   while it all streams; a resync replaying the rows and the pane remounted;
   reduced motion; a burst that lands whole with the turn ending 30 ms later
-  (the closing line waits for the reveal's drain, revealDrain.ts).
+  (the closing line waits for the reveal's drain, revealDrain.ts); a
+  question card arriving, paged with Next and folded into its answered
+  lines, at the bottom and with the reader scrolled up above it (the card
+  is the last row, below the reader's anchor, so its height glide moves
+  nothing above it and the scroller is never written).
 - **The runner** (src/renderer/src/surfaces/AgentTranscript.scenarios.dom.test.tsx
   on `transcriptScenario.testkit.ts`): each scenario as timed store pushes
   through the whole transcript; after every push, and again once it has
@@ -479,6 +488,8 @@ paint; no long task over 200 ms.
   time and the frames from it to 600 ms after); `--reduced-motion` and
   `--scrolled-up` are its switches, and `--trace <s>` (in a run of its
   own: ending a trace stops a screencast) reads who asks for each frame.
+  A step with `clicks` is the person's hand: the soak clicks the question
+  card's buttons over CDP (`questionClicks`), so the recording shows Next.
   The frames showed `MorphText`'s width glide ellipsizing the arriving
   words ("E… +3 −1", "Worked…"): while it glides the new words now keep
   their own width and the box clips them (`data-gliding`, components.css),

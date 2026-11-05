@@ -1,53 +1,60 @@
-import { DUR, EASE_EXIT, EASE_IN_OUT, EASE_OUT } from "@renderer/lib/ease";
-import { RefreshCw } from "@renderer/chrome/icons";
-import { AnimatePresence, motion, MotionConfig, useReducedMotion, type Variants } from "motion/react";
+import { DUR, EASE_EXIT, EASE_OUT } from "@renderer/lib/ease";
+import { AnimatePresence, motion, MotionConfig, type Variants } from "motion/react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "@renderer/lib/cn";
 import { Button } from "./button";
 import { Kbd, KbdGroup } from "./kbd";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 /**
  * A question an agent needs answered before it continues: one question at
  * a time, lettered options (A, B, C…) with an optional description line
- * under each, a free-form option that opens a field, Previous / Skip /
- * Next, ⌘⏎ to continue. A `multiSelect` question takes several options and
- * one submit. Keys work only while focus is inside the card, so ⌘⏎ in the
+ * under each, a free-form option that opens a field, Back / Skip / Next,
+ * ⌘⏎ to continue. A `multiSelect` question takes several options and one
+ * submit. Keys work only while focus is inside the card, so ⌘⏎ in the
  * composer never submits it. With more than one question (`showProgress`)
- * the reset glyph swaps with a donut of how many are answered. The caller's
- * status glyph goes in `icon`, flat beside the title. Answers come back as
- * one array of labels per question (the typed text for a free-form pick).
+ * the title row ends with where the person is ("2 of 3"). The caller's status
+ * glyph goes in `icon`, flat beside the title. Answers come back as one array
+ * of labels per question (the typed text for a free-form pick).
  */
 export type QuestionOption = { label: string; description?: string; freeform?: boolean };
 export type Question = { prompt: string; description?: string; options: Array<QuestionOption>; multiSelect?: boolean };
 
 const KEYS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-const PAGE_MOVE = "flex flex-col transition-[opacity,translate,filter] duration-(--dur-slow) ease-(--ease-out) motion-reduce:transition-none";
+/** Next cross-fades the questions in place: the arriving one over
+ *  --dur-base, the leaving one out over --dur-fast, opacity alone. */
+const PAGE_MOVE = "flex flex-col transition-opacity motion-reduce:duration-(--dur-fast)";
 
 const PAGE_REST = {
-  current: "relative translate-y-0 opacity-100 blur-[0px]",
-  before: "absolute inset-x-0 top-0 -translate-y-3 opacity-0 blur-[3px]",
-  after: "absolute inset-x-0 top-0 translate-y-3 opacity-0 blur-[3px]",
+  current: "relative opacity-100 duration-(--dur-base) ease-(--ease-out)",
+  away: "absolute inset-x-0 top-0 opacity-0 duration-(--dur-fast) ease-(--ease-exit)",
 } as const;
 
-/** The frame reaches past the card's 12px inset, so a hovered option or a focus ring is never cut. */
+/** The frame reaches past the page by 12px, so a hovered option or a focus ring is never cut. */
 const PAGE_INSET = 12;
 
+/** The pages, one shown. The frame's height follows the shown page over
+ *  --dur-base: the card is the last thing above the composer, so the glide
+ *  moves nothing above it (the transcript's anchor sits above the card). */
 function MorphFrame({ at, children }: { at: number; children: Array<ReactNode> }) {
   const [height, setHeight] = useState<number>();
   const pages = useRef<Array<HTMLDivElement | null>>([]);
   useEffect(() => {
     const page = pages.current[at];
     if (!page) return;
-    setHeight(page.offsetHeight);
-    const observer = new ResizeObserver(() => setHeight(page.offsetHeight));
+    // A page not laid out (a hidden pane, a static render) reads 0: the frame keeps its natural height then.
+    const read = () => setHeight(page.offsetHeight || undefined);
+    read();
+    const observer = new ResizeObserver(read);
     observer.observe(page);
     return () => observer.disconnect();
   }, [at]);
   return (
-    // The frame snaps to the page: a height tween would resize a windowed transcript row for its whole run.
-    <div className="-m-3 overflow-hidden p-3" style={{ height: height === undefined ? undefined : height + PAGE_INSET * 2 }}>
+    <div
+      data-slot="question-pages"
+      className="-m-3 overflow-hidden p-3 transition-[height] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none"
+      style={{ height: height === undefined ? undefined : height + PAGE_INSET * 2 }}
+    >
       <div className="relative">
         {children.map((page, index) => (
           <div
@@ -55,8 +62,9 @@ function MorphFrame({ at, children }: { at: number; children: Array<ReactNode> }
             ref={(node) => {
               pages.current[index] = node;
             }}
+            data-page={index === at ? "current" : "away"}
             inert={index !== at}
-            className={cn(PAGE_MOVE, index === at ? PAGE_REST.current : index < at ? PAGE_REST.before : PAGE_REST.after)}
+            className={cn(PAGE_MOVE, index === at ? PAGE_REST.current : PAGE_REST.away)}
           >
             {page}
           </div>
@@ -78,37 +86,15 @@ function MorphLabel({ children }: { children: ReactNode }) {
   );
 }
 
-const DONUT_W = 1.75;
-const DONUT_R = 8 - DONUT_W / 2;
-const DONUT_C = 2 * Math.PI * DONUT_R;
-
-function ProgressDonut({ done, total }: { done: number; total: number }) {
-  const filled = total > 0 ? done / total : 0;
-  return (
-    <svg viewBox="0 0 16 16" fill="none" aria-hidden className="size-4 shrink-0">
-      <circle cx="8" cy="8" r={DONUT_R} strokeWidth={DONUT_W} className="stroke-muted-foreground/45" />
-      <circle
-        cx="8"
-        cy="8"
-        r={DONUT_R}
-        strokeWidth={DONUT_W}
-        strokeLinecap={filled > 0 ? "round" : "butt"}
-        strokeDasharray={DONUT_C}
-        strokeDashoffset={DONUT_C * (1 - filled)}
-        transform="rotate(-90 8 8)"
-        className="stroke-foreground transition-[stroke-dashoffset] duration-(--dur-slow) ease-(--ease-out) motion-reduce:transition-none"
-      />
-    </svg>
-  );
-}
-
-const TURN = { duration: DUR.drawer, ease: EASE_IN_OUT } as const;
-const MARK_SWAP = "col-start-1 row-start-1 transition-[opacity,scale,filter] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none";
-
-const PREVIOUS: Variants = {
+/** Back arrives at the group's start, so Skip and Next never move. */
+const BACK: Variants = {
   hidden: { opacity: 0, transform: "translateX(-8px)", transition: { duration: DUR.fast, ease: EASE_EXIT } },
-  shown: { opacity: 1, transform: "translateX(0px)", transition: { duration: DUR.slow, ease: EASE_OUT } },
+  shown: { opacity: 1, transform: "translateX(0px)", transition: { duration: DUR.base, ease: EASE_OUT } },
 };
+
+/** An option: a flat 36px row (8px above and below the 20px line), its fill
+ *  the one selected cue with the key cap; a press steps the fill at once. */
+const OPTION = "flex min-h-9 w-full items-start gap-3 rounded-lg px-2 py-2 text-start active:bg-foreground/12";
 
 export function QuestionCard({
   icon,
@@ -116,7 +102,6 @@ export function QuestionCard({
   questions,
   onSubmitAnswers,
   onSkip,
-  onReset,
   showProgress = questions.length > 1,
   className,
 }: {
@@ -125,16 +110,12 @@ export function QuestionCard({
   questions: Array<Question>;
   onSubmitAnswers?: (answers: Array<Array<string>>) => void;
   onSkip?: () => void;
-  onReset?: () => void;
-  /** The donut of answered questions and its reset; off for a single question. */
+  /** "2 of 3" at the title row's end; off for a single question. */
   showProgress?: boolean;
   className?: string;
 }) {
   const id = useId();
   const [at, setAt] = useState(0);
-  const [turns, setTurns] = useState(0);
-  const [turning, setTurning] = useState(false);
-  const still = useReducedMotion() ?? false;
   const [picked, setPicked] = useState<Record<number, Array<number>>>({});
   const [typed, setTyped] = useState<Record<number, string>>({});
 
@@ -149,7 +130,7 @@ export function QuestionCard({
     return !freeform || choices.length > 1 || (typed[index]?.trim() ?? "") !== "";
   };
   const answered = hasAnswer(at);
-  const answeredCount = questions.filter((_, index) => hasAnswer(index)).length;
+  const last = at === questions.length - 1;
 
   const go = (by: number) => setAt((index) => Math.min(questions.length - 1, Math.max(0, index + by)));
 
@@ -157,25 +138,12 @@ export function QuestionCard({
     const to = Math.max(0, at - 1);
     go(-1);
     if (to !== 0) return;
+    // Back leaves with the first question: focus the pick it holds, not the body.
     window.setTimeout(() => {
       const list = lists.current[0];
       (list?.querySelector<HTMLElement>('[aria-pressed="true"]') ?? list?.querySelector<HTMLElement>("button"))?.focus();
     }, 0);
   };
-
-  const reset = () => {
-    setAt(0);
-    setPicked({});
-    setTyped({});
-    setTurns((turn) => turn + 1);
-    setTurning(true);
-    onReset?.();
-  };
-  useEffect(() => {
-    if (!turning) return;
-    const done = window.setTimeout(() => setTurning(false), TURN.duration * 1000);
-    return () => window.clearTimeout(done);
-  }, [turning, turns]);
 
   const pick = (index: number) => {
     const current = picked[at] ?? [];
@@ -189,7 +157,7 @@ export function QuestionCard({
 
   const submit = () => {
     if (!answered) return;
-    if (at < questions.length - 1) {
+    if (!last) {
       go(1);
       return;
     }
@@ -229,39 +197,14 @@ export function QuestionCard({
       onKeyDown={onKeyDown}
       className={cn("w-full max-w-lg rounded-xl border border-border bg-card p-4 font-sans text-card-foreground in-[.bg-card]:border-0 in-[.bg-card]:bg-transparent in-[.bg-card]:p-0", className)}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex min-h-5 items-center gap-2">
         {icon ? <span className="flex shrink-0">{icon}</span> : null}
-        <h3 id={`${id}-title`} className="text-sm font-medium text-foreground">
+        <h3 id={`${id}-title`} className="min-w-0 truncate text-sm leading-5 font-medium text-foreground">
           {title}
         </h3>
         {showProgress ? (
-          <span className="ms-auto flex items-center">
-            <span className="sr-only" aria-live="polite">
-              {answeredCount} of {questions.length} answered
-            </span>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label="Reset the answers"
-                    data-turning={turning || undefined}
-                    onClick={reset}
-                    className="group/reset relative grid size-4 shrink-0 place-items-center rounded-full after:absolute after:-inset-3 after:content-['']"
-                  />
-                }
-              >
-                <span className={cn(MARK_SWAP, "grid group-hover/reset:scale-90 group-hover/reset:opacity-0 group-hover/reset:blur-[2px] group-focus-visible/reset:scale-90 group-focus-visible/reset:opacity-0 group-data-turning/reset:scale-90 group-data-turning/reset:opacity-0")}>
-                  <ProgressDonut done={answeredCount} total={questions.length} />
-                </span>
-                <span aria-hidden className={cn(MARK_SWAP, "grid size-4 scale-90 place-items-center text-foreground opacity-0 blur-[2px] group-hover/reset:scale-100 group-hover/reset:opacity-100 group-hover/reset:blur-none group-focus-visible/reset:scale-100 group-focus-visible/reset:opacity-100 group-data-turning/reset:scale-100 group-data-turning/reset:opacity-100 group-data-turning/reset:blur-none")}>
-                  <motion.span animate={{ rotate: turns * 360 }} transition={still ? { duration: 0 } : TURN} className="flex">
-                    <RefreshCw className="size-4" />
-                  </motion.span>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>Reset</TooltipContent>
-            </Tooltip>
+          <span data-slot="question-progress" aria-live="polite" className="ms-auto shrink-0 text-xs leading-5 text-muted-foreground tabular-nums">
+            {at + 1} of {questions.length}
           </span>
         ) : null}
       </div>
@@ -273,15 +216,15 @@ export function QuestionCard({
             return (
               <div key={entry.prompt}>
                 <div aria-live="polite">
-                  <p className="text-sm leading-[22px]">{entry.prompt}</p>
-                  {entry.description ? <p className="mt-0.5 text-sm text-muted-foreground">{entry.description}</p> : null}
+                  <p className="text-sm leading-[22px] text-foreground">{entry.prompt}</p>
+                  {entry.description ? <p className="text-[13px] leading-5 text-muted-foreground">{entry.description}</p> : null}
                 </div>
                 <ul
                   ref={(node) => {
                     lists.current[qIndex] = node;
                   }}
                   aria-multiselectable={entry.multiSelect || undefined}
-                  className="-mx-2 mt-2 space-y-1"
+                  className="-mx-2 mt-2 flex flex-col gap-1"
                 >
                   {entry.options.map((option, index) => {
                     const active = choices.includes(index);
@@ -298,14 +241,17 @@ export function QuestionCard({
                             if (active && event.target instanceof HTMLInputElement) return;
                             pick(index);
                           }}
-                          // A 28px row: the 1px border and 3px make the 4px above the 20px line. It
-                          // sits 4px inside the card's 8px corner, so its 4px radius is concentric.
-                          className={cn(
-                            "flex min-h-7 w-full items-start gap-2 rounded-sm border px-2 py-[3px] text-start duration-(--dur-instant)",
-                            active ? "border-border bg-foreground/5" : "border-transparent hover:bg-foreground/5",
-                          )}
+                          className={cn(OPTION, active ? "bg-foreground/10" : "hover:bg-foreground/5")}
                         >
-                          <span aria-hidden className={cn("pointer-events-none flex size-5 shrink-0 items-center justify-center rounded-sm text-[11px] font-medium tabular-nums", active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+                          {/* The cap sits on the label's first line: 20px, the line's own height. */}
+                          <span
+                            aria-hidden
+                            data-slot="question-key"
+                            className={cn(
+                              "pointer-events-none flex size-5 shrink-0 items-center justify-center rounded-sm text-[11px] leading-none font-medium tabular-nums",
+                              active ? "bg-primary text-primary-foreground" : "bg-foreground/7 text-muted-foreground",
+                            )}
+                          >
                             {key}
                           </span>
                           {option.freeform ? (
@@ -317,15 +263,15 @@ export function QuestionCard({
                               readOnly={!active}
                               placeholder={option.label}
                               onChange={(event) => setTyped((all) => ({ ...all, [qIndex]: event.target.value }))}
-                              className="h-5 w-full cursor-[inherit] bg-transparent text-sm leading-5 outline-none placeholder:text-muted-foreground"
+                              className="h-5 w-full cursor-[inherit] bg-transparent text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
                             />
                           ) : (
                             <span className="flex min-w-0 flex-col">
-                              <span id={`${optionId}-label`} className="text-sm leading-5">
+                              <span id={`${optionId}-label`} className="text-sm leading-5 text-foreground">
                                 {option.label}
                               </span>
                               {option.description ? (
-                                <span id={`${optionId}-description`} className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
+                                <span id={`${optionId}-description`} className="text-[13px] leading-5 text-muted-foreground">
                                   {option.description}
                                 </span>
                               ) : null}
@@ -342,40 +288,38 @@ export function QuestionCard({
         </MorphFrame>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div data-slot="question-actions" className="mt-4 flex items-center justify-end gap-2">
         <MotionConfig reducedMotion="user">
           <AnimatePresence initial={false}>
             {at > 0 ? (
-              <motion.span key="previous" variants={PREVIOUS} initial="hidden" animate="shown" exit="hidden" className="flex">
+              <motion.span key="back" variants={BACK} initial="hidden" animate="shown" exit="hidden" className="flex">
                 <Button variant="secondary" size="sm" onClick={back}>
-                  Previous
+                  Back
                 </Button>
               </motion.span>
             ) : null}
           </AnimatePresence>
         </MotionConfig>
-        <span className="ms-auto flex items-center gap-2">
-          {onSkip ? (
-            <Button variant="ghost" size="sm" onClick={onSkip}>
-              Skip
-            </Button>
-          ) : null}
-          <Button size="sm" disabled={!answered} onClick={submit} className="gap-0">
-            <MotionConfig reducedMotion="user">
-              <AnimatePresence initial={false}>
-                <MorphLabel key={at < questions.length - 1 ? "next" : "continue"}>{at < questions.length - 1 ? "Next" : "Continue"}</MorphLabel>
-              </AnimatePresence>
-            </MotionConfig>
-            <KbdGroup className="ms-2">
-              <Kbd size="sm" className="justify-center border-transparent bg-background/15 text-current">
-                ⌘
-              </Kbd>
-              <Kbd size="sm" className="justify-center border-transparent bg-background/15 text-current">
-                ⏎
-              </Kbd>
-            </KbdGroup>
+        {onSkip ? (
+          <Button variant="secondary" size="sm" onClick={onSkip}>
+            Skip
           </Button>
-        </span>
+        ) : null}
+        <Button size="sm" disabled={!answered} onClick={submit} className="gap-0">
+          <MotionConfig reducedMotion="user">
+            <AnimatePresence initial={false}>
+              <MorphLabel key={last ? "continue" : "next"}>{last ? "Continue" : "Next"}</MorphLabel>
+            </AnimatePresence>
+          </MotionConfig>
+          <KbdGroup className="ms-2">
+            <Kbd size="sm" className="justify-center border-transparent bg-background/15 text-current">
+              ⌘
+            </Kbd>
+            <Kbd size="sm" className="justify-center border-transparent bg-background/15 text-current">
+              ⏎
+            </Kbd>
+          </KbdGroup>
+        </Button>
       </div>
     </div>
   );

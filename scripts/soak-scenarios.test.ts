@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { playScenarios, scenarioLength, scenarioTimeline } from './lib/soakScenarios'
+import { playScenarios, questionClicks, questionSteps, scenarioLength, scenarioTimeline } from './lib/soakScenarios'
 
 afterEach(() => vi.useRealTimers())
 
@@ -8,7 +8,7 @@ describe('the no-jerk scenarios timeline', () => {
     const steps = scenarioTimeline()
     expect(steps.every((s, i) => i === 0 || s.at >= steps[i - 1]!.at)).toBe(true)
     const labels = steps.map((s) => s.label).join('\n')
-    for (const want of ["the host's wait", 'the group opens', '(fast)', 'a long command', 'every 100 ms', 'steers', 'compaction starts', 'paused', 'resumed', 'stopped', 'a burst lands whole', 'ends 30 ms later']) {
+    for (const want of ["the host's wait", 'the group opens', '(fast)', 'a long command', 'every 100 ms', 'steers', 'compaction starts', 'paused', 'resumed', 'stopped', 'a burst lands whole', 'ends 30 ms later', 'a question arrives', 'pages with Next', 'the answer folds']) {
       expect(labels).toContain(want)
     }
     const burst = steps.findIndex((s) => s.label.includes('a burst lands whole'))
@@ -31,5 +31,25 @@ describe('the no-jerk scenarios timeline', () => {
     expect(seen).toEqual(['a', 'turn-complete', 'b', 'status'])
     vi.advanceTimersByTime(100)
     expect(seen).toEqual(['a', 'turn-complete', 'b', 'status', 'c', 'resume'])
+  })
+
+  it('the question card arrives, pages on the person\'s clicks, and the host\'s answer folds it', () => {
+    const steps = questionSteps(1_000)
+    const arrives = steps.find((s) => s.label.includes('a question arrives'))!
+    expect(arrives.events.map((e) => e.type)).toEqual(['tool-call', 'question-request', 'status'])
+    const ask = arrives.events[1] as { requestId: string; questions: unknown[]; callId?: string }
+    expect(ask.questions).toHaveLength(2)
+    expect(ask.callId).toBe('t5-ask')
+    const next = steps.find((s) => s.label.includes('pages with Next'))!
+    expect(next.events).toEqual([])
+    expect(next.clicks).toEqual(['inbox', 'Next'])
+    const folds = steps.find((s) => s.label.includes('the answer folds'))!
+    expect(folds.events[0]).toEqual({ type: 'question-resolved', requestId: ask.requestId, answers: [['inbox'], ['Yes']] })
+    expect(steps.every((s, i) => i === 0 || s.at >= steps[i - 1]!.at)).toBe(true)
+    // The page script clicks inside the card alone, in order, a frame apart.
+    const script = questionClicks(['inbox', 'Next'])
+    expect(script).toContain('[data-slot="question-card"] button')
+    expect(script).toContain('["inbox","Next"]')
+    expect(script).toContain('requestAnimationFrame')
   })
 })

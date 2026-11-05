@@ -11,7 +11,8 @@ import { startSoakHost } from './lib/soakHost'
 // `--scene chat`: one plain chat thread instead of the master's batch;
 // `--burst <ms>`: its deltas leave in bursts (soakLoad.ts BurstCadence).
 // `--scene scenarios`: one quiet chat that plays the no-jerk timeline when a
-// line "go" arrives on stdin, writing `{"step": label, "at": ms}` per step.
+// line "go" arrives on stdin, writing `{"step": label, "at": ms, "clicks"?}` per
+// step (the clicks are the soak's to perform in the window).
 const argAfter = (name: string): string | undefined => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined)
 const named = argAfter('--scene')
 const host = await startSoakHost(named === 'chat' || named === 'scenarios' ? named : 'board')
@@ -22,7 +23,7 @@ if (host.scene === 'scenarios') {
     buffer += chunk.toString()
     if (!buffer.includes('go\n')) return
     buffer = ''
-    host.playScenarios((step) => process.stdout.write(JSON.stringify({ step: step.label, at: Date.now() - started }) + '\n'))
+    host.playScenarios((step) => process.stdout.write(JSON.stringify({ step: step.label, at: Date.now() - started, clicks: step.clicks }) + '\n'))
   })
 } else {
   const burstMs = Number(argAfter('--burst') ?? 0)

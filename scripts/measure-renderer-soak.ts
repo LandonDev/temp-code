@@ -68,7 +68,7 @@ import { summarizeTrace, TRACE_CATEGORIES, traceMarkdown, type TraceEvent, type 
 import { REVEAL_OBSERVER, revealLine, summarizeReveal, type RevealRecord } from './lib/revealReport'
 import { REVEAL } from '../src/renderer/src/lib/ease'
 import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSoak, parseSoakArgs, REACT_MEASURE_PREFIX, type BuildStamp, type GateScene, type SoakSample } from './lib/soakJudge'
-import { scenarioLength } from './lib/soakScenarios'
+import { scenarioLength, questionClicks } from './lib/soakScenarios'
 
 const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
 /** Hand runs on a dev build: also tally the props React names as changed, per component. */
@@ -829,7 +829,9 @@ async function recordScenarios(c: Cdp): Promise<void> {
   const lines = createInterface({ input: soakHost.stdout })
   lines.on('line', (l) => {
     if (!l.startsWith('{"step"')) return
-    steps.push({ label: (JSON.parse(l) as { step: string }).step, t: Date.now() })
+    const step = JSON.parse(l) as { step: string; clicks?: string[] }
+    steps.push({ label: step.step, t: Date.now() })
+    if (step.clicks) void c.eval(questionClicks(step.clicks)).catch(() => {})
   })
   const length = scenarioLength()
   soakHost.stdin.write('go\n')

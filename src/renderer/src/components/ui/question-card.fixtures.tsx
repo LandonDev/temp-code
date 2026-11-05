@@ -1,11 +1,11 @@
 // Fixtures for `bun run ui:preview src/renderer/src/components/ui/question-card.tsx#QuestionCard`:
 // the card as the transcript mounts it (surfaces/QuestionCard.tsx's frame and
-// glyph). A static render shows each set's first question with nothing picked;
-// picks, pages and the free-form field's typing are DOM-tested.
+// glyph, QUESTION_SHAPE). A static render shows each set's first question with
+// nothing picked; picks, pages and the free-form field's typing are DOM-tested.
 import { StatusMark } from "./status";
 import type { Question } from "./question-card";
 
-const frame = { className: "my-2 max-w-none rounded-lg p-3", icon: <StatusMark state="waiting" word={false} />, onSkip: "fn", onSubmitAnswers: "fn" };
+const frame = { className: "max-w-none rounded-xl p-4", icon: <StatusMark state="waiting" word={false} />, onSkip: "fn", onSubmitAnswers: "fn" };
 
 const described: Question[] = [
   {

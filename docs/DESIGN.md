@@ -571,6 +571,9 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Scrollbar | shows at once on hover or scroll | hides at once, `SCROLL_IDLE_MS` (900ms) after the last scroll or when the pointer leaves | same |
 | List rows (rail, tabs, fleet, attachments, the transcript's message list) | none; a row being reordered follows the pointer on the list's axis from where it was grabbed while the others hold still with the insertion line, then glides into its slot (or back to its own, on Escape or a drop that changes nothing) on `SPRING_GLIDE` | none | the line alone; the drop at once |
 | Transcript rows | one `--dur-fast` fade on first appearance, never replayed: a row on screen never changes its key (the echo of the person's message keeps the optimistic row's, `Block.rowKey`) | — | none |
+| A question card arriving (once per question: a remount of its row replays nothing) | fade + rise 4px, `--dur-base` `--ease-out` (`@starting-style`, `QUESTION_ENTER`) | — | fade, `--dur-fast` |
+| Next and Back between a card's questions | the arriving question fades in over `--dur-base` `--ease-out` while the leaving one fades out over `--dur-fast` `--ease-exit`, in place; the card's height glides to the new question's over `--dur-base` `--ease-out` (the card is the last row, below the reader's anchor, so nothing above it moves); Back slides 8px in at the actions' start | the same | the fades; the height snaps |
+| A question answered | at the click, the card folds closed on `.collapsible-auto` while its one-line answers open in its place on the same fold; a refused answer opens the card again | — | opacity, `--dur-fast` |
 | The working line held (a card waits, the turn is paused) | folds closed on `.collapsible-auto` with its words kept; a resume reopens the same element | the same fold | opacity, `--dur-fast` |
 | The Watching line, the fleet detail's live state | each in a kept fold under the turn: opens and closes on `.collapsible-auto`, mounted once it first opens, never unmounted while on screen | the same fold | opacity, `--dur-fast` |
 | A status glyph changing state (`StatusMark`) | in the box that stays: the new glyph grows from 0.25 on the layout spring (`glyph-in`) while the old shrinks out over `--dur-fast` (`glyph-out`); never at mount | — | both fade, `--dur-fast` |
@@ -585,7 +588,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
 
 Rules: animate `transform` and `opacity` (and height only through the
-collapsible); every animation is interruptible and starts from the current
+collapsible, or the question card's frame between its questions); every animation is interruptible and starts from the current
 value; nothing animates on a keystroke; nothing overshoots without a
 gesture; every animated class carries its `motion-reduce:` guard.
 
@@ -729,12 +732,21 @@ the working line says "Waiting on <title>". A handoff keeps its bubble: its text
 left side, where the column leaves room, lists the person's own messages,
 one line and a clock time each, the one being read in foreground
 (`TranscriptOutline` on `JumpList`; docs/LAYOUT.md "Chat"). A
-question card sets the sans face; mono is for code inside it. Its question
-is at the prose's 14px on 22px lines, its options 28px rows at 14px with an
-option's description as a muted 13px line under it, and the amber Needs you
-glyph sits by its title. Its frame is `CARD_SHAPE` (surfaces/QuestionCard.tsx,
-shared with the held review), and inside a `bg-card` body it draws no second
-frame. Every action
+question card sets the sans face; mono is for code inside it. It is the one
+card the transcript allows: a hairline on the card fill, 12px corners and a
+16px inset (`QUESTION_SHAPE`, surfaces/QuestionCard.tsx; the held review keeps
+`CARD_SHAPE`), and inside a `bg-card` body it draws no second frame. Its title
+is 14px medium by the amber Needs you glyph, flat, and a set of more than one
+question ends the title row with where the person is ("2 of 3", 12px muted,
+tabular). Its question is at the prose's 14px on 22px lines, its options a
+flat list of 36px rows 4px apart (a menu row's 8px radius, 8px above and
+below the 14px label's 20px line) with an option's description as a muted
+13px line under it; the 20px key cap sits on the label's first line. Selected
+is the row's fill (`foreground/10`) and the cap turned primary, never a
+border; hover is `foreground/5`, a press `foreground/12`, all at once. Its
+actions end the card 16px under the options, right-aligned 8px apart, the
+raised buttons at `sm`: Back and Skip `secondary`, Next or Continue (with ⌘⏎)
+`default`; Back arrives at the group's start, so Skip and Next never move. Every action
 row ends in a caret: it turns on a row that opens a body and stays still on
 one that opens its file.
 

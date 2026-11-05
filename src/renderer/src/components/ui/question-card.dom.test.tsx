@@ -10,18 +10,47 @@ afterEach(cleanup);
 const one: Question[] = [{ prompt: "Which?", options: [{ label: "Alpha" }, { label: "Beta" }, { label: "Other", freeform: true }] }];
 
 describe("QuestionCard's motion", () => {
-  it("snaps its frame to the page and leaves its title glyph at its own size", () => {
-    const { container } = render(<QuestionCard title="Indentation" icon={<svg data-testid="glyph" />} questions={[{ prompt: "Which?", options: [{ label: "Tabs" }, { label: "Spaces" }] }]} />);
-    const frame = container.querySelector<HTMLElement>('[data-slot="question-card"] .overflow-hidden')!;
-    expect(frame.className).not.toMatch(/transition/);
+  const two: Question[] = [
+    { prompt: "Which?", options: [{ label: "Alpha" }, { label: "Beta" }] },
+    { prompt: "And?", options: [{ label: "Yes" }, { label: "No" }] },
+  ];
+
+  it("glides its frame's height on the tokens and leaves its title glyph at its own size", () => {
+    const { container } = render(<QuestionCard title="Indentation" icon={<svg data-testid="glyph" />} questions={two} />);
+    const frame = container.querySelector<HTMLElement>('[data-slot="question-pages"]')!;
+    expect(frame.className.split(" ")).toEqual(
+      expect.arrayContaining(["transition-[height]", "duration-(--dur-base)", "ease-(--ease-out)", "motion-reduce:transition-none", "overflow-hidden"]),
+    );
     expect(screen.getByTestId("glyph").parentElement!.className).not.toContain("[&_svg]");
   });
 
-  it("moves Previous by a full transform string, with no blur", () => {
+  it("Next cross-fades the questions in place: the card and every page keep their elements, opacity alone moves", () => {
+    const { container } = render(<QuestionCard questions={two} />);
+    const card = container.querySelector('[data-slot="question-card"]')!;
+    const pages = [...container.querySelectorAll<HTMLElement>("[data-page]")];
+    expect(pages.map((page) => page.dataset.page)).toEqual(["current", "away"]);
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+    expect(container.querySelector('[data-slot="question-card"]')).toBe(card);
+    const after = [...container.querySelectorAll<HTMLElement>("[data-page]")];
+    expect(after).toEqual(pages);
+    expect(after.map((page) => page.dataset.page)).toEqual(["away", "current"]);
+    expect(after[0].hasAttribute("inert")).toBe(true);
+    for (const page of after) {
+      expect(page.className).toContain("transition-opacity");
+      expect(page.className).toContain("motion-reduce:duration-(--dur-fast)");
+      expect(page.className).not.toMatch(/translate|blur|scale/);
+    }
+    // The arriving question over --dur-base; the leaving one out faster, on the exit curve.
+    expect(after[1].className.split(" ")).toEqual(expect.arrayContaining(["opacity-100", "duration-(--dur-base)", "ease-(--ease-out)"]));
+    expect(after[0].className.split(" ")).toEqual(expect.arrayContaining(["opacity-0", "duration-(--dur-fast)", "ease-(--ease-exit)", "absolute"]));
+  });
+
+  it("moves Back by a full transform string, with no blur, and swaps Next's words on opacity alone", () => {
     const source = readFileSync(resolve(__dirname, "question-card.tsx"), "utf8");
-    const previous = source.slice(source.indexOf("const PREVIOUS"), source.indexOf("};", source.indexOf("const PREVIOUS")));
-    expect(previous).toContain('transform: "translateX(-8px)"');
-    expect(previous).not.toMatch(/blur|filter|\bx:/);
+    const back = source.slice(source.indexOf("const BACK"), source.indexOf("};", source.indexOf("const BACK")));
+    expect(back).toContain('transform: "translateX(-8px)"');
+    expect(back).not.toMatch(/blur|filter|\bx:/);
     const label = source.slice(source.indexOf("function MorphLabel"), source.indexOf("\n}\n", source.indexOf("function MorphLabel")));
     expect(label).not.toMatch(/width/);
   });
@@ -101,28 +130,62 @@ describe("QuestionCard", () => {
     expect(onSubmitAnswers).toHaveBeenCalledWith([["Tabs"]]);
   });
 
-  it("keeps the transcript's geometry: a 12px morph inset, 28px option rows, 20px key caps, the prompt at 14 on 22", () => {
+  it("keeps its geometry: 16px inset, a 12px page inset, 36px flat option rows, 20px key caps, the prompt at 14 on 22", () => {
     const { container } = render(<QuestionCard questions={one} />);
     const card = container.querySelector<HTMLElement>('[data-slot="question-card"]')!;
-    const frame = card.querySelector<HTMLElement>(".overflow-hidden")!;
+    expect(card.className.split(" ")).toEqual(expect.arrayContaining(["rounded-xl", "p-4", "border", "bg-card"]));
+    const frame = card.querySelector<HTMLElement>('[data-slot="question-pages"]')!;
     expect(frame.className.split(" ")).toEqual(expect.arrayContaining(["-m-3", "p-3"]));
     const prompt = screen.getByText("Which?");
     expect(prompt.className.split(" ")).toEqual(expect.arrayContaining(["text-sm", "leading-[22px]"]));
     const list = card.querySelector<HTMLElement>("ul")!;
-    expect(list.className.split(" ")).toEqual(expect.arrayContaining(["-mx-2", "mt-2"]));
-    // An option highlights at once, 4px inside the card's 8px corner on a concentric 4px radius.
-    const option = list.querySelector<HTMLElement>(".min-h-7")!;
-    expect(option.className.split(" ")).toEqual(expect.arrayContaining(["rounded-sm", "duration-(--dur-instant)"]));
-    expect(option.className).not.toMatch(/transition-\[|rounded-md/);
+    expect(list.className.split(" ")).toEqual(expect.arrayContaining(["-mx-2", "mt-2", "gap-1"]));
     const rows = [...list.querySelectorAll<HTMLElement>("button[aria-pressed]")];
     expect(rows).toHaveLength(3);
     for (const row of rows) {
-      expect(row.className.split(" ")).toEqual(expect.arrayContaining(["min-h-7", "px-2", "gap-2", "rounded-sm"]));
-      expect(row.className).not.toMatch(/\b(gap-3|px-2\.5|rounded-lg)\b/);
+      // A menu row's 8px radius, 8px above and below the 20px line; no border, no transition: a fill changes at once.
+      expect(row.className.split(" ")).toEqual(expect.arrayContaining(["min-h-9", "py-2", "px-2", "gap-3", "rounded-lg", "active:bg-foreground/12"]));
+      expect(row.className).not.toMatch(/\bborder\b|transition|duration/);
       const cap = row.firstElementChild as HTMLElement;
       expect(cap.textContent).toMatch(/^[ABC]$/);
-      expect(cap.className.split(" ")).toEqual(expect.arrayContaining(["size-5", "rounded-sm"]));
+      expect(cap.className.split(" ")).toEqual(expect.arrayContaining(["size-5", "rounded-sm", "leading-none"]));
     }
+  });
+
+  it("says a selected option with a fill and the cap, never an outline", () => {
+    render(<QuestionCard questions={one} />);
+    const alpha = screen.getByRole("button", { name: "Alpha" });
+    const beta = screen.getByRole("button", { name: "Beta" });
+    fireEvent.click(alpha);
+    expect(alpha.className.split(" ")).toContain("bg-foreground/10");
+    expect(alpha.className).not.toMatch(/border|ring|outline/);
+    expect((alpha.firstElementChild as HTMLElement).className.split(" ")).toEqual(expect.arrayContaining(["bg-primary", "text-primary-foreground"]));
+    expect(beta.className.split(" ")).toContain("hover:bg-foreground/5");
+    expect(beta.className.split(" ")).not.toContain("bg-foreground/10");
+    expect((beta.firstElementChild as HTMLElement).className.split(" ")).toEqual(expect.arrayContaining(["bg-foreground/7", "text-muted-foreground"]));
+  });
+
+  it("ends with raised buttons, right-aligned 8px apart and 16px under the options: Back and Skip secondary, Next default", () => {
+    const questions: Question[] = [...one, { prompt: "And?", options: [{ label: "Yes" }] }];
+    const { container } = render(<QuestionCard questions={questions} onSkip={() => {}} />);
+    const actions = container.querySelector<HTMLElement>('[data-slot="question-actions"]')!;
+    expect(actions.className.split(" ")).toEqual(expect.arrayContaining(["mt-4", "justify-end", "gap-2"]));
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
+    const skip = screen.getByRole("button", { name: "Skip" });
+    const next = screen.getByRole("button", { name: /Next/ });
+    expect(skip.dataset.variant).toBe("secondary");
+    expect(next.dataset.variant).toBe("default");
+    for (const button of [skip, next]) expect(button.className).toContain("t-raise");
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    fireEvent.click(next);
+    const back = screen.getByRole("button", { name: "Back" });
+    expect(back.dataset.variant).toBe("secondary");
+    expect(back.className).toContain("t-raise");
+    // Back arrives first in the group, so Skip and Next hold their places.
+    const order = [...actions.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(order[0]).toBe("Back");
+    expect(order[1]).toBe("Skip");
+    expect(order[2]).toContain("Continue");
   });
 
   it("draws no border, fill or padding of its own inside a card", () => {
@@ -139,17 +202,22 @@ describe("QuestionCard", () => {
     expect(slot.className).not.toContain("bg-muted");
   });
 
-  it("shows the progress donut and reset only for more than one question, or when asked", () => {
+  it("says where the person is (\"2 of 3\") only for more than one question, or when asked", () => {
     const two: Question[] = [...one, { prompt: "And?", options: [{ label: "Yes" }] }];
-    const { rerender } = render(<QuestionCard questions={one} />);
-    expect(screen.queryByRole("button", { name: "Reset the answers" })).toBeNull();
-    expect(screen.queryByText(/answered/)).toBeNull();
+    const { rerender, container } = render(<QuestionCard questions={one} />);
+    expect(container.querySelector('[data-slot="question-progress"]')).toBeNull();
     rerender(<QuestionCard questions={two} />);
-    expect(screen.getByRole("button", { name: "Reset the answers" })).toBeTruthy();
-    expect(screen.getByText("0 of 2 answered")).toBeTruthy();
-    rerender(<QuestionCard questions={two} showProgress={false} />);
+    const progress = container.querySelector<HTMLElement>('[data-slot="question-progress"]')!;
+    expect(progress.textContent).toBe("1 of 2");
+    expect(progress.className.split(" ")).toEqual(expect.arrayContaining(["text-xs", "text-muted-foreground", "tabular-nums", "ms-auto"]));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+    expect(progress.textContent).toBe("2 of 2");
     expect(screen.queryByRole("button", { name: "Reset the answers" })).toBeNull();
-    rerender(<QuestionCard questions={one} showProgress />);
-    expect(screen.getByRole("button", { name: "Reset the answers" })).toBeTruthy();
+    rerender(<QuestionCard questions={two} showProgress={false} />);
+    expect(container.querySelector('[data-slot="question-progress"]')).toBeNull();
+    cleanup();
+    const asked = render(<QuestionCard questions={one} showProgress />);
+    expect(asked.container.querySelector('[data-slot="question-progress"]')!.textContent).toBe("1 of 1");
   });
 });

@@ -19,6 +19,10 @@ export interface ScenarioStep {
   /** The host's resume of a paused turn: a paused row drops status events,
    *  so the host writes the row as `session.resume` would (markStatusForProof). */
   resume?: true
+  /** The person's clicks in the window after the step's events, in order: each
+   *  the question card's button whose text ends with these words (the soak
+   *  performs them over CDP, `questionClicks`). */
+  clicks?: string[]
 }
 
 const text = (t: string, msg: string): AgentEvent => ({ type: 'assistant-text', text: t, delta: false, msgId: msg, blockIndex: 0 })
@@ -26,7 +30,7 @@ const delta = (t: string, msg: string): AgentEvent => ({ type: 'assistant-text',
 const think = (t: string, msg: string, isDelta = true): AgentEvent => ({ type: 'thinking', text: t, delta: isDelta, msgId: msg, blockIndex: 0 })
 const call = (callId: string, name: string, input: unknown): AgentEvent => ({ type: 'tool-call', callId, name, input })
 const result = (callId: string, output: string): AgentEvent => ({ type: 'tool-result', callId, output, isError: false })
-const status = (s: 'running' | 'idle' | 'paused' | 'watching'): AgentEvent => ({ type: 'status', status: s })
+const status = (s: 'running' | 'idle' | 'paused' | 'watching' | 'waiting'): AgentEvent => ({ type: 'status', status: s })
 const end: AgentEvent[] = [{ type: 'turn-complete' }, status('idle')]
 
 const BURST =
@@ -96,8 +100,46 @@ export function scenarioTimeline(): ScenarioStep[] {
   steps.push({ at: at(2_500), label: 'turn 4: sent', events: [{ type: 'user-text', text: 'Summarise what changed.' }, status('running')] })
   steps.push({ at: at(1_200), label: 'turn 4: a burst lands whole', events: [text(BURST, 't4-p')] })
   steps.push({ at: at(30), label: 'turn 4: ends 30 ms later', events: end })
+  // 6. A question: the card arrives, Next pages it, the answer folds it into its lines.
+  steps.push(...questionSteps(at(2_500)))
+  t = steps[steps.length - 1]!.at
   steps.push({ at: at(4_000), label: 'the end', events: [] })
   return steps
+}
+
+const QUESTIONS = [
+  { question: 'Which table gets the index?', header: 'Index', options: [{ label: 'inbox' }, { label: 'threads' }] },
+  { question: 'Backfill the old rows?', options: [{ label: 'Yes', description: 'One pass at deploy' }, { label: 'No' }] },
+]
+
+/** The question card's steps from `at`: it enters, the person picks and pages
+ *  with Next (its height glides, the questions cross-fade), then the answer
+ *  folds the card into its answered lines and the turn ends. */
+export function questionSteps(at: number): ScenarioStep[] {
+  return [
+    { at, label: 'turn 5: sent', events: [{ type: 'user-text', text: 'Index the inbox, then ask me what to backfill.' }, status('running')] },
+    {
+      at: at + 1_200,
+      label: 'turn 5: a question arrives',
+      events: [call('t5-ask', 'AskUserQuestion', { questions: QUESTIONS }), { type: 'question-request', requestId: 't5-q', questions: QUESTIONS, callId: 't5-ask' }, status('waiting')],
+    },
+    { at: at + 3_200, label: 'turn 5: the question card pages with Next', events: [], clicks: ['inbox', 'Next'] },
+    { at: at + 5_200, label: 'turn 5: the answer folds the card', events: [{ type: 'question-resolved', requestId: 't5-q', answers: [['inbox'], ['Yes']] }, result('t5-ask', 'inbox; Yes'), status('running')] },
+    ...stream(at + 5_800, 60, 't5-p', 'Backfilling the inbox rows once at deploy.', 2, 'turn 5: prose streams'),
+    { at: at + 7_000, label: 'turn 5: settles', events: end },
+  ]
+}
+
+/** A page script that performs the person's clicks: each the question card's
+ *  button whose text ends with the words, one frame apart, as a hand would. */
+export function questionClicks(clicks: string[]): string {
+  return `(async () => {
+    for (const words of ${JSON.stringify(clicks)}) {
+      const button = [...document.querySelectorAll('[data-slot="question-card"] button')].find((b) => (b.textContent ?? '').trim().endsWith(words) || (b.textContent ?? '').trim().startsWith(words))
+      button?.click()
+      await new Promise((r) => requestAnimationFrame(() => r(null)))
+    }
+  })()`
 }
 
 /** The timeline's length, ms. */

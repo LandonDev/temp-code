@@ -3,9 +3,11 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/tcserver/commands", () => ({ answer: vi.fn() }));
+const toastError = vi.fn();
+vi.mock("../components/ui/toaster", () => ({ loadToast: () => Promise.resolve({ error: toastError }) }));
 
 import type { QuestionMeta, QuestionSpec } from "../lib/session";
-import { CARD_SHAPE, QuestionCard, cardQuestions } from "./QuestionCard";
+import { CARD_SHAPE, QUESTION_ENTER, QUESTION_SHAPE, QuestionCard, cardQuestions } from "./QuestionCard";
 
 const meta = (questions: QuestionSpec[], answers?: string[][] | null): QuestionMeta => ({
   sessionId: "s1",
@@ -103,22 +105,71 @@ describe("QuestionCard", () => {
     expect(screen.getByTestId("two").querySelector('[aria-pressed="true"]')).toBeNull();
   });
 
-  it("is the failure card's frame (full width, rounded-lg, p-3) and leaves the type to the card", () => {
-    const view = render(<QuestionCard question={meta([spec("Which?", ["A"], { header: "File" })])} onAnswer={() => {}} />);
+  it("is a card that stands alone (full width, rounded-xl, p-4) from the exported QUESTION_SHAPE, and leaves the type to the card", () => {
+    expect(QUESTION_SHAPE).toBe("max-w-none rounded-xl p-4");
+    // The held review keeps the transcript's other frame.
+    expect(CARD_SHAPE).toBe("max-w-none rounded-lg p-3");
+    const view = render(<QuestionCard question={{ ...meta([spec("Which?", ["A"], { header: "File" })]), requestId: "shape" }} onAnswer={() => {}} />);
     const card = view.container.querySelector<HTMLElement>('[data-slot="question-card"]')!;
-    for (const cls of ["max-w-none", "rounded-lg", "p-3"]) expect(card.className.split(" ")).toContain(cls);
-    for (const cls of ["max-w-lg", "rounded-xl", "p-4"]) expect(card.className.split(" ")).not.toContain(cls);
+    for (const cls of QUESTION_SHAPE.split(" ")) expect(card.className.split(" ")).toContain(cls);
+    for (const cls of ["max-w-lg", "rounded-lg", "p-3"]) expect(card.className.split(" ")).not.toContain(cls);
     expect(card.className).not.toContain("[&_h3]");
   });
 
-  it("draws its frame from the one exported CARD_SHAPE", () => {
-    expect(CARD_SHAPE).toBe("max-w-none rounded-lg p-3");
-    const view = render(<QuestionCard question={meta([spec("Which?", ["A"], { header: "File" })])} onAnswer={() => {}} />);
+  it("enters once, as a transcript row does: a fade and a 4px rise on the tokens, opacity alone under reduced motion", () => {
+    for (const cls of ["transition-[opacity,translate]", "duration-(--dur-base)", "ease-(--ease-out)", "starting:translate-y-1", "starting:opacity-0", "motion-reduce:duration-(--dur-fast)", "motion-reduce:starting:translate-y-0"]) {
+      expect(QUESTION_ENTER.split(" ")).toContain(cls);
+    }
+    const question = { ...meta([spec("Which?", ["A"])]), requestId: "enter" };
+    const first = render(<QuestionCard question={question} onAnswer={() => {}} />);
+    const card = () => document.querySelector<HTMLElement>('[data-slot="question-card"]')!;
+    expect(card().className).toContain("starting:opacity-0");
+    first.unmount();
+    // The transcript's window mounting the row again replays nothing.
+    render(<QuestionCard question={question} onAnswer={() => {}} />);
+    expect(card().className).not.toContain("starting:opacity-0");
+    cleanup();
+    // A set answered before this mount never enters.
+    render(<QuestionCard question={{ ...question, requestId: "old", answers: [["A"]] }} />);
+    expect(document.querySelector('[data-slot="question-card"]')).toBeNull();
+  });
+
+  it("an answer folds the card closed on .collapsible-auto and opens the answered lines in its place, at the click", async () => {
+    const onAnswer = vi.fn(() => new Promise<void>(() => {}));
+    const question = { ...meta([spec("Which?", ["A", "B"], { header: "File" })]), requestId: "fold" };
+    const view = render(<QuestionCard question={question} onAnswer={onAnswer} />);
     const card = view.container.querySelector<HTMLElement>('[data-slot="question-card"]')!;
-    for (const cls of CARD_SHAPE.split(" ")) expect(card.className.split(" ")).toContain(cls);
-    // The frame inside is inset as far as the card is padded: 12px.
-    const frame = card.querySelector<HTMLElement>(".overflow-hidden")!;
-    expect(frame.className.split(" ")).toEqual(expect.arrayContaining(["-m-3", "p-3"]));
+    const fold = card.closest<HTMLElement>('[data-slot="collapsible-content"]')!;
+    expect(fold.className).toContain("collapsible-auto");
+    expect(view.container.querySelector('[data-slot="notice-line"]')).toBeNull();
+    fireEvent.click(option(view.container, "B"));
+    await act(async () => fireEvent.click(advance()));
+    expect(onAnswer).toHaveBeenCalledWith("fold", [["B"]]);
+    // Before the host echoes it: the card's fold is closing, the lines' fold open on the same curve.
+    expect(fold.isConnected).toBe(true);
+    expect(fold.closest('[data-slot="collapsible"]')!.hasAttribute("data-closed")).toBe(true);
+    const line = view.container.querySelector<HTMLElement>('[data-slot="notice-line"]')!;
+    expect(line.textContent).toBe("AnsweredFileB");
+    expect(line.closest('[data-slot="collapsible-content"]')!.className).toContain("collapsible-auto");
+    // The closed card leaves the accessibility tree, so nothing answers twice.
+    expect(screen.queryByRole("button", { name: /^(Next|Continue)/ })).toBeNull();
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    // The host's echo keeps the lines and lets the card go.
+    view.rerender(<QuestionCard question={{ ...question, answers: [["B"]] }} onAnswer={onAnswer} />);
+    expect(view.container.querySelector('[data-slot="notice-line"]')!.textContent).toBe("AnsweredFileB");
+  });
+
+  it("an answer the host never took opens the card again with its picks, and says so", async () => {
+    toastError.mockClear();
+    const onAnswer = vi.fn(() => Promise.reject(new Error("link down")));
+    const question = { ...meta([spec("Which?", ["A", "B"])]), requestId: "refused" };
+    const view = render(<QuestionCard question={question} onAnswer={onAnswer} />);
+    fireEvent.click(option(view.container, "B"));
+    await act(async () => fireEvent.click(advance()));
+    await act(async () => {});
+    expect(toastError).toHaveBeenCalledWith("Couldn't send the answer");
+    expect(view.container.querySelector('[data-slot="collapsible"]')!.hasAttribute("data-open")).toBe(true);
+    expect(option(view.container, "B").getAttribute("aria-pressed")).toBe("true");
   });
 
   it("carries the amber Needs you glyph by its title, without the word", () => {
@@ -130,14 +181,12 @@ describe("QuestionCard", () => {
     expect(view.container.textContent).not.toContain("Needs you");
   });
 
-  it("shows no progress mark for one question, and the donut for two", () => {
+  it("says no position for one question, and where the person is for two", () => {
     const one = render(<QuestionCard question={meta([spec("Which?", ["A"])])} onAnswer={() => {}} />);
-    expect(one.container.querySelector('button[aria-label="Reset the answers"]')).toBeNull();
-    expect(one.container.textContent).not.toContain("answered");
+    expect(one.container.querySelector('[data-slot="question-progress"]')).toBeNull();
     one.unmount();
     const two = render(<QuestionCard question={meta([spec("A?", ["A"]), spec("B?", ["B"])])} onAnswer={() => {}} />);
-    expect(two.container.querySelector('button[aria-label="Reset the answers"]')).not.toBeNull();
-    expect(two.container.textContent).toContain("0 of 2 answered");
+    expect(two.container.querySelector('[data-slot="question-progress"]')!.textContent).toBe("1 of 2");
   });
 
   it("cardQuestions passes descriptions through, keeps a header the title already says out, and adds Other", () => {

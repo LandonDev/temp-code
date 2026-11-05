@@ -261,3 +261,79 @@ describe("no jerk in any scenario", () => {
     expect(view.line()?.textContent).toBe("Worked for 4s");
   });
 });
+
+// The question card's own steps: it arrives, Next moves between its questions, the answer folds it.
+describe("no jerk in any scenario: the question card", () => {
+  const questions = [
+    { question: "Which table gets the index?", header: "Index", options: [{ label: "inbox" }, { label: "threads" }] },
+    { question: "Backfill the old rows?", options: [{ label: "Yes", description: "One pass at deploy" }, { label: "No" }] },
+  ];
+  const ask = (answers?: string[][] | null): Block =>
+    tool("ask", "AskUserQuestion", "other", { questions }, answers === undefined ? "running" : "completed", {
+      question: { sessionId: "s", requestId: "ask-1", questions, answers },
+    });
+  const click = (view: Scene, name: RegExp | string) => {
+    const button = [...view.container.querySelectorAll<HTMLButtonElement>("button")].find((b) =>
+      typeof name === "string" ? b.textContent?.trim() === name : name.test(b.textContent ?? ""),
+    )!;
+    act(() => button.click());
+  };
+
+  it("arrives, pages and folds into its answered lines in place: the row and the card keep their elements", async () => {
+    const view = scene("s", [echoed(), read("a", "completed")], true);
+    const rules = watch(view);
+    view.show([echoed(), read("a", "completed"), ask()], true);
+    rules.check("the question arrives");
+    const card = view.container.querySelector<HTMLElement>('[data-slot="question-card"]')!;
+    // It enters as a row does, once: a fade and a 4px rise.
+    expect(card.className).toContain("starting:translate-y-1");
+    const row = card.closest<HTMLElement>("[data-row]")!;
+    await settle();
+    rules.check("the question arrived");
+    click(view, /inbox$/);
+    click(view, /^Next/);
+    await settle();
+    rules.check("Next");
+    rules.settled("Next");
+    expect(view.container.querySelector('[data-slot="question-card"]')).toBe(card);
+    expect(card.querySelector('[data-slot="question-progress"]')!.textContent).toBe("2 of 2");
+    // The host takes the answer: the card folds on .collapsible-auto, the lines open in its place.
+    view.show([echoed(), read("a", "completed"), ask([["inbox"], ["Yes"]])], true);
+    await settle();
+    rules.check("answered");
+    expect(view.rows().get(row.dataset.row!)).toBe(row);
+    const lines = [...row.querySelectorAll('[data-slot="notice-line"]')].map((l) => l.textContent);
+    expect(lines).toEqual(["AnsweredIndexinbox", "AnsweredBackfill the old rows?Yes"]);
+    expect(row.querySelector('[data-slot="notice-line"]')!.closest('[data-slot="collapsible-content"]')!.className).toContain("collapsible-auto");
+  });
+
+  it("scrolled up while a question arrives, pages and is answered: the reader's place never moves", async () => {
+    // Enough history that the reader is far from the bottom, little enough that the card's row is mounted below them.
+    const history = Array.from({ length: 6 }, (_, i) => prose(`h${i}`, `Paragraph ${i} of the history, long enough to fill a line or two of the column.`));
+    const view = scene("s", [echoed(), ...history, read("a", "completed")], true);
+    const scroller = view.scroller();
+    let top = 120;
+    const writes: number[] = [];
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => top, set: (v: number) => { writes.push(v); top = v; } });
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, get: () => 4_000 });
+    act(() => {
+      scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: -400, bubbles: true }));
+      scroller.dispatchEvent(new Event("scroll"));
+    });
+    writes.length = 0;
+    const rules = watch(view);
+    view.show([echoed(), ...history, read("a", "completed"), ask()], true);
+    await settle();
+    rules.check("the question arrives");
+    // Next changes the card's height: the card sits below the reader's anchor, so nothing above it moves.
+    click(view, /inbox$/);
+    click(view, /^Next/);
+    await settle();
+    rules.check("Next");
+    view.show([echoed(), ...history, read("a", "completed"), ask([["inbox"], ["No"]])], true);
+    await settle();
+    rules.check("answered");
+    expect(writes).toEqual([]);
+    expect(top).toBe(120);
+  });
+});
