@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { MAC_AWAY_REFUSAL } from '../awayPrompts'
 import { leadDetail } from '@shared/statusWords'
 import { existsSync, statSync } from 'node:fs'
 import { lstat, open, readdir, readFile, stat } from 'node:fs/promises'
@@ -149,6 +150,8 @@ export interface MacBridgeDeps {
   load?: { sample?: () => LoadSample; intervalMs?: number }
   /** Mac-local threads a host started here that are live now (crossHostThreads.ts); counts toward `macBridge.maxThreads.<envId>`. */
   liveThreads?: (envId: string) => number
+  /** The person is away from the computer (away.ts): a call that would ask them is refused at once. */
+  away?: () => boolean
   /** What peer.register says of this host besides its offers: its hostname, build and presence (remote/relayServe.ts registration). */
   registration?: () => { name: string; presence: import('@shared/contract-relay').MacPresence; build?: import('@shared/deployDrift').BuildFacts }
 }
@@ -721,6 +724,13 @@ export class MacBridge {
     this.emit({ push: 'macBridge.request', request: p.request })
   }
 
+  /** Nobody is at the Mac to answer while the person is away: a call that would ask is refused at once. */
+  private refuseWhileAway(line: (decision: string) => void): void {
+    if (!this.deps.away?.()) return
+    line('refused (away)')
+    throw new Error(MAC_AWAY_REFUSAL)
+  }
+
   /**
    * Ask the person at the Mac; resolves false on a denial or when the wait
    * runs out. A quiet request is one the caller decides at once and the
@@ -948,6 +958,7 @@ export class MacBridge {
       line('refused (paused)')
       throw new Error(REFUSED_PAUSED)
     } else {
+      this.refuseWhileAway(line)
       // Under full only keys, credentials and the dirs above home ask: each
       // time, never remembered as a folder (that would admit the secret too).
       const folder = full ? null : rememberFolder(real, isDir, this.home)
@@ -1014,6 +1025,7 @@ export class MacBridge {
       unattended,
       showRunning: this.showRunningOf(env.id)
     })
+    if (shown.prompt) this.refuseWhileAway(line)
     // Every command is listed on the Mac, remembered or not: a remembered one
     // starts at once, as running, and is quiet (no card) unless the host shows them.
     const { id, answer } = this.ask(
@@ -1087,6 +1099,7 @@ export class MacBridge {
   get jobs(): MacJobs {
     this.jobsInstance ??= new MacJobs({
       ask: (shape, until, remembered, callId) => {
+        if (!remembered) this.refuseWhileAway((decision) => this.log(`${shape.hostName}: mac.jobStart ${decision}`))
         // A remembered job starts at once, as running; it is quiet (no card)
         // unless the host shows running commands (runPresentation).
         const asked = this.ask(
@@ -1146,7 +1159,10 @@ export class MacBridge {
         managed: this.deps.managedRoots(),
         shared: this.sharedOf(env.id),
         remembered: writeFoldersOf(this, env.id, thread.id),
-        ask: (shape, until) => this.ask(shape, until, false, callId),
+        ask: (shape, until) => {
+          this.refuseWhileAway((decision) => this.log(`${env.name}: mac.writeFile ${decision}`))
+          return this.ask(shape, until, false, callId)
+        },
         finish: (id, outcome) => this.finish(id, outcome),
         link: this.deps.link(env.id),
         log: this.log

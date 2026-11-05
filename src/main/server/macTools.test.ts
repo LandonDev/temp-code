@@ -19,8 +19,10 @@ import {
   rebootWhenSettled,
   withMacTools,
   macToolsHooks,
-  MAC_TOOLS
+  MAC_TOOLS,
+  macCallLine
 } from './macTools'
+import { MAC_AWAY_REFUSAL } from './awayPrompts'
 import { MAC_JOB_TOOLS, type MacToolsDeps } from './macTools'
 import { MAC_JOB_TOOL_PARAMS } from '@shared/contract-macjobs'
 import { macBridgeLandingDir } from './macBridgeLanding'
@@ -48,7 +50,7 @@ const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
 
 function setup(
   handler: PeerCallHandler = async () => 'ok',
-  opts: { register?: boolean; home?: string; resources?: MacToolsDeps['resources'] } = {}
+  opts: { register?: boolean; home?: string; resources?: MacToolsDeps['resources']; awayRefused?: MacToolsDeps['awayRefused'] } = {}
 ) {
   const settings = new Map<string, string>()
   const sessions = new Map<string, SessionMeta>([
@@ -103,7 +105,8 @@ function setup(
     tokens,
     reboot: (id) => reboots.push(id),
     log: () => {},
-    ...(opts.resources ? { resources: opts.resources } : {})
+    ...(opts.resources ? { resources: opts.resources } : {}),
+    ...(opts.awayRefused ? { awayRefused: opts.awayRefused } : {})
   })
   return { tools, tokens, settings, reboots, pushes, calls, sessions }
 }
@@ -163,6 +166,29 @@ describe('MacTools gate', () => {
     await expect(
       tools.call('child', tokens.tokenFor('child'), 'mac.listDir', { path: '/x' })
     ).resolves.toBe('ok')
+  })
+
+  it("writes one away row when the Mac refuses because its person is away", async () => {
+    const awayRefused = vi.fn()
+    const { tools, tokens } = setup(async () => {
+      throw new Error(MAC_AWAY_REFUSAL)
+    }, { awayRefused })
+    tools.setThread('root', 'env_mac')
+    await expect(tools.call('root', tokens.tokenFor('root'), 'mac.run', { argv: ['bun', 'test'] })).rejects.toThrow(MAC_AWAY_REFUSAL)
+    expect(awayRefused).toHaveBeenCalledTimes(1)
+    expect(awayRefused).toHaveBeenCalledWith('root', 'Run bun test?')
+    expect(macCallLine('mac.readFile', { path: '/Users/me/notes.md' })).toBe('Read notes.md?')
+    expect(macCallLine('mac.writeFile', { path: '/Users/me/out.txt' })).toBe('Create out.txt?')
+  })
+
+  it('writes no away row for any other refusal', async () => {
+    const awayRefused = vi.fn()
+    const { tools, tokens } = setup(async () => {
+      throw new Error('denied at the Mac')
+    }, { awayRefused })
+    tools.setThread('root', 'env_mac')
+    await expect(tools.call('root', tokens.tokenFor('root'), 'mac.listDir', { path: '/x' })).rejects.toThrow('denied')
+    expect(awayRefused).not.toHaveBeenCalled()
   })
 
   it('a toggle reboots the thread only when it changes', () => {

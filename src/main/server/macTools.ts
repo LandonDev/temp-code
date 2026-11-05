@@ -1,4 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { approvalLine } from '@shared/approvalLine'
+import { MAC_AWAY_REFUSAL } from './awayPrompts'
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
@@ -115,6 +117,16 @@ export interface MacToolsDeps {
   }
   /** The count of Mac calls a thread's tree holds while paused changed (macPause.ts): pushed as `macBridge.held`. */
   heldChanged?: (rootId: string, held: number) => void
+  /** The Mac refused a call because its person is away: the thread's away row, `what` the call as one line. */
+  awayRefused?: (sessionId: string, what: string) => void
+}
+
+/** A Mac call as an away row names it, in the approval's words: "Run bun test?", "Read notes.md?". */
+export function macCallLine(method: string, args: MacArgs): string {
+  const command = Array.isArray(args.argv) ? args.argv.join(' ') : typeof args.command === 'string' ? args.command : ''
+  if (method === 'mac.run' || method === 'mac.jobStart') return approvalLine('Bash', { command })
+  if (method === 'mac.writeFile') return approvalLine('Write', { path: args.path })
+  return approvalLine('Read', { path: args.path })
 }
 
 type MacArgs = Record<string, unknown>
@@ -213,7 +225,21 @@ export class MacTools {
   }
 
   /** One mac.* call from a thread: the token, the thread's switch, the Mac's link, then the Mac decides. */
-  async call(
+  call(sessionId: string, token: unknown, method: MacMethod, args: MacArgs, opts: { callId?: string } = {}): Promise<unknown> {
+    return this.awayAware(sessionId, method, args, () => this.callOnce(sessionId, token, method, args, opts))
+  }
+
+  /** The Mac refused a call that would have asked its person, who is away: one away row on the thread says what was skipped. */
+  private async awayAware<T>(sessionId: string, method: string, args: MacArgs, run: () => Promise<T>): Promise<T> {
+    try {
+      return await run()
+    } catch (err) {
+      if (err instanceof Error && err.message.includes(MAC_AWAY_REFUSAL)) this.deps.awayRefused?.(sessionId, macCallLine(method, args))
+      throw err
+    }
+  }
+
+  private async callOnce(
     sessionId: string,
     token: unknown,
     method: MacMethod,
@@ -229,7 +255,7 @@ export class MacTools {
     }
     if (method === 'mac.run' && args.background === true) {
       const { background: _background, ...rest } = args
-      return this.callJob(sessionId, token, 'mac.jobStart', rest)
+      return this.callJobOnce(sessionId, token, 'mac.jobStart', rest)
     }
     if (!this.deps.tokens.check(sessionId, token))
       throw new Error(`refused: ${method} needs this thread's own token`)
@@ -365,7 +391,11 @@ export class MacTools {
   private readonly jobThreads = new Map<string, string>()
 
   /** One job call from a thread: the same gate as call(), then the Mac answers for its own job. */
-  async callJob(
+  callJob(sessionId: string, token: unknown, method: Exclude<MacJobPeerMethod, 'mac.jobsEnd'>, args: MacArgs): Promise<unknown> {
+    return this.awayAware(sessionId, method, args, () => this.callJobOnce(sessionId, token, method, args))
+  }
+
+  private async callJobOnce(
     sessionId: string,
     token: unknown,
     method: Exclude<MacJobPeerMethod, 'mac.jobsEnd'>,

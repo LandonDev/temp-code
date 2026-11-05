@@ -26,6 +26,9 @@ export const AWAY_QUESTION_REPLY = `The person is away. Decide yourself from the
 /** The reason an approval is denied with while the person is away. */
 export const AWAY_APPROVAL_REPLY = 'Denied: the person is away. Find a way that needs no approval, or finish everything around this and name it in your report.'
 
+/** The Mac bridge's answer to a call that would ask the person at the Mac while they are away (remote/macBridge.ts); the box writes an away row when it comes back (macTools.ts). */
+export const MAC_AWAY_REFUSAL = 'refused: the person is away; find another way or name it in your report'
+
 /** The rule every harness carries, beside the steer mechanics. */
 export const AWAY_MECHANICS = `## When the person is away
 The person may switch "Away from computer" on or off. The app tells you in an <away> block, here or inside your turn. While it is on, it wins over any earlier instruction to ask the person or wait for them: decide, call ${NOTE_DECISION_TOOL_NAME} for each choice, and finish. When it turns off, ask as usual.`

@@ -705,6 +705,8 @@ export async function startServer(
   const macBridge = new MacBridge({
     environmentId,
     store,
+    // While the person is away, a call that would ask them here is refused at once.
+    away: () => away.enabled,
     managedRoots: () => managedRoots(),
     environments: () => listEnvironments(store).map((e) => ({ id: e.id, name: e.name })),
     link: (id) => {
@@ -1051,7 +1053,8 @@ export async function startServer(
     live: macRunLive,
     heldChanged: (sessionId, held) => {
       for (const l of heldListeners) l({ push: 'macBridge.held', sessionId, held })
-    }
+    },
+    awayRefused: (sessionId, what) => registry.awayNotice(sessionId, 'approval', what)
   })
   macToolsHooks.current = macTools
   macToolsHooks.tokens = macTokens

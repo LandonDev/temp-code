@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { MAC_AWAY_REFUSAL } from '../awayPrompts'
 import type {
   MacBridgePush,
   MacBridgeRequest,
@@ -168,7 +169,7 @@ describe('asText', () => {
   })
 })
 
-function bridge(opts: { managed?: string[]; load?: { load: number; cores: number } } = {}) {
+function bridge(opts: { managed?: string[]; load?: { load: number; cores: number }; away?: { on: boolean } } = {}) {
   const settings = new Map<string, string>()
   const pushes: MacBridgePush[] = []
   const lines: string[] = []
@@ -186,7 +187,8 @@ function bridge(opts: { managed?: string[]; load?: { load: number; cores: number
     home,
     shell: '/bin/sh',
     log: (l) => lines.push(l),
-    load: { sample: () => ({ ...sample }), intervalMs: 0 }
+    load: { sample: () => ({ ...sample }), intervalMs: 0 },
+    ...(opts.away ? { away: () => opts.away!.on } : {})
   })
   mb.subscribe((p) => pushes.push(p))
   const requests = (): MacBridgeRequest[] =>
@@ -758,6 +760,34 @@ describe('MacBridge commands', () => {
     expect(commandKey({ argv: ['a b'], cwd: '/x' })).not.toBe(
       commandKey({ argv: ['a', 'b'], cwd: '/x' })
     )
+  })
+})
+
+describe('MacBridge while the person is away', () => {
+  it('refuses at once a call that would ask, and shows no card', async () => {
+    const away = { on: true }
+    const b = bridge({ away })
+    b.mb.setPolicy('env_box', 'read+run')
+    await expect(b.call('mac.run', { argv: ['/bin/echo', 'hi'], cwd: shared })).rejects.toThrow(MAC_AWAY_REFUSAL)
+    await expect(b.call('mac.listDir', { path: elsewhere })).rejects.toThrow(MAC_AWAY_REFUSAL)
+    expect(b.requests()).toEqual([])
+    expect(b.lines.some((l) => l.includes('refused (away)'))).toBe(true)
+  })
+
+  it('runs what needs no prompt: a remembered command, a read inside the shared roots, a full-access thread', async () => {
+    const away = { on: false }
+    const b = bridge({ away })
+    b.mb.setPolicy('env_box', 'read+run')
+    const first = b.call<MacRunResult>('mac.run', { argv: ['/bin/echo', 'kept'], cwd: shared })
+    b.mb.decide((await b.nextRequest()).id, true, true)
+    await first
+    away.on = true
+    expect((await b.call<MacRunResult>('mac.run', { argv: ['/bin/echo', 'kept'], cwd: shared })).stdout).toBe('kept\n')
+    await expect(b.call('mac.listDir', { path: managed })).resolves.toBeDefined()
+    const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
+    const thread = { id: 's9', title: 'auto thread', permission: 'auto' }
+    const out = (await b.mb.handle('mac.run', { thread, args: { argv: ['/bin/echo', 'auto'], cwd: elsewhere } }, ctx)) as MacRunResult
+    expect(out.stdout).toBe('auto\n')
   })
 })
 

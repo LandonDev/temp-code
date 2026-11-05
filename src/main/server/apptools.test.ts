@@ -5,7 +5,7 @@ import type { SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 import { DEFAULT_RULES, type OrchestrationRules } from '@shared/rules'
 import { CATALOG } from '@shared/catalog'
-import { APP_TOOLS, appNoteDecision, appStartThread, bridgeMcpConfig, remoteDigest, setAppBridge, writtenPathOf } from './apptools'
+import { appNoteDecision, appStartThread, bridgeMcpConfig, remoteDigest, setAppBridge, writtenPathOf } from './apptools'
 import { setOrchestrationRegistry } from './orchestration'
 
 afterEach(() => {
