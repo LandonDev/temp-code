@@ -2833,7 +2833,10 @@ focused tab is split, idle rows greyed) and main rebuilds the menu
 from the focused window's state when it changes. A `pageKey` row (New
 Terminal, ⌃`) shows its key but leaves it to the page. The in-app bar
 (chrome/MenuBar.tsx, `inAppMenus`) mounts only in web mode off macOS: a
-desktop window off macOS has the native bar. Go to Symbol is ⌘⇧O and
+desktop window off macOS has the native bar. It is a `menubar` named "Menu
+bar": a lone Alt focuses its first title, Left, Right, Home and End move
+between the titles (one tab stop), and Escape with no menu open, or Alt
+again, closes it and puts the focus back where it was. Go to Symbol is ⌘⇧O and
 Open Project ⌘O, in the menu and the renderer's resolver alike; New
 Terminal is ⌃` (⌘` is macOS's window cycle).
 Every Node warning the main process raises lands in its log with the site

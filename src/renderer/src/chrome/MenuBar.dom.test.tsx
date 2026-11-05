@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MENU_TREE, inAppMenus } from "@shared/menuTree";
 import { MenuBar, acceleratorLabel, rowsOf } from "./MenuBar";
@@ -14,7 +14,9 @@ function tapAlt(): void {
   });
 }
 
-const menuButton = (label: string) => screen.getByRole("button", { name: label });
+const menuButton = (label: string) => within(screen.getByRole("menubar", { name: "Menu bar" })).getByRole("menuitem", { name: label });
+/** The open menu's own rows, not the bar's titles. */
+const openRows = async () => within(await screen.findByRole("menu")).findAllByRole("menuitem");
 
 describe("MenuBar", () => {
   it("draws nothing until a lone Alt opens it", () => {
@@ -27,7 +29,8 @@ describe("MenuBar", () => {
   it("opens File, Edit, View, Go and Threads", () => {
     render(<MenuBar onCommand={() => {}} />);
     tapAlt();
-    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["File", "Edit", "View", "Go", "Threads"]);
+    const bar = screen.getByRole("menubar", { name: "Menu bar" });
+    expect(within(bar).getAllByRole("menuitem").map((b) => b.textContent)).toEqual(["File", "Edit", "View", "Go", "Threads"]);
   });
 
   it("lists a menu's rows from the tree with their keys", async () => {
@@ -36,7 +39,7 @@ describe("MenuBar", () => {
     fireEvent.click(menuButton("Go"));
     const go = inAppMenus(MENU_TREE).find((m) => m.label === "Go")!;
     const expected = go.items.flatMap((i) => (i.kind === "item" ? [i.label] : []));
-    const rows = await screen.findAllByRole("menuitem");
+    const rows = await openRows();
     expect(rows).toHaveLength(expected.length);
     rows.forEach((row, i) => expect(row.textContent).toMatch(new RegExp(`^${expected[i].replace(/[.…]/g, "\\$&")}`)));
     expect(rows[0].textContent).toContain(acceleratorLabel("CmdOrCtrl+K"));
@@ -47,17 +50,73 @@ describe("MenuBar", () => {
     render(<MenuBar onCommand={onCommand} />);
     tapAlt();
     fireEvent.click(menuButton("Threads"));
-    fireEvent.click(await screen.findByRole("menuitem", { name: /Mark All Read/ }));
+    fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: /Mark All Read/ }));
     expect(onCommand).toHaveBeenCalledWith("mark_all_read");
-    expect(screen.queryByRole("button", { name: "File" })).toBeNull();
+    expect(screen.queryByRole("menubar")).toBeNull();
   });
 
   it("greys a disabled row", async () => {
     render(<MenuBar onCommand={() => {}} disabled={["open_notes"]} />);
     tapAlt();
     fireEvent.click(menuButton("Go"));
-    const notes = (await screen.findByRole("menuitem", { name: /Notes/ })) as HTMLButtonElement;
+    const notes = within(await screen.findByRole("menu")).getByRole("menuitem", { name: /Notes/ }) as HTMLButtonElement;
     expect(notes.disabled || notes.getAttribute("aria-disabled") === "true").toBe(true);
+  });
+});
+
+describe("MenuBar from the keyboard", () => {
+  it("focuses its first title when a lone Alt opens it, with one tab stop", () => {
+    render(<MenuBar onCommand={() => {}} />);
+    tapAlt();
+    expect(document.activeElement).toBe(menuButton("File"));
+    const tabbable = within(screen.getByRole("menubar")).getAllByRole("menuitem").filter((el) => el.tabIndex === 0);
+    expect(tabbable.map((el) => el.textContent)).toEqual(["File"]);
+  });
+
+  it("moves between the titles with Left and Right, wrapping, and Home and End", () => {
+    render(<MenuBar onCommand={() => {}} />);
+    tapAlt();
+    fireEvent.keyDown(menuButton("File"), { key: "ArrowRight" });
+    expect(document.activeElement).toBe(menuButton("Edit"));
+    expect(menuButton("Edit").tabIndex).toBe(0);
+    expect(menuButton("File").tabIndex).toBe(-1);
+    fireEvent.keyDown(menuButton("Edit"), { key: "ArrowLeft" });
+    fireEvent.keyDown(menuButton("File"), { key: "ArrowLeft" });
+    expect(document.activeElement).toBe(menuButton("Threads"));
+    fireEvent.keyDown(menuButton("Threads"), { key: "Home" });
+    expect(document.activeElement).toBe(menuButton("File"));
+    fireEvent.keyDown(menuButton("File"), { key: "End" });
+    expect(document.activeElement).toBe(menuButton("Threads"));
+  });
+
+  it("closes on Escape with no menu open, or on Alt again, and gives the focus back", () => {
+    render(
+      <>
+        <input aria-label="Field" />
+        <MenuBar onCommand={() => {}} />
+      </>,
+    );
+    const field = screen.getByRole("textbox", { name: "Field" });
+    field.focus();
+    tapAlt();
+    expect(document.activeElement).toBe(menuButton("File"));
+    fireEvent.keyDown(menuButton("File"), { key: "Escape" });
+    expect(screen.queryByRole("menubar")).toBeNull();
+    expect(document.activeElement).toBe(field);
+    tapAlt();
+    expect(document.activeElement).toBe(menuButton("File"));
+    tapAlt();
+    expect(screen.queryByRole("menubar")).toBeNull();
+    expect(document.activeElement).toBe(field);
+  });
+
+  it("opens a title's menu from the keyboard", async () => {
+    render(<MenuBar onCommand={() => {}} />);
+    tapAlt();
+    fireEvent.keyDown(menuButton("File"), { key: "ArrowRight" });
+    fireEvent.click(document.activeElement!);
+    expect(await screen.findByRole("menu")).toBeTruthy();
+    expect(menuButton("Edit").getAttribute("aria-expanded")).toBe("true");
   });
 });
 
