@@ -3,7 +3,7 @@ import type { RemoteKey, RemotePairing, RemoteSession, RemoteStatus, SavedEnviro
 import type { HarnessSyncStatus } from "@server/shared/contract-harness";
 import type { MemorySyncStatus } from "@server/shared/contract-memory";
 import type { AttachmentSettings } from "@server/shared/contract-attachments";
-import { PageError, PageRowsSkeleton } from "../../../components/page";
+import { PageError, PageRowsSkeleton, PageSection } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { ConfirmDialog, errorText } from "../../../chrome/ConfirmDialog";
@@ -153,7 +153,22 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
   useMacBridgePolling(!web);
   useDevicesPolling();
 
-  if (!remote.data) return <PageSkeleton error={remote.error} />;
+  if (!remote.data) {
+    // The poll asks again every 5 s; Retry asks now.
+    return remote.error ? (
+      <PageSection
+        action={
+          <Button variant="ghost" size="sm" onClick={() => void remote.refresh()}>
+            Retry
+          </Button>
+        }
+      >
+        <PageError>{remote.error}</PageError>
+      </PageSection>
+    ) : (
+      <PageSkeleton />
+    );
+  }
   const { status, keys, pairings, sessions, harness, memory, attachments } = remote.data;
   const sections = hostSections({ environments, saved: hosts.saved, bridgeHosts, deviceHosts: deviceHosts ?? [], web });
   const close = (): void => setDialog(null);
@@ -261,7 +276,7 @@ const THIS_HOST_SKELETON = [
 
 /** The page's shape while the first `remote.status` answers: this machine's
  *  section, its 12px heading on its 20px line and its first rows. */
-function PageSkeleton({ error }: { error: string | null }) {
+function PageSkeleton() {
   return (
     <div className="flex flex-col" data-hosts-loading aria-busy="true">
       <div className="flex h-5 items-center">
@@ -270,7 +285,6 @@ function PageSkeleton({ error }: { error: string | null }) {
       <div className="mt-2">
         <PageRowsSkeleton rows={THIS_HOST_SKELETON} />
       </div>
-      {error ? <PageError>{error}</PageError> : null}
     </div>
   );
 }

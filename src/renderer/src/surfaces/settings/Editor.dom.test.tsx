@@ -65,6 +65,13 @@ describe("Editor", () => {
     expect(screen.getByText("Found VS Code; Auto opens VS Code.")).toBeTruthy();
   });
 
+  it("names no engine verb before the doctor answers: the button's place is a skeleton", () => {
+    render(<EditorPage />);
+    const java = screen.getByRole("region", { name: "Java" });
+    expect(java.querySelector("[data-engine-action]")).toBeTruthy();
+    expect(within(java).queryByRole("button")).toBeNull();
+  });
+
   it("never says No JDK found when doctor.get fails: the error and Retry", async () => {
     host.doctorFails = true;
     render(<EditorPage />);

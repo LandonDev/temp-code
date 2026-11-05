@@ -25,6 +25,7 @@ import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Keys, MOD_CAP } from "./keys";
+import { Facts } from "./hosts/Facts";
 import { CONSOLE } from "../../components/ui/console";
 import { cn } from "../../lib/cn";
 
@@ -106,11 +107,7 @@ function LanguageServers() {
               description={project}
               error={row.state === "error" ? (row.error ?? "Failed") : undefined}
             >
-              {lspFigures(row).map((figure) => (
-                <span key={figure} className="text-xs text-muted-foreground tabular-nums">
-                  {figure}
-                </span>
-              ))}
+              <Facts parts={lspFigures(row)} className="text-xs text-muted-foreground" />
             </PageRow>
           );
         })
@@ -316,14 +313,14 @@ export function EditorPage() {
               }
             />
             <PageRow title="IntelliJ engine" description={note ?? engineState ?? loading}>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={checking || engine === undefined}
-                onClick={engine?.accepted ? checkUpdate : openGate}
-              >
-                <BusyLabel busy={checking} label={engine?.accepted ? "Check for update" : "Accept EULA"} />
-              </Button>
+              {engine === undefined ? (
+                // Which verb applies is the doctor's to say: its button's place until then.
+                <Skeleton data-engine-action className="h-7 w-28 rounded-md" />
+              ) : (
+                <Button variant="secondary" size="sm" disabled={checking} onClick={engine?.accepted ? checkUpdate : openGate}>
+                  <BusyLabel busy={checking} label={engine?.accepted ? "Check for update" : "Accept EULA"} />
+                </Button>
+              )}
             </PageRow>
           </>
         )}

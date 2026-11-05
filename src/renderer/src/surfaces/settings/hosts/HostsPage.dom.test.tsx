@@ -239,4 +239,18 @@ describe("HostsPage", () => {
     const remote = screen.getByText("Remote access").closest("[data-slot=page-row]")!;
     expect(remote.textContent).not.toContain("no remote.settings.set");
   });
+
+  it("ends the skeleton when remote.status is refused: the error and Retry, which asks again", async () => {
+    delete answers["remote.status"];
+    const { container } = render(<HostsPage />);
+    await flush();
+    expect(container.querySelector("[data-hosts-loading]")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("no remote.status");
+    seed();
+    calls.length = 0;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await flush();
+    expect(calls.some((c) => c.method === "remote.status")).toBe(true);
+    expect(screen.getByText("Listening on 127.0.0.1:7677.")).toBeTruthy();
+  });
 });

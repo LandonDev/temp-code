@@ -237,6 +237,14 @@ project's threads are then the title bar's strip ("Thread strip" below) and
 the ⋯ menu's Recent threads…, which lists every one that has settled. There
 is no project page in the pane.
 
+### Settings, looked at
+
+`bun run ui:preview src/renderer/src/surfaces/settings/SettingsPages.preview.tsx#SettingsPagePreview --shot`
+draws every Settings page over one fake host in three states: answered,
+not yet answered (each section's rows in their shape) and refused (each
+section's red line with Retry at its heading); `SETTINGS_PREVIEW=editor,hosts`
+keeps those pages alone.
+
 ### Settings → Hosts
 
 One page for this machine and every host it is paired with (settings section
