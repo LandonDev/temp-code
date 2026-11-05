@@ -349,12 +349,23 @@ describe("ModelPicker: Meta's models", () => {
     expect(tag.className.split(" ")).toEqual(expect.arrayContaining(["text-xs", "text-muted-foreground"]));
     expect(tag.parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["gap-1", "items-baseline"]));
   });
-  it("the composer's quiet trigger sets its effort 4px after the name, the row's gap alone", () => {
-    render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" quiet onChange={() => {}} settings={{ values: { effort: "high" }, onChange: () => {} }} />);
-    const trigger = screen.getByRole("button", { name: /Opus 5\.5 High/ });
-    expect(trigger.className.split(" ")).toContain("gap-1");
-    const effort = [...trigger.querySelectorAll("span")].find((el) => el.textContent === "High")!;
-    expect(effort.className).not.toMatch(/(^|\s)ms-/);
+  it("one trigger recipe in every placement: the logo 6px from the name, the effort 4px after it, the chevron 8px after", () => {
+    for (const quiet of [true, false]) {
+      const { unmount } = render(
+        <ModelPicker harness="claude" model="claude:claude-opus-5-5" quiet={quiet} onChange={() => {}} settings={{ values: { effort: "high" }, onChange: () => {} }} />,
+      );
+      const trigger = screen.getByRole("button", { name: /Opus 5\.5 High/ });
+      const cls = (el: Element) => (el.getAttribute("class") ?? "").split(/\s+/);
+      expect(cls(trigger)).toContain("gap-0");
+      expect(cls(trigger).filter((c) => /^gap-(?!0$)/.test(c))).toEqual([]);
+      const name = [...trigger.querySelectorAll("span")].find((el) => el.textContent === "Opus 5.5")!;
+      const effort = [...trigger.querySelectorAll("span")].find((el) => el.textContent === "High")!;
+      const chevron = [...trigger.querySelectorAll(":scope > svg")].at(-1)!;
+      expect(cls(name)).toContain("ms-1.5");
+      expect(cls(effort)).toContain("ms-1");
+      expect(cls(chevron)).toContain("ms-2");
+      unmount();
+    }
   });
   it("a model row's star waits on the shared hover reveal; a favourite's stays", async () => {
     picker("claude", "claude:claude-opus-5-5");

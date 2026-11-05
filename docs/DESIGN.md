@@ -433,7 +433,10 @@ A thread's model at a row's end is `ModelMark` (surfaces/threads/ModelMark.tsx):
 the provider's logo, the short model name and, where the row asks for it
 (the master board's thread rows), the effort in the composer's words
 ("Opus 5.5 High", "Sol Extra high"), all 12px `muted-foreground`, the logo
-6px from the name and the effort 4px after it, never joined by a dot. In a
+6px from the name and the effort 4px after it, never joined by a dot; the
+model picker's trigger (chrome/ModelPicker.tsx) keeps those spaces in every
+placement, the composer's row and a dialog's alike, its chevron 8px after
+the last word. In a
 narrow row the title gives its width up first, down to 64px; then the name
 truncates, and the effort never does. The agent detail leads its numbers line with the same `ModelLine`, then
 the host and branch; queues use `effortWord` for effort names. A right

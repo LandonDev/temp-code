@@ -389,7 +389,10 @@ export function ModelPicker({
                   aria-label={`${HARNESS_TITLE[current.harness]} ${current.name}${effort ? ` ${effort}` : ""}`}
                   aria-keyshortcuts={`${MOD}.`}
                   size={quiet ? "xs" : "sm"}
-                  className={cn("min-w-0 shrink gap-1.5 px-2 font-normal", quiet && `${ROW_CONTROL} gap-1`)}
+                  // One recipe in every placement (ModelMark's): the logo 6px from the name,
+                  // the effort 4px after it, the chevron 8px after the last word. Each gap is
+                  // the following element's margin, so a word the composer hides takes its gap with it.
+                  className={cn("min-w-0 shrink gap-0 px-2 font-normal", quiet && ROW_CONTROL)}
                 />
               }
             />
@@ -397,9 +400,9 @@ export function ModelPicker({
         >
           <HarnessIcon harness={current.harness} className="size-3.5 shrink-0" />
           {/* In the composer's row the words give way to the icon as the box narrows (ComposerBar). */}
-          <span className={cn("min-w-0 truncate @max-[9rem]/composer-bar:hidden", !quiet && "text-foreground")}>{current.name}</span>
-          {effort ? <span className={cn("shrink-0 @max-[23rem]/composer-bar:hidden", !quiet && "ms-1 text-muted-foreground")}>{effort}</span> : null}
-          <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+          <span className={cn("ms-1.5 min-w-0 truncate @max-[9rem]/composer-bar:hidden", !quiet && "text-foreground")}>{current.name}</span>
+          {effort ? <span className={cn("ms-1 shrink-0 @max-[23rem]/composer-bar:hidden", !quiet && "text-muted-foreground")}>{effort}</span> : null}
+          <ChevronDown className="ms-2 size-3 shrink-0 text-muted-foreground" />
         </TooltipTrigger>
         <TooltipContent>
           Model <Kbd>{`${MOD}.`}</Kbd>
