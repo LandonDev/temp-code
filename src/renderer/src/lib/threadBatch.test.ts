@@ -11,7 +11,6 @@ import * as commands from "./tcserver/commands";
 import { sessionStore } from "./tcserver/store";
 import {
   ARCHIVE_DONE_AGE_MS,
-  batchConfirm,
   batchTargets,
   cancelThreadBatch,
   confirmThreadBatch,
@@ -26,6 +25,7 @@ import {
   useBatchPending,
   type BatchSelection,
 } from "./threadBatch";
+import { batchConfirm } from "./threadBatchCopy";
 
 const catalog: Catalog = {
   workspaces: [{ id: "w1", path: "/srv/work", environmentId: "env_box" } as WorkspaceMeta],

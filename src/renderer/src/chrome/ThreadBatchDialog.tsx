@@ -4,7 +4,6 @@ import { DialogFooter } from "./ConfirmDialog";
 import { Modal } from "./Modal";
 import { useSessionMetas } from "../lib/tcserver/store";
 import {
-  batchConfirm,
   batchTargets,
   cancelThreadBatch,
   confirmThreadBatch,
@@ -14,6 +13,7 @@ import {
   type BatchRequest,
 } from "../lib/threadBatch";
 import { useBatchSelection } from "../lib/threadBatchSelection";
+import { batchConfirm } from "../lib/threadBatchCopy";
 
 /**
  * The confirm behind Pause all, Stop all and Archive done: "Pause 15

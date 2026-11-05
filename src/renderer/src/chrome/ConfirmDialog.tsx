@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore, type ReactNode } from "react";
-import { BusyLabel, Button, buttonVariants } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,11 +11,6 @@ import {
   AlertDialogTitle,
 } from "@renderer/components/ui/dialog";
 import { useClosingDialog, useModalClose } from "./Modal";
-
-/** The dialog button kit, for buttons a dialog lays out by hand. */
-export const GHOST = buttonVariants({ variant: "ghost" });
-export const PRIMARY = buttonVariants();
-export const DANGER = buttonVariants({ variant: "destructive" });
 
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 

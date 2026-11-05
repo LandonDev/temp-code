@@ -71,9 +71,7 @@ export function openFocusOf(popup: HTMLElement | null): HTMLElement | true {
   if (!popup) return true;
   const active = document.activeElement;
   if (active instanceof HTMLElement && popup.contains(active)) return active;
-  const field = popup.querySelector<HTMLElement>(
-    'input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not(:disabled), textarea:not(:disabled)',
-  );
+  const field = popup.querySelector<HTMLElement>("textarea:enabled, input:enabled:not([type=checkbox],[type=radio],[type=hidden])");
   if (field) return field;
   const confirm = popup.querySelector<HTMLButtonElement>("[data-dialog-confirm]");
   if (confirm && !confirm.disabled && confirm.dataset.variant !== "destructive") return confirm;
