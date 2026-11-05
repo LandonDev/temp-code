@@ -69,7 +69,7 @@ export function MacBridgeRuleList({ sessionId, empty, heading }: { sessionId: st
   if (rules.length === 0)
     return empty ? <PageEmpty>{empty}</PageEmpty> : null
   const forgetAll = (
-    <Button variant="destructive" size="xs" onClick={() => void forget()}>
+    <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-destructive" onClick={() => void forget()}>
       Forget all
     </Button>
   )
@@ -92,7 +92,7 @@ export function MacBridgeRuleList({ sessionId, empty, heading }: { sessionId: st
             </ItemContent>
             <ItemActions className="shrink-0">
               {rule.uses ? <span className="text-xs tabular-nums text-muted-foreground">used {rule.uses}×</span> : null}
-              <Button variant="destructive" size="xs" onClick={() => void forget(rule.id)}>
+              <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-destructive" onClick={() => void forget(rule.id)}>
                 Remove
               </Button>
             </ItemActions>

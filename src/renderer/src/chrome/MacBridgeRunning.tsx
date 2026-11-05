@@ -55,7 +55,7 @@ export function MacBridgeRunningList({
       <div className="flex min-h-7 items-center gap-3 text-xs text-muted-foreground" data-mac-bridge-count>
         <Facts parts={countParts(running, waiting, hostName, paused)} className="min-w-0 flex-1" />
         {stoppable.length > 1 ? (
-          <Button variant="destructive" size="xs" onClick={() => void stop(stoppable)}>
+          <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-destructive" onClick={() => void stop(stoppable)}>
             Stop all
           </Button>
         ) : null}
@@ -88,7 +88,7 @@ export function MacBridgeRunningList({
               <TooltipContent>Held on its host until the thread continues; nothing runs on this Mac</TooltipContent>
             </Tooltip>
           ) : (
-            <Button variant="destructive" size="xs" onClick={() => void stop([r])}>
+            <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-destructive" onClick={() => void stop([r])}>
               Stop
             </Button>
           )}

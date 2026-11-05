@@ -341,7 +341,9 @@ app replaces itself from the feed, and only from the feed.
   own beside it and never a 180° turn (`lib/disclosureGuard.test.ts`; a menu
   trigger's chevron is a still `ChevronDown`), a bounded log is a `pre` on `CONSOLE` (components/ui/
   console.ts), no icon takes a `strokeWidth` prop, and a solid red button
-  never sits in a list row (a row's remove is a ghost that turns red on hover).
+  never sits in a list row (a row's remove is a ghost that turns red on hover;
+  `lib/redButtonGuard.test.ts` allows a destructive `Button` only inside a
+  dialog's footer).
 - Every resize handle uses `hooks/useSashKeys.ts` for focus,
   separator ARIA, axis arrows (2% of the container, Shift 10%) and a
   double-click reset. Keyboard resize commits at once; `useDragResize`

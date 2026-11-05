@@ -91,6 +91,11 @@ describe('MacBridgeRunningList', () => {
     expect([...root.querySelectorAll('button')].some((b) => b.textContent === 'Stop all')).toBe(
       true
     )
+    // No solid red in a list row: each Stop is a muted ghost that turns red on hover.
+    for (const b of root.querySelectorAll<HTMLElement>('button')) {
+      expect(b.dataset.variant).toBe('ghost')
+      expect(b.className).toContain('hover:text-destructive')
+    }
     // The thread name shows on a host's list…
     expect(rows[0].textContent).toContain('iOS build')
   })
