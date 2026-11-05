@@ -22,6 +22,7 @@ import { ResourcesRequestSchemas } from './contract-resources'
 import { PortsRequestSchemas } from './contract-ports'
 import { DevServerRequestSchemas } from './contract-devservers'
 import { AdmissionRequestSchemas } from './contract-admission'
+import { AwayRequestSchemas } from './contract-away'
 import { AGENT_TYPES, REASONING_LEVELS } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -161,6 +162,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...DevServerRequestSchemas,
   // Admission control (contract-admission.ts): the running cap and what it is sized from.
   ...AdmissionRequestSchemas,
+  // Away from computer (contract-away.ts): the switch, its tally and the peer leg.
+  ...AwayRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),
@@ -1399,6 +1402,8 @@ export type ServerPush =
   | import('./contract-memory').MemoryNudgePush
   // A release landed (releaseAnnounce.ts): the box, down every Mac's link, after its deploy or a batch's publish; the Mac checks the feed at once.
   | { push: 'release-available'; from: string; version: string }
+  // Away from computer (contract-away.ts): the state and the stretch's tally, to every client socket.
+  | import('./contract-away').AwayPush
   // Thread resources (contract-resources.ts): a thread's ledger rows after any change.
   | import('./contract-resources').ResourcesPush
   // Dev servers forwarded to the Mac (contract-ports.ts): the host's list and stream frames down a Mac's link, the Mac's forwards to its renderer.

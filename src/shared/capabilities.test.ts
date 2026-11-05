@@ -62,7 +62,7 @@ describe('METHOD_CAPABILITY', () => {
   })
   it('approve covers exactly the prompt-skipping methods', () => {
     // macBridge.thread.set lets a box thread call the Mac without a box prompt (the Mac still asks for itself).
-    expect(withCap('approve')).toEqual(['macBridge.thread.set', 'review.override', 'session.approve', 'session.permission'])
+    expect(withCap('approve')).toEqual(['away.set', 'macBridge.thread.set', 'review.override', 'session.approve', 'session.permission'])
   })
   it('admin covers settings writes and remote management', () => {
     expect(withCap('admin')).toEqual(
@@ -101,6 +101,7 @@ describe('METHOD_CAPABILITY', () => {
         ...methods.filter((m) => m.startsWith('memory.')),
         // A host's per-file attachment limit.
         'attachment.settings.set',
+        'away.apply',
         // A stored agent page, read by another host's main process over the peer link.
         'page.read',
         // A slice of a media file by its token, the same way.

@@ -712,13 +712,15 @@ public struct NoticeEvent: Codable, Hashable, Sendable {
     public let account: String?
     public let review: ReviewNotice?
     public let gate: GateNotice?
+    public let away: AwayNotice?
 
-    public init(kind: NoticeKind, message: String, account: String? = nil, review: ReviewNotice? = nil, gate: GateNotice? = nil) {
+    public init(kind: NoticeKind, message: String, account: String? = nil, review: ReviewNotice? = nil, gate: GateNotice? = nil, away: AwayNotice? = nil) {
         self.kind = kind
         self.message = message
         self.account = account
         self.review = review
         self.gate = gate
+        self.away = away
     }
 }
 

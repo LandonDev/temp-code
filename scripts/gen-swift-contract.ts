@@ -70,6 +70,7 @@ import {
 } from '../src/shared/contract-attachments'
 import {
   AttachmentSchema,
+  AwayNoticeSchema,
   FailureKindSchema,
   FailureSchema,
   LimitWindowSchema,
@@ -169,6 +170,7 @@ export const SUBSET: SubsetEntry[] = [
   type('ReviewNotice', ReviewNoticeSchema),
   type('GateStep', GateStepSchema),
   type('GateNotice', GateNoticeSchema),
+  type('AwayNotice', AwayNoticeSchema),
   type('RerouteAnswer', W.RerouteAnswerSchema),
   type('ReviewOverrideAnswer', W.ReviewOverrideAnswerSchema),
   union('AgentEvent', W.WireAgentEventSchema, 'type', 'Event'),

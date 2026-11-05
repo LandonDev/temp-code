@@ -199,8 +199,17 @@ export type Failure = z.infer<typeof FailureSchema>
  * (`review`, `gate`, `account`), so a reader switches on `kind` and `message`
  * always reads; the phone's decoder keeps an unknown kind as `unknown(String)`.
  */
-export const NoticeKindSchema = z.enum(['review', 'gate', 'batch', 'account-gone', 'plan-build'])
+export const NoticeKindSchema = z.enum(['review', 'gate', 'batch', 'account-gone', 'plan-build', 'away'])
 export type NoticeKind = z.infer<typeof NoticeKindSchema>
+
+/** A notice of kind `away` (src/main/server/away.ts): a decision the thread
+ *  noted (`note_decision`), a question the host answered for the person, or
+ *  an approval it denied, while the person was away. */
+export const AwayNoticeSchema = z.object({
+  kind: z.enum(['decision', 'question', 'approval']),
+  text: z.string()
+})
+export type AwayNotice = z.infer<typeof AwayNoticeSchema>
 
 /** Where a person's steer stands (the `steer` row). */
 export const SteerStateSchema = z.enum(['sent', 'received', 'queued', 'failed'])
@@ -509,7 +518,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     /** kind `review`: a merge review's outcome, for the card (shared/review.ts) */
     review: ReviewNoticeSchema.optional(),
     /** kind `gate`: a gate run before a merge or at a batch's end (shared/gate.ts) */
-    gate: GateNoticeSchema.optional()
+    gate: GateNoticeSchema.optional(),
+    /** kind `away`: what was decided, answered or skipped while the person was away */
+    away: AwayNoticeSchema.optional()
   })
 ])
 export type AgentEvent = z.infer<typeof AgentEventSchema>

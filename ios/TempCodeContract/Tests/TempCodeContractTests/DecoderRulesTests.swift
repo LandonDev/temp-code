@@ -112,6 +112,8 @@ struct DecoderRulesTests {
                 #expect(notice.account == "ws@example.com")
             case .planBuild:
                 #expect(notice.message.hasPrefix("The build did not start"))
+            case .away:
+                Issue.record("no away notice is seeded here")
             case .unknown:
                 Issue.record("every seeded kind is known")
             }

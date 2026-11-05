@@ -30,6 +30,9 @@ struct NoticeRow: View {
                 AccountGoneLine(message: notice.message)
             case .planBuild:
                 QuietLine(symbol: "exclamationmark.circle", text: notice.message)
+            case .away:
+                // Decided, answered or skipped while the person was away: the message says which.
+                QuietLine(symbol: "moon", text: notice.message)
             case .unknown:
                 QuietLine(symbol: "info.circle", text: notice.message)
             }

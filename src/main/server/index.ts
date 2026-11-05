@@ -14,6 +14,7 @@ import { isRoutedProvider, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
 import { gateway as runningGateway, startGateway, type Gateway, type SpawnGatewayChild } from './gateway'
 import { BootResumer } from './resumeAfterBoot'
 import { Admission } from './admission'
+import { AwayService } from './away'
 import { closeWarmPools, retireWarmPools, setWarmMemoryFloor, warmStatuses } from './drivers/warm'
 import { observeHooks } from './gatewayObserve'
 import { HeadroomStore } from './headroom'
@@ -1238,6 +1239,13 @@ export async function startServer(
   const lowSeam = process.env.TEMP_CODE_E2E_MEMORY_LOW === '1' && !!process.env.TEMP_CODE_USER_DATA
   setWarmMemoryFloor(() => lowSeam || admission.memoryLow())
   admission.start()
+  // Away from computer (away.ts): the person's state, mirrored with the peers
+  // (remote/awaySync.ts); while on, threads decide without asking.
+  const away = new AwayService({
+    getSetting: (key) => store.getSetting(key),
+    setSetting: (key, value) => store.setSetting(key, value),
+    environmentId
+  })
   // Threads the last shutdown cut mid-turn come back once everything
   // listens (run() below); the renderer hears the count once per boot.
   const bootResumer = new BootResumer({ store, registry })
@@ -1572,6 +1580,8 @@ export async function startServer(
     // The boot's resume count: already known to a late socket, announced to an open one.
     if (bootResumer.notice) sendFrame({ push: 'boot-resume', ...bootResumer.notice })
     const offBootResume = bootResumer.onDone((notice) => sendFrame({ push: 'boot-resume', ...notice }))
+    // Away from computer: every change of the state or the tally, to every client.
+    const offAway = away.onChange((snapshot) => sendFrame({ push: 'away', ...snapshot }))
 
     ws.on('message', async (data) => {
       let raw: unknown
@@ -2539,6 +2549,17 @@ export async function startServer(
           case 'admission.set':
             sendFrame({ id: req.id, ok: true, result: admission.set(req.params.cap) })
             break
+          case 'away.get':
+            sendFrame({ id: req.id, ok: true, result: away.get() })
+            break
+          case 'away.set':
+            sendFrame({ id: req.id, ok: true, result: { state: away.set(req.params.enabled) } })
+            break
+          case 'away.apply': {
+            const applied = away.apply(req.params.state)
+            sendFrame({ id: req.id, ok: true, result: { state: away.get().state, applied } })
+            break
+          }
           case 'resources.listAll':
             sendFrame({ id: req.id, ok: true, result: { resources: resources.listAll(req.params ?? {}) } })
             break
@@ -2856,6 +2877,7 @@ export async function startServer(
       coalescer.dispose()
       focus.drop(connection)
       offBootResume()
+      offAway()
       offMeta()
       offNotes()
       offBatch()
@@ -3089,6 +3111,7 @@ export async function startServer(
       if (headroomRows) clearTimeout(headroomRows)
       headroom.flush()
       admission.stop()
+      away.dispose()
       await registry.disposeAll()
       offCheckpointEdits()
       closeWarmPools()

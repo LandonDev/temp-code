@@ -389,6 +389,42 @@ public struct GateNotice: Codable, Hashable, Sendable {
     }
 }
 
+public struct AwayNotice: Codable, Hashable, Sendable {
+    public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+        case decision
+        case question
+        case approval
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "decision": self = .decision
+            case "question": self = .question
+            case "approval": self = .approval
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .decision: "decision"
+            case .question: "question"
+            case .approval: "approval"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let kind: Kind
+    public let text: String
+
+    public init(kind: Kind, text: String) {
+        self.kind = kind
+        self.text = text
+    }
+}
+
 public struct RerouteAnswer: Codable, Hashable, Sendable {
     public let account: String?
     public let moved: Bool
