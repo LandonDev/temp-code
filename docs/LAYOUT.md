@@ -969,9 +969,10 @@ nothing under it repeats them.
   then "Saving…" or "Save failed" while that is so, Preview and Source on a
   Markdown file, and on a review tab the change stepper ("2/5" between
   Previous and Next, sans tabular numbers like the counts), which leaves
-  with Revert and Stage once no change is left to review. "Save failed"
-  and its reason are one red line, whole on hover only while cut
-  (`TruncateTip`), no Tab stop.
+  with Revert and Stage once no change is left to review. A failed save
+  is the failed `StatusMark`: its glyph, "Save failed" medium in red and
+  the reason regular and muted after it, whole on hover only while cut
+  (`TruncateTip`, "Save failed: EACCES" as one string), no Tab stop.
   There is no footer and nothing floats over the text.
 - **The body**: the editor, or for Markdown the preview and the source
   swapped in place. Loading is a `Skeleton` of code lines under the

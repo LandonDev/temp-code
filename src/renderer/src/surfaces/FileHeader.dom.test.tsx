@@ -103,12 +103,18 @@ describe("FileHeader", () => {
     const { container, rerender } = render(<FileHeader folder={null} save={{ status: "saving" }} />);
     expect(container.textContent).toBe("Saving…");
     rerender(<FileHeader folder={null} save={{ status: "error", message: "EACCES" }} />);
-    expect(container.textContent).toBe("Save failed: EACCES");
-    const word = container.querySelector<HTMLElement>(".text-destructive")!;
-    // A word that fits is no Tab stop and mounts no tooltip that repeats it (TruncateTip).
-    expect(word.hasAttribute("tabindex")).toBe(false);
-    expect(word.getAttribute("data-slot")).not.toBe("tooltip-trigger");
-    expect(word.className).toContain("truncate");
+    // The failed mark: its glyph, the word "Save failed" in medium red, the error regular and muted after it.
+    const mark = container.querySelector<HTMLElement>('[data-slot="status-mark"]')!;
+    expect(mark.getAttribute("data-state")).toBe("failed");
+    expect(mark.querySelector('[data-slot="status-glyph"]')).not.toBeNull();
+    expect(mark.querySelector('[data-slot="status-word"]')!.textContent).toBe("Save failed");
+    const detail = mark.querySelector<HTMLElement>('[data-slot="status-detail"]')!;
+    expect(detail.textContent).toBe("EACCES");
+    expect(detail.className).toContain("truncate");
+    expect(container.textContent).not.toContain("Save failed:");
+    // A mark that fits is no Tab stop and mounts no tooltip that repeats it (TruncateTip).
+    expect(mark.hasAttribute("tabindex")).toBe(false);
+    expect(mark.getAttribute("data-slot")).not.toBe("tooltip-trigger");
     rerender(<FileHeader folder={null} save={{ status: "saved" }} />);
     expect(container.textContent).toBe("");
     rerender(<FileHeader folder={null} save={{ status: "idle" }} />);

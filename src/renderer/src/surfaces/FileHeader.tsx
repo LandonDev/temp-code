@@ -4,10 +4,12 @@ import { ChevronDown, ChevronUp, Plus, Undo2 } from "../chrome/icons";
 import { Counts } from "../chrome/rail/changeRows";
 import { TruncateTip } from "../components/tip";
 import { Button } from "../components/ui/button";
+import { StatusMark } from "../components/ui/status";
 import { Spinner } from "../components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { displayPath } from "../lib/paths";
+import { plainStatus } from "@shared/statusWords";
 
 export type SaveState =
   | { status: "idle" | "saving" | "saved" }
@@ -102,11 +104,11 @@ export function FileHeader({ folder, diff, markdown, save = IDLE, children }: Fi
 function SaveWord({ save }: { save: SaveState }) {
   if (save.status === "saving") return <span className="shrink-0 text-muted-foreground">Saving…</span>;
   if (save.status !== "error") return null;
-  // The whole of it on hover only while it is cut: a word that fits mounts no tooltip.
-  const text = `Save failed: ${save.message}`;
+  // The failed mark with its word and the error as its detail; the whole of
+  // it on hover only while the detail is cut, as one plain string.
   return (
-    <TruncateTip text={text}>
-      <span className="min-w-0 max-w-64 truncate text-destructive">{text}</span>
+    <TruncateTip text={plainStatus("Save failed", save.message)}>
+      <StatusMark state="failed" word="Save failed" detail={save.message} className="max-w-64" />
     </TruncateTip>
   );
 }
