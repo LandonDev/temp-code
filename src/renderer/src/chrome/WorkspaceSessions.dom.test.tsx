@@ -390,9 +390,10 @@ describe('a project card', () => {
     const more = moreButton(probe.container)!
     expect(more.textContent).toBe('2 more')
     expect(cardOf(probe.container).contains(more)).toBe(false)
-    // A 28px row of 13px words like the rows it windows, the /5 fill at once.
-    for (const c of ['h-7', 'text-[13px]', 'transition-none', 'hover:bg-foreground/5']) expect(more.className.split(/\s+/)).toContain(c)
-    expect(more.className.split(/\s+/)).not.toContain('h-6')
+    // A 28px row of 13px words, its label on the card's titles (52px: the
+    // 12px inset, the mark and the type glyph), the /5 fill at once.
+    for (const c of ['h-7', 'pl-13', 'text-[13px]', 'transition-none', 'hover:bg-foreground/5']) expect(more.className.split(/\s+/)).toContain(c)
+    for (const c of ['h-6', 'pl-9']) expect(more.className.split(/\s+/)).not.toContain(c)
     probe.unmount()
   })
 
@@ -436,6 +437,9 @@ describe('ThreadList window', () => {
     expect(rowCount(probe.container)).toBe(SESSION_LIST_PAGE)
     const more = moreButton(probe.container)!
     expect(more.textContent).toBe(`${100 - SESSION_LIST_PAGE} more`)
+    // One of the list's 32px rows, its label on their titles (36px).
+    for (const c of ['h-8', 'pl-9']) expect(more.className.split(/\s+/)).toContain(c)
+    for (const c of ['h-7', 'pl-13']) expect(more.className.split(/\s+/)).not.toContain(c)
     act(() => {
       fireEvent.click(more)
     })

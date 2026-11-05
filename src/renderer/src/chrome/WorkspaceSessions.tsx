@@ -131,17 +131,27 @@ type Dialog =
 
 // --- small parts -----------------------------------------------------------
 
-/** The row behind which a windowed list keeps the rest: a 28px row of 13px
- *  words, the label on the rows' 36px, the /5 hover fill at once (as the
- *  Working section's "N more"). */
-function MoreRow({ hidden, onMore }: { hidden: number; onMore: () => void }) {
+/** Where a "N more" row sits: on its list's own columns. Under a project
+ *  card it is a 28px row whose label starts on the card's titles (12px
+ *  inset, the 12px mark and the 12px glyph 8px apart: 52px); in a thread
+ *  list it is one of the list's 32px rows, its label on their titles (12px
+ *  inset, the 16px glyph, 8px: 36px). */
+const MORE_PLACE = { card: "h-7 pl-13", list: "h-8 pl-9" } as const;
+
+/** The row behind which a windowed list keeps the rest: a row of 13px words
+ *  on its list's title column (`MORE_PLACE`), the /5 hover fill at once (as
+ *  the Working section's "N more"). */
+function MoreRow({ hidden, onMore, place }: { hidden: number; onMore: () => void; place: keyof typeof MORE_PLACE }) {
   return (
     <Button
       variant="ghost"
       size="sm"
       onClick={onMore}
-      data-more-row
-      className="h-7 w-full justify-start gap-2 pl-9 text-[13px] font-normal text-muted-foreground tabular-nums transition-none hover:bg-foreground/5 hover:text-foreground"
+      data-more-row={place}
+      className={cn(
+        "w-full justify-start gap-2 text-[13px] font-normal text-muted-foreground tabular-nums transition-none hover:bg-foreground/5 hover:text-foreground",
+        MORE_PLACE[place],
+      )}
     >
       {hidden} more
     </Button>
@@ -657,7 +667,7 @@ export const ThreadList = memo(function ThreadList({
       {shown.map((t) => (
         <ThreadRows key={t.id} thread={t} actions={actions} />
       ))}
-      {hidden > 0 && onMore ? <MoreRow hidden={hidden} onMore={onMore} /> : null}
+      {hidden > 0 && onMore ? <MoreRow hidden={hidden} onMore={onMore} place="list" /> : null}
     </div>
   );
 });
@@ -1048,7 +1058,7 @@ export function ProjectCardView({
           align="start"
         />
       ) : null}
-      {hidden > 0 && onMore ? <MoreRow hidden={hidden} onMore={onMore} /> : null}
+      {hidden > 0 && onMore ? <MoreRow hidden={hidden} onMore={onMore} place="card" /> : null}
     </div>
   );
   return menu ? (

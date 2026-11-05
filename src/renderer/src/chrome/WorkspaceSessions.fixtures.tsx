@@ -45,6 +45,7 @@ function Card({
   archived = 0,
   minutesAgo = 3,
   selected = false,
+  hidden = 0,
 }: {
   name: string;
   branch?: string | null;
@@ -53,6 +54,8 @@ function Card({
   archived?: number;
   minutesAgo?: number;
   selected?: boolean;
+  /** Lines past the card's page: its "N more" row. */
+  hidden?: number;
 }) {
   const status = projectCardStatus(cardThreads(threads), null, {}, SEEN);
   return (
@@ -63,7 +66,8 @@ function Card({
         mode={mode}
         latest={threads.length ? NOW - minutesAgo * 60_000 : 0}
         lines={cardLines(threads, status)}
-        hidden={0}
+        hidden={hidden}
+        onMore={noop}
         counts={projectCardCounts(threads, null, {}, SEEN, archived)}
         ariaLabel={projectCardAriaLabel(name, status)}
         selected={selected}
@@ -115,7 +119,7 @@ export function ProjectCards({ width = 260 }: { width?: number }) {
         ]}
         archived={2}
       />
-      <Card name="Paused work" threads={[row("p1", { title: "Docs pass", status: "paused", frozenActiveElapsed: 6 * 60_000 })]} />
+      <Card name="Paused work" threads={[row("p1", { title: "Docs pass", status: "paused", frozenActiveElapsed: 6 * 60_000 })]} hidden={3} />
       <Card name="Unread" mode="local" branch="main" threads={[row("u1", { title: "Fix login", status: "done", updatedAt: minutes(5) })]} minutesAgo={5} />
       <Card name="Batch" threads={[master]} minutesAgo={1} />
       <Card name="Batch waiting" threads={[waitingMaster]} minutesAgo={2} />
