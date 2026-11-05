@@ -2495,8 +2495,12 @@ proof and the sizing rules; the pieces, by name:
   and a bare chat keep the thread's own header. The screen's pose on the iPhone Duo (the pager or two
   panes by its own size class and width, the columns from the fold's
   division band, the 640 pt measure, the transcript's reflow) is
-  `Rendering/ThreadPose.swift` (`ThreadPose`, `TwoPaneColumns`,
-  `ReadingMeasure`, `TranscriptReflow`, tested in ThreadPoseTests), and the
+  `Rendering/ThreadPose.swift` (`ThreadPose`, `TwoPaneColumns`: the chat
+  keeps 360, the hero yields first, a board fits its widest task within
+  320–672 and half; `ReadingMeasure`: the transcript at 768, a document at
+  640, the composer on the column's edges; `TranscriptReflow`; tested in
+  ThreadPoseTests; the sidebar's 260 pt is `SidebarColumn` in
+  Shell/ShellPose.swift), and the
   27.1 reads (`Duo.divisionBand`, `\.tcVerticalBar`, `BarRegionProbe`) are
   `Design/Duo.swift` behind a runtime `#available` (docs/IOS-DESIGN.md "The thread
   screen on the iPhone Duo"). The models they read

@@ -38,11 +38,14 @@ public struct TwoPaneColumns: Equatable, Sendable {
 }
 
 public enum ThreadPose {
-    /// Two panes need a regular column at least this wide: two 300 pt panes,
-    /// the narrowest a chat column with 17 pt body text reads at (Messages in
-    /// an iPad one-third split is 320). The folded Duo is 466 wide, so the
-    /// hero views are phone-width lists already and need no more.
-    public static let twoPaneMinWidth: CGFloat = 600
+    /// The hero yields first; the chat keeps at least this (the desktop's chat beside a board).
+    public static let minChat: CGFloat = 360
+    /// The narrowest hero worth a pane of its own.
+    public static let minHero: CGFloat = 320
+    /// A fitted board never passes this (the board content's 672 on the desktop).
+    public static let maxFit: CGFloat = 672
+    /// Two panes only when the hero gets `minHero` and the chat `minChat`.
+    public static let twoPaneMinWidth: CGFloat = minHero + minChat
 
     /// The mode. `regularWidth` is the shell's split pose (the width size
     /// class at the root); `width` is the thread body's own measured width.
@@ -68,40 +71,56 @@ public enum ThreadPose {
         }
     }
 
-    /// The columns of a two-pane screen `width` wide. Default: equal halves
-    /// around a `hairline` (in unfolded landscape with no sidebar the
-    /// hairline lands on the fold). With an active division band that is
-    /// vertical (`height > width`) and leaves at least `minimum` on each
-    /// side, the band is the gap: the fold divides, nothing is drawn under
-    /// it. A horizontal band (unfolded portrait partly open) or one too near
-    /// an edge changes nothing. `division` is in the body's own coordinates.
-    public static func columns(width: CGFloat, hairline: CGFloat, division: CGRect?, minimum: CGFloat = 280) -> TwoPaneColumns {
+    /// The columns of a two-pane screen `width` wide, the desktop's split: a
+    /// hero that asks for a `fit` (an implementation board's widest task)
+    /// gets it within `minHero` and the smaller of half the body and
+    /// `maxFit`; any other hero starts at half; the chat keeps at least
+    /// `minChat` and the hero yields first. A vertical division band that
+    /// leaves at least `minimum` on each side is the gap instead: the fold
+    /// divides and nothing is drawn under it. A horizontal band or one too
+    /// near an edge changes nothing. `division` is in the body's own coordinates.
+    public static func columns(width: CGFloat, hairline: CGFloat, division: CGRect?, fit: CGFloat? = nil, minimum: CGFloat = 280) -> TwoPaneColumns {
         if let band = division, band.height > band.width, band.minX >= minimum, width - band.maxX >= minimum {
             return TwoPaneColumns(hero: band.minX, gap: band.width, chat: width - band.maxX, gapIsDivision: true)
         }
-        let hero = floor((width - hairline) / 2)
+        let half = floor((width - hairline) / 2)
+        var hero = fit.map { min(max($0, minHero), min(half, maxFit)).rounded(.down) } ?? half
+        hero = floor(min(hero, width - hairline - minChat))
         return TwoPaneColumns(hero: hero, gap: hairline, chat: width - hero - hairline)
+    }
+
+    /// An implementation board's widest task, estimated from its labels'
+    /// lengths at the board's 13 pt (no text measuring in the package): the
+    /// mark, its gap and the time a row shows, plus the row's insets.
+    public static func boardFit(labels: [String]) -> CGFloat? {
+        guard let longest = labels.map(\.count).max(), longest > 0 else { return nil }
+        let perCharacter: CGFloat = 6.6
+        let chrome: CGFloat = 14 + 8 + 40 + 2 * ReadingMeasure.edge
+        return (CGFloat(longest) * perCharacter + chrome).rounded(.up)
     }
 }
 
-/// A lone transcript's reading width: 640 pt, centred, the dock matched to
-/// it. Applied only in `.single`; a two-pane chat column is at most 475, so
-/// the same arithmetic leaves the edge inset there.
+/// The reading width: a transcript at the desktop's 768 pt column, a
+/// document (the plan page, the research report, Notes) at 640, centred.
+/// The composer's box, its row and the slot take the transcript's column
+/// and its edges: `columnFrame` is the column plus the edge each side.
 public enum ReadingMeasure {
-    /// The widest a transcript reads at; the plan page and the research report cap here too.
-    public static let cap: CGFloat = 640
+    /// The transcript's column (`TranscriptLengths.column`).
+    public static let cap = CGFloat(TranscriptLengths.column)
+    /// A document's column (`TranscriptLengths.documentColumn`).
+    public static let documentCap = CGFloat(TranscriptLengths.documentColumn)
     /// The row inset at the screen's edge, as on the phone.
     public static let edge: CGFloat = 16
 
     /// The inset from each side to the text column: the edge, or more to
-    /// centre a column no wider than the cap.
-    public static func sideInset(width: CGFloat) -> CGFloat {
+    /// centre a column no wider than `cap`.
+    public static func sideInset(width: CGFloat, cap: CGFloat = cap) -> CGFloat {
         max(edge, (width - cap) / 2)
     }
 
-    /// The dock's width: the screen's, or the cap plus its edges, so the
-    /// capsule keeps its outdent from the text column.
-    public static func dockWidth(width: CGFloat) -> CGFloat {
+    /// The column and its edges: what the composer's box and the slot span,
+    /// so the box's edges are the column's.
+    public static func columnFrame(width: CGFloat, cap: CGFloat = cap) -> CGFloat {
         min(width, cap + 2 * edge)
     }
 }

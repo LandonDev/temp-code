@@ -8,14 +8,14 @@ import Testing
         // Folded portrait and folded landscape: compact width, the pager whatever the width.
         (466.0, false, ThreadLayoutMode.pager),
         (678.0, false, .pager),
-        // Unfolded: regular width; the whole window or the column beside the sidebar.
+        // Unfolded: regular width; the whole window or the column beside the 260 pt sidebar.
         (951.0, true, .twoPane),
-        (669.0, true, .twoPane),
-        (631.0, true, .twoPane),
-        // Unfolded portrait with the sidebar shown leaves about 350: the pager.
-        (350.0, true, .pager),
-        (599.0, true, .pager),
-        (600.0, true, .twoPane)
+        (690.0, true, .twoPane),
+        // Two panes only when the hero gets 320 and the chat 360: the 680 boundary.
+        (680.0, true, .twoPane),
+        (679.0, true, .pager),
+        (631.0, true, .pager),
+        (350.0, true, .pager)
     ])
     func theFourDuoPosesAndTheShellSColumns(width: Double, regular: Bool, mode: ThreadLayoutMode) {
         #expect(ThreadPose.mode(segments: 2, regularWidth: regular, width: CGFloat(width)) == mode)
@@ -52,9 +52,10 @@ import Testing
         #expect(wide.gap == hairline)
         #expect(wide.hero + wide.gap + wide.chat == 951)
         #expect(!wide.gapIsDivision)
-        let beside = ThreadPose.columns(width: 631, hairline: hairline, division: nil)
-        #expect(beside.hero == 315)
-        #expect(beside.hero + beside.gap + beside.chat == 631)
+        // Beside the 260 pt sidebar the chat keeps its 360 and the hero yields.
+        let beside = ThreadPose.columns(width: 690, hairline: hairline, division: nil)
+        #expect(beside.hero == 329)
+        #expect(beside.hero + beside.gap + beside.chat == 690)
     }
 
     @Test("a vertical band inside the minimum on both sides is the gap, and nothing is drawn in it") func aVerticalBandInsideTheMinimumOnBothSidesIsTheGap() {
@@ -80,17 +81,63 @@ import Testing
 }
 
 @Suite struct ReadingMeasureTests {
-    @Test("the side inset is the edge until the column passes the cap, then centres it") func theSideInsetIsTheEdgeUntilTheColumnPassesTheCap() {
+    @Test("a transcript reads at 768, a document at 640, centred past the column") func aTranscriptReadsAt768ADocumentAt640() {
+        #expect(ReadingMeasure.cap == 768)
+        #expect(ReadingMeasure.documentCap == 640)
         #expect(ReadingMeasure.sideInset(width: 466) == 16)
-        #expect(ReadingMeasure.sideInset(width: 669) == 16, "669 − 640 leaves less than an edge each side")
-        #expect(ReadingMeasure.sideInset(width: 951) == 155.5)
-        #expect(ReadingMeasure.cap == 640)
+        #expect(ReadingMeasure.sideInset(width: 690) == 16)
+        #expect(ReadingMeasure.sideInset(width: 951) == 91.5)
+        #expect(ReadingMeasure.sideInset(width: 951, cap: ReadingMeasure.documentCap) == 155.5)
     }
 
-    @Test("the dock is the screen's width, or the cap plus its edges") func theDockIsTheScreenSWidthOrTheCapPlusItsEdges() {
-        #expect(ReadingMeasure.dockWidth(width: 466) == 466)
-        #expect(ReadingMeasure.dockWidth(width: 669) == 669)
-        #expect(ReadingMeasure.dockWidth(width: 951) == 672)
+    @Test("the composer's box takes the column and its edges, flush with the text") func theComposerSBoxTakesTheColumn() {
+        #expect(ReadingMeasure.columnFrame(width: 466) == 466)
+        #expect(ReadingMeasure.columnFrame(width: 690) == 690)
+        #expect(ReadingMeasure.columnFrame(width: 951) == 800)
+        // The box's edge sits on the text's: the frame's inset is the side inset.
+        let width: CGFloat = 951
+        #expect((width - ReadingMeasure.columnFrame(width: width)) / 2 + ReadingMeasure.edge == ReadingMeasure.sideInset(width: width))
+    }
+}
+
+@Suite struct TwoPaneSplitTests {
+    private let hairline: CGFloat = 1 / 3
+
+    @Test("the chat keeps 360 and the hero yields first") func theChatKeeps360() {
+        let narrow = ThreadPose.columns(width: 690, hairline: hairline, division: nil)
+        #expect(narrow.chat >= 360)
+        #expect(narrow.hero == 329)
+        #expect(narrow.hero + narrow.gap + narrow.chat == 690)
+    }
+
+    @Test("a board fits its widest task within 320, half the body and 672") func aBoardFitsItsWidestTask() {
+        #expect(ThreadPose.columns(width: 951, hairline: hairline, division: nil, fit: 200).hero == 320)
+        #expect(ThreadPose.columns(width: 951, hairline: hairline, division: nil, fit: 400).hero == 400)
+        #expect(ThreadPose.columns(width: 951, hairline: hairline, division: nil, fit: 900).hero == 475)
+        #expect(ThreadPose.columns(width: 1_600, hairline: hairline, division: nil, fit: 900).hero == 672)
+        #expect(ThreadPose.columns(width: 690, hairline: hairline, division: nil, fit: 900).chat >= 360)
+    }
+
+    @Test("the fit grows with the longest label and is nil with none") func theFitGrowsWithTheLongestLabel() {
+        #expect(ThreadPose.boardFit(labels: []) == nil)
+        let short = ThreadPose.boardFit(labels: ["Run tests"])!
+        let long = ThreadPose.boardFit(labels: ["Run tests", "Add the dark palette to Theme.ts and the settings screen"])!
+        #expect(long > short)
+    }
+
+    @Test("a vertical band still sets the gap when both sides keep 280") func aVerticalBandStillSetsTheGap() {
+        let band = CGRect(x: 470, y: 0, width: 12, height: 900)
+        let columns = ThreadPose.columns(width: 951, hairline: hairline, division: band, fit: 600)
+        #expect(columns.gapIsDivision)
+        #expect(columns.hero == 470)
+    }
+}
+
+@Suite struct SidebarColumnTests {
+    @Test("the sidebar asks for 260, never past 320; half open it follows the fold") func theSidebarAsksFor260() {
+        #expect(SidebarColumn.of(halfOpen: false, foldX: 475) == SidebarColumn(min: 260, ideal: 260, max: 320))
+        #expect(SidebarColumn.of(halfOpen: true, foldX: 475) == SidebarColumn(min: 260, ideal: 475, max: 475))
+        #expect(SidebarColumn.of(halfOpen: true, foldX: 200) == SidebarColumn(min: 260, ideal: 260, max: 320))
     }
 }
 

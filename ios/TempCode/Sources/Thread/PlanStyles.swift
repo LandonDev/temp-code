@@ -1,4 +1,5 @@
 import SwiftUI
+import TempCodeClient
 
 /// The type and spacing of a set document: the plan page and the research
 /// report. Headings step down from `title` to `headline`, each with more
@@ -7,7 +8,7 @@ import SwiftUI
 /// Lives beside the plan screen so the design foundations can lift it.
 enum PlanType {
     /// The widest measure a page takes; on a phone the width is the measure.
-    static let measure: CGFloat = 640
+    static let measure = ReadingMeasure.documentCap
     /// The page's horizontal inset: the text edge every block aligns to.
     static let inset: CGFloat = 20
     /// Above the first block and below the last.

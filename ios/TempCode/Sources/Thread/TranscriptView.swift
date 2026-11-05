@@ -20,7 +20,7 @@ import TempCodeContract
 /// once, `atBottom` is held at that value while the geometry flickers, and
 /// the anchor is restored without animation at each of the reflow's delays,
 /// each new width step restarting the run. With `measured` the rows read at
-/// the measure (`ReadingMeasure`: 640 pt, centred; a lone transcript).
+/// the measure (`ReadingMeasure`: 768 pt, centred; a lone transcript).
 struct TranscriptView: View {
     let client: EnvironmentClient
     let sessionId: String

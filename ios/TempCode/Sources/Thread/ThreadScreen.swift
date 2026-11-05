@@ -118,7 +118,9 @@ struct ThreadScreen: View {
                     let width = proxy.size.width
                     let mode = ThreadPose.mode(segments: segments.count, regularWidth: regularWidth, width: width)
                     let division = mode == .twoPane ? Duo.divisionBand(proxy) : nil
-                    let columns = ThreadPose.columns(width: width, hairline: Hairline.thickness(scale: displayScale), division: division)
+                    // An implementation board asks for its widest task; other heroes start at half.
+                    let fit = kind == .implementation ? ThreadPose.boardFit(labels: thread.fold.board.todos.map(\.content)) : nil
+                    let columns = ThreadPose.columns(width: width, hairline: Hairline.thickness(scale: displayScale), division: division, fit: fit)
                     let barShown = ThreadPose.segmentBarShown(mode: mode, compactHeight: compactHeight, composerFocused: composerFocused)
                     posed(width: width, mode: mode, columns: columns, division: division, barShown: barShown,
                           segments: segments, segment: segment, kind: kind, session: session, thread: thread, phase: phase)
@@ -463,7 +465,7 @@ struct ThreadScreen: View {
                     .allowsHitTesting(false)
             }
             BottomDock(client: client, sessionId: sessionId, session: session, thread: thread, focused: $composerFocused, regularWidth: regularWidth, draft: draftSeed)
-                .frame(maxWidth: mode == .single ? ReadingMeasure.dockWidth(width: width) : .infinity)
+                .frame(maxWidth: mode == .single ? ReadingMeasure.columnFrame(width: width) : .infinity)
                 #if DEBUG
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { TestHooks.recordDock(height: $0, focused: TestHooks.open == "composer") }
                 #endif
@@ -514,7 +516,7 @@ struct ThreadScreen: View {
             columns: mode == .twoPane ? Record.Columns(hero: Record.tenths(columns.hero), gap: Record.tenths(columns.gap), chat: Record.tenths(columns.chat)) : nil,
             division: division.map { Record.Band(x: Record.tenths($0.minX), y: Record.tenths($0.minY), width: Record.tenths($0.width), height: Record.tenths($0.height)) },
             segmentBarShown: barShown,
-            dockWidth: Record.tenths(mode == .single ? ReadingMeasure.dockWidth(width: width) : mode == .twoPane ? columns.chat : width),
+            dockWidth: Record.tenths(mode == .single ? ReadingMeasure.columnFrame(width: width) : mode == .twoPane ? columns.chat : width),
             barInset: Record.tenths(barInset),
             pagerContainer: Record.tenths(pagerContainer), pagerInset: Record.tenths(pagerInset), pagerOffset: Record.tenths(pagerOffset))
     }

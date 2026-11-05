@@ -27,7 +27,7 @@ struct ResearchReportScreen: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
                 .padding(.bottom, 32)
-                .frame(maxWidth: 640, alignment: .leading)
+                .frame(maxWidth: ReadingMeasure.documentCap, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(Surface.background)

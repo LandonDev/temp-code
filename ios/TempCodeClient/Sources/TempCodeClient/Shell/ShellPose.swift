@@ -59,3 +59,20 @@ public enum ShellPose: Sendable, Hashable {
         return .large
     }
 }
+
+/// The split's sidebar column, the desktop's 260 px workspace column: 260
+/// pt asked for, never past 320. Half open, the column follows the fold
+/// when the fold sits past 260, so the sidebar fills the first panel.
+public struct SidebarColumn: Sendable, Hashable {
+    public var min: CGFloat
+    public var ideal: CGFloat
+    public var max: CGFloat
+
+    public static let width: CGFloat = 260
+    public static let widest: CGFloat = 320
+
+    public static func of(halfOpen: Bool, foldX: CGFloat) -> SidebarColumn {
+        if halfOpen, foldX > width { return SidebarColumn(min: width, ideal: foldX, max: Swift.max(widest, foldX)) }
+        return SidebarColumn(min: width, ideal: width, max: widest)
+    }
+}

@@ -27,13 +27,16 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
     /// Where the window's centre line (the fold) falls in this split's own coordinates.
     @State private var foldX: CGFloat = 0
 
+    /// The desktop's 260 pt workspace column (`SidebarColumn`), the fold's when half open.
+    private var sidebar: SidebarColumn { SidebarColumn.of(halfOpen: halfOpen, foldX: foldX) }
+
     var body: some View {
         NavigationSplitView(columnVisibility: visibility, preferredCompactColumn: compactColumn) {
             NavigationStack(path: $navigator.sidebarPath) {
                 sidebar()
                     .navigationDestination(for: Route.self, destination: destination)
             }
-            .navigationSplitViewColumnWidth(min: 280, ideal: halfOpen && foldX > 280 ? foldX : 320, max: halfOpen ? max(360, foldX) : 360)
+            .navigationSplitViewColumnWidth(min: sidebar.min, ideal: sidebar.ideal, max: sidebar.max)
         } detail: {
             NavigationStack(path: $navigator.detailStack) {
                 Group {

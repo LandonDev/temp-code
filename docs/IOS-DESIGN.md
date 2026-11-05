@@ -185,7 +185,9 @@ reads `\.shellPose`, never `horizontalSizeClass`, for a shell decision; the
 detail column's own size class is the system's and is not promised.
 `columnVisibility` always carries the expanded preference (the remembered
 toggle), so the sidebar arrives with the expansion. In the overlay pose a
-pick hides the sidebar, as Mail's does. While the hinge is half open
+pick hides the sidebar, as Mail's does. The sidebar asks for the
+desktop's 260 pt workspace column, never past 320 (`SidebarColumn`), which
+leaves the detail about 690 pt at 951. While the hinge is half open
 (`UIHingeInteraction`, iOS 27.1) the sidebar's ideal width is the window's
 centre line, so the seam sits on the fold.
 
@@ -579,14 +581,18 @@ than the window). The rules are the client package's
 | --- | --- | --- | --- |
 | Folded portrait | 466×678, compact×regular | 466 | The phone's screen, unchanged |
 | Folded landscape | 678×466, compact×compact | 678 | The pager; the header is one line; the segment bar leaves while the field has focus |
-| Unfolded landscape | 951×669, regular×regular | 951, or about 631 beside the shell's sidebar | Hero and chat side by side, equal halves |
+| Unfolded landscape | 951×669, regular×regular | 951, or about 690 beside the shell's 260 pt sidebar | Hero and chat side by side, the chat at least 360 |
 | Unfolded portrait | 669×951, regular×regular | 669 with the sidebar hidden, about 350 with it shown | Side by side at 669; the pager beside the sidebar |
 
-**Two panes** when the column is regular width and at least 600 pt
-(`ThreadPose.twoPaneMinWidth`: two 300 pt panes, the narrowest a chat
-column with body text reads at), else the pager; size class first, so a
-678 pt folded-landscape column is never two-pane. The hero is left, the
-chat right, equal halves (`ThreadPose.columns`), one vertical hairline
+**Two panes** when the column is regular width and at least 680 pt
+(`ThreadPose.twoPaneMinWidth`: a 320 pt hero beside a 360 pt chat, the
+desktop's chat floor beside a board), else the pager; size class first, so
+a 678 pt folded-landscape column is never two-pane. The hero is left, the
+chat right, on the desktop's split (`ThreadPose.columns`): the chat keeps
+at least 360 and the hero yields first; an implementation board fits its
+widest task (`ThreadPose.boardFit`, an estimate from the labels' lengths:
+320 pt up to half the body, at most 672); other heroes start at half; a
+vertical fold band still sets the gap when both sides keep 280; one vertical hairline
 between them (`Hairline(axis: .vertical)`), no sash and no collapse; no
 pane titles (the board, plan, fleet or sources read as themselves and the
 composer names the chat). The composer and the working strip sit under the
@@ -600,10 +606,12 @@ everything that lands is seen on both). The remembered segment is kept
 untouched through two-pane, so folding back lands the pager on it.
 
 **The measure.** A lone transcript at regular width (a chat, a subagent, the
-agent detail) reads at most 640 pt wide, centred (`ReadingMeasure.cap`),
-with the dock matched to the same column plus its 16 pt edges; the scroll
-indicators stay at the screen's edge. The plan page and the research report
-cap at 640 already; the board, fleet, sources and master lists are rows and
+agent detail) reads at most 768 pt wide, the desktop's column, centred
+(`ReadingMeasure.cap`); the composer's box, its row and the slot take the
+same column and its 16 pt edges (`ReadingMeasure.columnFrame`), so the
+box's edges are the text's; the scroll indicators stay at the screen's
+edge. The plan page, the research report and Notes read at 640
+(`ReadingMeasure.documentCap`); the board, fleet, sources and master lists are rows and
 take the column. An agent page in the transcript is 640 wide in a lone
 transcript and re-measures on a fold; its full screen takes the column. The
 diff stays unified at every width.
