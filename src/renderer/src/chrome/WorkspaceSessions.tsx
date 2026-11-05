@@ -915,7 +915,7 @@ const BatchLine = memo(function BatchLine({ thread, state, agents }: MasterBlock
 function CountLine({ counts }: { counts: readonly CardCount[] }) {
   // The loud counts lead, each by its glyph and tone; the quiet ones that
   // follow are one comma run in muted, so no two facts differ by space alone.
-  const loud = counts.filter((c) => c.kind === "waiting" || c.kind === "failed");
+  const loud = counts.filter((c): c is CardCount & { kind: "waiting" | "failed" } => c.kind === "waiting" || c.kind === "failed");
   const quiet = counts.filter((c) => c.kind !== "waiting" && c.kind !== "failed");
   return (
     <span className="mt-1 flex h-4 min-w-0 items-center gap-1 tabular-nums text-muted-foreground" data-card-counts>
