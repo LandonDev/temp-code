@@ -36,7 +36,7 @@ import { ActivitySection } from "./threads/ActivitySection";
 import { FleetList } from "./threads/fleet/FleetPanel";
 import { NotesBody } from "./threads/NotesPanel";
 import { SessionActionsContext } from "./threadChat";
-import { SurfaceSkeleton } from "./SurfaceSkeleton";
+import { LoadingLine } from "./SurfaceSkeleton";
 import { shortcutFor } from "../lib/settings";
 
 // The Debug section drives the editor chunk's DAP session; it loads with it.
@@ -310,7 +310,7 @@ function SectionBody({
       return project ? <BuildPanel projectId={project.id} /> : null;
     case "debug":
       return (
-        <Suspense fallback={<SurfaceSkeleton kind="rows" count={3} label="Loading the debugger" />}>
+        <Suspense fallback={<LoadingLine label="Loading the debugger" />}>
           <DebugPanel />
         </Suspense>
       );

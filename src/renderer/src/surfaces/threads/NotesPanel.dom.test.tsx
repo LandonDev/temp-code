@@ -175,7 +175,15 @@ describe("NotesBody", () => {
     request.mockImplementationOnce(() => new Promise(() => {}));
     render(<NotesBody session={session} />);
     expect(screen.getByLabelText("Loading notes").getAttribute("aria-busy")).toBe("true");
-    expect(screen.getByLabelText("Loading notes").className).toContain("gap-3");
+    // Lines on the markdown's 22px pitch: 12px bars centred in 22px boxes, no gap between them.
+    const loading = screen.getByLabelText("Loading notes");
+    expect(loading.className).not.toMatch(/gap-/);
+    const lines = [...loading.querySelectorAll<HTMLElement>('[data-slot="notes-skeleton-line"]')];
+    expect(lines).toHaveLength(3);
+    for (const line of lines) {
+      expect(line.className.split(/\s+/)).toEqual(expect.arrayContaining(["h-[22px]", "items-center"]));
+      expect(line.firstElementChild!.className.split(/\s+/)).toContain("h-3");
+    }
     expect(screen.queryByRole("button", { name: "Edit notes" })).toBeNull();
   });
 

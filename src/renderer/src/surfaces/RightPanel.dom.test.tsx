@@ -216,12 +216,16 @@ describe("RightPanel", () => {
     expect(screen.queryByRole("tab")).toBeNull();
   });
 
-  it("the Debug section waits for its chunk on a skeleton of rows, never a bare spinner", async () => {
+  it("the Debug section waits for its cold chunk on the one loading line, never rows it will not show", async () => {
     rightPanel.open("s1", "debug");
     const { container } = render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
-    expect(container.querySelector('[data-surface-skeleton="rows"]')).toBeTruthy();
-    expect(container.querySelector('[data-slot="spinner"]')).toBeNull();
+    // The chunk is cold on the first render: the shared line, in the section's place.
+    const line = screen.getByRole("status");
+    expect(line.textContent).toBe("Loading the debugger");
+    expect(line.getAttribute("aria-busy")).toBe("true");
+    expect(container.querySelector("[data-surface-skeleton]")).toBeNull();
     expect(await screen.findByText("debug")).toBeTruthy();
+    expect(screen.queryByText("Loading the debugger")).toBeNull();
   });
 
   it("the file tree's moves reach App's handler, so open tabs follow a rename", () => {

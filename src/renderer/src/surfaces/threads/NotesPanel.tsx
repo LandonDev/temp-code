@@ -207,10 +207,13 @@ export function NotesView({
         </div>
       </TooltipProvider>
       {loading ? (
-        <div className="flex flex-col gap-3 px-3 py-2" aria-busy="true" aria-label="Loading notes">
-          <Skeleton className="h-3.5 w-1/3" />
-          <Skeleton className="h-3.5 w-11/12" />
-          <Skeleton className="h-3.5 w-3/4" />
+        <div className="flex flex-col px-3 py-2" aria-busy="true" aria-label="Loading notes">
+          {/* Three lines on the compact markdown's 14/22 pitch, a 12px bar for each line's words. */}
+          {["w-1/3", "w-11/12", "w-3/4"].map((width) => (
+            <div key={width} data-slot="notes-skeleton-line" className="flex h-[22px] items-center">
+              <Skeleton className={cn("h-3", width)} />
+            </div>
+          ))}
         </div>
       ) : editing ? (
         <>
