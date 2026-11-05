@@ -30,7 +30,7 @@ import type { SwitchSummary } from './soakSwitch'
 export type SoakHostKind = 'synthetic' | 'box'
 export type SoakBuild = 'prod' | 'dev'
 export type SoakView = 'board' | 'stream' | 'split'
-export type SoakScene = 'board' | 'chat' | 'typing' | 'scenarios'
+export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'scenarios'
 
 export interface SoakArgs {
   host: SoakHostKind
@@ -203,8 +203,8 @@ export interface SoakRule {
  * board's ratio (docs/box.md "The soak's two scenes"). Never raised to make
  * a run pass.
  */
-/** The scenes the gate judges by its window's rule; `typing` has TYPING_RULE, and `scenarios` is a recording, judged by eye. */
-export type GateScene = Exclude<SoakScene, 'scenarios' | 'typing'>
+/** The scenes the gate judges by its window's rule; `typing` has TYPING_RULE, `switch` SWITCH_RULE, and `scenarios` is a recording, judged by eye. */
+export type GateScene = Exclude<SoakScene, 'scenarios' | 'typing' | 'switch'>
 
 export const GATE_CPU_PCT: Record<GateScene, number> = { board: 33, chat: 22 }
 
