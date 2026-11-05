@@ -106,7 +106,7 @@ struct UserTurnRow: View {
                 bubble
             }
             if let stamp = turn.steer, let word = stamp.word {
-                MorphWord(text: word)
+                MorphText(key: word, value: word) { Text($0) }
                     .transcriptType(TranscriptType.detail)
                     .foregroundStyle(stamp.state == .failed ? AnyShapeStyle(Tint.destructive) : AnyShapeStyle(.secondary))
                     .accessibilityElement(children: .ignore)

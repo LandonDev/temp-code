@@ -216,13 +216,8 @@ private func expectClean(_ scenario: TranscriptScenario) -> ScenarioReport {
         #expect(ScenarioRunner.keyJerks(from: old, to: new, seen: seen, at: "t").count == 1)
     }
 
-<<<<<<< HEAD
-    @Test func `the built checks: keys, the end row, the follow rule, the reveal, the fade, the drain and the steer word`() {
-        #expect(TranscriptScenario.Check.built == [.keys, .endRow, .follow, .reveal, .fade, .drain, .steer])
-=======
     @Test func `every check is built`() {
-        #expect(TranscriptScenario.Check.built == [.keys, .endRow, .follow, .reveal, .fade, .hold, .morph, .drain])
->>>>>>> eeaab27e (The phone's end row is one model from Send to the turn's close. TranscriptRows gives every turn one end row under its message's key: the working line while the turn runs or its message waits for the echo (TurnEnd.open, with the turn's entries, its Stop and whether a card waits), the closing line once it settled; the thinking tail is gone. TurnLineInput (TurnEnd.tsx's rules) and TurnLineModel (WorkingLine.tsx's TurnLine) decide what the row draws: each phase held 300 ms, the closing words only after the hold, a held turn folded with its words kept, a Stop said as Stopped, a settled row's closing line at once; TurnLineTracker adds the drain's two gaps (look again each reveal step while the turn is over and revealing, and a one-step grace after the end for a row that saw its turn open). While the last turn is open, what the line says is no row: a streaming thought and a call the line tells; a phase of thoughts alone draws nothing, and a thought shows only in a phase opened by hand. The person's Stop row draws nothing. A turn's end now ends every text still streaming, so a block whose final row never came cannot hold the closing line back. The header's subtitle drops the turn's phase. The scenario runner builds its last checks (TranscriptScenarioLine.swift): the phase hold, the word morph through MorphModel (with replace for new words under one key) and the closing line never showing while the turn reveals; the fast-turn, thought-cadence, steer-and-Stop, subagent and burst scenarios assert them, with new pause and approval scenarios. LinePhase.hostWords reads the host's wait words, WatchWords.isWatching the watching rule.)
+        #expect(TranscriptScenario.Check.built == [.keys, .endRow, .follow, .reveal, .fade, .hold, .morph, .drain, .steer])
     }
 }
 

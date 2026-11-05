@@ -2784,7 +2784,7 @@ proof and the sizing rules; the pieces, by name:
   radius 12, 12 × 8, at most 85 % of the column, `UserTurnLayout`; a sent
   bubble rises 16 pt over `Motion.rise` once, other born rows fade over
   `fast`, `BornMotion` in TranscriptView.swift; the steer word morphs,
-  `MorphWord` over `MorphModel`, its time in `TimeFormat.clock`, the
+  `MorphText`, the working line's morph, its time in `TimeFormat.clock`, the
   desktop's `clockTime`, and the runner's `.steer` check holds it forward);
   `Shell/ThreadSheets.swift` (Start a build from a plan, the New thread
   sheet for a prefilled brief, both over the host's `catalog.get`;

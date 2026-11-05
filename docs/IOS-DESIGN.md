@@ -1008,8 +1008,7 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   into a running turn) carries one word under the bubble at its trailing
   edge in the detail type (12 on 16, its row 16 pt) in secondary: Sent,
   Received, Queued for the next turn, or Not delivered in red; a change
-  morphs (`MorphWord` over the client's `MorphModel`, until a shared
-  `MorphText`); the time in the locale's clock ("2:02 PM", or "14:02"
+  morphs (`MorphText`, the working line's morph); the time in the locale's clock ("2:02 PM", or "14:02"
   where the locale writes 24-hour: `TimeFormat.clock`, the desktop's
   `clockTime`) and how it went in ("Received at 2:02 PM, as its own
   turn") are its accessibility value (`SteerStamp` in the client package,
