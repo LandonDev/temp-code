@@ -684,9 +684,27 @@ routed to (aliax-core's `forward`). Two listeners:
   three actions that fit the kind, Retry last, for every failure (a row
   with no verdict reads `fallbackFailure`, src/shared/failureFallback.ts,
   never the harness's raw words; Retry only where the host can continue,
-  `canRetryFrom`); the tab edge prints the
+  `canRetryFrom`, which admits a watching thread whose own last turn
+  failed through the row's `canContinue` while `treeCanContinue`, the
+  flag the rail and the cards read, still waits for its work); the tab edge prints the
   summary instead of "Failed", and the workspace popover prints it under
-  the thread's title. docs/box.md
+  the thread's title. A cap (`rate_limited`, `quota` on a picked provider
+  but Meta) carries `roomElsewhere` (`AccountsService.roomElsewhere`: the
+  spawn's `eligible()` over every account but the refused one) and names
+  the account the gateway saw refused: with room the card is Route
+  automatically, Continue on another model, Retry; with none, Continue on
+  another model, Retry (the phone: Retry and the note). Continue on another
+  model opens the composer's picker (`requestModelPicker(id, { onPick })`,
+  called once after the picker's own change) and continues on the pick
+  (`session.continue` with the model). With no room the thread is
+  cap-held (`capHolds`): report and batch wakes park until a model or
+  account change, a continue, the person's message or the cooldown's lift
+  (`capLiftsAt`). A live handle whose thread moved since its spawn (model,
+  effort, pin, or an account the registry moved while it was live: a
+  failover, Route automatically on a watching thread, both through
+  `pendingReboot`) is rebooted at the next turn start, never mid-turn
+  (`staleHandle`, `rebootIfStale`; `dropHandle({ replacing: true })`
+  writes no idle under the turn starting). docs/box.md
   "A failed turn says what happened". Nothing in a renderer parses an error
   string; add a kind to `FailureKindSchema`, a rule to `failureKindOf`, its
   actions to `failureActions` and the phone's `FailureActions`, and run

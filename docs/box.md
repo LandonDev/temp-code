@@ -657,10 +657,36 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   out of routing, respawns there and continues), Pick another account (the
   composer's account list), Sign in (on the Mac, the Aliax sign-in with the
   address pre-filled; a box thread says "Sign in on the Mac, the box never
-  signs in" and gets Route automatically instead), Pick another model (a
-  hidden or refused model opens the composer's picker) and Retry
-  (`session.continue`). A row written before the verdict existed keeps the
-  bare red Failed line with the harness's words.
+  signs in" and gets Route automatically instead), Continue on another
+  model (a hidden model or a cap: it opens the composer's picker, and the
+  pick continues the thread on that model through `session.continue`; the
+  button reads "Continuing…" until the turn starts) and Retry
+  (`session.continue`). A cap (`rate_limited`, `quota` on Claude, Codex or
+  Muse Code) also says whether another account had room for the model when
+  it landed (`Failure.roomElsewhere`, from the spawn's `eligible()` rule over
+  every account but the refused one): with room the card offers Route
+  automatically, Continue on another model and Retry; with none, Continue on
+  another model and Retry, and the cause says another model can take the
+  thread. A Meta key's limit keeps its keys' set. The account named is the
+  one the provider refused when the gateway saw the 429, not the one the row
+  shows. A thread watching its background work or a master's batch can
+  recover the same way: Retry continues it (the row's own `canContinue`; the
+  tree flag the rail reads still waits for its work), Route automatically
+  moves it, and a limit failover continues it on the new account. While such
+  a cap holds with no account left for the model, the thread's subagent
+  reports and batch wakes park instead of each starting a turn on the cap;
+  a model or account change, a continue, the person's message or the
+  cooldown's lift sends them as one turn. A row written before the verdict
+  existed keeps the bare red Failed line with the harness's words.
+- **A handle is rebooted at a turn start when its thread moved.** A live
+  CLI took `--model`, its effort and its account scope at spawn. When the
+  model, effort or pin changed since (a model picked on a watching thread),
+  or the registry moved its account while it was live (a failover, Route
+  automatically), the next turn start (a send, a report wake, a continue, a
+  turn pass) puts the old process down and resumes on the thread's settings
+  (`staleHandle`, `rebootIfStale` in sessions.ts). Its background tasks go
+  with it; nothing is dropped at the pick itself, and a steer into a running
+  turn keeps its stream.
   The Mac's main process keeps one socket per admin host (backoff to 5 min)
   and syncs on connect, on every local vault write, and every 15 minutes;
   `accounts.sync` and the row's Retry do it now. The box's own vault is
