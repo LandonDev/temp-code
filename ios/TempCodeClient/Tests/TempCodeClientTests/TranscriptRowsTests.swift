@@ -26,47 +26,63 @@ import TempCodeContract
         }
     }
 
-    @Test func `two reads fold into one research phase`() {
-        let rows = TranscriptRows.rows([userEntry(1), read(2), read(3)], turnOpen: false)
-        #expect(kinds(rows) == ["item 1", "group [2, 3]"])
-        guard case .group(let group) = rows[1] else { return }
-        #expect(group.kind == .research)
-        #expect(group.id == TranscriptRowID(key: 2))
+    private func run(_ seq: Int, running: Bool = false) -> ThreadEntry {
+        item(toolItem(seq, ts: 1_000 + seq, doneTs: running ? nil : 1_100 + seq, name: "Bash", input: ["command": .string("bun test")]))
     }
 
-    @Test func `one read is a phase of one`() {
-        let rows = TranscriptRows.rows([userEntry(1), read(2), item(textItem(3, ts: 1_003, "done"))], turnOpen: false)
-        #expect(kinds(rows) == ["item 1", "group [2]", "item 3"])
+    private func group(_ rows: [TranscriptRowModel], _ at: Int) -> ActivityGroup? {
+        guard rows.indices.contains(at), case .group(let group) = rows[at] else { return nil }
+        return group
     }
 
-    @Test func `a plan tool and an approval break the run, a stray edit and thinking join it`() {
+    @Test func `everything between two paragraphs is one group`() {
+        let rows = TranscriptRows.rows([userEntry(1), read(2), edit(3), run(4), read(5), item(textItem(6, ts: 1_006, "done")), run(7)], turnOpen: false)
+        #expect(kinds(rows) == ["item 1", "group [2, 3, 4, 5]", "item 6", "group [7]"])
+        // Two reads outnumber one edit and one command: the line leads with research.
+        #expect(group(rows, 1)?.kind == .research)
+        #expect(group(rows, 1)?.id == TranscriptRowID(key: 2))
+        #expect(group(rows, 1)?.lone == false)
+        #expect(group(rows, 3)?.lone == true)
+    }
+
+    @Test func `a todo update and thinking join the run, an approval and a page break it`() {
         let plan = item(toolItem(6, ts: 1_006, doneTs: 1_106, name: "TodoWrite"))
         let approval = item(.approval(ApprovalItem(seq: 8, ts: 1_008, request: ApprovalRequestEvent(requestId: "r", toolName: "Bash"), allowed: true, auto: false)))
         let thought = item(textItem(11, ts: 1_011, "hmm", thinking: true))
         let rows = TranscriptRows.rows([userEntry(1), read(2), read(3), edit(4), read(5), plan, read(7), approval, read(9), read(10), thought, read(12)], turnOpen: false)
-        #expect(kinds(rows) == ["item 1", "group [2, 3, 4, 5]", "item 6", "group [7]", "item 8", "group [9, 10, 11, 12]"])
+        #expect(kinds(rows) == ["item 1", "group [2, 3, 4, 5, 6, 7]", "item 8", "group [9, 10, 11, 12]"])
     }
 
-    @Test func `a group keeps its first seq when a third step appends`() {
+    @Test func `a group keeps its first step's key as steps append`() {
         let before = TranscriptRows.rows([userEntry(1), read(2), read(3)], turnOpen: true)
         let after = TranscriptRows.rows([userEntry(1), read(2), read(3), read(4)], turnOpen: true)
         #expect(before[1].id == after[1].id)
         #expect(after[1].id == TranscriptRowID(key: 2))
-        guard case .group(let group) = after[1] else { return }
-        #expect(group.entries.count == 3)
+        #expect(group(after, 1)?.entries.count == 3)
     }
 
-    @Test func `live is the last group of the open last turn and nothing else`() {
+    @Test func `the open turn works in its last group, and through a card that waits on the person`() {
         let open = TranscriptRows.rows([userEntry(1), read(2), read(3)], turnOpen: true)
         #expect(kinds(open) == ["item 1", "group [2, 3] live", "line 1 last"])
+        #expect(group(open, 1)?.working == true)
+        #expect(group(open, 1)?.settled == false)
         let settled = TranscriptRows.rows([userEntry(1), read(2), read(3)], turnOpen: false)
         #expect(kinds(settled) == ["item 1", "group [2, 3]"])
-        // Prose after the group: the agent moved on, the group is no longer where it works.
+        #expect(group(settled, 1)?.working == false)
+        #expect(group(settled, 1)?.settled == true)
+        // Prose after the group: the agent moved on.
         let followed = TranscriptRows.rows([userEntry(1), read(2), read(3), item(textItem(4, ts: 1_004, "so", streaming: true))], turnOpen: true)
         #expect(kinds(followed) == ["item 1", "group [2, 3]", "item 4", "line 1 last"])
-        // An earlier turn's group never is, however the last turn stands.
+        #expect(group(followed, 1)?.working == false)
+        // A card waiting on the person: the group above it still works, and is not live.
+        let asking = item(.approval(ApprovalItem(seq: 4, ts: 1_004, request: ApprovalRequestEvent(requestId: "r", toolName: "Bash"), allowed: nil, auto: false)))
+        let waiting = TranscriptRows.rows([userEntry(1), read(2), read(3), asking], turnOpen: true)
+        #expect(group(waiting, 1)?.working == true)
+        #expect(group(waiting, 1)?.live == false)
+        // An earlier turn's group never works, however the last turn stands.
         let earlier = TranscriptRows.rows([userEntry(1, completedTs: 1_900), read(2), read(3), userEntry(4, ts: 2_000), read(5), read(6)], turnOpen: true)
         #expect(kinds(earlier) == ["item 1", "group [2, 3]", "end 1", "item 4", "group [5, 6] live", "line 4 last"])
+        #expect(group(earlier, 1)?.working == false)
     }
 
     @Test func `a settled turn ends with its duration and answer; the last turn, open or pending, ends on its working line`() {
@@ -114,23 +130,58 @@ import TempCodeContract
         #expect(kinds(TranscriptRows.rows([userEntry(1, completedTs: 1_010), failed], turnOpen: false)) == ["item 1", "item 4", "end 1 last"])
     }
 
-    @Test func `while the turn is open, what the working line says is no row: a streaming thought and a told call`() {
+    @Test func `while the turn is open, a streaming thought is no step and a told call no row`() {
         let thinking = item(textItem(2, ts: 1_002, "Look at the schema.", thinking: true, streaming: true))
         #expect(kinds(TranscriptRows.rows([userEntry(1), thinking], turnOpen: true)) == ["item 1", "line 1 last"])
-        // The thought ended: a phase of thoughts alone still draws nothing.
+        // The thought ended: a run of thoughts alone still draws nothing.
         let thought = item(textItem(2, ts: 1_002, "Look at the schema.", thinking: true))
         #expect(kinds(TranscriptRows.rows([userEntry(1), thought], turnOpen: true)) == ["item 1", "line 1 last"])
-        // A running call the line tells joins its phase once it settles.
-        let running = item(toolItem(3, ts: 1_003, input: ["file_path": .string("/repo/3.ts")]))
-        #expect(kinds(TranscriptRows.rows([userEntry(1), read(2), running], turnOpen: true)) == ["item 1", "group [2] live", "line 1 last"])
+        // One told call alone is no row; it lands in its group once it settles, under the same key.
+        let running = run(3, running: true)
         #expect(kinds(TranscriptRows.rows([userEntry(1), thought, running], turnOpen: true)) == ["item 1", "line 1 last"])
-        #expect(kinds(TranscriptRows.rows([userEntry(1), thought, read(3)], turnOpen: true)) == ["item 1", "group [2, 3] live", "line 1 last"])
-        // A settled turn keeps its thoughts in its phases, for a person who opens one.
-        let rows = TranscriptRows.rows([userEntry(1, completedTs: 2_000), thought, read(3)], turnOpen: false)
-        guard case .group(let group) = rows[1] else { return }
-        #expect(group.isSingle)
-        #expect(group.shown(byHand: false).map(\.seq) == [3])
-        #expect(group.shown(byHand: true).map(\.seq) == [2, 3])
+        let landed = TranscriptRows.rows([userEntry(1), thought, run(3)], turnOpen: true)
+        #expect(kinds(landed) == ["item 1", "group [2, 3] live", "line 1 last"])
+        // Beside a settled step it is a step of the group, named in its line, with no row.
+        let rows = TranscriptRows.rows([userEntry(1), read(2), running], turnOpen: true)
+        #expect(kinds(rows) == ["item 1", "group [2, 3] live", "line 1 last"])
+        #expect(group(rows, 1)?.lone == false)
+        #expect(group(rows, 1)?.shown(byHand: false).map(\.seq) == [2])
+        // An agent call is never told: it stays a row with its state.
+        let spawn = item(toolItem(3, ts: 1_003, name: "spawn_agent", input: ["task": .string("look")]))
+        #expect(group(TranscriptRows.rows([userEntry(1), read(2), spawn], turnOpen: true), 1)?.shown(byHand: false).map(\.seq) == [2, 3])
+    }
+
+    @Test func `a thought shows only in a group opened by hand`() {
+        let thought = item(textItem(2, ts: 1_002, "Look at the schema.", thinking: true))
+        let rows = TranscriptRows.rows([userEntry(1, completedTs: 2_000), thought, read(3), read(4)], turnOpen: false)
+        #expect(group(rows, 1)?.shown(byHand: false).map(\.seq) == [3, 4])
+        #expect(group(rows, 1)?.shown(byHand: true).map(\.seq) == [2, 3, 4])
+        // A thought does not make a step: one call with thoughts is lone.
+        let lone = TranscriptRows.rows([userEntry(1, completedTs: 2_000), thought, read(3)], turnOpen: false)
+        #expect(group(lone, 1)?.lone == true)
+        #expect(group(lone, 1)?.kind == .research)
+        #expect(group(lone, 1)?.phrase() == "Read 3.ts")
+    }
+
+    @Test func `a stopped turn's running call draws settled`() {
+        let stop = item(.system(SystemLine(seq: 4, ts: 1_004, kind: .error, text: "stopped", detail: nil, stopped: true)))
+        let rows = TranscriptRows.rows([userEntry(1, completedTs: 1_010), read(2), run(3, running: true), stop], turnOpen: false)
+        #expect(kinds(rows) == ["item 1", "group [2, 3]", "end 1 stopped last"])
+        #expect(group(rows, 1)?.settled == true)
+        #expect(group(rows, 1)?.working == false)
+        #expect(group(rows, 1)?.shown(byHand: false).map(\.seq) == [2, 3])
+    }
+
+    @Test func `the line counts every edit and every failure`() {
+        let failed = item(.tool(ToolItem(seq: 5, ts: 1_005, callId: "c5", name: "Bash", display: nil, input: .object(["command": .string("bun test")]), partial: false, preview: nil, parentCallId: nil, inputOmitted: false, output: .none, status: .failed, reauth: nil, doneTs: 1_105)))
+        let rows = TranscriptRows.rows([userEntry(1, completedTs: 2_000), edit(2), read(3), failed], turnOpen: false)
+        guard let line = group(rows, 1) else {
+            Issue.record("shape \(kinds(rows))")
+            return
+        }
+        #expect(line.adds == 1 && line.dels == 1)
+        #expect(line.failed == 1)
+        #expect(!line.phrase().contains("failed"))
     }
 
     @Test func `rowID finds the group for a hidden chip and the item for prose`() {
@@ -152,6 +203,61 @@ import TempCodeContract
     @Test func `entries before the first user row fold on their own`() {
         let rows = TranscriptRows.rows([read(2), read(3), item(textItem(4, ts: 1_004, "done"))], turnOpen: false)
         #expect(kinds(rows) == ["group [2, 3]", "item 4"])
+        // A subagent's transcript with no message of its own: its last group is live while it runs.
+        #expect(kinds(TranscriptRows.rows([read(2), read(3)], turnOpen: true)) == ["group [2, 3] live"])
+    }
+}
+
+/// `GroupFold`: how a group opens and folds (the desktop's ActionGroup with useFoldHold).
+@Suite struct GroupFoldTests {
+    @Test func `mounted working it is open, mounted settled closed; a lone step is always its row`() {
+        #expect(GroupFold(working: true).isOpen(lone: false, at: 0))
+        #expect(!GroupFold(working: false).isOpen(lone: false, at: 0))
+        #expect(GroupFold(working: false).isOpen(lone: true, at: 0))
+    }
+
+    @Test func `it folds the hold after the work moves on, and not before`() {
+        var fold = GroupFold(working: true)
+        fold.set(working: false, at: 10)
+        #expect(fold.isOpen(lone: false, at: 10))
+        #expect(fold.isOpen(lone: false, at: 10 + GroupFold.hold - 0.01))
+        #expect(!fold.isOpen(lone: false, at: 10 + GroupFold.hold))
+        // Work coming back inside the hold keeps it open with no hold left.
+        var back = GroupFold(working: true)
+        back.set(working: false, at: 10)
+        back.set(working: true, at: 10.2)
+        #expect(back.isOpen(lone: false, at: 20))
+        #expect(back.heldUntil == nil)
+    }
+
+    @Test func `a person's hand decides from then on`() {
+        var closed = GroupFold(working: true)
+        closed.toggle(lone: false, at: 1)
+        #expect(closed.hand == false)
+        #expect(!closed.isOpen(lone: false, at: 1))
+        closed.set(working: false, at: 2)
+        closed.set(working: true, at: 3)
+        #expect(!closed.isOpen(lone: false, at: 3))
+        // Opening a row's body keeps it open past the hold.
+        var kept = GroupFold(working: true)
+        kept.decide()
+        kept.set(working: false, at: 5)
+        #expect(kept.isOpen(lone: false, at: 100))
+        // A decision already made is not overturned by a body opening.
+        var shut = GroupFold(working: false)
+        shut.choose(open: false)
+        shut.decide()
+        #expect(shut.hand == false)
+    }
+
+    @Test func `a working group shows its newest five rows, a decided one every row`() {
+        let rows = Array(1...8)
+        let auto = GroupFold(working: true)
+        #expect(Array(auto.visible(rows, lone: false)) == [4, 5, 6, 7, 8])
+        var hand = auto
+        hand.choose(open: true)
+        #expect(Array(hand.visible(rows, lone: false)) == rows)
+        #expect(Array(auto.visible([1], lone: true)) == [1])
     }
 }
 
@@ -293,5 +399,36 @@ import TempCodeContract
         born.open(at: 10)
         #expect(born.claim(row(-1_000, key: -1_000)))
         #expect(!born.isUnclaimed(row(12, key: -1_000)))
+    }
+}
+
+/// `TranscriptRows.windowStart`: the list's window holds its top row while rows arrive below.
+@Suite struct TranscriptWindowTests {
+    private func rows(_ keys: ClosedRange<Int>) -> [TranscriptRowModel] {
+        keys.map { .item(ThreadEntry(item: textItem($0, ts: $0, "p\($0)"), key: $0)) }
+    }
+
+    @Test func `rows arriving below never push the top row out`() {
+        let before = rows(1...100)
+        let start = TranscriptRows.windowStart(before, top: nil, count: 75)
+        #expect(start == 25)
+        let top = before[start].id
+        #expect(TranscriptRows.windowStart(rows(1...110), top: top, count: 75) == 25)
+    }
+
+    @Test func `a top row that left, or a resize, takes the newest rows`() {
+        #expect(TranscriptRows.windowStart(rows(30...110), top: TranscriptRowID(key: 26), count: 75) == 6)
+        #expect(TranscriptRows.windowStart(rows(1...10), top: nil, count: 75) == 0)
+    }
+}
+
+@Suite struct TranscriptQuestionCallTests {
+    @Test func `a question call whose card follows is no step`() {
+        let ask = item(toolItem(2, ts: 1_002, doneTs: 1_102, name: "AskUserQuestion"))
+        let card = item(.question(QuestionItem(seq: 3, ts: 1_003, request: QuestionRequestEvent(requestId: "q", questions: []), answers: nil, resolved: false)))
+        let rows = TranscriptRows.rows([item(userItem(1, ts: 1_000)), ask, card], turnOpen: true)
+        #expect(rows.map(\.id.key) == [1, 3, 1])
+        // With no card after it the call stays a step.
+        #expect(TranscriptRows.rows([item(userItem(1, ts: 1_000)), ask], turnOpen: false).count == 2)
     }
 }

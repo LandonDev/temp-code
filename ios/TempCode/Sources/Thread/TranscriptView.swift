@@ -29,6 +29,8 @@ struct TranscriptView: View {
     /// The reading measure applies: a chat, a subagent, the agent detail.
     var measured = false
     @State private var window = TranscriptView.page
+    /// The row the window starts at, once shown: rows arriving below never push it out.
+    @State private var windowTop: TranscriptRowID?
     @State private var scrollState = TranscriptScrollState()
     @State private var targetStatus: String?
     /// Groups opened by the view itself (a search landing inside one, the
@@ -63,8 +65,9 @@ struct TranscriptView: View {
 
     var body: some View {
         let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory)
-        let shown = rows.count > window ? Array(rows.suffix(window)) : rows
-        let moreAbove = rows.count > window || thread.moreBefore
+        let start = TranscriptRows.windowStart(rows, top: windowTop, count: window)
+        let shown = Array(rows[start...])
+        let moreAbove = start > 0 || thread.moreBefore
         let turns = TranscriptView.turnKeys(rows)
         let _ = bornRows.open(thread: client.threads[sessionId])
         let _ = LayoutProbe.note("bornOpenedAt", bornRows.openedAt.map(String.init) ?? "waiting")
@@ -120,6 +123,8 @@ struct TranscriptView: View {
             .environment(\.transcriptFollow, follow)
             .environment(\.transcriptCwd, cwd)
             .task(id: sessionId) { cwd = client.session(sessionId)?.cwd }
+            // The window keeps the row it starts at; a resize clears it and the next pass records the new one.
+            .onChange(of: shown.first?.id, initial: true) { _, top in windowTop = top }
             .contentMargins(.vertical, 8, for: .scrollContent)
             // The measure: the inset past the 16 pt row inset that centres a column no wider than the cap.
             .contentMargins(.horizontal, measured ? ReadingMeasure.sideInset(width: listWidth) - ReadingMeasure.edge : 0, for: .scrollContent)
@@ -298,7 +303,7 @@ struct TranscriptView: View {
               let first = rows.first(where: { if case .group = $0 { return true } else { return false } }) else { return }
         proofGroupOpened = true
         Motion.withoutAnimation { openGroups.insert(first.id) }
-        window = max(window, rows.count)
+        resize(max(window, rows.count))
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(60))
             var transaction = Transaction()
@@ -324,7 +329,7 @@ struct TranscriptView: View {
         }
         guard let state = client.threads[sessionId], !state.moreBefore, !state.entries.isEmpty else { return }
         let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen)
-        window = rows.count
+        resize(rows.count)
         try? await Task.sleep(for: .seconds(2))
         var setup = Transaction()
         setup.disablesAnimations = true
@@ -409,12 +414,18 @@ struct TranscriptView: View {
         self.recorder = nil
     }
 
+    /// The window holds the newest `count` rows from here on.
+    private func resize(_ count: Int) {
+        window = count
+        windowTop = nil
+    }
+
     /// The bottom, at once and with no motion: the window back to one page
     /// (the rows above are dropped, not scrolled past) and the reader pinned
     /// there as if they had never scrolled up.
     private func snapToBottom(proxy: ScrollViewProxy) {
         Motion.withoutAnimation {
-            window = Self.page
+            resize(Self.page)
             scrollState.atBottom = true
         }
         var transaction = Transaction()
@@ -458,7 +469,7 @@ struct TranscriptView: View {
         guard !Task.isCancelled else { return }
         targetStatus = nil
         TestHooks.recordNavigation(target: targetSeq, item: seq, oldest: client.threads[sessionId]?.rows.first?.seq)
-        window = max(window, rows.count - index + 8)
+        resize(max(window, rows.count - index + 8))
         if case .group = rows[index] { Motion.withoutAnimation { openGroups.insert(id) } }
         try? await Task.sleep(for: .milliseconds(60))
         guard !Task.isCancelled else { return }
@@ -482,11 +493,11 @@ struct TranscriptView: View {
         extending = true
         defer { extending = false }
         let anchorSeq = top.anchorSeq
-        if rows.count > window {
-            window += Self.page
+        if rows.count > shown.count {
+            resize(shown.count + Self.page)
         } else {
             await client.loadOlder(sessionId)
-            window += olderPage
+            resize(shown.count + olderPage)
         }
         var anchor = top.id
         if case .group = top, let anchorSeq, let state = client.threads[sessionId],

@@ -43,7 +43,7 @@ const ALLOWED: Record<string, number> = {
   "Thread/ResourcesSheet.swift": 2,
   "Thread/SourcesView.swift": 2,
   "Thread/ThreadScreen.swift": 1,
-  "Thread/ToolChip.swift": 2,
+  "Thread/ToolChip.swift": 1,
   "Thread/TranscriptRows.swift": 5,
   "Thread/TranscriptView.swift": 3,
 };

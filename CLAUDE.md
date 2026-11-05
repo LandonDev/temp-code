@@ -2545,11 +2545,16 @@ proof and the sizing rules; the pieces, by name:
   Inbox's sort, status words, seen marks and the patch split by file), the
   `MarkdownCache` that parses rows off the main actor (and a streaming
   row's changed block only, on it: `streamingDocument`), `TranscriptRows`
-  (entries → the list's rows: an item, a phase of thinking and tool calls
-  under one line with the live rule (the desktop's former zen activity view), a
-  turn's end row, its working line then its closing line; stable ids) and
-  `ToolPhrase` (the desktop's toolPhrase.ts with `group`, its `groupPhrase`,
-  tested); `threads[id].fold`
+  (entries → the list's rows, the desktop's transcriptRows.ts: an item,
+  a group of everything between two paragraphs (`ActivityGroup`: a lone
+  step is its own row under the same key; `GroupFold` opens the working
+  group at two steps, shows its newest five, folds 0.6 s after the work
+  moves on, and a person's hand decides from then on), a turn's end row,
+  its working line then its closing line; stable ids), `ToolPhrase` (the
+  desktop's toolPhrase.ts), `GroupPhrase` (groupPhrase.ts, over
+  `GroupStep` tool steps; A8 adds the host's steps) and `ActionRow` (the
+  desktop's actionModel.ts: verb, object, counts, what a row opens), all
+  tested; `threads[id].fold`
   stays current incrementally. The transcript's two seams for sibling
   threads: `StreamingAssistantRow` (`Thread/StreamingRow.swift`, the
   streaming reveal) and `MediaImage.hostOf(_:)` (the host of an `fs.media`
@@ -2603,8 +2608,7 @@ proof and the sizing rules; the pieces, by name:
   provisional id and the final row's seq, folds `live-edits` into the
   running edit tool by path (`ToolItem.live`, `ThreadFold.liveEdits`), and
   `EnvironmentClient.append` applies a batch in place;
-  `Thread/StreamingRow.swift` holds the streaming assistant row and the
-  live chip label; the phrase fade (A5) is the client package's
+  `Thread/StreamingRow.swift` holds the streaming assistant row; the phrase fade (A5) is the client package's
   `Rendering/StreamReveal.swift` (`StreamRevealLedger`: a ledger per block
   by its first 32 characters, the settled prefix and at most four steps
   younger than `revealFade` as runs, a reparsed block fading whole, none
@@ -2626,10 +2630,13 @@ proof and the sizing rules; the pieces, by name:
   notes every scroll write and every offset drop that stays two frames
   (`write`, `jumpUp` in layout-events.json), which the transcript set
   fails on; the test server's `POST /scenario` gives each play its own ids
-  (`uniqueScenarioIds`); `Thread/ActivityPhaseRow.swift` the phases, their rail
-  and the thinking steps (a thought is no row: only a phase opened by hand
-  shows one, as "Thought"; while the turn is open a streaming thought and
-  a call the working line tells are no row, `TranscriptRows.rows`); a
+  (`uniqueScenarioIds`); `Thread/ActionGroup.swift` a group and its
+  steps, one tree for a lone row and a table (`ActionLine.swift` the step
+  grid; a thought is no row: only a group opened by hand shows one, as
+  "Thought"; while the turn is open a streaming thought is no step and a
+  call the working line tells is a step with no row, `TranscriptRows.rows`;
+  a running step is the still dot, and a step whose turn is over draws
+  settled); a
   turn's end row is one row from Send to the
   close, `TurnLineRow` (`Thread/WorkingLine.swift`, over the client
   package's `TurnLineInput` and `TurnLineModel` in `Rendering/TurnLine.swift`

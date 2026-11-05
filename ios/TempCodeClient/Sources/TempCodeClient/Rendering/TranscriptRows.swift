@@ -28,69 +28,159 @@ public final class RowKeyMemory: @unchecked Sendable {
     public init() {}
 }
 
-/// One phase of a turn's work, the desktop's `ActivityPhase` in zen (its
-/// default view): a run of calls of one kind with the thinking that led
-/// into them, under one human line ("Read 3 files in src/lib and searched
-/// for tokens"). The prose around a phase never joins it.
+/// Everything the agent did between two paragraphs, the desktop's
+/// `ActionGroup` (transcriptRows.ts, transcriptActivity.ts `actionGroupOf`):
+/// calls, settled edits, todo updates and thoughts, in order. One step is
+/// its own row at the prose's edge (`lone`); more is one muted line ("Read
+/// 3 files in src/lib, ran a command") that opens onto a table of its rows.
+/// A lone step and a group are one row under one key, so a second call
+/// landing remounts nothing.
+///
+/// Thoughts are steps but no rows: one shows only in a group a person
+/// opened, as "Thought". While the turn is open a call the working line
+/// tells (`LinePhase.told`) is no row either; it counts in the phrase and
+/// in `lone`, and lands as a past-tense row once it settles.
 public struct ActivityGroup: Hashable, Sendable {
-    /// What the calls were for, `ActivityPhaseKind`: reads and searches are
-    /// one thing (looking around), a group the agent only thought in is `think`.
+    /// The glyph the line leads with: the run's dominant kind of work, else `think`.
     public enum Kind: Hashable, Sendable {
-        case research, edit, run, other, think
+        case research, edit, run, agents, other, think
     }
 
-    /// In order; one or more. Thinking and tool calls, edits among them.
+    /// In order; one or more. Thoughts and tool calls, edits among them.
     public var entries: [ThreadEntry]
-    public var kind: Kind
     /// The key it is drawn under: its first step's, or the one an earlier
     /// build gave it (`RowKeyMemory`).
     public var key: Int
-    /// The phase the agent is in: the last phase of the last activity run of
-    /// a turn still open, with nothing after it. Its title shimmers in the
-    /// present tense and it opens by itself on its second step.
+    /// The running turn's last item: the line reads in the present tense.
     public var live: Bool
+    /// The open turn works in this group: it is the turn's last item, or
+    /// only a card waiting on the person follows it. The group opens on its
+    /// own at two steps while this holds (`GroupFold`).
+    public var working: Bool
+    /// The group's turn is over: a call still marked running (a Stop cut
+    /// it) draws settled, never working.
+    public var settled: Bool
+    /// The calls the open turn's working line tells: steps, but no rows.
+    public var told: Set<String>
 
-    public init(entries: [ThreadEntry], kind: Kind, live: Bool, key: Int? = nil) {
+    public init(entries: [ThreadEntry], live: Bool = false, working: Bool = false, settled: Bool = true, told: Set<String> = [], key: Int? = nil) {
         self.entries = entries
-        self.kind = kind
         self.live = live
+        self.working = working
+        self.settled = settled
+        self.told = told
         self.key = key ?? entries.first?.key ?? 0
     }
 
     public var id: TranscriptRowID { TranscriptRowID(key: key) }
-
-    /// A lone step is not a group: it draws as its row with the kind's mark,
-    /// never under a header repeating it. Thoughts are not counted: they show
-    /// only in a group a person opened.
-    public var isSingle: Bool { calls.count == 1 }
 
     /// The steps that are not thoughts.
     public var calls: [ThreadEntry] {
         entries.filter { if case .thinking = $0.item { false } else { true } }
     }
 
-    /// The steps a phase shows: every one in a group the person opened, else
-    /// its calls and edits alone (a thought is no row; the working line said it).
-    public func shown(byHand: Bool) -> [ThreadEntry] { byHand ? entries : calls }
+    public var tools: [ToolItem] {
+        entries.compactMap { if case .tool(let tool) = $0.item { tool } else { nil } }
+    }
 
-    /// The edits in the phase: a closed phase still shows what it changed.
-    public var edits: [ToolItem] {
-        entries.compactMap { entry in
-            guard case .tool(let tool) = entry.item, Board.editPath(tool) != nil else { return nil }
-            return tool
+    /// At most one step, thoughts aside: no line and no table, the step is its own row.
+    public var lone: Bool { calls.count <= 1 }
+
+    /// The rows it draws: a thought only once a hand opened the group (and
+    /// never while it streams), a told call only once its turn is over.
+    public func shown(byHand: Bool) -> [ThreadEntry] {
+        entries.filter { entry in
+            switch entry.item {
+            case .thinking(let block): return byHand && !block.streaming
+            case .tool(let tool): return settled || !told.contains(tool.callId)
+            default: return true
+            }
         }
     }
 
-    /// The header, `activityPhaseTitle`: "Thinking" / "Thought" for a phase
-    /// that only thought, else the calls in plain words, present tense while live.
-    public func title(cwd: String? = nil) -> String {
-        if kind == .think { return live ? "Thinking" : "Thought" }
-        let tools = entries.compactMap { entry -> ToolItem? in
-            if case .tool(let tool) = entry.item { return tool }
-            return nil
+    /// The run's main kind of work, `dominantWorkKind`: the most steps of
+    /// one kind, ties to the earlier of edit, run, research, agents, other.
+    public var kind: Kind {
+        var counts: [Kind: Int] = [:]
+        for tool in tools { counts[TranscriptRows.category(tool), default: 0] += 1 }
+        var best: Kind?
+        for kind in [Kind.edit, .run, .research, .agents, .other] {
+            let count = counts[kind] ?? 0
+            if count > 0, best == nil || count > (counts[best!] ?? 0) { best = kind }
         }
-        let line = ToolPhrase.group(tools, cwd: cwd, live: live)
+        return best ?? .think
+    }
+
+    /// The line's words: "Thinking" / "Thought" for a run of thoughts, else
+    /// the steps in plain words (`GroupPhrase`), present tense while live.
+    public func phrase(cwd: String? = nil, titleOf: (String) -> String? = { _ in nil }) -> String {
+        if kind == .think { return live ? "Thinking" : "Thought" }
+        let line = GroupPhrase.of(tools.map(GroupStep.tool), cwd: cwd, live: live, titleOf: titleOf)
         return line.isEmpty ? (live ? "Working" : "Worked") : line
+    }
+
+    /// Lines added and removed over every edit in the run.
+    public var adds: Int { tools.reduce(0) { $0 + (ActionRow.of($1).adds ?? 0) } }
+    public var dels: Int { tools.reduce(0) { $0 + (ActionRow.of($1).dels ?? 0) } }
+    /// Steps that failed or were refused: the line's red count, never words.
+    public var failed: Int { tools.filter { $0.status == .failed }.count }
+}
+
+/// How a group opens and folds, the desktop's ActionGroup with
+/// `useFoldHold`: a lone step is always open (it is its row); a person's
+/// hand (the line, or a row's body) decides from then on; otherwise it is
+/// open while the turn works in it and `hold` seconds after the work moves
+/// on, so the last step's settle shows before it folds. Mounted working it
+/// is open, mounted settled closed, neither animated.
+public struct GroupFold: Hashable, Sendable {
+    /// `FOLD_HOLD_MS`.
+    public static let hold: Double = 0.6
+    /// `GROUP_WINDOW`: the newest rows a group shows while it runs on its own.
+    public static let window = 5
+
+    /// nil while the group runs on its own; else what the person chose.
+    public private(set) var hand: Bool?
+    /// While working ended less than `hold` ago: when the hold lets go.
+    public private(set) var heldUntil: Double?
+    private var working: Bool
+
+    public init(working: Bool, hand: Bool? = nil) {
+        self.working = working
+        self.hand = hand
+    }
+
+    /// The turn's work moved: ending it starts the hold, starting it again drops it.
+    public mutating func set(working: Bool, at now: Double) {
+        guard working != self.working else { return }
+        self.working = working
+        heldUntil = working ? nil : now + Self.hold
+    }
+
+    public func isOpen(lone: Bool, at now: Double) -> Bool {
+        if lone { return true }
+        if let hand { return hand }
+        return working || (heldUntil.map { now < $0 } ?? false)
+    }
+
+    /// The line was tapped: the person's choice is the opposite of what shows.
+    public mutating func toggle(lone: Bool, at now: Double) {
+        hand = !isOpen(lone: lone, at: now)
+    }
+
+    /// The person chose: open or closed from now on.
+    public mutating func choose(open: Bool) {
+        hand = open
+    }
+
+    /// A row's body was opened: the group stays as it is, the person's from now on.
+    public mutating func decide() {
+        if hand == nil { hand = true }
+    }
+
+    /// The rows a group shows: its newest `window` while it runs on its own,
+    /// every one once a hand decided it (or a lone step's).
+    public func visible<T>(_ rows: [T], lone: Bool) -> ArraySlice<T> {
+        hand == nil && !lone ? rows.suffix(Self.window) : rows[...]
     }
 }
 
@@ -168,15 +258,14 @@ public enum TranscriptRowModel: Identifiable, Hashable, Sendable {
 /// every change of the entries, on the main actor, well under a millisecond
 /// for two thousand entries.
 public enum TranscriptRows {
-    /// An entry that joins a run of activity, `isActivityBlock` in zen: a
-    /// thought with words in it, or a tool call that is not a plan tool (a
-    /// quiet line of its own) or a published page (a row of its own, the
-    /// page). Edits join too; a closed phase keeps them in view. Questions,
-    /// approvals, prose and every host row break the run.
+    /// An entry that joins a run, `isActivityBlock`: a thought with words in
+    /// it, or a tool call that is not a published page (a row of its own,
+    /// the page). Edits and todo updates join too. Questions, approvals,
+    /// prose and every host row break the run.
     public static func folds(_ entry: ThreadEntry) -> Bool {
         switch entry.item {
         case .thinking(let block): return hasWords(block.text)
-        case .tool(let tool): return !tool.isPlanTool && tool.htmlRender == nil
+        case .tool(let tool): return tool.htmlRender == nil
         default: return false
         }
     }
@@ -190,15 +279,41 @@ public enum TranscriptRows {
         }
     }
 
-    /// The rows for `entries`. `turnOpen` is the fold's `board.turnOpen`:
-    /// while true, the last phase of the last turn (with nothing after it)
+    /// The harness's question call when its card follows in the turn: the
+    /// card is the question (the desktop draws the call as the card), so
+    /// the call is no step.
+    static func askedByCard(_ entries: [ThreadEntry], _ index: Int) -> Bool {
+        guard case .tool(let tool) = entries[index].item, ToolPhrase.kind(of: tool) == .question else { return false }
+        for entry in entries[(index + 1)...] {
+            switch entry.item {
+            case .question: return true
+            case .user: return false
+            default: continue
+            }
+        }
+        return false
+    }
+
+    /// A card still waiting on the person: the work has not moved past the group above it.
+    static func waitsOnPerson(_ row: TranscriptRowModel) -> Bool {
+        guard case .item(let entry) = row else { return false }
+        switch entry.item {
+        case .approval(let approval): return approval.allowed == nil
+        case .question(let question): return question.answers == nil && !question.resolved
+        default: return false
+        }
+    }
+
+    /// The rows for `entries`, the desktop's `flattenTurns`. `turnOpen` is
+    /// the fold's `board.turnOpen`: while true, the last turn's last group
     /// is live and the last turn's end row is its working line, as it is
     /// from the moment a message is sent (a pending row, seq below zero). A
     /// settled turn's end row is its closing line. The person's Stop row is
-    /// no row: the end row says Stopped. While the last turn is open, what
-    /// its working line says is no row either: a thought still streaming
-    /// and a call the line tells (`LinePhase.told`), which joins its phase
-    /// once it settles. A phase of thoughts alone draws nothing.
+    /// no row: the end row says Stopped. Everything between two paragraphs
+    /// is one group. While the last turn is open a thought still streaming
+    /// is no step, and a call the working line tells (`LinePhase.told`) is
+    /// a step with no row; a group with nothing to draw (thoughts alone, or
+    /// one told call) is no row.
     public static func rows(_ entries: [ThreadEntry], turnOpen: Bool, memory: RowKeyMemory? = nil) -> [TranscriptRowModel] {
         var rows: [TranscriptRowModel] = []
         rows.reserveCapacity(entries.count + 8)
@@ -215,25 +330,27 @@ public enum TranscriptRows {
         let openTurn: Bool = lastUser.map { index in
             guard case .user(let user) = entries[index].item else { return false }
             return user.seq < 0 || (turnOpen && user.completedTs == nil)
-        } ?? false
-        let told: Set<String> = openTurn ? Set(LinePhase.told(Array(entries[lastUser!...])).map(\.callId)) : []
+        } ?? turnOpen
+        let told: Set<String> = openTurn ? Set(LinePhase.told(Array(entries[(lastUser ?? 0)...])).map(\.callId)) : []
+        /// Where the open last turn's rows start: its groups are the ones that may work.
+        var openRowsFrom: Int?
 
         /// Group keys given out in this build: a key is drawn once.
         var drawn: Set<Int> = []
-        func flushRun() {
-            for var phase in phases(run) where !phase.calls.isEmpty {
-                // A group keeps the key it was drawn under before, whatever joined
-                // above it; else its first step's, else any step's not yet drawn.
-                let remembered = memory.map { memory in phase.entries.compactMap { memory.groups[$0.key] } } ?? []
-                if let key = (remembered + phase.entries.map(\.key)).first(where: { !drawn.contains($0) }) { phase.key = key }
-                drawn.insert(phase.key)
-                if let memory { for entry in phase.entries { memory.groups[entry.key] = phase.key } }
-                rows.append(.group(phase))
-            }
-            run = []
+        func flushRun(inOpenTurn: Bool) {
+            defer { run = [] }
+            var group = ActivityGroup(entries: run, settled: !inOpenTurn, told: inOpenTurn ? told : [])
+            guard !group.calls.isEmpty, !(group.lone && group.shown(byHand: false).isEmpty) else { return }
+            // A group keeps the key it was drawn under before, whatever joined
+            // above it; else its first step's, else any step's not yet drawn.
+            let remembered = memory.map { memory in group.entries.compactMap { memory.groups[$0.key] } } ?? []
+            if let key = (remembered + group.entries.map(\.key)).first(where: { !drawn.contains($0) }) { group.key = key }
+            drawn.insert(group.key)
+            if let memory { for entry in group.entries { memory.groups[entry.key] = group.key } }
+            rows.append(.group(group))
         }
         func closeTurn(open: Bool, end: Int) {
-            flushRun()
+            flushRun(inOpenTurn: open)
             if let turnUser {
                 let joined = answer.joined(separator: "\n\n")
                 if open {
@@ -249,12 +366,14 @@ public enum TranscriptRows {
         }
 
         for (index, entry) in entries.enumerated() {
+            let inOpenTurn = openTurn && (lastUser.map { index > $0 } ?? true)
             if case .user(let turn) = entry.item {
                 closeTurn(open: false, end: index)
                 turnUser = turn
                 turnUserKey = entry.key
                 turnStart = index
                 rows.append(.item(entry))
+                if openTurn, index == lastUser { openRowsFrom = rows.count }
                 continue
             }
             if turnUser != nil {
@@ -270,27 +389,31 @@ public enum TranscriptRows {
                 default: break
                 }
             }
-            if ignored(entry) || repeatsNextProse(entries, index) { continue }
-            if openTurn, let lastUser, index > lastUser {
-                switch entry.item {
-                case .thinking(let block) where block.streaming: continue
-                case .tool(let tool) where told.contains(tool.callId): continue
-                default: break
-                }
-            }
+            if ignored(entry) || repeatsNextProse(entries, index) || askedByCard(entries, index) { continue }
+            if inOpenTurn, case .thinking(let block) = entry.item, block.streaming { continue }
             if folds(entry) {
                 run.append(entry)
                 continue
             }
-            flushRun()
+            flushRun(inOpenTurn: inOpenTurn)
             if case .assistant(let block) = entry.item { answer.append(block.text) }
             rows.append(.item(entry))
         }
-        // The last turn: its trailing phase is live while the turn is open.
-        flushRun()
-        if turnOpen, case .group(var group)? = rows.last {
-            group.live = true
-            rows[rows.count - 1] = .group(group)
+        flushRun(inOpenTurn: openTurn)
+        // The open turn's groups: the one it is in works (it is the turn's last
+        // row, or only cards waiting on the person follow it), and is live
+        // while the turn runs.
+        if openTurn, let from = openRowsFrom ?? (lastUser == nil ? 0 : nil), from < rows.count {
+            for at in (from..<rows.count).reversed() {
+                guard case .group(var group) = rows[at] else {
+                    if waitsOnPerson(rows[at]) { continue }
+                    break
+                }
+                group.working = true
+                group.live = turnOpen && at == rows.count - 1
+                rows[at] = .group(group)
+                break
+            }
         }
         closeTurn(open: openTurn && turnUser != nil, end: entries.count)
         if let at = rows.lastIndex(where: { if case .turnEnd = $0 { true } else { false } }), case .turnEnd(var end) = rows[at] {
@@ -300,56 +423,9 @@ public enum TranscriptRows {
         return rows
     }
 
-    /// `buildActivityPhases`: one phase per kind of work, so a run of reads
-    /// followed by a run of edits reads as two things. Thinking is a step,
-    /// never a header; a thought at the end of a phase moves into the phase
-    /// it introduced; a group that opened on a thought takes the shape of
-    /// the work after it; a single call of another kind folds back into
-    /// the phase before it (`absorbStrayPhases`).
-    static func phases(_ run: [ThreadEntry]) -> [ActivityGroup] {
-        var phases: [ActivityGroup] = []
-        for entry in run {
-            guard case .tool(let tool) = entry.item else {
-                if phases.isEmpty { phases.append(ActivityGroup(entries: [], kind: .think, live: false)) }
-                phases[phases.count - 1].entries.append(entry)
-                continue
-            }
-            let kind = category(tool)
-            if phases.isEmpty {
-                phases.append(ActivityGroup(entries: [], kind: kind, live: false))
-            } else if phases[phases.count - 1].kind == .think {
-                phases[phases.count - 1].kind = kind
-            } else if phases[phases.count - 1].kind != kind {
-                // The run of thinking the phase ends on introduces the next one.
-                var steps = phases[phases.count - 1].entries
-                var cut = steps.count
-                while cut > 0, !isTool(steps[cut - 1]) { cut -= 1 }
-                let trailing = Array(steps[cut...])
-                steps.removeSubrange(cut...)
-                phases[phases.count - 1].entries = steps
-                phases.append(ActivityGroup(entries: trailing, kind: kind, live: false))
-            }
-            phases[phases.count - 1].entries.append(entry)
-        }
-        var kept: [ActivityGroup] = []
-        for phase in phases {
-            let stray = phase.entries.filter(isTool).count == 1
-            if stray, let last = kept.indices.last, !kept[last].entries.isEmpty {
-                kept[last].entries.append(contentsOf: phase.entries)
-                kept[last].kind = dominantKind(kept[last].entries) ?? kept[last].kind
-                continue
-            }
-            kept.append(phase)
-        }
-        return kept.filter { !$0.entries.isEmpty }.map { phase in
-            var phase = phase
-            phase.key = phase.entries[0].key
-            return phase
-        }
-    }
-
-    /// `toolCategory`: edits, then reads and searches, then commands.
+    /// `toolCategory`: agent work, then edits, then reads and searches, then commands.
     public static func category(_ tool: ToolItem) -> ActivityGroup.Kind {
+        if LinePhase.isAgentWork(tool) || ToolPhrase.shortName(tool.name) == "app_start_thread" { return .agents }
         if Board.editPath(tool) != nil { return .edit }
         switch ToolPhrase.kind(of: tool) {
         case .edit, .write, .patch: return .edit
@@ -357,26 +433,6 @@ public enum TranscriptRows {
         case .run: return .run
         default: return .other
         }
-    }
-
-    /// Ties break towards the kind that changed the most: an edit outranks a read.
-    private static func dominantKind(_ entries: [ThreadEntry]) -> ActivityGroup.Kind? {
-        var counts: [ActivityGroup.Kind: Int] = [:]
-        for entry in entries {
-            guard case .tool(let tool) = entry.item else { continue }
-            counts[category(tool), default: 0] += 1
-        }
-        var best: ActivityGroup.Kind?
-        for kind in [ActivityGroup.Kind.edit, .run, .research, .other] {
-            let count = counts[kind] ?? 0
-            if count > 0, best == nil || count > (counts[best!] ?? 0) { best = kind }
-        }
-        return best
-    }
-
-    private static func isTool(_ entry: ThreadEntry) -> Bool {
-        if case .tool = entry.item { return true }
-        return false
     }
 
     private static func hasWords(_ text: String) -> Bool {
@@ -401,7 +457,17 @@ public enum TranscriptRows {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    /// The row that shows a seq: its own item row, or the phase it is inside.
+    /// Where the list's window starts: at the row it started at, so rows
+    /// arriving below never push one out at the top (a row leaving the top
+    /// makes the list re-estimate everything above the reader, and the offset
+    /// drops); only when that row is gone, or the caller resized the window
+    /// (`top` nil), the newest `count` rows.
+    public static func windowStart(_ rows: [TranscriptRowModel], top: TranscriptRowID?, count: Int) -> Int {
+        if let top, let index = rows.firstIndex(where: { $0.id == top }) { return index }
+        return max(0, rows.count - count)
+    }
+
+    /// The row that shows a seq: its own item row, or the group it is inside.
     public static func rowID(containing seq: Int, in rows: [TranscriptRowModel]) -> TranscriptRowID? {
         for row in rows {
             switch row {

@@ -404,8 +404,8 @@ private struct TodoTrace: View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(items) { entry in
                 switch entry.item {
-                case .tool(let tool):
-                    ToolChip(tool: tool, client: client, sessionId: sessionId)
+                case .tool:
+                    ActionStep(entry: entry, client: client, sessionId: sessionId)
                 case .assistant(let block):
                     Text(Board.firstLine(block.text))
                         .textStep(.meta)

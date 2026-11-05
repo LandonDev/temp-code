@@ -365,6 +365,10 @@ enum TranscriptMetrics {
     static let tableInset = CGFloat(TranscriptLengths.tableInset)
     static let tableRadius = CGFloat(TranscriptLengths.tableRadius)
     static let bodyRadius = CGFloat(TranscriptLengths.bodyRadius)
+    static let bodyInset = CGFloat(TranscriptLengths.bodyInset)
+    static let bodyGap = CGFloat(TranscriptLengths.bodyGap)
+    static let outputCap = CGFloat(TranscriptLengths.outputCap)
+    static let stepDot = CGFloat(TranscriptLengths.stepDot)
     static let bubbleRadius = CGFloat(TranscriptLengths.bubbleRadius)
 
     enum Gap {

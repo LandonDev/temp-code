@@ -26,7 +26,9 @@ Sources/TempCodeClient
                 hunks and column geometry), MarkdownBlocks, MarkdownCache, PlanDocument,
                 PlanPages, ProjectPlan, ProjectPairs, CrossHost, PathHost (two hosts: pairs, cross-host
                 children, the host of a path), TranscriptRows (entries → the list's rows:
-                items, activity groups, turn ends), ToolPhrase (the desktop's toolPhrase.ts),
+                items, groups of the work between two paragraphs with GroupFold, turn
+                ends), ToolPhrase, GroupPhrase and ActionRow (the desktop's toolPhrase.ts,
+                groupPhrase.ts and actionModel.ts),
                 Batch (MasterBoard, BatchSteps, RulesEdit, BoardActions: the master board)
   Shell/        HomeSections, ThreadGroups, HomeModel, HostPresentation, ProjectLinks, FailureCue,
                 DuoLayout, and the shell's shape: Routes, ShellPose, ShellPaths, ThreadStrip

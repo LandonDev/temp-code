@@ -4,8 +4,8 @@ import TempCodeContract
 
 /// Every row kind in its mobile form, the desktop's `AgentTranscript` row
 /// by row: the user's words in a bordered field, the agent's answer as the
-/// page, the work between answers as phases (thinking, tool calls and edits
-/// under one human line, `ActivityPhaseRow`), cards for what needs the
+/// page, the work between two paragraphs as one group (`ActionGroup`: a
+/// lone step as its row, more under one line that opens onto a table), cards for what needs the
 /// user, an agent's published page as the page itself (`HtmlRenderRow`),
 /// quiet lines and labelled dividers for the rest, and each turn's end row
 /// (`TurnLineRow`: its working line, then its closing line).
@@ -28,7 +28,7 @@ struct TranscriptRow: View, Equatable {
         case .item(let entry):
             ItemRow(entry: entry, client: client, sessionId: sessionId, born: born)
         case .group(let group):
-            ActivityPhaseRow(group: group, client: client, sessionId: sessionId, forceOpen: forceOpen)
+            ActionGroup(group: group, client: client, sessionId: sessionId, forceOpen: forceOpen)
         case .turnEnd(let end):
             TurnLineRow(end: end, client: client, sessionId: sessionId)
         }
@@ -48,18 +48,15 @@ private struct ItemRow: View {
             UserTurnRow(turn: turn, client: client)
         case .assistant(let block):
             AssistantRow(block: block, born: born)
-        case .thinking(let block):
-            // Thinking rides in a phase; this is only ever a stray.
-            ThinkingStep(block: block)
+        case .thinking:
+            // Thinking rides in a group; this is only ever a stray.
+            ActionStep(entry: entry, client: client, sessionId: sessionId)
         case .tool(let tool):
-            if let path = Board.editPath(tool) {
-                EditRow(sessionId: sessionId, card: Board.wholeChange(path: path, edits: [tool]), running: tool.status == .running, failed: tool.status == .failed)
-            } else if tool.isPlanTool {
-                QuietLine(symbol: "checklist", text: tool.planLine)
-            } else if let render = tool.htmlRender {
+            if let render = tool.htmlRender {
                 HtmlRenderRow(render: render, client: client)
             } else {
-                ToolChip(tool: tool, client: client, sessionId: sessionId)
+                // Every other call rides in a group; a stray draws as its row.
+                ActionStep(entry: entry, client: client, sessionId: sessionId)
             }
         case .question(let question):
             QuestionCard(question: question, client: client, sessionId: sessionId)

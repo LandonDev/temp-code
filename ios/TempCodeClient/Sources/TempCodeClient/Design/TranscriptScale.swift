@@ -91,6 +91,13 @@ public enum TranscriptLengths {
     public static let tableInset: Double = 12
     public static let tableRadius: Double = 12
     public static let bodyRadius: Double = 8
+    /// A row's open body: its inset from the frame or the card, and above and below.
+    public static let bodyInset: Double = 12
+    public static let bodyGap: Double = 8
+    /// A command's output box: past this it scrolls inside itself.
+    public static let outputCap: Double = 320
+    /// The running step's still dot.
+    public static let stepDot: Double = 6
     public static let bubbleRadius: Double = 12
 
     /// Above the first row, between turns, a bubble and its reply, two

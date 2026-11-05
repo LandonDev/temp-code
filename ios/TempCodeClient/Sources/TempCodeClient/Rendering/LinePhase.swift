@@ -61,7 +61,7 @@ public struct LinePhase: Sendable, Hashable {
             let phrase = ToolPhrase.of(calls[0], live: true, cwd: cwd)
             return LinePhase(key: "call:\(calls[0].callId)", words: phrase.line, verb: phrase.verb, object: phrase.target)
         }
-        if calls.count > 1 { return LinePhase(key: "calls", words: ToolPhrase.group(calls, cwd: cwd, live: true)) }
+        if calls.count > 1 { return LinePhase(key: "calls", words: GroupPhrase.of(calls.map(GroupStep.tool), cwd: cwd, live: true)) }
         if let thought = turn.last(where: { if case .thinking(let b) = $0.item { return b.streaming } else { return false } }),
            case .thinking(let block) = thought.item {
             let line = ThoughtLine.latest(block.text)

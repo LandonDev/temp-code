@@ -959,11 +959,11 @@ second line; the cue's seq still routes the tap to the card.
 
 The transcript is the whole body, the desktop's `AgentTranscript` row by
 row (`Sources/Thread/TranscriptView.swift`, `TranscriptRows.swift`,
-`ToolChip.swift`, `MarkdownView.swift`; the shared ingredients in
+`ActionGroup.swift`, `MarkdownView.swift`; the shared ingredients in
 `TranscriptStyles.swift`). What the list shows is the client package's row
 model (`Rendering/TranscriptRows.swift`, the desktop's `transcriptRows.ts`
-and `transcriptActivity.ts` with zen on, the desktop's default): an entry
-on its own, a phase of the agent's work, or a turn's end row (its working
+and `transcriptActivity.ts`): an entry on its own, a group of the
+agent's work between two paragraphs, or a turn's end row (its working
 line while the turn runs, then its closing line), each under one key that never changes while
 the row is on screen (`TranscriptRowID`, the desktop's `rowKey`): an item,
 a group and the step it grew from share one key, the first step's
@@ -987,7 +987,7 @@ word morph and the closing line's wait for the drain
 (`TranscriptScenarioLine.swift`: each end row's `TurnLineModel` sampled at
 every reveal step and every hold's end, its words through a `MorphModel`;
 `ScenarioReport.lineEvents` lists each morph and fold). The plain-words tool lines are
-the package's `ToolPhrase` (tested). Row kinds and their mobile form:
+the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds and their mobile form:
 
 - **User turn**: the desktop's bubble (transcript/UserMessage.tsx): at
   the column's trailing edge on the chrome fill, radius 12, padded 12 × 8,
@@ -1030,8 +1030,8 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   8 KiB stays plain until the next block boundary.
 - **Thinking**: a thought is no row. While it streams the working line
   says its newest finished sentence in Thinking's place; once it ends it
-  shows only in a phase the person opened, as "Thought" in `secondary`,
-  which opens the text. A phase of thoughts alone draws nothing, and a
+  shows only in a group the person opened, as "Thought" in `secondary`,
+  which opens the text. A run of thoughts alone draws nothing, and a
   lone call with a thought before it is a lone step.
 - **The working line** (`Thread/WorkingLine.swift` `TurnLineRow`, over the
   client package's `TurnLineInput` and `TurnLineModel` in
@@ -1068,56 +1068,60 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   30 minutes on its own tasks (`WatchWords.isStale`). It opens the agents
   list when it watches subagents. Once shown it stays mounted, folding
   closed when the watch ends.
-- **Tool**: the one-line chip in the desktop's grammar: the kind's glyph
-  in the quiet step at the verb's weight, the verb in the dim step ("Read",
-  "Searched for", "Counted to one hundred"), the target loud (a file in
-  mono, truncated in the middle), the duration right in tabular digits; no
-  chevron at rest (the desktop shows it on hover; five hundred chevrons at
-  rest is noise). Running shows a spinner where the duration will be;
-  failed draws an ✕ and tints the line destructive. Open: the line becomes
-  an 8 pt control inside a 12 pt block (concentric, 4 pt of padding) with
-  the chevron turned at its trailing edge, and the body lands under a
-  hairline, the input pretty (the command bare, else key and value lines,
-  never raw JSON) and the output in mono, destructive when the call failed,
-  "… N more lines" past the fold. An omitted body is fetched on open behind
-  a shimmer of its final height and fades in 150 ms after the height starts.
-  Plan-tool calls are one quiet line.
-- **Phases**: the work between two answers, the desktop's zen activity
-  view (`ActivityPhaseRow.swift` over `TranscriptRows.phases`). The run
-  rule: thinking with words and every tool call but a plan tool join;
-  prose, a question, an approval, a quiet line, a compaction and a system
-  line break it; a thought the next paragraph repeats word for word is
-  dropped. The run splits into phases by what the calls were for: reads and
-  searches (research), edits, commands (run), anything else; a group that
-  opened on a thought takes the kind of the work after it, the thinking a
-  phase ends on moves into the phase it introduced, and a single call of
-  another kind folds back into the phase before it (the kind with the most
-  calls wins, edits on a tie). A phase is one line: the kind's glyph
-  (magnifier, pencil, terminal, sparkles, wrench) in the chip's 18 pt
-  column and what the calls add up to (`ToolPhrase.group`, the desktop's
-  `groupPhrase`): consecutive reads fold into "Read 3 files in src/lib"
-  (or "Read temp-code files" across the project, paths relative to the
-  thread's cwd), edits into "Edited 2 files", the first two phrases lead
-  as one clause, "Read 3 files in src/lib and searched for tokens", the
-  rest counted ("… and 2 more"), then "(1 failed)"; a phase that only
-  thought reads "Thought". The phase the agent is in (the last phase of
-  the open turn, nothing after it) says it in the present tense ("Reading
-  …", "Thinking"), still (the working line is what moves), and opens by
-  itself on its second step; its steps hang off a rail (a 1 pt spine down the glyph column at
-  14 % of the text colour, a quarter-round branch to each step's first
-  line), each new one fading in over 150 ms, the newest nine in a window
-  280 pt tall pinned to the newest, older ones leaving under a short fade.
-  While the turn is open a call the working line tells (`LinePhase.told`)
-  is no step: it joins its phase once it settles. A step is a thought (in
-  a phase the person opened only); a call's chip without its glyph (the rail is
-  the bullet; a failure keeps an ✕ at the trailing edge); an edit's card.
-  Once the agent moves on the phase folds to its line, dimmed, unless the
-  person opened it by hand; that settle-close animates (200 ms ease-out)
-  only while the reader is at the bottom, anywhere else it closes without
-  animation so nothing above the reader moves. A closed phase still shows
-  its edit cards under the line. A lone step is not a group: the glyph and
-  the step, no header repeating it. A search hit inside a phase opens it
-  before the list scrolls to it.
+- **Groups**: everything the agent did between two paragraphs, the
+  desktop's `ActionGroup` (`Thread/ActionGroup.swift` with
+  `ActionLine.swift`, over the client package's `ActivityGroup` and
+  `GroupFold` in `Rendering/TranscriptRows.swift`). The run rule: thinking
+  with words, every tool call (edits and todo updates among them) but a
+  published page join; prose, a question, an approval, a compaction and a
+  system line break it; a thought the next paragraph repeats word for word
+  is dropped. One step is its own row at the prose's edge; more is one
+  muted 28 pt line (the glyph of the work it did most, the phrase, the
+  counts, the chevron) that opens onto a table: one hairline frame at
+  radius 12 from the prose's edge across the column, no fill, a 32 pt row
+  per step with its words 12 pt in and a hairline between two rows. A lone
+  step and a group are one row under one key, so a second call landing
+  remounts nothing. The phrase is the package's `GroupPhrase` (the
+  desktop's groupPhrase.ts): reads by folder ("Read 3 files in src/lib"),
+  edits by verb, commands and searches counted, agent calls by agent, at
+  most three phrases then "and N more", each cut at 48 characters, agent
+  titles at 24; failures are the line's red count, never words. Thoughts
+  are steps but no rows: one shows only in a group a person opened, as
+  "Thought" with no duration. While the turn is open a call the working
+  line tells (`LinePhase.told`) is a step with no row (it counts in the
+  phrase and in whether the group is lone) and lands as a past-tense row
+  once it settles. The group the open turn works in (its last item, or
+  only a card waiting on the person follows it) opens on its own at two
+  steps and shows its newest five rows, the line still naming them all; a
+  step landing fades and rises 4 pt over 0.18 s, the oldest of the five
+  leaves upward over 0.18 s. It folds 0.6 s after the work moves on
+  (`GroupFold.hold`; the fold animates only for a reader at the bottom). A
+  person's tap on the line or opening a row's body decides it from then
+  on, and a group opened by hand shows every row and its thoughts. Mounted
+  working it is open, mounted settled closed, neither animated. A lone
+  call becoming a table glides its row 12 pt to the inset on the layout
+  spring while the frame fades in over 0.18 s; reduced motion fades the
+  frame over 0.12 s and moves nothing. A search hit inside a group opens it
+  by hand before the list scrolls to it.
+- **Steps**: every row sits on one grid (`ActionLine`, the package's
+  `ActionRow`, the desktop's actionModel.ts): the 14 pt glyph slot, 8 pt to
+  the verb (secondary), the object (primary, truncating first; a path in
+  the middle), counts 4 pt apart in tabular digits (+n success, −m
+  destructive, a todo update's `3/7` muted, a failed count red), the
+  chevron 8 pt after the last value turning 90° over 0.18 s. Stand-in
+  objects fold into the verb ("Ran a command"); a connector's call reads
+  as the connector's name with the tool in sentence case. A running step
+  draws the still 6 pt dot (the working line is the transcript's one
+  moving mark); a step whose turn is over (a Stop cut it) draws settled. A
+  row's open body inside the table is its lower part under one hairline
+  (12 pt in, 8 pt above and below); alone it is a card (radius 8, the
+  chrome fill, 12 pt in). A command's body is the command in mono over its
+  whole output in a box capped at 320 pt that scrolls inside itself (no
+  "N more lines"; Copy in its menu); any other call's is its input as key
+  and value lines over its output. An omitted body is fetched on open
+  behind a shimmer. An edit keeps its counts on its line and its caret
+  pushes the diff screen (unified, mono, line numbers dim; no side-by-side
+  on a phone).
 - **The shimmer** (`WorkingText`, the desktop's): the words muted, and
   over them a copy in the primary step seen through a band that rests off
   the words until 15 % of a 3 s period, crosses them on the sweep curve by
@@ -1294,7 +1298,7 @@ step, radius and motion value is the kit's (`Layout`, `TextStep`, `Radius`,
    4→0, `Motion.iconSwap`; a cross-fade under reduced motion). A row with a
    trace carries a `chevron.right` (caption2 semibold, tertiary) that turns
    90° on the expand spring. Tap a row to expand its trace: the tool chips
-   (the transcript's `ToolChip`, as it is) and quiet notes that landed while
+   (the transcript's `ActionStep` rows, as they are) and quiet notes that landed while
    it was in progress, mapped by the harness's todo state as on the desktop
    (`groupByTodo`), inset to the text column. Exactly one row expands at a
    time; the running row is open by default, and follows the harness when
@@ -2209,7 +2213,7 @@ left in a view.
 | Needs-you row appearing | `base` ease-out, opacity and 4 pt translateY; removal `fast`, opacity only | `.rowAppearTransition()` (`Motion.appear(reduced:)`, `Motion.rowAppear`, `Motion.rowLeave`, `Motion.travel`) |
 | Last-activity line changing | `fast` cross-fade with 2 pt blur; the row never changes height | `SwapText`, `.swapTransition()` (`Motion.swap(reduced:)`, `Motion.crossFade`, `Motion.crossFadeBlur`) |
 | Counts and elapsed | `contentTransition(.numericText())` on `fast` | `.numeric(value)` (`Motion.numeric`), `CountText`, `ElapsedText`, `AgoText` |
-| Streaming text | the desktop's jitter buffer (`SmoothText`, smoothText.ts as of 0b82ddad, in UTF-16 units): the base pace is the arrival rate over the last 1.5 s (a gap counted 1 s at most, a burst at 1,500/s over a step), clamped 25–1,500 units/s, 400 before the first gap; a lead held behind the live end, seeded 250 ms (every host is remote to the phone), never under twice the gaps' 90th percentile (100–800 ms), an underrun growing it 1.5 times or by the wait, its excess decaying on a 6 s time constant; each spurt holds until a lead and a step are in hand; the pace leans up to 1.5 times while more than the lead is buffered, and every character shows within 1.5 s of arriving; the stream's end drains at the same pace, only a rewrite of the shown prefix and a hidden row snap. Whole words every 100 ms (`revealCut`: a token past 24 units cut where the pace reaches, never inside a grapheme; a bare block marker and a table's header row held until they have content; never inside an open fence), on a timer between steps, no display frames. A row that joins the last turn after the transcript opened is born live and reveals from its first word even when it mounts settled; the opening seq waits for the loaded thread; SwiftUI may prepare a row more than once, so preparation reads its eligibility and appearance consumes it; history and a row scrolled back in show whole. Each step fades in as one run over `revealFade` (0.4 s, linear; the desktop's `.stream-step`): the streaming block's text is one `Text` interpolated from its runs, the settled prefix as one and each step younger than the fade as its own (at most four; older young steps join the prefix), each young run carrying `StreamFadeAttribute` with its arrival, drawn at its opacity by `StreamFadeRenderer`, a `TextRenderer` under a `TimelineView(.animation(paused:))` that runs only while a run is young. A per-block ledger keyed by the block's first 32 characters (`StreamRevealLedger`) keeps old steps merged into the prefix; a block reparsed into another text fades in whole; text a row held when it mounted shows without a fade; paragraphs, headings, quotes and list items fade, code, tables and rules never; no rise; under reduced motion the word steps stay and nothing fades. The row stays on the streaming render until the drain and its last fade are done, then swaps to the settled parse, the same document (`streamingDocument(settled:)` stands in until the settled parse lands), so nothing on screen changes; while it reveals it reports to the thread's `RevealDrain` under its turn, which the closing line waits on. A chip's target types in and cross-fades on `fast` with 2 pt blur when replaced; edit counts tick with `numericText` | `SmoothTextReveal`, `StreamingAssistantRow`, `StreamFadeText`, `StreamRevealLedger`, `RevealDrain`, `BornRows`, `LiveChipLabel` (`Motion.swap`, `Motion.crossFade`) |
+| Streaming text | the desktop's jitter buffer (`SmoothText`, smoothText.ts as of 0b82ddad, in UTF-16 units): the base pace is the arrival rate over the last 1.5 s (a gap counted 1 s at most, a burst at 1,500/s over a step), clamped 25–1,500 units/s, 400 before the first gap; a lead held behind the live end, seeded 250 ms (every host is remote to the phone), never under twice the gaps' 90th percentile (100–800 ms), an underrun growing it 1.5 times or by the wait, its excess decaying on a 6 s time constant; each spurt holds until a lead and a step are in hand; the pace leans up to 1.5 times while more than the lead is buffered, and every character shows within 1.5 s of arriving; the stream's end drains at the same pace, only a rewrite of the shown prefix and a hidden row snap. Whole words every 100 ms (`revealCut`: a token past 24 units cut where the pace reaches, never inside a grapheme; a bare block marker and a table's header row held until they have content; never inside an open fence), on a timer between steps, no display frames. A row that joins the last turn after the transcript opened is born live and reveals from its first word even when it mounts settled; the opening seq waits for the loaded thread; SwiftUI may prepare a row more than once, so preparation reads its eligibility and appearance consumes it; history and a row scrolled back in show whole. Each step fades in as one run over `revealFade` (0.4 s, linear; the desktop's `.stream-step`): the streaming block's text is one `Text` interpolated from its runs, the settled prefix as one and each step younger than the fade as its own (at most four; older young steps join the prefix), each young run carrying `StreamFadeAttribute` with its arrival, drawn at its opacity by `StreamFadeRenderer`, a `TextRenderer` under a `TimelineView(.animation(paused:))` that runs only while a run is young. A per-block ledger keyed by the block's first 32 characters (`StreamRevealLedger`) keeps old steps merged into the prefix; a block reparsed into another text fades in whole; text a row held when it mounted shows without a fade; paragraphs, headings, quotes and list items fade, code, tables and rules never; no rise; under reduced motion the word steps stay and nothing fades. The row stays on the streaming render until the drain and its last fade are done, then swaps to the settled parse, the same document (`streamingDocument(settled:)` stands in until the settled parse lands), so nothing on screen changes; while it reveals it reports to the thread's `RevealDrain` under its turn, which the closing line waits on. A running step reads in the present tense on its row and settles into the past tense in place | `SmoothTextReveal`, `StreamingAssistantRow`, `StreamFadeText`, `StreamRevealLedger`, `RevealDrain`, `BornRows` |
 | Working mark | three 3 pt dots in a 14 pt box gather into one and part every 1.6 s (the left and middle gather by 42 % and part at 58 %, the right by 50 % and 66 %, each leg on the breathing curve), offset and scale only; enters and leaves as a glyph trading state does | `WorkingMark` (`Motion.markDots`, `Motion.breathe`, `Motion.markDot`); the three dots at rest under reduced motion |
 | The shimmer | the band crosses the working words every 3 s, offset only | `WorkingText` (`Motion.shimmerLegs`); muted words under reduced motion |
 | Word morph | the old words lift 3 pt and fade over `swapOut`, then the new rise 3 pt over `base` on the swap curve while the box glides its width over `base`, the arriving words clipped, never cut with an ellipsis; new words under one key drawn at once; nothing on mount | `MorphText` (`Motion.swapOut`, `Motion.swapIn`, `Motion.morphLift`); reduced motion fades out, then in, `fast` each, no lift and no glide |
