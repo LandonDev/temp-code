@@ -17,6 +17,9 @@ import { CARD_SHAPE } from "./QuestionCard";
 import { useTranscriptSession } from "./transcriptSession";
 import { cn } from "../lib/cn";
 
+// The gate's notice rides this chunk with the review's (transcript/NoticeRow.tsx).
+export { GateCard } from "./GateCard";
+
 type Review = NonNullable<Block["review"]>;
 
 /**

@@ -2,6 +2,10 @@
 import type { Block } from "../../lib/session";
 import { setEditOpen } from "../editOpenState";
 import { setOpenedLive } from "./workingOpen";
+import { reviewChunk } from "../chunks";
+
+// A gate's notice rides reviewChunk: land it before the harness renders.
+reviewChunk.preload();
 
 const CWD = "/Users/me/shop";
 const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i}`).join("\n");

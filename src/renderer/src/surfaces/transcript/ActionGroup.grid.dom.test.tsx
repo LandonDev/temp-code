@@ -5,10 +5,13 @@ import { MotionGlobalConfig } from "motion/react";
 import type { Block } from "../../lib/session";
 import { setEditorConfigForTest } from "../../lib/editorConfig";
 import { ActionGroup } from "./ActionGroup";
+import { reviewChunk } from "../chunks";
 import { fixtures } from "./ActionGroup.fixtures";
 
 // A row's file menu asks which editor opens files; there is no preload here.
 beforeAll(() => setEditorConfigForTest(null));
+// A gate's notice rides reviewChunk; landed, it renders at once.
+beforeAll(() => reviewChunk.load());
 afterEach(cleanup);
 
 /** The fixture renders with no session, opened through its ":a:<first id>" key. */

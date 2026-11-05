@@ -7,7 +7,6 @@ import type { OpenFileFn } from "../../lib/search";
 import { ErrorChip } from "../ErrorChip";
 import { CompactionCard } from "../CompactionCard";
 import { AgentSpawnRow } from "../AgentSpawnRow";
-import { GateCard } from "../GateCard";
 import { reviewChunk } from "../chunks";
 import { Skeleton } from "../../components/ui/skeleton";
 import { useTurnState } from "../turnState";
@@ -17,15 +16,16 @@ import { StatusMark } from "../../components/ui/status";
 import { NoticeLine } from "./NoticeLine";
 import { PlanHandoffRow } from "./PlanHandoffRow";
 
-/** A review's notice loads with its chunk, warmed with the first thread's;
- *  until then a 28px line in the notice's shape holds its place. */
-const ReviewCard = reviewChunk.surface(
-  "ReviewCard",
+/** A review's and a gate's notice load with their chunk, warmed with the
+ *  first thread's; until then a 28px line in the notice's shape holds its place. */
+const NOTICE_HOLD = (
   <div aria-hidden className="flex h-7 items-center gap-2">
     <Skeleton className="size-3.5 rounded-full" />
     <Skeleton className="h-3 w-40" />
-  </div>,
+  </div>
 );
+const ReviewCard = reviewChunk.surface("ReviewCard", NOTICE_HOLD);
+const GateCard = reviewChunk.surface("GateCard", NOTICE_HOLD);
 
 /** A system row the host typed: compaction, a spawned agent, a plan handoff,
  *  a review, a gate, a batch or account notice, an error or a turn pass. */

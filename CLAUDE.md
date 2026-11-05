@@ -435,7 +435,7 @@ app replaces itself from the feed, and only from the feed.
   thread's waiting Mac bridge card (`macBridgeChunk`), the return from Away
   (`awayReturnChunk`: chrome/AwayReturn.tsx, mounted at boot, loaded after
   the first paint), a review's notice
-  (`reviewChunk`, ReviewCard behind a 28px skeleton line, warmed with the
+  (`reviewChunk`, ReviewCard and GateCard behind a 28px skeleton line, warmed with the
   first thread's chunks) and the
   rail's virtualizer (`virtualChunk`; the rail lists its cards plainly until it
   lands, chrome/railRows.tsx). A mount

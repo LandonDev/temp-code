@@ -74,8 +74,9 @@ export const NEVER_IN_ENTRY = [
   'src/renderer/src/chrome/Lightbox.tsx',
   // The composer's slash and @ menu rides commandMenuChunk, mounted once the composer first has matches.
   'src/renderer/src/chrome/CommandPopover.tsx',
-  // A review's notice rides reviewChunk (transcript/NoticeRow.tsx), warmed with the first thread's.
+  // A review's and a gate's notice ride reviewChunk (transcript/NoticeRow.tsx), warmed with the first thread's.
   'src/renderer/src/surfaces/ReviewCard.tsx',
+  'src/renderer/src/surfaces/GateCard.tsx',
   // Every menu, context menu and popover body rides menuChunk (chrome/menuRows.tsx); the
   // first paint draws a menu by its parts through components/ui/lazy-menus.tsx.
   'src/renderer/src/chrome/menuBody.tsx',

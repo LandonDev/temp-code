@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { Block } from "../../lib/session";
 import { TranscriptSessionContext } from "../transcriptSession";
 import { ActionGroup } from "./ActionGroup";
+import { reviewChunk } from "../chunks";
 
 import { setEditorConfigForTest } from "../../lib/editorConfig";
 import { sessionStore } from "../../lib/tcserver/store";
@@ -21,6 +22,8 @@ vi.mock("../../lib/threadMentions", async (importOriginal) => ({
 
 // A row's file menu asks which editor opens files; there is no preload here.
 beforeAll(() => setEditorConfigForTest(null));
+// A gate's notice rides reviewChunk; landed, it renders at once.
+beforeAll(() => reviewChunk.load());
 // Unmount each render, so no scheduled React work outlives the jsdom environment.
 afterEach(cleanup);
 
