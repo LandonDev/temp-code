@@ -148,3 +148,61 @@ private func tool(_ fold: ThreadFold, _ index: Int) -> ToolItem? {
         #expect(!LiveEdits.matches("src/a.ts", "src/b.ts"))
     }
 }
+
+/// One key per row, the desktop's `Block.rowKey`: a row on screen never
+/// changes key, whatever its seq does.
+@Suite struct ThreadFoldKeyTests {
+    @Test func `a call born from a partial keeps its provisional key when the final row stamps the seq`() {
+        var fold = ThreadFold()
+        fold.apply(row(1, user("go")))
+        fold.apply(partial("c1", "Read", ["file_path": .string("src/a")]))
+        #expect(fold.items[1].key == -1_000)
+        fold.apply(row(2, .toolCall(ToolCallEvent(callId: "c1", name: "Read", input: .object(["file_path": .string("src/a")])))))
+        #expect(tool(fold, 1)?.seq == 2)
+        #expect(fold.items[1].key == -1_000)
+    }
+
+    @Test func `a refold keeps the keys the first fold gave out`() {
+        var state = ThreadState()
+        state.append([row(1, user("go")), partial("c1", "Bash", [:])], trim: false)
+        state.append([row(2, .toolCall(ToolCallEvent(callId: "c1", name: "Bash", input: .object([:]))))], trim: false)
+        #expect(state.fold.items[1].key == -1_000)
+        state.refold()
+        #expect(state.fold.items[1].key == -1_000)
+        #expect(state.fold.items[1].seq == 2)
+    }
+
+    @Test func `the host's echo keeps the optimistic row's key, now and after a refold`() {
+        var state = ThreadState()
+        state.append([row(1, user("first"))], trim: false)
+        let sent = state.addPending(text: "again", sentAt: 2_000)
+        #expect(sent.key == -100_000)
+        #expect(state.entries.last?.key == -100_000)
+        let echo = row(2, user("again"))
+        state.append([echo], trim: false)
+        state.settle([echo])
+        #expect(state.pending.isEmpty)
+        #expect(state.entries.last?.seq == 2)
+        #expect(state.entries.last?.key == -100_000)
+        state.refold()
+        #expect(state.entries.last?.key == -100_000)
+    }
+
+    @Test func `pending rows keep their keys when an earlier one is echoed`() {
+        var state = ThreadState()
+        let a = state.addPending(text: "a", sentAt: 1)
+        let b = state.addPending(text: "b", sentAt: 2)
+        #expect([a.key, b.key] == [-100_000, -100_001])
+        let echo = row(1, user("a"))
+        state.append([echo], trim: false)
+        state.settle([echo])
+        #expect(state.entries.map(\.key) == [-100_000, -100_001])
+    }
+
+    @Test func `an item that was never pending or partial is keyed by its seq`() {
+        var fold = ThreadFold()
+        fold.apply(row(1, user("go")))
+        fold.apply(row(2, answer("hi")))
+        #expect(fold.items.map(\.key) == [1, 2])
+    }
+}

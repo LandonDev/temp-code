@@ -236,12 +236,18 @@ public struct ThreadEntry: Sendable, Hashable, Identifiable {
     public var round: Int
     public var todo: Int
     public var pass: Bool
+    /// The row key it is drawn under, the desktop's `Block.rowKey`: its seq
+    /// at birth, and never changed after. A call born from a partial keeps
+    /// its provisional key when its final row stamps the real seq, and the
+    /// host's echo of a sent message keeps the optimistic row's key.
+    public var key: Int
 
-    public init(item: TranscriptItem, round: Int = 0, todo: Int = -1, pass: Bool = false) {
+    public init(item: TranscriptItem, round: Int = 0, todo: Int = -1, pass: Bool = false, key: Int? = nil) {
         self.item = item
         self.round = round
         self.todo = todo
         self.pass = pass
+        self.key = key ?? item.seq
     }
 
     public var id: Int { item.seq }
@@ -275,10 +281,26 @@ public struct ThreadFold: Sendable, Hashable {
     public private(set) var liveEdits: [String: LiveEditState] = [:]
     private var liveEditOrder: [String] = []
     /// The next id for a tool item born from a partial call: below every
-    /// persisted seq and above the pending turns' -100_000 - index.
+    /// persisted seq and above the pending turns' keys (-100_000 and down).
     private var nextProvisional = -1_000
+    /// The keys rows were first drawn under, kept across a refold.
+    public private(set) var keys = RowKeys()
 
     public init() {}
+
+    /// A fold that keeps the keys an earlier fold gave out: a refold of the
+    /// same rows draws every row under the key it had.
+    public init(keys: RowKeys, provisionalFrom previous: ThreadFold? = nil) {
+        self.keys = keys
+        if let previous { nextProvisional = previous.nextProvisional }
+    }
+
+    /// The host's echo of a message this device sent: its row takes the key
+    /// the optimistic row was drawn under, now and in every refold.
+    public mutating func rekeyEcho(seq: Int, key: Int) {
+        keys.echoes[seq] = key
+        if let index = items.lastIndex(where: { $0.seq == seq }) { items[index].key = key }
+    }
 
     public static func fold(_ rows: [EventRow]) -> ThreadFold {
         var fold = ThreadFold()
@@ -493,7 +515,22 @@ public struct ThreadFold: Sendable, Hashable {
 
     /// New items land stamped with the board as it stands now.
     private mutating func append(_ item: TranscriptItem) {
-        items.append(ThreadEntry(item: item, round: board.round, todo: board.activeTodo, pass: board.inPass))
+        items.append(ThreadEntry(item: item, round: board.round, todo: board.activeTodo, pass: board.inPass, key: key(for: item)))
+    }
+
+    /// The key a new item is drawn under: a call's first key by its callId,
+    /// an echoed message's optimistic key, else its seq.
+    private mutating func key(for item: TranscriptItem) -> Int {
+        switch item {
+        case .tool(let tool):
+            if let known = keys.calls[tool.callId] { return known }
+            keys.calls[tool.callId] = tool.seq
+            return tool.seq
+        case .user(let turn):
+            return keys.echoes[turn.seq] ?? turn.seq
+        default:
+            return item.seq
+        }
     }
 
     /// The turn ending closes every open user section, each with its own timer.
@@ -597,4 +634,14 @@ public struct ThreadFold: Sendable, Hashable {
             }
         }
     }
+}
+
+/// The keys rows were first drawn under (`ThreadEntry.key`): a call's by its
+/// callId, an echoed message's by its seq. A refold starts from these, so a
+/// row on screen never changes key.
+public struct RowKeys: Sendable, Hashable {
+    public var calls: [String: Int] = [:]
+    public var echoes: [Int: Int] = [:]
+
+    public init() {}
 }

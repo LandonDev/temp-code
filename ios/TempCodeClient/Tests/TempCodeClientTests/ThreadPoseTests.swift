@@ -96,7 +96,7 @@ import Testing
 
 @Suite struct TranscriptReflowTests {
     @Test("the anchor is the end at the bottom, the top row otherwise, nil with neither") func theAnchorIsTheEndAtTheBottomTheTopRowOtherwise() {
-        let row = TranscriptRowID(kind: .item, seq: 40)
+        let row = TranscriptRowID(key: 40)
         #expect(TranscriptReflow.anchor(atBottom: true, topRow: row) == .end)
         #expect(TranscriptReflow.anchor(atBottom: true, topRow: nil) == .end)
         #expect(TranscriptReflow.anchor(atBottom: false, topRow: row) == .row(row))

@@ -1,24 +1,31 @@
 import Foundation
 
-/// A row's identity in the transcript list, stable as a turn grows: an item
-/// keeps its seq, a group keeps its first step's seq however many steps
-/// append, a turn's closing line and its thinking tail keep the user row's seq.
+/// A row's identity in the transcript list: one key space, the desktop's
+/// `rowKey`. An item, a group and the step it grew from share one key (the
+/// first step's `ThreadEntry.key`), so a lone call that becomes a group, a
+/// call whose final row stamps its seq, and the host's echo of a sent
+/// message all stay the same row. The turn's end row (its thinking tail
+/// now, its working and closing line later) is keyed on its user row's key
+/// with `end` set, one row from Send to the turn's close.
 public struct TranscriptRowID: Hashable, Sendable {
-    public enum Kind: UInt8, Hashable, Sendable {
-        case item
-        case group
-        case turnEnd
-        case thinkingTail
-    }
+    public var key: Int
+    public var end: Bool
 
-    public var kind: Kind
-    /// item: the entry's seq; group: the first step's seq; turnEnd and thinkingTail: the user turn's seq.
-    public var seq: Int
-
-    public init(kind: Kind, seq: Int) {
-        self.kind = kind
-        self.seq = seq
+    public init(key: Int, end: Bool = false) {
+        self.key = key
+        self.end = end
     }
+}
+
+/// Which group key each step was drawn under, carried from one build of the
+/// rows to the next (`TranscriptRows.rows(_:turnOpen:memory:)`): a group
+/// keeps its key when history joins above it and adds steps before its
+/// first. A plain class the view holds outside observation.
+public final class RowKeyMemory: @unchecked Sendable {
+    /// Step key → the key of the group it was drawn in.
+    public internal(set) var groups: [Int: Int] = [:]
+
+    public init() {}
 }
 
 /// One phase of a turn's work, the desktop's `ActivityPhase` in zen (its
@@ -35,18 +42,22 @@ public struct ActivityGroup: Hashable, Sendable {
     /// In order; one or more. Thinking and tool calls, edits among them.
     public var entries: [ThreadEntry]
     public var kind: Kind
+    /// The key it is drawn under: its first step's, or the one an earlier
+    /// build gave it (`RowKeyMemory`).
+    public var key: Int
     /// The phase the agent is in: the last phase of the last activity run of
     /// a turn still open, with nothing after it. Its title shimmers in the
     /// present tense and it opens by itself on its second step.
     public var live: Bool
 
-    public init(entries: [ThreadEntry], kind: Kind, live: Bool) {
+    public init(entries: [ThreadEntry], kind: Kind, live: Bool, key: Int? = nil) {
         self.entries = entries
         self.kind = kind
         self.live = live
+        self.key = key ?? entries.first?.key ?? 0
     }
 
-    public var id: TranscriptRowID { TranscriptRowID(kind: .group, seq: entries[0].seq) }
+    public var id: TranscriptRowID { TranscriptRowID(key: key) }
 
     /// A lone step is not a group: it draws as its row with the kind's mark,
     /// never under a header repeating it.
@@ -76,20 +87,23 @@ public struct ActivityGroup: Hashable, Sendable {
 /// A settled turn's closing line: "Worked for 12s", and the clock time at its trailing edge.
 public struct TurnEnd: Hashable, Sendable {
     public var userSeq: Int
+    /// The user row's key: the end row's.
+    public var userKey: Int
     /// The user turn's `completedTs` less its `ts`, never negative.
     public var durationMs: Int
     public var completedTs: Int
     /// The turn's assistant prose joined by blank lines: what Copy answer copies.
     public var answer: String
 
-    public init(userSeq: Int, durationMs: Int, completedTs: Int, answer: String) {
+    public init(userSeq: Int, userKey: Int? = nil, durationMs: Int, completedTs: Int, answer: String) {
         self.userSeq = userSeq
+        self.userKey = userKey ?? userSeq
         self.durationMs = durationMs
         self.completedTs = completedTs
         self.answer = answer
     }
 
-    public var id: TranscriptRowID { TranscriptRowID(kind: .turnEnd, seq: userSeq) }
+    public var id: TranscriptRowID { TranscriptRowID(key: userKey, end: true) }
 }
 
 /// What the transcript list shows, one row each: a thread entry on its own,
@@ -99,15 +113,25 @@ public enum TranscriptRowModel: Identifiable, Hashable, Sendable {
     case item(ThreadEntry)
     case group(ActivityGroup)
     case turnEnd(TurnEnd)
-    /// The user turn's seq.
+    /// The user row's key.
     case thinkingTail(Int)
 
     public var id: TranscriptRowID {
         switch self {
-        case .item(let entry): TranscriptRowID(kind: .item, seq: entry.seq)
+        case .item(let entry): TranscriptRowID(key: entry.key)
         case .group(let group): group.id
         case .turnEnd(let end): end.id
-        case .thinkingTail(let seq): TranscriptRowID(kind: .thinkingTail, seq: seq)
+        case .thinkingTail(let key): TranscriptRowID(key: key, end: true)
+        }
+    }
+
+    /// A seq the row shows, for finding it again after a rebuild.
+    public var anchorSeq: Int? {
+        switch self {
+        case .item(let entry): entry.seq
+        case .group(let group): group.entries.first?.seq
+        case .turnEnd(let end): end.userSeq
+        case .thinkingTail: nil
         }
     }
 }
@@ -143,23 +167,34 @@ public enum TranscriptRows {
     /// The rows for `entries`. `turnOpen` is the fold's `board.turnOpen`:
     /// while true, the last phase of the last turn (with nothing after it)
     /// is live, and a turn with nothing to show yet ends on "Thinking".
-    public static func rows(_ entries: [ThreadEntry], turnOpen: Bool) -> [TranscriptRowModel] {
+    public static func rows(_ entries: [ThreadEntry], turnOpen: Bool, memory: RowKeyMemory? = nil) -> [TranscriptRowModel] {
         var rows: [TranscriptRowModel] = []
         rows.reserveCapacity(entries.count + 8)
         var run: [ThreadEntry] = []
         var turnUser: UserTurn?
+        var turnUserKey = 0
         var answer: [String] = []
         /// The last entry drawn or ignored in the turn being built: the thinking tail reads it.
         var tailEntry: ThreadEntry?
 
+        /// Group keys given out in this build: a key is drawn once.
+        var drawn: Set<Int> = []
         func flushRun() {
-            for phase in phases(run) { rows.append(.group(phase)) }
+            for var phase in phases(run) {
+                // A group keeps the key it was drawn under before, whatever joined
+                // above it; else its first step's, else any step's not yet drawn.
+                let remembered = memory.map { memory in phase.entries.compactMap { memory.groups[$0.key] } } ?? []
+                if let key = (remembered + phase.entries.map(\.key)).first(where: { !drawn.contains($0) }) { phase.key = key }
+                drawn.insert(phase.key)
+                if let memory { for entry in phase.entries { memory.groups[entry.key] = phase.key } }
+                rows.append(.group(phase))
+            }
             run = []
         }
         func closeTurn() {
             flushRun()
             if let turnUser, turnUser.seq >= 0, let completedTs = turnUser.completedTs {
-                rows.append(.turnEnd(TurnEnd(userSeq: turnUser.seq, durationMs: max(0, completedTs - turnUser.ts), completedTs: completedTs, answer: answer.joined(separator: "\n\n"))))
+                rows.append(.turnEnd(TurnEnd(userSeq: turnUser.seq, userKey: turnUserKey, durationMs: max(0, completedTs - turnUser.ts), completedTs: completedTs, answer: answer.joined(separator: "\n\n"))))
             }
             turnUser = nil
             answer = []
@@ -170,6 +205,7 @@ public enum TranscriptRows {
             if case .user(let turn) = entry.item {
                 closeTurn()
                 turnUser = turn
+                turnUserKey = entry.key
                 rows.append(.item(entry))
                 continue
             }
@@ -189,9 +225,10 @@ public enum TranscriptRows {
             rows[rows.count - 1] = .group(group)
         }
         let user = turnUser
+        let userKey = turnUserKey
         closeTurn()
         if turnOpen, let user, user.seq >= 0, user.completedTs == nil, showsThinkingTail(tailEntry) {
-            rows.append(.thinkingTail(user.seq))
+            rows.append(.thinkingTail(userKey))
         }
         return rows
     }
@@ -237,7 +274,11 @@ public enum TranscriptRows {
             }
             kept.append(phase)
         }
-        return kept.filter { !$0.entries.isEmpty }
+        return kept.filter { !$0.entries.isEmpty }.map { phase in
+            var phase = phase
+            phase.key = phase.entries[0].key
+            return phase
+        }
     }
 
     /// `toolCategory`: edits, then reads and searches, then commands.

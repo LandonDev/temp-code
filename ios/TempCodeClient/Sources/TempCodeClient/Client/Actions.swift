@@ -113,17 +113,29 @@ public struct PendingTurn: Sendable, Hashable, Identifiable {
     public var text: String
     /// Clock milliseconds when it left.
     public var sentAt: Int
+    /// The row key it is drawn under (`ThreadState.nextPendingKey` when it
+    /// was sent); the host's echo keeps it.
+    public var key: Int?
 
-    public init(id: UUID = UUID(), text: String, sentAt: Int) {
+    public init(id: UUID = UUID(), text: String, sentAt: Int, key: Int? = nil) {
         self.id = id
         self.text = text
         self.sentAt = sentAt
+        self.key = key
     }
 
     /// How a pending turn sits in the transcript: a user turn with a seq
-    /// below every persisted row, ordered by send.
+    /// below every persisted row, under its own key.
+    public var entry: ThreadEntry {
+        let seq = key ?? -100_000
+        return ThreadEntry(item: .user(UserTurn(seq: seq, ts: sentAt, text: text, attachments: [], model: nil, reasoning: nil, completedTs: nil, costUsd: nil)), key: seq)
+    }
+
+    /// The old shape, for callers that number pending turns by index.
     public func entry(index: Int) -> ThreadEntry {
-        ThreadEntry(item: .user(UserTurn(seq: -100_000 - index, ts: sentAt, text: text, attachments: [], model: nil, reasoning: nil, completedTs: nil, costUsd: nil)))
+        var turn = self
+        if turn.key == nil { turn.key = -100_000 - index }
+        return turn.entry
     }
 }
 
@@ -369,8 +381,8 @@ extension EnvironmentClient {
     /// sends none.
     public func send(_ sessionId: String, text: String, model: TurnModel? = nil, attachments: [Attachment]? = nil, newPass: Bool? = nil) async throws {
         if let block = operateBlock { throw ActionError.blocked(block) }
-        let turn = PendingTurn(text: text, sentAt: Int(Date().timeIntervalSince1970 * 1000))
-        threads[sessionId]?.pending.append(turn)
+        let sentAt = Int(Date().timeIntervalSince1970 * 1000)
+        let turn = threads[sessionId]?.addPending(text: text, sentAt: sentAt) ?? PendingTurn(text: text, sentAt: sentAt)
         threads[sessionId]?.sending = true
         let named = attachments.flatMap { $0.isEmpty ? nil : $0 }
         do {
