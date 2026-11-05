@@ -213,6 +213,14 @@ describe("RightPanel", () => {
     expect(screen.queryByRole("tab")).toBeNull();
   });
 
+  it("the Debug section waits for its chunk on a skeleton of rows, never a bare spinner", async () => {
+    rightPanel.open("s1", "debug");
+    const { container } = render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(container.querySelector('[data-surface-skeleton="rows"]')).toBeTruthy();
+    expect(container.querySelector('[data-slot="spinner"]')).toBeNull();
+    expect(await screen.findByText("debug")).toBeTruthy();
+  });
+
   it("the file tree's moves reach App's handler, so open tabs follow a rename", () => {
     rightPanel.open("s1", "files");
     const onFileMoved = vi.fn();

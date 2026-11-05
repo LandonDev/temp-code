@@ -105,12 +105,22 @@ describe("ActivitySection", () => {
     rowOf("shell").focus();
     fireEvent.keyDown(rowOf("shell"), { key: "Enter" });
     expect(rowOf("shell").getAttribute("aria-expanded")).toBe("true");
-    const head = document.querySelector('[data-slot="task-command"]')!;
-    expect(head.textContent).toBe("$ bun run dev --port 5173");
-    expect(head.className).toContain("font-mono");
+    // While the first read is out: the console's box with skeleton lines, not a spinner.
+    const loading = document.querySelector('[data-slot="task-log"]')!;
+    expect(loading.getAttribute("aria-busy")).toBe("true");
+    expect(loading.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    expect(document.querySelector('[data-slot="spinner"]')).toBeNull();
     const output = await screen.findByText(/listening on :5173/);
+    // One console (CONSOLE: 12px mono on 20px lines, a pre that takes focus, capped at 240px) holds both.
+    const log = document.querySelector<HTMLElement>('[data-slot="task-log"]')!;
+    expect(log.tagName).toBe("PRE");
+    expect(log.tabIndex).toBe(0);
+    for (const cls of ["font-mono", "leading-5", "bg-card", "max-h-60", "focus-ring"]) expect(log.className).toContain(cls);
+    const head = log.querySelector('[data-slot="task-command"]')!;
+    expect(head.textContent).toBe("$ bun run dev --port 5173");
     // The command line comes before the output.
-    expect(head.compareDocumentPosition(output) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(output.textContent!.indexOf("$ bun run dev --port 5173")).toBe(0);
+    expect(output.textContent).toMatch(/listening on :5173/);
   });
 
   it("a shell row whose command is its label opens on the output alone", async () => {

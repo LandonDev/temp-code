@@ -1,7 +1,6 @@
 import { lazy, Suspense, useContext, useEffect, useMemo } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { cn } from "@renderer/lib/cn";
-import { Spinner } from "@renderer/components/ui/spinner";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "@renderer/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { Activity, Bug, Folder, GitCompare, Hammer, StickyNote, Users, X, type IconComponent } from "../chrome/icons";
@@ -36,6 +35,7 @@ import { ActivitySection } from "./threads/ActivitySection";
 import { FleetList } from "./threads/fleet/FleetPanel";
 import { NotesBody } from "./threads/NotesPanel";
 import { SessionActionsContext } from "./threadChat";
+import { SurfaceSkeleton } from "./SurfaceSkeleton";
 
 // The Debug section drives the editor chunk's DAP session; it loads with it.
 const DebugPanel = lazy(() => import("../chrome/rail/DebugPanel"));
@@ -306,13 +306,7 @@ function SectionBody({
       return project ? <BuildPanel projectId={project.id} /> : null;
     case "debug":
       return (
-        <Suspense
-          fallback={
-            <div className="flex h-16 items-center justify-center">
-              <Spinner className="size-3.5 text-muted-foreground" />
-            </div>
-          }
-        >
+        <Suspense fallback={<SurfaceSkeleton kind="rows" count={3} label="Loading the debugger" />}>
           <DebugPanel />
         </Suspense>
       );

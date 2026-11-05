@@ -371,7 +371,7 @@ function Log({ lines, runId }: { lines: string[]; runId: string | null }) {
       className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto focus-ring"
       data-slot="build-log"
     >
-      <div className="px-3 py-2 font-mono text-xs leading-relaxed text-muted-foreground">
+      <div className="px-3 py-2 font-mono text-xs leading-5 text-muted-foreground">
         {lines.map((line, i) => (
           <div key={i} className="break-words whitespace-pre-wrap">
             {line}

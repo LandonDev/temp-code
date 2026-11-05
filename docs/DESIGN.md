@@ -436,7 +436,9 @@ Notes) and a 40px header of flat icon buttons, the selected one filled, that
 lists only those sections, each named on hover and by its accessible name;
 its default section follows the thread's state, Agents first. An Activity row, folded, is one 28px line
 of plain words (glyph, label, age, Stop); a shell's command shows only in
-its fold, as the first line of its output. It yields to the thread, which never
+its fold, as the first line of its output, one `CONSOLE` capped at 240px
+whose first read draws skeleton lines in the same box. The panel's other
+logs (Build, the Debug console) keep the console's 20px lines. It yields to the thread, which never
 goes under 360px beside it. It is a docked column, not a drawer or
 a sheet, and it never animates its width: the thread takes its width at
 once and the pane slides in from the edge or back out over it (the motion

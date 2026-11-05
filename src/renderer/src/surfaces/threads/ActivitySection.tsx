@@ -3,7 +3,8 @@ import { loadToast } from "../../components/ui/toaster";
 import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
 import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
-import { Spinner } from "@renderer/components/ui/spinner";
+import { Skeleton } from "@renderer/components/ui/skeleton";
+import { CONSOLE } from "@renderer/components/ui/console";
 import { TruncateTip } from "@renderer/components/tip";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
@@ -198,7 +199,7 @@ function TaskLogFold({ threadId, taskId, command, live }: { threadId: string; ta
   const [text, setText] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const next = useRef<number | undefined>(undefined);
-  const scroller = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLPreElement>(null);
   const pinned = useRef(true);
   const ready = !!text;
 
@@ -244,35 +245,36 @@ function TaskLogFold({ threadId, taskId, command, live }: { threadId: string; ta
     if (viewport && pinned.current) viewport.scrollTop = viewport.scrollHeight;
   }, [text]);
 
+  // One console: the command as its first line, then the output; while the
+  // first read is out, the same box with skeleton lines where the output goes.
   const head = command ? (
-    <p data-slot="task-command" className="font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-muted-foreground">
+    <span data-slot="task-command" className="block break-all">
       $ {command}
-    </p>
+    </span>
   ) : null;
-  let body;
   if (text === null) {
-    body = (
-      <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
-        <Spinner className="size-3" />
-        Loading…
+    return (
+      <div className="px-2 pt-0.5 pb-2">
+        <div role="status" aria-busy aria-label="Loading the output" data-slot="task-log" className={CONSOLE}>
+          {head}
+          <div className="flex flex-col gap-2 py-1">
+            <Skeleton className="h-3 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        </div>
       </div>
     );
-  } else if (!text) {
-    body = <p className="py-1 text-xs text-muted-foreground">{failed ? "Couldn't read the output" : "No output yet"}</p>;
-  } else {
-    body = (
-      <>
-        <div ref={scroller} tabIndex={0} data-slot="task-log" className="max-h-60 overflow-x-hidden overflow-y-auto focus-ring">
-          <pre className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">{text}</pre>
-        </div>
-        {failed ? <p className="pt-1 text-xs text-muted-foreground">Couldn't read the output</p> : null}
-      </>
-    );
+  }
+  if (!text && !head) {
+    return <p className="px-2 pt-0.5 pb-2 text-xs text-muted-foreground">{failed ? "Couldn't read the output" : "No output yet"}</p>;
   }
   return (
     <div className="px-2 pt-0.5 pb-2">
-      {head}
-      {body}
+      <pre ref={scroller} tabIndex={0} data-slot="task-log" className={cn(CONSOLE, "max-h-60 overflow-x-hidden overflow-y-auto break-words whitespace-pre-wrap")}>
+        {head}
+        {text || <span className="font-sans">{failed ? "Couldn't read the output" : "No output yet"}</span>}
+      </pre>
+      {failed && text ? <p className="pt-1 text-xs text-muted-foreground">Couldn't read the output</p> : null}
     </div>
   );
 }
