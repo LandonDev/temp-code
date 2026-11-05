@@ -50,7 +50,7 @@ export function DialogFooter({
   const close = useModalClose();
   const confirm = onConfirm && closeOnConfirm && close ? () => close(onConfirm) : onConfirm;
   return (
-    <div className="flex items-center justify-end gap-2 border-t border-border px-5 pt-4 pb-5">
+    <div data-slot="dialog-footer" className="flex items-center justify-end gap-2 border-t border-border px-5 pt-4 pb-5">
       {note ? (
         <span data-footer-note className="me-auto min-w-0 truncate text-xs text-muted-foreground">
           {note}

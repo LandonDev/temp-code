@@ -105,8 +105,12 @@ export function ModalPanel({ busy = false, title, description, size = "md", clas
       {/* One scroller per region (docs/DESIGN.md "Scrolling"): a flex column, so
           a list that marks itself min-h-0 shrinks under its cap before the
           body itself has to scroll. The inset keeps the thumb off the
-          dialog's rounded corner. */}
-      <div ref={lockOverscroll} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none [--scrollbar-inset:var(--radius-2xl)]">
+          dialog's rounded corner. A dialog with no body keeps its subtitle
+          16px off the footer's hairline, the gap a body's own inset gives. */}
+      <div
+        ref={lockOverscroll}
+        className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none [--scrollbar-inset:var(--radius-2xl)] [&>[data-slot=dialog-footer]:first-child]:mt-4"
+      >
         {children}
       </div>
     </DialogContent>

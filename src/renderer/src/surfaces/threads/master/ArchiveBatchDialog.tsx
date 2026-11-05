@@ -55,7 +55,7 @@ function Body({ which, count, resources, onCancel, onConfirm, pending, setPendin
         ) : null}
         <ErrorLine error={error} />
       </div>
-      <DialogFooter onCancel={onCancel} onConfirm={() => void confirm()} confirmLabel={copy.confirmLabel} pending={pending} disabled={count === 0} />
+      <DialogFooter onCancel={onCancel} onConfirm={() => void confirm()} confirmLabel={copy.confirmLabel} danger={!!copy.cleanup && cleanup} pending={pending} disabled={count === 0} />
     </>
   );
 }

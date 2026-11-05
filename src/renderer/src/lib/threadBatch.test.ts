@@ -146,6 +146,8 @@ describe("batchConfirm", () => {
     expect(batchConfirm("stop", 1, { kind: "project", path: "/x", name: "temp-code" }).title).toBe("Stop 1 running thread in temp-code?");
     expect(batchConfirm("archiveDone", 3, { kind: "all" }).title).toBe("Archive 3 finished threads everywhere?");
     expect(batchConfirm("stop", 1, box).danger).toBe(true);
+    // Archiving loses nothing: red only while the dialog's removal box is ticked.
+    expect(batchConfirm("archiveDone", 3, box, 2).danger).toBe(false);
   });
   it("offers the resources clause only when the host can release them", () => {
     expect(batchConfirm("archiveDone", 6, box, 6).cleanup).toBe("and remove their 6 worktrees and simulators");

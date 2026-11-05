@@ -213,7 +213,9 @@ export function batchConfirm(
     title,
     body,
     confirmLabel: `${removal && acting === 0 ? "Remove" : v.imperative} ${count}`,
-    danger: action === "stop" || action === "archiveDone",
+    // Red only for Stop, and for an archive while its removal box is ticked
+    // (the dialog adds that): archiving alone loses nothing.
+    danger: action === "stop",
     cleanup,
   };
 }

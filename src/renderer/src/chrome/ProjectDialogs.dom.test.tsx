@@ -68,6 +68,8 @@ let boxOpen = true
 // A project-scope plans.get that fails for good (the global one still answers).
 let projectPlansFail = false
 let projectReviewFail = false
+// Every write refused, for a failed save.
+let writeFail = false
 
 const status = (slot: string): EnvironmentStatus => {
   const box = slot === BOX
@@ -92,6 +94,7 @@ const linkFor = (slot: string): Link =>
       calls.push({ slot, method, params })
       if (projectPlansFail && method === 'plans.get' && params.projectId) throw new Error('not connected')
       if (projectReviewFail && method === 'review.get' && params.projectId) throw new Error('unknown method')
+      if (writeFail && !/\.(get|detect|list)$/.test(method) && method !== 'accounts.list') throw new Error('disk full')
       return null
     }
   }) as unknown as Link
@@ -103,6 +106,7 @@ beforeEach(() => {
   boxOpen = true
   projectPlansFail = false
   projectReviewFail = false
+  writeFail = false
   resetPlanSettingsForTests()
   workspaceStore.reset()
   workspaceStore.hydrate([
@@ -203,6 +207,27 @@ describe('ProjectSettingsDialog as a sheet', () => {
     expect(headings).toEqual(['Completed turn', 'Reviews', 'Accounts', 'Plans', 'Build'])
     expect(sheet.querySelector('[aria-expanded]:not([data-slot=select-trigger])')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Use workspace setting' })).toBeNull()
+  })
+
+  it('shows a failed save over the footer with one hairline between them, not two', async () => {
+    writeFail = true
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Solo two' } })
+    await act(async () => {
+      fireEvent.click(saveButton())
+    })
+    await waitFor(() => expect(screen.getByText('disk full')).toBeTruthy())
+    const line = screen.getByRole('dialog').querySelector('[data-project-settings-error]')!
+    expect(line.className).not.toContain('border-t')
+    expect(line.nextElementSibling!.className).toContain('border-t')
+  })
+
+  it('tells the mode from the path by weight, 4px apart', () => {
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    const mode = screen.getByRole('dialog').querySelector('[data-project-mode]')!
+    expect(mode.className).toContain('font-medium')
+    expect(mode.parentElement!.className).toContain('gap-1')
+    expect(mode.nextElementSibling!.className).not.toContain('font-medium')
   })
 })
 

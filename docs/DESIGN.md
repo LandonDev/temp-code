@@ -449,7 +449,9 @@ one title, one line and two buttons; code that must ask first awaits
 `useConfirm()` (chrome/ConfirmDialog.tsx), never `window.confirm`. A
 confirm never holds a checkbox: a destructive decision with options is a
 form `Dialog` with its `CheckRow`s and the red verb in its footer (Delete
-project with cleanup or other copies). A thread's resources are a removal
+project with cleanup or other copies). An archive is red only while a box that
+removes something from disk is ticked (worktrees, simulators, a project's
+cleanup); archiving alone loses nothing, so its verb is the primary. A thread's resources are a removal
 form of that kind; its dev servers live in the Activity section and the
 dev servers pane, never in a dialog.
 `chrome/Modal.tsx` and `chrome/ConfirmDialog.tsx` are thin shells on

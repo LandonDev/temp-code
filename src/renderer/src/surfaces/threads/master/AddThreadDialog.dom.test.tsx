@@ -201,6 +201,16 @@ describe("AddThreadDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("adds on Ctrl+Enter in the brief as on ⌘↩, for /ui off macOS", async () => {
+    render(<AddThreadDialog master={master} siblings={[]} onClose={() => {}} onAdded={() => {}} />);
+    await flush();
+    const brief = screen.getByLabelText("Brief");
+    fireEvent.change(brief, { target: { value: "Port the view." } });
+    fireEvent.keyDown(brief, { key: "Enter", ctrlKey: true });
+    await flush();
+    expect(h.startThread).toHaveBeenCalledTimes(1);
+  });
+
   it("offers every type with Chat first, starts on Implement, and adds a chat", async () => {
     render(<AddThreadDialog master={master} siblings={[]} onClose={() => {}} onAdded={() => {}} />);
     await flush();

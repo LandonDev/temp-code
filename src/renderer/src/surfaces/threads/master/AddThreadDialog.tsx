@@ -231,7 +231,7 @@ function AddThreadForm({
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && e.metaKey) {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
               void add();
             }

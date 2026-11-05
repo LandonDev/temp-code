@@ -221,10 +221,8 @@ function ArchiveBody({
         <div className="px-5 py-4">
           <ErrorLine error={error} />
         </div>
-      ) : (
-        <div aria-hidden className="h-4" />
-      )}
-      <DialogFooter onCancel={onCancel} onConfirm={() => void confirm()} confirmLabel="Archive" pending={pending} />
+      ) : null}
+      <DialogFooter onCancel={onCancel} onConfirm={() => void confirm()} confirmLabel="Archive" danger={remove && resources.length > 0} pending={pending} />
     </>
   )
 }

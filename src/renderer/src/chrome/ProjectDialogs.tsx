@@ -612,8 +612,8 @@ function ProjectSettingsBody({
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
           <SheetHeader>
             <SheetTitle>Project settings</SheetTitle>
-            <SheetDescription className="flex min-w-0 gap-2 text-xs">
-              <span className="shrink-0">{worktree ? "Worktree" : "Local"}</span>
+            <SheetDescription className="flex min-w-0 gap-1 text-xs">
+              <span data-project-mode className="shrink-0 font-medium">{worktree ? "Worktree" : "Local"}</span>
               <span className="min-w-0 truncate">{prettyCwd(project.cwd)}</span>
             </SheetDescription>
           </SheetHeader>
@@ -685,7 +685,7 @@ function ProjectSettingsBody({
           </div>
           {/* Under the scroller, beside the foot: a failed save is never scrolled out of sight. */}
           {error ? (
-            <div className="border-t border-border px-5 pt-3">
+            <div data-project-settings-error className="px-5 py-3">
               <ErrorLine error={error} />
             </div>
           ) : null}

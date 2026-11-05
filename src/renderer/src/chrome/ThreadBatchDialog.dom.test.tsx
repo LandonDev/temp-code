@@ -115,7 +115,10 @@ describe("ThreadBatchDialog", () => {
     const checkbox = screen.getByRole("checkbox");
     expect(checkbox.getAttribute("aria-checked")).toBe("true");
     expect(screen.getByText("and remove their 2 worktrees and simulators")).toBeTruthy();
+    // Red only while the box that removes files is ticked.
+    expect(screen.getByRole("button", { name: "Archive 1" }).getAttribute("data-variant")).toBe("destructive");
     fireEvent.click(checkbox);
+    expect(screen.getByRole("button", { name: "Archive 1" }).getAttribute("data-variant")).toBe("default");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Archive 1" }));
     });

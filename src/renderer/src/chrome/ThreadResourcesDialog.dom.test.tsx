@@ -161,12 +161,24 @@ describe('ArchiveThreadDialog', () => {
     expect(document.body.querySelector('[data-archive-resources]')?.children).toHaveLength(2)
   })
 
+  it('with nothing to remove, the footer keeps 16px under the title and the verb is primary', () => {
+    probe = mountProbe(<ArchiveThreadDialog sessionId="s1" title="iOS home" resources={[]} onCancel={() => {}} onArchived={() => {}} />)
+    const footer = document.body.querySelector('[data-slot=dialog-footer]')!
+    // No spacer: the footer is the scroller's first child, and the scroller gives it the gap.
+    expect(footer.previousElementSibling).toBeNull()
+    expect(footer.parentElement!.className).toContain('[&>[data-slot=dialog-footer]:first-child]:mt-4')
+    expect(screen.getByRole('button', { name: 'Archive' }).getAttribute('data-variant')).toBe('default')
+  })
+
   it('archives with the choice as ticked and closes after its exit; unticked, the resources stay', async () => {
     const calls: unknown[] = []
     const archived = vi.fn()
     archive.fn = async (id, opts) => void calls.push([id, opts])
     probe = mountProbe(<ArchiveThreadDialog sessionId="s1" title="iOS home" resources={[row({})]} onCancel={() => {}} onArchived={archived} />)
+    // Red only while the box that removes files is ticked.
+    expect(screen.getByRole('button', { name: 'Archive' }).getAttribute('data-variant')).toBe('destructive')
     fireEvent.click(screen.getByRole('checkbox', { name: /and remove 1 resource on / }))
+    expect(screen.getByRole('button', { name: 'Archive' }).getAttribute('data-variant')).toBe('default')
     await probe.act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Archive' }))
       await Promise.resolve()

@@ -52,7 +52,7 @@ function Confirm({ request }: { request: BatchRequest }): JSX.Element {
         onConfirm={confirm}
         closeOnConfirm
         confirmLabel={copy.confirmLabel}
-        danger={copy.danger}
+        danger={copy.danger || (!!copy.cleanup && cleanup)}
         disabled={targets.length === 0}
       />
     </Modal>
