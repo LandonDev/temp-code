@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
  * The notes surface on the design system: the filter is an InputGroup, a
- * note's row is a ghost Button, the note's Preview and Source are line tabs,
+ * note's row is an ItemButton on the type grid, the note's Preview and Source are line tabs,
  * the source field is the Textarea and Delete asks first.
  */
 
@@ -55,7 +55,10 @@ describe("the notes view", () => {
     const filter = view.getByLabelText("Filter notes");
     expect(filter.closest('[data-slot="input-group"]')).not.toBeNull();
     const row = view.getByRole("button", { name: /Deploy/ });
-    expect(row.getAttribute("data-slot")).toBe("button");
+    expect(row.getAttribute("data-slot")).toBe("item");
+    expect(row.getAttribute("data-size")).toBe("sm");
+    expect(row.querySelector("[data-row-title]")?.className).toContain("leading-5");
+    expect(view.container.querySelector('[aria-label="Notes"] ul')?.innerHTML).not.toContain("leading-snug");
     fireEvent.click(row);
     expect(row.getAttribute("aria-current")).toBe("true");
     expect((view.getByLabelText("Note title") as HTMLInputElement).value).toBe("Deploy");

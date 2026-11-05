@@ -111,6 +111,17 @@ describe("the inbox detail", () => {
     expect(send.querySelector('[data-slot="spinner"]')).toBeNull();
   });
 
+  it("says failed checks with one status mark whose detail is checks", async () => {
+    h.item = item({ checks: "FAILURE" });
+    const view = await mount();
+    const header = view.container.querySelector("header") as HTMLElement;
+    const marks = header.querySelectorAll('[data-slot="status-mark"]');
+    expect(marks).toHaveLength(1);
+    expect(marks[0].getAttribute("data-state")).toBe("failed");
+    expect(marks[0].querySelector('[data-slot="status-detail"]')?.textContent).toBe("checks");
+    expect([...header.querySelectorAll(".text-destructive")].filter((el) => !el.closest('[data-slot="status-mark"]'))).toHaveLength(0);
+  });
+
   it("draws nothing without a selection", async () => {
     const view = await mount();
     expect(view.container.querySelector("[role=region]")?.textContent).toBe("");

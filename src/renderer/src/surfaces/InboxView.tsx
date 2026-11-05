@@ -751,7 +751,7 @@ export function InboxRow({
         <KindIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span
           data-row-title
-          className={cn("min-w-0 flex-1 truncate text-[13px] text-foreground", unseen ? "font-medium" : "font-normal")}
+          className={cn("min-w-0 flex-1 truncate text-[13px] leading-5 text-foreground", unseen ? "font-medium" : "font-normal")}
         >
           {row.title}
         </span>
@@ -759,7 +759,7 @@ export function InboxRow({
           <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{row.time}</span>
         ) : null}
       </span>
-      <span className="flex min-w-0 items-center gap-3 ps-[22px] text-xs text-muted-foreground">
+      <span data-row-line className="flex min-w-0 items-center gap-3 ps-[22px] text-xs leading-4 text-muted-foreground">
         {row.line.map((fact, index) => (
           <span key={index} className={index === 0 ? "shrink-0 tabular-nums" : "min-w-0 truncate"}>
             {fact}
@@ -767,11 +767,7 @@ export function InboxRow({
         ))}
         <HostGlyph environmentId={environmentId} />
         {row.status ? (
-          // StatusMark has no detail slot yet; "checks" sits beside it in its tone.
-          <span className="ms-auto flex shrink-0 items-center gap-1.5 text-xs font-medium text-destructive">
-            <StatusMark state={row.status.state} />
-            <span>{row.status.detail}</span>
-          </span>
+          <StatusMark state={row.status.state} detail={row.status.detail} className="ms-auto shrink-0" />
         ) : null}
       </span>
     </ItemButton>
@@ -1073,13 +1069,7 @@ function InboxDetail({
             </span>
           ))}
           {source ? <span className="min-w-0 truncate">{source}</span> : null}
-          {checksFailed(item) ? (
-            // StatusMark has no detail slot yet; "checks" sits beside it in its tone.
-            <span className="ms-auto flex shrink-0 items-center gap-1.5 text-xs font-medium text-destructive">
-              <StatusMark state="failed" />
-              <span>checks</span>
-            </span>
-          ) : null}
+          {checksFailed(item) ? <StatusMark state="failed" detail="checks" className="ms-auto shrink-0" /> : null}
         </div>
         <h1 className="mt-2 text-base font-semibold leading-6 tracking-[-0.01em] text-balance text-foreground">
           {item.title}

@@ -1,5 +1,7 @@
 import { Plus, Search, File, Trash2 } from "../chrome/icons";
 import { BusyLabel, Button } from "../components/ui/button";
+import { ItemButton } from "../components/ui/item";
+import { cn } from "../lib/cn";
 import { Tip, TruncateTip } from "../components/tip";
 import { GroupInput, Input, InputGroup } from "../components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
@@ -388,17 +390,18 @@ function NoteCard({
   const project = noteSourceProject(note.sourceCwd);
   const time = formatRelativeTime(new Date(note.updatedAt).toISOString());
   return (
-    <Button
-      variant="ghost"
+    <ItemButton
+      size="sm"
       aria-current={active ? "true" : undefined}
       onClick={onSelect}
-      className={`h-auto w-full flex-col items-stretch justify-start gap-0 whitespace-normal rounded-md px-2 py-2 text-left font-normal transition-none ${
-        active ? "bg-muted hover:bg-muted" : "hover:bg-foreground/5"
-      }`}
+      className={cn(
+        "flex-col flex-nowrap items-stretch gap-0 rounded-md px-2 py-2 text-left transition-none",
+        active ? "bg-muted" : "hover:bg-foreground/5",
+      )}
     >
-      <span className="flex items-center gap-2">
+      <span className="flex items-center gap-2 text-xs leading-4 text-muted-foreground">
         {project ? (
-          <span className="min-w-0 flex-1 text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1">
             <NoteProjectMark
               project={project}
               logos={logos}
@@ -410,21 +413,15 @@ function NoteCard({
         ) : (
           <span className="min-w-0 flex-1" />
         )}
-        {time ? (
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-            {time}
-          </span>
-        ) : null}
+        {time ? <span className="shrink-0 tabular-nums">{time}</span> : null}
       </span>
       <TruncateTip text={note.title}>
-        <span className="mt-1 block truncate text-[13px] font-medium leading-snug text-foreground">{note.title}</span>
+        <span data-row-title className="mt-1 block truncate text-[13px] font-medium leading-5 text-foreground">{note.title}</span>
       </TruncateTip>
       {preview ? (
-        <span className="mt-0.5 line-clamp-1 text-xs leading-snug text-muted-foreground">
-          {preview}
-        </span>
+        <span className="mt-0.5 line-clamp-1 text-xs leading-4 text-muted-foreground">{preview}</span>
       ) : null}
-    </Button>
+    </ItemButton>
   );
 }
 

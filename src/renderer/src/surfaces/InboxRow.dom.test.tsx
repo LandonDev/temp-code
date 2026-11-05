@@ -71,6 +71,11 @@ describe("InboxRow", () => {
     const mark = failed.container.querySelector('[data-slot="status-mark"]');
     expect(mark?.getAttribute("data-state")).toBe("failed");
     expect(failed.container.textContent).toContain("Failedchecks");
+    // One mark: the word in its tone, "checks" its muted detail; nothing red beside it.
+    expect(failed.container.querySelectorAll('[data-slot="status-mark"]')).toHaveLength(1);
+    expect(mark?.querySelector('[data-slot="status-detail"]')?.textContent).toBe("checks");
+    const red = [...failed.container.querySelectorAll(".text-destructive")].filter((el) => !el.closest('[data-slot="status-mark"]'));
+    expect(red).toHaveLength(0);
     cleanup();
     const approved = render(<InboxRow item={pr({ reviewDecision: "APPROVED" })} active={false} showSource={false} onSelect={() => {}} />);
     expect(approved.container.querySelector('[data-slot="status-mark"]')).toBeNull();
@@ -104,5 +109,11 @@ describe("InboxRow", () => {
     } finally {
       h.environments = saved;
     }
+  });
+
+  it("sits on the type grid: a 20px title line over a 16px line", () => {
+    const view = render(<InboxRow item={pr()} active={false} showSource={false} onSelect={() => {}} />);
+    expect(title(view.container).className).toContain("leading-5");
+    expect(view.container.querySelector("[data-row-line]")?.className).toContain("leading-4");
   });
 });
