@@ -1,5 +1,7 @@
-import type { MintState } from "@shared/accounts";
-import type { ProfileView, UsageReport } from "aliax-core/shared/types";
+import type { AccountHeadroom, MintState } from "@shared/accounts";
+import type { ProfileView, UsageReport, UsageWindow } from "aliax-core/shared/types";
+import { percentLeft } from "@aliax/lib/accounts";
+import { clockTime } from "@renderer/lib/duration";
 
 /** The host that refreshes an account, as a row sees it. */
 export interface OwnerView {
@@ -20,6 +22,8 @@ export interface RowLine {
   detail?: string;
   action?: RowAction;
   busy?: boolean;
+  /** The account is out of room: the line is the Limited mark, with when it lifts when anything says. */
+  limited?: { resetsAt: number | null };
 }
 
 const DAY_MS = 86_400_000;
@@ -37,12 +41,58 @@ export function agoLabel(t: number, now: number): string {
   return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
 }
 
-function rateDetail(rl: NonNullable<UsageReport["rateLimit"]>, now: number): string | undefined {
-  if (rl.until === undefined) return undefined;
-  const ms = rl.until - now;
-  if (ms <= 0) return "retrying";
-  const mins = Math.ceil(ms / 60_000);
-  return `${mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`} left`;
+const dayClocks = new Map<string, Intl.DateTimeFormat>();
+
+/** A clock time past today: the weekday within six days ("Thu 9:00 AM"),
+ *  the date from a week out ("Nov 12, 9:00 AM"), so a weekday never names
+ *  today's. The day is the local calendar's; `locale` for a test. */
+export function dayClockTime(ts: number, now: number, locale?: string): string {
+  const days = Math.round((startOfDay(ts) - startOfDay(now)) / 86_400_000);
+  const shape = days >= 7 ? "date" : "weekday";
+  const key = `${shape}|${locale ?? ""}`;
+  let clock = dayClocks.get(key);
+  if (!clock) {
+    clock = new Intl.DateTimeFormat(locale, shape === "date" ? { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" });
+    dayClocks.set(key, clock);
+  }
+  return clock.format(ts);
+}
+
+/** Whether two moments fall on one local calendar day. */
+const sameDay = (a: number, b: number): boolean => startOfDay(a) === startOfDay(b);
+
+function startOfDay(ts: number): number {
+  const d = new Date(ts);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/**
+ * When a window refills, as the row says it: "Resets 4:15 PM" inside today,
+ * "Resets Thu 9:00 AM" past it (the date from a week out). `locale` for a test.
+ */
+export function resetWords(resetsAt: number, now: number, locale?: string): string {
+  return `Resets ${sameDay(resetsAt, now) ? clockTime(resetsAt, locale) : dayClockTime(resetsAt, now, locale)}`;
+}
+
+/** A window that has a reset still ahead of it; one whose reset passed is stale, as the meter reads it. */
+const liveWindow = (w: UsageWindow, now: number): boolean => w.resetsAt === undefined || w.resetsAt > now;
+
+/**
+ * Whether an account is out of room now, and when it lifts: the gateways'
+ * cooldown, the provider's own limit, or every usage window spent. The lift
+ * is the latest of what binds it, or null when any of them names no time:
+ * the row then says Limited alone, never a guess.
+ */
+export function limitOf(report: UsageReport | undefined, headroom: AccountHeadroom | undefined, now: number): { resetsAt: number | null } | null {
+  if (report?.expired) return null;
+  const binding: (number | null)[] = [];
+  if (headroom?.throttledUntil !== undefined && headroom.throttledUntil > now) binding.push(headroom.throttledUntil);
+  const limit = report?.rateLimit;
+  if (limit && (limit.until === undefined || limit.until > now)) binding.push(limit.until ?? null);
+  const live = report?.windows.filter((w) => liveWindow(w, now)) ?? [];
+  if (live.length > 0 && live.every((w) => percentLeft(w) <= 0)) binding.push(...live.map((w) => w.resetsAt ?? null));
+  if (binding.length === 0) return null;
+  return { resetsAt: binding.includes(null) ? null : Math.max(...(binding as number[])) };
 }
 
 /**
@@ -58,14 +108,21 @@ export function keyStatus(report: UsageReport | undefined): { text: string; tone
 }
 
 /** A row's state line, first match wins; null when there is nothing to say. */
-export function rowLine(profile: ProfileView, report: UsageReport | undefined, owner: OwnerView | null, mint: MintState | undefined, now: number): RowLine | null {
+export function rowLine(
+  profile: ProfileView,
+  report: UsageReport | undefined,
+  owner: OwnerView | null,
+  mint: MintState | undefined,
+  now: number,
+  limit: { resetsAt: number | null } | null = limitOf(report, undefined, now),
+): RowLine | null {
   const lapsed = report?.expired === true || (profile.expiresAt !== undefined && profile.expiresAt <= now);
   const token: RowAction = { label: "Make a new one", kind: "token" };
 
-  // A key never lapses, refreshes or mints: the status column says revoked, and a throttle is the only line.
-  if (profile.kind === "key") {
-    return report?.rateLimit && !report.expired ? { text: "Rate limited", tone: "warning", detail: rateDetail(report.rateLimit, now) } : null;
-  }
+  const limited: RowLine | null = limit ? { text: "Limited", tone: "warning", limited: limit } : null;
+
+  // A key never lapses, refreshes or mints: the status column says revoked, and a limit is the only line.
+  if (profile.kind === "key") return limited;
   if (mint?.state === "minting") return { text: "Making a one-year token", tone: "muted", busy: true };
   if (mint) {
     const verb = profile.static ? "renew" : "make";
@@ -88,7 +145,7 @@ export function rowLine(profile: ProfileView, report: UsageReport | undefined, o
     const since = profile.expiresAt !== undefined ? ` ${agoLabel(profile.expiresAt, now)}` : "";
     return { text: `${owner.name} is unreachable, token lapsed${since}`, tone: "warning", action: retry };
   }
-  if (report?.rateLimit && !report.expired) return { text: "Rate limited", tone: "warning", detail: rateDetail(report.rateLimit, now) };
+  if (limited) return limited;
   if (profile.static) {
     return { text: "One-year token", tone: "muted", detail: profile.expiresAt !== undefined ? `lapses ${shortDay(profile.expiresAt)}` : undefined };
   }

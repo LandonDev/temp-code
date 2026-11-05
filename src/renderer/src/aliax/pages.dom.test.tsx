@@ -154,7 +154,7 @@ describe('AccountsPage', () => {
     expect(screen.getByText('Codex')).toBeTruthy()
     expect(screen.getByText('Main')).toBeTruthy()
 
-    const bar = screen.getByRole('progressbar', { name: '5h: 70 percent left' })
+    const bar = screen.getByRole('progressbar', { name: /^5h: 70 percent left, resets / })
     expect(bar.getAttribute('data-fill')).toBe('muted')
     const fill = bar.querySelector('[data-slot="progress-indicator"]') as HTMLElement
     expect(fill.style.transform).toBe('translateX(-30%)')

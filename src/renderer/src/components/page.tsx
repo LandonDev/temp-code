@@ -8,9 +8,13 @@ import { Skeleton } from "./ui/skeleton";
  *  gains a scrollbar, so a skeleton and its page land in one place. */
 const PAGE_SCROLLER = "min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]";
 
+/** The column's cap: 672px for a page of settings, 1,152px for a page that
+ *  is a table (Accounts), which reads across the pane's width. */
+const PAGE_WIDTH = { column: "max-w-2xl", table: "max-w-6xl" } as const;
+
 /**
- * The frame of a settings or app page: a 672px column with a 24px inset,
- * one title, an optional one-line description and the page's actions on the
+ * The frame of a settings or app page: a 672px column (`width="table"`:
+ * 1,152px) with a 24px inset, one title, an optional one-line description and the page's actions on the
  * title line. Sections stack 24px apart under it. A page never draws its own
  * header or section heading; it composes these.
  */
@@ -18,17 +22,19 @@ function Page({
   title,
   description,
   actions,
+  width = "column",
   className,
   children,
 }: {
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
+  width?: keyof typeof PAGE_WIDTH;
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <div data-slot="page" className={cn("mx-auto w-full max-w-2xl p-6", className)}>
+    <div data-slot="page" data-width={width} className={cn("mx-auto w-full p-6", PAGE_WIDTH[width], className)}>
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">{title}</h1>
@@ -153,4 +159,4 @@ function PageEmpty({ className, children, ...rest }: ComponentPropsWithoutRef<"p
   );
 }
 
-export { Page, PageSection, PageRow, PageRowsSkeleton, PageEmpty, PAGE_SCROLLER };
+export { Page, PageSection, PageRow, PageRowsSkeleton, PageEmpty, PAGE_SCROLLER, PAGE_WIDTH };

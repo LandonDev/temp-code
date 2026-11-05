@@ -271,6 +271,41 @@ catalog lacks keeps its row, its name muted with "not on this host" 4px
 after it, and its select (`staleModels`). An empty list is one 12px muted
 line in its section.
 
+### The Accounts page
+
+The rail's Accounts row opens it (src/renderer/src/aliax/pages.tsx,
+views/accounts.tsx, views/accounts/row.tsx). It is the one page on the
+table width: `Page width="table"`, a 1,152px cap where the settings pages
+keep 672px, so on a wide pane the usage reads across instead of down. One
+section per provider, its heading with Add account (or Add key…) and the
+section's ⋯; one `PageRow` per account, no cards.
+
+The rows are one container (`@container/accounts`). From 48rem of it each
+row is a table line: the colour dot, the name with its state line and plan
+facts taking what is left, then one 136px column per usage window (5h,
+Week, a model's cap), the Rate column, the switch and ⋯. The columns are the
+page's, not a section's (`barColumns` over every row): a row fills its
+window columns from the left, keeps Rate last and holds an empty column for
+what it lacks, a key keeps its switch's place, so the 5h, Week and Rate
+columns run straight down the page. A key's Pay as you go or Key revoked
+stands across the window columns it has none of. Under 48rem the row stacks:
+the name and its controls on the first line, the columns on their own line
+under the name, sharing its width.
+
+A window's column is its label and the share left (amber when low), the 4px
+bar with the even-burn tick, then when it refills, 12px muted and tabular:
+"Resets 4:15 PM" inside today, "Resets Thu 9:00 AM" past it, "Resets Nov 12,
+9:00 AM" from a week out (`resetWords`, on `clockTime`); its tooltip says how
+long until then ("in 2h 10m"). A window that names no reset, or whose reset
+passed, says nothing there. The bars of a row are one button whose popover
+holds every window (past the bar cap too) with its pace, and the Rate's
+lines. An account out of room (the gateways' cooldown, the provider's own
+limit, or every window spent; `limitOf`) says so on its state line, the
+`StatusMark` word "Limited" in amber with "Resets 4:15 PM" after it, the
+latest reset of what binds it, or the word alone when one of them names no
+time. Nothing on the page says the live threads of an account: the renderer
+does not hold that count.
+
 ### The right side
 
 One panel per root thread at its pane's right edge (`surfaces/RightPanel.tsx`

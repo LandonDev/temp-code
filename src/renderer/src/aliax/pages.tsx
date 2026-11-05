@@ -128,6 +128,7 @@ export function AccountsPage(): React.JSX.Element {
   return (
     <Page
       title="Accounts"
+      width="table"
       description="The sign-ins and keys threads route through."
       actions={
         <Tooltip>

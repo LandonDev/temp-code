@@ -20,6 +20,19 @@ describe("Page", () => {
     expect(screen.getByText("How the app behaves.")).toBeTruthy();
   });
 
+  it("is a 672px column, or 1,152px for a table page", () => {
+    const { container, rerender } = render(<Page title="General">{null}</Page>);
+    const page = () => container.querySelector('[data-slot="page"]') as HTMLElement;
+    expect(page().className).toContain("max-w-2xl");
+    rerender(
+      <Page title="Accounts" width="table">
+        {null}
+      </Page>,
+    );
+    expect(page().className).toContain("max-w-6xl");
+    expect(page().className).not.toContain("max-w-2xl");
+  });
+
   it("puts the actions on the title line", () => {
     render(
       <Page title="Accounts" actions={<Button>Add</Button>}>

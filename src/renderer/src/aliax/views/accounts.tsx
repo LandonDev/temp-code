@@ -21,7 +21,7 @@ import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { useNow } from "@aliax/lib/accounts";
-import { AccountRow, barColumns } from "./accounts/row";
+import { AccountRow, barColumns, type BarColumns } from "./accounts/row";
 import { STATIC_WARN_MS, type OwnerView, type RowAction } from "./accounts/rowLine";
 
 /** The mark each section leads with: the harness's, or Meta's vendor mark. */
@@ -85,7 +85,7 @@ function HomeMenu({ home, environments, localName, onSetHome }: { home: string |
   );
 }
 
-function ProviderSection({ service, props, now }: { service: ServiceView; props: AccountsViewProps; now: number }) {
+function ProviderSection({ service, props, now, columns }: { service: ServiceView; props: AccountsViewProps; now: number; columns: BarColumns }) {
   const { usage, headroom, busy, homes, peers, environments, localName, mint } = props;
   const reports = usage[service.id];
   const rates = headroom[service.id];
@@ -98,7 +98,6 @@ function ProviderSection({ service, props, now }: { service: ServiceView; props:
   const showHome = environments.length > 0 && service.id !== "cursor" && !keyed;
   const menu = service.installed && (service.canSaveCurrent || convertible > 0 || showHome);
   const reportOf = (p: ProfileView) => reports?.find((r) => r.profileName === p.name);
-  const columns = barColumns(service.profiles.map((p) => ({ report: reportOf(p), headroom: rates?.[p.name] })));
   const ownerFor = (p: ProfileView): OwnerView | null => {
     if (!p.owner || p.static) return null;
     const env = environments.find((e) => e.id === p.owner);
@@ -206,40 +205,52 @@ function ProviderSection({ service, props, now }: { service: ServiceView; props:
   );
 }
 
-/** One section per provider, one row per saved account. */
+/**
+ * One section per provider, one row per saved account, in the page's own
+ * container: from 48rem the rows read as one table whose usage columns line
+ * up down the whole page, every section included (row.tsx).
+ */
 export function AccountsView(props: AccountsViewProps) {
   const live = useNow();
   const now = props.now ?? live;
+  const columns = barColumns(
+    props.views
+      .filter((s) => s.installed)
+      .flatMap((s) => s.profiles.map((p) => ({ report: props.usage[s.id]?.find((r) => r.profileName === p.name), headroom: props.headroom[s.id]?.[p.name] }))),
+  );
   return (
-    <>
+    <div data-slot="accounts" className="@container/accounts flex flex-col gap-6">
       {props.views.map((s) => (
-        <ProviderSection key={s.id} service={s} props={props} now={now} />
+        <ProviderSection key={s.id} service={s} props={props} now={now} columns={columns} />
       ))}
-    </>
+    </div>
   );
 }
 
-/** The page's shape while the services load: three sections of two rows. */
+/** The page's shape while the services load: three sections of two rows, the usage columns at their table width. */
 export function AccountsSkeleton() {
   return (
-    <>
+    <div className="@container/accounts flex flex-col gap-6">
       {[0, 1, 2].map((section) => (
         <div key={section} aria-busy="true" aria-label="Loading" className="flex flex-col">
           <Skeleton className="h-3 w-24" />
           {[0, 1].map((row) => (
-            <div key={row} className="flex items-center gap-3 py-3">
+            <div key={row} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
               <Skeleton className="size-2 rounded-full" />
               <div className="flex flex-1 flex-col gap-1.5">
                 <Skeleton className="h-3.5 w-36" />
                 <Skeleton className="h-3 w-24" />
               </div>
-              <Skeleton className="h-6 w-[72px]" />
-              <Skeleton className="h-6 w-[72px]" />
+              <div className="order-last flex basis-full gap-3 ps-5 @3xl/accounts:order-none @3xl/accounts:basis-auto @3xl/accounts:ps-0">
+                {[0, 1, 2].map((cell) => (
+                  <Skeleton key={cell} className="h-9 min-w-0 flex-1 @3xl/accounts:w-34 @3xl/accounts:flex-none" />
+                ))}
+              </div>
               <Skeleton className="h-[18px] w-8 rounded-full" />
             </div>
           ))}
         </div>
       ))}
-    </>
+    </div>
   );
 }

@@ -19,7 +19,10 @@ const views = [
   },
   {
     id: 'codex', name: 'Codex', installed: true, canAddAccount: true, canSaveCurrent: true, switchTargets: [],
-    profiles: [{ name: 'work@x.com', email: 'work@x.com', nickname: 'Work', createdAt: 1, active: true, owner: 'env_box', syncedAt: NOW - 4 * 60_000 }]
+    profiles: [
+      { name: 'work@x.com', email: 'work@x.com', nickname: 'Work', createdAt: 1, active: true, owner: 'env_box', syncedAt: NOW - 4 * 60_000 },
+      { name: 'burst@x.com', email: 'burst@x.com', nickname: 'Burst', color: '#f472b6', createdAt: 2, active: false }
+    ]
   },
   { id: 'cursor', name: 'Cursor', installed: false, canAddAccount: false, canSaveCurrent: false, switchTargets: [], profiles: [] },
   {
@@ -63,6 +66,13 @@ const usage = {
         { label: '5h', usedPercent: 60, resetsAt: NOW + HOUR, periodMs: 5 * HOUR },
         { label: 'Weekly', usedPercent: 20, resetsAt: NOW + 6 * DAY, periodMs: 7 * DAY }
       ]
+    },
+    {
+      profileName: 'burst@x.com', plan: { name: 'Plus', monthlyUsd: 20, renewsAt: NOW + 11 * DAY },
+      windows: [
+        { label: '5h', usedPercent: 100, resetsAt: NOW + 1.5 * HOUR, periodMs: 5 * HOUR },
+        { label: 'Weekly', usedPercent: 100, resetsAt: NOW + 2 * DAY + 3 * HOUR, periodMs: 7 * DAY }
+      ]
     }
   ]
 }
@@ -72,7 +82,7 @@ const headroom = {
   meta: { Work: { room: 0.9, ratePerMin: 12, resetsAt: NOW + 60_000 } }
 }
 
-const base = {
+export const base = {
   ...actions, views, usage, headroom, busy: null, homes: {},
   peers: { env_box: { name: 'box', connected: true, lastSyncAt: NOW, error: null } },
   environments: [{ id: 'env_box', name: 'box' }], localName: 'This Mac', now: NOW,
@@ -80,7 +90,7 @@ const base = {
 }
 
 export default [
-  { name: 'Three providers: a mint, a lapsing token, a copy the box refreshes, one not installed', props: base },
+  { name: 'Three providers: a mint, a lapsing token, a copy the box refreshes, a limited account, one not installed', props: base },
   { name: 'Meta keys: one paying as it goes with its rate bar, one revoked', props: { ...base, views: views.filter((v) => v.id === 'meta') } },
   { name: 'Meta with no keys', props: { ...base, views: [{ ...views[3], profiles: [] }] } },
   { name: 'Loading usage after Refresh', props: { ...base, usage: {}, mint: { rows: {}, run: { total: 3, done: 1 } } } }

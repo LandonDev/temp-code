@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { PAGE_SCROLLER } from "../components/page";
+import { PAGE_SCROLLER, PAGE_WIDTH } from "../components/page";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { Skeleton } from "../components/ui/skeleton";
@@ -124,7 +124,7 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
         <>
           <div data-skeleton-strip className={STRIP} />
           <div data-skeleton-scroller className={PAGE_SCROLLER}>
-            <div data-skeleton-column className="mx-auto w-full max-w-2xl p-6">
+            <div data-skeleton-column className={`mx-auto w-full p-6 ${PAGE_WIDTH[kind === "accounts" ? "table" : "column"]}`}>
               <Skeleton className="h-4 w-32" />
               <Skeleton className="mt-2 h-3 w-64 max-w-full" />
               {kind === "accounts" ? (

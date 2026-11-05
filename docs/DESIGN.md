@@ -457,7 +457,9 @@ the way it came, and keeps its direction. Under reduced motion they cross-
 fade in `--dur-fast`; nothing appears in one frame.
 
 A page (Settings, Accounts, Stats) is `Page`, `PageSection` and `PageRow`
-from `components/page.tsx`: a 672px column with a 24px inset, one 16px
+from `components/page.tsx`: a 672px column with a 24px inset (a page that
+is a table, Accounts, takes `width="table"`, 1,152px, and lays its rows as
+columns from 48rem of its own container, stacked under it), one 16px
 semibold title with a 12px muted line under it, sections 24px apart, each
 under a 12px medium muted heading with 8px to its first row, rows 12px top
 and bottom with a hairline between neighbours and never a box. A row's
