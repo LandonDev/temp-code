@@ -50,10 +50,11 @@ import { ThreadStatusMark } from "./TabIndicator";
  * rows. The live row holds the live threads in a stable order like a
  * browser's tabs, the shelf under it the settled ones freshest first, drawn
  * only while it has a chip; the thread on screen always has its chip and is
- * the active one, whichever row it sits on. A live chip is the type glyph,
- * the title, "Master" when pinned, the host glyph (two or more hosts) and
- * the status glyph (none for a settled thread); a shelf chip is smaller and
- * quieter, with no status mark. The hover label says the state in words.
+ * the active one, whichever row it sits on. A live chip is the type glyph
+ * (the status mark in its 14px place while the thread works, waits or
+ * fails), the title, "Master" when pinned and the host glyph (two or more
+ * hosts); a shelf chip is smaller and quieter, with no status mark. The
+ * hover label says the state in words.
  * A primary click selects (on release), a right-click opens the thread's
  * menu at the pointer, a double-click renames. Dragging a chip onto a pane's
  * edge opens that thread there, beside what is on screen. List rows take no
@@ -135,7 +136,7 @@ export function ThreadHeaderStrip({
   onScrollBy?: (direction: -1 | 1) => void;
   /** Sits right after the live row, outside it: the new-thread chooser. */
   trailing?: ReactNode;
-  /** The title bar's right end: the plan chip, the thread menu and the panel toggle. */
+  /** The title bar's right end: the plan chip, the agents cue, the thread menu and the panel toggle. */
   end?: ReactNode;
 }) {
   const activeId = model.activeId;

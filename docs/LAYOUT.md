@@ -23,14 +23,15 @@ component builds each surface, and how**. Nothing here is built yet.
 ## Shell anatomy
 
 ```
-┌─ titlebar ── traffic lights ─ workspace / project ──── activity pill ─ panel toggle ─┐
+┌─ titlebar ─ traffic lights ─ live chips, + ────────────── plan · agents · ⋯ · panel ─┐
+│            │  the shelf: the settled chips, while there are any                      │
 ├────────────┬───────────────────────────────────────────────────┬─────────────────────┤
-│ sidebar    │  thread strip (tabs + new-thread)                 │ right panel         │
-│            │  ───────────────────────────────────────────────  │ Agents · Activity · │
-│ workspaces │  thread view (per type)                           │ Changes · Notes …   │
+│ sidebar    │  thread view (per type)                           │ right panel         │
+│            │                                                   │ Agents · Activity · │
+│ workspaces │                                                   │ Changes · Notes …   │
 │  projects  │                                                   │ (the sections the   │
-│            │  prompt bar (floating)                            │  thread's state has)│
-│ ── conn ── │  branch · cwd meta row                            │                     │
+│            │  composer                                         │  thread's state has)│
+│ ── foot ── │  model · context · permission row                 │                     │
 └────────────┴───────────────────────────────────────────────────┴─────────────────────┘
 ```
 
@@ -611,8 +612,8 @@ before the host's meta lands (`chipThreadsOf` in chrome/ShellTitleBar.tsx).
   waits, fails, pauses or queues, as a browser tab's favicon turns into a
   spinner; the hover line then names the type. Nothing else in the chip
   moves: its width never changes with its state. Muted at rest,
-  `foreground/5` and foreground on hover (the colour swap takes
-  `--dur-fast`), `bg-muted` when active (no transition), medium weight when
+  `foreground/5` and foreground on hover (the fill and the colour swap take
+  `--dur-hover`, the ghost button's), `bg-muted` when active (no transition), medium weight when
   unread (an unseen medium-weight copy of the title, its `::after`, holds
   that width at all times, so unread never widens it), the accent ring on
   keyboard focus. A chip whose host's link is
@@ -652,7 +653,7 @@ before the host's meta lands (`chipThreadsOf` in chrome/ShellTitleBar.tsx).
   glyph, and the host's name with two or more hosts.
 - **Overflow.** A live row wider than its room scrolls sideways (a mouse
   wheel scrolls it too), and each end that hides chips gets a ghost
-  `icon-xs` arrow on the bar's tone, over the row's own box, that scrolls it
+  28px `icon-sm` arrow (the bar's icon buttons' size) on the bar's tone, over the row's own box, that scrolls it
   by most of a width. The shelf scrolls on its own, with no arrows: an edge
 that hides chips fades over 24px (`useOverflowEdges`, `OVERFLOW_FADE`).
 - **New thread.** The "+" right after the live row, outside its tablist so
