@@ -163,7 +163,11 @@ describe("RailRow", () => {
     expect(slot.contains(action)).toBe(false);
     const overlay = action.closest("[data-rail-actions]")!;
     expect(overlay.className).toContain("absolute");
-    expect(overlay.className).toContain("right-0");
+    // Inset by the focus ring's width (2px, inset 2px from the row's edge),
+    // so a focused row's ring is never covered at its end.
+    expect(overlay.className).toContain("inset-y-0.5");
+    expect(overlay.className).toContain("right-0.5");
+    expect(overlay.className).not.toMatch(/(^| )(right-0|inset-y-0)( |$)/);
     expect(overlay.parentElement!.hasAttribute("data-rail-anchor")).toBe(true);
     expect(overlay.parentElement!.nextElementSibling).toBe(slot);
     // One reveal for the pair: it waits, fades, and takes no pointer until it shows.

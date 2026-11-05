@@ -86,8 +86,11 @@ const SHOWN = "pointer-events-auto opacity-100 delay-(--dur-instant)";
  *  trailing control: one reveal for the pair, on the row's own fill (its
  *  hover, pressed and selected tones), whose first 12px fade the name out
  *  under them (a still mask; only the opacity moves), 4px from the control,
- *  its end rounded with the row's where no control follows. */
-const OVERLAY = `absolute inset-y-0 right-0 flex items-center gap-0.5 rounded-e-md pr-1 pl-3 [mask-image:linear-gradient(to_right,transparent,var(--foreground)_12px)] ${reveal("row", { row: true, overlay: true })}`;
+ *  its end rounded with the row's where no control follows. Inset 2px, the
+ *  focus ring's width, so a focused row's ring is drawn whole round it (its
+ *  fill is the row's own, so the margin does not show; its 2px end padding
+ *  keeps the actions where they sat). */
+const OVERLAY = `absolute inset-y-0.5 right-0.5 flex items-center gap-0.5 rounded-e-sm pr-0.5 pl-3 [mask-image:linear-gradient(to_right,transparent,var(--foreground)_12px)] ${reveal("row", { row: true, overlay: true })}`;
 const GROUP_FILL =
   "bg-sidebar-group group-hover/row:bg-sidebar-group-hover group-has-[[aria-expanded=true]]/row:bg-sidebar-group-selected group-has-[>[data-slot=button]:active]/row:bg-sidebar-group-selected";
 const GROUP_FILL_SELECTED = "bg-sidebar-group-selected group-hover/row:bg-sidebar-group-selected";
