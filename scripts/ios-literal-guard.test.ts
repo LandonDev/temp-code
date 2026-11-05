@@ -31,7 +31,7 @@ const ALLOWED: Record<string, number> = {
   "Thread/ComposerStyles.swift": 2,
   "Thread/DiffScreen.swift": 1,
   "Thread/DiffStyles.swift": 3,
-  "Thread/Frame/ThreadToolbar.swift": 2,
+  "Thread/Frame/ThreadToolbar.swift": 1,
   "Thread/HostChip.swift": 1,
   "Thread/ImplementationBoardView.swift": 1,
   "Thread/Master/BatchFoot.swift": 1,
@@ -44,7 +44,7 @@ const ALLOWED: Record<string, number> = {
   "Thread/SourcesView.swift": 2,
   "Thread/ThreadScreen.swift": 1,
   "Thread/ToolChip.swift": 1,
-  "Thread/TranscriptRows.swift": 5,
+  "Thread/TranscriptRows.swift": 1,
   "Thread/TranscriptView.swift": 3,
 };
 

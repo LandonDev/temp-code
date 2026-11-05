@@ -28,7 +28,8 @@ Sources/TempCodeClient
                 children, the host of a path), TranscriptRows (entries → the list's rows:
                 items, groups of the work between two paragraphs with GroupFold, turn
                 ends), ToolPhrase, GroupPhrase and ActionRow (the desktop's toolPhrase.ts,
-                groupPhrase.ts and actionModel.ts),
+                groupPhrase.ts and actionModel.ts), AgentSteps (AgentTitle, WaitSteps,
+                FoldedStep, AgentsCue: agentTitle.ts, agentSteps.ts, isFoldedStep, agentsCue),
                 Batch (MasterBoard, BatchSteps, RulesEdit, BoardActions: the master board)
   Shell/        HomeSections, ThreadGroups, HomeModel, HostPresentation, ProjectLinks, FailureCue,
                 DuoLayout, and the shell's shape: Routes, ShellPose, ShellPaths, ThreadStrip

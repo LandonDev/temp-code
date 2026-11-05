@@ -359,6 +359,8 @@ enum TranscriptMetrics {
     static let line = CGFloat(TranscriptLengths.line)
     static let tableRow = CGFloat(TranscriptLengths.tableRow)
     static let glyphSlot = CGFloat(TranscriptLengths.glyphSlot)
+    /// The line type's line box: a notice's glyph sits centred in its first line.
+    static let glyphLine = CGFloat(TranscriptScale.line.lineHeight)
     static let glyphGap = CGFloat(TranscriptLengths.glyphGap)
     static let wordGap = CGFloat(TranscriptLengths.wordGap)
     static let afterValue = CGFloat(TranscriptLengths.afterValue)

@@ -16,28 +16,28 @@ struct NoticeRow: View {
                 if let review = notice.review {
                     ReviewCard(review: review, resolved: line.reviewResolved, client: client, sessionId: sessionId)
                 } else {
-                    QuietLine(symbol: "checklist", text: notice.message)
+                    NoticeLine(symbol: "checklist", lead: notice.message, wrap: true)
                 }
             case .gate:
                 if let gate = notice.gate {
                     GateCard(gate: gate)
                 } else {
-                    QuietLine(symbol: "checkmark.seal", text: notice.message)
+                    NoticeLine(symbol: "checkmark.seal", lead: notice.message, wrap: true)
                 }
             case .batch:
                 BatchLine(message: notice.message)
             case .accountGone:
                 AccountGoneLine(message: notice.message)
             case .planBuild:
-                QuietLine(symbol: "exclamationmark.circle", text: notice.message)
+                PlanBuildLine(message: notice.message)
             case .away:
                 // Decided, answered or skipped while the person was away: the message says which.
-                QuietLine(symbol: "moon", text: notice.message)
+                AwayLine(notice: notice)
             case .unknown:
-                QuietLine(symbol: "info.circle", text: notice.message)
+                NoticeLine(symbol: "info.circle", lead: notice.message, wrap: true)
             }
         } else {
-            QuietLine(symbol: "info.circle", text: line.text)
+            NoticeLine(symbol: "info.circle", lead: line.text, wrap: true)
         }
     }
 }
@@ -333,12 +333,20 @@ struct GateCard: View {
 
 // MARK: - the plain kinds
 
-/// A batch landing or ending, in the host's words.
+/// A batch's line on the master or a child: a merge it made (a step of the
+/// run), or its end ("Batch done", a row of its own).
 struct BatchLine: View {
     let message: String
+    var inTable = false
 
     var body: some View {
-        QuietLine(symbol: "square.stack.3d.up", text: message)
+        if let merged = message.firstMatch(of: /^Merged by the batch: (.*)$/.dotMatchesNewlines()) {
+            NoticeLine(symbol: "arrow.triangle.merge", lead: "Merged by the batch", details: [String(merged.1)], inTable: inTable)
+        } else if let done = message.firstMatch(of: /^Batch done: (.*)$/.dotMatchesNewlines()) {
+            NoticeLine(lead: "Batch done", details: [String(done.1)], inTable: inTable) { StepStateMark(state: .done) }
+        } else {
+            NoticeLine(symbol: "arrow.triangle.merge", lead: message, wrap: true, inTable: inTable)
+        }
     }
 }
 
@@ -347,39 +355,41 @@ struct AccountGoneLine: View {
     let message: String
 
     var body: some View {
-        QuietLine(symbol: "person.crop.circle.badge.xmark", text: message)
+        NoticeLine(symbol: "person.2", lead: message, wrap: true)
     }
 }
 
-/// The plan's own record of its build: the build's live row when this host
-/// has it, else one quiet line with the title.
+/// A plan's automatic build that could not start, with the host's reason.
+struct PlanBuildLine: View {
+    let message: String
+
+    var body: some View {
+        if let why = message.firstMatch(of: /^The build did not start: (.*)$/.dotMatchesNewlines()) {
+            NoticeLine(lead: "The build did not start", details: [String(why.1)], wrap: true) { StepStateMark(state: .failed) }
+        } else {
+            NoticeLine(lead: message, wrap: true) { StepStateMark(state: .failed) }
+        }
+    }
+}
+
+/// The plan's own record of its build, a step of its run: Started the
+/// build, the build's title (a tap opens it), and where it stands, still.
 struct PlanHandoffRow: View {
     let line: SystemLine
     let client: EnvironmentClient
+    var inTable = false
 
     var body: some View {
-        if let buildId = line.agentId, let build = client.session(buildId) {
-            NavigationLink(value: ThreadScreenRoute(sessionId: buildId)) {
-                HStack(spacing: 10) {
-                    StatusDot(status: build.status, running: Fleet.isLive(build.status))
-                    AgentGlyph(type: build.agentType)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(build.title.isEmpty ? line.text : build.title)
-                            .transcriptType(TranscriptType.prose)
-                            .lineLimit(1)
-                        Text(ModelName.short(build.model))
-                            .transcriptType(TranscriptType.line)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 8)
-                }
-                .padding(.horizontal, 8)
-                .frame(minHeight: TranscriptMetrics.hitArea)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.pressable)
+        let build = line.agentId.flatMap(client.session)
+        let title = build.map { $0.title.isEmpty ? line.text : $0.title } ?? line.text
+        let row = NoticeLine(lead: "Started the build", details: [title], inTable: inTable, trailing: build.map { StepStateMark.of($0.status) }) {
+            NoticeSymbol(name: (build?.agentType ?? .implementer).symbol)
+        }
+        if let build {
+            NavigationLink(value: ThreadScreenRoute(sessionId: build.id)) { row }
+                .buttonStyle(.pressable)
         } else {
-            QuietLine(symbol: "hammer", text: "Build started: \(line.text)")
+            row
         }
     }
 }

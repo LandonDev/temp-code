@@ -2552,9 +2552,16 @@ proof and the sizing rules; the pieces, by name:
   moves on, and a person's hand decides from then on), a turn's end row,
   its working line then its closing line; stable ids), `ToolPhrase` (the
   desktop's toolPhrase.ts), `GroupPhrase` (groupPhrase.ts, over
-  `GroupStep` tool steps; A8 adds the host's steps) and `ActionRow` (the
-  desktop's actionModel.ts: verb, object, counts, what a row opens), all
-  tested; `threads[id].fold`
+  `GroupStep` tool and host steps: heard from, the batch, tasks finished,
+  gate, review, pass, hand-off, batch merge, away), `ActionRow` (the
+  desktop's actionModel.ts: verb, object, counts, what a row opens) and
+  `Rendering/AgentSteps.swift` (`AgentTitle` = agentTitle.ts, `WaitSteps` =
+  agentSteps.ts, `FoldedStep` = isFoldedStep, stepRows and spawnedNames,
+  `AgentsCue` = agentsCue), all tested; the fold stamps each `agent-spawned`
+  child on its `spawn_agent` call (`ToolItem.spawned`, a row of its own only
+  with no call of the turn to stand on), marks the batch's own report
+  (`SystemLine.batch`), stops a compaction its turn left open
+  (`CompactionItem.stoppedTs`) and draws no row for `background-tasks`; `threads[id].fold`
   stays current incrementally. The transcript's two seams for sibling
   threads: `StreamingAssistantRow` (`Thread/StreamingRow.swift`, the
   streaming reveal) and `MediaImage.hostOf(_:)` (the host of an `fs.media`
@@ -2636,7 +2643,11 @@ proof and the sizing rules; the pieces, by name:
   "Thought"; while the turn is open a streaming thought is no step and a
   call the working line tells is a step with no row, `TranscriptRows.rows`;
   a running step is the still dot, and a step whose turn is over draws
-  settled); a
+  settled; `Thread/AgentSteps.swift` draws the host's steps in a run, a
+  wait's agents and a batch spawn's children as `AgentStepLine` and
+  `SpawnChildLine` with a still `StepStateMark`, every transcript notice
+  on the one `NoticeLine`, and the compaction as one `CompactionLine`;
+  the toolbar's `AgentsButton` draws the `AgentsCue`); a
   turn's end row is one row from Send to the
   close, `TurnLineRow` (`Thread/WorkingLine.swift`, over the client
   package's `TurnLineInput` and `TurnLineModel` in `Rendering/TurnLine.swift`

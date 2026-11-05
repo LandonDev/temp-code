@@ -290,18 +290,18 @@ struct ThreadScreen: View {
                 ProjectPlanChip(client: client, project: project)
                     .environment(\.inBar, true)
             }
-            if agents { agentsButton(children) }
+            if agents { agentsButton(session) }
             if session.parentId == nil { NotesButton(client: client, sessionId: sessionId) }
         } else {
             // iOS 18: a root thread's notes (NotesSheet.swift), before the agents button.
             if session.parentId == nil { NotesButton(client: client, sessionId: sessionId) }
-            if agents { agentsButton(children) }
+            if agents { agentsButton(session) }
         }
         ThreadMenu(client: client, session: session, inShell: shellTitle != nil, onRename: { beginRename(session) }, onFailure: { failure = $0 })
     }
 
-    private func agentsButton(_ children: [SessionMeta]) -> some View {
-        AgentsButton(running: Fleet.counts(children.map(\.status)).working, total: children.count) { showAgents = true }
+    private func agentsButton(_ session: SessionMeta) -> some View {
+        AgentsButton(cue: AgentsCue.of(rootId: session.id, metas: client.sessions, rootRunning: session.status == .running)) { showAgents = true }
     }
 
     /// The thread is no longer on this host: the subscription was refused,

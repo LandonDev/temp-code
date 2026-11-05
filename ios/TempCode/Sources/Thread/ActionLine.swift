@@ -12,7 +12,7 @@ import TempCodeContract
 /// edge; 32 pt in a group's table, its words 12 pt in.
 struct ActionLine: View {
     /// The glyph slot: the kind's symbol, or the running dot, or the failed mark.
-    let glyph: ActionGlyph
+    var glyph: ActionGlyph?
     let verb: String
     var object = ""
     /// The object is a path: it truncates in the middle.
@@ -24,12 +24,18 @@ struct ActionLine: View {
     /// The chevron: nil draws none; false points right, true turns down.
     var chevron: Bool?
     var inTable = false
+    /// An agent's or a task's state in the glyph slot, in the glyph's place.
+    var mark: StepStateMark?
+    /// Where a spawned child stands, still, after the words.
+    var trailing: StepStateMark.State?
 
     var body: some View {
         HStack(spacing: TranscriptMetrics.wordGap) {
-            glyph
-                .frame(width: TranscriptMetrics.glyphSlot, height: TranscriptMetrics.glyphSlot)
-                .padding(.trailing, TranscriptMetrics.glyphGap - TranscriptMetrics.wordGap)
+            Group {
+                if let mark { mark } else { glyph }
+            }
+            .frame(width: TranscriptMetrics.glyphSlot, height: TranscriptMetrics.glyphSlot)
+            .padding(.trailing, TranscriptMetrics.glyphGap - TranscriptMetrics.wordGap)
             if !verb.isEmpty {
                 Text(verb)
                     .foregroundStyle(.secondary)
@@ -44,6 +50,10 @@ struct ActionLine: View {
                     .layoutPriority(-1)
             }
             StepCounts(tally: tally, adds: adds, dels: dels, failed: failed)
+            if let trailing {
+                StepStateMark(state: trailing)
+                    .padding(.leading, TranscriptMetrics.afterValue - TranscriptMetrics.wordGap)
+            }
             if let chevron {
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))

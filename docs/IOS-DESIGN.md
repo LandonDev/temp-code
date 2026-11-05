@@ -558,12 +558,17 @@ in the "Couldn't do that" alert. The title and the mark cross-fade when
 they change; nothing animates on the first paint.
 
 The toolbar's trailing group, left to right. In the shell: the project's
-plan chip (`ProjectPlanChip`, when the project has a plan), the agent glyph
-`person.2` with the running count beside it (the agents cue's place until
-it lands; shown when the thread has unarchived children and no Fleet
-segment lists them already; it pushes the subagent list), Notes (roots),
-and the ellipsis menu last. Outside the shell: Notes (roots), the agent
-glyph, the menu. The menu (`ThreadMenuItem.items`), in order: the reason a
+plan chip (`ProjectPlanChip`, when the project has a plan), the agents
+button (shown when the thread has unarchived children and no Fleet segment
+lists them already; it pushes the subagent list), Notes (roots), and the
+ellipsis menu last. Outside the shell: Notes (roots), the agents button,
+the menu. The agents button follows the desktop's cue (`AgentsCue`): while
+any subagent at any depth works, waits or is queued (a master's batch is
+left to its board), the loudest live state's glyph (waiting's amber dot,
+else working's spinner, a still dot while the thread's own turn runs, else
+the queued ring) and the live count, amber while one needs you; with
+nothing live the agent glyph `person.2` alone. Its accessibility label is
+the cue's line ("Agents: 1 needs you, 2 working"). The menu (`ThreadMenuItem.items`), in order: the reason a
 lesser key cannot act (first, when there is one), Rename…, in the shell
 Account… for a thread that spends from an account (the account chip's
 sheet, "The account chip and menu" below), Pin, the master pin, the fleet
@@ -666,7 +671,7 @@ is the signal: UIKit reports zero-height keyboards around a fold.
 accepted as the system draws it: every trailing item has a symbol, so none
 is dropped; the agents button, a custom view the system never shows
 vertically, draws its glyph alone under `\.tcVerticalBar` (the count stays
-in its accessibility value and the fleet rows); the title stays.
+in its accessibility label and the fleet rows); the title stays.
 
 **The bottom line.** The dock's bottom is the safe area, which already
 holds a bar the system owns. When a bar floats inside the window's bar
@@ -1073,8 +1078,13 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   `ActionLine.swift`, over the client package's `ActivityGroup` and
   `GroupFold` in `Rendering/TranscriptRows.swift`). The run rule: thinking
   with words, every tool call (edits and todo updates among them) but a
-  published page join; prose, a question, an approval, a compaction and a
-  system line break it; a thought the next paragraph repeats word for word
+  published page, and the host's steps (`FoldedStep`, the desktop's
+  `isFoldedStep`: a report, a spawn, a finished task, a gate, a merged
+  review, the pass, the plan's build hand-off, a batch merge, an away
+  line) join; prose, a question, an approval, a compaction and every other
+  host line (a held review, a failure, Stopped, Batch done, account-gone,
+  the restart line) break it; a wait is no step while it is open (the
+  working line says "Waiting on <title>") nor once it returned on nobody; a thought the next paragraph repeats word for word
   is dropped. One step is its own row at the prose's edge; more is one
   muted 28 pt line (the glyph of the work it did most, the phrase, the
   counts, the chevron) that opens onto a table: one hairline frame at
@@ -1163,18 +1173,36 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   wrap (the picked one near-black), an Other field when the question takes
   free text, then the steering thread's Answer (`CardActions.swift`);
   answered, the chosen chips stay on and the rest fall away.
-- **Compaction**: a pulsing violet dot and "Compacting context" with the
-  elapsed time while it runs; a labelled divider, "Context compacted"
-  and then "142k → 38k", "2s" and "auto" each its own quieter text, once it lands; a destructive line when it fails.
+- **Notices** draw on one `NoticeLine` (Thread/AgentSteps.swift, the
+  desktop's NoticeLine): 28 pt, the 14 pt glyph slot, 8 pt to the lead,
+  the details 4 pt after it as one muted comma run that truncates once;
+  the lead is medium when details follow; 32 pt and 12 pt in inside a
+  table. Folded into a run as a step it reads verb then target, the lead
+  muted and regular, the first detail in the primary step.
+- **Compaction**: one row for its whole life in the line's words:
+  "Compacting context" in the working text with its time (a still dot, no
+  pulse), then "Context compacted" with "142k → 38k" and its span,
+  "Compaction failed" with the error, or "Compaction stopped" with its
+  span when its turn ended with neither; the glyph and words cross-fade in
+  place.
 - **Errors and system**: "Failed" at medium weight over the harness's words, in destructive with
-  the alert glyph; the user's own Stop is a gray "Stopped"; a pass row reads
-  "Pass" and what it did; everything else is one quiet line, glyph and text.
+  the alert glyph; the user's own Stop is a gray "Stopped"; everything else
+  is one notice line.
 - **A failed thread's row** (every list) reads the host's
   one-line verdict (`failure.summary`) on its second line; the error row's
   first line is the fallback for a host that sent none.
-- **Subagent spawn and report**: a row under a rail: the agent's glyph,
-  "Spawned" or "Reported", its title in a wash, its status with the dot;
-  tap pushes the subagent thread.
+- **Agents in the run** (the desktop's agentSteps.ts and AgentSpawnRow):
+  a spawn lands on its `spawn_agent` call's row (the fold stamps each
+  child on the call), with the child's state as a still dot after the
+  words; a batch spawn is one "Spawned <title>" row per child; a report
+  and each agent a wait returned on is one step: the state's still glyph,
+  then Finished, Failed, Needs you, Stopped or Paused and the title
+  (`AgentTitle`: the store's title, the spawn's, the report's stamp, the
+  task's first line, else "a subagent", cut at a word past 48); the
+  batch's own report reads "Finished the batch" and opens nothing; a
+  settled background task is "Task finished <label>". A row about an
+  agent the store lists pushes its thread. No step spins: the working
+  line is the transcript's one moving mark.
 - **Failure**: the host's verdict on a failed turn as a card: the summary,
   the cause, a note naming what only the desktop can do (sign in, pick an
   account or a model), and the actions this key can take as full-width

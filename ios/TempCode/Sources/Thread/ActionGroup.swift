@@ -62,6 +62,7 @@ struct ActionGroup: View {
                     .transition(.asymmetric(insertion: .opacity.animation(Motion.expandContent), removal: .opacity.animation(Motion.collapse)))
             }
         }
+        .environment(\.spawnedNames, FoldedStep.spawnedNames(group.entries))
         .onChange(of: group.working) { _, working in
             fold.set(working: working, at: Self.now)
             guard !working, fold.hand == nil else { return }
@@ -163,8 +164,20 @@ struct ActionStep: View {
             switch entry.item {
             case .thinking(let block):
                 ThoughtStep(block: block, inTable: inTable, onHand: onHand)
+            case .tool(let tool) where WaitSteps.isWait(tool):
+                // A wait is no row of its own: each agent it returned on is a step.
+                StepRows(items: WaitSteps.outcomes(tool), inTable: inTable) { outcome in
+                    AgentStepLine(id: outcome.id, status: outcome.status, inTable: inTable, client: client)
+                }
+            case .tool(let tool) where FoldedStep.isBatchSpawn(tool) && !tool.spawned.isEmpty:
+                // A batch spawn is one row per child once the host stamped them, as an edit is one row per file.
+                StepRows(items: FoldedStep.spawnedNames(tool).map(\.id), inTable: inTable) { id in
+                    SpawnChildLine(id: id, name: FoldedStep.spawnedNames(tool).first { $0.id == id }?.name, inTable: inTable, client: client)
+                }
             case .tool(let tool):
                 ToolStep(tool: tool, inTable: inTable, settled: settled, client: client, sessionId: sessionId, onHand: onHand)
+            case .system(let line):
+                HostStep(line: line, inTable: inTable, client: client)
             default:
                 EmptyView()
             }
@@ -236,8 +249,15 @@ private struct ToolStep: View {
         }
     }
 
+    /// The one child a spawn made, where it stands: a still mark after the words.
+    private var child: StepStateMark.State? {
+        guard tool.spawned.count == 1, !FoldedStep.isBatchSpawn(tool) else { return nil }
+        let id = tool.spawned[0]
+        return (client.session(WatchWords.bareAgentId(id)) ?? client.session(id)).map { StepStateMark.of($0.status) }
+    }
+
     private func lineView(_ row: ActionRow, chevron: Bool) -> some View {
-        ActionLine(glyph: ActionGlyph(look: row.look), verb: row.verb, object: row.object, isFile: row.isFile, tally: row.tally, adds: row.adds ?? 0, dels: row.dels ?? 0, chevron: chevron, inTable: inTable)
+        ActionLine(glyph: ActionGlyph(look: row.look), verb: row.verb, object: row.object, isFile: row.isFile, tally: row.tally, adds: row.adds ?? 0, dels: row.dels ?? 0, chevron: chevron, inTable: inTable, trailing: child)
             .accessibilityElement(children: .combine)
             .accessibilityLabel([row.verb, row.object].filter { !$0.isEmpty }.joined(separator: " "))
     }

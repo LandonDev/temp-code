@@ -857,6 +857,10 @@ if (process.env.TC_TEST_FLEET === 'large') {
   }
 }
 at(THREAD_ORCH, [
+  // The host stamps each child on the call that spawned it: one step per child.
+  { type: 'agent-spawned', childSessionId: 'ios-orch-a1' },
+  { type: 'agent-spawned', childSessionId: 'ios-orch-a2' },
+  { type: 'agent-spawned', childSessionId: 'ios-orch-a3' },
   { type: 'tool-result', callId: 'sp1', output: 'Spawned 3 agents', isError: false },
   { type: 'tool-call', callId: 'w1', name: 'mcp__orchestrator__wait_for_agent', input: { agentIds: ['ios-orch-a1', 'ios-orch-a2', 'ios-orch-a3'], mode: 'all' } },
   status('running')
@@ -958,8 +962,11 @@ at(THREAD_CHAT, [
     { kind: 'add', text: '  if (provider === "codex") return gateway.scopedCodexUrl(threadId)', number: 41 },
     { kind: 'add', text: '  // One https port per codex thread: the port is the scope.', number: 42 }
   ]),
-  // A spawn row naming a thread the fleet seeds, so the row links to it.
+  // A spawn naming a thread the fleet seeds, with no call to stand on: a step that links to it.
   { type: 'agent-spawned', childSessionId: 'ios-fleet-explorer' },
+  // Its report and a background task that finished: steps of the same run.
+  { type: 'agent-report', agentId: 'ios-fleet-explorer', title: 'Map the plugin boundaries', status: 'idle' },
+  { type: 'background-task', taskId: 'lint', description: 'bun run lint', status: 'completed' },
   { type: 'compaction', phase: 'start', trigger: 'auto', preTokens: 142_000 },
   { type: 'compaction', phase: 'done', trigger: 'auto', preTokens: 142_000, postTokens: 38_000, durationMs: 2_400 },
   { type: 'error', message: 'The provider answered 429: rate limited for 20 s' },

@@ -152,6 +152,7 @@
 		EFFE7512408C0161A6092B96 /* ThreadActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF1E10EC23A743EAD9AFEB3D /* ThreadActivityViews.swift */; };
 		F0AA1E81A6C34F6010913756 /* ComposerAttachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C576CE99A5E45548F2435C /* ComposerAttachments.swift */; };
 		F0D86D4E99DD372A7AD2A990 /* SearchNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1835920C905E1E4E65A27975 /* SearchNoteRow.swift */; };
+		F14F1ABDD70ABB2D587DDAB7 /* AgentSteps.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39BBC11DE0A34207C22E4B47 /* AgentSteps.swift */; };
 		F57B9A272D9C4641C74A0BF6 /* Tokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9929B736C3C28B124C2DB5D1 /* Tokens.swift */; };
 		F7A0247378FDDEF0C7BF172F /* WorkspaceScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11BD85C47ECA181F92CBC396 /* WorkspaceScreen.swift */; };
 		FB079AEF0FD1CC9C96A437DB /* ArchivedViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B826E1940308077BFC57B4F9 /* ArchivedViews.swift */; };
@@ -231,6 +232,7 @@
 		38091D4AA307C8AE81C19643 /* ThreadActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadActivity.swift; sourceTree = "<group>"; };
 		387DBAC71502B6ED41C9A864 /* ActivityCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityCoordinator.swift; sourceTree = "<group>"; };
 		392202499D6444F9BD27112A /* DiffStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffStyles.swift; sourceTree = "<group>"; };
+		39BBC11DE0A34207C22E4B47 /* AgentSteps.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSteps.swift; sourceTree = "<group>"; };
 		3B3B09FA95C9406F6DB3C428 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		3E0F7543C59BDFAF1793E3F8 /* NotesSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesSheet.swift; sourceTree = "<group>"; };
 		3E87EC3DF336E9F9C38A9188 /* NeedsYouNotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeedsYouNotes.swift; sourceTree = "<group>"; };
@@ -512,6 +514,7 @@
 				B18272CCF480425195BAAF3A /* ActionGroup.swift */,
 				9E692263EE092E52EFE95D2F /* ActionLine.swift */,
 				5205F9177D20AB027FD7DFB0 /* AgentDetailScreen.swift */,
+				39BBC11DE0A34207C22E4B47 /* AgentSteps.swift */,
 				728030024F26E8BF8E4FE9CF /* BoardOutcomes.swift */,
 				EB3C0093C73C91C73DE65042 /* BoardStyles.swift */,
 				AEC75CE0966D46F74C89225D /* CardActions.swift */,
@@ -822,6 +825,7 @@
 				CD231FE7A0DA2FDE505ACF76 /* AddThreadSheet.swift in Sources */,
 				9E7F274FE896575C2806AD66 /* AdoptThreadSheet.swift in Sources */,
 				5F73AFAFA25453523C16CA96 /* AgentDetailScreen.swift in Sources */,
+				F14F1ABDD70ABB2D587DDAB7 /* AgentSteps.swift in Sources */,
 				0E1E99641BDC5DF10E6B7133 /* AppModel.swift in Sources */,
 				CEA16927C6E7A58FC70AC5E5 /* ArchiveBatchSheet.swift in Sources */,
 				FB079AEF0FD1CC9C96A437DB /* ArchivedViews.swift in Sources */,

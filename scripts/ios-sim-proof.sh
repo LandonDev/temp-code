@@ -719,6 +719,9 @@ features_set() {
     shot "master-paused-$mode" thread "Port the admin pages"
     shot "project-plan-$mode" thread "Project plan: the billing" plan
     shot "notices-$mode" thread "Land the export endpoint" chat
+    shot "agent-steps-$mode" thread "Ship the iOS thread screens" log
+    shot "agents-cue-$mode" thread "Find the slow query"
+    shot "host-steps-$mode" thread "Why does the gateway refuse http for Codex?" "" last-group
     shot "failures-$mode" thread "Every way a turn fails"
     shot "preamble-$mode" thread "config keys (with rules)" chat
     shot "handoff-$mode" thread "Plan the passkey rollout" chat

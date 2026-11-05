@@ -297,10 +297,11 @@ struct TranscriptView: View {
         }
     }
 
-    /// DEBUG only: `TC_TEST_OPEN=group` opens the first group and lands on it, once.
+    /// DEBUG only: `TC_TEST_OPEN=group` opens the first group and lands on it, once; `last-group` the last.
     private func openFirstGroupForProof(rows: [TranscriptRowModel], proxy: ScrollViewProxy) {
-        guard TestHooks.open == "group", !proofGroupOpened, !thread.isLoading,
-              let first = rows.first(where: { if case .group = $0 { return true } else { return false } }) else { return }
+        let isGroup: (TranscriptRowModel) -> Bool = { if case .group = $0 { return true } else { return false } }
+        guard TestHooks.open == "group" || TestHooks.open == "last-group", !proofGroupOpened, !thread.isLoading,
+              let first = TestHooks.open == "group" ? rows.first(where: isGroup) : rows.last(where: isGroup) else { return }
         proofGroupOpened = true
         Motion.withoutAnimation { openGroups.insert(first.id) }
         resize(max(window, rows.count))

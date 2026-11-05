@@ -731,100 +731,13 @@ struct QuietLine: View {
     }
 }
 
-/// A compaction's three faces, the desktop's `CompactionCard`: a pulsing
-/// violet dot and "Compacting context" while the harness squeezes the
-/// window, a labelled divider with the before and after once it lands, a
-/// destructive line when it fails.
-struct CompactionLine: View {
-    let compaction: CompactionItem
-    @State private var pulse = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        switch compaction.phase {
-        case .start:
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(Tint.violet)
-                    .frame(width: 6, height: 6)
-                    .opacity(pulse ? 0.35 : 1)
-                    // The pulse rides on the dot alone, never on the row's layout.
-                    .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: pulse)
-                    .frame(width: 18)
-                    .onAppear {
-                        guard !reduceMotion else { return }
-                        pulse = true
-                    }
-                Text("Compacting context")
-                    .foregroundStyle(.secondary)
-                if let trigger = compaction.trigger {
-                    Text(trigger.rawValue)
-                        .foregroundStyle(.tertiary)
-                }
-                Spacer(minLength: 0)
-                TimelineView(.periodic(from: .now, by: 1)) { _ in
-                    Text(TimeFormat.elapsed(since: compaction.ts))
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                        .contentTransition(.numericText())
-                }
-            }
-            .font(.footnote)
-            .padding(.horizontal, 8)
-            .frame(minHeight: TranscriptMetrics.line)
-            .accessibilityElement(children: .combine)
-        case .failed:
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "exclamationmark.triangle")
-                    .frame(width: 18)
-                    .accessibilityHidden(true)
-                Text("Compaction failed")
-                if let error = compaction.error, !error.isEmpty {
-                    Text(error)
-                        .opacity(0.7)
-                        .lineLimit(2)
-                }
-            }
-            .font(.footnote)
-            .foregroundStyle(Tint.destructive)
-            .padding(.horizontal, 8)
-            .frame(minHeight: TranscriptMetrics.line)
-            .accessibilityElement(children: .combine)
-        case .done, .unknown:
-            LabeledDivider {
-                HStack(spacing: 8) {
-                    Text("Context compacted")
-                        .foregroundStyle(.secondary)
-                    ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
-                        Text(part)
-                            .foregroundStyle(.tertiary)
-                            .monospacedDigit()
-                    }
-                }
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Context compacted \(parts.joined(separator: ", "))")
-        }
-    }
-
-    private var parts: [String] {
-        var out: [String] = []
-        if let pre = compaction.preTokens, let post = compaction.postTokens {
-            out.append("\(Formatting.tokens(pre)) → \(Formatting.tokens(post))")
-        } else if let post = compaction.postTokens {
-            out.append("now \(Formatting.tokens(post))")
-        }
-        if let ms = compaction.durationMs { out.append(TimeFormat.duration(ms: Int(ms))) }
-        if let trigger = compaction.trigger { out.append(trigger.rawValue) }
-        return out
-    }
-}
-
 /// The system lines: the host's own rows where the fold carries a verdict
-/// or a notice (`FailureCard`, `NoticeRow`, `PlanHandoffRow`, the host rows
-/// thread's), else the desktop's `ErrorChip` (a gray Stopped for the user's
-/// own Stop, red Failed with the harness's words for anything else),
-/// `PassRow`, a plan, and the spawn and report rows.
+/// or a notice (`FailureCard`, `NoticeRow`), else the desktop's `ErrorChip`
+/// (a gray Stopped for the user's own Stop, red Failed with the harness's
+/// words for anything else), a plan, a goal, and every other host line on
+/// the one notice line. The host's steps (a report, a spawn, a task, the
+/// pass, the hand-off) ride in a run (`HostStep`); one met here alone draws
+/// the same line.
 struct SystemRow: View {
     let line: SystemLine
     let client: EnvironmentClient
@@ -836,7 +749,7 @@ struct SystemRow: View {
             if let failure = line.failure, !line.stopped {
                 FailureCard(line: line, failure: failure, client: client, sessionId: sessionId)
             } else if line.stopped {
-                QuietLine(symbol: "stop.circle", text: "Stopped", tint: Color(.tertiaryLabel))
+                NoticeLine(lead: "Stopped") { StepStateMark(state: .stopped) }
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "exclamationmark.circle")
@@ -862,106 +775,18 @@ struct SystemRow: View {
         case .plan:
             MarkdownView(seq: line.seq, text: line.text)
                 .padding(.vertical, 4)
-        case .turnPass:
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Pass")
-                    .frame(width: 18)
-                Text(line.text)
-                    .lineLimit(1)
-            }
-            .font(.footnote)
-            .foregroundStyle(.tertiary)
-            .padding(.horizontal, 8)
-            .frame(minHeight: TranscriptMetrics.line)
-            .accessibilityElement(children: .combine)
-        case .agentSpawned:
-            AgentSpawnRow(line: line, client: client, kind: .spawned)
-        case .agentReport:
-            AgentSpawnRow(line: line, client: client, kind: .reported)
-        case .planHandoff:
-            PlanHandoffRow(line: line, client: client)
-        case .backgroundTask:
-            QuietLine(symbol: "clock", text: line.detail.map { "\(line.text) (\($0))" } ?? line.text)
+        case .turnPass, .agentSpawned, .agentReport, .planHandoff, .backgroundTask:
+            HostStep(line: line, client: client)
         case .goal:
-            QuietLine(symbol: "target", text: line.detail.map { "Goal \($0): \(line.text)" } ?? line.text)
+            NoticeLine(symbol: "target", lead: line.detail.map { "Goal \($0)" } ?? "Goal", details: [line.text], wrap: true)
         case .status:
             if line.notice != nil {
                 NoticeRow(line: line, client: client, sessionId: sessionId)
             } else {
-                QuietLine(symbol: "info.circle", text: line.text)
+                NoticeLine(symbol: "info.circle", lead: line.text, wrap: true)
             }
         case .unknown:
-            QuietLine(symbol: "questionmark.circle", text: line.text, tint: Color(.tertiaryLabel))
-        }
-    }
-}
-
-/// A spawned agent's row, the desktop's `AgentSpawnRow`: nested under a
-/// rail, its role glyph, "Spawned" or "Reported", its title in a wash, and
-/// where it stands. Tap pushes the child's own transcript.
-struct AgentSpawnRow: View {
-    enum Kind { case spawned, reported }
-
-    let line: SystemLine
-    let client: EnvironmentClient
-    let kind: Kind
-    @Environment(\.displayScale) private var scale
-
-    private var child: SessionMeta? { line.agentId.flatMap(client.session) }
-
-    var body: some View {
-        let child = child
-        let title: String = {
-            if let child, !child.title.isEmpty { return child.title }
-            return kind == .reported ? line.text : "Subagent"
-        }()
-        let status: String? = kind == .reported ? line.detail : child?.status.rawValue
-        let row = HStack(spacing: 8) {
-            if let child {
-                AgentGlyph(type: child.agentType)
-                    .frame(width: 18)
-            } else {
-                Image(systemName: "person")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 18)
-            }
-            Text(kind == .reported ? "Reported" : "Spawned")
-                .foregroundStyle(.secondary)
-                .fixedSize()
-            Text(title)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .inlineWash()
-                .layoutPriority(1)
-            if let status, !status.isEmpty {
-                HStack(spacing: 5) {
-                    if kind == .spawned, let child { StatusDot(status: child.status, running: Fleet.isLive(child.status)) }
-                    Text(status)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-                .font(.footnote)
-            }
-            Spacer(minLength: 0)
-        }
-        .font(.subheadline)
-        .padding(.leading, 12)
-        .frame(minHeight: 36)
-        .overlay(alignment: .leading) {
-            Surface.hairline
-                .frame(width: 1 / scale)
-                .padding(.vertical, 4)
-        }
-        .padding(.leading, 8)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        if let child {
-            NavigationLink(value: ThreadScreenRoute(sessionId: child.id)) { row }
-                .buttonStyle(.pressable)
-        } else {
-            row
+            NoticeLine(symbol: "questionmark.circle", lead: line.text, wrap: true)
         }
     }
 }

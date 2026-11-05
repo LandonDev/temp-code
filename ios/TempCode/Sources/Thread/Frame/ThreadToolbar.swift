@@ -2,40 +2,64 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// The toolbar's way into the subagents: the agent glyph with the running
-/// count beside it in tabular digits. The screen shows it when the thread
-/// has children and no Fleet segment lists them already
-/// (`SegmentRules.showsAgents`); nothing running shows the glyph alone.
-/// The glyph's stroke matches the count's weight; the press dims, a scale
-/// on a 17 pt glyph in a dense bar would distract. In a vertical bar
+/// The toolbar's way into the subagents, the desktop's agents cue
+/// (`AgentsCue`): while any subagent works, waits or is queued at any depth
+/// (a master's batch is its board's), the loudest live state's glyph
+/// (waiting's amber dot, else working's dot, else the queued ring) and the
+/// live count beside it, amber while one needs you. Working is the still
+/// dot while the thread's own turn runs (one moving mark on screen), a
+/// spinner otherwise. With nothing live, the agents glyph alone. The glyph
+/// and the count cross-fade; the press dims. In a vertical bar
 /// (`\.tcVerticalBar`, the Duo's inner display in landscape) the glyph
 /// stands alone: the system shows no custom view vertically, and the count
-/// stays in the accessibility value and the fleet rows.
+/// stays in the accessibility label.
 struct AgentsButton: View {
-    let running: Int
-    let total: Int
+    let cue: AgentsCue?
     let action: () -> Void
     @Environment(\.tcVerticalBar) private var verticalBar
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 3) {
-                Image(systemName: "person.2")
-                    .font(.body.weight(.regular))
-                if running > 0, !verticalBar {
-                    Text("\(running)")
+            HStack(spacing: TranscriptMetrics.wordGap) {
+                glyph
+                    .transition(.opacity)
+                    .id(cue?.state)
+                if let cue, !verticalBar {
+                    Text("\(cue.waiting > 0 ? cue.waiting : cue.total)")
                         .font(.footnote)
-                        .numeric(running)
+                        .foregroundStyle(cue.state == .waiting ? AnyShapeStyle(Tint.warningText) : AnyShapeStyle(.primary))
+                        .numeric(cue.total)
                         .transition(.opacity)
                 }
             }
-            .animation(Motion.crossFade, value: running > 0 && !verticalBar)
-            .frame(minWidth: 44, minHeight: 44)
+            .animation(Motion.crossFade, value: cue)
+            .frame(minWidth: TranscriptMetrics.hitArea, minHeight: TranscriptMetrics.hitArea)
         }
         .buttonStyle(.pressableStatic)
-        .accessibilityLabel("Subagents")
-        .accessibilityValue(running > 0 ? "\(running) of \(total) running" : "\(total)")
+        .accessibilityLabel(cue?.line ?? "Subagents")
         .accessibilityIdentifier("thread-agents")
+    }
+
+    @ViewBuilder private var glyph: some View {
+        switch cue?.state {
+        case .waiting?:
+            Circle().fill(Tint.warning).frame(width: TranscriptMetrics.stepDot, height: TranscriptMetrics.stepDot)
+                .frame(width: TranscriptMetrics.glyphSlot, height: TranscriptMetrics.glyphSlot)
+        case .working?:
+            if cue?.still == true {
+                Circle().fill(.secondary).frame(width: TranscriptMetrics.stepDot, height: TranscriptMetrics.stepDot)
+                    .frame(width: TranscriptMetrics.glyphSlot, height: TranscriptMetrics.glyphSlot)
+            } else {
+                ProgressView().controlSize(.mini)
+            }
+        case .queued?:
+            Image(systemName: "circle.dashed")
+                .font(.footnote)
+                .foregroundStyle(Tint.quiet)
+        case nil:
+            Image(systemName: "person.2")
+                .font(.body.weight(.regular))
+        }
     }
 }
 
