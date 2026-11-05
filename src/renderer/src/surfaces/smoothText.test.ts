@@ -413,6 +413,27 @@ describe("revealCut", () => {
     expect(shown(code, code.length)).toBe(code);
   });
 
+  it("holds an open fence's unfinished line to its start, and shows it whole at its newline", () => {
+    const code = "Look:\n```ts\nconst a = 1;\nconst b = 2;\n";
+    const open = "Look:\n```ts\nconst a = 1;\n";
+    expect(shown(code, open.length + 6)).toBe(open);
+    expect(shown(code, code.length - 1)).toBe(open);
+    expect(shown(code, code.length)).toBe(code);
+  });
+
+  it("steps an open fence's line by words once the hold lets it go", () => {
+    const code = "```ts\nconst answer = compute(input);";
+    expect(code.slice(0, revealCut(code, code.length - 3, true, false))).toBe("```ts\nconst answer = ");
+    expect(code.slice(0, revealCut(code, code.length - 3, true, true))).toBe("```ts\n");
+  });
+
+  it("holds no line outside a fence, nor the closing fence as it is typed", () => {
+    const prose = "one line\nand the next half";
+    expect(revealCut(prose, prose.length, true)).toBe(revealCut(prose, prose.length, true, false));
+    const closing = "```ts\nx\n```\nAfter";
+    expect(shown(closing, closing.length - 5)).toBe("```ts\nx\n```\n");
+  });
+
   it("still cuts at words while a stream that ended drains", () => {
     // The hook passes `revealing` while text is still in hand after the end.
     expect(shown("the reply has ended", 9, true)).toBe("the ");

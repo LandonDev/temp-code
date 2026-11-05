@@ -50,6 +50,29 @@ describe("useSmoothText", () => {
     expect(container.textContent).toBe(text);
   });
 
+  it("shows a code line once its newline arrives, and a line held REVEAL.lineHoldMs by words", () => {
+    vi.useFakeTimers({ toFake: [...FAKE] });
+    const head = "```ts\nconst a = 1;\n";
+    const { container, rerender } = render(<Shown text={head} streaming opts={{ fromStart: false }} />);
+    act(() => vi.advanceTimersByTime(500));
+    expect(container.textContent).toBe(head);
+    // A long line streams in with no newline: nothing of it shows during the hold.
+    let text = head;
+    for (const word of ["const ", "answer ", "= ", "compute(", "input, ", "options); "]) {
+      text += word;
+      act(() => rerender(<Shown text={text} streaming opts={{ fromStart: false }} />));
+      act(() => vi.advanceTimersByTime(80));
+    }
+    expect(container.textContent).toBe(head);
+    act(() => vi.advanceTimersByTime(REVEAL.lineHoldMs));
+    expect(container.textContent!.length).toBeGreaterThan(head.length);
+    // Its newline shows the line whole; the next line holds afresh.
+    text += "\nconst ";
+    act(() => rerender(<Shown text={text} streaming opts={{ fromStart: false }} />));
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(container.textContent!.endsWith("options); \n")).toBe(true);
+  });
+
   it("steps whole words about every REVEAL.stepMs", () => {
     vi.useFakeTimers({ toFake: [...FAKE] });
     const { container, rerender } = render(<Shown text="" streaming />);

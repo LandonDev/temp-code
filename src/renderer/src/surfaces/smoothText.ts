@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePaneVisible } from "../hooks/paneVisibility";
 import { REVEAL } from "../lib/ease";
 
@@ -112,10 +112,13 @@ const FENCE = /^[ \t]{0,3}(?:```|~~~)/;
  * is only a block marker (`#`, `-`, `1.`, `- [ ]`, under any `>`) is held to
  * its line start until it has content, and a trailing table (lines that
  * start with `|`) is held to its first line until its delimiter row is
- * whole; neither inside an open code fence. Once nothing is left to reveal
- * (the stream ended and drained) the cut is the whole text.
+ * whole; neither inside an open code fence. Inside one a code line shows
+ * whole once its newline arrives: the cut is held to the line's start, unless
+ * `holdOpenLine` is false (the line has been held REVEAL.lineHoldMs), when it
+ * steps by words like prose. Once nothing is left to reveal (the stream
+ * ended and drained) the cut is the whole text.
  */
-export function revealCut(text: string, pos: number, revealing: boolean): number {
+export function revealCut(text: string, pos: number, revealing: boolean, holdOpenLine = true): number {
   if (!revealing) return text.length;
   let cut = Math.max(0, Math.min(pos, text.length));
   if (cut === 0) return 0;
@@ -123,7 +126,7 @@ export function revealCut(text: string, pos: number, revealing: boolean): number
   while (boundary > 0 && !SPACE.test(text[boundary - 1])) boundary--;
   if (cut - boundary <= REVEAL.longTokenChars) cut = boundary;
   else if (isHighSurrogate(text.charCodeAt(cut - 1))) cut--;
-  return holdBlockStart(text, cut);
+  return holdBlockStart(text, cut, holdOpenLine);
 }
 
 function isHighSurrogate(code: number): boolean {
@@ -132,9 +135,9 @@ function isHighSurrogate(code: number): boolean {
 
 const TABLE_LINE = /^[ \t]*\|/;
 
-/** The cut pulled back to the start of a trailing bare marker or an
- *  unfinished table. */
-function holdBlockStart(text: string, cut: number): number {
+/** The cut pulled back to the start of a trailing bare marker, an
+ *  unfinished table or, with `holdOpenLine`, an open fence's unfinished line. */
+function holdBlockStart(text: string, cut: number, holdOpenLine: boolean): number {
   const lines = text.slice(0, cut).split("\n");
   const starts: number[] = [];
   let at = 0;
@@ -147,6 +150,8 @@ function holdBlockStart(text: string, cut: number): number {
   for (let i = 0; i < lines.length - 1; i++) if (FENCE.test(lines[i])) fenced = !fenced;
   const lastIndex = lines.length - 1;
   const last = lines[lastIndex];
+  // A code line shows once its newline has come; the closing fence as typed.
+  if (fenced && !FENCE.test(last)) return holdOpenLine ? starts[lastIndex] : cut;
   if (fenced || FENCE.test(last)) return cut;
   if (last !== "" && BARE_MARKER.test(last)) return starts[lastIndex];
   // The trailing run of lines that start with `|` (the last one possibly
@@ -457,6 +462,20 @@ export function useSmoothText(text: string, streaming: boolean | undefined, opts
     };
   }, [text, streaming, paneShown]);
 
-  const cut = revealCut(text, shown, !!streaming || shown < text.length);
+  // A code line held open past REVEAL.lineHoldMs (a long line, or a model
+  // that writes code with no newline for a while) steps by words from then
+  // on, so every character still shows within the catch-up's promise. The
+  // hold is keyed by the line's start, so the next line holds afresh.
+  const revealing = !!streaming || shown < text.length;
+  const held = revealCut(text, shown, revealing);
+  const free = revealCut(text, shown, revealing, false);
+  const heldAt = held < free ? held : null;
+  const [released, setReleased] = useState<number | null>(null);
+  useEffect(() => {
+    if (heldAt === null) return;
+    const timer = window.setTimeout(() => setReleased(heldAt), REVEAL.lineHoldMs);
+    return () => clearTimeout(timer);
+  }, [heldAt]);
+  const cut = heldAt !== null && released === heldAt ? free : held;
   return cut >= text.length ? text : text.slice(0, cut);
 }
