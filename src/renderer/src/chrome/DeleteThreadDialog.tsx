@@ -17,11 +17,24 @@ export function DeleteThreadDialog({
   status,
   onCancel,
   onConfirm,
+  onDone,
 }: {
   title: string;
   status: SessionStatus | undefined;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
+  /** The delete landed: runs once the dialog's exit has played. */
+  onDone?: () => void;
 }) {
-  return <ConfirmDialog title={`Delete ${title}?`} body={deleteBody(status)} confirmLabel="Delete thread" danger onCancel={onCancel} onConfirm={onConfirm} />;
+  return (
+    <ConfirmDialog
+      title={`Delete ${title}?`}
+      body={deleteBody(status)}
+      confirmLabel="Delete thread"
+      danger
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+      onDone={onDone}
+    />
+  );
 }

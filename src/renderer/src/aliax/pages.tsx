@@ -86,6 +86,15 @@ export function AccountsPage(): React.JSX.Element {
     }
   };
 
+  /** Remove runs inside its confirm: a refusal is the confirm's red line and
+   *  the dialog stays; once it lands the dialog closes and the toast says so. */
+  const remove = async (serviceId: ServiceId, name: string) => {
+    const result: Result = await window.aliax.remove(serviceId, name);
+    if (!result.ok) throw new Error(result.error ?? "Something went wrong");
+    toast.success(result.notes?.[0] ?? "Removed");
+    await refresh(true);
+  };
+
   const onUse = (serviceId: ServiceId, name: string) => run(`use:${serviceId}:${name}`, () => window.aliax.activate(serviceId, name), "Switched");
 
   /**
@@ -159,7 +168,7 @@ export function AccountsPage(): React.JSX.Element {
           onAddKey={setKeyFor}
           onReauth={(id, email) => void addAccount(id, email)}
           onUse={(id, name) => void onUse(id, name)}
-          onDelete={(id, name) => void run(`remove:${id}:${name}`, () => window.aliax.remove(id, name), "Removed")}
+          onDelete={remove}
           onRefresh={() => void refresh(true)}
           onSetupToken={(_id, identity) => void convert(identity.name)}
           onConvertAll={() => void convert()}

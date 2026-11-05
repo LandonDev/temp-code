@@ -36,7 +36,8 @@ export interface AccountsActions {
   onAddKey: (serviceId: ServiceId) => void;
   onReauth: (serviceId: ServiceId, email?: string) => void;
   onUse: (serviceId: ServiceId, name: string) => void;
-  onDelete: (serviceId: ServiceId, name: string) => void;
+  /** Rejects with the host's refusal, which the row's confirm shows. */
+  onDelete: (serviceId: ServiceId, name: string) => Promise<void>;
   onRefresh: () => void;
   onSetupToken: (serviceId: ServiceId, identity: { name: string; email?: string }) => void;
   /** Every Claude account not yet holding a one-year token, in one go. */

@@ -193,7 +193,8 @@ describe("confirmAction", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await expect(first).resolves.toBe(true);
 
-    expect((await screen.findByRole("alertdialog")).textContent).toContain("Delete “notes.md”?");
+    // The first leaves after its exit; then the next request shows.
+    await waitFor(() => expect(screen.getByRole("alertdialog").textContent).toContain("Delete “notes.md”?"));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await expect(second).resolves.toBe(false);
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());

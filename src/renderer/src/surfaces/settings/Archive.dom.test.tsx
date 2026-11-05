@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionMeta } from "@shared/events";
 
@@ -33,7 +33,7 @@ vi.mock("../../chrome/RemoveProjectDialog", () => ({
   RemoveProjectDialog: ({ name }: { name: string }) => <div role="dialog">Remove {name}</div>,
 }));
 
-const { ArchivePage, DeleteThreadDialog } = await import("./Archive");
+const { ArchivePage } = await import("./Archive");
 
 const meta = (id: string, title: string, projectId: string, updatedAt = 1) => ({
   id,
@@ -147,6 +147,9 @@ describe("Archive page", () => {
       fireEvent.click(within(confirm).getByRole("button", { name: "Delete thread" }));
     });
     expect(h.onDeleteSession).toHaveBeenCalledWith("t1", { confirmed: true });
+    // The thread menu's own confirm: its verb and line, drawn once in the app.
+    expect(confirm.textContent).toContain("Its transcript is gone for good.");
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
   it("opens the remove dialog for a project's Remove…", async () => {
@@ -162,37 +165,5 @@ describe("Archive page", () => {
       fireEvent.click(screen.getByRole("switch", { name: "Archived in the sidebar" }));
     });
     expect(state.saveFilters).toHaveBeenCalledWith({ showArchived: true });
-  });
-});
-
-const doomed = { id: "s1", title: "Fix the rail", provider: "claude" } as SessionMeta;
-
-describe("Delete thread confirm", () => {
-  it("is one title, one line, Cancel and the destructive verb", async () => {
-    const onConfirm = vi.fn();
-    render(<DeleteThreadDialog thread={doomed} onCancel={() => {}} onConfirm={onConfirm} />);
-    const dialog = await screen.findByRole("alertdialog");
-    expect(screen.getByRole("heading").textContent).toBe("Delete Fix the rail?");
-    expect(dialog.textContent).toContain("Its transcript is gone for good.");
-    const verb = screen.getByRole("button", { name: "Delete thread" });
-    expect(verb.dataset.variant).toBe("destructive");
-    await act(async () => {
-      fireEvent.click(verb);
-    });
-    expect(onConfirm).toHaveBeenCalledWith(doomed);
-  });
-
-  it("cancels", async () => {
-    const onCancel = vi.fn();
-    render(<DeleteThreadDialog thread={doomed} onCancel={onCancel} onConfirm={() => {}} />);
-    await act(async () => {
-      fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
-    });
-    expect(onCancel).toHaveBeenCalled();
-  });
-
-  it("is closed with no thread", () => {
-    render(<DeleteThreadDialog thread={null} onCancel={() => {}} onConfirm={() => {}} />);
-    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });

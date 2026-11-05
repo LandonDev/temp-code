@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { DeleteThreadDialog } from "../../chrome/DeleteThreadDialog";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { RemoveProjectDialog } from "../../chrome/RemoveProjectDialog";
 import { prettyCwd, projectName } from "../../lib/paths";
@@ -21,16 +22,6 @@ import { Button } from "../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { reveal } from "../../components/ui/reveal";
 import { MoreHorizontal } from "../../chrome/icons";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 
 function useArchivedProjects(): ArchivedProject[] {
@@ -207,47 +198,16 @@ export function ArchivePage({
           }}
         />
       ) : null}
-      <DeleteThreadDialog
-        thread={deletingThread}
-        onCancel={() => setDeletingThread(null)}
-        onConfirm={(thread) => {
-          onDeleteSession(thread.id, { confirmed: true });
-          setDeletingThread(null);
-        }}
-      />
+      {deletingThread ? (
+        <DeleteThreadDialog
+          title={clampTitle(sessionDisplayTitle(deletingThread.title, deletingThread.provider))}
+          status={deletingThread.status}
+          onCancel={() => setDeletingThread(null)}
+          onConfirm={() => onDeleteSession(deletingThread.id, { confirmed: true })}
+          onDone={() => setDeletingThread(null)}
+        />
+      ) : null}
     </>
-  );
-}
-
-/** Deleting a thread is irreversible: one title, one line, Cancel and the verb.
- *  The last thread shown stays on the dialog while it closes. */
-export function DeleteThreadDialog({
-  thread,
-  onCancel,
-  onConfirm,
-}: {
-  thread: SessionMeta | null;
-  onCancel: () => void;
-  onConfirm: (thread: SessionMeta) => void;
-}) {
-  const shown = useRef(thread);
-  if (thread) shown.current = thread;
-  const meta = shown.current;
-  return (
-    <AlertDialog open={thread !== null} onOpenChange={(open) => (open ? null : onCancel())}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete {meta ? clampTitle(sessionDisplayTitle(meta.title, meta.provider)) : "thread"}?</AlertDialogTitle>
-          <AlertDialogDescription>Its transcript is gone for good.</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={() => meta && onConfirm(meta)}>
-            Delete thread
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }
 

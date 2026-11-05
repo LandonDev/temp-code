@@ -38,7 +38,12 @@ type Props = {
 export function useClosingDialog(onClose: () => void, busy: boolean) {
   const [open, setOpen] = useState(true);
   const then = useRef(onClose);
+  const closing = useRef(false);
+  // The first close wins: a Cancel during a confirm's exit never replaces
+  // the action the confirm already chose.
   const closeThen = (fn: () => void) => {
+    if (closing.current) return;
+    closing.current = true;
     then.current = fn;
     setOpen(false);
   };

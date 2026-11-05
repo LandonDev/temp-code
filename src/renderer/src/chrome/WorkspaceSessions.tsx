@@ -1755,10 +1755,8 @@ export default function WorkspaceSessions({
           confirmLabel="Delete"
           danger
           onCancel={close}
-          onConfirm={async () => {
-            await deleteProject(dialog.project.id);
-            close();
-          }}
+          onConfirm={() => deleteProject(dialog.project.id)}
+          onDone={close}
         />
       ) : null}
       {threadMenu.dialogs}

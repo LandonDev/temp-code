@@ -267,8 +267,8 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
         title={titleOf(id)}
         status={metaOf(id)?.status ?? session?.status}
         onCancel={close}
+        onDone={close}
         onConfirm={() => {
-          close();
           const h = latest.current;
           if (h.onDelete) h.onDelete(id);
           else quiet(commands.remove(id), "delete it", id);

@@ -1,19 +1,10 @@
 import { useState } from "react";
 import { maskedKey, type AccountHeadroom, type KeyProfileView, type MintState } from "@shared/accounts";
 import type { ProfileView, ServiceId, UsageReport } from "aliax-core/shared/types";
+import { ConfirmDialog } from "@renderer/chrome/ConfirmDialog";
 import { MoreHorizontal } from "@renderer/chrome/icons";
 import { PageRow } from "@renderer/components/page";
 import { Button } from "@renderer/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@renderer/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@renderer/components/ui/dropdown-menu";
 import { Switch } from "@renderer/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
@@ -40,7 +31,8 @@ export interface AccountRowProps {
   onUse: () => void;
   onAction: (kind: RowAction["kind"]) => void;
   onSetupToken: () => void;
-  onRemove: () => void;
+  /** Runs inside the confirm; a rejection is its red line and it stays open. */
+  onRemove: () => Promise<void>;
   onEdited: () => void;
 }
 
@@ -106,26 +98,17 @@ export function AccountRow({ serviceId, profile, report, headroom, columns, now,
         </DropdownMenu>
       </span>
       <EditAccountDialog open={editing} onOpenChange={setEditing} serviceId={serviceId} profile={profile} onSaved={onEdited} />
-      <AlertDialog open={removing} onOpenChange={setRemoving}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove {name}?</AlertDialogTitle>
-            <AlertDialogDescription>{keyed ? "The key is deleted from every host. Adding it again brings it back." : "Its saved sign-in is deleted. Signing in again brings it back."}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                setRemoving(false);
-                onRemove();
-              }}
-            >
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {removing ? (
+        <ConfirmDialog
+          title={`Remove ${name}?`}
+          body={keyed ? "The key is deleted from every host. Adding it again brings it back." : "Its saved sign-in is deleted. Signing in again brings it back."}
+          confirmLabel="Remove"
+          danger
+          onCancel={() => setRemoving(false)}
+          onConfirm={onRemove}
+          onDone={() => setRemoving(false)}
+        />
+      ) : null}
     </PageRow>
   );
 }

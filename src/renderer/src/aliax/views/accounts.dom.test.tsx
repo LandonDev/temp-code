@@ -57,7 +57,7 @@ beforeEach(() => {
     onAddKey: vi.fn(),
     onReauth: vi.fn(),
     onUse: vi.fn(),
-    onDelete: vi.fn(),
+    onDelete: vi.fn(async () => {}),
     onRefresh: vi.fn(),
     onSetupToken: vi.fn(),
     onConvertAll: vi.fn(),
@@ -108,6 +108,21 @@ describe("AccountsView", () => {
     expect(props.onDelete).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
     expect(props.onDelete).toHaveBeenCalledWith("claude-code", "b@x.com");
+  });
+
+  it("Remove's refusal is the confirm's red line, and the confirm stays", async () => {
+    props.onDelete = vi.fn(async () => {
+      throw new Error("The account is in use");
+    });
+    render(<AccountsView {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Spare" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove…" }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }));
+    });
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog.textContent).toContain("The account is in use");
+    expect((within(dialog).getByRole("button", { name: "Remove" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("opens a row's usage details from the keyboard and returns focus on Escape", async () => {

@@ -126,10 +126,9 @@ export function ConfirmDialog({
     setError(null);
     try {
       await onConfirm();
-      if (onDone) {
-        setPending(false);
-        closeThen(onDone);
-      }
+      // The verb stays spinning through the exit, so it cannot be pressed
+      // again and Cancel cannot replace the landing.
+      if (onDone) closeThen(onDone);
     } catch (err) {
       setError(errorText(err));
       setPending(false);
@@ -191,10 +190,9 @@ export function ConfirmHost() {
     () => queue[0],
   );
   if (!head) return null;
-  const settle = (ok: boolean) => {
-    publish(queue.filter((entry) => entry !== head));
-    head.resolve(ok);
-  };
+  // The caller hears its answer at once; the head leaves the queue only after
+  // the dialog's exit, so the verb fades out as Cancel does.
+  const drop = () => publish(queue.filter((entry) => entry !== head));
   return (
     <ConfirmDialog
       key={head.id}
@@ -202,8 +200,12 @@ export function ConfirmHost() {
       body={head.body}
       confirmLabel={head.action}
       danger={head.danger}
-      onCancel={() => settle(false)}
-      onConfirm={() => settle(true)}
+      onCancel={() => {
+        drop();
+        head.resolve(false);
+      }}
+      onConfirm={() => head.resolve(true)}
+      onDone={drop}
     />
   );
 }
