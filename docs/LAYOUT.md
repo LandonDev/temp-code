@@ -706,7 +706,9 @@ there so nothing moves on focus, its edges the box's: at the left the model
 button, which reads the model and the effort ("Opus 5.5  High") and opens
 the model menu: providers, search, the list, then the model's settings as
 rows (Effort, Context, Speed only for the tiers the serving CLI lists, any
-other setting). In the Claude and Codex tabs a maker's models (Meta's, the
+other setting). Its model rows are menu rows (`MENU_ROW` at 28px, `rounded-lg`
+concentric with the 12px panel's 4px inset), and the group heading, the no-match
+line and the setting rows share their 12px inset. In the Claude and Codex tabs a maker's models (Meta's, the
 catalog's `vendor` rows) follow the harness's own under the maker's name in
 11px muted, each row led by its 14px mark; Effort lists that row's ladder
 (Minimal only on the Codex Meta rows) and a vendor row has no Context. At

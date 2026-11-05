@@ -86,7 +86,7 @@ export function ModelSettingsRows({ harness, model, environmentId, values, onCha
 
 function SettingRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex h-8 items-center gap-2 px-2">
+    <div className="flex h-8 items-center gap-2 px-3">
       <span className="text-[13px] text-muted-foreground">{label}</span>
       <span className="ms-auto flex items-center">{children}</span>
     </div>

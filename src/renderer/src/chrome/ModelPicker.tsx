@@ -13,6 +13,7 @@ import { Button } from "../components/ui/button";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { Kbd } from "../components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/lazy-menus";
+import { MENU_ROW } from "../components/ui/menu-row";
 import { reveal } from "../components/ui/reveal";
 import { Separator } from "../components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
@@ -541,7 +542,7 @@ export function ModelList({
   }, [active]);
 
   if (models.length === 0) {
-    return <div className="px-2 py-1.5 text-xs text-muted-foreground">{emptyLabel}</div>;
+    return <div className={cn("flex items-center text-muted-foreground", MENU_ROW)}>{emptyLabel}</div>;
   }
 
   return (
@@ -566,7 +567,8 @@ export function ModelList({
                 if (!disabled) onPick(item);
               }}
               className={cn(
-                "group/model flex h-7 cursor-default items-center gap-1.5 rounded-md px-2 text-[13px]",
+                // MENU_ROW's box, its 4px of padding dropped so the 24px star keeps the row at 28px.
+                "group/model flex cursor-default items-center rounded-lg", MENU_ROW, "py-0",
                 disabled ? "text-muted-foreground opacity-60" : highlighted && "bg-muted",
               )}
             >
@@ -625,7 +627,7 @@ function renderGroups(
     <>
       {models.slice(0, split).map(row)}
       <div role="group" aria-labelledby={headingId} data-vendor-group={vendor}>
-        <div id={headingId} role="presentation" className="px-2 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
+        <div id={headingId} role="presentation" className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
           {VENDOR_TITLE[vendor]}
         </div>
         {models.slice(split).map((item, i) => row(item, split + i))}

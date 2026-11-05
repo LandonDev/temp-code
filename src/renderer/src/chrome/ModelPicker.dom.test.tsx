@@ -354,4 +354,19 @@ describe("ModelPicker: Meta's models", () => {
     const remove = within(menu).getAllByRole("button", { name: "Remove from favorites" })[0];
     expect(remove.parentElement!.className).not.toContain("opacity-0");
   });
+  it("model rows take MENU_ROW's box, at 28px; the group heading and the settings rows share its 12px inset", async () => {
+    saveModelPickerTab("claude");
+    picker("claude", "claude:claude-opus-5-5");
+    const menu = await open(/Opus 5\.5/);
+    for (const option of within(menu).getAllByRole("option")) {
+      const classes = option.className.split(" ");
+      expect(classes).toEqual(expect.arrayContaining(["min-h-7", "gap-2", "px-3", "rounded-lg", "py-0"]));
+      expect(classes).not.toContain("rounded-md");
+      expect(classes).not.toContain("px-2");
+    }
+    expect(menu.querySelector("[data-vendor-group] [role=presentation]")!.className.split(" ")).toContain("px-3");
+    const settings = [...menu.querySelectorAll("[data-model-settings-rows] > div")];
+    expect(settings.length).toBeGreaterThan(0);
+    for (const row of settings) expect(row.className.split(" ")).toContain("px-3");
+  });
 });
