@@ -20,6 +20,7 @@ import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { usePointerHighlight } from "../hooks/usePointerHighlight";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { ItemButton } from "../components/ui/item";
+import { Facts } from "./settings/hosts/Facts";
 import { Spinner } from "../components/ui/spinner";
 import {
   flattenGrouped,
@@ -516,7 +517,10 @@ export function SearchView({
       <div
         ref={lockOverscroll}
         data-search-results
-        className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none p-1"
+        // The rows' glyph and words on the field's columns: 12px in, as the
+        // field's box, then the same 1px edge and 10px inset (ItemButton's
+        // border, px-2.5) to the glyph and 8px to the words.
+        className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none px-3 py-1"
       >
         {empty ? null : noHost ? (
           <EmptyState
@@ -564,17 +568,17 @@ export function HostFooter({ progress }: { progress: HostProgress[] }) {
   return (
     <div
       aria-label="Hosts searched"
-      className="flex h-7 shrink-0 items-center gap-4 overflow-hidden border-t border-border px-3 text-xs whitespace-nowrap text-muted-foreground tabular-nums"
+      className="flex h-7 shrink-0 items-center overflow-hidden border-t border-border px-3 text-xs whitespace-nowrap text-muted-foreground tabular-nums"
     >
-      {progress.map((row) => (
-        <span
-          key={row.environmentId}
-          data-host-state={row.state}
-          className={row.state === "failed" ? "text-destructive" : undefined}
-        >
-          {hostTimingLabel(row)}
-        </span>
-      ))}
+      {/* One comma run, never hosts set apart by space alone. */}
+      <Facts
+        className="flex-nowrap"
+        parts={progress.map((row) => (
+          <span key={row.environmentId} data-host-state={row.state} className={row.state === "failed" ? "text-destructive" : undefined}>
+            {hostTimingLabel(row)}
+          </span>
+        ))}
+      />
     </div>
   );
 }
@@ -623,7 +627,7 @@ function ResultList({
             id={`app-search-hit-${index}`}
             data-kind={hit.kind}
             data-search-row
-            className={`h-7 flex-nowrap gap-2 rounded-md px-2 py-0 text-left transition-none ${highlighted ? "bg-muted" : ""}`}
+            className={`h-7 flex-nowrap gap-2 rounded-md px-2.5 py-0 text-left transition-none ${highlighted ? "bg-muted" : ""}`}
           >
             <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
               {row.icon}

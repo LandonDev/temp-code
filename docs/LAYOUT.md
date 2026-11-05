@@ -566,8 +566,9 @@ Refresh; Notes' field and New note), its rows `ItemButton sm` in `p-1`,
 line, the 16px title 8px under it, its facts 8px under that, the actions
 16px under them). An inbox row is two lines (20px over 16px, 54px); a note's
 three (its project and time, its title, its first words). The facts of a
-line (an inbox row's #7 and author, the detail's ref, states and source, a
-note's slug and project) are one comma run through `Facts`; on a row it
+line (an inbox row's #7 and author, the detail's ref, states and source, the
+detail's people, its update time and branches under the title, a note's
+slug and project) are one comma run through `Facts`; on a row it
 stays one line, the ref whole and the rest truncating. The list is one
 tab stop: the selected row takes Tab, and ↑↓ in the field or on a row
 select the next row as a click would (`useRovingList`, hooks/useRovingList.ts),
@@ -577,11 +578,13 @@ already says why: its skeleton while it loads (`SurfaceSkeleton` kind
 matching …" with Clear filters when the person narrowed it.
 
 Search (surfaces/SearchView.tsx) is the field and the results under it:
-28px one-line rows in `p-1`, glyphs 12px in, the highlight following ↑↓ and
+28px one-line rows on the field's columns (the list 12px in as the field's
+box, each row's 1px edge and 10px inset as the field's, so the glyphs and
+the words line up under the field's), the highlight following ↑↓ and
 the pointer only once it moves (`usePointerHighlight`), and its filters in
 the field's menu (chrome/SearchFiltersMenu.tsx: Type, Host and Project as
 checked `RowsMenu` rows that rewrite the typed tokens). With two or more
-hosts a foot says what each took. Go to File and Go to Symbol are the same
+hosts a foot says what each took, one comma run through `Facts`. Go to File and Go to Symbol are the same
 list in a picker dialog (chrome/PickerDialog.tsx) whose rows are menu rows.
 
 ### The viewers

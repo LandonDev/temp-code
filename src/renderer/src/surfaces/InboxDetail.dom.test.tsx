@@ -89,6 +89,20 @@ describe("the inbox detail", () => {
     expect(view.getByText("The gate holds a merge.").getAttribute("data-markdown-size")).toBe("compact");
   });
 
+  it("says who, when and which branches under the title as one comma run, never set apart by space alone", async () => {
+    h.item = item();
+    const view = await mount();
+    const title = view.getByRole("heading", { name: "Fix the gate" });
+    const line = title.nextElementSibling!.querySelector("[data-slot=facts]") as HTMLElement;
+    expect(line).not.toBeNull();
+    const parts = [...line.children].map((c) => c.textContent);
+    expect(parts.some((p) => p?.includes("ana"))).toBe(true);
+    expect(parts.some((p) => p?.startsWith("Updated "))).toBe(true);
+    expect(parts.at(-1)).toContain("master ← fix-gate");
+    expect(line.className).toContain("gap-x-1");
+    expect(title.nextElementSibling!.className).not.toMatch(/gap-x-3/);
+  });
+
   it("puts a pull request's Summary and Code on line tabs", async () => {
     h.item = item();
     const view = await mount();

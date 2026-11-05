@@ -1077,39 +1077,42 @@ function InboxDetail({
         <h1 className="mt-2 text-base font-semibold leading-6 tracking-[-0.01em] text-balance text-foreground">
           {item.title}
         </h1>
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {authorName ? (
-            <InboxPerson
-              name={authorName}
-              avatarUrl={inboxPersonAvatarUrl(item.provider, authorName, authorAvatar)}
-              size={16}
-            />
-          ) : null}
-          {showAssignment ? (
-            extraAssignees.length > 0 ? (
-              extraAssignees.map((person) => (
+        {/* Who, when and which branches: one comma run, never facts set apart by space alone. */}
+        <div className="mt-2 text-xs text-muted-foreground">
+          <Facts
+            className="items-center gap-y-1 [&>span]:min-w-0"
+            parts={[
+              authorName ? (
                 <InboxPerson
-                  key={person.login}
-                  name={person.login}
-                  avatarUrl={inboxPersonAvatarUrl(item.provider, person.login, person.avatarUrl)}
+                  key="author"
+                  name={authorName}
+                  avatarUrl={inboxPersonAvatarUrl(item.provider, authorName, authorAvatar)}
                   size={16}
                 />
-              ))
-            ) : (
-              <span>Unassigned</span>
-            )
-          ) : null}
-          {formatRelativeTime(item.updatedAt) ? (
-            <span className="tabular-nums">Updated {formatRelativeTime(item.updatedAt)}</span>
-          ) : null}
-          {baseRef && headRef ? (
-            <span className="inline-flex min-w-0 items-center gap-1">
-              <GitCompare className="size-3 shrink-0" />
-              <span className="min-w-0 truncate">
-                {baseRef} ← {headRef}
-              </span>
-            </span>
-          ) : null}
+              ) : null,
+              ...(showAssignment
+                ? extraAssignees.length > 0
+                  ? extraAssignees.map((person) => (
+                      <InboxPerson
+                        key={person.login}
+                        name={person.login}
+                        avatarUrl={inboxPersonAvatarUrl(item.provider, person.login, person.avatarUrl)}
+                        size={16}
+                      />
+                    ))
+                  : ["Unassigned"]
+                : []),
+              formatRelativeTime(item.updatedAt) ? `Updated ${formatRelativeTime(item.updatedAt)}` : null,
+              baseRef && headRef ? (
+                <span key="refs" className="inline-flex min-w-0 items-center gap-1">
+                  <GitCompare className="size-3 shrink-0" />
+                  <span className="min-w-0 truncate">
+                    {baseRef} ← {headRef}
+                  </span>
+                </span>
+              ) : null,
+            ]}
+          />
         </div>
         {item.labels.length > 0 ? (
           <div className="mt-2 flex flex-wrap gap-1">

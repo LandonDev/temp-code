@@ -212,6 +212,11 @@ describe("SearchView across hosts", () => {
     const footer = view.getByLabelText("Hosts searched");
     expect(footer.textContent).toMatch(/^This Mac: \d+ ms(box|This Mac)/);
     expect(footer.textContent).toMatch(/box: \d+ ms/);
+    // The hosts are one comma run, never set apart by space alone.
+    const run = footer.querySelector<HTMLElement>("[data-slot=facts]")!;
+    expect(run.children).toHaveLength(2);
+    expect(run.className).toContain("after:content-[',']");
+    expect(footer.className).not.toContain("gap-4");
     expect(view.container.querySelector('[data-slot="spinner"]')).toBeNull();
     // No hint line under the field: the filters live in the field's menu.
     expect(view.container.textContent).not.toContain("type:");
@@ -334,12 +339,19 @@ describe("SearchView across hosts", () => {
     view.unmount();
   });
 
-  it("starts the results 12px in, like every sibling list: a p-1 scroller and px-2 rows", async () => {
+  it("sets the results on the field's glyph column: the field's 12px inset, then its 1px edge and 10px to the glyph", async () => {
     const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
     await search(view, "gateway");
-    expect(view.container.querySelector("[data-search-results]")?.className).toMatch(/(^| )p-1( |$)/);
+    const list = view.container.querySelector("[data-search-results]")!.className;
+    expect(list).toMatch(/(^| )px-3( |$)/);
+    const field = view.container.querySelector("input[aria-label=Search]")!.closest("[data-slot=input-group]")!;
+    // The field: px-3 around a bordered box with px-2.5 inside; a row: the same 1px border and px-2.5.
+    expect(field.parentElement!.className).toMatch(/(^| )px-3( |$)/);
+    expect(field.className).toMatch(/(^| )px-2\.5( |$)/);
     const row = rows(view)[0];
-    expect(row.className).toMatch(/(^| )px-2( |$)/);
+    expect(row.className).toMatch(/(^| )px-2\.5( |$)/);
+    expect(row.className).toMatch(/(^| )border( |$)/);
+    expect(row.className).toMatch(/(^| )gap-2( |$)/);
     expect(view.container.innerHTML).not.toMatch(/px-1\.5|py-1\.5|gap-1\.5/);
     view.unmount();
   });
