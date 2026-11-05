@@ -2889,8 +2889,11 @@ a project's menu (rail row and project header; on a project linked across
 hosts they act on every copy, one `session.batch` per host), a host's
 submenu in the rail's Hosts row (`HostsRow` in chrome/HostRows.tsx, with two
 or more hosts), and the Threads menu for everything. Roots only, subagents follow their parent; a row with nothing to
-act on is disabled. The rules per row, the confirm copy with its live count
-and the toast line are `src/renderer/src/lib/threadBatch.ts` (unit-tested);
+act on is disabled. The rules per row and the toast line are
+`src/renderer/src/lib/threadBatch.ts`, the confirm copy with its live count
+`lib/threadBatchCopy.ts` (out of the first paint; both unit-tested); the
+confirm is red for Stop, and for Archive done only while its removal box is
+ticked;
 the menus' rows are `threadBatchMenu.ts`; the dialog and toast are
 `chrome/ThreadBatchDialog.tsx` and `chrome/ThreadBatchToasts.tsx` (a sonner
 toast per batch, through `chrome/toastSync.ts`). Pause,
