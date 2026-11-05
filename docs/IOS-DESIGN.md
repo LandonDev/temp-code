@@ -746,23 +746,41 @@ host runs, starts or waits on the person, or a send of this device's is
 out; a watching master is not mid-turn, so its button is Send. Stop lives in
 the slot. The field's placeholder is "Steer" for a root implementation or
 orchestration thread or a master of any type, "Message the agent" for a
-subagent, "Message" otherwise. `+` is a menu: Photos, then a section with
-Model and Reasoning, each a submenu whose subtitle is the current value,
-over the host's catalog (`catalog.get`, the same list the desktop's picker
-shows, one section per provider with a check on the current model), until
-the row under the box takes those. A pick rides on the next send as
-`session.send`'s `provider`, `model` and `reasoning` (`TurnModel.override`
-sends nothing when the choice matches the thread); while a pick differs from
-the thread's model, one line above the box names it (the `cpu` glyph, the
-model at medium weight, the level in secondary, a clear button that hands
-the choice back to the thread), and it leaves once the turn has it. A read
+subagent, "Message" otherwise. `+` opens Photos. A model or effort picked
+in the row under the box rides on the next send as `session.send`'s
+`provider`, `model` and `reasoning` (`TurnModel.override` sends nothing
+when the choice matches the thread). A read
 key, a halted host or a dropped link (after the desktop's 1.5 s grace) puts
 the reason in the field in place of the placeholder; the field is off and
 `+` and the button leave. A light impact on send and on a queue, a selection
 tick when the hold turns into a queue, never on typing; the field clears
 without animation. The list behind it dismisses the keyboard interactively.
 
-Photos (`Thread/ComposerAttachments.swift`): Photos in `+`, for a key that
+The row under the box (`Thread/ComposerRow.swift` over the client's
+`ComposerRow`, the desktop's row under its box) is 24 pt, 4 pt under the box
+and on its edges, always there, in every pose. At the left the model and its
+effort (the provider's glyph, the model's name, the effort word): a menu of
+the host's catalog (`catalog.get`, one section per provider with a check on
+the current model) and then Effort with that model's ladder; the choice
+follows the thread until a pick, which rides the next send. At the right
+the context meter, a 14 pt ring (a quarter-strength track and the filled
+arc) and the percent in tabular digits from `SessionMeta.context`, secondary
+below 85 % and the warning tint from it, never red, a mini spinner in the
+ring's place while the harness compacts, and nothing until the host reports
+both the level and the window; then the permission mode (the lock, pencil
+or open lock and the desktop's words: Supervised, Auto-accept edits, Full
+access), a menu over `session.permission` with each mode's hint, shown at
+once and put back if the host refuses. Every control is quiet: the detail
+type (12 on 16) in secondary, its touch reaching 44 pt. A key that cannot
+operate reads the model; one that cannot approve reads the mode. The row
+never wraps; a narrow one gives way in the desktop's order
+(`ComposerRow.fit`): the percent under 400 pt (the ring stays), the effort
+under 368, the mode's label under 320 (its glyph stays), the model's name
+under 144 (its glyph stays). An iPhone in portrait (a 370 pt box) keeps
+everything but the percent. The sheets' permission rows read the same words
+(`PermissionWords`).
+
+Photos (`Thread/ComposerAttachments.swift`): `+`, for a key that
 operates, opens the system photo picker, up to four per turn. Each photo
 goes up to the thread's host the moment it is picked (`attachment.begin`,
 one chunk at a time, `commit`; the client package's `upload`) and shows in a
@@ -2103,7 +2121,7 @@ left in a view.
 | A glyph trading state (Send ↔ Stop, outline ↔ fill, pin ↔ unpin) | scale 0.25 → 1, opacity 0 → 1, blur 4 → 0, spring `duration 0.3, bounce 0`; reduced motion: opacity on the swap curve over `fast` | `.iconSwapTransition()` with `.id(symbol)` in a `ZStack` (`Motion.iconSwap(reduced:)`, `Motion.iconSwap`, `Motion.iconSwapScale`, `Motion.iconSwapBlur`, `Motion.iconFade`); `TypeGlyph(active:)` uses the symbol replace effect instead, since Glyphs builds without Motion |
 | Composer button | its tint and glyph color cross-fade 120 ms as it turns on or off; send ↔ steer ↔ queue ↔ pause is the glyph-trading row above, the circle never moves | `Motion.crossFade` on the tint; `.id(intent)` with `Motion.iconSwap(reduced:)` on the glyph |
 | Composer height | a keystroke and the clear after a send snap; a paste of more than one line eases `base` | `ComposerHeight.eases`, `Motion.base`, `Motion.withoutAnimation` |
-| Composer chip row | appears on focus: 200 ms ease-out, opacity and 8 pt translateY; leaves 150 ms opacity only; the dock's height follows on the collapse curve | `Motion.appear(reduced:)`, `Motion.collapse` |
+| The row under the box | nothing moves: it is always there; the meter's percent rolls its digits on `fast`, a mode or model pick shows at once | `Motion.numeric` |
 | The slot above the composer | between states `fast` opacity only, the row never changes height; at compact width it rises in on the layout spring (opacity and 4 pt) and leaves inert on a `fast` fade, the box gliding down after it; regular width keeps its 28 pt; reduced motion: a fade in, gone at once | `Motion.fast`, `Motion.layout`, `Motion.travel` (BottomDock, WorkingStripView) |
 | Attachment chip | appears 200 ms ease-out, opacity and 8 pt translateY; removal 150 ms opacity only | `Motion.appear(reduced:)` |
 | Upload bar | width on the 150 ms numeric curve; hidden once the host has the file | `Motion.numeric` |

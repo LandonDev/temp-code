@@ -37,10 +37,25 @@ struct ComposerRowView: View {
     }
 
     var body: some View {
-        let fit = fit
+        // The widths give way at the default text size; a larger one keeps
+        // giving way in the same order, and only the last lets the name truncate.
+        let steps = ComposerRow.steps(from: fit)
+        ViewThatFits(in: .horizontal) {
+            ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
+                content(step, truncates: false)
+            }
+            content(steps[steps.count - 1], truncates: true)
+        }
+        .padding(.horizontal, ComposerMetrics.side)
+        .frame(minHeight: ComposerMetrics.row)
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onChange(of: session?.permission) { asked = nil }
+    }
+
+    private func content(_ fit: ComposerRow.Fit, truncates: Bool) -> some View {
         HStack(spacing: TranscriptMetrics.glyphGap) {
-            model(fit)
-                .layoutPriority(0)
+            model(fit, truncates: truncates)
             Spacer(minLength: 0)
             if let meter = ComposerRow.meter(session?.context, compacting: compacting) {
                 MeterView(meter: meter, showsPercent: fit.percent)
@@ -53,22 +68,18 @@ struct ComposerRowView: View {
                     .layoutPriority(1)
             }
         }
-        .padding(.horizontal, ComposerMetrics.side)
-        .frame(minHeight: ComposerMetrics.row)
-        .frame(maxWidth: .infinity)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .onChange(of: session?.permission) { asked = nil }
     }
 
     // MARK: the model
 
-    private func model(_ fit: ComposerRow.Fit) -> some View {
+    private func model(_ fit: ComposerRow.Fit, truncates: Bool) -> some View {
         let label = HStack(spacing: TranscriptMetrics.wordGap) {
             ProviderGlyph(provider: choice.key.provider)
             if fit.modelName {
                 Text(choice.modelLabel)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .fixedSize(horizontal: !truncates, vertical: false)
             }
             if fit.effort, choice.levels.count > 1, let level = choice.reasoning {
                 Text(level.label)
@@ -83,6 +94,7 @@ struct ComposerRowView: View {
         return Group {
             if modelAccess == .editable {
                 ModelMenu(choice: choice, effort: true) { label }
+                    .tint(Color(.secondaryLabel))
                     .accessibilityLabel("Model: \(words)")
             } else {
                 label
@@ -125,6 +137,7 @@ struct ComposerRowView: View {
                     label
                 }
                 .menuOrder(.fixed)
+                .tint(Color(.secondaryLabel))
             } else {
                 label
                     .accessibilityElement(children: .ignore)
@@ -176,7 +189,7 @@ private struct MeterView: View {
             if showsPercent {
                 Text("\(meter.percent)%")
                     .transcriptType(TranscriptType.detail)
-                    .monospacedDigit()
+                    .numeric(meter.percent)
                     .foregroundStyle(ink)
             }
         }

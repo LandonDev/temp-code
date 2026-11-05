@@ -18,6 +18,19 @@ import TempCodeContract
         #expect(ComposerRow.height == 24 && ComposerRow.gap == 4)
     }
 
+    @Test func `at a large text size the row keeps giving way in the same order, the name truncating last`() {
+        let all = ComposerRow.Fit(percent: true, effort: true, modeLabel: true, modelName: true)
+        #expect(ComposerRow.steps(from: all) == [
+            all,
+            .init(percent: false, effort: true, modeLabel: true, modelName: true),
+            .init(percent: false, effort: false, modeLabel: true, modelName: true),
+            .init(percent: false, effort: false, modeLabel: false, modelName: true),
+        ])
+        // A phone's box has given up the percent already: three steps from there.
+        #expect(ComposerRow.steps(from: ComposerRow.fit(width: 370)).count == 3)
+        #expect(ComposerRow.steps(from: ComposerRow.fit(width: 100)) == [ComposerRow.fit(width: 100)], "nothing left to give up")
+    }
+
     @Test func `the meter is secondary below 85 percent and amber from it, never red`() {
         #expect(ComposerRow.tone(ratio: 0) == .muted)
         #expect(ComposerRow.tone(ratio: 0.849) == .muted)

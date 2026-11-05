@@ -2674,8 +2674,7 @@ proof and the sizing rules; the pieces, by name:
 - Steering (L5): `ios/TempCode/Sources/Thread/Composer.swift` (the
   desktop's composer box on every segment, drawn as one Liquid Glass shape
   at radius 12 in one `TCGlassContainer` floating over the transcript on
-  the transcript's column edges: `+` at the left (28 pt, 44 pt hit; Photos,
-  the model and the reasoning until the row under the box takes those), the
+  the transcript's column edges: `+` at the left (28 pt, 44 pt hit; Photos), the
   field in the prose type, the one button at the right, a 28 pt circle on
   prominent glass; 46 pt empty, 22 pt more a line up to six lines (160 pt),
   then it scrolls; a keystroke snaps the height, a paste of more than one
@@ -2686,7 +2685,14 @@ proof and the sizing rules; the pieces, by name:
   text shows the queue glyph until release and queues for the next turn
   (`queue.add`); a watching master's button is Send; the glyphs trade on the
   icon swap; `ComposerHeight` holds the box's numbers. Glass goes through
-  `Design/Glass.swift` alone, the radius ladder and `ComposerMetrics`
+  `Design/Glass.swift` alone; `ComposerRow.swift`, the row under the
+  box (24 pt, 4 pt under it, always there: the model and its effort as one
+  menu, catalog then Effort, the pick riding the next send; the context
+  meter, a 14 pt ring and the percent from `SessionMeta.context`, amber from
+  85 %, a spinner while compacting; the permission mode over
+  `session.permission`, read-only without approve; giving way under 400,
+  368, 320 and 144 pt, never wrapping; the client package's `ComposerRow`
+  and `PermissionWords`, `setPermission` in Actions); the radius ladder and `ComposerMetrics`
   through `Design/Tokens.swift`, and no view joins facts with " · ":
   docs/IOS-DESIGN.md "The composer, the slot…", "Liquid Glass" and "Text
   hierarchy")

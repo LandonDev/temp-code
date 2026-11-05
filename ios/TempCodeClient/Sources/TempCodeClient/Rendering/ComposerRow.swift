@@ -21,6 +21,18 @@ public enum ComposerRow {
         public let effort: Bool
         public let modeLabel: Bool
         public let modelName: Bool
+
+        public init(percent: Bool, effort: Bool, modeLabel: Bool, modelName: Bool) {
+            self.percent = percent
+            self.effort = effort
+            self.modeLabel = modeLabel
+            self.modelName = modelName
+        }
+
+        func without(_ piece: KeyPath<Fit, Bool>) -> Fit {
+            Fit(percent: piece == \Fit.percent ? false : percent, effort: piece == \Fit.effort ? false : effort,
+                modeLabel: piece == \Fit.modeLabel ? false : modeLabel, modelName: piece == \Fit.modelName ? false : modelName)
+        }
     }
 
     public static let percentWidth: Double = 400
@@ -30,6 +42,20 @@ public enum ComposerRow {
 
     public static func fit(width: Double) -> Fit {
         Fit(percent: width >= percentWidth, effort: width >= effortWidth, modeLabel: width >= modeLabelWidth, modelName: width >= modelNameWidth)
+    }
+
+    /// The fits to try, roomiest first, when the text is larger than the
+    /// widths assume (a large text size): `fit`, then each later one with
+    /// the next piece given up in the same order. The app lays out the first
+    /// that fits; the last lets the model's name truncate.
+    public static func steps(from fit: Fit) -> [Fit] {
+        var steps = [fit]
+        var current = fit
+        for drop in [\Fit.percent, \Fit.effort, \Fit.modeLabel] where current[keyPath: drop] {
+            current = current.without(drop)
+            steps.append(current)
+        }
+        return steps
     }
 
     // MARK: the context meter

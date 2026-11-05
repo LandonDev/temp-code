@@ -486,6 +486,16 @@ would have shown as "Key refused".
   press holds), `offersQueue`, `enabled` and `placeholder` (Steer for a
   steerable root or a master). `ComposerHeight` is the box's numbers: 46 pt
   empty, 22 pt a line up to 160, and `eases` (a paste of more than one line).
+- **The row under the box.** `ComposerRow` (`Rendering/ComposerRow.swift`)
+  decides the 24 pt row: `fit(width:)` gives way in the desktop's order
+  (the percent under 400 pt, the effort under 368, the mode's label under
+  320, the model's name under 144), `meter(_:compacting:)` reads
+  `SessionMeta.context` (nil until the window is known; amber from 85 %,
+  never red; "124K of 200K tokens"), `tokens` is the desktop's
+  `formatTokens`, and `modelAccess` / `modeAccess` say which controls a key
+  may use (the model with operate, the mode with approve, else read-only).
+  `PermissionWords` holds the desktop's mode words and hints.
+  `setPermission(_:_:)` is `session.permission` (approve).
 - **Approve and answer.** `approve(_:requestId:allow:)` and
   `answer(_:requestId:answers:)` write `ThreadState.decisions` /
   `ThreadState.answers` first (the card reads them over the fold), send,

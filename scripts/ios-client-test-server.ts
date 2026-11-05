@@ -1908,6 +1908,11 @@ server.registry.notes.write(
 )
 server.registry.notes.write('ios-waiting', '## Goal\n\nRun the suite and fix what fails.\n\n## State\n\n- Blocked: `bun test` needs your approval\n', Date.now(), 'tool')
 
+// The context meter under the composer (iOS A11): the chat a fifth full, the stopped root past 85 % (amber;
+// no harness runs there to report over it). A level is never persisted, so it is reported on every boot.
+server.registry.append(THREAD_CHAT, { type: 'context', tokens: 38_000, window: 200_000 })
+server.registry.append('ios-stopped', { type: 'context', tokens: 176_000, window: 200_000 })
+
 // The one line the runner reads. The key appears here and nowhere else.
 process.stdout.write(
   JSON.stringify({
