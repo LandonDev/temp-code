@@ -106,6 +106,14 @@ describe("ContextMeter", () => {
     await hover("Compacting context");
   });
 
+  it("compacting swaps the glyph through SwapIcon, in the ring's 14px box", () => {
+    const { rerender } = render(<ContextMeter sessionId="s" usage={{ used: 124_000, window: 200_000 }} />);
+    expect(meter().querySelector('[data-swap="ring"] [data-context-ring]')).not.toBeNull();
+    rerender(<ContextMeter sessionId="s" usage={{ used: 124_000, window: 200_000 }} compacting />);
+    expect(meter().querySelector('[data-swap="compacting"] [role=status]')).not.toBeNull();
+    expect(meter().querySelector("[data-swap]")!.parentElement!.className.split(" ")).toContain("size-3.5");
+  });
+
   it("opens the breakdown on click and polls only while it is open and the turn has settled", async () => {
     cache.reading = READING;
     const { rerender } = render(<ContextMeter sessionId="s" usage={{ used: 84_000, window: 200_000 }} />);

@@ -731,7 +731,7 @@ The context meter (chrome/ContextMeter.tsx) is the one place the window's
 fill shows: a 24px ghost `Button` in the row under the box holding a 14px
 ring (a 25% track and the filled arc in the current colour) and the percent
 in 12px `tabular-nums`, muted below 85% and amber from 85%, amber on hover
-too (`contextTone` in lib/contextUsage.ts; never red), the ring a 14px `Spinner` while the harness compacts. It draws
+too (`contextTone` in lib/contextUsage.ts; never red), the ring a 14px `Spinner` while the harness compacts, the two crossing over in one 14px box through `SwapIcon`. It draws
 only for an existing thread once the harness has reported both the level
 and the window (`SessionMeta.context`); Cursor reports none, so it has no
 meter. Its hover says "124K of 200K tokens", or "Compacting context". A click opens

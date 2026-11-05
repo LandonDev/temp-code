@@ -71,12 +71,12 @@ function chipElement(chip: ComposerChip): HTMLElement {
   el.dataset.name = chip.name
   el.contentEditable = 'false'
   el.className =
-    'inline-flex select-none items-center gap-1 rounded-sm bg-foreground/7 px-1 align-baseline font-medium text-foreground'
+    'inline-flex select-none items-center gap-1 rounded-sm bg-muted px-1 align-baseline font-medium text-foreground'
   const brand = brandOf(chip.name)
   if (brand && 'img' in brand) {
-    el.innerHTML = `<img src="${brand.img}" alt="" draggable="false" width="11" height="11" class="shrink-0 object-contain">`
+    el.innerHTML = `<img src="${brand.img}" alt="" draggable="false" width="12" height="12" class="shrink-0 object-contain">`
   } else if (brand) {
-    el.innerHTML = `<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" class="shrink-0"><path d="${brand.path}" fill="currentColor"></path></svg>`
+    el.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" class="shrink-0"><path d="${brand.path}" fill="currentColor"></path></svg>`
   }
   el.append(document.createTextNode(addonTitle(chip.name)))
   return el

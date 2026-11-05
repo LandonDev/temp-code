@@ -275,4 +275,15 @@ describe('ComposerInput under jsdom', () => {
     expect(onState).toHaveBeenCalledTimes(2)
     expect(onState.mock.lastCall?.[0]).toBe('abc')
   })
+
+  it("a connector chip's icon is 12px on the inline-code pill's fill", () => {
+    const { ref, root, probe } = mount()
+    probe.act(() => ref.current!.restore([{ chip: { token: '/linear', name: 'linear' } }, { text: ' ' }]))
+    const chip = root.querySelector<HTMLElement>('[data-token="/linear"]')!
+    expect(chip.className.split(' ')).toContain('bg-muted')
+    expect(chip.className).not.toContain('bg-foreground/7')
+    const icon = chip.querySelector('svg, img')!
+    expect(icon.getAttribute('width')).toBe('12')
+    expect(icon.getAttribute('height')).toBe('12')
+  })
 })

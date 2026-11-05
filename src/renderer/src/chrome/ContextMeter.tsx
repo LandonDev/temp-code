@@ -6,6 +6,7 @@ import { Spinner } from "../components/ui/spinner";
 import { cn } from "../lib/cn";
 import { useContextReading, type ContextReading } from "../lib/contextCache";
 import { contextPercent, contextRatio, contextTone, formatTokens, type ContextUsage } from "../lib/contextUsage";
+import { SwapIcon } from "../motion/IconSwap";
 import { ROW_CONTROL } from "./composerRow";
 import { LazyPopover, type FocusTarget } from "./menuRows";
 
@@ -66,7 +67,12 @@ export function ContextMeter({
         warn && "hover:text-warning aria-expanded:text-warning",
       )}
     >
-      {compacting ? <span role="status" aria-label={COMPACTING_WORDS}><BusyLabel busy label="" /></span> : <ContextRing ratio={ratio} />}
+      {/* Ring and spinner cross over in one 14px box, as every glyph that changes state does. */}
+      <span className="grid size-3.5 shrink-0 place-items-center">
+        <SwapIcon state={compacting ? "compacting" : "ring"}>
+          {compacting ? <span role="status" aria-label={COMPACTING_WORDS}><BusyLabel busy label="" /></span> : <ContextRing ratio={ratio} />}
+        </SwapIcon>
+      </span>
       <span className="tabular-nums @max-[25rem]/composer-bar:hidden">{percent}%</span>
     </Button>
   );
