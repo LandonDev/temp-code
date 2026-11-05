@@ -21,6 +21,8 @@
  *   POST /finish { sessionId, text? }  → ends a simulated turn: the reply, turn-complete, idle (and stops a /stream)
  *   POST /stream { sessionId?, cps?, seconds?, seed? }  → plays a bursty streaming turn with a growing Edit and
  *                                 live edits into ios-streaming; 409 while one runs
+ *   POST /scenario { sessionId? }  → plays the no-jerk timeline (scripts/lib/soakScenarios.ts) as host events on a
+ *                                chat at real speed, one at a time; answers { started, ms } (POST /finish stops it)
  *   POST /ask { sessionId, kind: 'approval' | 'question' }  → a fresh card on a thread, which waits
  *   POST /push { frame }        → writes any push frame to every remote socket (a push with no
  *                                 machinery behind it here: macBridge.held, boot-resume, accounts)
@@ -58,6 +60,7 @@ import { deflateSync } from 'node:zlib'
 import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
 import { emitLiveEdit } from '../src/main/server/livediff'
+import { playScenarios, scenarioLength } from './lib/soakScenarios'
 import { MacDevices } from '../src/main/server/devices/hostDevices'
 import { loadEnvironmentId } from '../src/main/server/remote/environment'
 import { mediaUrl, serveMedia } from '../src/main/server/media'
@@ -1586,6 +1589,8 @@ process.env.TEMP_CODE_GH_BIN = ghScript
 // as smoothText.test.ts, seeded, so a run repeats.
 const sleep = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, ms))
 let streamRun: { sessionId: string; stopped: boolean } | null = null
+/** The no-jerk timeline playing (POST /scenario): its thread and its stop. */
+let scenarioRun: { sessionId: string; stop: () => void } | null = null
 const streamAnswer = (length: number): string => {
   const parts = [
     'The gateway forwards every request a harness makes and swaps in the account the thread is routed to. ' + streamParagraph(1),
@@ -1746,6 +1751,10 @@ const control = createServer((req, res) => {
         // Ends a simulated turn the way a real one ends: the reply, turn-complete, idle.
         const sessionId = String(body.sessionId ?? THREAD_A)
         if (streamRun?.sessionId === sessionId) streamRun.stopped = true
+        if (scenarioRun?.sessionId === sessionId) {
+          scenarioRun.stop()
+          scenarioRun = null
+        }
         appended++
         registry.append(sessionId, { type: 'assistant-text', text: String(body.text ?? 'Done.'), delta: false, msgId: `f${appended}`, blockIndex: 0 })
         registry.append(sessionId, { type: 'turn-complete' })
@@ -1811,6 +1820,26 @@ const control = createServer((req, res) => {
         const sessionId = String(body.sessionId ?? THREAD_STREAM)
         void playStream(sessionId, Number(body.cps ?? 300), Number(body.seconds ?? 12), Number(body.seed ?? 1)).catch((err) => console.error('[stream]', err))
         return answer(200, { started: sessionId })
+      }
+      case '/scenario': {
+        // The desktop soak's no-jerk timeline, as host events at real speed; one at a time.
+        if (scenarioRun || streamRun) return answer(409, { error: `a run is playing on ${(scenarioRun ?? streamRun)!.sessionId}` })
+        const sessionId = String(body.sessionId ?? THREAD_STREAM)
+        const ms = scenarioLength()
+        const run = {
+          sessionId,
+          stop: playScenarios(
+            (event) => registry.append(sessionId, event),
+            (step) => console.log(`[scenario] ${step.at}ms ${step.label}`),
+            undefined,
+            () => registry.markStatusForProof(sessionId, 'running')
+          )
+        }
+        scenarioRun = run
+        setTimeout(() => {
+          if (scenarioRun === run) scenarioRun = null
+        }, ms + 100)
+        return answer(200, { started: sessionId, ms })
       }
       case '/quit':
         answer(200, { ok: true })
