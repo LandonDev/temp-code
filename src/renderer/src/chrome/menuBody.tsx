@@ -144,9 +144,9 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
   }
   if (item.kind === "sub") {
     const Icon = item.icon;
-    return (
+    const sub = (
       <Sub>
-        <SubTrigger disabled={item.disabled} data-menu-row={item.id}>
+        <SubTrigger disabled={item.disabled} data-menu-row={item.id} aria-description={item.reason}>
           {Icon ? <Icon /> : null}
           {item.label}
         </SubTrigger>
@@ -155,6 +155,7 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
         </SubContent>
       </Sub>
     );
+    return item.reason ? <Reason id={item.id} reason={item.reason}>{sub}</Reason> : sub;
   }
   const Icon = item.icon;
   const body = (
@@ -186,12 +187,15 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
         {body}
       </Item>
     );
-  if (!item.reason) return row;
-  // A disabled row takes no pointer events: the wrapper is the tooltip's
-  // trigger, so the reason shows on hover and the row stays one 28px line.
+  return item.reason ? <Reason id={item.id} reason={item.reason}>{row}</Reason> : row;
+}
+
+/** A disabled row takes no pointer events: the wrapper is the tooltip's
+ *  trigger, so the reason shows on hover and the row stays one 28px line. */
+function Reason({ id, reason, children }: { id: string; reason: string; children: ReactNode }) {
   return (
-    <Tip label={item.reason} side="right">
-      <div data-menu-reason={item.id}>{row}</div>
+    <Tip label={reason} side="right">
+      <div data-menu-reason={id}>{children}</div>
     </Tip>
   );
 }

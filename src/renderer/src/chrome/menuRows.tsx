@@ -69,7 +69,16 @@ export type MenuRow =
   | { kind: "label"; label: string }
   /** A line that is not a verb (the ⋯ menu's host and cost). */
   | { kind: "note"; id: string; content: ReactNode }
-  | { kind: "sub"; id: string; label: string; icon?: MenuIcon; items: MenuRow[]; disabled?: boolean };
+  | {
+      kind: "sub";
+      id: string;
+      label: string;
+      icon?: MenuIcon;
+      items: MenuRow[];
+      disabled?: boolean;
+      /** Why a disabled submenu is disabled: its tooltip and accessible description, as an item's. */
+      reason?: string;
+    };
 
 /** No separator first, last or twice in a row, and none under a label. */
 export function tidy(rows: readonly MenuRow[]): MenuRow[] {

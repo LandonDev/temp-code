@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
+import { shortcutFor } from "../lib/settings";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
@@ -161,18 +162,32 @@ describe("ThreadMenu", () => {
     expect(props.onRestore).toHaveBeenCalledWith("x");
   });
 
-  it("Terminal opens the project terminal; Dev server is the thread's own row, not the project's", async () => {
+  it("New terminal makes the project's terminal with ⌃`'s cap; Dev server is the thread's own row, not the project's", async () => {
     const props = menu();
     const list = await openMenu();
     expect(within(list).queryByText("Dev server")).toBeNull();
-    fireEvent.click(within(list).getByText("Terminal"));
+    const row = within(list).getByRole("menuitem", { name: /New terminal/ });
+    expect(row.querySelector("kbd")?.textContent).toBe(shortcutFor("Terminal", "New"));
+    fireEvent.click(row);
     expect(props.terminal.onNew).toHaveBeenCalled();
   });
 
-  it("with no terminal handler (the page at /ui) there is no Terminal row", async () => {
+  it("while the project has a terminal the row is Show terminal, with no cap, and shows it", async () => {
+    const onShow = vi.fn();
+    const props = menu({ terminal: { onNew: vi.fn(), onShow, active: true } });
+    const list = await openMenu();
+    const row = within(list).getByRole("menuitem", { name: "Show terminal" });
+    expect(row.querySelector("kbd")).toBeNull();
+    expect(within(list).queryByText("New terminal")).toBeNull();
+    fireEvent.click(row);
+    expect(onShow).toHaveBeenCalled();
+    expect(props.terminal.onNew).not.toHaveBeenCalled();
+  });
+
+  it("with no terminal handler (the page at /ui) there is no terminal row", async () => {
     menu({ terminal: { onNew: undefined, onShow: undefined, active: true } });
     const list = await openMenu();
-    expect(within(list).queryByText("Terminal")).toBeNull();
+    expect(within(list).queryByText(/terminal/i)).toBeNull();
   });
 });
 

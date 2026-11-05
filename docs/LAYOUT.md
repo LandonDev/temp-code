@@ -164,14 +164,18 @@ when the window has two or more hosts, and the thread's cost at the end in
 Then the active thread's own rows, the same list its chip's right-click
 shows (lib/threadMenu.ts, the thread's one list on every surface), with
 "Move to <host>…" rows before Archive (`useThreadHost` in
-chrome/ThreadHostChip.tsx; a disabled one carries its reason as a second
-line). A master's rows carry, right after Remove as master, New batch
+chrome/ThreadHostChip.tsx). A disabled row or submenu says why in its
+tooltip and accessible description, never a second line: Type "Stop or
+wait for the turn to end" while the thread is live, Resources… "Nothing to
+remove", Mac bridge "Set on the parent thread" or "Loading", a refused
+move its host's reason. The thread's rows include Dev server, checked
+while the Dev servers pane is open (only when a host can serve the
+project). A master's rows carry, right after Remove as master, New batch
 thread… and Add existing thread…: the batch's add sheet and adopt dialog
 (`BatchAddDialog`), so a master whose batch is empty, and so has no board,
 can start its first child. Then the project: Pause all with the running count (only when
-something runs; a failure is a toast), Dev server checked while the Dev
-servers pane is open (only when a host can serve the project), Terminal
-with ⌘\`, Recent threads… and Archived threads…: each a `Popover` from
+something runs; a failure is a toast), Show terminal while the project
+has one, else New terminal with ⌃\`, Recent threads… and Archived threads…: each a `Popover` from
 the ⋯ button over one list body (`ThreadListPopover`, in the dialogs chunk, mounted only while a list is open), freshest first, a
 row the tinted type glyph, the title and the age, a filter past six and one muted
 "No matches" row; Recent threads… lists every settled root of the strip's

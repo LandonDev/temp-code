@@ -116,6 +116,7 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
     label: "Type",
     icon: Layers,
     disabled: live,
+    ...(live ? { reason: "Stop or wait for the turn to end" } : {}),
     items: THREAD_TYPES.map((each) => ({
       kind: "item",
       id: `type:${each}`,
@@ -148,6 +149,7 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
       icon: Laptop,
       checked: on,
       disabled: !known || inherited,
+      ...(inherited ? { reason: "Set on the parent thread" } : !known ? { reason: "Loading" } : {}),
     });
     if (on) rows.push({ kind: "item", id: "mac-bridge-rules", label: "Mac approvals…", icon: Lock });
   }
@@ -157,7 +159,7 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
     id: "resources",
     label: "Resources…",
     icon: Blocks,
-    ...(facts.removable ? { hint: String(facts.removable) } : { disabled: true }),
+    ...(facts.removable ? { hint: String(facts.removable) } : { disabled: true, reason: "Nothing to remove" }),
   });
   if (facts.projectId && !facts.parentId)
     rows.push({

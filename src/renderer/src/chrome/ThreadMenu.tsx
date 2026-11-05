@@ -18,7 +18,8 @@ const ThreadListPopover = dialogsChunk.surface("ThreadListPopover");
  * panel toggle (last, nearest the panel it opens). The menu holds a quiet
  * line naming the host and the thread's cost, the active thread's own rows
  * (lib/threadMenu.ts, the list its chip's right-click shows), and the
- * project's rows: Pause all, Terminal, Recent threads… and Archived
+ * project's rows: Pause all, Show terminal (New terminal while the project
+ * has none), Recent threads… and Archived
  * threads…, each a popover listing every one of them.
  */
 
@@ -63,7 +64,9 @@ export function ThreadMenu({
   const anchor = useRef<HTMLButtonElement | null>(null);
   const [list, setList] = useState<"recent" | "archived" | null>(null);
   const shownCost = cost != null && cost > 0 ? `$${cost.toFixed(2)}` : null;
-  const openTerminal = terminal.active ? (terminal.onShow ?? terminal.onNew) : terminal.onNew;
+  // One terminal per project: the row shows it while it exists, else makes one with ⌃`'s cap.
+  const showTerminal = terminal.active && !!terminal.onShow;
+  const openTerminal = showTerminal ? terminal.onShow : terminal.onNew;
 
   const all: MenuRow[] = [];
   if (host || shownCost) {
@@ -86,7 +89,12 @@ export function ThreadMenu({
   }
   all.push(...rows, { kind: "sep" });
   if (running > 0) all.push({ kind: "item", id: "pause-all", label: "Pause all", icon: Pause, hint: String(running) });
-  if (openTerminal) all.push({ kind: "item", id: "terminal", label: "Terminal", icon: Terminal, shortcut: shortcutFor("Terminal", "New") });
+  if (openTerminal)
+    all.push(
+      showTerminal
+        ? { kind: "item", id: "terminal", label: "Show terminal", icon: Terminal }
+        : { kind: "item", id: "terminal", label: "New terminal", icon: Terminal, shortcut: shortcutFor("Terminal", "New") },
+    );
   if (recent.length > 0) all.push({ kind: "item", id: "recent", label: "Recent threads…", icon: Clock });
   if (archived.length > 0) all.push({ kind: "item", id: "archived", label: "Archived threads…", icon: ArchiveRestore });
 

@@ -19,6 +19,7 @@ const ROWS: MenuRow[] = [
   { kind: "item", id: "pause", label: "Pause", icon: Pause, shortcut: "⌘P" },
   { kind: "item", id: "bridge", label: "Mac bridge", checked: true },
   { kind: "sub", id: "type", label: "Type", items: [{ kind: "item", id: "type:chat", label: "Chat", checked: true }] },
+  { kind: "sub", id: "locked", label: "Locked", disabled: true, reason: "Stop or wait for the turn to end", items: [{ kind: "item", id: "locked:a", label: "A" }] },
   { kind: "item", id: "move", label: "Move to box…", disabled: true, reason: "The box is offline" },
   { kind: "sep" },
   { kind: "item", id: "archive", label: "Archive", icon: Archive },
@@ -58,6 +59,17 @@ describe("MenuRows", () => {
     expect(move.className).toContain("min-h-7");
     expect(move.querySelectorAll("span.flex-col")).toHaveLength(0);
     expect((list.querySelector("[data-menu-reason='move']") as HTMLElement).contains(move)).toBe(true);
+  });
+
+  it("a disabled submenu carries its reason the way an item does", async () => {
+    const { list } = await openDropdown(ROWS);
+    const locked = within(list).getByRole("menuitem", { name: /Locked/ });
+    expect(locked.getAttribute("aria-disabled")).toBe("true");
+    expect(locked.getAttribute("aria-description")).toBe("Stop or wait for the turn to end");
+    expect(within(locked).queryByText("Stop or wait for the turn to end")).toBeNull();
+    expect((list.querySelector("[data-menu-reason='locked']") as HTMLElement).contains(locked)).toBe(true);
+    // A submenu with no reason has no wrapper.
+    expect(list.querySelector("[data-menu-reason='type']")).toBeNull();
   });
 
   it("a disabled row's reason opens as a tooltip on hover", async () => {

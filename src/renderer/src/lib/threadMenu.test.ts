@@ -70,16 +70,17 @@ describe("threadMenuRows by status", () => {
 });
 
 describe("threadMenuRows: Type", () => {
-  it("lists every type with the thread's own checked, disabled while the thread is live", () => {
+  it("lists every type with the thread's own checked, disabled with its reason while the thread is live", () => {
     const type = row(threadMenuRows(facts({ threadType: "planning" })), "type");
     if (type?.kind !== "sub") throw new Error("no Type submenu");
     expect(ids(type.items)).toEqual(["type:chat", "type:planning", "type:project-plan", "type:implementation", "type:orchestration", "type:research"]);
     expect(type.items.filter((i) => i.kind === "item" && i.checked).map((i) => i.kind === "item" && i.id)).toEqual(["type:planning"]);
     expect(type.disabled).toBe(false);
+    expect(type).not.toHaveProperty("reason");
     // Each type's row draws that type's tinted glyph.
     for (const item of type.items) if (item.kind === "item") expect(item.icon, item.id).toBe(THREAD_MENU_ICONS[item.id.slice("type:".length) as ThreadType]);
     for (const status of ["running", "waiting", "watching", "paused"] as const)
-      expect(row(threadMenuRows(facts({ status })), "type")).toMatchObject({ disabled: true });
+      expect(row(threadMenuRows(facts({ status })), "type")).toMatchObject({ disabled: true, reason: "Stop or wait for the turn to end" });
   });
 
   it("offers the options dialog for a tunable type only", () => {
@@ -137,13 +138,14 @@ describe("threadMenuRows: resources, the bridge and the host moves", () => {
   });
 
   it("disables Resources… when there is nothing it could remove, a dev server alone included", () => {
-    expect(row(threadMenuRows(facts()), "resources")).toMatchObject({ disabled: true });
+    expect(row(threadMenuRows(facts()), "resources")).toMatchObject({ disabled: true, reason: "Nothing to remove" });
     // A thread holding only a dev server: Archive still asks, Resources… has nothing to list.
     const onlyServer = threadMenuRows(facts({ resources: 1, removable: 0 }));
     expect(row(onlyServer, "resources")).toMatchObject({ disabled: true });
     expect(row(onlyServer, "resources")).not.toHaveProperty("hint");
     expect(row(onlyServer, "archive")).toMatchObject({ label: "Archive…" });
     expect(row(threadMenuRows(facts({ resources: 1, removable: 1 })), "resources")).not.toHaveProperty("disabled");
+    expect(row(threadMenuRows(facts({ resources: 1, removable: 1 })), "resources")).not.toHaveProperty("reason");
   });
 
   it("offers Dev server when a host can serve the project, checked while the pane is open", () => {
@@ -153,13 +155,14 @@ describe("threadMenuRows: resources, the bridge and the host moves", () => {
     expect(row(threadMenuRows(facts()), "dev")).toBeUndefined();
   });
 
-  it("shows the Mac bridge on, offline and inherited", () => {
+  it("shows the Mac bridge on, offline and inherited, a disabled one saying why", () => {
     const bridge = (b: ThreadMenuFacts["bridge"]) => row(threadMenuRows(facts({ bridge: b })), "mac-bridge");
     expect(ids(threadMenuRows(facts()))).not.toContain("mac-bridge");
     expect(bridge({ on: false, online: true, inherited: false, known: true })).toMatchObject({ label: "Mac bridge", checked: false, disabled: false });
     expect(bridge({ on: true, online: false, inherited: false, known: true })).toMatchObject({ label: "Mac bridge (offline)", checked: true });
-    expect(bridge({ on: true, online: true, inherited: true, known: true })).toMatchObject({ disabled: true });
-    expect(bridge({ on: false, online: false, inherited: false, known: false })).toMatchObject({ disabled: true });
+    expect(bridge({ on: true, online: true, inherited: true, known: true })).toMatchObject({ disabled: true, reason: "Set on the parent thread" });
+    expect(bridge({ on: false, online: false, inherited: false, known: false })).toMatchObject({ disabled: true, reason: "Loading" });
+    expect(bridge({ on: false, online: true, inherited: false, known: true })).not.toHaveProperty("reason");
     expect(ids(threadMenuRows(facts({ bridge: { on: true, online: true, inherited: false, known: true } })))).toContain("mac-bridge-rules");
     expect(ids(threadMenuRows(facts({ bridge: { on: false, online: true, inherited: false, known: true } })))).not.toContain("mac-bridge-rules");
   });
