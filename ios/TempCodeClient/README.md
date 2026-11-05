@@ -465,15 +465,27 @@ would have shown as "Key refused".
   `resume(_:)` is `session.resume` (the host continues a paused thread or
   brings back one whose harness is gone); `start(_:)` is `session.start`,
   a queued batch thread run ahead of the sibling it waits for.
-- **The strip and the button.** `WorkingPhase(status:sending:)`
-  (`Client/Steering.swift`) is the working strip's state: paused, stopped
-  and queued from the status; running is working; starting is sending while
-  this device's send is out; everything else is idle, or sending.
-  `WorkingPhase.batchPaused(of:in:)` counts a paused master's paused batch
-  roots. `ComposerRules` holds the button's rules: `running` (the host's
-  running or starting, or a send out; `watching` is not running), `stops`
-  (only with no text), `placeholder` (Steer for a steerable root or a
-  master).
+- **Pause and queue.** `pause(_:)` is `session.pause` (the composer's
+  button mid-turn with the box empty); `queue(_:text:…)` is `queue.add`, a
+  message for the next turn (the long press mid-turn, a paused thread's
+  tap), answering `queued` or, for a master, `steered`; neither shows a
+  pending turn.
+- **The slot and the button.** `ComposerSlot(status:sending:)`
+  (`Rendering/ComposerSlot.swift`, the desktop's `composerSlotOf`) is the
+  slot above the composer: the timer while a turn runs, starts or waits (or
+  a send of this device's is out), paused, stopped and queued from the
+  status, empty otherwise; `elapsedMs` counts the timer from
+  `ThreadState.sentAt` (the click, stamped by a send into a thread with no
+  turn open, cleared once the turn settles) before `busySince`, so it never
+  steps back; `occupies` keeps 28 pt at regular width and takes room at
+  compact width only with something to show; `batchPaused(of:in:)` counts a
+  paused master's paused batch roots. `ComposerRules`
+  (`Rendering/ComposerRules.swift`) is the button, the desktop's
+  `decideComposerAction`: `busy`, `intent` (send; steer mid-turn with text;
+  pause mid-turn with the box empty; queue while paused or while the long
+  press holds), `offersQueue`, `enabled` and `placeholder` (Steer for a
+  steerable root or a master). `ComposerHeight` is the box's numbers: 46 pt
+  empty, 22 pt a line up to 160, and `eases` (a paste of more than one line).
 - **Approve and answer.** `approve(_:requestId:allow:)` and
   `answer(_:requestId:answers:)` write `ThreadState.decisions` /
   `ThreadState.answers` first (the card reads them over the fold), send,

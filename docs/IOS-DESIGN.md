@@ -503,11 +503,10 @@ reason a lesser key cannot act (first, when there is one), Rename…, Pin
 reason and Rename only.
 
 Below the header, the type decides the body. The composer (L5) docks at the
-bottom, compact, growing on focus, with the desktop's reserved 28 pt working
-strip above it: spinner, flavour word, elapsed; paused shows the warning row
-with Stop and Continue. The strip never changes height. The header's elapsed
-and the strip's answer different questions (the thread, still live; this
-turn's phase) and the header never carries the flavour word.
+bottom, the desktop's box, with the desktop's slot above it: the turn's
+elapsed and Stop, or the held rows (paused with Stop and Continue, stopped,
+queued). The header's elapsed and the slot's answer different questions
+(the thread, still live; this turn's run) and neither carries a flavour word.
 
 ### The thread screen on the iPhone Duo
 
@@ -632,84 +631,97 @@ at unfolded-landscape asserting `columns.gap` equals the band's width.
 
 ### The composer, the strip, the cards' actions, the sheets
 
-The chat bar is Messages' on iOS 26 (`Thread/Composer.swift`,
-`Thread/ComposerStyles.swift`; the user asked for it compact and on Liquid
-Glass, which overrides the earlier docked bar). It floats over the
-transcript: ThreadScreen hangs it with `.tcBottomBar` (Design/Glass.swift),
-`safeAreaBar` with the soft scroll edge effect on iOS 26, so the content
-scrolls under it, a soft edge (the thin material and the background step
-fading in from 24 pt above the bar) keeps passing text from reading through
-the glass, and no divider is drawn; before iOS 26 the same call is a
-`safeAreaInset` on the bar material. At rest the bar is two pieces of glass
-in one `GlassEffectContainer` and nothing else: a 40 pt circle and a capsule
-of the same height (both scale with the text size). Measured on an iPhone 17
-Pro simulator at the default text size, the resting bar is 52 pt tall, down
-from 74 pt, and 52 pt with the keyboard up, down from 108 pt (the proof's
-`glass` set writes it to `dock-*.json`). The capsule's corner is half its
-one-line height (`Radius.capsuleEnds`), so it is a capsule at one line and
-keeps its round ends as the text grows to five lines; past five it scrolls.
-The send button lives inside the capsule at the trailing end, a 30 pt
-circle concentric in the capsule's end (the end itself is the hit area), and
-shows only once there is text (the kit's icon swap brings it in); it is the
-accent with a white arrow. While a turn runs and the box is empty it is
-Stop, the label color with the stop square, and the glyphs trade places with
-the icon swap (scale, opacity and blur on a 300 ms spring, a 150 ms fade
-under reduced motion). A watching master is not running (its button is
-Send), and a master mid-turn with text sends: the host whispers the text
-into the live turn as a steer, so the button is never Stop while there is
-text. The desktop's composer has no confirm on Stop, so neither does the
-phone. The field's placeholder is "Steer" for a root implementation or
+The composer is the desktop's box (docs/LAYOUT.md "Composer") drawn on
+Liquid Glass in every pose (`Thread/Composer.swift`,
+`Thread/ComposerStyles.swift`). It floats over the transcript: ThreadScreen
+hangs the dock with `.tcBottomBar` (Design/Glass.swift), `safeAreaBar` with
+the soft scroll edge effect on iOS 26, so the content scrolls under it, a
+soft edge (the thin material and the background step fading in from 24 pt
+above the dock) keeps passing text from reading through the glass, and no
+divider is drawn; before iOS 26 the same call is a `safeAreaInset` on the
+bar material. The box and the slot above it share the transcript's column
+and edges (`ReadingMeasure.edge` from the screen, the column's width at
+most).
+
+The box is one glass shape at radius 12 in one `TCGlassContainer` (glass on
+iOS 26, the thin material and a hairline before): `+` at the left, a bare
+28 pt glyph with a 44 pt touch; the field in the prose type (15 on 22) with
+3 pt above and below, so its first line centres on the controls' 28 pt line;
+the button at the right, a 28 pt circle on prominent glass. The controls sit
+6 pt from the box's sides and 8 pt from its top and bottom inside a 1 pt
+ring, so the empty box is 46 pt (`ComposerHeight`, `ComposerMetrics`). Each
+further line grows the box upward by 22 pt while `+` and the button stay on
+the bottom line, up to six lines (156 pt, under the 160 pt cap), then the
+field scrolls. A keystroke (Return included) and the clear after a send snap
+the height; a paste of more than one line eases it over `base` (0.18 s). A
+tap on the box's padding puts the caret in the field.
+
+The button follows the desktop's `SendButton` (`ComposerRules`, the client
+package's port of `decideComposerAction`): Send (the arrow) with no turn
+open; steer (the corner glyph) mid-turn with text, which goes into the live
+turn; Pause (`session.pause`, the pause glyph on the label color) mid-turn
+with the box empty; a paused thread's text queues. A long press mid-turn
+with text offers "Queue for the next turn" (`queue.add`, the desktop's
+⌘-click): past the system's long press (0.5 s) the button shows the queue
+glyph and one quiet line above the box names it, with a selection tick;
+release queues, sliding away lets go. A queued message says "Queued for the
+next turn" above the box until the next edit or the turn's end. The glyphs
+trade on the icon swap; with nothing to do the button is plain glass with a
+quiet glyph, and the accent fills it as text arrives. Mid-turn means the
+host runs, starts or waits on the person, or a send of this device's is
+out; a watching master is not mid-turn, so its button is Send. Stop lives in
+the slot. The field's placeholder is "Steer" for a root implementation or
 orchestration thread or a master of any type, "Message the agent" for a
-subagent, "Message" otherwise. The circle is a menu (`plus`, glass that
-answers the touch): Photos, then a section with Model and Reasoning, each a
-submenu whose subtitle is the current value, over the host's catalog
-(`catalog.get`, the same list the desktop's picker shows, one section per
-provider with a check on the current model). A pick rides on the next send
-as `session.send`'s `provider`, `model` and `reasoning` (`TurnModel.override`
+subagent, "Message" otherwise. `+` is a menu: Photos, then a section with
+Model and Reasoning, each a submenu whose subtitle is the current value,
+over the host's catalog (`catalog.get`, the same list the desktop's picker
+shows, one section per provider with a check on the current model), until
+the row under the box takes those. A pick rides on the next send as
+`session.send`'s `provider`, `model` and `reasoning` (`TurnModel.override`
 sends nothing when the choice matches the thread); while a pick differs from
-the thread's model, one line above the capsule names it (the `cpu` glyph,
-the model at medium weight, the level in secondary, a clear button that
-hands the choice back to the thread), and it leaves once the turn has it. A
-read key, a halted host or a dropped link (after the desktop's 1.5 s grace)
-puts the reason in the field in place of the placeholder; the field is off,
-the circle leaves and there is no button. A light impact on send and on a
-decision, never on typing; the field clears without animation. The list
-behind it dismisses the keyboard interactively.
+the thread's model, one line above the box names it (the `cpu` glyph, the
+model at medium weight, the level in secondary, a clear button that hands
+the choice back to the thread), and it leaves once the turn has it. A read
+key, a halted host or a dropped link (after the desktop's 1.5 s grace) puts
+the reason in the field in place of the placeholder; the field is off and
+`+` and the button leave. A light impact on send and on a queue, a selection
+tick when the hold turns into a queue, never on typing; the field clears
+without animation. The list behind it dismisses the keyboard interactively.
 
-Photos (`Thread/ComposerAttachments.swift`): a 28 pt plus circle on the
-fill step beside the field, for a key that operates, opens the system
-photo picker, up to four per turn. Each photo goes up to the thread's host
-the moment it is picked (`attachment.begin`, one chunk at a time, `commit`;
-the client package's `upload`) and shows in a strip above the field: a
-56 pt thumbnail at the row radius with a 10 % outline, a 2 pt bar in the
-accent along its foot while it travels (its width rolls on the 150 ms
-numeric curve), gone once the host has it, and a remove control at the top
-trailing corner. A failed upload keeps its chip with the bar in the
-destructive tint and Retry in its menu; Send waits until every photo is on
-the host or removed (Stop never waits). The turn names the committed
-photos, and a refused send gives the text and the photos back.
+Photos (`Thread/ComposerAttachments.swift`): Photos in `+`, for a key that
+operates, opens the system photo picker, up to four per turn. Each photo
+goes up to the thread's host the moment it is picked (`attachment.begin`,
+one chunk at a time, `commit`; the client package's `upload`) and shows in a
+strip above the box: a 56 pt thumbnail at the row radius with a 10 %
+outline, a 2 pt bar in the accent along its foot while it travels (its width
+rolls on the 150 ms numeric curve), gone once the host has it, and a remove
+control at the top trailing corner. A failed upload keeps its chip with the
+bar in the destructive tint and Retry in its menu; Send waits until every
+photo is on the host or removed (Pause never waits). The turn names the
+committed photos, and a refused send gives the text and the photos back.
 
-The status line (`Thread/WorkingStrip.swift`) rises above the capsule only
-while there is something to say, so the resting bar is as short as
-Messages' (BottomDock decides; it arrives with the row's 8 pt of travel and
-fade on a damping-1 spring, a fade under reduced motion). One footnote line,
-32 pt at the default text size, on the capsule's text edge, its actions as
-small glass capsules at the trailing edge (the `.glass` button style,
-`.glassProminent` in a tint for the one thing to do). Five states from the
-status and whether a send of this device's is out (`WorkingPhase` in the
-client package), worded by the client's `StripWords` as a title and a
-quieter detail, each its own text and never joined by a dot: Sending…
-between a send and the turn's start; the mini spinner, the flavour word
-(turning every seven seconds in the 150 ms cross-fade) and the elapsed in
-tertiary tabular digits; Paused, the pause glyph in the warning tint, the
-frozen elapsed, on a master "3 batch threads with it", then Stop and
-Continue (warning); Stopped, the stop square, "The harness is gone" and
-Resume (accent); Queued, the clock glyph, the host's reason ("Waiting for
-<sibling>", "120 of 120 running", split off the host's "Queued  …" line by
-`StripWords.queued`) and Start now. While idle, a locked relayed host's one
-line. A refused action re-enables its control and says nothing more: the
-block is already in the field. Between states only opacity animates, in
-120 ms.
+The slot above the box (`Thread/WorkingStrip.swift` over the client's
+`ComposerSlot`, the desktop's `composerSlotOf`) holds one 28 pt row in the
+detail type on the column's edges, its actions small glass capsules at the
+trailing edge (`.glassProminent` in a tint for the one thing to do). While a
+turn works or waits: the turn's elapsed in secondary tabular digits (from a
+second on), counted from the click (`ThreadState.sentAt`, which the
+optimistic send stamps when no turn is open; the host's later `busySince`
+never steps it back), and Stop, which reads "Stopping…" while it is out.
+Paused: the pause glyph in the warning tint, "Paused", the frozen time, on a
+master "3 batch threads with it", then Stop and Continue (warning). Stopped:
+the stop square, "The harness is gone", the frozen time and Resume (accent).
+Queued: the clock glyph, the host's reason ("Waiting for <sibling>", "120 of
+120 running") and Start now. Nothing for watching, failed, idle or done (the
+transcript's closing line and the failure card say those), and no flavour
+words: what the thread does is the transcript's working line. While empty, a
+locked relayed host's one line. At regular width the slot keeps its 28 pt
+whatever it holds, so nothing moves when a turn starts or ends; at compact
+width it rises in on the layout spring when it has something. When it
+empties the outgoing row stays, inert, fading over `fast` (0.12 s), at once
+under reduced motion; between states only opacity moves. A refused action
+re-enables its control and says nothing more: the block is already in the
+field.
 
 The live cards' actions (`Thread/CardActions.swift`; the cards' rendering
 stays in `Thread/TranscriptRows.swift`) are full-width 40 pt buttons at the
@@ -1929,9 +1941,10 @@ the thin material with a hairline before it, behind one availability check
 in `Design/Glass.swift`; no screen writes `#available(iOS 26.0, *)` itself.
 What is glass: the tab bar (the system `TabView`, glass on its own), the
 navigation bar and its buttons (the system's on iOS 26: `.tcNavigationBar()`
-stops forcing the opaque background there and keeps it before), the chat bar
-(the capsule and the attach circle in one `TCGlassContainer`, `.tcGlassID`
-so they morph as the circle comes and goes), the status line's buttons
+stops forcing the opaque background there and keeps it before), the
+composer's box (one shape at radius 12 in one `TCGlassContainer`, its button
+a circle of tinted glass inside it, the one exception to glass on glass the
+desktop's box asks for), the slot's buttons
 (`.tcGlassButton(prominent:)`, the system's `.glass` and `.glassProminent`),
 the segment switcher's track, the Jump to latest pill, a master board's
 batch menu circle and the fleet switches' outcome card. Never glass on glass
@@ -2012,9 +2025,10 @@ left in a view.
 | Streaming text | the desktop's jitter buffer (`SmoothText`, smoothText.ts as of 0b82ddad, in UTF-16 units): the base pace is the arrival rate over the last 1.5 s (a gap counted 1 s at most, a burst at 1,500/s over a step), clamped 25–1,500 units/s, 400 before the first gap; a lead held behind the live end, seeded 250 ms (every host is remote to the phone), never under twice the gaps' 90th percentile (100–800 ms), an underrun growing it 1.5 times or by the wait, its excess decaying on a 6 s time constant; each spurt holds until a lead and a step are in hand; the pace leans up to 1.5 times while more than the lead is buffered, and every character shows within 1.5 s of arriving; the stream's end drains at the same pace, only a rewrite of the shown prefix and a hidden row snap. Whole words every 100 ms (`revealCut`: a token past 24 units cut where the pace reaches, never inside a grapheme; a bare block marker and a table's header row held until they have content; never inside an open fence), on a timer between steps, no display frames. A row that joins the last turn after the transcript opened is born live and reveals from its first word even when it mounts settled; the opening seq waits for the loaded thread; SwiftUI may prepare a row more than once, so preparation reads its eligibility and appearance consumes it; history and a row scrolled back in show whole. A chip's target types in and cross-fades on `fast` with 2 pt blur when replaced; edit counts tick with `numericText` | `SmoothTextReveal`, `StreamingAssistantRow`, `BornRows`, `LiveChipLabel` (`Motion.swap`, `Motion.crossFade`) |
 | Status dot to spinner | cross-fade over `fast` | `StatusDot` (`Motion.crossFade`) |
 | A glyph trading state (Send ↔ Stop, outline ↔ fill, pin ↔ unpin) | scale 0.25 → 1, opacity 0 → 1, blur 4 → 0, spring `duration 0.3, bounce 0`; reduced motion: opacity on the swap curve over `fast` | `.iconSwapTransition()` with `.id(symbol)` in a `ZStack` (`Motion.iconSwap(reduced:)`, `Motion.iconSwap`, `Motion.iconSwapScale`, `Motion.iconSwapBlur`, `Motion.iconFade`); `TypeGlyph(active:)` uses the symbol replace effect instead, since Glyphs builds without Motion |
-| Send button filling | fill and glyph color 150 ms ease-out when text arrives or leaves; the arrow ↔ stop square is the glyph-trading row above, the circle never moves | `Motion.crossFade` on the fill; `.id(stops)` with `Motion.iconSwap(reduced:)` on the glyph |
+| Composer button | its tint and glyph color cross-fade 120 ms as it turns on or off; send ↔ steer ↔ queue ↔ pause is the glyph-trading row above, the circle never moves | `Motion.crossFade` on the tint; `.id(intent)` with `Motion.iconSwap(reduced:)` on the glyph |
+| Composer height | a keystroke and the clear after a send snap; a paste of more than one line eases `base` | `ComposerHeight.eases`, `Motion.base`, `Motion.withoutAnimation` |
 | Composer chip row | appears on focus: 200 ms ease-out, opacity and 8 pt translateY; leaves 150 ms opacity only; the dock's height follows on the collapse curve | `Motion.appear(reduced:)`, `Motion.collapse` |
-| Working strip state | 120 ms ease-out, opacity only; the row never changes height | `WorkingStripView.fade` (the one 120 ms curve; the kit has none) |
+| The slot above the composer | between states `fast` opacity only, the row never changes height; at compact width it rises in on the layout spring (opacity and 4 pt) and leaves inert on a `fast` fade, the box gliding down after it; regular width keeps its 28 pt; reduced motion: a fade in, gone at once | `Motion.fast`, `Motion.layout`, `Motion.travel` (BottomDock, WorkingStripView) |
 | Attachment chip | appears 200 ms ease-out, opacity and 8 pt translateY; removal 150 ms opacity only | `Motion.appear(reduced:)` |
 | Upload bar | width on the 150 ms numeric curve; hidden once the host has the file | `Motion.numeric` |
 | Card decided | buttons fade, card settles 200 ms ease-out; a refusal's quiet line cross-fades in 150 ms | `Motion.collapse`, `Motion.crossFade` |

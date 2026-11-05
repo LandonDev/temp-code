@@ -2559,24 +2559,39 @@ proof and the sizing rules; the pieces, by name:
   (`adminPairing`), beside thread 26's fake devices;
   `TC_PROOF_SET=host-extras` shoots it (`TC_TEST_SHEET=deploy-log` opens
   the log).
-- Steering (L5): `ios/TempCode/Sources/Thread/Composer.swift` (the chat bar
-  on every segment, Messages' on iOS 26: one glass capsule floating over the
-  transcript with the send button inside it only while there is text, Stop
-  while a turn runs, and a glass circle whose menu holds Photos, the model
-  and the reasoning; 52 pt at rest where the docked bar was 74; a watching
-  master's button is Send and a master mid-turn with text steers; glass goes
-  through `Design/Glass.swift` alone, the radius ladder through
-  `Design/Tokens.swift`, and no view joins facts with " · ":
-  docs/IOS-DESIGN.md "Liquid Glass" and "Text hierarchy")
+- Steering (L5): `ios/TempCode/Sources/Thread/Composer.swift` (the
+  desktop's composer box on every segment, drawn as one Liquid Glass shape
+  at radius 12 in one `TCGlassContainer` floating over the transcript on
+  the transcript's column edges: `+` at the left (28 pt, 44 pt hit; Photos,
+  the model and the reasoning until the row under the box takes those), the
+  field in the prose type, the one button at the right, a 28 pt circle on
+  prominent glass; 46 pt empty, 22 pt more a line up to six lines (160 pt),
+  then it scrolls; a keystroke snaps the height, a paste of more than one
+  line eases it over `base`. The button is the desktop's `SendButton` on the
+  client package's `ComposerRules` and `ComposerIntent`: Send; steer (the
+  corner glyph) mid-turn with text; Pause (`session.pause`) mid-turn with
+  the box empty; a paused thread's text queues; a long press mid-turn with
+  text shows the queue glyph until release and queues for the next turn
+  (`queue.add`); a watching master's button is Send; the glyphs trade on the
+  icon swap; `ComposerHeight` holds the box's numbers. Glass goes through
+  `Design/Glass.swift` alone, the radius ladder and `ComposerMetrics`
+  through `Design/Tokens.swift`, and no view joins facts with " · ":
+  docs/IOS-DESIGN.md "The composer, the slot…", "Liquid Glass" and "Text
+  hierarchy")
   with `ComposerStyles.swift` (the catalog choice, the menus, the chip, the
   card button) and `ComposerAttachments.swift` (photos from the system
   picker, four per turn, uploaded through `attachment.begin/chunk/commit`
   as they are picked, a chip with a bar each); `WorkingStrip.swift` (the
-  status line above the capsule only while there is something to say, its
-  words the client package's `StripWords`, five phases on
-  `WorkingPhase`: Sending…, spinner + flavour word + elapsed, the paused
-  row with Stop and Continue and a master's batch line, the stopped row
-  with Resume, the queued line with Start now); `CardActions.swift` (Allow,
+  slot above the box, the desktop's `composerSlotOf` as the client
+  package's `ComposerSlot`, which was `WorkingPhase`: while a turn works or
+  waits the turn's elapsed from the click (`ThreadState.sentAt`, stamped by
+  a send into a thread with no turn open and never stepped back by the
+  host's `busySince`) and Stop, "Stopping…" while it is out; Paused with
+  Stop and Continue and a master's batch line, Stopped with Resume, Queued
+  with its reason and Start now, worded by `StripWords`; nothing for
+  watching, failed, idle or done, and no flavour words; 28 pt kept at
+  regular width, at compact width it rises in on the layout spring and
+  leaves inert on a `fast` fade); `CardActions.swift` (Allow,
   Deny and Answer under the live cards in `TranscriptRows.swift`, the
   optimistic decision and the one quiet rollback line);
   `Shell/ThreadSheets.swift` (Start a build from a plan, New thread from a
@@ -2585,7 +2600,7 @@ proof and the sizing rules; the pieces, by name:
   context menu with rename). All of it sits on the client package's
   `Client/Actions.swift` (the gate on the key and the socket, pending
   turns, optimistic decisions, `ThreadDraft`, `TurnModel`, `start` as
-  `session.start`), `Client/Attachments.swift` (`upload`) and
+  `session.start`, `pause`, `queue` as `queue.add`), `Client/Attachments.swift` (`upload`) and
   `Client/Steering.swift`; the README there has the rules. A read key
   hides nothing: the field and the cards carry the reason instead. `Client/PlanFlow.swift`
   is the plan page's state (`PlanFlowState`) and `implementPlan` over
@@ -2593,7 +2608,7 @@ proof and the sizing rules; the pieces, by name:
   plan drafts the project settings sheet (`Shell/ProjectSettingsSheet.swift`)
   saves over `project.setPreamble`, `review.set` and `plans.set`, admin
   only, with the reason on a lesser key. DEBUG
-  hooks: `TC_TEST_ACTION=start-now|resume` beside the L4 ones.
+  hooks: `TC_TEST_ACTION=start-now|resume|pause|queue:<text>` beside the L4 ones.
   A master opens on its Board (`ios/TempCode/Sources/Thread/Master/**`:
   MasterView with its bar, MasterRows, BatchFoot and StepConsole, the
   Rules, add, adopt and archive sheets, MasterPinButton for an admin key)
