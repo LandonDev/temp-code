@@ -213,7 +213,8 @@ export function TurnLine({
       {hasBody && call && action ? (
         <Collapsible open={bodyOpen}>
           <CollapsibleContent>
-            <div className="pb-2 pl-5.5">
+            {/* From the glyph's edge, as the settled row's body is, so the card holds still when the call lands. */}
+            <div className="pb-2">
               <div data-row-body className={BODY_FRAME}>
                 {action.opens === "command" ? <CommandCard block={call.block} failed={false} /> : <ToolDetails block={call.block} />}
               </div>

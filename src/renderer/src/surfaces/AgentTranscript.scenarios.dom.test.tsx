@@ -8,7 +8,7 @@
  * (`measure-renderer-soak.ts --scene scenarios --screencast`) looks at the
  * same steps frame by frame.
  */
-import { act, cleanup } from "@testing-library/react";
+import { act, cleanup, fireEvent } from "@testing-library/react";
 import { MotionGlobalConfig } from "motion/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Block } from "../lib/session";
@@ -130,6 +130,30 @@ describe("no jerk in any scenario", () => {
       ["the call settles, a burst of three", [echoed(), read("a", "completed"), bash("b", "completed"), read("c", "completed"), read("d", "completed"), edit("e")], true],
       ["more", [echoed(), read("a", "completed"), bash("b", "completed"), read("c", "completed"), read("d", "completed"), edit("e", "completed"), read("f")], true],
     ]);
+  });
+
+  it("a command opened on the working line keeps its card's left edge when it settles", async () => {
+    /** The left insets between a row's body card and its transcript row: a class that moves the card sideways. */
+    const insets = (body: Element) => {
+      const found: string[] = [];
+      for (let el = body.parentElement; el && !el.hasAttribute("data-row"); el = el.parentElement)
+        for (const c of el.classList) if (/^-?(p[lsx]|m[lsx])-/.test(c)) found.push(c);
+      return found;
+    };
+    const view = scene("s", [echoed(), bash("b")], true);
+    const chevron = view.line()!.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+    act(() => {
+      fireEvent.click(chevron);
+    });
+    const live = view.line()!.querySelector("[data-row-body]")!;
+    expect(live).not.toBeNull();
+    const before = insets(live);
+    await play(view, [["the call settles", [echoed(), bash("b", "completed")], true]]);
+    // It lands open in its group as a lone row, its card from the glyph's edge, as it was on the line.
+    const settled = view.container.querySelector("[data-step=b] [data-row-body]")!;
+    expect(settled).not.toBeNull();
+    expect(insets(settled)).toEqual(before);
+    expect(before).toEqual([]);
   });
 
   it("thinking sentences every 100 ms, then every 2 s: one sentence at a time, the line kept", async () => {

@@ -164,6 +164,8 @@ foreground, the same words the group line uses); the components only draw it.
   live counts on the line; one running command or tool shows a chevron and
   opens its body under the line, and a call opened there lands open in its
   group, which counts as the person's hand (`transcript/workingOpen.ts`).
+  Its body starts at the glyph's edge, as the settled row's does, so the
+  card holds still when the call lands.
   The line's life cycle: once live in a mount it is one element until the
   pane goes, never keyed and never unmounted. While a step waits on the
   person (its card says so) or the turn is paused it folds closed on

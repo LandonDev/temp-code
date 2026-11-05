@@ -128,6 +128,18 @@ describe("the working line", () => {
     expect(openedLive("b1")).toBe(true);
   });
 
+  it("the opened body starts at the glyph edge, as the settled row's does", () => {
+    const { container } = render(end([user, bash("b9")]));
+    act(() => {
+      fireEvent.click(container.querySelector<HTMLButtonElement>('[data-slot="turn-line"] button[aria-expanded]')!);
+    });
+    const body = container.querySelector<HTMLElement>('[data-slot="turn-line"] [data-row-body]')!;
+    // Its wrapper carries the row's bottom space and no inset: ActionRow's is `pb-2`, from the glyph.
+    const wrapper = body.parentElement!;
+    expect(wrapper.className.split(" ")).toContain("pb-2");
+    expect(wrapper.className).not.toMatch(/\bp[lsx]-/);
+  });
+
   it("lands a call opened from the line open in its group, which counts as the person's hand", () => {
     vi.useFakeTimers();
     setOpenedLive("c1", true);
