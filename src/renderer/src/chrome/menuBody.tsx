@@ -313,3 +313,6 @@ export function PopoverBody({
     </Popover>
   );
 }
+
+// BranchPicker's list, shown only in its open popover (chrome/BranchRows.tsx).
+export { BranchRows } from "./BranchRows";

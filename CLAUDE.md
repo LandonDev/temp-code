@@ -421,7 +421,8 @@ app replaces itself from the feed, and only from the feed.
   build` and the release gate) fails when the index chunk's static closure
   passes 5 MiB + 16 KiB or holds one of the lazy modules (the Base UI primitives
   stay out of the entry: the tooltip defers its primitive, the menus and
-  popovers ride menuChunk, every select rides selectChunk: the composer's
+  popovers ride menuChunk, the branch picker's list with them
+  (chrome/BranchRows.tsx), every select rides selectChunk: the composer's
   permission, thread type and model setting pickers draw a cold trigger of
   the same classes until it lands, components/lazy-select.tsx; only the dialog is in the first paint). It also fails when a chunk renders a string tag that is no HTML, SVG or custom element: the React Compiler inlines a lowercase component alias into the JSX tag (`jsx("current")`, an empty element), which only the built bundle shows.
   `/ui` serves the chunks

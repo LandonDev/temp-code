@@ -1,6 +1,6 @@
 import { registry } from "../lib/connection";
 import { environmentOfCwd } from "../lib/tcserver/projects";
-import { Check, GitBranch, Plus, Search } from "./icons";
+import { GitBranch, Search } from "./icons";
 import {
   useEffect,
   useMemo,
@@ -16,7 +16,6 @@ import {
   gitStash,
   isCheckoutBlockedByChanges,
   notifyGitChanged,
-  type GitBranchInfo,
 } from "../lib/fs";
 import { useProjectBranchesState } from "../hooks/useProjectBranches";
 import { TruncateTip } from "../components/tip";
@@ -24,7 +23,8 @@ import { Button } from "../components/ui/button";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { cn } from "../lib/cn";
 import { LazyPopover } from "./menuRows";
-import { dialogsChunk } from "../surfaces/chunks";
+import type { BranchRow as Row, BranchRows } from "./BranchRows";
+import { dialogsChunk, menuChunk } from "../surfaces/chunks";
 
 // Mounted only while a switch is blocked, through the dialogs chunk.
 const SwitchBranchDialog = dialogsChunk.surface("SwitchBranchDialog");
@@ -42,9 +42,6 @@ type Props = {
   onClose?: () => void;
 };
 
-type Row =
-  | { kind: "create"; name: string }
-  | { kind: "branch"; branch: GitBranchInfo };
 
 type PendingSwitch =
   | { kind: "create"; name: string }
@@ -331,7 +328,8 @@ export function BranchPicker({
               onKeyDown={onSearchKey}
             />
           </InputGroup>
-          <BranchList
+          {/* The popover's children mount only once the menu chunk has landed, and the list rides it. */}
+          <ListOf
             rows={rows}
             active={active}
             busy={busy}
@@ -376,77 +374,8 @@ export function BranchPicker({
   );
 }
 
-function BranchList({
-  rows,
-  active,
-  busy,
-  emptyLabel,
-  onActive,
-  onPick,
-}: {
-  rows: Row[];
-  active: number;
-  busy: boolean;
-  emptyLabel: string;
-  onActive: (index: number) => void;
-  onPick: (row: Row) => void;
-}) {
-  const activeRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "nearest" });
-  }, [active]);
-
-  if (rows.length === 0) {
-    return <div className="px-2 py-1.5 text-xs text-muted-foreground">{emptyLabel}</div>;
-  }
-
-  return (
-    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-      <div role="listbox" aria-label="Branches">
-        {rows.map((row, index) => {
-          const highlighted = index === active;
-          const selected = row.kind === "branch" && row.branch.current;
-          return (
-            <div
-              key={
-                row.kind === "create"
-                  ? `create:${row.name}`
-                  : `${row.branch.remote ?? "local"}:${row.branch.name}`
-              }
-              ref={highlighted ? activeRef : undefined}
-              role="option"
-              aria-selected={selected}
-              aria-disabled={busy}
-              onMouseDown={(e) => e.preventDefault()}
-              onMouseEnter={() => onActive(index)}
-              onClick={() => {
-                if (!busy) onPick(row);
-              }}
-              className={cn(
-                "flex h-7 cursor-default items-center gap-2 rounded-md px-2 text-[13px]",
-                busy ? "opacity-50" : highlighted && "bg-muted",
-              )}
-            >
-              {row.kind === "create" ? (
-                <>
-                  <Plus className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 truncate">Create and checkout {row.name}</span>
-                </>
-              ) : (
-                <>
-                  <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{row.branch.name}</span>
-                  {row.branch.remote ? (
-                    <span className="shrink-0 text-xs text-muted-foreground">{row.branch.remote}</span>
-                  ) : null}
-                  {selected ? <Check className="size-3.5 shrink-0" /> : null}
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+/** The list, from the menu chunk the open popover already loaded. */
+function ListOf(props: Parameters<typeof BranchRows>[0]) {
+  const Body = menuChunk.loaded();
+  return Body ? <Body.BranchRows {...props} /> : null;
 }
