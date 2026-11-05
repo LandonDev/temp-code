@@ -204,8 +204,14 @@ public struct ThreadDraft: Sendable, Hashable {
     public var startedBy: String?
     /// The 1M context window, where the model offers it.
     public var context1m: Bool?
+    /// The first message, stored as the thread's first row by the create
+    /// itself (`session.create { firstMessage }`): a draft reaches the host
+    /// only with its first send.
+    public var firstMessage: String?
+    /// Born a master (a chat draft's Master pick; admin).
+    public var master: Bool?
 
-    public init(threadType: ThreadType, provider: ProviderId, model: String, reasoning: Reasoning? = nil, projectId: String? = nil, workspaceId: String? = nil, cwd: String? = nil, permission: PermissionPolicy? = nil, planPath: String? = nil, goal: String? = nil, title: String? = nil, brief: String? = nil, masterId: String? = nil, after: String? = nil, startedBy: String? = nil, context1m: Bool? = nil) {
+    public init(threadType: ThreadType, provider: ProviderId, model: String, reasoning: Reasoning? = nil, projectId: String? = nil, workspaceId: String? = nil, cwd: String? = nil, permission: PermissionPolicy? = nil, planPath: String? = nil, goal: String? = nil, title: String? = nil, brief: String? = nil, masterId: String? = nil, after: String? = nil, startedBy: String? = nil, context1m: Bool? = nil, firstMessage: String? = nil, master: Bool? = nil) {
         self.threadType = threadType
         self.provider = provider
         self.model = model
@@ -222,6 +228,8 @@ public struct ThreadDraft: Sendable, Hashable {
         self.after = after
         self.startedBy = startedBy
         self.context1m = context1m
+        self.firstMessage = firstMessage
+        self.master = master
     }
 
     /// The desktop's `agentTypeFor`: an orchestration thread is run by an orchestrator.
@@ -229,8 +237,12 @@ public struct ThreadDraft: Sendable, Hashable {
         type == .orchestration ? .orchestrator : .implementer
     }
 
-    /// The capability the create needs: a full-access thread skips every prompt, so it takes `approve`.
-    public var needs: Capability { permission == .auto ? .approve : .operate }
+    /// The capability the create needs: born a master takes `admin`; a
+    /// full-access thread skips every prompt, so it takes `approve`.
+    public var needs: Capability {
+        if master == true { return .admin }
+        return permission == .auto ? .approve : .operate
+    }
 
     public var params: Methods.SessionCreate.Params {
         .init(
@@ -249,7 +261,9 @@ public struct ThreadDraft: Sendable, Hashable {
             goal: goal,
             startedBy: startedBy,
             masterId: masterId,
-            after: after
+            after: after,
+            master: master == true ? true : nil,
+            firstMessage: firstMessage
         )
     }
 
