@@ -227,6 +227,8 @@ describe('WorkingStrip: the held rows', () => {
     const onStart = vi.fn(() => Promise.resolve())
     const probe = mount(session({ status: 'queued', activity: 'Queued  3rd in line' }), { onStart })
     expect(rowText(probe)).toBe('Queued3rd in lineStart now')
+    // A held row's way on is raised, as Continue and Resume are; Stop alone stays ghost.
+    expect(buttons(probe)[0]!.getAttribute('data-variant') ?? buttons(probe)[0]!.className).toMatch(/secondary/)
     await probe.act(async () => buttons(probe)[0]!.click())
     expect(onStart).toHaveBeenCalledTimes(1)
     probe.unmount()

@@ -983,7 +983,7 @@ would say the list a second time in a form that names nothing.
 
 While the thread has changes nobody kept, the checkpoint strip sits on the
 composer's top edge (chrome/SessionReview.tsx): one 32px row with the file's
-name, or "3 files", and its `+n −n`, which opens the diff pane, then Undo
+name in sans (a name, not code), or "3 files", and its `+n −n`, which opens the diff pane, then Undo
 (after a confirm naming what goes back) and Keep. With nothing to keep it is
 absent. It is the one control for the host's checkpoint.
 
@@ -1564,7 +1564,7 @@ brought into view even when it moved section meanwhile.
   the dialog's 90).
 - **Everywhere else** a child is an ordinary root thread in the rail with
   its activity line ("Queued  waiting for <sibling>") and its own working
-  strip with one quiet Start now; only the header strip leaves it out.
+  strip with one raised Start now; only the header strip leaves it out.
   Under the master's rail row a child on a host whose link is not open
   sits under the same offline tint as on the board (`data-host-offline`).
 - **In the workspace column** a master is a thread row ending in its

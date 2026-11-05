@@ -198,7 +198,7 @@ export const WorkingStrip = memo(function WorkingStrip({
             {mark}
             {onStart ? (
               <Actions>
-                <Button variant="ghost" size="xs" onClick={start} disabled={startBusy}>
+                <Button variant="secondary" size="xs" onClick={start} disabled={startBusy}>
                   <BusyLabel busy={startBusy} label="Start now" busyLabel="Starting…" />
                 </Button>
               </Actions>

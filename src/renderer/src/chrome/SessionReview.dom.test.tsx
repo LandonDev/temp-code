@@ -151,6 +151,8 @@ describe('SessionReview strip', () => {
     expect(summary.className.split(' ')).not.toContain('gap-1.5')
     expect(summary.firstElementChild!.className.split(' ')).toContain('me-1')
     expect(summary.lastElementChild!.getAttribute('class')!.split(' ')).toContain('ms-1')
+    // One file's name is sans, as "3 files" is: a name, not code.
+    expect(summary.querySelector('.truncate')!.className).not.toMatch(/font-mono/)
   })
 
   it('one file shows its name and counts, and opens that file’s diff', async () => {
