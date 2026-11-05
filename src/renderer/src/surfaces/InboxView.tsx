@@ -1250,7 +1250,7 @@ function InboxPerson({
   }, [avatarUrl]);
 
   return (
-    <span className={`inline-flex min-w-0 items-center gap-1.5 ${className}`}>
+    <span className={`inline-flex min-w-0 items-center gap-2 ${className}`}>
       {avatarUrl && !failed ? (
         <img
           src={avatarUrl}

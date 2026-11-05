@@ -42,7 +42,7 @@ export function ThreadListPopover({
   const shown = q ? threads.filter((t) => t.title.toLowerCase().includes(q)) : threads;
   return (
     <>
-      <div className="px-2 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">{heading}</div>
+      <div className="px-3 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">{heading}</div>
       {threads.length > SEARCH_PAST ? (
         <div className="px-1 pb-1">
           <Input
@@ -56,14 +56,14 @@ export function ThreadListPopover({
         </div>
       ) : null}
       <div className="max-h-80 overflow-x-hidden overflow-y-auto">
-        {shown.length === 0 ? <p className="flex h-7 items-center px-2 text-[13px] text-muted-foreground">No matches</p> : null}
+        {shown.length === 0 ? <p className="flex h-7 items-center px-3 text-[13px] text-muted-foreground">No matches</p> : null}
         {shown.map((thread) => (
           <ItemButton
             key={thread.id}
             size="xs"
             data-listed={thread.id}
             onClick={() => onPick(thread.id)}
-            className="py-1 text-left hover:bg-muted"
+            className="px-3 py-1 text-left hover:bg-muted"
           >
             <ItemMedia>
               <TypeGlyph type={thread.type} className="size-3.5" />
@@ -82,7 +82,7 @@ export function ThreadListPopover({
               {restore ? (
                 <span
                   data-listed-restore
-                  className={cn("flex items-center gap-1 [grid-area:1/1]", RESTORE)}
+                  className={cn("flex items-center gap-2 [grid-area:1/1]", RESTORE)}
                 >
                   <ArchiveRestore className="size-3.5" />
                   Restore

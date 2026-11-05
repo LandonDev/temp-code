@@ -847,6 +847,9 @@ describe("the master view", () => {
     const line = row.querySelector("[data-agent='a1']")!;
     expect(line.querySelector("[data-slot=working-dot]")).toBeTruthy();
     expect(line.querySelector("[data-slot=status-word]")?.textContent).toBe("Working");
+    // The glyph sits 8px from the title, and the 20px line answers a 24px target.
+    expect(line.className.split(/\s+/)).toEqual(expect.arrayContaining(["gap-2", "relative", "after:absolute", "after:-inset-y-0.5"]));
+    expect(line.className.split(/\s+/)).not.toContain("gap-1.5");
   });
 
   it("no text on the board holds two spaces in a row, and every detail starts with its capital", async () => {

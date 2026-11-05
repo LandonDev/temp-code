@@ -66,6 +66,19 @@ describe("the notes view", () => {
     expect(view.queryByRole("button", { name: /Deploy/ })).toBeNull();
   });
 
+  it("sets a note's project glyph 8px from its name", async () => {
+    const saved = h.notes;
+    h.notes = [{ ...saved[1], sourceCwd: "/Users/me/IdeaProjects/temp-code" } as (typeof saved)[number]];
+    try {
+      const view = await mount();
+      const name = view.getAllByText("temp-code").find((el) => el.className.includes("truncate"))!;
+      expect(name.parentElement!.className.split(/\s+/)).toContain("gap-2");
+      expect(name.parentElement!.className.split(/\s+/)).not.toContain("gap-1.5");
+    } finally {
+      h.notes = saved;
+    }
+  });
+
   it("switches Preview and Source with line tabs, the source a Textarea", async () => {
     const view = await mount();
     // The view remembers the last note across showings; pick the first.

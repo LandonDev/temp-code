@@ -363,7 +363,7 @@ function NoteProjectMark({
   const key = workspace ? aliasKeys(workspaces).workspaceId(workspace.id) : project;
   const look = workspaceLook(key, { logos, mascots, colors, customColors });
   return (
-    <span className="flex min-w-0 items-center gap-1.5">
+    <span className="flex min-w-0 items-center gap-2">
       <WorkspaceGlyph
         logoPath={look.logoPath}
         mascotName={look.mascotName}

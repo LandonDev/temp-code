@@ -76,7 +76,7 @@ export function ThreadMenu({
       content: (
         <>
           {host ? (
-            <span className="flex min-w-0 items-center gap-1.5" data-thread-host={host.environmentId}>
+            <span className="flex min-w-0 items-center gap-2" data-thread-host={host.environmentId}>
               <HostGlyph environmentId={host.environmentId} />
               <span className="truncate">{host.name}</span>
             </span>

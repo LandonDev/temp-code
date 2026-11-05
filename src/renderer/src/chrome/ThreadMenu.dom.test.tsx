@@ -104,6 +104,8 @@ describe("ThreadMenu", () => {
     });
     const list = await openMenu();
     expect(list.querySelector("[data-menu-note='line']")?.textContent).toBe("box");
+    // The host's glyph sits 8px from its name.
+    expect(list.querySelector("[data-thread-host]")!.className.split(/\s+/)).toContain("gap-2");
     expect(within(list).getByText("Move to This Mac…")).toBeTruthy();
     expect(within(list).getByRole("menuitem", { name: "Move to This Mac…" }).getAttribute("aria-description")).toBe("The thread is running");
   });

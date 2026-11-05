@@ -131,7 +131,7 @@ export function DockBar({ terminals, active, dev, onSelect, onSelectDev, onClose
             );
           })}
           {dev ? (
-            <TabsTrigger value={DEV_TAB} data-dock-tab={DEV_TAB} className="flex-none">
+            <TabsTrigger value={DEV_TAB} data-dock-tab={DEV_TAB} className="flex-none gap-1">
               Dev servers
               {dev.count > 0 ? <span className="text-xs tabular-nums text-muted-foreground">{dev.count}</span> : null}
             </TabsTrigger>

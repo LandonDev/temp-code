@@ -38,7 +38,11 @@ describe('DockBar', () => {
   it('shows the count only above zero', () => {
     expect(mount({ dev: { count: 0 } }).tab('Dev servers').textContent).toBe('Dev servers')
     cleanup()
-    expect(mount({ dev: { count: 2 } }).tab('Dev servers').textContent).toBe('Dev servers2')
+    const tab = mount({ dev: { count: 2 } }).tab('Dev servers')
+    expect(tab.textContent).toBe('Dev servers2')
+    // A count sits 4px after its word.
+    expect(tab.className.split(/\s+/)).toContain('gap-1')
+    expect(tab.className.split(/\s+/)).not.toContain('gap-1.5')
   })
 
   it('has no Dev servers tab when dev is null', () => {

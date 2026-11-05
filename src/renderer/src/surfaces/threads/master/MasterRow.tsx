@@ -493,12 +493,12 @@ function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph:
         }}
         onKeyDown={stop}
         data-menu-id={line.id}
-        className="-mx-1 flex h-5 w-[calc(100%+8px)] min-w-0 justify-start gap-1.5 rounded-sm px-1 text-left text-xs font-normal hover:bg-foreground/5"
+        className="relative -mx-1 flex h-5 w-[calc(100%+8px)] min-w-0 justify-start gap-2 rounded-sm px-1 text-left text-xs font-normal hover:bg-foreground/5 after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-['']"
         data-agent={line.id}
       >
         <StatusMark state={line.state} word={false} still aria-hidden />
         <span className="max-w-[45%] min-w-0 shrink-0 truncate text-foreground">{line.title || "Subagent"}</span>
-        <StatusMark state={line.state} glyph={false} detail={line.detail || undefined} className="min-w-0 flex-1 -ms-0.5" data-agent-what />
+        <StatusMark state={line.state} glyph={false} detail={line.detail || undefined} className="min-w-0 flex-1 -ms-1" data-agent-what />
         {hostGlyph(line.environmentId)}
       </Button>
     </li>

@@ -34,6 +34,8 @@ describe("ThreadListPopover", () => {
     const age = row("b").querySelector<HTMLElement>("[data-listed-age]")!;
     const restore = row("b").querySelector<HTMLElement>("[data-listed-restore]")!;
     expect(restore.textContent).toBe("Restore");
+    // Its glyph sits 8px from the word.
+    expect(restore.className.split(/\s+/)).toContain("gap-2");
     expect(age.parentElement).toBe(restore.parentElement);
     for (const el of [age, restore]) expect(el.className).toContain("[grid-area:1/1]");
     // Restore waits at rest; on hover or keyboard focus it shows as the age leaves, after the hover delay.
@@ -43,9 +45,11 @@ describe("ThreadListPopover", () => {
     expect(onPick).toHaveBeenCalledWith("b");
   });
 
-  it("rows are 28px lines", () => {
+  it("rows are 28px lines on the menu's 12px inset", () => {
     render(<ThreadListPopover heading="Recent" threads={threads} onPick={() => {}} />);
     expect(row("a").className.split(/\s+/)).toContain("py-1");
+    expect(row("a").className.split(/\s+/)).toContain("px-3");
+    expect(screen.getByText("Recent").className.split(/\s+/)).toContain("px-3");
   });
 
   it("filters past six threads, and says so in one muted row", () => {
