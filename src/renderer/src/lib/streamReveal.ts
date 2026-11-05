@@ -15,7 +15,12 @@
  * block whose text no longer starts with its ledger's (a paragraph turning
  * into a table) starts a new ledger, so the reparsed block fades in whole.
  * Text the row already held when it mounted is shown, not faded.
+ *
+ * Code is not prose: a fence's lines fade in one element each
+ * (surfaces/CodeBlock.tsx), timed by `lineTimes`, a ledger per fence keyed
+ * the same way by its code's first characters.
  */
+import { createContext } from "react";
 import type { Element, ElementContent, Root, RootContent } from "hast";
 import type { Plugin } from "unified";
 import { REVEAL } from "./ease";
@@ -56,7 +61,23 @@ export interface StreamReveal {
   arm(): void;
   /** When the newest step started (ms, performance.now()), or -Infinity. */
   lastStepAt(): number;
+  /** Whether new text fades yet. */
+  isArmed(): boolean;
+  /**
+   * When each of a fence's `count` lines first showed (ms), -Infinity for
+   * the lines it held before the row armed. The fence is known by its code's
+   * first LEDGER_KEY_CHARS characters; a shorter fence grows into its key.
+   * A new line counts as a step, so the settle waits for its fade.
+   */
+  lineTimes(code: string, count: number): readonly number[];
+  /** Which of a fence's lines are still fading in (`lineTimes` younger than
+   *  REVEAL.fadeMs); none under reduced motion. */
+  freshLines(code: string, count: number): boolean[];
 }
+
+/** The row's reveal while it streams, for the code blocks inside it; null
+ *  once the row settled (AgentMarkdown). */
+export const StreamRevealContext = createContext<StreamReveal | null>(null);
 
 let rows = 0;
 
@@ -65,6 +86,7 @@ export function createStreamReveal(
   reduced: () => boolean = prefersReducedMotion,
 ): StreamReveal {
   const ledgers = new Map<string, Ledger>();
+  const fences = new Map<string, number[]>();
   let armed = false;
   let last = -Infinity;
 
@@ -106,12 +128,43 @@ export function createStreamReveal(
   // first row's ledger.
   const plugin: Plugin<[], Root> = () => transform;
   Object.defineProperty(plugin, "name", { value: `streamReveal${++rows}` });
+  const lineTimes = (code: string, count: number): number[] => {
+    const key = code.slice(0, LEDGER_KEY_CHARS);
+    let times = fences.get(key);
+    if (!times) {
+      for (const [shortKey, short] of fences) {
+        if (shortKey.length < LEDGER_KEY_CHARS && code.startsWith(shortKey)) {
+          fences.delete(shortKey);
+          times = short;
+          break;
+        }
+      }
+    }
+    times ??= [];
+    fences.set(key, times);
+    if (times.length < count) {
+      const at = armed ? now() : -Infinity;
+      while (times.length < count) times.push(at);
+      if (at > last) last = at;
+    }
+    times.length = count;
+    return times;
+  };
+
   return {
     plugin,
     arm: () => {
       armed = true;
     },
     lastStepAt: () => last,
+    isArmed: () => armed,
+    lineTimes,
+    freshLines: (code, count) => {
+      const times = lineTimes(code, count);
+      if (reduced()) return times.map(() => false);
+      const t = now();
+      return times.map((at) => t - at < REVEAL.fadeMs);
+    },
   };
 }
 

@@ -1,8 +1,10 @@
-import { memo, useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Check, Copy } from "../chrome/icons";
 import { copyText } from "../lib/clipboard";
 import { highlight, highlightCached } from "../lib/highlight";
+import { useHeightGlide } from "../lib/heightGlide";
 import { grammarFor } from "../lib/highlightLanguages";
+import { STEP_CLASS, StreamRevealContext } from "../lib/streamReveal";
 import { playCue } from "../lib/sounds";
 import { SwapIcon } from "../motion/IconSwap";
 import { IconAction, useArmOnIntent } from "./transcript/IconAction";
@@ -20,8 +22,13 @@ import { IconAction, useArmOnIntent } from "./transcript/IconAction";
  * then at most one every HIGHLIGHT_EVERY_MS, never put off by a delta), and
  * until the answer for the newest text lands the block shows the coloured
  * lines it has and the lines past them plain, so a new line never waits and
- * colour never leaves. Keeps streamdown's `data-streamdown` hooks so
- * transcript/markdown.css frames it like a table: one card, one hairline.
+ * colour never leaves. Every line is an element of its own, its coloured
+ * markup swapped inside it, so a recolour or a new line never replaces
+ * another line. While its row streams (StreamRevealContext) a new line fades
+ * in whole, the body glides to its new height on --dur-base, and a fence
+ * born mid-stream rises in (`stream-rise`). Keeps streamdown's
+ * `data-streamdown` hooks so transcript/markdown.css frames it like a table:
+ * one card, one hairline.
  */
 /** How long a code block's Copy holds its check (a message's holds 2s). */
 export { COPIED_MS } from "../lib/clipboard";
@@ -36,25 +43,65 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** A block's markup taken apart: the shiki `pre`'s attributes (none for
+ *  plain lines) and each line's inner HTML. */
+export type CodeLines = { className?: string; style?: CSSProperties; tabIndex?: number; lines: string[] };
+
+const LINE_OPEN = '<span class="line">';
+const LINE_CLOSE = "</span>";
+
+/**
+ * shiki's `<pre class style tabindex><code><span class="line">…</span>…
+ * </code></pre>` taken apart: the pre's class, style (as an object) and
+ * tab stop, and each line's inner HTML. Null when the markup is not that.
+ */
+export function splitColoured(html: string): CodeLines | null {
+  const match = /^<pre([^>]*)><code>([\s\S]*)<\/code><\/pre>$/.exec(html.trim());
+  if (!match) return null;
+  const [, attrs, inner] = match;
+  const lines: string[] = [];
+  for (const piece of inner === "" ? [] : inner.split(/(?=<span class="line">)/)) {
+    if (!piece.startsWith(LINE_OPEN) || !piece.endsWith(LINE_CLOSE)) return null;
+    lines.push(piece.slice(LINE_OPEN.length, -LINE_CLOSE.length));
+  }
+  const attr = (name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(attrs)?.[1];
+  const tab = attr("tabindex");
+  return { className: attr("class"), style: parseStyle(attr("style")), tabIndex: tab === undefined ? undefined : Number(tab), lines };
+}
+
+/** `a-b:c;--d:e` as React's style object. */
+function parseStyle(style: string | undefined): CSSProperties | undefined {
+  if (!style) return undefined;
+  const out: Record<string, string> = {};
+  for (const rule of style.split(";")) {
+    const colon = rule.indexOf(":");
+    if (colon < 0) continue;
+    const name = rule.slice(0, colon).trim();
+    out[name.startsWith("--") ? name : name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())] = rule.slice(colon + 1).trim();
+  }
+  return out as CSSProperties;
+}
+
+/** Each line of `code` escaped, with no colour yet. */
+function plainLines(code: string): CodeLines {
+  return { lines: code.split("\n").map(escapeHtml) };
+}
+
 /**
  * The colouring of an earlier text applied to the current one: the coloured
- * lines that still read the same, then the rest as plain lines in the same
- * `<pre><code>`. Null when no line survives or the markup is not shiki's.
+ * lines that still read the same, then the rest plain, under the colouring's
+ * `pre`. Null when the markup is not shiki's.
  */
-export function colourPrefix(colour: Colour, code: string): string | null {
-  const open = colour.html.indexOf("<code>");
-  const close = colour.html.lastIndexOf("</code>");
-  if (open < 0 || close < open) return null;
-  const inner = colour.html.slice(open + "<code>".length, close);
-  const coloured = inner.split(/(?=<span class="line")/);
+export function colourLines(colour: Colour, code: string): CodeLines | null {
+  const split = splitColoured(colour.html);
+  if (!split) return null;
+  if (colour.code === code) return split;
   const was = colour.code.split("\n");
-  if (coloured.length !== was.length) return null;
+  if (split.lines.length !== was.length) return null;
   const now = code.split("\n");
   let same = 0;
   while (same < was.length && same < now.length && was[same] === now[same]) same++;
-  if (same === 0) return null;
-  const plain = now.slice(same).map((line) => `<span class="line">${escapeHtml(line)}</span>`);
-  return colour.html.slice(0, open + "<code>".length) + coloured.slice(0, same).join("") + plain.join("") + colour.html.slice(close);
+  return { ...split, lines: [...split.lines.slice(0, same), ...now.slice(same).map(escapeHtml)] };
 }
 
 export const CodeBlock = memo(function CodeBlock({
@@ -136,7 +183,13 @@ export const CodeBlock = memo(function CodeBlock({
     };
   }, []);
 
-  const html = !colour ? null : colour.code === clean ? colour.html : colourPrefix(colour, clean);
+  const view = useMemo(() => (colour ? colourLines(colour, clean) : null) ?? plainLines(clean), [colour, clean]);
+  // While the row streams: which lines are still fading in, and the body's
+  // glide by the line; a row that mounts settled has no reveal.
+  const reveal = useContext(StreamRevealContext);
+  const fresh = reveal ? reveal.freshLines(clean, view.lines.length) : null;
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useHeightGlide(bodyRef, view.lines.length, { enabled: incomplete && !!reveal?.isArmed(), curve: "base" });
 
   const copy = () => {
     playCue("copy");
@@ -165,7 +218,7 @@ export const CodeBlock = memo(function CodeBlock({
   return (
     <div
       data-streamdown="code-block"
-      className={`group/code relative flex flex-col ${className ?? ""}`}
+      className={`group/code relative flex flex-col ${fresh?.[0] ? "stream-rise" : ""} ${className ?? ""}`}
       {...intent}
     >
       {heading ? (
@@ -180,23 +233,18 @@ export const CodeBlock = memo(function CodeBlock({
         copyButton
       )}
       <div
+        ref={bodyRef}
         data-streamdown="code-block-body"
         data-line-numbers={lineNumbers ? "" : undefined}
         style={lineNumbers ? { counterReset: `line ${startLine - 1}` } : undefined}
       >
-        {html ? (
-          <div dangerouslySetInnerHTML={{ __html: html }} />
-        ) : (
-          <pre>
-            <code>
-              {clean.split("\n").map((line, n) => (
-                <span key={n} className="line">
-                  {line}
-                </span>
-              ))}
-            </code>
-          </pre>
-        )}
+        <pre className={view.className} style={view.style} tabIndex={view.tabIndex}>
+          <code>
+            {view.lines.map((line, n) => (
+              <span key={n} className={fresh?.[n] ? `line ${STEP_CLASS}` : "line"} dangerouslySetInnerHTML={{ __html: line }} />
+            ))}
+          </code>
+        </pre>
       </div>
     </div>
   );

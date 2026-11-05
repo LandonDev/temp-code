@@ -5,7 +5,7 @@ import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 import { describe, expect, it } from "vitest";
 import { REVEAL } from "./ease";
-import { createStreamReveal, renderedText, STEP_CLASS } from "./streamReveal";
+import { createStreamReveal, LEDGER_KEY_CHARS, renderedText, STEP_CLASS } from "./streamReveal";
 
 function harness(reduced = false) {
   let t = 1000;
@@ -118,5 +118,43 @@ describe("streamReveal", () => {
     advance(REVEAL.fadeMs);
     const tree = run("Hi there, this block grows past its thirty-two character key ");
     expect(spans(tree).map(young)).toEqual([false, true]);
+  });
+});
+
+describe("lineTimes", () => {
+  it("times each line when it first shows; lines held before the row armed are old", () => {
+    let t = 100;
+    const reveal = createStreamReveal(() => t, () => false);
+    expect(reveal.lineTimes("a\nb", 2)).toEqual([-Infinity, -Infinity]);
+    reveal.arm();
+    t = 200;
+    expect(reveal.lineTimes("a\nb\nc", 3)).toEqual([-Infinity, -Infinity, 200]);
+    t = 300;
+    expect(reveal.lineTimes("a\nb\nc", 3)).toEqual([-Infinity, -Infinity, 200]);
+    expect(reveal.lastStepAt()).toBe(200);
+  });
+
+  it("follows a short fence into its longer key, and a fence with other code starts afresh", () => {
+    let t = 10;
+    const reveal = createStreamReveal(() => t, () => false);
+    reveal.arm();
+    reveal.lineTimes("x", 1);
+    t = 20;
+    const long = "x".repeat(LEDGER_KEY_CHARS) + "\nmore";
+    expect(reveal.lineTimes(long, 2)).toEqual([10, 20]);
+    t = 30;
+    expect(reveal.lineTimes("y = 1", 1)).toEqual([30]);
+  });
+
+  it("says which lines still fade: none once REVEAL.fadeMs passed, none under reduced motion", () => {
+    let t = 0;
+    const reveal = createStreamReveal(() => t, () => false);
+    reveal.arm();
+    expect(reveal.freshLines("a", 1)).toEqual([true]);
+    t = REVEAL.fadeMs;
+    expect(reveal.freshLines("a\nb", 2)).toEqual([false, true]);
+    const still = createStreamReveal(() => 0, () => true);
+    still.arm();
+    expect(still.freshLines("a", 1)).toEqual([false]);
   });
 });

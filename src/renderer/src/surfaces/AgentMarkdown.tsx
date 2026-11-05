@@ -27,7 +27,7 @@ import { cachedParse, restoreHast } from "../lib/markdownCache";
 import { useMarkdownReady } from "../lib/markdownParse";
 import { MARKDOWN_REHYPE_PLUGINS, MARKDOWN_REMARK_PLUGINS } from "../lib/markdownPipeline";
 import { REVEAL } from "../lib/ease";
-import { createStreamReveal } from "../lib/streamReveal";
+import { createStreamReveal, StreamRevealContext } from "../lib/streamReveal";
 import { parseFileHref } from "../lib/paths";
 import type { OpenFileFn } from "../lib/search";
 import {
@@ -317,6 +317,7 @@ export const AgentMarkdown = memo(function AgentMarkdown({
             {shown}
           </pre>
         ) : (
+        <StreamRevealContext.Provider value={settled ? null : reveal}>
         <Streamdown
           className={cn("agent-markdown min-w-0 wrap-break-word font-sans", SIZE_CLASS[size], className)}
           components={MARKDOWN_COMPONENTS}
@@ -330,6 +331,7 @@ export const AgentMarkdown = memo(function AgentMarkdown({
         >
           {shown}
         </Streamdown>
+        </StreamRevealContext.Provider>
         )}
       </div>
     </FileOpenContext.Provider>

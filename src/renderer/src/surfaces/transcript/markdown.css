@@ -203,6 +203,9 @@
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
+  /* A streaming block glides to its height (CodeBlock.tsx): the lines past
+     the drawn height are cut, never scrolled to. */
+  overflow-y: hidden;
   overscroll-behavior-x: contain;
   /* The bar runs along the frame's rounded foot: keep it off the corners. */
   --scrollbar-inset: var(--radius-lg);

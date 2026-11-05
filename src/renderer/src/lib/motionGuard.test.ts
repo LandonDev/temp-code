@@ -23,6 +23,7 @@ const CSS_ALLOWED: Record<string, string> = {};
 /** Every @keyframes in a stylesheet under src/renderer/src, and what it serves. */
 const KEYFRAMES: Record<string, string> = {
   "stream-step-in": "lib/streamReveal.ts",
+  "stream-rise-in": "lib/streamReveal.ts",
   "glyph-in": "components/ui/status.tsx",
   "glyph-out": "components/ui/status.tsx",
   "glyph-fade-in": "components/ui/status.tsx",

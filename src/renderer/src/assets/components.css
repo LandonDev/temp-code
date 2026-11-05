@@ -39,6 +39,28 @@
   }
 }
 
+/* A block born mid-stream (a list item, a table row, a heading, a quote
+   line, a code fence: lib/streamReveal.ts, CodeBlock.tsx) takes the phrase
+   fade on the element and rises 4px into place over --dur-base. Under
+   reduced motion it only fades. */
+@keyframes stream-rise-in {
+  from {
+    translate: 0 4px;
+  }
+}
+
+.stream-rise {
+  animation:
+    stream-step-in var(--dur-reveal) var(--ease-reveal) both,
+    stream-rise-in var(--dur-base) var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-rise {
+    animation: stream-step-in var(--dur-reveal) var(--ease-reveal) both;
+  }
+}
+
 /* Switch: the thumb slides on a clip-path and grows 5px toward the other
    side on hover, so the hand knows which way it goes. */
 .t-toggle {
