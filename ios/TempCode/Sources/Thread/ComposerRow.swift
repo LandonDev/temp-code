@@ -16,8 +16,11 @@ import TempCodeContract
 struct ComposerRowView: View {
     let client: EnvironmentClient
     let session: SessionMeta?
-    let thread: ThreadState
+    var thread: ThreadState?
     @Bindable var choice: CatalogChoice
+    /// A project's draft: its mode before any thread exists, set here and
+    /// sent with the create; nil on a thread, whose mode is `session.permission`.
+    var draftMode: Binding<PermissionPolicy>?
     /// The row's own width, measured; unmeasured, everything fits.
     @State private var width: CGFloat?
     /// The mode this device asked for, shown until the host's push carries it (or refuses it).
@@ -26,14 +29,17 @@ struct ComposerRowView: View {
     private var fit: ComposerRow.Fit { ComposerRow.fit(width: Double(width ?? .greatestFiniteMagnitude)) }
 
     /// The harness squeezes the window: the meter's ring turns to a spinner.
-    private var compacting: Bool { thread.fold.board.compacting && ComposerRules.busy(status: session?.status, sending: thread.sending) }
+    private var compacting: Bool {
+        guard let thread else { return false }
+        return thread.fold.board.compacting && ComposerRules.busy(status: session?.status, sending: thread.sending)
+    }
 
     private var modelAccess: ComposerRow.Access {
         choice.catalog == nil ? .readOnly : ComposerRow.modelAccess(operate: client.environment.allows(.operate))
     }
 
     private var modeAccess: ComposerRow.Access {
-        ComposerRow.modeAccess(hasThread: session != nil, approve: client.environment.allows(.approve))
+        ComposerRow.modeAccess(hasThread: session != nil || draftMode != nil, approve: client.environment.allows(.approve))
     }
 
     var body: some View {
@@ -62,8 +68,8 @@ struct ComposerRowView: View {
                     .fixedSize()
                     .layoutPriority(1)
             }
-            if modeAccess != .hidden, let session {
-                mode(asked ?? session.permission, fit: fit)
+            if modeAccess != .hidden, let current = draftMode?.wrappedValue ?? session.map({ asked ?? $0.permission }) {
+                mode(current, fit: fit)
                     .fixedSize()
                     .layoutPriority(1)
             }
@@ -148,6 +154,10 @@ struct ComposerRowView: View {
 
     /// The pick shows at once; a refusal puts the host's mode back.
     private func choose(_ policy: PermissionPolicy) {
+        if let draftMode {
+            draftMode.wrappedValue = policy
+            return
+        }
         guard let session, policy != (asked ?? session.permission) else { return }
         asked = policy
         Task {
@@ -200,7 +210,7 @@ private struct MeterView: View {
     }
 }
 
-private extension View {
+extension View {
     /// A menu drawn as its label alone: no system padding (the row's widths
     /// are the label's), no accent tint (the row is quiet).
     func quietMenu() -> some View {

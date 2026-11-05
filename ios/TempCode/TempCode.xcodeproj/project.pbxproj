@@ -119,6 +119,7 @@
 		B6CF86E3310704ACE4BE86E7 /* ThreadRowActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C9121A31A1E408C0C11CD59 /* ThreadRowActions.swift */; };
 		BAA13CB6B01BC86A33123E34 /* LayoutProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793A843C291F830634F37C73 /* LayoutProbe.swift */; };
 		BB8297082DD90BCCE6FCF2B6 /* StreamFade.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F1569523C355FA62F64B46 /* StreamFade.swift */; };
+		BDF361CB631D67E36610AF9A /* DraftComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 802BA435198AE22020605A1A /* DraftComposer.swift */; };
 		BE7F26241B9F5C0AD87DC743 /* SettingsStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D166A7F8BA1C8BE69233DA /* SettingsStyles.swift */; };
 		C054528FD7118216F3817183 /* ThreadRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C16775FDA7BDE46AF518AD0D /* ThreadRow.swift */; };
 		C86B27E2BA346505A4A65F12 /* ResourcesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A8BF53FD7B051E088E2F94 /* ResourcesSheet.swift */; };
@@ -271,6 +272,7 @@
 		793A843C291F830634F37C73 /* LayoutProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutProbe.swift; sourceTree = "<group>"; };
 		7BBB53D44FB85BE6A24DDD1F /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		7E7AE044D6CB90B7ED7BB42D /* BatchFoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchFoot.swift; sourceTree = "<group>"; };
+		802BA435198AE22020605A1A /* DraftComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftComposer.swift; sourceTree = "<group>"; };
 		864CD2924E00F07F3B3495DC /* TestHooks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHooks.swift; sourceTree = "<group>"; };
 		8CDDDF2CA8755F715E737220 /* HostActivitySections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostActivitySections.swift; sourceTree = "<group>"; };
 		8F8B110E0CA49C21D1DE3E14 /* ThreadGone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadGone.swift; sourceTree = "<group>"; };
@@ -566,6 +568,7 @@
 			children = (
 				62C74571D102E72FCC26E83C /* AddEnvironmentSheet.swift */,
 				B826E1940308077BFC57B4F9 /* ArchivedViews.swift */,
+				802BA435198AE22020605A1A /* DraftComposer.swift */,
 				4EE83DE45CD4E7D370BB1E46 /* FleetSwitches.swift */,
 				C07E016517D9A2DE012E6F5B /* HomeRowModels.swift */,
 				55C87A95828B07727E81E7F3 /* HomeRows.swift */,
@@ -824,6 +827,7 @@
 				0DBCCA842B8C531ACF33700E /* DeployLogSheet.swift in Sources */,
 				23614D8185C5D979DC52454E /* DiffScreen.swift in Sources */,
 				A44F3587E973ECC49621FB39 /* DiffStyles.swift in Sources */,
+				BDF361CB631D67E36610AF9A /* DraftComposer.swift in Sources */,
 				4F0A3913A1469EF6EF90A1D0 /* Duo.swift in Sources */,
 				5E3A480A8EBD0785FB21484A /* FailureCard.swift in Sources */,
 				AD45C192E9C90A4CD74AE390 /* FleetStyles.swift in Sources */,

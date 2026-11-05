@@ -81,3 +81,80 @@ import TempCodeContract
         #expect(ProjectDraftStore(defaults: defaults).draft("p") == nil)
     }
 }
+
+@MainActor
+@Suite struct DraftSendTests {
+    private func draft(_ text: String) -> ThreadDraft {
+        var thread = ProjectDrafts.threadDraft(ProjectDraft(text: text, threadType: .chat), workspaceId: "w1", projectId: "p1", provider: .claude, model: "claude-sonnet-5-5")
+        thread.firstMessage = nil
+        return thread
+    }
+
+    @Test func `a draft without photos is one create that stores the first message`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let sending = Task { try await rig.client.sendDraft(draft("Map the plugin boundaries"), text: "Map the plugin boundaries", photos: []) }
+        let create = try #require(await rig.request(fake, "session.create"))
+        guard case .object(let params) = create.params else { throw TransportError.notConnected }
+        #expect(params["firstMessage"] == .string("Map the plugin boundaries"))
+        #expect(params["projectId"] == .string("p1"))
+        fake.answer(id: create.id, result: json(sampleSession("s9")))
+        let meta = try await sending.value
+        #expect(meta.id == "s9")
+        #expect(fake.sentRequests.contains { $0.method == "session.send" } == false, "the create carried the message")
+        await rig.client.stop()
+    }
+
+    @Test func `with photos the thread is made, given the photos, then sent; a failed send archives it`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let photo = DraftPhoto(name: "photo-1.jpeg", mime: "image/jpeg", data: Data(repeating: 7, count: 4))
+        let sending = Task { try await rig.client.sendDraft(draft("See this"), text: "See this", photos: [photo]) }
+        let create = try #require(await rig.request(fake, "session.create"))
+        guard case .object(let params) = create.params else { throw TransportError.notConnected }
+        #expect(params["firstMessage"] == nil, "the photos must be on the host before the message names them")
+        fake.answer(id: create.id, result: json(sampleSession("s9")))
+        let begin = try #require(await rig.request(fake, "attachment.begin"))
+        fake.answer(id: begin.id, result: #"{"uploadId":"u1","chunkBytes":4}"#)
+        let chunk = try #require(await rig.request(fake, "attachment.chunk"))
+        fake.answer(id: chunk.id, result: #"{"received":4}"#)
+        let commit = try #require(await rig.request(fake, "attachment.commit"))
+        fake.answer(id: commit.id, result: #"{"path":"/tmp/repo/.temp-code/attachments/s9/photo-1.jpeg","name":"photo-1.jpeg","mime":"image/jpeg","kind":"image","size":4}"#)
+        let send = try #require(await rig.request(fake, "session.send"))
+        fake.refuse(id: send.id, error: "the harness would not start")
+        let archive = try #require(await rig.request(fake, "session.archive"))
+        #expect(archive.params == .object(["sessionId": .string("s9"), "archived": .bool(true)]))
+        fake.answer(id: archive.id, result: "null")
+        await #expect(throws: ActionError.self) { try await sending.value }
+        await rig.client.stop()
+    }
+
+    @Test func `Master rides the create for a chat alone, and takes an admin key`() {
+        let chat = ProjectDrafts.threadDraft(ProjectDraft(threadType: .chat, master: true), workspaceId: "w1", projectId: nil, provider: .claude, model: "m")
+        #expect(chat.master == true && chat.needs == .admin)
+        let plan = ProjectDrafts.threadDraft(ProjectDraft(threadType: .planning, master: true), workspaceId: "w1", projectId: nil, provider: .claude, model: "m")
+        #expect(plan.master == nil && plan.needs == .operate)
+        let picked = ProjectDrafts.threadDraft(ProjectDraft(threadType: .implementation, provider: .codex, model: "gpt-6.1-sol", reasoning: .high, permission: .auto), workspaceId: "w1", projectId: "p1", provider: .claude, model: "m")
+        #expect(picked.provider == .codex && picked.model == "gpt-6.1-sol" && picked.reasoning == .high)
+        #expect(picked.needs == .approve, "full access takes approve")
+    }
+
+    @Test func `New copy needs both link ids, the desktop's ensureLinkedArgs`() {
+        let project = ProjectMeta(id: "p1", workspaceId: "w1", name: "temp-code", mode: .local, branch: "master", cwd: "/repo", archived: false, accountPins: nil, preamble: nil, preambleEnabled: nil, linkId: "pl_1", settingsUpdatedAt: nil, createdAt: 1)
+        let workspace = WorkspaceMeta(id: "w1", name: "work", path: "/work", git: true, accountPins: nil, githubRepo: nil, githubRepoCheckedAt: nil, preamble: nil, preambleEnabled: nil, linkId: "wl_1", createdAt: 1)
+        let params = ProjectDrafts.ensureLinkedParams(project: project, workspace: workspace)
+        #expect(params?.projectLinkId == "pl_1" && params?.workspaceLinkId == "wl_1")
+        #expect(params?.callerProjectCwd == "/repo" && params?.callerWorkspacePath == "/work" && params?.branch == "master")
+        let unlinked = WorkspaceMeta(id: "w1", name: "work", path: "/work", git: true, accountPins: nil, githubRepo: nil, githubRepoCheckedAt: nil, preamble: nil, preambleEnabled: nil, linkId: nil, createdAt: 1)
+        #expect(ProjectDrafts.ensureLinkedParams(project: project, workspace: unlinked) == nil)
+    }
+
+    @Test func `New thread focuses the draft: the composer is asked to take the keyboard`() throws {
+        let defaults = try #require(UserDefaults(suiteName: "draft-focus-\(UUID().uuidString)"))
+        let store = ProjectDraftStore(defaults: defaults)
+        store.set("link:pl_1", ProjectDraft(text: "half a thought"))
+        let focused = store.focus("link:pl_1", type: .planning)
+        #expect(focused.text == "half a thought" && focused.threadType == .planning)
+        #expect(store.focusRequest == "link:pl_1")
+    }
+}

@@ -237,14 +237,26 @@ struct NewThreadTarget: Identifiable {
     var id: String { "\(client.environment.id):\(workspace.id):\(project?.id ?? "")" }
 }
 
-/// The new-thread sheet's target, shared by the Home stack's screens and
-/// presented from the root, as project settings are: a sheet on a pushed
-/// screen's menu item never shows.
+/// New thread, shared by every screen: it focuses the project's one
+/// remembered draft (or the workspace's chats' draft) in its shell on Home,
+/// setting the type when one is asked for and keeping the text (RootView
+/// supplies `openDraft`). `target` is the New thread sheet, which stays only
+/// for a prefilled brief (the Inbox's), presented from the root as project
+/// settings are: a sheet on a pushed screen's menu item never shows.
 @MainActor @Observable
 final class NewThreadPresenter {
     var target: NewThreadTarget?
+    @ObservationIgnored var openDraft: ((EnvironmentClient, WorkspaceMeta, ProjectMeta?, ThreadType?) -> Void)?
 
     func compose(_ client: EnvironmentClient, _ workspace: WorkspaceMeta, _ project: ProjectMeta?) {
-        target = NewThreadTarget(client: client, workspace: workspace, project: project)
+        compose(client, workspace, project, type: nil)
+    }
+
+    func compose(_ client: EnvironmentClient, _ workspace: WorkspaceMeta, _ project: ProjectMeta?, type: ThreadType?) {
+        if let openDraft {
+            openDraft(client, workspace, project, type)
+        } else {
+            target = NewThreadTarget(client: client, workspace: workspace, project: project)
+        }
     }
 }

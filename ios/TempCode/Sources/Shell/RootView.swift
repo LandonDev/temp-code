@@ -80,6 +80,16 @@ struct RootView: View {
         .onAppear {
             let registry = model.registry
             for navigator in navigators { navigator.hosts = { HomeRows.inputs(registry.ordered) } }
+            // New thread opens the project's shell on Home with its draft focused.
+            newThread.openDraft = { [home] client, workspace, project, type in
+                let environmentId = client.environment.id
+                let key = project.map { ProjectPairs.key(environmentId, $0) }
+                    ?? ThreadStrip.scope(workspace: environmentId, workspaceId: workspace.id, hosts: HomeRows.inputs(registry.ordered))?.key
+                guard let key else { return }
+                ProjectDraftStore.shared.focus(key, type: type)
+                tab = .home
+                home.open(.project(key: key, thread: nil, seq: nil))
+            }
         }
         .preferredColorScheme(appearance.scheme)
         .modifier(layoutProbe) // DEBUG: the layout report the Duo proof reads (LayoutProbe.swift)
