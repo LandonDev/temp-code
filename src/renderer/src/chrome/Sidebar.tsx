@@ -11,7 +11,8 @@ import { DUR, EASE_OUT } from "../lib/ease";
 import { IS_MAC, MOD } from "../lib/platform";
 import { basename } from "../lib/fs";
 import { projectName } from "../lib/paths";
-import { loadTabGroupLabels, resolveTabGroupLabel, TAB_GROUP_LABELS_CHANGED } from "../lib/tabGroups";
+import { resolveTabGroupLabel } from "../lib/tabGroups";
+import { useTabGroupLabels } from "../hooks/useTabGroupLabels";
 import type { ProjectMeta } from "../lib/tcserver/types";
 import {
   useWorkspaceCatalog,
@@ -196,12 +197,7 @@ function SidebarComponent({
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
   const workspacePath = workspace?.path ?? cwd;
   // The header names the workspace as the rail does: its label, else its name.
-  const [groupLabels, setGroupLabels] = useState(loadTabGroupLabels);
-  useEffect(() => {
-    const refresh = () => setGroupLabels(loadTabGroupLabels());
-    window.addEventListener(TAB_GROUP_LABELS_CHANGED, refresh);
-    return () => window.removeEventListener(TAB_GROUP_LABELS_CHANGED, refresh);
-  }, []);
+  const groupLabels = useTabGroupLabels();
   const workspaces = useWorkspaces();
   const catalogLoaded = useWorkspaceCatalog().loaded;
   const title = atHome

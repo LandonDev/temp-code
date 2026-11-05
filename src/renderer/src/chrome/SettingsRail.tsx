@@ -24,7 +24,9 @@ import {
   type StaticSettingsSectionId,
 } from "../lib/settings";
 import type { WorkspaceMeta } from "../lib/tcserver/types";
-import { useWorkspaces } from "../lib/tcserver/workspaces";
+import { useWorkspaces, workspaceLabelKey } from "../lib/tcserver/workspaces";
+import { resolveTabGroupLabel } from "../lib/tabGroups";
+import { useTabGroupLabels } from "../hooks/useTabGroupLabels";
 import { registry, useEnvironments } from "../lib/connection";
 import { RailHeading, RailRow } from "./RailRow";
 
@@ -52,6 +54,8 @@ type Props = {
 export function SettingsNav({ section, onSelect, onClose }: Props) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const workspaces = useWorkspaces();
+  // The name Customize set, as the rail says it.
+  const labels = useTabGroupLabels();
   // With another host paired, a workspace on it says so: two hosts can hold a folder of the same name.
   const environments = useEnvironments();
   const hostOf = (environmentId: string): string | null =>
@@ -99,7 +103,7 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
               return (
                 <RailRow
                   key={id}
-                  label={workspace.name}
+                  label={resolveTabGroupLabel(workspaceLabelKey(workspaces, workspace.path, workspace.name), labels, workspace.name)}
                   trailing={hostOf(workspace.environmentId) ?? folderOf(workspace)}
                   icon={Folder}
                   selected={id === section}

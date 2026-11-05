@@ -270,6 +270,17 @@ describe('a project card', () => {
     probe.unmount()
   })
 
+  it("says a batch thread that needs you once, in its master's block, never again in the count line", () => {
+    const master: ThreadRow = {
+      ...threadRow(meta('m', { title: 'Release train', status: 'watching', isMaster: true }), {}),
+      batch: [threadRow(meta('b1', { title: 'Card view', masterId: 'm', status: 'waiting' }), {}, 0, true)]
+    }
+    const probe = mountProbe(projectCard([master]))
+    expect(lineOf(probe.container, 'Release train').textContent).toContain('Card view')
+    expect(probe.container.querySelector('[data-card-counts]')?.textContent ?? '').not.toContain('needs you')
+    probe.unmount()
+  })
+
   it("draws a master's batch as one block under the master, with its done tally", () => {
     const master: ThreadRow = {
       ...threadRow(meta('m', { title: 'Release train', status: 'watching', isMaster: true }), {}),

@@ -1164,7 +1164,9 @@ export const ProjectCard = memo(function ProjectCard({
       latest={latest}
       lines={shown}
       hidden={hidden}
-      counts={cardCounts(status, archivedCount)}
+      // A batch thread that waits or fails is said in its master's block; the
+      // count line counts the roots alone, so nothing is said twice.
+      counts={cardCounts(projectCardStatus(threads, rows.activeSessionId ?? null, lastSeen, seenFloor), archivedCount)}
       ariaLabel={projectCardAriaLabel(project.name, status)}
       selected={selected}
       offline={offline}

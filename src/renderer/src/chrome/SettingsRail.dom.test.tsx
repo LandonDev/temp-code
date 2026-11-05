@@ -7,7 +7,10 @@ import { SettingsNav, workspaceHint } from "./SettingsRail";
 import { asWebPage } from "../test/webMode";
 
 const workspaces = vi.hoisted(() => ({ list: [] as WorkspaceMeta[] }));
-vi.mock("../lib/tcserver/workspaces", () => ({ useWorkspaces: () => workspaces.list }));
+vi.mock("../lib/tcserver/workspaces", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/tcserver/workspaces")>()),
+  useWorkspaces: () => workspaces.list,
+}));
 
 const env = (id: string, name: string): Environment => ({ id, name, routes: [], credentialRef: null });
 const ws = (id: string, name: string, environmentId: string): WorkspaceMeta =>
@@ -58,6 +61,20 @@ describe("SettingsNav", () => {
     const rows = [...container.querySelectorAll('[aria-labelledby="settings-group-workspaces"] [data-rail-row]')];
     expect(rows.map((r) => r.querySelector("[data-rail-trailing]")?.textContent ?? null)).toEqual([null, "box"]);
     expect(container.textContent).not.toContain("·");
+  });
+
+  it("names a workspace as the rail does: the name Customize set, else its own", async () => {
+    const { saveTabGroupLabel } = await import("../lib/tabGroups");
+    hosts([env("local", "This Mac")]);
+    workspaces.list = [ws("w1", "temp-code", "local"), ws("w2", "lifeos", "local")];
+    saveTabGroupLabel("w1", "Alpha");
+    try {
+      const { container } = render(<SettingsNav section="general" onSelect={() => {}} onClose={() => {}} />);
+      const rows = [...container.querySelectorAll('[aria-labelledby="settings-group-workspaces"] [data-rail-row]')];
+      expect(rows.map((r) => r.textContent)).toEqual(["Alpha", "lifeos"]);
+    } finally {
+      saveTabGroupLabel("w1", "");
+    }
   });
 
   it("tells two workspaces of one name on one host apart by their parent folder, and says nothing without a collision", () => {

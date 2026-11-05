@@ -50,7 +50,7 @@ function TipBody({ row, project, at }: { row: WorkingRow; project: string | null
   const now = at ?? ticking;
   const { detail, elapsed } = workingTip(row, now);
   return (
-    <span data-working-tip aria-label={workingTipLine(row, now)} className="flex flex-col text-left">
+    <span data-working-tip role="group" aria-label={workingTipLine(row, now)} className="flex flex-col text-left">
       <StatusMark
         state={row.state}
         glyph={false}
