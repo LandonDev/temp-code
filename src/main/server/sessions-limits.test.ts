@@ -13,13 +13,16 @@ import { LIMIT_CONTINUE_DELAY_MS, SessionRegistry, type AccountRouter } from './
 const emits = new Map<string, (event: AgentEvent) => void>()
 const routes: { id: string; route: unknown }[] = []
 const sends: string[] = []
+/** Every harness spawn with the model it was launched on. */
+const spawned: { id: string; model: string | null }[] = []
 vi.mock('./drivers', () => ({
   BUILT_IN_DRIVERS: {
     claude: {
       id: 'claude',
-      start: async (ctx: { session: { id: string }; route: unknown; emit: (event: AgentEvent) => void }) => {
+      start: async (ctx: { session: { id: string; model: string | null }; route: unknown; emit: (event: AgentEvent) => void }) => {
         emits.set(ctx.session.id, ctx.emit)
         routes.push({ id: ctx.session.id, route: ctx.route })
+        spawned.push({ id: ctx.session.id, model: ctx.session.model })
         return {
           send: async (text: string) => {
             sends.push(text)
@@ -43,6 +46,7 @@ beforeEach(async () => {
   emits.clear()
   routes.length = 0
   sends.length = 0
+  spawned.length = 0
   root = await mkdtemp(join(tmpdir(), 'tc-limits-'))
   db = openDb(join(root, 'test.db'))
   store = new Store(db)
@@ -216,6 +220,51 @@ it('a tune mid-turn keeps the stream and reboots once the turn settles', async (
   await registry.send(id, 'go')
   expect(routes).toHaveLength(spawns + 1)
   expect(routes.at(-1)).toEqual({ id, route: { account: 'o@x.com', pin: false } })
+})
+
+it('a capped thread watching its background work takes a model change at its next send', async () => {
+  registry.limits = byModel()
+  const { id, emit } = await running({ model: 'claude-fable-5-1' })
+  emit({ type: 'status', status: 'running' })
+  emit({ type: 'error', message: "You've reached your Fable limit", limit: { window: '5h' } })
+  emit({ type: 'status', status: 'watching' })
+  expect(registry.get(id)?.status).toBe('watching')
+  const spawns = spawned.length
+  await registry.tune(id, { model: 'claude-opus-5-5' })
+  await registry.send(id, 'go on')
+  expect(spawned).toHaveLength(spawns + 1)
+  expect(spawned.at(-1)).toEqual({ id, model: 'claude-opus-5-5' })
+  expect(routes.at(-1)).toEqual({ id, route: { account: 'o@x.com', pin: false } })
+})
+
+it('a failover on a watching thread lands at its next turn start: a report wake spawns on the new account', async () => {
+  registry.limits = limits({ from: 'a@x.com', to: 'b@x.com' })
+  const { id, emit } = await running()
+  emit({ type: 'status', status: 'running' })
+  emit({ type: 'error', message: "You've hit your limit", limit: { window: '5h' } })
+  emit({ type: 'status', status: 'watching' })
+  await sleep(30)
+  expect(registry.get(id)?.account).toBe('b@x.com')
+  const spawns = routes.length
+  registry.deliverAgentReport(id, { text: '<subagent-report>done</subagent-report>', agentId: 'kid', title: 'Kid', status: 'idle' })
+  await sleep(20)
+  expect(routes[spawns]).toEqual({ id, route: { account: 'b@x.com', pin: false } })
+  expect(sends.at(-1)).toContain('<subagent-report>done</subagent-report>')
+})
+
+it('a handle that matches its thread is reused at a turn start, and a steer into a running turn keeps its stream', async () => {
+  registry.limits = byModel()
+  const { id, emit } = await running({ model: 'claude-opus-5-5' })
+  const spawns = spawned.length
+  await registry.send(id, 'again')
+  emit({ type: 'status', status: 'idle' })
+  await registry.send(id, 'and again')
+  expect(spawned).toHaveLength(spawns)
+  emit({ type: 'status', status: 'running' })
+  await registry.tune(id, { model: 'claude-fable-5-1' })
+  await registry.send(id, 'steer this')
+  expect(spawned).toHaveLength(spawns)
+  expect(sends.at(-1)).toBe('steer this')
 })
 
 it('a scope pin change recomputes threads under it; a refresh re-picks threads with no account', async () => {

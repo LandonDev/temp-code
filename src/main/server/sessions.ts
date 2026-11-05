@@ -784,8 +784,9 @@ export class SessionRegistry {
   /** Sessions whose turn a usage limit cut off, until they continue: the
    *  pending switch continues the root tree once the session settles. */
   private limited = new Map<string, { switching: Promise<Switched | null> }>()
-  /** The pin each live handle was spawned under, so a pin change respawns on the next send. */
-  private spawnedPin = new Map<string, string | null>()
+  /** What each live handle was spawned with (model, effort, pin): a turn
+   *  start on a handle whose thread moved since boots fresh (staleHandle). */
+  private spawnedWith = new Map<string, { model: string | null; reasoning: SessionMeta['reasoning'] | null; pin: string | null }>()
   /** Threads told their account left this host, and which: one notice row per account per thread. */
   private accountsGone = new Map<string, string>()
   /** Per root: the switch to continue on, and the short timer that lets
@@ -1923,7 +1924,11 @@ export class SessionRegistry {
     const switching = this.limits
       .failover(sessionId, { provider: routed, model: meta.model ?? null, window, account: meta.account ?? null })
       .then((switched) => {
-        if (switched) this.setAccount(sessionId, switched.to)
+        if (switched) {
+          this.setAccount(sessionId, switched.to)
+          // A live CLI keeps the scope it spawned under: its next turn boots on the new account.
+          if (this.handles.has(sessionId)) this.pendingReboot.add(sessionId)
+        }
         return switched
       })
       .catch((err) => {
@@ -2875,11 +2880,11 @@ export class SessionRegistry {
     const switched = await this.applyRunSettings(sessionId, meta, opts)
     meta = switched.meta
     const handoff = switched.handoff || this.lostNativeHandoff(meta)
-    // A pin change (project or workspace) since the harness was
-    // spawned: its URL names the old account, so boot fresh under the new one.
-    if (this.handles.has(sessionId) && this.spawnedPin.get(sessionId) !== (this.pinOf(meta)?.name ?? null)) {
-      await this.dropHandle(sessionId)
-    }
+    // A thread whose model, effort, pin or account moved since its harness
+    // spawned (a tune on a watching thread, a failover) boots fresh for this
+    // turn; a steer into a live turn keeps its stream.
+    const at = this.store.getSession(sessionId)?.status
+    if (at !== 'running' && at !== 'starting' && at !== 'waiting') await this.rebootIfStale(sessionId)
     // The visible transcript carries only what the user typed; thread-type
     // preambles ride along on the first message, provider-agnostic.
     const first = opts?.echoed ? opts.echoed.first : !this.store.hasUserText(sessionId)
@@ -4162,7 +4167,8 @@ export class SessionRegistry {
       if (meta?.status === 'paused') throw new Error(`session ${sessionId} is manually paused`)
       return
     }
-    await this.dropHandle(sessionId)
+    this.pendingReboot.delete(sessionId)
+    await this.dropHandle(sessionId, { replacing: true })
     const switched = run ? await this.applyRunSettings(sessionId, meta, run) : { handoff: '' }
     const handoff = switched.handoff || this.lostNativeHandoff(this.store.getSession(sessionId) ?? meta)
     try {
@@ -4194,7 +4200,7 @@ export class SessionRegistry {
    *  it only a watching row settles — a mid-turn drop (harness gone, a
    *  reboot) hands the live turn to a fresh handle with no status write,
    *  and marking it idle would show a running turn as finished. */
-  private async dropHandle(sessionId: string, opts: { orphan?: boolean } = {}): Promise<void> {
+  private async dropHandle(sessionId: string, opts: { orphan?: boolean; replacing?: boolean } = {}): Promise<void> {
     const inflight = this.starting.get(sessionId)
     if (inflight) await inflight.catch(() => {})
     this.denyPendingApprovals(sessionId)
@@ -4210,10 +4216,41 @@ export class SessionRegistry {
     // stop and left the closing idle to its stream, which the disposed
     // handle never relays — the row would stay running with no process.
     this.watching.delete(sessionId)
+    // `replacing`: a turn starts on a fresh handle right after, and an idle
+    // here would wake the settle's drains under it.
     const status = this.store.getSession(sessionId)?.status
+    if (opts.replacing) return
     if (status === 'watching' || (opts.orphan && status && LIVE_STATUSES.has(status))) {
       this.append(sessionId, { type: 'status', status: 'idle' })
     }
+  }
+
+  /** Whether a live handle no longer matches its thread: the model or
+   *  effort it was spawned with, the pin that applies, or a reboot owed
+   *  since (a tune or an account move while the thread was live). A live
+   *  CLI took `--model` and its account scope at spawn only. */
+  private staleHandle(sessionId: string): boolean {
+    if (!this.handles.has(sessionId)) return false
+    if (this.pendingReboot.has(sessionId)) return true
+    const meta = this.store.getSession(sessionId)
+    const spawned = this.spawnedWith.get(sessionId)
+    if (!meta || !spawned) return false
+    const routed = resolveModel(meta.provider, meta.model)
+    const model = routed.provider === meta.provider ? routed.model : meta.model
+    return (
+      spawned.model !== (model ?? null) ||
+      spawned.reasoning !== (meta.reasoning ?? null) ||
+      spawned.pin !== (this.pinOf(meta)?.name ?? null)
+    )
+  }
+
+  /** At a turn start with no turn open: put a stale handle down so the next
+   *  handleFor() resumes on the thread's settings. Its background tasks go
+   *  with it; the status is left to the turn starting. */
+  private async rebootIfStale(sessionId: string): Promise<void> {
+    if (!this.staleHandle(sessionId)) return
+    this.pendingReboot.delete(sessionId)
+    await this.dropHandle(sessionId, { replacing: true })
   }
 
   /** A harness spawned into a missing cwd dies with the SDK's misleading
@@ -4264,7 +4301,7 @@ export class SessionRegistry {
     const pin = this.pinOf(meta)
     const { route, current, vanished } = this.limits?.routeFor(meta, pin, { fresh: true }) ?? { route: null, current: null }
     if (vanished) this.accountGone(meta, pin, vanished)
-    this.spawnedPin.set(sessionId, vanished?.pin ? null : (pin?.name ?? null))
+    this.spawnedWith.set(sessionId, { model: meta.model ?? null, reasoning: meta.reasoning ?? null, pin: vanished?.pin ? null : (pin?.name ?? null) })
     this.setAccount(sessionId, current)
     // A Meta model with no Meta key on this host never goes out unscoped to
     // Anthropic or OpenAI: the send fails here with the host's one line
@@ -5345,6 +5382,7 @@ export class SessionRegistry {
   private async runNotesReminder(sessionId: string): Promise<void> {
     if (this.isTreePaused(sessionId)) return
     try {
+      await this.rebootIfStale(sessionId)
       const handle = await this.handleFor(sessionId)
       this.append(sessionId, { type: 'turn-pass', actions: ['Notes'] })
       this.lastActivity.set(sessionId, Date.now())
@@ -5500,6 +5538,7 @@ export class SessionRegistry {
   private async runTurnPass(sessionId: string, pass: TurnPass): Promise<void> {
     if (this.isTreePaused(sessionId)) return
     try {
+      await this.rebootIfStale(sessionId)
       const handle = await this.handleFor(sessionId)
       this.append(sessionId, { type: 'turn-pass', actions: passActions(pass) })
       this.lastActivity.set(sessionId, Date.now())
@@ -5646,6 +5685,7 @@ export class SessionRegistry {
     this.stopWatching.delete(sessionId)
     let taken: AgentReport[] = []
     void (async () => {
+      await this.rebootIfStale(sessionId)
       let handle = await this.handleFor(sessionId)
       const { items, text } = this.takeReports(sessionId)
       taken = items
