@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -53,6 +53,11 @@ describe('ui-preview', () => {
       expect(page).not.toContain('<script')
     }
     expect(html.dark).toContain('<html lang="en">')
+    // Each page names its own theme and links the other one.
+    expect(html.dark).toContain('Dark theme</h1>')
+    expect(html.dark).toContain('>Open the light theme</a>')
+    expect(html.light).toContain('Light theme</h1>')
+    expect(html.light).toContain('>Open the dark theme</a>')
     expect(html.dark).toContain('Button.light.html')
     expect(html.light).toContain('<html lang="en" class="theme-light">')
     expect(html.light).toContain('Button.html')
@@ -196,6 +201,37 @@ describe('ui-preview', () => {
     expect(malformed.status).toBe(1)
     expect(malformed.stderr).toContain('must default-export [{ name, props }]')
   })
+
+  it('writes under --out, leaving /tmp/ui-preview alone', () => {
+    const { dir, name, target } = temporaryComponent((name) => `export function ${name}() { return <span>Elsewhere</span> }`)
+    const out = join(dir, 'pages')
+    const result = run([target, '--out', out], dir)
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stdout).toContain(`${out}/${name}.html\n${out}/${name}.light.html\n`)
+    expect(readFileSync(join(out, `${name}.light.html`), 'utf8')).toContain('<span>Elsewhere</span>')
+    expect(existsSync(`/tmp/ui-preview/${name}.html`)).toBe(false)
+  })
+
+  it('refuses --shot without a Chrome to shoot with', () => {
+    const { dir, target } = temporaryComponent((name) => `export function ${name}() { return <span>Shot</span> }`)
+    const result = spawnSync('bun', [script, target, '--shot', '--out', join(dir, 'pages')], {
+      cwd: dir, encoding: 'utf8', timeout: 60_000, env: { ...process.env, TEMP_CODE_CHROME: join(dir, 'no-chrome') }
+    })
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('--shot needs headless Chrome')
+  })
+
+  it('renders the fixtures that need CSS.escape, scrollIntoView and a worker import', () => {
+    for (const [target, name] of [
+      ['src/renderer/src/chrome/DockBar.tsx#DockBar', 'DockBar'],
+      ['src/renderer/src/chrome/SurfaceTabs.tsx#SurfaceTabs', 'SurfaceTabs'],
+      ['src/renderer/src/chrome/rail/DebugPanel.tsx#DebugView', 'DebugView'],
+    ] as const) {
+      const result = run([target])
+      expect(result.status, `${name}: ${result.stderr}`).toBe(0)
+      expect(output(name).dark).toContain('class="preview-fixture"')
+    }
+  }, 120_000)
 
   it.each([
     [[], 'Usage:'],

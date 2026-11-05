@@ -353,9 +353,11 @@ app replaces itself from the feed, and only from the feed.
   through `bun run ui:preview <module>#<Export> --props '<json>'`
   (scripts/ui-preview.ts: the component rendered by the client renderer in a
   jsdom document, under tsconfig.web.json so every renderer alias resolves,
-  inside the built stylesheet in dark and light, written to /tmp/ui-preview,
-  shown with `html_preview`; a `*.fixtures.tsx` beside the component renders
-  each fixture); one
+  inside the built stylesheet in dark and light, written to /tmp/ui-preview
+  or `--out <dir>`, `--shot` adding PNGs at 864 and 400px through headless
+  Chrome (`TEMP_CODE_CHROME`, else Playwright's cached chrome-headless-shell),
+  shown with `html_preview` or read as images; a `*.fixtures.tsx` beside the
+  component renders each fixture); one
   electron-vite build per branch for `bun run check:bundle`, never the
   full suite or a dev instance. The renderer's prettier style differs from
   the root config: never run prettier or `--fix` on src/renderer.
