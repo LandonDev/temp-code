@@ -92,10 +92,10 @@ describe("stopClosesTurn", () => {
     expect(stopClosesTurn(s, blocks[3])).toBe(true);
   });
 
-  it("keeps the row while its turn is open, and for a failure", () => {
+  it("draws no stop row while its turn is still open either (the line says Stopped at once), and keeps a failure's", () => {
     const blocks = [user(1), err(1, "Stopped", true)];
-    expect(stopClosesTurn({ ...session(blocks), status: "running", busy: true }, blocks[1])).toBe(false);
-    expect(stopClosesTurn({ ...session(blocks), status: "paused" }, blocks[1])).toBe(false);
+    expect(stopClosesTurn({ ...session(blocks), status: "running", busy: true }, blocks[1])).toBe(true);
+    expect(stopClosesTurn({ ...session(blocks), status: "paused" }, blocks[1])).toBe(true);
     const failed = [user(1), err(1)];
     expect(stopClosesTurn(session(failed), failed[1])).toBe(false);
   });

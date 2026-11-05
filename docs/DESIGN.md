@@ -383,10 +383,11 @@ row never moves. A master's line on a project card spins while anything in
 its block works, whatever the master's own state (`MasterBlock.lead`), so a
 block always moves while it works. In the transcript the one moving mark is
 the working line's (`WorkingMark`, its three dots); a running row there
-draws working as the dot. When a mounted mark's state changes into
-working, waiting or watching its glyph breathes once (opacity over
-`--dur-slow`); under reduced motion it does not. Every other change is
-instant.
+draws working as the dot. When a mounted mark's state changes, its glyph cross-fades in the box that
+stays: the old one shrinks to a quarter and fades over `--dur-fast` while
+the new one grows from a quarter on the layout spring (`glyph-in`,
+`glyph-out` in components.css); never at mount, and under reduced motion
+both only fade.
 
 A thread's model at a row's end is `ModelMark` (surfaces/threads/ModelMark.tsx):
 the provider's logo, the short model name and, where the row asks for it
@@ -549,7 +550,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | The working group's window (its newest five rows) | the oldest row leaves the top as the list glides up by its measured height, `--dur-base` `--ease-out` | — | none |
 | The working group's fold, and a board row's task list once its thread is done (`useFoldHold`, lib/foldHold.ts) | waits `FOLD_HOLD_MS` once the work moved on, so the last row's settle shows, then folds on `.collapsible-auto` | — | the same wait, then the fade |
 | Disclosure chevron (`DISCLOSURE_CHEVRON`, components/ui/disclosure.ts: one ChevronRight turning `rotate-90`) | rotates with its fold, `--dur-base` `--ease-out`, everywhere | same | none |
-| Icon swap (`SwapIcon`; keyed for more than two states, as a tool row's waiting, working, failed and icon) | opacity + scale 0.25→1 on `SPRING_LAYOUT` | fade + scale →0.25, `--dur-fast` | opacity, `--dur-fast` |
+| Icon swap (`SwapIcon`; keyed for more than two states, as a tool row's waiting, working, failed and icon; a group line's glyph when its main kind changes, a compaction's from start to its outcome, a Spawned row's bot to its provider's mark) | opacity + scale 0.25→1 on `SPRING_LAYOUT` | fade + scale →0.25, `--dur-fast` | opacity, `--dur-fast` |
 | Word morph (`MorphText`: a row's verb or a group's phrase changing tense, the working line's phases, the working line becoming the closing line) | only once the old words have left: the new rise from 3px below, `--dur-base` `--ease-swap`, while the box glides from the old width to theirs (a Web Animation from its live width when cut short); never on mount or for new words under one key | the old words lift 3px and fade first, `--dur-swap-out` `--ease-swap`; never two words in one place | fade out, then in, `--dur-fast`; no glide |
 | Scroll glide (jump to latest, a burst while following, a jump to a row) | `DUR.drawer` on `EASE_OUT` | — | instant |
 | Park on send (prompt to top) | the transcript glides to park the prompt, `DUR.drawer` on `EASE_DRAWER`; from more than 2.5 screens away it jumps to within 2.5 screens first, as every long jump does | the parked runway retires over `DUR.base` on `EASE_OUT` | instant |
@@ -557,14 +558,18 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Count | ticks from the shown value, `--dur-slow` `--ease-out`; a pane shown again reads the count it holds | — | none |
 | Shimmer (`WorkingText`) | a masked band and a bright copy of the words (the band's `::before`) cross them in opposite directions, transform only, every 3s (`SHIMMER`); not mounted in a hidden pane or document | — | still muted text |
 | Working mark (`WorkingMark`, the working line's glyph) | three 3px dots gather into one and part every 1.6s, transform only (`MARK`); enters and leaves as an icon swap does | — | the three dots at rest |
-| The working line settling | the mark leaves as an icon does, the words morph into "Worked for 2m 4s" (or Stopped) and slide from the glyph slot to the prose edge, 22px, `--dur-base` `--ease-swap`; the hover actions mount | — | the morph's fades; no slide |
+| The working line settling (only once every row of the turn has finished revealing: the mark stays till then) | the mark leaves as an icon does, the words morph into "Worked for 2m 4s" (or Stopped; "Worked" while the time is still to land, which then fills in) and slide from the glyph slot to the prose edge, 22px, `--dur-base` `--ease-swap`; the hover actions mount | — | the morph's fades; no slide |
 | Spinner | the one arc turning, on the document timeline from 0 (every spinner in phase; a remount picks the turn up) | — | still |
 | Lightbox | opens from the thumbnail that asked for it (its transform origin is the thumbnail's centre) and settles back toward it as the dialog does | — | fade only |
 | Appshot | fade + scale 0.95→1 centred, `--dur-slow`; holds; glides into its chip, `--dur-drawer` `--ease-drawer` | — | fade in and out in place, `--dur-fast` |
 | Released drag (every sash let go past its bound, the reorder drop, an Escape glide-back) | settles on `SPRING_GLIDE` from where it is drawn, carrying the pointer's speed at release | — | at once |
 | Scrollbar | shows at once on hover or scroll | hides at once, `SCROLL_IDLE_MS` (900ms) after the last scroll or when the pointer leaves | same |
 | List rows (rail, tabs, fleet, attachments, the transcript's message list) | none; a row being reordered follows the pointer on the list's axis from where it was grabbed while the others hold still with the insertion line, then glides into its slot (or back to its own, on Escape or a drop that changes nothing) on `SPRING_GLIDE` | none | the line alone; the drop at once |
-| Transcript rows | one `--dur-fast` fade on first appearance, never replayed | — | none |
+| Transcript rows | one `--dur-fast` fade on first appearance, never replayed: a row on screen never changes its key (the echo of the person's message keeps the optimistic row's, `Block.rowKey`) | — | none |
+| The working line held (a card waits, the turn is paused) | folds closed on `.collapsible-auto` with its words kept; a resume reopens the same element | the same fold | opacity, `--dur-fast` |
+| The Watching line, the fleet detail's live state | each in a kept fold under the turn: opens and closes on `.collapsible-auto`, mounted once it first opens, never unmounted while on screen | the same fold | opacity, `--dur-fast` |
+| A status glyph changing state (`StatusMark`) | in the box that stays: the new glyph grows from 0.25 on the layout spring (`glyph-in`) while the old shrinks out over `--dur-fast` (`glyph-out`); never at mount | — | both fade, `--dur-fast` |
+| The thought on the working line | each sentence is a phase: it morphs into the next (`MorphText`), held 300ms, a long one cut with an ellipsis | — | the morph's fades |
 | Streaming text | the prose: the jitter buffer (surfaces/smoothText) steps whole words every 100ms (`REVEAL.stepMs`), holding a bare block marker and a table's header row until they have content; each step is one span fading in over `--dur-reveal` on `--ease-reveal` (lib/streamReveal.ts, `.stream-step`), and the settle waits for the last fade; the working line's newest sentence of a thought is no stream but a phase of its own, morphing in (`MorphText`) | — | whole-word steps, no fade |
 | Composer send | the bubble rides with the content as the prompt parks, rising 16px and fading in, `--dur-slow` `--ease-drawer`; in follow mode it flies from the field only when it lands within 240px of it | — | fade, `--dur-fast` |
 | Composer field height | snaps on a keystroke and on the clear after a send; a change of more than one line the person did not type (a paste, a restore, a quote) eases over `--dur-base` | — | snaps |
@@ -695,10 +700,11 @@ by hand, as "Thought ▸" with no duration, which opens the text. Each live
 turn ends in one working line, from Send to the turn's end: the working
 mark, then the phase's words in the shimmer (one running call by its verb,
 muted, and its object in foreground, with an edit's live counts, or a
-chevron that opens a command's or a tool's body under the line). It hides
-while a step waits on the person (the card says so), while the turn is
-paused and after a Stop. When the turn ends it becomes the closing line,
-which reads "Worked for 2m 4s", its copy, note, hand-off and second-opinion
+chevron that opens a command's or a tool's body under the line). It folds away
+while a step waits on the person (the card says so) and while the turn is
+paused, and comes back in the same element; a Stop turns it into Stopped at
+once. When the turn ends, and its text has finished appearing, it becomes the
+closing line, which reads "Worked for 2m 4s" ("Worked" until the time lands), its copy, note, hand-off and second-opinion
 buttons showing on hover or keyboard focus; a turn the person stopped
 closes on "Stopped" instead, with the same buttons. Every notice (a gate, a review, a compaction, a
 pass, a batch, a second opinion asked of another harness) is one muted

@@ -1,8 +1,9 @@
-import type { ComponentProps, ReactNode } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import type { SessionStatus } from "@shared/events";
 import { Check, Circle, CircleAlert, CircleDashed, CircleDot, FileText, Pause, Square } from "@renderer/chrome/icons";
 import { cn } from "@renderer/lib/cn";
 import { clockTime } from "@renderer/lib/duration";
+import { DUR } from "@renderer/lib/ease";
 import { plainStatus } from "@shared/statusWords";
 import { Spinner } from "./spinner";
 
@@ -166,8 +167,43 @@ function Glyph({ state, still, className }: { state: ThreadState; still?: boolea
  *  foreground): the word in the tooltip's ink, the detail its muted step. */
 export const STATUS_ON_TIP = "text-background **:data-[slot=status-detail]:text-background/70";
 
-/** A live state's glyph breathes once over `--dur-slow` when the state changes (the key remounts it); nothing loops. */
-const LIVE: ReadonlySet<ThreadState> = new Set(["working", "waiting", "watching"]);
+/**
+ * The 14px glyph box, one element for the mark's life. A change of state
+ * cross-fades in CSS (components.css): the outgoing glyph stays, absolute in
+ * the box, and fades to a quarter of its size over --dur-fast (`glyph-out`,
+ * gone on its animation's end or after its time), while the new one grows
+ * from a quarter on the layout spring (`glyph-in`, SwapIcon's values); under
+ * reduced motion both only fade. Nothing animates at mount, and no motion
+ * runtime rides the hundreds of marks a rail and a board draw.
+ */
+function GlyphBox({ state, still }: { state: ThreadState; still?: boolean }) {
+  const [shown, setShown] = useState(state);
+  const [changes, setChanges] = useState(0);
+  const [leaving, setLeaving] = useState<{ state: ThreadState; key: number } | null>(null);
+  if (shown !== state) {
+    setLeaving({ state: shown, key: changes });
+    setShown(state);
+    setChanges(changes + 1);
+  }
+  // A hidden pane or document never ends the animation: the old glyph goes on time.
+  useEffect(() => {
+    if (!leaving) return undefined;
+    const timer = setTimeout(() => setLeaving(null), DUR.fast * 1000 + 50);
+    return () => clearTimeout(timer);
+  }, [leaving]);
+  return (
+    <span data-slot="status-glyph" className="relative grid size-3.5 shrink-0 place-items-center">
+      {leaving ? (
+        <span key={`out-${leaving.key}`} aria-hidden data-glyph-out className="glyph-out absolute inset-0 grid place-items-center" onAnimationEnd={() => setLeaving(null)}>
+          <Glyph state={leaving.state} still={still} />
+        </span>
+      ) : null}
+      <span key={changes} className={cn("grid place-items-center", changes > 0 && "glyph-in")}>
+        <Glyph state={state} still={still} />
+      </span>
+    </span>
+  );
+}
 
 /**
  * A state drawn as two spans (docs/DESIGN.md "Status vocabulary"): the
@@ -212,11 +248,7 @@ export function StatusMark({
       {...props}
     >
       {/* One 14px box for every state, so a change of state never moves the word. */}
-      {glyph ? (
-        <span key={state} data-slot="status-glyph" className={cn("grid size-3.5 shrink-0 place-items-center", LIVE.has(state) && !still && "status-breathe")}>
-          <Glyph state={state} still={still} />
-        </span>
-      ) : null}
+      {glyph ? <GlyphBox state={state} still={still} /> : null}
       {text !== null ? (
         <span data-slot="status-word" className={cn("font-medium", hasDetail ? "shrink-0" : "min-w-0 truncate", wordClassName)}>
           {text}

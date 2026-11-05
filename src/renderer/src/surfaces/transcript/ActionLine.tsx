@@ -36,10 +36,13 @@ export function ActionLine({
   open,
   onToggle,
   onActivate,
+  morphObject = false,
 }: {
   glyph: ReactNode;
   verb: string;
   object: string;
+  /** The object morphs when it changes (a spawned agent's title landing) instead of being replaced. */
+  morphObject?: boolean;
   /** The object's full form, shown in a tooltip. */
   title?: string;
   /** The line's accessible name. */
@@ -64,7 +67,14 @@ export function ActionLine({
 }) {
   const action = onToggle ?? onActivate;
   const opens = !!onToggle;
-  const objectText = object ? <ObjectText object={object} title={title} onObject={onObject} label={objectLabel} onLine={action} /> : null;
+  const text = object ? <ObjectText object={object} title={title} onObject={onObject} label={objectLabel} onLine={action} /> : null;
+  const objectText = text && morphObject ? (
+    <MorphText state={object} className="min-w-0">
+      {text}
+    </MorphText>
+  ) : (
+    text
+  );
   return (
     <div
       className={cn("group/action relative", STEP_LINE)}

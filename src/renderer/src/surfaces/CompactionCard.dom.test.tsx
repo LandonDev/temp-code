@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { MotionGlobalConfig } from "motion/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Block } from "../lib/session";
 import { CompactionCard } from "./CompactionCard";
@@ -40,7 +41,8 @@ describe("CompactionCard", () => {
     const { container } = render(
       <CompactionCard block={block({ phase: "done", preTokens: 48_000, postTokens: 12_000, durationMs: 6_000, trigger: "auto" })} />,
     );
-    const spans = [...container.querySelectorAll('[data-slot="notice-line"] > div > div > span')].map((s) => s.textContent);
+    // The words and their details morph as one, inside the line's lead.
+    const spans = [...container.querySelectorAll('[data-morph-key="done"] > span > span')].map((s) => s.textContent);
     expect(spans[0]).toBe("Context compacted");
     expect(spans[1]).toMatch(/→/);
     expect(spans[2]).toBe("6s");
@@ -74,5 +76,20 @@ describe("CompactionCard", () => {
     expect(container.querySelector('[data-slot="spinner"]')).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
     expect(container.textContent).toBe("Compaction stopped1m 29s");
+  });
+});
+
+describe("CompactionCard from start to its outcome", () => {
+  it("keeps one line: the glyph swaps and the words morph in place", async () => {
+    MotionGlobalConfig.skipAnimations = true;
+    const view = render(<CompactionCard block={block({ phase: "start", startedAt: Date.now() - 5_000 })} />);
+    const line = view.container.querySelector('[data-slot="notice-line"]');
+    expect(view.container.querySelector("[data-morph-key]")?.getAttribute("data-morph-key")).toBe("start");
+    view.rerender(<CompactionCard block={block({ phase: "done", preTokens: 48_000, postTokens: 12_000, durationMs: 6_000 })} />);
+    expect(view.container.querySelector('[data-slot="notice-line"]')).toBe(line);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 400)));
+    expect(view.container.querySelector("[data-morph-key]")?.getAttribute("data-morph-key")).toBe("done");
+    expect(view.container.querySelector('[data-slot="notice-line"]')).toBe(line);
+    MotionGlobalConfig.skipAnimations = false;
   });
 });

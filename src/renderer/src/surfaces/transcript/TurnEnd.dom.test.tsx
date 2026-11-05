@@ -9,6 +9,7 @@ vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
 import { TurnDuration, TurnEnd, WatchingLine } from "./TurnEnd";
 import { PaneVisibilityContext } from "../../hooks/paneVisibility";
 import { TurnStateContext, type TurnSession } from "../turnState";
+import type { Block } from "../../lib/session";
 import { TranscriptSessionContext } from "../transcriptSession";
 import { ErrorRowView } from "./NoticeRow";
 import { sessionStore } from "../../lib/tcserver/store";
@@ -158,6 +159,54 @@ describe("TurnEnd's live state", () => {
     expect(container.querySelector('[data-state="working"]')).toBeNull();
     expect(container.querySelector('[data-slot="turn-line"] [role="status"]')?.getAttribute("aria-label")).toBe("Thinking");
     expect(container.textContent).not.toMatch(/\d+s/);
+  });
+});
+
+describe("TurnEnd's lines through their changes, never remounted", () => {
+  const user = { id: "u", role: "user" as const, text: "go" };
+  const reply = { id: "a", role: "assistant" as const, text: "on it" };
+  const turnOf = (blocks: Block[], settled: boolean) => ({ id: "t", index: 0, isLast: true, settled, blocks, userBlock: user, durationMs: settled ? 2_000 : undefined, startedAt: undefined });
+  const draw = (session: TurnSession, settled = false) => (
+    <TurnStateContext.Provider value={session}>
+      <TurnEnd turn={turnOf(session.blocks as Block[], settled)} harnessOf={() => undefined} turnState={session} onOpenActivity={() => {}} />
+    </TurnStateContext.Provider>
+  );
+  /** The live state's line (the fleet's agent detail), not the working line. */
+  const liveLine = (c: HTMLElement) => [...c.querySelectorAll<HTMLElement>('[role="status"]')].find((el) => !el.closest('[data-slot="turn-line"]') && el.querySelector('[data-slot="status-mark"]'));
+
+  it("keeps the live state's one line from working to waiting to paused, and folds it at the settle", () => {
+    const running = { status: "running", busy: true, busySince: Date.now() - 5_000, blocks: [user, reply] } as unknown as TurnSession;
+    const view = render(draw(running));
+    const line = liveLine(view.container)!;
+    const box = line.querySelector('[data-slot="status-glyph"]');
+    expect(line.getAttribute("aria-label")).toBe("Working");
+    const asking = { id: "b", role: "tool" as const, text: "Bash", tool: { callId: "b", name: "Bash", status: "pending", input: {} }, approval: { requestId: 1 } };
+    view.rerender(draw({ ...running, blocks: [user, reply, asking] } as unknown as TurnSession));
+    expect(liveLine(view.container)).toBe(line);
+    expect(line.getAttribute("aria-label")).toBe("Needs you");
+    view.rerender(draw({ ...running, status: "paused", busy: false } as unknown as TurnSession));
+    expect(liveLine(view.container)).toBe(line);
+    expect(line.getAttribute("aria-label")).toBe("Paused");
+    // One glyph box through every state: the glyph cross-fades in it.
+    expect(line.querySelector('[data-slot="status-glyph"]')).toBe(box);
+    // The turn settles: the line folds on .collapsible-auto instead of unmounting.
+    view.rerender(draw({ ...running, status: "idle", busy: false } as unknown as TurnSession, true));
+    expect(line.isConnected).toBe(true);
+    expect(line.closest(".collapsible-auto")).not.toBeNull();
+  });
+
+  it("opens and closes the Watching line in its fold, the same element each time", () => {
+    const idle = { status: "idle", busy: false, blocks: [user, reply] } as unknown as TurnSession;
+    const watching = { ...idle, status: "watching", background: { tasks: [{ id: "b1", label: "sleep 90 seconds", kind: "shell", startedAt: Date.now() }], agents: [], batch: null, watchingSince: Date.now() } } as unknown as TurnSession;
+    const view = render(draw(idle, true));
+    expect(view.container.textContent).not.toMatch(/Watching/);
+    view.rerender(draw(watching, true));
+    const line = view.container.querySelector('[data-state="watching"]')!.closest(".collapsible-auto")!;
+    expect(line).not.toBeNull();
+    view.rerender(draw(idle, true));
+    expect(line.isConnected).toBe(true);
+    view.rerender(draw(watching, true));
+    expect(view.container.querySelector('[data-state="watching"]')!.closest(".collapsible-auto")).toBe(line);
   });
 });
 
@@ -347,7 +396,7 @@ describe("TurnEnd of a stopped turn", () => {
     expect(container.textContent).toBe("Worked for 1s");
   });
 
-  it("a stopped turn still open keeps its Stopped row and draws no closing line and no working line", () => {
+  it("a stopped turn still open says Stopped once, on its closing line, at once: the stop row draws nothing", () => {
     const busy = { ...state, status: "running", busy: true } as unknown as TurnSession;
     const { container } = render(
       <TranscriptSessionContext.Provider value="s1">
@@ -358,6 +407,9 @@ describe("TurnEnd of a stopped turn", () => {
       </TranscriptSessionContext.Provider>,
     );
     expect(container.textContent).toBe("Stopped");
+    expect(container.querySelectorAll('[data-state="stopped"]')).toHaveLength(1);
+    expect(container.querySelector('[data-slot="turn-line"] [data-state="stopped"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="working-mark"]')).toBeNull();
   });
 });
 

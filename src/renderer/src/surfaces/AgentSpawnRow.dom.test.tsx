@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { MotionGlobalConfig } from "motion/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sessionStore } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
@@ -102,7 +103,15 @@ describe("SpawnChildRow", () => {
   it("re-words when the agent's title lands", async () => {
     const { container } = render(<SpawnChildRow id="b" task="Review only. Do not edit" />);
     expect(seen(container)).toBe("SpawnedReview only. Do not edit");
+    const row = container.firstElementChild;
+    MotionGlobalConfig.skipAnimations = true;
     await push(meta("b", "Payment flow review", "running"));
+    // The title morphs in place; the row, its glyph box and its state never remount.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 400)));
+    MotionGlobalConfig.skipAnimations = false;
     expect(seen(container)).toBe("SpawnedPayment flow reviewWorking");
+    expect(container.firstElementChild).toBe(row);
+    // The state landed after the row did: it fades in rather than popping.
+    expect(container.querySelector('[data-slot="status-mark"]')?.className).toContain("z-fade-in");
   });
 });

@@ -28,7 +28,8 @@ import {
   type RowRange,
 } from "../lib/transcriptWindow";
 import { useKept } from "../lib/keptValue";
-import { estimateRowHeight, flattenTurns, sameRow, turnUserBlock, type RowGap, type TranscriptRow } from "./transcriptRows";
+import { RevealTurnContext } from "./revealDrain";
+import { estimateRowHeight, flattenTurns, rowKeyOf, sameRow, turnUserBlock, type RowGap, type TranscriptRow } from "./transcriptRows";
 import { useReducedMotion } from "motion/react";
 import { cubicBezier, DUR, EASE_DRAWER, EASE_OUT } from "../lib/ease";
 import { type Block, type HarnessId } from "../lib/session";
@@ -658,7 +659,7 @@ export function AgentTranscript({
   // scroll.
   const initialTurns = useRef<Set<string> | null>(null);
   if (!initialTurns.current) {
-    initialTurns.current = new Set(turns.map((turn) => turn[0].id));
+    initialTurns.current = new Set(turns.map((turn) => rowKeyOf(turn[0])));
   }
   const shownRows = useRef(new Set<string>());
 
@@ -1178,6 +1179,7 @@ const RowView = memo(function RowView({
     [register, key],
   );
   return (
+    <RevealTurnContext.Provider value={row.kind === "more" ? null : row.turn.id}>
     <div
       ref={ref}
       data-row={key}
@@ -1236,6 +1238,7 @@ const RowView = memo(function RowView({
         />
       )}
     </div>
+    </RevealTurnContext.Provider>
   );
 }, sameRowViewProps);
 

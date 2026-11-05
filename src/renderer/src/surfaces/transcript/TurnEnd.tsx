@@ -1,9 +1,11 @@
 // A9 (closing lines): a turn's closing row.
 import type { HandoffHandler, SecondOpinionHandler } from "./types";
 import { Check, Copy, FilePlusCorner } from "../../chrome/icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { HandoffButton, SecondOpinionButton } from "../../chrome/SecondOpinionButton";
-import { STATUS_WORD, StatusMark } from "../../components/ui/status";
+import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
+import { STATUS_WORD, StatusMark, statusToneClass } from "../../components/ui/status";
+import { MorphText } from "../../motion/MorphText";
 import { cn } from "../../lib/cn";
 import { COPIED_MS, copyText } from "../../lib/clipboard";
 import { playCue } from "../../lib/sounds";
@@ -25,13 +27,16 @@ import { turnEndsStopped } from "../../lib/turnOutcome";
 import { SwapIcon } from "../../motion/IconSwap";
 import { IconAction, useArmOnIntent } from "./IconAction";
 import { spanWords } from "./thinking";
+import { useTurnRevealing } from "../revealDrain";
 import { LINE, TurnLine } from "./WorkingLine";
 
 /** A turn's closing row: the working line while the turn is live
- *  (`TurnLine`, which says an open wait as "Waiting on <title>": hidden while it is paused or held and while a step waits on
- *  the person, whose card says so), which becomes its duration line once it
- *  is over ("Stopped" when the person stopped it: the stopped error row then
- *  draws nothing); the live state while it runs or waits where no timer
+ *  (`TurnLine`, which says an open wait as "Waiting on <title>": folded away
+ *  while the turn is paused and while a step waits on the person, whose card
+ *  says so, and back in the same element after), which becomes its duration
+ *  line once it is over ("Worked" until the duration lands; "Stopped" the
+ *  moment the person stops it, before the host settles the turn: the stopped
+ *  error row draws nothing, open or settled); the live state while it runs or waits where no timer
  *  sits above a composer (`liveState`, the fleet's agent detail); and a
  *  watching line under the last settled turn while the thread watches, on
  *  every surface; `onOpenActivity` makes that line open the Activity
@@ -60,12 +65,18 @@ export function TurnEnd({
   const { settled, durationMs, isLast } = turn;
   // Paused, or queued before it ran: no working line, nothing reads as running.
   const paused = turnState ? isTurnHeld(turnState) : false;
+  // A Stop closes the turn at once: the line says Stopped before the host settles it.
   const stopped = useMemo(
-    () =>
-      settled &&
-      turnEndsStopped(turnState ?? { blocks: turn.blocks, status: "idle", thread: undefined }, turn.blocks),
-    [settled, turnState, turn.blocks],
+    () => turnEndsStopped(turnState ?? { blocks: turn.blocks, status: "idle", thread: undefined }, turn.blocks),
+    [turnState, turn.blocks],
   );
+  // Over on the host (settled, or stopped), but text of the turn still being
+  // revealed: the working line keeps its mark until it is all shown, and
+  // only then morphs into the closing line (revealDrain.ts).
+  const over = settled || stopped || turn.blocks.some((b) => b.stopped);
+  const draining = useTurnRevealing(turn.id) && over;
+  // Held: paused, or a step waits on the person (its card says so). The line folds away and comes back.
+  const held = !over && (paused || turn.blocks.some(awaitsUser));
   // Settled only: the live turn's harness is not known until it answers.
   const fromHarness = useMemo(
     () => (settled ? harnessOf(turn.blocks) : undefined),
@@ -76,12 +87,16 @@ export function TurnEnd({
   const ids = useMemo(() => (wait ? waitIds(wait) : NO_AGENTS), [wait]);
   const titleOf = useTitlesOf(useMemo(() => [...new Set(ids.flatMap((id) => [id, bareAgentId(id)]))], [ids]));
   const [armed, intent] = useArmOnIntent();
-  const closes = settled && (stopped || durationMs != null);
-  const output = closes ? threadMentionsToTitles(turnCopyText(turn.blocks), storeTitleOf) : "";
+  // Over, with its duration still to land: "Worked", which the time fills in.
+  const pending = settled && !stopped && durationMs == null;
+  const closes = !draining && (stopped || pending || (settled && durationMs != null));
+  const output = settled && !pending ? threadMentionsToTitles(turnCopyText(turn.blocks), storeTitleOf) : "";
   return (
     <>
       <TurnLine
-        live={!settled && !paused && !turn.blocks.some((b) => awaitsUser(b) || b.stopped)}
+        live={draining || (!over && !held)}
+        held={held}
+        draining={draining}
         turn={turn.blocks}
         activity={turnState?.activity}
         cwd={cwd}
@@ -90,6 +105,7 @@ export function TurnEnd({
           closes
             ? {
                 words: <ClosingWords elapsedMs={durationMs ?? null} stopped={stopped} />,
+                pending,
                 intent,
                 actions: (
                   <ClosingActions
@@ -105,12 +121,13 @@ export function TurnEnd({
             : null
         }
       />
-      {liveState && isLast && !settled ? (
-        <LiveTurnDuration turn={turn.blocks} />
+      {/* Kept folds: each opens and closes on .collapsible-auto, never mounting or unmounting a line on screen. */}
+      {liveState && isLast ? (
+        <KeptFold open={!settled}>
+          <LiveTurnDuration turn={turn.blocks} active={!settled} />
+        </KeptFold>
       ) : null}
-      {isLast && settled && turnState && isWatching(turnState) ? (
-        <WatchingTail session={turnState} onOpen={onOpenActivity} />
-      ) : null}
+      {isLast && turnState ? <WatchingFold session={turnState} watching={settled && isWatching(turnState)} onOpen={onOpenActivity} /> : null}
     </>
   );
 }
@@ -119,12 +136,13 @@ export function TurnEnd({
  * The live state of the turn still in flight. Ticks on the shared clock
  * so only this row re-renders each second, never the transcript.
  */
-export function LiveTurnDuration({ turn }: { turn: Block[] }) {
+export function LiveTurnDuration({ turn, active = true }: { turn: Block[]; active?: boolean }) {
   const session = useTurnState();
   const paused = session ? isTurnPaused(session) : false;
   // Queued before it ran: the word, no clock (the fleet's agent detail draws this row; a pane has the strip).
   const queued = session?.status === "queued";
-  const now = useClock(!paused && !queued && usePaneVisible());
+  const shown = usePaneVisible();
+  const now = useClock(active && !paused && !queued && shown);
   const elapsed = session ? turnElapsed(session, now) : null;
   const waiting = turn.some(
     (b) => needsApproval(b) || (b.question != null && b.question.answers === undefined),
@@ -139,11 +157,40 @@ function isWatching(session: TurnSession): boolean {
   return threadStatus({ status: session.status, background: session.background, activity: session.activity }).state === "watching";
 }
 
+/** The watching line in a kept fold under the last settled turn: it opens and
+ *  closes on .collapsible-auto as the thread starts and stops watching, and
+ *  its clocks run only while it is open. */
+function WatchingFold({ session, watching, onOpen }: { session: TurnSession; watching: boolean; onOpen?: () => void }) {
+  return (
+    <KeptFold open={watching}>
+      <WatchingTail session={session} active={watching} onOpen={onOpen} />
+    </KeptFold>
+  );
+}
+
+/** A line that comes and goes under the turn: nothing until it first opens
+ *  (history draws none), then one fold for the rest of the mount, opening and
+ *  closing on .collapsible-auto, so the line on screen is never unmounted and
+ *  mounted again. */
+function KeptFold({ open, children }: { open: boolean; children: ReactNode }) {
+  const [opened, setOpened] = useState(open);
+  if (open && !opened) setOpened(true);
+  if (!opened) return null;
+  return (
+    <Collapsible open={open}>
+      <CollapsibleContent keepMounted className="collapsible-auto">
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 /** The watching line for a thread, naming what it watches (one subagent by
  *  title), amber once its own watch passes `STALE_WATCH_MS`. */
-function WatchingTail({ session, onOpen }: { session: TurnSession; onOpen?: () => void }) {
-  const since = session.background?.watchingSince ?? null;
-  const now = useSlowClock(since != null && usePaneVisible());
+function WatchingTail({ session, active, onOpen }: { session: TurnSession; active: boolean; onOpen?: () => void }) {
+  const since = active ? (session.background?.watchingSince ?? null) : null;
+  const shown = usePaneVisible();
+  const now = useSlowClock(since != null && shown);
   const stale = now > 0 && isStaleWatch({ status: session.status ?? "idle", background: session.background }, now);
   const titleOf = useTitlesOf(session.background?.agents ?? NO_AGENTS);
   return <WatchingLine since={since} stale={stale} onOpen={onOpen} subject={watchSubject(session.background, titleOf)} />;
@@ -171,7 +218,8 @@ export function WatchingLine({
   /** What the thread watches, in the watch words (shared/watch.ts `watchSubject`). */
   subject?: string;
 }) {
-  const now = useClock(since != null && usePaneVisible());
+  const shown = usePaneVisible();
+  const now = useClock(since != null && shown);
   const said = plainStatus(STATUS_WORD.watching, subject ?? null);
   const body = (
     <>
@@ -255,9 +303,13 @@ export function TurnDuration({
     );
   }
   const state = queued ? "queued" : paused ? "paused" : waiting ? "waiting" : "working";
+  // One line through every state: the glyph cross-fades in its box, the word morphs.
   return (
     <div role={live ? "status" : undefined} aria-label={STATUS_WORD[state]} className={LINE}>
-      <StatusMark state={state} className="text-[13px]" />
+      <StatusMark state={state} word={false} className="me-1" />
+      <MorphText state={state}>
+        <span className={cn("font-medium", statusToneClass(state))}>{STATUS_WORD[state]}</span>
+      </MorphText>
       {state === "working" && elapsedMs != null ? <span aria-hidden>{spanWords(elapsedMs)}</span> : null}
       {state === "paused" && elapsedMs != null ? <span aria-hidden>worked {spanWords(elapsedMs)}</span> : null}
     </div>

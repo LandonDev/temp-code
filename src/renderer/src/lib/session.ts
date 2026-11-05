@@ -135,6 +135,11 @@ export interface SteerStamp {
 
 export type Block = {
   id: string;
+  /** The key the transcript draws it under, when it is not `id`: the person's
+   *  row keeps its optimistic id's key once the host's echo claims it, so the
+   *  bubble and the turn's working line never remount at the echo
+   *  (transcriptRows.ts `rowKeyOf`). */
+  rowKey?: string;
   role: BlockRole;
   text: string;
   attachments?: Attachment[];

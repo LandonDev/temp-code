@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
+import { MotionGlobalConfig } from "motion/react";
 import { cloneElement, type ReactElement, type ReactNode } from "react";
 import type { Block, SteerStamp } from "../../lib/session";
 import { clockTime } from "../../lib/duration";
@@ -53,16 +54,22 @@ describe("a steer's line under its bubble", () => {
     expect(line(container)).toBeNull();
   });
 
-  it("keeps one line box from Sent to Received, fading only the word that changed on screen", () => {
+  it("keeps one line box and one word element from Sent to Received, morphing only the word that changed on screen", async () => {
+    MotionGlobalConfig.skipAnimations = true;
     const { container, rerender } = mount(user({ state: "sent", ts: at }));
     const box = line(container)!;
+    const shown = word(container);
     expect(box.className).toContain("h-4");
     expect(box.parentElement!.lastElementChild).toBe(box);
-    expect(word(container).className).not.toContain("z-fade-in");
+    expect(box.querySelector("[data-morph-key]")?.getAttribute("data-morph-key")).toBe("Sent");
     rerender(<UserMessageBlock block={user({ state: "received", how: "in-turn", ts: at + 1 })} stickyIndex={1} environmentId="local" />);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 400)));
     expect(line(container)).toBe(box);
+    expect(word(container)).toBe(shown);
     expect(box.className).toContain("h-4");
     expect(word(container).textContent).toBe("Received");
-    expect(word(container).className).toContain("z-fade-in");
+    expect(box.querySelectorAll("[data-morph-key]")).toHaveLength(1);
+    expect(box.querySelector("[data-morph-key]")?.getAttribute("data-morph-key")).toBe("Received");
+    MotionGlobalConfig.skipAnimations = false;
   });
 });

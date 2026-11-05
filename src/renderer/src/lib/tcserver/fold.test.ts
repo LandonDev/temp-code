@@ -54,6 +54,18 @@ describe("foldEvent", () => {
     expect(s.blocks[0].attachments?.[0].previewUrl).toBe("blob:x");
   });
 
+  it("keeps the optimistic row's key when the echo claims it, so the turn's rows keep theirs", async () => {
+    const { flattenTurns } = await import("../../surfaces/transcriptRows");
+    const { groupTurns } = await import("../../surfaces/transcriptActivity");
+    let s = foldOptimisticUser(emptyFold(), "go", []);
+    const optimistic = s.blocks[0].id;
+    const before = flattenTurns(groupTurns(s.blocks), true).rows.map((row) => row.key);
+    s = foldEvent(s, rows([{ type: "user-text", text: "go" }])[0], CWD);
+    expect(s.blocks[0].id).toBe("u:1");
+    expect(s.blocks[0].rowKey).toBe(optimistic);
+    expect(flattenTurns(groupTurns(s.blocks), true).rows.map((row) => row.key)).toEqual(before);
+  });
+
   it("the first message's project preamble lands on the block, fresh and on a claim", () => {
     const stamp = { text: "- rules", words: 2 };
     const fresh = foldAll(rows([{ type: "user-text", text: "go", preamble: stamp }]), CWD);

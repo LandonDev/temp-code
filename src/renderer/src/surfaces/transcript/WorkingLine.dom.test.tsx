@@ -16,6 +16,7 @@ import { TurnStateContext, type TurnSession } from "../turnState";
 import { ActionGroup } from "./ActionGroup";
 import { TurnEnd } from "./TurnEnd";
 import { openedLive, setOpenedLive } from "./workingOpen";
+import { revealDrainForTest } from "../revealDrain";
 
 beforeAll(() => setEditorConfigForTest(null));
 beforeEach(() => {
@@ -64,6 +65,7 @@ const end = (blocks: Block[], activity?: string, over: Partial<TurnInfo> = {}, s
 const status = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="turn-line"] [role="status"]');
 const label = (c: HTMLElement) => status(c)?.getAttribute("aria-label");
 const mark = (c: HTMLElement) => c.querySelector('[data-slot="working-mark"]');
+const lineEl = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="turn-line"]');
 const wait = (ms: number) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
 /** Let Motion's frames run: an exit ends, a count ticks home. */
 const flush = () => wait(400);
@@ -218,3 +220,79 @@ describe("the thinking line", () => {
     expect(view.container.querySelector('[data-slot="turn-line"] [data-morph-key]')).toBe(span);
   });
 });
+
+describe("the line never unmounts once live: transitions, not cuts", () => {
+  const content = (c: HTMLElement) => lineEl(c)?.querySelector<HTMLElement>(":scope > [data-slot=collapsible-content], :scope > div");
+
+  it("folds away while a card waits or the turn is paused, and comes back in the same element", () => {
+    const view = render(end([user, bash("b1")]));
+    const line = lineEl(view.container);
+    expect(status(view.container)).not.toBeNull();
+    const asking: Block = { ...bash("b1", "pending"), approval: { requestId: 1 } };
+    view.rerender(end([user, asking]));
+    expect(lineEl(view.container)).toBe(line);
+    // Folded: no live status, its words kept as they were under the fold.
+    expect(status(view.container)).toBeNull();
+    expect(content(view.container)?.className).toContain("collapsible-auto");
+    expect(line?.textContent).toContain("Running");
+    view.rerender(end([user, bash("b1")], undefined, {}, "paused"));
+    expect(lineEl(view.container)).toBe(line);
+    expect(status(view.container)).toBeNull();
+    view.rerender(end([user, bash("b1")]));
+    expect(lineEl(view.container)).toBe(line);
+    expect(status(view.container)).not.toBeNull();
+    expect(mark(view.container)).not.toBeNull();
+  });
+
+  it("says Worked when the turn is over before its duration lands, and the time fills in under the same words", async () => {
+    const blocks = [{ ...user, startedAt: 10 }, { id: "a", role: "assistant", text: "Done." } as Block];
+    const view = render(end(blocks));
+    const line = lineEl(view.container);
+    view.rerender(end(blocks, undefined, { settled: true }, "idle"));
+    await flush();
+    expect(lineEl(view.container)).toBe(line);
+    expect(line?.textContent).toBe("Worked");
+    const closed = line!.querySelector('[data-morph-key="closed"]');
+    expect(closed).not.toBeNull();
+    view.rerender(end(blocks, undefined, { settled: true, durationMs: 124_000 }, "idle"));
+    expect(line?.textContent).toBe("Worked for 2m 4s");
+    // The same words' element: no second morph.
+    expect(line!.querySelector('[data-morph-key="closed"]')).toBe(closed);
+  });
+
+  it("draws nothing for a turn over before it was ever live here, until its duration lands", () => {
+    const blocks = [user, { id: "a", role: "assistant", text: "Done." } as Block];
+    const { container } = render(end(blocks, undefined, { settled: true }, "idle"));
+    expect(lineEl(container)).toBeNull();
+  });
+
+  it("keeps a call's counts and chevron inside its words, so they leave with them", () => {
+    const { container } = render(end([user, bash("b1")]));
+    const words = container.querySelector('[data-morph-key^="call:"]')!;
+    expect(words).not.toBeNull();
+    expect(words.querySelector("svg")).not.toBeNull();
+  });
+});
+
+describe("the closing line waits for the reveal to drain", () => {
+  afterEach(() => revealDrainForTest.reset());
+
+  it("keeps the mark while a row of the turn still reveals, then morphs into Worked for", async () => {
+    const blocks = [{ ...user, startedAt: 10 }, { id: "a", role: "assistant", text: "A burst that landed whole." } as Block];
+    const view = render(end(blocks));
+    const line = lineEl(view.container);
+    // The burst is still revealing when the host settles the turn 30 ms later.
+    act(() => revealDrainForTest.report("t", "row-a", true));
+    view.rerender(end(blocks, undefined, { settled: true, durationMs: 2_000 }, "idle"));
+    await flush();
+    expect(lineEl(view.container)).toBe(line);
+    expect(mark(view.container)).not.toBeNull();
+    expect(line?.textContent).not.toMatch(/Worked/);
+    act(() => revealDrainForTest.report("t", "row-a", false));
+    await flush();
+    expect(lineEl(view.container)).toBe(line);
+    expect(mark(view.container)).toBeNull();
+    expect(line?.textContent).toBe("Worked for 2s");
+  });
+});
+

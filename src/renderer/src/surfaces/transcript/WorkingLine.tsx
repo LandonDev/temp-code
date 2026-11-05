@@ -41,8 +41,11 @@ const samePhase = (a: WorkingPhase, b: WorkingPhase) =>
   a.thought?.line === b.thought?.line &&
   a.thought?.key === b.thought?.key;
 
-/** The settled turn's closing line, as TurnEnd hands it over. */
-export type Closing = { words: ReactNode; actions: ReactNode; intent?: Record<string, unknown> };
+/** The settled turn's closing line, as TurnEnd hands it over. `pending`: the
+ *  turn is over but its duration has not landed ("Worked"): drawn only by a
+ *  line that was live in this mount, which morphs into it and lets the time
+ *  fill in under the same key; a line that mounts on it draws nothing yet. */
+export type Closing = { words: ReactNode; actions: ReactNode; intent?: Record<string, unknown>; pending?: boolean };
 
 /**
  * A turn's last line, one element from Send to the turn's end. While the
@@ -57,10 +60,22 @@ export type Closing = { words: ReactNode; actions: ReactNode; intent?: Record<st
  * leaves as an icon does, the words morph to the closing line ("Worked for
  * 2m 4s", or Stopped) and slide from the glyph slot to the prose edge, and
  * the closing line's hover actions mount. A line that mounts settled draws
- * the closing line at once. Nothing at all while neither applies.
+ * the closing line at once.
+ *
+ * Once live in this mount the line is never unmounted and never keyed: while
+ * the turn is `held` (paused, or a step waits on the person, whose card says
+ * so) it folds closed on `.collapsible-auto` with its words as they were, and
+ * a resume reopens the same element; a Stop morphs it to Stopped at once; a
+ * turn over before its duration lands says "Worked" and the time fills in.
+ * A line never live and with no closing draws nothing.
  */
+/** The phase while the turn is over but its text still reveals: the mark alone, as under streaming prose. */
+const DRAINING: WorkingPhase = { key: "writing", words: "" };
+
 export function TurnLine({
   live,
+  held = false,
+  draining = false,
   turn,
   activity,
   cwd,
@@ -69,6 +84,10 @@ export function TurnLine({
   closing,
 }: {
   live: boolean;
+  /** Paused, or a step waits on the person: the line folds away, its words kept. */
+  held?: boolean;
+  /** Over on the host, its text still revealing: the mark alone until it is all shown. */
+  draining?: boolean;
   turn: Block[];
   activity?: string | null;
   cwd?: string;
@@ -78,7 +97,10 @@ export function TurnLine({
 }) {
   const reduce = useReducedMotion() === true;
   const sessionId = useTranscriptSession() ?? "";
-  const next = useMemo(() => workingPhase(turn, activity, { cwd, titleOf, waitWords }), [turn, activity, cwd, titleOf, waitWords]);
+  const next = useMemo(
+    () => (draining ? DRAINING : workingPhase(turn, activity, { cwd, titleOf, waitWords })),
+    [draining, turn, activity, cwd, titleOf, waitWords],
+  );
   const phase = useHeldPhase(next, samePhase);
   const call = live ? phase.call : undefined;
   const action = call ? actionOf(call.block, cwd, null, true) : undefined;
@@ -94,12 +116,16 @@ export function TurnLine({
   const adds = useCountUp(counts?.adds ?? 0, !!edit);
   const dels = useCountUp(counts?.dels ?? 0, !!edit);
 
+  // Live once in this mount: the line stays, and a pending closing ("Worked") is drawn.
+  const [everLive, setEverLive] = useState(live);
+  if (live && !everLive) setEverLive(true);
   // The settle the person watched: the words slide home from the glyph slot.
-  const [wasLive, setWasLive] = useState(live);
+  const closed = !live && !held;
+  const [wasClosed, setWasClosed] = useState(closed);
   const [slide, setSlide] = useState(false);
-  if (wasLive !== live) {
-    setWasLive(live);
-    setSlide(wasLive && !live && !reduce);
+  if (wasClosed !== closed) {
+    setWasClosed(closed);
+    setSlide(!wasClosed && closed && everLive && !reduce);
   }
   const words = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -113,7 +139,10 @@ export function TurnLine({
     return () => animation.cancel();
   }, [slide]);
 
-  if (!live && !closing) return null;
+  const shownClosing = closing && (!closing.pending || everLive) ? closing : null;
+  if (!everLive && !shownClosing) return null;
+  // Still saying the phase: live, or held with its words as they were.
+  const phased = live || (held && !shownClosing);
 
   const toggle = () => {
     if (!call) return;
@@ -123,7 +152,8 @@ export function TurnLine({
   };
 
   return (
-    <div data-slot="turn-line" className="flex min-w-0 flex-col">
+    <Collapsible open={!held && (live || !!shownClosing)} data-slot="turn-line" className="flex min-w-0 flex-col">
+      <CollapsibleContent keepMounted className="collapsible-auto">
       <div
         role={live ? "status" : undefined}
         aria-label={live ? phase.spoken ?? (phase.words || "Working") : undefined}
@@ -146,23 +176,31 @@ export function TurnLine({
             </motion.span>
           ) : null}
         </AnimatePresence>
-        <div ref={words} data-turn-words className={cn("flex min-w-0 items-center gap-1", hasBody && "pointer-events-none", live && "pl-5.5")}>
-          <MorphText state={live ? phase.key : "closed"} className="min-w-0">
-            {live ? <PhaseWords phase={phase} /> : closing?.words}
+        <div ref={words} data-turn-words className={cn("flex min-w-0 items-center gap-1", hasBody && "pointer-events-none", phased && "pl-5.5")}>
+          {/* A call's counts and chevron are its words': they leave and arrive with them. */}
+          <MorphText state={phased ? phase.key : "closed"} className="min-w-0">
+            {phased ? (
+              <span className="flex min-w-0 items-center gap-1">
+                <PhaseWords phase={phase} />
+                {edit && (adds || dels) ? <Counts added={adds} removed={dels} /> : null}
+                {hasBody ? (
+                  <ChevronRight
+                    aria-hidden
+                    className={cn(
+                      "ms-1 size-3 shrink-0 transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/turnend:text-foreground motion-reduce:transition-none",
+                      bodyOpen && "rotate-90",
+                    )}
+                  />
+                ) : null}
+              </span>
+            ) : (
+              shownClosing?.words
+            )}
           </MorphText>
-          {edit && (adds || dels) ? <Counts added={adds} removed={dels} /> : null}
-          {hasBody ? (
-            <ChevronRight
-              aria-hidden
-              className={cn(
-                "ms-1 size-3 shrink-0 transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/turnend:text-foreground motion-reduce:transition-none",
-                bodyOpen && "rotate-90",
-              )}
-            />
-          ) : null}
-          {live ? null : closing?.actions}
+          {phased ? null : shownClosing?.actions}
         </div>
       </div>
+      </CollapsibleContent>
       {hasBody && call && action ? (
         <Collapsible open={bodyOpen}>
           <CollapsibleContent>
@@ -174,7 +212,7 @@ export function TurnLine({
           </CollapsibleContent>
         </Collapsible>
       ) : null}
-    </div>
+    </Collapsible>
   );
 }
 

@@ -39,6 +39,7 @@ import {
 import { isAtxHeadingLine } from "../lib/markdownSource";
 import { useColorScheme } from "../hooks/useColorScheme";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { useReportReveal } from "./revealDrain";
 import { useSmoothText } from "./smoothText";
 import { useTranscriptHost } from "./transcriptSession";
 
@@ -284,6 +285,9 @@ export const AgentMarkdown = memo(function AgentMarkdown({
     return () => clearTimeout(timer);
   }, [fading, reveal]);
   const settled = done && !fading;
+  // Revealing until every step is painted and the last fade is done: the
+  // turn's closing line waits for it (revealDrain.ts).
+  useReportReveal(!settled);
   // A row that mounts settled (history, a row scrolled into view) mounts
   // its tree once the worker has parsed it; until then the text holds the
   // row's place, unseen, in the same measure. A row that streamed here is

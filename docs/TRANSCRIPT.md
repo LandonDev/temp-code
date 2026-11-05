@@ -158,11 +158,26 @@ foreground, the same words the group line uses); the components only draw it.
   live counts on the line; one running command or tool shows a chevron and
   opens its body under the line, and a call opened there lands open in its
   group, which counts as the person's hand (`transcript/workingOpen.ts`).
-  The line hides while a step waits on the person, while the turn is
-  paused or held, and after a Stop. When the turn settles in front of the
-  person the line is the closing line in the same element: the mark leaves
-  as an icon does, the words morph into "Worked for 2m 4s" and slide 22px
-  to the prose edge (a FLIP on `--ease-swap`).
+  The line's life cycle: once live in a mount it is one element until the
+  pane goes, never keyed and never unmounted. While a step waits on the
+  person (its card says so) or the turn is paused it folds closed on
+  `.collapsible-auto` with its words as they were, and a resume reopens the
+  same element. A Stop morphs it to Stopped the moment the stop row lands
+  (the row itself draws nothing, open or settled). When the turn settles in
+  front of the person the line is the closing line in the same element: the
+  mark leaves as an icon does, the words morph into "Worked for 2m 4s" and
+  slide 22px to the prose edge (a FLIP on `--ease-swap`); a turn over before
+  its duration lands says "Worked" and the time fills in under the same
+  words. The closing waits for the reveal: while any row of a turn the host
+  has settled or stopped still reveals its text (every stream step painted
+  and its fade done; AgentMarkdown reports `!settled` through
+  `useReportReveal`, surfaces/revealDrain.ts, under its row's turn), the
+  line keeps its mark and says nothing more, so no closing line is drawn
+  above text still appearing. The echo of the person's message renames
+  the block but not its row: the claim keeps the optimistic key
+  (`Block.rowKey`, `rowKeyOf` in transcriptRows.ts), so the bubble and the
+  line stay the same elements and no fade plays again. A call's counts and
+  chevron are part of its words, inside the morph, and leave with them.
 - **The closing line** (`transcript/TurnEnd.tsx`): "Worked for 2m 4s" and
   four hover-only icon actions (`transcript/IconAction.tsx`: a ghost
   `icon-xs` Button in a Tooltip armed on the line's first hover, so a long

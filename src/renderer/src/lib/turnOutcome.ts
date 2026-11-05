@@ -58,17 +58,14 @@ export function turnEndsStopped(session: OutcomeSession, blocks: Block[]): boole
   return onlyNoticesAfter(blocks, blocks.indexOf(last)).closes;
 }
 
-/** The stopped row the settled turn's closing line already says: the row
- *  itself draws nothing then, so "Stopped" shows once. A turn still open
- *  (the thread busy or paused on it) keeps the row, as it has no closing
- *  line yet. */
+/** The stopped row the turn's closing line already says: the row itself
+ *  draws nothing, so "Stopped" shows once. The line says it the moment the
+ *  row lands (TurnEnd), so this holds for a turn still open too. */
 export function stopClosesTurn(session: OutcomeSession & { busy?: boolean }, block: Block): boolean {
   if (!isStoppedRow(session, block)) return false;
   const at = session.blocks.findIndex((b) => b.id === block.id);
   if (at < 0) return false;
-  const { closes, lastTurn } = onlyNoticesAfter(session.blocks, at);
-  if (!closes) return false;
-  return !lastTurn || !(session.busy || session.status === "paused");
+  return onlyNoticesAfter(session.blocks, at).closes;
 }
 
 /** Retry continues the work (`session.continue`), which the host does only

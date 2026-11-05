@@ -324,6 +324,8 @@ export function foldEvent(
         blocks[idx] = {
           ...prev,
           id,
+          // The row on screen keeps its key: the echo renames the block, not the row.
+          rowKey: prev.rowKey ?? prev.id,
           startedAt: row.ts,
           ts: row.ts,
           ...(persisted ? { seq: row.seq } : {}),

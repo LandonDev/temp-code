@@ -799,8 +799,13 @@ routed to (aliax-core's `forward`). Two listeners:
   the mark alone under streaming prose; a phase stays at least 300 ms once
   painted and one that came and went inside the hold is skipped
   (`useHeldPhase`, lib/heldWord.ts); a change of phase morphs the words
-  (`MorphText`), and the line becomes the closing line when the turn ends.
-  A thought is no transcript row (a group opened by hand shows "Thought").
+  (`MorphText`), and the line becomes the closing line when the turn ends,
+  once every row of the turn has finished revealing its text (AgentMarkdown
+  reports `!settled` through `useReportReveal`, surfaces/revealDrain.ts;
+  TurnEnd keeps the mark till then). Once live the line is never unmounted:
+  held (a card, a pause) it folds on `.collapsible-auto`, a Stop morphs it
+  to Stopped at once, and the echo keeps the optimistic row's key
+  (`Block.rowKey`). A thought is no transcript row (a group opened by hand shows "Thought").
   The timer above the composer counts from the click: `appendOptimisticUser`
   stamps `sentAt` when no turn is open, `turnStartOf` prefers it over the
   host's later `busySince`, the settle clears it, and the slot shows at once

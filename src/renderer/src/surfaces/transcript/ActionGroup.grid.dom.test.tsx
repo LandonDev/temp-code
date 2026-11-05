@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
+import { MotionGlobalConfig } from "motion/react";
 import type { Block } from "../../lib/session";
 import { setEditorConfigForTest } from "../../lib/editorConfig";
 import { ActionGroup } from "./ActionGroup";
@@ -112,9 +113,9 @@ describe("an open group's rows sit on one grid", () => {
     expect(classes(branch)).toContain("text-foreground");
   });
 
-  it("keeps a lone call at the prose's edge, unhung", () => {
+  it("keeps a lone call at the prose's edge, out of any table", () => {
     const { container } = mountFixture("Lone read");
-    expect(list(container).hasAttribute("data-hung")).toBe(false);
+    expect(list(container).closest("[data-table]")).toBeNull();
   });
 
   it("folds filler into the verb: a command with nothing to name reads its verb alone", () => {
@@ -128,3 +129,31 @@ describe("an open group's rows sit on one grid", () => {
     expect(line.querySelector(".text-foreground.truncate")).toBeNull();
   });
 });
+
+describe("the group line's glyph", () => {
+  const call = (id: string, name: string, kind: string, input: unknown): Block => ({
+    id,
+    role: "tool",
+    text: name,
+    tool: { callId: id, name, kind, title: name, status: "completed", input },
+  });
+  const read = (id: string) => call(id, "Read", "read", { file_path: `/r/${id}.ts` });
+  const edit = (id: string) => call(id, "Edit", "edit", { file_path: `/r/${id}.ts`, old_string: "a", new_string: "b" });
+
+  it("swaps in place when the run's main kind changes: one glyph box, a new glyph in it", async () => {
+    MotionGlobalConfig.skipAnimations = true;
+    const view = render(<ActionGroup blocks={[read("a"), read("b")]} cwd="/r" />);
+    const box = view.container.querySelector("[data-group-line] [data-kind]")!;
+    expect(box.getAttribute("data-kind")).toBe("research");
+    const before = box.querySelector("[data-swap]")?.getAttribute("data-swap");
+    view.rerender(<ActionGroup blocks={[read("a"), read("b"), edit("c"), edit("d"), edit("e")]} cwd="/r" />);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 300)));
+    MotionGlobalConfig.skipAnimations = false;
+    const after = view.container.querySelector("[data-group-line] [data-kind]")!;
+    expect(after).toBe(box);
+    expect(after.getAttribute("data-kind")).not.toBe("research");
+    expect(after.querySelectorAll("[data-swap]")).toHaveLength(1);
+    expect(after.querySelector("[data-swap]")?.getAttribute("data-swap")).not.toBe(before);
+  });
+});
+

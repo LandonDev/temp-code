@@ -133,6 +133,10 @@ function gapAbove(item: TurnItem, before: TurnItem | null, previousRow: Transcri
   return above === "line" && shapeOf(item) === "line" ? ROW_GAP.line : ROW_GAP.block;
 }
 
+/** The key a block's row is drawn under: its optimistic key once the echo
+ *  renamed it (`Block.rowKey`), else its id. A row on screen never changes key. */
+export const rowKeyOf = (block: Block): string => block.rowKey ?? block.id;
+
 /**
  * `busy`: the last turn runs, so its last activity row is live. `paused`
  * (options): it is paused mid-turn, so it stays open, with no closing line
@@ -156,7 +160,7 @@ export function flattenTurns(
         ? Math.max(0, userBlock.doneTs - userBlock.startedAt)
         : undefined);
     const turn: TurnInfo = {
-      id: blocks[0].id,
+      id: rowKeyOf(blocks[0]),
       index,
       isLast,
       settled: !(open && isLast),
@@ -171,7 +175,7 @@ export function flattenTurns(
       if (item.type === "activity") {
         rows.push({
           kind: "item",
-          key: item.blocks[0].id,
+          key: rowKeyOf(item.blocks[0]),
           turn,
           item,
           live: busy && isLast && itemIndex === items.length - 1,
@@ -180,7 +184,7 @@ export function flattenTurns(
         });
         return;
       }
-      rows.push({ kind: "item", key: item.block.id, turn, item, live: false, working: false, gap });
+      rows.push({ kind: "item", key: rowKeyOf(item.block), turn, item, live: false, working: false, gap });
     });
     rows.push({ kind: "end", key: `${turn.id}:end`, turn, gap: ROW_GAP.end });
   });

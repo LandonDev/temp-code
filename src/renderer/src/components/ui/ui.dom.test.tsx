@@ -288,11 +288,10 @@ describe("StatusMark", () => {
     expect(screen.getByLabelText("Queued: Waiting for memory")).toBeTruthy();
   });
 
-  it("still draws working as a dot, without a spinner or its breath", () => {
+  it("still draws working as a dot, without a spinner", () => {
     const { container, rerender } = render(<StatusMark state="working" still />);
     expect(container.querySelector("[data-slot=working-dot]")).not.toBeNull();
     expect(container.querySelector("[data-slot=spinner]")).toBeNull();
-    expect(container.querySelector(".status-breathe")).toBeNull();
     rerender(<StatusMark state="working" />);
     expect(container.querySelector("[data-slot=spinner]")?.hasAttribute("data-turning")).toBe(true);
   });
@@ -303,11 +302,39 @@ describe("StatusMark", () => {
     expect(container.textContent).toBe("FailedUsage cap");
   });
 
-  it("a live glyph breathes once on a state change; a settled one is still", () => {
-    const { container, rerender } = render(<StatusMark state="watching" />);
-    expect(container.querySelector(".status-breathe")).not.toBeNull();
+  it("cross-fades a change of state in the box that stays, and moves nothing at mount", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(<StatusMark state="working" />);
+    const box = container.querySelector("[data-slot=status-glyph]")!;
+    expect(container.querySelector(".glyph-in, .glyph-out")).toBeNull();
     rerender(<StatusMark state="done" />);
+    expect(container.querySelector("[data-slot=status-glyph]")).toBe(box);
+    // The old glyph shrinks out beside the new one growing in, then goes.
+    expect(box.querySelector("[data-glyph-out] [data-slot=spinner]")).not.toBeNull();
+    expect(box.querySelector(".glyph-in")).not.toBeNull();
+    act(() => vi.advanceTimersByTime(500));
+    expect(box.querySelector("[data-glyph-out]")).toBeNull();
+    expect(box.querySelectorAll("svg")).toHaveLength(1);
     expect(container.querySelector(".status-breathe")).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("drops the outgoing glyph on its animation's end", () => {
+    const { container, rerender } = render(<StatusMark state="waiting" />);
+    rerender(<StatusMark state="paused" />);
+    const out = container.querySelector("[data-glyph-out]")!;
+    // jsdom has no CSS animations, so React may listen on the prefixed name: fire both.
+    act(() => {
+      fireEvent.animationEnd(out);
+      out.dispatchEvent(new Event("webkitAnimationEnd", { bubbles: true }));
+    });
+    expect(container.querySelector("[data-glyph-out]")).toBeNull();
+  });
+
+  it("fades only, and as fast as an exit, under reduced motion", () => {
+    const css = readFileSync(resolve(__dirname, "../../assets/components.css"), "utf8");
+    expect(css).toMatch(/\.glyph-in\s*\{\s*animation:\s*glyph-in var\(--dur-layout\) var\(--ease-layout\) both;/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.glyph-in\s*\{\s*animation:\s*glyph-fade-in var\(--dur-fast\)/);
   });
 });
 

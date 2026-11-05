@@ -11,6 +11,7 @@ import { useLiveEdits } from "../../lib/tcserver/store";
 import { useTitlesOf } from "../../lib/threadMentions";
 import { DUR, SPRING_LAYOUT_CSS } from "../../lib/ease";
 import { useFoldHold } from "../../lib/foldHold";
+import { SwapIcon } from "../../motion/IconSwap";
 import { MorphText } from "../../motion/MorphText";
 import { useCountUp } from "../../motion/useCountUp";
 import { usePersistedOpen } from "../editOpenState";
@@ -189,7 +190,10 @@ export function ActionGroup({
                 className="group/line h-7 w-fit min-w-0 justify-start gap-1 rounded-md px-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent aria-expanded:bg-transparent motion-reduce:transition-none"
               >
                 <span data-kind={group.kind} className="me-1 flex shrink-0">
-                  <Glyph className="size-3.5" aria-hidden />
+                  {/* The glyph of the run's main kind; it swaps in place when that kind changes. */}
+                  <SwapIcon state={group.kind}>
+                    <Glyph className="size-3.5" aria-hidden />
+                  </SwapIcon>
                 </span>
                 {/* The phrase changes tense in place when the run settles; a count
                     that grows under one tense never animates. The working line under

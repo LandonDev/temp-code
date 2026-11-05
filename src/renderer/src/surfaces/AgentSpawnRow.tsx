@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { Bot } from "../chrome/icons";
 import { HostGlyph } from "../chrome/HostGlyph";
 import { StatusMark, STATUS_WORD, type ThreadState } from "../components/ui/status";
@@ -11,6 +11,7 @@ import { bareAgentId } from "@shared/watch";
 import { SelectSessionContext } from "./AgentMarkdown";
 import { useOpenAgentDetail } from "./agentDetailContext";
 import { ProviderMark } from "./ToolChips";
+import { SwapIcon } from "../motion/IconSwap";
 import { ActionLine } from "./transcript/ActionLine";
 import { useSpawnedName } from "./transcript/groupHand";
 import { GLYPH_SLOT } from "./transcript/stepLine";
@@ -111,10 +112,14 @@ export function SpawnChildRow({ id, inputTitle, task }: { id: string; inputTitle
   return (
     <ActionLine
       glyph={
-        <span className={GLYPH_SLOT}>{meta ? <ProviderMark harness={meta.provider} /> : <Bot className="size-3.5" />}</span>
+        <span className={GLYPH_SLOT}>
+          {/* The provider's mark replaces the bot in place once the store lists the agent. */}
+          <SwapIcon state={meta ? "provider" : "bot"}>{meta ? <ProviderMark harness={meta.provider} /> : <Bot className="size-3.5" />}</SwapIcon>
+        </span>
       }
       verb="Spawned"
       object={name.title}
+      morphObject
       title={name.full}
       label={`Spawned ${name.title}`}
       onActivate={open ? () => open(id) : undefined}
@@ -138,10 +143,13 @@ export function AgentSpawnRow({ block }: { block: Block }) {
 export function SpawnedAgentMarks({ id }: { id: string }) {
   const meta = useAgentMeta(id);
   const state = stateOf(meta?.status);
+  // A state that lands after the row did fades in rather than popping; a
+  // change of state cross-fades its glyph in place (StatusMark).
+  const [arrived] = useState(!state);
   return (
     <>
       <HostGlyph environmentId={meta?.environmentId ?? hostOfAgentId(id)} />
-      {state ? <StatusMark state={state} still /> : null}
+      {state ? <StatusMark state={state} still className={arrived ? "z-fade-in" : undefined} /> : null}
     </>
   );
 }

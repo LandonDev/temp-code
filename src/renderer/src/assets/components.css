@@ -195,20 +195,51 @@
   }
 }
 
-/* StatusMark: a live glyph breathes once when its state changes; nothing loops. */
-@keyframes status-breathe {
-  50% {
-    opacity: 0.35;
+/* StatusMark: a change of state cross-fades its glyph in the box that stays
+   (status.tsx GlyphBox): the old one shrinks out over --dur-fast while the
+   new one grows from a quarter on the layout spring, SwapIcon's values; never
+   at mount. Under reduced motion both only fade, over --dur-fast. */
+.glyph-in {
+  animation: glyph-in var(--dur-layout) var(--ease-layout) both;
+}
+
+.glyph-out {
+  animation: glyph-out var(--dur-fast) var(--ease-out) both;
+}
+
+@keyframes glyph-in {
+  from {
+    opacity: 0;
+    transform: scale(0.25);
   }
 }
 
-.status-breathe {
-  animation: status-breathe var(--dur-slow) var(--ease-out) 1;
+@keyframes glyph-out {
+  to {
+    opacity: 0;
+    transform: scale(0.25);
+  }
+}
+
+@keyframes glyph-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes glyph-fade-out {
+  to {
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .status-breathe {
-    animation: none;
+  .glyph-in {
+    animation: glyph-fade-in var(--dur-fast) var(--ease-out) both;
+  }
+
+  .glyph-out {
+    animation: glyph-fade-out var(--dur-fast) var(--ease-out) both;
   }
 }
 
