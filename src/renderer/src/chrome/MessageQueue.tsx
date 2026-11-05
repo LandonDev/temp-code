@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react'
-import { AnimatePresence, Reorder, useReducedMotion } from 'motion/react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { useSortable } from '../hooks/useSortable'
 import { DUR, EASE_OUT, FADE_OUT } from '../lib/ease'
 import type { QueuedMessage } from '../lib/tcserver/types'
 import { queueTune, type QueueTune } from '../lib/tcserver/commands'
@@ -48,12 +49,28 @@ export function mergeOrder(items: readonly QueuedMessage[], shown: readonly stri
   return items.map((m) => (hidden.has(m.id) ? m.id : (queue.shift() ?? m.id)))
 }
 
+/** The rows in the order the person dropped them while the host's answer
+ *  is on its way: an order made against the rows as they are now, else the
+ *  rows as the host has them. */
+export function droppedOrder<T extends { id: string }>(rows: readonly T[], dropped: { base: string; order: string[] } | null): T[] {
+  if (!dropped || dropped.base !== rows.map((m) => m.id).join('\u0000')) return [...rows]
+  const byId = new Map(rows.map((m) => [m.id, m]))
+  return dropped.order.flatMap((id) => byId.get(id) ?? [])
+}
+
+/** How long a dropped order stands without the host's answer before the
+ *  rows go back to the host's order (a reorder it refused). */
+const DROP_HOLD_MS = 2_000
+
 /**
  * Messages waiting their turn, stacked above the composer. Each sends as
- * turns settle, in order. Drag to reorder, click the text to edit in
- * place, Remove takes it out, Send now steers it into the running turn
- * (providers that cannot steer send it next instead). A stored item shows
- * nothing here: its row is on the transcript.
+ * turns settle, in order. Drag a row by its grip to reorder (hooks/useSortable,
+ * the rule of every list: only the dragged row moves, the others hold with
+ * the insertion line, the drop glides into its slot on SPRING_GLIDE, Escape
+ * glides it back), click the text to edit in place, Remove takes it out,
+ * Send now steers it into the running turn (providers that cannot steer send
+ * it next instead). A stored item shows nothing here: its row is on the
+ * transcript.
  */
 export function MessageQueue({
   items,
@@ -69,7 +86,24 @@ export function MessageQueue({
   const reduce = useReducedMotion()
   // The thread sits in a wait_for_agent: the list drains when the wait does.
   const awaiting = (useSessionMeta(sessionId)?.awaiting?.length ?? 0) > 0
-  const shown = visibleQueue(items, !!queued)
+  const host = visibleQueue(items, !!queued)
+  // A drop shows its order at once; the host's push replaces it.
+  const [dropped, setDropped] = useState<{ base: string; order: string[] } | null>(null)
+  const shown = droppedOrder(host, dropped)
+  useEffect(() => {
+    if (!dropped) return
+    const timer = window.setTimeout(() => setDropped(null), DROP_HOLD_MS)
+    return () => window.clearTimeout(timer)
+  }, [dropped])
+  const ids = shown.map((m) => m.id)
+  const sortable = useSortable(
+    ids,
+    (order) => {
+      setDropped({ base: host.map((m) => m.id).join('\u0000'), order })
+      onReorder(mergeOrder(items, order))
+    },
+    'y'
+  )
 
   if (shown.length === 0) return null
 
@@ -80,93 +114,108 @@ export function MessageQueue({
           'Queued until the wait finishes'
         ) : (
           <>
-            Queued<span className="ms-2 tabular-nums">{shown.length}</span>
+            Queued<span className="ms-1 tabular-nums">{shown.length}</span>
           </>
         )}
       </p>
-      <Reorder.Group
-        axis="y"
-        values={shown.map((m) => m.id)}
-        onReorder={(order) => onReorder(mergeOrder(items, order as string[]))}
-        className="flex flex-col gap-1"
-      >
+      <div data-queue-list className="flex flex-col gap-1">
         <AnimatePresence initial={false}>
-          {shown.map((m, ix) => (
-            <Reorder.Item
-              key={m.id}
-              value={m.id}
-              initial={reduce ? false : { opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0, transition: { duration: DUR.base, ease: EASE_OUT } }}
-              exit={reduce ? undefined : FADE_OUT}
-              className="group/q relative"
-            >
-              <div className="flex items-start gap-1.5 rounded-lg border border-border bg-card py-1.5 pr-1.5 pl-1">
-                <span className="mt-[3px] cursor-grab text-muted-foreground/60 active:cursor-grabbing">
-                  <GripVertical className="size-3.5" />
-                </span>
-                {editing === m.id ? (
-                  <Textarea
-                    autoFocus
-                    defaultValue={m.text}
-                    rows={Math.min(4, m.text.split('\n').length)}
-                    onFocus={(e) =>
-                      e.currentTarget.setSelectionRange(
-                        e.currentTarget.value.length,
-                        e.currentTarget.value.length
-                      )
-                    }
-                    onKeyDown={(e) => {
-                      e.stopPropagation()
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        e.currentTarget.blur()
-                      }
-                      if (e.key === 'Escape') {
-                        e.currentTarget.value = m.text
-                        e.currentTarget.blur()
-                      }
-                    }}
-                    onBlur={(e) => {
-                      setEditing(null)
-                      const v = e.target.value.trim()
-                      if (v && v !== m.text) onUpdate(m.id, v)
-                    }}
-                    aria-label="Edit queued message"
-                    className="field-sizing-fixed min-h-0 min-w-0 flex-1 resize-none rounded-none border-0 px-0 py-0 leading-5 text-foreground focus-within:shadow-none"
+          {shown.map((m, ix) => {
+            const dropping = sortable.toIndex === ix && sortable.fromIndex !== null && sortable.toIndex !== sortable.fromIndex
+            return (
+              <motion.div
+                key={m.id}
+                ref={(el: HTMLDivElement | null) => sortable.setItemRef(m.id, el)}
+                data-queue-row={m.id}
+                // A full transform string, so the entry runs on the compositor (motion's `y` is main-thread).
+                initial={reduce ? { opacity: 0 } : { opacity: 0, transform: 'translateY(4px)' }}
+                animate={
+                  reduce
+                    ? { opacity: 1, transition: { duration: DUR.fast, ease: EASE_OUT } }
+                    : { opacity: 1, transform: 'translateY(0px)', transition: { duration: DUR.base, ease: EASE_OUT } }
+                }
+                exit={FADE_OUT}
+                className={`group/q relative ${sortable.draggingId === m.id ? 'z-10' : ''}`}
+              >
+                {dropping ? (
+                  <div
+                    data-queue-drop
+                    className={`pointer-events-none absolute inset-x-2 z-20 h-0.5 rounded-full bg-accent ${sortable.toIndex! < sortable.fromIndex! ? 'top-0' : 'bottom-0'}`}
                   />
-                ) : (
-                  <Button
-                    variant="ghost"
-                    aria-label={`Edit: ${m.text}`}
-                    onClick={() => setEditing(m.id)}
-                    className="h-auto min-w-0 flex-1 justify-start whitespace-normal px-0 py-0 text-left font-normal hover:bg-transparent aria-expanded:bg-transparent active:bg-transparent"
+                ) : null}
+                <div className="flex items-start gap-1.5 rounded-lg border border-border bg-card py-1.5 pr-1.5 pl-1">
+                  <span
+                    data-queue-grip
+                    aria-hidden
+                    onPointerDown={(event) => sortable.onItemPointerDown(m.id, event)}
+                    className="-my-1.5 -ms-1 flex shrink-0 cursor-grab touch-none self-stretch py-1.5 ps-1 text-muted-foreground/60 active:cursor-grabbing"
                   >
-                    <span className="line-clamp-2 text-[13px] leading-5 text-foreground">
-                      <span className="mr-1.5 text-xs tabular-nums text-muted-foreground">
-                        {ix + 1}
-                      </span>
-                      {m.text}
-                    </span>
-                  </Button>
-                )}
-                <span className="flex shrink-0 items-center gap-0.5">
-                  {sessionId ? <QueueTuneButton sessionId={sessionId} item={m} /> : null}
-                  <span className={`flex items-center gap-0.5 ${reveal('q')}`}>
-                    {paused ? null : (
-                      <RowAction label="Send now" onClick={() => onSteer(m.id)}>
-                        <ArrowUp />
-                      </RowAction>
-                    )}
-                    <RowAction label="Remove" ariaLabel="Remove from queue" onClick={() => onRemove(m.id)}>
-                      <X />
-                    </RowAction>
+                    <GripVertical className="mt-[3px] size-3.5" />
                   </span>
-                </span>
-              </div>
-            </Reorder.Item>
-          ))}
+                  {editing === m.id ? (
+                    <Textarea
+                      autoFocus
+                      defaultValue={m.text}
+                      rows={Math.min(4, m.text.split('\n').length)}
+                      onFocus={(e) =>
+                        e.currentTarget.setSelectionRange(
+                          e.currentTarget.value.length,
+                          e.currentTarget.value.length
+                        )
+                      }
+                      onKeyDown={(e) => {
+                        e.stopPropagation()
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          e.currentTarget.blur()
+                        }
+                        if (e.key === 'Escape') {
+                          e.currentTarget.value = m.text
+                          e.currentTarget.blur()
+                        }
+                      }}
+                      onBlur={(e) => {
+                        setEditing(null)
+                        const v = e.target.value.trim()
+                        if (v && v !== m.text) onUpdate(m.id, v)
+                      }}
+                      aria-label="Edit queued message"
+                      className="field-sizing-fixed min-h-0 min-w-0 flex-1 resize-none rounded-none border-0 px-0 py-0 leading-5 text-foreground focus-within:shadow-none"
+                    />
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      aria-label={`Edit: ${m.text}`}
+                      onClick={() => setEditing(m.id)}
+                      className="h-auto min-w-0 flex-1 justify-start whitespace-normal px-0 py-0 text-left font-normal hover:bg-transparent aria-expanded:bg-transparent active:bg-transparent"
+                    >
+                      <span className="line-clamp-2 text-[13px] leading-5 text-foreground">
+                        <span className="me-1 text-xs tabular-nums text-muted-foreground">
+                          {ix + 1}
+                        </span>
+                        {m.text}
+                      </span>
+                    </Button>
+                  )}
+                  <span className="flex shrink-0 items-center gap-0.5">
+                    {sessionId ? <QueueTuneButton sessionId={sessionId} item={m} /> : null}
+                    <span className={`flex items-center gap-0.5 ${reveal('q')}`}>
+                      {paused ? null : (
+                        <RowAction label="Send now" onClick={() => onSteer(m.id)}>
+                          <ArrowUp />
+                        </RowAction>
+                      )}
+                      <RowAction label="Remove" ariaLabel="Remove from queue" onClick={() => onRemove(m.id)}>
+                        <X />
+                      </RowAction>
+                    </span>
+                  </span>
+                </div>
+              </motion.div>
+            )
+          })}
         </AnimatePresence>
-      </Reorder.Group>
+      </div>
     </div>
   )
 }
