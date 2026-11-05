@@ -827,7 +827,8 @@ line with a glyph, a lead in medium weight and its details as one muted
 comma run after it ("Release passed master, release-277"); only a held review and a failure
 are cards. A compaction is one line that counts from its start, takes
 its outcome in place and reads "Compaction stopped" when its turn ended
-without one. The host's steps of the agent's work fold into the run they sit
+without one; its lead and details follow the same rule ("Context compacted
+414K → 3.6K, 1m 29s"). The host's steps of the agent's work fold into the run they sit
 in, as calls do: a subagent spawned (on its call's row, one row per child
 for a batch), each agent that settled ("Finished", "Failed", "Needs you",
 "Stopped" or "Paused", then its title, behind the state's glyph), a

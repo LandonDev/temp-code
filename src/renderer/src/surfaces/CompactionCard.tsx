@@ -11,6 +11,7 @@ import { spanWords } from "./transcript/thinking";
 import { NoticeLine } from "./transcript/NoticeLine";
 import { SwapIcon } from "../motion/IconSwap";
 import { MorphText } from "../motion/MorphText";
+import { cn } from "../lib/cn";
 
 /**
  * A compaction on one notice line: "Compacting context" pulsing with the
@@ -27,6 +28,7 @@ export function CompactionCard({ block }: { block: Block }) {
   if (!meta) return null;
   const { phase } = meta;
   const failed = phase === "failed";
+  const details = outcomeDetails(meta);
   return (
     <NoticeLine
       data-state={phase === "start" || phase === "done" ? undefined : phase}
@@ -38,12 +40,13 @@ export function CompactionCard({ block }: { block: Block }) {
       lead={
         <MorphText state={phase} className="min-w-0">
           <span className="flex min-w-0 items-center gap-1">
-            {phase === "start" ? <WorkingText>{COMPACTING_WORDS}</WorkingText> : <span className="shrink-0">{LEAD[phase]}</span>}
+            {phase === "start" ? (
+              <WorkingText className={cn(meta.startedAt && "font-medium")}>{COMPACTING_WORDS}</WorkingText>
+            ) : (
+              <span className={cn("shrink-0", details.length > 0 && "font-medium")}>{LEAD[phase]}</span>
+            )}
             {phase === "start" ? <CompactionClock startedAt={meta.startedAt} /> : null}
-            {phase === "done" ? <Details items={doneDetails(meta)} /> : null}
-            {phase === "stopped" && meta.startedAt !== undefined && meta.endedAt !== undefined ? (
-              <span className="tabular-nums text-muted-foreground">{spanWords(meta.endedAt - meta.startedAt)}</span>
-            ) : null}
+            {details.length > 0 ? <Details items={details} /> : null}
           </span>
         </MorphText>
       }
@@ -68,7 +71,12 @@ const LEAD: Record<Phase, string> = {
   stopped: "Compaction stopped",
 };
 
-function doneDetails(meta: NonNullable<Block["compaction"]>): string[] {
+/** What an outcome adds after its lead: the before and after and the span for "done", the span for "stopped". */
+function outcomeDetails(meta: NonNullable<Block["compaction"]>): string[] {
+  if (meta.phase === "stopped") {
+    return meta.startedAt !== undefined && meta.endedAt !== undefined ? [spanWords(meta.endedAt - meta.startedAt)] : [];
+  }
+  if (meta.phase !== "done") return [];
   const tokens =
     meta.preTokens !== undefined && meta.postTokens !== undefined
       ? `${formatTokens(meta.preTokens)} → ${formatTokens(meta.postTokens)}`
@@ -78,15 +86,12 @@ function doneDetails(meta: NonNullable<Block["compaction"]>): string[] {
   return [tokens, meta.durationMs !== undefined ? spanWords(meta.durationMs) : undefined].filter((d): d is string => !!d);
 }
 
+/** The details as one muted comma run that truncates once, as a notice's are. */
 function Details({ items }: { items: string[] }) {
   return (
-    <>
-      {items.map((item) => (
-        <span key={item} className="min-w-0 truncate text-muted-foreground tabular-nums">
-          {item}
-        </span>
-      ))}
-    </>
+    <span data-slot="notice-details" className="min-w-0 truncate text-muted-foreground tabular-nums">
+      {items.join(", ")}
+    </span>
   );
 }
 

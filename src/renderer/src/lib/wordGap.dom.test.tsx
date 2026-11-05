@@ -7,6 +7,7 @@ import { setEditorConfigForTest } from "./editorConfig";
 import { ActionGroup } from "../surfaces/transcript/ActionGroup";
 import { fixtures } from "../surfaces/transcript/ActionGroup.fixtures";
 import { NoticeLine } from "../surfaces/transcript/NoticeLine";
+import { CompactionCard } from "../surfaces/CompactionCard";
 import { TurnDuration, WatchingLine } from "../surfaces/transcript/TurnEnd";
 
 // The one spacing rule of a line (docs/DESIGN.md "Typography and text
@@ -79,6 +80,19 @@ describe("a line's words sit 4px apart, its glyph and chevron 8px", () => {
     expect(space(glyph, text("Context compacted"))).toBe(8);
     expect(space(text("Context compacted"), text("414K → 3.6K, 1m 29s"))).toBe(4);
     expect(space(text("414K → 3.6K, 1m 29s"), chevron)).toBe(8);
+  });
+
+  it("the compaction line: a medium lead, its details one comma run 4px after it, the glyph 8px before", () => {
+    const { container } = render(
+      <CompactionCard block={{ id: "c", role: "system", text: "", compaction: { phase: "done", preTokens: 414_000, postTokens: 3_600, durationMs: 89_000 } }} />,
+    );
+    const glyph = container.querySelector("[data-slot=notice-line] > div > span")!;
+    const lead = text("Context compacted");
+    const run = text("414K → 3.6K, 1m 29s");
+    expect(lead.className).toContain("font-medium");
+    expect(container.querySelectorAll("[data-slot=notice-details]")).toHaveLength(1);
+    expect(space(lead, run)).toBe(4);
+    expect(space(glyph, lead)).toBe(8);
   });
 
   it("a step: glyph 8px to the verb, verb 4px to the target, the counts 4px after, the caret 8px after them", () => {

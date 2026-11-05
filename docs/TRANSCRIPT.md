@@ -210,7 +210,10 @@ foreground, the same words the group line uses); the components only draw it.
   context" with its time counted from the compaction's start, never reset;
   its outcome replaces that row in place (the fold's `compactionId`), even
   after a message came in, and a turn that ended without one closes it as
-  "Compaction stopped" with its span. While it runs its glyph is working's
+  "Compaction stopped" with its span. It reads as every notice does: the
+  lead medium once a detail follows it, the details one muted comma run
+  ("Context compacted 414K → 3.6K, 1m 29s"), one ellipsis on a narrow line;
+  the words morph inside the line's lead, so it draws them itself. While it runs its glyph is working's
   still dot, as is a hand-off's while it is prepared (its words shimmer):
   the working line holds the transcript's one moving mark.
 - **The host's steps fold into the run** (`isFoldedStep` in

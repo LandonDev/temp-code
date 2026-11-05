@@ -43,10 +43,12 @@ describe("CompactionCard", () => {
       <CompactionCard block={block({ phase: "done", preTokens: 48_000, postTokens: 12_000, durationMs: 6_000, trigger: "auto" })} />,
     );
     // The words and their details morph as one, inside the line's lead.
-    const spans = [...container.querySelectorAll('[data-morph-key="done"] > span > span')].map((s) => s.textContent);
-    expect(spans[0]).toBe("Context compacted");
-    expect(spans[1]).toMatch(/→/);
-    expect(spans[2]).toBe("6s");
+    // A medium lead, then the details as one muted comma run: one span, one ellipsis.
+    const spans = [...container.querySelectorAll('[data-morph-key="done"] > span > span')];
+    expect(spans.map((s) => s.textContent)).toEqual(["Context compacted", "48K → 12K, 6s"]);
+    expect(spans[0].className).toContain("font-medium");
+    expect(spans[1].className).toContain("truncate");
+    expect(spans[1].className).toContain("text-muted-foreground");
     expect(container.textContent).not.toContain("auto");
     expect(container.querySelector('[role="separator"]')).toBeNull();
   });
@@ -77,6 +79,12 @@ describe("CompactionCard", () => {
     expect(container.querySelector('[data-slot="spinner"]')).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
     expect(container.textContent).toBe("Compaction stopped1m 29s");
+    expect(screen.getByText("Compaction stopped").className).toContain("font-medium");
+  });
+
+  it("stopped with no span: the lead alone stays regular", () => {
+    render(<CompactionCard block={block({ phase: "stopped" })} />);
+    expect(screen.getByText("Compaction stopped").className).not.toContain("font-medium");
   });
 });
 
