@@ -2461,7 +2461,8 @@ export async function startServer(
           case 'session.interrupt':
             // Its Mac work first: the calls out on the Mac and its jobs end, what a pause held is refused.
             macTools.pause.stop(req.params.sessionId)
-            await registry.stopRun(req.params.sessionId)
+            if (req.params.subtree) await registry.stopSubtree(req.params.sessionId)
+            else await registry.stopRun(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.pause':
@@ -2856,6 +2857,11 @@ export async function startServer(
           }
           case 'app.adoptThread': {
             sendFrame({ id: req.id, ok: true, result: await batchRuns.adoptTool(callerOf(registry, req.params.sessionId), { threadId: req.params.threadId }) })
+            break
+          }
+          case 'app.archiveThreads': {
+            const { sessionId, ...args } = req.params
+            sendFrame({ id: req.id, ok: true, result: await batchRuns.archiveTool(callerOf(registry, sessionId), args) })
             break
           }
           case 'review.override': {

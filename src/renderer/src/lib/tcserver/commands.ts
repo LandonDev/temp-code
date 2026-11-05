@@ -478,10 +478,12 @@ export async function continueSession(
   await link.request("session.continue", { sessionId, ...run });
 }
 
-export async function interrupt(sessionId: string): Promise<void> {
+/** Stop a thread: its visible root's whole run, or with `subtree` this
+ *  thread and what it started, never its parent (a subagent's own Stop). */
+export async function interrupt(sessionId: string, options: { subtree?: boolean } = {}): Promise<void> {
   const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
-  await link.request("session.interrupt", { sessionId }, UI);
+  await link.request("session.interrupt", { sessionId, ...(options.subtree ? { subtree: true } : {}) }, UI);
 }
 
 /** Pause every running thread at once. */

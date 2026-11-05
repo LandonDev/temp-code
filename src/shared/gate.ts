@@ -178,3 +178,11 @@ export const ADOPT_THREAD_TOOL_DESCRIPTION =
 export const ADOPT_THREAD_PARAMS = {
   threadId: "The thread to adopt (app_list_threads shows ids)."
 }
+
+export const ARCHIVE_THREADS_TOOL_NAME = 'archive_threads'
+export const ARCHIVE_THREADS_TOOL_DESCRIPTION =
+  "Archive threads of your batch: they leave the board and the batch (a running one stops first, a queued one never starts) and stay restorable from the archive. Only a master thread may call it. Pass `which` (done: the finished ones; all: every one) or `threadIds` (batch threads by id, `<host>:<id>` on another host), not both. You cannot delete a thread: deleting is the person's, from the board or the rail; archive instead."
+export const ARCHIVE_THREADS_PARAMS = {
+  which: 'done: every finished thread of the batch (done, or idle after a completed turn). all: every thread of the batch.',
+  threadIds: 'Batch threads to archive by id (list_agents shows them); a thread on another host goes by `<host>:<id>`.'
+}

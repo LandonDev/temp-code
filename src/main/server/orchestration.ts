@@ -38,6 +38,7 @@ import type { EventRow, SessionMeta } from '@shared/events'
 import { watchPhrase } from '@shared/watch'
 import type { SessionRegistry } from './sessions'
 import type { CrossHostAgents } from './crossHostAgents'
+import { encodeAgentId } from '@shared/contract-crosshost'
 import { foldTodo, newTodoFold, tallyOf } from './todos'
 
 
@@ -416,8 +417,32 @@ const childOf = (parent: SessionMeta, agentId: string): SessionMeta | null => {
   const meta = registry?.get(agentId) ?? null
   return meta && supervisedBy(parent, meta) ? meta : null
 }
-const notChild = (agentId: string): string =>
-  `refused: ${agentId} is not a subagent or batch thread of this session. list_agents shows your agents and their ids.`
+/**
+ * Why `parent` may not act on `agentId`, worded so the caller knows what to
+ * do instead: the thread on another host goes by its `<env>:<id>`, a
+ * subagent of a batch thread is that thread's to supervise, a thread of
+ * another batch or a stranger is not the caller's.
+ */
+export function refusedAgent(parent: SessionMeta, agentId: string): string {
+  const tail = 'list_agents shows the ids you can act on.'
+  const meta = registry?.get(agentId) ?? null
+  if (!meta) {
+    const far = crossHost?.batchChildren(parent.id).find((r) => r.sessionId === agentId)
+    if (far) return `refused: ${agentId} runs on another host; call it ${encodeAgentId(far.environmentId, far.sessionId)}.`
+    return `refused: there is no thread ${agentId} on this host. ${tail}`
+  }
+  if (meta.id === parent.id) return 'refused: that is this thread itself.'
+  const master = isMasterSession(parent)
+  if (meta.parentId) {
+    const root = registry?.get(registry.rootSessionOf(meta.id))
+    if (master && root && root.masterId === parent.id && !root.parentId)
+      return `refused: ${agentId} is a subagent of your batch thread "${root.title}" (${root.id}); act on that thread instead (interrupt_agent stops it with its subagents, send_to_agent redirects it).`
+    return `refused: ${agentId} is a subagent of another thread, not yours. ${tail}`
+  }
+  if (meta.masterId && meta.masterId !== parent.id) return `refused: ${agentId} belongs to another master's batch. ${tail}`
+  if (master) return `refused: ${agentId} is not in your batch; adopt_thread brings it in. ${tail}`
+  return `refused: ${agentId} is not a subagent of this thread. ${tail}`
+}
 const idleSeconds = (id: string): number =>
   Math.max(0, Math.round((Date.now() - (registry?.lastActivityAt(id) ?? Date.now())) / 1000))
 /** The settled-agent report wait_for_agent returns. A watching child says
@@ -837,7 +862,7 @@ export async function orchSendToAgent(
 ): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
   if (crossHost?.isRemote(agentId)) return crossHost.send(parent, agentId, message)
-  if (!childOf(parent, agentId)) return notChild(agentId)
+  if (!childOf(parent, agentId)) return refusedAgent(parent, agentId)
   await registry.send(agentId, message)
   return 'sent'
 }
@@ -854,7 +879,7 @@ export async function orchCheckAgent(parent: SessionMeta, agentId: string): Prom
   if (!registry) return 'orchestration registry not ready'
   if (crossHost?.isRemote(agentId)) return crossHost.check(parent, agentId)
   const meta = childOf(parent, agentId)
-  if (!meta) return notChild(agentId)
+  if (!meta) return refusedAgent(parent, agentId)
   const rows = registry.eventsAfter(agentId, 0)
   const turn = latestTurnRows(rows)
   // Mid-turn, streamed deltas are all there is — fold them per block
@@ -901,7 +926,7 @@ export async function orchWaitForAgent(
   if (all.length === 0) return 'refused: pass agentId or agentIds'
   const remoteIds = all.filter((id) => crossHost?.isRemote(id))
   const ids = all.filter((id) => !remoteIds.includes(id))
-  for (const id of ids) if (!childOf(parent, id)) return notChild(id)
+  for (const id of ids) if (!childOf(parent, id)) return refusedAgent(parent, id)
   if (signal?.aborted) return abortedReport()
   // 0 / omitted = sleep until settled — the default; a timeout is opt-in.
   const timeoutMs = (args.timeoutSeconds ?? 0) * 1000
@@ -1001,7 +1026,7 @@ export async function orchAnswerAgent(
   if (!registry) return 'orchestration registry not ready'
   if (crossHost?.isRemote(args.agentId))
     return crossHost.answer(parent, args.agentId, args.requestId, args.answers, args.allow)
-  if (!childOf(parent, args.agentId)) return notChild(args.agentId)
+  if (!childOf(parent, args.agentId)) return refusedAgent(parent, args.agentId)
   if (!args.answers) return 'refused: pass answers (a local agent\'s approvals belong to the user).'
   const pending = pendingOf(registry.eventsAfter(args.agentId, 0))
   if (!pending || pending.requestId !== args.requestId) {
@@ -1014,12 +1039,30 @@ export async function orchAnswerAgent(
   return 'answered — the agent resumes; wait_for_agent to collect its result'
 }
 
+/** What interrupt_agent did: a queued agent never started, so it left the
+ *  queue; a batch thread stopped with its own subagents (left running they
+ *  report back and wake it); a subagent's turn was cut for a redirect. */
+export const INTERRUPT_WORDS = {
+  dequeued: 'removed from the queue before it started, and archived: it will not run',
+  thread: 'stopped, with its own subagents. send_to_agent gives it new work; archive_threads takes it out of your batch',
+  subagent: 'interrupted — send_to_agent to redirect, or spawn a replacement'
+} as const
+
 export async function orchInterruptAgent(parent: SessionMeta, agentId: string): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
   if (crossHost?.isRemote(agentId)) return crossHost.interrupt(parent, agentId)
-  if (!childOf(parent, agentId)) return notChild(agentId)
+  const child = childOf(parent, agentId)
+  if (!child) return refusedAgent(parent, agentId)
+  if (child.status === 'queued') {
+    await registry.interrupt(agentId)
+    return INTERRUPT_WORDS.dequeued
+  }
+  if (!child.parentId) {
+    await registry.stopSubtree(agentId)
+    return INTERRUPT_WORDS.thread
+  }
   await registry.interrupt(agentId)
-  return 'interrupted — send_to_agent to redirect, or spawn a replacement'
+  return INTERRUPT_WORDS.subagent
 }
 
 export async function orchListAgents(parent: SessionMeta): Promise<string> {
@@ -1036,7 +1079,8 @@ export async function orchListAgents(parent: SessionMeta): Promise<string> {
       status: statusOf(s),
       idleForSeconds: idleSeconds(s.id),
       cwd: s.cwd,
-      ...(s.parentId && s.planPath ? { findingsFile: s.planPath } : {})
+      ...(s.parentId && s.planPath ? { findingsFile: s.planPath } : {}),
+      ...(s.archived ? { archived: true } : {})
     }))
   // A master's batch: root threads on this host carrying its id.
   const host = registry.hostName()
@@ -1347,6 +1391,10 @@ a sibling it waits for. They carry your id, so the supervision tools
 list_agents) work on them by id; list_agents marks each row \`thread\`
 (a batch thread) or \`subagent\`. A thread one of them starts (a plan's
 build) joins the batch too. adopt_thread brings an existing thread in.
+interrupt_agent stops a batch thread with its own subagents (a queued one
+leaves the queue unstarted, archived); archive_threads takes threads out
+of the batch (the done ones, all, or by id). You never delete a thread:
+deleting is the person's, from the board; asked to, archive and say so.
 You are woken by a <subagent-report> when a batch thread settles,
 including when it waits on a question you can relay or answer with
 answer_agent. You never edit code yourself: the editing tools are off for

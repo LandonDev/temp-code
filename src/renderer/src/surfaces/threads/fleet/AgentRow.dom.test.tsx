@@ -308,11 +308,11 @@ describe("AgentRowView", () => {
 });
 
 describe("AgentRow", () => {
-  it("stops the agent's turn through the host", () => {
+  it("stops the agent and what it started through the host, never the thread above it", () => {
     const { meta } = row("Build the shell");
     const { getByRole } = render(<AgentRow agent={meta} onOpen={() => {}} />);
     fireEvent.click(getByRole("button", { name: "Stop" }));
-    expect(h.interrupt).toHaveBeenCalledWith("ios-orch-a1");
+    expect(h.interrupt).toHaveBeenCalledWith("ios-orch-a1", { subtree: true });
   });
 });
 

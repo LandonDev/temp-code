@@ -482,6 +482,19 @@ export const TOOLS = [
     }
   },
   {
+    // A copy of src/shared/gate.ts's ARCHIVE_THREADS_TOOL_DESCRIPTION and ARCHIVE_THREADS_PARAMS; app-bridge.test.ts keeps them equal.
+    name: 'archive_threads',
+    description:
+      "Archive threads of your batch: they leave the board and the batch (a running one stops first, a queued one never starts) and stay restorable from the archive. Only a master thread may call it. Pass `which` (done: the finished ones; all: every one) or `threadIds` (batch threads by id, `<host>:<id>` on another host), not both. You cannot delete a thread: deleting is the person's, from the board or the rail; archive instead.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        which: { type: 'string', enum: ['done', 'all'], description: 'done: every finished thread of the batch (done, or idle after a completed turn). all: every thread of the batch.' },
+        threadIds: { type: 'array', items: { type: 'string' }, description: 'Batch threads to archive by id (list_agents shows them); a thread on another host goes by `<host>:<id>`.' }
+      }
+    }
+  },
+  {
     name: 'report_findings',
     description:
       'Report the findings of a merge review as a typed list, once, when the review is done: every defect with its file, 1-indexed line, one-sentence summary, the concrete failure scenario and a verdict (CONFIRMED when you verified it against the code, PLAUSIBLE when you could not). An empty list means the change is sound. Only this call counts; prose in your reply is not read. Available only to the reviewer thread of a merge review.',
@@ -746,7 +759,8 @@ const METHOD_FOR = {
   report_findings: 'app.reportFindings',
   batch_gate: 'app.batchGate',
   batch_rules: 'app.batchRules',
-  adopt_thread: 'app.adoptThread'
+  adopt_thread: 'app.adoptThread',
+  archive_threads: 'app.archiveThreads'
 }
 
 /** The MCP content parts a tool result turns into (the preview's PNG rides as an image). */

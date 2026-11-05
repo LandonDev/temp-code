@@ -438,6 +438,18 @@ describe('CrossHostThreads: the box serving the Mac', () => {
     const other = await registry.create({ provider: 'claude', cwd: '/x', title: 'own' })
     await expect(svc.handle('thread.pause', { caller, args: { sessionId: other.id } }, ctx)).rejects.toThrow('not a thread this host started')
   })
+  it('thread.interrupt stops the thread with its subagents, says whether it left the queue, and refuses a thread the caller did not start', async () => {
+    const { svc, registry } = service()
+    const stopped: string[] = []
+    Object.assign(registry, { stopSubtree: async (id: string) => void stopped.push(id) })
+    const { sessionId } = (await svc.handle('thread.start', { caller, args: startArgs }, ctx)) as { sessionId: string }
+    expect(await svc.handle('thread.interrupt', { caller, args: { sessionId } }, ctx)).toEqual({ ok: true, outcome: 'stopped' })
+    registry.sessions.set(sessionId, { ...registry.sessions.get(sessionId)!, status: 'queued' })
+    expect(await svc.handle('thread.interrupt', { caller, args: { sessionId } }, ctx)).toEqual({ ok: true, outcome: 'dequeued' })
+    expect(stopped).toEqual([sessionId, sessionId])
+    const other = await registry.create({ provider: 'claude', cwd: '/x', title: 'own' })
+    await expect(svc.handle('thread.interrupt', { caller, args: { sessionId: other.id } }, ctx)).rejects.toThrow('not a thread this host started')
+  })
   it('thread.adopt takes an unarchived root of no batch into the caller\'s batch, makes the caller its owner, and refuses the rest with why', async () => {
     const { svc, registry, settings } = service()
     const members: string[] = []

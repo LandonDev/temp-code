@@ -150,9 +150,66 @@ thread of another batch, an unknown id. The master does the same with the
 `app.adoptThread`). `batch.archive { masterId, which, removeResources? }`
 (operate) archives the batch's children and leaves the master: `done` is
 the done ones (done, or idle on a completed turn with no failure; the ids
-`BatchState.done` lists, which the board's Archive done count reads), `all` is every one with the
-live ones stopped first; both go through the fleet's own `session.batch`
-(sessionBatch.ts, four at a time, the resource cleanup when asked).
+`BatchState.done` lists, which the board's Archive done count reads), `all` is every one: the
+queued ones leave first (stopping a sibling meets their `after`, and the
+scheduler started them before their archive came), then the live ones
+stop, then the rest archive; all of it through the fleet's own
+`session.batch` (sessionBatch.ts, four at a time, the resource cleanup
+when asked). The master does the same with `archive_threads` (below).
+
+**Stopping, archiving and deleting a batch thread.** The rule: the person
+may stop, archive or delete any batch thread; the master may stop and
+archive its batch threads and never delete one. Deleting is irreversible
+and the transcript goes with it, so it stays a person's act, from the
+board's row menu, the rail or the strip; an archived thread can be
+restored. The master's prompt (`MASTER_MECHANICS`) says so, and
+`archive_threads`' description says it cannot delete: asked to delete, it
+archives and tells the person.
+
+- Stop. The master's `interrupt_agent` on a batch thread stops it with its
+  own subagents (`registry.stopSubtree`): a subagent left running reports
+  back and wakes the thread it was stopped for. On a queued thread it
+  takes it out of the queue unstarted, archived (`INTERRUPT_WORDS` are its
+  answers). The person's Stop is `session.interrupt`: from the strip the
+  visible root's whole run, from a menu `subtree: true`, the thread and
+  what it started, so Stop on a subagent line under a board row stops that
+  subagent and leaves the batch thread working. Every tree stop also
+  takes queued members out of the queue (`stopTree` reaches `queued`
+  rows), so nothing of a stopped or archived tree starts later; the
+  subagents a tree stop ended report to no one (`quietSettles`), and the
+  settle that ends a stopped turn leaves the reports parked for the
+  thread's next turn instead of starting one (`stoppedSettle`).
+- Archive. `archive_threads { which: 'done' | 'all' }` or `{ threadIds }`
+  (master only; codex over the bridge as `app.archiveThreads`;
+  `Batches.archiveTool`): the done ones, all, or the named batch threads,
+  here or `<host>:<id>` on another host, each archived as the person's
+  Archive does (a running one stopped first). The answer names what it
+  archived, what failed with why, and what it refused (not in the batch,
+  a subagent, already archived). A batch blocked on a thread tells the
+  master to fix it or take it out with `archive_threads`.
+- Delete. The person's Delete confirms naming the thread; a thread at
+  work reads "It stops first, and its transcript is gone for good."
+  (`deleteBody` in chrome/DeleteThreadDialog.tsx, in the dialogs chunk),
+  and the host stops the tree before the rows go. The board drops the row
+  the moment its host says `session-removed`, though the batch's list
+  still names it: `useBoardLayout` remembers a listed child the store
+  held and no longer holds, and `boardLayout` never stands one back up
+  from the list; the host re-pushes the batch's state when a removed id
+  was in it.
+- Refusals. A supervision tool refused says why and what to do
+  (`refusedAgent`): a thread on another host goes by `<host>:<id>`, a
+  subagent of a batch thread is that thread's to stop, a thread of
+  another master's batch or one in no batch (adopt_thread brings it in).
+  A master acts on every far batch thread, whoever started it (a plan
+  child's build started on the Mac is filed under the plan child and found
+  through the batch index). On the person's side nothing fails in silence:
+  a menu pick, the rail's and the strip's Delete and Archive, Remove from
+  queue (a `session.batch` answer with a failed id) and the title bar's
+  Archive done or all say what failed, the thread and the host's reason
+  (lib/threadActionFailure.ts, loaded on first use through
+  lib/threadActionToast.ts: a toast "Couldn't delete it" over
+  "<thread>: <why>", or the archive dialog's error line), and a refused
+  delete leaves the row where it was.
 
 **Settles.** A thread settling (idle, error or waiting, never a pause)
 reports to everyone in `settleTargets`, once each: its parent, else its
@@ -200,7 +257,9 @@ A queued root's `activity` reads "Queued  waiting for <sibling>"
 changes. The rail draws a still gray dot, the tab edge "Queued" with that
 line as its tooltip, the working strip the line with "Start now". The
 fleet switches' Stop and Archive done take a queued root as "remove from
-the queue" and archive it (lib/threadBatch.ts); Pause and Resume leave it.
+the queue" and archive it (lib/threadBatch.ts), and so does a Stop that
+reaches a queued thread any other way (`interrupt_agent`, `thread.interrupt`
+from another host, a tree stop): it never starts; Pause and Resume leave it.
 The boot resumer and the liveness sweep never touch it.
 
 ## The policy is for subagents
@@ -728,6 +787,15 @@ renderer's read of the flag on the thread).
   answers the tag and `batch.get` shows every step passed; `batch.archive
   done` archives the four children and leaves both masters. ALL PASS on
   the box on 2026-10-22.
+- `bun run script:e2e-batch-child-actions` (scripts/e2e-batch-child-actions.ts):
+  a haiku master pinned with `session.setMaster` and three haiku batch
+  threads (working, queued `after` it, done). In a real turn the master
+  stops the queued thread with `interrupt_agent` (it leaves the queue
+  unstarted, archived) and archives the done one with `archive_threads`,
+  and has no way to delete; the person's Stop idles the working thread,
+  Remove from queue archives a second queued thread, and Delete on the
+  working thread stops and removes it while the dequeued one never
+  starts. ALL PASS on the box on 2026-11-05.
 - `bun run script:e2e-queue`: six haiku threads start at once (no cap),
   `after` holds and releases.
 - `bun run script:e2e-batch-gate`: a pinned master, two haiku children,
@@ -745,7 +813,14 @@ renderer's read of the flag on the thread).
   stopped, each-landing and at a restart, adopt, archive, the blocked
   case, the all-at-once merge and its refusal, the telemetry, the push
   throttle, the deploy's restart, the publish's restart, `batch_gate`),
-  contract-batch.test.ts, sessions-master.test.ts (the watching master,
+  contract-batch.test.ts, sessions-batch-actions.test.ts (every action
+  over every kind of batch thread: the master's interrupt_agent and
+  archive_threads, the person's Stop, Archive, Delete and Remove from
+  queue on a working, queued, booting, done, plan-started and adopted
+  thread and one with subagents, and the refusals' words),
+  crossHostAgents.test.ts (a far batch thread a batch thread started,
+  stopped and dequeued by the master; one deleted on its host leaving the
+  batch), sessions-master.test.ts (the watching master,
   the steer and `wait_for_agent` on it, the pause cascade, the batch
   following the starter, `setMaster`, archive), sessionBatch.test.ts,
   planFlow.test.ts (the build's inheritance), remote/macPublish.test.ts, remote/peerPublish.test.ts,
@@ -754,16 +829,25 @@ renderer's read of the flag on the thread).
   gateQueue.test.ts, mergeReview.test.ts, projectPreamble.test.ts; the
   renderer's useMasterModel.test.ts, MasterView.dom.test.tsx,
   GateCard.dom.test.tsx, TabIndicator.dom.test.tsx, ThreadBanners.test.ts,
-  WorkingStrip tests, ThreadHeader.test.ts and
-  WorkspaceSessions.dom.test.tsx.
+  WorkingStrip tests, ThreadHeader.test.ts,
+  WorkspaceSessions.dom.test.tsx, useThreadMenu.dom.test.tsx and
+  threadActionFailure.test.ts. MasterView.dom.test.tsx's "Stop, archive
+  and delete a batch thread from the board" drives the row menu on two
+  fake hosts: Delete on the box's thread reaches the box alone and the row
+  leaves at once, a refused Delete and a failed Remove from queue toast
+  the reason, Archive all names the thread it left behind, and Stop on a
+  subagent line stops that subagent alone.
 
 None of the proofs that boot harnesses are in the release gate.
 
 ## Not yet
 
-- A far batch child is counted, paused, archived, adopted and landed from
-  the master's host; a thread that child starts on ITS host (a far plan's
-  build) joins the batch there and is not seen by the master's engine.
+- A far batch child is counted, paused, stopped, archived, adopted and
+  landed from the master's host; a thread that child starts on ITS host (a
+  far plan's build) joins the batch there and is not seen by the master's
+  engine. One deleted on its own host leaves the master's batch at the
+  next refresh (a `thread.list` answer that omits it), which runs once the
+  local children are done.
 - A far child's "done" is its host's `done` or `idle`; the engine cannot
   read a completed turn over the link.
 - A thread outside any batch passing `after` to `app_start_thread` has it

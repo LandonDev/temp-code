@@ -122,7 +122,7 @@ export interface CrossHostThreadsDeps {
     | 'listProjects'
     | 'list'
   > &
-    Partial<Pick<SessionRegistry, 'pauseRun' | 'resumePausedRun' | 'setArchived' | 'setBatchMembership' | 'titleFromTask'>>
+    Partial<Pick<SessionRegistry, 'pauseRun' | 'resumePausedRun' | 'setArchived' | 'setBatchMembership' | 'titleFromTask' | 'stopSubtree'>>
   /** The saved hosts (remote.environments), by id and name. */
   environments: () => { id: string; name: string }[]
   /** How to send on the link to a host, while it is up: the reply path of a `peer.call` served here. */
@@ -465,10 +465,14 @@ export class CrossHostThreads {
       }
       case 'thread.interrupt': {
         const a = ThreadInterruptArgsSchema.parse(args)
-        this.own(caller, a.sessionId)
-        await this.deps.registry.interrupt(a.sessionId)
-        line(`interrupted ${a.sessionId}`)
-        return { ok: true }
+        const meta = this.own(caller, a.sessionId)
+        // A queued thread leaves the queue unstarted; any other stops with
+        // its own subagents, which would otherwise report back and wake it.
+        const outcome = meta.status === 'queued' ? 'dequeued' : 'stopped'
+        if (this.deps.registry.stopSubtree) await this.deps.registry.stopSubtree(a.sessionId)
+        else await this.deps.registry.interrupt(a.sessionId)
+        line(`${outcome} ${a.sessionId}`)
+        return { ok: true, outcome }
       }
       case 'thread.answer': {
         const a = ThreadAnswerArgsSchema.parse(args)

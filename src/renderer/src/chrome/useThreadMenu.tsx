@@ -1,4 +1,3 @@
-import { loadToast } from "../components/ui/toaster";
 import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { devPane, useDevPane } from "../lib/devPane";
 import { useDevRunning, useDevServable } from "../lib/devServers";
@@ -12,6 +11,7 @@ import type { SessionMeta, ThreadType } from "../lib/tcserver/types";
 import { threadMenuRows, type ThreadMenuExtra } from "../lib/threadMenu";
 import { archiveThread, isRemovable, liveResources, loadThreadResources, startThreadResources, useThreadResources } from "../lib/threadResources";
 import { leafIds } from "../lib/layout";
+import { actionFailed } from "../lib/threadActionToast";
 import { shortcutFor } from "../lib/settings";
 import { workspaceTabsStore } from "../stores/workspace";
 import { headerStore } from "../stores/header";
@@ -20,7 +20,6 @@ import { workspaceActions } from "../stores/workspaceActions";
 import { SessionActionsContext } from "../surfaces/threadChat";
 import { dialogsChunk } from "../surfaces/chunks";
 import { THREAD_LABELS } from "../surfaces/threads/threadTypes";
-import { ConfirmDialog } from "./ConfirmDialog";
 import { goalDialog } from "./GoalDialog";
 import type { MenuRow } from "./menuRows";
 import { useThreadHost } from "./ThreadHostChip";
@@ -71,6 +70,7 @@ const ThreadResourcesDialog = dialogsChunk.surface("ThreadResourcesDialog");
 const ArchiveThreadDialog = dialogsChunk.surface("ArchiveThreadDialog");
 const MacBridgeRulesDialog = dialogsChunk.surface("MacBridgeRulesDialog");
 const RenameThreadDialog = dialogsChunk.surface("RenameThreadDialog");
+const DeleteThreadDialog = dialogsChunk.surface("DeleteThreadDialog");
 
 /** The focused pane of the tab on screen, when it is not this thread's own. */
 function sidePane(id: string): string | null {
@@ -168,12 +168,8 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     void loadThreadResources(id);
   }, []);
 
-  /** A pick that failed on the host says so, with the thread it was for. */
-  const quiet = (run: Promise<unknown>, verb: string, id: string) =>
-    void run.catch((err) => {
-      console.warn("[thread-menu]", err);
-      void loadToast().then((toast) => toast.error(`Couldn't ${verb}`, { description: titleOf(id) }));
-    });
+  /** A pick that failed on the host says so, with the thread it was for and why. */
+  const quiet = (run: Promise<unknown>, verb: string, id: string) => void run.catch((err) => actionFailed(verb, titleOf(id), err));
   const onPick = (id: string, pick: string) => {
     const h = latest.current;
     if (id === target && host.pick(pick)) return;
@@ -196,7 +192,8 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     else if (pick === "resume") quiet(commands.resume(id), "resume it", id);
     else if (pick === "compact") quiet(commands.compact(id), "compact it", id);
     else if (pick === "killBackground") quiet(commands.killBackground(id), "stop its background work", id);
-    else if (pick === "stop") quiet(commands.interrupt(id), "stop it", id);
+    // This thread and what it started: a subagent's Stop never stops its parent.
+    else if (pick === "stop") quiet(commands.interrupt(id, { subtree: true }), "stop it", id);
     else if (pick === "start-now") quiet(commands.startNow(id), "start it", id);
     else if (pick === "master") quiet(commands.setMaster(id, !masterIds.has(id)), masterIds.has(id) ? "remove it as master" : "make it master", id);
     else if (pick === "batch-new" || pick === "batch-adopt") setDialog({ kind: pick, id });
@@ -208,7 +205,16 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     else if (pick === "dev") devPane.toggle();
     else if (pick === "remove-queue") {
       const env = metaOf(id)?.environmentId ?? sessionStore.get(id)?.environmentId;
-      if (env) quiet(commands.sessionBatch(env, "stop", [id]), "remove it from the queue", id);
+      // The answer names a refused id as failed, with why: that is a failure too.
+      if (env)
+        quiet(
+          commands.sessionBatch(env, "stop", [id]).then((r) => {
+            const failed = r?.failed?.[0];
+            if (failed) throw new Error(failed.error);
+          }),
+          "remove it from the queue",
+          id,
+        );
     }
     // With resources on the ledger the archive asks whether they go too.
     else if (pick === "archive") {
@@ -254,11 +260,9 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
   } else if (dialog?.kind === "delete") {
     const id = dialog.id;
     dialogs = (
-      <ConfirmDialog
-        title={`Delete ${titleOf(id)}?`}
-        body="Its transcript is gone for good."
-        confirmLabel="Delete thread"
-        danger
+      <DeleteThreadDialog
+        title={titleOf(id)}
+        status={metaOf(id)?.status ?? session?.status}
         onCancel={close}
         onConfirm={() => {
           close();

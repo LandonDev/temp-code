@@ -652,6 +652,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('app.adoptThread'),
     params: z.object({ sessionId: z.string(), threadId: z.string() })
   }),
+  // The codex bridge's archive_threads (batch.ts): the master archives threads of its batch.
+  z.object({
+    id: z.string(),
+    method: z.literal('app.archiveThreads'),
+    params: z.object({ sessionId: z.string(), which: z.enum(['done', 'all']).optional(), threadIds: z.array(z.string()).max(100).optional() })
+  }),
   // Appshots (M10): global capture settings, one settings-table row.
   z.object({
     id: z.string(),
@@ -764,7 +770,10 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({
     id: z.string(),
     method: z.literal('session.interrupt'),
-    params: z.object({ sessionId: z.string() })
+    // The visible root's whole run by default (the strip's Stop); `subtree`
+    // stops this thread and what it started, never its parent (a menu's Stop
+    // on a subagent).
+    params: z.object({ sessionId: z.string(), subtree: z.boolean().optional() })
   }),
   // The composer of an idle thread gained focus: open the upstream socket its
   // next turn will ride (one per account per minute). Answers whether it was

@@ -1238,7 +1238,7 @@ describe('Batches: adopt and archive', () => {
     expect(await b.adoptTool(w.sessions.get('m')!, { threadId: 'fresh' })).toBe('Adopted "Fresh one" (fresh) into your batch: its settles reach you from here, and it counts toward the batch\'s end.')
   })
 
-  it('archive done archives the done children through the fleet\'s batch with the cleanup flag; all stops the live ones first; the master stays', async () => {
+  it('archive done archives the done children through the fleet\'s batch with the cleanup flag; all takes the queued ones out, then stops the live ones; the master stays', async () => {
     const w = world({ children: [meta('m'), meta('a', { masterId: 'm', createdAt: 2 }), meta('b', { masterId: 'm', createdAt: 3, status: 'running' }), meta('q', { masterId: 'm', createdAt: 4, status: 'queued' }), meta('f', { masterId: 'm', createdAt: 5, status: 'idle' })] })
     const b = w.make()
     // a has a turn behind it (done); f is idle with none (not done).
@@ -1248,10 +1248,12 @@ describe('Batches: adopt and archive', () => {
     expect(w.sessions.get('a')?.archived).toBe(true)
     expect(w.sessions.get('m')?.archived).toBe(false)
     const all = await b.archive('m', 'all')
-    expect(all.succeeded).toEqual(['b', 'q', 'f'])
+    // The queued one leaves before its siblings stop: a stop meets its `after` and would start it.
+    expect(all.succeeded).toEqual(['q', 'b', 'f'])
     expect(w.batchCalls.slice(1)).toEqual([
+      { action: 'archive', ids: ['q'], cleanup: false },
       { action: 'stop', ids: ['b', 'f'] },
-      { action: 'archive', ids: ['b', 'q', 'f'], cleanup: false }
+      { action: 'archive', ids: ['b', 'f'], cleanup: false }
     ])
     expect(w.sessions.get('m')?.archived).toBe(false)
     expect(await b.archive('m', 'all')).toEqual({ attempted: [], succeeded: [], failed: [] })

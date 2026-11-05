@@ -46,11 +46,17 @@ vi.mock("./ThreadHostChip", () => ({ useThreadHost: () => ({ host: null, movingT
 vi.mock("./GoalDialog", () => ({ goalDialog: { open: goalOpen, close: vi.fn() } }));
 vi.mock("../stores/workspace", () => ({ workspaceTabsStore: { getState: () => tabs.state } }));
 vi.mock("../stores/workspaceActions", () => ({ workspaceActions: { dropThread } }));
-vi.mock("../surfaces/chunks", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../surfaces/chunks")>()),
-  // The add dialogs' stand-in: which master and which dialog it was opened for.
-  dialogsChunk: { surface: () => (p: { masterId: string; kind: string }) => <div data-batch-add={p.kind} data-master={p.masterId} /> },
-}));
+vi.mock("../surfaces/chunks", async (importOriginal) => {
+  const { DeleteThreadDialog } = await import("./DeleteThreadDialog");
+  return {
+    ...(await importOriginal<typeof import("../surfaces/chunks")>()),
+    // The add dialogs' stand-in: which master and which dialog it was opened for; the delete confirm is itself.
+    dialogsChunk: {
+      surface: (name: string) =>
+        name === "DeleteThreadDialog" ? DeleteThreadDialog : (p: { masterId: string; kind: string }) => <div data-batch-add={p.kind} data-master={p.masterId} />,
+    },
+  };
+});
 
 import { SessionActionsContext, type SessionActions } from "../surfaces/threadChat";
 import { headerStore } from "../stores/header";
@@ -138,7 +144,7 @@ describe("one thread menu on every surface", () => {
     expect(commands.pause).toHaveBeenCalledWith("t1");
   });
 
-  it("a pick the host refuses says so in a toast naming the thread", async () => {
+  it("a pick the host refuses says so in a toast naming the thread and the host's reason", async () => {
     thread("t1", { title: "Fix the rail" });
     commands.pause.mockImplementationOnce(() => Promise.reject(new Error("offline")));
     toasts.length = 0;
@@ -146,7 +152,25 @@ describe("one thread menu on every surface", () => {
     render(<Surfaces />);
     fireEvent.contextMenu(screen.getByText("Row t1"));
     fireEvent.click(within(await screen.findByRole("menu", { name: "Rail" })).getByText("Pause"));
-    await waitFor(() => expect(toasts).toEqual([{ message: "Couldn't pause it", description: "Fix the rail" }]));
+    await waitFor(() => expect(toasts).toEqual([{ message: "Couldn't pause it", description: "Fix the rail: Offline" }]));
+  });
+
+  it("Stop stops the thread and what it started, never its parent", async () => {
+    thread("t1");
+    render(<Surfaces />);
+    fireEvent.contextMenu(screen.getByText("Row t1"));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Rail" })).getByText("Stop"));
+    expect(commands.interrupt).toHaveBeenCalledWith("t1", { subtree: true });
+  });
+
+  it("Delete confirms naming the thread; a working one says it stops first", async () => {
+    thread("t1", { title: "Fix the rail" });
+    render(<Surfaces />);
+    fireEvent.contextMenu(screen.getByText("Row t1"));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Rail" })).getByText("Delete…"));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Delete Fix the rail?")).toBeTruthy();
+    expect(within(dialog).getByText("It stops first, and its transcript is gone for good.")).toBeTruthy();
   });
 
   it("a Type pick goes through the chat's onThreadTypeChange", async () => {

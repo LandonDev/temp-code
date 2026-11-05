@@ -36,9 +36,14 @@ const { startThread, batch, link, boxLink, hosts, catalog, rowReads } = vi.hoist
     digests = new Map<string, unknown>();
     boardChildren: unknown[] = [];
     calls: { method: string; params: unknown }[] = [];
+    /** A method the host refuses, with its words; a method's own answer. */
+    fail = new Map<string, string>();
+    answers = new Map<string, unknown>();
     private pushListeners = new Set<(push: ServerPush) => void>();
     request<T>(method: string, params?: unknown): Promise<T> {
       this.calls.push({ method, params });
+      if (this.fail.has(method)) return Promise.reject(new Error(this.fail.get(method)));
+      if (this.answers.has(method)) return Promise.resolve(this.answers.get(method) as T);
       const p = (params ?? {}) as { sessionId?: string };
       if (method === "session.list") return Promise.resolve(this.metas as T);
       if (method === "session.events") return Promise.resolve((this.rows.get(p.sessionId ?? "") ?? []) as T);
@@ -141,6 +146,13 @@ vi.mock("../../lib/tcserver/commands", async (importOriginal) => ({
   startThread: (...args: unknown[]) => startThread(...(args as [])),
 }));
 vi.mock("../../chrome/ModelPicker", () => ({ ModelPicker: () => <span data-model-picker /> }));
+// Every toast a failed action raises, as its two lines.
+const toasts = vi.hoisted(() => [] as { message: string; description?: string }[]);
+vi.mock("../../components/ui/toaster", async (original) => ({
+  ...(await original<typeof import("../../components/ui/toaster")>()),
+  loadToast: () =>
+    Promise.resolve(Object.assign(() => {}, { error: (message: string, opts?: { description?: string }) => toasts.push({ message, description: opts?.description }) })),
+}));
 // The composer a tab has (threadChat.tsx), as a field that hands its text
 // to the thread the way the real one does: the intent from busy, the
 // session it was mounted for, the caret when it is focused.
@@ -369,7 +381,10 @@ beforeEach(() => {
     l.notes.clear();
     l.digests.clear();
     l.boardChildren = [];
+    l.fail.clear();
+    l.answers.clear();
   }
+  toasts.length = 0;
   rowReads.length = 0;
   sent.length = 0;
   hosts.environments = [{ id: "local", name: "This Mac" }];
@@ -1558,6 +1573,98 @@ describe("the master view", () => {
     expect(within(menu).getByRole("menuitem", { name: "New thread…" })).toBeTruthy();
     // The summary lives in the rules dialog and the master's chat, never on the board.
     expect(document.querySelector("[data-board]")?.textContent).not.toContain("Gate, release, publish");
+  });
+});
+
+describe("Stop, archive and delete a batch thread from the board", () => {
+  const rowMenu = async (name: RegExp): Promise<HTMLElement> => {
+    fireEvent.click(within(screen.getByRole("button", { name })).getByRole("button", { name: "Thread actions" }));
+    return screen.findByRole("menu", { name: "Thread actions" });
+  };
+  const listed = (sessionId: string, environmentId: string, status: SessionMeta["status"], title: string) => ({ sessionId, environmentId, status, title, threadType: "implementation" as const, provider: "claude", model: "claude-opus-5-5" });
+  afterEach(() => {
+    delete (batch as { children?: unknown }).children;
+  });
+
+  it("Delete on a working thread of another host confirms naming it and that it stops first, goes to that host alone, and the row leaves at once", async () => {
+    seed([meta({ id: "c-home", title: "Home", status: "idle", createdAt: 1 })]);
+    seedBox([boxMeta({ id: "b-run", title: "Box build", status: "running", busySince: 1, createdAt: 2 })], true);
+    // The batch's own list still names it until the next answer.
+    (batch as { children?: unknown }).children = [listed("c-home", "local", "idle", "Home"), listed("b-run", "box", "running", "Box build")];
+    renderView();
+    await flush();
+    fireEvent.click(within(await rowMenu(/Box build/)).getByText("Delete…"));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Delete Box build?")).toBeTruthy();
+    expect(within(dialog).getByText("It stops first, and its transcript is gone for good.")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete thread" }));
+    await flush();
+    expect(boxLink.calls.filter((c) => c.method === "session.delete").map((c) => c.params)).toEqual([{ sessionId: "b-run" }]);
+    expect(link.calls.some((c) => c.method === "session.delete")).toBe(false);
+    // The host removes it: the row goes though the batch's list has not caught up.
+    act(() => boxLink.push({ push: "session-removed", sessionIds: ["b-run"] } as ServerPush));
+    await flush();
+    await waitFor(() => expect(document.querySelector("[data-menu-id='b-run']")).toBeNull());
+    expect(screen.queryByRole("button", { name: /Box build/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Home/ })).toBeTruthy();
+    expect(toasts).toEqual([]);
+  });
+
+  it("a Delete the host refuses says why in a toast and the row stays", async () => {
+    seed([meta({ id: "c-done", title: "Finished", status: "idle", createdAt: 1 })]);
+    link.fail.set("session.delete", "forbidden: session.delete needs admin");
+    renderView();
+    await flush();
+    fireEvent.click(within(await rowMenu(/Finished/)).getByText("Delete…"));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Its transcript is gone for good.")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete thread" }));
+    await flush();
+    await waitFor(() => expect(toasts).toEqual([{ message: "Couldn't delete it", description: "Finished: Forbidden: session.delete needs admin" }]));
+    expect(screen.getByRole("button", { name: /Finished/ })).toBeTruthy();
+  });
+
+  it("Remove from queue whose answer names the thread as failed says why; Archive reaches the row's own host", async () => {
+    seed([meta({ id: "c-q", title: "Inbox", status: "queued", createdAt: 1 })]);
+    seedBox([boxMeta({ id: "b-done", title: "Box done", status: "idle", createdAt: 2 })], true);
+    link.answers.set("session.batch", { attempted: ["c-q"], succeeded: [], failed: [{ sessionId: "c-q", error: "this thread is moving to another host; try again once it lands" }] });
+    renderView();
+    await flush();
+    fireEvent.click(within(await rowMenu(/Inbox/)).getByText("Remove from queue"));
+    await flush();
+    await waitFor(() =>
+      expect(toasts).toEqual([{ message: "Couldn't remove it from the queue", description: "Inbox: This thread is moving to another host; try again once it lands" }]),
+    );
+    fireEvent.click(within(await rowMenu(/Box done/)).getByText("Archive"));
+    await flush();
+    expect(boxLink.calls.filter((c) => c.method === "session.archive").map((c) => c.params)).toEqual([{ sessionId: "b-done", archived: true }]);
+    expect(link.calls.some((c) => c.method === "session.archive")).toBe(false);
+  });
+
+  it("Archive all that leaves a thread behind keeps its dialog open, naming the thread and why", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 }), meta({ id: "c-done", title: "Done one", status: "idle", createdAt: 2 })]);
+    link.answers.set("batch.archive", { attempted: ["c-run", "c-done"], succeeded: ["c-done"], failed: [{ sessionId: "c-run", error: "this thread is moving to another host; try again once it lands" }] });
+    renderView();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive all…" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive 2" }));
+    await flush();
+    expect(await within(screen.getByRole("dialog")).findByText("Home: This thread is moving to another host; try again once it lands")).toBeTruthy();
+  });
+
+  it("Stop on a subagent line stops that subagent alone, never the batch thread above it", async () => {
+    seed([
+      meta({ id: "c-run", title: "Home", status: "running", busySince: 1, createdAt: 1 }),
+      meta({ id: "a1", title: "Rail rows", status: "running", busySince: 1, parentId: "c-run", masterId: null as unknown as string, createdAt: 2 }),
+    ]);
+    renderView();
+    await flush();
+    fireEvent.contextMenu(document.querySelector("[data-agent='a1']")!);
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Thread actions" })).getByText("Stop"));
+    await flush();
+    expect(link.calls.filter((c) => c.method === "session.interrupt").map((c) => c.params)).toEqual([{ sessionId: "a1", subtree: true }]);
   });
 });
 

@@ -29,7 +29,7 @@ import {
 } from '@shared/contract-crosshost'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectLinkFacts } from '@shared/projectLinks'
-import { batchMembershipOf, taskTitle, type ResolvedSpawn } from './orchestration'
+import { batchMembershipOf, INTERRUPT_WORDS, taskTitle, type ResolvedSpawn } from './orchestration'
 import type { HostTransport } from './remote/hostLinks'
 import { PeerOfflineError, servePeerCall, type LinkRequest } from './remote/peerCalls'
 
@@ -92,6 +92,9 @@ export interface RemoteChildRecord {
   masterId?: string
   seenAt: number
 }
+
+/** A master as its own row says: pinned, and a root. */
+const isMasterMeta = (s: Pick<SessionMeta, 'isMaster' | 'parentId'>): boolean => !!s.isMaster && !s.parentId
 
 /** One line of the batch index: where the record lives. */
 interface BatchPointer {
@@ -278,8 +281,11 @@ export class CrossHostAgents {
     if (before.masterId && before.status !== state.status) this.deps.batchChanged?.(before.masterId)
   }
 
-  /** The record a parent holds for an encoded id, or the refusal list_agents answers. */
-  private childOf(parent: SessionMeta, agentId: string): RemoteChildRecord | null {
+  /** The record a parent may act on for an encoded id, with the id of the
+   *  thread that holds it (`owner`): its own children, and for a master
+   *  every far thread of its batch, whoever started it (a plan child's
+   *  build started on the Mac lives under the plan child). */
+  private childOf(parent: SessionMeta, agentId: string): (RemoteChildRecord & { owner: string }) | null {
     let decoded: ReturnType<typeof decodeAgentId>
     try {
       decoded = decodeAgentId(agentId)
@@ -287,7 +293,26 @@ export class CrossHostAgents {
       return null
     }
     if (!decoded) return null
-    return this.children(parent.id).find((r) => r.environmentId === decoded.environmentId && r.sessionId === decoded.sessionId) ?? null
+    const own = this.children(parent.id).find((r) => r.environmentId === decoded.environmentId && r.sessionId === decoded.sessionId)
+    if (own) return { ...own, owner: parent.id }
+    if (!isMasterMeta(parent)) return null
+    const p = this.pointers(parent.id).find((x) => x.environmentId === decoded.environmentId && x.sessionId === decoded.sessionId)
+    const rec = p ? this.children(p.parentId).find((r) => r.environmentId === p.environmentId && r.sessionId === p.sessionId && r.masterId === parent.id) : undefined
+    return rec ? { ...rec, owner: p!.parentId } : null
+  }
+
+  /** What a parent lists and supervises on other hosts: its own children,
+   *  and for a master its batch's far threads too, each with its holder. */
+  private supervised(parent: SessionMeta): (RemoteChildRecord & { owner: string })[] {
+    const own = this.children(parent.id).map((r) => ({ ...r, owner: parent.id }))
+    if (!isMasterMeta(parent)) return own
+    const out = [...own]
+    for (const p of this.pointers(parent.id)) {
+      if (p.parentId === parent.id || out.some((r) => r.environmentId === p.environmentId && r.sessionId === p.sessionId)) continue
+      const rec = this.children(p.parentId).find((r) => r.environmentId === p.environmentId && r.sessionId === p.sessionId && r.masterId === parent.id)
+      if (rec) out.push({ ...rec, owner: p.parentId })
+    }
+    return out
   }
 
   /** True when the id names a thread on another host (whether or not this parent owns it). */
@@ -347,6 +372,7 @@ export class CrossHostAgents {
     const byHost = new Map<string, RemoteChildRecord[]>()
     for (const r of recs) byHost.set(r.environmentId, [...(byHost.get(r.environmentId) ?? []), r])
     const unreachable: string[] = []
+    const gone: string[] = []
     for (const [host, list] of byHost) {
       const first = this.batchCaller(masterId, list[0])
       if (!first) continue
@@ -361,10 +387,15 @@ export class CrossHostAgents {
           const p = this.pointers(masterId).find((x) => x.environmentId === host && x.sessionId === s.sessionId)
           if (p) this.touch(p.parentId, host, s)
         }
+        // The host answered without it: deleted there (or moved on), so it
+        // leaves the batch instead of holding its end open for ever.
+        const answered = new Set(states.map((s) => s.sessionId))
+        gone.push(...list.filter((r) => !answered.has(r.sessionId)).map((r) => encodeAgentId(host, r.sessionId)))
       } catch {
         unreachable.push(host)
       }
     }
+    if (gone.length) this.forgetFromBatch(masterId, gone)
     return { children: this.batchChildren(masterId), unreachable }
   }
 
@@ -573,7 +604,7 @@ export class CrossHostAgents {
   }
 
   private notChild(agentId: string): string {
-    return `refused: ${agentId} is not a subagent of this session. list_agents shows your agents and their ids.`
+    return `refused: ${agentId} is not a subagent or batch thread of this session on that host. list_agents shows the ids you can act on.`
   }
 
   async send(caller: SessionMeta, agentId: string, message: string): Promise<string> {
@@ -594,7 +625,7 @@ export class CrossHostAgents {
     if (!rec) return this.notChild(agentId)
     try {
       const r = await this.call<ThreadCheckResult>(rec.environmentId, session, 'thread.check', { sessionId: rec.sessionId })
-      this.touch(session.id, rec.environmentId, r)
+      this.touch(rec.owner, rec.environmentId, r)
       return JSON.stringify({ agentId, host: rec.environmentId, title: r.title, status: r.status, idleForSeconds: r.idleForSeconds, currentTurn: r.currentTurn, pending: r.pending, tasks: r.tasks, cwd: r.cwd })
     } catch (err) {
       return JSON.stringify({ agentId, host: rec.environmentId, title: rec.title, status: rec.status, linkDown: true, note: this.offlineText(err, rec) })
@@ -617,8 +648,12 @@ export class CrossHostAgents {
     const rec = this.childOf(session, agentId)
     if (!rec) return this.notChild(agentId)
     try {
-      await this.call(rec.environmentId, session, 'thread.interrupt', { sessionId: rec.sessionId })
-      return 'interrupted — send_to_agent to redirect, or spawn a replacement'
+      const r = await this.call<{ outcome?: 'dequeued' | 'stopped' } | null>(rec.environmentId, session, 'thread.interrupt', { sessionId: rec.sessionId })
+      if (r?.outcome === 'dequeued') {
+        if (rec.masterId) this.forgetFromBatch(rec.masterId, [agentId])
+        return INTERRUPT_WORDS.dequeued
+      }
+      return rec.kind === 'started' ? INTERRUPT_WORDS.thread : INTERRUPT_WORDS.subagent
     } catch (err) {
       return `failed: ${this.offlineText(err, rec)}`
     }
@@ -661,7 +696,7 @@ export class CrossHostAgents {
           const latest = this.childOf(session, agentId) ?? rec
           return { agentId, status: latest.status, reply: '', title: latest.title, linkDown: true, note: this.offlineText(err, rec) }
         }
-        this.touch(session.id, rec.environmentId, r)
+        this.touch(rec.owner, rec.environmentId, r)
         if (r.settled) return { agentId, status: r.status, reply: r.reply || '(no reply yet)', ...(r.pending ? { pending: r.pending } : {}), title: r.title }
         if (this.now() >= end) return { agentId, status: r.status, reply: '', title: r.title, note: 'timeout — still running; check_agent shows progress' }
       }
@@ -694,9 +729,9 @@ export class CrossHostAgents {
   /** What list_agents adds for a thread: live state when the host answers, the last seen state with linkDown when not. */
   async list(caller: SessionMeta): Promise<Record<string, unknown>[]> {
     const session = this.fresh(caller)
-    const recs = this.children(session.id)
+    const recs = this.supervised(session)
     if (!recs.length) return []
-    const byHost = new Map<string, RemoteChildRecord[]>()
+    const byHost = new Map<string, (RemoteChildRecord & { owner: string })[]>()
     for (const r of recs) byHost.set(r.environmentId, [...(byHost.get(r.environmentId) ?? []), r])
     const out: Record<string, unknown>[] = []
     for (const [host, list] of byHost) {
@@ -704,7 +739,7 @@ export class CrossHostAgents {
       try {
         const states = await this.call<CrossHostThreadState[]>(host, session, 'thread.list', { sessionIds: list.map((r) => r.sessionId) })
         live = new Map(states.map((s) => [s.sessionId, s]))
-        for (const s of states) this.touch(session.id, host, s)
+        for (const s of states) this.touch(list.find((r) => r.sessionId === s.sessionId)?.owner ?? session.id, host, s)
       } catch {
         live = null
       }

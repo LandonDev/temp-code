@@ -39,6 +39,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'app.batchGate': 'local',
   'app.batchRules': 'local',
   'app.adoptThread': 'local',
+  'app.archiveThreads': 'local',
   'stall.report': 'local',
   'dap.connect': 'local',
   'lsp.ensure': 'local',

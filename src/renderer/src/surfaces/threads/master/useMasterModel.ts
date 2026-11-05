@@ -14,6 +14,8 @@ import { AgentSummaries } from "./agentSummary";
 import { registry } from "../../../lib/connection";
 import { useEnvironmentStatuses } from "../../../lib/connection/status";
 import * as commands from "../../../lib/tcserver/commands";
+import { failureReason } from "../../../lib/threadActionFailure";
+import type { SessionBatchResult } from "@server/shared/contract";
 import type { EnvironmentStatus } from "../../../lib/connection/types";
 import { GROUP_LABEL, GROUP_ORDER, groupOf, type GroupedMeta, type MasterGroupId } from "../../../lib/threadGroups";
 import { sessionStore, useSessionMeta } from "../../../lib/tcserver/store";
@@ -330,16 +332,22 @@ export async function archiveBatch(
 ): Promise<void> {
   const link = registry.link(master.environmentId);
   if (!link) throw new Error("The master's host is not connected");
-  const result = await link.request<{ succeeded?: string[] } | null>("batch.archive", { masterId: master.id, which, removeResources });
+  const result = await link.request<SessionBatchResult | null>("batch.archive", { masterId: master.id, which, removeResources });
   const plan = remoteArchivePlan(rows, master, which, result?.succeeded ?? [], batch);
   const outcomes = await Promise.allSettled(
     plan.map(async ({ environmentId, stop, archive }) => {
       if (stop.length) await commands.sessionBatch(environmentId, "stop", stop);
-      await commands.sessionBatch(environmentId, "archive", archive, { cleanup: removeResources });
+      return commands.sessionBatch(environmentId, "archive", archive, { cleanup: removeResources });
     }),
   );
-  const failed = outcomes.find((o): o is PromiseRejectedResult => o.status === "rejected");
-  if (failed) throw failed.reason;
+  const rejected = outcomes.find((o): o is PromiseRejectedResult => o.status === "rejected");
+  if (rejected) throw rejected.reason;
+  // A thread the hosts answered for but could not archive is named, with why.
+  const failed = [...(result?.failed ?? []), ...outcomes.flatMap((o) => (o.status === "fulfilled" ? (o.value?.failed ?? []) : []))];
+  if (failed.length) {
+    const titleOf = (id: string) => rows.find((r) => r.meta.id === id || `${r.meta.environmentId}:${r.meta.id}` === id)?.title || id;
+    throw new Error(failed.map((f) => `${titleOf(f.sessionId)}: ${failureReason(new Error(f.error))}`).join("\n"));
+  }
 }
 
 /** Existing root threads of the project, on any host, join the batch
@@ -560,7 +568,14 @@ export function useBoard(masterId: string, environmentId: string): Board {
       // A child gone from its host leaves the answer's rows with it.
       if (push.push === "session-removed") {
         const gone = new Set(push.sessionIds);
-        setData((d) => (d.children.some((c) => gone.has(c.id)) ? { ...d, children: d.children.filter((c) => !gone.has(c.id)) } : d));
+        setData((d) => {
+          const children = d.children.some((c) => gone.has(c.id)) ? d.children.filter((c) => !gone.has(c.id)) : d.children;
+          const listed = d.state.children?.some((c) => gone.has(c.sessionId)) ? d.state.children.filter((c) => !gone.has(c.sessionId)) : d.state.children;
+          if (children === d.children && listed === d.state.children) return d;
+          const state = listed === d.state.children ? d.state : { ...d.state, children: listed };
+          held.current = state;
+          return { ...d, children, state };
+        });
         return;
       }
       const next = batchFromPush(push, masterId);
@@ -673,10 +688,13 @@ export function boardLayout(
   listed: readonly BatchChild[],
   previous: BoardLayout = EMPTY_LAYOUT,
   live: (environmentId: string) => boolean = () => false,
+  removed: (id: string) => boolean = () => false,
 ): BoardLayout {
   listed = listed.filter((c) => {
     const held = metaOf(c.sessionId);
-    return !held || !live(held.environmentId);
+    // A child deleted since the list was answered leaves at once, not at the next answer.
+    if (!held) return !removed(c.sessionId);
+    return !live(held.environmentId);
   });
   const extra = answer.filter((m) => !metaOf(m.id) && m.masterId === masterId && !m.parentId && !m.archived);
   const children = extra.length ? [...masterChildrenOf(metas, masterId), ...extra].sort((a, b) => a.createdAt - b.createdAt) : masterChildrenOf(metas, masterId);
@@ -724,8 +742,16 @@ export function useBoardLayout(
   live: (environmentId: string) => boolean,
 ): BoardLayout {
   const cache = useRef<BoardLayout>(EMPTY_LAYOUT);
+  // A child the store held and no longer does was removed by its host: the
+  // batch's list, answered before that, must not stand it back up.
+  const gone = useRef<{ held: Set<string>; removed: Set<string> }>({ held: new Set(), removed: new Set() });
   return useSyncExternalStore(subscribeMetas, () => {
-    cache.current = boardLayout(masterId, sessionStore.metas(), storeMetaOf, answer, listed, cache.current, live);
+    const seen = gone.current;
+    for (const c of listed) {
+      if (storeMetaOf(c.sessionId)) seen.held.add(c.sessionId);
+      else if (seen.held.has(c.sessionId)) seen.removed.add(c.sessionId);
+    }
+    cache.current = boardLayout(masterId, sessionStore.metas(), storeMetaOf, answer, listed, cache.current, live, (id) => seen.removed.has(id));
     return cache.current;
   });
 }

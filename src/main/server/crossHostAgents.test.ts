@@ -5,6 +5,7 @@ import { CROSS_HOST_OFFER, encodeAgentId, type CrossHostCallParams } from '@shar
 import type { SessionMeta } from '@shared/events'
 import type { ProjectLinkFacts } from '@shared/projectLinks'
 import { CHILDREN_PREFIX, CrossHostAgents, type RemoteLanding } from './crossHostAgents'
+import { INTERRUPT_WORDS } from './orchestration'
 import { HostLinks } from './remote/hostLinks'
 import { PeerCalls, handlePeerRequest, servePeerCall, type LinkRequest, type PeerCallHandler, type PeerSocket } from './remote/peerCalls'
 
@@ -254,7 +255,10 @@ function linkedBox(opts: { down?: () => boolean; refuseAdopt?: string } = {}) {
         return { sessionId: id, title: states.get(id)!.title, cwd: '/srv/agents/work/temp-code', projectId: 'bp1' }
       }
       case 'thread.list':
-        return (a.sessionIds as string[]).map((id) => ({ sessionId: id, ...states.get(id), provider: 'claude', model: 'm', agentType: 'implementer', threadType: 'implementation', cwd: '/x', idleForSeconds: 1, parentSessionId: null }))
+        // A thread the host no longer has (deleted there) is left out, as the real host does.
+        return (a.sessionIds as string[]).filter((id) => states.has(id)).map((id) => ({ sessionId: id, ...states.get(id), provider: 'claude', model: 'm', agentType: 'implementer', threadType: 'implementation', cwd: '/x', idleForSeconds: 1, parentSessionId: null }))
+      case 'thread.interrupt':
+        return { ok: true, outcome: states.get(a.sessionId as string)?.status === 'queued' ? 'dequeued' : 'stopped' }
       case 'thread.adopt':
         if (opts.refuseAdopt) throw new Error(opts.refuseAdopt)
         states.set(a.sessionId as string, { status: 'running', title: 'Loose on the box' })
@@ -426,6 +430,39 @@ describe('CrossHostAgents: a master\'s batch across hosts', () => {
     expect(landings).toHaveLength(1)
     expect(replies).toEqual([{ method: 'peer.reply', params: { callId: 'c9', ok: true, result: { hold: false } } }])
     expect(agents.onPeerPush(BOX2, { push: 'peer.call', callId: 'c1', method: 'mac.run', params: {}, deadlineMs: 1 } as never)).toBe(false)
+  })
+})
+
+describe("CrossHostAgents: a master stops its batch's far threads, whoever started them", () => {
+  const plan = { id: 'plan-1', title: 'Plan', permission: 'auto', cwd: '/x', status: 'running', archived: false, provider: 'claude', isMaster: false, parentId: null, masterId: 'master-1' } as unknown as SessionMeta
+  it("a build a batch thread started on another host is the master's to list, check and stop; a queued one leaves the batch", async () => {
+    const box = linkedBox()
+    const { agents } = setup({ linked: { [BOX2]: box.request }, parent: plan })
+    const r = await agents.startThread(plan, 'box', { threadType: 'implementation', provider: 'claude', firstMessage: 'build it', cwd: '/x' })
+    // The record lives under the plan; the batch index names the master.
+    expect(agents.children('plan-1').map((c) => c.sessionId)).toEqual(['box1'])
+    expect(agents.children('master-1')).toEqual([])
+    expect((await agents.list(master)).map((row) => row.agentId)).toEqual([r.threadId])
+    expect(await agents.interrupt(master, r.threadId)).toBe(INTERRUPT_WORDS.thread)
+    expect(box.seen.at(-1)).toMatchObject({ method: 'thread.interrupt', params: { caller: { sessionId: 'master-1' }, args: { sessionId: 'box1' } } })
+    // Queued on its host: the Stop takes it out of the queue there, and out of the batch here.
+    box.states.set('box1', { status: 'queued', title: 'Build' })
+    expect(await agents.interrupt(master, r.threadId)).toBe(INTERRUPT_WORDS.dequeued)
+    expect(agents.batchChildren('master-1')).toEqual([])
+    // A thread the master has no claim on is still refused.
+    const plain = { ...master, id: 'plain', isMaster: false } as unknown as SessionMeta
+    expect(await agents.interrupt(plain, r.threadId)).toContain('is not a subagent or batch thread of this session on that host')
+  })
+
+  it("a batch thread deleted on its own host leaves the batch at the next refresh instead of holding its end open", async () => {
+    const box = linkedBox()
+    const { agents } = setup({ linked: { [BOX2]: box.request }, parent: master })
+    await agents.startThread(master, 'box', { threadType: 'chat', provider: 'claude', firstMessage: 'go', cwd: '/x' })
+    await agents.startThread(master, 'box', { threadType: 'chat', provider: 'claude', firstMessage: 'go', cwd: '/x' })
+    box.states.delete('box1')
+    const r = await agents.refreshBatch('master-1')
+    expect(r.unreachable).toEqual([])
+    expect(r.children.map((c) => c.sessionId)).toEqual(['box2'])
   })
 })
 

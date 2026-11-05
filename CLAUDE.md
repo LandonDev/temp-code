@@ -2932,11 +2932,35 @@ this is the short one.
   refused with its reason. `batch.archive { masterId, which: 'done' |
   'all', removeResources? }` (operate) archives the children through the
   fleet's `session.batch` (done = done, or idle after a turn; all = every
-  one, the live ones stopped first) and leaves the master.
+  one, the queued ones archived first so stopping a sibling never starts
+  them, then the live ones stopped) and leaves the master.
   `supervisedBy(caller, session)` is the one check every supervision tool
   runs: the caller's subagents, and for a master every root thread on this
-  host carrying its id (the refusal: "is not a subagent or batch thread of
-  this session"). `list_agents` marks rows `subagent` or `thread`. A thread
+  host carrying its id, and every far one of its batch whoever started it
+  (crossHostAgents `childOf` reads the batch index); a refusal says why and
+  what to do (`refusedAgent`: the `<host>:<id>` of a far thread, a batch
+  thread's subagent is that thread's, another batch, adopt_thread).
+  `list_agents` marks rows `subagent` or `thread`. Stop, archive, delete
+  (docs/master-threads.md "Stopping, archiving and deleting a batch
+  thread"): a person may do all three to any batch thread; a master stops
+  (`interrupt_agent`: a batch thread with its own subagents,
+  `registry.stopSubtree`; a queued thread leaves the queue unstarted,
+  archived, which is what a Stop does to any queued row now, the master's,
+  a far host's `thread.interrupt` or a tree stop) and archives
+  (`archive_threads { which | threadIds }`, codex `app.archiveThreads`,
+  `Batches.archiveTool`) and never deletes (irreversible: the person's;
+  MASTER_MECHANICS says so). A tree stop's subagents report to no one
+  (`quietSettles`), and a stopped turn's settle leaves parked reports for
+  the next turn. `session.interrupt { subtree: true }` is a menu's Stop:
+  the thread and what it started, never its parent (a subagent line, the
+  Agents section's Stop). The renderer says every failed thread action
+  with the host's reason (lib/threadActionFailure.ts), never swallows a
+  Delete or Archive, and the board drops a deleted child at once
+  (`useBoardLayout` remembers a listed child the store stopped holding,
+  `boardLayout`'s `removed`; the host re-pushes the batch on a removal it
+  listed). Proof: sessions-batch-actions.test.ts,
+  MasterView.dom's board actions and `bun run
+  script:e2e-batch-child-actions` (real haiku threads). A thread
   settling (idle, error, waiting; never a pause) reports to everyone in
   `settleTargets`, once each: its parent or else its master
   (`settleTarget`), and the thread that started it (`startedBy`) when that

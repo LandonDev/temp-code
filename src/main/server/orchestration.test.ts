@@ -584,7 +584,7 @@ it('the supervision tools answer a batch thread and refuse a stranger with the w
   expect(sent).toEqual(['carry on'])
   expect(JSON.parse(await orchCheckAgent(parent, batch.id)).agentId).toBe(batch.id)
   const refused = await orchSendToAgent(parent, stranger.id, 'hi')
-  expect(refused).toContain('is not a subagent or batch thread of this session')
+  expect(refused).toBe(`refused: ${stranger.id} is not in your batch; adopt_thread brings it in. list_agents shows the ids you can act on.`)
   expect(sent).toHaveLength(1)
 })
 

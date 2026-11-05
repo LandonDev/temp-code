@@ -4,7 +4,7 @@ import { TruncateTip } from "../../../components/tip";
 import { Button } from "../../../components/ui/button";
 import { Item } from "../../../components/ui/item";
 import { STATUS_WORD, StatusMark, type ThreadState } from "../../../components/ui/status";
-import { loadToast } from "../../../components/ui/toaster";
+import { actionFailed } from "../../../lib/threadActionToast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { cn } from "../../../lib/cn";
 import { clockTime, duration, useNow } from "../../../lib/duration";
@@ -238,9 +238,10 @@ function RowAction({ label, onClick, children }: { label: string; onClick: () =>
   );
 }
 
-/** Stops an agent's turn; a refusal says so in a toast. */
+/** Stops an agent and what it started, never the thread above it; a
+ *  refusal says why in a toast. */
 export function stopAgent(meta: Pick<SessionMeta, "id" | "title">): void {
-  void commands.interrupt(meta.id).catch(() => loadToast().then((toast) => toast.error("Couldn't stop it", { description: meta.title || "Subagent" })));
+  void commands.interrupt(meta.id, { subtree: true }).catch((err) => actionFailed("stop it", meta.title || "Subagent", err));
 }
 
 /** A subagent's row, its status read from the session store. */

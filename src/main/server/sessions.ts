@@ -433,6 +433,7 @@ const TOOL_WORDS: Record<string, Activity> = {
   batch_rules: { text: 'Setting batch rules', kind: 'think' },
   batch_gate: { text: 'Running the gate', kind: 'edit' },
   adopt_thread: { text: 'Adding a thread', kind: 'think' },
+  archive_threads: { text: 'Archiving threads', kind: 'think' },
   app_start_thread: { text: 'Starting a thread', kind: 'think' },
   app_read_thread: { text: 'Reading a thread', kind: 'investigate' },
   app_list_threads: { text: 'Listing threads', kind: 'investigate' },
@@ -684,6 +685,9 @@ export class SessionRegistry {
    *  (no handle to interrupt yet). When the handle lands it is disposed,
    *  the stopped row and idle are written, and nothing is sent. */
   private stopBooting = new Set<string>()
+  /** Subagents a tree Stop ended: their settle reports nobody (the parent
+   *  stopped with them). Cleared by their settle or their next send. */
+  private quietSettles = new Set<string>()
   /** Threads told their account needs sign-in, and which account: one row per account, the harness's 401 wording dropped meanwhile. */
   private readonly signIns = new Map<string, string>()
   /** Sessions whose harness must reboot once the current turn settles —
@@ -2822,6 +2826,7 @@ export class SessionRegistry {
     // A new turn is never the old stop.
     this.stopping.delete(sessionId)
     this.stopBooting.delete(sessionId)
+    this.quietSettles.delete(sessionId)
     // A paused tree accepts no harness input. User work stays ordered in the
     // same queue and releases only after the resumed turn settles.
     if (this.isTreePaused(sessionId)) {
@@ -3202,11 +3207,24 @@ export class SessionRegistry {
 
   async interrupt(sessionId: string): Promise<void> {
     const meta = this.store.getSession(sessionId)
+    // Queued: it holds no turn, so a Stop takes it out of the queue, the
+    // fleet's Remove from queue. Writing idle here once released its stored
+    // first message past `after` and the cap: the Stop started it.
+    if (meta?.status === 'queued') {
+      // Its start is already in flight: stop it as the boot it is becoming.
+      if (this.startingQueued.has(sessionId)) {
+        setTimeout(() => void this.interrupt(sessionId).catch(() => {}), 50)
+        return
+      }
+      this.leaveQueue(sessionId)
+      return
+    }
     if (meta?.status === 'paused') {
       // The pause cut the turn off and its row was dropped (paused takes
       // no error row), so the Stop writes the row a Stop on a running turn
       // gets: the turn closes Stopped, never "Worked for", and a batch
       // child blocks as "was stopped". The row leaves paused first.
+      this.stopping.add(sessionId)
       const next = this.store.updateSession(sessionId, {
         status: 'idle',
         busySince: null,
@@ -3249,19 +3267,38 @@ export class SessionRegistry {
     }
   }
 
+  /** A queued thread leaves the queue unstarted: archived, as the fleet's
+   *  Remove from queue does, its stored message kept for a restore. Never
+   *  through setArchived, whose tree stop would come back here. */
+  private leaveQueue(sessionId: string): void {
+    this.queuedResumes.delete(sessionId)
+    const next = this.store.updateSession(sessionId, { archived: true })
+    if (next) this.notifyMeta(next)
+    this.coldMover?.kick()
+  }
+
   /** User-facing hard Stop ends every active or paused member of the visible
    *  root tree. Agent supervision still uses interrupt() for one child. */
   async stopRun(sessionId: string): Promise<void> {
     await this.stopTree(this.rootSessionOf(sessionId))
   }
 
+  /** Stop one thread and what it started (its subagents), never its parent:
+   *  a menu's Stop on a subagent, and a master's interrupt_agent on a batch
+   *  thread, whose subagents would otherwise report back and wake it. */
+  async stopSubtree(sessionId: string): Promise<void> {
+    await this.stopTree(sessionId)
+  }
+
   /** Interrupt every live member of the subtree at rootId — Stop semantics
    *  for flows (delete, archive) that act on the given thread, not the
-   *  visible root. */
+   *  visible root. A queued member leaves the queue, so nothing of a
+   *  stopped or archived tree starts later. */
   private async stopTree(rootId: string): Promise<void> {
     const tree = this.sessionTree(rootId).filter(
-      (session) => session.status === 'paused' || LIVE_STATUSES.has(session.status)
+      (session) => session.status === 'paused' || session.status === 'queued' || LIVE_STATUSES.has(session.status)
     )
+    for (const session of tree) if (session.id !== rootId && session.status !== 'queued') this.quietSettles.add(session.id)
     await Promise.allSettled(tree.map((session) => this.interrupt(session.id)))
   }
 
@@ -4033,10 +4070,8 @@ export class SessionRegistry {
           case 'resume':
             return this.resumePausedRun(rootId)
           case 'stop':
-            // Stop on a queued root is "Remove from queue": it holds no turn.
-            return this.store.getSession(rootId)?.status === 'queued'
-              ? this.setArchived(rootId, true)
-              : this.stopRun(rootId)
+            // Stop on a queued root is "Remove from queue" (interrupt's own rule).
+            return this.stopRun(rootId)
           case 'archive':
             return this.setArchived(rootId, true)
         }
@@ -4414,6 +4449,9 @@ export class SessionRegistry {
     if (event.type === 'error' && !event.stopped && !event.failure) {
       event = { ...event, failure: this.classify(sessionId, event) }
     }
+    // The settle that ends a stopped turn: what is parked for the thread
+    // (its subagents' reports) waits for its next turn instead of starting one.
+    const stoppedSettle = event.type === 'status' && event.status === 'idle' && this.stopping.has(sessionId)
     if (event.type === 'status') {
       // The stop outlives a question's or an approval's `running` cleanup
       // and a `waiting`: the CLI's result still has to arrive.
@@ -4595,6 +4633,9 @@ export class SessionRegistry {
             this.holdNotice(sessionId, NOTES_REMINDER_COMMIT)
             this.drainSettled(sessionId)
           } else void this.runNotesReminder(sessionId)
+        } else if (stoppedSettle) {
+          // The person's queued text still goes in (carrying the reports); nothing else wakes it.
+          if ((this.queues.get(sessionId)?.length ?? 0) > 0) this.drainQueue(sessionId)
         } else {
           this.drainSettled(sessionId)
         }
@@ -4688,7 +4729,9 @@ export class SessionRegistry {
     this.lastActivity.set(sessionId, Math.max(this.lastActivity.get(sessionId) ?? 0, row.ts))
     for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
     for (const listener of this.eventListeners) listener(row)
-    if (settleToReport) notifyParentOfSettle(this, settleToReport)
+    // A subagent stopped with its tree reports to no one: its parent was
+    // stopped by the same Stop, and the report would wake it again.
+    if (settleToReport && !this.quietSettles.delete(settleToReport.id)) notifyParentOfSettle(this, settleToReport)
   }
 
   // ── research boards (sources harvested from the agent tree) ─────────

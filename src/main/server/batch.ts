@@ -23,7 +23,7 @@ import type { DeployStatus, HostLogPush } from '@shared/contract-host'
 import type { SessionMeta } from '@shared/events'
 import { STALE_WATCH_MS } from '@shared/watch'
 import { gateLine, type GateNotice, gateFailureDetail } from '@shared/gate'
-import { ADOPT_THREAD_TOOL_NAME, BATCH_GATE_TOOL_NAME, BATCH_RULES_TOOL_NAME, GATE_TEXT_TAIL, logTail } from '@shared/gate'
+import { ADOPT_THREAD_TOOL_NAME, ARCHIVE_THREADS_TOOL_NAME, BATCH_GATE_TOOL_NAME, BATCH_RULES_TOOL_NAME, GATE_TEXT_TAIL, logTail } from '@shared/gate'
 import { PUBLISH_PHASES, PhaseTracker, deployProgress, formatDuration } from '@shared/releasePhases'
 import { gateQueue, type GateQueue, type GateWait } from './gateQueue'
 import { runGateStep } from './gateRun'
@@ -334,6 +334,8 @@ type StepsOutcome = 'done' | 'failed' | 'handed-off'
 
 export class Batches {
   private readonly rows = new Map<string, StoredBatch>()
+  /** The children each master's last state named: a removal among them re-pushes the state. */
+  private readonly listed = new Map<string, Set<string>>()
   private readonly listeners = new Set<(state: BatchState, push: BatchPushState) => void>()
   /** per step (`<master>\0<step>`): the log line count the last push went out at */
   private readonly logSent = new Map<string, number>()
@@ -397,8 +399,13 @@ export class Batches {
     const offMeta = this.deps.registry.onMeta?.((m) => {
       if (m.masterId && !m.parentId) this.schedule(m.masterId)
     })
-    const offRemoved = this.deps.registry.onRemoved?.(() => {
-      for (const id of this.rows.keys()) this.schedule(id)
+    const offRemoved = this.deps.registry.onRemoved?.((ids) => {
+      for (const [masterId, row] of this.rows) {
+        this.schedule(masterId)
+        // A deleted child leaves the board now: its last state still named
+        // it, and the review saves (and pushes) only when the block moves.
+        if (ids.some((id) => this.listed.get(masterId)?.has(id))) this.touch(row)
+      }
     })
     this.detach = () => {
       offMeta?.()
@@ -455,6 +462,7 @@ export class Batches {
     const row = this.row(masterId)
     const members = this.members(masterId)
     const ids = members.map((m) => m.id)
+    this.listed.set(masterId, new Set(ids))
     const known = (id: string): boolean => ids.includes(id) || (!isRemoteAgentId(id) && !!this.deps.registry.get(id))
     return {
       masterId,
@@ -639,10 +647,15 @@ export class Batches {
     let result: SessionBatchResult = { attempted: [], succeeded: [], failed: [] }
     if (targets.length && this.deps.registry.batch) {
       if (which === 'all') {
+        // The queued ones leave first: stopping a sibling meets their
+        // `after`, and the scheduler started them before their archive came.
+        const queued = children.filter((s) => s.status === 'queued').map((s) => s.id)
+        if (queued.length) result = await this.deps.registry.batch('archive', queued, { cleanup: removeResources })
         const live = children.filter((s) => !this.done(s) && s.status !== 'queued').map((s) => s.id)
         if (live.length) await this.deps.registry.batch('stop', live)
       }
-      result = await this.deps.registry.batch('archive', targets, { cleanup: removeResources })
+      const rest = await this.deps.registry.batch('archive', targets.filter((id) => !result.attempted.includes(id)), { cleanup: removeResources })
+      result = { attempted: [...result.attempted, ...rest.attempted], succeeded: [...result.succeeded, ...rest.succeeded], failed: [...result.failed, ...rest.failed] }
     }
     // The children on other hosts: each archived on its host (a live one stopped there first).
     const remote = this.members(masterId).filter((m) => m.remote && (which === 'all' || this.memberDone(m)))
@@ -652,6 +665,53 @@ export class Batches {
     }
     this.schedule(masterId)
     return result
+  }
+
+  /** The `archive_threads` tool: the batch's done or all (`archive`), or
+   *  named threads of it, here or (`<envId>:<sessionId>`) on another host.
+   *  A master archives; it never deletes (the person's, docs/master-threads.md).
+   *  Never throws. */
+  async archiveTool(master: SessionMeta, args: { which?: 'done' | 'all'; threadIds?: string[] }): Promise<string> {
+    const refusal = this.refusal(master, ARCHIVE_THREADS_TOOL_NAME)
+    if (refusal) return refusal
+    const named = [...new Set(args.threadIds ?? [])]
+    if (!args.which === !named.length) return 'refused: pass `which` (done or all) or `threadIds`, one of them'
+    const members = this.members(master.id)
+    const titleOf = (id: string): string => `"${members.find((m) => m.id === id || m.sessionId === id)?.title || id}"`
+    const refused: string[] = []
+    let result: SessionBatchResult = { attempted: [], succeeded: [], failed: [] }
+    if (args.which) result = await this.archive(master.id, args.which)
+    else {
+      const local: string[] = []
+      const far: string[] = []
+      for (const id of named) {
+        const m = members.find((x) => x.id === id)
+        if (m) (m.remote ? far : local).push(id)
+        else refused.push(`${id} (${this.notMember(id)})`)
+      }
+      if (local.length && this.deps.registry.batch) result = await this.deps.registry.batch('archive', local)
+      if (far.length && this.deps.remote) {
+        const r = await this.deps.remote.act(master.id, 'archive', far)
+        result = { attempted: [...result.attempted, ...far], succeeded: [...result.succeeded, ...r.succeeded], failed: [...result.failed, ...r.failed] }
+      }
+      this.schedule(master.id)
+    }
+    const lines: string[] = []
+    if (result.succeeded.length) lines.push(`Archived ${result.succeeded.length}: ${result.succeeded.map(titleOf).join(', ')}.`)
+    else if (!refused.length && !result.failed.length) lines.push(args.which === 'done' ? 'Nothing to archive: no thread of your batch is done.' : 'Nothing to archive: your batch has no threads.')
+    if (result.failed.length) lines.push(`Failed: ${result.failed.map((f) => `${titleOf(f.sessionId)} (${f.error})`).join(', ')}.`)
+    if (refused.length) lines.push(`Refused: ${refused.join(', ')}.`)
+    return lines.join(' ')
+  }
+
+  /** Why an id is no thread of this master's batch, in the words a refusal uses. */
+  private notMember(id: string): string {
+    if (isRemoteAgentId(id)) return 'not a thread of your batch on that host'
+    const s = this.deps.registry.get(id)
+    if (!s) return 'no such thread here'
+    if (s.archived) return 'already archived'
+    if (s.parentId) return 'a subagent: it is archived with its thread'
+    return 'not in your batch'
   }
 
   /**
@@ -1055,7 +1115,7 @@ export class Batches {
                       : blocked.why === 'interrupted'
                         ? 'was stopped: send it a message or remove it'
                         : blocked.why
-              }. Fix it (a message, a new thread) or remove it (archive); the batch's steps run once every thread is done.`
+              }. Fix it (a message, a new thread) or take it out of the batch (archive_threads); the batch's steps run once every thread is done.`
         )
       }
       return

@@ -231,6 +231,22 @@ describe("a plan and its build are one row", () => {
     expect(boardLayout("m", metas, of, [], [], first)).toBe(first);
   });
 
+  it("a child the batch's list still names leaves once its host deleted it; one never seen is drawn from the list", () => {
+    const home = meta("idle", { title: "Home" });
+    const metas = [home];
+    const of = (id: string) => metas.find((m) => m.id === id) ?? null;
+    const listed = [
+      { sessionId: home.id, environmentId: "local", status: "idle" as const },
+      { sessionId: "gone", environmentId: "box", status: "running" as const, title: "Deleted on the box" },
+      { sessionId: "far", environmentId: "box", status: "running" as const, title: "Not loaded yet" },
+    ];
+    const removed = (id: string) => id === "gone";
+    const layout = boardLayout("m", metas, of, [], listed, undefined, () => true, removed);
+    expect(layout.rows.map((r) => r.id)).toEqual([home.id, "far"]);
+    // Without the store's word the list would stand it back up.
+    expect(boardLayout("m", metas, of, [], listed).rows.map((r) => r.id)).toEqual([home.id, "gone", "far"]);
+  });
+
   it("never folds against a plan outside the batch", () => {
     const foreign = meta("idle", { threadType: "planning", masterId: "other", title: "Elsewhere" });
     const build = meta("running", { title: "Build", planThreadId: foreign.id });

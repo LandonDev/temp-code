@@ -232,9 +232,11 @@ public enum Methods {
 
         public struct Params: Codable, Hashable, Sendable {
             public let sessionId: String
+            public let subtree: Bool?
 
-            public init(sessionId: String) {
+            public init(sessionId: String, subtree: Bool? = nil) {
                 self.sessionId = sessionId
+                self.subtree = subtree
             }
         }
 

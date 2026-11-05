@@ -22,6 +22,7 @@ import {
 } from "react";
 import { Sidebar } from "./chrome/Sidebar";
 import { confirmAction } from "./chrome/ConfirmDialog";
+import { actionFailed } from "./lib/threadActionToast";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
 import { MoveToasts } from "./chrome/ThreadHostChip";
 import { requestThreadBatch, useBatchPending, type BatchScope } from "./lib/threadBatch";
@@ -1823,7 +1824,13 @@ export default function App() {
         const next = archiveNeighbour(headerStore.getState().model, sessionId);
         if (next) void onSelectHistorySession(next.id);
       }
-      await setSessionArchived(sessionId, archived).catch(() => undefined);
+      try {
+        await setSessionArchived(sessionId, archived);
+      } catch (err) {
+        if (open) setSessions((prev) => prev.map((session) => (session.id === sessionId ? { ...session, archived: !archived } : session)));
+        actionFailed(archived ? "archive it" : "restore it", sessionDisplayTitle(open?.title ?? sessionStore.metaOf(sessionId)?.title ?? "", open?.harness ?? "claude"), err);
+        return;
+      }
       historyStore.set((current) => {
         const existing = current.find((entry) => entry.id === sessionId);
         if (existing) {
@@ -1891,7 +1898,14 @@ export default function App() {
       } else {
         void forgetHarnessSession(harness, sessionId);
       }
-      await deleteSession(sessionId).catch(() => undefined);
+      // A refusal says why and leaves everything where it was: the row the
+      // person picked stays, rather than vanishing here and coming back.
+      try {
+        await deleteSession(sessionId);
+      } catch (err) {
+        actionFailed("delete it", label, err);
+        return;
+      }
 
       if (!before.tabs.some((tab) => leafIds(tab.layout).includes(sessionId))) {
         setSessions((prev) =>

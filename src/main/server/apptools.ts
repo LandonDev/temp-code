@@ -53,6 +53,9 @@ import {
   ADOPT_THREAD_PARAMS,
   ADOPT_THREAD_TOOL_DESCRIPTION,
   ADOPT_THREAD_TOOL_NAME,
+  ARCHIVE_THREADS_PARAMS,
+  ARCHIVE_THREADS_TOOL_DESCRIPTION,
+  ARCHIVE_THREADS_TOOL_NAME,
   BATCH_GATE_PARAMS,
   BATCH_GATE_TOOL_DESCRIPTION,
   BATCH_GATE_TOOL_NAME,
@@ -546,6 +549,11 @@ export const ADOPT_THREAD_SHAPE = {
   threadId: z.string().describe(ADOPT_THREAD_PARAMS.threadId)
 }
 
+export const ARCHIVE_THREADS_SHAPE = {
+  which: z.enum(['done', 'all']).optional().describe(ARCHIVE_THREADS_PARAMS.which),
+  threadIds: z.array(z.string()).max(100).optional().describe(ARCHIVE_THREADS_PARAMS.threadIds)
+}
+
 /** A master thread (the pin on its row), which alone gets the batch tools. */
 export function isMaster(session: SessionMeta): boolean {
   return isMasterSession(session)
@@ -701,9 +709,10 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
         const live = registry?.get(session.id) ?? session
         return text(reviews ? await reviews.mergeBranch(live, args) : 'refused: merge reviews are not available here')
       }),
-      // batch_rules, batch_gate and adopt_thread only on a master thread
-      // (batch.ts): what the app does when the batch is done, the gate and
-      // release run early, and an existing thread brought into the batch.
+      // batch_rules, batch_gate, adopt_thread and archive_threads only on a
+      // master thread (batch.ts): what the app does when the batch is done,
+      // the gate and release run early, an existing thread brought into the
+      // batch, and threads taken out of it.
       ...(isMaster(session)
         ? [
             tool(BATCH_RULES_TOOL_NAME, BATCH_RULES_TOOL_DESCRIPTION, BATCH_RULES_SHAPE, async (args) => {
@@ -720,6 +729,11 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
               const b = batches()
               const live = registry?.get(session.id) ?? session
               return text(b ? await b.adoptTool(live, args) : 'refused: batches are not available here')
+            }),
+            tool(ARCHIVE_THREADS_TOOL_NAME, ARCHIVE_THREADS_TOOL_DESCRIPTION, ARCHIVE_THREADS_SHAPE, async (args) => {
+              const b = batches()
+              const live = registry?.get(session.id) ?? session
+              return text(b ? await b.archiveTool(live, args) : 'refused: batches are not available here')
             })
           ]
         : []),
@@ -757,5 +771,6 @@ export const APP_TOOLS = [
   `mcp__app__${REPORT_FINDINGS_TOOL_NAME}`,
   `mcp__app__${BATCH_GATE_TOOL_NAME}`,
   `mcp__app__${BATCH_RULES_TOOL_NAME}`,
-  `mcp__app__${ADOPT_THREAD_TOOL_NAME}`
+  `mcp__app__${ADOPT_THREAD_TOOL_NAME}`,
+  `mcp__app__${ARCHIVE_THREADS_TOOL_NAME}`
 ]
