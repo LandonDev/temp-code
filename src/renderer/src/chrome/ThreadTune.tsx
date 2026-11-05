@@ -184,7 +184,7 @@ export function TuneDialog({
       <ModalBody>
         <ThreadTune environmentId={environmentId} tune={tune} onChange={setTune} workspaceId={workspaceId} />
       </ModalBody>
-      <DialogFooter onCancel={onCancel} confirmLabel="Save" onConfirm={() => onSave(normalizeTune(tune))} />
+      <DialogFooter onCancel={onCancel} confirmLabel="Save" closeOnConfirm onConfirm={() => onSave(normalizeTune(tune))} />
     </Modal>
   );
 }

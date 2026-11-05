@@ -33,6 +33,7 @@ export function DialogFooter({
   pending,
   disabled,
   onConfirm,
+  closeOnConfirm,
   note,
 }: {
   note?: ReactNode;
@@ -42,8 +43,12 @@ export function DialogFooter({
   pending?: boolean;
   disabled?: boolean;
   onConfirm?: () => void;
+  /** The verb ends the dialog: it plays the exit, then runs `onConfirm`
+   *  (a parent that unmounts the dialog on confirm would cut it). */
+  closeOnConfirm?: boolean;
 }) {
   const close = useModalClose();
+  const confirm = onConfirm && closeOnConfirm && close ? () => close(onConfirm) : onConfirm;
   return (
     <div className="flex items-center justify-end gap-2 border-t border-border px-5 pt-4 pb-5">
       {note ? (
@@ -58,7 +63,7 @@ export function DialogFooter({
         data-dialog-confirm
         type={onConfirm ? "button" : "submit"}
         variant={danger ? "destructive" : "default"}
-        onClick={onConfirm}
+        onClick={confirm}
         disabled={pending || disabled}
       >
         <BusyLabel busy={!!pending} label={confirmLabel} />

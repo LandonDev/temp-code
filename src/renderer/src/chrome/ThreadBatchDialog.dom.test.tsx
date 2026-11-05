@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionMeta } from "../lib/tcserver/types";
 
@@ -77,10 +77,15 @@ describe("ThreadBatchDialog", () => {
     // A thread finished while the dialog showed: the count follows.
     act(() => setMetas([meta({ id: "a", status: "running" }), meta({ id: "b", status: "idle" })]));
     expect(screen.getByText("Pause 1 running thread on the box?")).toBeTruthy();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Pause 1" }));
+    // The verb plays the dialog's exit first, then starts the batch.
+    let openWhenRun: boolean | null = null;
+    vi.mocked(commands.sessionBatch).mockImplementation(async () => {
+      openWhenRun = !!document.querySelector('[role="dialog"][data-open]');
+      return { attempted: [], succeeded: [], failed: [] };
     });
-    expect(commands.sessionBatch).toHaveBeenCalledWith("local", "pause", ["a"], {});
+    fireEvent.click(screen.getByRole("button", { name: "Pause 1" }));
+    await waitFor(() => expect(commands.sessionBatch).toHaveBeenCalledWith("local", "pause", ["a"], {}));
+    expect(openWhenRun).toBe(false);
     expect(screen.getByTestId("pending").textContent).toBe("none");
   });
 

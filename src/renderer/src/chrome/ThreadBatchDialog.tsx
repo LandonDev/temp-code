@@ -18,7 +18,8 @@ import { useBatchSelection } from "../lib/threadBatchSelection";
 /**
  * The confirm behind Pause all, Stop all and Archive done: "Pause 15
  * running threads on the box?", the count read from the store as it
- * shows. OK closes at once; the toast reports when the batch lands.
+ * shows. The verb plays the dialog's exit, then starts the batch; the
+ * toast reports when it lands.
  */
 export function ThreadBatchDialog(): JSX.Element | null {
   const pending = useBatchPending();
@@ -49,6 +50,7 @@ function Confirm({ request }: { request: BatchRequest }): JSX.Element {
       <DialogFooter
         onCancel={cancelThreadBatch}
         onConfirm={confirm}
+        closeOnConfirm
         confirmLabel={copy.confirmLabel}
         danger={copy.danger}
         disabled={targets.length === 0}

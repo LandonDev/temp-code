@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DialogFooter } from "./ConfirmDialog";
 import { Modal } from "./Modal";
@@ -31,5 +31,29 @@ describe("DialogFooter", () => {
       </Modal>,
     );
     expect((screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("closeOnConfirm plays the exit, then runs the verb", async () => {
+    // Whether the dialog still read open when the verb ran.
+    const openWhenRun: boolean[] = [];
+    const onConfirm = () => openWhenRun.push(!!document.querySelector('[role="dialog"][data-open]'));
+    const view = render(
+      <Modal title="Tune" onClose={vi.fn()}>
+        <DialogFooter onCancel={vi.fn()} confirmLabel="Save" closeOnConfirm onConfirm={onConfirm} />
+      </Modal>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(openWhenRun).toEqual([false]));
+    view.unmount();
+
+    // Without it, the verb runs while the dialog is still open.
+    openWhenRun.length = 0;
+    render(
+      <Modal title="Tune" onClose={vi.fn()}>
+        <DialogFooter onCancel={vi.fn()} confirmLabel="Save" onConfirm={onConfirm} />
+      </Modal>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(openWhenRun).toEqual([true]);
   });
 });
