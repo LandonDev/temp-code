@@ -646,12 +646,12 @@ diff stays unified at every width.
 **The fold keeps the reader's place.** A width change (a fold, an unfold,
 the sidebar toggling, the pager becoming two panes) keeps the transcript's
 end when the reader is there and the row at the top edge otherwise
-(`TranscriptReflow.anchor`). A `List` never reports `scrollPosition(id:)`,
-so each row says whether it straddles the scroll view's top edge
-(`TranscriptReflow.atTopEdge`, read through `onGeometryChange`) and the last
-to say yes is the top row; a row's word counts only while the scroll view
-keeps the list's width and no reflow is open, so a fold's re-wrap never
-replaces the reader's row before it is taken. The anchor is captured once, `atBottom` is
+(`TranscriptReflow.anchor`). Open: on iOS 27.1 the transcript's `List`
+never reports `scrollPosition(id:)`, so `topRow` stays unknown and a fold
+leaves a scrolled-up reader where UIKit puts them; the fold run's scrolled-up
+leg fails on it (a row's own `onGeometryChange`, against `.scrollView` or a
+named space on the list, never fires while UIKit scrolls the cells either).
+The anchor is captured once, `atBottom` is
 held while the geometry flickers, and the anchor is restored with no
 animation at 0, 250 and 600 ms after each width step, each new step
 restarting the run. A size change is not an open: `TranscriptLanding` is

@@ -97,12 +97,6 @@ struct TranscriptView: View {
                     .onAppear { bornRows.claim(row) }
                     .environment(\.revealTurn, turns[row.id])
                     .rowInitProbe(row.id)
-                    // The row at the top edge, for the reflow's anchor. Only while the list's width
-                    // holds and no reflow is open: a fold re-wraps the rows before the anchor is taken.
-                    .onGeometryChange(for: TopEdge.self) { TopEdge($0) } action: { edge in
-                        guard edge.atTop, !scrollState.reflowHeld, !TranscriptReflow.widthChanged(edge.viewport, listWidth) else { return }
-                        if scrollState.topRow != row.id { scrollState.topRow = row.id }
-                    }
                     .accessibilityIdentifier("transcript-item")
                     // The end row keeps its own vertical room, so a folded line takes none.
                     .listRowInsets(row.id.end ? endInsets : rowInsets)
@@ -134,6 +128,8 @@ struct TranscriptView: View {
             .contentMargins(.vertical, 8, for: .scrollContent)
             // The measure: the inset past the 16 pt row inset that centres a column no wider than the cap.
             .contentMargins(.horizontal, measured ? ReadingMeasure.sideInset(width: listWidth) - ReadingMeasure.edge : 0, for: .scrollContent)
+            // Read only, never assigned: the row at the top edge, for the reflow's anchor.
+            .scrollPosition(id: Binding(get: { scrollState.topRow }, set: { scrollState.topRow = $0 }), anchor: .top)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { was, now in
                 listWidth = now
                 if TranscriptReflow.widthChanged(was, now) { reflow(proxy: proxy) }
@@ -523,19 +519,6 @@ struct TranscriptView: View {
     }
 }
 
-/// What a row reads of itself for the top row: whether it straddles the
-/// scroll view's top edge, and the scroll view's width (whole points).
-private nonisolated struct TopEdge: Equatable, Sendable {
-    let atTop: Bool
-    let viewport: CGFloat
-
-    init(_ proxy: GeometryProxy) {
-        let frame = proxy.frame(in: .scrollView)
-        atTop = TranscriptReflow.atTopEdge(minY: frame.minY, maxY: frame.maxY)
-        viewport = (proxy.bounds(of: .scrollView)?.width ?? 0).rounded()
-    }
-}
-
 /// Plain storage for the scrolled-up proof's samples.
 final class HoldBox {
     var hold: TestHooks.ScrollHold?
@@ -548,7 +531,7 @@ final class HoldBox {
 @MainActor @Observable
 final class TranscriptScrollState {
     var atBottom = true
-    /// The row at the top edge, as the rows report it (`TopEdge`); read by the reflow and the trace, never in a body.
+    /// The row at the top edge, as the list reports it; never assigned by the view.
     var topRow: TranscriptRowID?
     /// A reflow is open: `atBottom` holds its captured value.
     var reflowHeld = false
